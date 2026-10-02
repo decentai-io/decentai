@@ -298,6 +298,9 @@ line() {
     if [ -n "${DECENTAI_PROJECT:-}" ]; then
         LINE+=(-e "DECENTAI_PROJECT=$DECENTAI_PROJECT")
     fi
+    if [ -n "${DECENTAI_DNS:-}" ]; then
+        LINE+=(-e "DECENTAI_DNS=$DECENTAI_DNS")
+    fi
     if [ -n "${DECENTAI_PASSWORD:-}" ] && { [ "$1" = "install" ] || [ "$1" = "reset-password" ]; }; then
         # By name: its value is the engine's to read, not the line's to show.
         LINE+=(-e DECENTAI_PASSWORD)

@@ -621,6 +621,9 @@ class Starter {
         if ($env:DECENTAI_PROJECT) {
             $line += @("-e", "DECENTAI_PROJECT=$($env:DECENTAI_PROJECT)")
         }
+        if ($env:DECENTAI_DNS) {
+            $line += @("-e", "DECENTAI_DNS=$($env:DECENTAI_DNS)")
+        }
         if ($env:DECENTAI_PASSWORD -and @("install", "reset-password") -contains $arguments[0]) {
             # By name: its value is the engine's to read, not the line's to show.
             $line += @("-e", "DECENTAI_PASSWORD")

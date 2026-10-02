@@ -58,6 +58,18 @@ class Engine:
             return (said.strip().splitlines() or ["the engine did not answer"])[-1]
         return ""
 
+    def is_podman(self) -> bool:
+        """Whether the engine behind the socket is Podman, which
+        answers the same command line and says who it is when asked."""
+        try:
+            code, said, _ = self._run(
+                [self.COMMAND, "version", "--format",
+                 "{{range .Server.Components}}{{.Name}};{{end}}"],
+                self.SHORT_SECONDS)
+        except EngineError:
+            return False
+        return code == 0 and "podman" in said.lower()
+
     # -- images --------------------------------------------------------
     def has(self, image: str) -> bool:
         code, _, _ = self._run(

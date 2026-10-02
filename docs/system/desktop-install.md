@@ -140,6 +140,21 @@ The address is plain HTTP on `localhost`. A browser treats `localhost`
 as it treats a secure address, so the microphone, the camera and the
 installed app work.
 
+## Where the stack looks names up
+
+On Windows, Podman's containers ask Windows' own DNS helper, and it
+fails on a large answer: an address behind a long chain of aliases —
+a model hosted on Azure is one — could not be looked up at all, while
+`api.openai.com` could. So when the engine is Podman, the launcher lays
+an override over the Compose file (`names.yml`, written at every start)
+that gives the backend and the runtime two public resolvers, 1.1.1.1
+and 8.8.8.8. The stack's own names (`backend`, `mongo`) are the
+engine's and resolve as before. On Docker nothing is changed.
+
+`DECENTAI_DNS`, given to the starter, says otherwise on either engine:
+addresses to use instead — for a company whose model's name only its
+own DNS knows — or `host`, to leave the engine's own.
+
 ## A release
 
 One version number names three images — backend, runtime, frontend —

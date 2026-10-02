@@ -298,9 +298,11 @@ class Installation:
     # ------------------------------------------------------------------
     def _use(self, images: Dict[str, str], port: Optional[int] = None) -> None:
         self.engine.environment = self.settings.stack_environment(images, port)
+        self.settings.name_lookups(self.engine.is_podman())
         # A folder somebody develops in stays handed over across starts
         # and updates, until they take it back.
-        self.engine.overrides = [self.settings.develop_file]
+        self.engine.overrides = [self.settings.develop_file,
+                                 self.settings.names_file]
 
     def _pull(self, release: Release) -> None:
         for part, image in release.images.items():

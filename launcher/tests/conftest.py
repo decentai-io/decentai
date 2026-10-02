@@ -35,6 +35,8 @@ class FakeEngine:
         #: image -> what every service is when that image is the backend's
         self.states_with = {}
         self.unreachable = ""
+        #: whether the engine behind the socket says it is Podman
+        self.podman = False
         self.database = b"the database, as it was"
         self.restored = []
         self.fails = {}
@@ -46,6 +48,8 @@ class FakeEngine:
         for fragment, why in self.fails.items():
             if fragment in words:
                 return 1, "", why
+        if argv[1] == "version" and "Components" in words:
+            return 0, "Podman Engine;Conmon;" if self.podman else "Engine;containerd;", ""
         if argv[1] == "version":
             return (1, "", self.unreachable) if self.unreachable else (0, "27.0\n", "")
         if argv[1:3] == ["image", "inspect"]:

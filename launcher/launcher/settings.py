@@ -20,6 +20,7 @@ changes none that are there.
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import os
 import secrets
@@ -38,6 +39,13 @@ class Settings:
     INSTALL = "install.json"
     BACKUPS = "backups"
     DEVELOP = "develop.yml"
+    NAMES = "names.yml"
+    #: Where the stack looks names up on Podman, unless the person says
+    #: otherwise: two public resolvers.
+    PODMAN_RESOLVERS = ("1.1.1.1", "8.8.8.8")
+    #: How the person says otherwise: addresses, or `host` for the
+    #: engine's own.
+    RESOLVERS_VARIABLE = "DECENTAI_DNS"
     #: Where the backend reads the folder somebody develops agents in.
     DEVELOP_TARGET = "/develop"
 
@@ -151,6 +159,63 @@ class Settings:
             "",
         ]))
         self.record(develop_folder=folder)
+
+    # ------------------------------------------------------------------
+    # Where the stack looks names up
+    # ------------------------------------------------------------------
+
+    @property
+    def names_file(self) -> Path:
+        return self.state / self.NAMES
+
+    @classmethod
+    def resolvers(cls, podman: bool, said: str = "") -> tuple:
+        """The resolvers the stack's containers are given, or none to
+        leave them the engine's own.
+
+        On Windows, Podman's containers ask Windows' own DNS helper,
+        and it fails on a large answer: an address behind a long chain
+        of aliases, as a model hosted on Azure has, could not be looked
+        up at all while api.openai.com could. So on Podman the stack
+        asks public resolvers. ``said`` is the person's own word
+        (DECENTAI_DNS): addresses to use on any engine — a company
+        whose model's name only its own DNS knows — or ``host``."""
+        said = str(said or "").strip()
+        if said.lower() == "host":
+            return ()
+        if said:
+            given = tuple(part for part in said.replace(",", " ").split())
+            for address in given:
+                try:
+                    ipaddress.ip_address(address)
+                except ValueError:
+                    raise SettingsError(
+                        f"{cls.RESOLVERS_VARIABLE} takes addresses such as "
+                        f"1.1.1.1, or `host`: '{address}' is neither.")
+            return given
+        return cls.PODMAN_RESOLVERS if podman else ()
+
+    def name_lookups(self, podman: bool) -> tuple:
+        """Write, or take away, the override that tells the stack where
+        to look names up. Returns the resolvers in use."""
+        resolvers = self.resolvers(
+            podman, os.environ.get(self.RESOLVERS_VARIABLE) or "")
+        if not resolvers:
+            if self.names_file.exists():
+                self.names_file.unlink()
+            return ()
+        listed = ", ".join(json.dumps(address) for address in resolvers)
+        self._write(self.NAMES, "\n".join([
+            "# Where the stack looks names up (docs/system/desktop-install.md).",
+            "# Written by the launcher at every start.",
+            "services:",
+            "  backend:",
+            f"    dns: [{listed}]",
+            "  ai-runtime:",
+            f"    dns: [{listed}]",
+            "",
+        ]))
+        return resolvers
 
     @property
     def backups(self) -> Path:

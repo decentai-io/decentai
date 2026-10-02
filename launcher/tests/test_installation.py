@@ -165,6 +165,44 @@ class TestTheFirstRun:
         assert installation.settings.installed and not installation.settings.begun
 
 
+class TestWhereTheStackLooksNamesUp:
+    """Podman on Windows cannot look up an address behind a long chain
+    of aliases, so there the stack asks public resolvers."""
+
+    def names(self, installation):
+        path = installation.settings.names_file
+        return path.read_text(encoding="utf-8") if path.exists() else ""
+
+    def test_on_docker_the_engines_own(self, installation, engine):
+        installation.first_run(release(), EMAIL, PASSWORD)
+        assert self.names(installation) == ""
+
+    def test_on_podman_public_resolvers_for_the_two_that_connect_out(
+            self, installation, engine):
+        engine.podman = True
+        installation.first_run(release(), EMAIL, PASSWORD)
+        said = self.names(installation)
+        assert said.count('dns: ["1.1.1.1", "8.8.8.8"]') == 2
+        assert "backend:" in said and "ai-runtime:" in said and "mongo" not in said
+        up = next(a["argv"] for a in engine.asked if a["argv"][-2:] == ["up", "-d"])
+        assert str(installation.settings.names_file) in up
+
+    def test_the_person_may_say_otherwise(self, installation, engine, monkeypatch):
+        engine.podman = True
+        monkeypatch.setenv("DECENTAI_DNS", "host")
+        installation.first_run(release(), EMAIL, PASSWORD)
+        assert self.names(installation) == ""
+
+        monkeypatch.setenv("DECENTAI_DNS", "10.0.0.53, 10.0.0.54")
+        engine.podman = False
+        installation.start()
+        assert 'dns: ["10.0.0.53", "10.0.0.54"]' in self.names(installation)
+
+        monkeypatch.setenv("DECENTAI_DNS", "our-dns-server")
+        with pytest.raises(Exception, match="takes addresses"):
+            installation.start()
+
+
 class TestEveryDay:
     def test_start_starts_what_is_installed(self, installed, engine):
         assert installed.start() == "http://localhost:4280"

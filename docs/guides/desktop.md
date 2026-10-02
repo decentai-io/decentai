@@ -26,8 +26,10 @@ Unpack it somewhere it can stay, and open `DecentAI.cmd` (Windows) or
 `DecentAI.command` (Mac).
 
 The files are not signed for Windows or macOS, so the system asks once
-whether to run them: on Windows choose **More info → Run anyway**; on a
-Mac, right-click the file and choose **Open**.
+whether to run them. On Windows choose **More info → Run anyway**. On a
+Mac the first open is refused: click **Done**, open **System Settings →
+Privacy & Security**, and under *Security* choose **Open Anyway** for
+`DecentAI.command`.
 
 The starter asks for your email and a password (ten characters or more,
 with a letter and a number), installs, and opens DecentAI in a window of
@@ -68,7 +70,9 @@ On Windows `DecentAI.cmd …`; on a Mac `./DecentAI.command …`:
 | `develop <folder>` | lets the git repositories in a folder of yours be agent sources, as `/develop` or `/develop/<its folder>`; `develop off` takes it back |
 
 `DECENTAI_PORT` chooses another port for a first install, when 4280 is
-taken.
+taken. `DECENTAI_DNS` says where DecentAI looks names up: addresses of
+your own DNS servers, when a model or a system of yours has a name only
+they know, or `host` for the engine's own.
 
 ## Writing agents here
 
@@ -114,6 +118,10 @@ DECENTAI_UNSIGNED=1 ./launcher/starter/macos/DecentAI.command
   made on one engine is never started on the other.
 - **`status` shows a service that is not healthy.** `update --again`
   reinstalls the same version with a fresh copy of the database kept.
+- **A chat says the language model is unavailable.** The sentence
+  says why, in the provider's own words: a refused key, a model name it
+  does not know, an account out of credit, or an address that could not
+  be reached.
 - **The page does not open.** Another program may hold port 4280.
 - **You forgot your password.** This DecentAI sends no email, so
   "Forgot password" cannot send a link. Run the starter with
