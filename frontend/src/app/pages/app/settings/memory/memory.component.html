@@ -1,0 +1,164 @@
+<!-- A tab of the Settings page: the page owns the header. -->
+<div class="memory-tab">
+
+  <div class="dialog-backdrop" *ngIf="forgetTarget" (click)="closeForgetDialog()">
+    <section class="info-dialog forget-dialog" role="alertdialog" aria-modal="true" aria-labelledby="forget-memory-title" (click)="$event.stopPropagation()">
+      <header class="dialog-head">
+        <span class="dialog-icon danger-dialog-icon"><lucide-icon name="trash-2" [size]="21"></lucide-icon></span>
+        <div>
+          <h2 id="forget-memory-title">Forget this?</h2>
+          <p>The assistant stops applying it to new conversations.</p>
+        </div>
+        <button class="icon-button" type="button" (click)="closeForgetDialog()" [disabled]="!!busyId" aria-label="Close"><lucide-icon name="x" [size]="19"></lucide-icon></button>
+      </header>
+      <div class="dialog-body">
+        <blockquote class="forgotten-text">{{ forgetTarget.text }}</blockquote>
+        <p class="forget-note">{{ originLabel(forgetTarget) }}. Conversations that already used it are unchanged; this only affects what comes next.</p>
+      </div>
+      <footer class="dialog-actions">
+        <button class="btn" type="button" (click)="closeForgetDialog()" [disabled]="!!busyId">Keep it</button>
+        <button class="btn danger" type="button" (click)="forget(forgetTarget)" [disabled]="!!busyId">{{ busyId ? "Forgetting…" : "Forget" }}</button>
+      </footer>
+    </section>
+  </div>
+
+  <div class="data-alert error" *ngIf="error">{{ error }}</div>
+  <div class="data-alert ok" *ngIf="notice">{{ notice }}</div>
+
+  <div class="data-loading" *ngIf="loading">
+    <span class="ui-spinner" role="status" aria-label="Loading"></span>
+    <span>Loading memory…</span>
+  </div>
+
+  <section class="memory-workspace" *ngIf="!loading">
+    <header class="memory-overview">
+      <span class="overview-mark" aria-hidden="true">
+        <lucide-icon name="brain-circuit" [size]="20"></lucide-icon>
+      </span>
+      <div class="overview-copy">
+        <h2>Your memory</h2>
+        <p>The assistant reads these saved facts together when starting a new conversation.</p>
+      </div>
+      <button class="btn primary add-icon-button" type="button" *ngIf="canAdd && !composerOpen"
+              aria-label="Add memory" matTooltip="Add memory" (click)="openComposer()">
+        <lucide-icon name="plus" [size]="18"></lucide-icon>
+      </button>
+    </header>
+
+    <div class="memory-composer" *ngIf="composerOpen">
+      <label class="composer-label" for="new-memory">
+        <strong>Something to remember</strong>
+        <span>One lasting fact, phrased to stand on its own — a preference,
+          your role, how you like things done.</span>
+      </label>
+      <textarea
+        id="new-memory"
+        class="txt"
+        rows="3"
+        [maxlength]="textLimit"
+        [(ngModel)]="newText"
+        placeholder="e.g. I prefer concise status updates with the risks first."
+      ></textarea>
+      <span class="composer-meta">{{ newText.length }}/{{ textLimit }}</span>
+      <span class="composer-actions">
+        <button class="btn primary" type="button" (click)="addMemory()" [disabled]="!canSubmitNew">
+          {{ adding ? "Saving…" : "Remember this" }}
+        </button>
+        <button class="btn ghost" type="button" (click)="closeComposer()" [disabled]="adding">Cancel</button>
+      </span>
+    </div>
+    <div class="memory-tools" *ngIf="memories.length">
+      <label class="search-field"><lucide-icon name="search" [size]="15"></lucide-icon><input type="search" [(ngModel)]="query" placeholder="Search memory" aria-label="Search memory" /></label>
+      <span class="memory-count" [class.near-limit]="nearLimit">
+        <ng-container *ngIf="query">{{ filteredMemories.length }} of </ng-container>
+        {{ memories.length }} saved fact{{ memories.length === 1 ? "" : "s" }}<ng-container *ngIf="limit"> · {{ remaining }} spaces left</ng-container>
+      </span>
+    </div>
+
+    <!-- The cap is not decoration: at the limit the oldest is dropped to
+         make room, and a page that promises control owes that in advance
+         rather than after something has quietly gone. -->
+    <p class="cap-note" *ngIf="nearLimit">
+      <lucide-icon name="triangle-alert" [size]="15"></lucide-icon>
+      <span *ngIf="!atLimit">
+        <strong>{{ remaining }} left before the limit.</strong>
+        At {{ limit }}, saving a new memory drops the oldest one. Forget
+        anything out of date to keep room.
+      </span>
+      <span *ngIf="atLimit">
+        <strong>Memory is full at {{ limit }}.</strong>
+        The next thing saved will drop the oldest memory below. Forget
+        what you no longer need to choose what goes instead.
+      </span>
+    </p>
+    <div class="empty-state" *ngIf="!memories.length && !composerOpen">
+      <span class="empty-mark"><lucide-icon name="lightbulb" [size]="22"></lucide-icon></span>
+      <strong>Nothing remembered yet</strong>
+      <p>
+        Add a lasting preference, your role, or how you like things done.
+        You can also ask the assistant to remember something during a chat.
+      </p>
+      <div class="empty-actions">
+        <button class="btn primary" type="button" *ngIf="canAdd" (click)="openComposer()">
+          <lucide-icon name="plus" [size]="15"></lucide-icon>
+          Add your first memory
+        </button>
+      </div>
+    </div>
+
+    <section class="memory-document" *ngIf="memories.length">
+      <header class="document-head">
+        <div>
+          <h3>Remembered about you</h3>
+          <p>Newest first</p>
+        </div>
+        <lucide-icon name="key-round" [size]="15"></lucide-icon>
+      </header>
+      <ul class="memory-list">
+        <li class="memory-item" *ngFor="let memory of filteredMemories">
+          <span class="memory-content">
+            <span class="row-name" *ngIf="editingId !== memory.memory_id">{{ memory.text }}</span>
+            <span class="memory-editor" *ngIf="editingId === memory.memory_id">
+              <textarea class="txt" rows="3" maxlength="500" [(ngModel)]="editText" aria-label="Memory text"></textarea>
+              <span class="edit-meta">{{ editText.length }}/500</span>
+              <span class="edit-actions">
+                <button class="btn primary" type="button" (click)="saveEdit(memory)" [disabled]="busyId === memory.memory_id || !editText.trim() || editText.trim() === memory.text">{{ busyId === memory.memory_id ? "Saving…" : "Save" }}</button>
+                <button class="btn ghost" type="button" (click)="cancelEdit()" [disabled]="busyId === memory.memory_id">Cancel</button>
+              </span>
+            </span>
+            <!-- Whose words these are comes first; the conversation that
+                 started it is a link beside that, not a claim about it. -->
+            <span class="row-meta">
+              <span [class.corrected-tag]="memory.corrected || memory.authored">
+                <lucide-icon *ngIf="memory.corrected || memory.authored" name="pencil" [size]="12"></lucide-icon>
+                {{ originLabel(memory) }}
+              </span>
+              <ng-container *ngIf="memory.source_chat_id">
+                · {{ memory.corrected ? "originally saved" : "" }}
+                <a [routerLink]="['/ai/chats', memory.source_chat_id]">in this chat</a>
+              </ng-container>
+            </span>
+          </span>
+
+          <span class="memory-actions" *ngIf="editingId !== memory.memory_id">
+            <button class="action-icon-button" type="button" *ngIf="canEdit" (click)="startEdit(memory)"
+                    aria-label="Edit memory" matTooltip="Edit memory"
+                    [disabled]="busyId === memory.memory_id || editingId !== null">
+              <lucide-icon name="pencil" [size]="16"></lucide-icon>
+            </button>
+            <button class="action-icon-button danger" type="button" *ngIf="canForget" (click)="requestForget(memory)"
+                    aria-label="Forget memory" matTooltip="Forget memory"
+                    [disabled]="busyId === memory.memory_id">
+              <lucide-icon name="trash-2" [size]="16"></lucide-icon>
+            </button>
+          </span>
+        </li>
+      </ul>
+      <footer class="privacy-note">
+        <lucide-icon name="shield-check" [size]="14"></lucide-icon>
+        Personal context, not a transcript. Only explicitly saved facts appear here.
+      </footer>
+    </section>
+    <p class="tab-hint" *ngIf="memories.length && !filteredMemories.length">No memory matches “{{ query }}”.</p>
+  </section>
+</div>

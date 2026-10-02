@@ -1,0 +1,35 @@
+<div class="logout-page">
+  <div class="logout-card" role="status">
+    <div class="brand-plate">
+      <img
+        src="assets/brand/logos/decentai-lockup-horizontal.svg"
+        alt="DecentAI"
+        class="brand-logo brand-logo--light"
+      />
+      <img
+        src="assets/brand/logos/decentai-lockup-horizontal-dark.svg"
+        alt="DecentAI"
+        class="brand-logo brand-logo--dark"
+      />
+    </div>
+
+    <div class="logout-badge" aria-hidden="true">
+      <lucide-icon name="check" [size]="16" [strokeWidth]="1.75"></lucide-icon>
+    </div>
+
+    <h1 class="logout-title">You've been signed out</h1>
+    <p class="logout-subtitle">
+      Your session has ended. Sign back in to return to DecentAI.
+    </p>
+
+    <button type="button" class="signin-button" (click)="goToLogin()">
+      <lucide-icon aria-hidden="true" name="log-in" [size]="16" [strokeWidth]="1.75"></lucide-icon>
+      <span>Sign in</span>
+    </button>
+
+    <div class="logout-hint">
+      <lucide-icon aria-hidden="true" name="shield-check" [size]="16" [strokeWidth]="1.75"></lucide-icon>
+      <span>Your session was ended on the server</span>
+    </div>
+  </div>
+</div>

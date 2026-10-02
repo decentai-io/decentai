@@ -1,0 +1,54 @@
+/* Connected apps: a short list, one address to copy, and a form that
+   asks for exactly what a provider's console hands out. Tokens come
+   from data-shared.css. */
+
+.apps-workspace { margin-top:8px; }
+.apps-overview { display:flex; align-items:center; gap:13px; margin-bottom:18px; }
+.overview-mark { display:grid; place-items:center; flex:0 0 40px; width:40px; height:40px; color:var(--primary); border-radius:var(--radius-lg); background:var(--accent-soft); }
+.overview-copy { min-width:0; flex:1; }
+.overview-copy h2 { margin:0 0 3px; color:var(--foreground); font-size:18px; font-weight:650; letter-spacing:-.015em; }
+.overview-copy p { margin:0; color:var(--muted); font-size:13px; line-height:1.5; }
+
+.redirect-card { display:grid; grid-template-columns:auto minmax(180px,.7fr) minmax(260px,1fr) auto; align-items:center; gap:12px; padding:12px 14px; margin-bottom:14px; border:1px solid var(--border-color); border-radius:var(--radius-xl); background:var(--surface-subtle); }
+.redirect-mark { display:grid; place-items:center; width:32px; height:32px; color:var(--primary); border-radius:var(--radius-lg); background:var(--accent-soft); }
+.redirect-copy { display:flex; flex-direction:column; gap:2px; }
+.redirect-copy strong { font-size:13px; }
+.redirect-copy span { color:var(--muted); font-size:12px; line-height:1.45; }
+.redirect-uri { min-width:0; padding:8px 10px; border-radius:var(--radius-lg); background:var(--surface); border:1px solid var(--border-color); font-size:12.5px; word-break:break-all; cursor:copy; user-select:all; }
+
+.provider-id { margin-left:8px; font-size:11px; color:var(--muted); }
+/* Provided by the deployment: a quiet label, not a status to act on. */
+.row-badge {
+  display: inline-flex; align-items: center; gap: 5px; flex: none;
+  padding: 2px 9px; border: 1px solid var(--border);
+  border-radius: var(--ui-radius-pill);
+  color: var(--muted); background: var(--surface-2);
+  font-size: 11px; font-weight: 600; white-space: nowrap;
+}
+.row-badge lucide-icon { display: inline-flex; }
+
+.client-id { font-size:12px; }
+
+.apps-document { overflow:hidden; border:1px solid var(--border-color); border-radius:var(--radius-xl); background:var(--surface); }
+.document-head { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:13px 16px; border-bottom:1px solid var(--border-color); background:var(--surface-subtle); color:var(--muted); }
+.document-head div { display:flex; align-items:baseline; gap:9px; }
+.document-head h3 { margin:0; color:var(--foreground); font-size:13px; font-weight:650; }
+.document-head p { margin:0; font-size:12px; }
+.apps-document .rows { border:0; border-radius:0; }
+.security-note { display:flex; align-items:center; gap:7px; padding:11px 16px; color:var(--muted); border-top:1px solid var(--border-color); background:var(--surface-subtle); font-size:12px; line-height:1.45; }
+
+.app-form { display:flex; flex-direction:column; gap:12px; }
+.app-form .field-help a { margin-left:6px; }
+
+/* An agent is waiting on a registration: say who, offer the answer. */
+.missing-card { display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:11px 13px; margin-bottom:10px; color:var(--warning); border:1px solid color-mix(in srgb,var(--warning) 26%,transparent); border-radius:var(--ui-radius-card); background:var(--warning-bg); }
+.missing-card span { flex:1; min-width:220px; color:var(--muted); font-size:12.5px; line-height:1.5; }
+.missing-card strong { color:var(--foreground); }
+.missing-card code { font-size:12px; }
+/* Provided by the deployment: nothing is waiting on anybody, so the
+   notice loses the warning colour and reads as information. */
+
+@media (max-width:760px) {
+  .redirect-card { grid-template-columns:auto 1fr auto; }
+  .redirect-uri { grid-column:1 / -1; grid-row:2; }
+}

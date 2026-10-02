@@ -1,0 +1,169 @@
+:host {
+  display: block;
+}
+
+.loading-page {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  min-height: 100vh;
+  min-height: 100dvh;
+  overflow: hidden;
+  padding: max(24px, env(safe-area-inset-top)) 24px
+    max(24px, env(safe-area-inset-bottom));
+  background:
+    radial-gradient(
+      circle at 1px 1px,
+      color-mix(in srgb, var(--foreground) 5%, transparent) 1px,
+      transparent 0
+    ),
+    var(--background);
+  background-size: 24px 24px, 100% 100%;
+}
+
+.loading-card {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 28px;
+  width: 100%;
+  max-width: 420px;
+  padding: 44px 40px 40px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  background: var(--card);
+  text-align: center;
+  animation: card-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.brand-plate {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--border);
+}
+
+.brand-logo {
+  width: 180px;
+  max-width: 100%;
+  height: 42px;
+  object-fit: contain;
+  animation: logo-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: 0.1s;
+}
+
+/* Themed lockups — no invert filter so the emerald focal dot keeps its color. */
+.brand-logo--dark {
+  display: none;
+}
+
+:host-context(.dark) .brand-logo--light {
+  display: none;
+}
+
+:host-context(.dark) .brand-logo--dark {
+  display: inline-block;
+}
+
+.loading-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.loading-spinner {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--accent);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.loading-text {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 13.5px;
+  font-weight: 500;
+  line-height: 20px;
+}
+
+.loading-bar {
+  position: relative;
+  width: 100%;
+  height: 3px;
+  border-radius: var(--ui-radius-pill);
+  background: var(--muted);
+  overflow: hidden;
+}
+
+.loading-bar__fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  width: 40%;
+  border-radius: inherit;
+  background: var(--primary);
+  animation: bar-slide 1.4s ease-in-out infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes card-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes bar-slide {
+  0% {
+    left: -40%;
+  }
+  100% {
+    left: 100%;
+  }
+}
+
+@keyframes logo-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .brand-logo,
+  .loading-card {
+    animation: none;
+  }
+  .loading-spinner {
+    animation-duration: 2.4s;
+  }
+  .loading-bar__fill {
+    left: 0;
+    width: 100%;
+    animation: none;
+  }
+}

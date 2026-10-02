@@ -1,0 +1,12 @@
+<div #pageContainer class="page_content" id="page_container">
+  <mat-progress-bar
+    *ngIf="navigating"
+    class="route-progress"
+    mode="indeterminate"
+    aria-label="Loading page"
+  ></mat-progress-bar>
+
+  <div class="content">
+    <router-outlet></router-outlet>
+  </div>
+</div>

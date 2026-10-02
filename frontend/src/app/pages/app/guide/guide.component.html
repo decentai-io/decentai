@@ -1,0 +1,65 @@
+<div class="data-page guide-page">
+  <header class="guide-hero">
+    <div class="guide-hero-copy">
+      <span class="guide-kicker">DECENTAI GUIDE</span>
+      <h1>Find your way around</h1>
+      <p>Short, practical guidance for chatting, connecting tools, managing data, and staying in control.</p>
+    </div>
+    <div class="guide-actions" aria-label="Common destinations">
+      <a routerLink="/ai/chats"><lucide-icon name="sparkles" [size]="17"></lucide-icon><span><strong>Start a chat</strong><small>Ask or assign work</small></span></a>
+      <a routerLink="/agents/marketplace"><lucide-icon name="store" [size]="17"></lucide-icon><span><strong>Find agents</strong><small>Add new capabilities</small></span></a>
+      <a routerLink="/settings"><lucide-icon name="settings" [size]="17"></lucide-icon><span><strong>Set up models</strong><small>Connections and access</small></span></a>
+    </div>
+  </header>
+
+  <div class="data-alert error" *ngIf="error">{{ error }}</div>
+
+  <div class="data-loading" *ngIf="loading">
+    <span class="ui-spinner" role="status" aria-label="Loading"></span>
+    <span>Opening the guide…</span>
+  </div>
+
+  <div class="guide-layout" *ngIf="!loading && chapters.length">
+    <nav class="guide-toc" aria-label="Chapters">
+      <div class="guide-search">
+        <lucide-icon name="search" [size]="16"></lucide-icon>
+        <input [(ngModel)]="query" type="search" placeholder="Find a topic" aria-label="Search guide topics">
+        <button *ngIf="query" type="button" (click)="query = ''" aria-label="Clear search"><lucide-icon name="x" [size]="14"></lucide-icon></button>
+      </div>
+      <div class="toc-scroll">
+        <div class="toc-section" *ngFor="let section of sections">
+          <span class="toc-label">{{ section.name }}</span>
+          <button class="toc-row" type="button" *ngFor="let chapter of section.chapters"
+                  [class.on]="current?.id === chapter.id" (click)="open(chapter)">
+            <span class="toc-num">{{ chapterNumber(chapter) }}</span>
+            <span class="toc-text"><strong>{{ chapter.title }}</strong><em>{{ chapter.summary }}</em></span>
+            <lucide-icon name="chevron-right" [size]="15"></lucide-icon>
+          </button>
+        </div>
+        <div class="toc-empty" *ngIf="!filteredChapters.length">No guide topics match “{{ query }}”.</div>
+      </div>
+    </nav>
+
+    <section class="panel guide-content" *ngIf="current">
+      <div class="chapter-meta">
+        <span>{{ current.section || 'Guide' }}</span>
+        <span>Chapter {{ index + 1 }} of {{ chapters.length }}</span>
+      </div>
+      <div class="chapter-progress" aria-hidden="true"><span [style.width.%]="((index + 1) / chapters.length) * 100"></span></div>
+      <div class="guide-markdown">
+        <markdown [src]="src"></markdown>
+      </div>
+      <footer class="guide-nav">
+        <button class="btn" type="button" *ngIf="previous" (click)="open(previous)">
+          <lucide-icon name="arrow-left" [size]="15"></lucide-icon>
+          {{ previous.title }}
+        </button>
+        <span class="guide-spacer"></span>
+        <button class="btn primary" type="button" *ngIf="next" (click)="open(next)">
+          {{ next.title }}
+          <lucide-icon name="arrow-right" [size]="15"></lucide-icon>
+        </button>
+      </footer>
+    </section>
+  </div>
+</div>

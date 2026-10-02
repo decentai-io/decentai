@@ -1,0 +1,48 @@
+<div class="dialog-backdrop" (click)="close()">
+  <section class="info-dialog transfer-dialog" role="dialog" aria-modal="true"
+           aria-labelledby="transfer-title" (click)="$event.stopPropagation()">
+    <header class="dialog-head">
+      <span class="dialog-icon"><lucide-icon name="users" [size]="21"></lucide-icon></span>
+      <div>
+        <h2 id="transfer-title">Hand over {{ subject }}</h2>
+        <p>It becomes theirs to change and delete. Everyone it is shared with keeps seeing it.</p>
+      </div>
+      <button class="icon-button" type="button" (click)="close()" [disabled]="busy" aria-label="Close">
+        <lucide-icon name="x" [size]="19"></lucide-icon>
+      </button>
+    </header>
+    <div class="dialog-body">
+      <div class="data-loading" *ngIf="loading">
+        <span class="ui-spinner" role="status" aria-label="Loading"></span>
+        <span>Finding people…</span>
+      </div>
+      <ng-container *ngIf="!loading">
+        <p class="transfer-empty" *ngIf="!candidates.length">
+          Nobody to hand it to: you share no group with another active member.
+        </p>
+        <ng-container *ngIf="candidates.length">
+          <label class="search-field" *ngIf="candidates.length > 6">
+            <lucide-icon name="search" [size]="15"></lucide-icon>
+            <input type="search" [(ngModel)]="query" placeholder="Name or email" aria-label="Find a person" />
+          </label>
+          <ul class="candidates">
+            <li *ngFor="let person of visible">
+              <label class="candidate" [class.on]="selectedId === person.user_id">
+                <input type="radio" name="successor" [value]="person.user_id" [(ngModel)]="selectedId" />
+                <span class="candidate-name">{{ person.user_name || person.email }}</span>
+                <span class="candidate-email" *ngIf="person.user_name">{{ person.email }}</span>
+              </label>
+            </li>
+          </ul>
+          <p class="transfer-empty" *ngIf="!visible.length">No one matches.</p>
+        </ng-container>
+      </ng-container>
+    </div>
+    <footer class="dialog-actions">
+      <button class="btn" type="button" (click)="close()" [disabled]="busy">Cancel</button>
+      <button class="btn primary" type="button" (click)="confirm()" [disabled]="busy || !selected">
+        {{ busy ? "Handing over…" : selected ? "Hand over to " + (selected.user_name || selected.email) : "Hand over" }}
+      </button>
+    </footer>
+  </section>
+</div>

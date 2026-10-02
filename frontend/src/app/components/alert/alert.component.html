@@ -1,0 +1,69 @@
+<div
+  class="alert-dialog"
+  [class.alert-dialog--table]="hasTables()"
+>
+  <button class="alert-close-btn" [mat-dialog-close]="{ confirmed: false }" aria-label="Close alert">
+    <lucide-icon name="x" [size]="16" [strokeWidth]="1.75"></lucide-icon>
+  </button>
+
+  <div class="alert-hero" [style.background]="getHeroBg()">
+    <div class="alert-icon-wrap" [style.background]="getIconBg()">
+      <lucide-icon class="alert-icon" [style.color]="getAccentColor()" [name]="getTypeIcon()" [size]="30" [strokeWidth]="1.75"></lucide-icon>
+    </div>
+    <h2 class="alert-title">{{ data.title }}</h2>
+  </div>
+
+  <mat-dialog-content class="alert-content">
+    @for (message of getMessages(); track $index; let last = $last) {
+      @if (message.description) {
+        <p class="alert-description">{{ message.description }}</p>
+      }
+
+      @if (hasTable(message.table)) {
+        <section class="alert-table-card">
+          @if (message.table.title) {
+            <div class="alert-table-title">{{ message.table.title }}</div>
+          }
+
+          <div class="alert-table-scroll">
+            <table class="alert-table">
+              <thead>
+                <tr>
+                  @for (col of getTableCols(message.table); track col) {
+                    <th>{{ col }}</th>
+                  }
+                </tr>
+              </thead>
+              <tbody>
+                @for (row of getTableRows(message.table); track $index) {
+                  <tr>
+                    @for (col of getTableCols(message.table); track col) {
+                      <td>{{ formatCell(row[col]) }}</td>
+                    }
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        </section>
+      } @else if (message.table) {
+        <div class="alert-table-empty">No table data to display</div>
+      }
+
+      @if (!last) {
+        <hr class="alert-divider" />
+      }
+    }
+  </mat-dialog-content>
+
+  <mat-dialog-actions class="alert-actions">
+    <button class="btn-secondary" [mat-dialog-close]="{ confirmed: false }">Close</button>
+    @if (data.type === 'confirm') {
+      <button
+        class="btn-confirm"
+        [style.background]="getAccentColor()"
+        (click)="closeDialogWithData()"
+      >Confirm</button>
+    }
+  </mat-dialog-actions>
+</div>

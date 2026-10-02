@@ -1,0 +1,431 @@
+/* ===== Wrapper ===== */
+.message-wrapper {
+  display: flex;
+  width: 100%;
+  margin-bottom: 20px;
+}
+
+.user-msg {
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.ai-msg {
+  justify-content: flex-start;
+  flex-direction: column;
+  width: 100%;
+}
+
+/* ===== Timestamps ===== */
+.msg-time {
+  font-size: 11px;
+  color: var(--muted-foreground);
+  line-height: 1;
+}
+
+.user-time { margin:5px 6px 0 0; opacity:.72; transition:opacity .2s ease; }
+
+.user-msg:hover .user-time {
+  opacity: 1;
+}
+
+/* ===== AI identity (avatar · name · time) ===== */
+.ai-identity {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 8px;
+}
+
+/* Pushed to the far edge of the header, so the controls for a response
+   sit at a fixed place instead of wherever its text happened to end. */
+.ai-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+  /* The row may run out of width; the buttons are the part of it that
+     must not shrink. */
+  flex: none;
+  /* Present but quiet: a control you cannot see until you hover is one
+     most people never find. */
+  opacity: 0.55;
+  transition: opacity 0.15s ease;
+}
+
+.ai-message-container:hover .ai-header-actions,
+.ai-header-actions:focus-within {
+  opacity: 1;
+}
+
+.ai-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--chat-accent-strong);
+  flex-shrink: 0;
+}
+
+.ai-avatar lucide-icon {
+  width: 14px;
+  height: 14px;
+}
+
+.ai-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted-foreground);
+}
+
+/* A continued answer: no second name, no second clock. The actions
+   keep their place at the edge, the row itself takes no height, and the
+   messages read as one. */
+/* A continuation is the next paragraph of one answer, not a new card:
+   no second header, and no padding above it to reopen the gap the
+   thread just closed. */
+.ai-message-container--continued { margin-top: 0; padding-top: 0; }
+.ai-identity--continued { min-height: 0; margin-bottom: 0; }
+.ai-identity--continued .ai-header-actions { margin-top: -4px; }
+
+/* ===== USER MESSAGE ===== */
+.user-bubble {
+  max-width: 68%;
+  min-width: 80px;
+  width: fit-content;
+  background: var(--card);
+  border-radius: var(--radius-2xl) var(--radius-2xl) var(--radius-sm) var(--radius-2xl);
+  border: 1px solid var(--border);
+  position: relative;
+  align-self: flex-end;
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.user-bubble:hover {
+  border-color: color-mix(in srgb, var(--foreground) 18%, var(--border));
+}
+
+/* Hover-revealed copy button */
+.user-copy-btn {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  border: none;
+  background: var(--secondary);
+  border-radius: var(--ui-radius-sm);
+  padding: 4px;
+  cursor: pointer;
+  opacity: 0;
+  color: var(--muted-foreground);
+  display: flex;
+  align-items: center;
+  transition: opacity 0.2s ease, background 0.2s ease;
+  line-height: 1;
+  z-index: 1;
+}
+
+.user-bubble:hover .user-copy-btn {
+  opacity: 1;
+}
+
+.user-copy-btn:hover {
+  background: var(--secondary);
+}
+
+.user-copy-btn.copied {
+  opacity: 1;
+  background: var(--accent);
+  color: var(--chat-accent-strong);
+}
+
+/* ===== USER CONTENT ===== */
+.user-content {
+  padding: 11px 42px 11px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  color: var(--foreground);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+/* ===== AI MESSAGE ===== */
+.ai-message-container {
+  position: relative;
+  width: 100%;
+  background: transparent;
+  padding: 8px 16px 12px;
+}
+
+.ai-content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* ===== AI action footer (copy · feedback · duration) ===== */
+.ai-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: var(--ui-radius-sm);
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.ai-action-btn:hover {
+  background: var(--secondary);
+  color: var(--foreground);
+}
+
+.ai-action-btn.copied {
+  color: var(--chat-accent-strong);
+}
+
+.ai-action-btn lucide-icon {
+  width: 16px;
+  height: 16px;
+}
+
+
+/* ===== Markdown/Text ===== */
+.markdown-block markdown,
+.ai-markdown markdown {
+  font-size: 15px;
+  line-height: 1.65;
+  color: inherit;
+}
+
+/* ===== FILE CARD ===== */
+.file-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: var(--ui-radius-card);
+  border: 1px solid var(--border);
+  background: var(--muted);
+  max-width: 320px;
+  transition: background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.file-card:hover {
+  background: var(--secondary);
+}
+
+.file-icon-wrap {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--ui-radius-card);
+  background: color-mix(in srgb, var(--foreground) 6%, transparent);
+  color: var(--chat-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.file-icon-wrap lucide-icon {
+  width: 22px;
+  height: 22px;
+}
+
+.file-details {
+  flex: 1;
+  min-width: 0;
+}
+
+.file-name {
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--foreground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-ext {
+  font-size: 11px;
+  color: var(--muted-foreground);
+  margin-top: 2px;
+  letter-spacing: 0.05em;
+}
+
+.file-actions {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.file-action-btn {
+  border: none;
+  background: none;
+  color: var(--muted-foreground);
+  border-radius: var(--ui-radius-sm);
+  padding: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.file-action-btn lucide-icon {
+  width: 18px;
+  height: 18px;
+}
+
+.file-action-btn:hover {
+  background: var(--secondary);
+  color: var(--foreground);
+}
+
+/* ===== Image ===== */
+.chat-image {
+  max-width: 100%;
+  border-radius: var(--ui-radius-card);
+}
+
+/* The picture itself, above the card that names it. No frame of its
+   own: the file card sits directly beneath, and two bordered boxes
+   read as two attachments rather than one shown twice. Clicking it
+   opens the full image, so it is a button — and looks like neither. */
+.image-card {
+  display: block;
+  width: 100%;
+  max-width: 320px;
+  margin-bottom: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: zoom-in;
+}
+
+.image-card .chat-image {
+  display: block;
+  max-height: 320px;
+  object-fit: contain;
+}
+
+.ai-content.long-content-collapsed {
+  position: relative;
+  max-height: 720px;
+  overflow: hidden;
+  mask-image: linear-gradient(to bottom, #000 88%, transparent);
+}
+
+.long-content-toggle {
+  display: inline-flex; align-items: center; gap: 5px;
+  border: 1px solid var(--chat-border); border-radius: var(--ui-radius-card);
+  background: transparent; padding: 6px 10px; cursor: pointer;
+  color: var(--chat-muted);
+}
+
+.ai-markdown { overflow-wrap: anywhere; line-height: 1.65; }
+.ai-markdown ::ng-deep table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; }
+.ai-markdown ::ng-deep th, .ai-markdown ::ng-deep td { padding: 8px 10px; border: 1px solid var(--chat-border); }
+.ai-markdown ::ng-deep pre { max-width: 100%; overflow-x: auto; padding: 14px; border-radius: var(--ui-radius-card); }
+.ai-markdown ::ng-deep pre .code-toolbar { display: flex; align-items: center; gap: 8px; margin: -8px -6px 10px; padding-bottom: 7px; border-bottom: 1px solid color-mix(in srgb, var(--chat-user-ink) 22%, transparent); font: 11px/1.2 var(--font-sans); text-transform: uppercase; color: color-mix(in srgb, var(--chat-user-ink) 62%, transparent); }
+.ai-markdown ::ng-deep pre .code-toolbar span { margin-right: auto; }
+.ai-markdown ::ng-deep pre .code-toolbar button { border: 0; border-radius: var(--radius-sm); padding: 4px 7px; background: color-mix(in srgb, var(--chat-user-ink) 14%, transparent); color: inherit; cursor: pointer; text-transform: none; }
+.ai-markdown ::ng-deep pre.code-wrap code { white-space: pre-wrap; overflow-wrap: anywhere; }
+.structured-table-wrap { max-width: 100%; overflow-x: auto; }
+.rich-part-state, .file-inline-error { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: var(--ui-radius-card); background: color-mix(in srgb, var(--foreground) 6%, transparent); color: #64748b; }
+.file-card--unavailable { opacity: .72; cursor: default; }
+.file-inline-error { color: var(--destructive-strong); background: color-mix(in srgb, var(--destructive) 10%, transparent); }
+.file-inline-error button { margin-left: auto; border: 0; background: transparent; cursor: pointer; color: inherit; }
+
+@media (hover: none) { .ai-header-actions, .user-copy-btn { opacity: 1 !important; } }
+button:focus-visible, a:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+@media (max-width: 640px) {
+  .message-wrapper { max-width: 100%; }
+  .user-bubble { max-width: 92%; }
+  .ai-content { font-size: 14px; }
+  .file-card { max-width: 100%; }
+}
+
+/* One type scale and restrained surfaces across the conversation. */
+.message-wrapper { margin-bottom:18px; }
+.user-bubble { max-width:78%; border:1px solid color-mix(in srgb,var(--primary) 16%,var(--background)); background:color-mix(in srgb,var(--primary) 8%,var(--background)); border-radius:var(--radius-2xl) var(--radius-2xl) var(--radius-sm) var(--radius-2xl); box-shadow:none; }
+.user-bubble:hover { box-shadow:none; }
+.user-content { font-size:15px; line-height:1.7; padding:14px 20px; }
+.ai-avatar { background:transparent; color:var(--foreground); width:24px; height:24px; }
+.ai-name { color:var(--foreground); font-size:13px; }
+.ai-identity { gap:9px; margin-bottom:12px; }
+.ai-message-container { animation:assistant-arrive .18s ease-out; }
+.ai-markdown { font-size:15px; line-height:1.75; }
+.user-copy-btn:focus-visible,.user-msg:focus-within .user-time { opacity:1; }
+
+@keyframes assistant-arrive { from { opacity:.35; transform:translateY(3px); } to { opacity:1; transform:none; } }
+@media(prefers-reduced-motion:reduce) { .ai-message-container { animation:none; } }
+@media(max-width:640px) { .user-bubble { max-width:92%; } }
+
+/* Whose data it is, when an agent produced it: a caption, not a voice. */
+.part-source { margin:-6px 0 2px 2px; color:var(--muted-foreground); font-size:11.5px; }
+
+/* ===== FILE STRIP =====
+   Many files at once — a folder an agent fetched — as one bounded,
+   scrollable list. One card each was correct and unreadable: six of
+   them stood taller than the answer they belonged to. */
+.file-strip {
+  max-width: 420px;
+  border: 1px solid var(--border);
+  border-radius: var(--ui-radius-card);
+  background: var(--muted);
+  overflow: hidden;
+}
+
+.file-strip__head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 11px;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.file-strip__list {
+  /* Five and a half rows: enough to read the set, short enough that
+     the edge of the sixth says there is more to scroll to. */
+  max-height: 196px;
+  overflow-y: auto;
+}
+
+.file-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 11px;
+  color: var(--chat-muted);
+}
+
+.file-row + .file-row { border-top: 1px solid color-mix(in srgb, var(--border) 55%, transparent); }
+.file-row:hover { background: var(--secondary); }
+
+.file-row__name {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--foreground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-row__ext {
+  font-size: 10.5px;
+  letter-spacing: 0.05em;
+  color: var(--muted-foreground);
+  flex-shrink: 0;
+}
+
+@media (max-width: 640px) { .file-strip { max-width: 100%; } }

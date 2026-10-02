@@ -1,0 +1,141 @@
+<!-- A tab of the Settings page: the page owns the header. -->
+<div class="keys-tab">
+
+  <div class="dialog-backdrop" *ngIf="revokeTarget" (click)="closeRevoke()">
+    <section class="info-dialog" role="alertdialog" aria-modal="true" aria-labelledby="revoke-key-title" (click)="$event.stopPropagation()">
+      <header class="dialog-head">
+        <span class="dialog-icon danger-dialog-icon"><lucide-icon name="key-round" [size]="21"></lucide-icon></span>
+        <div>
+          <h2 id="revoke-key-title">Revoke “{{ revokeTarget.name }}”?</h2>
+          <p>Every script using it is refused from its next call. There is no undo — make a new key instead.</p>
+        </div>
+        <button class="icon-button" type="button" (click)="closeRevoke()" [disabled]="!!busyId" aria-label="Close"><lucide-icon name="x" [size]="19"></lucide-icon></button>
+      </header>
+      <footer class="dialog-actions">
+        <button class="btn" type="button" (click)="closeRevoke()" [disabled]="!!busyId">Keep it</button>
+        <button class="btn danger" type="button" (click)="revoke(revokeTarget)" [disabled]="!!busyId">{{ busyId ? "Revoking…" : "Revoke" }}</button>
+      </footer>
+    </section>
+  </div>
+
+  <div class="data-alert error" *ngIf="error">{{ error }}</div>
+  <div class="data-alert ok" *ngIf="notice">{{ notice }}</div>
+
+  <div class="data-loading" *ngIf="loading">
+    <span class="ui-spinner" role="status" aria-label="Loading"></span>
+    <span>Loading keys…</span>
+  </div>
+
+  <section class="keys-workspace" *ngIf="!loading">
+
+    <header class="keys-overview">
+      <span class="overview-mark" aria-hidden="true">
+        <lucide-icon name="key-round" [size]="20"></lucide-icon>
+      </span>
+      <div class="overview-copy">
+        <h2>Personal API keys</h2>
+        <p>Credentials for scripts and integrations that act with your permissions.</p>
+      </div>
+      <button class="btn primary add-icon-button" type="button"
+              *ngIf="canCreate && !composerOpen && !made"
+              aria-label="Create API key" matTooltip="Create API key"
+              (click)="openComposer()" [disabled]="atLimit">
+        <lucide-icon name="plus" [size]="18"></lucide-icon>
+      </button>
+    </header>
+
+    <!-- The one moment the secret is in the open. -->
+    <div class="made-card" *ngIf="made" role="status">
+      <div class="made-head">
+        <lucide-icon name="key-round" [size]="18"></lucide-icon>
+        <strong>“{{ made.name }}” is ready. Copy it now — it is not shown again.</strong>
+      </div>
+      <div class="made-key">
+        <code class="made-secret" (click)="copyMade()">{{ made.key }}</code>
+        <button class="btn primary" type="button" (click)="copyMade()">
+          <lucide-icon [name]="copied ? 'check' : 'copy'" [size]="15"></lucide-icon>
+          {{ copied ? "Copied" : "Copy" }}
+        </button>
+      </div>
+      <p class="made-how">
+        Send it as <code>Authorization: Bearer {{ made.shown }}</code> on <code>POST /app</code>.
+        It acts as you, with your permissions.
+      </p>
+      <span class="made-actions">
+        <button class="btn ghost" type="button" (click)="dismissMade()">I have copied it</button>
+      </span>
+    </div>
+
+    <div class="keys-composer" *ngIf="composerOpen">
+      <label class="composer-label" for="new-key-name">
+        <strong>What is this key for?</strong>
+        <span>A name you will recognise later — the script, the machine, the integration.</span>
+      </label>
+      <input id="new-key-name" class="txt" type="text" [maxlength]="nameLimit" [(ngModel)]="newName"
+             placeholder="e.g. nightly export on the build server" (keyup.enter)="create()" />
+      <span class="composer-actions">
+        <button class="btn primary" type="button" (click)="create()" [disabled]="!canSubmit">
+          {{ creating ? "Making…" : "Make the key" }}
+        </button>
+        <button class="btn ghost" type="button" (click)="closeComposer()" [disabled]="creating">Cancel</button>
+      </span>
+    </div>
+
+    <p class="cap-note" *ngIf="atLimit">
+      <lucide-icon name="triangle-alert" [size]="15"></lucide-icon>
+      <span><strong>You have {{ limit }} live keys, the most allowed.</strong> Revoke one to make another.</span>
+    </p>
+
+    <div class="keys-tools" *ngIf="keys.length">
+      <span class="keys-count">
+        {{ live.length }} active key{{ live.length === 1 ? "" : "s" }}
+        <ng-container *ngIf="limit"> · {{ limit - live.length }} available</ng-container>
+      </span>
+      <label class="toggle-revoked" *ngIf="revoked.length">
+        <input type="checkbox" [(ngModel)]="showRevoked" />
+        Show {{ revoked.length }} revoked
+      </label>
+    </div>
+
+    <div class="empty-state" *ngIf="!visible.length && !composerOpen && !made">
+      <span class="empty-mark"><lucide-icon name="key-round" [size]="22"></lucide-icon></span>
+      <strong>{{ revoked.length && !showRevoked ? "No active keys" : "No keys yet" }}</strong>
+      <p *ngIf="revoked.length && !showRevoked">Your revoked keys remain available as history. Turn on “Show revoked” to review them.</p>
+      <p *ngIf="!revoked.length || showRevoked">Create one when a script or integration needs to act with your permissions.</p>
+    </div>
+
+    <section class="keys-document" *ngIf="visible.length">
+      <header class="document-head">
+        <div>
+          <h3>{{ showRevoked ? "Key history" : "Active keys" }}</h3>
+          <p>{{ visible.length }} shown</p>
+        </div>
+        <lucide-icon name="shield-check" [size]="15"></lucide-icon>
+      </header>
+      <ul class="keys-list">
+        <li class="key-item" *ngFor="let key of visible" [class.is-revoked]="key.revoked_at">
+          <span class="key-content">
+            <span class="key-title">
+              <strong>{{ key.name }}</strong>
+              <span class="status-tag" *ngIf="key.revoked_at">Revoked</span>
+            </span>
+            <span class="key-meta">
+              <code class="key-prefix">{{ key.shown }}</code>
+              <span>Created {{ when(key.created_at) }}</span>
+              <span>{{ usedLabel(key) }}</span>
+            </span>
+          </span>
+          <button class="action-icon-button danger" type="button" *ngIf="canRevoke && !key.revoked_at"
+                  (click)="requestRevoke(key)" aria-label="Revoke API key" matTooltip="Revoke API key"
+                  [disabled]="busyId === key.key_id">
+            <lucide-icon name="trash-2" [size]="16"></lucide-icon>
+          </button>
+        </li>
+      </ul>
+      <footer class="security-note">
+        <lucide-icon name="shield-check" [size]="14"></lucide-icon>
+        Keys act as you and use your current permissions. Secrets are shown only once.
+      </footer>
+    </section>
+  </section>
+</div>

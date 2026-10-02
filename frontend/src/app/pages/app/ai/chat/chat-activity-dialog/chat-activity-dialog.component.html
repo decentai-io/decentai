@@ -1,0 +1,109 @@
+<div class="ctx-dialog">
+  <div class="ctx-header">
+    <span class="ctx-title">Activity &amp; audit — {{ data?.title || "Chat" }}</span>
+    <button mat-icon-button class="ctx-close" (click)="close()">
+      <lucide-icon name="x" [size]="19"></lucide-icon>
+    </button>
+  </div>
+
+  <div class="ctx-body">
+    @if (loading) {
+      <p class="ctx-note">Reading the record…</p>
+    } @else {
+      <section class="ctx-section">
+        <div class="act-counts" *ngIf="events.length">
+          <span class="act-count"><strong>{{ ran }}</strong> function{{ ran === 1 ? '' : 's' }} ran</span>
+          <span class="act-count" [class.act-count--bad]="failed"><strong>{{ failed }}</strong> did not succeed</span>
+          <span class="act-count"><strong>{{ approvals }}</strong> approval{{ approvals === 1 ? '' : 's' }} asked</span>
+        </div>
+
+        @if (!events.length) {
+          <p class="ctx-note">
+            Nothing has been recorded in this chat yet. Every function an
+            agent runs, every approval and every credential read lands here
+            as it happens.
+          </p>
+        }
+
+        <ol class="act-events">
+          @for (event of events; track event.event_id) {
+            <li class="act-event" [class.act-event--open]="isOpen(event)">
+              <button class="act-event-head" type="button" (click)="toggle(event)"
+                      [attr.aria-expanded]="isOpen(event)" [disabled]="!hasBody(event)">
+                <span class="act-event-time">{{ timeLabel(event.timestamp) }}</span>
+                <span class="act-status" [ngClass]="'act-' + tone(event)">{{ chip(event) }}</span>
+                <span class="act-event-main">
+                  <span class="act-event-name">{{ label(event) }}</span>
+                  <span class="act-event-summary">{{ summary(event) }}</span>
+                </span>
+                @if (duration(event)) { <span class="act-duration">{{ duration(event) }}</span> }
+                @if (hasBody(event)) {
+                  <lucide-icon class="act-caret" [name]="isOpen(event) ? 'chevron-up' : 'chevron-down'" [size]="18"></lucide-icon>
+                }
+              </button>
+
+              @if (isOpen(event)) {
+                <div class="act-event-body">
+                  @if (event.event_type === 'execution') {
+                    <div class="act-kv">
+                      <span class="act-k">Agent</span><span class="act-v">{{ event.details?.agent_name || event.details?.agent_id }}</span>
+                      <span class="act-k">Function</span><span class="act-v"><code>{{ event.function }}</code></span>
+                      <span class="act-k">Level</span><span class="act-v">{{ event.details?.permission_level }} · chat at {{ event.details?.chat_level }}{{ event.details?.resumed ? ' · ran after approval' : '' }}</span>
+                      @if (event.details?.error) {
+                        <span class="act-k">Error</span><span class="act-v act-v--bad">{{ event.details.error }}</span>
+                      }
+                    </div>
+                    @if (inputs(event)) {
+                      <span class="act-k">Inputs</span>
+                      <pre class="act-json">{{ inputs(event) }}</pre>
+                    }
+                    @if (resultRef(event)) {
+                      <button class="act-result-btn" type="button" (click)="openResult(event)">
+                        <lucide-icon name="table" [size]="15"></lucide-icon>
+                        {{ results[resultRef(event)] ? 'Hide result' : 'Open result' }}
+                        <code>{{ resultRef(event) }}</code>
+                      </button>
+                      @if (results[resultRef(event)]; as view) {
+                        <div class="act-result">
+                          @if (view.state === 'loading') { <p class="ctx-note">Loading…</p> }
+                          @else if (view.state === 'missing') { <p class="ctx-note">This result is unavailable or has expired.</p> }
+                          @else if (view.state === 'rows') {
+                            <app-informative-table [title]="event.function" [data]="view.rows" [cols]="view.columns"></app-informative-table>
+                          } @else {
+                            <pre class="act-json">{{ resultText(view) }}</pre>
+                          }
+                        </div>
+                      }
+                    }
+                  } @else {
+                    <div class="act-kv">
+                      @if (event.function) { <span class="act-k">Function</span><span class="act-v"><code>{{ event.function }}</code></span> }
+                      @if (event.actor) { <span class="act-k">By</span><span class="act-v">{{ event.actor }}</span> }
+                      @for (item of otherDetails(event); track item.key) {
+                        <span class="act-k">{{ item.key }}</span><span class="act-v">{{ item.value }}</span>
+                      }
+                      @if (event.resource_refs?.length) {
+                        <span class="act-k">References</span>
+                        <span class="act-v">@for (ref of event.resource_refs; track ref) { <code>{{ ref }}</code> }</span>
+                      }
+                    </div>
+                  }
+                  <span class="act-id">{{ event.event_id }} · {{ dateLabel(event.timestamp) }}</span>
+                </div>
+              }
+            </li>
+          }
+        </ol>
+      </section>
+
+      <section class="ctx-section">
+        <p class="ctx-note">
+          This record is written by the platform, not by the assistant, and
+          nothing in it can be edited. Credential reads are recorded by name
+          only — no secret value is ever written here. The inputs shown are
+          an outline of what was asked, never a copy of a document.
+        </p>
+      </section>
+    }
+  </div>
+</div>

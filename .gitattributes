@@ -1,0 +1,7 @@
+# Scripts a Mac or Linux runs keep their own line endings wherever they
+# are checked out.
+*.command text eol=lf
+*.sh text eol=lf
+
+*.png binary
+*.ico binary

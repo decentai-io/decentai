@@ -1,0 +1,131 @@
+# A release: the images, the signed file that names them, and the
+# starters a person downloads. Runs when a version is tagged (v1.4.0).
+#
+# What it needs of the repository:
+#   - the secret RELEASE_SIGNING_KEY: the private half of a key whose
+#     public half is in launcher/keys/ (python -m launcher.publish keys)
+#   - the four packages it pushes made public, once, after the first run
+#
+# docs/system/desktop-install.md, "A release", describes what comes out.
+name: Release
+
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+
+permissions:
+  contents: write
+  packages: write
+
+env:
+  REGISTRY: ghcr.io/${{ github.repository_owner }}
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: The version is the tag's
+        id: version
+        run: echo "number=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      # Both processor types a laptop has: Intel and AMD, and ARM.
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Backend image
+        id: backend
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: backend/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ env.REGISTRY }}/decentai-backend:${{ steps.version.outputs.number }}
+
+      - name: Runtime image
+        id: runtime
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ai_runtime/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ env.REGISTRY }}/decentai-ai-runtime:${{ steps.version.outputs.number }}
+
+      - name: Web image
+        id: frontend
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: frontend/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ env.REGISTRY }}/decentai-caddy:${{ steps.version.outputs.number }}
+
+      # The file names each image by its digest, so what is signed is
+      # what is installed. It is read back with the keys the launcher
+      # carries: a key no launcher accepts fails the release here.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: The release file, signed
+        working-directory: launcher
+        env:
+          DECENTAI_RELEASE_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
+        run: |
+          pip install --quiet cryptography
+          python -m launcher.publish release release.json \
+            --version "${{ steps.version.outputs.number }}" \
+            --backend "${REGISTRY}/decentai-backend@${{ steps.backend.outputs.digest }}" \
+            --runtime "${REGISTRY}/decentai-ai-runtime@${{ steps.runtime.outputs.digest }}" \
+            --frontend "${REGISTRY}/decentai-caddy@${{ steps.frontend.outputs.digest }}" \
+            --notes "${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ github.ref_name }}"
+
+      # The launcher is built after the file, which it carries, and
+      # knowing where later releases will be published.
+      - name: Launcher image
+        id: launcher
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: launcher/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          build-args: |
+            RELEASE_URL=${{ github.server_url }}/${{ github.repository }}/releases/latest/download/release.json
+          tags: ${{ env.REGISTRY }}/decentai-launcher:${{ steps.version.outputs.number }}
+
+      # The starters, with the launcher they start written into them by
+      # its digest in place of a build of one's own.
+      - name: The starters
+        run: |
+          image="${REGISTRY}/decentai-launcher@${{ steps.launcher.outputs.digest }}"
+          mkdir -p out/windows out/macos
+          cp launcher/starter/windows/DecentAI.cmd launcher/starter/windows/DecentAI.ps1 \
+             launcher/starter/windows/DecentAI.ico out/windows/
+          cp launcher/starter/macos/DecentAI.command launcher/starter/macos/DecentAI.png out/macos/
+          sed -i "s|decentai-launcher:local|${image}|" \
+            out/windows/DecentAI.ps1 out/macos/DecentAI.command
+          grep -q "${image}" out/windows/DecentAI.ps1
+          grep -q "${image}" out/macos/DecentAI.command
+          chmod +x out/macos/DecentAI.command
+          (cd out/windows && zip -q ../DecentAI-windows.zip *)
+          (cd out/macos && zip -q ../DecentAI-macos.zip *)
+          cp launcher/release.json launcher/release.json.sig out/
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            out/DecentAI-windows.zip out/DecentAI-macos.zip \
+            out/release.json out/release.json.sig \
+            --title "DecentAI ${{ steps.version.outputs.number }}" \
+            --generate-notes

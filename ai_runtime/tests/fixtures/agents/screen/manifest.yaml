@@ -1,0 +1,65 @@
+# The Screen fixture — the smallest agent that shows a screen the
+# person can watch and take over (call.screen). It streams a few frames
+# of a fixed picture, waits for the person to act, and reports what it
+# received: the platform's road for frames and input, both ways, proven
+# without a browser.
+
+schema_version: "1.0"
+
+agent:
+  id: screen
+  name: Screen Agent
+  version: "1.0.0"
+  description: Shows a screen and reports what the person did on it.
+  tags:
+    - test
+  instructions: >
+    Use show.run to stream a screen and collect the person's input.
+
+# It connects to nothing outside the platform.
+network:
+  hosts: []
+
+implementation:
+  entrypoint: agent:ScreenAgent
+  dependencies: []
+
+tools:
+  - id: show
+    name: Show
+    description: Streams a screen and reports the input received.
+    functions:
+      - id: run
+        name: Run
+        description: Show three frames, wait for input, report it.
+        permission_level: 0
+        timeout_seconds: 30
+        inputs:
+          type: object
+          additionalProperties: false
+          properties:
+            wait_seconds: {type: number, minimum: 0, maximum: 20}
+        outputs:
+          type: object
+          required: [frames, inputs, taken]
+          properties:
+            frames: {type: integer}
+            inputs: {type: array}
+            taken: {type: boolean}
+      - id: watch
+        name: Watch
+        description: Show the screen on request until the person closes it.
+        permission_level: 0
+        timeout_seconds: 30
+        watch: true
+        inputs:
+          type: object
+          additionalProperties: false
+          properties:
+            action: {type: string, enum: [open, quit], default: open}
+        outputs:
+          type: object
+          required: [outcome]
+          properties:
+            outcome: {type: string}
+            frames: {type: integer}

@@ -1,0 +1,296 @@
+<!-- chat-detail.component.html -->
+<div class="chat-shell">
+  <!-- Header: status · title · actions -->
+  <header class="chat-header">
+    <div class="chat-header__lead">
+      <a class="chat-list-link" routerLink="/ai/chats" matTooltip="All conversations">
+        <lucide-icon name="arrow-left" [size]="16"></lucide-icon>
+        <span>Chats</span>
+      </a>
+      <span class="chat-header__divider"></span>
+      <button
+        type="button"
+        class="chat-status"
+        [class.is-live]="isSocketReady"
+        [class.is-clickable]="!isSocketReady && !isConnecting"
+        [matTooltip]="isSocketReady ? 'Connected to the AI runtime' : (isConnecting ? 'Connecting to the AI runtime' : 'Click to reconnect now')"
+        (click)="onStatusDotClicked()"
+        [attr.aria-label]="isSocketReady ? 'AI runtime connected' : (isConnecting ? 'Connecting to the AI runtime' : 'Reconnect to the AI runtime')"
+      >
+        <span class="chat-status__dot"></span>
+        @if (!isSocketReady) { <span class="chat-status__label">{{ connectionLabel }}</span> }
+      </button>
+
+      @if (isEditingTitle) {
+        <input
+          class="chat-header__title-input"
+          type="text"
+          [(ngModel)]="titleDraft"
+          (keydown.enter)="saveTitle()"
+          (keydown.escape)="cancelTitleEdit()"
+          (blur)="saveTitle()"
+          maxlength="200"
+          autofocus
+        />
+      } @else {
+        <h1
+          class="chat-header__title"
+          [title]="title"
+          (dblclick)="startTitleEdit()"
+        >{{ title || 'New chat' }}</h1>
+      }
+      @if (attentionLabel) {
+        <span class="chat-attention" [class.is-cards]="waitingApprovals.length"
+              [class.is-working]="!waitingApprovals.length"
+              [class.is-asleep]="attentionLabel.startsWith('Sleeping')"
+              [matTooltip]="attentionHint">
+          <span class="chat-attention-dot"></span>{{ attentionLabel }}
+        </span>
+      }
+    </div>
+
+    <div class="chat-header__actions">
+      @if (!isNarrow) {
+        <a class="chat-icon-btn" routerLink="/ai/chats" matTooltip="New chat" aria-label="New chat">
+          <lucide-icon name="square-pen" [size]="16"></lucide-icon>
+        </a>
+        <button
+          type="button"
+          class="chat-icon-btn"
+          (click)="onMessagesActionClicked({ type: 'refresh' })"
+          matTooltip="Refresh and reconnect"
+          aria-label="Refresh and reconnect chat"
+        >
+          <lucide-icon name="refresh-cw" [size]="19"></lucide-icon>
+        </button>
+      }
+      @if (canWatch || screen) {
+        <button
+          type="button"
+          class="chat-icon-btn"
+          [class.is-live]="screen && !screen.idle"
+          (click)="openScreen()"
+          [matTooltip]="screen && screenHidden && !screen.idle ? 'Show the live view' : 'Open the browser'"
+          [attr.aria-label]="screen && screenHidden && !screen.idle ? 'Show the live view' : 'Open the browser'"
+        >
+          <lucide-icon name="monitor" [size]="18"></lucide-icon>
+        </button>
+      }
+      @if (!isNarrow) {
+        <button
+          type="button"
+          class="chat-trust-btn"
+          [matMenuTriggerFor]="trustMenu"
+          [matTooltip]="'Trust level: ' + trustLabel(trustLevel)"
+          [attr.aria-label]="'Change trust level: ' + trustLabel(trustLevel)"
+        >
+          <lucide-icon name="shield-check" [size]="17"></lucide-icon>
+        </button>
+      }
+
+      <mat-menu #trustMenu="matMenu" xPosition="before" class="chat-actions-menu">
+        @for (option of trustOptions; track option.level) {
+          <button mat-menu-item (click)="onTrustLevelChange(option.level)">
+            <lucide-icon [name]="option.level === trustLevel ? 'circle-dot' : 'circle'" [size]="17"></lucide-icon>
+            <span>{{ option.label }} — {{ option.hint }}</span>
+          </button>
+        }
+      </mat-menu>
+
+      <!-- The kill switch, in plain sight: work goes on after the tab
+           closes, so it is offered whether or not anything looks busy. -->
+      <button
+        type="button"
+        class="chat-icon-btn chat-kill-btn"
+        (click)="askKill()"
+        [disabled]="killing"
+        matTooltip="Stop everything in this chat"
+        aria-label="Stop everything in this chat"
+      >
+        <lucide-icon name="circle-stop" [size]="18"></lucide-icon>
+      </button>
+      <button
+        type="button"
+        class="chat-icon-btn"
+        [matMenuTriggerFor]="chatMenu"
+        matTooltip="More actions"
+        aria-label="More actions"
+      >
+        <lucide-icon name="ellipsis-vertical" [size]="19"></lucide-icon>
+      </button>
+
+      <mat-menu #chatMenu="matMenu" xPosition="before" class="chat-actions-menu">
+        @if (isNarrow) {
+          <a mat-menu-item routerLink="/ai/chats">
+            <lucide-icon name="square-pen" [size]="17"></lucide-icon>
+            <span>New chat</span>
+          </a>
+          <button mat-menu-item (click)="onMessagesActionClicked({ type: 'refresh' })">
+            <lucide-icon name="refresh-cw" [size]="17"></lucide-icon>
+            <span>Refresh and reconnect</span>
+          </button>
+          <button mat-menu-item [matMenuTriggerFor]="trustMenu">
+            <lucide-icon name="shield-check" [size]="17"></lucide-icon>
+            <span>Trust level — {{ trustLabel(trustLevel) }}</span>
+          </button>
+        }
+        <button mat-menu-item (click)="startTitleEdit()">
+          <lucide-icon name="pencil" [size]="17"></lucide-icon>
+          <span>Rename chat</span>
+        </button>
+        <button mat-menu-item (click)="onMessagesActionClicked({ type: 'llmSettings' })">
+          <lucide-icon name="brain-circuit" [size]="17"></lucide-icon>
+          <span>Language model</span>
+        </button>
+        <button mat-menu-item (click)="onMessagesActionClicked({ type: 'agents' })">
+          <lucide-icon name="bot" [size]="17"></lucide-icon>
+          <span>Agents</span>
+        </button>
+        <button mat-menu-item (click)="onMessagesActionClicked({ type: 'skills' })">
+          <lucide-icon name="sparkles" [size]="17"></lucide-icon>
+          <span>Skills</span>
+        </button>
+        <button mat-menu-item [matMenuTriggerFor]="budgetMenu">
+          <lucide-icon name="gauge" [size]="17"></lucide-icon>
+          <span>Turn budget — {{ turnBudgetLabel(turnBudget) }}</span>
+        </button>
+        <button mat-menu-item [matMenuTriggerFor]="skillsCapMenu">
+          <lucide-icon name="list" [size]="17"></lucide-icon>
+          <span>Skills listed — {{ skillsCapLabel(skillsCap) }}</span>
+        </button>
+        <button mat-menu-item (click)="onMessagesActionClicked({ type: 'activity' })">
+          <lucide-icon name="history" [size]="17"></lucide-icon>
+          <span>Activity &amp; audit</span>
+        </button>
+      </mat-menu>
+
+      <mat-menu #budgetMenu="matMenu" xPosition="before" class="chat-actions-menu">
+        @for (option of turnBudgetOptions; track option.turns) {
+          <button mat-menu-item (click)="onTurnBudgetChange(option.turns)">
+            <lucide-icon [name]="option.turns === turnBudget ? 'circle-dot' : 'circle'" [size]="17"></lucide-icon>
+            <span>{{ option.label }} — {{ option.hint }}</span>
+          </button>
+        }
+      </mat-menu>
+
+      <mat-menu #skillsCapMenu="matMenu" xPosition="before" class="chat-actions-menu">
+        @for (option of skillsCapOptions; track option.rows) {
+          <button mat-menu-item (click)="onSkillsCapChange(option.rows)">
+            <lucide-icon [name]="option.rows === skillsCap ? 'circle-dot' : 'circle'" [size]="17"></lucide-icon>
+            <span>{{ option.label }} — {{ option.hint }}</span>
+          </button>
+        }
+      </mat-menu>
+    </div>
+  </header>
+
+  @if (killAsking) {
+    <div class="chat-kill-ask" role="alertdialog" aria-live="assertive">
+      <span>
+        Stop everything in this chat? The run, its background jobs and its browser end
+        where they stand, and every card still waiting is expired. What was done stays done.
+      </span>
+      <span class="chat-kill-actions">
+        <button class="btn" type="button" (click)="killAsking = false">Cancel</button>
+        <button class="btn danger" type="button" (click)="confirmKill()">Stop everything</button>
+      </span>
+    </div>
+  }
+
+  @if (jobs.length) {
+    <div class="chat-jobs" aria-live="polite">
+      <span class="chat-jobs-dot"></span>
+      <span class="chat-jobs-text">
+        Working in the background:
+        @for (job of jobs; track job.job_id; let last = $last) {
+          <strong>{{ jobLabel(job) }}</strong>@if (job.status === 'waiting_approval') { <em>(waiting for a card)</em> }@if (!last) {, }
+        }
+      </span>
+      <button class="btn danger sm" type="button" (click)="askKill()" [disabled]="killing">Stop everything</button>
+    </div>
+  }
+
+  @if (inlineErrors.length > 0) {
+    <div class="chat-errors" aria-live="polite">
+      @for (error of inlineErrors; track error.id) {
+        <div class="chat-error" [class.is-connection]="error.scope === 'connection'">
+          <lucide-icon [name]="error.scope === 'connection' ? 'cloud-off' : 'circle-alert'" [size]="18"></lucide-icon>
+          <span>{{ error.message }}</span>
+          @if (error.retryable && error.scope === 'connection') {
+            <button type="button" (click)="retryInlineError(error)">Reconnect</button>
+          }
+          <button
+            type="button"
+            class="chat-error__dismiss"
+            (click)="dismissError(error.id)"
+            aria-label="Dismiss message"
+          ><lucide-icon name="x" [size]="16"></lucide-icon></button>
+        </div>
+      }
+    </div>
+  }
+
+  <div class="chat-main" [class.has-side-screen]="showSideScreen" [style.--screen-ratio]="screenRatio">
+  <div class="chat-column">
+  <!-- Messages (scrolls internally) -->
+  <div class="chat-body">
+    <app-chat-messages-container
+      [turns]="turns"
+      [hasMore]="hasOlderMessages"
+      [loadingOlder]="loadingOlderMessages"
+      [systemText]="liveSystemText"
+      [activity]="activity"
+      [livePlan]="livePlan"
+      [loading]="isChatLoading"
+      [isProcessing]="isLoading || sendingFirstMessage"
+      [agentNames]="enabledAgentNames"
+      [agentLabels]="agentLabels"
+      (loadOlder)="loadOlderMessages()"
+      (opener)="onPrompt({ query: $event })"
+    ></app-chat-messages-container>
+  </div>
+
+  <!-- A screen an agent is showing (call.screen): watched here, taken
+       over when a site wants a human. -->
+  @if (screen && !screenHidden && !showSideScreen) {
+    <div class="chat-screen" role="region" aria-label="Live view">
+      <app-chat-screen [frame]="screen" (screenInput)="onScreenInput($event)" (closed)="onScreenClosed()" (quit)="onScreenQuit()" [(minimized)]="screenMinimized" [(taken)]="screenTaken"></app-chat-screen>
+    </div>
+  }
+
+  <!-- What waits for the person: always here, above the composer, however
+       far the thread is scrolled. A card inside the turn it belonged to
+       rode up with the answer and was missed. -->
+  @if (waitingApprovals.length) {
+    <div class="chat-approvals" role="region" aria-label="Waiting for your decision">
+      @for (approval of waitingApprovals; track approval.approval_id) {
+        <app-chat-approval-card [approval]="approval" (decided)="onApprovalDecision($event)"></app-chat-approval-card>
+      }
+    </div>
+  }
+
+  <!-- Composer (pinned to the bottom) -->
+  <div class="chat-composer-bar">
+    <app-chat-composer
+      (promptSent)="onPrompt($event)"
+      (stopRequested)="onStopGenerating()"
+      [loading]="isLoading"
+      [chatId]="chat_id"
+      [staged]="stagedFiles"
+      [disabled]="composerDisabled"
+      [placeholder]="composerPlaceholder"
+      [hint]="composerHint"
+    ></app-chat-composer>
+  </div>
+  </div>
+
+  <!-- With room for it, the live view stands beside the thread: the
+       person reads the conversation and watches the browser at once,
+       and neither squeezes the other. -->
+  @if (showSideScreen) {
+    <aside class="chat-side" [class.is-minimized]="screenMinimized" [class.has-tabs]="screen?.tabs?.length" role="region" aria-label="Live view">
+      <app-chat-screen [frame]="screen" [side]="true" (screenInput)="onScreenInput($event)" (closed)="onScreenClosed()" (quit)="onScreenQuit()" [(minimized)]="screenMinimized" [(taken)]="screenTaken"></app-chat-screen>
+    </aside>
+  }
+  </div>
+</div>

@@ -1,0 +1,12 @@
+{
+  "schema_version": "1.0",
+  "version": "0.1.2",
+  "released_at": "2026-10-01T00:00:00Z",
+  "images": {
+    "backend": "decentai-backend:local",
+    "runtime": "decentai-ai-runtime:local",
+    "frontend": "decentai-caddy:local"
+  },
+  "minimum_launcher": "0.1.0",
+  "notes": "Email through any SMTP server; reset-password for an install without email; the public website and the operator's parts are out of the platform."
+}

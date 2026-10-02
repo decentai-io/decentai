@@ -1,0 +1,24 @@
+<div class="chart-card" *ngIf="data">
+  <div class="chart-header">
+    <span class="chart-title">{{ title || 'Chart' }}</span>
+    <div class="chart-type-btns">
+      <button
+        *ngFor="let t of types"
+        class="type-btn"
+        [class.active]="activeType === t.value"
+        (click)="setType(t.value)"
+        [matTooltip]="t.label"
+      >
+        <lucide-icon [name]="t.icon" [size]="18"></lucide-icon>
+      </button>
+    </div>
+  </div>
+
+  <div class="chart-body">
+    <canvas baseChart
+      [data]="chartData"
+      [type]="activeType"
+      [options]="chartOptions"
+    ></canvas>
+  </div>
+</div>

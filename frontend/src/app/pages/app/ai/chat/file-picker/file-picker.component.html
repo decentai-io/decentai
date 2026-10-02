@@ -1,0 +1,45 @@
+<div class="files-pick">
+  @if (leading.length) {
+    <div class="files-list" role="group" [attr.aria-label]="leadingLabel">
+      @for (file of leading; track file.resource_ref) {
+        <label class="file-row" [class.is-selected]="isSelected(file.resource_ref)">
+          <input type="checkbox" class="file-row__tick" [checked]="isSelected(file.resource_ref)"
+                 (change)="toggle(file.resource_ref)" [attr.aria-label]="file.filename" />
+          <lucide-icon name="file-text" [size]="16"></lucide-icon>
+          <span class="file-row__text">
+            <span class="file-row__name">{{ file.filename || 'a file' }}</span>
+            <span class="file-row__meta">{{ fileMeta(file) }}</span>
+          </span>
+        </label>
+      }
+    </div>
+  } @else if (!loading && !searching) {
+    <div class="files-empty">{{ candidates.length || recentCount ? 'Nothing matched. Search your files below.' : 'Search your files by name.' }}</div>
+  }
+  <div class="files-search">
+    <lucide-icon name="search" [size]="15"></lucide-icon>
+    <input class="files-search__input" name="search" [(ngModel)]="search" maxlength="200"
+           [placeholder]="loading ? 'Loading your files…' : 'Search all your files'"
+           aria-label="Search your files" autocomplete="off" />
+  </div>
+  @if (error) { <div class="files-empty">{{ error }}</div> }
+  @if (searching) {
+    @if (searchResults.length) {
+      <div class="files-list files-list--results" role="group" aria-label="Search results">
+        @for (file of searchResults; track file.resource_ref) {
+          <label class="file-row" [class.is-selected]="isSelected(file.resource_ref)">
+            <input type="checkbox" class="file-row__tick" [checked]="isSelected(file.resource_ref)"
+                   (change)="toggle(file.resource_ref)" [attr.aria-label]="file.filename" />
+            <lucide-icon name="file-text" [size]="16"></lucide-icon>
+            <span class="file-row__text">
+              <span class="file-row__name">{{ file.filename || 'a file' }}</span>
+              <span class="file-row__meta">{{ fileMeta(file) }}</span>
+            </span>
+          </label>
+        }
+      </div>
+    } @else {
+      <div class="files-empty">No other file matches “{{ search.trim() }}”.</div>
+    }
+  }
+</div>

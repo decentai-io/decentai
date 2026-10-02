@@ -1,0 +1,49 @@
+/* Audit: a record, read. Rows open to their details; nothing here can be
+   changed. Tabs borrow the Settings page's. Tokens come from
+   data-shared.css; nothing hardcodes a colour that cannot follow the
+   theme. */
+
+.settings-tabs { display:flex; gap:6px; margin-bottom:16px; border-bottom:1px solid var(--border); }
+.settings-tab { display:inline-flex; align-items:center; gap:7px; padding:8px 13px 9px; margin-bottom:-1px; border:0; border-bottom:2px solid transparent; background:none; color:var(--muted); font-size:var(--ui-text-sm); font-weight:600; cursor:pointer; }
+.settings-tab:hover { color:var(--ink); }
+.settings-tab.on { color:var(--accent-strong); border-bottom-color:var(--accent); }
+
+.audit-filters { display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin-bottom:14px; }
+.search-field { display:flex; align-items:center; gap:8px; flex:1 1 260px; min-width:220px; padding:8px 10px; border:1px solid var(--border-color); border-radius:var(--ui-radius-card); }
+.search-field input { width:100%; border:0; outline:0; background:transparent; color:inherit; }
+.audit-filters .sel { min-width:170px; }
+.date-field { display:flex; align-items:center; gap:6px; color:var(--muted); font-size:12px; }
+.date-field input { width:150px; }
+
+.audit-rows { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; }
+.audit-row { border-bottom:1px solid var(--border); }
+.audit-row:last-child { border-bottom:none; }
+.audit-head { display:flex; align-items:center; gap:10px; width:100%; padding:10px 4px; border:0; background:transparent; font:inherit; text-align:left; color:var(--foreground); cursor:pointer; }
+.audit-head:disabled { cursor:default; }
+.audit-head:not(:disabled):hover { background:var(--surface-subtle); }
+.audit-when { flex:0 0 150px; color:var(--muted); font-size:12px; font-variant-numeric:tabular-nums; }
+.audit-chip { flex:0 0 auto; padding:1px 9px; border-radius:var(--ui-radius-pill); font-size:11px; font-weight:600; letter-spacing:.02em; text-transform:uppercase; border:1px solid transparent; }
+.tone-ok { background:color-mix(in srgb, var(--primary) 12%, transparent); border-color:color-mix(in srgb, var(--primary) 28%, transparent); color:var(--accent-strong); }
+.tone-bad { background:color-mix(in srgb, var(--destructive) 12%, transparent); border-color:color-mix(in srgb, var(--destructive) 30%, transparent); color:var(--destructive); }
+.tone-muted { background:var(--secondary); border-color:var(--border); color:var(--muted); }
+.tone-live { background:var(--warning-bg); border-color:color-mix(in srgb, var(--warning) 30%, transparent); color:var(--warning); }
+.audit-main { flex:1; min-width:0; display:flex; flex-direction:column; gap:2px; }
+.audit-label { font-size:13.5px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.audit-summary { font-size:12px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.audit-who { flex:0 0 auto; font-size:12px; color:var(--muted); }
+.audit-chat { flex:0 0 auto; display:inline-flex; color:var(--muted); }
+.audit-chat:hover { color:var(--accent-strong); }
+.audit-caret { flex:0 0 auto; color:var(--muted); }
+
+.audit-body { padding:2px 4px 12px 164px; display:flex; flex-direction:column; gap:8px; }
+.audit-refs { display:flex; flex-wrap:wrap; align-items:center; gap:6px; font-size:12px; }
+.audit-key { color:var(--muted); }
+.audit-refs code { font-size:11.5px; padding:1px 6px; border:1px solid var(--border-color); border-radius:var(--ui-radius-sm); }
+.audit-json { margin:0; padding:10px 12px; border:1px solid var(--border-color); border-radius:var(--ui-radius-card); background:var(--surface-subtle); font-size:11.5px; line-height:1.5; white-space:pre-wrap; word-break:break-word; max-height:320px; overflow:auto; }
+.audit-id { font-family:var(--font-mono); font-size:11px; color:var(--muted); }
+.audit-more { display:flex; justify-content:center; padding:14px 0 4px; }
+
+@media (max-width: 720px) {
+  .audit-when { flex-basis:auto; }
+  .audit-body { padding-left:4px; }
+}

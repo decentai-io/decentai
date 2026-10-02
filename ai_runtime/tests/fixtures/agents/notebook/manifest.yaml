@@ -1,0 +1,278 @@
+# The Notebook agent — DecentAI's reference agent.
+#
+# Exercises every corner of manifest schema v1: all five data-layer field
+# types, every binding combination, multi-op resource lists,
+# required/optional/absent scopes, x-resource refs in inputs, outputs and
+# arrays, and all four permission levels. The "remote" behind the sync tool
+# is simulated in code — no external service and no pip dependencies — so
+# installing it demonstrates the whole model without asking a deployment to
+# trust anything outside itself.
+
+schema_version: "1.0"
+
+agent:
+  id: notebook
+  name: Notebook Agent
+  version: "1.2.0"
+  description: >
+    Saves and finds notes, imports and exports notebook files, and safely
+    demonstrates synchronization with an external service.
+  tags:
+    - reference
+    - notes
+    - productivity
+  instructions: >
+    Use the notebook tools only when the user wants to save, find, import,
+    export, or synchronize notes. Never invent note contents, identifiers,
+    file references, or sync results. Ask which notebook to use when it is
+    required but neither stated nor safely inferable. Explain before a sync
+    because it represents an external write and may require approval.
+
+# It connects to nothing outside the platform.
+network:
+  hosts: []
+
+implementation:
+  entrypoint: agent:NotebookAgent
+  dependencies: []
+
+authorization:
+  scopes:
+    notebook:
+      type: string
+      description: Notebook name, such as personal or work.
+      normalization: lowercase
+
+resources:
+  secrets:
+    - id: connection
+      label: Notebook Sync Connection
+      description: Endpoint and credential for the (simulated) remote service.
+      binding: {cardinality: one, required: true}
+      fields:
+        - {name: base_url,  label: Service URL, type: string, storage: keys,   required: true}
+        - {name: api_token, label: API Token,   type: secret, storage: values, required: true}
+
+  data:
+    - id: note
+      label: Note
+      description: One note, belonging to a notebook.
+      binding: {cardinality: many, required: false}
+      fields:
+        - {name: title,    label: Title,    type: string, storage: keys,   required: true}
+        - {name: notebook, label: Notebook, type: string, storage: keys,   required: true}
+        - {name: priority, label: Priority, type: number, storage: keys,   required: false}
+        - {name: content,  label: Content,  type: object, storage: values, required: false}
+
+    - id: settings
+      label: Notebook Settings
+      description: Per-user display and search preferences.
+      binding: {cardinality: one, required: false}
+      fields:
+        - name: sort_order
+          label: Sort Order
+          type: select
+          storage: keys
+          required: false
+          options: [updated, created, title]
+
+  files:
+    - id: document
+      label: Notebook Document
+      description: Exported or imported note collections.
+      binding: {cardinality: many, required: false}
+      constraints:
+        mime_types: [text/csv, application/json]
+        max_size_mb: 5
+
+tools:
+  - id: note
+    name: Note Tool
+    description: Saves and finds notes.
+    resources:
+      data: [note, settings]
+    functions:
+      - id: save
+        name: Save Note
+        description: >
+          Create a note, or update an existing one when note_ref is given.
+        permission_level: 1
+        timeout_seconds: 10
+        resources:
+          data: {note: [create, update]}
+        authorization:
+          scopes:
+            notebook: {from_input: notebook}
+        inputs:
+          type: object
+          additionalProperties: false
+          required: [notebook, title]
+          properties:
+            notebook: {type: string, minLength: 1, maxLength: 60}
+            title:    {type: string, minLength: 1, maxLength: 200}
+            priority: {type: integer, minimum: 1, maximum: 5}
+            content:  {type: object}
+            note_ref:
+              type: string
+              x-resource: {type: data, id: note}
+        outputs:
+          type: object
+          required: [note_ref, created]
+          properties:
+            note_ref:
+              type: string
+              x-resource: {type: data, id: note}
+            created: {type: boolean}
+
+      - id: find
+        name: Find Notes
+        description: >
+          List notes, optionally narrowed to one notebook and a text query.
+          Result order follows the user's settings when present.
+        permission_level: 0
+        timeout_seconds: 10
+        schedulable: true
+        resources:
+          data:
+            note: [list, read]
+            settings: read
+        authorization:
+          scopes:
+            notebook: {from_input: notebook, required: false}
+        inputs:
+          type: object
+          additionalProperties: false
+          properties:
+            notebook: {type: string, maxLength: 60}
+            query:    {type: string, maxLength: 200}
+            limit:    {type: integer, minimum: 1, maximum: 100, default: 25}
+        outputs:
+          type: object
+          required: [notes, total]
+          properties:
+            notes:
+              type: array
+              items:
+                type: object
+                properties:
+                  note_ref:
+                    type: string
+                    x-resource: {type: data, id: note}
+                  title:    {type: string}
+                  notebook: {type: string}
+                  priority: {type: [integer, "null"]}
+            total: {type: integer}
+
+  - id: archive
+    name: Archive Tool
+    description: Exports notes to files and imports notes from files.
+    resources:
+      data:  [note]
+      files: [document]
+    functions:
+      - id: export
+        name: Export Notes
+        description: Write one notebook's notes to a stored document.
+        permission_level: 2
+        timeout_seconds: 30
+        resources:
+          data:  {note: [list, read]}
+          files: {document: create}
+        authorization:
+          scopes:
+            notebook: {from_input: notebook}
+        inputs:
+          type: object
+          additionalProperties: false
+          required: [notebook, format]
+          properties:
+            notebook: {type: string, minLength: 1, maxLength: 60}
+            format:   {type: string, enum: [csv, json]}
+        outputs:
+          type: object
+          required: [file_ref, note_count]
+          properties:
+            file_ref:
+              type: string
+              x-resource: {type: file, id: document}
+            note_count: {type: integer}
+
+      - id: import
+        name: Import Notes
+        description: Create notes from a stored document.
+        permission_level: 2
+        timeout_seconds: 30
+        resources:
+          files: {document: read}
+          data:  {note: create}
+        authorization:
+          scopes:
+            notebook: {from_input: notebook}
+        inputs:
+          type: object
+          additionalProperties: false
+          required: [notebook, file_ref]
+          properties:
+            notebook: {type: string, minLength: 1, maxLength: 60}
+            file_ref:
+              type: string
+              x-resource: {type: file, id: document}
+        outputs:
+          type: object
+          required: [note_refs, imported]
+          properties:
+            note_refs:
+              type: array
+              items:
+                type: string
+                x-resource: {type: data, id: note}
+            imported: {type: integer}
+
+  - id: sync
+    name: Sync Tool
+    description: Syncs notes with the (simulated) remote notebook service.
+    resources:
+      secrets: [connection]
+      data:    [note]
+    functions:
+      - id: status
+        name: Sync Status
+        description: Report the remote service connection status.
+        permission_level: 0
+        timeout_seconds: 15
+        resources:
+          secrets: {connection: use}
+        inputs:
+          type: object
+          additionalProperties: false
+          properties: {}
+        outputs:
+          type: object
+          required: [connected, remote]
+          properties:
+            connected: {type: boolean}
+            remote:    {type: string}
+
+      - id: push
+        name: Push Notes
+        description: Push one notebook's notes to the remote service.
+        permission_level: 3
+        timeout_seconds: 60
+        resources:
+          secrets: {connection: use}
+          data:    {note: [list, read]}
+        authorization:
+          scopes:
+            notebook: {from_input: notebook}
+        inputs:
+          type: object
+          additionalProperties: false
+          required: [notebook]
+          properties:
+            notebook: {type: string, minLength: 1, maxLength: 60}
+        outputs:
+          type: object
+          required: [pushed, digest]
+          properties:
+            pushed: {type: integer}
+            digest: {type: string}

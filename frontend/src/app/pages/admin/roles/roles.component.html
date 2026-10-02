@@ -1,0 +1,151 @@
+<div class="data-page">
+  <header class="data-header">
+    <div class="data-heading">
+      <h1>Roles</h1>
+      <p>
+        A role is a bundle of policies. Attach it to a group, and everyone in
+        that group inherits everything the policies grant.
+      </p>
+    </div>
+    <button
+      class="btn primary"
+      type="button"
+      *ngIf="canCreate && editingId === null"
+      (click)="startCreate()"
+    >
+      <lucide-icon name="plus" [size]="16"></lucide-icon>
+      New role
+    </button>
+  </header>
+
+  <div class="data-alert error" *ngIf="error">{{ error }}</div>
+  <div class="data-alert ok" *ngIf="notice">{{ notice }}</div>
+
+  <div class="data-loading" *ngIf="loading">
+    <span class="ui-spinner" role="status" aria-label="Loading"></span>
+    <span>Loading roles…</span>
+  </div>
+
+  <ng-container *ngIf="!loading">
+    <!-- ── Editor ─────────────────────────────────────────────────── -->
+    <section class="panel editor" *ngIf="editingId !== null">
+      <div class="panel-head">
+        <div>
+          <h2>{{ editorTitle }}</h2>
+          <p>Pick the policies this role bundles.</p>
+        </div>
+      </div>
+
+      <div class="editor-fields">
+        <label class="field">
+          <span class="field-label">Name</span>
+          <input
+            class="txt"
+            [(ngModel)]="formName"
+            placeholder="e.g. Data steward"
+            [disabled]="!isCreating && !canUpdate"
+          />
+        </label>
+        <label class="field grow">
+          <span class="field-label">Description</span>
+          <input
+            class="txt"
+            [(ngModel)]="formDescription"
+            placeholder="What is this role for?"
+            [disabled]="!isCreating && !canUpdate"
+          />
+        </label>
+      </div>
+
+      <div class="grid-head">
+        <span class="member-title">
+          Policies <strong>({{ selected.size }})</strong>
+        </span>
+      </div>
+
+      <div class="action-list">
+        <label
+          class="action"
+          *ngFor="let policy of policies"
+          [class.on]="isPolicyOn(policy.policy_id)"
+        >
+          <input
+            type="checkbox"
+            [checked]="isPolicyOn(policy.policy_id)"
+            (change)="togglePolicy(policy.policy_id)"
+            [disabled]="!canAssign"
+          />
+          <span class="action-text">
+            <span class="action-desc">{{ policy.name }}</span>
+            <code class="action-name">{{ policy.description }}</code>
+          </span>
+        </label>
+      </div>
+
+      <div class="editor-actions">
+        <button
+          class="btn primary"
+          type="button"
+          (click)="save()"
+          [disabled]="saving || !formName.trim()"
+        >
+          {{ saving ? "Saving…" : isCreating ? "Create role" : "Save changes" }}
+        </button>
+        <button
+          class="btn ghost"
+          type="button"
+          (click)="cancelEdit()"
+          [disabled]="saving"
+        >
+          Cancel
+        </button>
+      </div>
+    </section>
+
+    <!-- ── List ───────────────────────────────────────────────────── -->
+    <section class="panel">
+      <div class="panel-head">
+        <div>
+          <h2>All roles</h2>
+          <p>{{ roles.length }} role{{ roles.length === 1 ? "" : "s" }}.</p>
+        </div>
+      </div>
+
+      <ul class="rows">
+        <li class="row" *ngFor="let role of roles">
+          <span class="row-mark" aria-hidden="true">
+            <lucide-icon name="shield-check" [size]="15"></lucide-icon>
+          </span>
+
+          <span class="row-id">
+            <span class="row-name">{{ role.role_name }}</span>
+            <span class="row-sub">{{ role.description }}</span>
+            <span class="row-meta">
+              <span class="grants">{{ summarise(role) }}</span>
+            </span>
+          </span>
+
+          <button
+            class="btn"
+            type="button"
+            *ngIf="canUpdate || canAssign"
+            (click)="startEdit(role)"
+            [disabled]="isBusy(role.role_id)"
+          >
+            Edit
+          </button>
+
+          <button
+            class="btn danger"
+            type="button"
+            *ngIf="canDelete"
+            (click)="remove(role)"
+            [disabled]="isBusy(role.role_id)"
+          >
+            Delete
+          </button>
+        </li>
+      </ul>
+    </section>
+  </ng-container>
+</div>

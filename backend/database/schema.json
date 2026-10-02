@@ -1,0 +1,2066 @@
+{
+  "schema_version": 47,
+  "collections": {
+    "ai_chats": {
+      "description": "Backend-owned chat metadata, configuration, plan, the assistant's state (the mind, one document, per thread), and the runtime block.",
+      "validator": {
+        "$jsonSchema": {
+          "bsonType": "object",
+          "required": [
+            "chat_id",
+            "org_id",
+            "user_id"
+          ],
+          "properties": {
+            "chat_id": {
+              "bsonType": "string"
+            },
+            "org_id": {
+              "bsonType": "string"
+            },
+            "user_id": {
+              "bsonType": "string"
+            },
+            "config": {
+              "bsonType": "object"
+            },
+            "runtime": {
+              "bsonType": "object"
+            },
+            "plan": {
+              "bsonType": "object"
+            },
+            "state": {
+              "bsonType": "object"
+            },
+            "threads": {
+              "bsonType": "object"
+            }
+          }
+        }
+      },
+      "indexes": [
+        {
+          "name": "chat_id_unique",
+          "keys": [
+            [
+              "chat_id",
+              1
+            ]
+          ],
+          "unique": true
+        },
+        {
+          "name": "owner_updated",
+          "keys": [
+            [
+              "org_id",
+              1
+            ],
+            [
+              "user_id",
+              1
+            ],
+            [
+              "updated_at",
+              -1
+            ]
+          ]
+        }
+      ]
+    },
+    "ai_messages": {
+      "description": "Ordered, typed user, AI, and system chat messages.",
+      "validator": {
+        "$jsonSchema": {
+          "bsonType": "object",
+          "required": [
+            "message_id",
+            "chat_id",
+            "org_id",
+            "user_id",
+            "actor",
+            "parts"
+          ],
+          "properties": {
+            "message_id": {
+              "bsonType": "string"
+            },
+            "chat_id": {
+              "bsonType": "string"
+            },
+            "client_message_id": {
+              "bsonType": [
+                "string",
+                "null"
+              ]
+            },
+            "actor": {
+              "enum": [
+                "user",
+                "ai",
+                "system",
+                "parent"
+              ]
+            },
+            "parts": {
+              "bsonType": "array"
+            },
+            "thread": {
+              "bsonType": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        }
+      },
+      "indexes": [
+        {
+          "name": "message_id_unique",
+          "keys": [
+            [
+              "message_id",
+              1
+            ]
+          ],
+          "unique": true
+        },
+        {
+          "name": "chat_client_message_unique",
+          "keys": [
+            [
+              "chat_id",
+              1
+            ],
+            [
+              "client_message_id",
+              1
+            ]
+          ],
+          "unique": true,
+          "partialFilterExpression": {
+            "client_message_id": {
+              "$type": "string"
+            }
+          }
+        },
+        {
+          "name": "chat_sequence_unique",
+          "keys": [
+            [
+              "chat_id",
+              1
+            ],
+            [
+              "sequence",
+              1
+            ]
+          ],
+          "unique": true
+        }
+      ]
+    },
+    "ai_audit": {
+      "description": "Append-only platform and agent activity audit events.",
+      "validator": {
+        "$jsonSchema": {
+          "bsonType": "object",
+          "properties": {
+            "chat_id": {
+              "bsonType": [
+                "string",
+                "null"
+              ]
+            },
+            "timestamp": {
+              "bsonType": [
+                "date",
+                "double",
+                "int",
+                "long"
+              ]
+            }
+          }
+        }
+      },
+      "indexes": [
+        {
+          "name": "chat_timestamp",
+          "keys": [
+            [
+              "chat_id",
+              1
+            ],
+            [
+              "timestamp",
+              1
+            ]
+          ]
+        },
+        {
+          "name": "org_timestamp",
+          "keys": [
+            [
+              "org_id",
+              1
+            ],
+            [
+              "timestamp",
+              -1
+            ]
+          ]
+        },
+        {
+          "name": "user_timestamp",
+          "keys": [
+            [
+              "org_id",
+              1
+            ],
+            [
+              "user_id",
+              1
+            ],
+            [
+              "timestamp",
+              -1
+            ]
+          ]
+        }
+      ]
+    },
+    "ai_chat_events": {
+      "description": "Two sequenced logs per chat, told apart by direction: 'out' is the bounded, replayable narration tail; 'in' is the inbox, durable before the runtime absorbs it.",
+      "validator": {
+        "$jsonSchema": {
+          "bsonType": "object",
+          "required": [
+            "chat_id",
+            "org_id",
+            "user_id",
+            "seq",
+            "event"
+          ],
+          "properties": {
+            "chat_id": {
+              "bsonType": "string"
+            },
+            "seq": {
+              "bsonType": [
+                "int",
+                "long"
+              ]
+            },
+            "event": {
+              "bsonType": "object"
+            },
+            "direction": {
+              "enum": [
+                "in",
+                "out"
+              ]
+            },
+            "thread": {
+              "bsonType": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        }
+      },
+      "indexes": [
+        {
+          "name": "chat_thread_direction_seq_unique",
+          "keys": [
+            [
+              "chat_id",
+              1
+            ],
+            [
+              "thread",
+              1
+            ],
+            [
+              "direction",
+              1
+            ],
+            [
+              "seq",
+              1
+            ]
+          ],
+          "unique": true
+        }
+      ]
+    },
+    "ai_chat_storage": {
+      "description": "Execution results and intermediate payloads offloaded from messages.",
+      "validator": {
+        "$jsonSchema": {
+          "bsonType": "object",
+          "properties": {
+            "storage_id": {
+              "bsonType": "string"
+            },
+            "chat_id": {
+              "bsonType": "string"
+            }
+          }
+        }
+      },
+      "indexes": [
+        {
+          "name": "storage_id_unique",
+          "keys": [
+            [
+              "storage_id",
+              1
+            ]
+          ],
+          "unique": true
+        },
+        {
+          "name": "chat_storage",
+          "keys": [
+            [
+              "chat_id",
+              1
+            ]
+          ]
+        }
+      ]
+    },
+    "organizations": {
+      "description": "The deployment organization.",
+      "validator": {
+        "$jsonSchema": {
+          "bsonType": "object",
+          "properties": {
+            "_id": {
+              "bsonType": "string"
+            },
+            "org_name": {
+              "bsonType": "string"
+            },
+            "status": {
+              "bsonType": "string",
+              "enum": [
+                "active",
+                "disabled"
+              ]
+            }
+          }
+        }
+      },
+      "indexes": []
+    },
+    "users": {
+      "description": "User identities and group assignments.",
+      "validator": {
+        "$jsonSchema": {
+          "bsonType": "object",
+          "properties": {
+            "_id": {
+              "bsonType": "string"
+            },
+            "email": {
+              "bsonType": "string"
+            },
+            "assigned_groups": {
+              "bsonType": "array"
+            },
+            "status": {
+              "bsonType": "string"
+            },
+            "preferences": {
+              "bsonType": "object"
+            }
+          }
+        }
+      },
+      "indexes": [
+        {
+          "name": "email_unique",
+          "keys": [
+            [
+              "email",
+              1
+            ]
+          ],
+          "unique": true
+        },
+        {
+          "name": "assigned_groups",
+          "keys": [
+            [
+              "assigned_groups",
+              1
+            ]
+          ]
+        }
+      ]
+    },
+    "groups": {
+      "description": "IAM groups and their role assignments.",
+      "validator": {
+        "$jsonSchema": {
+          "bsonType": "object",
+          "properties": {
+            "_id": {
+              "bsonType": "string"
+            },
+            "group_name": {
+              "bsonType": "string"
+            },
+            "assigned_roles": {
+              "bsonType": "array"
+            }
+          }
+        }
+      },
+      "indexes": [
+        {
+          "name": "group_name_unique",
+          "keys": [
+            [
+              "org_id",
+              1
+            ],
+            [
+              "group_name",
+              1
+            ]
+          ],
+          "unique": true
+        }
+      ]
+    },
+    "roles": {
+      "description": "IAM roles and their policy assignments.",
+      "validator": {
+        "$jsonSchema": {
+          "bsonType": "object",
+          "properties": {
+            "_id": {
+              "bsonType": "string"
+            },
+            "role_name": {
+              "bsonType": "string"
+            },
+            "assigned_policies": {
+              "bsonType": "array"
+            }
+          }
+        }
+      },
+      "indexes": [
+        {
+          "name": "role_name_unique",
+          "keys": [
+            [
+              "org_id",
+              1
+            ],
+            [
+              "role_name",
+              1
+            ]
+          ],
+          "unique": true
+        }
+      ]
+    },
+    "policies": {
+      "description": "IAM policy statements.",
+      "validator": {
+        "$jsonSchema": {
+          "bsonType": "object",
+          "properties": {
+            "_id": {
+              "bsonType": "string"
+            },
+            "name": {
+              "bsonType": "string"
+            },
+            "permissions": {
+              "bsonType": "object"
+            }
+          }
+        }
+      },
+      "indexes": [
+        {
+          "name": "name_unique",
+          "keys": [
+            [
+              "org_id",
+              1
+            ],
+            [
+              "name",
+              1
+            ]
+          ],
+          "unique": true
+        }
+      ]
+    },
+    "sessions": {
+      "description": "Revocable server-side login sessions.",
+      "validator": {
+        "$jsonSchema": {
+          "bsonType": "object",
+          "properties": {
+            "_id": {
+              "bsonType": "string"
+            },
+            "user_id": {
+              "bsonType": "string"
+            },
+            "expires_at": {
+              "bsonType": "date"
+            }
+          }
+        }
+      },
+      "indexes": [
+        {
+          "name": "user_id",
+          "keys": [
+            [
+              "user_id",
+              1
+            ]
+          ]
+        },
+        {
+          "name": "expires_at_ttl",
+          "keys": [
+            [
+              "expires_at",
+              1
+            ]
+          ],
+          "expireAfterSeconds": 0
+        }
+      ]
+    },
+    "agent_manifests": {
+      "description": "Approved agent manifests, the code package each one names, and their derived resource mappings.",
+      "validator": {
+        "$jsonSchema": {
+          "bsonType": "object",
+          "required": [
+            "manifest",
+            "version",
+            "status"
+          ],
+          "properties": {
+            "_id": {
+              "bsonType": "string"
+            },
+            "org_id": {
+              "bsonType": "string"
+            },
+            "version": {
+              "bsonType": "string"
+            },
+            "status": {
+              "enum": [
+                "installed",
+                "disabled"
+              ]
+            },
+            "manifest": {
+              "bsonType": "object"
+            },
+            "resources": {
+              "bsonType": "object"
+            },
+            "source_id": {
+              "bsonType": "string"
+            },
+            "local_agent_id": {
+              "bsonType": "string"
+            },
+            "package_digest": {
+              "bsonType": "string"
+            }
+          }
+        }
+      },
+      "indexes": [
+        {
+          "name": "org_source_agent",
+          "keys": [
+            [
+              "org_id",
+              1
+            ],
+            [
+              "source_id",
+              1
+            ],
+            [
+              "local_agent_id",
+              1
+            ]
+          ],
+          "unique": true,
+          "partialFilterExpression": {
+            "source_id": {
+              "$gt": ""
+            }
+          }
+        }
+      ]
+    },
+    "ai_agent_sources": {
+      "description": "Saved agent catalogs — where agents come from. A shared one stays its creator's, and every organization can install from it.",
+      "validator": {
+        "$jsonSchema": {
+          "bsonType": "object",
+          "required": [
+            "org_id",
+            "name",
+            "url"
+          ],
+          "properties": {
+            "_id": {
+              "bsonType": "string"
+            },
+            "org_id": {
+              "bsonType": "string"
+            },
+            "name": {
+              "bsonType": "string"
+            },
+            "url": {
+              "bsonType": "string"
+            },
+            "ref": {
+              "bsonType": "string"
+            },
+            "credential_ref": {
+              "bsonType": "string"
+            },
+            "catalog": {
+              "bsonType": [
+                "object",
+                "null"
+              ]
+            },
+            "kind": {
+              "bsonType": "string"
+            }
+          }
+        }
+      },
+      "indexes": [
+        {
+          "name": "org_source",
+          "keys": [
+            [
+              "org_id",
+              1
+            ],
+            [
+              "_id",
+              1
+            ]
+          ],
+          "unique": true
+        },
+        {
+          "name": "org_url_ref",
+          "keys": [
+            [
+              "org_id",
+              1
+            ],
+            [
+              "url",
+              1
+            ],
+            [
+              "ref",
+              1
+            ]
+          ],
+          "unique": true
+        }
+      ]
+    },
+    "runtime_sessions": {
+      "description": "Revocable, chat-scoped sessions delegated to the AI runtime.",
+      "validator": {
+        "$jsonSchema": {
+          "bsonType": "object",
+          "properties": {
+            "_id": {
+              "bsonType": "string"
+            },
+            "user_id": {
+              "bsonType": "string"
+            },
+            "org_id": {
+              "bsonType": "string"
+            },
+            "chat_id": {
+              "bsonType": "string"
+            },
+            "created_at": {
+              "bsonType": "date"
+            },
+            "expires_at": {
+              "bsonType": "date"
+            }
+          }
+        }
+      },
+      "indexes": [
+        {
+          "name": "user_chat_unique",
+          "keys": [
+            [
+              "user_id",
+              1
+            ],
+            [
+              "chat_id",
+              1
+            ]
+          ],
+          "unique": true
+        },
+        {
+          "name": "expires_at_ttl",
+          "keys": [
+            [
+              "expires_at",
+              1
+            ]
+          ],
+          "expireAfterSeconds": 0
+        }
+      ]
+    },
+    "auth_throttle": {
+      "description": "Per-account and per-IP authentication throttle windows.",
+      "validator": {
+        "$jsonSchema": {
+          "bsonType": "object",
+          "properties": {
+            "_id": {
+              "bsonType": "string"
+            },
+            "expires_at": {
+              "bsonType": "date"
+            },
+            "attempts": {
+              "bsonType": "int"
+            }
+          }
+        }
+      },
+      "indexes": [
+        {
+          "name": "expires_at_ttl",
+          "keys": [
+            [
+              "expires_at",
+              1
+            ]
+          ],
+          "expireAfterSeconds": 0
+        }
+      ]
+    },
+    "invitations": {
+      "description": "User invitations with hashed, expiring tokens.",
+      "validator": {
+        "$jsonSchema": {
+          "bsonType": "object",
+          "properties": {
+            "_id": {
+              "bsonType": "string"
+            },
+            "org_id": {
+              "bsonType": "string"
+            },
+            "email": {
+              "bsonType": "string"
+            },
+            "token_hash": {
+              "bsonType": "string"
+            },
+            "expires_at": {
+              "bsonType": "date"
+            }
+          }
+        }
+      },
+      "indexes": [
+        {
+          "name": "token_hash_unique",
+          "keys": [
+            [
+              "token_hash",
+              1
+            ]
+          ],
+          "unique": true,
+          "sparse": true
+        },
+        {
+          "name": "email_unique",
+          "keys": [
+            [
+              "email",
+              1
+            ]
+          ],
+          "unique": true
+        },
+        {
+          "name": "expires_at_ttl",
+          "keys": [
+            [
+              "expires_at",
+              1
+            ]
+          ],
+          "expireAfterSeconds": 0
+        }
+      ]
+    },
+    "password_resets": {
+      "description": "Hashed, expiring password-reset tokens.",
+      "validator": {
+        "$jsonSchema": {
+          "bsonType": "object",
+          "properties": {
+            "_id": {
+              "bsonType": "string"
+            },
+            "user_id": {
+              "bsonType": "string"
+            },
+            "token_hash": {
+              "bsonType": "string"
+            },
+            "expires_at": {
+              "bsonType": "date"
+            }
+          }
+        }
+      },
+      "indexes": [
+        {
+          "name": "token_hash_unique",
+          "keys": [
+            [
+              "token_hash",
+              1
+            ]
+          ],
+          "unique": true
+        },
+        {
+          "name": "user_id_unique",
+          "keys": [
+            [
+              "user_id",
+              1
+            ]
+          ],
+          "unique": true
+        },
+        {
+          "name": "expires_at_ttl",
+          "keys": [
+            [
+              "expires_at",
+              1
+            ]
+          ],
+          "expireAfterSeconds": 0
+        }
+      ]
+    },
+    "secrets": {
+      "description": "Encrypted, owner-scoped secret resources.",
+      "validator": {
+        "$jsonSchema": {
+          "bsonType": "object",
+          "required": [
+            "org_id"
+          ],
+          "properties": {
+            "_id": {
+              "bsonType": "string"
+            },
+            "type": {
+              "enum": [
+                "secret"
+              ]
+            },
+            "org_id": {
+              "bsonType": "string"
+            },
+            "resource_id": {
+              "bsonType": "string"
+            },
+            "owner": {
+              "bsonType": "object"
+            },
+            "keys": {
+              "bsonType": "object"
+            },
+            "values": {
+              "bsonType": "object"
+            }
+          }
+        }
+      },
+      "indexes": [
+        {
+          "name": "type_resource",
+          "keys": [
+            [
+              "type",
+              1
+            ],
+            [
+              "resource_id",
+              1
+            ]
+          ]
+        },
+        {
+          "name": "org_owner_groups",
+          "keys": [
+            [
+              "org_id",
+              1
+            ],
+            [
+              "owner.groups",
+              1
+            ]
+          ]
+        },
+        {
+          "name": "org_owner_users",
+          "keys": [
+            [
+              "org_id",
+              1
+            ],
+            [
+              "owner.users",
+              1
+            ]
+          ]
+        },
+        {
+          "name": "name_per_definition_creator",
+          "keys": [
+            [
+              "resource_id",
+              1
+            ],
+            [
+              "created_by",
+              1
+            ],
+            [
+              "name",
+              1
+            ]
+          ],
+          "unique": true,
+          "partialFilterExpression": {
+            "name": {
+              "$exists": true
+            }
+          }
+        }
+      ]
+    },
+    "agents_data": {
+      "description": "Encrypted, owner-scoped records stored by agents.",
+      "validator": {
+        "$jsonSchema": {
+          "bsonType": "object",
+          "required": [
+            "org_id"
+          ],
+          "properties": {
+            "_id": {
+              "bsonType": "string"
+            },
+            "type": {
+              "enum": [
+                "data"
+              ]
+            },
+            "org_id": {
+              "bsonType": "string"
+            },
+            "resource_id": {
+              "bsonType": "string"
+            },
+            "owner": {
+              "bsonType": "object"
+            },
+            "keys": {
+              "bsonType": "object"
+            },
+            "values": {
+              "bsonType": "object"
+            }
+          }
+        }
+      },
+      "indexes": [
+        {
+          "name": "type_resource",
+          "keys": [
+            [
+              "type",
+              1
+            ],
+            [
+              "resource_id",
+              1
+            ]
+          ]
+        },
+        {
+          "name": "org_owner_groups",
+          "keys": [
+            [
+              "org_id",
+              1
+            ],
+            [
+              "owner.groups",
+              1
+            ]
+          ]
+        },
+        {
+          "name": "org_owner_users",
+          "keys": [
+            [
+              "org_id",
+              1
+            ],
+            [
+              "owner.users",
+              1
+            ]
+          ]
+        }
+      ]
+    },
+    "ai_memories": {
+      "description": "Per-user facts the assistant was told to remember.",
+      "validator": {
+        "$jsonSchema": {
+          "bsonType": "object",
+          "required": [
+            "org_id",
+            "user_id"
+          ],
+          "properties": {
+            "_id": {
+              "bsonType": "string"
+            },
+            "org_id": {
+              "bsonType": "string"
+            },
+            "user_id": {
+              "bsonType": "string"
+            },
+            "text": {
+              "bsonType": "string"
+            },
+            "source_chat_id": {
+              "bsonType": "string"
+            }
+          }
+        }
+      },
+      "indexes": [
+        {
+          "name": "org_user_created",
+          "keys": [
+            [
+              "org_id",
+              1
+            ],
+            [
+              "user_id",
+              1
+            ],
+            [
+              "created_at",
+              1
+            ]
+          ]
+        },
+        {
+          "name": "org_user_text",
+          "keys": [
+            [
+              "org_id",
+              1
+            ],
+            [
+              "user_id",
+              1
+            ],
+            [
+              "text",
+              1
+            ]
+          ]
+        }
+      ]
+    },
+    "skills": {
+      "description": "User-authored skills: catalog in keys, body in values.",
+      "validator": {
+        "$jsonSchema": {
+          "bsonType": "object",
+          "required": [
+            "org_id"
+          ],
+          "properties": {
+            "_id": {
+              "bsonType": "string"
+            },
+            "type": {
+              "enum": [
+                "skill"
+              ]
+            },
+            "org_id": {
+              "bsonType": "string"
+            },
+            "resource_id": {
+              "bsonType": "string"
+            },
+            "owner": {
+              "bsonType": "object"
+            },
+            "keys": {
+              "bsonType": "object"
+            },
+            "values": {
+              "bsonType": "object"
+            }
+          }
+        }
+      },
+      "indexes": [
+        {
+          "name": "type_resource",
+          "keys": [
+            [
+              "type",
+              1
+            ],
+            [
+              "resource_id",
+              1
+            ]
+          ]
+        },
+        {
+          "name": "org_owner_groups",
+          "keys": [
+            [
+              "org_id",
+              1
+            ],
+            [
+              "owner.groups",
+              1
+            ]
+          ]
+        },
+        {
+          "name": "org_owner_users",
+          "keys": [
+            [
+              "org_id",
+              1
+            ],
+            [
+              "owner.users",
+              1
+            ]
+          ]
+        }
+      ]
+    },
+    "mcp_servers": {
+      "description": "MCP servers a person added: name and address in keys, tools and credential in values.",
+      "validator": {
+        "$jsonSchema": {
+          "bsonType": "object",
+          "required": [
+            "org_id"
+          ],
+          "properties": {
+            "_id": {
+              "bsonType": "string"
+            },
+            "type": {
+              "enum": [
+                "mcp"
+              ]
+            },
+            "org_id": {
+              "bsonType": "string"
+            },
+            "resource_id": {
+              "bsonType": "string"
+            },
+            "owner": {
+              "bsonType": "object"
+            },
+            "keys": {
+              "bsonType": "object"
+            },
+            "values": {
+              "bsonType": "object"
+            }
+          }
+        }
+      },
+      "indexes": [
+        {
+          "name": "type_resource",
+          "keys": [
+            [
+              "type",
+              1
+            ],
+            [
+              "resource_id",
+              1
+            ]
+          ]
+        },
+        {
+          "name": "org_owner_groups",
+          "keys": [
+            [
+              "org_id",
+              1
+            ],
+            [
+              "owner.groups",
+              1
+            ]
+          ]
+        },
+        {
+          "name": "org_owner_users",
+          "keys": [
+            [
+              "org_id",
+              1
+            ],
+            [
+              "owner.users",
+              1
+            ]
+          ]
+        }
+      ]
+    },
+    "files": {
+      "description": "Owner-scoped file metadata and storage references.",
+      "validator": {
+        "$jsonSchema": {
+          "bsonType": "object",
+          "required": [
+            "org_id"
+          ],
+          "properties": {
+            "_id": {
+              "bsonType": "string"
+            },
+            "type": {
+              "enum": [
+                "file"
+              ]
+            },
+            "org_id": {
+              "bsonType": "string"
+            },
+            "resource_id": {
+              "bsonType": "string"
+            },
+            "owner": {
+              "bsonType": "object"
+            },
+            "keys": {
+              "bsonType": "object"
+            },
+            "values": {
+              "bsonType": "object"
+            }
+          }
+        }
+      },
+      "indexes": [
+        {
+          "name": "resource_id_unique",
+          "keys": [
+            [
+              "resource_id",
+              1
+            ]
+          ],
+          "unique": true
+        },
+        {
+          "name": "org_owner_groups",
+          "keys": [
+            [
+              "org_id",
+              1
+            ],
+            [
+              "owner.groups",
+              1
+            ]
+          ]
+        },
+        {
+          "name": "org_owner_users",
+          "keys": [
+            [
+              "org_id",
+              1
+            ],
+            [
+              "owner.users",
+              1
+            ]
+          ]
+        }
+      ]
+    },
+    "secret_definitions": {
+      "description": "Immutable, versioned schemas for secret resources.",
+      "validator": {
+        "$jsonSchema": {
+          "bsonType": "object",
+          "properties": {
+            "_id": {
+              "bsonType": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,64}:[a-z][a-z0-9_]{1,59}/v[1-9][0-9]*$"
+            },
+            "org_id": {
+              "bsonType": "string"
+            },
+            "definition_id": {
+              "bsonType": "string"
+            },
+            "version": {
+              "bsonType": "int"
+            },
+            "fields": {
+              "bsonType": "array"
+            }
+          }
+        }
+      },
+      "indexes": [
+        {
+          "name": "org_definition_version_unique",
+          "keys": [
+            [
+              "org_id",
+              1
+            ],
+            [
+              "definition_id",
+              1
+            ],
+            [
+              "version",
+              1
+            ]
+          ],
+          "unique": true
+        }
+      ]
+    },
+    "agent_grants": {
+      "description": "Who may call an installed agent's functions. Keyed by the agent, and removed with it.",
+      "validator": {
+        "$jsonSchema": {
+          "bsonType": "object",
+          "required": [
+            "org_id",
+            "agent_ref",
+            "owner"
+          ],
+          "properties": {
+            "_id": {
+              "bsonType": "string"
+            },
+            "org_id": {
+              "bsonType": "string"
+            },
+            "agent_ref": {
+              "bsonType": "string"
+            },
+            "owner": {
+              "bsonType": "object",
+              "properties": {
+                "groups": {
+                  "bsonType": "array"
+                },
+                "users": {
+                  "bsonType": "array"
+                }
+              }
+            },
+            "functions": {
+              "bsonType": [
+                "string",
+                "array"
+              ]
+            },
+            "constraints": {
+              "bsonType": "object"
+            }
+          }
+        }
+      },
+      "indexes": [
+        {
+          "name": "org_agent",
+          "keys": [
+            [
+              "org_id",
+              1
+            ],
+            [
+              "agent_ref",
+              1
+            ]
+          ]
+        },
+        {
+          "name": "org_owner_groups",
+          "keys": [
+            [
+              "org_id",
+              1
+            ],
+            [
+              "owner.groups",
+              1
+            ]
+          ]
+        },
+        {
+          "name": "org_owner_users",
+          "keys": [
+            [
+              "org_id",
+              1
+            ],
+            [
+              "owner.users",
+              1
+            ]
+          ]
+        }
+      ]
+    },
+    "agent_secret_grants": {
+      "description": "Which saved credential one installed agent may use. Declaring a shape is not access to it; a row here is, and it goes with the agent or the secret.",
+      "validator": {
+        "$jsonSchema": {
+          "bsonType": "object",
+          "required": [
+            "org_id",
+            "agent_ref",
+            "resource_id",
+            "category",
+            "secret_ref"
+          ],
+          "properties": {
+            "_id": {
+              "bsonType": "string"
+            },
+            "org_id": {
+              "bsonType": "string"
+            },
+            "agent_ref": {
+              "bsonType": "string"
+            },
+            "resource_id": {
+              "bsonType": "string"
+            },
+            "category": {
+              "bsonType": "string"
+            },
+            "secret_ref": {
+              "bsonType": "string"
+            },
+            "created_by": {
+              "bsonType": "string"
+            }
+          }
+        }
+      },
+      "indexes": [
+        {
+          "name": "org_category",
+          "keys": [
+            [
+              "org_id",
+              1
+            ],
+            [
+              "category",
+              1
+            ]
+          ],
+          "unique": true
+        },
+        {
+          "name": "org_agent",
+          "keys": [
+            [
+              "org_id",
+              1
+            ],
+            [
+              "agent_ref",
+              1
+            ]
+          ]
+        },
+        {
+          "name": "org_secret",
+          "keys": [
+            [
+              "org_id",
+              1
+            ],
+            [
+              "secret_ref",
+              1
+            ]
+          ]
+        }
+      ]
+    },
+    "llm_connections": {
+      "description": "An organization's LLM connections — the models its chats may think with. The api key is encrypted and write-only; exactly one connection per organization is the default.",
+      "validator": {
+        "$jsonSchema": {
+          "bsonType": "object",
+          "required": [
+            "org_id",
+            "name",
+            "provider",
+            "model"
+          ],
+          "properties": {
+            "_id": {
+              "bsonType": "string"
+            },
+            "org_id": {
+              "bsonType": "string"
+            },
+            "name": {
+              "bsonType": "string"
+            },
+            "provider": {
+              "bsonType": "string"
+            },
+            "model": {
+              "bsonType": "string"
+            },
+            "endpoint": {
+              "bsonType": "string"
+            },
+            "is_default": {
+              "bsonType": "bool"
+            },
+            "created_by": {
+              "bsonType": "string"
+            }
+          }
+        }
+      },
+      "indexes": [
+        {
+          "name": "org",
+          "keys": [
+            [
+              "org_id",
+              1
+            ]
+          ]
+        },
+        {
+          "name": "name_per_creator",
+          "keys": [
+            [
+              "org_id",
+              1
+            ],
+            [
+              "created_by",
+              1
+            ],
+            [
+              "name",
+              1
+            ]
+          ],
+          "unique": true
+        }
+      ]
+    },
+    "ai_approvals": {
+      "description": "The cards: what the runtime asked a person to approve, and what they decided.",
+      "validator": {
+        "$jsonSchema": {
+          "bsonType": "object",
+          "required": [
+            "approval_id",
+            "chat_id",
+            "org_id",
+            "user_id",
+            "status",
+            "requested_at"
+          ],
+          "properties": {
+            "approval_id": {
+              "bsonType": "string"
+            },
+            "chat_id": {
+              "bsonType": "string"
+            },
+            "org_id": {
+              "bsonType": "string"
+            },
+            "user_id": {
+              "bsonType": "string"
+            },
+            "status": {
+              "enum": [
+                "pending",
+                "approved",
+                "denied",
+                "answered",
+                "expired"
+              ]
+            },
+            "kind": {
+              "enum": [
+                "approval",
+                "question"
+              ]
+            },
+            "request": {
+              "bsonType": "object"
+            },
+            "thread": {
+              "bsonType": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        }
+      },
+      "indexes": [
+        {
+          "name": "approval_id_unique",
+          "keys": [
+            [
+              "approval_id",
+              1
+            ]
+          ],
+          "unique": true
+        },
+        {
+          "name": "chat_status",
+          "keys": [
+            [
+              "chat_id",
+              1
+            ],
+            [
+              "status",
+              1
+            ]
+          ]
+        },
+        {
+          "name": "owner_status",
+          "keys": [
+            [
+              "org_id",
+              1
+            ],
+            [
+              "user_id",
+              1
+            ],
+            [
+              "status",
+              1
+            ]
+          ]
+        }
+      ]
+    },
+    "ai_schedules": {
+      "description": "The clock's rows, one document per chat holding them whole; the runtime is the only writer.",
+      "validator": {
+        "$jsonSchema": {
+          "bsonType": "object",
+          "required": [
+            "chat_id",
+            "org_id",
+            "user_id",
+            "rows"
+          ],
+          "properties": {
+            "chat_id": {
+              "bsonType": "string"
+            },
+            "org_id": {
+              "bsonType": "string"
+            },
+            "user_id": {
+              "bsonType": "string"
+            },
+            "rows": {
+              "bsonType": "array"
+            }
+          }
+        }
+      },
+      "indexes": [
+        {
+          "name": "chat_id_unique",
+          "keys": [
+            [
+              "chat_id",
+              1
+            ]
+          ],
+          "unique": true
+        }
+      ]
+    },
+    "api_keys": {
+      "description": "A person's own standing credentials for scripts: the hash of each key, its name, and when it was made, used and revoked.",
+      "validator": {
+        "$jsonSchema": {
+          "bsonType": "object",
+          "required": [
+            "org_id",
+            "user_id",
+            "key_hash",
+            "created_at"
+          ],
+          "properties": {
+            "_id": {
+              "bsonType": "string"
+            },
+            "org_id": {
+              "bsonType": "string"
+            },
+            "user_id": {
+              "bsonType": "string"
+            },
+            "name": {
+              "bsonType": "string"
+            },
+            "key_hash": {
+              "bsonType": "string"
+            },
+            "shown": {
+              "bsonType": "string"
+            },
+            "created_at": {
+              "bsonType": "date"
+            },
+            "last_used_at": {
+              "bsonType": [
+                "date",
+                "null"
+              ]
+            },
+            "revoked_at": {
+              "bsonType": [
+                "date",
+                "null"
+              ]
+            }
+          }
+        }
+      },
+      "indexes": [
+        {
+          "name": "key_hash",
+          "keys": [
+            [
+              "key_hash",
+              1
+            ]
+          ],
+          "unique": true
+        },
+        {
+          "name": "owner",
+          "keys": [
+            [
+              "org_id",
+              1
+            ],
+            [
+              "user_id",
+              1
+            ],
+            [
+              "created_at",
+              1
+            ]
+          ]
+        }
+      ]
+    },
+    "oauth_apps": {
+      "description": "The apps an organization registered with OAuth providers — one per provider — so members can connect accounts. The client secret is encrypted and write-only.",
+      "validator": {
+        "$jsonSchema": {
+          "bsonType": "object",
+          "required": [
+            "org_id",
+            "provider",
+            "client_id"
+          ],
+          "properties": {
+            "_id": {
+              "bsonType": "string"
+            },
+            "org_id": {
+              "bsonType": "string"
+            },
+            "provider": {
+              "bsonType": "string"
+            },
+            "client_id": {
+              "bsonType": "string"
+            },
+            "created_by": {
+              "bsonType": "string"
+            }
+          }
+        }
+      },
+      "indexes": [
+        {
+          "name": "provider_per_org",
+          "keys": [
+            [
+              "org_id",
+              1
+            ],
+            [
+              "provider",
+              1
+            ]
+          ],
+          "unique": true
+        }
+      ]
+    },
+    "oauth_states": {
+      "description": "Consent round-trips in flight: who started one, for which definition, with which PKCE verifier. Keyed by the hash of the state token; spent on first use; swept after expiry.",
+      "validator": {
+        "$jsonSchema": {
+          "bsonType": "object",
+          "required": [
+            "org_id",
+            "user_id",
+            "definition_ref",
+            "expires_at"
+          ],
+          "properties": {
+            "_id": {
+              "bsonType": "string"
+            },
+            "org_id": {
+              "bsonType": "string"
+            },
+            "user_id": {
+              "bsonType": "string"
+            },
+            "definition_ref": {
+              "bsonType": "string"
+            },
+            "provider": {
+              "bsonType": "string"
+            },
+            "expires_at": {
+              "bsonType": "date"
+            }
+          }
+        }
+      },
+      "indexes": [
+        {
+          "name": "expires_at_ttl",
+          "keys": [
+            [
+              "expires_at",
+              1
+            ]
+          ],
+          "expireAfterSeconds": 0
+        }
+      ]
+    },
+    "agent_samples": {
+      "description": "Which record and file ids one person's load of an agent's sample data minted, so removal takes back exactly those. One row per (organization, agent, person).",
+      "validator": {
+        "$jsonSchema": {
+          "bsonType": "object",
+          "required": [
+            "org_id",
+            "agent_ref",
+            "user_id",
+            "loaded_at"
+          ],
+          "properties": {
+            "_id": {
+              "bsonType": "string"
+            },
+            "org_id": {
+              "bsonType": "string"
+            },
+            "agent_ref": {
+              "bsonType": "string"
+            },
+            "user_id": {
+              "bsonType": "string"
+            },
+            "record_refs": {
+              "bsonType": "array"
+            },
+            "file_refs": {
+              "bsonType": "array"
+            },
+            "loaded_at": {
+              "bsonType": "date"
+            }
+          }
+        }
+      },
+      "indexes": [
+        {
+          "name": "org_agent_user_unique",
+          "keys": [
+            [
+              "org_id",
+              1
+            ],
+            [
+              "agent_ref",
+              1
+            ],
+            [
+              "user_id",
+              1
+            ]
+          ],
+          "unique": true
+        }
+      ]
+    },
+    "push_subscriptions": {
+      "description": "A person's web push subscriptions, one per browser that asked to be told when a chat needs them. The keys are the browser's; nothing here is secret to the platform.",
+      "validator": {
+        "$jsonSchema": {
+          "bsonType": "object",
+          "required": [
+            "org_id",
+            "user_id",
+            "endpoint",
+            "keys"
+          ],
+          "properties": {
+            "_id": {
+              "bsonType": "string"
+            },
+            "org_id": {
+              "bsonType": "string"
+            },
+            "user_id": {
+              "bsonType": "string"
+            },
+            "endpoint": {
+              "bsonType": "string"
+            },
+            "keys": {
+              "bsonType": "object"
+            },
+            "user_agent": {
+              "bsonType": "string"
+            }
+          }
+        }
+      },
+      "indexes": [
+        {
+          "name": "person",
+          "keys": [
+            [
+              "org_id",
+              1
+            ],
+            [
+              "user_id",
+              1
+            ]
+          ]
+        },
+        {
+          "name": "endpoint",
+          "keys": [
+            [
+              "endpoint",
+              1
+            ]
+          ],
+          "unique": true
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,34 @@
+:host {
+  display: block;
+  height: 100%;
+}
+
+.page_content {
+  position: relative;
+  height: 100%;
+  overflow-y: auto;
+  background: var(--bg);
+}
+
+.route-progress {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.content {
+  padding: 16px 22px 40px;
+  animation: md-fade 0.28s ease;
+}
+
+@media (max-width: 900px) {
+  .content {
+    padding: 20px 16px 40px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .content {
+    animation: none;
+  }
+}

@@ -1,0 +1,248 @@
+<div class="auth-shell">
+  <div class="auth-card">
+    <img
+      class="auth-logo auth-logo--light"
+      src="assets/brand/logos/decentai-lockup-horizontal.svg"
+      alt="DecentAI"
+    />
+    <img
+      class="auth-logo auth-logo--dark"
+      src="assets/brand/logos/decentai-lockup-horizontal-dark.svg"
+      alt="DecentAI"
+    />
+
+    <header class="auth-head">
+      <h1 class="auth-title">{{ title }}</h1>
+      <p class="auth-subtitle">{{ subtitle }}</p>
+    </header>
+
+    <!-- ── Accept an invitation ───────────────────────────────────── -->
+    <ng-container *ngIf="mode === 'invitation'">
+      <p class="auth-checking" *ngIf="checkingInvite">
+        One moment — checking your invitation.
+      </p>
+
+      <form
+        *ngIf="!checkingInvite && inviteValid"
+        class="auth-form"
+        (ngSubmit)="acceptInvitation()"
+      >
+        <!-- The address is fixed by the invitation, not chosen here. -->
+        <input
+          class="visually-hidden"
+          type="email"
+          name="email"
+          autocomplete="username"
+          [value]="email"
+          readonly
+          tabindex="-1"
+          aria-hidden="true"
+        />
+
+        <label class="field">
+          <span class="field__label">Your name</span>
+          <input
+            class="field__input"
+            type="text"
+            name="name"
+            autocomplete="name"
+            placeholder="Ada Lovelace"
+            [(ngModel)]="name"
+            [disabled]="busy"
+            autofocus
+          />
+        </label>
+
+        <label class="field">
+          <span class="field__label">Choose a password</span>
+          <input
+            class="field__input"
+            type="password"
+            name="password"
+            autocomplete="new-password"
+            placeholder="At least 10 characters"
+            [(ngModel)]="password"
+            [disabled]="busy"
+          />
+          <span class="field__hint">
+            At least 10 characters, with a letter and a number.
+          </span>
+        </label>
+
+        <button class="btn btn--primary" type="submit" [disabled]="busy">
+          {{ busy ? "Joining…" : "Join " + orgName }}
+        </button>
+      </form>
+
+      <button
+        *ngIf="!checkingInvite && !inviteValid"
+        class="btn btn--primary"
+        type="button"
+        (click)="dismissInvitation()"
+      >
+        Go to sign in
+      </button>
+    </ng-container>
+
+    <!-- ── Sign in ────────────────────────────────────────────────── -->
+    <ng-container *ngIf="mode === 'login'">
+      <form class="auth-form" (ngSubmit)="signIn()">
+        <label class="field">
+          <span class="field__label">Email</span>
+          <input
+            class="field__input"
+            type="email"
+            name="email"
+            autocomplete="username"
+            placeholder="you@company.com"
+            [(ngModel)]="email"
+            [disabled]="busy"
+            autofocus
+          />
+        </label>
+
+        <label class="field">
+          <span class="field__label">Password</span>
+          <input
+            class="field__input"
+            type="password"
+            name="password"
+            autocomplete="current-password"
+            placeholder="••••••••••"
+            [(ngModel)]="password"
+            [disabled]="busy"
+          />
+        </label>
+
+        <button class="btn btn--primary" type="submit" [disabled]="busy">
+          {{ busy ? "Signing in…" : "Sign in" }}
+        </button>
+
+        <button class="btn btn--ghost" type="button" (click)="startForgot()">
+          Forgot your password?
+        </button>
+      </form>
+    </ng-container>
+
+    <!-- ── Ask for a reset link ───────────────────────────────────── -->
+    <ng-container *ngIf="mode === 'forgot'">
+      <form
+        *ngIf="!forgotMessage"
+        class="auth-form"
+        (ngSubmit)="requestReset()"
+      >
+        <label class="field">
+          <span class="field__label">Email</span>
+          <input
+            class="field__input"
+            type="email"
+            name="email"
+            autocomplete="username"
+            placeholder="you@company.com"
+            [(ngModel)]="email"
+            [disabled]="busy"
+            autofocus
+          />
+        </label>
+
+        <button class="btn btn--primary" type="submit" [disabled]="busy">
+          {{ busy ? "Sending…" : "Email me a link" }}
+        </button>
+
+        <button class="btn btn--ghost" type="button" (click)="backToLogin()">
+          Back to sign in
+        </button>
+      </form>
+
+      <!-- The answer is the subtitle: a link on its way, or how this
+           install resets a password when it sends no email. -->
+      <div class="auth-form" *ngIf="forgotMessage">
+        <button class="btn btn--primary" type="button" (click)="backToLogin()">
+          Back to sign in
+        </button>
+      </div>
+    </ng-container>
+
+    <!-- ── Set a new password from a link ─────────────────────────── -->
+    <ng-container *ngIf="mode === 'reset'">
+      <p class="auth-checking" *ngIf="checkingReset">
+        One moment — checking your link.
+      </p>
+
+      <form
+        *ngIf="!checkingReset && resetValid"
+        class="auth-form"
+        (ngSubmit)="setNewPassword()"
+      >
+        <input
+          class="visually-hidden"
+          type="email"
+          name="email"
+          autocomplete="username"
+          [value]="email"
+          readonly
+          tabindex="-1"
+          aria-hidden="true"
+        />
+
+        <label class="field">
+          <span class="field__label">New password</span>
+          <input
+            class="field__input"
+            type="password"
+            name="password"
+            autocomplete="new-password"
+            placeholder="At least 10 characters"
+            [(ngModel)]="password"
+            [disabled]="busy"
+            autofocus
+          />
+          <span class="field__hint">
+            At least 10 characters, with a letter and a number. This signs you
+            out everywhere else.
+          </span>
+        </label>
+
+        <button class="btn btn--primary" type="submit" [disabled]="busy">
+          {{ busy ? "Saving…" : "Set password and sign in" }}
+        </button>
+      </form>
+
+      <button
+        *ngIf="!checkingReset && !resetValid"
+        class="btn btn--primary"
+        type="button"
+        (click)="backToLogin()"
+      >
+        Back to sign in
+      </button>
+    </ng-container>
+
+    <p class="auth-error" *ngIf="error" role="alert">
+      <lucide-icon
+        name="circle-alert"
+        [size]="15"
+        [strokeWidth]="1.75"
+      ></lucide-icon>
+      <span>{{ error }}</span>
+    </p>
+
+    <footer class="auth-foot">
+      <ng-container *ngIf="mode === 'invitation' && inviteValid">
+        Not you?
+        <button type="button" class="link" (click)="dismissInvitation()">
+          Sign in instead
+        </button>
+      </ng-container>
+      <ng-container *ngIf="mode === 'login'">
+        No account? Ask an administrator for an invitation.
+      </ng-container>
+      <ng-container *ngIf="mode === 'reset' && resetValid">
+        Remembered it?
+        <button type="button" class="link" (click)="backToLogin()">
+          Sign in instead
+        </button>
+      </ng-container>
+    </footer>
+  </div>
+</div>

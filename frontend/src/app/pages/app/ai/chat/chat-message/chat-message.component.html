@@ -1,0 +1,189 @@
+<div
+  class="message-wrapper"
+  [ngClass]="{ 'user-msg': isUser(), 'ai-msg': isAI() }"
+>
+  <!-- USER MESSAGE -->
+  @if (isUser()) {
+    <div class="message-bubble user-bubble">
+      <button
+        class="user-copy-btn"
+        (click)="copyToClipboard(getFullText(), 'user')"
+        [class.copied]="copiedPart === 'user'"
+      >
+        <lucide-icon [name]="copiedPart === 'user' ? 'check' : 'copy'" [size]="16"></lucide-icon>
+      </button>
+
+      <div class="message-content user-content">
+        @for (part of message.parts; track $index) {
+          @if (part.type === 'markdown') {
+            <div class="markdown-block">
+              <markdown [data]="part.text"></markdown>
+            </div>
+          }
+          @if (isDownloadableFile(part)) {
+            <!-- A picture is shown, not described. The download route
+                 serves it under the session, so the stored ref is all
+                 the src needs; the card below still names it and still
+                 offers the same two actions. -->
+            @if (isImageFile(part)) {
+              <button type="button" class="image-card"
+                      (click)="$event.stopPropagation(); openFileUrl(part)"
+                      [attr.aria-label]="'Open ' + (part.filename || 'image')">
+                <img [src]="getFileUrl(part)" class="chat-image"
+                     [alt]="part.filename || 'Attached image'" />
+              </button>
+            }
+            <div class="file-card">
+              <div class="file-icon-wrap">
+                <lucide-icon [name]="getFileIcon(part)" [size]="22"></lucide-icon>
+              </div>
+              <div class="file-details">
+                <div class="file-name">{{ part.filename || 'File' }}</div>
+                <div class="file-ext">{{ getFileExt(part) }}</div>
+              </div>
+              <div class="file-actions">
+                <button class="file-action-btn" (click)="$event.stopPropagation(); openFileUrl(part)" matTooltip="Open">
+                  <lucide-icon name="external-link" [size]="18"></lucide-icon>
+                </button>
+                <button class="file-action-btn" (click)="$event.stopPropagation(); downloadFile(part)" matTooltip="Download">
+                  <lucide-icon name="download" [size]="18"></lucide-icon>
+                </button>
+              </div>
+            </div>
+          }
+        }
+      </div>
+    </div>
+    @if (timeLabel) {
+      <div class="msg-time user-time">{{ timeLabel }}</div>
+    }
+  }
+
+  <!-- AI MESSAGE -->
+  @if (isAI()) {
+    <div class="ai-message-container" [class.ai-message-container--continued]="continuation">
+      <div class="ai-identity" [class.ai-identity--continued]="continuation">
+        @if (!continuation) {
+          <span class="ai-avatar"><lucide-icon name="bot" [size]="14"></lucide-icon></span>
+          <span class="ai-name">Assistant</span>
+          @if (timeLabel) {
+            <span class="msg-time">{{ timeLabel }}</span>
+          }
+        }
+
+        @if (!continuation && message?.parts?.length) {
+        <div class="ai-header-actions">
+          <button
+            class="ai-action-btn"
+            type="button"
+            (click)="copyToClipboard(copyText ?? getFullText(), 'ai')"
+            [class.copied]="copiedPart === 'ai'"
+            matTooltip="Copy response"
+            aria-label="Copy response"
+          >
+            <lucide-icon [name]="copiedPart === 'ai' ? 'check' : 'copy'" [size]="16"></lucide-icon>
+          </button>
+        </div>
+        }
+      </div>
+      <div class="ai-content" [class.long-content-collapsed]="isLongResponse && !contentExpanded">
+        @for (part of renderParts; track $index; let i = $index) {
+          @if (part.type === 'markdown') {
+            <div class="ai-markdown"><markdown [data]="part.text"></markdown></div>
+          }
+          @if (part.type === 'graph') {
+            @if (part.loading) { <div class="rich-part-state"><mat-spinner diameter="18"></mat-spinner>Loading chart…</div> }
+            @else if (part.data?.chartData) { <app-chart-viewer
+              [data]="part.data?.chartData"
+              [title]="part.text"
+              [chartType]="part.data?.chartType"
+            ></app-chart-viewer> } @else {
+              <div class="rich-part-state"><lucide-icon name="chart-column" [size]="15"></lucide-icon>{{ part.hydrationError || 'This chart contains no displayable data.' }}</div>
+            }
+          }
+          @if (part.type === 'table') {
+            @if (part.loading) { <div class="rich-part-state"><mat-spinner diameter="18"></mat-spinner>Loading table…</div> }
+            @else if (part.data?.rows?.length) { <div class="structured-table-wrap"><app-informative-table
+              [title]="part.text || 'Generated Table'"
+              [data]="part.data?.rows || []"
+              [cols]="part.data?.columns || []"
+            ></app-informative-table></div> } @else {
+              <div class="rich-part-state"><lucide-icon name="table" [size]="15"></lucide-icon>{{ part.hydrationError || 'This table is empty.' }}</div>
+            }
+          }
+          @if (isDownloadableFile(part)) {
+            <div class="file-card">
+              <div class="file-icon-wrap">
+                <lucide-icon [name]="getFileIcon(part)" [size]="22"></lucide-icon>
+              </div>
+              <div class="file-details">
+                <div class="file-name">{{ part.filename || 'File' }}</div>
+                <div class="file-ext">{{ getFileExt(part) }}</div>
+              </div>
+              <div class="file-actions">
+                <button class="file-action-btn" (click)="$event.stopPropagation(); openFileUrl(part)" matTooltip="Open">
+                  <lucide-icon name="external-link" [size]="18"></lucide-icon>
+                </button>
+                <button class="file-action-btn" (click)="$event.stopPropagation(); downloadFile(part)" matTooltip="Download">
+                  <lucide-icon name="download" [size]="18"></lucide-icon>
+                </button>
+              </div>
+            </div>
+          }
+          @if (isFilePart(part) && !isDownloadableFile(part)) {
+            <div class="file-card file-card--unavailable">
+              <lucide-icon name="file-text" [size]="15"></lucide-icon>
+              <div class="file-details"><div class="file-name">{{ part.filename || 'File' }}</div>
+                <div class="file-ext">Unavailable</div></div>
+            </div>
+          }
+          @if (part.type === 'files') {
+            <div class="file-strip">
+              <div class="file-strip__head">
+                <lucide-icon name="paperclip" [size]="15"></lucide-icon>
+                <span>{{ filesLabel(part) }}</span>
+              </div>
+              <div class="file-strip__list">
+                @for (file of part.files; track $index) {
+                  <div class="file-row">
+                    <lucide-icon [name]="getFileIcon(file)" [size]="16"></lucide-icon>
+                    <span class="file-row__name" [title]="file.filename || 'File'">{{ file.filename || 'File' }}</span>
+                    <span class="file-row__ext">{{ getFileExt(file) }}</span>
+                    @if (isDownloadableFile(file)) {
+                      <button class="file-action-btn" (click)="$event.stopPropagation(); openFileUrl(file)" matTooltip="Open">
+                        <lucide-icon name="external-link" [size]="16"></lucide-icon>
+                      </button>
+                      <button class="file-action-btn" (click)="$event.stopPropagation(); downloadFile(file)" matTooltip="Download">
+                        <lucide-icon name="download" [size]="16"></lucide-icon>
+                      </button>
+                    } @else {
+                      <span class="file-row__ext">Unavailable</span>
+                    }
+                  </div>
+                }
+              </div>
+            </div>
+          }
+          @if (partSource(part); as from) {
+            <div class="part-source">from {{ from }}</div>
+          }
+        }
+      </div>
+
+      @if (isLongResponse) {
+        <button type="button" class="long-content-toggle" (click)="toggleContent()">
+          <lucide-icon [name]="contentExpanded ? 'chevron-up' : 'chevron-down'" [size]="16"></lucide-icon>
+          {{ contentExpanded ? 'Show less' : 'Show full response' }}
+        </button>
+      }
+
+      @if (fileError) {
+        <div class="file-inline-error" role="alert">
+          <span>{{ fileError }}</span>
+          <button type="button" (click)="fileError = ''" aria-label="Dismiss file error"><lucide-icon name="x" [size]="16"></lucide-icon></button>
+        </div>
+      }
+
+    </div>
+  }
+</div>

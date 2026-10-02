@@ -1,0 +1,97 @@
+<div class="fn-intro">
+  <p class="block-hint">
+    Everything this agent can be asked to do, and the level of each. A
+    function runs without asking when its level is at or below the chat's
+    trust level, and asks first when it is above. What a person may
+    actually <em>call</em> is a separate decision, made under Access.
+  </p>
+  <div class="fn-tally" *ngIf="summary.length">
+    <span class="tally-total"><strong>{{ total }}</strong> function{{ total === 1 ? "" : "s" }}</span>
+    <span class="lvl" *ngFor="let level of summary" [attr.data-level]="level.name">
+      <span class="lvl-dot"></span>{{ level.count }} {{ level.name }}
+    </span>
+  </div>
+</div>
+
+<!-- The legend covers only the levels this agent actually reaches; four
+     rows to explain two is noise. -->
+<div class="fn-legend" *ngIf="usedLevels.length">
+  <div class="legend-row" *ngFor="let level of usedLevels">
+    <span class="lvl" [attr.data-level]="level"><span class="lvl-dot"></span>{{ level }}</span>
+    <span class="legend-text">{{ meanings[level] }}</span>
+  </div>
+</div>
+
+<div class="data-loading" *ngIf="loading">
+  <span class="ui-spinner" role="status" aria-label="Loading"></span>
+  <span>Reading the approved manifest…</span>
+</div>
+
+<section class="tool-group" *ngFor="let tool of tools">
+  <header class="tool-head">
+    <span class="tool-mark"><lucide-icon name="square-terminal" [size]="15"></lucide-icon></span>
+    <div class="tool-identity">
+      <strong>{{ tool.name }}</strong>
+      <small *ngIf="tool.description">{{ tool.description }}</small>
+    </div>
+    <span class="tool-count">
+      {{ tool.functions.length }} function{{ tool.functions.length === 1 ? "" : "s" }}
+    </span>
+  </header>
+
+  <div class="fn-list">
+    <article class="fn-card" *ngFor="let fn of tool.functions"
+             [attr.data-level]="fn.level !== null ? levelLabel(fn.level) : null">
+      <div class="fn-card-head">
+        <code class="fn-name">{{ fn.qualified }}</code>
+        <span class="lvl" *ngIf="fn.level !== null" [attr.data-level]="levelLabel(fn.level)">
+          <span class="lvl-dot"></span>{{ levelLabel(fn.level) }}
+        </span>
+        <span class="fn-timeout" *ngIf="fn.timeout" [title]="'Given ' + fn.timeout + ' seconds to finish'">
+          <lucide-icon name="clock" [size]="12"></lucide-icon>{{ fn.timeout }}s
+        </span>
+      </div>
+
+      <p class="fn-about" *ngIf="fn.description">{{ fn.description }}</p>
+
+      <dl class="fn-meta" *ngIf="fn.params.length || fn.touches.length || fn.scopes.length">
+        <div class="meta-row" *ngIf="fn.params.length">
+          <dt>Takes</dt>
+          <dd class="params">
+            <code *ngFor="let param of fn.params" [class.required]="param.required"
+                  [title]="param.required ? 'Required' : 'Optional'">
+              {{ param.name }}<em>{{ param.type }}</em>
+            </code>
+          </dd>
+        </div>
+
+        <div class="meta-row" *ngIf="fn.touches.length">
+          <dt>Touches</dt>
+          <dd><code *ngFor="let touch of fn.touches">{{ touch }}</code></dd>
+        </div>
+
+        <!-- The other half of a grant's limits: a grant narrows a scope to
+             particular values, and this says which input carries the value
+             it is narrowed on. -->
+        <div class="meta-row scoped" *ngIf="fn.scopes.length">
+          <dt>Scoped by</dt>
+          <dd>
+            <span class="scope-pair" *ngFor="let scope of fn.scopes">
+              <code class="scope-name">{{ scope.name }}</code>
+              <span class="scope-from" *ngIf="scope.from">from <code>{{ scope.from }}</code></span>
+            </span>
+          </dd>
+        </div>
+      </dl>
+    </article>
+  </div>
+</section>
+
+<p class="muted" *ngIf="!loading && !tools.length">
+  This agent declares no functions.
+</p>
+
+<p class="fn-footnote" *ngIf="detailed && total">
+  Read from the manifest this organization approved — not from whatever the
+  repository holds now.
+</p>

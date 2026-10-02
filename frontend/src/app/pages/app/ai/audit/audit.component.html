@@ -1,0 +1,88 @@
+<!-- A tab of the Settings page: the page owns the header. -->
+<div class="data-page">
+  <nav class="settings-tabs" role="tablist" aria-label="Audit views" *ngIf="canSeeOrg">
+    <button class="settings-tab" type="button" role="tab"
+            [class.on]="tab === 'mine'" [attr.aria-selected]="tab === 'mine'"
+            (click)="selectTab('mine')">
+      <lucide-icon name="user" [size]="15"></lucide-icon>
+      Mine
+    </button>
+    <button class="settings-tab" type="button" role="tab"
+            [class.on]="tab === 'org'" [attr.aria-selected]="tab === 'org'"
+            (click)="selectTab('org')">
+      <lucide-icon name="building-2" [size]="15"></lucide-icon>
+      Organization
+    </button>
+  </nav>
+
+  <div class="data-alert error" *ngIf="error">{{ error }}</div>
+
+  <section class="panel">
+    <form class="audit-filters" (ngSubmit)="reload()">
+      <label class="search-field">
+        <lucide-icon name="search" [size]="15"></lucide-icon>
+        <input type="search" [(ngModel)]="text" name="text"
+               placeholder="Action, agent, endpoint, or person…" aria-label="Search the trail" />
+      </label>
+      <select class="txt sel" [(ngModel)]="type" name="type" aria-label="Kind of event">
+        <option *ngFor="let kind of types" [value]="kind.value">{{ kind.label }}</option>
+      </select>
+      <label class="date-field">
+        <span>From</span>
+        <input type="date" class="txt" [(ngModel)]="since" name="since" aria-label="From date" />
+      </label>
+      <label class="date-field">
+        <span>To</span>
+        <input type="date" class="txt" [(ngModel)]="until" name="until" aria-label="To date" />
+      </label>
+      <button class="btn primary" type="submit" [disabled]="loading">Apply</button>
+      <button class="btn ghost" type="button" *ngIf="filtered" (click)="clearFilters()" [disabled]="loading">Clear</button>
+    </form>
+
+    <div class="data-loading" *ngIf="loading">
+      <span class="ui-spinner" role="status" aria-label="Loading"></span>
+      <span>Reading the record…</span>
+    </div>
+
+    <div class="empty-state" *ngIf="!loading && !events.length">
+      <span class="empty-mark"><lucide-icon name="scroll-text" [size]="22"></lucide-icon></span>
+      <strong>{{ filtered ? "Nothing matches those filters" : "Nothing recorded yet" }}</strong>
+      <p>{{ filtered ? "Widen the dates or clear the search." : "Platform changes and agent activity appear here as they happen." }}</p>
+    </div>
+
+    <ul class="audit-rows" *ngIf="!loading && events.length">
+      <li class="audit-row" *ngFor="let event of events" [class.open]="isOpen(event)">
+        <button class="audit-head" type="button" (click)="toggle(event)"
+                [attr.aria-expanded]="isOpen(event)" [disabled]="!hasDetails(event)">
+          <span class="audit-when">{{ when(event.timestamp) }}</span>
+          <span class="audit-chip" [ngClass]="'tone-' + tone(event)">{{ event.event_type === 'execution' ? (event.details?.status || 'ran') : 'record' }}</span>
+          <span class="audit-main">
+            <span class="audit-label">{{ label(event) }}</span>
+            <span class="audit-summary">{{ summary(event) }}</span>
+          </span>
+          <span class="audit-who" *ngIf="tab === 'org' && event.actor">{{ event.actor }}</span>
+          <a class="audit-chat" *ngIf="event.chat_id" [routerLink]="['/ai/chats', event.chat_id]"
+             (click)="$event.stopPropagation()" title="Open the chat">
+            <lucide-icon name="message-square-text" [size]="14"></lucide-icon>
+          </a>
+          <lucide-icon class="audit-caret" *ngIf="hasDetails(event)"
+                       [name]="isOpen(event) ? 'chevron-up' : 'chevron-down'" [size]="16"></lucide-icon>
+        </button>
+        <div class="audit-body" *ngIf="isOpen(event)">
+          <div class="audit-refs" *ngIf="event.resource_refs?.length">
+            <span class="audit-key">References</span>
+            <code *ngFor="let ref of event.resource_refs">{{ ref }}</code>
+          </div>
+          <pre class="audit-json">{{ details(event) }}</pre>
+          <span class="audit-id">{{ event.event_id }}</span>
+        </div>
+      </li>
+    </ul>
+
+    <div class="audit-more" *ngIf="!loading && nextBefore">
+      <button class="btn" type="button" (click)="loadMore()" [disabled]="loadingMore">
+        {{ loadingMore ? "Loading…" : "Load older" }}
+      </button>
+    </div>
+  </section>
+</div>

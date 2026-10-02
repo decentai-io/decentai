@@ -1,0 +1,164 @@
+<div class="review-page">
+  <button class="back-link" type="button" (click)="close.emit()" [disabled]="busy">
+    <lucide-icon name="arrow-left" [size]="14"></lucide-icon>
+    Back to agents
+  </button>
+
+  <!-- ── Who this is ─────────────────────────────────────────────── -->
+  <header class="review-hero">
+    <span class="review-mark"><lucide-icon name="bot" [size]="22"></lucide-icon></span>
+    <div class="review-title">
+      <h1>
+        {{ name }}
+        <span class="review-pill" *ngIf="version">v{{ version }}</span>
+        <span class="review-pill installed" *ngIf="installed">
+          <lucide-icon name="circle-check" [size]="11"></lucide-icon>
+          Installed
+        </span>
+        <span class="review-pill update" *ngIf="isUpdate && !installed">
+          replaces v{{ entry.installed_version }}
+        </span>
+      </h1>
+      <p class="review-source">
+        <lucide-icon name="store" [size]="12"></lucide-icon>
+        From {{ source.name }}
+      </p>
+      <p class="review-description" *ngIf="manifest.agent?.description">
+        {{ manifest.agent.description }}
+      </p>
+      <div class="review-stats">
+        <span class="stat">
+          <strong>{{ functions.length }}</strong>
+          function{{ functions.length === 1 ? "" : "s" }}
+        </span>
+        <span class="stat-divider" *ngIf="tally.length"></span>
+        <span class="lvl" *ngFor="let level of tally" [attr.data-level]="level.name">
+          <span class="lvl-dot"></span>{{ level.count }} {{ permissionLabel(level.name) }}
+        </span>
+        <span class="stat-divider" *ngIf="secretSlots.length"></span>
+        <span class="stat" *ngIf="secretSlots.length">
+          <lucide-icon name="key-round" [size]="12"></lucide-icon>
+          <strong>{{ secretSlots.length }}</strong>
+          credential{{ secretSlots.length === 1 ? "" : "s" }}
+        </span>
+        <span class="stat-divider" *ngIf="dependencies.length"></span>
+        <span class="stat" *ngIf="dependencies.length">
+          <lucide-icon name="package" [size]="12"></lucide-icon>
+          <strong>{{ dependencies.length }}</strong>
+          package{{ dependencies.length === 1 ? "" : "s" }}
+        </span>
+      </div>
+    </div>
+  </header>
+
+  <div class="data-loading" *ngIf="loading">
+    <span class="ui-spinner" role="status" aria-label="Loading"></span>
+    <span>Reading what you approved before…</span>
+  </div>
+
+  <div class="review-grid">
+    <!-- What changed comes first on an update: it is the only part a
+         returning administrator has not already read. -->
+    <section class="review-card changes" *ngIf="changes.length && !installed">
+      <h3><lucide-icon name="triangle-alert" [size]="14"></lucide-icon> What this update changes</h3>
+      <ul>
+        <li *ngFor="let line of changes">{{ line }}</li>
+      </ul>
+    </section>
+
+    <section class="review-card span-2 requirements-card"
+             *ngIf="secretSlots.length || keptResources.length || dependencies.length">
+      <h3>What it needs</h3>
+      <div class="requirement-list">
+        <div class="requirement" *ngIf="secretSlots.length">
+          <span class="requirement-icon"><lucide-icon name="key-round" [size]="16"></lucide-icon></span>
+          <span><strong>{{ secretSlots.length }} credential{{ secretSlots.length === 1 ? '' : 's' }}</strong><small>Connected after installation</small></span>
+        </div>
+        <div class="requirement" *ngIf="keptResources.length">
+          <span class="requirement-icon"><lucide-icon name="database" [size]="16"></lucide-icon></span>
+          <span><strong>Private agent storage</strong><small>Data isolated to this agent</small></span>
+        </div>
+        <div class="requirement" *ngIf="dependencies.length">
+          <span class="requirement-icon"><lucide-icon name="package" [size]="16"></lucide-icon></span>
+          <span><strong>{{ dependencies.length }} runtime package{{ dependencies.length === 1 ? '' : 's' }}</strong><small>Installed with the agent</small></span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Always here, a manifest that says nothing included: where an
+         agent connects is part of what approving agrees to. -->
+    <section class="review-card span-2 network-card">
+      <div class="section-heading">
+        <div><h2>Where it connects</h2><p>{{ networkNote }}</p></div>
+      </div>
+      <div class="host-chips">
+        <code class="is-wide" *ngIf="network.any">any website</code>
+        <code class="is-none"
+              *ngIf="!network.any && !network.proposed && !network.hosts.length && !network.from_secrets.length">nothing</code>
+        <code *ngFor="let host of network.hosts">{{ host }}</code>
+        <code class="is-credential" *ngFor="let field of network.from_secrets">
+          <lucide-icon name="key-round" [size]="11"></lucide-icon>
+          {{ credentialHost(field) }}
+        </code>
+        <code class="is-credential" *ngIf="network.proposed && !network.any">
+          <lucide-icon name="file-code" [size]="11"></lucide-icon>
+          what you allow on a code card, each run
+        </code>
+      </div>
+    </section>
+
+    <section class="review-card span-2 permission-card" *ngIf="tally.length">
+      <div class="section-heading">
+        <div><h2>What approval allows</h2><p>A level says what a function does. It runs without asking when its level is at or below the chat's trust level, and asks first when it is above.</p></div>
+      </div>
+      <div class="permission-grid">
+        <article class="permission-explainer" *ngFor="let level of tally"
+                 [attr.data-level]="level.name">
+          <span class="lvl"><span class="lvl-dot"></span>{{ level.count }} {{ permissionLabel(level.name) }}</span>
+          <strong>{{ permissionMeaning[level.name].title }}</strong>
+          <p>{{ permissionMeaning[level.name].description }}</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="review-card span-2 capabilities-card" *ngIf="toolGroups.length">
+      <div class="section-heading">
+        <div><h2>Capabilities</h2><p>{{ functions.length }} functions grouped by what they help the agent do.</p></div>
+      </div>
+      <details class="capability-group" *ngFor="let group of toolGroups; first as isFirst" [open]="isFirst">
+        <summary>
+          <span><em>Tool</em><strong>{{ toolName(group.tool) }}</strong><small>{{ group.description || 'Functions provided by this tool.' }}</small></span>
+          <span class="count">{{ group.functions.length }}</span>
+        </summary>
+        <div class="capability-list">
+          <article class="capability" *ngFor="let fn of group.functions">
+            <div class="capability-name">
+              <strong>{{ fn.name }}</strong>
+              <span class="lvl" *ngIf="fn.level !== null" [attr.data-level]="levelLabel(fn.level)">
+                <span class="lvl-dot"></span>{{ permissionLabel(levelLabel(fn.level)) }}
+              </span>
+            </div>
+            <p *ngIf="fn.description">{{ fn.description }}</p>
+          </article>
+        </div>
+      </details>
+    </section>
+
+
+    <section class="review-card errors span-2" *ngIf="entry.errors?.length">
+      <h3>Why this cannot be installed</h3>
+      <div class="agent-error" *ngFor="let message of entry.errors">{{ message }}</div>
+    </section>
+  </div>
+
+  <footer class="review-actions">
+    <button class="btn ghost" type="button" (click)="close.emit()" [disabled]="busy">
+      {{ installed ? "Back" : "Cancel" }}
+    </button>
+    <button class="btn primary" type="button" *ngIf="!installed"
+            (click)="approve.emit()"
+            [disabled]="busy || loading || !!entry.errors?.length">
+      {{ busy ? "Installing…" : isUpdate ? "Approve update" : "Approve and install" }}
+    </button>
+  </footer>
+</div>

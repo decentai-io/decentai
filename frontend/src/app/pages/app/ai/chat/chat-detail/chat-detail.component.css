@@ -1,0 +1,450 @@
+/* chat-detail.component.css */
+
+/* The route content wrapper (.content in app-content) only has padding and no
+   bounded height, so height:100% collapses. Anchor the chat to .page_content
+   (position: relative) instead, giving a fixed-height 3-row shell: header /
+   messages (scroll) / composer (always visible). */
+:host {
+  position: absolute;
+  inset: 0;
+  display: block;
+}
+
+.chat-shell {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--card);
+}
+
+/* ── Header ─────────────────────────────────────────────────────────── */
+.chat-header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 52px;
+  padding: 0 18px;
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+  z-index: 2;
+}
+
+.chat-header__lead {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+}
+.chat-list-link { display:inline-flex; align-items:center; gap:7px; height:32px; padding:0 9px; border-radius:var(--radius-lg); color:var(--muted-foreground); font-size:12.5px; font-weight:600; text-decoration:none; }
+.chat-list-link:hover { color:var(--foreground); background:var(--secondary); }
+.chat-header__divider { width:1px; height:20px; flex:none; background:var(--border); }
+
+.chat-header__title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--foreground);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  cursor: text;
+}
+
+/* Inline rename: same type as the title, plus an editing affordance. */
+.chat-header__title-input {
+  flex: 1;
+  min-width: 0;
+  max-width: 420px;
+  margin: 0;
+  padding: 3px 8px;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  font-family: inherit;
+  color: var(--foreground);
+  background: var(--card);
+  border: 1px solid var(--primary);
+  border-radius: var(--ui-radius-sm);
+  outline: none;
+}
+
+/* Socket status pill */
+.chat-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 8px;
+  font-family: inherit;
+  border-radius: var(--ui-radius-pill);
+  color: var(--warning);
+  background: var(--warning-bg);
+  border: 1px solid color-mix(in srgb, var(--warning) 24%, transparent);
+  flex-shrink: 0;
+  transition: color 0.2s ease, background 0.2s ease, border-color 0.2s ease;
+}
+
+.chat-status__label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.chat-status.is-clickable {
+  cursor: pointer;
+}
+
+.chat-status.is-clickable:hover {
+  background: color-mix(in srgb, var(--warning) 18%, var(--warning-bg));
+}
+
+.chat-status__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--warning);
+  flex-shrink: 0;
+  animation: chat-status-pulse 1.3s ease-in-out infinite;
+}
+
+.chat-status.is-live {
+  color: var(--chat-accent-strong);
+  background: var(--accent);
+  border-color: color-mix(in srgb, var(--primary) 22%, transparent);
+}
+
+.chat-status.is-live .chat-status__dot {
+  background: var(--primary);
+  box-shadow: var(--chat-focus-ring);
+  animation: none;
+}
+
+@keyframes chat-status-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.chat-header__actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+/* Session trust level selector */
+.chat-trust-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--ui-radius-card);
+  background: transparent;
+  color: var(--muted-foreground);
+  font-size: 0.78rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+  white-space: nowrap;
+}
+
+.chat-trust-btn:hover {
+  background: var(--secondary);
+  color: var(--foreground);
+}
+
+.chat-trust-btn lucide-icon {
+  width: 17px;
+  height: 17px;
+}
+
+/* Pending approval cards: the strip above the composer, in the thread's
+   column, wherever the thread is scrolled. Several cards stack and the
+   strip scrolls before it eats the thread. */
+.chat-screen {
+  flex-shrink: 0;
+  width: min(var(--chat-thread-column, var(--chat-column, 1040px)), calc(100% - 32px));
+  margin: 0 auto 8px;
+}
+
+.chat-approvals {
+  flex-shrink: 0;
+  width: min(var(--chat-thread-column, var(--chat-column, 1040px)), calc(100% - 32px));
+  margin: 0 auto;
+  max-height: 40vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 0 10px;
+}
+
+.chat-icon-btn {
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--ui-radius-card);
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.chat-icon-btn:hover {
+  background: var(--secondary);
+  color: var(--foreground);
+}
+
+.chat-icon-btn lucide-icon {
+  width: 19px;
+  height: 19px;
+}
+
+/* ── Body (messages scroll) ─────────────────────────────────────────── */
+/* Column so the messages container stretches to the FULL width (cross-axis
+   stretch), then centers its own 80% message column. A row here would let the
+   child collapse to its content width. */
+/* The conversation's readable width. The scroll area spans the window;
+   this is what the content inside it lines up to, composer included. */
+:host {
+  --chat-column: 1040px;
+}
+
+.chat-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ── Composer (pinned) ──────────────────────────────────────────────── */
+/* No divider — the composer sits on the page's own surface, like the messages. */
+.chat-composer-bar {
+  flex: 0 0 auto;
+  background: var(--background);
+}
+
+/* Full-width block so the composer's own wrapper (max-width + margin:auto)
+   can center itself; as a flex item it would collapse to the input width. */
+.chat-composer-bar app-chat-composer {
+  display: block;
+  width: 100%;
+}
+
+/* The composer ships with a large vertical margin meant for a scrolling page;
+   tighten it now that the bar is fixed at the bottom. */
+.chat-composer-bar ::ng-deep .composer_wrapper {
+  margin: 0.9rem auto;
+}
+
+.chat-errors {
+  flex: 0 0 auto;
+  display: grid;
+  gap: 6px;
+  padding: 8px 18px 0;
+  background: var(--background);
+}
+
+.chat-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: var(--chat-column);
+  width: 100%;
+  margin: 0 auto;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--destructive) 28%, var(--border));
+  border-radius: var(--ui-radius-card);
+  background: color-mix(in srgb, var(--destructive) 7%, var(--card));
+  color: var(--foreground);
+  font-size: 0.8rem;
+}
+
+.chat-error.is-connection {
+  border-color: color-mix(in srgb, var(--warning) 35%, var(--border));
+  background: var(--warning-bg);
+}
+
+.chat-error > lucide-icon {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  color: var(--destructive);
+}
+
+.chat-error.is-connection > lucide-icon { color: var(--warning); }
+.chat-error > span { flex: 1; }
+
+.chat-error button {
+  border: 0;
+  border-radius: var(--ui-radius-sm);
+  padding: 5px 8px;
+  background: var(--secondary);
+  color: var(--foreground);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.chat-error .chat-error__dismiss {
+  display: inline-flex;
+  padding: 3px;
+  background: transparent;
+  color: var(--muted-foreground);
+}
+
+.chat-error__dismiss lucide-icon {
+  width: 16px;
+  height: 16px;
+}
+
+@media (max-width: 700px) {
+  .chat-header {
+    gap: 6px;
+    height: 48px;
+    padding: 0 10px;
+  }
+
+  .chat-header__lead {
+    gap: 8px;
+  }
+
+  .chat-status {
+    width: 24px;
+    padding: 0;
+  }
+
+  .chat-status__label,
+  .chat-trust-btn span {
+    display: none;
+  }
+
+  .chat-trust-btn {
+    width: 32px;
+    padding: 0;
+    justify-content: center;
+  }
+
+  .chat-approvals {
+    max-height: 48vh;
+    padding: 0 8px;
+  }
+
+  .chat-errors { padding: 6px 8px 0; }
+
+  .chat-composer-bar ::ng-deep .composer_wrapper {
+    margin: 0.55rem auto;
+  }
+}
+
+/* The conversation reads wider than the line you write on. */
+:host { --chat-column:1040px; --chat-thread-column:1200px; }
+.chat-shell,.chat-header { background:var(--background); }
+
+/* Keep navigation explicit and utility controls quiet. */
+.chat-header { min-height:56px; gap:16px; }
+.chat-list-link { flex:none; color:var(--foreground); font-weight:500; }
+.chat-header__lead { gap:10px; }
+.chat-status.is-live { width:20px; min-width:20px; padding:0; background:transparent; border-color:transparent; }
+.chat-status.is-live .chat-status__dot { width:6px; height:6px; box-shadow:none; }
+.chat-trust-btn { width:34px; height:34px; padding:0; justify-content:center; border:0; border-radius:var(--radius-lg); }
+.chat-header__actions { gap:6px; }
+@media(max-width:600px) { .chat-header { padding-inline:10px; gap:8px; } .chat-header__lead { gap:6px; } .chat-header__actions { gap:2px; } }
+
+/* The kill switch's one question, under the header, until answered. */
+.chat-kill-ask {
+  display: flex; align-items: center; justify-content: space-between; gap: 14px;
+  margin: 8px 0 0; padding: 10px 14px;
+  border: 1px solid color-mix(in srgb, var(--destructive) 35%, transparent);
+  border-radius: var(--radius-lg); background: color-mix(in srgb, var(--destructive) 7%, var(--surface));
+  color: var(--foreground); font-size: 13px; line-height: 1.45;
+}
+.chat-kill-actions { display: flex; gap: 8px; flex: none; }
+.chat-kill-btn { color: var(--destructive-strong, #c33); }
+.chat-kill-btn:hover:not(:disabled) { background: color-mix(in srgb, var(--destructive) 10%, transparent); }
+@media (max-width: 680px) {
+  .chat-kill-ask { flex-direction: column; align-items: stretch; }
+  .chat-kill-actions { justify-content: flex-end; }
+}
+
+/* The header's one word on what this chat needs. */
+.chat-attention { display:inline-flex; align-items:center; gap:6px; flex:none; margin-left:10px; padding:1px 9px; border-radius:999px; font-size:11.5px; font-weight:600; line-height:18px; white-space:nowrap; }
+.chat-attention-dot { width:6px; height:6px; border-radius:50%; background:currentColor; }
+.chat-attention.is-working { color:var(--muted-foreground); background:var(--surface-subtle); }
+.chat-attention.is-working .chat-attention-dot { animation: chat-attention-pulse 1.2s ease-in-out infinite; }
+.chat-attention.is-asleep .chat-attention-dot { animation:none; opacity:.45; }
+.chat-attention.is-cards { color:var(--warning); background:var(--warning-bg); }
+@keyframes chat-attention-pulse { 0%,100% { opacity:1; } 50% { opacity:.3; } }
+
+/* The chat's background work, at the top, until it reports back. */
+.chat-jobs { display:flex; align-items:center; gap:10px; margin:8px 0 0; padding:8px 14px; border:1px solid var(--border-color); border-radius:var(--radius-lg); background:var(--surface-subtle); font-size:12.5px; color:var(--muted-foreground); }
+.chat-jobs-dot { width:7px; height:7px; border-radius:50%; background:var(--accent-strong); animation: chat-attention-pulse 1.2s ease-in-out infinite; flex:none; }
+.chat-jobs-text { flex:1; min-width:0; }
+.chat-jobs-text strong { color:var(--foreground); font-weight:600; }
+.chat-jobs-text em { font-style:normal; color:var(--warning); }
+.chat-jobs .btn.sm { padding:4px 10px; min-height:30px; font-size:12px; flex:none; }
+
+/* ── One column, or two ────────────────────────────────────────────── */
+/* The thread column is what the shell used to be below the header; a
+   live view with room takes a second column, sticky beside it. */
+.chat-main { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.chat-column { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+/* Beside the thread the view is as wide as its picture is at the
+   column's full height — what is left of the height after the view's
+   own head, address and caption — so a large window shows a large
+   browser. Never more than 60% of the row, and the thread keeps 480px. */
+.chat-main.has-side-screen { flex-direction: row; container-type: size; }
+.chat-side {
+  --screen-chrome: 150px;
+  flex: 0 0 clamp(480px, calc((100cqh - var(--screen-chrome)) * var(--screen-ratio, 1.6) + 32px), min(60cqw, 100cqw - 480px));
+  min-width: 0; min-height: 0;
+  display: flex; flex-direction: column;
+  padding: 12px 14px 12px 0;
+  border-left: 1px solid var(--border);
+  padding-left: 14px;
+}
+.chat-side app-chat-screen { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.chat-side.is-minimized { flex-basis: 480px; }
+/* With its tabs shown, the view's own rows take one more. */
+.chat-side.has-tabs { --screen-chrome: 188px; }
+
+/* The notices under the header line up with the thread, not the window. */
+.chat-kill-ask, .chat-jobs {
+  width: min(var(--chat-thread-column, var(--chat-column, 1040px)), calc(100% - 32px));
+  margin-left: auto; margin-right: auto;
+}
+
+/* The header's live-view button says when a browser is streaming. */
+.chat-icon-btn.is-live { color: var(--chat-accent-strong); }
+
+/* ── A phone ───────────────────────────────────────────────────────── */
+@media (max-width: 700px) {
+  .chat-list-link { padding: 0 6px; }
+  .chat-list-link span, .chat-header__divider { display: none; }
+  .chat-header__lead { gap: 6px; }
+  .chat-icon-btn { width: 36px; height: 36px; }
+  .chat-attention { margin-left: 4px; padding: 1px 7px; font-size: 11px; }
+  .chat-kill-ask, .chat-jobs, .chat-screen, .chat-approvals { width: calc(100% - 16px); }
+  .chat-jobs { flex-wrap: wrap; }
+  .chat-jobs .btn.sm { margin-left: auto; }
+  .chat-errors { padding: 8px 8px 0; }
+  .chat-approvals { max-height: 52vh; }
+  /* A live view and cards together: the cards scroll sooner, so the
+     composer never leaves the screen. */
+  .chat-screen + .chat-approvals { max-height: 28vh; }
+  .chat-screen { min-height: 0; flex-shrink: 1; overflow: hidden; }
+}

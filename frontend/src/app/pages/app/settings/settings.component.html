@@ -1,0 +1,522 @@
+<div class="data-page">
+  <header class="data-header">
+    <div class="data-heading">
+      <h1>Settings</h1>
+      <p *ngIf="tab === 'llm'">
+        What the platform itself is configured with. Keys are write-only —
+        set them here, nobody reads them back.
+      </p>
+      <p *ngIf="tab === 'chat'">
+        How your chats behave: what a new chat starts with, and how the
+        assistant finds the right agent when many are installed.
+      </p>
+      <p *ngIf="tab === 'memory'">
+        What the assistant remembers about you. Each of these was saved
+        during a conversation, which said so at the time, or written here
+        by you — nothing is collected quietly. Yours to correct and delete.
+      </p>
+      <p *ngIf="tab === 'keys'">
+        Your API keys: a script acting as you, with your permissions and
+        no more. Each is shown once when made; revoke it here when it is
+        done.
+      </p>
+      <p *ngIf="tab === 'apps'">
+        The apps this organization registered with providers — Google,
+        Microsoft, Slack — so members connect their accounts with a click
+        instead of pasting credentials. One per provider; the secret is
+        write-only.
+      </p>
+      <p *ngIf="tab === 'safety'">
+        What agents may do without asking you: the sites none of them may
+        open, how often a script or a program is shown to you before it
+        runs, and the packages a program may install.
+      </p>
+      <p *ngIf="tab === 'audit'">
+        A permanent record of platform changes, access, approvals, and agent activity.
+      </p>
+    </div>
+  </header>
+
+  <!-- One tab per section, each shown to whoever may read it. -->
+  <nav class="settings-tabs" role="tablist" aria-label="Settings sections">
+    <button class="settings-tab" type="button" role="tab" *ngIf="canSeeLlm"
+            [class.on]="tab === 'llm'" [attr.aria-selected]="tab === 'llm'"
+            (click)="selectTab('llm')">
+      <lucide-icon name="brain-circuit" [size]="15"></lucide-icon>
+      Language models
+      <span class="tab-count" *ngIf="!loading">{{ connections.length }}</span>
+    </button>
+    <button class="settings-tab" type="button" role="tab" *ngIf="canSeeChat"
+            [class.on]="tab === 'chat'" [attr.aria-selected]="tab === 'chat'"
+            (click)="selectTab('chat')">
+      <lucide-icon name="gauge" [size]="15"></lucide-icon>
+      Chat configuration
+    </button>
+    <button class="settings-tab" type="button" role="tab" *ngIf="canSeeMemory"
+            [class.on]="tab === 'memory'" [attr.aria-selected]="tab === 'memory'"
+            (click)="selectTab('memory')">
+      <lucide-icon name="lightbulb" [size]="15"></lucide-icon>
+      Memory
+    </button>
+    <button class="settings-tab" type="button" role="tab" *ngIf="canSeeKeys"
+            [class.on]="tab === 'keys'" [attr.aria-selected]="tab === 'keys'"
+            (click)="selectTab('keys')">
+      <lucide-icon name="key-round" [size]="15"></lucide-icon>
+      API keys
+    </button>
+    <button class="settings-tab" type="button" role="tab" *ngIf="canSeeApps"
+            [class.on]="tab === 'apps'" [attr.aria-selected]="tab === 'apps'"
+            (click)="selectTab('apps')">
+      <lucide-icon name="globe" [size]="15"></lucide-icon>
+      Connected apps
+    </button>
+    <button class="settings-tab" type="button" role="tab" *ngIf="canSeeSafety"
+            [class.on]="tab === 'safety'" [attr.aria-selected]="tab === 'safety'"
+            (click)="selectTab('safety')">
+      <lucide-icon name="shield-check" [size]="15"></lucide-icon>
+      Safety
+    </button>
+    <button class="settings-tab" type="button" role="tab" *ngIf="canSeeAudit"
+            [class.on]="tab === 'audit'" [attr.aria-selected]="tab === 'audit'"
+            (click)="selectTab('audit')">
+      <lucide-icon name="scroll-text" [size]="15"></lucide-icon>
+      Audit
+    </button>
+  </nav>
+
+  <div class="data-alert error" *ngIf="error">{{ error }}</div>
+  <div class="data-alert ok" *ngIf="notice">{{ notice }}</div>
+
+  <div class="data-loading" *ngIf="loading && tab === 'llm'">
+    <span class="ui-spinner" role="status" aria-label="Loading"></span>
+    <span>Loading connections…</span>
+  </div>
+
+  <app-memory *ngIf="tab === 'memory'"></app-memory>
+  <app-api-keys *ngIf="tab === 'keys'"></app-api-keys>
+  <app-connected-apps *ngIf="tab === 'apps'"></app-connected-apps>
+  <app-safety *ngIf="tab === 'safety'"></app-safety>
+  <app-audit *ngIf="tab === 'audit'" [initialView]="auditView"></app-audit>
+
+  <ng-container *ngIf="!loading && tab === 'chat'">
+    <!-- What a new chat of this person starts with. Each chat may still
+         choose otherwise from its own header. -->
+    <section class="routing-section">
+      <header class="llm-section-header">
+        <div>
+          <h2>Your chat defaults</h2>
+          <p>What a new chat starts with. Any chat can still change these from its own menu.</p>
+        </div>
+      </header>
+      <div class="routing-form">
+        <label class="field full" *ngIf="canSeeLlm">
+          <span class="field-label">Model</span>
+          <select class="txt" [(ngModel)]="chatDefaults.llm_secret_ref">
+            <option value="">The organization's default</option>
+            <option *ngFor="let connection of chatConnections" [value]="connection.resource_ref">
+              {{ connection.name }} — {{ summary(connection) }}
+            </option>
+          </select>
+        </label>
+        <label class="field">
+          <span class="field-label">Trust level</span>
+          <select class="txt" [(ngModel)]="chatDefaults.trust_level">
+            <option *ngFor="let option of trustOptions" [ngValue]="option.level">{{ option.label }} — {{ option.hint }}</option>
+          </select>
+        </label>
+        <label class="field">
+          <span class="field-label">Turn budget</span>
+          <select class="txt" [(ngModel)]="chatDefaults.max_turns">
+            <option *ngFor="let option of turnBudgetOptions" [ngValue]="option.turns">{{ option.label }} — {{ option.hint }}</option>
+          </select>
+        </label>
+        <label class="field">
+          <span class="field-label">Skills listed</span>
+          <select class="txt" [(ngModel)]="chatDefaults.max_skills">
+            <option *ngFor="let option of skillsCapOptions" [ngValue]="option.rows">{{ option.label }} — {{ option.hint }}</option>
+          </select>
+        </label>
+      </div>
+      <div class="routing-actions">
+        <button class="btn primary" type="button" (click)="saveChatDefaults()"
+                [disabled]="!chatDefaultsDirty || chatDefaultsSaving">
+          {{ chatDefaultsSaving ? "Saving…" : "Save defaults" }}
+        </button>
+      </div>
+    </section>
+
+    <section class="routing-section" *ngIf="canSeeNotifications && notificationSettings as ns">
+      <header class="llm-section-header">
+        <div>
+          <h2>Notifications</h2>
+          <p>A chat keeps working after you close it. When it needs you — a card to decide, a question, an answer — you are told here, on the devices you allow, and by email when none can be reached.</p>
+        </div>
+      </header>
+      <div class="routing-form">
+        <div class="field full">
+          <span class="field-label">This device</span>
+          <ng-container *ngIf="!ns.push.configured">
+            <small class="field-help">Push is not set up on this deployment: an administrator adds the VAPID keys to the backend (bootstrap/generate_vapid_keys.py). Email still works.</small>
+          </ng-container>
+          <ng-container *ngIf="ns.push.configured && !pushSupported">
+            <small class="field-help">{{ pushUnsupportedReason }}</small>
+          </ng-container>
+          <ng-container *ngIf="ns.push.configured && pushSupported">
+            <small class="field-help" *ngIf="braveHint && !thisDevice">{{ braveHint }}</small>
+            <div class="notify-row">
+              <span>{{ thisDevice ? 'Notifications are on for this device.' : 'This device is not subscribed.' }}
+                <small class="field-help">{{ ns.push.devices }} device{{ ns.push.devices === 1 ? '' : 's' }} subscribed in all.</small></span>
+              <button class="btn" type="button" *ngIf="!thisDevice" (click)="enablePushHere()" [disabled]="notificationsBusy || pushDenied">Turn on here</button>
+              <button class="btn" type="button" *ngIf="thisDevice" (click)="disablePushHere()" [disabled]="notificationsBusy">Turn off here</button>
+            </div>
+          </ng-container>
+        </div>
+        <label class="field full routing-toggle">
+          <input type="checkbox" [checked]="ns.email.enabled" (change)="setEmailNotifications($any($event.target).checked)" [disabled]="!ns.email.available" />
+          <span>Email me when no device can be reached
+            <small class="field-help">{{ ns.email.available ? 'At most one email every ten minutes per chat.' : 'Email is not configured on this deployment, or your account has no address.' }}</small></span>
+        </label>
+        <p class="field-help notify-note" *ngIf="notificationsNote">{{ notificationsNote }}</p>
+      </div>
+      <div class="routing-actions">
+        <button class="btn" type="button" (click)="testNotification()" [disabled]="notificationsBusy">Send me a test</button>
+      </div>
+    </section>
+
+    <section class="routing-section" *ngIf="canSeeSpeech">
+      <header class="llm-section-header">
+        <div>
+          <h2>Speech to text</h2>
+          <p>A message spoken into the composer's microphone is written down by this model before it is sent. The recording is transcribed and dropped, never stored.</p>
+        </div>
+      </header>
+      <div class="routing-form">
+        <label class="field full">
+          <span class="field-label">Transcription model</span>
+          <select class="txt" [(ngModel)]="speechConnectionId" [disabled]="!canEditSpeech">
+            <option value="">None — no microphone in the composer</option>
+            <option *ngFor="let connection of transcriptionConnections" [value]="connection.resource_ref">
+              {{ connection.name }} — {{ summary(connection) }}
+            </option>
+          </select>
+          <small class="field-help">A connection whose purpose is Transcription, shared with the whole organization. Add one on the Language models tab if none is listed.</small>
+        </label>
+      </div>
+      <div class="routing-actions" *ngIf="canEditSpeech">
+        <button class="btn primary" type="button" (click)="saveSpeech()"
+                [disabled]="!speechDirty || speechSaving">
+          {{ speechSaving ? "Saving…" : "Save speech" }}
+        </button>
+      </div>
+    </section>
+
+    <section class="routing-section" *ngIf="canSeeRouting && routingDraft as draft">
+      <header class="llm-section-header">
+        <div>
+          <h2>Agent routing</h2>
+          <p>How a chat finds the right agent when many are installed: below the threshold every agent is listed; above it the closest by meaning, in any language.</p>
+        </div>
+      </header>
+      <div class="routing-form">
+        <label class="field full">
+          <span class="field-label">Embedding model</span>
+          <select class="txt" [(ngModel)]="draft.embedding_connection_id" [disabled]="!canEditRouting">
+            <option value="">None — every agent is listed, whatever their number</option>
+            <option *ngFor="let connection of embeddingConnections" [value]="connection.resource_ref">
+              {{ connection.name }} — {{ summary(connection) }}
+            </option>
+          </select>
+          <small class="field-help">A connection whose purpose is Embedding, shared with the whole organization. Add one above if none is listed.</small>
+        </label>
+        <label class="field">
+          <span class="field-label">Route above</span>
+          <input class="txt" type="number" min="1" max="1000" [(ngModel)]="draft.threshold" [disabled]="!canEditRouting" />
+          <small class="field-help">Enabled agents in a chat before routing starts.</small>
+        </label>
+        <label class="field">
+          <span class="field-label">Agents listed</span>
+          <input class="txt" type="number" min="1" max="100" [(ngModel)]="draft.shortlist" [disabled]="!canEditRouting" />
+          <small class="field-help">Shown to the assistant per message.</small>
+        </label>
+        <label class="field">
+          <span class="field-label">Candidates reranked</span>
+          <input class="txt" type="number" min="1" max="500" [(ngModel)]="draft.candidates" [disabled]="!canEditRouting" />
+          <small class="field-help">Closest agents the chat's model chooses among.</small>
+        </label>
+        <label class="field">
+          <span class="field-label">Agents kept open</span>
+          <input class="txt" type="number" min="1" max="30" [(ngModel)]="draft.open_max" [disabled]="!canEditRouting" />
+          <small class="field-help">Per chat; the least recently used closes to make room.</small>
+        </label>
+        <label class="field full routing-toggle">
+          <input type="checkbox" [(ngModel)]="draft.rerank" [disabled]="!canEditRouting" />
+          <span>Rerank the candidates with the chat's model before listing them <small class="field-help">One small call per message; off, the embedding order stands.</small></span>
+        </label>
+      </div>
+      <div class="routing-actions" *ngIf="canEditRouting">
+        <button class="btn primary" type="button" (click)="saveRouting()"
+                [disabled]="!routingDirty || routingSaving">
+          {{ routingSaving ? "Saving…" : "Save routing" }}
+        </button>
+      </div>
+    </section>
+
+  </ng-container>
+
+  <ng-container *ngIf="!loading && tab === 'llm'">
+    <header class="llm-section-header">
+      <div>
+        <h2>Model connections</h2>
+        <p>Manage the providers and models available to your chats.</p>
+      </div>
+      <button class="btn primary add-icon-button" type="button" *ngIf="canCreate"
+              aria-label="Add model connection" matTooltip="Add model connection"
+              (click)="startCreate()">
+        <lucide-icon name="plus" [size]="18"></lucide-icon>
+      </button>
+    </header>
+
+    <div class="llm-toolbar" *ngIf="connections.length">
+      <div class="llm-search" *ngIf="connections.length">
+        <lucide-icon name="search" [size]="15"></lucide-icon>
+        <input class="txt" [(ngModel)]="query" name="llm-search"
+               placeholder="Filter by name, provider or model"
+               aria-label="Filter connections" />
+        <button class="search-clear" type="button" *ngIf="query"
+                (click)="query = ''" aria-label="Clear filter">
+          <lucide-icon name="x" [size]="14"></lucide-icon>
+        </button>
+      </div>
+    </div>
+
+    <div class="empty-state" *ngIf="!visible.length">
+      <span class="empty-mark"><lucide-icon name="brain-circuit" [size]="22"></lucide-icon></span>
+      <strong *ngIf="query">No match for "{{ query }}"</strong>
+      <strong *ngIf="!query">No language model yet</strong>
+      <p *ngIf="!query">
+        Chats cannot hold a conversation until a connection exists. Add
+        one — the first becomes the organization's default.
+      </p>
+      <div class="empty-actions" *ngIf="query">
+        <button class="btn ghost" type="button" (click)="query = ''">Clear the filter</button>
+      </div>
+    </div>
+
+    <ul class="llm-list" *ngIf="visible.length">
+      <li class="llm-row" *ngFor="let connection of visible"
+          [class.is-default]="connection.is_default">
+        <!-- The star IS the default control: filled on the default,
+             hollow and clickable on every other row. -->
+        <button class="star" type="button"
+                [disabled]="connection.is_default || !canSetDefault || !!busyId || isEmbedding(connection)"
+                [title]="isEmbedding(connection)
+                         ? 'Not a chat model: never a chat default'
+                         : connection.is_default
+                           ? 'The default — answers when nobody chose'
+                           : 'Make this the default'"
+                (click)="makeDefault(connection)">
+          <lucide-icon [name]="connection.is_default ? 'star' : 'star-off'"
+                       [size]="15"></lucide-icon>
+        </button>
+
+        <div class="llm-identity">
+          <strong>
+            {{ connection.name }}
+            <span class="default-tag" *ngIf="connection.is_default">Default</span>
+            <span class="share-tag"
+                  [title]="'Who can use this model: ' + shareLabel(connection)">
+              <lucide-icon name="users" [size]="10"></lucide-icon>
+              {{ shareLabel(connection) }}
+            </span>
+          </strong>
+          <code>{{ summary(connection) }}</code>
+          <p class="default-help" *ngIf="connection.is_default">
+            Used when a chat has no model selected.
+          </p>
+          <p class="default-help" *ngIf="isEmbedding(connection)">{{ purposeLabel(connection) }}</p>
+        </div>
+
+        <div class="llm-actions">
+          <button class="action-icon-button" type="button"
+                  *ngIf="canUpdate && isMine(connection)"
+                  (click)="startEdit(connection)"
+                  aria-label="Edit connection" matTooltip="Edit connection"
+                  [disabled]="busyId === connection.resource_ref">
+            <lucide-icon name="pencil" [size]="16"></lucide-icon>
+          </button>
+          <button class="action-icon-button" type="button"
+                  *ngIf="canTransfer && isMine(connection)"
+                  (click)="requestTransfer(connection)"
+                  aria-label="Hand over connection" matTooltip="Hand over connection">
+            <lucide-icon name="arrow-right-left" [size]="16"></lucide-icon>
+          </button>
+          <button class="action-icon-button danger" type="button"
+                  *ngIf="canDelete && isMine(connection)"
+                  (click)="requestDelete(connection)"
+                  aria-label="Delete connection" matTooltip="Delete connection"
+                  [disabled]="busyId === connection.resource_ref">
+            <lucide-icon name="trash-2" [size]="16"></lucide-icon>
+          </button>
+        </div>
+      </li>
+    </ul>
+  </ng-container>
+
+  <!-- ── Add / edit ─────────────────────────────────────────────────── -->
+  <ng-container *ngIf="editingId !== null">
+    <div class="dialog-backdrop" (click)="closeEditor()">
+      <section class="info-dialog" role="dialog" aria-modal="true"
+               aria-labelledby="llm-editor-title" (click)="$event.stopPropagation()">
+        <header class="dialog-head">
+          <span class="dialog-icon"><lucide-icon name="brain-circuit" [size]="21"></lucide-icon></span>
+          <div>
+            <h2 id="llm-editor-title">{{ isCreating ? "New connection" : "Edit connection" }}</h2>
+            <p>The key is encrypted the moment it is saved, and never shown again.</p>
+          </div>
+          <button class="icon-button" type="button" (click)="closeEditor()"
+                  [disabled]="saving" aria-label="Close">
+            <lucide-icon name="x" [size]="19"></lucide-icon>
+          </button>
+        </header>
+        <div class="dialog-body">
+          <div class="llm-form">
+            <label class="field">
+              <span class="field-label">Name</span>
+              <input class="txt" [(ngModel)]="draft.name"
+                     placeholder="e.g. Claude production" />
+            </label>
+            <label class="field">
+              <span class="field-label">Purpose</span>
+              <select class="txt" [(ngModel)]="draft.purpose">
+                <option value="chat">Chat model — what chats think with</option>
+                <option value="embedding">Embedding model — finds the right agent</option>
+                <option value="transcription">Transcription model — writes spoken messages down</option>
+              </select>
+            </label>
+            <label class="field">
+              <span class="field-label">Provider</span>
+              <select class="txt" [ngModel]="draft.provider" (ngModelChange)="selectProvider($event)">
+                <option value="" disabled hidden>Choose…</option>
+                <option *ngFor="let provider of providers" [value]="provider.value">{{ provider.label }}</option>
+              </select>
+            </label>
+            <label class="field full">
+              <span class="field-label">Model</span>
+              <input class="txt" [(ngModel)]="draft.model"
+                     [placeholder]="draft.purpose === 'embedding' ? 'e.g. text-embedding-3-large' : draft.purpose === 'transcription' ? 'e.g. whisper-1 or gpt-4o-mini-transcribe' : 'e.g. claude-sonnet-4-5'" />
+              <small class="field-help">
+                {{ draft.purpose === 'embedding'
+                    ? "A multilingual embedding model, so a request in any language finds an agent described in English."
+                    : draft.purpose === 'transcription'
+                      ? "A speech-to-text model on the OpenAI audio protocol: Whisper on OpenAI or Azure, or its successors."
+                      : "The provider's own model name, copied exactly." }}
+              </small>
+            </label>
+            <label class="field full" *ngIf="draft.purpose === 'chat' || !draft.purpose">
+              <span class="field-label">Reasoning effort</span>
+              <select class="txt" [(ngModel)]="draft.reasoning_effort">
+                <option value="">Provider's default</option>
+                <option value="minimal">Minimal</option>
+                <option value="low">Low — quick replies</option>
+                <option value="medium">Medium</option>
+                <option value="high">High — thinks longest</option>
+              </select>
+              <small class="field-help">For models that think before answering (OpenAI's reasoning models). Low keeps a chat quick; leave the default for a model that does not reason, or it will refuse the request.</small>
+            </label>
+            <label class="field full">
+              <span class="field-label">Endpoint <em>required</em></span>
+              <input class="txt" type="url" required aria-required="true"
+                     [(ngModel)]="draft.endpoint" [placeholder]="endpointPlaceholder"
+                     aria-describedby="llm-endpoint-help" />
+              <small class="field-help" id="llm-endpoint-help">{{ endpointHelp }}</small>
+            </label>
+            <label class="field full">
+              <span class="field-label">
+                API key
+                <span class="field-flag lock"><lucide-icon name="lock" [size]="11"></lucide-icon> encrypted</span>
+              </span>
+              <input class="txt" type="password" autocomplete="new-password"
+                     [(ngModel)]="draft.api_key"
+                     [placeholder]="isCreating ? '' : '••••••  (unchanged)'" />
+            </label>
+
+            <!-- Sharing decides whose chats may think with this model.
+                 The default is pinned org-wide: it answers everyone. -->
+            <div class="field full">
+              <span class="field-label">Who can use it</span>
+              <app-sharing-selector
+                [mode]="shareMode" (modeChange)="shareMode = $any($event)"
+                [groups]="myGroups" [people]="peers"
+                [selectedGroups]="selectedGroups" [selectedPeople]="selectedUsers"
+                groupLabel="Specific groups" peopleMode="users"
+                (groupToggled)="toggleGroup($event)" (personToggled)="toggleUser($event)">
+              </app-sharing-selector>
+            </div>
+          </div>
+        </div>
+        <footer class="dialog-actions">
+          <span class="form-blocker" *ngIf="blocker">{{ blocker }}</span>
+          <button class="btn" type="button" (click)="closeEditor()" [disabled]="saving">
+            Cancel
+          </button>
+          <button class="btn primary" type="button" (click)="save()"
+                  [disabled]="!!blocker || saving">
+            {{ saving ? "Saving…" : isCreating ? "Add connection" : "Save changes" }}
+          </button>
+        </footer>
+      </section>
+    </div>
+  </ng-container>
+
+  <!-- ── Deleting ───────────────────────────────────────────────────── -->
+  <ng-container *ngIf="deleteTarget as connection">
+    <div class="dialog-backdrop" (click)="closeDelete()">
+      <section class="info-dialog delete-dialog" role="alertdialog" aria-modal="true"
+               aria-labelledby="llm-delete-title" (click)="$event.stopPropagation()">
+        <header class="dialog-head">
+          <span class="dialog-icon danger-dialog-icon">
+            <lucide-icon name="trash-2" [size]="21"></lucide-icon>
+          </span>
+          <div>
+            <h2 id="llm-delete-title">Delete this connection?</h2>
+            <p>{{ connection.name }}</p>
+          </div>
+          <button class="icon-button" type="button" (click)="closeDelete()"
+                  [disabled]="!!busyId" aria-label="Close">
+            <lucide-icon name="x" [size]="19"></lucide-icon>
+          </button>
+        </header>
+        <div class="dialog-body">
+          <p class="delete-warning">
+            The key goes with it and there is no copy here to restore
+            from. Chats configured with this connection stop resolving a
+            model until they pick another.
+          </p>
+          <p class="delete-warning" *ngIf="connection.is_default && connections.length > 1">
+            It is the default — the most recently changed of the others
+            takes over.
+          </p>
+          <p class="delete-warning" *ngIf="connection.is_default && connections.length === 1">
+            It is the only one, so the organization is left without a
+            model and new chats cannot start until another is added.
+          </p>
+          <div class="data-alert error dialog-error" *ngIf="error">{{ error }}</div>
+        </div>
+        <footer class="dialog-actions">
+          <button class="btn" type="button" (click)="closeDelete()" [disabled]="!!busyId">
+            Keep it
+          </button>
+          <button class="btn danger" type="button" (click)="remove(connection)"
+                  [disabled]="!!busyId">
+            {{ busyId ? "Deleting…" : "Delete connection" }}
+          </button>
+        </footer>
+      </section>
+    </div>
+  </ng-container>
+
+  <app-transfer-dialog *ngIf="transferTarget as item"
+                       [subject]="'the connection “' + item.name + '”'" [ownerId]="item.created_by"
+                       [busy]="transferring" (chosen)="transfer($event)" (closed)="closeTransfer()">
+  </app-transfer-dialog>
+</div>

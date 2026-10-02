@@ -1,0 +1,103 @@
+<div class="messages">
+  <!-- Scrollable area (header/title/status/actions now live in the chat-detail shell) -->
+  <div class="messages-scroll" #messagesContainer (scroll)="onScroll()"
+       [class.has-live]="showDock">
+    @if (loading) {
+      <div class="messages-loading">
+        <mat-spinner diameter="36"></mat-spinner>
+        <div class="loading-text">Loading chat…</div>
+        <div class="skeleton">
+          <div class="sk-line w-60"></div>
+          <div class="sk-line w-40"></div>
+          <div class="sk-line w-75"></div>
+        </div>
+      </div>
+    } @else {
+      @if (hasMore) {
+        <div class="older-history">
+          <button type="button" (click)="loadOlder.emit()" [disabled]="loadingOlder">
+            @if (loadingOlder) { <mat-spinner diameter="16"></mat-spinner> }
+            {{ loadingOlder ? 'Loading earlier messages…' : 'Load earlier messages' }}
+          </button>
+        </div>
+      }
+      @if (turns.length > 0) {
+        <div class="messages-inner" #messagesInner>
+          @for (turn of turns; track turn.id) {
+            <section class="chat-turn">
+              @if (turn.userMessage) {
+                <app-chat-message [message]="turn.userMessage"></app-chat-message>
+              }
+              <!-- The assistant's side of the turn: one speaker, one
+                   header, however many messages the answer took. -->
+              @for (msg of turn.assistantMessages; track $index; let first = $first) {
+                <app-chat-message [message]="msg" [continuation]="!first"
+                                  [copyText]="first ? turnText(turn) : null">
+                </app-chat-message>
+              }
+            </section>
+          }
+
+        </div>
+      }
+      @if (!turns.length && !isProcessing && !activity.length && !livePlan.length) {
+        <div class="empty-state">
+          <span class="empty-icon-ring" aria-hidden="true"><lucide-icon class="empty-icon" name="sparkles" [size]="29"></lucide-icon></span>
+          <h2 class="empty-title">Start the conversation</h2>
+          <p class="empty-subtitle">{{ capabilityLine }}</p>
+          <div class="empty-openers" aria-label="Suggested messages">
+            @for (openerText of openers; track openerText) {
+              <button class="opener" type="button" (click)="opener.emit(openerText)">
+                <span>{{ openerText }}</span><lucide-icon name="arrow-right" [size]="16" aria-hidden="true"></lucide-icon>
+              </button>
+            }
+          </div>
+        </div>
+      }
+    }
+
+
+    <!-- A chat with no turns yet needs nothing here: the docked line
+         below carries what is happening, so no empty card stands
+         waiting for an answer that has not started. -->
+  </div>
+
+  <!-- The one place for what the assistant is doing in this turn. It
+       docks at the foot of the thread rather than riding under an
+       answer's header: a long reply would push it off the top of the
+       screen, and it must stay reachable after the turn ends. Closed it
+       is a single line; opened it grows upward. -->
+  @if (showDock) {
+    <div class="live-activity" [class.is-open]="panelOpen">
+      <div class="activity" [class.activity--live]="isProcessing" role="status" aria-live="polite">
+        <button type="button" class="activity-line" (click)="togglePanel()"
+                [attr.aria-expanded]="panelOpen" aria-label="What the assistant did">
+          @if (isProcessing) {
+            <span class="activity-spinner" aria-hidden="true"></span>
+          } @else if (planWaiting) {
+            <lucide-icon class="activity-waiting" name="circle-question-mark" [size]="15" aria-hidden="true"></lucide-icon>
+          } @else {
+            <lucide-icon class="activity-done" name="circle-check" [size]="15" aria-hidden="true"></lucide-icon>
+          }
+          <span class="activity-label">{{ dockLabel }}</span>
+          <lucide-icon class="activity-chevron" name="chevron-right" [size]="14" aria-hidden="true"></lucide-icon>
+        </button>
+
+        @if (panelOpen) {
+          <app-chat-activity-panel
+            [activity]="activity" [livePlan]="livePlan"
+            [isProcessing]="isProcessing" [agentLabels]="agentLabels">
+          </app-chat-activity-panel>
+        }
+      </div>
+    </div>
+  }
+
+  @if (showJumpToLatest) {
+    <button class="jump-to-latest" [class.above-live]="isProcessing && showActivity"
+            (click)="jumpToLatest()" aria-label="Jump to latest">
+      @if (newUpdateCount > 0) { <span class="new-update-count">{{ newUpdateCount }}</span> }
+      <lucide-icon name="arrow-down" [size]="20"></lucide-icon>
+    </button>
+  }
+</div>

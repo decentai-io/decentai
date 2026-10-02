@@ -1,0 +1,77 @@
+<main class="chat-home">
+  <section class="start" aria-labelledby="start-chat-title">
+    <div class="start-copy">
+      <span class="start-mark"><lucide-icon name="sparkles" [size]="22"></lucide-icon></span>
+      <div><h2 id="start-chat-title">How can I help?</h2><p>Ask a question, plan work, or use an installed agent.</p></div>
+    </div>
+    <div class="composer-section"><app-chat-composer (promptSent)="onPrompt($event)" [disabled]="isLoading" [draft]="draft"></app-chat-composer></div>
+  </section>
+
+  <!-- Every conversation, under the composer: the latest first, a few
+       letters away when it is older, put away or deleted from its row.
+       Only the list scrolls; the composer stays where it is. -->
+  <section class="chats" aria-labelledby="chats-title">
+    <div class="chats-head">
+      <h3 id="chats-title">
+        {{ showArchived ? 'Archived' : 'Chats' }}
+        @if (chatsLoaded) { <span class="chats-count">{{ showArchived ? archivedCount : activeCount }}</span> }
+      </h3>
+      <label class="chats-search"><lucide-icon name="search" [size]="14"></lucide-icon>
+        <input type="text" [(ngModel)]="searchQuery" (input)="applyFilters()" (keydown.enter)="openFirstMatch()"
+               placeholder="Search chats" aria-label="Search chats" />
+        @if (searchQuery) { <button type="button" (click)="clearSearch()" aria-label="Clear search"><lucide-icon name="x" [size]="13"></lucide-icon></button> }
+      </label>
+      <select class="chats-filter" [ngModel]="showArchived" (ngModelChange)="toggleArchived()" aria-label="Which conversations">
+        <option [ngValue]="false">Chats</option><option [ngValue]="true">Archived</option>
+      </select>
+    </div>
+
+    <div class="chats-list" aria-label="Conversations">
+      @if (loadError && !chatsLoaded) {
+        <p class="chats-empty">Chats could not be loaded. <button type="button" class="chats-retry" (click)="loadChats()">Retry</button></p>
+      } @else if (!chatsLoaded) {
+        <div class="chats-loading" aria-hidden="true"><div class="sk-line w-50"></div><div class="sk-line w-30"></div><div class="sk-line w-50"></div></div>
+      } @else if (!filteredChats.length) {
+        <p class="chats-empty">
+          {{ searchQuery ? 'No chats match “' + searchQuery + '”.'
+             : showArchived ? 'Nothing archived. Archived chats stay here until you restore them.'
+             : 'Your conversations will appear here.' }}
+        </p>
+      } @else {
+        @for (group of chatGroups; track group.label) {
+          <section class="chat-group">
+            <h4>{{ group.label }}</h4>
+            <ul>
+              @for (chat of group.chats; track chat.chat_id) {
+                <li class="chat-row">
+                  <a class="chat-open" [routerLink]="['/ai/chats', chat.chat_id]">
+                    <lucide-icon name="message-square-text" [size]="15"></lucide-icon>
+                    <span class="chat-title">{{ chat.title }}</span>
+                    @if (chat.attention?.working) {
+                      <span class="chat-flag is-working" matTooltip="Working in the background"><span class="chat-flag-dot"></span>Working</span>
+                    }
+                    @if (chat.attention?.cards) {
+                      <span class="chat-flag is-cards" [matTooltip]="chat.attention.cards + ' waiting for you'">{{ chat.attention.cards }} waiting</span>
+                    }
+                    @if (chat.attention?.unseen && !chat.attention?.cards) {
+                      <span class="chat-flag is-unseen" matTooltip="New since you last looked"><span class="chat-flag-dot"></span>New</span>
+                    }
+                    <span class="chat-meta"><span class="chat-count">{{ chat.messageLabel }} · </span><time>{{ chat.displayDate }}</time></span>
+                  </a>
+                  <div class="chat-actions">
+                    @if (showArchived) {
+                      <button type="button" matTooltip="Restore" aria-label="Restore conversation" (click)="restore(chat, $event)"><lucide-icon name="archive-restore" [size]="15"></lucide-icon></button>
+                    } @else {
+                      <button type="button" matTooltip="Archive" aria-label="Archive conversation" (click)="archive(chat, $event)"><lucide-icon name="archive" [size]="15"></lucide-icon></button>
+                    }
+                    <button class="danger" type="button" matTooltip="Delete" aria-label="Delete conversation" (click)="confirmDelete(chat, $event)"><lucide-icon name="trash-2" [size]="15"></lucide-icon></button>
+                  </div>
+                </li>
+              }
+            </ul>
+          </section>
+        }
+      }
+    </div>
+  </section>
+</main>

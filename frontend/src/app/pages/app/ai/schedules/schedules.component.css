@@ -1,0 +1,165 @@
+/* Activity: rows of things in motion. The row shape is the one the old
+   tasks page used — status, one line of what, one of detail, actions
+   on the right — because that is still the right shape for a thing
+   that runs. Tabs borrow the Settings page's. */
+
+.settings-tabs {
+  display: flex; gap: 6px; margin-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+.settings-tab {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 8px 13px 9px; margin-bottom: -1px;
+  border: 0; border-bottom: 2px solid transparent; background: none;
+  color: var(--muted); font-size: var(--ui-text-sm); font-weight: 600;
+  cursor: pointer;
+}
+.settings-tab:hover { color: var(--ink); }
+.settings-tab.on { color: var(--accent-strong); border-bottom-color: var(--accent); }
+.tab-count {
+  padding: 0 7px; border-radius: var(--ui-radius-pill);
+  background: color-mix(in srgb, var(--foreground) 8%, transparent);
+  font-size: 10.5px; font-variant-numeric: tabular-nums;
+}
+.settings-tab.on .tab-count { background: var(--accent-soft); color: var(--accent-strong); }
+.tab-count.attention { background: var(--warning-bg); color: var(--warning); }
+
+.panel-title { font-size: 0.95rem; margin: 0 0 12px; }
+
+.task-row {
+  display: flex; justify-content: space-between; gap: 16px;
+  padding: 14px 0; border-top: 1px solid var(--border);
+}
+.task-row:first-of-type { border-top: none; }
+.task-row.finished { opacity: 0.8; }
+.task-main { min-width: 0; flex: 1; }
+.task-top { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; flex-wrap: wrap; }
+
+/* The state of a run, as one chip. Four levels of emphasis in the
+   brand's two colours: neutral for queued, emerald for in motion,
+   a ruled neutral for the one that wants a person, receded for done.
+   No third hue — the tint carries the level, never the colour. */
+.task-status {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 0.72rem; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.04em; padding: 2px 9px;
+  border: 1px solid transparent; border-radius: var(--ui-radius-pill);
+  background: color-mix(in srgb, var(--foreground) 8%, transparent);
+  color: var(--ink);
+}
+.task-status.invoke { background: color-mix(in srgb, var(--foreground) 8%, transparent); color: var(--ink); }
+.task-status.wake,
+.task-status.running { background: var(--accent-soft); color: var(--accent-strong); }
+/* Waiting on a person: ruled rather than recoloured, so it separates
+   from "done" without borrowing amber. */
+.task-status.waiting_approval {
+  background: var(--warning-bg); color: var(--warning);
+  border-color: color-mix(in srgb, var(--foreground) 22%, transparent);
+}
+.task-status.done { background: color-mix(in srgb, var(--foreground) 5%, transparent); color: var(--muted); }
+
+.task-elapsed { font-size: 0.78rem; color: var(--muted); }
+.task-goal { margin: 0 0 4px; font-weight: 550; overflow-wrap: anywhere; }
+.task-doing { margin: 0; font-size: 0.85rem; color: var(--muted); overflow-wrap: anywhere; }
+
+.task-actions {
+  display: flex; flex-direction: column; align-items: flex-end; gap: 8px;
+  flex-shrink: 0;
+}
+.decide { display: flex; gap: 8px; }
+
+/* The run history: what every fire did, newest first. */
+.runs-toggle {
+  display: inline-flex; align-items: center; gap: 4px; margin-top: 8px;
+  padding: 0; border: 0; background: none; cursor: pointer;
+  color: var(--accent-strong); font-size: 0.8rem; font-weight: 600;
+}
+.runs {
+  list-style: none; margin: 8px 0 0; padding: 8px 12px; display: grid; gap: 6px;
+  border-radius: var(--ui-radius-sm); background: var(--surface-2);
+}
+.run { display: grid; grid-template-columns: 11rem auto; gap: 2px 12px; font-size: 0.8rem; align-items: baseline; }
+.run-when { color: var(--muted); font-variant-numeric: tabular-nums; }
+.run-what { font-weight: 600; }
+.run.error .run-what { color: var(--destructive-strong); }
+.run-detail {
+  grid-column: 2; font-size: 0.75rem; color: var(--muted);
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+
+/* Two ways on to the clock. */
+.intent-panel { padding-bottom: 10px; }
+.intent { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.intent > lucide-icon { color: var(--accent-strong); flex-shrink: 0; }
+.intent .txt { flex: 1 1 320px; }
+.intent-hint { margin: 8px 0 0; font-size: 0.78rem; color: var(--muted); }
+
+/* The form. */
+.form-dialog { width: min(640px, 100%); }
+.form-grid { display: grid; gap: 12px; }
+.field { display: flex; flex-direction: column; gap: 5px; }
+.field-label { font-size: 0.8rem; font-weight: 600; }
+.field-label em { font-style: normal; font-weight: 400; color: var(--muted); }
+.field-help { font-size: 0.75rem; color: var(--muted); }
+.field .txt { width: 100%; }
+.txt.mono { font-family: var(--font-mono); font-size: 0.85rem; }
+.every { flex-direction: row; gap: 8px; }
+.every .txt:first-child { width: 6rem; }
+.quote {
+  margin: 0 0 10px; padding: 8px 12px; border-left: 3px solid var(--border);
+  color: var(--muted); overflow-wrap: anywhere;
+}
+.dialog-note { font-size: 0.85rem; color: var(--muted); margin: 0; }
+.dialog-error { margin-top: 10px; }
+
+.task-empty {
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  text-align: center; padding: 36px 16px; color: var(--muted);
+}
+.task-empty strong { color: inherit; font-size: 1rem; }
+.task-empty span { max-width: 48ch; }
+
+.ui-spinner.small { width: 11px; height: 11px; border-width: 2px; }
+
+.activity-add { flex:none; color:var(--primary-foreground); background:var(--primary-fill); border-color:var(--primary-fill); }
+.activity-toolbar { display:flex; align-items:center; gap:14px; margin-bottom:14px; padding:10px; border:1px solid var(--border); border-radius:var(--ui-radius-card); background:var(--surface-2); }
+.activity-filters { display:flex; align-items:center; gap:4px; }
+.activity-filters button { display:inline-flex; align-items:center; gap:7px; min-height:36px; padding:7px 11px; border:1px solid transparent; border-radius:var(--radius-lg); color:var(--muted); background:transparent; font:inherit; font-size:12.5px; font-weight:600; cursor:pointer; }
+.activity-filters button:hover { color:var(--ink); background:var(--surface); }
+.activity-filters button.on { color:var(--accent-strong); border-color:color-mix(in srgb,var(--primary) 24%,transparent); background:var(--accent-soft); }
+.activity-filters button span { display:grid; place-items:center; min-width:20px; height:19px; padding:0 5px; border-radius:var(--radius-pill); background:color-mix(in srgb,var(--foreground) 8%,transparent); font-size:10.5px; }
+.activity-search { display:flex; align-items:center; gap:8px; width:min(350px,100%); margin-left:auto; padding:0 10px; border:1px solid var(--border); border-radius:var(--radius-lg); color:var(--muted); background:var(--surface); }
+.activity-search .txt { flex:1; min-width:0; height:38px; padding:0; border:0; background:transparent; }
+.activity-search .txt:focus { box-shadow:none; }
+.activity-search button { display:grid; place-items:center; width:26px; height:26px; padding:0; border:0; border-radius:var(--radius-md); color:var(--muted); background:transparent; cursor:pointer; }
+.schedule-list { display:grid; gap:10px; }
+.task-row.schedule-card { padding:16px 18px; border:1px solid var(--border); border-radius:var(--ui-radius-card); background:var(--surface); }
+.task-row.schedule-card:first-of-type { border-top:1px solid var(--border); }
+.schedule-card.finished { opacity:.72; }
+.schedule-card .task-goal { margin:0 0 6px; font-size:15px; line-height:1.5; }
+.schedule-card .task-doing { font-size:12.5px; line-height:1.55; }
+.schedule-card .task-actions { align-self:center; flex-direction:row; }
+.schedule-card .decide { gap:5px; }
+.schedule-card .icon-button { text-decoration:none; }
+.task-empty.compact { padding:28px 16px; }
+.activity-pagination { display:flex; align-items:center; justify-content:space-between; gap:16px; margin-top:14px; padding-top:12px; border-top:1px solid var(--border); color:var(--muted); font-size:12px; }
+.activity-pagination nav { display:flex; align-items:center; gap:7px; }
+.activity-pagination nav > span { margin-right:5px; }
+.activity-pagination button { display:grid; place-items:center; width:30px; height:30px; padding:0; border:1px solid var(--border); border-radius:var(--radius-lg); color:var(--ink); background:var(--surface); cursor:pointer; }
+.activity-pagination button:disabled { opacity:.4; cursor:default; }
+
+@media (max-width: 640px) {
+  .task-row { flex-direction: column; }
+  .task-actions { flex-direction: row; align-items: center; }
+  .run { grid-template-columns: 1fr; }
+  .run-detail { grid-column: 1; }
+  .activity-toolbar { align-items:stretch; flex-direction:column; }
+  .activity-filters { overflow-x:auto; }
+  .activity-search { width:100%; margin-left:0; }
+  .activity-pagination { align-items:flex-start; flex-direction:column; }
+}
+
+/* The fires after the next one, and how many of the last runs failed. */
+.task-upcoming { margin: 2px 0 0; color: var(--muted-foreground); font-size: 12px; }
+.task-failures { margin-left: auto; padding: 1px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; color: var(--destructive-strong, #c33); background: color-mix(in srgb, var(--destructive) 10%, transparent); }
+.task-doing a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }

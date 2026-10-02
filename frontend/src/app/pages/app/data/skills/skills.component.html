@@ -1,0 +1,286 @@
+<div class="data-page">
+  <header class="data-header">
+    <div class="data-heading">
+      <h1>Skills</h1>
+      <p>Reusable instructions the assistant reads when they are relevant to a conversation.</p>
+    </div>
+    <button
+      class="btn primary add-icon-button"
+      type="button"
+      *ngIf="canCreate && editingRef === null"
+      (click)="startCreate()" aria-label="Add skill" matTooltip="Add skill"
+    >
+      <lucide-icon name="plus" [size]="18"></lucide-icon>
+    </button>
+  </header>
+
+  <div class="dialog-backdrop" *ngIf="previewSkill" (click)="closePreview()">
+    <section class="info-dialog preview-dialog" role="dialog" aria-modal="true" aria-labelledby="skill-preview-title" (click)="$event.stopPropagation()">
+      <header class="dialog-head">
+        <span class="dialog-icon"><lucide-icon name="sparkles" [size]="21"></lucide-icon></span>
+        <div>
+          <h2 id="skill-preview-title">{{ previewSkill.keys.title }}</h2>
+          <p>{{ previewSkill.keys.summary }}</p>
+        </div>
+        <button class="icon-button" type="button" (click)="closePreview()" aria-label="Close"><lucide-icon name="x" [size]="19"></lucide-icon></button>
+      </header>
+      <div class="dialog-body">
+        <p class="preview-note">This is what the assistant reads once it decides the skill applies.</p>
+        <div class="preview-loading" *ngIf="previewLoading">
+          <span class="ui-spinner" role="status" aria-label="Loading"></span>
+          <span>Reading…</span>
+        </div>
+        <p class="preview-unreadable" *ngIf="!previewLoading && previewUnreadable">
+          <lucide-icon name="triangle-alert" [size]="15"></lucide-icon>
+          <span>
+            <strong>This body cannot be read.</strong>
+            It was encrypted with a key version this deployment no longer
+            has, so neither you nor the assistant can open it. Its catalog
+            line still works; the text has to be written again.
+          </span>
+        </p>
+        <markdown class="preview-body" *ngIf="!previewLoading && !previewUnreadable" [data]="previewBody"></markdown>
+      </div>
+      <footer class="dialog-actions">
+        <button class="btn" type="button" (click)="closePreview()">Close</button>
+      </footer>
+    </section>
+  </div>
+
+  <div class="dialog-backdrop" *ngIf="deleteTarget" (click)="closeDeleteDialog()">
+    <section class="info-dialog delete-dialog" role="alertdialog" aria-modal="true" aria-labelledby="delete-skill-title" (click)="$event.stopPropagation()">
+      <header class="dialog-head">
+        <span class="dialog-icon danger-dialog-icon"><lucide-icon name="trash-2" [size]="21"></lucide-icon></span>
+        <div>
+          <h2 id="delete-skill-title">Delete this skill?</h2>
+          <p>{{ deleteTarget.keys.title }}</p>
+        </div>
+        <button class="icon-button" type="button" (click)="closeDeleteDialog()" [disabled]="!!busyRef" aria-label="Close"><lucide-icon name="x" [size]="19"></lucide-icon></button>
+      </header>
+      <div class="dialog-body">
+        <p class="delete-warning">
+          Chats stop being able to read it immediately. Anything already
+          written using it is unaffected — this only changes what comes next.
+        </p>
+        <blockquote class="deleted-summary">{{ deleteTarget.keys.summary }}</blockquote>
+      </div>
+      <footer class="dialog-actions">
+        <button class="btn" type="button" (click)="closeDeleteDialog()" [disabled]="!!busyRef">Cancel</button>
+        <button class="btn danger" type="button" (click)="remove(deleteTarget)" [disabled]="!!busyRef">{{ busyRef ? "Deleting…" : "Delete skill" }}</button>
+      </footer>
+    </section>
+  </div>
+
+  <div class="data-alert error" *ngIf="error">{{ error }}</div>
+  <div class="data-alert ok" *ngIf="notice">{{ notice }}</div>
+
+  <div class="data-loading" *ngIf="loading">
+    <span class="ui-spinner" role="status" aria-label="Loading"></span>
+    <span>Loading skills…</span>
+  </div>
+
+  <ng-container *ngIf="!loading">
+    <!-- ── Editor ─────────────────────────────────────────────────── -->
+    <div class="dialog-backdrop" *ngIf="editingRef !== null" (click)="cancelEdit()">
+    <section class="info-dialog skill-editor-dialog" role="dialog" aria-modal="true"
+             aria-labelledby="skill-editor-title" (click)="$event.stopPropagation()">
+      <header class="dialog-head">
+        <span class="dialog-icon"><lucide-icon name="sparkles" [size]="21"></lucide-icon></span>
+        <div>
+          <h2 id="skill-editor-title">{{ isCreating ? "New skill" : "Edit skill" }}</h2>
+          <p>
+            Write the summary for the assistant: one line that says when
+            this skill applies.
+          </p>
+        </div>
+        <button class="icon-button" type="button" (click)="cancelEdit()" [disabled]="saving" aria-label="Close">
+          <lucide-icon name="x" [size]="19"></lucide-icon>
+        </button>
+      </header>
+
+      <div class="dialog-body">
+      <p class="data-alert error" *ngIf="error">{{ error }}</p>
+      <p class="data-alert error" *ngIf="duplicateTitle">A skill with this title already exists. Choose a different title.</p>
+      <div class="editor-fields column">
+        <label class="field">
+          <span class="field-label">Title</span>
+          <input
+            class="txt"
+            type="text"
+            [(ngModel)]="formTitle"
+            maxlength="120"
+            placeholder="e.g. Quarterly report format"
+          />
+          <span class="field-help">{{ formTitle.length }}/120 · Give people a recognizable name.</span>
+        </label>
+        <label class="field">
+          <span class="field-label">Summary — when does this apply?</span>
+          <input
+            class="txt"
+            type="text"
+            [(ngModel)]="formSummary"
+            maxlength="300"
+            placeholder="e.g. How to structure and phrase our quarterly reports"
+          />
+          <span class="field-help">{{ formSummary.length }}/300 · Say when this knowledge should be used.</span>
+        </label>
+        <div class="field">
+          <div class="skill-body-heading">
+            <label class="field-label" for="skill-body">The skill itself</label>
+            <button class="btn ghost sm" type="button" *ngIf="isCreating"
+                    (click)="useExample()" [disabled]="saving">Use example</button>
+          </div>
+          <textarea
+            id="skill-body"
+            class="txt notes"
+            [(ngModel)]="formBody"
+            maxlength="20000"
+            rows="10"
+            placeholder="Everything the assistant should know when this applies — formats, rules, examples, tone."
+          ></textarea>
+          <span class="field-help">{{ formBody.length }}/20,000 · Include concrete rules and examples; never add secrets.</span>
+        </div>
+      </div>
+
+      <div class="share-row">
+        <span class="field-label">Who can use it</span>
+        <app-sharing-selector
+          [mode]="shareMode" (modeChange)="shareMode = $any($event)"
+          [groups]="myGroups" [people]="peers"
+          [selectedGroups]="selectedGroups" [selectedPeople]="selectedUsers"
+          groupLabel="Share with my groups" peopleMode="people" [allowOrganization]="canShareAny"
+          (groupToggled)="toggleGroup($event)" (personToggled)="toggleUser($event)">
+        </app-sharing-selector>
+      </div>
+      </div>
+
+      <footer class="dialog-actions">
+        <button class="btn" type="button" (click)="cancelEdit()" [disabled]="saving">
+          Cancel
+        </button>
+        <button
+          class="btn primary"
+          type="button"
+          (click)="save()"
+          [disabled]="saving || !formReady"
+        >
+          {{ saving ? "Saving…" : isCreating ? "Create skill" : "Save changes" }}
+        </button>
+      </footer>
+    </section>
+    </div>
+
+    <!-- ── List ───────────────────────────────────────────────────── -->
+    <section class="skills-workspace" *ngIf="editingRef === null">
+      <p class="cap-note" *ngIf="overCatalogLimit">
+        <lucide-icon name="triangle-alert" [size]="15"></lucide-icon>
+        <span>
+          <strong>A chat shows the assistant {{ catalogLimit }} skills at most.</strong>
+          {{ defaultCount }} are selected, so some will not appear in the
+          catalog it chooses from. It is told the list was cut, but choosing
+          fewer per chat is how you decide which ones it sees.
+        </span>
+      </p>
+
+      <div class="catalog-tools" *ngIf="skills.length">
+        <label class="search-field">
+          <lucide-icon name="search" [size]="15"></lucide-icon>
+          <input type="search" [(ngModel)]="query" placeholder="Search skills" aria-label="Search skills" />
+        </label>
+        <span>{{ filteredSkills.length }} of {{ skills.length }}</span>
+      </div>
+
+      <div class="empty-state" *ngIf="!skills.length">
+        <span class="empty-mark"><lucide-icon name="sparkles" [size]="22"></lucide-icon></span>
+        <strong>No skills yet</strong>
+        <p>
+          The assistant works without them — a skill is how you teach it
+          something your organization does its own way: a format, a rule, a
+          method it should follow without being reminded.
+        </p>
+        <div class="empty-actions" *ngIf="canCreate">
+          <button class="btn primary" type="button" (click)="startCreate()">
+            <lucide-icon name="plus" [size]="15"></lucide-icon>
+            Write the first one
+          </button>
+          <button class="btn" type="button" (click)="useExample()">Start from an example</button>
+        </div>
+      </div>
+
+      <section class="skills-document" *ngIf="filteredSkills.length">
+        <header class="document-head">
+          <div><h2>Skill library</h2><p>{{ filteredSkills.length }} shown</p></div>
+          <lucide-icon name="book-open" [size]="15"></lucide-icon>
+        </header>
+      <ul class="rows">
+        <li class="row" *ngFor="let skill of filteredSkills">
+          <span class="row-mark" aria-hidden="true">
+            <lucide-icon name="sparkles" [size]="15"></lucide-icon>
+          </span>
+
+          <span class="row-id">
+            <span class="row-name">{{ skill.keys.title }}</span>
+            <span class="row-sub">{{ skill.keys.summary }}</span>
+            <span class="row-meta">
+              {{ shareLabel(skill) }}
+            </span>
+          </span>
+
+          <button class="action-icon-button default-action" [class.enabled]="isDefault(skill)" type="button"
+                  (click)="toggleDefault(skill)" [disabled]="savingDefaults"
+                  [attr.aria-label]="isDefault(skill) ? 'Disable skill for new chats' : 'Enable skill for new chats'"
+                  [matTooltip]="isDefault(skill) ? 'Enabled for new chats — click to disable' : 'Disabled for new chats — click to enable'">
+            <lucide-icon [name]="isDefault(skill) ? 'circle-check' : 'circle-x'" [size]="16"></lucide-icon>
+          </button>
+
+          <button class="action-icon-button" type="button" (click)="preview(skill)"
+                  aria-label="Read skill" matTooltip="Read skill">
+            <lucide-icon name="book-open" [size]="16"></lucide-icon>
+          </button>
+
+          <button
+            class="action-icon-button"
+            type="button"
+            *ngIf="skill.created_by === myUserId || canShareAny"
+            (click)="startEdit(skill)"
+            aria-label="Edit skill" matTooltip="Edit skill"
+            [disabled]="busyRef === skill.resource_ref"
+          >
+            <lucide-icon name="pencil" [size]="16"></lucide-icon>
+          </button>
+          <button
+            class="action-icon-button"
+            type="button"
+            *ngIf="skill.created_by === myUserId || canShareAny"
+            (click)="requestTransfer(skill)"
+            [disabled]="busyRef === skill.resource_ref"
+            aria-label="Hand over skill" matTooltip="Hand over skill"
+          >
+            <lucide-icon name="arrow-right-left" [size]="16"></lucide-icon>
+          </button>
+          <button
+            class="action-icon-button danger"
+            type="button"
+            *ngIf="skill.created_by === myUserId || canShareAny"
+            (click)="requestDelete(skill)"
+            aria-label="Delete skill" matTooltip="Delete skill"
+            [disabled]="busyRef === skill.resource_ref"
+          >
+            <lucide-icon name="trash-2" [size]="16"></lucide-icon>
+          </button>
+        </li>
+      </ul>
+        <footer class="skills-note">
+          <lucide-icon name="sparkles" [size]="14"></lucide-icon>
+          The summary decides when a skill is relevant; the full instructions are read only when needed.
+        </footer>
+      </section>
+      <p class="tab-hint" *ngIf="skills.length && !filteredSkills.length">No skills match “{{ query }}”.</p>
+    </section>
+  </ng-container>
+
+  <app-transfer-dialog *ngIf="transferTarget as item"
+                       [subject]="'the skill “' + item.keys.title + '”'" [ownerId]="item.created_by"
+                       [busy]="transferring" (chosen)="transfer($event)" (closed)="closeTransfer()">
+  </app-transfer-dialog>
+</div>

@@ -1,0 +1,142 @@
+<!-- A tab of the Settings page: the page owns the header. -->
+<div class="safety-tab">
+
+  <div class="data-alert error" *ngIf="error">{{ error }}</div>
+  <div class="data-alert ok" *ngIf="notice">{{ notice }}</div>
+
+  <div class="data-loading" *ngIf="loading">
+    <span class="ui-spinner" role="status" aria-label="Loading"></span>
+    <span>Loading the setting…</span>
+  </div>
+
+  <ng-container *ngIf="!loading && draft as d">
+
+    <!-- The save sits in a row of its own, right-aligned: the page's
+         header is words only. -->
+    <div class="safety-toolbar" *ngIf="canEdit">
+      <span class="safety-state" *ngIf="dirty">You have changes that are not saved.</span>
+      <button class="btn ghost" type="button" (click)="discard()" [disabled]="!dirty || saving">Discard</button>
+      <button class="btn primary" type="button" (click)="save()" [disabled]="!dirty || saving">
+        {{ saving ? "Saving…" : "Save" }}
+      </button>
+    </div>
+
+    <section class="safety-section">
+      <header class="safety-head">
+        <lucide-icon name="globe" [size]="18"></lucide-icon>
+        <div>
+          <h2>Sites no agent may open</h2>
+          <p>A name here is refused to every agent, the Browser included, whatever the agent declared. It covers every address under it: <code>example.com</code> also blocks <code>shop.example.com</code>.</p>
+        </div>
+      </header>
+      <form class="safety-add" *ngIf="canEdit" (submit)="$event.preventDefault(); addSite()">
+        <input class="txt" name="site" [(ngModel)]="newSite" placeholder="example.com" aria-label="A site to block" maxlength="253" />
+        <button class="btn" type="submit" [disabled]="!newSite.trim()">
+          <lucide-icon name="plus" [size]="15"></lucide-icon>
+          Block
+        </button>
+      </form>
+      <ul class="safety-names" *ngIf="d.blocked_sites.length">
+        <li *ngFor="let site of d.blocked_sites">
+          <code>{{ site }}</code>
+          <button type="button" *ngIf="canEdit" (click)="removeSite(site)" [attr.aria-label]="'Stop blocking ' + site">
+            <lucide-icon name="x" [size]="14"></lucide-icon>
+          </button>
+        </li>
+      </ul>
+      <p class="safety-empty" *ngIf="!d.blocked_sites.length">No site is blocked.</p>
+    </section>
+
+    <section class="safety-section">
+      <header class="safety-head">
+        <lucide-icon name="file-code" [size]="18"></lucide-icon>
+        <div>
+          <h2>A script in a page</h2>
+          <p>The Browser may want to run a script in a page it has open. How often it asks you first.</p>
+        </div>
+      </header>
+      <div class="safety-choices" role="radiogroup" aria-label="A script in a page">
+        <label class="safety-choice" *ngFor="let choice of scripts" [class.on]="d.scripts === choice.value">
+          <input type="radio" name="scripts" [value]="choice.value" [(ngModel)]="d.scripts" [disabled]="!canEdit" />
+          <span><strong>{{ choice.label }}</strong><small>{{ choice.help }}</small></span>
+        </label>
+      </div>
+    </section>
+
+    <section class="safety-section">
+      <header class="safety-head">
+        <lucide-icon name="square-terminal" [size]="18"></lucide-icon>
+        <div>
+          <h2>A program</h2>
+          <p>The Code agent writes a program for what you ask. How often it shows it to you before it runs.</p>
+        </div>
+      </header>
+      <div class="safety-choices" role="radiogroup" aria-label="A program">
+        <label class="safety-choice" *ngFor="let choice of programs" [class.on]="d.programs === choice.value">
+          <input type="radio" name="programs" [value]="choice.value" [(ngModel)]="d.programs" [disabled]="!canEdit" />
+          <span><strong>{{ choice.label }}</strong><small>{{ choice.help }}</small></span>
+        </label>
+      </div>
+    </section>
+
+    <p class="safety-note" *ngIf="loosened">
+      <lucide-icon name="shield-check" [size]="15"></lucide-icon>
+      <span>
+        Code runs without a card only when the assistant read it and found that it does what it says.
+        Code that does more, or that could not be read, is always shown to you.
+        What ran without a card is still said in the chat, with the code.
+      </span>
+    </p>
+
+    <section class="safety-section">
+      <header class="safety-head">
+        <lucide-icon name="package" [size]="18"></lucide-icon>
+        <div>
+          <h2>Packages a program may install</h2>
+          <p>A program may need packages that are downloaded and installed for it.</p>
+        </div>
+      </header>
+      <div class="safety-choices" role="radiogroup" aria-label="Packages a program may install">
+        <label class="safety-choice" *ngFor="let choice of packages" [class.on]="d.packages === choice.value">
+          <input type="radio" name="packages" [value]="choice.value" [(ngModel)]="d.packages" [disabled]="!canEdit" />
+          <span><strong>{{ choice.label }}</strong><small>{{ choice.help }}</small></span>
+        </label>
+      </div>
+      <ng-container *ngIf="d.packages === 'listed'">
+        <form class="safety-add" *ngIf="canEdit" (submit)="$event.preventDefault(); addPackage()">
+          <input class="txt" name="package" [(ngModel)]="newPackage" placeholder="pandas" aria-label="A package to allow" maxlength="100" />
+          <button class="btn" type="submit" [disabled]="!newPackage.trim()">
+            <lucide-icon name="plus" [size]="15"></lucide-icon>
+            Allow
+          </button>
+        </form>
+        <ul class="safety-names" *ngIf="d.allowed_packages.length">
+          <li *ngFor="let name of d.allowed_packages">
+            <code>{{ name }}</code>
+            <button type="button" *ngIf="canEdit" (click)="removePackage(name)" [attr.aria-label]="'Stop allowing ' + name">
+              <lucide-icon name="x" [size]="14"></lucide-icon>
+            </button>
+          </li>
+        </ul>
+        <p class="safety-empty" *ngIf="!d.allowed_packages.length">The list is empty: no program may install a package.</p>
+      </ng-container>
+    </section>
+
+    <section class="safety-section">
+      <header class="safety-head">
+        <lucide-icon name="server" [size]="18"></lucide-icon>
+        <div>
+          <h2>MCP servers</h2>
+          <p>Remote tool servers people add for their own chats. A tool runs on its server, not here.</p>
+        </div>
+      </header>
+      <div class="safety-choices" role="radiogroup" aria-label="MCP servers">
+        <label class="safety-choice" *ngFor="let choice of mcp" [class.on]="d.mcp === choice.value">
+          <input type="radio" name="mcp" [value]="choice.value" [(ngModel)]="d.mcp" [disabled]="!canEdit" />
+          <span><strong>{{ choice.label }}</strong><small>{{ choice.help }}</small></span>
+        </label>
+      </div>
+    </section>
+
+  </ng-container>
+</div>

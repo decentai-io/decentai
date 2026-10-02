@@ -1,0 +1,2027 @@
+"""The assistant — the one reasoning entity behind a chat.
+
+The contract is docs/system/assistant.md; this is its cycle:
+
+    events arrive in the inbox → absorbed into the transcript
+    → think once (one model call, one action) → act → observe → persist
+    → another beat while there is anything to decide
+    → finish → idle; the next event wakes it
+
+There are no turns. A user message is one more event arriving at a mind
+that already exists; a background job's completion is another; so is an
+approval decision, a schedule firing, a data change, a stop. Waiting is
+not stopping: jobs run while the assistant keeps thinking, and when it
+has nothing to do but wait, idle-until-event IS the wait.
+
+The mind holds no authority. Every invocation passes the executor's
+gates; every message's data-bearing parts pass Evidence. This class
+imports execution and agents — the law — and never chat, the embodiment
+that hosts it: all side effects cross the injected seams.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import base64
+import contextvars
+import difflib
+import json
+import time
+import uuid
+from datetime import datetime
+from typing import Tuple, Any, Callable, Dict, List, Optional
+
+from ai_runtime.agents.library import InstalledAgent
+from contracts.chat import agent_source
+from contracts.cron import zone
+from ai_runtime.execution.executor import FunctionExecutor
+from ai_runtime.llms.connector.tools import (
+    is_context_overflow, is_image_refusal, text_block)
+from ai_runtime.reasoning.actions import (
+    ACTION_TOOLS, FINISH_REASONS, FunctionTools,
+)
+from ai_runtime.reasoning.documents import (
+    DocumentPage, DocumentText, Unreadable,
+)
+from ai_runtime.reasoning.evidence import Evidence
+from ai_runtime.reasoning.state import (
+    ASSISTANT_JOB,
+    CANCELLED,
+    DONE,
+    FAILED,
+    AssistantState,
+    Job,
+)
+from ai_runtime.prompts import Prompts
+from ai_runtime.runtime_logging import RuntimeLoggerFactory
+
+#: Which job the current task is running, if any — how an approver
+#: called deep inside the executor knows it is parking a JOB rather
+#: than the assistant itself (docs/system/assistant.md, "Jobs").
+CURRENT_JOB_ID: contextvars.ContextVar = contextvars.ContextVar(
+    "decentai_current_job", default="")
+
+
+class Assistant:
+    #: The runaway valve — beats since the user last spoke. Generous by
+    #: design: exhaustion reports and remains continuable, never
+    #: discards (docs/system/assistant.md, "Pacing and limits").
+    DEFAULT_MAX_BEATS = 40
+    #: How many beats past the valve the model gets to wrap up honestly
+    #: before the assistant wraps up for it.
+    VALVE_GRACE_BEATS = 3
+
+    #: Two messages this alike are the same message. The guard used to
+    #: compare bytes, so a model asked not to repeat itself rephrased
+    #: and passed — which is the form the repetition actually takes.
+    #: Set high on purpose: refusing a genuinely new message is the
+    #: worse mistake, and the prompt, not this, is what stops a model
+    #: from saying the same thing in wholly different words.
+    SAME_SAY_RATIO = 0.92
+
+    # A malformed emission is corrected, not charged — up to this many
+    # times in one ask. Counted off the transcript, from where the ask
+    # began, so a rehydrated mind keeps its tally and a long
+    # conversation does not run out of them.
+    FREE_PARSE_BOUNCES = 2
+    BOUNCE_MARK = "Your last reply was not a single valid JSON action."
+
+    #: How much of a result the model sees whole. Roughly 4,000 tokens —
+    #: small against any current context, and the difference between
+    #: one beat and one beat per row: a table the model cannot see
+    #: whole is one it reads back item by item, a model call each.
+    OBSERVATION_MAX_CHARS = 16000
+    #: When a result is previewed instead, lists are shown as many
+    #: complete items as fit in this, strings clipped at the value cap.
+    PREVIEW_MAX_CHARS = 12000
+    PREVIEW_VALUE_CHARS = 1000
+    #: How much of a result the TRACE keeps. The whole result lives in
+    #: storage under its storage_ref; the trace is the mind's own state,
+    #: persisted every beat and capped by the platform, and one large
+    #: read must not be what makes it unsaveable.
+    TRACE_RESULT_MAX_CHARS = 4000
+
+    #: The largest picture a model is shown, as bytes on disk. Base64
+    #: costs a third on top, and providers cap what they accept —
+    #: Anthropic at five megabytes an image. Three sits under every
+    #: ceiling and is far above any screenshot.
+    MAX_IMAGE_BYTES = 3 * 1024 * 1024
+    #: And how many one message may carry. A per-image cap alone is a
+    #: cap in name only: ten pasted screenshots under it is thirty
+    #: megabytes, re-sent on every beat of a turn that may run forty.
+    MAX_IMAGES_PER_MESSAGE = 4
+
+    #: What a permission level MEANS, in the words the person approving
+    #: one is shown.
+    LEVELS = {
+        0: "observe",
+        1: "read / compute",
+        2: "contained change",
+        3: "external / irreversible",
+    }
+
+    def __init__(
+        self,
+        state: AssistantState,
+        agents: Dict[str, InstalledAgent],
+        connector,
+        executor: FunctionExecutor,
+        *,
+        say_sink: Callable,
+        chat_level: int = 1,
+        skill_reader: Optional[Callable] = None,
+        image_reader: Optional[Callable] = None,
+        file_reader: Optional[Callable] = None,
+        file_finder: Optional[Callable] = None,
+        memory_writer: Optional[Callable] = None,
+        plan_sink: Optional[Callable] = None,
+        clock: Optional[Any] = None,
+        spawn_sink: Optional[Callable] = None,
+        finish_sink: Optional[Callable] = None,
+        state_sink: Optional[Callable] = None,
+        activity_sink: Optional[Callable] = None,
+        skills: Optional[list] = None,
+        memories: Optional[list] = None,
+        history: Optional[List[Dict[str, Any]]] = None,
+        max_beats: Optional[int] = None,
+        max_skills: Optional[int] = None,
+        router=None,
+        routing: Optional[Dict[str, Any]] = None,
+        fold: Optional[Callable] = None,
+        now: Optional[Callable[[], float]] = None,
+        timezone: str = "",
+    ):
+        self.state = state
+        self.agents = agents
+        self.connector = connector
+        self.executor = executor
+        self.chat_level = chat_level
+        #: async (text, parts) -> None — a message reaching the user NOW.
+        self.say_sink = say_sink
+        self.skill_reader = skill_reader
+        #: async (resource_ref) -> the file, base64 — how a picture the
+        #: person attached reaches the model. None where nothing can
+        #: read files, and the words travel alone.
+        self.image_reader = image_reader
+        #: async (resource_ref) -> the file, base64 — the same download,
+        #: read as a document (read_file). The image reader where none
+        #: is given: it is one door.
+        self.file_reader = file_reader or image_reader
+        #: async (query) -> {status, files} — the files the user meant,
+        #: found among what they can see and chosen by them on a card
+        #: (find_files). None where no files can be looked up.
+        self.file_finder = file_finder
+        #: Whether this model has shown it will look at pictures. It
+        #: starts hopeful and is only ever set false, by a refusal.
+        self._images_allowed = True
+        self.memory_writer = memory_writer
+        #: async (steps) -> None — show and persist the plan.
+        self.plan_sink = plan_sink
+        #: A plan cleared on absorption, owed to the page at the next beat.
+        self._plan_cleared = False
+        #: the chat's hand on the clock: async schedule(spec) -> dict,
+        #: async unschedule(schedule_id) -> dict. None where no clock
+        #: serves the session.
+        self.clock = clock
+        #: async (job) -> (result, status, child_trace) — runs a child
+        #: session to its report (docs/system/sub-assistants.md). None in a
+        #: child: depth is one by construction.
+        self.spawn_sink = spawn_sink
+        #: async (summary) -> None — a child's finish is its report.
+        self.finish_sink = finish_sink
+        #: async (state) -> None — persist the mind, every beat.
+        #: Resilience, never authority: a failed save costs one beat.
+        self.state_sink = state_sink
+        #: async (kind, text, source, **detail) -> None — the work told
+        #: as it happens: calls, jobs, helpers (``activity`` events).
+        self.activity_sink = activity_sink
+        self.skills = list(skills or [])
+        self.memories = [str(m) for m in (memories or [])]
+        self.history = list(history or [])
+        #: Beats one ask may take before the valve; zero is no valve —
+        #: the person chose to let the work run until it is done or
+        #: they stop it.
+        self.max_beats = (self.DEFAULT_MAX_BEATS if max_beats is None
+                          else int(max_beats))
+        #: Skill lines the frame lists before it says "N more exist";
+        #: zero lists every one. The chat's setting (max_skills), the
+        #: platform's forty when none arrives.
+        self.max_skills = (self.DEFAULT_MAX_SKILLS if max_skills is None
+                           else int(max_skills))
+        #: the functions the last beat could not offer as tools, so the
+        #: model is told once per change rather than every beat
+        self._last_omitted: List[str] = []
+        #: the agent router (reasoning/agent_router.py) and the
+        #: organization's routing settings from the contract — the
+        #: threshold, the shortlist, the candidates, whether to rerank,
+        #: how many agents stay open, and the embedding model. None
+        #: or no embedding: every agent is listed, as always.
+        self.router = router
+        self.routing: Dict[str, Any] = dict(routing or {})
+        #: what the person last said — what the shortlist is for
+        self._latest_words: str = ""
+        #: (ids listed, how many left off) for this turn, or None for
+        #: every agent; and whether a message since asks for a new one
+        self._shortlist: Optional[Tuple[List[str], int]] = None
+        self._route_pending = False
+        #: async (force=False) -> bool: the session's fold — the
+        #: transcript into its summary when it outgrew its budget, or at
+        #: once when the model refused it for length. Called between
+        #: beats, because a long working turn is when the transcript is
+        #: largest. None = never folded here (tests, a child).
+        self.fold = fold
+        #: () -> float — the clock the stamps are read from; the
+        #: session hands over the scheduler's, so both agree.
+        self.now = now or time.time
+        #: The zone the stamps are written in — the person's, from the
+        #: contract, so "tomorrow at nine" means their nine. Empty: the
+        #: server's.
+        self.zone = zone(timezone)
+
+        self.inbox: asyncio.Queue = asyncio.Queue()
+        self._job_tasks: Dict[str, asyncio.Task] = {}
+        self._stopping = False
+        self.logger = RuntimeLoggerFactory.get_logger(self.__class__.__name__)
+
+    # ------------------------------------------------------------------
+    # Events in
+    # ------------------------------------------------------------------
+
+    def post(self, event: Dict[str, Any]) -> None:
+        """Anything the world tells the assistant. Thread of one loop —
+        the session's — so a plain put."""
+        self.inbox.put_nowait(dict(event or {}))
+
+    # ------------------------------------------------------------------
+    # The cycle
+    # ------------------------------------------------------------------
+
+    async def run(self) -> None:
+        """Advance until idle: every event absorbed, nothing left to
+        decide, no job whose completion is being waited on. The session
+        calls this after posting events; the next event wakes it again."""
+        self._frame()
+        while True:
+            self._drain()
+            if self._stopping:
+                await self._cancel_all_jobs()
+                await self._persist()
+                self._stopping = False
+                return
+
+            if self._route_pending:
+                await self._route()
+            finished = await self._beat()
+            await self._persist()
+            if self.fold is not None:
+                await self.fold()
+
+            if finished:
+                if not self.inbox.empty():
+                    continue
+                if self.state.active_jobs():
+                    # Idle but work is pending: idle-until-event IS the
+                    # wait. Job completions arrive here; so does a user
+                    # interjection.
+                    self._absorb(await self.inbox.get())
+                    continue
+                return
+
+    def _frame(self) -> None:
+        """First hydration of a fresh mind: the system frame plus the
+        durable conversation. A rehydrated mind already carries its
+        transcript and skips this."""
+        if self.state.messages:
+            return
+        messages = [{"role": "system", "content": self._system_prompt()}]
+        messages.extend(self.history)
+        self.state.messages = messages
+
+    def _drain(self) -> None:
+        while not self.inbox.empty():
+            self._absorb(self.inbox.get_nowait())
+
+    def _absorb(self, event: Dict[str, Any]) -> None:
+        kind = str(event.get("event") or "")
+        # A durable event carries its sequence; absorbing it moves the
+        # bookmark, and the beat persists bookmark and transcript as one
+        # document — which is what makes absorption exactly-once.
+        seq = int(event.get("seq") or 0)
+        if seq > self.state.cursor:
+            self.state.cursor = seq
+        if kind == "stop":
+            self._stopping = True
+            return
+        # Everything absorbed is stamped with the local time it arrived
+        # — the mind's only clock, and always current when it thinks,
+        # because a beat follows an absorption.
+        stamp = self._stamp()
+        if kind == "user_message":
+            content = f"[{stamp}] {str(event.get('text') or '')}"
+            lines, images = self._attached(event.get("attachments") or [])
+            said: Dict[str, Any] = {"role": "user",
+                                    "content": content + "".join(
+                                        f"\n{line}" for line in lines)}
+            if images:
+                said["images"] = images
+            self.state.messages.append(said)
+            # The person spoke: whatever the valve had counted, this is
+            # a fresh ask.
+            self.state.beats = 0
+            # ...and the agents worth listing may have changed with it:
+            # routed before the next beat, since routing is a call.
+            self._latest_words = str(event.get("text") or "")
+            self._route_pending = True
+            # A plan belongs to the ask it answered. One whose every
+            # item is done is over, and does not sit between the next
+            # question and its answer. Anything still open stays —
+            # a blocked item most of all, since the person is usually
+            # answering it — and a plan that spans several messages
+            # keeps its shape.
+            if self.state.plan.all_done():
+                self.state.plan.replace([])
+                self._plan_cleared = True
+            return
+        payload = {k: v for k, v in event.items()
+                   if k not in ("event", "seq")}
+        # A wakeup carries its fire's whole result, and a schedulable
+        # function can return more than one beat should be shown. The
+        # budget that bounds an observation bounds it here, with the
+        # same note — the fire stored the whole, and read pages it.
+        result = payload.get("result")
+        if isinstance(result, dict) and len(
+                json.dumps(payload, default=str)) > self.OBSERVATION_MAX_CHARS:
+            payload = {
+                **{k: v for k, v in payload.items() if k != "result"},
+                **self._previewed(str(payload.get("status") or "success"),
+                                  result),
+            }
+        self.state.messages.append({
+            "role": "user",
+            "content": f"EVENT {kind} at {stamp}:\n"
+                       f"{json.dumps(payload, default=str)}",
+        })
+
+    def _stamp(self) -> str:
+        return datetime.fromtimestamp(self.now(), self.zone).strftime(
+            "%a %Y-%m-%d %H:%M")
+
+    @staticmethod
+    def _attached(items: List[Dict[str, Any]]):
+        """Attachments as the transcript carries them: one line each, by
+        the ref a function reads it by — the model passes that ref as a
+        file input — and the pictures among them, NAMED to be fetched at
+        the model call. The transcript is persisted every beat under a
+        size cap, so the bytes must not live in it — one screenshot
+        inlined would stop the whole mind from saving, and a failed save
+        only warns."""
+        lines: List[str] = []
+        images: List[Dict[str, Any]] = []
+        for item in items:
+            if not isinstance(item, dict) or not item.get("resource_ref"):
+                continue
+            kind_note = f" ({item['file_type']})" if item.get("file_type") else ""
+            lines.append(f"[attached: {item.get('filename') or 'file'}"
+                         f"{kind_note} → file_ref {item['resource_ref']}]")
+            if str(item.get("file_type") or "").startswith("image/"):
+                images.append({
+                    "resource_ref": str(item["resource_ref"]),
+                    "filename": str(item.get("filename") or ""),
+                    "file_type": str(item.get("file_type") or ""),
+                })
+        return lines, images
+
+    async def _beat(self) -> bool:
+        """One beat: think once, act once. True when the action was
+        finish — nothing left to decide right now."""
+        self.state.beats += 1
+        if self._plan_cleared:
+            self._plan_cleared = False
+            await self._show_plan()
+        overdue = self.state.beats - self.max_beats if self.max_beats > 0 else -1
+        if overdue == 0:
+            self.state.messages.append({
+                "role": "user",
+                "content": "You have been working a long time without "
+                           "input. Wrap up now: say honestly what is done "
+                           "(only what observations confirm), what remains, "
+                           "and finish. The state is kept — work can "
+                           "continue when the user asks.",
+            })
+        elif overdue > self.VALVE_GRACE_BEATS:
+            await self._say_raw(
+                "I've paused here — this was taking many steps. What's "
+                "done so far is recorded; tell me to continue and I'll "
+                "pick it up from exactly this point."
+            )
+            # The count starts again: the next event — a job finishing,
+            # a schedule waking — is new work, not more of this run.
+            self.state.beats = 0
+            return True
+
+        # The actions travel as tool schemas, and so does every function
+        # of an opened agent, each with its manifest schema whole: a
+        # connector that speaks tool calling asks the model for exactly
+        # one call and hands it back as the JSON the parser reads. A
+        # call by function name is rewritten to the invoke it is.
+        offered = FunctionTools(self.agents, self.state.opened, self.chat_level)
+        if offered.omitted != self._last_omitted:
+            # Past the cap the rest are callable by name; said once, so
+            # the model never concludes an agent lacks a function that
+            # simply did not fit this beat's tool list.
+            self._last_omitted = list(offered.omitted)
+            if offered.omitted:
+                self.state.messages.append({
+                    "role": "user",
+                    "content": "Too many agents are open to offer every "
+                               "function as a tool. These are not tools this "
+                               "beat but ARE available — call them with the "
+                               "invoke action by name: "
+                               + ", ".join(offered.omitted),
+                })
+        try:
+            reply = await self._ask_model(offered)
+            response = reply.content
+        except Exception as exc:
+            self.logger.error(f"Model call failed: {exc}")
+            await self._say_raw(
+                "The language model is unavailable — please try again "
+                "shortly."
+            )
+            return True
+
+        if self._cut_off(reply):
+            # Half an action is not an action: a tool call cut at the
+            # cap has arguments that will not parse, and acting on what
+            # is left ran functions with empty inputs and delivered half
+            # a sentence. The model is told and writes it shorter.
+            self.state.messages.append({
+                "role": "user",
+                "content": "Your last reply was cut off at the length "
+                           "limit and nothing in it was done. Reply again, "
+                           "shorter: one action, and split a long answer "
+                           "into steps.",
+            })
+            return False
+
+        actions = [offered.as_action(a) for a in self.parse_actions(response)]
+        implicit = False
+        if not actions:
+            prose = self._prose(response)
+            if prose is None:
+                if self._bounces() < self.FREE_PARSE_BOUNCES:
+                    self.state.beats -= 1
+                self.state.messages.append(
+                    {"role": "assistant", "content": str(response)})
+                self.state.messages.append({
+                    "role": "user",
+                    "content": f"{self.BOUNCE_MARK} Emit exactly one action.",
+                })
+                return False
+            # Words with no action in them are for the user: there is
+            # no other channel they could belong to, and bouncing them
+            # lost the answer the model had just written — it would
+            # then finish rather than say it again. Delivered as a say
+            # and observed as one; only a malformed ATTEMPT at an
+            # action still bounces.
+            actions = [{"action": "say", "text": prose}]
+            implicit = True
+
+        action = actions[0]
+        self.state.messages.append(
+            {"role": "assistant", "content": json.dumps(action)})
+        if len(actions) > 1:
+            self.state.messages.append({
+                "role": "user",
+                "content": f"Your reply carried {len(actions)} actions; "
+                           f"only the first ran. Emit exactly one action "
+                           f"per beat.",
+            })
+        return await self._act(action, implicit=implicit)
+
+    #: How providers say a reply stopped at the output cap.
+    CUT_OFF = ("length", "max_tokens")
+
+    @classmethod
+    def _cut_off(cls, reply: Any) -> bool:
+        return str(getattr(reply, "stop_reason", "") or "") in cls.CUT_OFF
+
+    @staticmethod
+    def _prose(response: Any) -> Optional[str]:
+        """The reply as words for the user, or None when it reads as an
+        attempt at an action that failed to parse — which deserves the
+        bounce, not delivery."""
+        text = (response if isinstance(response, str)
+                else str(response or "")).strip()
+        if not text or text.startswith("{") or '"action"' in text:
+            return None
+        return text
+
+    def _bounces(self) -> int:
+        """The bounces of this ask: the unbroken run of them at the
+        transcript's end. A reply that parsed stands between an earlier
+        run and now, and what came before it is not counted."""
+        count = 0
+        messages = self.state.messages
+        index = len(messages) - 1
+        while index >= 1 and self.BOUNCE_MARK in str(
+                messages[index].get("content") or ""):
+            count += 1
+            index -= 2          # the bounce, and the reply it answered
+        return count
+
+    # ------------------------------------------------------------------
+    # Actions
+    # ------------------------------------------------------------------
+
+    async def _act(self, action: Dict[str, Any], implicit: bool = False) -> bool:
+        kind = str(action.get("action") or "").lower()
+
+        if kind == "finish":
+            refusal = self._finish_refusal(
+                str(action.get("reason") or "completed"))
+            if refusal:
+                self._observe({"error": refusal})
+                return False
+            self.state.beats = 0
+            if self.finish_sink is not None:
+                await self.finish_sink(str(action.get("summary") or ""),
+                                       str(action.get("reason") or "completed"))
+            return True
+        if kind == "spawn":
+            self._observe(await self._spawn(action))
+            return False
+        if kind == "say":
+            if self._already_said(str(action.get("text") or "")):
+                self._observe({"error": "You have already told the user "
+                                        "that. Saying it again in other "
+                                        "words is still saying it again. "
+                                        "Choose another action, or "
+                                        "finish."})
+                return False
+            delivered, refused = await self._say(action)
+            if not delivered:
+                # Nothing reached the user; the reason is already
+                # observed, and the turn is not over on silence.
+                return False
+            if refused:
+                # Said back to the model, never to the user: the words
+                # went out; a table it named that the trace could not
+                # vouch for did not.
+                self._observe({"said": True, "not_shown": refused})
+            if action.get("final") is True:
+                # Complete by the model's own word: idle now. A beat
+                # spent asking whether to finish could only answer
+                # yes — and the audience's spinner would outlive the
+                # reply by exactly that beat. Held to the completed
+                # rule: the words are delivered either way, and a
+                # plan still owed keeps the cycle awake.
+                refusal = self._finish_refusal("completed")
+                if refusal:
+                    self._observe({"said": True, "error": refusal})
+                    return False
+                self.state.beats = 0
+                if self.finish_sink is not None:
+                    await self.finish_sink("", "completed")
+                return True
+            # Observed like every other action, so the beat closes on a
+            # user turn. Without this the transcript ended on the
+            # model's own message, and a chat model asked to continue
+            # from there says it again in other words. The decision the
+            # next beat owes is finish-or-more, made from a fresh turn.
+            self._observe({"said": True, "note": (
+                "Your reply carried no JSON action, so its words were "
+                "delivered to the user as a say. Every beat is exactly "
+                "one JSON action. " if implicit else "Delivered to the "
+                "user. ") + "Finish if the reply is complete; otherwise "
+                "continue the work. They have read it — do not restate "
+                "it, in these words or others."})
+            return False
+        if kind == "open_agent":
+            self._observe(await self._open_agent(action))
+            return False
+        if kind == "invoke":
+            self._observe(await self._invoke(action))
+            return False
+        if kind == "start":
+            self._observe(await self._start(action))
+            return False
+        if kind == "cancel_job":
+            self._observe(await self._cancel_job(action))
+            return False
+        if kind == "read":
+            self._observe(await self._read(action))
+            return False
+        if kind == "find_files":
+            self._observe(await self._find_files(action))
+            return False
+        if kind == "read_file":
+            self._observe(await self._read_file(action))
+            return False
+        if kind == "use_skill":
+            self._observe(await self._use_skill(action))
+            return False
+        if kind == "find_agents":
+            self._observe(await self._find_agents(action))
+            return False
+        if kind == "close_agent":
+            self._observe(self._close_agent(action))
+            return False
+        if kind == "recall":
+            self._observe(self._recall(action))
+            return False
+        if kind == "remember":
+            self._observe(await self._remember(action))
+            return False
+        if kind == "plan":
+            self._observe(await self._plan(action))
+            return False
+        if kind == "schedule":
+            self._observe(await self._schedule(action))
+            return False
+        if kind == "unschedule":
+            self._observe(await self._unschedule(action))
+            return False
+        if kind == "sleep":
+            slept = await self._sleep(action)
+            self._observe(slept)
+            if "error" in slept:
+                return False
+            # Asleep is idle: the wakeup is the next event, unless the
+            # person speaks first — which is heard at once, as always.
+            self.state.beats = 0
+            return True
+
+        self.state.messages.append({
+            "role": "user",
+            "content": f"Unknown action '{kind}'. Use say, open_agent, "
+                       f"close_agent, find_agents, invoke, start, spawn, "
+                       f"cancel_job, read, find_files, read_file, use_skill, "
+                       f"recall, remember, plan, schedule, unschedule, "
+                       f"sleep or finish.",
+        })
+        return False
+
+    def _observe(self, observation: Dict[str, Any]) -> None:
+        self.state.messages.append({
+            "role": "user",
+            "content": "OBSERVATION:\n"
+                       f"{json.dumps(observation, default=str)}",
+        })
+
+    # -- pictures ---------------------------------------------------------
+    async def _for_model(self, messages: List[Dict[str, Any]]
+                         ) -> List[Dict[str, Any]]:
+        """The transcript as the provider takes it.
+
+        A picture is not kept in the transcript — only the ref to it.
+        The bytes are fetched HERE, for this one request, and the
+        message that named them goes out carrying content blocks. That
+        keeps the mind small enough to persist, keeps the summary free
+        of base64, and costs nothing when there are no pictures."""
+        maker = getattr(self.connector, "image_block", None)
+        ready = bool(maker) and self.image_reader is not None \
+            and self._images_allowed
+        out: List[Dict[str, Any]] = []
+        for message in messages:
+            named = message.get("images")
+            if not named:
+                out.append(self._words_only(message))
+                continue
+            blocks = []
+            if ready:
+                for item in named[: self.MAX_IMAGES_PER_MESSAGE]:
+                    block = await self._picture(maker, item)
+                    if block is not None:
+                        blocks.append(block)
+            if not blocks:
+                out.append(self._words_only(message, unseen=len(named)))
+                continue
+            out.append({
+                **{key: value for key, value in message.items()
+                   if key != "images"},
+                "content": [text_block(message.get("content")), *blocks],
+            })
+        return out
+
+    def _words_only(self, message: Dict[str, Any],
+                    unseen: int = 0) -> Dict[str, Any]:
+        """The message with no picture in it. When one was attached and
+        could not be sent, the words say so — an assistant that cannot
+        see a screenshot must not answer as though it had."""
+        plain = {key: value for key, value in message.items()
+                 if key != "images"}
+        if unseen:
+            plain["content"] = (
+                f"{plain.get('content') or ''}\n[{unseen} image(s) attached "
+                f"here could not be shown to this model. Answer from the "
+                f"words, and say plainly that you could not see them.]")
+        return plain
+
+    async def _picture(self, maker: Callable, item: Dict[str, Any]):
+        """One attachment, fetched and shaped for this provider — or
+        None, which always means the words travel alone."""
+        ref = str(item.get("resource_ref") or "")
+        if not ref:
+            return None
+        try:
+            record = await self.image_reader(ref) or {}
+        except Exception as exc:
+            self.logger.warning(f"Image {ref} not read: {exc}")
+            return None
+        encoded = str(record.get("content_base64") or "")
+        mime = str(record.get("file_type") or item.get("file_type") or "")
+        if not encoded or not mime.startswith("image/"):
+            return None
+        # The stored size where there is one; else what the base64 says.
+        size = int(record.get("file_size") or 0) or (len(encoded) * 3) // 4
+        if size > self.MAX_IMAGE_BYTES:
+            self.logger.info(
+                f"Image {ref} is {size} bytes — over the "
+                f"{self.MAX_IMAGE_BYTES} a model is shown")
+            return None
+        return maker(mime, encoded)
+
+    async def _ask_model(self, offered: FunctionTools):
+        """One model call, with the pictures if this model takes them.
+
+        Whether it does is LEARNED, never declared. A model's name
+        proves nothing, a hand-kept list of vision models is stale the
+        week it is written, and a self-hosted endpoint is on nobody's
+        list. So the request is made and a refusal is the answer —
+        remembered for this process, so no later beat pays to discover
+        it twice, and the turn continues on the words rather than
+        dying."""
+        tools = ACTION_TOOLS + offered.tools
+        started = time.monotonic()
+        try:
+            reply = await self.connector.chat(
+                await self._for_model(self.state.messages), tools=tools)
+            # What a beat costs in wall time, and how much the model was
+            # handed — the line to read when a chat feels slow.
+            self.logger.info(
+                f"Model answered in {time.monotonic() - started:.2f}s "
+                f"({len(self.state.messages)} messages, "
+                f"{sum(len(str(m.get('content') or '')) for m in self.state.messages)} chars, "
+                f"{len(tools)} tools)")
+            return reply
+        except Exception as exc:
+            if self._images_allowed and is_image_refusal(exc):
+                self._images_allowed = False
+                self.logger.warning(
+                    f"This model will not be shown pictures; continuing on "
+                    f"the words alone: {exc}")
+                return await self.connector.chat(
+                    await self._for_model(self.state.messages), tools=tools)
+            if self.fold is not None and is_context_overflow(exc):
+                # The transcript outgrew the window between folds: fold
+                # now, keeping less, and ask once more. A beat that dies
+                # here would have taken the turn with it.
+                self.logger.warning(
+                    f"The transcript outgrew the model's window; folding "
+                    f"and asking again: {exc}")
+                if await self.fold(force=True):
+                    return await self.connector.chat(
+                        await self._for_model(self.state.messages), tools=tools)
+            raise
+
+    # -- say ------------------------------------------------------------
+    @staticmethod
+    def _bare(text: str) -> str:
+        """The words alone. Case, punctuation and spacing are not what
+        makes two messages different to the person reading them."""
+        return " ".join("".join(
+            character if character.isalnum() or character.isspace() else " "
+            for character in text.lower()).split())
+
+    @classmethod
+    def _same_words(cls, first: str, second: str) -> bool:
+        """Is this the message that was already sent? Not byte equality:
+        a contraction expanded, a full stop turned into an exclamation,
+        one word swapped — the user reads all of those as the sentence
+        they just read."""
+        one, two = cls._bare(first), cls._bare(second)
+        if not one or not two:
+            return False
+        if one == two:
+            return True
+        return difflib.SequenceMatcher(None, one, two).ratio() >= cls.SAME_SAY_RATIO
+
+    def _already_said(self, text: str) -> bool:
+        """Was this said earlier in the SAME turn? Read off the
+        transcript (so a rehydrated mind remembers too), back to the
+        event that started the turn or the finish that ended the last
+        one. A confused model repeats itself; the user must not see it."""
+        text = text.strip()
+        if not text:
+            return False
+        # The action being judged is the latest assistant message; the
+        # search starts before it (a note about the reply may follow it).
+        history = self.state.messages
+        judged = max((i for i, m in enumerate(history)
+                      if m.get("role") == "assistant"), default=0)
+        for message in reversed(history[:judged]):
+            content = str(message.get("content") or "")
+            if message.get("role") == "user":
+                if content.startswith("[") or content.startswith("EVENT "):
+                    return False
+                continue
+            try:
+                previous = json.loads(content)
+            except ValueError:
+                continue
+            if not isinstance(previous, dict):
+                continue
+            kind = str(previous.get("action") or "").lower()
+            if kind == "finish":
+                return False
+            if kind == "say" and self._same_words(
+                    str(previous.get("text") or ""), text):
+                return True
+        return False
+
+    async def _say(self, action: Dict[str, Any]) -> Tuple[bool, List[str]]:
+        """A message to the user, its data-bearing parts grounded by
+        Evidence: writes and files from the work since the previous
+        say, tables from what the model chose to show, checked against
+        the whole trace. Returns whether anything reached the user —
+        a final say that did not must not end the turn on silence —
+        and the reasons for each show the trace could not vouch for."""
+        since = self.state.trace[self.state.evidence_cursor:]
+        composed = Evidence.compose(
+            str(action.get("text") or ""), self.agents, since,
+            show=action.get("show"), history=self.state.trace)
+        refused: List[str] = list(composed.get("refused") or [])
+        if not composed["text"] and not composed["parts"]:
+            # Nothing to say and nothing to show: the platform refuses
+            # an empty message, and once that refusal escaped as an
+            # exception it ended the whole cycle mid-turn. The model
+            # hears it as an ordinary observation instead, and the
+            # trace it accounted for stays for the next say.
+            self._observe({"error": "A say needs text. Say what you found "
+                                    "or decided, or choose another action."})
+            return False, refused
+        self.state.evidence_cursor = len(self.state.trace)
+        try:
+            await self.say_sink(composed["text"], composed["parts"])
+        except Exception as exc:
+            # The words matter more than what rides beside them. A part
+            # the platform refuses (a reference it will not accept, a
+            # shape it does not know) must not cost the user the reply,
+            # and must never end the cycle: once, a refused part killed
+            # the beat and the person saw nothing after a saved note.
+            self.logger.error(f"Say with parts refused: {exc}")
+            if not composed["parts"]:
+                # Refused with nothing riding beside the words: the
+                # words themselves were the problem. Told to the model,
+                # never raised — a raise here killed the cycle once.
+                self._observe({"error": f"The platform refused that "
+                                        f"message: {str(exc)[:200]}"})
+                return False, refused
+            await self.say_sink(composed["text"], [])
+            self._observe({"warning": (
+                "Your message was delivered without its data parts — "
+                f"the platform refused them: {str(exc)[:200]}")})
+        return True, refused
+
+    async def _say_raw(self, text: str) -> None:
+        """The assistant's own words (valve, failures) — no evidence to
+        attach, nothing model-claimed to audit."""
+        try:
+            await self.say_sink(text, [])
+        except Exception as exc:
+            self.logger.error(f"Say failed: {exc}")
+
+    # -- agents ----------------------------------------------------------
+    #: how many agents stay open at once when the organization has not
+    #: said (routing.open_max). Past it the least recently used is
+    #: closed to make room: a chat that has touched a dozen agents
+    #: would otherwise carry a dozen catalogs and their tools for ever,
+    #: and the tool menu has a cap (FunctionTools).
+    OPENED_MAX = 8
+
+    def _open_max(self) -> int:
+        try:
+            return max(1, int(self.routing.get("open_max") or self.OPENED_MAX))
+        except (TypeError, ValueError):
+            return self.OPENED_MAX
+
+    def _routing_on(self) -> bool:
+        """Whether this chat routes among its agents: a router, an
+        embedding model, and more agents than the threshold."""
+        embedding = self.routing.get("embedding")
+        try:
+            threshold = int(self.routing.get("threshold") or 15)
+        except (TypeError, ValueError):
+            threshold = 15
+        return (self.router is not None and isinstance(embedding, dict)
+                and len(self.agents) > threshold)
+
+    async def _route(self) -> None:
+        """The shortlist for the latest message, before the beat that
+        reads it: the router's answer when routing is on and the model
+        answered, else every agent. The frame is rewritten either way
+        when the list changed."""
+        self._route_pending = False
+        result = None
+        if self._routing_on():
+            try:
+                result = await self.router.shortlist(
+                    self.agents, self._latest_words, self.state.opened,
+                    self.routing,
+                    reranker=self.connector if self.routing.get("rerank", True) else None)
+            except Exception as exc:
+                self.logger.warning(f"Agent routing failed; every agent listed: {exc}")
+                result = None
+        if result != self._shortlist:
+            self._shortlist = result
+            self.reframe()
+
+    def _available(self) -> str:
+        """The agents the model may open, said briefly: all of them
+        when few, else how to search."""
+        if self._routing_on():
+            return (f"{len(self.agents)} agents are installed; find_agents "
+                    f"searches them by meaning.")
+        return f"Available: {', '.join(sorted(self.agents)) or 'none'}."
+
+    async def _open_agent(self, action: Dict[str, Any]) -> Dict[str, Any]:
+        agent_id = str(action.get("agent") or "")
+        agent = self.agents.get(agent_id)
+        if agent is None:
+            return {"error": f"No agent '{agent_id}' is available. "
+                             f"{self._available()}"}
+        answer: Dict[str, Any] = {"agent": agent_id}
+        if agent_id in self.state.opened:
+            self.state.touch_agent(agent_id)
+        else:
+            if len(self.state.opened) >= self._open_max():
+                evicted = self.state.opened.pop(0)
+                answer["closed"] = evicted
+                answer["note"] = (f"'{evicted}' was closed to make room — the "
+                                  f"least recently used of {self._open_max()} "
+                                  f"open agents. Open it again if needed.")
+            self.state.open_agent(agent_id)
+        answer["instructions"] = agent.manifest.instructions or "(none)"
+        answer["catalog"] = self._render_catalog(agent)
+        return answer
+
+    def _close_agent(self, action: Dict[str, Any]) -> Dict[str, Any]:
+        agent_id = str(action.get("agent") or "")
+        if not self.state.close_agent(agent_id):
+            return {"error": f"Agent '{agent_id}' is not open."}
+        return {"closed": agent_id, "open": list(self.state.opened)}
+
+    async def _find_agents(self, action: Dict[str, Any]) -> Dict[str, Any]:
+        """The installed agents closest in meaning to a few words, in
+        any language, best first — the router's search. Without an
+        embedding model there is nothing to search by, and every agent
+        is under AGENTS already."""
+        query = str(action.get("query") or "")
+        embedding = self.routing.get("embedding")
+        if self.router is None or not isinstance(embedding, dict):
+            return {"installed": len(self.agents),
+                    "agents": [{"id": agent_id, "name": agent.manifest.name}
+                               for agent_id, agent in sorted(self.agents.items())],
+                    "note": "No embedding model is configured for agent routing, "
+                            "so every agent is listed under AGENTS."}
+        try:
+            found = await self.router.find(self.agents, query, embedding)
+        except Exception as exc:
+            found = None
+            self.logger.warning(f"find_agents failed: {exc}")
+        if found is None:
+            return {"error": "The embedding model did not answer; every agent "
+                             "is listed under AGENTS for now."}
+        return {"installed": len(self.agents), "matched": len(found),
+                "agents": found,
+                "note": "open_agent takes any id, listed here or not."}
+
+    def _gate(self, function: str):
+        """(agent, None) when the call may be attempted, (None, error
+        observation) otherwise. Open-before-invoke is enforced here:
+        calling into a catalog never loaded means calling with guessed
+        inputs."""
+        agent_id = function.split(".", 1)[0] if function else ""
+        agent = self.agents.get(agent_id)
+        if agent is None:
+            return None, {"error": f"No agent '{agent_id}' is available. "
+                                   f"{self._available()}"}
+        if agent_id not in self.state.opened:
+            return None, {"error": f"Agent '{agent_id}' is not open — "
+                                   f"open_agent first to see its functions "
+                                   f"and schemas."}
+        if self._shown_on_request(agent, function):
+            # Called by the model it held the turn for as long as the
+            # person kept the screen open — nine minutes of a sign-in,
+            # with what they wrote meanwhile unheard.
+            return None, {"error": (
+                f"'{function}' shows a screen when the user asks to see "
+                f"it — the live view button in the chat's header — and is "
+                f"theirs to open, not a step you can take. When they must "
+                f"do something on the screen themselves, tell them so: ask "
+                f"them to open the live view, do it, and say when it is "
+                f"done. Then continue with the agent's other functions.")}
+        # Used now: last to be closed for room, first to be offered.
+        self.state.touch_agent(agent_id)
+        return agent, None
+
+    @staticmethod
+    def _shown_on_request(agent, function: str) -> bool:
+        """Whether this is the function the platform calls when the
+        person opens a screen (the manifest's ``watch: true``)."""
+        for declared, _, spec in agent.manifest.functions():
+            if spec.get("watch") is True \
+                    and function in (declared, agent.granted(declared)):
+                return True
+        return False
+
+    # -- narration -------------------------------------------------------
+    async def _narrate(self, kind: str, text: str, source: Dict[str, Any],
+                       **detail: Any) -> None:
+        """One line of the work for whoever watches — what started, what
+        finished and how long it took, and who did it — as the chat's
+        ``activity`` events (contracts/chat.py)."""
+        if self.activity_sink is not None and text:
+            await self.activity_sink(kind, text, source, **detail)
+
+    @staticmethod
+    def _call_id() -> str:
+        return f"c_{uuid.uuid4().hex[:12]}"
+
+    @staticmethod
+    def _elapsed_ms(started: float) -> int:
+        return int((time.monotonic() - started) * 1000)
+
+    # -- invoke ----------------------------------------------------------
+    async def _invoke(self, action: Dict[str, Any]) -> Dict[str, Any]:
+        function = str(action.get("function") or "")
+        inputs = action.get("inputs")
+        inputs = inputs if isinstance(inputs, dict) else {}
+
+        agent, refusal = self._gate(function)
+        if refusal is not None:
+            return refusal
+
+        # One call, one id: its start, the agent's own lines and its
+        # finish are told as one thing, under the agent's name.
+        call_id = self._call_id()
+        source = agent_source(agent.agent_id, agent.manifest.name, function,
+                              call_id=call_id)
+        spoken = self._spoken(agent, function)
+        await self._narrate("call_started",
+                            f"{spoken}{self._inputs_summary(inputs)}", source)
+        started = time.monotonic()
+        result, status = await self.executor.invoke(
+            agent, function, inputs, self.chat_level, call_id=call_id)
+        await self._narrate("call_finished", spoken, source, status=status,
+                            duration_ms=self._elapsed_ms(started))
+        return self._record(agent.agent_id, function, inputs,
+                            result, status)
+
+    # -- jobs ------------------------------------------------------------
+    async def _start(self, action: Dict[str, Any]) -> Dict[str, Any]:
+        function = str(action.get("function") or "")
+        inputs = action.get("inputs")
+        inputs = inputs if isinstance(inputs, dict) else {}
+
+        agent, refusal = self._gate(function)
+        if refusal is not None:
+            return refusal
+
+        job = Job(f"job_{uuid.uuid4().hex[:8]}", agent.agent_id,
+                  function, inputs)
+        self.state.jobs[job.job_id] = job
+        call_id = self._call_id()
+        task = asyncio.get_running_loop().create_task(
+            self._run_job(job, agent, call_id))
+        self._job_tasks[job.job_id] = task
+        task.add_done_callback(
+            lambda _: self._job_tasks.pop(job.job_id, None))
+
+        await self._narrate(
+            "job_started",
+            f"Started in the background: {self._spoken(agent, function)}"
+            f"{self._inputs_summary(inputs)}",
+            agent_source(agent.agent_id, agent.manifest.name, function,
+                         call_id=call_id, job_id=job.job_id))
+        return {"job_id": job.job_id, "status": job.status,
+                "note": "Runs in the background; its result arrives as a "
+                        "job_done event. finish when you are only waiting."}
+
+    # ------------------------------------------------------------------
+    # Children: a job whose worker is a session (docs/system/sub-assistants.md)
+    # ------------------------------------------------------------------
+
+    MAX_CHILDREN = 3
+
+    async def _spawn(self, action: Dict[str, Any]) -> Dict[str, Any]:
+        if self.spawn_sink is None:
+            return {"error": "Spawning is not available here — a child "
+                             "does the work it was given and reports."}
+        goal = str(action.get("goal") or "").strip()
+        if not goal:
+            return {"error": "spawn needs a goal — the whole brief, since "
+                             "the child sees nothing else."}
+        live = [job for job in self.state.jobs.values()
+                if job.kind == ASSISTANT_JOB and job.active]
+        if len(live) >= self.MAX_CHILDREN:
+            return {"error": f"At most {self.MAX_CHILDREN} children may "
+                             f"run at once; wait for one to report or "
+                             f"cancel one."}
+        agents = action.get("agents")
+        if agents is not None:
+            agents = [str(a) for a in (agents or [])]
+            unknown = [a for a in agents if a not in self.agents]
+            if unknown:
+                return {"error": f"Not yours to give: {', '.join(unknown)}. "
+                                 f"A child may only be given agents you "
+                                 f"may call yourself."}
+        # The plan items the child is given take its outcome when it
+        # reports: done with its evidence, or blocked with its reason.
+        items = action.get("items")
+        items = [str(i) for i in items] if isinstance(items, list) else []
+        missing = [i for i in items if self.state.plan.get(i) is None]
+        if missing:
+            return {"error": f"No such plan item: {', '.join(missing)}."}
+
+        job = Job(f"job_{uuid.uuid4().hex[:8]}", "", "",
+                  {"goal": goal, "agents": agents, "items": items},
+                  kind=ASSISTANT_JOB, child=f"sub_{uuid.uuid4().hex[:8]}")
+        self.state.jobs[job.job_id] = job
+        self._attach_child(job)
+        await self._narrate(
+            "helper_spawned", f"Started a helper: {self._preview(goal, 80)}",
+            {"kind": "helper", "job_id": job.job_id, "child": job.child})
+        return {"job_id": job.job_id, "status": job.status,
+                "note": "Works in the background; its report arrives as a "
+                        "job_done event. finish when you are only waiting."}
+
+    def resume_child(self, job: Job) -> asyncio.Task:
+        """A hydrated assistant job: its child has durable state of its
+        own, so the waiter is re-attached rather than the job failed.
+        Returns the waiter, for the session to wake its cycle on."""
+        return self._attach_child(job, resuming=True)
+
+    def _attach_child(self, job: Job, resuming: bool = False) -> asyncio.Task:
+        task = asyncio.get_running_loop().create_task(
+            self._run_child(job, resuming))
+        self._job_tasks[job.job_id] = task
+        task.add_done_callback(
+            lambda _: self._job_tasks.pop(job.job_id, None))
+        return task
+
+    async def _run_child(self, job: Job, resuming: bool) -> None:
+        CURRENT_JOB_ID.set(job.job_id)
+        try:
+            result, status, entries = await self.spawn_sink(job, resuming)
+        except asyncio.CancelledError:
+            job.status = CANCELLED
+            job.result = {"error": "The sub-assistant was cancelled."}
+            self.post({"event": "job_done", "job_id": job.job_id,
+                       "kind": ASSISTANT_JOB, "status": CANCELLED})
+            return
+        except Exception as exc:
+            self.logger.error(f"Child {job.job_id} failed: {exc}")
+            result, status, entries = {"error": str(exc)[:300]}, "error", []
+
+        job.result = self._bounded(result)
+        job.status = DONE if status == "success" else FAILED
+        await self._narrate(
+            "job_finished",
+            "The helper reported back." if job.status == DONE
+            else "The helper stopped without finishing.",
+            {"kind": "helper", "job_id": job.job_id, "child": job.child},
+            status=job.status)
+        # Evidence flows up: the child's every invocation joins the
+        # parent's trace under this job, so the parent presents what
+        # the child PROVED — never only what it said.
+        for entry in entries:
+            self.state.trace.append({**entry, "job_id": job.job_id})
+        owned = [str(i) for i in (job.inputs or {}).get("items") or []]
+        if owned:
+            self._settle_owned(job, owned)
+            await self._show_plan()
+        self.post({"event": "job_done", "job_id": job.job_id,
+                   "kind": ASSISTANT_JOB, "status": job.status, **result})
+
+    def _settle_owned(self, job: Job, owned: List[str]) -> None:
+        """The items a child was given take its outcome. Completed: done,
+        with the job and every storage ref the child's calls produced
+        as evidence — all of it now in this trace. Anything else:
+        blocked, with the child's reason and its last words, for the
+        parent to read and decide."""
+        result = job.result or {}
+        reason = str(result.get("reason") or "incomplete")
+        worked = [entry for entry in self.state.trace
+                  if entry.get("job_id") == job.job_id
+                  and entry.get("status") == "success"]
+        if job.status == DONE and reason == "completed" and worked:
+            refs = [job.job_id] + [
+                entry["result"]["storage_ref"] for entry in worked
+                if isinstance(entry.get("result"), dict)
+                and isinstance(entry["result"].get("storage_ref"), str)
+            ]
+            for item_id in owned:
+                self.state.plan.update(item_id, "done", evidence=refs,
+                                       proven=self._proven())
+            return
+        if job.status == DONE and reason == "completed":
+            # It said it finished and nothing it ran succeeded: its
+            # word alone settles nothing. The parent reads what it said
+            # and decides — the job is still evidence it may cite.
+            reason = "reported completed, and ran nothing that succeeded"
+        blocker = (f"sub-assistant {job.job_id} {reason}: "
+                   f"{str(result.get('summary') or '')[:120]}").strip(": ")
+        for item_id in owned:
+            self.state.plan.update(item_id, "blocked", blocker=blocker)
+
+    async def _run_job(self, job: Job, agent: InstalledAgent,
+                       call_id: str = "") -> None:
+        CURRENT_JOB_ID.set(job.job_id)
+        started = time.monotonic()
+        try:
+            result, status = await self.executor.invoke(
+                agent, job.function, job.inputs, self.chat_level,
+                call_id=call_id)
+        except asyncio.CancelledError:
+            job.status = CANCELLED
+            job.result = {"error": "The job was cancelled."}
+            self.post({"event": "job_done", "job_id": job.job_id,
+                       "function": job.function, "status": CANCELLED})
+            return
+        except Exception as exc:  # the executor answers, it does not raise
+            self.logger.error(f"Job {job.job_id} failed: {exc}")
+            result, status = {"error": str(exc)[:300]}, "error"
+
+        job.result = self._bounded(result)
+        job.status = DONE if status == "success" else FAILED
+        observation = self._record(job.agent_id, job.function, job.inputs,
+                                   result, status, job_id=job.job_id)
+        await self._narrate(
+            "job_finished", self._spoken(agent, job.function),
+            agent_source(agent.agent_id, agent.manifest.name, job.function,
+                         call_id=call_id, job_id=job.job_id),
+            status=job.status, duration_ms=self._elapsed_ms(started))
+        self.post({"event": "job_done", "job_id": job.job_id,
+                   "function": job.function, "status": job.status,
+                   **observation})
+
+    @property
+    def working(self) -> bool:
+        """Whether THIS incarnation holds any live job task. Tasks
+        remove themselves as they settle, so an empty table is rest."""
+        return any(not task.done() for task in self._job_tasks.values())
+
+    def job_running(self, job_id: str) -> bool:
+        """Whether THIS incarnation holds the job's live task. False for
+        a job hydrated from state — its process died with the task, and
+        resolving it goes through ``resolve_job``."""
+        task = self._job_tasks.get(job_id)
+        return task is not None and not task.done()
+
+    def resolve_parked(self, result: Dict[str, Any], status: str) -> None:
+        """A FOREGROUND park settled outside its own beat — the session
+        resuming a hydrated park after this mind's previous incarnation
+        died. The trace and the observation are exactly what the invoke
+        would have produced had the process lived."""
+        parked = self.state.parked
+        if not parked:
+            return
+        self.state.parked = None
+        self._observe(self._record(
+            str(parked.get("agent_id") or ""),
+            str(parked.get("function") or ""),
+            dict(parked.get("inputs") or {}), result, status))
+
+    def resolve_job(self, job_id: str, result: Dict[str, Any],
+                    status: str) -> None:
+        """A job settled OUTSIDE its own task — the session resuming a
+        hydrated waiting_approval job after this mind's previous
+        incarnation died. Records the trace, updates the job, and wakes
+        the cycle with the same job_done event a live task would post."""
+        job = self.state.jobs.get(job_id)
+        if job is None:
+            return
+        job.result = self._bounded(result)
+        job.status = DONE if status == "success" else FAILED
+        observation = self._record(job.agent_id, job.function, job.inputs,
+                                   result, status, job_id=job_id)
+        self.post({"event": "job_done", "job_id": job_id,
+                   "function": job.function, "status": job.status,
+                   **observation})
+
+    async def _cancel_job(self, action: Dict[str, Any]) -> Dict[str, Any]:
+        job_id = str(action.get("job_id") or "")
+        task = self._job_tasks.get(job_id)
+        if task is not None and not task.done():
+            task.cancel()
+            return {"job_id": job_id, "cancelling": True}
+        return {"job_id": job_id, "error": "No such running job."}
+
+    async def _cancel_all_jobs(self) -> None:
+        for task in list(self._job_tasks.values()):
+            if not task.done():
+                task.cancel()
+
+    # -- read ------------------------------------------------------------
+    async def _read(self, action: Dict[str, Any]) -> Dict[str, Any]:
+        ref = str(action.get("storage_ref") or "").strip()
+        path = str(action.get("path") or "").strip()
+        if not ref:
+            return {"status": "error",
+                    "result": {"error": "read needs a storage_ref."}}
+        resolver = getattr(self.executor, "resolver", None)
+        if resolver is None:
+            return {"status": "error", "result": {
+                "error": "Stored results cannot be read back here."}}
+        try:
+            value = await resolver(ref, path)
+        except Exception as exc:
+            return {"status": "error", "result": {
+                "error": f"The stored result could not be read: {exc}"}}
+
+        # A long list is read in pages: `from` skips what an earlier read
+        # showed, so the model never has to walk it one index at a time.
+        start = action.get("from")
+        start = int(start) if isinstance(start, int) and start > 0 else 0
+        if start and isinstance(value, list):
+            value = value[start:]
+
+        payload = {"storage_ref": ref, "path": path, "value": value}
+        if start:
+            payload["from"] = start
+        observation = {"status": "success", "result": payload}
+        if len(json.dumps(observation, default=str)) > self.OBSERVATION_MAX_CHARS:
+            payload["value"] = self._preview(value)
+            payload["truncated"] = True
+            if isinstance(value, list):
+                shown = int(payload["value"].get("items_shown") or 0)
+                payload["note"] = (
+                    f"Showing {shown} of {len(value)} items"
+                    f"{' from ' + str(start) if start else ''}. Read the same "
+                    f"path again with \"from\": {start + shown} for the rest.")
+            else:
+                payload["note"] = ("Still too large to show whole — narrow "
+                                   "the path further.")
+        return observation
+
+    # -- skills / memory / plan ------------------------------------------
+    SKILL_BODY_MAX_CHARS = 6000
+
+    async def _find_files(self, action: Dict[str, Any]) -> Dict[str, Any]:
+        """The file the user means, when nothing is attached: the
+        session looks among what they can see and puts the best few on
+        a card; the user decides. What they chose is attached to the
+        chat and enters the transcript exactly as an attachment does,
+        so a picture among them is shown at the next call."""
+        query = str(action.get("query") or "").strip()
+        if not query:
+            return {"error": "find_files needs a query: the file as the "
+                             "user described it."}
+        if self.file_finder is None:
+            return {"error": "Files cannot be looked up in this chat."}
+        try:
+            outcome = await self.file_finder(
+                query, action.get("names"),
+                str(action.get("kind") or "")) or {}
+        except Exception as exc:
+            return {"error": f"Files could not be looked up: {exc}"}
+        status = str(outcome.get("status") or "")
+        files = [f for f in (outcome.get("files") or []) if isinstance(f, dict)]
+        if status == "chosen" and files:
+            lines, images = self._attached(files)
+            said: Dict[str, Any] = {
+                "role": "user",
+                "content": "The user chose these files:\n" + "\n".join(lines),
+            }
+            if images:
+                said["images"] = images
+            self.state.messages.append(said)
+            return {
+                "files": [{"filename": f.get("filename") or "",
+                           "file_type": f.get("file_type") or "",
+                           "file_ref": f["resource_ref"]} for f in files],
+                "note": "Attached to this chat. Pass a file_ref to a "
+                        "function whose input takes a file; a picture "
+                        "among them is shown to you.",
+            }
+        if status in ("chosen", "declined"):
+            return {"files": [], "note": "The user chose no files. Ask "
+                                         "what they meant, or carry on "
+                                         "without."}
+        if status == "expired":
+            return {"files": [], "note": "Nobody answered the files card."}
+        return {"error": str(outcome.get("error")
+                             or "Files could not be looked up.")}
+
+    #: A document larger than this is not read here: the bytes have to
+    #: cross the gateway whole, base64, and a report is not that big.
+    FILE_READ_MAX_BYTES = 8 * 1024 * 1024
+
+    async def _read_file(self, action: Dict[str, Any]) -> Dict[str, Any]:
+        """A document the user attached or chose, read as text a page at
+        a time (reasoning/documents.py). The download runs under the
+        person's own delegation, so the backend's visibility rules —
+        not this method — decide what a ref may reach; a ref the model
+        made up finds nothing."""
+        ref = str(action.get("file_ref") or "").strip()
+        if not ref:
+            return {"error": "read_file needs a file_ref, from an "
+                             "[attached: …] line."}
+        if self.file_reader is None:
+            return {"error": "Files cannot be read in this chat."}
+        try:
+            record = await self.file_reader(ref) or {}
+        except Exception as exc:
+            return {"error": f"The file could not be read: {exc}"}
+        encoded = str(record.get("content_base64") or "")
+        if not encoded:
+            return {"error": f"No file '{ref}' is visible to this user. "
+                             f"Use a file_ref from an [attached: …] line, "
+                             f"or find_files."}
+        size = int(record.get("file_size") or 0) or (len(encoded) * 3) // 4
+        filename = str(record.get("filename") or "")
+        file_type = str(record.get("file_type") or "")
+        if size > self.FILE_READ_MAX_BYTES:
+            return {"file_ref": ref, "filename": filename,
+                    "error": f"This file is {size} bytes — too large to "
+                             f"read here. Hand its file_ref to an agent "
+                             f"that reads it."}
+        try:
+            # Off the loop: a long PDF takes seconds to read, and this
+            # loop serves every chat on the host.
+            text = await asyncio.to_thread(
+                DocumentText.extract,
+                base64.b64decode(encoded), file_type, filename)
+        except Unreadable as exc:
+            return {"file_ref": ref, "filename": filename,
+                    "file_type": file_type, "error": str(exc)}
+        except Exception as exc:
+            return {"file_ref": ref, "filename": filename,
+                    "error": f"The file could not be read: {exc}"}
+        start = action.get("from")
+        start = int(start) if isinstance(start, int) and start > 0 else 0
+        return {"file_ref": ref, "filename": filename,
+                "file_type": file_type, **DocumentPage.of(text, start)}
+
+    #: entries one recall answers with, newest first
+    RECALL_MAX_ENTRIES = 20
+
+    def _recall(self, action: Dict[str, Any]) -> Dict[str, Any]:
+        """What fell out of the summary, searched by words: every entry
+        carrying all of them, newest first; with no words, the newest.
+        The archive is the mind's own state, so this reads nothing
+        from anywhere and costs no call."""
+        archive = list(self.state.archive)
+        if not archive:
+            return {"archived": 0, "entries": [],
+                    "note": "Nothing has fallen out of this conversation's "
+                            "summary yet; the summary above is complete."}
+        words = [w for w in str(action.get("query") or "").lower().split() if w]
+        found = [entry for entry in archive
+                 if all(w in str(entry.get("line") or "").lower()
+                        or w in str(entry.get("section") or "").lower()
+                        for w in words)]
+        newest = list(reversed(found))[: self.RECALL_MAX_ENTRIES]
+        return {"archived": len(archive), "matched": len(found),
+                "entries": newest,
+                "note": ("Each entry says when it was last in the summary "
+                         "and which section held it; it may since have been "
+                         "superseded by what the summary says now.")}
+
+    async def _use_skill(self, action: Dict[str, Any]) -> Dict[str, Any]:
+        ref = str(action.get("skill") or "").strip()
+        if not ref:
+            return {"error": "use_skill needs a skill ref."}
+        if self.skill_reader is None:
+            return {"error": "No skills are available in this chat."}
+        try:
+            skill = await self.skill_reader(ref)
+        except Exception as exc:
+            return {"error": f"The skill could not be read: {exc}"}
+        if not skill:
+            return {"error": f"No skill '{ref}' is visible to this user."}
+
+        body = str(skill.get("body") or "")
+        if len(body) > self.SKILL_BODY_MAX_CHARS:
+            body = (body[: self.SKILL_BODY_MAX_CHARS]
+                    + "\n…(truncated — the skill is longer than fits here)")
+        return {"skill": ref, "title": str(skill.get("title") or ""),
+                "text": body}
+
+    async def _schedule(self, action: Dict[str, Any]) -> Dict[str, Any]:
+        if self.clock is None:
+            return {"error": "No clock serves this chat."}
+        spec = {k: v for k, v in action.items() if k != "action"}
+        try:
+            return await self.clock.schedule(spec)
+        except Exception as exc:
+            return {"error": f"The schedule could not be set: {exc}"}
+
+    async def _sleep(self, action: Dict[str, Any]) -> Dict[str, Any]:
+        """Pause until a moment from now, and be woken then with the
+        reason. Not a helper's to do: a helper works to its end and
+        reports."""
+        if self.clock is None or self.finish_sink is not None:
+            return {"error": "Nothing can wake you here. Finish for the "
+                             "reason that is true."}
+        return await self.clock.sleep(
+            action.get("seconds"), str(action.get("why") or ""))
+
+    async def _unschedule(self, action: Dict[str, Any]) -> Dict[str, Any]:
+        schedule_id = str(action.get("schedule_id") or "").strip()
+        if not schedule_id:
+            return {"error": "unschedule needs a schedule_id."}
+        if self.clock is None:
+            return {"error": "No clock serves this chat."}
+        try:
+            return await self.clock.unschedule(schedule_id)
+        except Exception as exc:
+            return {"error": f"The schedule could not be removed: {exc}"}
+
+    async def _remember(self, action: Dict[str, Any]) -> Dict[str, Any]:
+        text = str(action.get("text") or "").strip()
+        if not text:
+            return {"error": "remember needs text."}
+        if self.memory_writer is None:
+            return {"error": "Memory is not available in this chat."}
+        if any(text == existing for existing in self.memories):
+            return {"text": "That is already remembered — carry on."}
+        try:
+            await self.memory_writer(text)
+        except Exception as exc:
+            return {"error": f"The memory could not be saved: {exc}"}
+        self.memories.append(text)
+        return {"text": f"Remembered, and the user can see it: {text}"}
+
+    async def _plan(self, action: Dict[str, Any]) -> Dict[str, Any]:
+        """Set the work items, or update one of them."""
+        if "steps" in action:
+            steps = action.get("steps")
+            if not isinstance(steps, list):
+                return {"error": "plan needs a steps list."}
+            texts = [str(s).strip() for s in steps if str(s).strip()]
+            if not texts:
+                return {"error": "A plan needs at least one item."}
+            most = self.state.plan.MAX_STEPS
+            if len(texts) > most:
+                return {"error": f"A plan holds at most {most} items "
+                                 f"— group the work into fewer."}
+            self.state.plan.replace(texts)
+        else:
+            ref = action.get("item") or action.get("step")
+            ok, why = self.state.plan.update(
+                ref, str(action.get("status") or ""),
+                evidence=action.get("evidence"),
+                blocker=str(action.get("blocker") or ""),
+                depends_on=action.get("depends_on"),
+                proven=self._proven(),
+            )
+            if not ok:
+                return {"error": why}
+
+        why = await self._show_plan()
+        if why:
+            return {"error": why}
+        return {"text": "Plan recorded — the user sees it.",
+                "plan": self.state.plan.to_steps()}
+
+    async def _show_plan(self) -> Optional[str]:
+        """The plan as it now stands, to the frame and the audience.
+        The frame carries it under PLAN: rewritten now, or the next
+        beat reads a list that contradicts the observation beneath it
+        until something else happens to reframe."""
+        self.reframe()
+        if self.plan_sink is not None:
+            try:
+                await self.plan_sink(self.state.plan.to_steps())
+            except Exception as exc:
+                return f"The plan could not be shown: {exc}"
+        return None
+
+    def _proven(self) -> set:
+        """What the trace can vouch for: storage refs of successful
+        invocations, ids of finished jobs. The only evidence a plan
+        item may name."""
+        proven = {
+            entry["result"]["storage_ref"] for entry in self.state.trace
+            if entry.get("status") == "success"
+            and isinstance(entry.get("result"), dict)
+            and isinstance(entry["result"].get("storage_ref"), str)
+        }
+        proven.update(job_id for job_id, job in self.state.jobs.items()
+                      if job.status == DONE)
+        return proven
+
+    def _finish_refusal(self, reason: str) -> Optional[str]:
+        """Why this finish may not stand, or None. The reasons are the
+        model's word for its state; three of them are checked against
+        the state itself."""
+        if reason not in FINISH_REASONS:
+            return (f"finish needs a reason: one of "
+                    f"{', '.join(FINISH_REASONS)}.")
+        plan = self.state.plan
+        if reason == "completed" and plan.outstanding():
+            owed = ", ".join(item.id for item in plan.outstanding())
+            return (f"Not completed: {owed} still owed. Mark them done or "
+                    f"blocked, or finish for the reason that is true "
+                    f"(awaiting_user, awaiting_events, blocked).")
+        if reason == "awaiting_events" and not self.state.active_jobs() \
+                and not (self.clock is not None and self.clock.mine()):
+            return ("Nothing to await: no job runs and nothing is "
+                    "scheduled. Finish for the reason that is true.")
+        if reason == "blocked" and not plan.blocked():
+            return ("Nothing is marked blocked. Mark the item and say "
+                    "what blocks it, then finish.")
+        return None
+
+    # ------------------------------------------------------------------
+    # The trace and its observations
+    # ------------------------------------------------------------------
+
+    def _record(self, agent_id: str, function: str, inputs: Dict[str, Any],
+                result: Any, status: str,
+                job_id: str = "") -> Dict[str, Any]:
+        kept = self._bounded(result)
+        entry = {"agent": agent_id, "function": function, "inputs": inputs,
+                 "status": status, "result": kept}
+        if kept is not result and status == "success":
+            # The trace keeps a cut copy of a large result. What a
+            # message proves from it is read off the WHOLE one, now,
+            # while it is here: how many rows a read found, and every
+            # file the call made — not the few that fit the copy.
+            whole = [{**entry, "result": result}]
+            entry["counts"] = {read["path"]: read["count"]
+                               for read in Evidence.reads(self.agents, whole)}
+            entry["files"] = Evidence.files(self.agents, whole)
+        if job_id:
+            entry["job_id"] = job_id
+        self.state.trace.append(entry)
+        # What was just proved lands on the item in progress: the
+        # storage ref of a successful call, the id of a finished job.
+        if status == "success":
+            refs = [job_id] if job_id else []
+            if isinstance(result, dict) and isinstance(
+                    result.get("storage_ref"), str):
+                refs.append(result["storage_ref"])
+            self.state.plan.attach(refs)
+
+        observation = {"status": status, "result": result}
+        serialized = json.dumps(observation, default=str)
+        if len(serialized) > self.OBSERVATION_MAX_CHARS:
+            observation = self._previewed(status, result)
+        return observation
+
+    def _previewed(self, status: str, result: Any) -> Dict[str, Any]:
+        """A result too large to show whole, as the model is shown it:
+        its preview, the reference to the whole, and the note that
+        says how much there is and where the rest can be read."""
+        preview = self._preview(result)
+        return {
+            "status": status,
+            "storage_ref": result.get("storage_ref")
+            if isinstance(result, dict) else None,
+            # What the call offered to show survives the preview: it
+            # is how the model can put the rows in front of a person.
+            "displays": result.get("displays")
+            if isinstance(result, dict) else None,
+            "result_preview": preview,
+            "truncated": True,
+            "note": self._preview_note(preview),
+        }
+
+    @classmethod
+    def _preview_note(cls, preview: Any) -> str:
+        """What to tell the model when a result was too big to show whole.
+
+        It used to say only that the result was previewed, which left the
+        model with nothing concrete and a strong urge to explain itself:
+        people were told "the query is big", as though they had asked for
+        too much. They had not — the FUNCTION returned more than fits.
+        So the note now counts what was cut, the way the read action's
+        note already does, and the counts are the thing worth repeating
+        to a person."""
+        counts = []
+        if isinstance(preview, dict):
+            for field, value in preview.items():
+                if isinstance(value, dict) and "items_total" in value:
+                    counts.append(f"{field}: {value.get('items_shown')} of "
+                                  f"{value.get('items_total')}")
+        head = ("Preview only — " + "; ".join(counts) + ". ") if counts \
+            else "Preview only. "
+        return head + (
+            "The whole result is stored. Use the read action with this "
+            "storage_ref and a path to see any part of it. If you tell the "
+            "person anything about this, say what you are showing and how "
+            "much there is — never that their request was too large, which "
+            "it was not.")
+
+    @classmethod
+    def _bounded(cls, result: Any) -> Any:
+        """The trace's copy of a result: whole when it fits, else its
+        shape — each list cut to the items that fit, long strings
+        clipped — marked ``truncated`` beside the storage_ref that holds
+        the whole. Lists stay lists, so evidence still sees a read with
+        rows and the reference to render them from."""
+        if not isinstance(result, dict) or len(
+                json.dumps(result, default=str)) <= cls.TRACE_RESULT_MAX_CHARS:
+            return result
+        # What the platform added to the result is not the agent's
+        # output to cut: the displays the call offered are what a later
+        # show is checked against, every one of them.
+        displays = result.get("displays")
+        bounded = cls._preview(
+            {key: value for key, value in result.items() if key != "displays"},
+            cls.TRACE_RESULT_MAX_CHARS)
+        for field, value in list(bounded.items()):
+            if isinstance(value, dict) and "items_total" in value:
+                bounded[field] = value["items"]
+        if displays is not None:
+            bounded["displays"] = displays
+        bounded["truncated"] = True
+        return bounded
+
+    @classmethod
+    def _fit_list(cls, items: list, budget: int) -> Dict[str, Any]:
+        """As many complete items as fit in ``budget`` characters, and
+        how many there were: whole rows, never a clipped middle."""
+        kept: list = []
+        used = 2
+        for item in items:
+            piece = len(json.dumps(item, default=str)) + 2
+            if kept and used + piece > budget:
+                break
+            kept.append(item)
+            used += piece
+            if used > budget:
+                break
+        return {"items_total": len(items), "items_shown": len(kept),
+                "items": kept}
+
+    @classmethod
+    def _preview(cls, value: Any, budget: Optional[int] = None) -> Any:
+        """A result too large to show whole, by its shape: every field,
+        each list as the first N complete items that fit, each long
+        string clipped. The whole preview fits PREVIEW_MAX_CHARS."""
+        budget = budget or cls.PREVIEW_MAX_CHARS
+
+        def clip(text: str, cap: int) -> str:
+            return text if len(text) <= cap else text[: cap - 1] + "…"
+
+        if isinstance(value, list):
+            return cls._fit_list(value, budget)
+        if isinstance(value, str):
+            return clip(value, budget)
+        if not isinstance(value, dict):
+            return value
+
+        lists = [f for f, v in value.items() if isinstance(v, list)]
+        share = budget // max(1, len(lists))
+        preview: Dict[str, Any] = {}
+        for field, item in value.items():
+            if isinstance(item, list):
+                preview[field] = cls._fit_list(item, share)
+            elif isinstance(item, dict):
+                preview[field] = clip(json.dumps(item, default=str),
+                                      cls.PREVIEW_VALUE_CHARS)
+            elif isinstance(item, str):
+                preview[field] = clip(item, cls.PREVIEW_VALUE_CHARS)
+            else:
+                preview[field] = item
+        if len(json.dumps(preview, default=str)) > budget and budget > 1000:
+            return cls._preview(value, budget // 2)
+        return preview
+
+    SUMMARY_MAX_CHARS = 90
+    VALUE_MAX_CHARS = 44
+
+    @staticmethod
+    def _spoken(agent, function: str) -> str:
+        """A call as a person would say it: the agent's name and the
+        function's label, never the minted ref the platform routes by.
+        'Outlook · Find Messages', with the canonical name kept only
+        when the manifest gives no label."""
+        manifest = getattr(agent, "manifest", None)
+        agent_name = str(getattr(manifest, "name", "") or getattr(agent, "agent_id", "") or "")
+        label = ""
+        try:
+            found = manifest.function(function) if manifest is not None else None
+            if found:
+                label = str((found[1] or {}).get("name") or "")
+        except Exception:  # noqa: BLE001 — narration must never break a call
+            label = ""
+        if not label:
+            parts = function.split(".")
+            label = ".".join(parts[1:]) if len(parts) == 3 else function
+        return f"{agent_name} · {label}" if agent_name else label
+
+    @classmethod
+    def _inputs_summary(cls, inputs: Dict[str, Any]) -> str:
+        """What this call was actually asked to do, in one watchable
+        line."""
+        if not isinstance(inputs, dict) or not inputs:
+            return ""
+        parts = []
+        for key, value in inputs.items():
+            parts.append(f"{key}={cls._value_summary(value)}")
+            if sum(len(part) for part in parts) > cls.SUMMARY_MAX_CHARS:
+                break
+        summary = ", ".join(parts)
+        if len(summary) > cls.SUMMARY_MAX_CHARS:
+            summary = summary[: cls.SUMMARY_MAX_CHARS - 1].rstrip() + "…"
+        return f" · {summary}"
+
+    @classmethod
+    def _value_summary(cls, value: Any) -> str:
+        if isinstance(value, dict):
+            if isinstance(value.get("storage_ref"), str):
+                return "«stored result»"
+            return "{…}"
+        if isinstance(value, list):
+            return f"[{len(value)}]"
+        if isinstance(value, bool) or value is None:
+            return str(value).lower()
+        if isinstance(value, (int, float)):
+            return str(value)
+        text = str(value)
+        if len(text) > cls.VALUE_MAX_CHARS:
+            text = text[: cls.VALUE_MAX_CHARS - 1].rstrip() + "…"
+        return f'"{text}"' if " " in text else text
+
+    # ------------------------------------------------------------------
+    # Prompt framing
+    # ------------------------------------------------------------------
+
+    AGENT_LINE_MAX_CHARS = 200
+    #: The standard cap on skill lines in the frame — the chat's
+    #: setting overrides it (max_skills; settings/skills_cap.py).
+    DEFAULT_MAX_SKILLS = 40
+    #: Characters the catalog may spend per listed row, so a cap of
+    #: forty is also a cap of eight thousand characters and a raised
+    #: cap grows the budget with it.
+    SKILLS_CATALOG_CHARS_PER_ROW = 200
+
+    def _system_prompt(self) -> str:
+        return Prompts.render(
+            "assistant",
+            roster=self._roster_block(),
+            skills=self._skills_block(),
+            memories="\n".join(f"- {text}" for text in self.memories)
+            or "(nothing remembered yet)",
+            plan=self.state.plan.render(),
+            summary=self._summary_block(),
+        )
+
+    def _summary_block(self) -> str:
+        """The summary, and one line saying what has fallen out of it
+        since — how much and since when — so the mind knows there is
+        something to recall rather than believing the summary whole."""
+        summary = (self.state.summary
+                   or "(none — the visible messages are the whole conversation)")
+        archive = self.state.archive
+        if not archive:
+            return summary
+        since = str(archive[0].get("at") or "earlier")
+        return (f"{summary}\n\n({len(archive)} older line(s) have fallen out "
+                f"of this summary since {since}; recall searches them.)")
+
+    def reframe(self) -> None:
+        """Rewrite the system frame from the current state — after the
+        summary changed, so the mind reads what was folded away."""
+        if self.state.messages and self.state.messages[0].get(
+                "role") == "system":
+            self.state.messages[0] = {
+                "role": "system", "content": self._system_prompt()}
+
+    def _roster_block(self) -> str:
+        """One line per agent. Details are paid for only when opened.
+        More installed than the organization's threshold: the open
+        ones and the closest to the latest message by meaning, with the
+        rest counted (agent_router.py)."""
+        if self._shortlist is not None:
+            listed, omitted = self._shortlist
+            listed = [agent_id for agent_id in listed if agent_id in self.agents]
+        else:
+            listed, omitted = sorted(self.agents), 0
+        lines = []
+        for agent_id in listed:
+            agent = self.agents[agent_id]
+            block = agent.manifest.document.get("agent") or {}
+            description = str(block.get("description") or "").strip()
+            line = f"{agent_id} — {agent.manifest.name}"
+            if description:
+                line += f": {description}"
+            if len(line) > self.AGENT_LINE_MAX_CHARS:
+                line = line[: self.AGENT_LINE_MAX_CHARS - 1] + "…"
+            lines.append(line)
+        if omitted:
+            lines.append(f"({omitted} more agent(s) are installed but not "
+                         f"listed here — the list follows the latest message; "
+                         f"find_agents searches all of them by meaning, in any "
+                         f"language, and open_agent takes any id.)")
+        return "\n".join(lines) or "(none installed)"
+
+    def _skills_block(self) -> str:
+        if not self.skills:
+            return "(none written yet)"
+        lines: List[str] = []
+        unlimited = self.max_skills <= 0
+        rows = self.skills if unlimited else self.skills[: self.max_skills]
+        budget = self.SKILLS_CATALOG_CHARS_PER_ROW * max(self.max_skills, 0)
+        for row in rows:
+            line = (f"{row.get('ref')}: {row.get('title')} "
+                    f"— {row.get('summary')}")
+            if not unlimited and lines and len(line) > budget:
+                break
+            budget -= len(line)
+            lines.append(line)
+        hidden = len(self.skills) - len(lines)
+        if hidden > 0:
+            lines.append(
+                f"({hidden} more skill(s) exist but are not listed here — "
+                f"say so rather than claiming they were never written.)"
+            )
+        return "\n".join(lines)
+
+    def _render_catalog(self, agent: InstalledAgent) -> str:
+        """An opened agent's action space, grouped by tool and priced:
+        names, prices and descriptions. The schemas are not here — they
+        travel as the function tools the next beat offers, whole."""
+        lines: List[str] = []
+        for tool in agent.manifest.document.get("tools") or []:
+            tool_id = str(tool.get("id") or "")
+            title = str(tool.get("name") or tool_id)
+            description = str(tool.get("description") or "").strip()
+            lines.append(
+                f"TOOL {tool_id} — {title}"
+                + (f": {description}" if description else "")
+            )
+            for function in tool.get("functions") or []:
+                if function.get("watch") is True:
+                    continue  # the person's to open, not the model's to call
+                lines.extend(self._render_function(agent, tool_id, function))
+            lines.append("")
+        return "\n".join(lines).strip() or "(this agent declares no functions)"
+
+    def _render_function(self, agent: InstalledAgent, tool_id: str,
+                         function: Dict[str, Any]) -> List[str]:
+        name = f"{agent.agent_id}.{tool_id}.{function.get('id')}"
+        level = int(function.get("permission_level") or 0)
+        cost = self.LEVELS.get(level, "restricted")
+        # The chat's trust level decides this, and the assistant is the
+        # one choosing — so it should know before it chooses.
+        approval = " · NEEDS APPROVAL" if level > self.chat_level else ""
+
+        lines = [f"  {name}  [{cost}{approval}]"]
+        description = str(function.get("description") or "").strip()
+        if description:
+            lines.append(f"    {description}")
+        return lines
+
+    # ------------------------------------------------------------------
+    @staticmethod
+    def parse_actions(response: Any) -> List[dict]:
+        """Every JSON object in the reply, in order — fenced or bare,
+        wrapped in prose or not. A model that glues two actions into one
+        reply is a known habit; the cycle takes the first and says so,
+        rather than bouncing the reply and inviting a repeat."""
+        text = response if isinstance(response, str) else str(response or "")
+        text = text.strip()
+        if text.startswith("```"):
+            parts = text.split("```")
+            text = parts[1] if len(parts) > 1 else text
+            if text.startswith("json"):
+                text = text[4:]
+            text = text.strip()
+
+        decoder = json.JSONDecoder()
+        found: List[dict] = []
+        position = 0
+        while True:
+            start = text.find("{", position)
+            if start == -1:
+                return found
+            try:
+                parsed, end = decoder.raw_decode(text, start)
+            except ValueError:
+                position = start + 1
+                continue
+            # An action names itself; any other object in a reply is an
+            # example in prose, not an attempt at one.
+            if isinstance(parsed, dict) and "action" in parsed:
+                found.append(parsed)
+            position = end
+
+    async def _persist(self) -> None:
+        if self.state_sink is None:
+            return
+        try:
+            await self.state_sink(self.state)
+        except Exception as exc:
+            # The mind keeps advancing on a stale checkpoint: a death
+            # now loses everything since the last save that landed.
+            # That is worth a line anyone reads, not a debug one.
+            self.logger.warning(
+                f"State not saved ({self.state.serialized_size()} bytes): "
+                f"{exc}")

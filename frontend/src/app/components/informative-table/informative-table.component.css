@@ -1,0 +1,142 @@
+:host {
+    display: block;
+    min-width: 0;
+    max-width: 100%;
+}
+
+/* Toolbar above the table — download only (search removed for a cleaner look) */
+.options_form {
+    width: 100%;
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.download-button {
+    color: var(--chat-accent);
+}
+
+/* Clean card around the table (replaces the heavy mat-elevation-z8 shadow) */
+.table-card {
+    border: 1px solid var(--chat-border);
+    border-radius: var(--chat-radius);
+    overflow: hidden;
+    background: var(--chat-surface);
+}
+
+.table-scroll {
+    overflow: auto;
+}
+
+table {
+    width: 100%;
+}
+
+.empty-table {
+    padding: 22px 16px;
+    text-align: center;
+    color: var(--chat-muted);
+    font-family: var(--chat-font);
+    font-size: 13.5px;
+}
+
+/* ── Material table: clean, compact theme ─────────────────────────── */
+:host ::ng-deep .mat-mdc-table {
+    background: transparent;
+}
+
+:host ::ng-deep .mat-mdc-header-row {
+    background: var(--chat-table-header);
+    height: auto;
+    min-height: 0;
+}
+
+/* --chat-user-ink is the INVERTED ink of the user bubble (an ink tile),
+   so on the header's own tint it painted white on #f5f5f5 in light mode
+   and near-black on #1a1a1a in dark: an unreadable header in both. */
+:host ::ng-deep .mat-mdc-header-cell {
+    color: var(--chat-ink);
+    font-family: var(--chat-font);
+    font-size: 12.5px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    padding: 11px 14px;
+    white-space: nowrap;
+}
+
+:host ::ng-deep .mat-mdc-row {
+    height: auto;
+    min-height: 0;
+}
+
+:host ::ng-deep .mat-mdc-cell {
+    color: var(--chat-ai-ink);
+    font-family: var(--chat-font);
+    font-size: 13.5px;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--chat-border);
+    white-space: nowrap;
+}
+
+:host ::ng-deep .mat-mdc-header-cell:first-of-type,
+:host ::ng-deep .mat-mdc-cell:first-of-type {
+    padding-left: 14px;
+}
+
+:host ::ng-deep .mat-mdc-header-cell:last-of-type,
+:host ::ng-deep .mat-mdc-cell:last-of-type {
+    padding-right: 14px;
+}
+
+:host ::ng-deep .mat-mdc-row:last-child .mat-mdc-cell {
+    border-bottom: none;
+}
+
+:host ::ng-deep .mat-mdc-row:hover .mat-mdc-cell {
+    background: var(--chat-surface-2);
+}
+
+:host ::ng-deep .mat-sort-header-arrow {
+    color: var(--chat-accent-strong);
+}
+
+/* ── Paginator: compact ───────────────────────────────────────────── */
+:host ::ng-deep .mat-mdc-paginator {
+    background: transparent;
+    font-family: var(--chat-font);
+    color: var(--chat-muted);
+}
+
+:host ::ng-deep .mat-mdc-paginator-container {
+    min-height: 44px;
+    padding: 4px 8px;
+}
+
+:host ::ng-deep .mat-mdc-paginator .mat-mdc-select-value,
+:host ::ng-deep .mat-mdc-paginator .mat-mdc-paginator-range-label {
+    font-size: 12.5px;
+}
+
+/* ── Scrollbar ────────────────────────────────────────────────────── */
+::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+::-webkit-scrollbar-track {
+    background-color: transparent;
+}
+
+/* Themed, not a fixed light grey that turns into a bright bar on a dark
+   surface. */
+::-webkit-scrollbar-thumb {
+    background-color: color-mix(in srgb, var(--chat-muted) 45%, transparent);
+    border-radius: var(--ui-radius-pill);
+    border: 3px solid transparent;
+    background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background-color: var(--chat-muted);
+}

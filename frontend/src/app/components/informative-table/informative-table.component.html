@@ -1,0 +1,36 @@
+<div class="options_form" *ngIf="!justTable">
+    <button mat-icon-button class="download-button" (click)="download()" matTooltip="Download as CSV">
+        <lucide-icon name="download" [size]="18"></lucide-icon>
+    </button>
+</div>
+
+<div class="table-card" *ngIf="rows.length > 0">
+    <div class="table-scroll">
+        <table mat-table [dataSource]="dataSource" matSort>
+
+            <div *ngFor="let col of cols; let index=index;">
+                <ng-container matColumnDef={{col}}>
+
+                    <th mat-header-cell *matHeaderCellDef mat-sort-header>
+                        {{col}}
+                    </th>
+                    <td mat-cell *matCellDef="let data">
+                        {{data[col]}}
+                    </td>
+
+                </ng-container>
+            </div>
+
+            <tr mat-header-row *matHeaderRowDef="cols"></tr>
+            <tr mat-row *matRowDef="let row; columns: cols;"></tr>
+
+        </table>
+    </div>
+
+    <mat-paginator *ngIf="!justTable" [pageSizeOptions]="[5, 10, 25, 100]" [pageSize]="5"></mat-paginator>
+</div>
+
+<!-- centered message when there is no data -->
+<div class="table-card empty-table" *ngIf="rows.length == 0">
+    No data to display
+</div>

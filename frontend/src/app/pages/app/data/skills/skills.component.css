@@ -1,0 +1,57 @@
+.field-help,.catalog-tools { color:var(--text-muted); font-size:12px; line-height:1.5; }
+.catalog-tools { display:flex; align-items:center; justify-content:space-between; gap:12px; margin:0 0 12px; }
+.field-help { margin-top:5px; }
+.skill-body-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.search-field { display:flex; align-items:center; gap:8px; min-width:260px; padding:8px 10px; border:1px solid var(--border-color); border-radius:var(--radius-lg); background:var(--surface); }
+.search-field input { width:100%; border:0; outline:0; background:transparent; color:inherit; }
+@media (max-width:760px) { .catalog-tools { align-items:stretch; flex-direction:column; } .search-field { min-width:0; width:100%; } }
+
+/* ── What a new chat starts with ──────────────────────────────────────
+   The prompt carries a bounded catalog, so choosing is not tidiness: it
+   is what the assistant gets to see. Stated with the skills themselves
+   rather than on a settings page nobody visits. */
+.skills-workspace { margin-top:18px; }
+.default-action.enabled { color:var(--accent-strong); background:var(--accent-soft); }
+.default-action:not(.enabled) { color:var(--muted); }
+.skills-document { overflow:hidden; border:1px solid var(--border-color); border-radius:var(--radius-xl); background:var(--surface); }
+.document-head { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:13px 16px; color:var(--muted); border-bottom:1px solid var(--border-color); background:var(--surface-subtle); }
+.document-head div { display:flex; align-items:baseline; gap:9px; }
+.document-head h2 { margin:0; color:var(--foreground); font-size:13px; font-weight:650; }
+.document-head p { margin:0; font-size:12px; }
+.skills-document .rows { border:0; border-radius:0; }
+.skills-document .row-sub { display:-webkit-box; overflow:hidden; -webkit-box-orient:vertical; -webkit-line-clamp:2; line-clamp:2; }
+.skills-note { display:flex; align-items:center; gap:7px; padding:11px 16px; color:var(--muted); border-top:1px solid var(--border-color); background:var(--surface-subtle); font-size:12px; line-height:1.45; }
+.skill-editor-dialog { width:min(720px,100%); }
+.skill-editor-dialog .dialog-body { display:grid; gap:18px; }
+.skill-editor-dialog .share-row { display:grid; gap:7px; }
+
+.cap-note { display:flex; align-items:flex-start; gap:9px; margin:0 0 14px; padding:11px 13px; color:var(--warning); border:1px solid color-mix(in srgb,var(--warning) 26%,transparent); border-radius:var(--ui-radius-card); background:var(--warning-bg); }
+.cap-note span { color:var(--muted); font-size:12px; line-height:1.55; }
+.cap-note strong { color:var(--foreground); }
+
+/* Reading one without opening the editor: the body is the product, and
+   pressing Edit to see it invites changing it by accident. */
+.preview-dialog { width:min(720px,100%); }
+.preview-note { margin:0 0 10px; color:var(--muted); font-size:12px; }
+.preview-body { display:block; margin:0; padding:16px 18px; max-height:52vh; overflow:auto; border:1px solid var(--border-color); border-radius:var(--radius-lg); background:var(--surface-subtle); font-size:13px; line-height:1.65; }
+:host ::ng-deep .preview-body > :first-child { margin-top:0; }
+:host ::ng-deep .preview-body > :last-child { margin-bottom:0; }
+:host ::ng-deep .preview-body h1 { margin:0 0 14px; font-size:20px; }
+:host ::ng-deep .preview-body h2 { margin:20px 0 8px; font-size:15px; }
+:host ::ng-deep .preview-body p { margin:8px 0; }
+:host ::ng-deep .preview-body ul { margin:8px 0; padding-left:21px; }
+:host ::ng-deep .preview-body li { margin:4px 0; }
+:host ::ng-deep .preview-body code { padding:1px 5px; border:1px solid var(--border-color); border-radius:var(--radius-sm); background:var(--surface); font-size:12px; }
+.preview-loading { display:flex; align-items:center; gap:9px; color:var(--muted); font-size:12.5px; }
+.delete-dialog { width:min(520px,100%); }
+.delete-warning { margin:0; color:var(--muted); font-size:13px; line-height:1.6; }
+.deleted-summary { margin:12px 0 0; padding:11px 13px; border-left:3px solid var(--destructive); border-radius:0 var(--ui-radius-card) var(--ui-radius-card) 0; background:var(--surface-subtle); color:var(--muted); font-size:12.5px; line-height:1.55; }
+
+.empty-state strong { color:var(--ink); font-size:var(--ui-text-base); }
+.empty-state p { margin:0; max-width:54ch; font-size:12.5px; line-height:1.6; }
+.empty-mark { display:grid; place-items:center; width:44px; height:44px; color:var(--accent-strong); background:var(--accent-soft); border-radius:50%; }
+.empty-actions { display:flex; flex-wrap:wrap; justify-content:center; gap:8px; margin-top:6px; }
+
+.preview-unreadable { display:flex; align-items:flex-start; gap:9px; margin:0; padding:12px 13px; color:var(--warning); border:1px solid color-mix(in srgb,var(--warning) 26%,transparent); border-radius:var(--radius-lg); background:var(--warning-bg); }
+.preview-unreadable span { color:var(--muted); font-size:12.5px; line-height:1.55; }
+.preview-unreadable strong { color:var(--foreground); }

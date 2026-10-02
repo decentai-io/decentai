@@ -1,0 +1,160 @@
+<div class="data-page">
+  <header class="data-header">
+    <div class="data-heading">
+      <h1>Groups</h1>
+      <p>
+        A group is a bundle of roles. Everyone in it inherits everything those
+        roles grant — people are placed into groups on the Users page.
+      </p>
+    </div>
+    <button
+      class="btn primary"
+      type="button"
+      *ngIf="canCreate && editingId === null"
+      (click)="startCreate()"
+    >
+      <lucide-icon name="plus" [size]="16"></lucide-icon>
+      New group
+    </button>
+  </header>
+
+  <div class="data-alert error" *ngIf="error">{{ error }}</div>
+  <div class="data-alert ok" *ngIf="notice">{{ notice }}</div>
+
+  <div class="data-loading" *ngIf="loading">
+    <span class="ui-spinner" role="status" aria-label="Loading"></span>
+    <span>Loading groups…</span>
+  </div>
+
+  <ng-container *ngIf="!loading">
+    <!-- ── Editor ─────────────────────────────────────────────────── -->
+    <section class="panel editor" *ngIf="editingId !== null">
+      <div class="panel-head">
+        <div>
+          <h2>{{ editorTitle }}</h2>
+          <p>Pick the roles everyone in this group inherits.</p>
+        </div>
+      </div>
+
+      <div class="editor-fields">
+        <label class="field grow">
+          <span class="field-label">Name</span>
+          <input
+            class="txt"
+            [(ngModel)]="formName"
+            placeholder="e.g. Analysts"
+            [disabled]="!isCreating && !canUpdate"
+          />
+        </label>
+      </div>
+
+      <div class="grid-head">
+        <span class="member-title">
+          Roles <strong>({{ selected.size }})</strong>
+        </span>
+      </div>
+
+      <div class="action-list">
+        <label
+          class="action"
+          *ngFor="let role of roles"
+          [class.on]="isRoleOn(role.role_id)"
+        >
+          <input
+            type="checkbox"
+            [checked]="isRoleOn(role.role_id)"
+            (change)="toggleRole(role.role_id)"
+            [disabled]="!canAssign"
+          />
+          <span class="action-text">
+            <span class="action-desc">{{ role.role_name }}</span>
+            <code class="action-name">{{ role.description }}</code>
+          </span>
+        </label>
+      </div>
+
+      <ng-container *ngIf="!isCreating">
+        <div class="grid-head">
+          <span class="member-title">
+            Members <strong>({{ editingMembers.length }})</strong>
+          </span>
+        </div>
+        <p class="row-sub" *ngIf="!editingMembers.length">
+          Nobody is in this group yet. Add people from the Users page.
+        </p>
+        <ul class="rows" *ngIf="editingMembers.length">
+          <li class="row" *ngFor="let member of editingMembers">
+            <span class="row-id">
+              <span class="row-name">{{ member.user_name }}</span>
+              <span class="row-sub">{{ member.email }}</span>
+            </span>
+          </li>
+        </ul>
+      </ng-container>
+
+      <div class="editor-actions">
+        <button
+          class="btn primary"
+          type="button"
+          (click)="save()"
+          [disabled]="saving || !formName.trim()"
+        >
+          {{ saving ? "Saving…" : isCreating ? "Create group" : "Save changes" }}
+        </button>
+        <button
+          class="btn ghost"
+          type="button"
+          (click)="cancelEdit()"
+          [disabled]="saving"
+        >
+          Cancel
+        </button>
+      </div>
+    </section>
+
+    <!-- ── List ───────────────────────────────────────────────────── -->
+    <section class="panel">
+      <div class="panel-head">
+        <div>
+          <h2>All groups</h2>
+          <p>{{ groups.length }} group{{ groups.length === 1 ? "" : "s" }}.</p>
+        </div>
+      </div>
+
+      <ul class="rows">
+        <li class="row" *ngFor="let group of groups">
+          <span class="row-mark" aria-hidden="true">
+            <lucide-icon name="users" [size]="15"></lucide-icon>
+          </span>
+
+          <span class="row-id">
+            <span class="row-name">{{ group.group_name }}</span>
+            <span class="row-meta">
+              <span class="grants">{{ summarise(group) }}</span>
+            </span>
+          </span>
+
+          <button
+            class="btn"
+            type="button"
+            *ngIf="canUpdate || canAssign"
+            (click)="startEdit(group)"
+            [disabled]="isBusy(group.group_id)"
+          >
+            Edit
+          </button>
+
+          <button
+            class="btn danger"
+            type="button"
+            *ngIf="canDelete"
+            (click)="remove(group)"
+            [disabled]="isBusy(group.group_id)"
+          >
+            Delete
+          </button>
+        </li>
+      </ul>
+    </section>
+  </ng-container>
+</div>

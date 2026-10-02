@@ -1,0 +1,313 @@
+<div class="data-page">
+  <header class="data-header">
+    <div class="data-heading">
+      <h1>Files</h1>
+      <p>Files you upload, attach to chats, or receive from your agents.</p>
+    </div>
+  </header>
+
+  <div class="data-alert error" *ngIf="error">{{ error }}</div>
+  <div class="data-alert ok" *ngIf="notice">{{ notice }}</div>
+
+  <div class="data-loading" *ngIf="loading">
+    <span class="ui-spinner" role="status" aria-label="Loading"></span>
+    <span>Loading files…</span>
+  </div>
+
+  <div *ngIf="!loading">
+    <!-- ── Where files come from ─────────────────────────────────── -->
+    <section class="source-overview" *ngIf="!activeSource">
+      <header class="overview-heading">
+        <div><h2>Where your files come from</h2><p>Select a source to see its files.</p></div>
+        <span>{{ activeFiles.length }} file{{ activeFiles.length === 1 ? '' : 's' }} across {{ sourceNodes.length }} source{{ sourceNodes.length === 1 ? '' : 's' }}</span>
+      </header>
+
+      <div class="overview-tools">
+        <div class="seg" role="tablist" aria-label="Whose files">
+          <button class="seg-btn" type="button" [class.on]="activeTab === 'mine'"
+                  (click)="selectTab('mine')">
+            Mine <span class="seg-count">{{ myFiles.length }}</span>
+          </button>
+          <button class="seg-btn" type="button" [class.on]="activeTab === 'shared'"
+                  (click)="selectTab('shared')">
+            Shared with me <span class="seg-count">{{ sharedFiles.length }}</span>
+          </button>
+        </div>
+        <label class="source-search" *ngIf="sourceNodes.length">
+          <lucide-icon name="search" [size]="15"></lucide-icon>
+          <input type="search" [ngModel]="sourceQuery" (ngModelChange)="searchSources($event)"
+                 placeholder="Search sources or file types" aria-label="Search sources" />
+          <small>{{ filteredSourceNodes.length }} found</small>
+        </label>
+        <label class="btn primary add-icon-button fp-upload" *ngIf="canUpload"
+               [class.disabled]="uploading" [matTooltip]="uploading ? 'Uploading…' : 'Upload files'"
+               aria-label="Upload files">
+          <span class="ui-spinner compact" *ngIf="uploading" aria-hidden="true"></span>
+          <lucide-icon *ngIf="!uploading" name="plus" [size]="18"></lucide-icon>
+          <input type="file" multiple hidden [disabled]="uploading" (change)="onUpload($event)" />
+        </label>
+      </div>
+
+      <div class="source-grid" *ngIf="sourceNodes.length">
+        <button class="source-card" type="button" *ngFor="let source of pagedSourceNodes" (click)="selectSource(source.id)"
+                [attr.aria-label]="'Open ' + source.name + ', ' + source.count + ' files'">
+          <span class="source-card-icon"><lucide-icon [name]="sourceIcon(source)" [size]="19"></lucide-icon></span>
+          <span class="source-card-copy">
+            <strong>{{ source.name }}</strong>
+            <small>{{ source.count }} file{{ source.count === 1 ? '' : 's' }}</small>
+          </span>
+          <span class="source-type-list">
+            <span *ngFor="let type of source.types">{{ type.label }} <em>{{ type.count }}</em></span>
+          </span>
+          <lucide-icon class="source-card-arrow" name="chevron-right" [size]="17"></lucide-icon>
+        </button>
+      </div>
+      <p class="no-source-results" *ngIf="sourceNodes.length && !filteredSourceNodes.length">No source matches that search.</p>
+      <nav class="pagination" *ngIf="sourcePageCount > 1" aria-label="Source pages">
+        <button type="button" (click)="sourcePage = sourcePage - 1" [disabled]="sourcePage === 1">Previous</button>
+        <span>Page {{ sourcePage }} of {{ sourcePageCount }}</span>
+        <button type="button" (click)="sourcePage = sourcePage + 1" [disabled]="sourcePage === sourcePageCount">Next</button>
+      </nav>
+      <div class="empty-state" *ngIf="!sourceNodes.length">
+        <span class="empty-mark"><lucide-icon name="file-text" [size]="22"></lucide-icon></span>
+        <strong>{{ activeTab === "mine" ? "No files yet" : "Nothing shared with you" }}</strong>
+        <p>{{ activeTab === "mine"
+              ? "Upload one here, attach one to a chat, or let an agent produce one."
+              : "Files a colleague shares with you appear here." }}</p>
+      </div>
+    </section>
+
+    <!-- ── One source's files ────────────────────────────────────── -->
+    <section class="source-workspace" *ngIf="activeSource && activeSourceNode as source">
+      <header class="source-workspace-head">
+        <button class="action-icon-button" type="button" (click)="selectAll()" aria-label="Back to sources" matTooltip="Back to sources">
+          <lucide-icon name="arrow-left" [size]="17"></lucide-icon>
+        </button>
+        <span class="source-card-icon"><lucide-icon [name]="sourceIcon(source)" [size]="19"></lucide-icon></span>
+        <div><h2>{{ source.name }}</h2><p>{{ source.count }} file{{ source.count === 1 ? '' : 's' }}{{ activeTab === 'shared' ? ' shared with you' : '' }}</p></div>
+      </header>
+
+      <section class="panel fp-main">
+        <div class="fp-toolbar">
+          <div class="fp-toolbar-head">
+            <div class="fp-title">
+              <strong>Files</strong>
+              <span>{{ source.name }} · {{ sourceFiles.length }} file{{ sourceFiles.length === 1 ? "" : "s" }}</span>
+            </div>
+            <label class="btn primary add-icon-button fp-upload" *ngIf="canUpload"
+                   [class.disabled]="uploading" [matTooltip]="uploading ? 'Uploading…' : 'Upload files'"
+                   aria-label="Upload files">
+              <span class="ui-spinner compact" *ngIf="uploading" aria-hidden="true"></span>
+              <lucide-icon *ngIf="!uploading" name="plus" [size]="18"></lucide-icon>
+              <input type="file" multiple hidden [disabled]="uploading" (change)="onUpload($event)" />
+            </label>
+          </div>
+
+          <div class="fp-controls" *ngIf="sourceFiles.length">
+            <div class="fp-search">
+              <lucide-icon name="search" [size]="16"></lucide-icon>
+              <input class="txt" [ngModel]="query" (ngModelChange)="searchFiles($event)" name="file-search"
+                     placeholder="Search by name or metadata"
+                     aria-label="Search files" />
+              <button class="search-clear" type="button" *ngIf="query"
+                      (click)="searchFiles('')" aria-label="Clear search" matTooltip="Clear search">
+                <lucide-icon name="x" [size]="14"></lucide-icon>
+              </button>
+            </div>
+            <span class="fp-search-status" aria-live="polite">
+              {{ query ? shownFiles.length + ' of ' + sourceFiles.length + ' found' : 'Search this source' }}
+            </span>
+            <!-- Nothing ticked, nothing to say: the bar appears with the
+                 first tick rather than standing greyed out waiting. -->
+            <span class="fp-selection" *ngIf="selected.size">
+              <span>{{ selected.size }} selected</span>
+              <button type="button" class="link-btn" *ngIf="!allShownSelected" (click)="selectAllShown()">
+                Select all {{ selectableShown.length }} shown
+              </button>
+              <button type="button" class="link-btn" (click)="clearSelection()">Clear</button>
+              <button class="btn danger sm" type="button" (click)="requestDeleteSelected()" [disabled]="deleteBusy">
+                <lucide-icon name="trash-2" [size]="15"></lucide-icon>
+                Delete selected
+              </button>
+            </span>
+          </div>
+        </div>
+
+        <p class="tab-hint" *ngIf="!shownFiles.length">
+          {{ query ? "No file matches that search." : "Nothing here." }}
+        </p>
+
+        <ul class="rows">
+          <li class="row file-row" *ngFor="let file of pagedFiles" [class.is-selected]="isSelected(file)">
+            <label class="select-box" *ngIf="deletable(file)" (click)="$event.stopPropagation()">
+              <input type="checkbox" [checked]="isSelected(file)"
+                     (change)="toggleSelected(file)"
+                     [attr.aria-label]="'Select ' + filename(file) + ' to delete'" />
+            </label>
+            <span class="row-mark" aria-hidden="true">
+              <lucide-icon name="file-text" [size]="15"></lucide-icon>
+            </span>
+
+            <span class="row-id">
+              <span class="row-name">
+                {{ filename(file) }}
+                <span
+                  class="unreadable-tag"
+                  *ngIf="file.unreadable"
+                  title="Encrypted with a key version this deployment no longer has. The bytes are still stored; their details cannot be read."
+                >unreadable</span>
+              </span>
+              <span class="row-sub">
+                {{ extensionLabel(file) }}
+                <ng-container *ngIf="sizeLabel(file)"> · {{ sizeLabel(file) }}</ng-container>
+                <ng-container *ngIf="chatIdOf(file)">
+                  · <a [routerLink]="['/ai/chats', chatIdOf(file)]">{{ sourceLabel(file) }}</a>
+                </ng-container>
+              </span>
+              <span class="row-meta">
+                <span class="grants">{{ shareSummary(file) }}</span>
+                <ng-container *ngIf="dateLabel(file.created_at)">
+                  · {{ dateLabel(file.created_at) }}
+                </ng-container>
+                <ng-container *ngIf="keysSummary(file)">
+                  · {{ keysSummary(file) }}
+                </ng-container>
+              </span>
+
+              <div class="share-editor" *ngIf="share.isOpen(file.resource_ref)">
+                <span class="field-label">Who can see this file</span>
+                <app-sharing-selector
+                  [mode]="share.mode" (modeChange)="share.mode = $any($event)"
+                  [groups]="share.myGroups" [people]="share.peers"
+                  [selectedGroups]="share.groups" [selectedPeople]="share.users"
+                  groupLabel="My groups" peopleMode="people" [allowOrganization]="canShareOrgWide"
+                  (groupToggled)="share.toggleGroup($event)" (personToggled)="share.toggleUser($event)">
+                </app-sharing-selector>
+
+                <p class="share-note">
+                  Anyone you share with can download this file, and their
+                  assistant can read it too if an agent goes looking.
+                </p>
+
+                <div class="editor-actions">
+                  <button
+                    class="btn primary"
+                    type="button"
+                    (click)="saveShare(file)"
+                    [disabled]="share.saving || !share.ready"
+                  >
+                    {{ share.saving ? "Saving…" : "Save sharing" }}
+                  </button>
+                  <button class="btn ghost" type="button" (click)="share.close()">
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </span>
+
+            <span class="file-actions">
+            <button
+              class="action-icon-button"
+              type="button"
+              *ngIf="canChat && !file.unreadable"
+              (click)="useInChat(file)"
+              [disabled]="busyRef === file.resource_ref"
+              aria-label="Use in a chat" matTooltip="Use in a chat"
+            >
+              <lucide-icon name="message-square" [size]="16"></lucide-icon>
+            </button>
+            <button
+              class="action-icon-button"
+              type="button"
+              *ngIf="canDownload"
+              (click)="download(file)"
+              [disabled]="busyRef === file.resource_ref"
+              aria-label="Download file" matTooltip="Download"
+            >
+              <lucide-icon name="download" [size]="16"></lucide-icon>
+            </button>
+
+            <button class="action-icon-button" type="button" [matMenuTriggerFor]="fileMenu"
+                    *ngIf="canTouch(file) && (canShare || canTransfer || canDelete)"
+                    aria-label="File actions" matTooltip="More actions">
+              <span aria-hidden="true" class="more-dots">···</span>
+            </button>
+            <mat-menu #fileMenu="matMenu">
+              <button mat-menu-item *ngIf="canShare" (click)="openShare(file)">Share</button>
+              <button mat-menu-item *ngIf="canTransfer" (click)="requestTransfer(file)">Hand over</button>
+              <button mat-menu-item *ngIf="canDelete" (click)="requestDelete(file)"
+                      [disabled]="busyRef === file.resource_ref">Delete</button>
+            </mat-menu>
+            </span>
+          </li>
+        </ul>
+
+        <footer class="file-footer" *ngIf="shownFiles.length">
+          <span>
+            Showing {{ (page - 1) * pageSize + 1 }}–{{ page * pageSize < shownFiles.length ? page * pageSize : shownFiles.length }}
+            of {{ shownFiles.length }}
+          </span>
+          <nav class="file-page-controls" aria-label="File pages">
+            <span>Page {{ page }} of {{ pageCount }}</span>
+            <button type="button" (click)="page = page - 1" [disabled]="page === 1"
+                    aria-label="Previous page" matTooltip="Previous page">
+              <lucide-icon name="chevron-left" [size]="16"></lucide-icon>
+            </button>
+            <button type="button" (click)="page = page + 1" [disabled]="page === pageCount"
+                    aria-label="Next page" matTooltip="Next page">
+              <lucide-icon name="chevron-right" [size]="16"></lucide-icon>
+            </button>
+          </nav>
+        </footer>
+      </section>
+    </section>
+  </div>
+
+  <!-- ── Deleting: one file, or every one ticked ─────────────────── -->
+  <ng-container *ngIf="deleting.length as count">
+    <div class="dialog-backdrop" (click)="closeDelete()">
+      <section class="info-dialog delete-dialog" role="alertdialog" aria-modal="true"
+               aria-labelledby="file-delete-title" (click)="$event.stopPropagation()">
+        <header class="dialog-head">
+          <span class="dialog-icon danger-dialog-icon">
+            <lucide-icon name="trash-2" [size]="21"></lucide-icon>
+          </span>
+          <div>
+            <h2 id="file-delete-title">
+              {{ count === 1 ? "Delete this file?" : "Delete " + count + " files?" }}
+            </h2>
+            <p>{{ deletingNames }}</p>
+          </div>
+          <button class="icon-button" type="button" (click)="closeDelete()"
+                  [disabled]="deleteBusy" aria-label="Close">
+            <lucide-icon name="x" [size]="19"></lucide-icon>
+          </button>
+        </header>
+        <div class="dialog-body">
+          <p class="delete-warning">
+            The bytes go with {{ count === 1 ? "it" : "them" }} — there is no trash to restore from.
+          </p>
+          <p class="delete-warning" *ngIf="deletingFromChats">
+            {{ count === 1 ? "It is" : "Some are" }} attached to a chat: that message will be left
+            pointing at a file that no longer exists.
+          </p>
+          <div class="data-alert error dialog-error" *ngIf="error">{{ error }}</div>
+        </div>
+        <footer class="dialog-actions">
+          <button class="btn" type="button" (click)="closeDelete()" [disabled]="deleteBusy">
+            Cancel
+          </button>
+          <button class="btn danger" type="button" (click)="confirmDelete()"
+                  [disabled]="deleteBusy">
+            {{ deleteBusy ? "Deleting…" : (count === 1 ? "Delete file" : "Delete " + count + " files") }}
+          </button>
+        </footer>
+      </section>
+    </div>
+  </ng-container>
+
+  <app-transfer-dialog *ngIf="transferTarget as item"
+                       [subject]="'the file “' + filename(item) + '”'" [ownerId]="item.created_by"
+                       [busy]="transferring" (chosen)="transfer($event)" (closed)="closeTransfer()">
+  </app-transfer-dialog>
+</div>

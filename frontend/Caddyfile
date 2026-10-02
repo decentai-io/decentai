@@ -1,0 +1,62 @@
+# The deployment's single public entry: TLS, the SPA, and the backend.
+#
+# SITE_ADDRESS decides the certificate story — a real domain (with DNS
+# pointing at this host) gets automatic Let's Encrypt certificates; a
+# bare "localhost" or IP gets a self-signed certificate from Caddy's
+# internal CA. Behind a load balancer that already terminates TLS this
+# is ":80", and the Host header arrives intact for the matchers below.
+{$SITE_ADDRESS:localhost} {
+	encode gzip
+
+	# ── What every answer says about how it may be used ───────────────
+	#
+	# Never guess a content type; send no address to another site; never
+	# be shown inside another page's frame; and only the microphone and
+	# the camera, which the chat uses, may be asked for.
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy same-origin
+		X-Frame-Options DENY
+		Permissions-Policy "microphone=(self), camera=(self), geolocation=(), payment=(), usb=()"
+
+		# What the page may load and where it may send: itself, and the
+		# two Google hosts that serve the IBM Plex fonts. Styles need
+		# 'unsafe-inline' because Angular writes component styles into
+		# the page; scripts do not. The font hosts are under connect-src
+		# too: once the service worker is in control it is the one that
+		# fetches them.
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com; worker-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+	}
+
+	# ── The application ───────────────────────────────────────────────
+	#
+	# Backend-owned paths: authentication, the app gateway, storage,
+	# health, and the chat WebSocket (Caddy proxies WebSockets and
+	# forwards X-Forwarded-* natively).
+	#
+	# This block is last and unmatched on purpose — the load balancer's
+	# health check arrives without a useful Host header, and /healthz has
+	# to reach the backend for the target to be considered healthy.
+	@backend path /auth/* /app /chats/* /upload /download/* /oauth/* /status /healthz /readyz
+	handle @backend {
+		reverse_proxy {$BACKEND_UPSTREAM:backend:8000}
+	}
+
+	# Everything else is the SPA; client-side routes fall back to index.
+	#
+	# The page, the service worker's own files and the theme script keep
+	# their names from one version to the next, so the browser is told to
+	# ask for them afresh every time; everything else carries a hash in
+	# its name. `route` keeps the order written: the fallback first, so
+	# that an address like /ai/chats is known to be the page by the time
+	# the header is decided.
+	handle {
+		root * /srv
+		route {
+			try_files {path} /index.html
+			@fresh path /index.html /ngsw.json /ngsw-worker.js /theme-init.js
+			header @fresh Cache-Control no-cache
+			file_server
+		}
+	}
+}

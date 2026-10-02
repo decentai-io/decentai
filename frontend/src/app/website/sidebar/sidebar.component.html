@@ -1,0 +1,152 @@
+<aside class="drawer" aria-label="DecentAI navigation">
+  <div class="drawer__brand">
+    <span class="brand-title">DecentAI</span>
+    <button
+      type="button"
+      class="drawer-collapse"
+      (click)="collapseClicked.emit()"
+      aria-label="Collapse sidebar"
+    >
+      <lucide-icon name="chevrons-left" [size]="15" [strokeWidth]="1.75"></lucide-icon>
+    </button>
+  </div>
+
+  <nav class="drawer__nav">
+    <ng-container *ngFor="let primaryNode of routes">
+      <section
+        class="nav-section"
+        *ngIf="canAccess(primaryNode)"
+        [class.is-section-active]="isPrimaryActive(primaryNode.url)"
+      >
+        <button
+          type="button"
+          class="section-heading"
+          [class.is-clickable]="primaryNode.active"
+          (click)="
+            primaryRouteClicked(
+              primaryNode.url,
+              primaryNode.active,
+              primaryNode.title || primaryNode.name
+            )
+          "
+        >
+          <span class="section-title">{{ primaryNode.name }}</span>
+        </button>
+
+        <ul class="nav-list">
+          <ng-container *ngFor="let secondaryNode of primaryNode.children">
+            <li class="nav-item" *ngIf="canAccess(secondaryNode)">
+              <div
+                class="nav-row"
+                [class.is-active]="isSecondaryActive(secondaryNode.url)"
+                [class.has-children]="getVisibleChildCount(secondaryNode) > 0"
+              >
+                <button
+                  type="button"
+                  class="nav-link"
+                  (click)="
+                    secondaryRouteClicked(
+                      secondaryNode.url,
+                      primaryNode.url,
+                      secondaryNode.active,
+                      secondaryNode.title || secondaryNode.name,
+                      getVisibleChildCount(secondaryNode) > 0
+                    )
+                  "
+                >
+                  <lucide-icon
+                    class="nav-icon"
+                    [name]="secondaryNode.icon"
+                    [size]="17"
+                    [strokeWidth]="1.75"
+                  ></lucide-icon>
+                  <span class="nav-label">{{ secondaryNode.name }}</span>
+                  @if (secondaryNode.url === 'ai/chats' && (attention.count$ | async); as needing) {
+                    <span class="nav-badge" [attr.aria-label]="needing + ' chats need you'">{{ needing }}</span>
+                  }
+                </button>
+
+                <button
+                  type="button"
+                  class="nav-expander"
+                  *ngIf="getVisibleChildCount(secondaryNode) > 0"
+                  (click)="
+                    toggleSecondaryRoute(
+                      $event,
+                      secondaryNode.url,
+                      primaryNode.url
+                    )
+                  "
+                  [attr.aria-expanded]="
+                    isExpanded(secondaryNode.url, primaryNode.url)
+                  "
+                  [attr.aria-label]="
+                    isExpanded(secondaryNode.url, primaryNode.url)
+                      ? 'Collapse ' + secondaryNode.name
+                      : 'Expand ' + secondaryNode.name
+                  "
+                >
+                  <lucide-icon
+                    [name]="
+                      isExpanded(secondaryNode.url, primaryNode.url)
+                        ? 'chevron-down'
+                        : 'chevron-right'
+                    "
+                    [size]="14"
+                    [strokeWidth]="1.75"
+                  ></lucide-icon>
+                </button>
+              </div>
+
+              <ul
+                class="subnav"
+                *ngIf="isExpanded(secondaryNode.url, primaryNode.url)"
+              >
+                <ng-container
+                  *ngFor="let tertiaryNode of secondaryNode.children"
+                >
+                  <li *ngIf="canAccess(tertiaryNode)">
+                    <button
+                      type="button"
+                      class="subnav-link"
+                      [class.is-active]="isTertiaryActive(tertiaryNode.url)"
+                      (click)="
+                        tertiaryRouteClicked(
+                          $event,
+                          tertiaryNode.url,
+                          secondaryNode.url,
+                          primaryNode.url,
+                          tertiaryNode.active,
+                          tertiaryNode.title || tertiaryNode.name
+                        )
+                      "
+                    >
+                      <lucide-icon
+                        class="subnav-icon"
+                        [name]="tertiaryNode.icon"
+                        [size]="14"
+                        [strokeWidth]="1.75"
+                      ></lucide-icon>
+                      <span class="subnav-label">{{ tertiaryNode.name }}</span>
+                    </button>
+                  </li>
+                </ng-container>
+              </ul>
+            </li>
+          </ng-container>
+        </ul>
+      </section>
+    </ng-container>
+  </nav>
+
+  <div class="drawer__footer">
+    <button
+      type="button"
+      class="signout-button"
+      (click)="signOutClicked.emit()"
+    >
+      <lucide-icon name="log-out" [size]="15" [strokeWidth]="1.75"></lucide-icon>
+      <span>Sign out</span>
+    </button>
+  </div>
+</aside>

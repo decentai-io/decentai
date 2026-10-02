@@ -1,0 +1,30 @@
+# The DecentAI backend: the platform's services, over FastAPI and MongoDB.
+# Kept lean: only what it imports.
+
+# Web server / ASGI
+fastapi~=0.136.1
+starlette~=1.0.0
+uvicorn~=0.46.0
+websockets~=15.0.1
+httpx~=0.28
+
+# Config / auth / crypto
+python-dotenv~=1.2.2
+PyJWT~=2.10
+cryptography~=47.0.0
+bcrypt~=5.0
+
+# Shared contracts (agent manifest validation at installation approval)
+PyYAML~=6.0
+
+# Speech to text (OpenAI's audio protocol, and Azure's)
+openai~=2.33.0
+
+# Persistence
+pymongo~=4.16
+# The IANA zone database, so a chat's time zone resolves on an image
+# that ships without /usr/share/zoneinfo (zoneinfo falls back to it).
+tzdata>=2024.1
+
+# Web push to a person's browsers
+pywebpush~=2.5

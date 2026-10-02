@@ -1,0 +1,534 @@
+@use '@angular/material' as mat;
+
+/* ── DecentAI type system (IBM Plex family, from Google Fonts) ──────────
+   Serif = headlines & display numbers · Sans = UI/body · Sans Arabic =
+   all Arabic (RTL) · Mono = labels, data, SQL, eyebrows. */
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Serif:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap");
+
+/* ════════════════════════════════════════════════════════════════════
+   DecentAI theme (shadcn tokens live in tailwind.css)
+
+   Legacy bridge: the previous Material-v3 token names used across the
+   component CSS are aliased to the new shadcn tokens here, so all
+   existing styles re-theme automatically while components are migrated
+   to spartan/Tailwind. New code should use the shadcn names directly
+   (--background/--card/--primary/--accent/--border/...).
+   ════════════════════════════════════════════════════════════════════ */
+
+:root {
+  --p: var(--primary);
+  --op: var(--primary-foreground);
+  --pc: var(--accent);
+  --opc: var(--accent-foreground);
+  --secc: var(--accent);
+  --osecc: var(--accent-foreground);
+  --err: var(--destructive);
+  --errc: color-mix(in srgb, var(--destructive) 12%, var(--background));
+  --oerrc: var(--destructive);
+  --ok: var(--primary);
+  --okc: var(--accent);
+  --warn: var(--warning);
+  --warnc: var(--warning-bg);
+  --bg: var(--background);
+  --surf: var(--card);
+  --s1: var(--card);
+  --s2: var(--muted);
+  --s3: var(--secondary);
+  --s4: var(--secondary);
+  --s5: var(--secondary);
+  --os: var(--foreground);
+  --osv: var(--muted-foreground);
+  --out: var(--muted-foreground);
+  --outv: var(--border);
+  --el: var(--shadow-card);
+  --scrim: rgba(2, 6, 8, 0.5);
+}
+
+:root {
+  /* ── DecentAI chat theme — three-color system (emerald / black / white) ─
+     No indigo. Emerald is the single accent; neutrals are tints only.
+     Every value maps to the theme-aware shadcn tokens (tailwind.css), so
+     the chat flips with light/dark instead of staying pinned to light. */
+  --chat-ink: var(--foreground);                  /* strong text + primary actions */
+  --chat-ink-soft: color-mix(in srgb, var(--foreground) 72%, var(--muted-foreground));
+  --chat-muted: var(--muted-foreground);          /* muted text / placeholders */
+  --chat-accent: var(--primary);                  /* single accent — emerald */
+  --chat-accent-strong: var(--accent-foreground); /* readable emerald text per theme */
+  --chat-accent-soft: color-mix(in srgb, var(--primary) 12%, transparent);
+  --chat-surface: var(--card);
+  --chat-surface-2: var(--secondary);             /* subtle panels */
+  --chat-border: var(--border);
+  --chat-border-strong: var(--input);
+  --chat-shadow-sm: none;         /* borders define edges */
+  --chat-shadow-md: none;
+  --chat-radius: var(--radius-xl);      /* 12px */
+  --chat-radius-lg: var(--radius-2xl);  /* 16px */
+  --chat-col: min(1280px, 94%);   /* centered content column (messages + composer) */
+  --chat-font: var(--font-sans);
+  /* User bubble = ink on paper; inverts with the theme (black bubble/white
+     text in light mode, white bubble/black text in dark). Brand chat rule. */
+  --chat-user-bubble: var(--foreground);
+  --chat-user-border: var(--foreground);
+  --chat-user-ink: var(--background);
+  --chat-ai-ink: var(--foreground);               /* AI answer body text */
+  --chat-table-header: var(--secondary);          /* neutral header tint */
+
+  /* ── DecentAI ported-page scale (data pages, connect dialog, settings) ──
+     Typographic + radius scale + a few chat-family semantic extensions,
+     mapped to the DecentAI brand: emerald focus/success, red for errors. */
+  --ui-text-xs: 12px;
+  --ui-text-sm: 13px;
+  --ui-text-base: 14px;
+  --ui-text-md: 15px;
+  --ui-text-lg: 18px;
+  --ui-text-xl: 20px;
+  --ui-text-2xl: 24px;
+  --ui-text-3xl: 30px;
+  --ui-text-4xl: 40px;
+  /* Aliases of the one radius scale in tailwind.css. The scale is
+     --radius-sm 4 / -md 6 / -lg 8 / -xl 12 / -2xl 16 / -pill; these
+     names are what most component CSS already spells it as. */
+  --ui-radius-sm: var(--radius-md);     /* 6px */
+  --ui-radius-card: var(--radius-lg);   /* 8px — brand: cards/controls */
+  --ui-radius-pill: var(--radius-pill);
+  --chat-focus-ring: 0 0 0 3px color-mix(in srgb, var(--chat-accent) 25%, transparent);
+  --chat-success: var(--chat-accent);
+  --chat-success-soft: var(--chat-accent-soft);
+  --chat-danger-soft: color-mix(in srgb, var(--destructive) 12%, transparent);
+  --chat-danger-strong: var(--destructive-strong);  /* red that reads as text */
+}
+
+/* ── Angular Material M3 system theme ────────────────────────────────
+   light-dark() colors driven by color-scheme, then pinned to the exact
+   brand tokens above so Material components match the mockup 1:1. */
+html {
+  @include mat.theme((
+    color: (
+      primary: mat.$azure-palette,
+      tertiary: mat.$blue-palette,
+      theme-type: color-scheme,
+    ),
+    // Drive Material's own typography with IBM Plex Sans so its buttons,
+    // inputs, tables and tabs match the rest of the app.
+    typography: (
+      brand-family: "IBM Plex Sans, IBM Plex Sans Arabic, ui-sans-serif, system-ui, sans-serif",
+      plain-family: "IBM Plex Sans, IBM Plex Sans Arabic, ui-sans-serif, system-ui, sans-serif",
+      bold-weight: 600,
+      medium-weight: 500,
+      regular-weight: 400,
+    ),
+    density: 0,
+  ));
+
+  color-scheme: light;
+
+  --mat-sys-primary: var(--p);
+  --mat-sys-on-primary: var(--op);
+  --mat-sys-primary-container: var(--pc);
+  --mat-sys-on-primary-container: var(--opc);
+  --mat-sys-secondary-container: var(--secc);
+  --mat-sys-on-secondary-container: var(--osecc);
+  --mat-sys-error: var(--err);
+  --mat-sys-error-container: var(--errc);
+  --mat-sys-on-error-container: var(--oerrc);
+  --mat-sys-background: var(--bg);
+  --mat-sys-on-background: var(--os);
+  --mat-sys-surface: var(--surf);
+  --mat-sys-on-surface: var(--os);
+  --mat-sys-on-surface-variant: var(--osv);
+  --mat-sys-surface-container-lowest: var(--surf);
+  --mat-sys-surface-container-low: var(--s1);
+  --mat-sys-surface-container: var(--s2);
+  --mat-sys-surface-container-high: var(--s3);
+  --mat-sys-surface-container-highest: var(--s4);
+  --mat-sys-outline: var(--out);
+  --mat-sys-outline-variant: var(--outv);
+}
+
+html[data-md-theme="dark"] {
+  color-scheme: dark;
+}
+
+/* ── Base ────────────────────────────────────────────────────────── */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  font-family: var(--font-sans);
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--os);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* Headlines & display: IBM Plex Serif with gentle negative tracking
+   (brand: headlines & display numbers are serif). */
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-serif);
+  letter-spacing: -0.017em;
+  line-height: 1.25;
+}
+
+a {
+  color: var(--p);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--outv);
+  border-radius: var(--radius-lg);
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--out);
+  background-clip: content-box;
+}
+
+@keyframes md-fade {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Data surfaces: tabular (fixed-width) figures so numbers line up in columns
+   and don't jitter as values change. */
+.mat-mdc-cell,
+.mat-mdc-header-cell {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+/* ── Chat markdown: shared typography ─────────────────────────────── */
+app-chat-message .markdown-block p,
+app-chat-message .ai-markdown p,
+app-chat-message .system-markdown p {
+  margin-bottom: 0.65em;
+  line-height: 1.75;
+}
+
+app-chat-message .markdown-block p:last-child,
+app-chat-message .ai-markdown p:last-child,
+app-chat-message .system-markdown p:last-child {
+  margin-bottom: 0;
+}
+
+app-chat-message .markdown-block ul,
+app-chat-message .markdown-block ol,
+app-chat-message .ai-markdown ul,
+app-chat-message .ai-markdown ol {
+  padding-left: 1.5em;
+  margin-bottom: 0.65em;
+}
+
+app-chat-message .markdown-block li,
+app-chat-message .ai-markdown li {
+  margin-bottom: 0.3em;
+  line-height: 1.7;
+}
+
+/* AI answer text: IBM Plex Sans (via --chat-font); code is forced back to
+   monospace by the .ai-markdown pre/code rules below. */
+app-chat-message .ai-markdown,
+app-chat-message .ai-markdown p,
+app-chat-message .ai-markdown li,
+app-chat-message .ai-markdown h1,
+app-chat-message .ai-markdown h2,
+app-chat-message .ai-markdown h3,
+app-chat-message .ai-markdown h4,
+app-chat-message .ai-markdown strong,
+app-chat-message .ai-markdown em,
+app-chat-message .ai-markdown a,
+app-chat-message .ai-markdown blockquote {
+  font-family: var(--chat-font);
+}
+
+app-chat-message .ai-markdown {
+  color: var(--chat-ai-ink);
+}
+
+app-chat-message .ai-markdown li::marker {
+  color: var(--chat-accent);
+}
+
+app-chat-message .markdown-block h1,
+app-chat-message .markdown-block h2,
+app-chat-message .markdown-block h3,
+app-chat-message .ai-markdown h1,
+app-chat-message .ai-markdown h2,
+app-chat-message .ai-markdown h3 {
+  margin-top: 0.85em;
+  margin-bottom: 0.4em;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+  color: var(--chat-ink);
+}
+
+app-chat-message .ai-markdown h1 { font-size: 1.35em; }
+app-chat-message .ai-markdown h2 { font-size: 1.18em; }
+app-chat-message .ai-markdown h3 { font-size: 1.05em; }
+
+app-chat-message .ai-markdown h1:first-child,
+app-chat-message .ai-markdown h2:first-child,
+app-chat-message .ai-markdown h3:first-child {
+  margin-top: 0;
+}
+
+/* ── AI markdown: code blocks ─────────────────────────────────────── */
+app-chat-message .ai-markdown pre {
+  background: var(--chat-user-bubble);  /* ink tile — inverts with theme */
+  color: var(--chat-user-ink);
+  border: 1px solid var(--chat-border);
+  border-radius: var(--radius-lg);
+  padding: 16px 18px;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.6;
+  margin: 0.5em 0 0.8em;
+}
+
+app-chat-message .ai-markdown pre code {
+  background: none !important;
+  color: inherit !important;
+  padding: 0 !important;
+  font-size: inherit !important;
+  border-radius: 0 !important;
+}
+
+/* Keep highlighted token spans monospace, not the global body face */
+app-chat-message .ai-markdown pre * {
+  font-family: inherit;
+}
+
+/* ── A code card: the code's colours ──────────────────────────────────
+   The card colours code it did not write as markup (Prism's spans), so
+   the rules live here. One accent and the greys: what the language
+   fixes reads strong, what the author wrote reads in the accent, and
+   a comment steps back. */
+app-chat-approval-card .code-text .token.comment,
+app-chat-approval-card .code-text .token.prolog,
+app-chat-approval-card .code-text .token.doctype {
+  color: var(--muted-foreground);
+  font-style: italic;
+}
+app-chat-approval-card .code-text .token.punctuation,
+app-chat-approval-card .code-text .token.operator {
+  color: var(--muted-foreground);
+}
+app-chat-approval-card .code-text .token.keyword,
+app-chat-approval-card .code-text .token.builtin,
+app-chat-approval-card .code-text .token.boolean {
+  font-weight: 600;
+}
+app-chat-approval-card .code-text .token.string,
+app-chat-approval-card .code-text .token.template-string,
+app-chat-approval-card .code-text .token.number,
+app-chat-approval-card .code-text .token.regex {
+  color: var(--chat-accent-strong);
+}
+app-chat-approval-card .code-text .token.function,
+app-chat-approval-card .code-text .token.class-name,
+app-chat-approval-card .code-text .token.decorator {
+  text-decoration: underline;
+  text-decoration-color: var(--border);
+  text-underline-offset: 3px;
+}
+
+/* ── AI markdown: inline code (the accent, not red) ───────────────── */
+app-chat-message .ai-markdown code {
+  background: var(--chat-accent-soft);
+  color: var(--chat-accent-strong);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 0.86em;
+}
+
+/* ── User bubble: inline code ─────────────────────────────────────── */
+app-chat-message .markdown-block code {
+  background: color-mix(in srgb, var(--chat-user-ink) 14%, transparent);
+  padding: 1px 5px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+}
+
+app-chat-message .markdown-block pre {
+  background: color-mix(in srgb, var(--chat-user-ink) 12%, transparent);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.55;
+  margin: 0.4em 0;
+}
+
+/* ── AI markdown: blockquote ──────────────────────────────────────── */
+app-chat-message .ai-markdown blockquote {
+  border-left: 3px solid var(--chat-accent);
+  padding: 8px 14px;
+  margin: 0.6em 0;
+  color: var(--chat-ink-soft);
+  background: var(--chat-accent-soft);
+  border-radius: 0 6px 6px 0;
+}
+
+app-chat-message .ai-markdown blockquote p {
+  margin-bottom: 0;
+}
+
+/* ── AI markdown: hr & links ──────────────────────────────────────── */
+app-chat-message .ai-markdown hr {
+  border: none;
+  border-top: 1px solid var(--chat-border);
+  margin: 1em 0;
+}
+
+app-chat-message .ai-markdown a {
+  color: var(--chat-accent);
+  text-decoration: none;
+}
+
+app-chat-message .ai-markdown a:hover {
+  text-decoration: underline;
+}
+
+app-chat-message .ai-markdown strong {
+  font-weight: 600;
+  color: var(--chat-ink);
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   Material overlays re-skinned to the shadcn look.
+   Material stays as the behavioral engine (dialog service, menus,
+   tooltips); these overrides make its surfaces match the rest.
+   ════════════════════════════════════════════════════════════════════ */
+
+/* Menus */
+.mat-mdc-menu-panel {
+  border-radius: var(--radius) !important;
+  border: 1px solid var(--border);
+  background: var(--popover) !important;
+  box-shadow: var(--shadow-overlay) !important;
+  min-width: 168px !important;
+}
+
+.mat-mdc-menu-content {
+  padding: 4px !important;
+}
+
+.mat-mdc-menu-item {
+  min-height: 34px !important;
+  border-radius: var(--radius-sm);
+  font-size: 13px !important;
+  color: var(--popover-foreground) !important;
+  gap: 10px;
+}
+
+.mat-mdc-menu-item lucide-icon {
+  color: var(--muted-foreground);
+  display: inline-flex;
+  margin-right: 10px;
+}
+
+.mat-mdc-menu-item:hover:not([disabled]) {
+  background: var(--secondary) !important;
+}
+
+/* Dialogs */
+/* Material 20 clamps every dialog pane to 560px unless MatDialogConfig.maxWidth
+   is passed; our dialogs size themselves (component CSS / dialogWidth config),
+   so lift the cap and let the per-dialog widths win. */
+html {
+  --mat-dialog-container-max-width: 96vw;
+}
+
+.mat-mdc-dialog-container .mdc-dialog__surface {
+  border-radius: calc(var(--radius) + 2px) !important;
+  border: 1px solid var(--border);
+  background: var(--popover) !important;
+  color: var(--popover-foreground) !important;
+  box-shadow: var(--shadow-overlay) !important;
+}
+
+/* Tooltips */
+.mat-mdc-tooltip .mdc-tooltip__surface {
+  background: var(--foreground) !important;
+  color: var(--background) !important;
+  font-size: 11.5px !important;
+  font-family: var(--font-sans) !important;
+  border-radius: var(--radius-md) !important;
+  padding: 5px 9px !important;
+  line-height: 1.35 !important;
+}
+
+/* Select panels (the paginator's page-size list) */
+div.mat-mdc-select-panel {
+  border-radius: var(--radius) !important;
+  border: 1px solid var(--border);
+  background: var(--popover) !important;
+  box-shadow: var(--shadow-overlay) !important;
+  padding: 4px !important;
+}
+
+.mat-mdc-option {
+  min-height: 34px !important;
+  border-radius: var(--radius-sm);
+  font-size: 13px !important;
+}
+
+/* Paginator (used inside informative-table) */
+.mat-mdc-paginator {
+  font-size: 12.5px;
+}
+
+/* The signed-in app reads one step larger than the public pages; the
+   faces stay the three in docs/contributing/design-language.md. */
+body:has(app-main) {
+  --ui-text-xs: 13px;
+  --ui-text-sm: 14px;
+  --ui-text-base: 15px;
+  --ui-text-md: 16px;
+  --muted-foreground: #52525b;
+  --foreground: #18181b;
+  font-size: 15px;
+}
+html.dark body:has(app-main) {
+  --foreground: #f4f4f5;
+  --muted-foreground: #b4b4bd;
+}

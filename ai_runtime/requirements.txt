@@ -1,0 +1,37 @@
+# ai_runtime — the private agent execution runtime.
+#
+# Only what the runtime needs. An agent that wants more declares it in its
+# manifest, and the installer fetches it into the agent's own directory —
+# nothing a single agent happens to use belongs in this file.
+
+# Web server / ASGI
+fastapi~=0.136.1
+uvicorn~=0.46.0
+httpx~=0.28
+# The IANA zone database, so a chat's time zone resolves on an image
+# that ships without /usr/share/zoneinfo (zoneinfo falls back to it).
+tzdata>=2024.1
+# Not imported anywhere: uvicorn needs it to serve the chat WebSocket.
+websockets~=15.0.1
+
+# Config / auth
+python-dotenv~=1.2.2
+PyJWT
+# Not imported anywhere: PyJWT needs it to verify the backend's RS256
+# service tokens.
+cryptography~=47.0.0
+# Not imported anywhere: FastAPI's request and response models.
+pydantic~=2.12
+
+# The text layer of a PDF the person attached, for the assistant's own
+# read_file (reasoning/documents.py). Imported lazily: a runtime without
+# it still serves, and says a PDF must go to an agent.
+pypdf~=6.0
+
+# Manifests: parsing and schema validation
+PyYAML~=6.0
+jsonschema~=4.25
+
+# LLM providers
+openai~=2.33.0
+anthropic~=0.40

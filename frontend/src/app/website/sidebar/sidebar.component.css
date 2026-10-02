@@ -1,0 +1,290 @@
+:host {
+  display: block;
+  height: 100%;
+}
+
+button {
+  border: 0;
+  font: inherit;
+}
+
+/* Fixed inner width so content doesn't reflow while the shell animates
+   the drawer closed. */
+.drawer {
+  width: 240px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--sidebar);
+  color: var(--sidebar-foreground);
+}
+
+/* ── Brand ───────────────────────────────────────────────────────── */
+.drawer__brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px 12px;
+  flex-shrink: 0;
+}
+
+/* The name alone. It takes the free space so the collapse button stays
+   pinned to the right edge of the header. */
+.brand-title {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-serif);
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  color: var(--sidebar-foreground);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.drawer-collapse {
+  width: 28px;
+  height: 28px;
+  margin-left: auto;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.drawer-collapse:hover {
+  background: var(--secondary);
+  color: var(--foreground);
+}
+
+/* ── Nav ─────────────────────────────────────────────────────────── */
+.drawer__nav {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px 10px 8px;
+}
+
+.nav-section {
+  margin-bottom: 4px;
+}
+
+/* Divider between module groups (e.g. AI / Data) — not above the first. */
+.nav-section + .nav-section {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--sidebar-border);
+}
+
+.section-heading {
+  display: block;
+  width: 100%;
+  padding: 10px 8px 4px;
+  background: transparent;
+  cursor: default;
+  text-align: left;
+}
+
+.section-heading.is-clickable {
+  cursor: pointer;
+}
+
+.section-title {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--muted-foreground) 70%, transparent);
+  white-space: nowrap;
+}
+
+.section-heading.is-clickable:hover .section-title {
+  color: var(--foreground);
+}
+
+/* ── Destination rows ────────────────────────────────────────────── */
+.nav-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.nav-item {
+  margin-bottom: 1px;
+}
+
+.nav-row {
+  display: flex;
+  align-items: center;
+  border-radius: var(--radius-md);
+}
+
+.nav-link {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 36px;
+  padding: 0 12px;
+  min-width: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--muted-foreground);
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.nav-row:hover .nav-link {
+  background: color-mix(in srgb, var(--sidebar-accent) 50%, transparent);
+  color: var(--sidebar-foreground);
+}
+
+.nav-link:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+
+.nav-icon {
+  color: var(--muted-foreground);
+  flex-shrink: 0;
+  transition: transform 0.15s ease;
+}
+
+.nav-row:hover .nav-icon {
+  transform: scale(1.1);
+}
+
+.nav-label {
+  flex: 1;
+  font-size: 14px;
+  line-height: 20px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nav-row.is-active .nav-link {
+  background: var(--sidebar-accent);
+  color: var(--sidebar-accent-foreground);
+  font-weight: 500;
+}
+
+.nav-row.is-active .nav-icon {
+  color: var(--sidebar-primary);
+}
+
+.nav-expander {
+  width: 26px;
+  height: 26px;
+  margin-right: 4px;
+  border-radius: var(--ui-radius-sm);
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.nav-expander:hover {
+  background: var(--secondary);
+}
+
+.nav-row.is-active .nav-expander {
+  color: var(--sidebar-accent-foreground);
+}
+
+/* ── Tertiary destinations ───────────────────────────────────────── */
+.subnav {
+  list-style: none;
+  margin: 1px 0 4px;
+  padding: 0 0 0 24px;
+}
+
+.subnav-link {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  text-align: left;
+}
+
+.subnav-link:hover {
+  background: color-mix(in srgb, var(--sidebar-accent) 50%, transparent);
+  color: var(--sidebar-foreground);
+}
+
+.subnav-link:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+
+.subnav-icon {
+  flex-shrink: 0;
+}
+
+.subnav-label {
+  flex: 1;
+  font-size: 13px;
+  line-height: 18px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.subnav-link.is-active {
+  background: var(--sidebar-accent);
+  color: var(--sidebar-accent-foreground);
+  font-weight: 500;
+}
+
+/* ── Footer ──────────────────────────────────────────────────────── */
+.drawer__footer {
+  flex-shrink: 0;
+  padding: 8px 10px 10px;
+  border-top: 1px solid var(--sidebar-border);
+}
+
+.signout-button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 34px;
+  padding: 0 12px;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--muted-foreground);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+}
+
+.signout-button:hover {
+  background: color-mix(in srgb, var(--destructive) 8%, transparent);
+  color: var(--destructive-strong);
+}
+
+/* How many chats need the person: cards waiting, or news since they looked. */
+.nav-badge {
+  margin-left: auto; min-width: 18px; padding: 0 6px;
+  border-radius: 999px; background: var(--accent-strong, #0a7a4f); color: #fff;
+  font-size: 11px; font-weight: 600; line-height: 18px; text-align: center;
+  font-variant-numeric: tabular-nums;
+}

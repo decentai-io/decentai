@@ -1,0 +1,61 @@
+.ctx-dialog {
+  display: flex;
+  flex-direction: column;
+  /* The PANE decides how wide this is — MatDialog.open sets that, with a
+     vw cap so a phone gets one that fits. A fixed width here fought the
+     pane instead: too wide and Material clipped it (the overflow simply
+     unreachable, not scrollable), too narrow and it floated in a gap. */
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  max-height: 78vh;
+}
+
+.ctx-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 18px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.ctx-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--foreground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ctx-close {
+  flex-shrink: 0;
+  color: var(--muted-foreground);
+}
+
+.ctx-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px 18px 18px;
+}
+
+/* ── Sections ──────────────────────────────────────────────────────── */
+.ctx-section {
+  padding: 14px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.ctx-section:last-child {
+  border-bottom: none;
+}
+
+.ctx-note {
+  margin: 6px 0 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--muted-foreground);
+}

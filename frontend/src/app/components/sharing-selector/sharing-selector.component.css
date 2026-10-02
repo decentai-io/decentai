@@ -1,0 +1,34 @@
+:host { display:block; }
+.sharing-selector { display:grid; gap:8px; }
+.sharing-choice {
+  display:flex; align-items:center; gap:10px; min-height:48px; padding:10px 12px;
+  border:1px solid var(--border); border-radius:var(--radius-lg); background:var(--card);
+  color:var(--foreground); cursor:pointer; transition:border-color .15s ease,background .15s ease;
+}
+.sharing-choice:hover { background:var(--secondary); }
+.sharing-choice.selected {
+  border-color:color-mix(in srgb,var(--primary) 42%,var(--border));
+  background:color-mix(in srgb,var(--primary) 3%,var(--card));
+}
+.sharing-choice.disabled { opacity:.52; cursor:not-allowed; }
+.sharing-choice.disabled:hover { background:var(--card); }
+.sharing-choice input { flex:none; margin:0; accent-color:var(--primary); }
+.sharing-choice > span:not(.choice-line), .choice-line > span { display:flex; min-width:0; flex-direction:column; gap:1px; }
+.sharing-choice strong { font-size:13px; font-weight:600; }
+.sharing-choice small { color:var(--muted-foreground); font-size:11.5px; line-height:1.35; }
+.sharing-choice.expandable { display:block; }
+.choice-line { display:flex; align-items:center; gap:10px; }
+.nested-options {
+  display:grid !important; gap:8px;
+  margin:10px 0 0 25px; padding-top:10px; border-top:1px solid var(--border);
+}
+.option-search { display:flex !important; align-items:center; gap:8px; padding:7px 9px; border:1px solid var(--border); border-radius:var(--radius-lg); background:transparent; color:var(--muted-foreground); }
+.option-search input { flex:1; min-width:0; border:0; outline:0; background:transparent; color:var(--foreground); font:inherit; font-size:12.5px; }
+.option-search small { white-space:nowrap; font-variant-numeric:tabular-nums; }
+.option-list { display:grid !important; grid-template-columns:repeat(2,minmax(160px,1fr)); column-gap:16px; max-height:180px; overflow-y:auto; padding-right:3px; }
+.nested-options label { display:flex; align-items:center; gap:7px; min-height:42px; padding:6px 4px; border-bottom:1px solid color-mix(in srgb,var(--border) 70%,transparent); border-radius:0; background:transparent; font-size:12.5px; cursor:pointer; }
+.nested-options label > span { display:flex; min-width:0; flex-direction:column; gap:1px; }
+.nested-options label strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.nested-options label:hover { background:color-mix(in srgb,var(--secondary) 65%,transparent); }
+.no-results { padding:8px; color:var(--muted-foreground); }
+@media (max-width:620px) { .option-list { grid-template-columns:1fr; } }

@@ -1,0 +1,313 @@
+<div class="data-page">
+  <header class="data-header">
+    <div class="data-heading">
+      <h1>Marketplace</h1>
+      <p>Discover, review, and install agents from trusted catalogs.</p>
+    </div>
+  </header>
+
+  <div class="data-alert error" *ngIf="error">{{ error }}</div>
+  <div class="data-alert ok" *ngIf="notice">{{ notice }}</div>
+
+  <div class="data-loading" *ngIf="loading">
+    <span class="ui-spinner" role="status" aria-label="Loading"></span>
+    <span>Loading sources…</span>
+  </div>
+
+  <ng-container *ngIf="!loading && !review">
+    <app-source-form *ngIf="formOpen"
+                     [source]="editing"
+                     [myGroups]="myGroups"
+                     [peers]="peers"
+                     [suggestedUrl]="referenceCatalogUrl"
+                     [busy]="saving"
+                     (save)="saveSource($event)"
+                     (cancel)="closeForm()"></app-source-form>
+
+    <section class="source-browser" *ngIf="!current">
+      <div class="source-browser-head">
+        <div>
+          <h2>Agent catalogs</h2>
+          <p>Choose a catalog to browse its agents.</p>
+        </div>
+        <button class="btn primary add-icon-button" type="button" *ngIf="!formOpen"
+                (click)="startCreate()" aria-label="Add catalog" matTooltip="Add catalog">
+          <lucide-icon name="plus" [size]="18"></lucide-icon>
+        </button>
+      </div>
+      <div class="market-toolbar">
+        <div class="market-search source-search" *ngIf="visible.length">
+          <lucide-icon name="search" [size]="15"></lucide-icon>
+          <input class="txt" [ngModel]="sourceQuery" (ngModelChange)="searchSources($event)"
+                 name="source-search" placeholder="Search catalogs" aria-label="Search catalogs" />
+          <button class="search-clear" type="button" *ngIf="sourceQuery" (click)="searchSources('')"
+                  aria-label="Clear search"><lucide-icon name="x" [size]="14"></lucide-icon></button>
+        </div>
+      </div>
+
+      <div class="catalog-grid" *ngIf="pagedSources.length">
+        <button class="catalog-card" type="button" *ngFor="let source of pagedSources"
+                [class.has-error]="source.status === 'error'"
+                (click)="select(source)">
+          <span class="catalog-mark"><lucide-icon name="store" [size]="18"></lucide-icon></span>
+          <span class="catalog-card-body">
+            <strong>{{ source.name }}</strong>
+            <small>{{ entriesFor(source).length }} agent{{ entriesFor(source).length === 1 ? '' : 's' }}<ng-container *ngIf="installedCount(source)"> · {{ installedCount(source) }} installed</ng-container></small>
+            <span>{{ source.url }}</span>
+          </span>
+          <lucide-icon name="chevron-right" [size]="18"></lucide-icon>
+        </button>
+      </div>
+
+      <div class="empty-state" *ngIf="!visible.length">
+        <span class="empty-mark"><lucide-icon name="store" [size]="22"></lucide-icon></span>
+        <strong>No catalogs yet</strong>
+        <p>Add a catalog to make its agents available here.</p>
+      </div>
+      <div class="empty-state compact" *ngIf="visible.length && !filteredSources.length">
+        <strong>No matching catalogs</strong><p>Try another name or URL.</p>
+      </div>
+      <footer class="market-pagination" *ngIf="filteredSources.length > sourcePageSize">
+        <span>Showing {{ (sourcePage - 1) * sourcePageSize + 1 }}–{{ sourcePage * sourcePageSize < filteredSources.length ? sourcePage * sourcePageSize : filteredSources.length }} of {{ filteredSources.length }} catalogs</span>
+        <nav aria-label="Catalog pages"><span>Page {{ sourcePage }} of {{ sourcePageCount }}</span>
+          <button type="button" (click)="sourcePage = sourcePage - 1" [disabled]="sourcePage === 1" aria-label="Previous page"><lucide-icon name="chevron-left" [size]="16"></lucide-icon></button>
+          <button type="button" (click)="sourcePage = sourcePage + 1" [disabled]="sourcePage === sourcePageCount" aria-label="Next page"><lucide-icon name="chevron-right" [size]="16"></lucide-icon></button>
+        </nav>
+      </footer>
+    </section>
+
+    <!-- The open source: what it is and who may change it, then what it
+         offers. Administration stays in the header; the offers below. -->
+    <section class="source-panel" *ngIf="current as source"
+             [class.is-error]="source.status === 'error' && source.owned">
+      <button class="back-link source-back" type="button" (click)="backToSources()">
+        <lucide-icon name="arrow-left" [size]="15"></lucide-icon> All catalogs
+      </button>
+      <header class="source-head">
+        <div class="source-identity">
+          <strong>
+            {{ source.name }}
+            <span class="source-badge" *ngIf="source.owned"
+                  [title]="'Who in your organization can see this source: ' + shareLabel(source)">
+              <lucide-icon name="users" [size]="11"></lucide-icon>
+              {{ shareLabel(source) }}
+            </span>
+            <span class="source-badge locked" *ngIf="source.owned && source.has_credential"
+                  title="Reads with a stored credential, so it stays private.">
+              <lucide-icon name="lock" [size]="11"></lucide-icon> Private repo
+            </span>
+            <span class="source-state has-error"
+                  *ngIf="source.owned && source.status === 'error'">could not be read</span>
+          </strong>
+          <span class="source-url-line">
+            {{ source.url }}<ng-container *ngIf="source.ref"> · {{ source.ref }}</ng-container>
+          </span>
+          <span class="source-meta">
+            {{ entriesFor(source).length }} agent{{ entriesFor(source).length === 1 ? "" : "s" }}
+            <ng-container *ngIf="installedCount(source)">
+              · {{ installedCount(source) }} installed
+            </ng-container>
+            · read <span [class.stale]="isStale(source)">{{ freshness(source) }}</span>
+          </span>
+        </div>
+
+        <!-- Anyone the source is shown to may read its catalog again:
+             the snapshot is what the whole organization installs from.
+             Changing the source stays with whoever created it. -->
+        <div class="source-actions">
+          <button class="icon-btn" type="button" (click)="refresh(source)"
+                  [disabled]="busyId === source.source_id" aria-label="Refresh catalog"
+                  matTooltip="Refresh catalog">
+            <lucide-icon name="refresh-cw" [size]="14"></lucide-icon>
+          </button>
+          <ng-container *ngIf="source.owned">
+            <button class="icon-btn" type="button" (click)="startEdit(source)"
+                    [disabled]="!!busyId" title="Edit this source">
+              <lucide-icon name="pencil" [size]="15"></lucide-icon>
+            </button>
+            <button class="icon-btn" type="button" (click)="requestTransfer(source)"
+                    [disabled]="!!busyId" title="Hand this source to another member">
+              <lucide-icon name="arrow-right-left" [size]="15"></lucide-icon>
+            </button>
+            <button class="icon-btn danger" type="button" (click)="requestRemove(source)"
+                    [disabled]="!!busyId" title="Remove this source">
+              <lucide-icon name="trash-2" [size]="15"></lucide-icon>
+            </button>
+          </ng-container>
+        </div>
+      </header>
+
+      <div class="source-error" *ngIf="source.last_error">
+        {{ source.last_error }}
+      </div>
+
+      <div class="offer-toolbar">
+        <div class="offer-title">
+          <h3>Agents</h3>
+          <span>{{ shownEntries.length }} of {{ entriesFor(source).length }}</span>
+        </div>
+
+        <div class="market-search">
+          <lucide-icon name="search" [size]="15"></lucide-icon>
+          <input class="txt" [ngModel]="query" (ngModelChange)="search($event)" name="market-search"
+                 placeholder="Search agents" aria-label="Search agents" />
+          <button class="search-clear" type="button" *ngIf="query" (click)="search('')"
+                  aria-label="Clear filter">
+            <lucide-icon name="x" [size]="14"></lucide-icon>
+          </button>
+        </div>
+
+        <!-- Several at once: tick, then one button installs them all,
+             each under its own approval. -->
+        <div class="bulk" *ngIf="selectableEntries(source).length > 1">
+          <label class="check">
+            <input type="checkbox" [checked]="allSelected(source)" (change)="toggleAll(source)" />
+            Select all {{ selectableEntries(source).length }} installable
+          </label>
+          <button class="btn primary sm" type="button"
+                  *ngIf="selectedCount(source)"
+                  [disabled]="!!busyId"
+                  (click)="installSelected(source)">
+            <lucide-icon name="download" [size]="14"></lucide-icon>
+            {{ busyId === "bulk:" + source.source_id
+                ? "Installing…"
+                : "Install selected (" + selectedCount(source) + ")" }}
+          </button>
+        </div>
+      </div>
+
+      <!-- ── Agents: one card each ─────────────────────────────────── -->
+      <ng-container>
+        <div class="empty-line" *ngIf="!entriesFor(source).length">
+          This source's catalog is empty.
+        </div>
+        <div class="empty-line" *ngIf="entriesFor(source).length && !shownEntries.length">
+          No agent here matches "{{ query }}".
+          <button class="link-btn" type="button" (click)="query = ''">Clear the filter</button>
+        </div>
+
+        <div class="agent-grid" *ngIf="shownEntries.length">
+          <article class="agent-card" *ngFor="let entry of pagedEntries"
+                   [class.is-broken]="entryStatus(entry) === 'broken'"
+                   [class.is-installed]="entryStatus(entry) === 'installed'"
+                   [class.is-selected]="isSelected(source, entry)">
+            <header class="agent-card-head">
+              <label class="entry-tick" *ngIf="installable(entry) && selectableEntries(source).length > 1"
+                     title="Select for bulk install">
+                <input type="checkbox" [checked]="isSelected(source, entry)"
+                       (change)="toggleSelect(source, entry)" />
+              </label>
+              <strong>{{ entryName(entry) }}</strong>
+              <span class="agent-status" [ngClass]="'is-' + entryStatus(entry)">
+                {{ entryLabel(entry) }}
+              </span>
+            </header>
+            <p class="agent-card-desc" *ngIf="entryDescription(entry)">{{ entryDescription(entry) }}</p>
+            <span class="agent-card-samples" *ngIf="entry.samples && !entry.samples.errors.length"
+                  title="Ships records to try it on; load them from the agent's page once installed">
+              <lucide-icon name="database" [size]="12"></lucide-icon>
+              {{ entry.samples.records }} sample record{{ entry.samples.records === 1 ? "" : "s" }}<ng-container *ngIf="entry.samples.files">, {{ entry.samples.files }} file{{ entry.samples.files === 1 ? "" : "s" }}</ng-container>
+            </span>
+            <span class="agent-card-samples warn" *ngIf="entry.samples?.errors?.length"
+                  [title]="entry.samples?.errors?.join('; ') || ''">
+              Sample sheet has errors
+            </span>
+            <div class="agent-errors" *ngIf="entry.errors?.length">
+              <span class="agent-error" *ngFor="let message of entry.errors">{{ message }}</span>
+            </div>
+            <footer class="agent-card-foot">
+              <!-- Already installed is a STATE, not a dead button. -->
+              <span class="catalog-done" *ngIf="entryStatus(entry) === 'installed'">
+                <lucide-icon name="circle-check" [size]="14"></lucide-icon>
+                Installed
+              </span>
+              <span class="spacer"></span>
+              <button class="btn ghost sm" type="button"
+                      *ngIf="entryStatus(entry) !== 'broken'"
+                      [disabled]="!!busyId"
+                      (click)="openReview(source, entry)">
+                <lucide-icon name="info" [size]="14"></lucide-icon>
+                Details
+              </button>
+              <button class="btn primary sm" type="button"
+                      *ngIf="installable(entry)"
+                      [disabled]="!!busyId"
+                      (click)="installNow(source, entry)">
+                {{ busyId === entryKey(entry)
+                    ? "Installing…"
+                    : entryStatus(entry) === "update_available" ? "Update" : "Install" }}
+              </button>
+            </footer>
+          </article>
+        </div>
+        <footer class="market-pagination" *ngIf="shownEntries.length">
+          <span>
+            Showing {{ (page - 1) * pageSize + 1 }}–{{ page * pageSize < shownEntries.length ? page * pageSize : shownEntries.length }}
+            of {{ shownEntries.length }} agents
+          </span>
+          <nav aria-label="Agent catalog pages">
+            <span>Page {{ page }} of {{ pageCount }}</span>
+            <button type="button" (click)="page = page - 1" [disabled]="page === 1"
+                    aria-label="Previous page" matTooltip="Previous page">
+              <lucide-icon name="chevron-left" [size]="16"></lucide-icon>
+            </button>
+            <button type="button" (click)="page = page + 1" [disabled]="page === pageCount"
+                    aria-label="Next page" matTooltip="Next page">
+              <lucide-icon name="chevron-right" [size]="16"></lucide-icon>
+            </button>
+          </nav>
+        </footer>
+      </ng-container>
+
+    </section>
+  </ng-container>
+
+  <app-install-review *ngIf="review"
+                      [installed]="entryStatus(review.entry) === 'installed'"
+                      [source]="review.source"
+                      [entry]="review.entry"
+                      [approved]="reviewApproved"
+                      [loading]="reviewLoading"
+                      [busy]="busyId === entryKey(review.entry)"
+                      (approve)="approve()"
+                      (close)="closeReview()"></app-install-review>
+
+  <div class="modal-backdrop" *ngIf="removing" (click)="closeRemove()">
+    <div class="modal" (click)="$event.stopPropagation()">
+      <header class="modal-head">
+        <h2>Remove "{{ removing.name }}"?</h2>
+      </header>
+      <div class="modal-body">
+        <p *ngIf="!removalBlocker(removing)">
+          The catalog leaves this page. No agent is installed from it, so
+          nothing else changes; add the repository again to list it again.
+        </p>
+        <div class="blocker" *ngIf="removalBlocker(removing)">
+          <p>Agents installed from it, which go with it:</p>
+          <ul class="purge-list">
+            <li *ngFor="let agent of removing.installed_agents">{{ agent.name }} <em>{{ agent.version }}</em></li>
+          </ul>
+          <p>Uninstalling withdraws their approval, their grants and their credentials' grants. Records they kept stay: they are the people's.</p>
+        </div>
+      </div>
+      <footer class="modal-actions">
+        <button class="btn ghost" type="button" (click)="closeRemove()" [disabled]="!!busyId">
+          Cancel
+        </button>
+        <button class="btn danger" type="button" *ngIf="!removalBlocker(removing)" (click)="remove(removing)"
+                [disabled]="!!busyId">
+          {{ busyId ? "Removing…" : "Remove source" }}
+        </button>
+        <button class="btn danger" type="button" *ngIf="removalBlocker(removing)" (click)="purge(removing)"
+                [disabled]="!!busyId">
+          {{ busyId ? "Removing…" : "Uninstall " + (removing.installed_agents?.length || 0) + " and remove source" }}
+        </button>
+      </footer>
+    </div>
+  </div>
+
+  <app-transfer-dialog *ngIf="transferTarget as item"
+                       [subject]="'the source “' + item.name + '”'" [ownerId]="item.created_by_id || ''"
+                       [busy]="transferring" (chosen)="transfer($event)" (closed)="closeTransfer()">
+  </app-transfer-dialog>
+</div>

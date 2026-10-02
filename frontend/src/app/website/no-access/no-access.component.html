@@ -1,0 +1,17 @@
+<div class="nf">
+  <div class="nf-badge" aria-hidden="true">
+    <lucide-icon name="shield-check" [size]="16" [strokeWidth]="1.75"></lucide-icon>
+  </div>
+
+  <h1 class="nf-title">Nothing is available to you yet</h1>
+  <p class="nf-text">
+    Your account is signed in, but no page has been granted to it. An
+    administrator can give your group access — chat, files, or secrets — and
+    it will appear here the next time you sign in.
+  </p>
+
+  <button type="button" class="nf-button" (click)="signOut()">
+    <lucide-icon aria-hidden="true" name="log-out" [size]="16" [strokeWidth]="1.75"></lucide-icon>
+    <span>Sign out</span>
+  </button>
+</div>

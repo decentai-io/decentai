@@ -1,0 +1,181 @@
+<div class="app-shell" [class.sidebar-open]="isSidebarOpen">
+  <div
+    class="mobile-sidebar-backdrop"
+    [class.is-open]="isSidebarOpen"
+    (click)="closeSidebar()"
+  ></div>
+
+  <aside
+    #sidebarShell
+    class="sidebar-shell"
+    [class.is-open]="isSidebarOpen"
+    [class.is-collapsed]="!isMobile && isDrawerCollapsed"
+    [attr.inert]="drawerInert ? '' : null"
+    [attr.aria-hidden]="drawerInert ? 'true' : null"
+  >
+    <app-sidebar
+      (navigationSelected)="closeSidebar()"
+      (collapseClicked)="toggleMenu()"
+      (signOutClicked)="logout()"
+    ></app-sidebar>
+  </aside>
+
+  <div class="app-main">
+    <!-- Top bar -->
+    <header class="top-bar">
+      <button
+        #menuButton
+        type="button"
+        class="icon-button top-bar__menu"
+        (click)="toggleMenu()"
+        aria-label="Toggle navigation"
+        [attr.aria-expanded]="isMobile ? isSidebarOpen : !isDrawerCollapsed"
+      >
+        <lucide-icon name="menu" [size]="17" [strokeWidth]="1.75"></lucide-icon>
+      </button>
+
+      <!-- Brand lockup: shown only when the sidebar isn't (mobile drawer, or
+           desktop collapsed) — otherwise the sidebar mark already brands it. -->
+      <span class="top-bar__brand">
+        <img
+          class="top-bar__logo top-bar__logo--light"
+          src="assets/brand/logos/decentai-lockup-horizontal.svg"
+          alt="DecentAI"
+        />
+        <img
+          class="top-bar__logo top-bar__logo--dark"
+          src="assets/brand/logos/decentai-lockup-horizontal-dark.svg"
+          alt="DecentAI"
+        />
+      </span>
+
+      <div class="top-bar__spacer"></div>
+
+      <button
+        *ngIf="!workStopped"
+        type="button"
+        class="icon-button stop-all"
+        (click)="stopEverything()"
+        [disabled]="switching"
+        aria-label="Stop everything"
+        matTooltip="Stop everything"
+      >
+        <lucide-icon name="octagon-x" [size]="16" [strokeWidth]="1.75"></lucide-icon>
+      </button>
+
+      <button
+        type="button"
+        class="icon-button"
+        (click)="toggleTheme()"
+        [attr.aria-label]="
+          isDarkTheme ? 'Switch to light theme' : 'Switch to dark theme'
+        "
+        [matTooltip]="isDarkTheme ? 'Light theme' : 'Dark theme'"
+      >
+        <lucide-icon
+          [name]="isDarkTheme ? 'sun' : 'moon'"
+          [size]="16"
+          [strokeWidth]="1.75"
+        ></lucide-icon>
+      </button>
+
+      <button
+        type="button"
+        class="user-trigger"
+        [matMenuTriggerFor]="userMenu"
+        aria-label="Open account menu"
+      >
+        <span class="user-avatar">{{ initials }}</span>
+        <span class="user-name">{{ userName }}</span>
+        <lucide-icon
+          name="chevron-down"
+          [size]="14"
+          [strokeWidth]="1.75"
+        ></lucide-icon>
+      </button>
+
+      <mat-menu #userMenu="matMenu" xPosition="before" class="user-menu-panel">
+        <div class="user-menu-head">
+          <span class="user-menu-avatar" aria-hidden="true">{{
+            initials
+          }}</span>
+          <span class="user-menu-id">
+            <span class="user-menu-name">{{ userName || "Account" }}</span>
+            <span class="user-menu-email" *ngIf="userEmail">{{
+              userEmail
+            }}</span>
+          </span>
+        </div>
+
+        <button
+          *ngIf="hasAdminConsoleAccess"
+          mat-menu-item
+          (click)="changecurrentContentView()"
+        >
+          <lucide-icon
+            [name]="contentView === 'admin' ? 'house' : 'user-cog'"
+            [size]="16"
+            [strokeWidth]="1.75"
+          ></lucide-icon>
+          <span>{{
+            contentView === "admin" ? "Main workspace" : "Admin console"
+          }}</span>
+        </button>
+
+        <button mat-menu-item (click)="logout()">
+          <lucide-icon
+            name="log-out"
+            [size]="16"
+            [strokeWidth]="1.75"
+          ></lucide-icon>
+          <span>Log out</span>
+        </button>
+      </mat-menu>
+    </header>
+
+    <!-- The person stopped everything of theirs: said on every page,
+         with the one way back. -->
+    <div class="stopped-bar" *ngIf="workStopped" role="status">
+      <lucide-icon name="octagon-x" [size]="16" [strokeWidth]="1.75"></lucide-icon>
+      <span class="stopped-bar__text">
+        You stopped everything. Nothing of yours runs until you resume.
+      </span>
+      <button
+        type="button"
+        class="stopped-bar__resume"
+        (click)="resumeEverything()"
+        [disabled]="switching"
+      >
+        Resume
+      </button>
+    </div>
+
+    <!-- A newer version is ready: said once, quietly, with the way to it. -->
+    <div class="update-bar" *ngIf="updateReady" role="status">
+      <lucide-icon name="refresh-cw" [size]="15" [strokeWidth]="1.75"></lucide-icon>
+      <span class="update-bar__text">A new version is ready.</span>
+      <button type="button" class="update-bar__reload" (click)="reloadForUpdate()">
+        Reload
+      </button>
+    </div>
+
+    <!-- Page header (breadcrumb + title) -->
+    <div class="page-bar" *ngIf="currentPageTitle && !pageBarHidden">
+      <nav class="page-bar__crumbs" aria-label="Breadcrumb">
+        <ng-container *ngIf="moduleName && moduleName !== currentPageTitle">
+          <span class="crumb-module">{{ moduleName }}</span>
+          <span class="crumb-sep" aria-hidden="true">/</span>
+        </ng-container>
+        <h1 class="crumb-page">{{ currentPageTitle }}</h1>
+      </nav>
+    </div>
+
+    <main
+      class="content-shell"
+      [attr.inert]="contentInert ? '' : null"
+      [attr.aria-hidden]="contentInert ? 'true' : null"
+    >
+      <app-content></app-content>
+    </main>
+  </div>
+</div>

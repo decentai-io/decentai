@@ -1,0 +1,230 @@
+<div class="data-page">
+  <header class="data-header" *ngIf="!openAgent">
+    <div class="data-heading">
+      <h1>Installed agents</h1>
+      <p>Manage the agents your organization has approved.</p>
+    </div>
+  </header>
+
+  <div class="data-alert error" *ngIf="error">{{ error }}</div>
+  <div class="data-alert ok" *ngIf="notice">{{ notice }}</div>
+
+  <div class="data-loading" *ngIf="loading">
+    <span class="ui-spinner" role="status" aria-label="Loading"></span>
+    <span>Loading agents…</span>
+  </div>
+
+  <app-agent-detail *ngIf="openAgent as agent"
+                    [agent]="agent"
+                    [credentials]="openCredentials"
+                    [groups]="groups"
+                    [myGroups]="myGroups"
+                    [canShareAny]="canShareAny"
+                    [myUserId]="myUserId"
+                    [secretDefaults]="secretDefaults"
+                    [canInstall]="canInstall"
+                    [canUninstall]="canUninstall"
+                    [busyId]="busyId"
+                    (back)="closeDetail()"
+                    (update)="update($event)"
+                    (uninstall)="requestUninstall($event)"
+                    (credentialsChanged)="onCredentialsChanged()"
+                    (failed)="error = $event"
+                    (flashed)="notice = $event"></app-agent-detail>
+
+  <ng-container *ngIf="!openAgent && !loading">
+    <section class="panel">
+      <div class="panel-head">
+        <div>
+          <h2>Your agents</h2>
+          <p>Open an agent to manage credentials, capabilities, and access.</p>
+        </div>
+        <a class="btn primary" routerLink="/agents/marketplace">
+          <lucide-icon name="store" [size]="15"></lucide-icon> Marketplace
+        </a>
+      </div>
+
+      <div class="empty-state" *ngIf="!agents.length">
+        <span class="empty-mark"><lucide-icon name="bot" [size]="22"></lucide-icon></span>
+        <strong>No agents installed</strong>
+        <p>
+          An agent is code this deployment approved and can run. Chats work
+          without them — they are how the assistant does something in a
+          system of yours rather than only talking about it. The marketplace
+          is where they come from.
+        </p>
+      </div>
+
+      <ng-container *ngIf="agents.length">
+        <div class="installed-summary">
+          <div><strong>{{ agents.length }}</strong><span>Installed</span></div>
+          <div><strong>{{ readyCount }}</strong><span>Ready</span></div>
+          <div [class.attention]="attentionCount"><strong>{{ attentionCount }}</strong><span>Need attention</span></div>
+          <div><strong>{{ defaultCount }}</strong><span>In new chats</span></div>
+        </div>
+
+        <div class="installed-toolbar">
+          <div class="installed-filters" role="tablist" aria-label="Agent status">
+            <button type="button" [class.on]="filter === 'all'" (click)="setFilter('all')">All <span>{{ agents.length }}</span></button>
+            <button type="button" [class.on]="filter === 'attention'" (click)="setFilter('attention')">Needs attention <span>{{ attentionCount }}</span></button>
+            <button type="button" [class.on]="filter === 'updates'" (click)="setFilter('updates')">Updates <span>{{ updateCount }}</span></button>
+          </div>
+          <label class="installed-search">
+            <lucide-icon name="search" [size]="16"></lucide-icon>
+            <input class="txt" [ngModel]="query" (ngModelChange)="search($event)" placeholder="Search installed agents" aria-label="Search installed agents" />
+            <button type="button" *ngIf="query" (click)="search('')" aria-label="Clear search"><lucide-icon name="x" [size]="14"></lucide-icon></button>
+          </label>
+
+          <!-- Only once something is ticked: this page is mostly read,
+               and an action that is never available should not sit there
+               greyed out asking to be understood. -->
+          <div class="installed-selection" *ngIf="selected.size">
+            <span>{{ selected.size }} selected</span>
+            <button type="button" class="link-btn" *ngIf="!allShownSelected"
+                    (click)="selectAllShown()">
+              Select all {{ selectableShown.length }} shown
+            </button>
+            <button type="button" class="link-btn" (click)="clearSelection()">Clear</button>
+            <button class="btn danger sm" type="button"
+                    (click)="requestUninstallSelected()" [disabled]="uninstallBusy">
+              <lucide-icon name="trash-2" [size]="14"></lucide-icon>
+              Uninstall {{ selected.size }}
+            </button>
+          </div>
+        </div>
+
+        <div class="agent-grid" *ngIf="pagedAgents.length">
+        <article class="agent-card clickable" *ngFor="let agent of pagedAgents"
+                 [class.is-on]="isDefault(agent)"
+                 (click)="openDetail(agent)">
+          <header class="agent-card-head">
+            <!-- Ticking is not opening: the card is a link into the
+                 agent, and this is a decision about the set. -->
+            <label class="select-box" *ngIf="selectable(agent)"
+                   (click)="$event.stopPropagation()">
+              <input type="checkbox" [checked]="isSelected(agent)"
+                     (change)="toggleSelected(agent)"
+                     [attr.aria-label]="'Select ' + (agent.name || agent.agent_id)
+                                        + ' to uninstall'" />
+            </label>
+            <span class="agent-avatar"><lucide-icon name="bot" [size]="18"></lucide-icon></span>
+            <div class="agent-title">
+              <strong>{{ agent.name || agent.agent_id }}</strong>
+              <span class="agent-status" [class]="'is-' + agent.status"
+                    [class.is-preparing]="agent.prepared?.state === 'preparing'"
+                    [class.is-failed]="agent.prepared?.state === 'failed'">
+                {{ statusLabel(agent) }}
+              </span>
+            </div>
+            <lucide-icon class="card-chevron" name="chevron-right" [size]="17"></lucide-icon>
+          </header>
+
+          <p class="agent-card-description">{{ agent.description }}</p>
+
+          <div class="agent-facts">
+            <span class="fact">
+              <strong>{{ agent.functions.length }}</strong>
+              function{{ agent.functions.length === 1 ? "" : "s" }}
+            </span>
+            <span class="fact" *ngIf="agent.installed_version">v{{ agent.installed_version }}</span>
+            <span class="fact warn" *ngIf="missingCredentials(agent).length">
+              <lucide-icon name="key-round" [size]="12"></lucide-icon>
+              needs {{ missingCredentials(agent).length }}
+              credential{{ missingCredentials(agent).length === 1 ? "" : "s" }}
+            </span>
+            <span class="fact ok"
+                  *ngIf="credentials(agent).length && !missingCredentials(agent).length">
+              <lucide-icon name="check" [size]="12"></lucide-icon>
+              credentials ready
+            </span>
+          </div>
+
+          <!-- Why the runtime could not build it — the next step is
+               usually a dependency line in the manifest. -->
+          <div class="agent-errors" *ngIf="agent.prepared?.state === 'failed' && agent.prepared?.error">
+            <div class="agent-error">{{ agent.prepared?.error }}</div>
+          </div>
+
+          <!-- The card's own decisions. Not a link into the agent, so the
+               click must not open it. -->
+          <footer class="agent-card-foot" (click)="$event.stopPropagation()">
+            <button class="switch" type="button" role="switch"
+                    [attr.aria-checked]="isDefault(agent)"
+                    [class.on]="isDefault(agent)"
+                    [disabled]="!!savingDefaultFor"
+                    (click)="toggleDefault(agent)"
+                    [title]="isDefault(agent)
+                      ? 'New chats start with this agent — switch off to leave it out'
+                      : 'New chats do not start with this agent — switch on to include it'">
+              <span class="switch-track"><span class="switch-knob"></span></span>
+              <span class="switch-label">In new chats</span>
+            </button>
+
+            <button class="btn primary sm" type="button"
+                    *ngIf="canInstall && agent.status === 'update_available'"
+                    (click)="update(agent)" [disabled]="busyId === agent.agent_id">
+              Update
+            </button>
+          </footer>
+        </article>
+        </div>
+
+        <div class="installed-empty" *ngIf="!shownAgents.length">
+          <lucide-icon name="search" [size]="20"></lucide-icon>
+          <strong>No matching agents</strong>
+          <span>Try another search or status.</span>
+        </div>
+
+        <footer class="installed-pagination" *ngIf="shownAgents.length > pageSize">
+          <span>Showing {{ (page - 1) * pageSize + 1 }}–{{ page * pageSize < shownAgents.length ? page * pageSize : shownAgents.length }} of {{ shownAgents.length }}</span>
+          <nav aria-label="Installed agent pages"><span>Page {{ page }} of {{ pageCount }}</span>
+            <button type="button" (click)="page = page - 1" [disabled]="page === 1" aria-label="Previous page"><lucide-icon name="chevron-left" [size]="16"></lucide-icon></button>
+            <button type="button" (click)="page = page + 1" [disabled]="page === pageCount" aria-label="Next page"><lucide-icon name="chevron-right" [size]="16"></lucide-icon></button>
+          </nav>
+        </footer>
+      </ng-container>
+    </section>
+  </ng-container>
+
+  <ng-container *ngIf="uninstalling.length as count">
+    <div class="dialog-backdrop" (click)="closeUninstall()">
+      <section class="info-dialog delete-dialog" role="alertdialog" aria-modal="true"
+               aria-labelledby="uninstall-title" (click)="$event.stopPropagation()">
+        <header class="dialog-head">
+          <span class="dialog-icon danger-dialog-icon">
+            <lucide-icon name="trash-2" [size]="21"></lucide-icon>
+          </span>
+          <div>
+            <h2 id="uninstall-title">
+              {{ count === 1 ? "Uninstall this agent?" : "Uninstall " + count + " agents?" }}
+            </h2>
+            <p>{{ uninstallingNames }}</p>
+          </div>
+          <button class="icon-button" type="button" (click)="closeUninstall()"
+                  [disabled]="uninstallBusy" aria-label="Close">
+            <lucide-icon name="x" [size]="19"></lucide-icon>
+          </button>
+        </header>
+        <div class="dialog-body">
+          <p class="delete-warning">
+            Chats stop being served by {{ count === 1 ? "it" : "them" }} on their next
+            connection. Credentials saved for {{ count === 1 ? "it" : "them" }} and the records
+            {{ count === 1 ? "it" : "they" }} kept stay yours — uninstalling takes away the
+            code, not your data.
+          </p>
+          <div class="data-alert error dialog-error" *ngIf="error">{{ error }}</div>
+        </div>
+        <footer class="dialog-actions">
+          <button class="btn" type="button" (click)="closeUninstall()" [disabled]="uninstallBusy">
+            Cancel
+          </button>
+          <button class="btn danger" type="button" (click)="confirmUninstall()"
+                  [disabled]="uninstallBusy">
+            {{ uninstallBusy ? "Uninstalling…"
+               : (count === 1 ? "Uninstall" : "Uninstall " + count) }}
+          </button>
+        </footer>
+      </section>
+    </div>
+  </ng-container>
+</div>

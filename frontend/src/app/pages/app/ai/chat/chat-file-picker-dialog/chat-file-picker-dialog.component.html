@@ -1,0 +1,17 @@
+<h2 mat-dialog-title>Choose from your files</h2>
+
+<mat-dialog-content class="picker-dialog">
+  <p class="picker-hint">
+    Files you uploaded, attached in other chats, or an agent produced.
+    What you choose is attached to this message by reference — nothing
+    is copied.
+  </p>
+  <app-file-picker [recentCount]="8" (selectionChange)="chosen = $event"></app-file-picker>
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button mat-button (click)="close()">Cancel</button>
+  <button mat-flat-button color="primary" [disabled]="!chosen.length" (click)="attach()">
+    {{ chosen.length <= 1 ? 'Attach' : 'Attach ' + chosen.length + ' files' }}
+  </button>
+</mat-dialog-actions>

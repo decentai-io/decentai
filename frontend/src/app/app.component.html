@@ -1,0 +1,19 @@
+<!-- Loading View -->
+<ng-container *ngIf="view === 'loading'">
+  <app-loading></app-loading>
+</ng-container>
+
+<!-- Sign in -->
+<ng-container *ngIf="view === 'auth'">
+  <app-auth></app-auth>
+</ng-container>
+
+<!-- Main Application View -->
+<ng-container *ngIf="view === 'app'">
+  <app-main></app-main>
+</ng-container>
+
+<!-- Signed out -->
+<ng-container *ngIf="view === 'logout'">
+  <app-logout></app-logout>
+</ng-container>

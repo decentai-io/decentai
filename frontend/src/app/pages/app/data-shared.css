@@ -1,0 +1,303 @@
+/* Shared styling for the resource pages — files, saved data, skills,
+   secrets, settings, agents and the admin console. Each of their
+   components references this file, so panels, buttons, inputs, dialogs
+   and empty states stay identical across them. */
+:host {
+  /* Theme-aware: use the app's shadcn tokens (flip in dark mode) rather than
+     the chat-* tokens, which are pinned to a light surface. */
+  --accent: var(--primary);                                          /* emerald */
+  --accent-strong: var(--accent-foreground);                         /* readable emerald text */
+  --accent-soft: color-mix(in srgb, var(--primary) 12%, transparent);/* pale emerald, both modes */
+  --ink: var(--foreground);
+  --muted: var(--muted-foreground);
+  --border-strong: var(--input);
+  --surface: var(--card);                                            /* #fff light / #111 dark */
+  --surface-2: var(--secondary);
+
+  /* Aliases for the ported design-system names these pages were written
+     against. Undefined, every `var(--border-color)` fell through
+     to its slate hex fallback — a literal that cannot follow the theme,
+     so panel edges and subtle surfaces stayed light in dark mode. */
+  --border-color: var(--border);
+  --surface-subtle: var(--secondary);
+  --text-muted: var(--muted-foreground);
+  --text-color: var(--foreground);
+
+  display: block;
+  height: 100%;
+  font-family: var(--font-sans);
+  color: var(--ink);
+}
+
+.data-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  padding: 8px 12px 16px;
+  background: var(--background);
+  overflow-y: auto;
+}
+
+.data-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--accent);
+  border-radius: var(--ui-radius-card);
+  padding: 16px 20px;
+  flex-shrink: 0;
+}
+
+/* Whatever comes next needs air. `.panel` carried its own margin-top, so
+   only the pages that happen to start with one were spaced — a toolbar,
+   a back link or a grid sat flush against the header. */
+.data-header + * { margin-top: 12px; }
+
+.data-heading h1 { margin: 0; font-size: var(--ui-text-2xl); font-weight: 600; font-family: var(--font-serif); letter-spacing: -0.02em; }
+.data-heading p { margin: 4px 0 0; color: var(--muted); font-size: var(--ui-text-base); }
+
+.data-alert {
+  margin-top: 10px;
+  border-radius: var(--ui-radius-card);
+  padding: 12px 16px;
+  font-size: var(--ui-text-base);
+  font-weight: 600;
+}
+.data-alert.error { background: var(--chat-danger-soft); color: var(--chat-danger-strong); border: 1px solid color-mix(in srgb, var(--destructive) 30%, transparent); }
+.data-alert.ok { background: var(--accent-soft); color: var(--accent-strong); border: 1px solid var(--border); }
+
+.data-loading {
+  display: flex; align-items: center; gap: 12px;
+  color: var(--muted); padding: 32px 6px;
+}
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--ui-radius-card);
+  padding: 16px 20px 20px;
+  margin-top: 12px;
+}
+
+.panel-head {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;
+  margin-bottom: 14px;
+}
+.panel-head.sub { margin-top: 22px; }
+.panel-head h2 { margin: 0; font-size: var(--ui-text-md); font-weight: 600; }
+.panel-head p { margin: 3px 0 0; color: var(--muted); font-size: var(--ui-text-sm); }
+
+.btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  border-radius: var(--ui-radius-card); padding: 8px 16px;
+  font: inherit; font-size: var(--ui-text-base); font-weight: 600;
+  cursor: pointer; border: 1px solid var(--border);
+}
+.btn.primary { background: var(--primary-fill); color: var(--primary-foreground); border-color: var(--primary-fill); }
+.btn.primary:hover:not(:disabled) { background: color-mix(in srgb, var(--primary-fill) 88%, #000); }
+.btn.primary:disabled { opacity: 0.55; cursor: default; }
+.btn.danger { color:var(--destructive-foreground); border-color:var(--destructive); background:var(--destructive); }
+.btn.danger:hover:not(:disabled) { border-color:color-mix(in srgb,var(--destructive) 86%,#000); background:color-mix(in srgb,var(--destructive) 86%,#000); }
+.btn.danger:disabled { opacity:.45; cursor:not-allowed; }
+.btn.ghost { background: var(--surface-2); color: var(--muted); }
+.btn.ghost:hover:not(:disabled) { color: var(--accent-strong); background: var(--accent-soft); border-color: var(--accent); }
+.btn.sm { padding: 6px 12px; font-size: var(--ui-text-sm); }
+.btn.add-icon-button {
+  width: 40px; height: 40px; padding: 0;
+  align-items: center; justify-content: center;
+}
+
+.icon-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; border-radius: var(--ui-radius-sm);
+  background: transparent; border: none; color: var(--muted);
+  font-size: var(--ui-text-md); cursor: pointer;
+}
+.icon-btn:hover { color: var(--destructive-strong); background: var(--chat-danger-soft); }
+
+/* ── Inputs ──────────────────────────────────────────────────────── */
+/* An input reads as a place to type: the page's own surface with a
+   defined edge, not a grey block. Filled with --surface-2 it looked
+   disabled, and on a grey row it disappeared into the row. */
+.txt {
+  font: inherit; font-size: var(--ui-text-base); line-height: 1.45;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid color-mix(in srgb, var(--foreground) 15%, var(--border));
+  border-radius: var(--ui-radius-card);
+  padding: 6px 11px;
+}
+.txt:focus { outline: none; border-color: var(--accent); box-shadow: var(--chat-focus-ring); }
+.txt:disabled { background: var(--surface-2); color: var(--muted); cursor: default; }
+
+/* There was no placeholder rule at all, so every hint rendered at the
+   browser's near-black default — indistinguishable from a value somebody
+   had already typed. */
+.txt::placeholder { color: var(--muted); opacity: .62; }
+.txt.filter { width: 100%; max-width: 380px; margin-bottom: 10px; }
+.txt.sel { padding-right: 24px; }
+.txt.notes { width: 100%; resize: vertical; line-height: 1.55; }
+
+.seg {
+  display: inline-flex; gap: 2px; padding: 3px;
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: var(--ui-radius-pill);
+}
+.seg-btn {
+  border: 0; background: transparent; cursor: pointer;
+  padding: 5px 14px; border-radius: var(--ui-radius-pill);
+  font: inherit; font-size: var(--ui-text-sm); font-weight: 600;
+  color: var(--muted);
+}
+.seg-btn:hover:not(.on) { color: var(--ink); }
+.seg-btn.on { background: var(--primary-fill); color: var(--primary-foreground); }
+
+.catalog { display: flex; flex-direction: column; gap: 3px; max-height: 52vh; overflow-y: auto; }
+
+.chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: var(--surface); border: 1px solid var(--border);
+  color: var(--ink); border-radius: var(--ui-radius-pill); padding: 4px 12px;
+  font: inherit; font-size: var(--ui-text-xs); font-weight: 600; cursor: pointer;
+}
+.chip:hover { border-color: var(--accent); color: var(--accent-strong); }
+
+/* ── Shared ──────────────────────────────────────────────────────── */
+.empty-state {
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  color: var(--muted); text-align: center;
+  padding: 24px 12px; font-size: var(--ui-text-base);
+}
+.empty-state lucide-icon { color: var(--muted); opacity: 0.7; }
+
+/* Simple CSS ring spinner (no icon dependency) */
+.ui-spinner {
+  width: 18px; height: 18px; flex-shrink: 0;
+  border: 2px solid var(--border-strong);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: ui-spin 0.7s linear infinite;
+}
+@keyframes ui-spin { to { transform: rotate(360deg); } }
+
+/* ── Sharing, inline on a row ────────────────────────────────────────
+   Files and records are shared from the list itself rather than from an
+   editor, because there is nothing else about them a person may change:
+   the agent wrote the record, the platform wrote the file's metadata.
+   The radios and group checkboxes come from iam-shared.css. */
+/* The same look the secrets form has: radios in a plain wrapped row on
+   the page's own background, the checklist as a bordered card — no grey
+   box of its own. .share-options comes from iam-shared.css; this only
+   frames and bounds the inline editor. */
+.share-editor {
+  display: flex; flex-direction: column; gap: 6px;
+  max-width: 620px;
+  margin-top: 10px; padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--ui-radius-card);
+  background: var(--surface);
+}
+.share-editor .check { white-space: nowrap; }
+.share-note {
+  margin: 0; font-size: var(--ui-text-xs); line-height: 1.55;
+  color: var(--muted);
+}
+/* A share option with nobody behind it stays visible — disabled, and
+   saying why — rather than hiding and reading as a missing feature. */
+.check.unavailable { opacity: .6; cursor: default; }
+.check-hint {
+  margin-left: 4px; padding: 1px 7px; border-radius: var(--ui-radius-pill);
+  background: color-mix(in srgb, var(--foreground) 8%, transparent);
+  color: var(--muted); font-size: var(--ui-text-xs); font-weight: 500;
+}
+.share-editor .editor-actions { margin-top: 4px; }
+
+@media (max-width: 680px) {
+  /* A panel's head on a phone: the words first, the action under them,
+     instead of a paragraph squeezed beside a button. */
+  .panel-head { flex-direction: column; gap: 10px; }
+  .panel-head > .btn { align-self: flex-start; }
+}
+
+/* ── Dialogs ────────────────────────────────────────────────────────
+   One modal, three pages: Secret values, Secret definitions, Memory.
+   It lived twice in page stylesheets, drifting apart — different head
+   columns, different max heights, and an icon tinted indigo in one of
+   them, on a platform whose one identity color is emerald. */
+.dialog-backdrop {
+  position: fixed; inset: 0; z-index: 1100;
+  display: grid; place-items: center; padding: 20px;
+  background: var(--scrim); backdrop-filter: blur(3px);
+}
+.info-dialog {
+  display:flex; flex-direction:column;
+  width: min(680px, 100%); max-height: calc(100vh - 40px); overflow: hidden;
+  border: 1px solid var(--border); border-radius: var(--radius-2xl);
+  background: var(--surface); box-shadow: var(--shadow-overlay);
+}
+.dialog-head {
+  display: grid; grid-template-columns: 40px 1fr 32px; gap: 12px;
+  align-items: start; padding: 20px 22px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.dialog-head h2 { margin: 0 0 4px; font-size: 18px; }
+.dialog-head p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.55; }
+.dialog-icon {
+  display: grid; place-items: center; width: 40px; height: 40px;
+  color: var(--accent-strong); border-radius: var(--ui-radius-card); background: var(--accent-soft);
+}
+.danger-dialog-icon {
+  color: var(--destructive);
+  background: color-mix(in srgb, var(--destructive) 10%, transparent);
+}
+.icon-button {
+  display: grid; place-items: center; width: 30px; height: 30px;
+  border: 0; border-radius: var(--ui-radius-sm); background: transparent;
+  color: inherit; cursor: pointer;
+}
+.icon-button:hover { background: var(--surface-2); }
+.icon-button:disabled { opacity: .4; cursor: not-allowed; }
+.action-icon-button {
+  display: grid; place-items: center; flex: 0 0 34px; width: 34px; height: 34px;
+  padding: 0; border: 1px solid transparent; border-radius: var(--radius-lg);
+  background: transparent; color: var(--muted); cursor: pointer;
+}
+.action-icon-button:hover:not(:disabled) {
+  color: var(--foreground); border-color: var(--border-color); background: var(--surface-2);
+}
+.action-icon-button.danger { color: var(--destructive-strong); }
+.action-icon-button.danger:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--destructive) 28%, transparent);
+  background: var(--chat-danger-soft);
+}
+.action-icon-button:disabled { opacity: .4; cursor: not-allowed; }
+.dialog-body { min-height:0; padding:20px 22px; overflow-y:auto; }
+.dialog-actions {
+  display: flex; justify-content: flex-end; gap: 8px;
+  padding: 14px 22px; border-top: 1px solid var(--border);
+}
+@media (max-width: 680px) {
+  .dialog-head, .dialog-body, .dialog-actions {
+    padding-left: 16px; padding-right: 16px;
+  }
+}
+
+/* A row whose encrypted half was written under a key version this
+   deployment no longer holds. The record is real and its bytes are still
+   stored; saying so beats an unexplained "Untitled file". */
+.unreadable-tag {
+  margin-left: 8px; padding: 1px 8px; border-radius: var(--ui-radius-pill);
+  font-size: var(--ui-text-xs); font-weight: 600;
+  color: var(--warning); background: var(--warning-bg);
+  border: 1px solid color-mix(in srgb, var(--warning) 26%, transparent);
+}
+
+/* ── Editor panels ──────────────────────────────────────────────────
+   The title of a section inside an editor. */
+.section-title { color: var(--ink); font-size: var(--ui-text-sm); font-weight: 600; }
+.section-title strong { color: var(--accent-strong); font-weight: 600; }
+.full-width { margin-top: 10px; }

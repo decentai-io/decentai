@@ -1,0 +1,79 @@
+@if (frame) {
+<section class="screen" [class.is-expanded]="expanded" [class.is-taken]="taken" [class.is-minimized]="minimized" [class.is-side]="side" role="region" [attr.aria-label]="title">
+  <header class="screen-head">
+    <lucide-icon name="monitor" [size]="16"></lucide-icon>
+    <span class="screen-title">{{ title }}</span>
+    <span class="screen-status">{{ status }}</span>
+    <button type="button" class="screen-btn" (click)="toggleMinimized()" [matTooltip]="minimized ? 'Show' : 'Minimize'" [attr.aria-label]="minimized ? 'Show the live view' : 'Minimize the live view'">
+      <lucide-icon [name]="minimized ? 'chevron-up' : 'minus'" [size]="16"></lucide-icon>
+    </button>
+    @if (!minimized && !side) {
+      <button type="button" class="screen-btn" (click)="toggleExpanded()" [matTooltip]="expanded ? 'Smaller' : 'Larger'" [attr.aria-label]="expanded ? 'Smaller' : 'Larger'">
+        <lucide-icon [name]="expanded ? 'chevron-down' : 'chevron-up'" [size]="16"></lucide-icon>
+      </button>
+    }
+    @if (!frame.idle) {
+      <button type="button" class="screen-btn" (click)="quitBrowser()" matTooltip="Close the browser" aria-label="Close the browser itself">
+        <lucide-icon name="log-out" [size]="16"></lucide-icon>
+      </button>
+    }
+    <button type="button" class="screen-btn" (click)="close()" matTooltip="Hide the live view" aria-label="Hide the live view">
+      <lucide-icon name="x" [size]="16"></lucide-icon>
+    </button>
+    @if (taken) {
+      <button type="button" class="screen-btn screen-btn--primary" (click)="handBack()">
+        <lucide-icon name="check" [size]="15"></lucide-icon>
+        Hand back
+      </button>
+    } @else if (!frame.idle) {
+      <button type="button" class="screen-btn screen-btn--primary" (click)="takeOver()">
+        <lucide-icon name="mouse-pointer-click" [size]="15"></lucide-icon>
+        Take over
+      </button>
+    }
+  </header>
+  @if (!minimized) {
+  @if (!frame.idle && frame.tabs?.length) {
+    <!-- What is open behind the picture. A click on one takes the
+         browser and goes there; the cross closes it. -->
+    <div class="screen-tabs" role="tablist" aria-label="Open tabs">
+      @for (tab of frame.tabs; track tab.index) {
+        <div class="screen-tab" [class.is-active]="tab.active" role="presentation">
+          <button type="button" class="screen-tab__name" role="tab" [attr.aria-selected]="tab.active"
+                  [matTooltip]="tab.address || tab.title" (click)="onTab('switch', tab)">
+            {{ tab.title }}
+          </button>
+          @if ((frame.tabs?.length || 0) > 1) {
+            <button type="button" class="screen-tab__close" (click)="onTab('close', tab)"
+                    [attr.aria-label]="'Close the tab ' + tab.title" matTooltip="Close this tab">
+              <lucide-icon name="x" [size]="13"></lucide-icon>
+            </button>
+          }
+        </div>
+      }
+      <button type="button" class="screen-tab__new" (click)="onTab('new')" matTooltip="New tab" aria-label="Open a new tab">
+        <lucide-icon name="plus" [size]="14"></lucide-icon>
+      </button>
+    </div>
+  }
+  @if (!frame.idle) {
+    <form class="screen-address" (submit)="go(); $event.preventDefault()">
+      <input type="text" name="address" class="screen-address__input" [(ngModel)]="address"
+             placeholder="Go to an address…" aria-label="Address to open in the browser" autocomplete="off" />
+      <button type="submit" class="screen-btn" [disabled]="!address.trim()">Go</button>
+    </form>
+  }
+  <div class="screen-stage">
+    <canvas #picture class="screen-picture" [attr.width]="frame.width" [attr.height]="frame.height"
+            role="img" [attr.aria-label]="title" tabindex="0"
+            (pointerdown)="onPointer($event, 'down')" (pointerup)="onPointer($event, 'up')"
+            (pointermove)="onPointer($event, 'move')" (wheel)="onWheel($event)"
+            (keydown)="onKey($event, 'down')" (keyup)="onKey($event, 'up')"
+            (contextmenu)="onContextMenu($event)"></canvas>
+  </div>
+  @if (frame.caption && !taken) {
+    <footer class="screen-caption">{{ frame.caption }}</footer>
+  }
+  }
+</section>
+}

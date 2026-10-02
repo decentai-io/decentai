@@ -1,0 +1,262 @@
+<div class="data-page">
+  <header class="data-header">
+    <div class="data-heading">
+      <h1>Schedules</h1>
+      <p>What your chats keep on the clock: what each one does, when it fires next, and what every fire did.</p>
+    </div>
+  </header>
+
+  <div class="data-alert error" *ngIf="error">{{ error }}</div>
+  <div class="data-alert ok" *ngIf="notice">{{ notice }}</div>
+
+  <div class="data-loading" *ngIf="loading">
+    <span class="ui-spinner" role="status" aria-label="Loading"></span>
+    <span>Loading schedules…</span>
+  </div>
+
+  <ng-container *ngIf="!loading">
+
+    <!-- Stopping everything holds the clock too: said here, so a
+         "next run" below is not read as about to happen. -->
+    <div class="data-alert error" *ngIf="stopped">
+      You stopped everything, so no schedule fires. They stay on the clock
+      and start again when you resume, from the bar at the top of the page.
+    </div>
+
+    <!-- Two ways on to the clock: say it, or fill it in. -->
+    <section class="panel intent-panel" *ngIf="canCreate">
+      <form class="intent" (ngSubmit)="describe()">
+        <lucide-icon name="sparkles" [size]="16"></lucide-icon>
+        <input class="txt" name="intent" [(ngModel)]="intent"
+               placeholder="Describe it — “every Monday at 10:44 remind me to send the weekly report”"
+               aria-label="Describe a schedule in plain words" [disabled]="sending" />
+        <button class="btn primary" type="submit" [disabled]="!intent.trim() || sending">
+          {{ sending ? 'Opening…' : 'Ask the assistant' }}
+        </button>
+        <button class="icon-button activity-add" type="button" (click)="openForm()"
+                aria-label="Create schedule" matTooltip="Create schedule">
+          <lucide-icon name="plus" [size]="18"></lucide-icon>
+        </button>
+      </form>
+      <p class="intent-hint">Describe a schedule naturally, or use + to configure one directly. The assistant confirms the cadence and the first run before it sets the clock.</p>
+    </section>
+
+    <section class="panel" *ngIf="!schedules.length">
+      <div class="task-empty">
+        <lucide-icon name="calendar-clock" [size]="28"></lucide-icon>
+        <strong>Nothing scheduled</strong>
+        <span>
+          Describe one above, fill in the form, or say it in any chat —
+          the assistant sets the clock, and it shows up here with what
+          every fire did.
+        </span>
+      </div>
+    </section>
+
+    <section class="panel schedule-directory" *ngIf="schedules.length">
+      <div class="activity-toolbar">
+        <div class="activity-filters" role="tablist" aria-label="Schedule status">
+          <button type="button" [class.on]="filter === 'all'" (click)="setFilter('all')">All <span>{{ schedules.length }}</span></button>
+          <button type="button" [class.on]="filter === 'active'" (click)="setFilter('active')">Active <span>{{ liveSchedules.length }}</span></button>
+          <button type="button" [class.on]="filter === 'paused'" (click)="setFilter('paused')">Paused <span>{{ pausedSchedules.length }}</span></button>
+        </div>
+        <label class="activity-search"><lucide-icon name="search" [size]="15"></lucide-icon>
+          <input class="txt" [ngModel]="query" (ngModelChange)="search($event)" placeholder="Search schedules" aria-label="Search schedules" />
+          <button type="button" *ngIf="query" (click)="search('')" aria-label="Clear search"><lucide-icon name="x" [size]="14"></lucide-icon></button>
+        </label>
+      </div>
+
+      <div class="schedule-list" *ngIf="pagedSchedules.length">
+      <article class="task-row schedule-card" *ngFor="let schedule of pagedSchedules" [class.finished]="!schedule.enabled">
+        <div class="task-main">
+          <div class="task-top">
+            <span class="task-status" [class]="'task-status ' + (schedule.enabled ? schedule.mode : 'done')">
+              {{ statusLabel(schedule) }}
+            </span>
+            <span class="task-elapsed" *ngIf="schedule.enabled" [title]="when(schedule.next_run_at)">
+              Next {{ when(schedule.next_run_at) }} · {{ until(schedule.next_run_at) }}
+            </span>
+            <span class="task-elapsed" *ngIf="!schedule.enabled && schedule.last_run_at">Last ran {{ when(schedule.last_run_at) }}</span>
+            <span class="task-failures" *ngIf="failures(schedule) as failed" [matTooltip]="failed + ' of the last ' + schedule.runs.length + ' runs failed'">
+              {{ failed }} failed
+            </span>
+          </div>
+          <p class="task-goal">{{ what(schedule) }}</p>
+          <p class="task-doing">
+            {{ cadence(schedule) }}
+            <ng-container *ngIf="schedule.function && schedule.note"> · {{ schedule.function }}</ng-container>
+            <ng-container *ngIf="schedule.chat_title"> · in <a [routerLink]="['/ai/chats', schedule.chat_id]">{{ schedule.chat_title }}</a></ng-container>
+          </p>
+          <p class="task-upcoming" *ngIf="schedule.enabled && upcoming(schedule).length">
+            Then
+            <ng-container *ngFor="let at of upcoming(schedule); let last = last">{{ when(at) }}<ng-container *ngIf="!last">, </ng-container></ng-container>
+          </p>
+          <p class="task-doing" *ngIf="lastRun(schedule) as run">
+            Last {{ runLabel(run).toLowerCase() }} {{ when(run.at) }}<ng-container *ngIf="took(run)"> · took {{ took(run) }}</ng-container>
+          </p>
+          <button class="runs-toggle" type="button" *ngIf="schedule.runs?.length"
+                  (click)="toggleRuns(schedule)">
+            <lucide-icon [name]="openRuns === schedule.schedule_id ? 'chevron-up' : 'chevron-down'" [size]="14"></lucide-icon>
+            {{ schedule.runs.length }} run{{ schedule.runs.length === 1 ? '' : 's' }}
+          </button>
+          <ul class="runs" *ngIf="openRuns === schedule.schedule_id">
+            <li *ngFor="let run of runsOf(schedule)" [class]="'run ' + run.status">
+              <span class="run-when">{{ when(run.at) }}</span>
+              <span class="run-what">{{ runLabel(run) }}<ng-container *ngIf="took(run)"> · {{ took(run) }}</ng-container></span>
+              <code class="run-detail" *ngIf="run.error">{{ run.error }}</code>
+              <code class="run-detail" *ngIf="!run.error && run.result">{{ run.result }}</code>
+            </li>
+          </ul>
+        </div>
+        <div class="task-actions">
+          <div class="decide">
+            <button class="icon-button" type="button" *ngIf="canPause && schedule.enabled"
+                    [disabled]="busyId === schedule.schedule_id"
+                    (click)="setEnabled(schedule, false)" aria-label="Pause schedule" matTooltip="Pause schedule">
+              <lucide-icon name="pause" [size]="15"></lucide-icon>
+            </button>
+            <button class="icon-button" type="button" *ngIf="canPause && !schedule.enabled"
+                    [disabled]="busyId === schedule.schedule_id"
+                    (click)="setEnabled(schedule, true)" aria-label="Resume schedule" matTooltip="Resume schedule">
+              <lucide-icon name="play" [size]="15"></lucide-icon>
+            </button>
+            <button class="icon-button danger" type="button" *ngIf="canDelete"
+                    [disabled]="busyId === schedule.schedule_id"
+                    (click)="requestDelete(schedule)" aria-label="Delete schedule" matTooltip="Delete schedule">
+              <lucide-icon name="trash-2" [size]="15"></lucide-icon>
+            </button>
+          </div>
+          <a class="icon-button" [routerLink]="['/ai/chats', schedule.chat_id]"
+             [attr.aria-label]="'Open ' + (schedule.chat_title || 'chat')" matTooltip="Open chat"><lucide-icon name="message-square" [size]="15"></lucide-icon></a>
+        </div>
+      </article>
+      </div>
+      <div class="task-empty compact" *ngIf="!shownSchedules.length"><lucide-icon name="search" [size]="22"></lucide-icon><strong>No matching schedules</strong><span>Try another search or status.</span></div>
+      <footer class="activity-pagination" *ngIf="shownSchedules.length > pageSize">
+        <span>Showing {{ (page - 1) * pageSize + 1 }}–{{ page * pageSize < shownSchedules.length ? page * pageSize : shownSchedules.length }} of {{ shownSchedules.length }}</span>
+        <nav><span>Page {{ page }} of {{ pageCount }}</span><button type="button" (click)="page = page - 1" [disabled]="page === 1"><lucide-icon name="chevron-left" [size]="16"></lucide-icon></button><button type="button" (click)="page = page + 1" [disabled]="page === pageCount"><lucide-icon name="chevron-right" [size]="16"></lucide-icon></button></nav>
+      </footer>
+    </section>
+  </ng-container>
+
+  <!-- ── Delete ─────────────────────────────────────────────────────── -->
+  <div class="dialog-backdrop" *ngIf="deleteTarget" (click)="closeDelete()">
+    <section class="info-dialog" role="alertdialog" aria-modal="true"
+             aria-labelledby="delete-schedule-title" (click)="$event.stopPropagation()">
+      <header class="dialog-head">
+        <span class="dialog-icon danger-dialog-icon"><lucide-icon name="trash-2" [size]="21"></lucide-icon></span>
+        <div>
+          <h2 id="delete-schedule-title">Take this off the clock?</h2>
+          <p>It stops firing. What it already did stays in its chat.</p>
+        </div>
+        <button class="icon-button" type="button" (click)="closeDelete()" [disabled]="!!busyId" aria-label="Close"><lucide-icon name="x" [size]="19"></lucide-icon></button>
+      </header>
+      <div class="dialog-body">
+        <blockquote class="quote">{{ what(deleteTarget) }}</blockquote>
+        <p class="dialog-note">{{ cadence(deleteTarget) }} · {{ deleteTarget.chat_title || deleteTarget.chat_id }}</p>
+        <div class="data-alert error dialog-error" *ngIf="error">{{ error }}</div>
+      </div>
+      <footer class="dialog-actions">
+        <button class="btn" type="button" (click)="closeDelete()" [disabled]="!!busyId">Cancel</button>
+        <button class="btn danger" type="button" (click)="remove(deleteTarget)" [disabled]="!!busyId">{{ busyId ? "Removing…" : "Delete" }}</button>
+      </footer>
+    </section>
+  </div>
+
+  <!-- ── New schedule ───────────────────────────────────────────────── -->
+  <div class="dialog-backdrop" *ngIf="formOpen" (click)="closeForm()">
+    <section class="info-dialog form-dialog" role="dialog" aria-modal="true"
+             aria-labelledby="new-schedule-title" (click)="$event.stopPropagation()">
+      <header class="dialog-head">
+        <span class="dialog-icon"><lucide-icon name="calendar-clock" [size]="21"></lucide-icon></span>
+        <div>
+          <h2 id="new-schedule-title">New schedule</h2>
+          <p>Straight on to the clock, in your own time zone.</p>
+        </div>
+        <button class="icon-button" type="button" (click)="closeForm()" [disabled]="saving" aria-label="Close"><lucide-icon name="x" [size]="19"></lucide-icon></button>
+      </header>
+      <div class="dialog-body">
+        <div class="form-grid">
+          <label class="field full">
+            <span class="field-label">In which chat</span>
+            <select class="txt" [(ngModel)]="form.chatId" name="chat">
+              <option value="">A new chat called “Schedules”</option>
+              <option *ngFor="let chat of chats" [value]="chat.chat_id">{{ chat.title }}</option>
+            </select>
+          </label>
+
+          <div class="field full">
+            <span class="field-label">What</span>
+            <div class="share-options">
+              <label class="check"><input type="radio" name="kind" value="note" [(ngModel)]="form.kind" /> Wake the assistant with a note</label>
+              <label class="check" [class.unavailable]="!functions.length"
+                     [title]="functions.length ? '' : 'No installed agent declares a schedulable function'">
+                <input type="radio" name="kind" value="function" [(ngModel)]="form.kind" [disabled]="!functions.length" />
+                Run a function unattended
+                <span class="check-hint" *ngIf="functionsLoaded && !functions.length">none available</span>
+              </label>
+            </div>
+          </div>
+
+          <label class="field full" *ngIf="form.kind === 'note'">
+            <span class="field-label">The note</span>
+            <input class="txt" name="note" [(ngModel)]="form.note" maxlength="300"
+                   placeholder="e.g. send the weekly report" />
+          </label>
+
+          <ng-container *ngIf="form.kind === 'function'">
+            <label class="field full">
+              <span class="field-label">Function</span>
+              <select class="txt" name="fn" [(ngModel)]="form.fn" (ngModelChange)="onFunctionChosen()">
+                <option value="" disabled>Choose a schedulable function</option>
+                <option *ngFor="let fn of functions" [value]="fn.value">{{ fn.label }}</option>
+              </select>
+            </label>
+            <label class="field full">
+              <span class="field-label">Inputs <em>JSON</em></span>
+              <textarea class="txt mono" name="inputs" rows="4" [(ngModel)]="form.inputsText"></textarea>
+            </label>
+            <label class="field full">
+              <span class="field-label">Wake the assistant when this result field is not empty <em>optional</em></span>
+              <input class="txt" name="wake" [(ngModel)]="form.wakeField" placeholder="e.g. notes" />
+            </label>
+          </ng-container>
+
+          <div class="field full">
+            <span class="field-label">When</span>
+            <div class="share-options">
+              <label class="check"><input type="radio" name="when" value="cron" [(ngModel)]="form.when" /> On the calendar</label>
+              <label class="check"><input type="radio" name="when" value="every" [(ngModel)]="form.when" /> Every…</label>
+              <label class="check"><input type="radio" name="when" value="at" [(ngModel)]="form.when" /> Once, at</label>
+            </div>
+          </div>
+
+          <label class="field full" *ngIf="form.when === 'cron'">
+            <span class="field-label">Cron <em>minute hour day-of-month month day-of-week</em></span>
+            <input class="txt mono" name="cron" [(ngModel)]="form.cron" placeholder="44 10 * * 1" />
+            <span class="field-help">“44 10 * * 1” is every Monday at 10:44; “0 9 1 * *” the first of every month at 09:00.</span>
+          </label>
+          <div class="field full every" *ngIf="form.when === 'every'">
+            <input class="txt" type="number" min="1" name="everyCount" [(ngModel)]="form.everyCount" />
+            <select class="txt" name="everyUnit" [(ngModel)]="form.everyUnit">
+              <option value="minutes">minutes</option>
+              <option value="hours">hours</option>
+              <option value="days">days</option>
+            </select>
+          </div>
+          <label class="field full" *ngIf="form.when === 'at'">
+            <span class="field-label">Date and time</span>
+            <input class="txt" type="datetime-local" name="at" [(ngModel)]="form.at" />
+          </label>
+        </div>
+        <div class="data-alert error dialog-error" *ngIf="error">{{ error }}</div>
+      </div>
+      <footer class="dialog-actions">
+        <button class="btn" type="button" (click)="closeForm()" [disabled]="saving">Cancel</button>
+        <button class="btn primary" type="button" (click)="submitForm()" [disabled]="!canSubmit">
+          {{ saving ? 'Saving…' : 'Put it on the clock' }}
+        </button>
+      </footer>
+    </section>
+  </div>
+</div>

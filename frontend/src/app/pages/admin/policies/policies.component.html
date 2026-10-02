@@ -1,0 +1,204 @@
+<div class="data-page">
+  <header class="data-header">
+    <div class="data-heading">
+      <h1>Policies</h1>
+      <p>
+        A policy is a named set of permissions — the leaf of the access chain.
+        Roles bundle policies; groups carry roles; users sit in groups.
+      </p>
+    </div>
+    <button
+      class="btn primary"
+      type="button"
+      *ngIf="canCreate && editingId === null"
+      (click)="startCreate()"
+    >
+      <lucide-icon name="plus" [size]="16"></lucide-icon>
+      New policy
+    </button>
+  </header>
+
+  <div class="data-alert error" *ngIf="error">{{ error }}</div>
+  <div class="data-alert ok" *ngIf="notice">{{ notice }}</div>
+
+  <div class="data-loading" *ngIf="loading">
+    <span class="ui-spinner" role="status" aria-label="Loading"></span>
+    <span>Loading policies…</span>
+  </div>
+
+  <ng-container *ngIf="!loading">
+    <!-- ── Editor ─────────────────────────────────────────────────── -->
+    <section class="panel editor" *ngIf="editingId !== null">
+      <div class="panel-head">
+        <div>
+          <h2>{{ editorTitle }}</h2>
+          <p>
+            Tick what this policy allows. A whole service stays ticked as new
+            actions are added to it.
+          </p>
+        </div>
+      </div>
+
+      <div class="editor-fields">
+        <label class="field">
+          <span class="field-label">Name</span>
+          <input
+            class="txt"
+            [(ngModel)]="formName"
+            placeholder="e.g. Data curation"
+          />
+        </label>
+        <label class="field grow">
+          <span class="field-label">Description</span>
+          <input
+            class="txt"
+            [(ngModel)]="formDescription"
+            placeholder="What is this policy for?"
+          />
+        </label>
+      </div>
+
+      <!-- Permission grid -->
+      <ng-container *ngIf="!advanced">
+        <div class="grid-head">
+          <span class="member-title">
+            Permissions <strong>({{ totalSelected }})</strong>
+          </span>
+        </div>
+
+        <div class="service-list">
+          <div class="service" *ngFor="let group of catalog">
+            <label class="service-head">
+              <input
+                type="checkbox"
+                [checked]="isServiceOn(group)"
+                [indeterminate]="isServicePartial(group)"
+                (change)="toggleService(group)"
+              />
+              <span class="service-label">{{ group.label }}</span>
+              <span class="service-count">
+                {{ selectedCount(group) }}/{{ group.actions.length }}
+              </span>
+            </label>
+
+            <div class="action-list">
+              <label
+                class="action"
+                *ngFor="let action of group.actions"
+                [class.on]="isActionOn(group.service, action.action)"
+              >
+                <input
+                  type="checkbox"
+                  [checked]="isActionOn(group.service, action.action)"
+                  (change)="toggleAction(group, action.action)"
+                />
+                <span class="action-text">
+                  <span class="action-desc">{{ action.description }}</span>
+                  <code class="action-name">{{ action.action }}</code>
+                </span>
+              </label>
+            </div>
+          </div>
+        </div>
+        <!-- What an installed agent may be asked to do is NOT here.
+             Its functions are discovered from a manifest and change when
+             it updates, so a document naming them would be stale the
+             moment it did. Access to an agent is arranged on the agent,
+             under Agents > Access. -->
+      </ng-container>
+
+      <!-- Raw document, for permissions the grid cannot draw faithfully -->
+      <ng-container *ngIf="advanced">
+        <p class="advanced-note">
+          <lucide-icon name="info" [size]="15"></lucide-icon>
+          <span>
+            This document uses features the grid cannot show — a Deny rule, or
+            a pattern wider than one service — so it is edited as the document
+            itself.
+          </span>
+        </p>
+        <textarea
+          class="txt policy-json"
+          rows="14"
+          spellcheck="false"
+          [(ngModel)]="advancedText"
+        ></textarea>
+      </ng-container>
+
+      <div class="editor-actions">
+        <button
+          class="btn primary"
+          type="button"
+          (click)="save()"
+          [disabled]="saving || !formName.trim()"
+        >
+          {{ saving ? "Saving…" : isCreating ? "Create policy" : "Save changes" }}
+        </button>
+        <button
+          class="btn ghost"
+          type="button"
+          (click)="cancelEdit()"
+          [disabled]="saving"
+        >
+          Cancel
+        </button>
+      </div>
+    </section>
+
+    <!-- ── List ───────────────────────────────────────────────────── -->
+    <section class="panel">
+      <div class="panel-head">
+        <div>
+          <h2>All policies</h2>
+          <p>{{ policies.length }} polic{{ policies.length === 1 ? "y" : "ies" }}.</p>
+        </div>
+      </div>
+
+      <ul class="rows">
+        <li class="row" *ngFor="let policy of policies">
+          <span class="row-mark" aria-hidden="true">
+            <lucide-icon name="file-text" [size]="15"></lucide-icon>
+          </span>
+
+          <span class="row-id">
+            <span class="row-name">{{ policy.name }}</span>
+            <span class="row-sub">{{ policy.description }}</span>
+            <span class="row-meta">
+              <span class="grants">{{ summarise(policy) }}</span>
+            </span>
+          </span>
+
+          <button
+            class="btn"
+            type="button"
+            *ngIf="canUpdate"
+            (click)="startEdit(policy)"
+            [disabled]="isBusy(policy.policy_id)"
+          >
+            Edit
+          </button>
+
+          <button
+            class="btn"
+            type="button"
+            *ngIf="canCreate"
+            (click)="duplicate(policy)"
+            title="Start a new policy from this one"
+          >
+            Duplicate
+          </button>
+
+          <button
+            class="btn danger"
+            type="button"
+            *ngIf="canDelete"
+            (click)="remove(policy)"
+            [disabled]="isBusy(policy.policy_id)"
+          >
+            Delete
+          </button>
+        </li>
+      </ul>
+    </section>
+  </ng-container>
+</div>

@@ -1,0 +1,80 @@
+<div class="panel">
+  <div class="panel-body">
+    <!-- ── This turn: the plan as it stands, and the steps as they land.
+         The whole record of the chat is not here: it is the audit trail,
+         opened from Activity & audit in the header. ── -->
+    @if (livePlan.length) {
+      <ol class="work-items" aria-label="Plan">
+        @for (group of taskGroups; track group.item.id ?? $index) {
+          <li [attr.data-status]="group.item.status"
+              [class.work-item--unverified]="group.item.status === 'done' && !group.item.verified">
+            <button type="button" class="work-row work-row--button"
+                    (click)="toggleTask(group.item)"
+                    [attr.aria-expanded]="isTaskOpen(group.item)"
+                    [disabled]="!group.steps.length">
+              <lucide-icon class="work-caret"
+                           [name]="isTaskOpen(group.item) ? 'chevron-down' : 'chevron-right'"
+                           [size]="14"
+                           [class.work-caret--hidden]="!group.steps.length"></lucide-icon>
+              @if (group.item.id) { <span class="work-id">{{ group.item.id }}</span> }
+              <span class="work-text">{{ humanize(group.item.text) }}</span>
+              @if (group.steps.length) {
+                <span class="work-count">{{ group.steps.length }}</span>
+              }
+              <span class="work-status">{{ planLabel(group.item) }}</span>
+            </button>
+            @if (group.item.blocker) { <div class="work-blocker">{{ humanize(group.item.blocker) }}</div> }
+            @if (group.item.depends_on?.length) {
+              <div class="work-deps">after {{ group.item.depends_on!.join(', ') }}</div>
+            }
+            @if (isTaskOpen(group.item) && group.steps.length) {
+              <ol class="steps steps--nested" [attr.aria-label]="'Steps for ' + group.item.text">
+                @for (entry of group.steps; track entry.id) {
+                  <li class="step" [class.step--failed]="isFailed(entry)">
+                    <span class="step-index">·</span>
+                    <span class="step-main">
+                      <span class="step-text">{{ entry.helper ? 'Helper: ' : '' }}{{ humanize(entry.text) }}</span>
+                      @if (entry.detail) { <span class="step-detail">{{ entry.detail }}</span> }
+                    </span>
+                    @if (entry.durationMs != null) {
+                      <span class="step-meta">{{ isFailed(entry) ? 'failed · ' : '' }}{{ stepDuration(entry.durationMs) }}</span>
+                    } @else if (isProcessing) {
+                      <span class="step-meta step-meta--live">running</span>
+                    }
+                  </li>
+                }
+              </ol>
+            }
+          </li>
+        }
+      </ol>
+    }
+
+    @if (looseSteps.length) {
+      <ol class="steps" aria-label="Steps this turn">
+        @for (entry of looseSteps; track entry.id; let i = $index; let last = $last) {
+          <li class="step" [class.step--active]="last && isProcessing && !entry.status"
+              [class.step--failed]="isFailed(entry)">
+            <span class="step-index">{{ i + 1 }}</span>
+            <span class="step-main">
+              <span class="step-text">{{ entry.helper ? 'Helper: ' : '' }}{{ humanize(entry.text) }}</span>
+              @if (entry.detail) { <span class="step-detail">{{ entry.detail }}</span> }
+            </span>
+            @if (entry.durationMs != null) {
+              <span class="step-meta">{{ isFailed(entry) ? 'failed · ' : '' }}{{ stepDuration(entry.durationMs) }}</span>
+            } @else if (last && isProcessing) {
+              <span class="step-meta step-meta--live">running</span>
+            }
+          </li>
+        }
+      </ol>
+    }
+
+    @if (!hasLive) {
+      <p class="panel-note">
+        Nothing is happening in this turn. Everything this chat has ever
+        run is under <strong>Activity &amp; audit</strong> in the header.
+      </p>
+    }
+  </div>
+</div>

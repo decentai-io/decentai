@@ -1,0 +1,77 @@
+<div class="data-page">
+  <header class="data-header">
+    <div class="data-heading">
+      <h1>Organization</h1>
+      <p>
+        Your organization is the boundary everything else lives inside — its
+        people, groups, roles, policies and data model.
+      </p>
+    </div>
+  </header>
+
+  <div class="data-alert error" *ngIf="error">{{ error }}</div>
+  <div class="data-alert ok" *ngIf="notice">{{ notice }}</div>
+
+  <div class="data-loading" *ngIf="loading">
+    <span class="ui-spinner" role="status" aria-label="Loading"></span>
+    <span>Loading organization…</span>
+  </div>
+
+  <ng-container *ngIf="!loading && organization as org">
+    <section class="panel">
+      <div class="panel-head">
+        <div>
+          <h2>Name</h2>
+          <p>Shown to everyone in the organization, and on the sign-in screen.</p>
+        </div>
+      </div>
+
+      <div class="org-name-row" *ngIf="!renaming">
+        <span class="org-name">{{ org.org_name }}</span>
+        <button
+          class="btn ghost sm"
+          type="button"
+          *ngIf="canRename"
+          (click)="startRename()"
+        >
+          <lucide-icon name="pencil-line" [size]="15"></lucide-icon>
+          Rename
+        </button>
+      </div>
+
+      <div class="org-name-row" *ngIf="renaming">
+        <input
+          class="txt grow"
+          [(ngModel)]="renameValue"
+          placeholder="Organization name"
+          (keyup.enter)="saveRename()"
+        />
+        <button
+          class="btn primary sm"
+          type="button"
+          (click)="saveRename()"
+          [disabled]="saving || !renameValue.trim()"
+        >
+          {{ saving ? "Saving…" : "Save" }}
+        </button>
+        <button
+          class="btn ghost sm"
+          type="button"
+          (click)="cancelRename()"
+          [disabled]="saving"
+        >
+          Cancel
+        </button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <div>
+          <h2>Details</h2>
+          <p>Created {{ org.created_at | slice: 0 : 10 }}.</p>
+        </div>
+      </div>
+    </section>
+  </ng-container>
+</div>

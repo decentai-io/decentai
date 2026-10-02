@@ -1,0 +1,10 @@
+config.env
+success.log
+error.log
+.lh
+**/__pycache__/
+.idea/aws.xml
+*.pyc
+tests/.uploads/
+
+uploads/

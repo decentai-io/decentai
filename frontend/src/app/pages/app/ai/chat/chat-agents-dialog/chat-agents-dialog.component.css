@@ -1,0 +1,36 @@
+.agents-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.agents-loading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 0;
+}
+
+.agents-hint,
+.agents-empty {
+  line-height: 1.5;
+  opacity: 0.85;
+}
+
+.agents-row {
+  padding: 4px 0;
+}
+
+.agents-name {
+  font-weight: 500;
+}
+
+.agents-description {
+  margin-left: 40px;
+  font-size: 12px;
+  line-height: 1.45;
+  opacity: 0.75;
+}

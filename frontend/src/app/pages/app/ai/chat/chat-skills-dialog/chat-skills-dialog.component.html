@@ -1,0 +1,70 @@
+<h2 mat-dialog-title>Skills</h2>
+
+<mat-dialog-content class="skills-dialog">
+  @if (isLoading) {
+    <div class="skills-loading">
+      <mat-spinner diameter="28"></mat-spinner>
+      <span>Loading skills…</span>
+    </div>
+  } @else {
+    @if (skills.length === 0) {
+      <p class="skills-empty">
+        No skills have been written yet. A skill is knowledge someone
+        writes once for the assistant to apply — a format, a rule, a way
+        your organization does something.
+      </p>
+    } @else {
+      <p class="skills-hint">
+        The assistant sees each checked skill as one line — its title and
+        summary — and reads the full text only when it judges the skill
+        relevant. Unchecking every skill makes this a chat with no
+        organizational knowledge behind it.
+      </p>
+
+      <div class="skills-toolbar">
+        <input
+          class="skills-search"
+          type="search"
+          [(ngModel)]="query"
+          placeholder="Search skills"
+          aria-label="Search skills"
+        />
+        <span class="skills-count" [class.over]="overLimit">
+          {{ selectedCount }} of {{ skills.length }} on
+        </span>
+      </div>
+
+      @if (overLimit) {
+        <p class="skills-over">
+          Only {{ catalogLimit }} reach the assistant. Above that the
+          catalog is cut — it is told so, but it cannot choose what it
+          cannot see.
+        </p>
+      }
+
+      @for (skill of visibleSkills; track skill.resource_ref) {
+        <div class="skills-row">
+          <mat-checkbox
+            [checked]="selection.has(skill.resource_ref)"
+            (change)="toggle(skill.resource_ref)"
+          >
+            <span class="skills-name">{{ skill.keys.title }}</span>
+          </mat-checkbox>
+          <div class="skills-description">{{ skill.keys.summary }}</div>
+        </div>
+      }
+
+      @if (visibleSkills.length === 0) {
+        <p class="skills-empty">No skill matches “{{ query }}”.</p>
+      }
+    }
+  }
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button mat-button (click)="selectAll()" [disabled]="isLoading || allSelected">All</button>
+  <button mat-button (click)="clearAll()" [disabled]="isLoading">None</button>
+  <button mat-button (click)="reset()" [disabled]="isLoading">Reset to my defaults</button>
+  <button mat-button (click)="close()">Cancel</button>
+  <button mat-flat-button color="primary" [disabled]="isLoading" (click)="save()">Save</button>
+</mat-dialog-actions>

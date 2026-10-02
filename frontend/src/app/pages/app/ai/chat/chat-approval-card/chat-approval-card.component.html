@@ -1,0 +1,248 @@
+@if (isCode) {
+<!-- Code an agent wants to run (call.propose): what it is for, what it
+     needs, what the assistant made of it, and the code itself. -->
+<div class="approval-card question-card code-card" [class.is-resolved]="!isPending" role="group" [attr.aria-label]="codeTitle">
+  <div class="approval-head">
+    <lucide-icon class="approval-icon" name="file-code" [size]="20"></lucide-icon>
+    <div class="approval-title-wrap">
+      <span class="approval-title">{{ codeTitle }}</span>
+      <span class="question-text">{{ code.purpose }}</span>
+    </div>
+    @if (!isPending) {
+      <span class="approval-status is-approved">{{ statusLabel }}</span>
+    }
+  </div>
+
+  <div class="approval-body">
+    @for (need of codeNeeds; track need.label) {
+      <div class="approval-row code-need">
+        <span class="approval-label">
+          <lucide-icon [name]="need.icon" [size]="14"></lucide-icon>
+          {{ need.label }}
+        </span>
+        <span class="code-need-items">
+          @for (item of need.items; track item) { <span class="code-need-item" [class.is-words]="need.words">{{ item }}</span> }
+        </span>
+      </div>
+    }
+    @if (codeNeedsNothing) {
+      <div class="approval-row code-need">
+        <span class="approval-label">
+          <lucide-icon name="shield-check" [size]="14"></lucide-icon>
+          Needs
+        </span>
+        <span>{{ code.where ? 'Nothing outside this page' : 'Nothing: no packages, no sites, no credentials, no files' }}</span>
+      </div>
+    }
+
+    <div class="code-review" [class.is-differs]="reviewVerdict === 'differs'" [class.is-unread]="reviewVerdict === 'unread'">
+      <lucide-icon [name]="reviewVerdict === 'agrees' ? 'shield-check' : 'triangle-alert'" [size]="16"></lucide-icon>
+      <div class="code-review-text">
+        <span class="code-review-title">{{ reviewTitle }}</span>
+        @if (reviewNote) { <span class="code-review-note">{{ reviewNote }}</span> }
+      </div>
+    </div>
+  </div>
+
+  <button type="button" class="approval-inputs-toggle" (click)="toggleCode()" [attr.aria-expanded]="codeShown">
+    <lucide-icon [name]="codeShown ? 'chevron-up' : 'chevron-down'" [size]="16"></lucide-icon>
+    {{ codeShown ? 'Hide the code' : 'Show the code' }} · {{ languageName }}, {{ codeLines }} {{ codeLines === 1 ? 'line' : 'lines' }}
+  </button>
+  @if (codeShown) {
+    <pre class="approval-inputs code-text" tabindex="0" [attr.aria-label]="languageName + ' code'"><code [innerHTML]="codeHtml"></code></pre>
+  }
+
+  @if (isPending) {
+    <div class="approval-actions">
+      <button type="button" class="approval-btn approval-btn--deny" (click)="decideCode('deny')">
+        <lucide-icon name="x" [size]="17"></lucide-icon>
+        Don't allow
+      </button>
+      <!-- Code the assistant says does more than it claims is never
+           offered as the obvious choice. -->
+      <button type="button" class="approval-btn" (click)="decideCode('allow')"
+              [class.approval-btn--approve]="reviewVerdict !== 'differs'" [class.approval-btn--deny]="reviewVerdict === 'differs'">
+        <lucide-icon name="check" [size]="17"></lucide-icon>
+        {{ reviewVerdict === 'differs' ? 'Allow anyway' : 'Allow' }}
+      </button>
+    </div>
+  }
+</div>
+} @else if (isQuestion) {
+<div class="approval-card question-card" [class.is-resolved]="!isPending" role="group" [attr.aria-label]="'Question from ' + agentName">
+  <div class="approval-head">
+    <lucide-icon class="approval-icon" [name]="isCredential ? 'key-round' : 'circle-question-mark'" [size]="20"></lucide-icon>
+    <div class="approval-title-wrap">
+      <span class="approval-title">{{ isCredential ? credentialTitle : agentName + ' asks' }}</span>
+      <span class="question-text">{{ isCredential ? credentialNote : approval?.question }}</span>
+    </div>
+    @if (!isPending) {
+      <span class="approval-status is-approved">{{ statusLabel }}</span>
+    }
+  </div>
+  @if (isPending) {
+    @if (isCredential) {
+      @switch (credential.mode) {
+        @case ('consent') {
+          <div class="approval-actions cred-actions">
+            <button type="button" class="approval-btn approval-btn--deny" (click)="consent('deny')">
+              <lucide-icon name="x" [size]="17"></lucide-icon>
+              Don't allow
+            </button>
+            <button type="button" class="approval-btn approval-btn--deny" (click)="consent('update')" matTooltip="Type the login again first">
+              <lucide-icon name="pencil" [size]="17"></lucide-icon>
+              Update details
+            </button>
+            <button type="button" class="approval-btn approval-btn--approve" (click)="consent('allow')">
+              <lucide-icon name="check" [size]="17"></lucide-icon>
+              Allow
+            </button>
+          </div>
+        }
+        @case ('choose') {
+          <div class="question-choices">
+            @for (login of credential.instances || []; track login.resource_ref) {
+              <button type="button" class="approval-btn approval-btn--deny" (click)="chooseLogin(login)">
+                <lucide-icon name="key-round" [size]="15"></lucide-icon>
+                {{ login.account || login.name || login.resource_ref }}
+              </button>
+            }
+          </div>
+        }
+        @default {
+          <!-- entry and once: the typed values go to the vault's own door,
+               never onto the card's record or into the chat. -->
+          <form class="cred-form" (submit)="$event.preventDefault(); submitCredential()" autocomplete="off">
+            @for (field of credentialFields; track field.name) {
+              <label class="cred-field">
+                <span class="cred-label">
+                  {{ field.label || field.name }}
+                  @if (field.remember === false) { <span class="cred-once">asked each time</span> }
+                </span>
+                <input class="question-input" [name]="field.name" [(ngModel)]="typed[field.name]"
+                       [type]="field.type === 'secret' ? 'password' : 'text'"
+                       [attr.autocomplete]="field.type === 'secret' ? 'new-password' : 'off'"
+                       [required]="field.required !== false" maxlength="2000"
+                       [attr.aria-label]="field.label || field.name" />
+              </label>
+            }
+            <div class="approval-actions">
+              <button type="submit" class="approval-btn approval-btn--approve" [disabled]="!credentialReady">
+                <lucide-icon [name]="credential.mode === 'once' ? 'send' : 'lock'" [size]="17"></lucide-icon>
+                {{ credential.mode === 'once' ? 'Send' : credential.existing ? 'Update login' : 'Save and sign in' }}
+              </button>
+            </div>
+          </form>
+        }
+      }
+    } @else if (isFilesQuestion) {
+      <!-- The assistant's files question (find_files): what it found,
+           pre-ticked; a search over everything the person can see for
+           what it missed; the chosen refs are the answer. -->
+      <div class="files-question">
+        <app-file-picker [candidates]="candidates" [preselect]="candidateRefs"
+                         (selectionChange)="chosen = $event"></app-file-picker>
+        <div class="approval-actions files-actions">
+          @if (chosen.length) {
+            <span class="files-selected" [matTooltip]="selectedNames.join(', ')" matTooltipPosition="above">
+              {{ chosen.length }} selected
+            </span>
+          }
+          <button type="button" class="approval-btn approval-btn--deny" (click)="useNone()">
+            <lucide-icon name="x" [size]="17"></lucide-icon>
+            None of these
+          </button>
+          <button type="button" class="approval-btn approval-btn--approve" [disabled]="!chosen.length" (click)="useSelected()">
+            <lucide-icon name="check" [size]="17"></lucide-icon>
+            {{ chosen.length === 1 ? 'Use this file' : 'Use these files' }}
+          </button>
+        </div>
+      </div>
+    } @else if (approval?.expects === 'file') {
+      <!-- A document is the answer: chosen here, uploaded to the chat by
+           the page, and the card answers with the attachment's ref. -->
+      <div class="question-file">
+        <input #picker type="file" class="question-file-input" (change)="fileChosen($event)" aria-label="Attach a file" />
+        <button type="button" class="approval-btn approval-btn--approve" (click)="picker.click()">
+          <lucide-icon name="paperclip" [size]="17"></lucide-icon>
+          Attach a file
+        </button>
+      </div>
+    } @else {
+      @if (approval?.choices?.length) {
+        <div class="question-choices">
+          @for (choice of approval.choices; track choice) {
+            <button type="button" class="approval-btn approval-btn--deny" (click)="answerWith(choice)">{{ choice }}</button>
+          }
+        </div>
+      }
+      <form class="question-reply" (submit)="$event.preventDefault(); answerWith(reply)">
+        <input class="question-input" name="reply" [(ngModel)]="reply" maxlength="2000" aria-label="Your answer"
+               [placeholder]="approval?.choices?.length ? 'Or answer in your own words' : 'Your answer'" />
+        <button type="submit" class="approval-btn approval-btn--approve" [disabled]="!reply.trim()">
+          <lucide-icon name="send" [size]="17"></lucide-icon>
+          Send
+        </button>
+      </form>
+    }
+  }
+</div>
+} @else {
+<div class="approval-card" [class.is-resolved]="!isPending" role="group" [attr.aria-label]="isPending ? 'Approval required' : 'Approval ' + statusLabel">
+  <div class="approval-head">
+    <lucide-icon class="approval-icon" name="shield-alert" [size]="20"></lucide-icon>
+    <div class="approval-title-wrap">
+      <span class="approval-title">Approval required</span>
+      <span class="approval-subtitle">
+        {{ actionSummary }} Review it before continuing.
+      </span>
+    </div>
+    @if (!isPending) {
+      <span class="approval-status">{{ statusLabel }}</span>
+    }
+  </div>
+
+  <div class="approval-body">
+    <div class="approval-row">
+      <span class="approval-label">Agent</span>
+      <span
+        class="approval-value"
+        [matTooltip]="agentRef"
+        matTooltipPosition="above"
+        >{{ agentName }}</span
+      >
+    </div>
+    <div class="approval-row">
+      <span class="approval-label">Function</span>
+      <code class="approval-value" [matTooltip]="approval?.action?.function || ''" matTooltipPosition="above">{{ functionLabel }}</code>
+    </div>
+    <div class="approval-row">
+      <span class="approval-label">Risk level</span>
+      <span class="approval-level">level {{ approval?.level }} — {{ levelLabel }}</span>
+    </div>
+
+    @if (approval?.action?.inputs_preview) {
+      <button type="button" class="approval-inputs-toggle" (click)="toggleInputs()">
+        <lucide-icon [name]="showInputs ? 'chevron-up' : 'chevron-down'" [size]="16"></lucide-icon>
+        {{ showInputs ? 'Hide exact inputs' : 'Show exact inputs' }}
+      </button>
+      @if (showInputs) {
+        <pre class="approval-inputs">{{ inputsPreview }}</pre>
+      }
+    }
+  </div>
+
+  @if (isPending) {
+    <div class="approval-actions">
+      <button type="button" class="approval-btn approval-btn--deny" (click)="deny()">
+        <lucide-icon name="x" [size]="17"></lucide-icon>
+        Deny
+      </button>
+      <button type="button" class="approval-btn approval-btn--approve" (click)="approve()">
+        <lucide-icon name="check" [size]="17"></lucide-icon>
+        Approve
+      </button>
+    </div>
+  }
+</div>
+}

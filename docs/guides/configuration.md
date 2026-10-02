@@ -1,0 +1,202 @@
+# Configuration
+
+Every setting is an environment variable. Compose reads them from
+`deploy.env`; a container platform sets them on the task; local
+development seeds them from `backend/config.env` and
+`ai_runtime/config.env`. The code reads the environment and nothing
+else, so moving between platforms changes values, never code.
+
+Three values are generated, never chosen:
+
+| Generator | Produces |
+|---|---|
+| `python bootstrap/generate_service_keys.py` | `BACKEND_SERVICE_PRIVATE_KEY` for the backend, `BACKEND_SERVICE_PUBLIC_KEY` for the runtime — one RS256 pair, each half on one line with `\n` escapes |
+| `python bootstrap/generate_secret_keys.py` | `SECRET_ENCRYPTION_KEYS` and `SECRET_ENCRYPTION_ACTIVE` — versioned AES-256-GCM keys; `--rotate` appends a version |
+| `python -c "import secrets; print(secrets.token_urlsafe(48))"` | `TOKEN_SECRET_KEY` |
+
+## The backend
+
+### Where it binds, and whom it believes
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `BACKEND_HOST` | `127.0.0.1` | Bind address. The image sets `0.0.0.0`. |
+| `BACKEND_PORT` | `8000` | Bind port. |
+| `FORWARDED_ALLOW_IPS` | `127.0.0.1` | Proxy addresses whose `X-Forwarded-*` headers are trusted; session IPs and the login lockout depend on it. `*` inside a private network. |
+| `CORS_ALLOW_ORIGINS` | `http://localhost:4200` | Comma-separated origins the browser may call from. A request carrying the session cookie from any other origin is not signed in. |
+| `PUBLIC_APP_URL` | `http://localhost:4200` | Where users reach the app; the base for links in invitations and resets, and an origin the session cookie is accepted from. |
+| `OAUTH_REDIRECT_URL` | `PUBLIC_APP_URL` + `/oauth/callback` | Where a provider sends the browser back after consent — the redirect URI registered with every connected app. Set it in development, where the API has a port of its own. |
+| `DEPLOYMENT_KIND` | `web` | What the deployment is: `web`, served to an organization at an address of its own, or `desktop`, on one person's computer. The launcher sets `desktop`. On a desktop a connected app may be registered without a secret. |
+
+### Sessions
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `TOKEN_SECRET_KEY` | required | Signs session tokens. Without it the process refuses to start. |
+| `JWT_COOKIE_SECURE` | `true` | Send the session cookie only over HTTPS. `false` for plain-HTTP development. |
+| `JWT_COOKIE_SAMESITE` | `lax` | `lax`, `strict` or `none`. |
+| `JWT_COOKIE_DOMAIN` | unset | A cookie domain; unset is a host-only cookie. |
+
+### Database
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `MONGO_URI` | `mongodb://localhost:27017` | The connection string, credentials included. |
+| `MONGO_DATABASE_NAME` | `decentai` | The database. |
+
+### Files and packages
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `FILE_STORAGE_PROVIDER` | `local` | Where uploaded bytes go. `local` is the one this platform ships; another store is one connector in `backend/database/file_connectors/`. Reads follow each file's own stamp. |
+| `UPLOADS_DIR` | `./uploads` | The folder for `local`. Keep it short on Windows. |
+| `AGENT_PACKAGE_DIR` | `data/agent-packages` | Where approved agent packages are kept — the only copy the platform controls. A package's filename is a digest, so keep the path short on Windows. |
+| `MAX_UPLOAD_MB` | `25` | The largest single upload accepted; bytes are held in memory while hashed. |
+
+### The runtime, from the backend's side
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `AI_RUNTIME_URL` | `http://127.0.0.1:8001` | Where the backend dials a chat's session. |
+| `BACKEND_SERVICE_PRIVATE_KEY` | required for chats | Signs the backend's identity toward the runtime; the runtime holds the public half. |
+| `REFERENCE_CATALOG_URL` | unset | A repository the marketplace offers as a source with one click. Unset, it offers none. |
+| `AGENT_SOURCE_FOLDER` | unset | A folder on the backend's own disk whose git repositories may be agent sources, added by their path (`/develop/my-agents`). For somebody writing agents on their own computer; the desktop launcher's `develop` sets it. Unset — every server — a source is fetched from a repository's address only. |
+
+### Email
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `SMTP_HOST` | unset | The mail server invitations, password resets and notifications are sent through — any provider's SMTP server. Unset, or without `MAIL_FROM`, nothing is sent: an invitation's link is handed to the administrator who made it, "Forgot password" says how this install resets one instead of making a link, and a notification email is logged. |
+| `SMTP_PORT` | `587`, or `465` for `ssl` | The server's port. |
+| `SMTP_SECURITY` | `starttls` | `starttls`, `ssl`, or `none` for a relay on a trusted network. |
+| `SMTP_USERNAME`, `SMTP_PASSWORD` | unset | Sign-in to the server, when it asks for one. The password is a secret. |
+| `MAIL_FROM` | unset | The sender address, one the server is allowed to send as. |
+| `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` | unset | The deployment's web push pair (`bootstrap/generate_vapid_keys.py`). Unset, nothing is pushed; a person is told by email instead, where email is set up. The private key is a secret. |
+| `VAPID_SUBJECT` | unset | A `mailto:` address push services may contact about this deployment. |
+
+### Logs
+
+Both processes write to standard output. The backend reads all of
+these; the runtime reads `LOG_LEVEL`.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING` or `ERROR`. |
+| `LOG_FORMAT` | `text` | `text`, or `json` for a log collector. |
+| `LOG_COLOR` | when a terminal | `true` or `false`. |
+| `LOG_TO_FILE` | `false` | Also write rotating files under `LOGS_DIR` (`./logs`), `LOG_MAX_BYTES` each, `LOG_BACKUP_COUNT` kept. |
+
+### First-run seeding
+
+Read by `bootstrap/init_db.py`, which is idempotent and safe on every
+start.
+
+| Variable | Meaning |
+|---|---|
+| `ORG_NAME` | The organization's name. |
+| `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_NAME` | The first administrator; required on first run, ignored once they exist. |
+| `INIT_DB_FRESH` | `true` drops the whole database before seeding. Never set by accident; say it out loud. |
+
+### Encryption
+
+| Variable | Meaning |
+|---|---|
+| `SECRET_ENCRYPTION_KEYS` | `version:key` pairs, comma-separated. Every stored credential and record value is encrypted under one of them; a value's version is recorded with it. |
+| `SECRET_ENCRYPTION_ACTIVE` | The version new writes use. |
+
+A database without these keys is a database whose encrypted values are
+gone. Back them up with it.
+
+## The runtime
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `AI_RUNTIME_HOST` | `0.0.0.0` | Bind address; `127.0.0.1` locally. |
+| `AI_RUNTIME_PORT` | `8001` | Bind port. |
+| `BACKEND_INTERNAL_URL` | empty | Where the runtime reaches the backend's gateway for its services. Empty runs the runtime standalone on the in-memory simulator, which is for development only. In Compose it is the service name; where the containers share one network, `http://127.0.0.1:8000`. |
+| `BACKEND_SERVICE_PUBLIC_KEY` | required | Verifies that a dial really came from the backend. |
+| `AI_RUNTIME_AGENTS_INSTALL_DIR` | `ai_runtime/installed_agents` | Where installed agent code and its environments live. A volume in a deployment; a short path outside the tree locally. |
+| `BACKEND_TOKEN_ISSUER` | `decentai-backend` | The issuer claim the runtime expects. |
+| `AI_RUNTIME_TOKEN_AUDIENCE` | `decentai-ai-runtime` | The audience claim the runtime expects. |
+| `LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING` or `ERROR`. |
+| `AI_RUNTIME_EGRESS_PORT` | `8002` | Where the proxy that confined agents connect through listens, on this machine only. The container's firewall rule is written for the same port when the container starts. |
+| `AI_RUNTIME_PACKAGE_HOSTS` | `pypi.org, files.pythonhosted.org` | Where packages come from: the hosts the builder of an agent's declared packages may reach, and the whole of them. Separated by commas. |
+
+### What holds an agent to the hosts it declared
+
+Inside the runtime's image an agent's worker runs as a user of its own
+and connects through a proxy the runtime runs, which lets it reach the
+hosts its manifest declared ([the sandbox](../system/sandbox.md)). One
+firewall rule makes the proxy the only way out, and setting it takes a
+right the container is given when it is started:
+
+```yaml
+ai-runtime:
+  cap_add:
+    - NET_ADMIN
+```
+
+`docker-compose.yml` grants it. The right is used once, at start, for
+that one rule in the container's own network; the runtime never holds
+it. Without it the stack runs all the same, and the runtime's log says
+that nothing holds an agent to the proxy.
+
+### Where an agent's packages come from
+
+Inside the runtime's image the packages an agent declared are
+downloaded and built by a user of their own, which reaches the hosts
+in `AI_RUNTIME_PACKAGE_HOSTS` and nothing else. A deployment with a
+package index of its own sets both what pip is told and what the
+builder may reach:
+
+```
+PIP_INDEX_URL=https://packages.example.com/simple
+AI_RUNTIME_PACKAGE_HOSTS=packages.example.com
+```
+
+`PIP_INDEX_URL`, `PIP_EXTRA_INDEX_URL`, `PIP_TRUSTED_HOST` and
+`PIP_CERT` are handed to the builder as they are set.
+
+### What the runtime's container is given
+
+Agent code runs in the runtime's container, so that container holds the
+runtime's own settings and nothing else. In Compose the backend and the
+seeder are handed `deploy.env` whole; the runtime is handed the
+variables `docker-compose.yml` names for it — the table above, the
+knobs below, where packages come from, and how the machine reaches
+the internet (`HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`, `SSL_CERT_FILE`,
+`REQUESTS_CA_BUNDLE`, `TZ`).
+The database's password, the encryption keys and the backend's private
+key never reach it. A new setting for the runtime is named in
+`docker-compose.yml` as well as set in `deploy.env`.
+
+### Knobs for agents
+
+Set on the runtime, passed on to every worker. A worker is given these,
+what a process needs to run at all, and nothing else of the runtime's
+environment.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `DECENTAI_WEB_ALLOW_LOOPBACK` | unset | `1` lets agents that fetch pages reach this machine's own addresses. For tests against a local site; never in a deployment. |
+| `DECENTAI_BROWSER_MAX` | `3` | How many browsers one Browser worker keeps open at once. |
+| `DECENTAI_BROWSER_IDLE_SECONDS` | `600` | How long a conversation's browser is kept after its last use. |
+| `DECENTAI_BROWSER_HEADLESS` | on | `0` shows the browser's window, on a machine that has a screen. |
+| `DECENTAI_BROWSER_PROMPT_CHARS` | `60000` | How many characters the Browser agent shows its model at each step. |
+| `DECENTAI_BROWSER_FOLD_EVERY` | `10` | How many steps pass before the Browser agent folds older ones into its running account. |
+| `DECENTAI_CODE_RUN_SECONDS` | `300` | How long one program the Code agent runs may take. |
+
+## Compose only
+
+| Variable | Meaning |
+|---|---|
+| `SITE_ADDRESS` | What Caddy serves: a domain gets automatic certificates; `localhost` or an IP a self-signed one; `:80` behind a load balancer that terminates TLS. |
+| `MONGO_ROOT_USERNAME`, `MONGO_ROOT_PASSWORD` | The database's root account, which `MONGO_URI` must carry too. |
+| `BACKEND_UPSTREAM` | Where Caddy proxies backend paths; defaults to `backend:8000`. |
+
+## What is deliberately not a setting
+
+There is no trust ceiling and no turn or step budget in the
+environment. Trust is a chat's setting, bounded by what its person may
+do at all: entitlement decides which functions exist for them, and the
+invocation gate decides what stops to ask. Budgets are per chat.

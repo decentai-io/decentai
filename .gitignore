@@ -1,0 +1,52 @@
+# Settings and secrets, kept on the machine that made them
+deploy.env
+**/config.env
+!**/config.env.example
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Python
+**/__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+
+# What a local backend and its tests write
+backend/uploads/
+backend/data/
+backend/tests/.uploads/
+backend/tests/.agent-packages/
+*.log
+# written at run time by a dependency
+state.json
+
+# What a local runtime and its tests write
+ai_runtime/installed_agents/
+ai_runtime/tests/.workerenv/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.angular/
+frontend/coverage/
+frontend/.sass-cache/
+
+# Editors and operating systems
+.idea/
+.vscode/
+.history/
+.claude/
+.DS_Store
+Thumbs.db
+
+# A release signed on this machine while trying the workflow's steps
+launcher/release.json.sig

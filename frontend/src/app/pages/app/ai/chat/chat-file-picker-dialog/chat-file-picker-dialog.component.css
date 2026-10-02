@@ -1,0 +1,14 @@
+.picker-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.picker-hint {
+  margin: 0;
+  line-height: 1.5;
+  opacity: 0.85;
+}

@@ -1,0 +1,477 @@
+<div class="data-page">
+  <header class="data-header">
+    <div class="data-heading">
+      <h1>Saved data</h1>
+      <p>Notes, tasks, and other information your agents keep for you.</p>
+    </div>
+  </header>
+
+  <div class="data-alert error" *ngIf="error">{{ error }}</div>
+  <div class="data-alert ok" *ngIf="notice">{{ notice }}</div>
+
+  <div class="data-loading" *ngIf="loading">
+    <span class="ui-spinner" role="status" aria-label="Loading"></span>
+    <span>Loading records…</span>
+  </div>
+
+  <div *ngIf="!loading">
+    <section class="agent-overview" *ngIf="!activeAgent">
+      <header class="overview-heading">
+        <div><h2>Your agents</h2><p>Select an agent to explore what it has saved.</p></div>
+        <span>{{ records.length }} items across {{ agentNodes.length }} agents</span>
+      </header>
+      <!-- A kind with no record yet has no card to open, so the first
+           one is made from here. -->
+      <div class="overview-actions" *ngIf="canCreate && pickerShapes.length">
+        <button class="btn primary add-icon-button" type="button" (click)="openPicker()"
+                aria-label="Add record" matTooltip="Add record">
+          <lucide-icon name="plus" [size]="18"></lucide-icon>
+        </button>
+      </div>
+      <label class="agent-search" *ngIf="agentNodes.length">
+        <lucide-icon name="search" [size]="15"></lucide-icon>
+        <input type="search" [ngModel]="agentQuery" (ngModelChange)="searchAgents($event)"
+               placeholder="Search agents or data types" aria-label="Search agents" />
+        <small>{{ filteredAgentNodes.length }} found</small>
+      </label>
+      <div class="agent-grid" *ngIf="agentNodes.length">
+        <button class="agent-card" type="button" *ngFor="let agent of pagedAgentNodes" (click)="selectAgent(agent.id)"
+                [attr.aria-label]="'Open ' + agent.name + ', ' + agent.count + ' saved items'">
+          <span class="agent-card-icon"><lucide-icon name="bot" [size]="19"></lucide-icon></span>
+          <span class="agent-card-copy">
+            <strong>{{ agent.name }}</strong>
+            <small>{{ agent.count }} saved item{{ agent.count === 1 ? '' : 's' }}</small>
+          </span>
+          <span class="agent-kind-list">
+            <span *ngFor="let kind of agent.kinds">{{ kind.label }} <em>{{ kind.count }}</em></span>
+          </span>
+          <lucide-icon class="agent-card-arrow" name="chevron-right" [size]="17"></lucide-icon>
+        </button>
+      </div>
+      <p class="no-agent-results" *ngIf="agentNodes.length && !filteredAgentNodes.length">No agent matches that search.</p>
+      <nav class="pagination" *ngIf="agentPageCount > 1" aria-label="Agent pages">
+        <button type="button" (click)="agentPage = agentPage - 1" [disabled]="agentPage === 1">Previous</button>
+        <span>Page {{ agentPage }} of {{ agentPageCount }}</span>
+        <button type="button" (click)="agentPage = agentPage + 1" [disabled]="agentPage === agentPageCount">Next</button>
+      </nav>
+      <div class="empty-state" *ngIf="!agentNodes.length">
+        <span class="empty-mark"><lucide-icon name="database" [size]="22"></lucide-icon></span>
+        <strong>No saved data yet</strong>
+        <p>Items appear here as your agents work.</p>
+      </div>
+    </section>
+
+    <section class="agent-workspace" *ngIf="activeAgent && activeAgentNode as agent">
+      <header class="agent-workspace-head">
+        <button class="action-icon-button" type="button" (click)="selectAll()" aria-label="Back to agents" matTooltip="Back to agents">
+          <lucide-icon name="arrow-left" [size]="17"></lucide-icon>
+        </button>
+        <span class="agent-card-icon"><lucide-icon name="bot" [size]="19"></lucide-icon></span>
+        <div><h2>{{ agent.name }}</h2><p>{{ agent.count }} saved item{{ agent.count === 1 ? '' : 's' }} in {{ agent.kinds.length }} data type{{ agent.kinds.length === 1 ? '' : 's' }}</p></div>
+      </header>
+
+      <label class="kind-selector">
+        <span><strong>Data type</strong><small>{{ agent.kinds.length }} available</small></span>
+        <select class="txt sel" [ngModel]="activeGroup"
+                (ngModelChange)="selectKind(agent.id, $event)"
+                aria-label="Choose data type">
+          <option *ngFor="let kind of agent.kinds" [value]="kind.resourceId">{{ kind.label }} ({{ kind.count }})</option>
+        </select>
+      </label>
+
+      <div class="kind-context" *ngIf="activeGroup">
+        <lucide-icon name="info" [size]="15"></lucide-icon>
+        <p><strong>{{ kindLabelOf(activeGroup) }}</strong> is a data type defined by {{ agent.name }}. {{ kindDescription(activeGroup) }}</p>
+      </div>
+
+    <section class="rec-main">
+      <div class="rec-toolbar">
+        <div class="rec-toolbar-head">
+          <div class="rec-title">
+            <strong>{{ kindLabelOf(activeGroup) }}</strong>
+            <span>{{ agent.name }} · {{ selectionRecordCount }} record{{ selectionRecordCount === 1 ? '' : 's' }}</span>
+          </div>
+          <button class="btn primary add-icon-button rec-new" type="button"
+                  *ngIf="canCreate && pickerShapes.length" (click)="openPicker()"
+                  aria-label="Add record" [matTooltip]="tableShape ? 'Add ' + tableShape.label : 'Add record'">
+            <lucide-icon name="plus" [size]="18"></lucide-icon>
+          </button>
+        </div>
+        <div class="rec-controls" *ngIf="selectionRecordCount">
+          <div class="rec-search">
+            <lucide-icon name="search" [size]="16"></lucide-icon>
+            <input class="txt" [ngModel]="query" (ngModelChange)="searchRecords($event)" name="record-search"
+                   [placeholder]="'Search ' + kindLabelOf(activeGroup).toLowerCase() + ' records'"
+                   aria-label="Search records" />
+            <button class="search-clear" type="button" *ngIf="query"
+                    (click)="searchRecords('')" aria-label="Clear search" matTooltip="Clear search">
+              <lucide-icon name="x" [size]="14"></lucide-icon>
+            </button>
+          </div>
+          <span class="search-status" aria-live="polite">
+            {{ query ? shownRecords.length + ' of ' + selectionRecordCount + ' found' : 'Search all fields' }}
+          </span>
+          <!-- Nothing ticked, nothing to say: the bar appears with the
+               first tick rather than standing greyed out waiting. -->
+          <span class="rec-selection" *ngIf="selected.size">
+            <span>{{ selected.size }} selected</span>
+            <button type="button" class="link-btn" *ngIf="!allShownSelected" (click)="selectAllShown()">
+              Select all {{ selectableShown.length }} shown
+            </button>
+            <button type="button" class="link-btn" (click)="clearSelection()">Clear</button>
+            <button class="btn danger sm" type="button" (click)="requestDeleteSelected()" [disabled]="deleteBusy">
+              <lucide-icon name="trash-2" [size]="15"></lucide-icon>
+              Delete selected
+            </button>
+          </span>
+        </div>
+      </div>
+
+      <p class="tab-hint" *ngIf="!shownRecords.length">
+        {{ records.length ? "No record matches that search." : "No records yet — agents store them as they work for you." }}
+      </p>
+
+      <!-- One kind: a table in the shape its agent declared. -->
+      <div class="rec-table-wrap" *ngIf="tableShape && shownRecords.length">
+        <table class="rec-table">
+          <thead>
+            <tr>
+              <th class="pick" *ngIf="canDelete"></th>
+              <th *ngFor="let column of columns" [class.num]="column.type === 'number'">
+                <button type="button" class="th-sort" (click)="sortBy(column.name)"
+                        [class.on]="sortKey === column.name">
+                  {{ column.label }}
+                  <lucide-icon *ngIf="sortKey === column.name" [name]="sortDesc ? 'arrow-down' : 'arrow-up'" [size]="12"></lucide-icon>
+                </button>
+              </th>
+              <th class="when">
+                <button type="button" class="th-sort" (click)="sortBy('updated')" [class.on]="sortKey === 'updated'">
+                  Changed
+                  <lucide-icon *ngIf="sortKey === 'updated'" [name]="sortDesc ? 'arrow-down' : 'arrow-up'" [size]="12"></lucide-icon>
+                </button>
+              </th>
+              <th class="actions"></th>
+            </tr>
+          </thead>
+          <tbody>
+            <ng-container *ngFor="let record of pagedRecords">
+              <tr class="rec-tr" (click)="openView(record)">
+                <td class="pick" *ngIf="canDelete" (click)="$event.stopPropagation()">
+                  <label class="select-box" *ngIf="deletable(record)">
+                    <input type="checkbox" [checked]="isSelected(record)"
+                           (change)="toggleSelected(record)"
+                           [attr.aria-label]="'Select ' + recordName(record) + ' to delete'" />
+                  </label>
+                </td>
+                <td *ngFor="let column of columns; let first = first"
+                    [class.num]="cellKind(record, column) === 'number'"
+                    [class.first]="first">
+                  <span class="cell" [ngClass]="'cell-' + cellKind(record, column)" [title]="cell(record, column)">
+                    {{ cell(record, column) || '—' }}
+                  </span>
+                </td>
+                <td class="when" [title]="dateLabel(record.updated_at || record.created_at)">{{ ageLabel(record.updated_at || record.created_at) }}</td>
+                <td class="actions" (click)="$event.stopPropagation()">
+<button class="action-icon-button" type="button" (click)="openView(record)" matTooltip="View record" aria-label="View record">
+              <lucide-icon name="eye" [size]="16"></lucide-icon>
+            </button>
+            <button class="action-icon-button" type="button" [matMenuTriggerFor]="recordMenu"
+                    aria-label="Record actions" matTooltip="More actions">
+              <span aria-hidden="true" class="more-dots">···</span>
+            </button>
+            <mat-menu #recordMenu="matMenu">
+              <button mat-menu-item *ngIf="canUpdate && canTouch(record) && mayEdit(record)" (click)="startEdit(record)">Edit</button>
+              <button mat-menu-item *ngIf="canShare && canTouch(record)" (click)="openShare(record)">Share</button>
+              <button mat-menu-item *ngIf="canTransfer && canTouch(record)" (click)="requestTransfer(record)">Hand over</button>
+              <button mat-menu-item *ngIf="canDelete && canTouch(record)" (click)="requestDelete(record)"
+                      [disabled]="busyRef === record.resource_ref">Delete</button>
+            </mat-menu>
+                </td>
+              </tr>
+              <tr class="rec-share-tr" *ngIf="share.isOpen(record.resource_ref)">
+                <td [attr.colspan]="columns.length + (canDelete ? 3 : 2)">
+                  <ng-container *ngTemplateOutlet="shareEditor; context: { record: record }"></ng-container>
+                </td>
+              </tr>
+            </ng-container>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Across agents or kinds: a list, each row with what identifies it. -->
+      <ul class="rows" *ngIf="!tableShape && shownRecords.length">
+        <li class="row record-row" *ngFor="let record of pagedRecords">
+          <label class="select-box" *ngIf="deletable(record)" (click)="$event.stopPropagation()">
+            <input type="checkbox" [checked]="isSelected(record)"
+                   (change)="toggleSelected(record)"
+                   [attr.aria-label]="'Select ' + recordName(record) + ' to delete'" />
+          </label>
+          <span class="row-mark" aria-hidden="true">
+            <lucide-icon name="database" [size]="15"></lucide-icon>
+          </span>
+
+          <span class="row-id">
+            <button class="row-name row-name-btn" type="button" (click)="openView(record)">{{ recordName(record) }}</button>
+            <span class="rec-agent" *ngIf="agentOf(record.resource_id)"
+                  [title]="'Kept by ' + agentNameOf(record.resource_id)">
+              <lucide-icon name="bot" [size]="12"></lucide-icon>
+              {{ agentNameOf(record.resource_id) }}
+              <em>{{ kindLabelOf(record.resource_id) }}</em>
+            </span>
+            <span class="row-meta">
+              <span class="grants">{{ shareSummary(record) }}</span>
+              <ng-container *ngIf="ageLabel(record.updated_at || record.created_at)">
+                · {{ ageLabel(record.updated_at || record.created_at) }}
+              </ng-container>
+            </span>
+
+            <div class="share-editor" *ngIf="share.isOpen(record.resource_ref)">
+              <ng-container *ngTemplateOutlet="shareEditor; context: { record: record }"></ng-container>
+            </div>
+          </span>
+
+          <span class="row-actions">
+<button class="action-icon-button" type="button" (click)="openView(record)" matTooltip="View record" aria-label="View record">
+              <lucide-icon name="eye" [size]="16"></lucide-icon>
+            </button>
+            <button class="action-icon-button" type="button" [matMenuTriggerFor]="recordMenu"
+                    aria-label="Record actions" matTooltip="More actions">
+              <span aria-hidden="true" class="more-dots">···</span>
+            </button>
+            <mat-menu #recordMenu="matMenu">
+              <button mat-menu-item *ngIf="canUpdate && canTouch(record) && mayEdit(record)" (click)="startEdit(record)">Edit</button>
+              <button mat-menu-item *ngIf="canShare && canTouch(record)" (click)="openShare(record)">Share</button>
+              <button mat-menu-item *ngIf="canTransfer && canTouch(record)" (click)="requestTransfer(record)">Hand over</button>
+              <button mat-menu-item *ngIf="canDelete && canTouch(record)" (click)="requestDelete(record)"
+                      [disabled]="busyRef === record.resource_ref">Delete</button>
+            </mat-menu>
+          </span>
+        </li>
+      </ul>
+      <footer class="record-footer" *ngIf="shownRecords.length">
+        <span>
+          Showing {{ (recordPage - 1) * recordPageSize + 1 }}–{{ recordPage * recordPageSize < shownRecords.length ? recordPage * recordPageSize : shownRecords.length }}
+          of {{ shownRecords.length }}
+        </span>
+        <nav class="record-page-controls" aria-label="Record pages">
+          <span>Page {{ recordPage }} of {{ recordPageCount }}</span>
+          <button type="button" (click)="recordPage = recordPage - 1" [disabled]="recordPage === 1"
+                  aria-label="Previous page" matTooltip="Previous page">
+            <lucide-icon name="chevron-left" [size]="16"></lucide-icon>
+          </button>
+          <button type="button" (click)="recordPage = recordPage + 1" [disabled]="recordPage === recordPageCount"
+                  aria-label="Next page" matTooltip="Next page">
+            <lucide-icon name="chevron-right" [size]="16"></lucide-icon>
+          </button>
+        </nav>
+      </footer>
+    </section>
+    </section>
+  </div>
+
+  <!-- ── Sharing, the same editor wherever a record is ─────────────── -->
+  <ng-template #shareEditor let-record="record">
+    <div class="share-block">
+      <span class="field-label">Who can see this record</span>
+      <app-sharing-selector
+        [mode]="share.mode" (modeChange)="share.mode = $any($event)"
+        [groups]="share.myGroups" [people]="share.peers"
+        [selectedGroups]="share.groups" [selectedPeople]="share.users"
+        groupLabel="My groups" peopleMode="people" [allowOrganization]="canShareOrgWide"
+        (groupToggled)="share.toggleGroup($event)" (personToggled)="share.toggleUser($event)">
+      </app-sharing-selector>
+      <p class="share-note">
+        Shared people and their assistants can read this record.
+      </p>
+      <div class="editor-actions">
+        <button class="btn primary" type="button" (click)="saveShare(record)" [disabled]="share.saving || !share.ready">
+          {{ share.saving ? "Saving…" : "Save sharing" }}
+        </button>
+        <button class="btn ghost" type="button" (click)="share.close()">Cancel</button>
+      </div>
+    </div>
+  </ng-template>
+
+  <!-- ── Viewing: the whole record, every field by its label ───────── -->
+  <ng-container *ngIf="viewTarget as record">
+    <div class="dialog-backdrop" (click)="closeView()">
+      <section class="info-dialog view-dialog" role="dialog" aria-modal="true"
+               aria-labelledby="record-view-title" (click)="$event.stopPropagation()">
+        <header class="dialog-head">
+          <span class="dialog-icon">
+            <lucide-icon name="database" [size]="21"></lucide-icon>
+          </span>
+          <div>
+            <h2 id="record-view-title">{{ recordName(record) }}</h2>
+            <p>
+              {{ kindLabelOf(record.resource_id) }} kept by {{ agentNameOf(record.resource_id) }}
+              · {{ shareSummary(record) }}
+            </p>
+          </div>
+          <button class="icon-button" type="button" (click)="closeView()" aria-label="Close">
+            <lucide-icon name="x" [size]="19"></lucide-icon>
+          </button>
+        </header>
+        <div class="dialog-body view-body">
+          <ng-container *ngIf="keyEntries(record).length">
+            <h3 class="view-section">Fields</h3>
+            <table class="view-table">
+              <tr *ngFor="let entry of keyEntries(record)">
+                <th [title]="entry.name">{{ entry.label }}</th>
+                <td [class.is-long]="entry.long">{{ entry.value }}</td>
+              </tr>
+            </table>
+          </ng-container>
+          <ng-container *ngIf="valueEntries(record).length">
+            <h3 class="view-section">Content</h3>
+            <div class="record-value" *ngFor="let entry of valueEntries(record)">
+              <span class="record-value-name" [title]="entry.name">{{ entry.label }}</span>
+              <pre class="record-value-text">{{ entry.text }}</pre>
+            </div>
+          </ng-container>
+          <p class="record-empty" *ngIf="!keyEntries(record).length && !valueEntries(record).length">
+            This record is empty.
+          </p>
+          <p class="view-stamp">
+            Created {{ dateLabel(record.created_at) }}
+            <ng-container *ngIf="record.updated_at && record.updated_at !== record.created_at">
+              · changed {{ dateLabel(record.updated_at) }}
+            </ng-container>
+            · <code>{{ record.resource_ref }}</code>
+          </p>
+        </div>
+        <footer class="dialog-actions">
+          <button class="btn danger" type="button" *ngIf="canDelete && canTouch(record)"
+                  (click)="closeView(); requestDelete(record)">
+            Delete
+          </button>
+          <button class="btn" type="button" *ngIf="canUpdate && canTouch(record) && mayEdit(record)"
+                  (click)="closeView(); startEdit(record)">
+            Edit
+          </button>
+          <button class="btn primary" type="button" (click)="closeView()">Close</button>
+        </footer>
+      </section>
+    </div>
+  </ng-container>
+
+  <!-- ── Which kind? A dialog on the way to the form ────────────────── -->
+  <div class="dialog-backdrop" *ngIf="pickerOpen" (click)="closePicker()">
+    <section class="info-dialog picker-dialog" role="dialog" aria-modal="true"
+             aria-labelledby="record-picker-title" (click)="$event.stopPropagation()">
+      <header class="dialog-head">
+        <span class="dialog-icon">
+          <lucide-icon name="database" [size]="21"></lucide-icon>
+        </span>
+        <div>
+          <h2 id="record-picker-title">What kind of record?</h2>
+          <p>Choose what you want to add.</p>
+        </div>
+        <button class="icon-button" type="button" (click)="closePicker()" aria-label="Close">
+          <lucide-icon name="x" [size]="19"></lucide-icon>
+        </button>
+      </header>
+      <div class="dialog-body">
+        <button class="picker-row" type="button" *ngFor="let shape of pickerShapes" (click)="startCreate(shape)">
+          <span class="picker-name">
+            <strong>{{ shape.label }}</strong>
+            <em>{{ shape.agent_name }}</em>
+          </span>
+          <span class="picker-desc" *ngIf="shape.description">{{ shape.description }}</span>
+        </button>
+      </div>
+    </section>
+  </div>
+
+  <!-- ── The form, generated from the declared fields ───────────────── -->
+  <ng-container *ngIf="formShape as shape">
+    <div class="dialog-backdrop" (click)="!saving && cancelForm()">
+      <section class="info-dialog form-dialog" role="dialog" aria-modal="true"
+               aria-labelledby="record-form-title" (click)="$event.stopPropagation()">
+        <header class="dialog-head">
+          <span class="dialog-icon">
+            <lucide-icon name="database" [size]="21"></lucide-icon>
+          </span>
+          <div>
+            <h2 id="record-form-title">{{ editingRef ? "Edit " : "New " }}{{ shape.label }}</h2>
+            <p>{{ shape.agent_name }} reads this back, so the shape is its.</p>
+          </div>
+          <button class="icon-button" type="button" (click)="cancelForm()" [disabled]="saving" aria-label="Close">
+            <lucide-icon name="x" [size]="19"></lucide-icon>
+          </button>
+        </header>
+        <div class="dialog-body">
+          <label class="field" *ngFor="let field of shape.fields">
+            <span class="field-label">
+              {{ field.label || field.name }}
+              <em *ngIf="field.required">required</em>
+            </span>
+            <select class="txt sel" *ngIf="field.type === 'select'"
+                    [(ngModel)]="formFields[field.name]" [ngModelOptions]="{ standalone: true }">
+              <option value="">—</option>
+              <option *ngFor="let option of field.options" [value]="option">{{ option }}</option>
+            </select>
+            <input type="checkbox" *ngIf="field.type === 'boolean'"
+                   [(ngModel)]="formFields[field.name]" [ngModelOptions]="{ standalone: true }" />
+            <textarea class="txt rec-json" *ngIf="field.type === 'object'" rows="5" spellcheck="false"
+                      [(ngModel)]="formFields[field.name]" [ngModelOptions]="{ standalone: true }"
+                      placeholder='{ "…": "valid JSON" }'></textarea>
+            <input class="txt"
+                   *ngIf="field.type === 'string' || field.type === 'number' || field.type === 'secret'"
+                   [type]="field.type === 'secret' ? 'password' : field.type === 'number' ? 'number' : 'text'"
+                   [(ngModel)]="formFields[field.name]" [ngModelOptions]="{ standalone: true }"
+                   autocomplete="off" />
+          </label>
+          <div class="data-alert error dialog-error" *ngIf="error">{{ error }}</div>
+        </div>
+        <footer class="dialog-actions">
+          <button class="btn" type="button" (click)="cancelForm()" [disabled]="saving">Cancel</button>
+          <button class="btn primary" type="button" (click)="saveForm()" [disabled]="saving">
+            {{ saving ? "Saving…" : editingRef ? "Save changes" : "Create record" }}
+          </button>
+        </footer>
+      </section>
+    </div>
+  </ng-container>
+
+  <!-- ── Deleting ───────────────────────────────────────────────────── -->
+  <ng-container *ngIf="deleting.length as count">
+    <div class="dialog-backdrop" (click)="closeDelete()">
+      <section class="info-dialog delete-dialog" role="alertdialog" aria-modal="true"
+               aria-labelledby="record-delete-title" (click)="$event.stopPropagation()">
+        <header class="dialog-head">
+          <span class="dialog-icon danger-dialog-icon">
+            <lucide-icon name="trash-2" [size]="21"></lucide-icon>
+          </span>
+          <div>
+            <h2 id="record-delete-title">
+              {{ count === 1 ? "Delete this record?" : "Delete " + count + " records?" }}
+            </h2>
+            <p>{{ deletingNames }}</p>
+          </div>
+          <button class="icon-button" type="button" (click)="closeDelete()" [disabled]="deleteBusy" aria-label="Close">
+            <lucide-icon name="x" [size]="19"></lucide-icon>
+          </button>
+        </header>
+        <div class="dialog-body">
+          <p class="delete-warning">
+            This permanently deletes {{ count === 1 ? "the record" : "them" }}. Your agent will no
+            longer be able to read {{ count === 1 ? "it" : "them" }}.
+          </p>
+          <div class="data-alert error dialog-error" *ngIf="error">{{ error }}</div>
+        </div>
+        <footer class="dialog-actions">
+          <button class="btn" type="button" (click)="closeDelete()" [disabled]="deleteBusy">Cancel</button>
+          <button class="btn danger" type="button" (click)="confirmDelete()" [disabled]="deleteBusy">
+            {{ deleteBusy ? "Deleting…" : (count === 1 ? "Delete record" : "Delete " + count + " records") }}
+          </button>
+        </footer>
+      </section>
+    </div>
+  </ng-container>
+
+  <app-transfer-dialog *ngIf="transferTarget as item"
+                       [subject]="'the record “' + recordName(item) + '”'" [ownerId]="item.created_by"
+                       [busy]="transferring" (chosen)="transfer($event)" (closed)="closeTransfer()">
+  </app-transfer-dialog>
+</div>

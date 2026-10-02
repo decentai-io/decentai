@@ -1,0 +1,269 @@
+<button class="back-link" type="button" (click)="back.emit()">
+  <lucide-icon name="arrow-left" [size]="14"></lucide-icon>
+  All agents
+</button>
+
+<section class="panel agent-hero">
+  <div class="hero-main">
+    <span class="agent-avatar big"><lucide-icon name="bot" [size]="26"></lucide-icon></span>
+    <div class="hero-title">
+      <h2>
+        {{ agent.name || agent.agent_id }}
+        <span class="agent-status" [class]="'is-' + agent.status"
+              [class.is-preparing]="agent.prepared?.state === 'preparing'"
+              [class.is-failed]="agent.prepared?.state === 'failed'">{{ statusLabel(agent) }}</span>
+      </h2>
+      <p class="hero-description">{{ agent.description }}</p>
+      <!-- Where this code came from and what it is, as separate facts:
+           the repository says where, the digest says what actually runs. -->
+      <div class="hero-meta">
+        <span class="meta-chip" title="The reference this organization approved it under">
+          <lucide-icon name="bot" [size]="12"></lucide-icon><code>{{ agent.agent_id }}</code>
+        </span>
+        <span class="meta-chip" title="Where the code came from">
+          <lucide-icon name="git-branch" [size]="12"></lucide-icon>{{ origin }}
+        </span>
+        <span class="meta-chip" *ngIf="agent.installed_version">
+          <lucide-icon name="package" [size]="12"></lucide-icon>v{{ agent.installed_version }}
+        </span>
+        <span class="meta-chip" *ngIf="packageLabel"
+              title="The code that was kept, named by its sha256. The repository and commit say where it came from; this is what runs.">
+          <lucide-icon name="shield-check" [size]="12"></lucide-icon><code>{{ packageLabel }}</code>
+        </span>
+      </div>
+    </div>
+    <div class="hero-actions">
+      <button class="btn primary" type="button"
+              *ngIf="canInstall && agent.status === 'update_available'"
+              (click)="update.emit(agent)" [disabled]="busyId === agent.agent_id">
+        Update
+      </button>
+      <!-- Always offered, whatever else is true of the agent: an update
+           waiting, the catalog no longer listing it. Uninstalling is how
+           either state is left. -->
+      <button class="btn danger" type="button"
+              *ngIf="canUninstall"
+              (click)="uninstall.emit(agent)" [disabled]="busyId === agent.agent_id">
+        Uninstall
+      </button>
+    </div>
+  </div>
+
+  <nav class="detail-tabs" role="tablist">
+    <button type="button" role="tab" [class.on]="tab === 'overview'" (click)="tab = 'overview'">
+      Overview
+    </button>
+    <button type="button" role="tab" [class.on]="tab === 'credentials'"
+            (click)="tab = 'credentials'" *ngIf="credentials.length">
+      Credentials
+      <span class="tab-flag warn" *ngIf="missing.length">{{ missing.length }}</span>
+    </button>
+    <button type="button" role="tab" [class.on]="tab === 'functions'" (click)="tab = 'functions'">
+      Functions <span class="tab-flag">{{ agent.functions.length }}</span>
+    </button>
+    <button type="button" role="tab" [class.on]="tab === 'access'" (click)="tab = 'access'"
+            *ngIf="showAccess">
+      Access
+    </button>
+  </nav>
+</section>
+
+<section class="panel detail-panel" *ngIf="tab === 'overview'">
+  <!-- What approving it agreed to, as one line of numbers before any
+       prose: the answer a returning administrator came for. -->
+  <div class="glance">
+    <div class="glance-cell">
+      <strong>{{ agent.functions.length }}</strong>
+      <span>function{{ agent.functions.length === 1 ? "" : "s" }}</span>
+    </div>
+    <div class="glance-cell" *ngIf="resourceTotal">
+      <strong>{{ resourceTotal }}</strong>
+      <span>resource{{ resourceTotal === 1 ? "" : "s" }} kept</span>
+    </div>
+    <div class="glance-cell" *ngIf="credentials.length">
+      <strong>{{ credentials.length - missing.length }}<em>/{{ credentials.length }}</em></strong>
+      <span>credentials bound</span>
+    </div>
+    <div class="glance-cell" *ngIf="agent.dependencies.length">
+      <strong>{{ agent.dependencies.length }}</strong>
+      <span>package{{ agent.dependencies.length === 1 ? "" : "s" }}</span>
+    </div>
+    <div class="glance-levels" *ngIf="levelSummary.length">
+      <span class="lvl" *ngFor="let level of levelSummary" [attr.data-level]="level.name">
+        <span class="lvl-dot"></span>{{ level.count }} {{ level.name }}
+      </span>
+    </div>
+  </div>
+
+  <!-- Something to try it on: the rows and files the agent ships,
+       loaded as this person's own records and taken back on request. -->
+  <div class="samples-block" *ngIf="samples">
+    <span class="samples-mark"><lucide-icon name="database" [size]="17"></lucide-icon></span>
+    <div class="samples-copy">
+      <strong>Sample data<em *ngIf="samples.story"> · {{ samples.story }}</em></strong>
+      <span>
+        {{ samples.records }} record{{ samples.records === 1 ? "" : "s" }}<ng-container *ngIf="samples.shapes.length">
+          ({{ samples.shapes.join(", ") }})</ng-container><ng-container *ngIf="samples.files">
+          and {{ samples.files }} file{{ samples.files === 1 ? "" : "s" }}</ng-container>,
+        loaded as your own — private to you, editable, and removable here in one click.
+      </span>
+      <span class="samples-state ok" *ngIf="samplesLoaded">
+        <lucide-icon name="circle-check" [size]="13"></lucide-icon>
+        Loaded: {{ samplesLoaded.records }} records<ng-container *ngIf="samplesLoaded.files">, {{ samplesLoaded.files }} files</ng-container>
+      </span>
+      <span class="samples-state warn" *ngIf="samples.errors.length">
+        The sheet has errors and cannot be loaded: {{ samples.errors[0] }}
+      </span>
+    </div>
+    <div class="samples-actions">
+      <button class="btn primary sm" type="button" *ngIf="!samplesLoaded"
+              [disabled]="samplesBusy || samples.errors.length > 0" (click)="loadSamples()">
+        <lucide-icon name="download" [size]="14"></lucide-icon>
+        {{ samplesBusy ? "Loading…" : "Load sample data" }}
+      </button>
+      <button class="btn sm" type="button" *ngIf="samplesLoaded"
+              [disabled]="samplesBusy" (click)="removeSamples()">
+        <lucide-icon name="trash-2" [size]="14"></lucide-icon>
+        {{ samplesBusy ? "Removing…" : "Remove sample data" }}
+      </button>
+    </div>
+  </div>
+
+  <!-- The agent in its own words, by example: what a person types to
+       get something done with it. One click starts that chat. -->
+  <div class="try-block" *ngIf="agent.examples?.length">
+    <span class="detail-title">Try asking</span>
+    <ul class="try-list">
+      <li class="try-item" *ngFor="let example of agent.examples">
+        <span class="try-quote"><lucide-icon name="message-square-text" [size]="15"></lucide-icon></span>
+        <div class="try-copy">
+          <strong>{{ example.title }}</strong>
+          <span>“{{ example.prompt }}”</span>
+        </div>
+        <button class="btn sm" type="button" (click)="tryPrompt(example.prompt)"
+                title="Open a chat with this prompt">
+          Start a chat
+          <lucide-icon name="arrow-right" [size]="14"></lucide-icon>
+        </button>
+      </li>
+    </ul>
+  </div>
+
+  <div class="overview-grid">
+    <!-- Always here, including when there are none: a block that vanishes
+         is one nobody can find, and "this agent declares none" is the
+         answer somebody came looking for. -->
+    <article class="overview-card">
+      <header><lucide-icon name="key-round" [size]="14"></lucide-icon> Authorization scoping</header>
+      <ng-container *ngIf="agent.scopes?.length; else noScopes">
+        <p class="block-hint">
+          The dimensions a grant can be narrowed by. Under
+          <button class="linkish" type="button" (click)="tab = 'access'"
+                  *ngIf="showAccess; else accessWord">Access</button><ng-template #accessWord>Access</ng-template>,
+          each can be limited to particular values — a call outside them is
+          refused, and the chat is told why. The
+          <button class="linkish" type="button" (click)="tab = 'functions'">Functions</button>
+          tab shows which input feeds each scope.
+        </p>
+        <div class="scope-chips">
+          <code *ngFor="let scope of agent.scopes">{{ scope }}</code>
+        </div>
+      </ng-container>
+      <ng-template #noScopes>
+        <p class="block-hint">
+          This agent declares no scopes, so a grant can only say who may use
+          it and which functions they get — not which values they may use it
+          on.
+        </p>
+      </ng-template>
+    </article>
+
+    <article class="overview-card" *ngFor="let group of keeps">
+      <header>
+        <lucide-icon [name]="group.kind === 'data' ? 'database' : 'file-text'" [size]="14"></lucide-icon>
+        {{ group.kind === "data" ? "Records it keeps" : "Files it keeps" }}
+        <span class="card-count">{{ group.items.length }}</span>
+      </header>
+      <div class="kept-row" *ngFor="let resource of group.items">
+        <code>{{ resource.id }}</code>
+        <span>{{ resource.description || resource.label }}</span>
+      </div>
+    </article>
+
+    <!-- Always here, as scoping is. A reader's list does not carry the
+         hosts, and the card says so rather than showing none. -->
+    <article class="overview-card" *ngIf="!networkKnown">
+      <header><lucide-icon name="globe" [size]="14"></lucide-icon> Where it connects</header>
+      <p class="block-hint tight">
+        The hosts this agent declared are shown to whoever may install agents.
+      </p>
+    </article>
+    <article class="overview-card" *ngIf="networkKnown">
+      <header><lucide-icon name="globe" [size]="14"></lucide-icon> Where it connects</header>
+      <div class="host-chips">
+        <code class="is-wide" *ngIf="network.any">any website</code>
+        <code class="is-none"
+              *ngIf="!network.any && !network.proposed && !network.hosts.length && !network.from_secrets.length">nothing</code>
+        <code *ngFor="let host of network.hosts">{{ host }}</code>
+        <code class="is-credential" *ngFor="let field of network.from_secrets">
+          <lucide-icon name="key-round" [size]="11"></lucide-icon>
+          {{ credentialHost(field) }}
+        </code>
+        <code class="is-credential" *ngIf="network.proposed && !network.any">
+          <lucide-icon name="file-code" [size]="11"></lucide-icon>
+          what you allow on a code card, each run
+        </code>
+      </div>
+      <p class="block-hint tight">{{ networkNote }}</p>
+    </article>
+
+    <!-- What the platform holds the agent to where it runs, once a
+         runtime has said. What is missing is said first and plainly:
+         an approval was given for an agent that is confined. -->
+    <article class="overview-card" [class.is-problem]="notEnforced.length"
+             *ngIf="agent.prepared?.confined">
+      <header>
+        <lucide-icon [name]="notEnforced.length ? 'triangle-alert' : 'shield-check'" [size]="14"></lucide-icon>
+        How it is confined here
+      </header>
+      <p class="block-hint tight" *ngIf="fullyConfined">
+        It runs as a user of its own, opens its own files and the system's and
+        nothing else, and connects only through the platform, which holds it
+        to the hosts above.
+      </p>
+      <p class="block-hint tight confined-gap" *ngFor="let line of notEnforced">{{ line }}</p>
+    </article>
+
+    <article class="overview-card" *ngIf="agent.dependencies.length">
+      <header><lucide-icon name="package" [size]="14"></lucide-icon> Packages it declares</header>
+      <div class="dep-chips">
+        <code *ngFor="let dependency of agent.dependencies">{{ dependency }}</code>
+      </div>
+      <p class="block-hint tight">Installed deliberately at approval, never by the agent.</p>
+    </article>
+
+  </div>
+</section>
+
+<section class="panel detail-panel" *ngIf="tab === 'credentials'">
+  <app-agent-credentials [agent]="agent"
+                         [credentials]="credentials"
+                         [groups]="groups"
+                         [myGroups]="myGroups"
+                         [canShareAny]="canShareAny"
+                         [myUserId]="myUserId"
+                         [defaults]="secretDefaults"
+                         (changed)="credentialsChanged.emit()"
+                         (failed)="failed.emit($event)"
+                         (flashed)="flashed.emit($event)"></app-agent-credentials>
+</section>
+
+<section class="panel detail-panel" *ngIf="tab === 'functions'">
+  <app-agent-functions [agent]="agent"></app-agent-functions>
+</section>
+
+<section class="panel detail-panel" *ngIf="tab === 'access'">
+  <app-agent-access [agent]="agent"
+                    (failed)="failed.emit($event)"
+                    (flashed)="flashed.emit($event)"></app-agent-access>
+</section>

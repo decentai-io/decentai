@@ -1,0 +1,81 @@
+/* The panel behind the docked line. It lives inside the dock, which
+   owns its position and its height cap; everything here is content. */
+
+.panel { display: flex; flex-direction: column; min-height: 0; }
+
+.panel-body { flex: 1; min-height: 0; overflow-y: auto; }
+
+.panel-note { margin: 6px 0 0; font-size: 12.5px; line-height: 1.55; color: var(--muted-foreground); }
+
+/* ── This turn ───────────────────────────────────────────────────── */
+.work-items { margin: 0 0 10px; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 7px; }
+.work-row { display: flex; align-items: baseline; gap: 8px; font-size: 13.5px; line-height: 1.5; }
+
+/* A task is the handle for its own steps: the whole row is the control,
+   so a finished task can be opened again instead of its steps being
+   replaced by whatever ran next. */
+.work-row--button {
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 2px 0;
+  margin: 0;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  border-radius: 6px;
+}
+.work-row--button:disabled { cursor: default; }
+.work-row--button:not(:disabled):hover { background: color-mix(in srgb, var(--foreground) 4%, transparent); }
+.work-caret { color: var(--muted-foreground); flex-shrink: 0; align-self: center; }
+.work-caret--hidden { visibility: hidden; }
+.work-count {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted-foreground);
+  background: color-mix(in srgb, var(--foreground) 7%, transparent);
+  border-radius: 999px;
+  padding: 0 6px;
+  flex-shrink: 0;
+}
+.steps--nested {
+  margin: 4px 0 8px 26px;
+  padding-left: 10px;
+  border-left: 1px solid var(--border);
+}
+.steps--nested { gap: 3px; }
+/* A step under its own task needs no number: its place in the list is
+   the order, and a numbered pill each read as a second plan. */
+.steps--nested .step-index {
+  background: none;
+  border: none;
+  color: var(--muted-foreground);
+  width: auto;
+  min-width: 0;
+}
+.work-id { font-size: 11px; font-variant-numeric: tabular-nums; color: var(--muted-foreground); min-width: 26px; }
+.work-text { flex: 1; color: var(--foreground); }
+.work-items li[data-status="done"] .work-text { color: var(--muted-foreground); text-decoration: line-through; }
+.work-item--unverified .work-text { text-decoration-style: dotted; }
+.work-status { font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted-foreground); white-space: nowrap; }
+.work-items li[data-status="active"] .work-status { color: var(--accent-foreground); }
+.work-items li[data-status="blocked"] .work-status,
+.work-item--unverified .work-status { color: var(--destructive-strong); }
+.work-blocker { margin: 2px 0 0 34px; font-size: 12.5px; color: var(--destructive-strong); }
+.work-deps { margin: 2px 0 0 34px; font-size: 12px; color: var(--muted-foreground); }
+
+.steps { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.step { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 8px; align-items: start; }
+.step-index {
+  font-size: 11px; line-height: 20px; text-align: center; border-radius: 999px;
+  color: var(--muted-foreground); background: var(--secondary); font-variant-numeric: tabular-nums;
+}
+.step-main { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.step-text { font-size: 13px; line-height: 20px; color: var(--foreground); }
+.step-detail, .step-meta { font-size: 12px; color: var(--muted-foreground); }
+.step-meta { line-height: 20px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.step-meta--live { color: var(--chat-accent-strong); }
+.step--active .step-text { color: var(--chat-accent-strong); }
+.step--active .step-index { color: var(--chat-accent-strong); }
+.step--failed .step-text, .step--failed .step-meta { color: var(--destructive-strong); }
+.step--failed .step-index { color: var(--destructive-strong); }

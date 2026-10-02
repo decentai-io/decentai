@@ -1,0 +1,160 @@
+<div class="data-loading" *ngIf="loading">
+  <span class="ui-spinner" role="status" aria-label="Loading"></span>
+  <span>Reading who has access…</span>
+</div>
+
+<ng-container *ngIf="!loading">
+  <p class="block-hint">
+    Access lives on the agent, not in a policy: its functions are
+    discovered from a manifest and change when it updates, so a policy
+    naming them would go stale. Grants are allow-only — anyone not named
+    here cannot ask this agent for anything.
+  </p>
+
+  <!-- ── Who has it now ─────────────────────────────────────────────── -->
+  <section class="access-section">
+    <header class="access-head">
+      <h3>Who has access</h3>
+      <span class="access-count" *ngIf="grants.length">
+        {{ grants.length }} grant{{ grants.length === 1 ? "" : "s" }}
+      </span>
+    </header>
+
+    <div class="access-empty" *ngIf="unreadable">
+      <lucide-icon name="triangle-alert" [size]="15"></lucide-icon>
+      <span>Who has access could not be read: {{ unreadable }}</span>
+    </div>
+    <div class="access-empty" *ngIf="!grants.length && !unreadable">
+      <lucide-icon name="lock" [size]="15"></lucide-icon>
+      <span>Nobody yet — so nobody can ask it to do anything.</span>
+    </div>
+
+    <div class="grant-list" *ngIf="grants.length">
+      <div class="grant-row" *ngFor="let grant of grants">
+        <span class="grant-mark"><lucide-icon name="users" [size]="15"></lucide-icon></span>
+        <div class="grant-row-text">
+          <strong>{{ audience(grant) }}</strong>
+          <span class="grant-row-scope">{{ scope(grant) }}</span>
+          <span class="grant-row-limits" *ngIf="limits(grant)">
+            <lucide-icon name="filter" [size]="11"></lucide-icon>
+            limited to {{ limits(grant) }}
+          </span>
+        </div>
+        <button class="btn ghost sm" type="button" (click)="revoke(grant)" [disabled]="!!busyId">
+          {{ busyId === grant.grant_id ? "Removing…" : "Revoke" }}
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Granting more ──────────────────────────────────────────────── -->
+  <section class="access-section grant-form">
+    <header class="access-head">
+      <h3>Give access</h3>
+    </header>
+
+    <div class="grant-step">
+      <span class="step-mark">1</span>
+      <div class="step-body">
+        <span class="step-title">To whom</span>
+        <label class="check-line">
+          <input type="checkbox" [checked]="draftGroups.has(EVERYONE)"
+                 (change)="toggleGroup(EVERYONE)" />
+          <span>Everyone in this organization</span>
+        </label>
+        <label class="check-line" *ngFor="let group of groups">
+          <input type="checkbox" [checked]="draftGroups.has(group.group_id)"
+                 (change)="toggleGroup(group.group_id)" />
+          <span>{{ group.group_name }}</span>
+        </label>
+        <details class="grant-people" *ngIf="members.length">
+          <summary>Or name individual people</summary>
+          <label class="check-line" *ngFor="let member of members">
+            <input type="checkbox" [checked]="draftUsers.has(member.user_id)"
+                   (change)="toggleUser(member.user_id)" />
+            <span>{{ member.email }}</span>
+          </label>
+        </details>
+      </div>
+    </div>
+
+    <div class="grant-step">
+      <span class="step-mark">2</span>
+      <div class="step-body">
+        <span class="step-title">For which functions</span>
+        <label class="check-line">
+          <input type="radio" name="grant-scope" [checked]="draftWhole"
+                 (change)="draftWhole = true" />
+          <span>Everything it offers
+            <small>Functions a later version adds are covered too.</small></span>
+        </label>
+        <label class="check-line">
+          <input type="radio" name="grant-scope" [checked]="!draftWhole"
+                 (change)="draftWhole = false" />
+          <span>Only the ones I pick
+            <small>A function added later stays closed until you open it.</small></span>
+        </label>
+        <div class="action-list" *ngIf="!draftWhole">
+          <label class="action" *ngFor="let fn of agent.functions" [class.on]="isFunctionOn(fn)">
+            <input type="checkbox" [checked]="isFunctionOn(fn)" (change)="toggleFunction(fn)" />
+            <code class="action-name">{{ localFunction(fn) }}</code>
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <!-- Authorization scoping. Always here, including when the agent
+         declares none — a section that vanishes is a section nobody can
+         find, and "this agent has no scopes" is the answer to the
+         question somebody came looking for. -->
+    <div class="grant-step">
+      <span class="step-mark">3</span>
+      <div class="step-body">
+        <span class="step-title">
+          Authorization scoping
+          <em class="step-optional" *ngIf="hasScopes">optional</em>
+        </span>
+
+        <ng-container *ngIf="hasScopes; else noScopes">
+          <p class="step-hint">
+            This agent declares
+            {{ agent.scopes!.length }} scope{{ agent.scopes!.length === 1 ? "" : "s" }}.
+            A call carries their values in its own inputs — the Functions tab
+            shows which input feeds each one. Leave a scope empty to allow any
+            value; list values to allow only those. Anything else is refused,
+            and the chat is told why.
+          </p>
+          <div class="scope-grid">
+            <label class="scope-limit" *ngFor="let scope of agent.scopes">
+              <code>{{ scope }}</code>
+              <input class="txt" [value]="draftScopes[scope] || ''"
+                     (input)="draftScopes[scope] = $any($event.target).value"
+                     [placeholder]="'any ' + scope + ' — or list them: team_a, team_b'" />
+            </label>
+          </div>
+        </ng-container>
+
+        <ng-template #noScopes>
+          <div class="access-empty subtle">
+            <lucide-icon name="info" [size]="15"></lucide-icon>
+            <span>
+              This agent declares no authorization scopes, so a grant cannot
+              be narrowed by value — only by which functions it covers.
+            </span>
+          </div>
+        </ng-template>
+      </div>
+    </div>
+
+    <div class="grant-actions">
+      <button class="btn primary" type="button" (click)="save()"
+              [disabled]="!!busyId || !reaches">
+        {{ busyId === agent.agent_id ? "Saving…" : "Give access" }}
+      </button>
+      <span class="grant-summary" *ngIf="reaches">{{ draftSummary }}</span>
+      <span class="grant-summary muted" *ngIf="!reaches">
+        Pick at least one group or person.
+      </span>
+    </div>
+  </section>
+</ng-container>

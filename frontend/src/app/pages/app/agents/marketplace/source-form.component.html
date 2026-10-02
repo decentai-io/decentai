@@ -1,0 +1,95 @@
+<div class="source-form">
+  <div class="form-grid">
+    <label class="field span-2">
+      <span class="field-label">Repository URL</span>
+      <input class="txt" [(ngModel)]="draft.url" name="source-url"
+             placeholder="https://github.com/org/agents.git" />
+    </label>
+
+    <label class="field">
+      <span class="field-label">Name</span>
+      <input class="txt" [(ngModel)]="draft.name" name="source-name"
+             placeholder="Taken from the URL if left empty" />
+    </label>
+
+    <label class="field">
+      <span class="field-label">Branch, tag or commit</span>
+      <input class="txt" [(ngModel)]="draft.ref" name="source-ref" placeholder="main" />
+    </label>
+
+    <label class="field span-2 private-toggle">
+      <input type="checkbox" [(ngModel)]="isPrivate" name="source-private" />
+      <span>Private repository — reads with a credential</span>
+    </label>
+
+    <ng-container *ngIf="isPrivate">
+      <label class="field">
+        <span class="field-label">Username <em>usually leave empty</em></span>
+        <input class="txt" [(ngModel)]="username" name="source-cred-user"
+               placeholder="GitHub, GitLab and Bitbucket ignore it" />
+      </label>
+
+      <label class="field">
+        <span class="field-label">
+          Access token
+          <span class="field-flag lock"><lucide-icon name="lock" [size]="11"></lucide-icon> encrypted</span>
+        </span>
+        <input class="txt" type="password" autocomplete="new-password"
+               [(ngModel)]="token" name="source-cred-token"
+               [placeholder]="hasStoredToken ? '••••••  (unchanged)' : 'A token that may READ the repository'" />
+      </label>
+
+      <small class="field-hint span-2">
+        <lucide-icon name="lock" [size]="12"></lucide-icon>
+        Stored encrypted on this source and never shown back.
+      </small>
+    </ng-container>
+
+    <div class="field span-2">
+      <span class="field-label">Who can see it</span>
+      <app-sharing-selector
+        [mode]="shareMode" (modeChange)="shareMode = $any($event)"
+        [groups]="myGroups" [people]="peers"
+        [selectedGroups]="selectedGroups" [selectedPeople]="selectedUsers"
+        groupLabel="Specific groups" peopleMode="users"
+        (groupToggled)="toggleGroup($event)" (personToggled)="toggleUser($event)">
+      </app-sharing-selector>
+      <small class="field-hint" *ngIf="shareBlocker">{{ shareBlocker }}</small>
+    </div>
+  </div>
+
+  <div class="form-actions">
+    <button class="btn primary" type="button" (click)="submit()"
+            [disabled]="busy || !draft.url.trim() || missingToken || !!shareBlocker">
+      {{ busy ? "Reading…" : editing ? "Save and re-read" : "Save and read catalog" }}
+    </button>
+    <button class="btn ghost" type="button" (click)="cancel.emit()" [disabled]="busy">
+      Cancel
+    </button>
+    <button class="btn ghost" type="button" *ngIf="suggestedUrl && !editing"
+            (click)="useSuggested()" [disabled]="busy">
+      Use the reference catalog
+    </button>
+    <button class="btn ghost guide-toggle" type="button" (click)="guideOpen = !guideOpen">
+      <lucide-icon name="info" [size]="14"></lucide-icon>
+      What does the repository need?
+    </button>
+  </div>
+
+  <!-- The publishing guide, where somebody about to save a source is
+       standing — rather than a page of its own nobody opens. -->
+  <div class="guide" *ngIf="guideOpen">
+    <p>
+      DecentAI reads two files and runs none of your code. One agent needs a
+      <code>manifest.yaml</code> at the repository root; several need a
+      <code>decentai-agents.yaml</code> catalog naming each agent's folder,
+      with a <code>manifest.yaml</code> inside it.
+    </p>
+    <p>
+      The manifest declares what the agent can do — its functions and the
+      permission each needs — and what it wants to keep. That declaration is
+      exactly what an administrator approves, and approving pins the commit,
+      so later pushes never change an install that already happened.
+    </p>
+  </div>
+</div>

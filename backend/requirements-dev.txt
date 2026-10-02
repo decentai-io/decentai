@@ -1,0 +1,6 @@
+# Development / test dependencies. The suite needs a reachable MongoDB
+# (local service or container) — it uses its own decentai_test database.
+#   pip install -r requirements-dev.txt
+#   python -m pytest tests -q
+pytest~=8.4
+httpx~=0.28

@@ -1,0 +1,397 @@
+:host {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* ===== Message column (seamless white, blends with the shell) ===== */
+/* Full width, so the scrollbar belongs to the window edge rather than
+   floating in the middle of the page beside a narrow column. The
+   readable width is imposed further in, on the content itself. */
+.messages {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-height: 0;
+  background: transparent;
+  overflow: hidden;
+}
+
+/* ===== Jump to latest ===== */
+.jump-to-latest {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--card);
+  color: var(--foreground);
+  cursor: pointer;
+  z-index: 6;
+  animation: sys-fade-in 0.2s ease;
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+
+.jump-to-latest:hover {
+  background: var(--secondary);
+  transform: translateX(-50%) translateY(-1px);
+}
+
+/* Out of the docked line's way — they share the bottom of the thread. */
+.jump-to-latest.above-live { bottom: 60px; }
+
+/* ===== THE LIVE LINE =====
+   Docked at the foot of the thread while the assistant works, so what
+   is happening is where the eye already is, however far up the answer
+   has been scrolled. The same line, the same words: when the turn ends
+   this disappears and the settled summary appears under the answer's
+   header. */
+.live-activity {
+  position: absolute;
+  left: 50%;
+  bottom: 12px;
+  transform: translateX(-50%);
+  z-index: 5;
+  max-width: min(var(--chat-thread-column, var(--chat-column, 1040px)), calc(100% - 32px));
+  padding: 7px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--card);
+  animation: sys-fade-in 0.2s ease;
+}
+
+/* Closed, the dock is one line. Opened, it is the way into everything
+   this chat has done — so it grows UPWARD from its anchored foot,
+   never downward over the composer, and caps its own height rather
+   than swallowing the thread behind it. */
+.live-activity .activity { margin: 0; }
+.live-activity .activity-line { padding: 0; }
+.live-activity.is-open {
+  display: flex;
+  flex-direction: column;
+  width: min(var(--chat-thread-column, var(--chat-column, 1040px)), calc(100% - 32px));
+  max-width: none;
+  max-height: min(60vh, 520px);
+  padding: 11px 14px 12px;
+  border-radius: var(--radius-lg);
+}
+.live-activity.is-open .activity { flex: 1; min-height: 0; }
+.live-activity app-chat-activity-panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  margin-top: 9px;
+}
+
+@media (max-width: 640px) {
+  .live-activity { max-width: calc(100% - 20px); padding: 6px 12px; }
+}
+
+.jump-to-latest lucide-icon {
+  width: 20px;
+  height: 20px;
+}
+
+/* ===== Scrollable Area ===== */
+.messages-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 24px 20px 28px;
+}
+
+/* No `scroll-behavior: smooth` here on purpose: it applies to scrolls we
+   make from code too, turning every "go to the end now" into an animation
+   aimed at a height measured before the thread finished growing. The one
+   scroll that should glide asks for it by name instead. */
+
+/* The live line is docked over the foot of the thread, so while it is
+   there the thread ends above it rather than underneath it. */
+.messages-scroll.has-live {
+  padding-bottom: 64px;
+}
+
+/* Custom scrollbar */
+.messages-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+.messages-scroll::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: var(--radius-sm);
+}
+.messages-scroll::-webkit-scrollbar-thumb:hover {
+  background-color: var(--muted-foreground);
+}
+.messages-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ===== Inner Messages ===== */
+.messages-inner,
+.messages-scroll > .empty-state,
+.messages-scroll > .messages-loading {
+  width: min(var(--chat-thread-column, var(--chat-column, 1040px)), 100%);
+  margin-inline: auto;
+}
+
+.messages-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* ===== Empty State ===== */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  min-height: 280px;
+  padding: 2rem;
+  text-align: center;
+  animation: fadeIn 0.4s ease;
+}
+
+.empty-icon-ring {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  /* Emerald, like everything else, and a tint rather than a gradient —
+     the icon two rules down already says that is the rule. */
+  background: var(--chat-accent-soft);
+  border: 1.5px solid color-mix(in srgb, var(--chat-accent) 22%, transparent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 1rem;
+}
+
+.empty-icon {
+  width: 1.8rem;
+  height: 1.8rem;
+  color: var(--chat-accent-strong);   /* emerald — no gradients (brand rule) */
+}
+
+.empty-title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--foreground);
+  margin: 0 0 0.5rem;
+}
+
+.empty-subtitle {
+  font-size: 0.9rem;
+  color: var(--muted-foreground);
+  margin: 0;
+  max-width: 420px;
+  line-height: 1.55;
+}
+
+/* What this chat can reach, and two ways in. Enough to answer "what can
+   I ask?", short of becoming a menu. */
+.empty-openers {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 1.4rem;
+  width: 100%;
+  max-width: 380px;
+}
+
+.opener {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.65rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  background: var(--background);
+  color: var(--foreground);
+  font-size: 0.85rem;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+
+.opener:hover {
+  border-color: color-mix(in srgb, var(--chat-accent) 45%, transparent);
+  background: var(--chat-accent-soft);
+}
+
+.opener lucide-icon {
+  width: 1rem;
+  height: 1rem;
+  color: var(--muted-foreground);
+  flex-shrink: 0;
+}
+
+/* Animation */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.messages-loading {
+  height: 100%;
+  min-height: 240px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+  color: var(--muted-foreground);
+}
+
+.loading-text {
+  font-size: 0.95rem;
+  color: var(--muted-foreground);
+}
+
+.skeleton {
+  width: min(520px, 90%);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.sk-line {
+  height: 10px;
+  border-radius: var(--ui-radius-pill);
+  background: var(--muted);
+  overflow: hidden;
+  position: relative;
+}
+
+.sk-line::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-120%);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--foreground) 6%, transparent),
+    transparent
+  );
+  animation: shimmer 1.1s ease-in-out infinite;
+}
+
+.w-40 {
+  width: 40%;
+}
+.w-60 {
+  width: 60%;
+}
+.w-75 {
+  width: 75%;
+}
+
+@keyframes shimmer {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(220%);
+  }
+}
+.chat-turn {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-bottom: 30px;
+}
+.new-update-count { position: absolute; top: -8px; right: -8px; min-width: 18px; height: 18px; padding: 0 4px; display: grid; place-items: center; border-radius: var(--ui-radius-card); color: white; background: var(--primary); font-size: 10px; font-weight: 700; }
+.older-history { width: min(var(--chat-thread-column, var(--chat-column, 1040px)), 100%); margin: 0 auto 18px; display: flex; justify-content: center; }
+.older-history button { display: inline-flex; align-items: center; gap: 7px; padding: 7px 12px; border: 1px solid var(--border); border-radius: var(--ui-radius-pill); background: var(--card); color: var(--muted-foreground); cursor: pointer; }
+
+@media (max-width: 640px) {
+  .messages-scroll { padding: 16px 12px 22px; }
+  .chat-turn { gap: 10px; margin-bottom: 22px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; transition-duration: .01ms !important; }
+}
+
+/* The thread's readable width — the conversation's own column, wider than
+   the line you write on (chat-detail sets both). */
+.messages-inner {
+  width: min(var(--chat-thread-column, var(--chat-column, 1040px)), 100%);
+  margin-inline: auto;
+}
+.chat-turn { margin-bottom: 32px; }
+
+/* One answer, not three blocks. The assistant may say several things in
+   a turn — a report, then a later note from its own work — and each is
+   its own message, so the turn's gap (14px) stacked with one card's
+   bottom padding (12px) and the next one's top padding (8px): nearly
+   thirty pixels of white through what reads as one answer.
+   The gap belongs to the turn's column, which this file owns; the
+   padding belongs to the card, and is closed in the message's own
+   stylesheet. Only between two assistant messages — the user's message
+   and the approval cards keep their breathing room. */
+.chat-turn > app-chat-message + app-chat-message { margin-top: -14px; }
+
+/* ===== THE ACTIVITY LINE =====
+   What the assistant is doing, as part of its answer: one quiet line
+   under "Assistant", in the answer's own column — live while it works,
+   settled to a summary when it is done, the steps behind it on a click.
+   No card and no background: it is the answer's scaffolding, not a
+   second message. */
+.activity { display: flex; flex-direction: column; gap: 6px; margin: 0 0 12px; }
+.activity-line {
+  display: inline-flex; align-items: center; gap: 8px; align-self: flex-start;
+  max-width: 100%; padding: 2px 6px 2px 0; border: 0; border-radius: var(--radius-md);
+  background: transparent; color: var(--muted-foreground);
+  font: inherit; font-size: 13px; line-height: 1.5; text-align: left; cursor: pointer;
+  transition: color 0.15s ease;
+}
+.activity-line:disabled { cursor: default; }
+.activity-line:not(:disabled):hover { color: var(--foreground); }
+.activity-line:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+.activity-line lucide-icon { display: inline-flex; flex: none; }
+.activity-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.activity-done { color: var(--chat-accent-strong); }
+.activity-waiting { color: var(--foreground); }
+.activity-chevron { transition: transform 0.2s ease; }
+.activity-line[aria-expanded="true"] .activity-chevron { transform: rotate(90deg); }
+
+/* Live: a small ring in the brand colour, and the words shimmer while the
+   work goes on — motion that says "working" without a box around it. */
+.activity-spinner {
+  width: 13px; height: 13px; flex: none; border-radius: 50%;
+  border: 2px solid color-mix(in srgb, var(--primary) 25%, transparent);
+  border-top-color: var(--primary);
+  animation: activity-spin 0.8s linear infinite;
+}
+@keyframes activity-spin { to { transform: rotate(360deg); } }
+.activity--live .activity-label {
+  background: linear-gradient(90deg, var(--muted-foreground) 0%, var(--foreground) 50%, var(--muted-foreground) 100%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  animation: activity-shimmer 2.2s linear infinite;
+}
+@keyframes activity-shimmer {
+  from { background-position: 100% 0; }
+  to   { background-position: -100% 0; }
+}

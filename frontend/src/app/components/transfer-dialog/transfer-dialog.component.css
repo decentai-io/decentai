@@ -1,0 +1,18 @@
+/* The hand-over dialog: a short list of people, one chosen. Tokens come
+   from data-shared.css. */
+
+.transfer-dialog { width: min(520px, 92vw); }
+.transfer-dialog .dialog-body { display: flex; flex-direction: column; gap: 10px; max-height: 60vh; overflow-y: auto; }
+.search-field { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--border-color); border-radius: var(--ui-radius-card); }
+.search-field input { width: 100%; border: 0; outline: 0; background: transparent; color: inherit; }
+.candidates { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.candidate {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 12px; border: 1px solid var(--border); border-radius: var(--ui-radius-card);
+  cursor: pointer; background: var(--surface);
+}
+.candidate:hover { border-color: var(--border-strong); }
+.candidate.on { border-color: var(--accent); background: var(--accent-soft); }
+.candidate-name { font-weight: 600; font-size: var(--ui-text-sm); }
+.candidate-email { color: var(--muted); font-size: var(--ui-text-xs); }
+.transfer-empty { margin: 0; color: var(--muted); font-size: var(--ui-text-sm); }

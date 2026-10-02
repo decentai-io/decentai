@@ -1,0 +1,219 @@
+/* Shared vocabulary of the IAM pages (Users, Groups, Roles, Policies,
+   Organization): the list rows, the editor panel, and the checkbox pickers.
+   Panels, buttons and alerts come from data-shared.css. */
+
+.data-header { display: flex; align-items: flex-start; gap: 16px; }
+.data-header .data-heading { flex: 1; }
+
+/* ── Editor ─────────────────────────────────────────────────────── */
+
+.editor { border-color: var(--accent); }
+
+.editor-fields {
+  display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 16px;
+}
+.field { display: flex; flex-direction: column; gap: 5px; min-width: 200px; }
+.field.grow { flex: 1; min-width: 240px; }
+.field-label {
+  font-size: var(--ui-text-xs); font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.04em; color: var(--muted);
+}
+
+.grid-head { margin: 12px 0 8px; }
+.member-title { font-size: var(--ui-text-sm); color: var(--muted); }
+.member-title strong { color: var(--accent-strong); }
+
+/* Services stack into columns on wide screens — nine of them is a lot of
+   vertical scrolling otherwise. */
+.service-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 10px;
+}
+
+.service {
+  border: 1px solid var(--border);
+  border-radius: var(--ui-radius-card);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.service-head {
+  display: flex; align-items: center; gap: 9px;
+  padding: 9px 11px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+}
+.service-label { font-weight: 600; font-size: var(--ui-text-sm); flex: 1; }
+.service-count {
+  font-size: var(--ui-text-xs); font-weight: 600; color: var(--muted);
+}
+
+/* One checkbox row per pickable thing (action, policy, role, group). */
+.action-list { display: flex; flex-direction: column; padding: 4px; }
+
+.action {
+  display: flex; align-items: flex-start; gap: 9px;
+  padding: 6px 8px; border-radius: var(--ui-radius-sm);
+  cursor: pointer;
+}
+.action:hover { background: var(--surface-2); }
+.action.on { background: var(--accent-soft); }
+
+.action input[type="checkbox"],
+.service-head input[type="checkbox"] {
+  accent-color: var(--accent);
+  width: 15px; height: 15px;
+  flex: none;
+  margin-top: 2px;
+}
+
+.action-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.action-desc { font-size: var(--ui-text-sm); }
+.action-name {
+  font-family: var(--font-mono);
+  font-size: 11px; color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+/* Raw permissions document */
+.advanced-note {
+  display: flex; align-items: flex-start; gap: 8px;
+  margin: 0 0 10px; color: var(--muted); font-size: var(--ui-text-sm);
+  max-width: 72ch;
+}
+.advanced-note lucide-icon { flex: none; margin-top: 1px; }
+
+.policy-json {
+  width: 100%;
+  font-family: var(--font-mono);
+  font-size: var(--ui-text-sm);
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.editor-actions { display: flex; gap: 10px; margin-top: 16px; }
+
+/* ── List rows ──────────────────────────────────────────────────── */
+
+.rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.row {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 12px 0; border-bottom: 1px solid var(--border);
+}
+.row:last-child { border-bottom: none; }
+
+.row-mark {
+  display: grid; place-items: center; flex: none;
+  width: 32px; height: 32px;
+  color: var(--accent-strong); background: var(--accent-soft);
+  border-radius: var(--ui-radius-pill);
+}
+
+.row-id { display: flex; flex-direction: column; gap: 2px; min-width: 220px; flex: 1; }
+.row-name {
+  display: flex; align-items: center; gap: 7px; flex-wrap: wrap;
+  font-weight: 500; font-size: var(--ui-text-base);
+}
+.row-sub { color: var(--muted); font-size: var(--ui-text-sm); }
+.row-meta { color: var(--muted); font-size: var(--ui-text-xs); }
+.grants { color: var(--accent-strong); font-weight: 600; }
+
+.tag {
+  padding: 1px 8px; border-radius: var(--ui-radius-pill);
+  font-size: var(--ui-text-xs); font-weight: 600;
+  color: var(--muted); background: var(--surface-2);
+}
+.tag--off { color: var(--destructive-strong); }
+
+/* An editor that opens inline under its row (the Users page group picker). */
+.row-editor {
+  flex-basis: 100%;
+  padding: 10px 12px; margin-top: 4px;
+  border: 1px solid var(--accent);
+  border-radius: var(--ui-radius-card);
+  background: var(--surface);
+}
+.row-editor .editor-actions { margin-top: 10px; }
+
+/* The one-time invitation link, shown when no email service is set up. */
+.invite-link {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: var(--ui-text-xs);
+  overflow-wrap: anywhere;
+  margin: 6px 0;
+}
+
+/* ── Secrets: the definition builder and the dynamic instance form ── */
+
+.check {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: var(--ui-text-sm); white-space: nowrap; cursor: pointer;
+}
+
+.editor-fields.column { flex-direction: column; align-items: stretch; }
+.field-flag {
+  margin-left: 8px; font-size: var(--ui-text-xs);
+  color: var(--muted); text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.field-flag.lock {
+  display: inline-flex; align-items: center; gap: 3px;
+  color: var(--accent);
+}
+.field-help { font-size: var(--ui-text-xs); color: var(--muted); }
+
+.type-empty { font-size: var(--ui-text-sm); color: var(--muted); }
+
+.share-options {
+  display: grid; grid-template-columns: repeat(2, minmax(180px, 1fr));
+  gap: 8px; margin: 7px 0 10px;
+}
+.share-options > .check {
+  display: flex; align-items: center; gap: 9px; min-height: 44px;
+  padding: 10px 12px; border: 1px solid var(--border);
+  border-radius: var(--ui-radius-card); background: var(--surface);
+  color: var(--foreground); cursor: pointer; transition: border-color .15s ease, background .15s ease;
+}
+.share-options > .check:hover { border-color: var(--border-strong, var(--border)); background: var(--surface-2); }
+.share-options > .check:has(input:checked) {
+  color: var(--accent-strong); border-color: color-mix(in srgb, var(--primary) 42%, var(--border));
+  background: var(--accent-soft);
+}
+.share-options > .check.unavailable { opacity: .52; cursor: not-allowed; }
+.share-options > .check.unavailable:hover { border-color: var(--border); background: var(--surface); }
+.share-options > .check input { margin: 0; accent-color: var(--primary); }
+@media (max-width: 620px) {
+  .share-options { grid-template-columns: 1fr; }
+}
+
+/* ── Tabs (My secrets / Shared with me) ── */
+.tabs {
+  display: flex; gap: 4px; margin-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.tab {
+  padding: 8px 14px; cursor: pointer;
+  font-size: var(--ui-text-sm); font-weight: 500;
+  color: var(--muted);
+  background: none; border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+.tab.on { color: var(--accent); border-bottom-color: var(--accent); }
+.tab:hover { color: var(--ink, inherit); }
+.tab-hint {
+  font-size: var(--ui-text-sm); color: var(--muted);
+  margin: 0 0 10px;
+}
+
+/* Removing a person: what goes and what is handed over, before it happens. */
+.leaving-dialog { width: min(560px, 92vw); }
+.leaving-body { display: flex; flex-direction: column; gap: 12px; }
+.leaving-block { display: flex; flex-direction: column; gap: 3px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--ui-radius-card); }
+.leaving-block strong { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.leaving-block span { font-size: 13.5px; }
+.leaving-block em { margin-top: 4px; color: var(--muted); font-size: 12px; font-style: normal; }
+.leaving-none { margin: 0; color: var(--muted); }

@@ -1,0 +1,266 @@
+<div class="data-page">
+  <header class="data-header">
+    <div class="data-heading">
+      <h1>MCP servers</h1>
+      <p>Remote tool servers you add for your own chats. You decide which of a server's tools are on, and what each costs to call.</p>
+    </div>
+  </header>
+
+  <div class="data-alert error" *ngIf="error && !adding && !deleteTarget">{{ error }}</div>
+  <div class="data-alert ok" *ngIf="notice">{{ notice }}</div>
+
+  <!-- The deployment's switch (Settings → Safety) outranks every switch
+       on this page, so it is said before any of them is read. -->
+  <div class="data-alert error" *ngIf="blocked && !loading">
+    MCP servers are switched off for this deployment, under Settings → Safety.
+    The servers you added stay listed, but no chat can call their tools and
+    none can be added until it is allowed again.
+  </div>
+
+  <div class="data-loading" *ngIf="loading">
+    <span class="ui-spinner" role="status" aria-label="Loading"></span>
+    <span>Loading servers…</span>
+  </div>
+
+  <!-- ── Adding one ─────────────────────────────────────────────── -->
+  <div class="dialog-backdrop" *ngIf="adding" (click)="cancelAdd()">
+    <section class="info-dialog mcp-dialog" role="dialog" aria-modal="true"
+             aria-labelledby="mcp-add-title" (click)="$event.stopPropagation()">
+      <header class="dialog-head">
+        <span class="dialog-icon"><lucide-icon name="server" [size]="21"></lucide-icon></span>
+        <div>
+          <h2 id="mcp-add-title">Add an MCP server</h2>
+          <p>The platform connects once now, to read the tools it offers.</p>
+        </div>
+        <button class="icon-button" type="button" (click)="cancelAdd()" [disabled]="saving" aria-label="Close">
+          <lucide-icon name="x" [size]="19"></lucide-icon>
+        </button>
+      </header>
+
+      <div class="dialog-body">
+        <p class="data-alert error" *ngIf="error">{{ error }}</p>
+        <div class="editor-fields column">
+          <label class="field">
+            <span class="field-label">Name</span>
+            <input class="txt" type="text" [(ngModel)]="formName" maxlength="80"
+                   placeholder="e.g. Project wiki" />
+            <span class="field-help">What you and the assistant will call it.</span>
+          </label>
+          <label class="field">
+            <span class="field-label">Address</span>
+            <input class="txt" type="url" [(ngModel)]="formUrl" maxlength="500"
+                   placeholder="https://mcp.example.com/mcp" autocomplete="off" />
+            <span class="field-help">A remote server, over https. Addresses inside your own network are refused.</span>
+          </label>
+          <div class="field">
+            <span class="field-label">Credential</span>
+            <ng-container *ngTemplateOutlet="credentialFields"></ng-container>
+          </div>
+        </div>
+      </div>
+
+      <footer class="dialog-actions">
+        <button class="btn" type="button" (click)="cancelAdd()" [disabled]="saving">Cancel</button>
+        <button class="btn primary" type="button" (click)="add()" [disabled]="saving || !addReady">
+          {{ saving ? "Connecting…" : "Add server" }}
+        </button>
+      </footer>
+    </section>
+  </div>
+
+  <!-- A credential, as it is given when adding and when replacing. -->
+  <ng-template #credentialFields>
+    <select class="txt sel" [(ngModel)]="credentialKind" aria-label="Kind of credential">
+      <option value="none">None</option>
+      <option value="token">A token</option>
+      <option value="header">A header the server names</option>
+    </select>
+    <input class="txt mcp-secret" type="password" *ngIf="credentialKind === 'token'"
+           [(ngModel)]="formToken" maxlength="4000" placeholder="Token" autocomplete="off"
+           aria-label="Token" />
+    <div class="mcp-header-pair" *ngIf="credentialKind === 'header'">
+      <input class="txt" type="text" [(ngModel)]="formHeader" maxlength="80"
+             placeholder="Header, e.g. X-API-Key" autocomplete="off" aria-label="Header name" />
+      <input class="txt" type="password" [(ngModel)]="formValue" maxlength="4000"
+             placeholder="Value" autocomplete="off" aria-label="Header value" />
+    </div>
+    <span class="field-help">Kept encrypted and sent only to this server. It is never shown again.</span>
+  </ng-template>
+
+  <!-- ── Removing one ───────────────────────────────────────────── -->
+  <div class="dialog-backdrop" *ngIf="deleteTarget" (click)="closeDelete()">
+    <section class="info-dialog mcp-delete" role="alertdialog" aria-modal="true"
+             aria-labelledby="mcp-delete-title" (click)="$event.stopPropagation()">
+      <header class="dialog-head">
+        <span class="dialog-icon danger-dialog-icon"><lucide-icon name="trash-2" [size]="21"></lucide-icon></span>
+        <div>
+          <h2 id="mcp-delete-title">Remove this server?</h2>
+          <p>{{ deleteTarget.keys.name }} · {{ deleteTarget.keys.host }}</p>
+        </div>
+        <button class="icon-button" type="button" (click)="closeDelete()" [disabled]="!!busy" aria-label="Close">
+          <lucide-icon name="x" [size]="19"></lucide-icon>
+        </button>
+      </header>
+      <div class="dialog-body">
+        <p class="mcp-warning">Your chats stop being able to call its tools at once, and its credential is deleted.</p>
+        <div class="data-alert error dialog-error" *ngIf="error">{{ error }}</div>
+      </div>
+      <footer class="dialog-actions">
+        <button class="btn" type="button" (click)="closeDelete()" [disabled]="!!busy">Cancel</button>
+        <button class="btn danger" type="button" (click)="remove(deleteTarget)" [disabled]="!!busy">
+          {{ busy ? "Removing…" : "Remove server" }}
+        </button>
+      </footer>
+    </section>
+  </div>
+
+  <ng-container *ngIf="!loading">
+    <!-- ── The list ─────────────────────────────────────────────── -->
+    <section class="mcp-workspace" *ngIf="!open">
+      <div class="mcp-toolbar" *ngIf="servers.length">
+        <span>{{ servers.length }} {{ servers.length === 1 ? "server" : "servers" }}</span>
+        <button class="btn primary" type="button" *ngIf="canAdd" (click)="startAdd()">
+          <lucide-icon name="plus" [size]="15"></lucide-icon>
+          Add server
+        </button>
+      </div>
+
+      <div class="empty-state" *ngIf="!servers.length">
+        <span class="empty-mark"><lucide-icon name="server" [size]="22"></lucide-icon></span>
+        <strong>No MCP servers yet</strong>
+        <p>
+          An MCP server offers tools the assistant can call: a wiki to
+          search, a tracker to update. Add one by its address, look its
+          tools over, and your chats can use the ones you keep on.
+        </p>
+        <div class="empty-actions" *ngIf="canAdd">
+          <button class="btn primary" type="button" (click)="startAdd()">
+            <lucide-icon name="plus" [size]="15"></lucide-icon>
+            Add a server
+          </button>
+        </div>
+      </div>
+
+      <section class="mcp-document" *ngIf="servers.length">
+        <ul class="rows">
+          <li class="row" *ngFor="let server of servers">
+            <span class="row-mark" aria-hidden="true">
+              <lucide-icon name="server" [size]="15"></lucide-icon>
+            </span>
+            <span class="row-id">
+              <span class="row-name">{{ server.keys.name }}</span>
+              <span class="row-sub">{{ server.keys.host }}</span>
+              <span class="row-meta">
+                {{ server.keys.tools_on }} of {{ server.keys.tool_count }} tools on<ng-container
+                  *ngIf="server.keys.resources"> · offers things to read</ng-container><ng-container
+                  *ngIf="!server.keys.enabled"> · switched off</ng-container><ng-container
+                  *ngIf="blocked"> · cannot be called</ng-container>
+              </span>
+            </span>
+
+            <button class="action-icon-button mcp-power" [class.enabled]="server.keys.enabled" type="button"
+                    (click)="setEnabled(server, !server.keys.enabled)" [disabled]="busy === server.resource_ref"
+                    [attr.aria-label]="server.keys.enabled ? 'Switch server off' : 'Switch server on'"
+                    [matTooltip]="server.keys.enabled ? 'On — click to switch off' : 'Off — click to switch on'">
+              <lucide-icon [name]="server.keys.enabled ? 'circle-check' : 'circle-x'" [size]="16"></lucide-icon>
+            </button>
+            <button class="action-icon-button" type="button" (click)="look(server)"
+                    [disabled]="opening === server.resource_ref"
+                    aria-label="Look over its tools" matTooltip="Look over its tools">
+              <lucide-icon name="list-checks" [size]="16"></lucide-icon>
+            </button>
+            <button class="action-icon-button danger" type="button" (click)="requestDelete(server)"
+                    [disabled]="busy === server.resource_ref"
+                    aria-label="Remove server" matTooltip="Remove server">
+              <lucide-icon name="trash-2" [size]="16"></lucide-icon>
+            </button>
+          </li>
+        </ul>
+        <footer class="mcp-note">
+          <lucide-icon name="shield-check" [size]="14"></lucide-icon>
+          A tool runs on its server, not here. What it returns is that server's word, and a chat asks you first for any tool priced above its own level.
+        </footer>
+      </section>
+    </section>
+
+    <!-- ── One server, looked over ──────────────────────────────── -->
+    <section class="mcp-workspace" *ngIf="open as server">
+      <div class="mcp-toolbar">
+        <button class="btn ghost" type="button" (click)="close()">
+          <lucide-icon name="arrow-left" [size]="15"></lucide-icon>
+          All servers
+        </button>
+        <span class="mcp-toolbar-actions">
+          <button class="btn" type="button" (click)="startReplace()" [disabled]="!!busy || replacing">
+            <lucide-icon name="key-round" [size]="15"></lucide-icon>
+            {{ server.values?.has_credential ? "Replace credential" : "Add credential" }}
+          </button>
+          <button class="btn" type="button" (click)="refresh()" [disabled]="!!busy">
+            <lucide-icon name="refresh-cw" [size]="15"></lucide-icon>
+            {{ busy ? "Reading…" : "Read again" }}
+          </button>
+        </span>
+      </div>
+
+      <section class="mcp-document">
+        <header class="mcp-about">
+          <div>
+            <h2>{{ server.keys.name }}</h2>
+            <p>
+              {{ server.keys.url }}<ng-container *ngIf="server.keys.server"> · calls itself
+              “{{ server.keys.server }}”</ng-container>
+            </p>
+          </div>
+          <span class="mcp-state" [class.off]="!server.keys.enabled || blocked">
+            {{ blocked ? "Off for this deployment" : server.keys.enabled ? "On" : "Switched off" }}
+          </span>
+        </header>
+
+        <form class="mcp-replace" *ngIf="replacing" (submit)="$event.preventDefault(); replace()">
+          <ng-container *ngTemplateOutlet="credentialFields"></ng-container>
+          <span class="mcp-replace-actions">
+            <button class="btn" type="button" (click)="replacing = false" [disabled]="!!busy">Cancel</button>
+            <button class="btn primary" type="submit" [disabled]="!!busy || !credentialReady">Save and read again</button>
+          </span>
+        </form>
+
+        <p class="mcp-empty" *ngIf="!tools.length">
+          This server offers no tools<ng-container *ngIf="server.values?.resources">, only things to read</ng-container>.
+        </p>
+
+        <ul class="mcp-tools" *ngIf="tools.length">
+          <li class="mcp-tool" *ngFor="let tool of tools" [class.off]="!tool.enabled">
+            <label class="mcp-switch">
+              <input type="checkbox" [checked]="tool.enabled" [disabled]="!!busy"
+                     (change)="setSwitch(tool, $any($event.target))"
+                     [attr.aria-label]="(tool.enabled ? 'Switch off ' : 'Switch on ') + tool.name" />
+            </label>
+            <div class="mcp-tool-body">
+              <span class="mcp-tool-name">{{ tool.name }}</span>
+              <span class="mcp-tool-text">{{ tool.description || "The server gives no description." }}</span>
+              <span class="mcp-tool-flag" *ngIf="toolNote(tool)">
+                <lucide-icon name="triangle-alert" [size]="13"></lucide-icon>
+                {{ toolNote(tool) }}
+              </span>
+            </div>
+            <label class="mcp-level">
+              <span>Costs</span>
+              <select class="txt sel" (change)="setLevel(tool, $any($event.target))"
+                      [disabled]="!!busy" [attr.aria-label]="'What ' + tool.name + ' costs to call'">
+                <option *ngFor="let level of levels" [value]="level.value"
+                        [selected]="level.value === tool.level" [title]="level.help">
+                  {{ level.value }} · {{ level.label }}
+                </option>
+              </select>
+            </label>
+          </li>
+        </ul>
+
+        <footer class="mcp-note">
+          <lucide-icon name="shield-check" [size]="14"></lucide-icon>
+          A server does not say what its tools do to the world, so each starts at 3. Lower one you know only reads; a chat asks you first for anything above its own level.
+        </footer>
+      </section>
+    </section>
+  </ng-container>
+</div>

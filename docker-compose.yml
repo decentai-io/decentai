@@ -1,0 +1,134 @@
+# The full self-hosted stack: MongoDB, the one-shot seeder, the backend,
+# the private AI runtime, and Caddy as the single public entry (TLS +
+# SPA + reverse proxy). Every setting comes from one file:
+#
+#   cp deploy.env.example deploy.env   # then fill in every change-me
+#   docker compose --env-file deploy.env up -d --build
+#
+# Only Caddy publishes ports; everything else lives on the private
+# compose network.
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME:?set in deploy.env}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:?set in deploy.env}
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # One-shot and idempotent: seeds the organization, the access chains,
+  # the admin user, and the starter secret definitions, then exits.
+  init:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    env_file: deploy.env
+    command: ["python", "/opt/decentai/bootstrap/init_db.py"]
+    restart: "no"
+    depends_on:
+      mongo:
+        condition: service_healthy
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    env_file: deploy.env
+    volumes:
+      - uploads_data:/data/uploads
+      # Approved agent code, one folder per organization. The only copy
+      # the platform controls: a repository can be deleted or
+      # force-pushed, this cannot.
+      - agent_packages:/data/agent-packages
+    depends_on:
+      mongo:
+        condition: service_healthy
+      init:
+        condition: service_completed_successfully
+
+  # The runtime has no database — everything durable goes through the
+  # backend's delegation surface, so it depends on nothing at start.
+  #
+  # It is handed its settings by name, never the file: agent code runs
+  # in this container, and the database's password, the encryption keys
+  # and the backend's private key are not this container's to hold. A
+  # name with no value is passed on when deploy.env (or the shell)
+  # sets it, and is absent when neither does.
+  ai-runtime:
+    build:
+      context: .
+      dockerfile: ai_runtime/Dockerfile
+    restart: unless-stopped
+    # The right to set one firewall rule, in this container's own
+    # network and nowhere else: the users kept for agents' workers
+    # reach the runtime's proxy and nothing else. It is used once, at
+    # start, and the runtime itself never holds it
+    # (docs/system/sandbox.md). Without it the stack runs all the same,
+    # and says that nothing holds an agent to the hosts it declared.
+    cap_add:
+      - NET_ADMIN
+    environment:
+      BACKEND_SERVICE_PUBLIC_KEY: ${BACKEND_SERVICE_PUBLIC_KEY:?set in deploy.env}
+      BACKEND_INTERNAL_URL: ${BACKEND_INTERNAL_URL:-http://backend:8000}
+      AI_RUNTIME_AGENTS_INSTALL_DIR: ${AI_RUNTIME_AGENTS_INSTALL_DIR:-/data/agents}
+      AI_RUNTIME_HOST:
+      AI_RUNTIME_PORT:
+      AI_RUNTIME_EGRESS_PORT:
+      # where an agent's declared packages come from
+      AI_RUNTIME_PACKAGE_HOSTS:
+      PIP_INDEX_URL:
+      PIP_EXTRA_INDEX_URL:
+      PIP_TRUSTED_HOST:
+      PIP_CERT:
+      BACKEND_TOKEN_ISSUER:
+      AI_RUNTIME_TOKEN_AUDIENCE:
+      LOG_LEVEL:
+      TZ:
+      # how this machine reaches the internet, and whom it trusts
+      HTTP_PROXY:
+      HTTPS_PROXY:
+      NO_PROXY:
+      SSL_CERT_FILE:
+      REQUESTS_CA_BUNDLE:
+      # the platform's knobs for agents, passed on to their workers
+      DECENTAI_WEB_ALLOW_LOOPBACK:
+      DECENTAI_BROWSER_MAX:
+      DECENTAI_BROWSER_IDLE_SECONDS:
+      DECENTAI_BROWSER_HEADLESS:
+      DECENTAI_BROWSER_PROMPT_CHARS:
+      DECENTAI_BROWSER_FOLD_EVERY:
+      DECENTAI_CODE_RUN_SECONDS:
+    volumes:
+      - agents_data:/data/agents
+
+  caddy:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    restart: unless-stopped
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:?set in deploy.env}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  agents_data:
+  agent_packages:
+  mongo_data:
+  uploads_data:
+  caddy_data:
+  caddy_config:

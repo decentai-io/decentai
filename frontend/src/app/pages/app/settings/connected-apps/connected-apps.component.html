@@ -1,0 +1,232 @@
+<!-- A tab of the Settings page: the page owns the header. -->
+<div class="apps-tab">
+
+  <div class="data-alert error" *ngIf="error && !editingId && editingId !== ''">{{ error }}</div>
+  <div class="data-alert ok" *ngIf="notice">{{ notice }}</div>
+
+  <div class="data-loading" *ngIf="loading">
+    <span class="ui-spinner" role="status" aria-label="Loading"></span>
+    <span>Loading connected apps…</span>
+  </div>
+
+  <section class="apps-workspace" *ngIf="!loading">
+
+    <header class="apps-overview">
+      <span class="overview-mark" aria-hidden="true"><lucide-icon name="globe" [size]="20"></lucide-icon></span>
+      <div class="overview-copy">
+        <h2>Provider apps</h2>
+        <p>Register each provider once so everyone can connect accounts without handling its secret.</p>
+      </div>
+      <button class="btn primary add-icon-button" type="button" *ngIf="canCreate"
+              (click)="startCreate()" aria-label="Register provider app" matTooltip="Register provider app">
+        <lucide-icon name="plus" [size]="18"></lucide-icon>
+      </button>
+    </header>
+
+    <!-- What a Connect button is waiting on, with the answer beside it. -->
+    <div class="missing-card" *ngFor="let need of missing">
+      <lucide-icon name="circle-alert" [size]="16"></lucide-icon>
+      <span>
+        <strong>{{ need.needed_by.join(", ") }}</strong>
+        {{ need.needed_by.length === 1 ? "needs" : "need" }} a
+        <code>{{ need.provider }}</code> app before anyone can connect an account.
+      </span>
+      <button class="action-icon-button" type="button" *ngIf="canCreate" (click)="startCreate(need.provider)"
+              [attr.aria-label]="'Register ' + labelFor(need.provider)"
+              [matTooltip]="'Register ' + labelFor(need.provider)">
+        <lucide-icon name="plus" [size]="16"></lucide-icon>
+      </button>
+    </div>
+
+    <div class="empty-state" *ngIf="!apps.length && !missing.length && editingId === null">
+      <span class="empty-mark"><lucide-icon name="globe" [size]="22"></lucide-icon></span>
+      <strong>No provider apps yet</strong>
+      <p>
+        Agents that connect to Gmail, Outlook or Slack need one. Until a provider is
+        registered here, their Connect button tells people to ask you.
+      </p>
+    </div>
+
+    <!-- Before the inventory, not after it: this URL is what a person
+         needs in the provider's console BEFORE they can register
+         anything here, so it reads as the first step rather than a
+         footnote to a list they cannot fill in yet. It waits for the
+         empty state above, which explains why the list is bare. -->
+    <div class="redirect-card" *ngIf="redirectUri">
+      <span class="redirect-mark" aria-hidden="true"><lucide-icon name="arrow-right-left" [size]="16"></lucide-icon></span>
+      <div class="redirect-copy">
+        <strong>OAuth redirect URL</strong>
+        <span>Add this URL to each provider's authorized redirect URLs.</span>
+      </div>
+      <code class="redirect-uri" (click)="copyRedirect()">{{ redirectUri }}</code>
+      <button class="action-icon-button" type="button" (click)="copyRedirect()"
+              aria-label="Copy redirect URL" [matTooltip]="copied ? 'Copied' : 'Copy redirect URL'">
+        <lucide-icon [name]="copied ? 'check' : 'copy'" [size]="16"></lucide-icon>
+      </button>
+    </div>
+
+    <section class="apps-document" *ngIf="apps.length">
+      <header class="document-head">
+        <div><h3>Registered apps</h3><p>{{ apps.length }} configured</p></div>
+        <lucide-icon name="shield-check" [size]="15"></lucide-icon>
+      </header>
+      <ul class="rows">
+      <li class="row" *ngFor="let app of apps">
+        <span class="row-mark" aria-hidden="true">
+          <lucide-icon name="globe" [size]="15"></lucide-icon>
+        </span>
+        <span class="row-id">
+          <span class="row-name">
+            {{ labelFor(app.provider) }}
+            <code class="provider-id">{{ app.provider }}</code>
+          </span>
+          <span class="row-meta">
+            client id <code class="client-id">{{ app.client_id }}</code>
+            <ng-container *ngIf="app.has_secret === false"> · no secret</ng-container>
+            <ng-container *ngIf="app.endpoints?.token_url"> · tokens at {{ hostOf(app.endpoints!.token_url) }}</ng-container>
+            <ng-container *ngIf="neededBy(app.provider)"> · used by {{ neededBy(app.provider) }}</ng-container>
+          </span>
+        </span>
+        <button class="action-icon-button" type="button" *ngIf="canUpdate" (click)="startEdit(app)"
+                aria-label="Rotate app credentials" matTooltip="Rotate app credentials"
+                [disabled]="busyId === app.resource_ref">
+          <lucide-icon name="refresh-cw" [size]="16"></lucide-icon>
+        </button>
+        <button class="action-icon-button danger" type="button" *ngIf="canDelete" (click)="requestDelete(app)"
+                aria-label="Remove connected app" matTooltip="Remove connected app"
+                [disabled]="busyId === app.resource_ref">
+          <lucide-icon name="trash-2" [size]="16"></lucide-icon>
+        </button>
+      </li>
+      </ul>
+      <footer class="security-note">
+        <lucide-icon name="lock" [size]="14"></lucide-icon>
+        Client secrets are encrypted and cannot be read back after saving.
+      </footer>
+    </section>
+
+  </section>
+
+  <!-- ── Editor ─────────────────────────────────────────────────────── -->
+  <div class="dialog-backdrop" *ngIf="editingId !== null" (click)="closeEditor()">
+    <section class="info-dialog" role="dialog" aria-modal="true" aria-labelledby="app-editor-title"
+             (click)="$event.stopPropagation()">
+      <header class="dialog-head">
+        <span class="dialog-icon"><lucide-icon name="globe" [size]="21"></lucide-icon></span>
+        <div>
+          <h2 id="app-editor-title">{{ isCreating ? "Register an app" : "Rotate " + labelFor(draft.provider) }}</h2>
+          <p *ngIf="isCreating && secretRequired">
+            Create a <em>web application</em> OAuth client in the provider's console with the
+            redirect URL shown on this page, then paste what it gives you.
+          </p>
+          <!-- On a desktop: what to choose in the provider's console is
+               not what a server would choose, so it is said. -->
+          <p *ngIf="isCreating && !secretRequired">{{ steps }}</p>
+          <p *ngIf="!isCreating && showsSecret">A blank secret keeps the stored one.</p>
+        </div>
+        <button class="icon-button" type="button" (click)="closeEditor()" [disabled]="saving" aria-label="Close">
+          <lucide-icon name="x" [size]="19"></lucide-icon>
+        </button>
+      </header>
+      <div class="dialog-body app-form">
+        <label class="field" *ngIf="isCreating">
+          <span class="field-label">Provider</span>
+          <select class="txt sel" [ngModel]="providerChoice" (ngModelChange)="chooseProvider($event)">
+            <option value="" disabled>Choose a provider…</option>
+            <optgroup label="Needed by installed agents" *ngIf="missing.length">
+              <option *ngFor="let need of missing" [value]="need.provider">
+                {{ labelFor(need.provider) }} — {{ need.needed_by.join(", ") }}
+              </option>
+            </optgroup>
+            <optgroup label="Known providers" *ngIf="suggested.length">
+              <option *ngFor="let k of suggested" [value]="k.id">{{ k.label }}</option>
+            </optgroup>
+            <option value="other">Another provider…</option>
+          </select>
+          <input class="txt" *ngIf="providerChoice === 'other'" [(ngModel)]="draft.provider"
+                 placeholder="the id the agent's manifest names, e.g. zendesk" autocomplete="off" />
+          <span class="field-help" *ngIf="providerChoice === 'other' && draft.provider && !providerValid">
+            Lowercase letters, digits and underscores, starting with a letter — exactly as the manifest spells it.
+          </span>
+          <span class="field-help" *ngIf="providerChoice && providerChoice !== 'other'">
+            Agents whose credential names <code>{{ draft.provider }}</code> connect through this registration.
+            <a *ngIf="consoleFor(draft.provider)" [href]="consoleFor(draft.provider)" target="_blank" rel="noopener">
+              Open the {{ labelFor(draft.provider) }} console
+            </a>
+          </span>
+        </label>
+        <!-- Where the provider is. The client secret goes to the token
+             address and a person's tokens to it and the identity one, so
+             it is settled here, by whoever registers the app — and an
+             agent naming other addresses cannot connect through it. -->
+        <div class="field" *ngIf="providerValid">
+          <span class="field-label">Sign-ins go to</span>
+          <select class="txt sel" *ngIf="addressOptions.length > 1" [(ngModel)]="addressChoice">
+            <option *ngFor="let option of addressOptions; let i = index" [ngValue]="i">{{ option.label }}</option>
+          </select>
+          <ng-container *ngIf="addressOptions.length; else typed">
+            <span class="field-help">
+              consent at <code>{{ chosenAddresses.authorize_url }}</code>,
+              tokens at <code>{{ chosenAddresses.token_url }}</code><ng-container *ngIf="chosenAddresses.identity_url">,
+              whose account at <code>{{ chosenAddresses.identity_url }}</code></ng-container>
+            </span>
+            <span class="field-help" *ngIf="addressOptions.length > 1">
+              The installed agents name different addresses for this provider. Agents naming
+              others than the ones chosen cannot connect through this app.
+            </span>
+          </ng-container>
+          <ng-template #typed>
+            <span class="field-help">No installed agent connects to this provider yet, so say where it is.</span>
+            <input class="txt" [(ngModel)]="typedAddresses.authorize_url" placeholder="https:// consent address" autocomplete="off" />
+            <input class="txt" [(ngModel)]="typedAddresses.token_url" placeholder="https:// token address" autocomplete="off" />
+            <input class="txt" [(ngModel)]="typedAddresses.identity_url" placeholder="https:// who-am-I address (optional)" autocomplete="off" />
+          </ng-template>
+        </div>
+        <label class="field">
+          <span class="field-label">Client id</span>
+          <input class="txt" [(ngModel)]="draft.client_id" autocomplete="off" />
+        </label>
+        <label class="field" *ngIf="showsSecret">
+          <span class="field-label">
+            Client secret
+            <span class="field-flag" *ngIf="secretOptional">optional</span>
+            <span class="field-flag lock"><lucide-icon name="lock" [size]="11"></lucide-icon> encrypted</span>
+          </span>
+          <input class="txt" type="password" [(ngModel)]="draft.client_secret" autocomplete="new-password"
+                 [placeholder]="isCreating ? '' : '••••••  (unchanged)'" />
+        </label>
+        <div class="data-alert error dialog-error" *ngIf="error">{{ error }}</div>
+      </div>
+      <footer class="dialog-actions">
+        <button class="btn" type="button" (click)="closeEditor()" [disabled]="saving">Cancel</button>
+        <button class="btn primary" type="button" (click)="save()" [disabled]="!canSubmit">
+          {{ saving ? "Saving…" : isCreating ? "Register" : "Save" }}
+        </button>
+      </footer>
+    </section>
+  </div>
+
+  <!-- ── Removing ───────────────────────────────────────────────────── -->
+  <div class="dialog-backdrop" *ngIf="deleteTarget as app" (click)="closeDelete()">
+    <section class="info-dialog delete-dialog" role="alertdialog" aria-modal="true"
+             aria-labelledby="app-delete-title" (click)="$event.stopPropagation()">
+      <header class="dialog-head">
+        <span class="dialog-icon danger-dialog-icon"><lucide-icon name="trash-2" [size]="21"></lucide-icon></span>
+        <div>
+          <h2 id="app-delete-title">Remove the {{ labelFor(app.provider) }} app?</h2>
+          <p>Nobody can connect a new {{ labelFor(app.provider) }} account, and connected ones stop
+             refreshing once their tokens expire — each will ask to be reconnected.</p>
+        </div>
+        <button class="icon-button" type="button" (click)="closeDelete()" [disabled]="!!busyId" aria-label="Close">
+          <lucide-icon name="x" [size]="19"></lucide-icon>
+        </button>
+      </header>
+      <footer class="dialog-actions">
+        <button class="btn" type="button" (click)="closeDelete()" [disabled]="!!busyId">Keep it</button>
+        <button class="btn danger" type="button" (click)="remove(app)" [disabled]="!!busyId">
+          {{ busyId ? "Removing…" : "Remove" }}
+        </button>
+      </footer>
+    </section>
+  </div>
+</div>
