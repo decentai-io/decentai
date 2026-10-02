@@ -143,6 +143,27 @@ class TestTheFirstRun:
             installation.first_run(release(), EMAIL, PASSWORD)
         assert not installation.settings.installed
 
+    def test_a_first_run_that_did_not_finish_is_carried_on_with_its_keys(
+            self, installation, engine):
+        """The stack did not come up — an engine's quirk, a full disk.
+        Running it again keeps the keys and the port the first try
+        made, since the database was made with them."""
+        engine.states["backend"] = "exited"
+        with pytest.raises(InstallationError):
+            installation.first_run(release(), EMAIL, PASSWORD, port=5000)
+        assert installation.settings.begun
+        before = {name: text for name, text in state_files(installation).items()
+                  if name.endswith(".env")}
+        engine.states["backend"] = "healthy"
+        engine.asked.clear()
+
+        address = installation.first_run(release(), EMAIL, PASSWORD)
+        assert address == "http://localhost:5000"
+        after = state_files(installation)
+        assert {name: after[name] for name in before} == before
+        assert engine.stack() == ["--profile seed run --rm init", "up -d"]
+        assert installation.settings.installed and not installation.settings.begun
+
 
 class TestEveryDay:
     def test_start_starts_what_is_installed(self, installed, engine):

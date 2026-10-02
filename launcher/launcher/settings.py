@@ -64,6 +64,26 @@ class Settings:
     def installed(self) -> bool:
         return (self.state / self.INSTALL).is_file()
 
+    @property
+    def begun(self) -> bool:
+        """A first run made this install's settings, and its keys with
+        them, and did not get as far as recording an install."""
+        return (self.state / self.BACKEND).is_file() and not self.installed
+
+    def begun_port(self) -> int:
+        """The port a first run that did not finish wrote the settings
+        for: the address the backend was told it is opened at."""
+        try:
+            text = (self.state / self.BACKEND).read_text(encoding="utf-8")
+        except OSError:
+            return self.DEFAULT_PORT
+        for line in text.splitlines():
+            if line.startswith("PUBLIC_APP_URL="):
+                tail = line.rsplit(":", 1)[-1].strip().rstrip("/")
+                if tail.isdigit():
+                    return int(tail)
+        return self.DEFAULT_PORT
+
     def install(self) -> Dict[str, Any]:
         """What is installed, as it was last written; {} before the
         first run."""

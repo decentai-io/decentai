@@ -79,14 +79,22 @@ class Installation:
 
         self._must_reach_the_engine()
         self._pull(release)
-        self.say("Making this install's keys…")
-        private, public = self._service_keys(release.images["backend"])
-        keys, active = self._encryption_keys(release.images["backend"])
-        self.settings.write(
-            port=port, organization=name or "DecentAI",
-            token_key=secrets.token_urlsafe(48),
-            service_private_key=private, service_public_key=public,
-            encryption_keys=keys, encryption_active=active)
+        if self.settings.begun:
+            # An earlier first run made the keys, perhaps the database
+            # with them, and stopped before it was up. Keys made twice
+            # are a database nobody can read, so it is carried on with
+            # what is there: the seeder creates nobody a second time.
+            self.say("Carrying on with the install that was begun…")
+            port = self.settings.begun_port()
+        else:
+            self.say("Making this install's keys…")
+            private, public = self._service_keys(release.images["backend"])
+            keys, active = self._encryption_keys(release.images["backend"])
+            self.settings.write(
+                port=port, organization=name or "DecentAI",
+                token_key=secrets.token_urlsafe(48),
+                service_private_key=private, service_public_key=public,
+                encryption_keys=keys, encryption_active=active)
 
         self._use(release.images, port)
         self.say("Preparing the database…")

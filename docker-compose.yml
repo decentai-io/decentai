@@ -47,6 +47,15 @@ services:
       # the platform controls: a repository can be deleted or
       # force-pushed, this cannot.
       - agent_packages:/data/agent-packages
+    # Said here, not left to the image: Podman keeps an image's own
+    # health check only for images in Docker's format, and a published
+    # image is not in it.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=4)"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
     depends_on:
       mongo:
         condition: service_healthy
@@ -121,6 +130,12 @@ services:
     volumes:
       - caddy_data:/data
       - caddy_config:/config
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:2019/config/"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
     depends_on:
       backend:
         condition: service_healthy
