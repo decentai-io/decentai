@@ -56,6 +56,46 @@ class Harness:
         return self
 
 
+class TestAModelThatDoesNotAnswer:
+    """The person is told why, in the provider's own words: a mistyped
+    model name must not need the logs to be found."""
+
+    class Refusal(Exception):
+        def __init__(self, status_code, said):
+            super().__init__(said)
+            self.status_code = status_code
+
+    def said_after(self, failure):
+        harness = Harness([])
+
+        async def chat(messages, max_tokens=None, tools=None):
+            raise failure
+
+        harness.connector.chat = chat
+        run(harness.user("hello").assistant.run())
+        [said] = harness.said
+        return said["text"]
+
+    def test_a_refused_key_says_so_with_the_providers_words(self):
+        said = self.said_after(self.Refusal(401, "invalid x-api-key"))
+        assert "refused the API key" in said and "invalid x-api-key" in said
+        assert "Settings → Language models" in said
+
+    def test_an_unknown_model_and_an_empty_account_are_told_apart(self):
+        assert "does not know this model" in self.said_after(
+            self.Refusal(404, "model: nope"))
+        assert "out of credit" in self.said_after(self.Refusal(429, "quota"))
+        assert "failed on its side" in self.said_after(self.Refusal(503, "busy"))
+
+    def test_a_provider_that_cannot_be_reached(self):
+        said = self.said_after(ConnectionError("Connection error."))
+        assert "could not be reached at the connection's address" in said
+
+    def test_the_providers_words_are_kept_short(self):
+        said = self.said_after(self.Refusal(400, "x" * 5000))
+        assert len(said) < 600
+
+
 class TestTheCycle:
     def test_say_and_finish_answers_and_idles(self):
         harness = Harness([

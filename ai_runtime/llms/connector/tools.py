@@ -82,6 +82,11 @@ def anthropic_tools(tools: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return converted
 
 
+class NoModel(RuntimeError):
+    """A chat that has no model to think with. The message is the
+    platform's own sentence for why, already written for the person."""
+
+
 def is_tool_choice_refusal(exc: Exception) -> bool:
     """Whether a provider rejected the request over tool_choice — the
     one option OpenAI-compatible servers most often lack."""

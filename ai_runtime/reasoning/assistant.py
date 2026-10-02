@@ -36,7 +36,7 @@ from contracts.chat import agent_source
 from contracts.cron import zone
 from ai_runtime.execution.executor import FunctionExecutor
 from ai_runtime.llms.connector.tools import (
-    is_context_overflow, is_image_refusal, text_block)
+    NoModel, is_context_overflow, is_image_refusal, text_block)
 from ai_runtime.reasoning.actions import (
     ACTION_TOOLS, FINISH_REASONS, FunctionTools,
 )
@@ -444,10 +444,7 @@ class Assistant:
             response = reply.content
         except Exception as exc:
             self.logger.error(f"Model call failed: {exc}")
-            await self._say_raw(
-                "The language model is unavailable — please try again "
-                "shortly."
-            )
+            await self._say_raw(self._model_failure(exc))
             return True
 
         if self._cut_off(reply):
@@ -498,6 +495,42 @@ class Assistant:
                            f"per beat.",
             })
         return await self._act(action, implicit=implicit)
+
+    #: What a provider's refusal means, by the status it answered with.
+    MODEL_REFUSALS = {
+        400: "The provider refused the request",
+        401: "The provider refused the API key",
+        403: "The provider refused access with this key",
+        404: "The provider does not know this model, or the connection's "
+             "address is not its API's",
+        429: "The provider is limiting requests, or the account is out "
+             "of credit",
+    }
+    #: How much of the provider's own words is passed on.
+    MODEL_REASON_MAX_CHARS = 300
+
+    @classmethod
+    def _model_failure(cls, exc: Exception) -> str:
+        """Why the model did not answer, for the person: what kind of
+        failure it was, and the provider's own words for it. A sentence
+        that only said "unavailable" sent people to the logs for a
+        mistyped model name."""
+        if isinstance(exc, NoModel):
+            return f"The language model is unavailable. {exc}"
+        status = getattr(exc, "status_code", None)
+        if status in cls.MODEL_REFUSALS:
+            what = cls.MODEL_REFUSALS[status]
+        elif isinstance(status, int) and status >= 500:
+            what = "The provider failed on its side"
+        elif isinstance(status, int):
+            what = f"The provider refused the request ({status})"
+        else:
+            what = ("The provider could not be reached at the connection's "
+                    "address")
+        said = " ".join(str(exc).split())[: cls.MODEL_REASON_MAX_CHARS]
+        return (f"The language model is unavailable. {what}. "
+                + (f"It said: {said} " if said else "")
+                + "The connection is set under Settings → Language models.")
 
     #: How providers say a reply stopped at the output cap.
     CUT_OFF = ("length", "max_tokens")

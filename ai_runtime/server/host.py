@@ -26,6 +26,7 @@ from ai_runtime.chat import Session
 from ai_runtime.execution.executor import FunctionExecutor
 from ai_runtime.execution.grants import FunctionGrants
 from ai_runtime.llms import LLMConnectorFactory
+from ai_runtime.llms.connector.tools import NoModel
 from ai_runtime.runtime_logging import RuntimeLoggerFactory
 from contracts.chat import CHAT_PROTOCOL_VERSION
 
@@ -70,7 +71,7 @@ class MissingModel:
         self.sentence = sentence
 
     async def chat(self, messages, max_tokens=None, tools=None) -> str:
-        raise RuntimeError(self.sentence)
+        raise NoModel(self.sentence)
 
 
 class RelayingServices:
