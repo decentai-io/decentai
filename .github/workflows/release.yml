@@ -31,6 +31,8 @@ jobs:
         run: echo "number=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
       # Both processor types a laptop has: Intel and AMD, and ARM.
+      # Layers are kept between releases, so one that did not change
+      # is not built again.
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
@@ -43,6 +45,8 @@ jobs:
         id: backend
         uses: docker/build-push-action@v6
         with:
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,scope=backend,mode=max
           context: .
           file: backend/Dockerfile
           platforms: linux/amd64,linux/arm64
@@ -53,6 +57,8 @@ jobs:
         id: runtime
         uses: docker/build-push-action@v6
         with:
+          cache-from: type=gha,scope=runtime
+          cache-to: type=gha,scope=runtime,mode=max
           context: .
           file: ai_runtime/Dockerfile
           platforms: linux/amd64,linux/arm64
@@ -63,6 +69,8 @@ jobs:
         id: frontend
         uses: docker/build-push-action@v6
         with:
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,scope=web,mode=max
           context: .
           file: frontend/Dockerfile
           platforms: linux/amd64,linux/arm64
@@ -94,6 +102,8 @@ jobs:
         id: launcher
         uses: docker/build-push-action@v6
         with:
+          cache-from: type=gha,scope=launcher
+          cache-to: type=gha,scope=launcher,mode=max
           context: .
           file: launcher/Dockerfile
           platforms: linux/amd64,linux/arm64
