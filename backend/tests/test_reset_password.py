@@ -51,7 +51,7 @@ class TestForgottenWithNoEmail:
     def forgot(app, email):
         return TestClient(app).post("/auth/password/forgot", json={"email": email})
 
-    def test_a_desktop_points_at_the_command(self, app, seed, monkeypatch):
+    def test_a_desktop_points_at_the_app(self, app, seed, monkeypatch):
         import dataclasses
 
         from server.setup.app_state import get_state
@@ -61,7 +61,7 @@ class TestForgottenWithNoEmail:
                             dataclasses.replace(state.settings, deployment_kind="desktop"))
         answer = self.forgot(app, ADMIN_EMAIL).json()
         assert answer["requested"] is False
-        assert "DecentAI.cmd reset-password" in answer["message"]
+        assert "open the DecentAI app and choose Reset a password" in answer["message"]
 
     def test_a_server_says_who_to_ask(self, app, seed):
         answer = self.forgot(app, ADMIN_EMAIL).json()

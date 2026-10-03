@@ -67,6 +67,18 @@ Closing the window leaves an icon by the clock (the menu bar on a Mac),
 with Open, Start and Stop in its menu. DecentAI itself keeps running
 whether the app is open or not.
 
+## More than one person
+
+DecentAI on your computer is yours, and others may use it on the same
+computer. **Admin → Users → Add person**: their name, their email — it
+is only how they sign in, nothing is sent to it — and the groups they
+are in. You are shown a temporary password once; hand it over. They
+sign in with it and are asked at once for a password of their own.
+
+When someone forgets theirs, **Reset password** on their row gives you a
+new temporary one. When you forget yours, **Reset a password** in the
+app.
+
 ## From a command line
 
 The app is the way in for a person; the same things, and a few more,

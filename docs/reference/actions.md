@@ -9,7 +9,7 @@ the actions a chat's delegation may call, and nothing else.
 Generated from `backend/server/authentication/catalog.py` by
 `docs/reference/generate.py`; do not edit by hand.
 
-179 actions in 34 services; 50 baseline.
+181 actions in 34 services; 50 baseline.
 
 ## Own account
 
@@ -32,6 +32,8 @@ Generated from `backend/server/authentication/catalog.py` by
 |---|---|---|---|
 | `iam:user:list` | View users |  |  |
 | `iam:user:get` | View one user |  |  |
+| `iam:user:create` | Add a person and hand them a temporary password, where no invitation can be sent |  |  |
+| `iam:user:reset_password` | Give a person who forgot their password a temporary one |  |  |
 | `iam:user:update` | Edit a user's profile |  |  |
 | `iam:user:set_groups` | Place a user into groups |  |  |
 | `iam:user:set_status` | Disable or re-enable a user |  |  |

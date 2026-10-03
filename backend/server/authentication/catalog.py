@@ -193,6 +193,13 @@ ACTION_CATALOG: Dict[str, Dict[str, Any]] = {
         "actions": {
             "iam:user:list": "View users",
             "iam:user:get": "View one user",
+            "iam:user:create": (
+                "Add a person and hand them a temporary password, where "
+                "no invitation can be sent"
+            ),
+            "iam:user:reset_password": (
+                "Give a person who forgot their password a temporary one"
+            ),
             "iam:user:update": "Edit a user's profile",
             "iam:user:set_groups": "Place a user into groups",
             "iam:user:set_status": "Disable or re-enable a user",

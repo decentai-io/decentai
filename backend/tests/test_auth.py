@@ -1,5 +1,6 @@
 """Authentication flows: login, sessions, throttle, passwords, invitations."""
 
+import pytest
 from fastapi.testclient import TestClient
 
 from conftest import ADMIN_EMAIL, ADMIN_PASSWORD, app_call
@@ -52,6 +53,121 @@ class TestLogin:
     def test_logout_revokes_the_session_server_side(self, admin):
         assert admin.post("/auth/logout").status_code == 200
         assert admin.get("/auth/me").status_code == 401
+
+
+class TestAHandedOverPassword:
+    """An administrator adds a person, or resets their password, and
+    hands over a temporary one. It opens nothing until the person has
+    chosen their own."""
+
+    EMAIL = "sara@test.org"
+
+    @pytest.fixture
+    def desktop(self, app):
+        import dataclasses
+        from server.setup.app_state import get_state
+        state = get_state()
+        original = state.settings
+        state.settings = dataclasses.replace(original, deployment_kind="desktop")
+        yield
+        state.settings = original
+
+    def add(self, admin):
+        response = app_call(admin, "IAM:User:create", {
+            "email": self.EMAIL, "user_name": "Sara"})
+        assert response.status_code == 200, response.text
+        return response.json()
+
+    def test_added_with_a_password_shown_once(self, admin, seed, desktop):
+        body = self.add(admin)
+        assert body["user"]["email"] == self.EMAIL
+        assert body["user"]["must_change_password"] is True
+        password = body["password"]
+        assert len(password) == 17 and password.count("-") == 2
+        from database.stores import UserStore
+        assert password not in str(UserStore().get_by_email(self.EMAIL))
+
+    def test_it_signs_nobody_in_until_they_choose_their_own(
+            self, admin, anon, seed, desktop):
+        password = self.add(admin)["password"]
+
+        refused = anon.post("/auth/login", json={
+            "email": self.EMAIL, "password": password})
+        assert refused.status_code == 403
+        assert refused.json()["change_required"] is True
+        assert "set-cookie" not in refused.headers
+        assert anon.get("/auth/me").status_code == 401
+
+        same = anon.post("/auth/password/first", json={
+            "email": self.EMAIL, "current_password": password,
+            "new_password": password})
+        assert same.status_code == 400 and "different" in same.text
+
+        chosen = anon.post("/auth/password/first", json={
+            "email": self.EMAIL, "current_password": password,
+            "new_password": "MyOwnPassword77"})
+        assert chosen.status_code == 200
+        assert chosen.json()["user"]["must_change_password"] is False
+        assert anon.get("/auth/me").status_code == 200
+
+        # The handed-over one is spent, and the door closed behind it.
+        again = anon.post("/auth/password/first", json={
+            "email": self.EMAIL, "current_password": "MyOwnPassword77",
+            "new_password": "AnotherOne8888"})
+        assert again.status_code == 400 and "already has a password" in again.text
+        assert anon.post("/auth/login", json={
+            "email": self.EMAIL, "password": password}).status_code == 401
+
+    def test_a_wrong_handed_over_password_chooses_nothing(
+            self, admin, anon, seed, desktop):
+        self.add(admin)
+        refused = anon.post("/auth/password/first", json={
+            "email": self.EMAIL, "current_password": "not-the-one-1",
+            "new_password": "MyOwnPassword77"})
+        assert refused.status_code == 401
+
+    def test_a_reset_ends_their_sessions_and_hands_over_a_new_one(
+            self, app, admin, anon, seed, desktop):
+        from fastapi.testclient import TestClient
+        first = self.add(admin)
+        anon.post("/auth/password/first", json={
+            "email": self.EMAIL, "current_password": first["password"],
+            "new_password": "MyOwnPassword77"})
+        assert anon.get("/auth/me").status_code == 200
+
+        reset = app_call(admin, "IAM:User:reset_password", {
+            "user_id": first["user"]["user_id"]})
+        assert reset.status_code == 200
+        handed = reset.json()["password"]
+        assert anon.get("/auth/me").status_code == 401       # signed out
+
+        other = TestClient(app)
+        assert other.post("/auth/login", json={
+            "email": self.EMAIL, "password": "MyOwnPassword77"}).status_code == 401
+        asked = other.post("/auth/login", json={
+            "email": self.EMAIL, "password": handed})
+        assert asked.status_code == 403 and asked.json()["change_required"] is True
+
+    def test_nobody_resets_their_own_or_a_stranger(self, admin, seed, desktop):
+        own = app_call(admin, "IAM:User:reset_password", {
+            "user_id": seed.admin["_id"]})
+        assert own.status_code == 400 and "your own" in own.text
+        assert app_call(admin, "IAM:User:reset_password", {
+            "user_id": "nobody"}).status_code == 404
+
+    def test_where_invitations_are_sent_nobody_is_added_this_way(self, admin, seed):
+        refused = app_call(admin, "IAM:User:create", {
+            "email": self.EMAIL, "user_name": "Sara"})
+        assert refused.status_code == 400 and "invitation" in refused.text
+
+    def test_adding_needs_a_name_an_address_and_no_twin(self, admin, seed, desktop):
+        assert app_call(admin, "IAM:User:create", {
+            "email": "nonsense", "user_name": "Sara"}).status_code == 400
+        assert app_call(admin, "IAM:User:create", {
+            "email": self.EMAIL}).status_code == 400
+        self.add(admin)
+        assert "already exists" in app_call(admin, "IAM:User:create", {
+            "email": self.EMAIL, "user_name": "Sara"}).text
 
 
 class TestKeepMeSignedIn:

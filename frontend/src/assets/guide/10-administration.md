@@ -25,7 +25,7 @@ A fresh organization is seeded with two chains: **Administrators**, whose role h
 
 ## People
 
-Invite by email on **Admin → Users**; the invitation link lets the person set a password. Two invariants are enforced: an organization cannot be left with nobody able to manage access, and nobody can grant an action they do not hold themselves.
+Invite by email on **Admin → Users**; the invitation link lets the person set a password. On your own computer no email is sent: **Add person** shows you a temporary password to hand over, and the person chooses their own at their first sign-in. **Reset password** on a person's row does the same for one who forgot theirs. Two invariants are enforced: an organization cannot be left with nobody able to manage access, and nobody can grant an action they do not hold themselves.
 
 **Disabling** a person ends their sessions, revokes their API keys, closes their live chats and pauses every schedule they own, keeping all their data. Re-enabling brings the person back; their schedules stay paused until they resume the ones they still want.
 

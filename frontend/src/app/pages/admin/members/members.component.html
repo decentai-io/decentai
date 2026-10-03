@@ -2,9 +2,13 @@
   <header class="data-header">
     <div class="data-heading">
       <h1>Users</h1>
-      <p>
+      <p *ngIf="!adds">
         Everyone arrives by invitation. A user's access is exactly the groups
         they are in — nothing more, nothing less.
+      </p>
+      <p *ngIf="adds">
+        You add people here and hand them a temporary password. A user's
+        access is exactly the groups they are in — nothing more, nothing less.
       </p>
     </div>
     <button
@@ -13,8 +17,8 @@
       *ngIf="canInvite && !inviting"
       (click)="startInvite()"
     >
-      <lucide-icon name="mail-plus" [size]="16"></lucide-icon>
-      Invite
+      <lucide-icon [name]="adds ? 'user-plus' : 'mail-plus'" [size]="16"></lucide-icon>
+      {{ adds ? "Add person" : "Invite" }}
     </button>
   </header>
 
@@ -27,19 +31,52 @@
   </div>
 
   <ng-container *ngIf="!loading">
-    <!-- ── Invite ─────────────────────────────────────────────────── -->
-    <section class="panel editor" *ngIf="inviting">
+    <!-- ── A temporary password, shown once ───────────────────────── -->
+    <section class="panel editor" *ngIf="handed as given">
       <div class="panel-head">
         <div>
+          <h2>{{ given.reset ? "Password reset" : "Person added" }}</h2>
+          <p>
+            Hand this temporary password to {{ given.email }}. It is shown only
+            now. They sign in with it once and are asked to choose their own.
+          </p>
+        </div>
+      </div>
+      <div class="data-alert ok">
+        <code class="invite-link">{{ given.password }}</code>
+        <button class="btn ghost sm" type="button" (click)="copyPassword()">
+          Copy
+        </button>
+      </div>
+      <div class="editor-actions">
+        <button class="btn primary" type="button" (click)="handed = null">Done</button>
+      </div>
+    </section>
+
+    <!-- ── Invite, or add ─────────────────────────────────────────── -->
+    <section class="panel editor" *ngIf="inviting">
+      <div class="panel-head">
+        <div *ngIf="!adds">
           <h2>Invite someone</h2>
           <p>
             They get a link, choose a name and password, and land in exactly
             the groups you pick here.
           </p>
         </div>
+        <div *ngIf="adds">
+          <h2>Add a person</h2>
+          <p>
+            You are shown a temporary password to hand them. They land in
+            exactly the groups you pick here.
+          </p>
+        </div>
       </div>
 
       <div class="editor-fields">
+        <label class="field grow" *ngIf="adds">
+          <span class="field-label">Name</span>
+          <input class="txt" type="text" [(ngModel)]="inviteName" placeholder="Their name" />
+        </label>
         <label class="field grow">
           <span class="field-label">Email</span>
           <input
@@ -47,7 +84,7 @@
             type="email"
             [(ngModel)]="inviteEmail"
             placeholder="person@company.com"
-            (keyup.enter)="sendInvite()"
+            (keyup.enter)="adds ? addPerson() : sendInvite()"
           />
         </label>
       </div>
@@ -90,10 +127,20 @@
         <button
           class="btn primary"
           type="button"
+          *ngIf="!adds"
           (click)="sendInvite()"
           [disabled]="saving || !inviteEmail.trim()"
         >
           {{ saving ? "Sending…" : "Send invitation" }}
+        </button>
+        <button
+          class="btn primary"
+          type="button"
+          *ngIf="adds"
+          (click)="addPerson()"
+          [disabled]="saving || !inviteEmail.trim() || !inviteName.trim()"
+        >
+          {{ saving ? "Adding…" : "Add person" }}
         </button>
         <button
           class="btn ghost"
@@ -128,6 +175,9 @@
               <span class="tag tag--off" *ngIf="member.status === 'disabled'">
                 Disabled
               </span>
+              <span class="tag" *ngIf="member.must_change_password">
+                Temporary password
+              </span>
             </span>
             <span class="row-sub">{{ member.email }}</span>
             <span class="row-meta">{{ groupNames(member) }}</span>
@@ -141,6 +191,16 @@
             [disabled]="isBusy(member.user_id)"
           >
             Groups
+          </button>
+
+          <button
+            class="btn"
+            type="button"
+            *ngIf="canResetPassword && !isSelf(member)"
+            (click)="resetPassword(member)"
+            [disabled]="isBusy(member.user_id)"
+          >
+            Reset password
           </button>
 
           <button

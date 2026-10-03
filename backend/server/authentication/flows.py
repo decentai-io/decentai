@@ -120,9 +120,61 @@ class AuthController:
             return {"error": self.ORGANIZATION_DISABLED}, 403, None
 
         self.throttle.record_success(email)
+
+        if user.get("must_change_password") is True:
+            # The password is one an administrator handed over. It proves
+            # who they are and opens nothing: no session exists until
+            # they have chosen their own (first_password).
+            return {"error": "Choose a password of your own to continue.",
+                    "change_required": True}, 403, None
+
         self.users.touch_login(user["_id"])
         self.logger.info(f"{email} signed in")
 
+        return self._identity(user), 200, user
+
+    def first_password(
+        self, payload: Dict[str, Any], client_ip: str = ""
+    ) -> Tuple[Dict[str, Any], int, Optional[Dict[str, Any]]]:
+        """Replace a handed-over password with one of the person's own,
+        and return the identity to open a session for. The handed-over
+        one is asked for again here: it is the only proof there is."""
+        email = UserStore.normalize_email(payload.get("email"))
+        current = str(payload.get("current_password") or "")
+        new_password = str(payload.get("new_password") or "")
+
+        if self.throttle.is_locked(email, client_ip):
+            return {"error": "Too many attempts. Try again in a few minutes."}, 429, None
+
+        user = self.users.get_by_email(email) if email else None
+        if user is None:
+            password_ok = PasswordHasher.verify_dummy(current)
+        else:
+            password_ok = PasswordHasher.verify(current, user.get("password_hash"))
+        if user is None or not password_ok:
+            self.throttle.record_failure(email, client_ip)
+            return {"error": self.INVALID_CREDENTIALS}, 401, None
+
+        if user.get("status") == UserStore.STATUS_DISABLED:
+            return {"error": "This account has been disabled."}, 403, None
+        if user.get("must_change_password") is not True:
+            return {"error": "This account already has a password of its own. "
+                             "Sign in with it."}, 400, None
+
+        strong, reason = PasswordHasher.validate(new_password)
+        if not strong:
+            return {"error": reason}, 400, None
+        if new_password == current:
+            return {"error": "Choose a password different from the one you "
+                             "were given."}, 400, None
+
+        self.users.set_password(user["_id"], PasswordHasher.hash(new_password))
+        self.resets.delete_for_user(user["_id"])
+        self.throttle.record_success(email)
+        self.users.touch_login(user["_id"])
+
+        user = self.users.get(user["_id"])
+        self.logger.info(f"{email} chose their own password and signed in")
         return self._identity(user), 200, user
 
     # ------------------------------------------------------------------

@@ -12,7 +12,10 @@ POST /auth/login
 
 Sets an `access_token` cookie that names a server-side session, valid
 for a week — ninety days when the login carried `remember: true`, which
-also keeps the cookie past the browser being closed — or until logout. `GET /auth/me` returns the identity and the
+also keeps the cookie past the browser being closed — or until logout.
+A login answered 403 with `change_required` is a password an
+administrator handed over: `POST /auth/password/first` with `email`,
+`current_password` and `new_password` replaces it and signs in. `GET /auth/me` returns the identity and the
 actions it holds — what the web app uses to decide which controls to
 show. `POST /auth/logout` ends the session.
 

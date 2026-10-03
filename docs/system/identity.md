@@ -294,7 +294,8 @@ anyone may write one.
 ## Becoming a user, and proving it later
 
 Nobody signs themselves up. A person exists in an organization because
-somebody who was already there invited them.
+somebody who was already there invited them — or, on a person's own
+computer, added them.
 
 **Invitation.** An invitation records the address invited, the
 organization, any groups the person should land in, who invited them, and
@@ -303,6 +304,19 @@ signs them in. The address on the new account comes from the invitation
 and never from the request that accepts it: the link proves control of one
 mailbox, and that is the only address it can produce. The organization
 comes from the invitation for the same reason.
+
+**A person added by hand.** A desktop sends no email, so there an
+administrator adds a person directly (`IAM:User:create`, refused on a web
+deployment) and is shown a temporary password once, to hand over. The same
+is done for a person who forgot theirs (`IAM:User:reset_password`, on any
+deployment), which also ends their sessions. It is bounded as group
+assignment is: nobody resets the password of a person holding more than
+they do, since that would be taking their account. A handed-over password
+proves who the person is and opens nothing: signing in with it is answered
+`change_required` and no session, and the person chooses their own
+(`POST /auth/password/first`, which asks for the handed-over one again)
+before their first session exists. An administrator's own forgotten
+password is reset from the desktop app, on the computer itself.
 
 **Password.** Passwords are stored as a slow one-way hash, deliberately
 expensive to compute, over a fixed-length digest of the password — so that

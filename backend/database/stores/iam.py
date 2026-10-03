@@ -354,6 +354,9 @@ class UserStore(OrgScopedStore):
             "user_name": doc.get("user_name", ""),
             "status": doc.get("status", UserStore.STATUS_ACTIVE),
             "assigned_groups": list(doc.get("assigned_groups") or []),
+            # Somebody else chose the password they hold: they are asked
+            # for one of their own before they are let in.
+            "must_change_password": doc.get("must_change_password") is True,
             "created_at": iso(doc.get("created_at")),
             "last_login_at": iso(doc.get("last_login_at")),
         }
@@ -366,6 +369,7 @@ class UserStore(OrgScopedStore):
         user_name: str,
         password_hash: Optional[str] = None,
         assigned_groups: Optional[List[str]] = None,
+        must_change_password: bool = False,
     ) -> Dict[str, Any]:
         email = self.normalize_email(email)
         if not email or "@" not in email or len(email) > 254:
@@ -380,6 +384,7 @@ class UserStore(OrgScopedStore):
             "user_name": str(user_name or "").strip(),
             "status": self.STATUS_ACTIVE,
             "password_hash": password_hash,
+            "must_change_password": bool(must_change_password),
             "assigned_groups": list(assigned_groups or []),
             "created_at": utc_now(),
             "updated_at": utc_now(),
@@ -493,11 +498,18 @@ class UserStore(OrgScopedStore):
                     ).get("defaults") or {}
         return str(defaults.get(str(family)) or "")
 
-    def set_password(self, user_id: str, password_hash: str) -> None:
+    def set_password(self, user_id: str, password_hash: str,
+                     must_change: bool = False) -> None:
+        """A new password. ``must_change`` says somebody else chose it —
+        an administrator handing one over — so the person is asked for
+        their own at their next sign-in; a password a person sets for
+        themselves is theirs to keep."""
         access_cache.drop_user(user_id)
         self.col.update_one(
             {"_id": user_id},
-            {"$set": {"password_hash": password_hash, "updated_at": utc_now()}},
+            {"$set": {"password_hash": password_hash,
+                      "must_change_password": bool(must_change),
+                      "updated_at": utc_now()}},
         )
 
     def set_status(self, user_id: str, status: str) -> None:

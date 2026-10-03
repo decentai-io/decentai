@@ -1,5 +1,7 @@
-"""User endpoints — the existing membership; creation lives in the
-invitation flow. Group assignment is bounded by the grant boundary, and
+"""User endpoints — the membership. A person joins by invitation where
+the deployment sends email; where it is one person's own computer and
+sends none, an administrator adds them here and hands over a temporary
+password. Group assignment is bounded by the grant boundary, and
 disabling/deleting yourself is blocked.
 """
 
@@ -20,6 +22,9 @@ from database.stores.data.secrets import SecretStore
 from database.stores.data.mcp import McpServerStore
 from database.stores.data.skills import SkillStore
 from database.stores.settings.llm import LlmConnectionStore
+from database.stores import LoginThrottle
+from server.authentication.credentials import PasswordHasher
+from server.setup.app_state import get_settings
 
 
 class UserController(IAMController):
@@ -74,6 +79,92 @@ class UserController(IAMController):
         if missing:
             return missing
         return {"user": self._public(self._org(user), target)}, 200
+
+    def create(self, data: dict, user: dict):
+        """Add a person, on a deployment that sends no invitations: a
+        desktop. The answer carries a temporary password, once; nothing
+        keeps it. The person is asked for one of their own before their
+        first session exists."""
+        if not get_settings().is_desktop:
+            return {"error": "People join this DecentAI by invitation."}, 400
+
+        payload = self._payload(data)
+        email = UserStore.normalize_email(payload.get("email"))
+        name = str(payload.get("user_name") or "").strip()
+        group_ids = list(payload.get("assigned_groups") or [])
+
+        if not email or "@" not in email:
+            return {"error": "A valid email address is required."}, 400
+        if not name:
+            return {"error": "Their name is required."}, 400
+        if self.users.get_by_email(email) is not None:
+            return {"error": "A user with this email already exists."}, 400
+
+        refusal = self._ungrantable(user, group_ids, "add someone to")
+        if refusal:
+            return refusal
+
+        password = PasswordHasher.temporary()
+        try:
+            created = self.users.create(
+                self._org(user), email, name, PasswordHasher.hash(password),
+                group_ids, must_change_password=True)
+        except ValueError as exc:
+            return {"error": str(exc)}, 400
+
+        self.logger.info(f"{user.get('email')} added {email}")
+        return {"user": self._public(self._org(user), created),
+                "password": password}, 200
+
+    def reset_password(self, data: dict, user: dict):
+        """A temporary password for a person who forgot theirs, shown
+        once to the administrator who asked. Their sessions end, and
+        they are asked for a password of their own at the next sign-in.
+
+        Bounded as group assignment is: whoever could not have given
+        the person their access cannot take their account by resetting
+        it."""
+        target, missing = self._target(data, user)
+        if missing:
+            return missing
+        if target["_id"] == user.get("user_id"):
+            return {"error": "Change your own password from your profile."}, 400
+
+        refusal = self._ungrantable(
+            user, list(target.get("assigned_groups") or []),
+            "reset the password of someone in")
+        if refusal:
+            return refusal
+
+        password = PasswordHasher.temporary()
+        self.users.set_password(
+            target["_id"], PasswordHasher.hash(password), must_change=True)
+        self.sessions.delete_for_user(target["_id"])
+        self.resets.delete_for_user(target["_id"])
+        # The lockout after wrong passwords is lifted with it.
+        LoginThrottle().record_success(str(target.get("email") or ""))
+
+        self.logger.info(
+            f"{user.get('email')} reset the password of {target.get('email')}")
+        return {"password": password}, 200
+
+    def _ungrantable(self, user: dict, group_ids: list, doing: str):
+        """A refusal when the groups are unknown or grant more than the
+        caller holds; None when they may."""
+        if not group_ids:
+            return None
+        known = {g["_id"] for g in self.groups.list_in(self._org(user), group_ids)}
+        unknown = [gid for gid in group_ids if gid not in known]
+        if unknown:
+            return {"error": f"Unknown groups: {', '.join(unknown)}"}, 400
+        ungrantable = self.policy.ungrantable_in_groups(user, group_ids)
+        if ungrantable:
+            return {
+                "error": f"You cannot {doing} groups granting permissions "
+                         f"you do not hold.",
+                "ungrantable": ungrantable,
+            }, 403
+        return None
 
     def update(self, data: dict, user: dict):
         target, missing = self._target(data, user)

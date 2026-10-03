@@ -113,6 +113,22 @@ async def accept_invitation(request: Request):
     return _start_session(request, controller, body, user_doc)
 
 
+@router.post("/password/first")
+async def first_password(request: Request):
+    """Replace a password an administrator handed over, and sign in."""
+    controller = AuthController()
+    payload = await _body(request)
+    body, status, user_doc = await asyncio.to_thread(
+        controller.first_password, payload,
+        client_ip=_client(request)["ip_address"])
+
+    if status != 200 or user_doc is None:
+        return JSONResponse(body, status_code=status)
+
+    return _start_session(request, controller, body, user_doc,
+                          remember=payload.get("remember") is True)
+
+
 @router.post("/password/forgot")
 async def forgot_password(request: Request):
     """Ask for a reset link. Answers the same way whether or not the account
