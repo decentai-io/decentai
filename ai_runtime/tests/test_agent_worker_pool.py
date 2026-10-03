@@ -80,6 +80,72 @@ def pool(monkeypatch):
     return WorkerPool()
 
 
+class Place:
+    """Stands for a confined worker's place: what a credential opened,
+    and what was taken back."""
+
+    def __init__(self):
+        self.open = []
+        self.seen_open = []
+
+    def block(self, names):
+        pass
+
+    def reached(self):
+        return {}
+
+    def learn(self, secret_id, credential):
+        lent = [(credential["host"], None)]
+        self.open.extend(lent)
+        self.seen_open.append(list(self.open))
+        return lent
+
+    def take_back(self, lent):
+        for one in lent:
+            self.open.remove(one)
+
+
+class TestAHostACredentialNames:
+    """``from_secret``: the host a credential names is open for the call
+    that was handed the credential, and closed when that call ends — a
+    worker serves every person of an organization."""
+
+    def test_it_closes_when_the_call_ends(self, pool, monkeypatch):
+        place = Place()
+        monkeypatch.setattr(worker_pool.Confinement, "place_for",
+                            classmethod(lambda cls, key: place))
+
+        async def use_secret(resource_id, ref):
+            return {"host": "mail.sara.example"}
+
+        async def scenario():
+            saras = CallContext(SimpleNamespace(use_secret=use_secret))
+            await pool.invoke(approved("agt_a"), "c_1", "use_secret", {},
+                              saras, 5)
+            assert place.seen_open == [[("mail.sara.example", None)]]
+            assert place.open == [] and saras.learned == []
+            # The same worker, the next person's call: nothing is open.
+            await pool.invoke(approved("agt_a"), "c_2", "notebook.note.find",
+                              {}, CallContext(None), 5)
+            assert place.open == []
+        run(scenario())
+
+    def test_it_closes_when_the_call_fails(self, pool, monkeypatch):
+        place = Place()
+        monkeypatch.setattr(worker_pool.Confinement, "place_for",
+                            classmethod(lambda cls, key: place))
+        context = CallContext(None)
+        context.learned = [("mail.sara.example", None)]
+        place.open = list(context.learned)
+
+        async def scenario():
+            with pytest.raises(asyncio.TimeoutError):
+                await pool.invoke(approved("agt_a"), "c_1", "hang", {},
+                                  context, 0.05)
+            assert place.open == []
+        run(scenario())
+
+
 class TestIsolation:
     def test_two_approvals_of_one_package_get_two_workers(self, pool):
         a, b = approved("agt_a"), approved("agt_b")

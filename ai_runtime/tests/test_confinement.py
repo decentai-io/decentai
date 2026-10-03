@@ -357,11 +357,13 @@ class TestHandle:
 
 class TestAHostACredentialNames:
     """``from_secret``: the host is the person's to say, and the port
-    is the manifest's where the protocol is not the web's."""
+    is the manifest's where the protocol is not the web's. It is lent
+    for the call that was handed the credential, as a code card's
+    hosts are, and what was lent is handed back for taking back."""
 
     class Proxy:
         def __init__(self):
-            self.learned = []
+            self.lent = []
 
         def admit(self, agent_id, network):
             return "a-pass"
@@ -369,8 +371,9 @@ class TestAHostACredentialNames:
         def dismiss(self, token):
             pass
 
-        def learn(self, token, host, port=None):
-            self.learned.append((token, host, port))
+        def lend(self, token, hosts):
+            self.lent.append((token, list(hosts)))
+            return [("lent", host) for host in hosts]
 
     def place(self, helper, tmp_path, from_secrets):
         confinement = Confinement(tmp_path)
@@ -383,28 +386,31 @@ class TestAHostACredentialNames:
     def test_the_port_the_manifest_declared(self, helper, tmp_path):
         place, proxy = self.place(helper, tmp_path, [
             "account.imap_host:993", "account.smtp_host:465"])
-        place.learn("account", {"imap_host": "imap.sara.example",
-                                "smtp_host": "smtp.sara.example"})
-        assert proxy.learned == [("a-pass", "imap.sara.example", 993),
-                                 ("a-pass", "smtp.sara.example", 465)]
+        lent = place.learn("account", {"imap_host": "imap.sara.example",
+                                       "smtp_host": "smtp.sara.example"})
+        assert proxy.lent == [("a-pass", ["imap.sara.example:993",
+                                          "smtp.sara.example:465"])]
+        # What the call's end takes back is what the proxy lent.
+        assert lent == [("lent", "imap.sara.example:993"),
+                        ("lent", "smtp.sara.example:465")]
 
     def test_the_port_the_person_wrote_where_the_manifest_said_none(
             self, helper, tmp_path):
         place, proxy = self.place(helper, tmp_path, ["connection.base_url"])
         place.learn("connection", {"base_url": "https://jira.sara.example:8443/rest"})
-        assert proxy.learned == [("a-pass", "jira.sara.example", 8443)]
+        assert proxy.lent == [("a-pass", ["jira.sara.example:8443"])]
 
     def test_the_webs_where_nobody_said(self, helper, tmp_path):
         place, proxy = self.place(helper, tmp_path, ["connection.base_url"])
         place.learn("connection", {"base_url": "https://jira.sara.example/rest"})
-        assert proxy.learned == [("a-pass", "jira.sara.example", None)]
+        assert proxy.lent == [("a-pass", ["jira.sara.example"])]
 
     def test_the_manifests_port_and_not_the_persons(self, helper, tmp_path):
         place, proxy = self.place(helper, tmp_path, ["account.imap_host:993"])
         place.learn("account", {"imap_host": "imap.sara.example:143"})
-        assert proxy.learned == [("a-pass", "imap.sara.example", 993)]
+        assert proxy.lent == [("a-pass", ["imap.sara.example:993"])]
 
     def test_another_credential_teaches_nothing(self, helper, tmp_path):
         place, proxy = self.place(helper, tmp_path, ["account.imap_host:993"])
-        place.learn("other", {"imap_host": "imap.sara.example"})
-        assert proxy.learned == []
+        assert place.learn("other", {"imap_host": "imap.sara.example"}) == []
+        assert proxy.lent == []

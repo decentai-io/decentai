@@ -272,7 +272,7 @@ installs no certificate.
 | names | those hosts, on port 443 or 80 |
 | a name with a port | that host, on that port |
 | a name under a wildcard | every host under it, never the name itself |
-| `from_secret` | the host in that field, from the moment the worker is handed the credential |
+| `from_secret` | the host in that field, from the moment the worker is handed the credential until the call it was handed to ends |
 | a function with `code: true` | besides the above: the hosts a code card the person allowed named, from their yes until that call ends |
 | any of the above | never a site on the deployment's list of sites no agent may open ([Safety](safety.md)), and, while that list holds a name, nothing by a bare address |
 | `hosts: []` | nothing |
@@ -287,6 +287,17 @@ half an hour is closed.
 its caller one line of a refused tunnel's answer, so the reason is on
 that line: *Gmail did not declare elsewhere.example.org among the
 hosts it connects to*.
+
+**A host a credential names is lent, and taken back.** A worker serves
+every person of an organization, and a host one person's credential
+named is not the next person's call's to reach. So the host opens when
+a call is handed the credential (`use_secret`) and closes when that
+call ends, however it ends. It is counted by the calls that hold it, as
+below. A connection already open is not cut: the proxy decides when a
+connection is made. What this does not do is tell two calls in one
+worker apart while both run — the proxy knows a worker by its pass, not
+a call — so for as long as one person's call holds a host, another call
+running in that worker at the same moment reaches it too.
 
 **A host a person allowed is lent, and taken back.** An agent whose
 work is to run code a person asked for — the Code agent — cannot say
@@ -383,6 +394,12 @@ enforced in this install; and nothing to configure.
 
 ## What the sandbox does not do
 
+- **It does not separate the people of one organization from each
+  other.** A worker is kept per approved agent, not per person: what
+  an agent's code keeps in memory from one person's call is there
+  during the next person's, and a host lent to one call is reachable
+  from another that runs beside it. The organization's approval is the
+  line the sandbox holds.
 - **It does not stop an agent misusing what it was rightly given.** An
   agent receives its secret decrypted and is allowed its declared
   host; what it sends there is its own doing. Reading the manifest and

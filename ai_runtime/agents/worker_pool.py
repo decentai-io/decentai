@@ -96,6 +96,9 @@ class CallContext:
         #: filled in when the call ends, for the audit trail. A worker
         #: serving two calls at once counts for both.
         self.reached: Dict[str, int] = {}
+        #: Hosts a credential handed to this call named (``from_secret``),
+        #: open on the worker's way out until the call ends.
+        self.learned: list = []
         #: async (kind, params) -> None: a screen the function shows —
         #: "frame" with the picture, "closed" when it stops. None where
         #: nobody could watch (a test).
@@ -208,6 +211,10 @@ class WorkerPool:
         finally:
             self._calls.pop(call_id, None)
             if place is not None:
+                # What this call's credential opened closes with it: the
+                # worker goes on to serve somebody else's call.
+                place.take_back(context.learned)
+                context.learned = []
                 context.reached = {
                     host: count - before.get(host, 0)
                     for host, count in place.reached().items()
@@ -497,10 +504,12 @@ class WorkerPool:
         if operation == "use_secret":
             # A credential may name the host it is for — a person's own
             # site — and the manifest said which field does. Handed
-            # over, it is a host the worker may reach.
+            # over, it is a host the worker may reach until this call
+            # ends.
             place = getattr(context.handle, "place", None)
             if place is not None:
-                place.learn(str(params.get("resource_id") or ""), answer)
+                context.learned.extend(place.learn(
+                    str(params.get("resource_id") or ""), answer) or [])
         if operation in ("delete_data", "delete_file"):
             return {"deleted": bool(answer)}
         return answer

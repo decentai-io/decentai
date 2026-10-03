@@ -95,13 +95,18 @@ class WorkerPlace:
             proxy.dismiss(self.token)
         self.token = ""
 
-    def learn(self, secret_id: str, credential: dict) -> None:
-        """A credential the worker was handed: where the manifest said
-        one of its fields names a host, that host is the agent's to
-        reach from now on."""
+    def learn(self, secret_id: str, credential: dict) -> list:
+        """A credential the worker was handed for a call: where the
+        manifest said one of its fields names a host, that host is the
+        agent's to reach until it is taken back — when the call that
+        was handed the credential ends. A worker serves every person of
+        an organization, and a host one person's credential named is
+        not the next person's call's to reach. Returns what was lent;
+        nothing, where no proxy runs."""
         proxy = self.confinement.egress
         if proxy is None or not self.token or not isinstance(credential, dict):
-            return
+            return []
+        named = []
         for declared in self.from_secrets:
             secret, _, field = declared.partition(".")
             field, _, port = field.partition(":")
@@ -111,12 +116,14 @@ class WorkerPlace:
             if host:
                 # The port the manifest declared; else the one the
                 # person wrote into the address; else the web's.
-                proxy.learn(self.token, host, int(port) if port else typed)
+                on = int(port) if port else typed
+                named.append(f"{host}:{on}" if on else host)
+        return proxy.lend(self.token, named) if named else []
 
     def lend(self, hosts: List[str]) -> list:
-        """Hosts a person allowed for one call (a code card): open on
-        this worker's way out until they are taken back. Returns what
-        was lent; nothing, where no proxy runs."""
+        """Hosts opened for one call — a person allowed them on a code
+        card: open on this worker's way out until they are taken back.
+        Returns what was lent; nothing, where no proxy runs."""
         proxy = self.confinement.egress
         if proxy is None or not self.token:
             return []
