@@ -7,6 +7,7 @@ import pytest
 from launcher.publish import Publisher, main
 from launcher.release import Keys, Release, ReleaseError
 
+LAUNCHER = "ghcr.io/decentai-io/decentai-launcher@sha256:" + "d" * 64
 IMAGES = {
     "backend": "ghcr.io/decentai-io/decentai-backend@sha256:" + "a" * 64,
     "runtime": "ghcr.io/decentai-io/decentai-ai-runtime@sha256:" + "b" * 64,
@@ -32,12 +33,14 @@ class TestAKey:
 class TestARelease:
     def test_written_signed_and_believed_by_a_launcher(self, tmp_path):
         private = Publisher.make_key("release", tmp_path / "keys")
-        document = Publisher.document("1.4.0", IMAGES, notes="https://x/notes")
+        document = Publisher.document("1.4.0", IMAGES, notes="https://x/notes",
+                                      launcher=LAUNCHER)
         path = Publisher.write(tmp_path / "release.json", document, private)
 
         release = Publisher.check(path, tmp_path / "keys")
         assert release.signed is True
         assert (release.version, release.images) == ("1.4.0", IMAGES)
+        assert release.launcher == LAUNCHER
         # A launcher with other keys does not believe it.
         Publisher.make_key("other", tmp_path / "elsewhere")
         with pytest.raises(ReleaseError, match="not signed by a key"):
@@ -45,14 +48,17 @@ class TestARelease:
 
     def test_an_image_named_by_a_tag_is_not_published(self):
         with pytest.raises(ReleaseError, match="by its digest"):
-            Publisher.document("1.4.0", {**IMAGES, "runtime": "runtime:latest"})
+            Publisher.document("1.4.0", {**IMAGES, "runtime": "runtime:latest"},
+                               launcher=LAUNCHER)
+        with pytest.raises(ReleaseError, match="the launcher"):
+            Publisher.document("1.4.0", IMAGES, launcher="launcher:latest")
 
     def test_a_version_that_is_not_one_is_not_published(self):
         with pytest.raises(ReleaseError, match="version"):
-            Publisher.document("latest", IMAGES)
+            Publisher.document("latest", IMAGES, launcher=LAUNCHER)
 
     def test_something_that_is_not_a_key_signs_nothing(self, tmp_path):
-        document = Publisher.document("1.4.0", IMAGES)
+        document = Publisher.document("1.4.0", IMAGES, launcher=LAUNCHER)
         with pytest.raises(ReleaseError, match="not a signing key"):
             Publisher.write(tmp_path / "release.json", document, "nonsense")
         assert not (tmp_path / "release.json.sig").exists()
@@ -61,7 +67,7 @@ class TestARelease:
 class TestTheCommandLine:
     def arguments(self, tmp_path):
         return ["release", str(tmp_path / "release.json"), "--version", "1.4.0",
-                "--keys", str(tmp_path / "keys"),
+                "--keys", str(tmp_path / "keys"), "--launcher", LAUNCHER,
                 *[item for part, image in IMAGES.items()
                   for item in (f"--{part}", image)]]
 

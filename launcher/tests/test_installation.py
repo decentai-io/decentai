@@ -165,6 +165,37 @@ class TestTheFirstRun:
         assert installation.settings.installed and not installation.settings.begun
 
 
+class TestUninstall:
+    def test_it_takes_everything_down_and_forgets_the_install(
+            self, installed, engine):
+        assert installed.uninstall() is None
+        assert engine.stack() == ["--profile seed down --volumes --remove-orphans"]
+        assert not installed.settings.installed
+        assert [p.name for p in installed.settings.state.iterdir()
+                if p.is_file()] == []
+
+    def test_a_copy_of_the_database_is_kept_when_asked(self, installed, engine):
+        kept = installed.uninstall(keep=True)
+        assert kept.read_bytes() == engine.database
+        assert kept.parent == installed.settings.backups
+        assert engine.stack()[0] == "up -d mongo"
+        assert engine.stack()[-1] == "--profile seed down --volumes --remove-orphans"
+
+    def test_an_install_that_never_finished_is_removed_too(
+            self, installation, engine):
+        engine.states["backend"] = "exited"
+        with pytest.raises(InstallationError):
+            installation.first_run(release(), EMAIL, PASSWORD)
+        engine.asked.clear()
+        installation.uninstall(keep=True)        # no database to keep yet
+        assert engine.stack() == ["--profile seed down --volumes --remove-orphans"]
+        assert not installation.settings.begun
+
+    def test_nothing_installed_nothing_to_remove(self, installation):
+        with pytest.raises(InstallationError, match="not installed"):
+            installation.uninstall()
+
+
 class TestWhereTheStackLooksNamesUp:
     """Podman on Windows cannot look up an address behind a long chain
     of aliases, so there the stack asks public resolvers."""

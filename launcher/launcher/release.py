@@ -5,12 +5,15 @@
       "version": "1.4.0",
       "released_at": "2026-10-10T08:00:00Z",
       "images": {"backend": "…@sha256:…", "runtime": "…", "frontend": "…"},
+      "launcher": "…@sha256:…",
       "minimum_launcher": "1.0.0",
       "notes": "https://…"
     }
 
 The three always move together, so a new page never meets an old
-backend. The file is signed: whoever could put a release file in front
+backend. ``launcher`` is the launcher's own image for this release: the
+desktop app reads it here, believed for the same signature, so the
+launcher is fetched by what it is and not by a name. The file is signed: whoever could put a release file in front
 of an install could put their own platform on the machine, so a file
 is believed for its signature and not for where it came from.
 
@@ -60,6 +63,12 @@ class Release:
     @property
     def images(self) -> Dict[str, str]:
         return {part: str(self.document["images"][part]) for part in PARTS}
+
+    @property
+    def launcher(self) -> str:
+        """The launcher's image for this release, or '' where the file
+        names none."""
+        return str(self.document.get("launcher") or "")
 
     @property
     def notes(self) -> str:
@@ -112,6 +121,9 @@ class Release:
         for part in PARTS:
             if not IMAGE_RE.match(str(images.get(part) or "")):
                 found.append(f"images.{part} must name an image")
+        if document.get("launcher") and not IMAGE_RE.match(
+                str(document["launcher"])):
+            found.append("launcher must name an image")
         return found
 
     @staticmethod
