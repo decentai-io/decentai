@@ -24,6 +24,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
+from contracts.llm_providers import LlmProviders
 from database.crypto import SecretCipher
 from database.stores.iam import OrgScopedStore
 from util import iso, new_id, utc_now
@@ -39,8 +40,6 @@ class LlmConnectionStore(OrgScopedStore):
     COLLECTION = "llm_connections"
     ENCRYPTED_FIELDS = ("values",)
 
-    PROVIDERS = ("anthropic", "openai", "openrouter", "gemini", "deepseek",
-                 "groq", "mistral", "xai", "openai_compatible")
     #: How hard a reasoning model thinks before each step; blank is the
     #: provider's default and the only right value for a model that
     #: does not reason.
@@ -128,9 +127,13 @@ class LlmConnectionStore(OrgScopedStore):
             cleaned["purpose"] = purpose
         if not partial or "provider" in fields:
             provider = str(fields.get("provider") or "").strip().lower()
-            if provider not in self.PROVIDERS:
+            # The catalog both sides read: a provider accepted here is
+            # one the runtime has a connector for, by construction.
+            if LlmProviders.find(provider) is None:
                 raise ValueError(
-                    f"Provider must be one of: {', '.join(self.PROVIDERS)}.")
+                    "That provider is not in the platform's catalog. A "
+                    "service that speaks OpenAI's protocol is added as "
+                    "openai_compatible, with its address as the endpoint.")
             cleaned["provider"] = provider
         if not partial or "model" in fields:
             model = str(fields.get("model") or "").strip()

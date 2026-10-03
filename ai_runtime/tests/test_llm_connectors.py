@@ -12,6 +12,8 @@ from ai_runtime.llms import (
     LLMConnectorFactory,
     OpenAIConnector,
 )
+from contracts.generate_llm_providers import ProviderCatalogWriter
+from contracts.llm_providers import LlmProviders
 
 
 def run(coro):
@@ -46,6 +48,130 @@ class TestFactory:
             LLMConnectorFactory.create({"provider": "openai", "api_key": "k"})
         with pytest.raises(ValueError, match="model"):
             LLMConnectorFactory.create({"provider": "anthropic", "api_key": "k"})
+
+
+class TestTheCatalog:
+    """contracts/llm_providers.json: the one list of providers, read by
+    the backend, the page and this factory."""
+
+    def test_every_provider_in_the_catalog_gets_the_connector_of_its_protocol(self):
+        speaks = {"openai": OpenAIConnector, "anthropic": AnthropicConnector}
+        for entry in LlmProviders.all():
+            connector = LLMConnectorFactory.create({
+                "provider": entry["id"], "api_key": "k", "model": "m",
+                "endpoint": entry["endpoint"] or "https://gateway.example.test/v1",
+            })
+            assert type(connector) is speaks[entry["protocol"]], entry["id"]
+
+    def test_every_entry_is_a_lowercase_id_a_name_and_a_public_https_address(self):
+        entries = LlmProviders.all()
+        ids = [entry["id"] for entry in entries]
+        assert len(ids) == len(set(ids))
+        for entry in entries:
+            assert entry["id"] == entry["id"].strip().lower() and entry["name"]
+            assert entry["protocol"] in LlmProviders.PROTOCOLS
+            if entry["id"] != "openai_compatible":
+                assert entry["endpoint"].startswith("https://"), entry["id"]
+                assert "${" not in entry["endpoint"], entry["id"]
+
+    def test_only_the_custom_entry_leaves_its_address_to_the_person(self):
+        blank = [entry["id"] for entry in LlmProviders.all() if not entry["endpoint"]]
+        assert blank == ["openai_compatible"]
+
+    def test_the_providers_named_before_the_catalog_kept_their_ids_and_addresses(self):
+        # A connection stores its provider's id: one renamed here would
+        # be a saved connection the runtime no longer has a connector for.
+        before = {
+            "openai": "https://api.openai.com/v1",
+            "anthropic": "https://api.anthropic.com",
+            "openrouter": "https://openrouter.ai/api/v1",
+            "gemini": "https://generativelanguage.googleapis.com/v1beta/openai/",
+            "deepseek": "https://api.deepseek.com",
+            "groq": "https://api.groq.com/openai/v1",
+            "mistral": "https://api.mistral.ai/v1",
+            "xai": "https://api.x.ai/v1",
+            "openai_compatible": "",
+        }
+        for provider, endpoint in before.items():
+            assert LlmProviders.find(provider)["endpoint"] == endpoint
+
+    def test_an_anthropic_address_carries_no_version_path(self):
+        # The Anthropic client adds /v1 itself; an address ending in it
+        # would be asked for /v1/v1/messages.
+        for entry in LlmProviders.all():
+            if entry["protocol"] == "anthropic":
+                assert not entry["endpoint"].rstrip("/").endswith("/v1"), entry["id"]
+
+    def test_the_scripted_connector_is_reachable_and_in_no_catalog(self):
+        assert LlmProviders.find("fake") is None
+        assert isinstance(
+            LLMConnectorFactory.create({"provider": "fake"}), FakeConnector)
+
+
+class TestWritingTheCatalog:
+    """contracts/generate_llm_providers.py, over a models.dev checkout
+    small enough to read here."""
+
+    @staticmethod
+    def checkout(tmp_path, **providers):
+        for provider_id, toml in providers.items():
+            folder = tmp_path / "providers" / provider_id.replace("_", "-")
+            folder.mkdir(parents=True)
+            (folder / "provider.toml").write_text(toml, encoding="utf-8")
+        return {entry["id"]: entry
+                for entry in ProviderCatalogWriter(tmp_path).providers()}
+
+    def test_a_provider_that_speaks_openais_protocol_is_kept_with_its_address(self, tmp_path):
+        kept = self.checkout(tmp_path, acme=(
+            'name = "Acme"\nnpm = "@ai-sdk/openai-compatible"\n'
+            'api = "https://api.acme.example/v1"\n'))
+        assert kept["acme"] == {
+            "id": "acme", "name": "Acme", "protocol": "openai",
+            "endpoint": "https://api.acme.example/v1"}
+
+    def test_an_anthropic_address_loses_the_version_the_client_adds(self, tmp_path):
+        kept = self.checkout(tmp_path, acme=(
+            'name = "Acme"\nnpm = "@ai-sdk/anthropic"\n'
+            'api = "https://api.acme.example/anthropic/v1"\n'))
+        assert kept["acme"]["protocol"] == "anthropic"
+        assert kept["acme"]["endpoint"] == "https://api.acme.example/anthropic"
+
+    def test_what_no_connector_reaches_as_it_is_is_left_out(self, tmp_path):
+        kept = self.checkout(
+            tmp_path,
+            own_protocol='name = "A"\nnpm = "@ai-sdk/amazon-bedrock"\n',
+            per_customer=('name = "B"\nnpm = "@ai-sdk/openai-compatible"\n'
+                          'api = "https://${ACCOUNT}.b.example/v1"\n'),
+            this_machine=('name = "C"\nnpm = "@ai-sdk/openai-compatible"\n'
+                          'api = "http://127.0.0.1:1234/v1"\n'),
+            github_copilot=('name = "D"\nnpm = "@ai-sdk/openai-compatible"\n'
+                            'api = "https://api.githubcopilot.com"\n'),
+        )
+        assert list(kept) == ["openai_compatible"]
+
+    def test_google_keeps_the_id_connections_were_saved_under(self, tmp_path):
+        kept = self.checkout(tmp_path, google='name = "Google"\nnpm = "@ai-sdk/google"\n')
+        assert "google" not in kept
+        assert kept["gemini"]["name"] == "Google Gemini"
+
+    def test_the_custom_entry_comes_last_after_the_names_in_order(self, tmp_path):
+        kept = self.checkout(
+            tmp_path,
+            zeta='name = "Zeta"\nnpm = "@ai-sdk/openai-compatible"\napi = "https://z.example/v1"\n',
+            alpha='name = "alpha"\nnpm = "@ai-sdk/openai-compatible"\napi = "https://a.example/v1"\n',
+        )
+        assert list(kept) == ["alpha", "zeta", "openai_compatible"]
+
+    def test_the_file_in_the_repository_is_what_the_writer_writes(self):
+        # Edited by hand, the catalog would say something models.dev
+        # and the writer's own tables do not.
+        import json
+        document = json.loads(LlmProviders.PATH.read_text(encoding="utf-8"))
+        assert set(document) == {"schema_version", "source", "providers"}
+        assert len(document["source"]["commit"]) == 40
+        assert document["providers"][-1] == ProviderCatalogWriter.CUSTOM
+        names = [entry["name"].casefold() for entry in document["providers"][:-1]]
+        assert names == sorted(names)
 
 
 class TestPictures:

@@ -107,6 +107,18 @@ class TestValidation:
             assert response.json()["connection"]["keys"]["provider"] == provider
         assert len(listed(admin)) == 7
 
+    def test_a_provider_the_catalog_added_round_trips_like_the_first_ones(self, admin, seed):
+        for provider in ("togetherai", "fireworks-ai", "cerebras", "minimax"):
+            response = make_connection(admin, name=provider, provider=provider,
+                                       endpoint="https://gateway.example.test/v1")
+            assert response.status_code == 200, response.text
+            assert response.json()["connection"]["keys"]["provider"] == provider
+
+    def test_a_provider_outside_the_catalog_is_refused_and_told_the_way_in(self, admin, seed):
+        refused = make_connection(admin, provider="amazon-bedrock")
+        assert refused.status_code == 400
+        assert "openai_compatible" in refused.json()["error"]
+
     def test_endpoint_is_required_on_create_and_cannot_be_cleared(self, admin, seed):
         for endpoint in (None, "", "   "):
             refused = make_connection(admin, endpoint=endpoint)
@@ -151,6 +163,35 @@ class TestValidation:
         }).status_code == 200
 
         assert make_connection(other).status_code == 200
+
+
+class TestTheCatalog:
+    """Settings:Llm:Providers — what the form that adds a connection is
+    drawn from."""
+
+    def test_the_page_is_served_the_catalog_the_store_validates_against(self, admin, seed):
+        from contracts.llm_providers import LlmProviders
+
+        response = app_call(admin, "Settings:Llm:Providers")
+        assert response.status_code == 200, response.text
+        served = response.json()["providers"]
+        assert served == LlmProviders.all()
+        assert served[-1]["id"] == "openai_compatible"
+        assert all(set(entry) == {"id", "name", "protocol", "endpoint"}
+                   for entry in served)
+
+    def test_every_provider_served_is_one_a_connection_may_name(self, admin, seed):
+        served = app_call(admin, "Settings:Llm:Providers").json()["providers"]
+        for entry in served[:12]:
+            response = make_connection(
+                admin, name=entry["id"], provider=entry["id"],
+                endpoint=entry["endpoint"] or "https://gateway.example.test/v1")
+            assert response.status_code == 200, (entry["id"], response.text)
+
+    def test_seeing_the_catalog_is_every_members_like_seeing_connections(self):
+        from server.authentication.catalog import BASELINE_ACTIONS
+
+        assert "settings:llm:providers" in BASELINE_ACTIONS
 
 
 class TestTheDefault:

@@ -5,6 +5,7 @@ from ai_runtime.llms.connector import (
     FakeConnector,
     OpenAIConnector,
 )
+from contracts.llm_providers import LlmProviders
 
 
 class LLMConnectorFactory:
@@ -13,35 +14,48 @@ class LLMConnectorFactory:
     ``config`` merges the chat config's llm block (provider, model,
     endpoint, ...) with the key of the model connection it names. Where
     those come from is the host's concern, not this class's.
+
+    Which providers exist is the catalog's to say
+    (contracts/llm_providers.py); this class knows only which connector
+    speaks each of the two protocols a provider there may name. So a
+    provider that answers one of them is an entry in the catalog and no
+    line here, and a provider with a protocol of its own is a connector
+    and a line in ``PROTOCOLS``.
     """
 
-    PROVIDERS = {
+    PROTOCOLS = {
         "openai": OpenAIConnector,
         "anthropic": AnthropicConnector,
-        "openrouter": OpenAIConnector,
-        "gemini": OpenAIConnector,
-        "deepseek": OpenAIConnector,
-        "groq": OpenAIConnector,
-        "mistral": OpenAIConnector,
-        "xai": OpenAIConnector,
-        "openai_compatible": OpenAIConnector,
-        # Scripted, no network. Reachable from a chat config on
-        # purpose — see connector/fake.py for what that does and does
-        # not allow.
-        "fake": FakeConnector,
     }
+
+    #: Scripted, no network, and in no catalog: nobody is offered it on
+    #: a page. Reachable from a chat config on purpose — see
+    #: connector/fake.py for what that does and does not allow.
+    SCRIPTED = {"fake": FakeConnector}
+
+    #: The providers whose client knows their address when none is
+    #: given. Every other one must say where it is.
+    OWN_ADDRESS = ("openai", "anthropic", "fake")
+
+    @classmethod
+    def connector_class(cls, provider: str):
+        if provider in cls.SCRIPTED:
+            return cls.SCRIPTED[provider]
+        entry = LlmProviders.find(provider)
+        return cls.PROTOCOLS.get(entry["protocol"]) if entry else None
 
     @classmethod
     def create(cls, config: dict):
         provider = str((config or {}).get("provider") or "").strip().lower()
-        connector_class = cls.PROVIDERS.get(provider)
+        connector_class = cls.connector_class(provider)
         if connector_class is None:
             raise ValueError(
-                f"Unsupported LLM provider '{provider}' "
-                f"(supported: {', '.join(sorted(cls.PROVIDERS))})"
+                f"Unsupported LLM provider '{provider}' — it is not in the "
+                f"platform's catalog of providers. A service that speaks "
+                f"OpenAI's protocol is reached as 'openai_compatible'."
             )
         # Never fall back to OpenAI's public endpoint for another provider.
-        if provider not in ("openai", "anthropic", "fake") and not str(
+        if provider not in cls.OWN_ADDRESS and not str(
                 config.get("endpoint") or "").strip():
             raise ValueError(f"{provider} requires endpoint")
         return connector_class(config)

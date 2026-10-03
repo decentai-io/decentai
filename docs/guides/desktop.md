@@ -15,8 +15,8 @@ computer only. How it works underneath is
   where Docker is not running, the starter offers to install Podman with
   Homebrew, or says where to get it.
 - A key for the AI model you choose — Anthropic, OpenAI, OpenRouter,
-  Gemini, or another OpenAI-compatible service, or a model you host
-  yourself.
+  Gemini, any other provider the app lists, or another
+  OpenAI-compatible service, or a model you host yourself.
 
 ## Install
 

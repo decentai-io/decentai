@@ -397,7 +397,7 @@
               <span class="field-label">Provider</span>
               <select class="txt" [ngModel]="draft.provider" (ngModelChange)="selectProvider($event)">
                 <option value="" disabled hidden>Choose…</option>
-                <option *ngFor="let provider of providers" [value]="provider.value">{{ provider.label }}</option>
+                <option *ngFor="let provider of providers" [value]="provider.id">{{ provider.name }}</option>
               </select>
             </label>
             <label class="field full">

@@ -9,7 +9,7 @@ import { SwPush } from '@angular/service-worker';
 import { NotificationSettings, NotificationsService } from 'src/app/services/notifications.service';
 import { Profile, ProfileService } from 'src/app/services/profile.service';
 import {
-  LlmConnection, LlmConnectionDraft, SettingsLlmService,
+  LlmConnection, LlmConnectionDraft, LlmProvider, SettingsLlmService,
 } from 'src/app/services/settings-llm.service';
 import { DataPageBase } from '../data-page-base';
 
@@ -62,17 +62,9 @@ export class SettingsComponent extends DataPageBase implements OnInit, OnDestroy
   deleteTarget: LlmConnection | null = null;
   busyId = '';
 
-  readonly providers = [
-    { value: 'openai', label: 'OpenAI', endpoint: 'https://api.openai.com/v1' },
-    { value: 'anthropic', label: 'Anthropic', endpoint: 'https://api.anthropic.com' },
-    { value: 'openrouter', label: 'OpenRouter', endpoint: 'https://openrouter.ai/api/v1' },
-    { value: 'gemini', label: 'Google Gemini', endpoint: 'https://generativelanguage.googleapis.com/v1beta/openai/' },
-    { value: 'deepseek', label: 'DeepSeek', endpoint: 'https://api.deepseek.com' },
-    { value: 'groq', label: 'Groq', endpoint: 'https://api.groq.com/openai/v1' },
-    { value: 'mistral', label: 'Mistral', endpoint: 'https://api.mistral.ai/v1' },
-    { value: 'xai', label: 'xAI', endpoint: 'https://api.x.ai/v1' },
-    { value: 'openai_compatible', label: 'Custom / OpenAI-compatible', endpoint: '' },
-  ];
+  /** The platform's catalog of providers, as the backend serves it:
+   *  the page keeps no list of its own to fall out of step with it. */
+  providers: LlmProvider[] = [];
 
   selectProvider(provider: string): void {
     const endpoint = this.draft.endpoint.trim();
@@ -81,12 +73,12 @@ export class SettingsComponent extends DataPageBase implements OnInit, OnDestroy
       p.endpoint && p.endpoint.replace(/\/$/, '') === endpoint.replace(/\/$/, ''));
     this.draft.provider = provider;
     if (!endpoint || isPreset) {
-      this.draft.endpoint = this.providers.find(p => p.value === provider)?.endpoint ?? '';
+      this.draft.endpoint = this.providers.find(p => p.id === provider)?.endpoint ?? '';
     }
   }
 
   get endpointPlaceholder(): string {
-    return this.providers.find(p => p.value === this.draft.provider)?.endpoint
+    return this.providers.find(p => p.id === this.draft.provider)?.endpoint
       || 'https://your-server.example/v1';
   }
 
@@ -113,12 +105,14 @@ export class SettingsComponent extends DataPageBase implements OnInit, OnDestroy
   async ngOnInit(): Promise<void> {
     this.tab = this.initialTab();
     this.loading = true;
-    const [connections, profile, peers] = await Promise.all([
+    const [connections, providers, profile, peers] = await Promise.all([
       this.canSeeLlm ? this.service.list() : Promise.resolve([]),
+      this.canSeeLlm ? this.service.providers() : Promise.resolve([]),
       this.canSeeLlm || this.canSeeChat ? this.profiles.get() : Promise.resolve(null),
       this.canSeeLlm ? this.profiles.peers() : Promise.resolve([]),
     ]);
     this.connections = connections;
+    this.providers = providers;
     this.profile = profile;
     this.peers = peers;
     this.loading = false;

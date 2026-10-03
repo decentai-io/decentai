@@ -11,10 +11,19 @@ describe('SettingsComponent', () => {
     } as any;
   }
 
+  // A few entries in the shape Settings:Llm:providers serves.
+  const catalog = [
+    { id: 'anthropic', name: 'Anthropic', protocol: 'anthropic', endpoint: 'https://api.anthropic.com' },
+    { id: 'openrouter', name: 'OpenRouter', protocol: 'openai', endpoint: 'https://openrouter.ai/api/v1' },
+    { id: 'together', name: 'Together AI', protocol: 'openai', endpoint: 'https://api.together.xyz/v1' },
+    { id: 'openai_compatible', name: 'Custom / OpenAI-compatible', protocol: 'openai', endpoint: '' },
+  ];
+
   function create(connections: any[] = [], calls: Record<string, any> = {}) {
     const component = new SettingsComponent(
       {
         list: async () => connections,
+        providers: async () => catalog,
         create: async (draft: any) => {
           calls['created'] = draft;
           return { connection: connection(draft.name) };
@@ -42,6 +51,7 @@ describe('SettingsComponent', () => {
       { navigate: async () => true } as any,
     );
     component.connections = connections;
+    component.providers = catalog as any;
     return component;
   }
 
@@ -65,7 +75,7 @@ describe('SettingsComponent', () => {
     const component = create();
     component.startCreate();
     for (const provider of component.providers) {
-      component.selectProvider(provider.value);
+      component.selectProvider(provider.id);
       expect(component.draft.endpoint).toBe(provider.endpoint);
     }
     component.draft.endpoint = 'https://my-gateway.example/v1';

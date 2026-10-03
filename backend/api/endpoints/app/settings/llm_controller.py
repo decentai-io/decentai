@@ -15,6 +15,7 @@ never a lock.
 
 from __future__ import annotations
 
+from contracts.llm_providers import LlmProviders
 from database.stores.settings.llm import LlmConnectionStore
 from server.custom_logging import CustomLoggerFactory
 
@@ -49,6 +50,14 @@ class LlmController:
         """Every connection this caller can see, default first. Keys
         metadata only — the api key is write-only, here as everywhere."""
         return {"connections": self.store.list(user)}, 200
+
+    def providers(self, data: dict, user: dict):
+        """The providers a connection may name, for the form that adds
+        one: each with the protocol it speaks and the address the form
+        starts with. The same catalog the store validates against and
+        the runtime builds connectors from, so the page cannot offer a
+        provider the platform would then refuse."""
+        return {"providers": LlmProviders.all()}, 200
 
     def create(self, data: dict, user: dict):
         payload = self._payload(data)

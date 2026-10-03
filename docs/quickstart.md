@@ -13,8 +13,9 @@ launcher is simpler: see *On your own computer* in the
 - Python 3.12 on the machine, for the three generator scripts. They
   import nothing but the standard library and `cryptography`.
 - A language-model API key — Anthropic, OpenAI, OpenRouter, Gemini,
-  DeepSeek, Groq, Mistral, xAI, or another OpenAI-compatible service — for
-  the assistant to think with. Nothing else is needed to start; email
+  DeepSeek, Groq, Mistral, xAI, any other provider in the platform's
+  catalog, or another OpenAI-compatible service — for the assistant to
+  think with. Nothing else is needed to start; email
   delivery, object storage and agent sources come later.
 
 ## 1. Generate the deployment's secrets
@@ -78,8 +79,11 @@ internal authority, so the browser warns once; accept it. Sign in with
 
 ## 5. Give it a model
 
-**Settings → Language models → New connection.** Choose the provider,
-name the model exactly as the provider names it, paste the key, save.
+**Settings → Language models → New connection.** Choose the provider —
+its address is filled in; a service that is not listed and speaks
+OpenAI's protocol is *Custom / OpenAI-compatible*, with its address
+typed — name the model exactly as the provider names it, paste the key,
+save.
 Mark it as the default. Keys are write-only: nobody reads one back.
 
 ## 6. Install an agent

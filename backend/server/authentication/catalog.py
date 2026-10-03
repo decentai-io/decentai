@@ -142,6 +142,11 @@ BASELINE_ACTIONS = (
     # every person who can open a chat, so gating it produces chats that
     # cannot say what they would think with.
     "settings:llm:list",
+    # The providers the platform knows by name — public facts, the same
+    # for every installation. The form that adds a connection is drawn
+    # from it, and a person who may see connections may see what one
+    # could be.
+    "settings:llm:providers",
     # Speaking a message instead of typing it — the composer's
     # microphone, for whoever may write a message at all.
     "settings:speech:transcribe",
@@ -159,7 +164,7 @@ BASELINE_ACTIONS = (
 # are expected to edit BaseAccess — unticking an action revokes it for
 # everybody — and a seed that re-asserted the whole list on every run
 # would quietly undo that on the next restart.
-BASELINE_REVISION = 25
+BASELINE_REVISION = 26
 
 
 # An action IS an endpoint (``iam:user:set_groups``); this lists what
@@ -369,6 +374,9 @@ ACTION_CATALOG: Dict[str, Dict[str, Any]] = {
                 "connection you can see"
             ),
             "settings:llm:list": "View the organization's LLM connections",
+            "settings:llm:providers": (
+                "View the language-model providers a connection may name"
+            ),
             "settings:llm:create": "Add an LLM connection",
             "settings:llm:update": "Edit an LLM connection or rotate its key",
             "settings:llm:setdefault": "Choose the default LLM connection",

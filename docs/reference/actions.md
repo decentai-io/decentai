@@ -9,7 +9,7 @@ the actions a chat's delegation may call, and nothing else.
 Generated from `backend/server/authentication/catalog.py` by
 `docs/reference/generate.py`; do not edit by hand.
 
-179 actions in 34 services; 50 baseline.
+180 actions in 34 services; 51 baseline.
 
 ## Own account
 
@@ -152,6 +152,7 @@ Generated from `backend/server/authentication/catalog.py` by
 |---|---|---|---|
 | `settings:llm:use` | Let your chat's engine read the model key of a connection you can see |  | yes |
 | `settings:llm:list` | View the organization's LLM connections | yes |  |
+| `settings:llm:providers` | View the language-model providers a connection may name | yes |  |
 | `settings:llm:create` | Add an LLM connection |  |  |
 | `settings:llm:update` | Edit an LLM connection or rotate its key |  |  |
 | `settings:llm:setdefault` | Choose the default LLM connection |  |  |

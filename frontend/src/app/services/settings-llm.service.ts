@@ -30,6 +30,18 @@ export interface LlmConnection {
   updated_at?: string | null;
 }
 
+/** One provider a connection may name — an entry of the platform's
+ *  catalog (contracts/llm_providers.json), served by the backend so the
+ *  form offers exactly what the store accepts and the runtime can reach. */
+export interface LlmProvider {
+  id: string;
+  name: string;
+  protocol: 'openai' | 'anthropic';
+  /** Where the provider answers; empty for the custom entry, whose
+   *  address the person types. */
+  endpoint: string;
+}
+
 export interface LlmConnectionDraft {
   name: string;
   provider: string;
@@ -54,6 +66,11 @@ export class SettingsLlmService {
   async list(): Promise<LlmConnection[]> {
     const r = await this.request.gateway('Settings:Llm:list');
     return Array.isArray(r?.connections) ? r.connections : [];
+  }
+
+  async providers(): Promise<LlmProvider[]> {
+    const r = await this.request.gateway('Settings:Llm:providers');
+    return Array.isArray(r?.providers) ? r.providers : [];
   }
 
   async create(draft: LlmConnectionDraft): Promise<{

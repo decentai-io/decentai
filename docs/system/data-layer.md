@@ -307,6 +307,24 @@ equally write-only; what they skip is the ceremony of a definition for a
 form that was never anybody's to design. Every definition in this
 collection is therefore something an agent declared.
 
+Which **provider** a connection may name is one list,
+`contracts/llm_providers.json`, read by all three sides: the store
+accepts a provider that is on it, the page draws its form from it
+(`Settings:Llm:Providers`), and the runtime builds the connector for
+the protocol the entry names. An entry is an id, a name, a protocol —
+OpenAI's chat completions or Anthropic's messages — and the address the
+form starts with; the connection keeps its own endpoint, so a person may
+point it at a gateway of theirs. The list is written from
+[models.dev](https://github.com/anomalyco/models.dev), the open database
+of providers, by `contracts/generate_llm_providers.py`, and is a file in
+the repository rather than a request made while the platform runs: an
+install with no way out lists what any other does, and a new provider
+arrives in a commit somebody read. A provider with a protocol of its own
+or a sign-in in place of a key is not on it — that is a connector, in
+`ai_runtime/llms/connector/` — and a service whose address differs per
+customer, or a model on the person's own machine, is the
+`openai_compatible` entry with the address typed.
+
 ### Files
 
 The only domain that owns bytes as well as a document, and the two are
