@@ -32,8 +32,7 @@ class TestTheKeyIsWriteOnly:
         connection = response.json()["connection"]
         assert connection["keys"] == {
             "provider": "anthropic", "model": "claude-sonnet-5",
-            "endpoint": "https://api.anthropic.com", "reasoning_effort": "",
-            "purpose": "chat",
+            "endpoint": "https://api.anthropic.com",
         }
         assert "api_key" not in str(response.json())
         assert "sk-ant" not in str(listed(admin))
@@ -72,30 +71,78 @@ class TestTheKeyIsWriteOnly:
         assert resolved["values"]["api_key"] == "sk-ant-2"
 
 
-class TestReasoningEffort:
-    """How hard a reasoning model thinks before each step is the
-    connection's to say: kept with the connection, handed to the runtime
-    with the key, and refused when it is not a word the providers know."""
+class TestOneKeyEveryModel:
+    """A connection is a provider and its key. Which model is the
+    chat's to choose, and how hard it thinks is chosen with it."""
 
-    def test_the_effort_is_kept_and_handed_to_the_runtime(self, admin, seed):
+    def test_a_connection_says_nothing_of_purpose_or_effort(self, admin, seed):
         from database.stores import LlmConnectionStore, UserStore
         response = make_connection(admin, provider="openai", model="gpt-5",
-                                   reasoning_effort="Low")
+                                   reasoning_effort="low", purpose="embedding")
         assert response.status_code == 200, response.text
-        ref = response.json()["connection"]["resource_ref"]
-        assert response.json()["connection"]["keys"]["reasoning_effort"] == "low"
-        resolved = LlmConnectionStore().use(UserStore.to_public(seed.admin), ref)
-        assert resolved["keys"]["reasoning_effort"] == "low"
-        # Back to the provider's default: blank, kept as blank.
-        updated = app_call(admin, "Settings:Llm:Update", {
-            "connection_id": ref, "reasoning_effort": ""})
-        assert updated.status_code == 200, updated.text
-        assert updated.json()["connection"]["keys"]["reasoning_effort"] == ""
+        connection = response.json()["connection"]
+        assert set(connection["keys"]) == {"provider", "model", "endpoint"}
+        resolved = LlmConnectionStore().use(
+            UserStore.to_public(seed.admin), connection["resource_ref"])
+        assert set(resolved["keys"]) == {"provider", "model", "endpoint"}
 
-    def test_an_effort_the_providers_do_not_know_is_refused(self, admin, seed):
-        response = make_connection(admin, reasoning_effort="turbo")
-        assert response.status_code == 400
-        assert "Reasoning effort" in response.text
+    def test_a_chat_names_any_model_of_the_connections_provider(self, admin, seed):
+        from test_ai_messages import make_chat
+        ref = make_connection(admin).json()["connection"]["resource_ref"]
+        chat_id = make_chat(admin)
+        chosen = app_call(admin, "AI:Chat:Update", {"chat_id": chat_id, "config": {
+            "llm": {"secret_ref": ref, "model": "claude-opus-5-5",
+                    "reasoning_effort": "High",
+                    # Whose key it is and where it is sent are the
+                    # connection's, whatever a block says.
+                    "provider": "openai", "endpoint": "https://elsewhere.example/v1"}}})
+        assert chosen.status_code == 200, chosen.text
+        served = app_call(admin, "AI:Chat:Get", {"chat_id": chat_id}).json()["data"]
+        assert served["chat"]["config"]["llm"] == {
+            "provider": "anthropic", "model": "claude-opus-5-5",
+            "endpoint": "https://api.anthropic.com", "secret_ref": ref,
+            "reasoning_effort": "high"}
+
+    def test_a_block_that_names_no_model_gets_the_one_the_connection_starts_with(
+            self, admin, seed):
+        from test_ai_messages import make_chat
+        ref = make_connection(admin).json()["connection"]["resource_ref"]
+        chat_id = make_chat(admin)
+        app_call(admin, "AI:Chat:Update", {"chat_id": chat_id, "config": {
+            "llm": {"secret_ref": ref}}})
+        served = app_call(admin, "AI:Chat:Get", {"chat_id": chat_id}).json()["data"]
+        assert served["chat"]["config"]["llm"] == {
+            "provider": "anthropic", "model": "claude-sonnet-5",
+            "endpoint": "https://api.anthropic.com", "secret_ref": ref}
+
+    def test_an_effort_that_is_not_a_word_is_refused(self, admin, seed):
+        from test_ai_messages import make_chat
+        ref = make_connection(admin).json()["connection"]["resource_ref"]
+        refused = app_call(admin, "AI:Chat:Update", {"chat_id": make_chat(admin), "config": {
+            "llm": {"secret_ref": ref, "reasoning_effort": "very hard!"}}})
+        assert refused.status_code == 400 and "Reasoning effort" in refused.text
+
+    def test_the_model_last_picked_is_what_the_next_chat_starts_with(self, admin, seed):
+        from test_ai_messages import make_chat
+        first = make_connection(admin).json()["connection"]["resource_ref"]
+        second = make_connection(
+            admin, name="OpenAI", provider="openai", model="gpt-5",
+            endpoint="https://api.openai.com/v1").json()["connection"]["resource_ref"]
+        saved = app_call(admin, "Account:Profile:Update", {"preferences": {"chat": {
+            "llm_secret_ref": second, "llm_model": "gpt-5-mini",
+            "llm_reasoning_effort": "low"}}})
+        assert saved.status_code == 200, saved.text
+        served = app_call(admin, "AI:Chat:Get", {"chat_id": make_chat(admin)}).json()["data"]
+        assert served["chat"]["config"]["llm"] == {
+            "provider": "openai", "model": "gpt-5-mini",
+            "endpoint": "https://api.openai.com/v1", "secret_ref": second,
+            "reasoning_effort": "low"}
+        # With the preferred connection gone the model goes with it: the
+        # organization's default answers, with the model IT starts with.
+        app_call(admin, "Settings:Llm:Delete", {"connection_id": second})
+        served = app_call(admin, "AI:Chat:Get", {"chat_id": make_chat(admin)}).json()["data"]
+        assert served["chat"]["config"]["llm"]["secret_ref"] == first
+        assert served["chat"]["config"]["llm"]["model"] == "claude-sonnet-5"
 
 
 class TestValidation:
@@ -264,21 +311,16 @@ class TestTheDefault:
         assert len(remaining) == 1
         assert remaining[0]["is_default"] is True
 
-    def test_the_default_stays_a_chat_model(self, admin, seed):
-        """No chat thinks with an embedding or transcription model, so
-        none becomes the default — not when the default is deleted, not
-        by a change of purpose, not by spelling."""
-        first = make_connection(admin, purpose="Chat").json()["connection"]
+    def test_any_connection_may_be_the_default(self, admin, seed):
+        """A connection is a provider, and every provider here serves a
+        model a chat can think with: the first is the default, and
+        deleting it hands the default to the one that is left."""
+        first = make_connection(admin).json()["connection"]
         assert first["is_default"] is True
-        make_connection(admin, name="Embedder", purpose="embedding")
-
-        turned = app_call(admin, "Settings:Llm:Update", {
-            "connection_id": first["resource_ref"], "purpose": "embedding"})
-        assert turned.status_code == 400, turned.text
-
+        make_connection(admin, name="Second")
         app_call(admin, "Settings:Llm:Delete",
                  {"connection_id": first["resource_ref"]})
-        assert [c["is_default"] for c in listed(admin)] == [False]
+        assert [c["is_default"] for c in listed(admin)] == [True]
 
 
 class TestTheRuntimeDoor:

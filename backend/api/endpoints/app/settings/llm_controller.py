@@ -1,4 +1,4 @@
-"""Settings:Llm — the models an organization's chats may think with.
+"""Settings:Llm — the providers an organization's chats may think with.
 
 Its own module with its own collection. A connection used to be a secret
 on a seeded definition, which meant naming a model dragged in the whole
@@ -7,10 +7,14 @@ the platform has always known by heart. What survives from that design
 is the part that mattered: the key is encrypted the same way and never
 comes back.
 
+A connection is a provider and its key. The model is chosen where it is
+used — by a chat, by agent routing, by speech — from the ones that
+provider serves; a connection only names the one it starts with.
+
 One connection is the DEFAULT — the organization's answer when nothing
 narrower chose. A person's preference and a chat's own config may each
-name a different connection; the default is only where resolution ends,
-never a lock.
+name a different connection and model; the default is only where
+resolution ends, never a lock.
 """
 
 from __future__ import annotations
@@ -83,8 +87,6 @@ class LlmController:
                     "provider": payload.get("provider"),
                     "model": payload.get("model"),
                     "endpoint": payload.get("endpoint"),
-                    "reasoning_effort": payload.get("reasoning_effort"),
-                    "purpose": payload.get("purpose") or "chat",
                 },
                 api_key=payload.get("api_key"),
                 created_by=str(user.get("user_id") or ""),
@@ -160,7 +162,7 @@ class LlmController:
             return refusal
         fields = {
             key: payload[key]
-            for key in ("provider", "model", "endpoint", "reasoning_effort", "purpose")
+            for key in ("provider", "model", "endpoint")
             if key in payload
         }
         try:
@@ -192,10 +194,6 @@ class LlmController:
             user, str(self._payload(data).get("connection_id") or ""))
         if chosen is None:
             return {"error": "Connection not found."}, 404
-        if chosen.get("purpose") != "chat":
-            return {"error": "Only a chat model can be the default: no chat "
-                             "thinks with an embedding or transcription "
-                             "model."}, 400
         try:
             connection = self.store.set_default(
                 self._org(user),

@@ -104,11 +104,12 @@ class SessionContract:
 
         routing = dict(OrganizationStore().routing(str(user.get("org_id") or "")))
         ref = routing.pop("embedding_connection_id", "")
+        model = str(routing.pop("embedding_model", "") or "")
         embedding = None
-        if ref:
+        if ref and model:
             doc = LlmConnectionStore().get_in(str(user.get("org_id") or ""), ref)
-            if doc is not None and doc.get("purpose") == "embedding":
-                embedding = {"provider": doc.get("provider"), "model": doc.get("model"),
+            if doc is not None:
+                embedding = {"provider": doc.get("provider"), "model": model,
                              "secret_ref": doc["_id"]}
                 if doc.get("endpoint"):
                     embedding["endpoint"] = doc.get("endpoint")

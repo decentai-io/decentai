@@ -307,6 +307,23 @@ equally write-only; what they skip is the ceremony of a definition for a
 form that was never anybody's to design. Every definition in this
 collection is therefore something an agent declared.
 
+An LLM connection is a **provider and the key to it** — which provider,
+where it answers, the key — and not a model. The model is chosen where
+it is used, from the ones that provider serves: a chat's `llm` block
+names the connection (`secret_ref`), the model and, for a model that
+thinks before answering, how hard (`reasoning_effort`); agent routing
+names a connection and its embedding model (`Settings:Routing`), speech
+a connection and its transcription model (`Settings:Speech`). So one key
+is pasted once and serves every model its provider has. A connection
+carries one `model` of its own, the one it starts with: what a chat that
+chose nothing thinks with. When a block is saved the provider and the
+address are written from the connection, and the runtime takes them from
+the connection again as the turn begins (`Settings:Llm:Use`) — whose key
+it is and where it is sent are never a chat's to say. A person's last
+pick — connection, model, effort — is kept in their preferences
+(`llm_secret_ref`, `llm_model`, `llm_reasoning_effort`) and is what
+their next chat starts with.
+
 Which **provider** a connection may name is one list,
 `contracts/llm_providers.json`, read by all three sides: the store
 accepts a provider that is on it, the page draws its form from it

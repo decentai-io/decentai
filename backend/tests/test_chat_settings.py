@@ -289,21 +289,32 @@ class TestAModelIsCheckedNotTrusted:
         assert response.status_code >= 400
         assert "not available to you" in response.text
 
-    def test_the_block_is_carried_through_as_sent(self, admin, seed):
-        """The block is the RUNTIME's input, not a copy of the secret. Its
-        provider chooses the connector, and provider-specific keys ride
-        with it — rebuilding it from the record threw those away and
-        broke the scripted connector that smoke checks run on."""
-        ref = make_llm_connection(admin)
+    def test_a_block_with_no_connection_is_carried_through_as_sent(self, admin, seed):
+        """The block is the RUNTIME's input. The scripted connector that
+        smoke checks run on needs no key and rides with keys of its own;
+        nothing about it is rewritten."""
         config = app_call(admin, "AI:Chat:Create", {
             "request_id": "m2",
-            "config": {"llm": {"provider": "fake", "responses": ["hi"],
+            "config": {"llm": {"provider": "fake", "responses": ["hi"]}},
+        }).json()["data"]["chat"]["config"]
+
+        assert config["llm"] == {"provider": "fake", "responses": ["hi"]}
+
+    def test_a_block_that_names_a_connection_takes_its_provider_from_it(self, admin, seed):
+        """Whose key it is and where it is sent are the connection's —
+        the runtime takes them from the connection whatever a block
+        says, so the stored block says the same. The model stays the
+        chat's own."""
+        ref = make_llm_connection(admin)
+        config = app_call(admin, "AI:Chat:Create", {
+            "request_id": "m4",
+            "config": {"llm": {"provider": "fake", "model": "another-model",
                                "secret_ref": ref}},
         }).json()["data"]["chat"]["config"]
 
         assert config["llm"]["secret_ref"] == ref
-        assert config["llm"]["provider"] == "fake"
-        assert config["llm"]["responses"] == ["hi"]
+        assert config["llm"]["provider"] != "fake"
+        assert config["llm"]["model"] == "another-model"
 
 
 class TestAgentsAreBoundedOnBothDoors:

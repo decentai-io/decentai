@@ -48,22 +48,26 @@ class RoutingController:
         return self._answer(user), 200
 
     def update(self, data: dict, user: dict):
-        """The numbers and the embedding connection, checked: the
-        connection must be one of this organization's, made for
-        embeddings, and shared with everyone — a chat of any member
-        will use it, so a private one would route for its owner and
-        nobody else."""
+        """The numbers and the embedding model, checked: a connection
+        of this organization's shared with everyone — a chat of any
+        member will use it, so a private one would route for its owner
+        and nobody else — and which of its provider's models embeds."""
         payload = self._payload(data)
         changes = {key: payload[key] for key in OrganizationStore.ROUTING_DEFAULTS
                    if key in payload}
-        ref = str(changes.get("embedding_connection_id") or "").strip()
+        if "embedding_connection_id" in changes \
+                and not str(changes["embedding_connection_id"] or "").strip():
+            # No connection is no model either.
+            changes["embedding_model"] = ""
+        chosen = {**self.organizations.routing(self._org(user)), **changes}
+        ref = str(chosen.get("embedding_connection_id") or "").strip()
         if ref:
             doc = self.connections.get_in(self._org(user), ref)
             if doc is None:
                 return {"error": "That connection does not exist."}, 404
-            if doc.get("purpose") != "embedding":
-                return {"error": "That connection is a chat model, not an "
-                                 "embedding model."}, 400
+            if not str(chosen.get("embedding_model") or "").strip():
+                return {"error": "Choose the embedding model as well as "
+                                 "the provider it is served by."}, 400
             if not self.connections.org_wide(doc.get("owner")):
                 return {"error": "Share the embedding connection with the "
                                  "whole organization first: every member's "

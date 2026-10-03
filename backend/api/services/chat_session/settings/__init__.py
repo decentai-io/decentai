@@ -26,7 +26,9 @@ from __future__ import annotations
 from typing import Any, Dict, Optional, Tuple
 
 from api.services.chat_session.settings.bindings import CredentialBindings
-from api.services.chat_session.settings.model import ModelChoice
+from api.services.chat_session.settings.model import (
+    ModelChoice, PreferredEffort, PreferredModel,
+)
 from api.services.chat_session.settings.narrowing import EnabledAgents, EnabledSkills
 from api.services.chat_session.settings.setting import Setting, chosen_by
 from api.services.chat_session.settings.skills_cap import SkillsCap
@@ -47,6 +49,7 @@ class ChatSettings:
     def __init__(self):
         self.settings = (
             TrustLevel(), TurnBudget(), ModelChoice(),
+            PreferredModel(), PreferredEffort(),
             EnabledAgents(), EnabledSkills(), Timezone(), SkillsCap(),
             CredentialBindings(),
         )
@@ -167,7 +170,9 @@ class ChatSettings:
         asked = asked if isinstance(asked, dict) else {}
         config: Dict[str, Any] = {}
         for setting in self.settings:
-            if setting.name not in asked:
+            # A setting with no name is a preference only: no chat
+            # config carries it.
+            if not setting.name or setting.name not in asked:
                 continue
             value, problem = setting.check(user, asked[setting.name])
             if problem:

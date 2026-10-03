@@ -1,9 +1,19 @@
-"""LLM connections — the models an organization's chats may think with.
+"""LLM connections — the providers an organization's chats may think with.
 
-A connection is its own kind of record, not a secret on a definition:
-its shape is the platform's to know (provider, model, endpoint, key), so
-making an organization author a definition before it could name a model
-was ceremony around a fixed form.
+A connection is a provider and the key to it: which provider, where it
+answers, and the key, pasted once. Which MODEL of that provider a chat
+thinks with is the chat's own choice (its ``llm`` block names the
+connection and the model), so one key serves every model the provider
+has, and the models that embed or write speech down as well.
+
+A connection still carries one ``model``: the one it starts with — what
+a chat that chose nothing thinks with, and what the key was tried on
+when the connection was added.
+
+It is its own kind of record, not a secret on a definition: its shape
+is the platform's to know, so making an organization author a
+definition before it could name a provider was ceremony around a fixed
+form.
 
 The key is still encrypted exactly the way the secret layer encrypts —
 same cipher, same key material, sealed to the document id — and it is
@@ -39,11 +49,6 @@ class LlmConnectionStore(OrgScopedStore):
 
     COLLECTION = "llm_connections"
     ENCRYPTED_FIELDS = ("values",)
-
-    #: How hard a reasoning model thinks before each step; blank is the
-    #: provider's default and the only right value for a model that
-    #: does not reason.
-    EFFORTS = ("", "minimal", "low", "medium", "high")
 
     @classmethod
     def sharing(cls):
@@ -100,11 +105,6 @@ class LlmConnectionStore(OrgScopedStore):
                 "provider": doc.get("provider", ""),
                 "model": doc.get("model", ""),
                 "endpoint": doc.get("endpoint", ""),
-                "reasoning_effort": doc.get("reasoning_effort", ""),
-                # What the model is for: a chat thinks with a ``chat``
-                # connection; agent routing embeds with an ``embedding``
-                # one.
-                "purpose": doc.get("purpose", ""),
             },
             "is_default": bool(doc.get("is_default")),
             "created_at": iso(doc.get("created_at")),
@@ -113,18 +113,8 @@ class LlmConnectionStore(OrgScopedStore):
 
     # ------------------------------------------------------------------
 
-    #: what a connection is for: a chat thinks with a ``chat`` model,
-    #: agent routing embeds with an ``embedding`` one, and a spoken
-    #: message is written down by a ``transcription`` one
-    PURPOSES = ("chat", "embedding", "transcription")
-
     def _clean(self, fields: Dict[str, Any], partial: bool) -> Dict[str, Any]:
         cleaned: Dict[str, Any] = {}
-        if not partial or "purpose" in fields:
-            purpose = str(fields.get("purpose") or "chat").strip().lower()
-            if purpose not in self.PURPOSES:
-                raise ValueError("Purpose must be chat, embedding or transcription.")
-            cleaned["purpose"] = purpose
         if not partial or "provider" in fields:
             provider = str(fields.get("provider") or "").strip().lower()
             # The catalog both sides read: a provider accepted here is
@@ -138,8 +128,9 @@ class LlmConnectionStore(OrgScopedStore):
         if not partial or "model" in fields:
             model = str(fields.get("model") or "").strip()
             if not model:
-                raise ValueError("Model is required — the provider's own "
-                                 "name for it, copied exactly.")
+                raise ValueError("Choose the model to start with — the "
+                                 "one a chat thinks with until another "
+                                 "is picked.")
             cleaned["model"] = model
         if not partial or "endpoint" in fields:
             endpoint = str(fields.get("endpoint") or "").strip()
@@ -150,15 +141,6 @@ class LlmConnectionStore(OrgScopedStore):
                     "The endpoint still has a blank to fill in: replace "
                     "each <...> with your own account's value.")
             cleaned["endpoint"] = endpoint
-        if "reasoning_effort" in fields:
-            # How hard a reasoning model thinks before each beat. Blank
-            # means the provider's default, and is what a model that does
-            # not reason must be left at.
-            effort = str(fields.get("reasoning_effort") or "").strip().lower()
-            if effort not in self.EFFORTS:
-                raise ValueError("Reasoning effort must be blank or one of: "
-                                 + ", ".join(e for e in self.EFFORTS if e) + ".")
-            cleaned["reasoning_effort"] = effort
         return cleaned
 
     def _name_taken(self, org_id: str, creator: str, name: str,
@@ -213,19 +195,16 @@ class LlmConnectionStore(OrgScopedStore):
             raise ValueError("API key is required.")
 
         doc_id = f"llm_{new_id()}"
-        cleaned = self._clean(fields, partial=False)
         doc = {
             "_id": doc_id,
             "org_id": org_id,
             "name": name,
             "owner": owner,
-            **cleaned,
+            **self._clean(fields, partial=False),
             "values": SecretCipher.encrypt({"api_key": key}, doc_id),
-            # The first CHAT connection is the default because a default
+            # The first connection is the default because a default
             # must exist for chats to start; every later one is a choice.
-            # An embedding model is never a default: no chat thinks with it.
-            "is_default": (self.default(org_id) is None
-                           and cleaned["purpose"] == "chat"),
+            "is_default": self.default(org_id) is None,
             "created_by": str(created_by or ""),
             "created_at": utc_now(),
             "updated_at": utc_now(),
@@ -258,11 +237,6 @@ class LlmConnectionStore(OrgScopedStore):
             changes["name"] = name
         if fields:
             changes.update(self._clean(fields, partial=True))
-            if (doc.get("is_default")
-                    and changes.get("purpose", "chat") != "chat"):
-                raise ValueError(
-                    "This is the model new chats think with. Make another "
-                    "chat model the default before giving it another purpose.")
         if str(api_key or "").strip():
             changes["values"] = SecretCipher.encrypt(
                 {"api_key": str(api_key)}, doc["_id"])
@@ -293,8 +267,7 @@ class LlmConnectionStore(OrgScopedStore):
         self.col.delete_one({"_id": doc["_id"]})
         if doc.get("is_default"):
             survivor = self.col.find_one(
-                {"org_id": org_id, "purpose": "chat"},
-                sort=[("updated_at", -1)])
+                {"org_id": org_id}, sort=[("updated_at", -1)])
             if survivor is not None:
                 self.col.update_one(
                     {"_id": survivor["_id"]}, {"$set": {"is_default": True}})
@@ -317,7 +290,6 @@ class LlmConnectionStore(OrgScopedStore):
                 "provider": doc.get("provider", ""),
                 "model": doc.get("model", ""),
                 "endpoint": doc.get("endpoint", ""),
-                "reasoning_effort": doc.get("reasoning_effort", ""),
             },
             "values": {"api_key": str(values.get("api_key") or "")},
         }

@@ -131,10 +131,8 @@ class BackendServices:
         if isinstance(llm, dict) and llm.get("secret_ref"):
             # The block names a connection; the key and its settings are
             # the settings domain's, resolved for the delegating person.
-            resolved = await self.call(chat_id, "Settings:Llm:Use", {
-                "connection_id": llm["secret_ref"]})
-            llm = {**llm, **(resolved.get("keys") or {}),
-                   **(resolved.get("values") or {})}
+            llm = self._with_connection(llm, await self.call(
+                chat_id, "Settings:Llm:Use", {"connection_id": llm["secret_ref"]}))
         routing = answer.get("routing") if isinstance(answer.get("routing"), dict) else None
         if routing is not None and isinstance(routing.get("embedding"), dict) \
                 and routing["embedding"].get("secret_ref"):
@@ -142,11 +140,10 @@ class BackendServices:
             # the chat's model key is fetched; a door that refuses
             # leaves routing off for this chat rather than the chat.
             try:
-                resolved = await self.call(chat_id, "Settings:Llm:Use", {
-                    "connection_id": routing["embedding"]["secret_ref"]})
-                routing["embedding"] = {**routing["embedding"],
-                                        **(resolved.get("keys") or {}),
-                                        **(resolved.get("values") or {})}
+                routing["embedding"] = self._with_connection(
+                    routing["embedding"], await self.call(
+                        chat_id, "Settings:Llm:Use", {
+                            "connection_id": routing["embedding"]["secret_ref"]}))
             except Exception as exc:
                 self.logger.warning(f"Embedding model for {chat_id} not resolved: {exc}")
                 routing["embedding"] = None
@@ -167,6 +164,20 @@ class BackendServices:
             "timezone": str(answer.get("timezone") or ""),
             "safety": answer.get("safety") if isinstance(answer.get("safety"), dict) else {},
         }
+
+    @staticmethod
+    def _with_connection(block: dict, resolved: dict) -> dict:
+        """A model block, with the connection it names put in.
+
+        The provider, the address and the key are the connection's and
+        win over whatever the block says: they are whose key it is and
+        where it is sent. The model is the block's — a connection is one
+        key to every model its provider serves — and the one the
+        connection starts with only when the block names none."""
+        keys = resolved.get("keys") or {}
+        return {**block, **keys,
+                "model": block.get("model") or keys.get("model") or "",
+                **(resolved.get("values") or {})}
 
     # -- the pull door (docs/system/agent-code.md) --------------------------
     async def fetch_package(self, chat_id: str, agent_id: str) -> dict:

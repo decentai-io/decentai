@@ -65,6 +65,7 @@ class OrganizationStore(MongoStore):
     #: and lists ``shortlist``. ``open_max`` agents stay open per chat.
     ROUTING_DEFAULTS = {
         "embedding_connection_id": "",
+        "embedding_model": "",
         "threshold": 15,
         "shortlist": 15,
         "candidates": 50,
@@ -81,7 +82,8 @@ class OrganizationStore(MongoStore):
     #: A spoken message is written down by the organization's
     #: transcription connection (Settings:Speech); none means the
     #: composer offers no microphone.
-    SPEECH_DEFAULTS = {"transcription_connection_id": ""}
+    SPEECH_DEFAULTS = {"transcription_connection_id": "",
+                       "transcription_model": ""}
 
     #: What agents may do without asking (Settings:Safety). Every
     #: value starts where the platform stood before the setting
@@ -198,7 +200,7 @@ class OrganizationStore(MongoStore):
         for key, value in (changes or {}).items():
             if key not in self.ROUTING_DEFAULTS:
                 continue
-            if key == "embedding_connection_id":
+            if key in ("embedding_connection_id", "embedding_model"):
                 cleaned[key] = str(value or "").strip()
             elif key == "rerank":
                 cleaned[key] = bool(value)
