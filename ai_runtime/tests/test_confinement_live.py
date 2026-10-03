@@ -566,10 +566,13 @@ class TestAFencedNetwork:
                     f"http://api.example.com:{site}/", hosts=[])
         assert found["status"] == 403, found
 
-    def test_a_manifest_that_does_not_say_reaches_any_host(
+    def test_a_manifest_that_does_not_say_reaches_nothing(
             self, ground, place, net, site):
+        """No block is not ``any``: validation refuses such a manifest,
+        and one that got this far opens nothing."""
         found = ask(ground, place, "fetch", f"http://news.example.org:{site}/")
-        assert found["status"] == 200, found
+        assert found["status"] == 403, found
+        assert "did not declare news.example.org" in found["body"]
 
     def test_a_host_its_credential_names_is_open_for_the_call_it_was_handed_to(
             self, ground, confinement, net, site):
