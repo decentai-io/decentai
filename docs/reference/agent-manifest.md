@@ -59,9 +59,9 @@ account.
 
 ## The manifest
 
-Seven top-level blocks. `schema_version`, `agent`, `implementation` and
-`network` are required; `authorization`, `resources` and `tools` are
-optional in the grammar and present in any agent that does anything.
+Seven top-level blocks. `schema_version`, `agent`, `implementation`,
+`network` and `tools` are required; `authorization` and `resources` are
+optional.
 
 ### `agent` — who it is
 
