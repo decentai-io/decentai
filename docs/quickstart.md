@@ -79,14 +79,17 @@ internal authority, so the browser warns once; accept it. Sign in with
 
 ## 5. Give it a model
 
-**Settings → Language models → New connection.** Choose the provider —
-its address is filled in, with a `<blank>` left for you where it differs
-per account, such as Amazon Bedrock's region; a service that is not
-listed and speaks
-OpenAI's protocol is *Custom / OpenAI-compatible*, with its address
-typed — choose the model from the ones offered, or type the provider's
-own id for one that is not, paste the key, save.
-Mark it as the default. Keys are write-only: nobody reads one back.
+**Settings → Model providers → Add a provider.** Choose the provider —
+the well-known ones are listed, the rest are behind the search — and
+paste its key. The address is filled in (Amazon Bedrock asks for your
+region, Azure for your resource name), a model to start with is chosen
+for you, and the provider is asked whether the key works before it is
+saved. A model on your own computer, or a service that is not listed and
+speaks OpenAI's protocol, is *Your own server*, with its address typed.
+
+One key serves every model the provider has: which one a chat thinks
+with is chosen in the chat. The first provider you add is the default.
+Keys are write-only: nobody reads one back.
 
 ## 6. Install an agent
 

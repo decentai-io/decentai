@@ -1,0 +1,317 @@
+<div class="data-alert error" *ngIf="error && editingId === null && !deleteTarget">{{ error }}</div>
+<div class="data-alert ok" *ngIf="notice">{{ notice }}</div>
+
+<header class="llm-section-header">
+  <div>
+    <h2>Model providers</h2>
+    <p>
+      The providers you have a key for. One key serves every model its
+      provider has; which model a chat thinks with is chosen in the chat.
+    </p>
+  </div>
+  <button class="btn primary add-icon-button" type="button" *ngIf="canCreate"
+          aria-label="Add a provider" matTooltip="Add a provider"
+          (click)="startCreate()">
+    <lucide-icon name="plus" [size]="18"></lucide-icon>
+  </button>
+</header>
+
+<div class="llm-toolbar" *ngIf="connections.length > 5">
+  <div class="llm-search">
+    <lucide-icon name="search" [size]="15"></lucide-icon>
+    <input class="txt" [(ngModel)]="query" name="llm-search"
+           placeholder="Filter by name or provider"
+           aria-label="Filter providers" />
+    <button class="search-clear" type="button" *ngIf="query"
+            (click)="query = ''" aria-label="Clear filter">
+      <lucide-icon name="x" [size]="14"></lucide-icon>
+    </button>
+  </div>
+</div>
+
+<div class="empty-state" *ngIf="!visible.length">
+  <span class="empty-mark"><lucide-icon name="brain-circuit" [size]="22"></lucide-icon></span>
+  <strong *ngIf="query">No match for "{{ query }}"</strong>
+  <strong *ngIf="!query">No provider yet</strong>
+  <p *ngIf="!query">
+    Chats cannot hold a conversation until there is one. Add a provider
+    and paste its key — the first becomes the default.
+  </p>
+  <div class="empty-actions">
+    <button class="btn ghost" type="button" *ngIf="query" (click)="query = ''">Clear the filter</button>
+    <button class="btn primary" type="button" *ngIf="!query && canCreate" (click)="startCreate()">
+      Add a provider
+    </button>
+  </div>
+</div>
+
+<ul class="llm-list" *ngIf="visible.length">
+  <li class="llm-row" *ngFor="let connection of visible"
+      [class.is-default]="connection.is_default">
+    <!-- The star IS the default control: filled on the default,
+         hollow and clickable on every other row. -->
+    <button class="star" type="button"
+            [disabled]="connection.is_default || !canSetDefault || !!busyId"
+            [title]="connection.is_default
+                       ? 'The default — answers when nobody chose'
+                       : 'Make this the default'"
+            (click)="makeDefault(connection)">
+      <lucide-icon [name]="connection.is_default ? 'star' : 'star-off'"
+                   [size]="15"></lucide-icon>
+    </button>
+
+    <div class="llm-identity">
+      <strong>
+        {{ connection.name }}
+        <span class="default-tag" *ngIf="connection.is_default">Default</span>
+        <span class="share-tag"
+              [title]="'Who can use this provider: ' + shareLabel(connection)">
+          <lucide-icon name="users" [size]="10"></lucide-icon>
+          {{ shareLabel(connection) }}
+        </span>
+      </strong>
+      <code>{{ summary(connection) }}</code>
+      <p class="default-help" *ngIf="connection.is_default">
+        Used by a chat whose person has not picked a model.
+      </p>
+    </div>
+
+    <div class="llm-actions">
+      <button class="action-icon-button" type="button"
+              *ngIf="canUpdate && isMine(connection)"
+              (click)="startEdit(connection)"
+              aria-label="Edit provider" matTooltip="Edit, or change the key"
+              [disabled]="busyId === connection.resource_ref">
+        <lucide-icon name="pencil" [size]="16"></lucide-icon>
+      </button>
+      <button class="action-icon-button" type="button"
+              *ngIf="canTransfer && isMine(connection)"
+              (click)="requestTransfer(connection)"
+              aria-label="Hand over provider" matTooltip="Hand over">
+        <lucide-icon name="arrow-right-left" [size]="16"></lucide-icon>
+      </button>
+      <button class="action-icon-button danger" type="button"
+              *ngIf="canDelete && isMine(connection)"
+              (click)="requestDelete(connection)"
+              aria-label="Remove provider" matTooltip="Remove"
+              [disabled]="busyId === connection.resource_ref">
+        <lucide-icon name="trash-2" [size]="16"></lucide-icon>
+      </button>
+    </div>
+  </li>
+</ul>
+
+<!-- ── Add / edit ─────────────────────────────────────────────────── -->
+<ng-container *ngIf="editingId !== null">
+  <div class="dialog-backdrop" (click)="closeEditor()">
+    <section class="info-dialog" role="dialog" aria-modal="true"
+             aria-labelledby="llm-editor-title" (click)="$event.stopPropagation()">
+      <header class="dialog-head">
+        <span class="dialog-icon"><lucide-icon name="brain-circuit" [size]="21"></lucide-icon></span>
+        <div>
+          <h2 id="llm-editor-title">
+            {{ choosing ? "Add a provider"
+               : isCreating ? "Connect " + (chosen?.endpoint ? chosen?.name : "your own server")
+               : "Edit " + draft.name }}
+          </h2>
+          <p *ngIf="choosing">Choose who serves the models. You paste its key next.</p>
+          <p *ngIf="!choosing">The key is encrypted the moment it is saved, and never shown again.</p>
+        </div>
+        <button class="icon-button" type="button" (click)="closeEditor()"
+                [disabled]="saving" aria-label="Close">
+          <lucide-icon name="x" [size]="19"></lucide-icon>
+        </button>
+      </header>
+
+      <!-- Step one: which provider. The few most people look for, and
+           every other one behind the search. -->
+      <div class="dialog-body" *ngIf="choosing">
+        <div class="llm-search provider-search">
+          <lucide-icon name="search" [size]="15"></lucide-icon>
+          <input class="txt" [(ngModel)]="providerQuery" name="provider-search"
+                 [placeholder]="'Search ' + (others + offered.length) + ' providers'"
+                 aria-label="Search providers" />
+          <button class="search-clear" type="button" *ngIf="providerQuery"
+                  (click)="providerQuery = ''" aria-label="Clear search">
+            <lucide-icon name="x" [size]="14"></lucide-icon>
+          </button>
+        </div>
+        <ul class="provider-grid" [attr.aria-label]="providerQuery ? 'Matching providers' : 'Popular providers'">
+          <li *ngFor="let provider of offered">
+            <button class="provider-choice" type="button" (click)="selectProvider(provider)">
+              <strong>{{ provider.name }}</strong>
+            </button>
+          </li>
+        </ul>
+        <p class="field-help provider-note" *ngIf="!providerQuery">
+          {{ others }} more are behind the search.
+        </p>
+        <p class="field-help provider-note" *ngIf="providerQuery && !offered.length">
+          No provider by that name. If it speaks OpenAI's protocol, add it
+          as your own server, below.
+        </p>
+        <button class="provider-choice provider-custom" type="button"
+                *ngIf="custom as own" (click)="selectProvider(own)">
+          <strong>Your own server</strong>
+          <small>A model on this computer or your network (Ollama, LM Studio, vLLM), or any service that speaks OpenAI's protocol.</small>
+        </button>
+      </div>
+
+      <!-- Step two: the key. Everything else has an answer already. -->
+      <div class="dialog-body" *ngIf="!choosing">
+        <div class="llm-form">
+          <label class="field full" *ngIf="endpointIsYours">
+            <span class="field-label">Address</span>
+            <input class="txt" type="url" [ngModel]="draft.endpoint"
+                   (ngModelChange)="setEndpoint($event)"
+                   placeholder="http://host.docker.internal:11434/v1" />
+            <small class="field-help">The base address of its OpenAI-compatible API, with its version path. A server on this computer is reached at host.docker.internal, not localhost.</small>
+          </label>
+          <label class="field full" *ngFor="let blank of blanks">
+            <span class="field-label">{{ blankLabel(blank) }}</span>
+            <input class="txt" [ngModel]="blankValues[blank]" (ngModelChange)="setBlank(blank, $event)"
+                   [attr.list]="blank === 'aws-region' ? 'llm-aws-regions' : null"
+                   [placeholder]="blank === 'aws-region' ? 'e.g. us-east-1' : ''" />
+          </label>
+          <datalist id="llm-aws-regions">
+            <option *ngFor="let region of awsRegions" [value]="region"></option>
+          </datalist>
+
+          <label class="field full">
+            <span class="field-label">
+              API key
+              <span class="field-flag lock"><lucide-icon name="lock" [size]="11"></lucide-icon> encrypted</span>
+            </span>
+            <input class="txt" type="password" autocomplete="new-password"
+                   [ngModel]="draft.api_key" (ngModelChange)="setKey($event)"
+                   [placeholder]="isCreating ? 'Paste the key' : '••••••  (unchanged)'" />
+            <small class="field-help" *ngIf="endpointIsYours">A server that asks for no key still needs something here: type any word.</small>
+          </label>
+
+          <label class="field full">
+            <span class="field-label">Model to start with</span>
+            <select class="txt" *ngIf="!typingModel"
+                    [ngModel]="draft.model" (ngModelChange)="chooseModel($event)">
+              <option value="" disabled hidden>Choose a model…</option>
+              <option *ngFor="let model of models" [value]="model.id">{{ model.name }}</option>
+              <option [value]="other">Another model…</option>
+            </select>
+            <span class="model-typed" *ngIf="typingModel">
+              <input class="txt" [ngModel]="draft.model" (ngModelChange)="chooseModel($event)"
+                     placeholder="The provider's own id for the model" />
+              <button class="btn ghost" type="button" *ngIf="models.length" (click)="pickFromList()">
+                Choose from the list
+              </button>
+            </span>
+            <small class="field-help">What a chat thinks with until another is picked. Every other model of this provider can be chosen in a chat.</small>
+          </label>
+
+          <details class="field full llm-more" [open]="showMore" (toggle)="showMore = $any($event.target).open">
+            <summary class="field-label">More options</summary>
+            <div class="llm-form">
+              <label class="field full">
+                <span class="field-label">Name</span>
+                <input class="txt" [ngModel]="draft.name" (ngModelChange)="setName($event)"
+                       placeholder="e.g. Anthropic" />
+              </label>
+              <label class="field full" *ngIf="!endpointIsYours">
+                <span class="field-label">Address</span>
+                <input class="txt" type="url" [ngModel]="draft.endpoint"
+                       (ngModelChange)="setEndpoint($event)" />
+                <small class="field-help">Filled in for you. Change it only to reach this provider through a gateway of your own.</small>
+              </label>
+              <!-- Sharing decides whose chats may think with this provider. -->
+              <div class="field full">
+                <span class="field-label">Who can use it</span>
+                <app-sharing-selector
+                  [mode]="shareMode" (modeChange)="shareMode = $any($event)"
+                  [groups]="myGroups" [people]="peers"
+                  [selectedGroups]="selectedGroups" [selectedPeople]="selectedUsers"
+                  groupLabel="Specific groups" peopleMode="users"
+                  (groupToggled)="toggleGroup($event)" (personToggled)="toggleUser($event)">
+                </app-sharing-selector>
+              </div>
+            </div>
+          </details>
+        </div>
+
+        <!-- The provider was asked and said no, or nobody answered:
+             nothing was saved, and the person decides. -->
+        <div class="data-alert error dialog-error" *ngIf="refused as said" role="alert">
+          <strong>{{ said.outcome === 'refused' ? 'Not saved: the key was refused.' : 'Not saved: nothing answered at that address.' }}</strong>
+          {{ said.reason }}
+          <button class="btn" type="button" (click)="save(false)" [disabled]="saving">
+            Save anyway
+          </button>
+        </div>
+        <div class="data-alert error dialog-error" *ngIf="error">{{ error }}</div>
+      </div>
+
+      <footer class="dialog-actions" *ngIf="!choosing">
+        <span class="form-blocker" *ngIf="blocker">{{ blocker }}</span>
+        <button class="btn" type="button" *ngIf="isCreating" (click)="chooseAnother()" [disabled]="saving">
+          Back
+        </button>
+        <button class="btn" type="button" *ngIf="!isCreating" (click)="closeEditor()" [disabled]="saving">
+          Cancel
+        </button>
+        <button class="btn primary" type="button" (click)="save()"
+                [disabled]="!!blocker || saving">
+          {{ saving ? "Checking the key…" : isCreating ? "Connect" : "Save changes" }}
+        </button>
+      </footer>
+    </section>
+  </div>
+</ng-container>
+
+<!-- ── Deleting ───────────────────────────────────────────────────── -->
+<ng-container *ngIf="deleteTarget as connection">
+  <div class="dialog-backdrop" (click)="closeDelete()">
+    <section class="info-dialog delete-dialog" role="alertdialog" aria-modal="true"
+             aria-labelledby="llm-delete-title" (click)="$event.stopPropagation()">
+      <header class="dialog-head">
+        <span class="dialog-icon danger-dialog-icon">
+          <lucide-icon name="trash-2" [size]="21"></lucide-icon>
+        </span>
+        <div>
+          <h2 id="llm-delete-title">Remove this provider?</h2>
+          <p>{{ connection.name }}</p>
+        </div>
+        <button class="icon-button" type="button" (click)="closeDelete()"
+                [disabled]="!!busyId" aria-label="Close">
+          <lucide-icon name="x" [size]="19"></lucide-icon>
+        </button>
+      </header>
+      <div class="dialog-body">
+        <p class="delete-warning">
+          The key goes with it and there is no copy here to restore
+          from. Chats that think with one of its models stop until they
+          pick another.
+        </p>
+        <p class="delete-warning" *ngIf="connection.is_default && connections.length > 1">
+          It is the default — the most recently changed of the others
+          takes over.
+        </p>
+        <p class="delete-warning" *ngIf="connection.is_default && connections.length === 1">
+          It is the only one, so new chats cannot start until another
+          is added.
+        </p>
+        <div class="data-alert error dialog-error" *ngIf="error">{{ error }}</div>
+      </div>
+      <footer class="dialog-actions">
+        <button class="btn" type="button" (click)="closeDelete()" [disabled]="!!busyId">
+          Keep it
+        </button>
+        <button class="btn danger" type="button" (click)="remove(connection)"
+                [disabled]="!!busyId">
+          {{ busyId ? "Removing…" : "Remove provider" }}
+        </button>
+      </footer>
+    </section>
+  </div>
+</ng-container>
+
+<app-transfer-dialog *ngIf="transferTarget as item"
+                     [subject]="'the provider “' + item.name + '”'" [ownerId]="item.created_by"
+                     [busy]="transferring" (chosen)="transfer($event)" (closed)="closeTransfer()">
+</app-transfer-dialog>

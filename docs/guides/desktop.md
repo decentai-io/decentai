@@ -44,9 +44,10 @@ changed.
 
 ## The first things to do
 
-1. **Settings → Language models → New connection.** Choose the
-   provider, name the model exactly as the provider names it, paste the
-   key, save. Keys are write-only.
+1. **Settings → Model providers → Add a provider.** Choose the
+   provider and paste its key; it is tried before it is saved. One key
+   serves every model the provider has, and the model is chosen in the
+   chat. Keys are write-only.
 2. **Agents → Marketplace.** Add an agent source — the
    [`decentai-agents`](https://github.com/decentai-io/decentai-agents) repository by its address, or your own — read what
    an agent declares, and approve it.

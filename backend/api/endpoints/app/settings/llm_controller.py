@@ -19,6 +19,7 @@ resolution ends, never a lock.
 
 from __future__ import annotations
 
+from api.services.llm_probe import ProviderProbe
 from contracts.llm_providers import LlmProviders
 from database.stores.settings.llm import LlmConnectionStore
 from server.custom_logging import CustomLoggerFactory
@@ -74,9 +75,60 @@ class LlmController:
             return {"models": LlmProviders.models(provider, kind)}, 200
         return {"providers": LlmProviders.all()}, 200
 
+    def models(self, data: dict, user: dict):
+        """The models ONE connection offers, of one ``kind`` (chat when
+        none is named): what a chat's picker lists under it, and what
+        routing and speech choose among.
+
+        From the catalog where it knows the connection's provider. Where
+        it does not — a server of the person's own, a gateway — the
+        server is asked for its own list with the connection's key
+        (``live``), since nothing else could know. The model the
+        connection starts with is always among a chat's, listed or not."""
+        payload = self._payload(data)
+        connection = self.store.visible(
+            user, str(payload.get("connection_id") or ""))
+        if connection is None:
+            return {"error": "Connection not found."}, 404
+        kind = str(payload.get("kind") or "chat").strip().lower()
+        provider = connection.get("provider", "")
+        models = LlmProviders.models(provider, kind)
+        live = False
+        if not LlmProviders.models(provider):
+            resolved = self.store.use(user, connection["_id"]) or {}
+            listed = ProviderProbe(
+                provider, connection.get("endpoint"),
+                (resolved.get("values") or {}).get("api_key"),
+                connection.get("model")).models()
+            # A server says which models it has, not what each is for.
+            models = [{"id": name, "name": name, "kind": kind} for name in listed]
+            live = bool(listed)
+        starting = str(connection.get("model") or "")
+        if kind == "chat" and starting and all(
+                model["id"] != starting for model in models):
+            models.insert(0, {"id": starting, "name": starting, "kind": "chat"})
+        return {"models": models, "live": live}, 200
+
+    def _checked(self, payload: dict, provider, endpoint, api_key, model):
+        """(the provider's answer, a refusal or None). Asked only when
+        the form asks (``check``): a key the provider refuses, or an
+        address nobody answers at, is not saved — the person is told
+        which, and may save all the same by not asking."""
+        if not payload.get("check"):
+            return None, None
+        answer = ProviderProbe(provider, endpoint, api_key, model).check()
+        if answer["outcome"] in (ProviderProbe.REFUSED, ProviderProbe.UNREACHABLE):
+            return answer, ({"error": answer["reason"], "check": answer}, 400)
+        return answer, None
+
     def create(self, data: dict, user: dict):
         payload = self._payload(data)
         refusal = self._owner_reach_refusal(user, payload.get("owner"))
+        if refusal:
+            return refusal
+        checked, refusal = self._checked(
+            payload, payload.get("provider"), payload.get("endpoint"),
+            payload.get("api_key"), payload.get("model"))
         if refusal:
             return refusal
         try:
@@ -99,7 +151,14 @@ class LlmController:
             f"{user.get('email')} added LLM connection "
             f"{connection['resource_ref']} ({connection['keys']['provider']})"
         )
-        return {"connection": connection}, 200
+        return self._answer(connection, checked), 200
+
+    @staticmethod
+    def _answer(connection: dict, checked) -> dict:
+        answer = {"connection": connection}
+        if checked is not None:
+            answer["check"] = checked
+        return answer
 
     #: The administrator's escape from the creator-only rule.
     MANAGE_ANY = "settings:llm:manage_any"
@@ -165,6 +224,21 @@ class LlmController:
             for key in ("provider", "model", "endpoint")
             if key in payload
         }
+        checked = None
+        if payload.get("check"):
+            # The key typed now, or the stored one where none was: what
+            # is asked about is the connection as it would be saved.
+            connection_id = str(payload.get("connection_id") or "")
+            stored = self.store.visible(user, connection_id) or {}
+            typed = str(payload.get("api_key") or "").strip()
+            key = typed or ((self.store.use(user, connection_id) or {})
+                            .get("values") or {}).get("api_key")
+            checked, refusal = self._checked(
+                payload, fields.get("provider", stored.get("provider")),
+                fields.get("endpoint", stored.get("endpoint")), key,
+                fields.get("model", stored.get("model")))
+            if refusal:
+                return refusal
         try:
             connection = self.store.update(
                 self._org(user),
@@ -183,7 +257,7 @@ class LlmController:
             f"{user.get('email')} updated LLM connection "
             f"{connection['resource_ref']}"
         )
-        return {"connection": connection}, 200
+        return self._answer(connection, checked), 200
 
     def setdefault(self, data: dict, user: dict):
         """Re-point the org default — an act about the ORGANIZATION, not

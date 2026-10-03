@@ -1,0 +1,29 @@
+<div class="model-select">
+  <select class="txt" aria-label="Provider" [disabled]="disabled"
+          [ngModel]="connectionId" (ngModelChange)="chooseConnection($event)">
+    <option value="">{{ noneLabel }}</option>
+    <option *ngFor="let connection of connections" [value]="connection.resource_ref">
+      {{ connection.name }}
+    </option>
+  </select>
+
+  <ng-container *ngIf="connectionId">
+    <select class="txt" aria-label="Model" *ngIf="!typing"
+            [disabled]="disabled || loading"
+            [ngModel]="model" (ngModelChange)="chooseModel($event)">
+      <option value="" disabled hidden>{{ loading ? 'Loading models…' : 'Choose a model…' }}</option>
+      <option *ngFor="let offered of models" [value]="offered.id">{{ offered.name }}</option>
+      <option [value]="other">Another model…</option>
+    </select>
+
+    <span class="model-typed" *ngIf="typing">
+      <input class="txt" aria-label="Model id" [disabled]="disabled"
+             [ngModel]="model" (ngModelChange)="typeModel($event)"
+             placeholder="The provider's own id for the model" />
+      <button class="btn ghost" type="button" *ngIf="models.length"
+              [disabled]="disabled" (click)="pickFromList()">
+        Choose from the list
+      </button>
+    </span>
+  </ng-container>
+</div>

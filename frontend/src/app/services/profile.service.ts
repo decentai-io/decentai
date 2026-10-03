@@ -14,7 +14,11 @@ export interface Profile {
   last_login_at?: string | null;
   preferences?: {
     chat?: {
+      /** The connection, the model and the effort last picked: what a
+       *  new chat starts with. */
       llm_secret_ref?: string;
+      llm_model?: string;
+      llm_reasoning_effort?: string;
       enabled_agents?: string[];
       /** Skill refs a new chat starts with; absent means all of them. */
       enabled_skills?: string[];
@@ -67,11 +71,15 @@ export class ProfileService {
     return Array.isArray((r as any)?.peers) ? (r as any).peers : [];
   }
 
+  /** Remember the model last picked — the connection, which of its
+   *  provider's models, and how hard it thinks — for the next new chat. */
   async saveDefaultLlm(
-    secretRef: string | null,
+    secretRef: string | null, model = '', effort = '',
   ): Promise<{ profile?: Profile; error?: string }> {
     return this.request.gateway('Account:Profile:update', {
-      preferences: { chat: { llm_secret_ref: secretRef } },
+      preferences: { chat: {
+        llm_secret_ref: secretRef, llm_model: model, llm_reasoning_effort: effort,
+      } },
     });
   }
 
@@ -84,7 +92,8 @@ export class ProfileService {
   /** The defaults a new chat starts with — model, trust, budget, skills
    *  listed — checked by the same settings the chat page's are. */
   async saveChatDefaults(changes: {
-    llm_secret_ref?: string | null; trust_level?: number; max_turns?: number; max_skills?: number;
+    llm_secret_ref?: string | null; llm_model?: string; llm_reasoning_effort?: string;
+    trust_level?: number; max_turns?: number; max_skills?: number;
   }): Promise<{ profile?: Profile; error?: string }> {
     return this.request.gateway('Account:Profile:update', {
       preferences: { chat: { ...changes } },

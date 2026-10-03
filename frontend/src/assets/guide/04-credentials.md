@@ -44,9 +44,9 @@ A person may keep their own credential — their own mailbox, their own calendar
 
 An update may change the fields an agent's credential has. Credentials saved for that agent move to the new shape by themselves wherever the new shape asks for nothing they lack. One that lacks a newly required field is marked **outdated** on the Secrets page: open it, fill in what is asked, and save. A credential lent to the agent from elsewhere that no longer matches is refused when the agent tries to use it, and the agent's Credentials tab says it no longer fits: take it back and give the agent a credential of its own.
 
-## Language model keys
+## Model provider keys
 
-The keys the assistant thinks with are a credential of their own kind, under **Settings → Language models**: a provider, a model name, an endpoint and the key, write-only. The organization marks one as the default; a chat may choose another it can see. The key reaches the runtime only through the platform, per chat, and never reaches an agent.
+The keys the assistant thinks with are a credential of their own kind, under **Settings → Model providers**: a provider and the key to it, write-only. One key serves every model that provider has. The organization marks one provider as the default; a chat may choose any model of any provider its person can see. The key reaches the runtime only through the platform, per chat, and never reaches an agent.
 
 ## Rotating and removing
 

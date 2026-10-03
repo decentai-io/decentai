@@ -1,0 +1,36 @@
+/* Model providers: the list and its editor share the settings page's
+   row and form classes (../settings.component.css). What is here is the
+   one thing only this tab has — the choice of a provider. */
+:host { display: block; }
+
+.provider-search { flex: none; margin-bottom: 14px; }
+.provider-grid {
+  list-style: none; margin: 0; padding: 0;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px;
+}
+.provider-choice {
+  display: flex; flex-direction: column; gap: 3px; width: 100%;
+  min-height: 46px; padding: 11px 13px; text-align: left;
+  border: 1px solid var(--border); border-radius: var(--ui-radius-card);
+  background: var(--surface); color: var(--ink);
+  font: inherit; font-size: var(--ui-text-sm); cursor: pointer;
+  transition: border-color .15s ease, background .15s ease;
+}
+.provider-choice:hover, .provider-choice:focus-visible {
+  border-color: color-mix(in srgb, var(--primary) 42%, var(--border));
+  background: var(--accent-soft); outline: none;
+}
+.provider-choice small { color: var(--muted); font-size: 13px; line-height: 1.5; }
+.provider-note { margin: 10px 0 0; }
+.provider-custom { margin-top: 14px; }
+
+.model-typed { display: flex; gap: 8px; min-width: 0; }
+.model-typed .txt { flex: 1; min-width: 0; }
+.model-typed .btn { flex: none; white-space: nowrap; }
+
+.dialog-error { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 14px; }
+.dialog-error .btn { margin-left: auto; }
+
+@media (max-width: 680px) {
+  .model-typed { flex-wrap: wrap; }
+}
