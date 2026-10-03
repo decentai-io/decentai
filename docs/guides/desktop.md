@@ -72,7 +72,10 @@ whether the app is open or not.
 DecentAI on your computer is yours, and others may use it on the same
 computer. **Admin → Users → Add person**: their name, their email — it
 is only how they sign in, nothing is sent to it — and the groups they
-are in. You are shown a temporary password once; hand it over. They
+are in. **Members** is ticked already: it is what lets a person chat,
+keep files and saved data, and use their own credentials, without
+administering anything. An agent is theirs to call once you have
+granted it to them, or to Members, on the agent's page. You are shown a temporary password once; hand it over. They
 sign in with it and are asked at once for a password of their own.
 
 When someone forgets theirs, **Reset password** on their row gives you a

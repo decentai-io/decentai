@@ -64,6 +64,19 @@ organization and its tenth are laid out identically:
 
 - `FullAccess` → `Administrator` → `Administrators`
 - `BaseAccess` → `User` → `Everyone`
+- `MemberAccess` → `Member` → `Members`
+
+**Members** is what a person who is not an administrator is put in to
+use the platform: their own chats and what the assistant does in them
+on their behalf, their files, saved data and credentials, and seeing
+the agents they were given (`MEMBER_ACTIONS`, beside the catalog).
+Installing agents, the organization's settings and other people are not
+in it. Without it, or a group like it, a person signs in and can do
+almost nothing: chatting is not among the actions everybody holds. The
+Users page offers it already ticked for a new person. It is seeded once
+and is an ordinary group from then on — an administrator edits what it
+grants, or removes it, and it is not put back. Which agents its people
+may call is a separate decision, made on each agent.
 
 Creating an organization, and disabling or re-enabling one, happen from
 outside the application entirely — they are deployment operations, not

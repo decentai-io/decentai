@@ -286,12 +286,20 @@ export class MembersComponent extends DataPageBase implements OnInit {
 
   // ── Invitations ─────────────────────────────────────────────────────
 
+  /** The group the platform seeds for people who use it without
+   *  administering it (bootstrap/provisioning.py). */
+  private static readonly MEMBERS_GROUP = 'Members';
+
   startInvite(): void {
     this.inviting = true;
     this.inviteName = '';
     this.handed = null;
     this.inviteEmail = '';
-    this.inviteGroupIds = new Set<string>();
+    // A new person is offered Members already ticked: in no group at
+    // all they could sign in and do nothing.
+    const members = this.groups.find(
+      (group) => group.group_name === MembersComponent.MEMBERS_GROUP);
+    this.inviteGroupIds = new Set<string>(members ? [members.group_id] : []);
     this.inviteLink = '';
     this.error = '';
   }

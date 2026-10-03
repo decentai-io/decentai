@@ -604,11 +604,51 @@ class TestProvisioning:
         org_id = created["organization"]["_id"]
 
         assert {p["name"] for p in PolicyStore().list(org_id)} == {
-            "FullAccess", "BaseAccess"}
+            "FullAccess", "BaseAccess", "MemberAccess"}
         assert {r["role_name"] for r in RoleStore().list(org_id)} == {
-            "Administrator", "User"}
+            "Administrator", "User", "Member"}
         assert {g["group_name"] for g in GroupStore().list(org_id)} == {
-            "Administrators", "Everyone"}
+            "Administrators", "Everyone", "Members"}
+
+    def test_its_members_use_the_platform_and_do_not_run_it(self, app, seed):
+        """Somebody in Members chats, keeps files and data, and uses their
+        own credentials — and the assistant's own doors open for them,
+        since it acts with their permissions. They install nothing and
+        see nobody else's account."""
+        from server.authentication.policy import PolicyEngine
+
+        created = self._provision()
+        org_id = created["organization"]["_id"]
+        member = {"user_id": f"member-{org_id}", "org_id": org_id,
+                  "assigned_groups": [created["members"]["_id"]]}
+        nobody = {**member, "user_id": f"nobody-{org_id}", "assigned_groups": []}
+
+        engine = PolicyEngine()
+        for action in ("ai:chat:create", "ai:chat:list", "ai:chat:sendmessage",
+                       "ai:chat:contract", "ai:state:save", "ai:event:record",
+                       "ai:approval:decide", "ai:schedule:add",
+                       "settings:llm:use", "files:file:upload",
+                       "data:record:create", "secrets:secret:use",
+                       "agents:agent:list"):
+            assert engine.is_allowed(member, action), action
+            assert not engine.is_allowed(nobody, action), action
+        for action in ("agents:agent:install", "iam:user:list",
+                       "iam:user:reset_password", "settings:safety:update",
+                       "settings:llm:create", "ai:audit:list_all",
+                       "files:file:set_owner_any"):
+            assert not engine.is_allowed(member, action), action
+
+    def test_a_members_group_removed_on_purpose_is_not_put_back(self, app, seed):
+        from provisioning import OrganizationProvisioner
+        from database.stores import GroupStore
+
+        created = self._provision()
+        org_id = created["organization"]["_id"]
+        GroupStore().delete(created["members"]["_id"])
+
+        again = OrganizationProvisioner().seed(org_id)
+        assert again["members"] is None
+        assert "Members" not in {g["group_name"] for g in GroupStore().list(org_id)}
 
     def test_its_everyone_carries_the_baseline(self, app, seed):
         from server.authentication.catalog import BASELINE_ACTIONS
