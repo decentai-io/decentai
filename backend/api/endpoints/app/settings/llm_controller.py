@@ -59,12 +59,15 @@ class LlmController:
         provider the platform would then refuse.
 
         Asked about one ``provider``, it answers with the models that
-        provider is known to serve instead — the form's suggestions for
-        the model field, fetched when a provider is chosen so the whole
-        list is not sent to draw a dropdown."""
-        provider = self._payload(data).get("provider")
+        provider is known to serve instead, each with what it is for and
+        what it can do — and only those of one ``kind`` (chat, embedding,
+        transcription) when one is named. Fetched when a provider is
+        chosen, so the whole list is not sent to draw a dropdown."""
+        payload = self._payload(data)
+        provider = payload.get("provider")
         if provider:
-            return {"models": LlmProviders.models(provider)}, 200
+            kind = str(payload.get("kind") or "").strip().lower()
+            return {"models": LlmProviders.models(provider, kind)}, 200
         return {"providers": LlmProviders.all()}, 200
 
     def create(self, data: dict, user: dict):

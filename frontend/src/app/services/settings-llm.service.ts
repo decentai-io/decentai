@@ -36,18 +36,32 @@ export interface LlmConnection {
 export interface LlmProvider {
   id: string;
   name: string;
-  protocol: 'openai' | 'anthropic' | 'bedrock';
+  protocol: 'openai' | 'openai-responses' | 'anthropic' | 'gemini' | 'bedrock';
   /** Where the provider answers. A `<blank>` in it is the customer's
    *  own part (an account, a region) and is filled in on the form; the
    *  custom entry's is empty, the whole address being the person's. */
   endpoint: string;
+  /** One of the few most people look for: shown first. */
+  popular?: boolean;
 }
 
-/** A model a provider is known to serve: its own id for it, and a name
- *  to read. An offer for the form — a connection may name any model. */
+export type LlmModelKind = 'chat' | 'embedding' | 'transcription';
+
+/** A model a provider is known to serve: its own id for it, a name to
+ *  read, what it is for and — where the catalog knows — what it can do.
+ *  An offer for the page: any model may be named. */
 export interface LlmModel {
   id: string;
   name: string;
+  kind: LlmModelKind;
+  /** Reads a picture. */
+  images?: boolean;
+  /** Thinks before answering, and how hard it may be asked to. */
+  reasoning?: boolean;
+  efforts?: string[];
+  /** The sizes, in tokens, of its window and of one reply. */
+  context?: number;
+  output?: number;
 }
 
 export interface LlmConnectionDraft {
@@ -81,8 +95,8 @@ export class SettingsLlmService {
     return Array.isArray(r?.providers) ? r.providers : [];
   }
 
-  async models(provider: string): Promise<LlmModel[]> {
-    const r = await this.request.gateway('Settings:Llm:providers', { provider });
+  async models(provider: string, kind: LlmModelKind | '' = ''): Promise<LlmModel[]> {
+    const r = await this.request.gateway('Settings:Llm:providers', { provider, kind });
     return Array.isArray(r?.models) ? r.models : [];
   }
 

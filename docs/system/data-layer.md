@@ -311,31 +311,51 @@ Which **provider** a connection may name is one list,
 `contracts/llm_providers.json`, read by all three sides: the store
 accepts a provider that is on it, the page draws its form from it
 (`Settings:Llm:Providers`), and the runtime builds the connector for
-the protocol the entry names. An entry is an id, a name, a protocol —
-OpenAI's chat completions, Anthropic's messages, or Amazon Bedrock's
-Converse — and the address the form starts with; the connection keeps
-its own endpoint, so a person may point it at a gateway of theirs. An
+the protocol the entry names. An entry is an id, a name, a protocol and
+the address the form starts with; the connection keeps its own endpoint,
+so a person may point it at a gateway of theirs. The protocols are five,
+each one connector in `ai_runtime/llms/connector/`: OpenAI's chat
+completions (which is also what every OpenAI-compatible server speaks),
+OpenAI's Responses, Anthropic's messages, Google's generateContent and
+Amazon Bedrock's Converse. The few providers most people look for carry
+`popular`, so a page can show them first and the rest behind a search. An
 address that differs per customer — Bedrock's region, an Azure resource,
 a Cloudflare account — carries a `<blank>` for that part, which the
 person fills in; a connection with one left in it is refused, by the
 store and again by the runtime. The list is written from
 [models.dev](https://github.com/anomalyco/models.dev), the open database
-of providers, by `contracts/generate_llm_providers.py`, and is a file in
-the repository rather than a request made while the platform runs: an
+of providers, by `contracts/generate_llm_providers.py` — from the one
+file models.dev publishes, `https://models.dev/api.json` — and is a file
+in the repository rather than a request made while the platform runs: an
 install with no way out lists what any other does, and a new provider
-arrives in a commit somebody read. A provider with a protocol of its own
-is a connector in `ai_runtime/llms/connector/` as well as an entry, as
-Bedrock is, reached with the API key Bedrock issues. A provider reached
+arrives in a commit somebody read. It is refreshed for each release. A
+provider that speaks one of the five protocols is an entry and no code;
+one with a protocol of its own would be a connector as well. A provider reached
 only by signing in, or by a credential that is not one string a person
 can paste, is not on the list — GitHub Copilot, Google Vertex — and a
 model on the person's own machine is the `openai_compatible` entry with
 the address typed.
 
 `contracts/llm_models.json`, written by the same script, lists the
-models each provider is known to serve, by the provider's own id and a
-name to read. The form asks `Settings:Llm:Providers` for one provider's
+models each provider is known to serve, newest first: the provider's own
+id, a name to read, what the model is for (`chat`, `embedding` or
+`transcription`) and what models.dev says it can do — read a picture,
+think before answering and how hard it may be asked to, the sizes of its
+window and of one reply. A chat model is one that answers in words and
+calls tools; a model that does neither that nor embeds is not listed.
+The form asks `Settings:Llm:Providers` for one provider's, of one kind,
 and offers them in the model field. It is an offer and never a gate: the
 store accepts any model name, so a model newer than the file is typed.
+
+A model may be reached differently from its provider's others — a
+gateway that serves Claude over Anthropic's protocol at a second
+address, Azure serving it beside its OpenAI deployments. The model's row
+then names its own `protocol`, `endpoint` or both, and the runtime's
+factory asks the catalog for the route (`LlmProviders.route`) rather
+than the provider alone. The model's address may carry the provider's
+blanks; they are read out of the address the connection holds. A
+connection the person pointed at a gateway of their own is asked as the
+provider is, where they said.
 
 ### Files
 

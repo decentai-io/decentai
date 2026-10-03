@@ -22,7 +22,9 @@ from ai_runtime.llms.connector import (
     AnthropicConnector,
     BedrockConnector,
     FakeConnector,
+    GeminiConnector,
     OpenAIConnector,
+    OpenAIResponsesConnector,
 )
 from ai_runtime.llms.factory import LLMConnectorFactory
 
@@ -30,6 +32,8 @@ __all__ = [
     "AnthropicConnector",
     "BedrockConnector",
     "FakeConnector",
+    "GeminiConnector",
     "LLMConnectorFactory",
     "OpenAIConnector",
+    "OpenAIResponsesConnector",
 ]

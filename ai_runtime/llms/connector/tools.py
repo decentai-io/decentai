@@ -89,8 +89,10 @@ class NoModel(RuntimeError):
 
 def is_tool_choice_refusal(exc: Exception) -> bool:
     """Whether a provider rejected the request over tool_choice — the
-    one option OpenAI-compatible servers most often lack."""
-    return "tool_choice" in str(exc).lower()
+    one option OpenAI-compatible servers most often lack, and Bedrock's
+    ``toolChoice`` for the models there that will not be made to call."""
+    reason = str(exc).lower()
+    return "tool_choice" in reason or "toolchoice" in reason
 
 
 def text_block(text: Any) -> Dict[str, Any]:

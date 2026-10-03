@@ -189,8 +189,9 @@ class TestTheCatalog:
         served = response.json()["providers"]
         assert served == LlmProviders.all()
         assert served[-1]["id"] == "openai_compatible"
-        assert all(set(entry) == {"id", "name", "protocol", "endpoint"}
+        assert all(set(entry) - {"popular"} == {"id", "name", "protocol", "endpoint"}
                    for entry in served)
+        assert any(entry.get("popular") for entry in served)
 
     def test_every_provider_served_is_one_a_connection_may_name(self, admin, seed):
         served = app_call(admin, "Settings:Llm:Providers").json()["providers"]
@@ -205,9 +206,14 @@ class TestTheCatalog:
         response = app_call(admin, "Settings:Llm:Providers", {"provider": "amazon-bedrock"})
         assert response.status_code == 200, response.text
         models = response.json()["models"]
-        assert {"id": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
-                "name": "Claude Haiku 4.5 (US)"} in models
+        haiku = next(model for model in models
+                     if model["id"] == "us.anthropic.claude-haiku-4-5-20251001-v1:0")
+        assert haiku["name"] == "Claude Haiku 4.5 (US)" and haiku["kind"] == "chat"
         assert "providers" not in response.json()
+        # Asked for one kind, only that kind is answered.
+        speech = app_call(admin, "Settings:Llm:Providers",
+                          {"provider": "openai", "kind": "transcription"}).json()["models"]
+        assert speech and {model["kind"] for model in speech} == {"transcription"}
         unknown = app_call(admin, "Settings:Llm:Providers", {"provider": "nobody"})
         assert unknown.json() == {"models": []}
 

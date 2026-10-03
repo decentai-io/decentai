@@ -9,7 +9,8 @@ import { SwPush } from '@angular/service-worker';
 import { NotificationSettings, NotificationsService } from 'src/app/services/notifications.service';
 import { Profile, ProfileService } from 'src/app/services/profile.service';
 import {
-  LlmConnection, LlmConnectionDraft, LlmModel, LlmProvider, SettingsLlmService,
+  LlmConnection, LlmConnectionDraft, LlmModel, LlmModelKind, LlmProvider,
+  SettingsLlmService,
 } from 'src/app/services/settings-llm.service';
 import { DataPageBase } from '../data-page-base';
 
@@ -110,7 +111,9 @@ export class SettingsComponent extends DataPageBase implements OnInit, OnDestroy
   }
 
   private async loadModels(provider: string): Promise<void> {
-    const models = await this.service.models(provider);
+    // Only the models the connection's purpose has a use for.
+    const models = await this.service.models(
+      provider, (this.draft.purpose || 'chat') as LlmModelKind);
     // A slow answer for a provider since changed is nobody's list.
     if (this.draft.provider === provider) this.models = models;
   }

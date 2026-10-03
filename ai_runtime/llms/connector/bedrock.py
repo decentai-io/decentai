@@ -19,7 +19,7 @@ and the model is Bedrock's own id for it or an inference profile's
 (``us.anthropic.claude-…``), copied exactly.
 
 No AWS SDK: two shapes to translate and one POST, over the HTTP client
-the runtime already has.
+the runtime already has (http.py: the timeout, the retries, the refusal).
 """
 
 from __future__ import annotations
@@ -27,18 +27,13 @@ from __future__ import annotations
 from typing import Any, Dict, List, Tuple
 from urllib.parse import quote
 
-import httpx
-
-from ai_runtime.llms.connector.tools import ModelReply
-
-
-class BedrockError(RuntimeError):
-    """Bedrock refused or failed. The message is its own, so that the
-    cycle's reading of a refusal (too long, no pictures) works on it as
-    on any provider's."""
+from ai_runtime.llms.connector.http import HttpConnector
+from ai_runtime.llms.connector.tools import ModelReply, is_tool_choice_refusal
 
 
-class BedrockConnector:
+class BedrockConnector(HttpConnector):
+    NAME = "Bedrock"
+
     #: Converse wants a cap on every model that enforces one, and most
     #: do; this is asked for where the caller names none.
     DEFAULT_MAX_TOKENS = 8192
@@ -50,17 +45,12 @@ class BedrockConnector:
     }
 
     def __init__(self, config: dict):
-        self.api_key = str(config.get("api_key") or "")
-        self.model = str(config.get("model") or "")
-        self.endpoint = str(config.get("endpoint") or "").strip().rstrip("/")
-        if not self.api_key:
-            raise ValueError("Bedrock connector requires api_key")
-        if not self.model:
-            raise ValueError("Bedrock connector requires model")
-        if not self.endpoint:
-            raise ValueError("Bedrock connector requires endpoint")
-        # A hung provider call must not stall a reasoning turn forever.
-        self.timeout = float(config.get("timeout_seconds") or 60)
+        super().__init__(config)
+        #: Whether the model MUST call a tool is the model's to allow:
+        #: Anthropic's and Amazon's take ``any``, several others on
+        #: Bedrock refuse it. One that does is asked with ``auto`` from
+        #: then on, and the cycle's prose path covers a reply with no call.
+        self.tool_choice = "any"
 
     @classmethod
     def image_block(cls, mime: str, encoded: str) -> dict:
@@ -129,26 +119,9 @@ class BedrockConnector:
         # path segment.
         return f"{self.endpoint}/model/{quote(self.model, safe='')}/converse"
 
-    def _client(self) -> httpx.AsyncClient:
-        """The plain client, so that the way this machine reaches the
-        internet (HTTPS_PROXY, a CA bundle) applies as it does to the
-        other connectors."""
-        return httpx.AsyncClient(timeout=self.timeout)
-
-    async def _post(self, body: dict) -> dict:
-        async with self._client() as client:
-            response = await client.post(self._url(), json=body, headers={
-                "Authorization": f"Bearer {self.api_key}",
-                "Accept": "application/json",
-            })
-        if response.status_code >= 400:
-            try:
-                reason = response.json().get("message") or response.text
-            except ValueError:
-                reason = response.text
-            raise BedrockError(
-                f"Bedrock answered {response.status_code}: {str(reason)[:600]}")
-        return response.json()
+    async def _converse(self, body: dict) -> dict:
+        return await self._post(self._url(), body, {
+            "Authorization": f"Bearer {self.api_key}"})
 
     async def chat(self, messages: list, max_tokens: int | None = None,
                    tools: list | None = None) -> ModelReply:
@@ -162,9 +135,16 @@ class BedrockConnector:
             body["system"] = system
         if tools:
             body["toolConfig"] = {
-                "tools": self.tools(tools), "toolChoice": {"any": {}}}
+                "tools": self.tools(tools), "toolChoice": {self.tool_choice: {}}}
 
-        answer = await self._post(body)
+        try:
+            answer = await self._converse(body)
+        except Exception as exc:
+            if not tools or self.tool_choice == "auto"                     or not is_tool_choice_refusal(exc):
+                raise
+            self.tool_choice = "auto"
+            body["toolConfig"]["toolChoice"] = {"auto": {}}
+            answer = await self._converse(body)
         blocks = ((answer.get("output") or {}).get("message") or {}).get("content") or []
         calls = [
             {"name": block["toolUse"].get("name"),

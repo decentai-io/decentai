@@ -1,8 +1,8 @@
 {
-  "schema_version": "1.0",
+  "schema_version": "2.0",
   "source": {
-    "repository": "https://github.com/anomalyco/models.dev",
-    "commit": "1d60b2cf5ac14a25b623a5ed5d566006e5cc7039"
+    "url": "https://models.dev/api.json",
+    "sha256": "684c2f7a21abc560416a4c89323edfa14f72ead0cce79e8ec62f0aa7d8613679"
   },
   "providers": [
     {
@@ -117,7 +117,8 @@
       "id": "amazon-bedrock",
       "name": "Amazon Bedrock",
       "protocol": "bedrock",
-      "endpoint": "https://bedrock-runtime.<aws-region>.amazonaws.com"
+      "endpoint": "https://bedrock-runtime.<aws-region>.amazonaws.com",
+      "popular": true
     },
     {
       "id": "ambient",
@@ -135,7 +136,8 @@
       "id": "anthropic",
       "name": "Anthropic",
       "protocol": "anthropic",
-      "endpoint": "https://api.anthropic.com"
+      "endpoint": "https://api.anthropic.com",
+      "popular": true
     },
     {
       "id": "anyapi",
@@ -159,7 +161,8 @@
       "id": "azure",
       "name": "Azure",
       "protocol": "openai",
-      "endpoint": "https://<azure-resource-name>.openai.azure.com/openai/v1"
+      "endpoint": "https://<azure-resource-name>.openai.azure.com/openai/v1",
+      "popular": true
     },
     {
       "id": "bailing",
@@ -315,7 +318,8 @@
       "id": "deepseek",
       "name": "DeepSeek",
       "protocol": "openai",
-      "endpoint": "https://api.deepseek.com"
+      "endpoint": "https://api.deepseek.com",
+      "popular": true
     },
     {
       "id": "llmgateway",
@@ -410,8 +414,9 @@
     {
       "id": "gemini",
       "name": "Google Gemini",
-      "protocol": "openai",
-      "endpoint": "https://generativelanguage.googleapis.com/v1beta/openai/"
+      "protocol": "gemini",
+      "endpoint": "https://generativelanguage.googleapis.com/v1beta",
+      "popular": true
     },
     {
       "id": "greenpt",
@@ -423,7 +428,8 @@
       "id": "groq",
       "name": "Groq",
       "protocol": "openai",
-      "endpoint": "https://api.groq.com/openai/v1"
+      "endpoint": "https://api.groq.com/openai/v1",
+      "popular": true
     },
     {
       "id": "helicone",
@@ -478,6 +484,12 @@
       "name": "Inco",
       "protocol": "openai",
       "endpoint": "https://api.inco.ai/v1"
+    },
+    {
+      "id": "infer",
+      "name": "Infer by Flow7",
+      "protocol": "openai-responses",
+      "endpoint": "https://infer.flow7.org/v1"
     },
     {
       "id": "inference",
@@ -618,6 +630,12 @@
       "endpoint": "https://api.melious.ai/v1"
     },
     {
+      "id": "meta",
+      "name": "Meta",
+      "protocol": "openai-responses",
+      "endpoint": "https://api.meta.ai/v1"
+    },
+    {
       "id": "minimax-cn",
       "name": "MiniMax (minimax.cn)",
       "protocol": "anthropic",
@@ -645,7 +663,8 @@
       "id": "mistral",
       "name": "Mistral",
       "protocol": "openai",
-      "endpoint": "https://api.mistral.ai/v1"
+      "endpoint": "https://api.mistral.ai/v1",
+      "popular": true
     },
     {
       "id": "mixlayer",
@@ -726,6 +745,12 @@
       "endpoint": "https://api.tokenfactory.nebius.com/v1"
     },
     {
+      "id": "neosmith",
+      "name": "NeoSmith",
+      "protocol": "openai-responses",
+      "endpoint": "https://router.neosmith.ai/v1"
+    },
+    {
       "id": "neuralwatt",
       "name": "Neuralwatt",
       "protocol": "openai",
@@ -770,8 +795,9 @@
     {
       "id": "openai",
       "name": "OpenAI",
-      "protocol": "openai",
-      "endpoint": "https://api.openai.com/v1"
+      "protocol": "openai-responses",
+      "endpoint": "https://api.openai.com/v1",
+      "popular": true
     },
     {
       "id": "opencode-go",
@@ -795,7 +821,8 @@
       "id": "openrouter",
       "name": "OpenRouter",
       "protocol": "openai",
-      "endpoint": "https://openrouter.ai/api/v1"
+      "endpoint": "https://openrouter.ai/api/v1",
+      "popular": true
     },
     {
       "id": "opper",
@@ -832,6 +859,12 @@
       "name": "Perplexity",
       "protocol": "openai",
       "endpoint": "https://api.perplexity.ai"
+    },
+    {
+      "id": "perplexity-agent",
+      "name": "Perplexity Agent",
+      "protocol": "openai-responses",
+      "endpoint": "https://api.perplexity.ai/v1"
     },
     {
       "id": "pioneer",
@@ -946,6 +979,12 @@
       "name": "STACKIT",
       "protocol": "openai",
       "endpoint": "https://api.openai-compat.model-serving.eu01.onstackit.cloud/v1"
+    },
+    {
+      "id": "standardcompute",
+      "name": "Standard Compute",
+      "protocol": "openai",
+      "endpoint": "https://api.stdcmpt.com/v1"
     },
     {
       "id": "stepfun",
@@ -1098,6 +1137,12 @@
       "endpoint": "https://api.lab.vispark.in/v1"
     },
     {
+      "id": "vivgrid",
+      "name": "Vivgrid",
+      "protocol": "openai-responses",
+      "endpoint": "https://api.vivgrid.com/v1"
+    },
+    {
       "id": "volcengine",
       "name": "Volcengine Ark",
       "protocol": "openai",
@@ -1131,7 +1176,8 @@
       "id": "xai",
       "name": "xAI",
       "protocol": "openai",
-      "endpoint": "https://api.x.ai/v1"
+      "endpoint": "https://api.x.ai/v1",
+      "popular": true
     },
     {
       "id": "xiaomi",
