@@ -1,0 +1,62 @@
+# Sample data: a "meetings" notebook with two meetings in it, and a note
+# about the Northlight chairs — what the example prompts ask to find.
+#
+# Note the shape of `content`: a string. It is a `keys` field, and keys
+# are scalar, so a note body is text. Structure it inside the text if you
+# need to; do not reach for an object, and do not move the field to
+# `values` to get one — see docs/agents/manifest.md.
+story: A small company's meetings notebook, one supplier note, and a handover document to import.
+
+files:
+  # A file a sample ships must be something the agent can actually READ:
+  # this one is CSV, which is what `document` declares in its mime_types
+  # and what archive.import parses. Load the samples, then ask to import
+  # this document into a notebook — that is the point of shipping it.
+  - ref: handover
+    slot: document
+    path: samples/handover-notes.csv
+
+records:
+  - slot: note
+    fields:
+      title: Ops meeting, 7 September 2026
+      notebook: meetings
+      priority: 2
+      content: |
+        Present: Sami (operations), Lina (sales), Omar (purchasing), Priya (finance)
+
+        Harbourline office fit-out
+        - Lina will send Dana the revised quotation by Thursday 11 September.
+        - Omar will chase Northlight Seating about the 15-day delivery and confirm by 11 September.
+        - Sami to book the site visit once Dana has Harbourline's answer.
+
+        Decisions
+        - We move to the new office in November; Dana leads the furniture order on their side.
+        - Chairs: keep the 24-month warranty as a preferred requirement, not mandatory.
+
+        Next meeting: Monday 14 September, 10:00.
+  - slot: note
+    fields:
+      title: Ops meeting, 31 August 2026
+      notebook: meetings
+      priority: 3
+      content: |
+        Present: Sami, Lina, Omar, Priya
+
+        - Harbourline confirmed the showroom visit for 2 September (Lina).
+        - Omar opened the purchase request for twenty chairs; three quotations expected this week.
+        - Decision: desks can ship before the chairs if Harbourline prefers a split delivery.
+  - slot: note
+    fields:
+      title: Northlight chairs — what we know
+      notebook: suppliers
+      priority: 1
+      content: |
+        Northlight Seating quoted Q-2041 on 2 September: twenty Aria task chairs at 275 USD,
+        150 USD shipping, 15 working days, 3-year warranty, flat-packed without assembly.
+        The delivery misses our ten-day requirement; Omar is asking whether they can expedite.
+        Cedar Office (Q-2042) delivers in 7 days assembled at 260 USD; Pier 9 Supply (Q-2043)
+        is cheapest at 240 USD but takes three weeks and gives 12 months' warranty.
+  - slot: settings
+    fields:
+      sort_order: updated

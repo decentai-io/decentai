@@ -28,10 +28,29 @@ document in the same commit.
   does, and its default.
 - [Deploying](guides/deploying.md) — Compose on a host, behind a load
   balancer, upgrades and rollback, backups, key rotation.
-- [Writing an agent](guides/writing-an-agent.md) — where to start (the
-  agent template repository), the harness, where an agent connects, a
-  credential obtained by signing in, and the mistakes a reviewer
-  catches.
+- [Writing an agent](guides/writing-an-agent.md) — the harness, where
+  an agent connects, a credential obtained by signing in, and the
+  mistakes a reviewer catches.
+
+## Agents
+
+For somebody writing an agent, start to finish. The example they
+describe is `examples/note/`.
+
+- [Writing an agent](agents/README.md) — where to start, and how to
+  make the example yours.
+- [An agent, file by file](agents/anatomy.md) — the catalog, the
+  manifest, the entrypoint, the tools, and what a function is given.
+- [The manifest](agents/manifest.md) — every key, its rule, and what to
+  think about while writing it.
+- [What your code is given](agents/sdk.md) — records, files, secrets,
+  the model, tables, posts, questions, logins, code, a screen.
+- [On your own machine](agents/developing.md) — the tests, and a
+  DecentAI of your own.
+- [Publishing](agents/publishing.md) — the catalog, versions, approval,
+  updates, sample data.
+- [The checklist](agents/checklist.md) — before asking anyone to
+  approve it.
 - [The API](guides/api.md) — signing in, API keys, the gateway, uploads
   and downloads, the chat door.
 

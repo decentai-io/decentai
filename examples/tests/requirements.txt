@@ -1,0 +1,7 @@
+# What the tests need beside a checkout of the platform (docs/developing.md).
+# The agent's own dependencies are not here: the harness installs the ones
+# its manifest declares into an environment of its own, as the platform does.
+pytest>=8
+pyyaml>=6
+jsonschema>=4.21
+pydantic>=2.7

@@ -2,7 +2,7 @@
 
 The complete walkthrough — the folder, every manifest key, everything
 the SDK gives, the tests, trying an agent on your own computer,
-publishing — is in the [`decentai-agent-template`](https://github.com/decentai-io/decentai-agent-template) repository. The
+publishing — is in [docs/agents/](../agents/README.md). The
 field-by-field contract the platform enforces is
 [The agent manifest](../reference/agent-manifest.md). This
 page is what a developer of the platform needs beside those two: the
@@ -11,10 +11,10 @@ and the mistakes the reviewer catches.
 
 ## Where to start
 
-The `decentai-agent-template` repository is the place to begin: one
-agent that uses every feature the platform can enforce, a reference for
-every manifest key and everything the SDK gives, how the platform runs
-and confines an agent, how to try one on your own computer
+[`examples/note/`](../../examples/note/) is the place to begin: one
+agent that uses every feature the platform can enforce. Beside it,
+[docs/agents/](../agents/README.md) has every manifest key and
+everything the SDK gives, how to try an agent on your own computer
 (`DecentAI.cmd develop <folder>`), and the checklist to run before
 asking anyone to approve it.
 

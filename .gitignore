@@ -32,6 +32,7 @@ state.json
 # What a local runtime and its tests write
 ai_runtime/installed_agents/
 ai_runtime/tests/.workerenv/
+examples/tests/.workerenv/
 
 # Frontend
 frontend/node_modules/

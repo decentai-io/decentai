@@ -28,7 +28,7 @@ else:
 
 The platform ships with no agents installed. The ones the project
 publishes are in their own repository, [`decentai-agents`](https://github.com/decentai-io/decentai-agents), and a new
-agent starts from [`decentai-agent-template`](https://github.com/decentai-io/decentai-agent-template).
+agent starts from [`examples/note/`](examples/note/) and [docs/agents/](docs/agents/README.md).
 
 ## Start here
 
@@ -40,7 +40,7 @@ agent starts from [`decentai-agent-template`](https://github.com/decentai-io/dec
 | use it as a person | the **Help → Guide** section inside the app (source: `frontend/src/assets/guide/`) |
 | develop on it | [docs/guides/local-development.md](docs/guides/local-development.md) |
 | configure or deploy it | [docs/guides/configuration.md](docs/guides/configuration.md), [docs/guides/deploying.md](docs/guides/deploying.md) |
-| write an agent | the `decentai-agent-template` repository, then [docs/guides/writing-an-agent.md](docs/guides/writing-an-agent.md) |
+| write an agent | [docs/agents/](docs/agents/README.md), with the example in [`examples/note/`](examples/note/) |
 | call it from a script | [docs/guides/api.md](docs/guides/api.md) |
 | know how each part works, and why | [docs/system/](docs/system/), indexed in [docs/README.md](docs/README.md) |
 
@@ -63,6 +63,8 @@ launcher/      the desktop install: the launcher container, and starter
 desktop/       the desktop app a person installs: a window and an icon by
                the clock, over the launcher
 tests/         the suite that spans backend and runtime
+examples/      Note, the agent every other is written from, and its tests;
+               decentai-agents.yaml at the root offers it as a source
 docs/          guides, how each part works, and the reference
 ```
 
@@ -104,13 +106,14 @@ an agent source, the first agent, the first chat — is
 
 ## Tests
 
-Four suites, each owning its layer, each run from the repository root:
+Five suites, each owning its layer, each run from the repository root:
 
 ```bash
 python -m pytest ai_runtime/tests -q       # runtime: real workers, no database
 (cd backend && python -m pytest tests -q)   # backend: real app, MongoDB on localhost
 python -m pytest tests -q                   # spanning: an approval on one side, code serving on the other
 (cd launcher && python -m pytest tests -q)  # the desktop launcher and both starters
+python -m pytest examples/tests -q          # the Note example, in a real worker
 ```
 
 Run the backend and spanning suites one at a time; they share the test

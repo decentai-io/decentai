@@ -1,0 +1,30 @@
+# The catalog DecentAI reads when this repository is added as an agent
+# source.
+#
+# The platform ships with no agents installed, and this repository
+# offers one: Note, the example every other agent is written from
+# (docs/agents/). Add this repository as a source, approve Note, and
+# there is a working agent to read, run and copy. The agents the project
+# publishes are in a repository of their own, decentai-agents.
+#
+# DecentAI reads this file without running any of the code beneath it:
+# every path is resolved inside the checkout, every manifest is read and
+# its id checked against the entry, and nothing executes until an
+# administrator approves an agent by name. A manifest's grammar is
+# checked when that agent is installed.
+
+schema_version: "1.0"
+
+catalog:
+  id: decentai_examples
+  name: DecentAI Examples
+  description: >
+    One agent that uses every feature the platform can enforce. Start
+    here to build your own.
+
+# `id` must equal the `agent.id` in the manifest at `path`. What an agent
+# is called and what it does are its manifest's to say, so that there is
+# one answer rather than two that can disagree.
+agents:
+  - id: note
+    path: examples/note
