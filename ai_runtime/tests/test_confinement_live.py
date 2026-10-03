@@ -571,7 +571,7 @@ class TestAFencedNetwork:
         found = ask(ground, place, "fetch", f"http://news.example.org:{site}/")
         assert found["status"] == 200, found
 
-    def test_a_host_its_credential_names_opens_when_it_is_handed_over(
+    def test_a_host_its_credential_names_is_open_for_the_call_it_was_handed_to(
             self, ground, confinement, net, site):
         environment, package, document = ground
         manifest, errors = load_manifest(package / "manifest.yaml")
@@ -597,13 +597,21 @@ class TestAFencedNetwork:
                     agent, "c_2", "intruder.main.run",
                     {"what": "fetch_with_its_credential", "target": url},
                     CallContext(resources=Credentials()), timeout=30)
-                return before, after
+                # The same worker, somebody else's call: it was handed
+                # no credential, and the host closed with the call that
+                # was.
+                later, _ = await pool.invoke(
+                    agent, "c_3", "intruder.main.run",
+                    {"what": "fetch", "target": url},
+                    CallContext(resources=Credentials()), timeout=30)
+                return before, after, later
             finally:
                 await pool.stop()
 
-        before, after = run(scenario())
+        before, after, later = run(scenario())
         assert before["status"] == 403, before
         assert after["status"] == 200, after
+        assert later["status"] == 403, later
 
 
 #: A package that is hostile while it is BUILT: its build is its own

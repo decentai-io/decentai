@@ -9,6 +9,9 @@ export interface Member {
   user_name: string;
   status: string;
   assigned_groups: string[];
+  /** They hold a password somebody handed them, and have not yet
+   *  chosen their own. */
+  must_change_password?: boolean;
   created_at?: string | null;
   last_login_at?: string | null;
 }
@@ -59,6 +62,27 @@ export class MembersService {
       user_id: userId,
       assigned_groups: groupIds,
     });
+  }
+
+  /** Add a person where no invitation can be sent — a desktop. The
+   *  answer carries a temporary password, shown once. */
+  async create(
+    email: string,
+    name: string,
+    groupIds: string[],
+  ): Promise<{ user?: Member; password?: string; error?: string; ungrantable?: string[] }> {
+    return this.request.gateway('IAM:User:create', {
+      email,
+      user_name: name,
+      assigned_groups: groupIds,
+    });
+  }
+
+  /** A temporary password for a person who forgot theirs, shown once. */
+  async resetPassword(
+    userId: string,
+  ): Promise<{ password?: string; error?: string; ungrantable?: string[] }> {
+    return this.request.gateway('IAM:User:reset_password', { user_id: userId });
   }
 
   async setStatus(userId: string, status: 'active' | 'disabled'): Promise<any> {

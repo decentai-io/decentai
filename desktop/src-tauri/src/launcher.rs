@@ -22,6 +22,8 @@ pub struct Status {
     #[serde(default)]
     pub address: String,
     #[serde(default)]
+    pub first_person: String,
+    #[serde(default)]
     pub services: std::collections::BTreeMap<String, String>,
     #[serde(default)]
     pub images: std::collections::BTreeMap<String, String>,
@@ -212,12 +214,17 @@ impl Launcher {
 
     pub fn install(
         &self,
+        name: &str,
         email: &str,
         password: &str,
         release: Option<&Release>,
         say: &dyn Fn(&str),
     ) -> Result<(), String> {
         let mut arguments = vec!["install".to_string(), "--email".into(), email.into()];
+        if !name.trim().is_empty() {
+            arguments.push("--name".into());
+            arguments.push(name.trim().into());
+        }
         if let Ok(port) = std::env::var("DECENTAI_PORT") {
             if !port.is_empty() {
                 arguments.push("--port".into());

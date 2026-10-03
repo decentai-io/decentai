@@ -170,6 +170,37 @@ BASELINE_ACTIONS = (
 BASELINE_REVISION = 27
 
 
+# What the seeded Members group grants: the platform's everyday use, for
+# a person who is not its administrator — their own chats and what the
+# assistant does in them on their behalf (a delegated runtime carries the
+# person's permissions, so its own doors are here too), their own files,
+# saved data and credentials, and seeing the agents they were given.
+# Installing agents, the organization's settings and other people are not
+# in it. A group like any other afterwards: an administrator edits it, or
+# removes it, and it is not put back.
+MEMBER_ACTIONS = (
+    "ai:chat:*", "ai:message:*", "ai:state:*", "ai:event:*",
+    "ai:storage:*", "ai:approval:*", "ai:schedule:*",
+    "ai:audit:record",
+    "settings:llm:use",
+    "files:file:list", "files:file:get", "files:file:upload",
+    "files:file:download", "files:file:update", "files:file:delete",
+    "data:record:list", "data:record:get", "data:record:shapes",
+    "data:record:create", "data:record:update", "data:record:delete",
+    "secrets:secret:list", "secrets:secret:get", "secrets:secret:create",
+    "secrets:secret:update", "secrets:secret:delete", "secrets:secret:use",
+    "secrets:secret:instances",
+    "secrets:credential:resolve", "secrets:definition:list",
+    "agents:agent:list", "agents:agent:get",
+    "agents:agent:secretgrants", "agents:agent:secretgrant",
+    "agents:agent:secretrevoke", "agents:agent:secretlendable",
+    "agents:agent:secretlendmany",
+)
+#: The name the Members group is seeded under, and looked up by where a
+#: new person is offered it.
+MEMBERS_GROUP = "Members"
+
+
 # An action IS an endpoint (``iam:user:set_groups``); this lists what
 # exists and drives the policy editor — adding a line here is what makes
 # an endpoint grantable.
@@ -201,6 +232,13 @@ ACTION_CATALOG: Dict[str, Dict[str, Any]] = {
         "actions": {
             "iam:user:list": "View users",
             "iam:user:get": "View one user",
+            "iam:user:create": (
+                "Add a person and hand them a temporary password, where "
+                "no invitation can be sent"
+            ),
+            "iam:user:reset_password": (
+                "Give a person who forgot their password a temporary one"
+            ),
             "iam:user:update": "Edit a user's profile",
             "iam:user:set_groups": "Place a user into groups",
             "iam:user:set_status": "Disable or re-enable a user",

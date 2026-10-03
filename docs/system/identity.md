@@ -64,6 +64,22 @@ organization and its tenth are laid out identically:
 
 - `FullAccess` → `Administrator` → `Administrators`
 - `BaseAccess` → `User` → `Everyone`
+- `MemberAccess` → `Member` → `Members`
+
+**Members** is what a person who is not an administrator is put in to
+use the platform: their own chats and what the assistant does in them
+on their behalf, their files, saved data and credentials, and seeing
+the agents they were given (`MEMBER_ACTIONS`, beside the catalog).
+Installing agents, the organization's settings and other people are not
+in it. Without it, or a group like it, a person signs in and can do
+almost nothing: chatting is not among the actions everybody holds. The
+Users page offers it already ticked for a new person. It is seeded once
+and is an ordinary group from then on — an administrator edits what it
+grants, or removes it, and it is not put back. Which agents its people
+may call is a separate decision, made on each agent: a newly installed
+agent reaches whoever installed it and their groups, and on a person's
+own computer Members as well, where the people are few and were added
+by the one installing. Either grant is withdrawn on the agent's page.
 
 Creating an organization, and disabling or re-enabling one, happen from
 outside the application entirely — they are deployment operations, not
@@ -294,7 +310,8 @@ anyone may write one.
 ## Becoming a user, and proving it later
 
 Nobody signs themselves up. A person exists in an organization because
-somebody who was already there invited them.
+somebody who was already there invited them — or, on a person's own
+computer, added them.
 
 **Invitation.** An invitation records the address invited, the
 organization, any groups the person should land in, who invited them, and
@@ -303,6 +320,19 @@ signs them in. The address on the new account comes from the invitation
 and never from the request that accepts it: the link proves control of one
 mailbox, and that is the only address it can produce. The organization
 comes from the invitation for the same reason.
+
+**A person added by hand.** A desktop sends no email, so there an
+administrator adds a person directly (`IAM:User:create`, refused on a web
+deployment) and is shown a temporary password once, to hand over. The same
+is done for a person who forgot theirs (`IAM:User:reset_password`, on any
+deployment), which also ends their sessions. It is bounded as group
+assignment is: nobody resets the password of a person holding more than
+they do, since that would be taking their account. A handed-over password
+proves who the person is and opens nothing: signing in with it is answered
+`change_required` and no session, and the person chooses their own
+(`POST /auth/password/first`, which asks for the handed-over one again)
+before their first session exists. An administrator's own forgotten
+password is reset from the desktop app, on the computer itself.
 
 **Password.** Passwords are stored as a slow one-way hash, deliberately
 expensive to compute, over a fixed-length digest of the password — so that
@@ -316,7 +346,8 @@ signed cookie that *names* it. The cookie is a pointer, not a container:
 its claims are read to find the session, and never to decide anything.
 Every request re-reads the session and the user behind it, which is what
 makes disabling, deleting or signing out take effect immediately rather
-than whenever the cookie would have expired. Sessions last seven days and
+than whenever the cookie would have expired. Sessions last seven days, or ninety
+when the person asked to be kept signed in on that device, and
 record the browser and address they were opened from. A request carrying
 the cookie from a page of another origin — another site, or another
 program on another port of this computer, which browsers send the cookie

@@ -114,12 +114,58 @@
           />
         </label>
 
+        <label class="auth-remember">
+          <input type="checkbox" name="remember" [(ngModel)]="remember" [disabled]="busy" />
+          <span>Keep me signed in on this device</span>
+        </label>
+
         <button class="btn btn--primary" type="submit" [disabled]="busy">
           {{ busy ? "Signing in…" : "Sign in" }}
         </button>
 
         <button class="btn btn--ghost" type="button" (click)="startForgot()">
           Forgot your password?
+        </button>
+      </form>
+    </ng-container>
+
+    <!-- ── Replace a password that was handed over ────────────────── -->
+    <ng-container *ngIf="mode === 'first'">
+      <form class="auth-form" (ngSubmit)="chooseOwnPassword()">
+        <input
+          class="visually-hidden"
+          type="email"
+          name="email"
+          autocomplete="username"
+          [value]="email"
+          readonly
+          tabindex="-1"
+          aria-hidden="true"
+        />
+
+        <label class="field">
+          <span class="field__label">New password</span>
+          <input
+            class="field__input"
+            type="password"
+            name="password"
+            autocomplete="new-password"
+            placeholder="At least 10 characters"
+            [(ngModel)]="password"
+            [disabled]="busy"
+            autofocus
+          />
+          <span class="field__hint">
+            At least 10 characters, with a letter and a number.
+          </span>
+        </label>
+
+        <button class="btn btn--primary" type="submit" [disabled]="busy">
+          {{ busy ? "Saving…" : "Save and sign in" }}
+        </button>
+
+        <button class="btn btn--ghost" type="button" (click)="backToLogin()">
+          Back to sign in
         </button>
       </form>
     </ng-container>

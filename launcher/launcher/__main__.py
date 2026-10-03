@@ -109,6 +109,8 @@ class CommandLine:
             # For the desktop app, which shows it and does not read prose.
             status["begun"] = self.settings.begun
             status["launcher"] = VERSION
+            status["first_person"] = str(
+                self.settings.install().get("first_person") or "")
             status["images"] = self.settings.install().get("images") or {}
             self.say(json.dumps(status, sort_keys=True))
             return 0

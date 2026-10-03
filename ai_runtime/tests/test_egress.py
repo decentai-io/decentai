@@ -281,8 +281,12 @@ class TestWhatAnAgentMayReach:
             [], from_secrets=["connection.base_url"]))
         url = f"http://acme.example.net:{site}/"
         assert get(proxy, token, url)[0] == 403
-        proxy.learn(token, "acme.example.net")
+        # Open while the call that was handed the credential runs, and
+        # closed again when it ends.
+        lent = proxy.lend(token, ["acme.example.net"])
         assert get(proxy, token, url)[0] == 200
+        proxy.take_back(token, lent)
+        assert get(proxy, token, url)[0] == 403
 
 
 class TestWhoMayPass:
@@ -554,10 +558,12 @@ class TestAPortThatWasDeclared:
             [], from_secrets=[f"account.imap_host:{mail}"]))
         target = f"mail.sara.example:{mail}"
         assert self.spoken(proxy, token, target).startswith("HTTP/1.1 403")
-        proxy.learn(token, "mail.sara.example", mail)
+        lent = proxy.lend(token, [f"mail.sara.example:{mail}"])
         assert self.spoken(proxy, token, target) == "A1 LOGIN SARA\r\n"
         assert self.spoken(
             proxy, token, f"mail.sara.example:{site}").startswith("HTTP/1.1 403")
+        proxy.take_back(token, lent)
+        assert self.spoken(proxy, token, target).startswith("HTTP/1.1 403")
 
     def test_what_was_declared_is_read_as_it_was_written(self):
         admission = Admission("agt_mail", network(

@@ -140,7 +140,9 @@ A name is lowercase and is only a name: no scheme, no path, and never
 an address. A port is written after it, a number from 1 to 65535; a
 host reached on two ports is written twice. Where `from_secret` names
 no port, the port is the one the person wrote into the address, and
-the web's where they wrote none. `from_secret` names a secret the agent declares
+the web's where they wrote none. The host opens when a call is handed
+the credential and closes when that call ends, so a function calls
+`use_secret` before it connects. `from_secret` names a secret the agent declares
 and one of its fields, which must be a `string` stored in `keys` —
 where an agent connects is shown to whoever approves it, and a field
 kept encrypted cannot be.

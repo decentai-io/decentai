@@ -92,6 +92,22 @@ class PasswordHasher:
         return True, ""
 
     # ------------------------------------------------------------------
+    #: The letters and digits a handed-over password is made of: none
+    #: that is read as another when copied by eye (0 and O, 1 and l).
+    HANDED_ALPHABET = "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+
+    @classmethod
+    def temporary(cls) -> str:
+        """A password for an administrator to hand to a person, who is
+        asked to replace it at once: three groups of five, easy to read
+        out and to type, and always with a letter and a number."""
+        while True:
+            groups = ["".join(secrets.choice(cls.HANDED_ALPHABET) for _ in range(5))
+                      for _ in range(3)]
+            password = "-".join(groups)
+            if cls.validate(password)[0]:
+                return password
+
     @staticmethod
     def random_secret(length: int = 32) -> str:
         """URL-safe token for invitations and password resets."""

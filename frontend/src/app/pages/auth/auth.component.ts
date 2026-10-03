@@ -4,7 +4,7 @@ import { AuthService } from '../../services/auth.service';
 import { DataStoreService } from '../../services/datastore.service';
 import { NavigatorService } from '../../services/navigator.service';
 
-type Mode = 'login' | 'invitation' | 'forgot' | 'reset';
+type Mode = 'login' | 'invitation' | 'forgot' | 'reset' | 'first';
 
 /**
  * Signing in is one step: email and password. One organization per
@@ -25,6 +25,9 @@ export class AuthComponent implements OnInit {
 
   email = '';
   password = '';
+  /** Keep the sign-in on this device. What was chosen last is offered
+   *  again, with the email it was chosen for. */
+  remember = false;
   name = '';
   orgName = '';
 
@@ -63,7 +66,10 @@ export class AuthComponent implements OnInit {
     const reset = params.get('reset');
     if (reset) {
       this.openReset(reset);
+      return;
     }
+
+    this.recallChoice();
   }
 
   // ------------------------------------------------------------------
@@ -87,10 +93,19 @@ export class AuthComponent implements OnInit {
       const result = await this.auth.login({
         email: this.email.trim(),
         password: this.password,
+        remember: this.remember,
       });
 
       if (result.ok) {
+        this.keepChoice();
         this.enterApp();
+        return;
+      }
+      if (result.changeRequired) {
+        // Held until their own is chosen: it is asked for again then.
+        this.handedPassword = this.password;
+        this.password = '';
+        this.mode = 'first';
         return;
       }
 
@@ -103,6 +118,68 @@ export class AuthComponent implements OnInit {
   // ------------------------------------------------------------------
   // Forgotten password
   // ------------------------------------------------------------------
+
+  /** The password an administrator handed over, between signing in
+   *  with it and choosing one's own. */
+  private handedPassword = '';
+
+  async chooseOwnPassword(): Promise<void> {
+    if (!this.password) {
+      this.error = 'Choose a password.';
+      return;
+    }
+
+    this.busy = true;
+    this.error = '';
+
+    try {
+      const result = await this.auth.firstPassword({
+        email: this.email.trim(),
+        current_password: this.handedPassword,
+        new_password: this.password,
+        remember: this.remember,
+      });
+
+      if (result.ok) {
+        this.handedPassword = '';
+        this.keepChoice();
+        this.enterApp();
+        return;
+      }
+
+      this.error = result.error || 'Could not set your password.';
+    } finally {
+      this.busy = false;
+    }
+  }
+
+  /** The key the remembered email is kept under on this device. */
+  private static readonly REMEMBERED = 'decentai.remembered-email';
+
+  /** Offer again what was chosen at the last sign-in on this device. */
+  private recallChoice(): void {
+    try {
+      const email = localStorage.getItem(AuthComponent.REMEMBERED) || '';
+      if (email && !this.email) {
+        this.email = email;
+        this.remember = true;
+      }
+    } catch {
+      // Storage that cannot be read: the form starts empty, as it did.
+    }
+  }
+
+  private keepChoice(): void {
+    try {
+      if (this.remember) {
+        localStorage.setItem(AuthComponent.REMEMBERED, this.email.trim());
+      } else {
+        localStorage.removeItem(AuthComponent.REMEMBERED);
+      }
+    } catch {
+      // Nothing is lost but the convenience.
+    }
+  }
 
   startForgot(): void {
     this.mode = 'forgot';
@@ -189,6 +266,7 @@ export class AuthComponent implements OnInit {
     this.resetToken = '';
     this.resetValid = false;
     this.password = '';
+    this.handedPassword = '';
     this.error = '';
     this.forgotMessage = '';
     this.mode = 'login';
@@ -302,6 +380,9 @@ export class AuthComponent implements OnInit {
     if (this.mode === 'forgot') {
       return this.forgotMessage ? 'Check your email' : 'Reset your password';
     }
+    if (this.mode === 'first') {
+      return 'Choose your own password';
+    }
     return 'Sign in';
   }
 
@@ -326,6 +407,9 @@ export class AuthComponent implements OnInit {
       return this.forgotMessage
         ? this.forgotMessage
         : 'We will email you a link to set a new one.';
+    }
+    if (this.mode === 'first') {
+      return `The one you signed in with was given to you. Replace it with one only you know, for ${this.email}.`;
     }
     return 'Enter your email and password.';
   }

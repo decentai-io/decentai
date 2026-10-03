@@ -1,7 +1,9 @@
 """Who may ask an agent to do things — the grants an administrator edits."""
 
 
-from database.stores import AgentGrantStore, AuditStore
+from database.stores import AgentGrantStore, AuditStore, GroupStore
+from server.authentication.catalog import MEMBERS_GROUP
+from server.setup.app_state import get_settings
 
 
 
@@ -17,15 +19,26 @@ class AgentGrantsMixin:
         administrator who belongs to no group is not locked out of what
         they just approved. Everything wider is somebody's decision.
 
+        On a person's own computer it reaches Members too. There the
+        people are few and were added by the one installing: an agent
+        each of them had to be granted separately read as an agent that
+        was not there. It is the same grant, withdrawn on the agent's
+        page like any other.
+
         Only on a FIRST install. Re-approving a version is a repair, and
         rebuilding the grant would quietly undo whatever access was
         arranged since."""
         if self.grant_store.for_agent(self._org(user), agent_ref):
             return
+        groups = list(user.get("assigned_groups") or [])
+        if get_settings().is_desktop:
+            members = GroupStore().get_by_name(self._org(user), MEMBERS_GROUP)
+            if members is not None and members["_id"] not in groups:
+                groups.append(members["_id"])
         try:
             self.grant_store.create(
                 self._org(user), agent_ref,
-                {"groups": list(user.get("assigned_groups") or []),
+                {"groups": groups,
                  "users": [str(user.get("user_id") or "")]},
                 created_by=str(user.get("email") or ""),
             )

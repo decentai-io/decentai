@@ -12,10 +12,12 @@ import { DataPageBase } from '../../app/data-page-base';
 /**
  * Admin → Users: the deployment's people, and who has been invited.
  *
- * Users are never created here — everyone arrives by invitation. A user's
- * access is exactly their groups, so this page is where group membership is
- * managed; what those groups grant is composed on the Groups/Roles/Policies
- * pages.
+ * Where the deployment sends email, everyone arrives by invitation. On a
+ * person's own computer it sends none: the administrator adds a person
+ * here and hands them a temporary password, and resets a forgotten one
+ * the same way. A user's access is exactly their groups, so this page is
+ * where group membership is managed; what those groups grant is composed
+ * on the Groups/Roles/Policies pages.
  *
  * Guard rails the backend enforces and this page surfaces plainly:
  * - you cannot disable or delete your own account;
@@ -39,8 +41,11 @@ export class MembersComponent extends DataPageBase implements OnInit {
   editingId: string | null = null;
   selected = new Set<string>();
 
-  /** Invite form. */
+  /** Invite form — on a desktop, the form a person is added with. */
   inviting = false;
+  inviteName = '';
+  /** A temporary password just made, shown once: whose, and what. */
+  handed: { email: string; password: string; reset: boolean } | null = null;
   inviteEmail = '';
   inviteGroupIds = new Set<string>();
   /** Handed back when no email service is configured — show it once. */
@@ -78,7 +83,19 @@ export class MembersComponent extends DataPageBase implements OnInit {
   // ── What the current user may do ────────────────────────────────────
 
   get canInvite(): boolean {
-    return this.auth.can('iam:invitation:create');
+    return this.adds
+      ? this.auth.can('iam:user:create')
+      : this.auth.can('iam:invitation:create');
+  }
+
+  /** People are added here, not invited: no email is sent from a
+   *  person's own computer. */
+  get adds(): boolean {
+    return this.auth.isDesktop;
+  }
+
+  get canResetPassword(): boolean {
+    return this.auth.can('iam:user:reset_password');
   }
 
   get canAssignGroups(): boolean {
@@ -269,10 +286,20 @@ export class MembersComponent extends DataPageBase implements OnInit {
 
   // ── Invitations ─────────────────────────────────────────────────────
 
+  /** The group the platform seeds for people who use it without
+   *  administering it (bootstrap/provisioning.py). */
+  private static readonly MEMBERS_GROUP = 'Members';
+
   startInvite(): void {
     this.inviting = true;
+    this.inviteName = '';
+    this.handed = null;
     this.inviteEmail = '';
-    this.inviteGroupIds = new Set<string>();
+    // A new person is offered Members already ticked: in no group at
+    // all they could sign in and do nothing.
+    const members = this.groups.find(
+      (group) => group.group_name === MembersComponent.MEMBERS_GROUP);
+    this.inviteGroupIds = new Set<string>(members ? [members.group_id] : []);
     this.inviteLink = '';
     this.error = '';
   }
@@ -286,6 +313,69 @@ export class MembersComponent extends DataPageBase implements OnInit {
     this.inviteGroupIds.has(groupId)
       ? this.inviteGroupIds.delete(groupId)
       : this.inviteGroupIds.add(groupId);
+  }
+
+  /** Add a person and show the password to hand them. */
+  async addPerson(): Promise<void> {
+    const email = this.inviteEmail.trim();
+    const name = this.inviteName.trim();
+    if (!name) return this.fail('Their name is required.');
+    if (!email) return this.fail('An email address is required.');
+
+    this.saving = true;
+    try {
+      const result = await this.members_.create(email, name, [...this.inviteGroupIds]);
+      if (result.error) {
+        if (result.ungrantable?.length) {
+          const shown = result.ungrantable.slice(0, 5).join(', ');
+          return this.fail(
+            `You cannot add someone to groups granting permissions you do not hold: ${shown}.`,
+          );
+        }
+        return this.fail(result.error);
+      }
+      await this.reload();
+      this.inviting = false;
+      this.handed = { email, password: result.password ?? '', reset: false };
+      this.error = '';
+    } finally {
+      this.saving = false;
+    }
+  }
+
+  /** A temporary password for someone who forgot theirs. */
+  async resetPassword(member: Member): Promise<void> {
+    if (
+      !confirm(
+        `Reset the password of ${member.email}?\n\nThey are signed out everywhere, ` +
+          `and you are shown a temporary password to hand them.`,
+      )
+    ) {
+      return;
+    }
+
+    this.busy.add(member.user_id);
+    try {
+      const result = await this.members_.resetPassword(member.user_id);
+      if (result.error) {
+        return this.fail(result.error);
+      }
+      await this.reload();
+      this.handed = { email: member.email, password: result.password ?? '', reset: true };
+      this.error = '';
+    } finally {
+      this.busy.delete(member.user_id);
+    }
+  }
+
+  async copyPassword(): Promise<void> {
+    if (!this.handed) return;
+    try {
+      await navigator.clipboard.writeText(this.handed.password);
+      this.flash('Password copied.');
+    } catch {
+      this.fail('Could not copy — select the password and copy it yourself.');
+    }
   }
 
   async sendInvite(): Promise<void> {

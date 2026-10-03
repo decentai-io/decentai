@@ -102,13 +102,32 @@ export class AuthService {
   async login(payload: {
     email: string;
     password: string;
-  }): Promise<{ ok: boolean; error?: string; throttled?: boolean }> {
+    /** Keep the sign-in on this device past the browser being closed. */
+    remember?: boolean;
+  }): Promise<{ ok: boolean; error?: string; throttled?: boolean; changeRequired?: boolean }> {
     const { status, data } = await this.post('auth/login', payload);
 
     if (status === 429) {
       return { ok: false, error: data?.error ?? '', throttled: true };
     }
+    if (status === 403 && data?.change_required === true) {
+      // The password is one an administrator handed over: right, and
+      // not yet a way in.
+      return { ok: false, changeRequired: true };
+    }
 
+    return this.adopt(status, data);
+  }
+
+  /** Replace a password an administrator handed over with one of the
+   *  person's own, and sign in. */
+  async firstPassword(payload: {
+    email: string;
+    current_password: string;
+    new_password: string;
+    remember?: boolean;
+  }): Promise<{ ok: boolean; error?: string }> {
+    const { status, data } = await this.post('auth/password/first', payload);
     return this.adopt(status, data);
   }
 

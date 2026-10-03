@@ -5,8 +5,13 @@ makes it usable: the administrator's way in, and the baseline every user
 inherits. Both are seeded here, so the deployment's first organization
 and its tenth are laid out the same way.
 
-    FullAccess → Administrator → Administrators
-    BaseAccess → User          → Everyone (implicit membership)
+    FullAccess   → Administrator → Administrators
+    BaseAccess   → User          → Everyone (implicit membership)
+    MemberAccess → Member        → Members
+
+Members is what a person who is not an administrator is put in to use
+the platform: chats, files, saved data, their own credentials. It is
+seeded once and is an ordinary group from then on.
 
 Idempotent throughout: every step looks for what it would create and
 keeps what is already there. That is what makes it safe for
@@ -26,7 +31,9 @@ from typing import Any, Dict
 from database.stores import (
     GroupStore, OrganizationStore, PolicyStore, RoleStore,
 )
-from server.authentication.catalog import BASELINE_ACTIONS, BASELINE_REVISION
+from server.authentication.catalog import (
+    BASELINE_ACTIONS, BASELINE_REVISION, MEMBER_ACTIONS, MEMBERS_GROUP,
+)
 
 
 class OrganizationProvisioner:
@@ -56,7 +63,9 @@ class OrganizationProvisioner:
         place a user."""
         administrators = self._administrator_chain(org_id)
         everyone = self._baseline_chain(org_id)
-        return {"administrators": administrators, "everyone": everyone}
+        members = self._member_chain(org_id)
+        return {"administrators": administrators, "everyone": everyone,
+                "members": members}
 
     # ------------------------------------------------------------------
     def _administrator_chain(self, org_id: str) -> Dict[str, Any]:
@@ -89,6 +98,48 @@ class OrganizationProvisioner:
                 assigned_roles=[role["_id"]],
             )
         )
+        self.announce(f"group: {group['group_name']}")
+        return group
+
+    def _member_chain(self, org_id: str):
+        """The Members group, seeded once. An organization that has been
+        offered it and no longer has it removed it on purpose: it is not
+        put back. Returns the group, or None where there is none."""
+        group = self.groups.get_by_name(org_id, MEMBERS_GROUP)
+        organization = self.organizations.get(org_id) or {}
+        if group is not None or organization.get("members_seeded"):
+            return group
+
+        policy = self.policies.get_by_name(org_id, "MemberAccess") or (
+            self.policies.create(
+                org_id=org_id,
+                name="MemberAccess",
+                permissions={"statements": [
+                    {"effect": "Allow",
+                     "actions": list(MEMBER_ACTIONS),
+                     "resources": ["*"]}
+                ]},
+                description="Everyday use: chats, files, saved data and "
+                            "one's own credentials.",
+            )
+        )
+        self.announce(f"policy: {policy['name']}")
+
+        role = self.roles.get_by_name(org_id, "Member") or self.roles.create(
+            org_id=org_id,
+            role_name="Member",
+            assigned_policies=[policy["_id"]],
+            description="Uses the platform without administering it.",
+        )
+        self.announce(f"role: {role['role_name']}")
+
+        group = self.groups.create(
+            org_id=org_id,
+            group_name=MEMBERS_GROUP,
+            assigned_roles=[role["_id"]],
+        )
+        self.organizations.col.update_one(
+            {"_id": org_id}, {"$set": {"members_seeded": True}})
         self.announce(f"group: {group['group_name']}")
         return group
 

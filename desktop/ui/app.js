@@ -73,6 +73,7 @@ class PretendBackend {
           running: this.running,
           version: this.installed ? '0.2.2' : '',
           address: 'http://localhost:4280',
+          first_person: this.installed ? 'sara@example.com' : '',
           update: this.update ? { version: '0.3.0', notes: '' } : null,
         };
       case 'install':
@@ -97,6 +98,8 @@ class PretendBackend {
         await this.lines(['Keeping a copy of the database…', 'Removing DecentAI…']);
         this.installed = false; this.running = false;
         return { kept: payload.keep ? 'Documents\\DecentAI backup 2026-10-03.archive.gz' : '' };
+      case 'reset_password':
+        return null;
       case 'start_engine':
       case 'install_engine':
         await this.lines(['Starting Docker…']);
@@ -182,7 +185,7 @@ class App {
     }
     this.steps = null;
     this.view.replaceChildren(screen);
-    const first = this.view.querySelector('input, .btn--primary');
+    const first = this.view.querySelector('input, .actions .btn--primary');
     if (first) first.focus();
     return this.view;
   }
@@ -235,12 +238,12 @@ class App {
     }).querySelector('[data-act="engine-primary"]').textContent = `Start ${engine.name}`;
   }
 
-  setup() {
-    const view = this.show('setup');
-    const form = view.querySelector('form');
+  /** An email and a password typed twice, checked as they are typed:
+   *  each mistake said beside its field, the button offered only when
+   *  there is none. `given(fields)` is called with what was typed. */
+  credentials(form, given) {
     const fields = form.elements;
     const submit = form.querySelector('[type=submit]');
-
     const check = () => {
       const email = fields.email.value.trim();
       const password = fields.password.value;
@@ -258,17 +261,43 @@ class App {
         form.querySelector(`[data-for="${name}"]`).textContent = problem;
         fields[name].classList.toggle('is-wrong', Boolean(problem));
       }
-      submit.disabled = !FirstPerson.ready(email, password, again);
+      const named = !fields.name || Boolean(fields.name.value.trim());
+      submit.disabled = !named || !FirstPerson.ready(email, password, again);
     };
     form.addEventListener('input', check);
     form.addEventListener('submit', (event) => {
       event.preventDefault();
-      if (submit.disabled) return;
+      if (!submit.disabled) given(fields);
+    });
+    check();
+  }
+
+  setup() {
+    const view = this.show('setup');
+    this.credentials(view.querySelector('form'), (fields) => {
       this.work('Installing DecentAI', 'install', {
+        name: fields.name.value.trim(),
         email: fields.email.value.trim(),
         password: fields.password.value,
       }, null, 'Keep this window open. The download is the long part; the rest takes a minute.');
     });
+  }
+
+  reset() {
+    const view = this.show('reset', {}, { back: () => this.settle() });
+    const form = view.querySelector('form');
+    form.elements.email.value = this.state.first_person || '';
+    this.credentials(form, async (fields) => {
+      const email = fields.email.value.trim();
+      const done = await this.work('Setting the password', 'reset_password', {
+        email, password: fields.password.value,
+      }, null, '', true);
+      if (done === undefined) return;
+      this.show('reset-done', {
+        text: `${email} signs in with the new password. Every device that was signed in to that account has been signed out.`,
+      }, { back: () => this.settle() });
+    });
+    (form.elements.email.value ? form.elements.password : form.elements.email).focus();
   }
 
   running() {
@@ -284,6 +313,7 @@ class App {
         'Chats that are working are interrupted. A copy of the database is kept first, '
         + 'and the version you have is put back if the new one does not start.'),
       check: () => this.look(),
+      reset: () => this.reset(),
       data: () => this.data(),
       uninstall: () => this.uninstall(),
     });
@@ -299,6 +329,7 @@ class App {
   stopped() {
     this.show('stopped', { version: `Version ${this.state.version}` }, {
       start: (button) => this.work('Starting DecentAI', 'start', {}, button),
+      reset: () => this.reset(),
       data: () => this.data(),
       uninstall: () => this.uninstall(),
     });

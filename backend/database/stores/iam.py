@@ -356,6 +356,9 @@ class UserStore(OrgScopedStore):
             "user_name": doc.get("user_name", ""),
             "status": doc.get("status", UserStore.STATUS_ACTIVE),
             "assigned_groups": list(doc.get("assigned_groups") or []),
+            # Somebody else chose the password they hold: they are asked
+            # for one of their own before they are let in.
+            "must_change_password": doc.get("must_change_password") is True,
             "created_at": iso(doc.get("created_at")),
             "last_login_at": iso(doc.get("last_login_at")),
         }
@@ -368,6 +371,7 @@ class UserStore(OrgScopedStore):
         user_name: str,
         password_hash: Optional[str] = None,
         assigned_groups: Optional[List[str]] = None,
+        must_change_password: bool = False,
     ) -> Dict[str, Any]:
         email = self.normalize_email(email)
         if not email or "@" not in email or len(email) > 254:
@@ -382,6 +386,7 @@ class UserStore(OrgScopedStore):
             "user_name": str(user_name or "").strip(),
             "status": self.STATUS_ACTIVE,
             "password_hash": password_hash,
+            "must_change_password": bool(must_change_password),
             "assigned_groups": list(assigned_groups or []),
             "created_at": utc_now(),
             "updated_at": utc_now(),
@@ -495,11 +500,18 @@ class UserStore(OrgScopedStore):
                     ).get("defaults") or {}
         return str(defaults.get(str(family)) or "")
 
-    def set_password(self, user_id: str, password_hash: str) -> None:
+    def set_password(self, user_id: str, password_hash: str,
+                     must_change: bool = False) -> None:
+        """A new password. ``must_change`` says somebody else chose it —
+        an administrator handing one over — so the person is asked for
+        their own at their next sign-in; a password a person sets for
+        themselves is theirs to keep."""
         access_cache.drop_user(user_id)
         self.col.update_one(
             {"_id": user_id},
-            {"$set": {"password_hash": password_hash, "updated_at": utc_now()}},
+            {"$set": {"password_hash": password_hash,
+                      "must_change_password": bool(must_change),
+                      "updated_at": utc_now()}},
         )
 
     def set_status(self, user_id: str, status: str) -> None:
@@ -1105,8 +1117,14 @@ class SessionStore(MongoStore):
 
     COLLECTION = "sessions"
 
-    # A week, matching the cookie's lifetime.
+    # A week: how long a sign-in lasts when nothing more was asked.
     LIFETIME = timedelta(days=7)
+    # A sign-in the person asked to be kept on their own device.
+    REMEMBERED = timedelta(days=90)
+
+    @classmethod
+    def lifetime(cls, remember: bool) -> timedelta:
+        return cls.REMEMBERED if remember else cls.LIFETIME
 
     def create(
         self,
@@ -1114,6 +1132,7 @@ class SessionStore(MongoStore):
         org_id: str,
         user_agent: str = "",
         ip_address: str = "",
+        remember: bool = False,
     ) -> Dict[str, Any]:
         now = utc_now()
         doc = {
@@ -1123,7 +1142,7 @@ class SessionStore(MongoStore):
             "user_agent": str(user_agent or "")[:400],
             "ip_address": str(ip_address or "")[:64],
             "created_at": now,
-            "expires_at": now + self.LIFETIME,
+            "expires_at": now + self.lifetime(remember),
         }
         self.col.insert_one(doc)
         return doc

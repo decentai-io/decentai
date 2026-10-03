@@ -43,6 +43,10 @@
       <p class="lead">It runs on this computer and is reachable from this computer only. You are its first person.</p>
       <form id="setup" novalidate>
         <label class="field">
+          <span>Your name</span>
+          <input name="name" type="text" autocomplete="name" required>
+        </label>
+        <label class="field">
           <span>Your email</span>
           <input name="email" type="email" autocomplete="email" required>
           <small class="problem" data-for="email"></small>
@@ -98,6 +102,7 @@
         <span data-slot="version"></span>
         <span class="foot-links">
           <button class="link" data-act="check">Check for updates</button>
+          <button class="link" data-act="reset">Reset a password</button>
           <button class="link" data-act="data">Where my data is</button>
           <button class="link link--danger" data-act="uninstall">Uninstall</button>
         </span>
@@ -116,6 +121,7 @@
       <footer class="foot">
         <span data-slot="version"></span>
         <span class="foot-links">
+          <button class="link" data-act="reset">Reset a password</button>
           <button class="link" data-act="data">Where my data is</button>
           <button class="link link--danger" data-act="uninstall">Uninstall</button>
         </span>
@@ -161,6 +167,48 @@
       <div class="actions">
         <button class="btn btn--danger" data-act="uninstall-now">Remove DecentAI</button>
         <button class="btn" data-act="back">Keep it</button>
+      </div>
+    </section>
+  </template>
+
+  <template id="screen-reset">
+    <section class="screen">
+      <h1>Reset a password</h1>
+      <p class="lead">For when a password is forgotten. Whoever can open this app on this computer may set a new one; every device signed in to that account is signed out.</p>
+      <form id="reset" novalidate>
+        <label class="field">
+          <span>Whose: their email</span>
+          <input name="email" type="email" autocomplete="off" required>
+          <small class="problem" data-for="email"></small>
+        </label>
+        <label class="field">
+          <span>The new password</span>
+          <input name="password" type="password" autocomplete="new-password" required>
+        </label>
+        <ul class="rules" aria-label="The password needs">
+          <li data-rule="length">10 characters or more</li>
+          <li data-rule="letter">a letter</li>
+          <li data-rule="number">a number</li>
+        </ul>
+        <label class="field">
+          <span>The new password again</span>
+          <input name="again" type="password" autocomplete="new-password" required>
+          <small class="problem" data-for="again"></small>
+        </label>
+        <div class="actions">
+          <button class="btn btn--primary" type="submit" disabled>Set the password</button>
+          <button class="btn" type="button" data-act="back">Back</button>
+        </div>
+      </form>
+    </section>
+  </template>
+
+  <template id="screen-reset-done">
+    <section class="screen">
+      <h1>The password was changed</h1>
+      <p class="lead" data-slot="text"></p>
+      <div class="actions">
+        <button class="btn btn--primary" data-act="back">Done</button>
       </div>
     </section>
   </template>

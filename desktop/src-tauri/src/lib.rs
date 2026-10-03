@@ -7,7 +7,7 @@
 //! release.rs    the signed release file: the version, the launcher
 //! kept.rs       what is remembered between one opening and the next
 //! log.rs        what the app did, for when an install goes wrong
-//! window.rs     DecentAI itself, in a browser window of its own
+//! window.rs     DecentAI itself, in a window of the app's
 //! program.rs    a program on this computer, run and listened to
 //! ```
 //!
@@ -54,6 +54,8 @@ struct State {
     running: bool,
     version: String,
     address: String,
+    /// Whose install it is: the person a forgotten password is reset for.
+    first_person: String,
     update: Option<Update>,
 }
 
@@ -111,6 +113,7 @@ impl Desktop {
             running: false,
             version: String::new(),
             address: String::new(),
+            first_person: String::new(),
             update: None,
         };
         if !ready {
@@ -134,19 +137,20 @@ impl Desktop {
         state.update = release
             .filter(|release| status.installed && release.newer_than(&status.version))
             .map(|release| Update { version: release.version });
+        state.first_person = status.first_person;
         state.version = status.version;
         state.address = status.address;
         Ok(state)
     }
 
-    fn install(&self, email: &str, password: &str) -> Result<(), String> {
+    fn install(&self, name: &str, email: &str, password: &str) -> Result<(), String> {
         let (launcher, release) = self.launcher()?;
         if release.is_none() && !launcher.unsigned() {
             return Err("DecentAI's releases could not be reached. Check the connection \
                         and try again."
                 .into());
         }
-        launcher.install(email, password, release.as_ref(), &|t| self.say(t))?;
+        launcher.install(name, email, password, release.as_ref(), &|t| self.say(t))?;
         Kept::here().keep("engine", launcher.engine.name());
         Ok(())
     }
@@ -159,7 +163,19 @@ impl Desktop {
 
     fn stop(&self) -> Result<(), String> {
         let (launcher, _) = self.launcher()?;
-        launcher.run(&["stop"], None, &|_| {}).map(|_| ())
+        launcher.run(&["stop"], None, &|_| {})?;
+        Window::close(&self.app);
+        Ok(())
+    }
+
+    /// A new password for a person of the install, set by the platform's
+    /// own script: what a reset link does, where there is no email to
+    /// send one. Whoever can open this app holds the install already.
+    fn reset_password(&self, email: &str, password: &str) -> Result<(), String> {
+        let (launcher, _) = self.launcher()?;
+        launcher
+            .run(&["reset-password", "--email", email], Some(password), &|_| {})
+            .map(|_| ())
     }
 
     fn update(&self) -> Result<(), String> {
@@ -170,10 +186,10 @@ impl Desktop {
     fn open(&self) -> Result<(), String> {
         let (launcher, _) = self.launcher()?;
         let status = launcher.status()?;
-        if status.address.is_empty() || !Window::show(&status.address) {
-            return Err("DecentAI could not be opened in a browser on this computer.".into());
+        if status.address.is_empty() {
+            return Err("DecentAI is not installed here yet.".into());
         }
-        Ok(())
+        Window::show(&self.app, &status.address)
     }
 
     fn data(&self) -> Result<Places, String> {
@@ -202,6 +218,7 @@ impl Desktop {
         let (launcher, _) = self.launcher()?;
         let status: Status = launcher.status()?;
         let program = launcher.engine.program()?.clone();
+        Window::close(&self.app);
         let copy = launcher.uninstall(keep, &|t| self.say(t))?;
 
         let mut kept_at = String::new();
@@ -333,8 +350,13 @@ fn state(app: AppHandle) -> Result<State, String> {
 }
 
 #[tauri::command(async)]
-fn install(app: AppHandle, email: String, password: String) -> Result<(), String> {
-    Desktop::new(&app).install(&email, &password)
+fn install(app: AppHandle, name: String, email: String, password: String) -> Result<(), String> {
+    Desktop::new(&app).install(&name, &email, &password)
+}
+
+#[tauri::command(async)]
+fn reset_password(app: AppHandle, email: String, password: String) -> Result<(), String> {
+    Desktop::new(&app).reset_password(&email, &password)
 }
 
 #[tauri::command(async)]
@@ -388,16 +410,19 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
-            // Closing the window leaves the icon by the clock: DecentAI
-            // itself runs whether the app is open or not.
+            // Closing the app's own window leaves the icon by the clock:
+            // DecentAI itself runs whether the app is open or not. The
+            // window DecentAI is shown in simply closes.
             if let WindowEvent::CloseRequested { api, .. } = event {
-                api.prevent_close();
-                let _ = window.hide();
+                if Window::is_the_apps_own(window.label()) {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
             }
         })
         .invoke_handler(tauri::generate_handler![
             state, install, start, stop, update, open, data, uninstall, start_engine,
-            install_engine
+            install_engine, reset_password
         ])
         .run(tauri::generate_context!())
         .expect("DecentAI could not start");

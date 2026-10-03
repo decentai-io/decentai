@@ -30,7 +30,7 @@ anyway**. On a Mac the first open is refused: click **Done**, open
 **Open Anyway**.
 
 Open DecentAI. It looks for Docker or Podman, starts the one it finds,
-and shows a form: your email and a password (ten characters or more,
+and shows a form: your name, your email and a password (ten characters or more,
 with a letter and a number), checked as you type. **Install DecentAI**
 downloads it, sets it up and starts it; **Open DecentAI** then shows it
 in a window of its own, at `http://localhost:4280`.
@@ -56,16 +56,34 @@ The app's window says whether DecentAI is running, and has:
 
 | | Does |
 |---|---|
-| **Open DecentAI** | shows it in a window of its own |
+| **Open DecentAI** | shows it in a window of the app's own; a link to another site opens in your browser |
 | **Stop**, **Start** | stops it — nothing is removed — and starts it again |
 | **Update** | appears when a newer release exists: a copy of the database is kept first, and the version you have is put back if the new one does not start |
 | **Check for updates** | looks again |
+| **Reset a password** | a new password for you, or for another person of this install, when one is forgotten |
 | **Where my data is** | the places on this computer DecentAI keeps things in |
 | **Uninstall** | removes DecentAI and everything it kept, offering a copy of the database in your Documents folder first |
 
 Closing the window leaves an icon by the clock (the menu bar on a Mac),
 with Open, Start and Stop in its menu. DecentAI itself keeps running
 whether the app is open or not.
+
+## More than one person
+
+DecentAI on your computer is yours, and others may use it on the same
+computer. **Admin → Users → Add person**: their name, their email — it
+is only how they sign in, nothing is sent to it — and the groups they
+are in. **Members** is ticked already: it is what lets a person chat,
+keep files and saved data, and use their own credentials, without
+administering anything. An agent you install is theirs to call
+too — it is granted to Members as it is installed — and you take that
+back, or narrow it, on the agent's page. An agent that was installed
+before this is granted there by hand. You are shown a temporary password once; hand it over. They
+sign in with it and are asked at once for a password of their own.
+
+When someone forgets theirs, **Reset password** on their row gives you a
+new temporary one. When you forget yours, **Reset a password** in the
+app.
 
 ## From a command line
 
@@ -150,6 +168,6 @@ to send when asking for help.
   be reached.
 - **The page does not open.** Another program may hold port 4280.
 - **You forgot your password.** This DecentAI sends no email, so
-  "Forgot password" cannot send a link. Run the starter with
-  `reset-password` on this computer; it ends every session of the account and lifts the
-  lockout after wrong passwords.
+  "Forgot password" cannot send a link. In the app choose **Reset a
+  password**: it sets a new one, ends every session of the account and
+  lifts the lockout after wrong passwords.

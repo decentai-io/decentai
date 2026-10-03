@@ -152,7 +152,7 @@ import {
   User,
   Upload,
   UserCog,
-  X, ArrowRight, ArrowDown, ArrowUp, ArrowRightLeft, UserX,
+  X, ArrowRight, ArrowDown, ArrowUp, ArrowRightLeft, UserX, UserPlus,
 } from 'lucide-angular';
 import {
   BaseChartDirective,
@@ -458,7 +458,7 @@ import { ServiceWorkerModule } from '@angular/service-worker';
       User,
       Upload,
       UserCog,
-      X, ArrowRight, ArrowDown, ArrowUp, ArrowRightLeft, UserX,
+      X, ArrowRight, ArrowDown, ArrowUp, ArrowRightLeft, UserX, UserPlus,
     }),
       ServiceWorkerModule.register('ngsw-worker.js', {
         enabled: !isDevMode(),

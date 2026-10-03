@@ -9,8 +9,9 @@ firewall rule — cannot go around.
     proxy.start()
     token = proxy.admit(agent_id, manifest.network)   one worker's pass
     proxy.address(token)                              what the worker is given
-    proxy.learn(token, host)                          a host its credential named
-    proxy.lend(token, hosts)                          hosts a person allowed, for a call
+    proxy.lend(token, hosts)                          hosts opened for a call: ones a
+                                                      person allowed, ones its
+                                                      credential named
     proxy.block(token, names)                         sites no agent may open here
     proxy.reached(token)                              the hosts it connected to, counted
     proxy.take_back(token, hosts)                     when the call ends
@@ -52,7 +53,8 @@ class Admission:
     def __init__(self, agent_id: str, network: dict):
         self.agent_id = agent_id
         network = network or {}
-        #: Every host — said, or implied by a manifest that says nothing.
+        #: Every host, where the manifest said so. One that says nothing
+        #: opens nothing.
         self.any = bool(network.get("any"))
         #: What was declared, each as (name, port): a name that begins
         #: with a dot is every host under it, and a port of None is
@@ -62,9 +64,10 @@ class Admission:
             self.learn(*self.named(host))
         #: ``<secret>.<field>``: hosts a granted credential will name.
         self.from_secrets = [str(f) for f in network.get("from_secrets") or []]
-        #: What a person allowed for a call and no longer: (name, port)
-        #: and how many calls hold it, so that one call ending does not
-        #: close what another still runs on.
+        #: What is open for a call and no longer — a host a person
+        #: allowed on a code card, a host the credential handed to the
+        #: call named: (name, port) and how many calls hold it, so that
+        #: one call ending does not close what another still runs on.
         self.lent: Dict[Tuple[str, Optional[int]], int] = {}
         #: Sites no agent may open in this deployment (Settings:Safety):
         #: a name is itself and every host under it, and it is refused
@@ -265,17 +268,12 @@ class EgressProxy:
         with self._guard:
             self._admissions.pop(str(token or ""), None)
 
-    def learn(self, token: str, host: str, port: Optional[int] = None) -> None:
-        """A host the worker's credential named (``from_secret``), and
-        the port it is reached on where that is not the web's."""
-        with self._guard:
-            admission = self._admissions.get(str(token or ""))
-            if admission is not None:
-                admission.learn(host, port)
-
     def lend(self, token: str, hosts: List[str]) -> List[Tuple[str, Optional[int]]]:
-        """Hosts a person allowed on a code card, opened until the call
-        that asked ends. Returns what was lent."""
+        """Hosts opened until the call they were opened for ends: ones
+        a person allowed on a code card, and ones the credential handed
+        to the call named (``from_secret``). Each is a name, with
+        ``:<port>`` where that is not the web's. Returns what was
+        lent."""
         with self._guard:
             admission = self._admissions.get(str(token or ""))
             if admission is None:
