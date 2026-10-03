@@ -76,7 +76,10 @@ almost nothing: chatting is not among the actions everybody holds. The
 Users page offers it already ticked for a new person. It is seeded once
 and is an ordinary group from then on — an administrator edits what it
 grants, or removes it, and it is not put back. Which agents its people
-may call is a separate decision, made on each agent.
+may call is a separate decision, made on each agent: a newly installed
+agent reaches whoever installed it and their groups, and on a person's
+own computer Members as well, where the people are few and were added
+by the one installing. Either grant is withdrawn on the agent's page.
 
 Creating an organization, and disabling or re-enabling one, happen from
 outside the application entirely — they are deployment operations, not

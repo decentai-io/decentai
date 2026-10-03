@@ -74,8 +74,10 @@ computer. **Admin → Users → Add person**: their name, their email — it
 is only how they sign in, nothing is sent to it — and the groups they
 are in. **Members** is ticked already: it is what lets a person chat,
 keep files and saved data, and use their own credentials, without
-administering anything. An agent is theirs to call once you have
-granted it to them, or to Members, on the agent's page. You are shown a temporary password once; hand it over. They
+administering anything. An agent you install is theirs to call
+too — it is granted to Members as it is installed — and you take that
+back, or narrow it, on the agent's page. An agent that was installed
+before this is granted there by hand. You are shown a temporary password once; hand it over. They
 sign in with it and are asked at once for a password of their own.
 
 When someone forgets theirs, **Reset password** on their row gives you a

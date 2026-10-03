@@ -170,6 +170,42 @@ class TestAHandedOverPassword:
             "email": self.EMAIL, "user_name": "Sara"}).text
 
 
+class TestAnAgentInstalledOnADesktop:
+    """It reaches Members as well as whoever installed it; on a server,
+    its installer and no further."""
+
+    def granted_groups(self, seed, agent_ref="agt_probe"):
+        from api.endpoints.app.agents.agent_controller import AgentController
+        from database.stores import AgentGrantStore
+
+        installer = {"user_id": seed.admin["_id"], "org_id": seed.org["_id"],
+                     "email": ADMIN_EMAIL,
+                     "assigned_groups": [seed.admins_group["_id"]]}
+        AgentController()._grant_on_install(installer, agent_ref)
+        [grant] = AgentGrantStore().for_agent(seed.org["_id"], agent_ref)
+        return set(grant["owner"]["groups"])
+
+    @pytest.fixture
+    def members(self, seed):
+        from provisioning import OrganizationProvisioner
+        return OrganizationProvisioner().seed(seed.org["_id"])["members"]
+
+    def test_on_a_desktop_members_may_call_it(self, app, seed, members):
+        import dataclasses
+        from server.setup.app_state import get_state
+        state = get_state()
+        original = state.settings
+        state.settings = dataclasses.replace(original, deployment_kind="desktop")
+        try:
+            assert self.granted_groups(seed) == {
+                seed.admins_group["_id"], members["_id"]}
+        finally:
+            state.settings = original
+
+    def test_on_a_server_only_its_installer(self, app, seed, members):
+        assert self.granted_groups(seed) == {seed.admins_group["_id"]}
+
+
 class TestKeepMeSignedIn:
     def sign_in(self, anon, seed, **extra):
         response = anon.post("/auth/login", json={
