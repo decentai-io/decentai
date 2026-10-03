@@ -331,6 +331,12 @@ can paste, is not on the list — GitHub Copilot, Google Vertex — and a
 model on the person's own machine is the `openai_compatible` entry with
 the address typed.
 
+`contracts/llm_models.json`, written by the same script, lists the
+models each provider is known to serve, by the provider's own id and a
+name to read. The form asks `Settings:Llm:Providers` for one provider's
+and offers them in the model field. It is an offer and never a gate: the
+store accepts any model name, so a model newer than the file is typed.
+
 ### Files
 
 The only domain that owns bytes as well as a document, and the two are

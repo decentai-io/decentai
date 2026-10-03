@@ -118,6 +118,18 @@ class TestTheCatalog:
             if entry["protocol"] == "anthropic":
                 assert not entry["endpoint"].rstrip("/").endswith("/v1"), entry["id"]
 
+    def test_a_providers_models_are_offered_by_its_own_ids_for_them(self):
+        bedrock = LlmProviders.models("amazon-bedrock")
+        assert {"id": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+                "name": "Claude Haiku 4.5 (US)"} in bedrock
+        assert all(set(model) == {"id", "name"} and model["id"] and model["name"]
+                   for model in bedrock)
+        # The list is kept under the id connections store, not models.dev's.
+        assert LlmProviders.models("gemini") and not LlmProviders.models("google")
+        # An offer, never a gate: a provider with none listed is still one.
+        assert LlmProviders.models("openai_compatible") == []
+        assert LlmProviders.models("nobody") == []
+
     def test_the_scripted_connector_is_reachable_and_in_no_catalog(self):
         assert LlmProviders.find("fake") is None
         assert isinstance(
@@ -182,6 +194,22 @@ class TestWritingTheCatalog:
         kept = self.checkout(tmp_path, google='name = "Google"\nnpm = "@ai-sdk/google"\n')
         assert "google" not in kept
         assert kept["gemini"]["name"] == "Google Gemini"
+
+    def test_models_are_listed_by_name_under_the_id_the_catalog_gave_the_provider(self, tmp_path):
+        self.checkout(tmp_path, google='name = "Google"\nnpm = "@ai-sdk/google"\n')
+        models = tmp_path / "providers" / "google" / "models"
+        (models / "vendor").mkdir(parents=True)
+        (models / "zed.toml").write_text('name = "Zed"\n', encoding="utf-8")
+        (models / "vendor" / "alpha-1.toml").write_text(
+            'base_model = "vendor/alpha"\n', encoding="utf-8")
+        (models / "old.toml").write_text(
+            'name = "Old"\nstatus = "deprecated"\n', encoding="utf-8")
+        (models / "bare.toml").write_text("", encoding="utf-8")
+        (tmp_path / "models" / "vendor").mkdir(parents=True)
+        (tmp_path / "models" / "vendor" / "alpha.toml").write_text(
+            'name = "Alpha"\n', encoding="utf-8")
+        assert ProviderCatalogWriter(tmp_path).models() == {"gemini": [
+            ["vendor/alpha-1", "Alpha"], ["bare", "bare"], ["zed", "Zed"]]}
 
     def test_the_custom_entry_comes_last_after_the_names_in_order(self, tmp_path):
         kept = self.checkout(

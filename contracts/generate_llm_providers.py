@@ -31,8 +31,13 @@ What it deliberately leaves out:
 - A model on the person's own machine. It is reached with
   ``openai_compatible`` and the address typed, since where that machine
   is, as seen from the platform, is nothing a catalog can know.
-- Models. A connection names its model in the provider's own words, and
-  a list kept here would be out of date the week it was written.
+
+Beside the providers it writes ``llm_models.json``: for each provider
+kept, the models models.dev lists for it, as the provider's own id and a
+name to read. The form offers them so that nobody has to find and copy
+an id like ``us.anthropic.claude-sonnet-4-5-20250929-v1:0``. The list is
+an offer and never a gate: a model newer than this file is typed, and
+the store accepts any model name.
 """
 
 from __future__ import annotations
@@ -49,6 +54,7 @@ from urllib.parse import urlsplit
 
 class ProviderCatalogWriter:
     OUTPUT = Path(__file__).with_name("llm_providers.json")
+    MODELS_OUTPUT = Path(__file__).with_name("llm_models.json")
     REPOSITORY = "https://github.com/anomalyco/models.dev"
 
     #: The client libraries whose protocol a connector here speaks, when
@@ -111,7 +117,48 @@ class ProviderCatalogWriter:
         self.OUTPUT.write_text(
             json.dumps(document, indent=2, ensure_ascii=False) + "\n",
             encoding="utf-8")
+        self.MODELS_OUTPUT.write_text(
+            json.dumps({"schema_version": "1.0", "source": document["source"],
+                        "models": self.models()},
+                       indent=0, ensure_ascii=False) + "\n",
+            encoding="utf-8")
         return len(providers)
+
+    def models(self) -> Dict[str, List[List[str]]]:
+        """For each provider kept: ``[id, name]`` for every model
+        models.dev lists under it, by name. The id is the file's path
+        under the provider's ``models`` folder, which is how models.dev
+        spells an id with a slash in it."""
+        listed: Dict[str, List[List[str]]] = {}
+        for path in sorted((self.checkout / "providers").glob("*/provider.toml")):
+            entry = self._entry(path.parent.name, tomllib.loads(
+                path.read_text(encoding="utf-8")))
+            folder = path.parent / "models"
+            if entry is None or not folder.is_dir():
+                continue
+            found = []
+            for file in sorted(folder.rglob("*.toml")):
+                if not file.is_file():  # a link whose target is gone
+                    continue
+                declared = tomllib.loads(file.read_text(encoding="utf-8"))
+                if declared.get("status") == "deprecated":
+                    continue
+                model_id = file.relative_to(folder).with_suffix("").as_posix()
+                found.append([model_id, self._model_name(declared) or model_id])
+            if found:
+                listed[entry["id"]] = sorted(
+                    found, key=lambda model: (model[1].casefold(), model[0]))
+        return listed
+
+    def _model_name(self, declared: Dict[str, Any]) -> str:
+        """The model's name: the provider's own file says it, or the
+        file of the model it serves does."""
+        if declared.get("name"):
+            return str(declared["name"])
+        base = self.checkout / "models" / f"{declared.get('base_model') or ''}.toml"
+        if declared.get("base_model") and base.is_file():
+            return str(tomllib.loads(base.read_text(encoding="utf-8")).get("name") or "")
+        return ""
 
     def providers(self) -> List[Dict[str, str]]:
         kept: Dict[str, Dict[str, str]] = {}

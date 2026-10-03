@@ -201,6 +201,21 @@ class TestTheCatalog:
                 or "https://gateway.example.test/v1")
             assert response.status_code == 200, (entry["id"], response.text)
 
+    def test_asked_about_one_provider_it_answers_with_that_providers_models(self, admin, seed):
+        response = app_call(admin, "Settings:Llm:Providers", {"provider": "amazon-bedrock"})
+        assert response.status_code == 200, response.text
+        models = response.json()["models"]
+        assert {"id": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+                "name": "Claude Haiku 4.5 (US)"} in models
+        assert "providers" not in response.json()
+        unknown = app_call(admin, "Settings:Llm:Providers", {"provider": "nobody"})
+        assert unknown.json() == {"models": []}
+
+    def test_a_model_the_list_does_not_know_is_still_a_model(self, admin, seed):
+        saved = make_connection(admin, provider="amazon-bedrock", model="released-tomorrow",
+                                endpoint="https://bedrock-runtime.us-east-1.amazonaws.com")
+        assert saved.status_code == 200, saved.text
+
     def test_seeing_the_catalog_is_every_members_like_seeing_connections(self):
         from server.authentication.catalog import BASELINE_ACTIONS
 

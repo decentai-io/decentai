@@ -56,7 +56,15 @@ class LlmController:
         one: each with the protocol it speaks and the address the form
         starts with. The same catalog the store validates against and
         the runtime builds connectors from, so the page cannot offer a
-        provider the platform would then refuse."""
+        provider the platform would then refuse.
+
+        Asked about one ``provider``, it answers with the models that
+        provider is known to serve instead — the form's suggestions for
+        the model field, fetched when a provider is chosen so the whole
+        list is not sent to draw a dropdown."""
+        provider = self._payload(data).get("provider")
+        if provider:
+            return {"models": LlmProviders.models(provider)}, 200
         return {"providers": LlmProviders.all()}, 200
 
     def create(self, data: dict, user: dict):

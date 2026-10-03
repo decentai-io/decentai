@@ -84,8 +84,8 @@ its address is filled in, with a `<blank>` left for you where it differs
 per account, such as Amazon Bedrock's region; a service that is not
 listed and speaks
 OpenAI's protocol is *Custom / OpenAI-compatible*, with its address
-typed — name the model exactly as the provider names it, paste the key,
-save.
+typed — choose the model from the ones offered, or type the provider's
+own id for one that is not, paste the key, save.
 Mark it as the default. Keys are write-only: nobody reads one back.
 
 ## 6. Install an agent

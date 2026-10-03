@@ -25,6 +25,9 @@ describe('SettingsComponent', () => {
       {
         list: async () => connections,
         providers: async () => catalog,
+        models: async (provider: string) => provider === 'amazon-bedrock'
+          ? [{ id: 'us.anthropic.claude-sonnet-4-5-20250929-v1:0', name: 'Claude Sonnet 4.5 (US)' }]
+          : [],
         create: async (draft: any) => {
           calls['created'] = draft;
           return { connection: connection(draft.name) };
@@ -77,26 +80,60 @@ describe('SettingsComponent', () => {
     component.startCreate();
     for (const provider of component.providers) {
       component.selectProvider(provider.id);
-      expect(component.draft.endpoint).toBe(provider.endpoint);
+      // A part that is the customer's own arrives filled with the usual value.
+      expect(component.draft.endpoint).toBe(provider.endpoint.replace('<aws-region>', 'us-east-1'));
     }
     component.draft.endpoint = 'https://my-gateway.example/v1';
     component.selectProvider('openrouter');
     expect(component.draft.endpoint).toBe('https://my-gateway.example/v1');
   });
 
-  it('holds a connection back until the blanks in its endpoint are filled in', () => {
+  it('asks for a region by name instead of an address to edit', async () => {
     const component = create();
     component.startCreate();
-    component.draft.name = 'Bedrock';
-    component.draft.model = 'us.anthropic.claude-sonnet-4-5-20250929-v1:0';
-    component.draft.api_key = 'key';
     component.selectProvider('amazon-bedrock');
-    expect(component.draft.endpoint).toContain('<aws-region>');
-    expect(component.blocker).toContain('Fill in the endpoint');
-    expect(component.endpointHelp).toContain('your region');
+    await Promise.resolve();
 
-    component.draft.endpoint = 'https://bedrock-runtime.eu-west-1.amazonaws.com';
+    // The usual region is already in; the address is made from it.
+    expect(component.blanks).toEqual(['aws-region']);
+    expect(component.blankLabel('aws-region')).toBe('AWS region');
+    expect(component.draft.endpoint).toBe('https://bedrock-runtime.us-east-1.amazonaws.com');
+    expect(component.endpointIsYours).toBeFalse();
+
+    component.setBlank('aws-region', 'eu-west-1');
+    expect(component.draft.endpoint).toBe('https://bedrock-runtime.eu-west-1.amazonaws.com');
+
+    component.setBlank('aws-region', ' ');
+    component.draft.model = 'm';
+    component.draft.api_key = 'key';
+    expect(component.blocker).toBe('Enter your AWS region.');
+  });
+
+  it('offers the provider’s models and names the connection after the choice', async () => {
+    const component = create();
+    component.startCreate();
+    component.selectProvider('amazon-bedrock');
+    await Promise.resolve();
+    expect(component.models.map((m) => m.name)).toEqual(['Claude Sonnet 4.5 (US)']);
+
+    component.setModel('us.anthropic.claude-sonnet-4-5-20250929-v1:0');
+    expect(component.draft.name).toBe('Amazon Bedrock · Claude Sonnet 4.5 (US)');
+    component.draft.api_key = 'key';
     expect(component.blocker).toBe('');
+
+    // A name the person typed is theirs from then on.
+    component.setName('Production');
+    component.setModel('another-model');
+    expect(component.draft.name).toBe('Production');
+  });
+
+  it('asks only the custom entry for a whole address', () => {
+    const component = create();
+    component.startCreate();
+    component.selectProvider('openai_compatible');
+    expect(component.endpointIsYours).toBeTrue();
+    component.selectProvider('openrouter');
+    expect(component.endpointIsYours).toBeFalse();
   });
 
   it('keeps saved endpoints when opening the editor', () => {

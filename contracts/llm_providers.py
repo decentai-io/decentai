@@ -18,6 +18,10 @@ The list is ``llm_providers.json`` beside this file, written by
               person fills in; the custom entry's is empty, the whole
               address being theirs to type
 
+``llm_models.json``, written with it, lists the models each provider is
+known to serve — an offer for the form, never a gate: a connection may
+name any model.
+
 This module holds no key and reaches no network, and it does not decide
 where a chat's request goes: a connection carries its own endpoint, which
 the person may have changed to a gateway of theirs. The catalog's
@@ -33,9 +37,11 @@ from typing import Any, ClassVar, Dict, List, Optional, Tuple
 
 class LlmProviders:
     PATH: ClassVar[Path] = Path(__file__).with_name("llm_providers.json")
+    MODELS_PATH: ClassVar[Path] = Path(__file__).with_name("llm_models.json")
     PROTOCOLS: ClassVar[Tuple[str, ...]] = ("openai", "anthropic", "bedrock")
 
     _entries: ClassVar[Optional[Dict[str, Dict[str, str]]]] = None
+    _models: ClassVar[Optional[Dict[str, List[List[str]]]]] = None
 
     @classmethod
     def _load(cls) -> Dict[str, Dict[str, str]]:
@@ -54,6 +60,16 @@ class LlmProviders:
     @classmethod
     def ids(cls) -> Tuple[str, ...]:
         return tuple(cls._load())
+
+    @classmethod
+    def models(cls, provider: Any) -> List[Dict[str, str]]:
+        """The models a provider is known to serve, as ``{id, name}``;
+        empty for a provider the list says nothing of."""
+        if cls._models is None:
+            cls._models = json.loads(
+                cls.MODELS_PATH.read_text(encoding="utf-8"))["models"]
+        return [{"id": model_id, "name": name} for model_id, name in
+                cls._models.get(str(provider or "").strip().lower(), [])]
 
     @staticmethod
     def unfilled(endpoint: Any) -> bool:

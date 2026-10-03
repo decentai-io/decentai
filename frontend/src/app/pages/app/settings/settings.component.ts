@@ -9,7 +9,7 @@ import { SwPush } from '@angular/service-worker';
 import { NotificationSettings, NotificationsService } from 'src/app/services/notifications.service';
 import { Profile, ProfileService } from 'src/app/services/profile.service';
 import {
-  LlmConnection, LlmConnectionDraft, LlmProvider, SettingsLlmService,
+  LlmConnection, LlmConnectionDraft, LlmModel, LlmProvider, SettingsLlmService,
 } from 'src/app/services/settings-llm.service';
 import { DataPageBase } from '../data-page-base';
 
@@ -66,15 +66,102 @@ export class SettingsComponent extends DataPageBase implements OnInit, OnDestroy
    *  the page keeps no list of its own to fall out of step with it. */
   providers: LlmProvider[] = [];
 
+  /** The models the chosen provider is known to serve — the model
+   *  field's suggestions. Empty for a provider the catalog lists none for. */
+  models: LlmModel[] = [];
+
+  /** The chosen provider's address while it still has parts that are
+   *  the customer's own (`<aws-region>`), and what was typed for each.
+   *  The form asks for those parts by name instead of having the person
+   *  edit an address. */
+  endpointTemplate = '';
+  blankValues: Record<string, string> = {};
+
+  /** What a blank is usually filled with, so the common case is no step. */
+  private readonly blankDefaults: Record<string, string> = { 'aws-region': 'us-east-1' };
+
+  readonly awsRegions = [
+    'us-east-1', 'us-east-2', 'us-west-2', 'ca-central-1', 'sa-east-1',
+    'eu-west-1', 'eu-west-2', 'eu-west-3', 'eu-central-1', 'eu-north-1',
+    'ap-south-1', 'ap-northeast-1', 'ap-northeast-2', 'ap-southeast-1',
+    'ap-southeast-2', 'me-central-1',
+  ];
+
+  /** The name follows the provider and model until the person types one. */
+  private nameIsAuto = true;
+  showMore = false;
+
   selectProvider(provider: string): void {
     const endpoint = this.draft.endpoint.trim();
+    const preset = this.providers.find(p => p.id === provider)?.endpoint ?? '';
     // Replace a preset, but preserve a gateway URL the user entered.
-    const isPreset = this.providers.some(p =>
+    const wasPreset = !!this.endpointTemplate || this.providers.some(p =>
       p.endpoint && p.endpoint.replace(/\/$/, '') === endpoint.replace(/\/$/, ''));
     this.draft.provider = provider;
-    if (!endpoint || isPreset) {
-      this.draft.endpoint = this.providers.find(p => p.id === provider)?.endpoint ?? '';
+    if (!endpoint || wasPreset) {
+      this.endpointTemplate = /<[^>]+>/.test(preset) ? preset : '';
+      this.blankValues = {};
+      for (const blank of this.blanks) this.blankValues[blank] = this.blankDefaults[blank] ?? '';
+      this.draft.endpoint = this.filled(preset);
     }
+    this.models = [];
+    this.nameAfterChoice();
+    void this.loadModels(provider);
+  }
+
+  private async loadModels(provider: string): Promise<void> {
+    const models = await this.service.models(provider);
+    // A slow answer for a provider since changed is nobody's list.
+    if (this.draft.provider === provider) this.models = models;
+  }
+
+  /** The customer's own parts of the provider's address, by name. */
+  get blanks(): string[] {
+    return [...this.endpointTemplate.matchAll(/<([^>]+)>/g)].map(found => found[1]);
+  }
+
+  blankLabel(blank: string): string {
+    const words = blank.replace(/-/g, ' ');
+    return words.startsWith('aws ') ? 'AWS ' + words.slice(4)
+      : words.charAt(0).toUpperCase() + words.slice(1);
+  }
+
+  setBlank(blank: string, value: string): void {
+    this.blankValues[blank] = value;
+    this.draft.endpoint = this.filled(this.endpointTemplate);
+  }
+
+  /** The address with every part that was typed put in; one still
+   *  missing stays marked, and the blocker says so. */
+  private filled(template: string): string {
+    return template.replace(/<([^>]+)>/g,
+      (mark, blank) => (this.blankValues[blank] ?? '').trim() || mark);
+  }
+
+  setModel(model: string): void {
+    this.draft.model = model;
+    this.nameAfterChoice();
+  }
+
+  setName(name: string): void {
+    this.draft.name = name;
+    this.nameIsAuto = false;
+  }
+
+  private nameAfterChoice(): void {
+    if (!this.nameIsAuto) return;
+    const provider = this.providers.find(p => p.id === this.draft.provider)?.name ?? '';
+    const model = this.models.find(m => m.id === this.draft.model)?.name
+      ?? this.draft.model.trim();
+    this.draft.name = [provider, model].filter(Boolean).join(' · ');
+  }
+
+  /** Whether the address is the person's to type in full: the custom
+   *  entry has none of its own. Otherwise it is filled in and sits
+   *  under "More options", for whoever points it at a gateway. */
+  get endpointIsYours(): boolean {
+    const chosen = this.providers.find(p => p.id === this.draft.provider);
+    return !!chosen && !chosen.endpoint;
   }
 
   get endpointPlaceholder(): string {
@@ -531,9 +618,18 @@ export class SettingsComponent extends DataPageBase implements OnInit, OnDestroy
 
   get isCreating(): boolean { return this.editingId === ''; }
 
+  private resetEditor(creating: boolean): void {
+    this.models = [];
+    this.endpointTemplate = '';
+    this.blankValues = {};
+    this.nameIsAuto = creating;
+    this.showMore = false;
+  }
+
   startCreate(): void {
     this.editingId = '';
     this.draft = this.blankDraft();
+    this.resetEditor(true);
     this.shareMode = 'private';
     this.selectedGroups.clear();
     this.selectedUsers.clear();
@@ -551,6 +647,9 @@ export class SettingsComponent extends DataPageBase implements OnInit, OnDestroy
       purpose: connection.keys.purpose || 'chat',
       api_key: '', // write-only: blank means keep
     };
+    // A saved connection keeps its name and its address as they are.
+    this.resetEditor(false);
+    void this.loadModels(this.draft.provider);
     const groups = connection.owner?.groups || [];
     // The creator sits in users on every connection; anyone BEYOND them
     // is a deliberate person-share.
@@ -615,6 +714,8 @@ export class SettingsComponent extends DataPageBase implements OnInit, OnDestroy
       return 'Name the model — the provider’s own name, copied exactly.';
     }
     if (!this.draft.endpoint.trim()) return 'Endpoint is required.';
+    const missing = this.blanks.find(blank => !(this.blankValues[blank] ?? '').trim());
+    if (missing) return `Enter your ${this.blankLabel(missing)}.`;
     if (/[<>]/.test(this.draft.endpoint)) {
       return 'Fill in the endpoint: replace each <...> with your own account’s value.';
     }

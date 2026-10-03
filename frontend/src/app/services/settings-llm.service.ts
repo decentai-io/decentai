@@ -43,6 +43,13 @@ export interface LlmProvider {
   endpoint: string;
 }
 
+/** A model a provider is known to serve: its own id for it, and a name
+ *  to read. An offer for the form — a connection may name any model. */
+export interface LlmModel {
+  id: string;
+  name: string;
+}
+
 export interface LlmConnectionDraft {
   name: string;
   provider: string;
@@ -72,6 +79,11 @@ export class SettingsLlmService {
   async providers(): Promise<LlmProvider[]> {
     const r = await this.request.gateway('Settings:Llm:providers');
     return Array.isArray(r?.providers) ? r.providers : [];
+  }
+
+  async models(provider: string): Promise<LlmModel[]> {
+    const r = await this.request.gateway('Settings:Llm:providers', { provider });
+    return Array.isArray(r?.models) ? r.models : [];
   }
 
   async create(draft: LlmConnectionDraft): Promise<{

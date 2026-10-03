@@ -380,56 +380,46 @@
         </header>
         <div class="dialog-body">
           <div class="llm-form">
-            <label class="field">
-              <span class="field-label">Name</span>
-              <input class="txt" [(ngModel)]="draft.name"
-                     placeholder="e.g. Claude production" />
-            </label>
-            <label class="field">
-              <span class="field-label">Purpose</span>
-              <select class="txt" [(ngModel)]="draft.purpose">
-                <option value="chat">Chat model — what chats think with</option>
-                <option value="embedding">Embedding model — finds the right agent</option>
-                <option value="transcription">Transcription model — writes spoken messages down</option>
-              </select>
-            </label>
-            <label class="field">
+            <!-- Four things to say: who serves the model, which model,
+                 the key, and — where the provider's address has a part
+                 that is the customer's own — that part. Everything else
+                 has an answer already and waits under "More options". -->
+            <label class="field full">
               <span class="field-label">Provider</span>
               <select class="txt" [ngModel]="draft.provider" (ngModelChange)="selectProvider($event)">
                 <option value="" disabled hidden>Choose…</option>
                 <option *ngFor="let provider of providers" [value]="provider.id">{{ provider.name }}</option>
               </select>
             </label>
+            <label class="field full" *ngFor="let blank of blanks">
+              <span class="field-label">{{ blankLabel(blank) }}</span>
+              <input class="txt" [ngModel]="blankValues[blank]" (ngModelChange)="setBlank(blank, $event)"
+                     [attr.list]="blank === 'aws-region' ? 'llm-aws-regions' : null"
+                     [placeholder]="blank === 'aws-region' ? 'e.g. us-east-1' : ''" />
+            </label>
+            <datalist id="llm-aws-regions">
+              <option *ngFor="let region of awsRegions" [value]="region"></option>
+            </datalist>
             <label class="field full">
               <span class="field-label">Model</span>
-              <input class="txt" [(ngModel)]="draft.model"
-                     [placeholder]="draft.purpose === 'embedding' ? 'e.g. text-embedding-3-large' : draft.purpose === 'transcription' ? 'e.g. whisper-1 or gpt-4o-mini-transcribe' : 'e.g. claude-sonnet-4-5'" />
+              <input class="txt" [ngModel]="draft.model" (ngModelChange)="setModel($event)" list="llm-models"
+                     [placeholder]="models.length ? 'Choose a model, or type its id' : draft.purpose === 'embedding' ? 'e.g. text-embedding-3-large' : draft.purpose === 'transcription' ? 'e.g. whisper-1 or gpt-4o-mini-transcribe' : 'e.g. claude-sonnet-4-5'" />
+              <datalist id="llm-models">
+                <option *ngFor="let model of models" [value]="model.id">{{ model.name }}</option>
+              </datalist>
               <small class="field-help">
                 {{ draft.purpose === 'embedding'
                     ? "A multilingual embedding model, so a request in any language finds an agent described in English."
                     : draft.purpose === 'transcription'
                       ? "A speech-to-text model on the OpenAI audio protocol: Whisper on OpenAI or Azure, or its successors."
-                      : "The provider's own model name, copied exactly." }}
+                      : models.length
+                        ? "The models this provider is known to serve. One that is not listed can be typed, by the provider's own id for it."
+                        : "The provider's own model name, copied exactly." }}
               </small>
             </label>
-            <label class="field full" *ngIf="draft.purpose === 'chat' || !draft.purpose">
-              <span class="field-label">Reasoning effort</span>
-              <select class="txt" [(ngModel)]="draft.reasoning_effort">
-                <option value="">Provider's default</option>
-                <option value="minimal">Minimal</option>
-                <option value="low">Low — quick replies</option>
-                <option value="medium">Medium</option>
-                <option value="high">High — thinks longest</option>
-              </select>
-              <small class="field-help">For models that think before answering (OpenAI's reasoning models). Low keeps a chat quick; leave the default for a model that does not reason, or it will refuse the request.</small>
-            </label>
-            <label class="field full">
-              <span class="field-label">Endpoint <em>required</em></span>
-              <input class="txt" type="url" required aria-required="true"
-                     [(ngModel)]="draft.endpoint" [placeholder]="endpointPlaceholder"
-                     aria-describedby="llm-endpoint-help" />
-              <small class="field-help" id="llm-endpoint-help">{{ endpointHelp }}</small>
-            </label>
+            <ng-container *ngIf="endpointIsYours">
+              <ng-container *ngTemplateOutlet="endpointField"></ng-container>
+            </ng-container>
             <label class="field full">
               <span class="field-label">
                 API key
@@ -439,6 +429,49 @@
                      [(ngModel)]="draft.api_key"
                      [placeholder]="isCreating ? '' : '••••••  (unchanged)'" />
             </label>
+            <label class="field full">
+              <span class="field-label">Name</span>
+              <input class="txt" [ngModel]="draft.name" (ngModelChange)="setName($event)"
+                     placeholder="e.g. Claude production" />
+            </label>
+
+            <details class="field full llm-more" [open]="showMore" (toggle)="showMore = $any($event.target).open">
+              <summary class="field-label">More options</summary>
+              <div class="llm-form">
+                <label class="field full">
+                  <span class="field-label">Purpose</span>
+                  <select class="txt" [(ngModel)]="draft.purpose">
+                    <option value="chat">Chat model — what chats think with</option>
+                    <option value="embedding">Embedding model — finds the right agent</option>
+                    <option value="transcription">Transcription model — writes spoken messages down</option>
+                  </select>
+                </label>
+                <ng-container *ngIf="!endpointIsYours">
+                  <ng-container *ngTemplateOutlet="endpointField"></ng-container>
+                </ng-container>
+                <label class="field full" *ngIf="draft.purpose === 'chat' || !draft.purpose">
+                  <span class="field-label">Reasoning effort</span>
+                  <select class="txt" [(ngModel)]="draft.reasoning_effort">
+                    <option value="">Provider's default</option>
+                    <option value="minimal">Minimal</option>
+                    <option value="low">Low — quick replies</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High — thinks longest</option>
+                  </select>
+                  <small class="field-help">For models that think before answering (OpenAI's reasoning models). Low keeps a chat quick; leave the default for a model that does not reason, or it will refuse the request.</small>
+                </label>
+              </div>
+            </details>
+
+            <ng-template #endpointField>
+              <label class="field full">
+                <span class="field-label">Endpoint <em>required</em></span>
+                <input class="txt" type="url" required aria-required="true"
+                       [(ngModel)]="draft.endpoint" [placeholder]="endpointPlaceholder"
+                       aria-describedby="llm-endpoint-help" />
+                <small class="field-help" id="llm-endpoint-help">{{ endpointHelp }}</small>
+              </label>
+            </ng-template>
 
             <!-- Sharing decides whose chats may think with this model.
                  The default is pinned org-wide: it answers everyone. -->
