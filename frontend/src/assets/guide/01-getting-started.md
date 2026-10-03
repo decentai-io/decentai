@@ -20,7 +20,7 @@ The sidebar on the left is the map:
 | **AI → Schedules** | What your chats keep on the clock: reminders and functions that run later, and what each run did. |
 | **Agents** | The agents installed in your organization, what each may do, and the marketplace they come from. |
 | **Data** | Saved data agents keep for you, files you and they have stored, skills, MCP servers, and secrets. |
-| **Settings** | Language models, chat defaults and notifications, memory, API keys, connected apps, safety, and the audit trail. |
+| **Settings** | Model providers, chat defaults and notifications, memory, API keys, connected apps, safety, and the audit trail. |
 | **Admin** | People, groups, roles and policies — for those who administer the organization. |
 
 What you see depends on what your role allows. A page you cannot use is simply not shown; nothing you can see is a page of buttons that refuse.

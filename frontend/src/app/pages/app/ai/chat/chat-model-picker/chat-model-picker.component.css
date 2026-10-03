@@ -1,0 +1,73 @@
+/* The model, named under the composer: a quiet chip that opens a list
+   above it. The composer sits at the foot of the page, so the list
+   grows upward. */
+:host { display: inline-flex; min-width: 0; }
+.model-picker { position: relative; display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+
+.model-chip, .model-effort {
+  height: 26px; border: 1px solid transparent; border-radius: var(--ui-radius-pill, 999px);
+  background: transparent; color: var(--muted-foreground);
+  font: inherit; font-size: 12px; cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.model-chip {
+  display: inline-flex; align-items: center; gap: 5px; min-width: 0; padding: 0 9px;
+}
+.model-chip-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 240px; }
+.model-chip:hover:not(:disabled), .model-chip[aria-expanded="true"],
+.model-effort:hover:not(:disabled) {
+  color: var(--foreground);
+  background: color-mix(in srgb, var(--foreground) 6%, transparent);
+}
+.model-chip:focus-visible, .model-effort:focus-visible {
+  outline: none; border-color: color-mix(in srgb, var(--primary) 55%, var(--border));
+}
+.model-chip:disabled, .model-effort:disabled { cursor: default; opacity: 0.6; }
+/* No model yet: the one thing here that asks to be pressed. */
+.model-chip.is-unset { color: var(--warning); border-color: color-mix(in srgb, var(--warning) 40%, transparent); }
+.model-effort { padding: 0 4px 0 8px; }
+
+.model-panel {
+  position: absolute; left: 0; bottom: calc(100% + 8px); z-index: 30;
+  display: flex; flex-direction: column;
+  width: min(360px, calc(100vw - 24px)); max-height: 420px;
+  border: 1px solid var(--border); border-radius: var(--radius-xl, 14px);
+  background: var(--background); box-shadow: var(--shadow-overlay, 0 12px 32px rgba(0, 0, 0, 0.18));
+  overflow: hidden; text-align: left;
+}
+.model-panel.is-below { bottom: auto; top: calc(100% + 8px); }
+.model-search {
+  display: flex; align-items: center; gap: 8px; padding: 10px 12px;
+  border-bottom: 1px solid var(--border); color: var(--muted-foreground);
+}
+.model-search input {
+  flex: 1; min-width: 0; border: 0; outline: none; background: transparent;
+  color: var(--foreground); font: inherit; font-size: 13.5px;
+}
+.model-list { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 6px 6px; }
+.model-group {
+  margin: 0; padding: 9px 8px 4px; color: var(--muted-foreground);
+  font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
+}
+.model-option {
+  display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 8px;
+  border: 0; border-radius: var(--ui-radius-sm, 8px); background: transparent;
+  color: var(--foreground); font: inherit; font-size: 13.5px; text-align: left; cursor: pointer;
+}
+.model-option:hover, .model-option:focus-visible {
+  outline: none; background: color-mix(in srgb, var(--foreground) 6%, transparent);
+}
+.model-option[aria-selected="true"] { color: var(--accent-strong, var(--primary)); }
+.model-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.model-of { flex: none; color: var(--muted-foreground); font-size: 12px; }
+.model-note { margin: 0; padding: 14px 8px; color: var(--muted-foreground); font-size: 13px; line-height: 1.5; }
+.model-add {
+  display: flex; align-items: center; gap: 7px; padding: 10px 14px;
+  border-top: 1px solid var(--border); color: var(--muted-foreground);
+  font-size: 13px; text-decoration: none;
+}
+.model-add:hover { color: var(--foreground); background: color-mix(in srgb, var(--foreground) 4%, transparent); }
+
+@media (max-width: 640px) {
+  .model-chip-name { max-width: 150px; }
+}

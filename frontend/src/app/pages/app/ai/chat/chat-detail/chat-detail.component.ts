@@ -26,7 +26,7 @@ import {
 import { ChatActivityDialogComponent } from '../chat-activity-dialog/chat-activity-dialog.component';
 import { ChatAgentsDialogComponent } from '../chat-agents-dialog/chat-agents-dialog.component';
 import { ChatSkillsDialogComponent } from '../chat-skills-dialog/chat-skills-dialog.component';
-import { ChatLlmDialogComponent } from '../chat-llm-dialog/chat-llm-dialog.component';
+import { ChatModel } from '../chat-model-picker/chat-model-picker.component';
 
 @Component({
   selector: 'app-chat-detail',
@@ -1114,7 +1114,7 @@ export class ChatDetailComponent implements OnInit, OnDestroy {
   get composerPlaceholder(): string {
     if (this.isChatLoading) return 'Loading conversation…';
     if (!this.maySend) return 'You may read this chat, not write in it';
-    if (!this.chat?.config?.llm) return 'Choose a language model to continue';
+    if (!this.chat?.config?.llm) return 'Choose a model to continue';
     if (this.isConnecting) return 'Connecting…';
     if (!this.isSocketReady) return 'Reconnecting…';
     if (this.screen && !this.screen.idle) return `Tell ${this.screen.agent_name || 'the agent'} something…`;
@@ -1124,7 +1124,7 @@ export class ChatDetailComponent implements OnInit, OnDestroy {
 
   get composerHint(): string {
     if (!this.maySend) return 'Sending messages is not among your permissions.';
-    if (!this.chat?.config?.llm) return 'Open the menu and choose Language model.';
+    if (!this.chat?.config?.llm) return 'Choose a model, on the left.';
     // Nothing to say about a connection being made for the first time:
     // it takes a moment and then it is there.
     if (this.isConnecting) return '';
@@ -1246,10 +1246,6 @@ export class ChatDetailComponent implements OnInit, OnDestroy {
       this.initChat();
       return;
     }
-    if (event.type === 'llmSettings') {
-      this.openLlmDialog();
-      return;
-    }
     if (event.type === 'agents') {
       this.openAgentsDialog();
       return;
@@ -1279,33 +1275,27 @@ export class ChatDetailComponent implements OnInit, OnDestroy {
     });
   }
 
-  private openLlmDialog(): void {
-    const ref = this.dialog.open(ChatLlmDialogComponent, {
-      width: '480px',
-      maxWidth: '95vw',
-      data: { llm: this.chat?.config?.llm || {} },
-    });
-    ref.afterClosed().subscribe(async (llm) => {
-      if (!llm) return;
-      const config = { ...(this.chat?.config || {}), llm };
-      const res = await this.aiSession.updateChatConfig(this.chat_id!, config);
-      if (res.error) {
-        this.onError(res.error);
-        return;
-      }
-      this.chat = res.data?.chat || this.chat;
-      const preference = await this.profileService.saveDefaultLlm(
-        llm.secret_ref,
+  /** The model picked under the composer: this chat thinks with it
+   *  from its next turn, and the person's next chat starts with it. */
+  async onModelChosen(llm: ChatModel): Promise<void> {
+    const config = { ...(this.chat?.config || {}), llm };
+    const res = await this.aiSession.updateChatConfig(this.chat_id!, config);
+    if (res.error) {
+      this.onError(res.error);
+      return;
+    }
+    this.chat = res.data?.chat || this.chat;
+    const preference = await this.profileService.saveDefaultLlm(
+      llm.secret_ref, llm.model, llm.reasoning_effort || '',
+    );
+    if (preference.error) {
+      this.onError(
+        `The model was changed for this chat, but could not be saved as your default: ${preference.error}`,
       );
-      if (preference.error) {
-        this.onError(
-          `The model was changed for this chat, but could not be saved as your default: ${preference.error}`,
-        );
-      }
-      // The contract names the model too: read the chat again, so the
-      // page's word on whether one resolves is the backend's.
-      await this.initChat();
-    });
+    }
+    // The contract names the model too: read the chat again, so the
+    // page's word on whether one resolves is the backend's.
+    await this.initChat();
   }
 
   private async openAgentsDialog(): Promise<void> {

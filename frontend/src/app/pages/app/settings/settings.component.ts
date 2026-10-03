@@ -3,30 +3,30 @@ import { Subscription } from 'rxjs';
 import { ActivatedRoute, Router } from '@angular/router';
 
 import { AuthService } from 'src/app/services/auth.service';
+import { ModelChoice } from 'src/app/components/model-select/model-select.component';
 import { RoutingSettings, SettingsRoutingService } from 'src/app/services/settings-routing.service';
-import { SettingsSpeechService } from 'src/app/services/settings-speech.service';
+import { SettingsSpeechService, SpeechSettings } from 'src/app/services/settings-speech.service';
 import { SwPush } from '@angular/service-worker';
 import { NotificationSettings, NotificationsService } from 'src/app/services/notifications.service';
 import { Profile, ProfileService } from 'src/app/services/profile.service';
 import {
-  LlmConnection, LlmConnectionDraft, SettingsLlmService,
+  LlmConnection, LlmProvider, SettingsLlmService,
 } from 'src/app/services/settings-llm.service';
 import { DataPageBase } from '../data-page-base';
 
-/**
- * Settings: what the platform itself is configured with, and what a
- * person has configured of it. Tabbed: the organization's LLM
- * connections, the person's chat defaults, their memory and API keys,
- * the organization's connected apps and safety, and the audit trail.
- *
- * Built for an organization that keeps a hundred of them: a searchable
- * list of rows rather than a form per credential, with one connection
- * marked DEFAULT — the answer for every chat whose person never chose.
- * A person's preference and a chat's own config may each pick another.
- */
-type ShareMode = 'private' | 'groups' | 'users' | 'org';
 type SettingsTab = 'llm' | 'chat' | 'memory' | 'keys' | 'apps' | 'safety' | 'audit';
 
+/**
+ * Settings: what the platform itself is configured with, and what a
+ * person has configured of it. Tabbed: the organization's model
+ * providers, the person's chat defaults, their memory and API keys,
+ * the organization's connected apps and safety, and the audit trail.
+ *
+ * Each tab but the chat defaults is a component of its own; this one
+ * reads what several of them share — the connections and the catalog
+ * of providers — and holds the chat tab: what a new chat starts with,
+ * the models that write speech down and that find the right agent.
+ */
 @Component({
   selector: 'app-settings',
   standalone: false,
@@ -49,51 +49,16 @@ export class SettingsComponent extends DataPageBase implements OnInit, OnDestroy
   connections: LlmConnection[] = [];
   profile: Profile | null = null;
   peers: { user_id: string; user_name: string; email: string }[] = [];
-  query = '';
 
-  /** null = closed, '' = adding, id = editing. */
-  editingId: string | null = null;
-  draft: LlmConnectionDraft = this.blankDraft();
-  shareMode: ShareMode = 'private';
-  selectedGroups = new Set<string>();
-  selectedUsers = new Set<string>();
-  saving = false;
+  /** The platform's catalog of providers, as the backend serves it:
+   *  the page keeps no list of its own to fall out of step with it. */
+  providers: LlmProvider[] = [];
 
-  deleteTarget: LlmConnection | null = null;
-  busyId = '';
-
-  readonly providers = [
-    { value: 'openai', label: 'OpenAI', endpoint: 'https://api.openai.com/v1' },
-    { value: 'anthropic', label: 'Anthropic', endpoint: 'https://api.anthropic.com' },
-    { value: 'openrouter', label: 'OpenRouter', endpoint: 'https://openrouter.ai/api/v1' },
-    { value: 'gemini', label: 'Google Gemini', endpoint: 'https://generativelanguage.googleapis.com/v1beta/openai/' },
-    { value: 'deepseek', label: 'DeepSeek', endpoint: 'https://api.deepseek.com' },
-    { value: 'groq', label: 'Groq', endpoint: 'https://api.groq.com/openai/v1' },
-    { value: 'mistral', label: 'Mistral', endpoint: 'https://api.mistral.ai/v1' },
-    { value: 'xai', label: 'xAI', endpoint: 'https://api.x.ai/v1' },
-    { value: 'openai_compatible', label: 'Custom / OpenAI-compatible', endpoint: '' },
-  ];
-
-  selectProvider(provider: string): void {
-    const endpoint = this.draft.endpoint.trim();
-    // Replace a preset, but preserve a gateway URL the user entered.
-    const isPreset = this.providers.some(p =>
-      p.endpoint && p.endpoint.replace(/\/$/, '') === endpoint.replace(/\/$/, ''));
-    this.draft.provider = provider;
-    if (!endpoint || isPreset) {
-      this.draft.endpoint = this.providers.find(p => p.value === provider)?.endpoint ?? '';
-    }
-  }
-
-  get endpointPlaceholder(): string {
-    return this.providers.find(p => p.value === this.draft.provider)?.endpoint
-      || 'https://your-server.example/v1';
-  }
-
-  get endpointHelp(): string {
-    return this.draft.provider === 'openai_compatible'
-      ? 'Enter your OpenAI-compatible API base URL, including its version path.'
-      : 'The provider endpoint is filled in for you. You can change it to use your own gateway.';
+  /** The connections shared with the whole organization: what speech
+   *  and routing may choose, since every member's chat will use them. */
+  get sharedConnections(): LlmConnection[] {
+    return this.connections.filter(
+      (connection) => (connection.owner?.groups || []).includes('everyone'));
   }
 
   constructor(
@@ -113,12 +78,14 @@ export class SettingsComponent extends DataPageBase implements OnInit, OnDestroy
   async ngOnInit(): Promise<void> {
     this.tab = this.initialTab();
     this.loading = true;
-    const [connections, profile, peers] = await Promise.all([
+    const [connections, providers, profile, peers] = await Promise.all([
       this.canSeeLlm ? this.service.list() : Promise.resolve([]),
+      this.canSeeLlm ? this.service.providers() : Promise.resolve([]),
       this.canSeeLlm || this.canSeeChat ? this.profiles.get() : Promise.resolve(null),
       this.canSeeLlm ? this.profiles.peers() : Promise.resolve([]),
     ]);
     this.connections = connections;
+    this.providers = providers;
     this.profile = profile;
     this.peers = peers;
     this.loading = false;
@@ -272,35 +239,48 @@ export class SettingsComponent extends DataPageBase implements OnInit, OnDestroy
   get canSeeSpeech(): boolean { return this.auth.can('settings:speech:get'); }
   get canEditSpeech(): boolean { return this.auth.can('settings:speech:update'); }
 
-  /** '' = no transcription model: the composer offers no microphone. */
-  speechConnectionId = '';
+  /** No connection = no transcription model: the composer offers no
+   *  microphone. */
+  speech: SpeechSettings = { transcription_connection_id: '', transcription_model: '' };
   private speechSaved = '';
   speechSaving = false;
 
-  get transcriptionConnections(): LlmConnection[] {
-    return this.connections.filter((c) => c.keys.purpose === 'transcription');
+  get speechDirty(): boolean { return JSON.stringify(this.speech) !== this.speechSaved; }
+
+  /** A provider alone does not say which of its models writes speech down. */
+  get speechBlocker(): string {
+    return this.speech.transcription_connection_id && !this.speech.transcription_model
+      ? 'Choose the transcription model.' : '';
   }
 
-  get speechDirty(): boolean { return this.speechConnectionId !== this.speechSaved; }
+  chooseSpeech(choice: ModelChoice): void {
+    this.speech = {
+      transcription_connection_id: choice.connectionId,
+      transcription_model: choice.model,
+    };
+  }
 
   private async loadSpeech(): Promise<void> {
     if (!this.canSeeSpeech) return;
     try {
       const answer = await this.speechService.get();
-      this.speechConnectionId = answer.speech?.transcription_connection_id || '';
-      this.speechSaved = this.speechConnectionId;
+      this.speech = {
+        transcription_connection_id: answer.speech?.transcription_connection_id || '',
+        transcription_model: answer.speech?.transcription_model || '',
+      };
     } catch {
-      this.speechSaved = this.speechConnectionId;
+      // Left as it is: nothing chosen.
     }
+    this.speechSaved = JSON.stringify(this.speech);
   }
 
   async saveSpeech(): Promise<void> {
-    if (this.speechSaving) return;
+    if (this.speechSaving || this.speechBlocker) return;
     this.speechSaving = true;
     try {
-      const result = await this.speechService.update(this.speechConnectionId);
+      const result = await this.speechService.update(this.speech);
       if (result.error) return this.fail(result.error);
-      this.speechSaved = this.speechConnectionId;
+      this.speechSaved = JSON.stringify(this.speech);
       this.flash('Speech to text saved.');
     } finally {
       this.speechSaving = false;
@@ -311,7 +291,7 @@ export class SettingsComponent extends DataPageBase implements OnInit, OnDestroy
 
   get canSeeChat(): boolean { return this.auth.can('ai:chat:create'); }
 
-  chatDefaults = { llm_secret_ref: '', trust_level: 1, max_turns: 20, max_skills: 40 };
+  chatDefaults = { llm_secret_ref: '', llm_model: '', trust_level: 1, max_turns: 20, max_skills: 40 };
   private chatDefaultsSaved = '';
   chatDefaultsSaving = false;
 
@@ -337,10 +317,11 @@ export class SettingsComponent extends DataPageBase implements OnInit, OnDestroy
     { rows: 0, label: 'All', hint: 'Every skill you can see' },
   ];
 
-  /** The chat models this person may pick as their default — never an
-   *  embedding or a transcription one. */
-  get chatConnections(): LlmConnection[] {
-    return this.connections.filter((c) => (c.keys.purpose || 'chat') === 'chat');
+  /** The model a new chat starts with: a provider and one of its
+   *  models, or neither for the organization's default. */
+  chooseDefaultModel(choice: ModelChoice): void {
+    this.chatDefaults.llm_secret_ref = choice.connectionId;
+    this.chatDefaults.llm_model = choice.model;
   }
 
   get chatDefaultsDirty(): boolean {
@@ -351,6 +332,7 @@ export class SettingsComponent extends DataPageBase implements OnInit, OnDestroy
     const chat = this.profile?.preferences?.chat ?? {};
     this.chatDefaults = {
       llm_secret_ref: chat.llm_secret_ref || '',
+      llm_model: chat.llm_secret_ref ? chat.llm_model || '' : '',
       trust_level: Number.isInteger(chat.trust_level) ? (chat.trust_level as number) : 1,
       max_turns: Number.isInteger(chat.max_turns) ? (chat.max_turns as number) : 20,
       max_skills: Number.isInteger(chat.max_skills) ? (chat.max_skills as number) : 40,
@@ -364,6 +346,7 @@ export class SettingsComponent extends DataPageBase implements OnInit, OnDestroy
     try {
       const result = await this.profiles.saveChatDefaults({
         llm_secret_ref: this.chatDefaults.llm_secret_ref || null,
+        llm_model: this.chatDefaults.llm_secret_ref ? this.chatDefaults.llm_model : '',
         trust_level: Number(this.chatDefaults.trust_level),
         max_turns: Number(this.chatDefaults.max_turns),
         max_skills: Number(this.chatDefaults.max_skills),
@@ -392,9 +375,16 @@ export class SettingsComponent extends DataPageBase implements OnInit, OnDestroy
   get canSeeRouting(): boolean { return this.auth.can('settings:routing:get'); }
   get canEditRouting(): boolean { return this.auth.can('settings:routing:update'); }
 
-  /** The connections made for embeddings — what routing can choose. */
-  get embeddingConnections(): LlmConnection[] {
-    return this.connections.filter((c) => (c.keys.purpose || 'chat') === 'embedding');
+  chooseEmbedding(choice: ModelChoice): void {
+    if (!this.routingDraft) return;
+    this.routingDraft.embedding_connection_id = choice.connectionId;
+    this.routingDraft.embedding_model = choice.model;
+  }
+
+  /** A provider alone does not say which of its models embeds. */
+  get routingBlocker(): string {
+    return this.routingDraft?.embedding_connection_id && !this.routingDraft.embedding_model
+      ? 'Choose the embedding model.' : '';
   }
 
   get routingDirty(): boolean {
@@ -413,7 +403,7 @@ export class SettingsComponent extends DataPageBase implements OnInit, OnDestroy
   }
 
   async saveRouting(): Promise<void> {
-    if (!this.routingDraft || this.routingSaving) return;
+    if (!this.routingDraft || this.routingSaving || this.routingBlocker) return;
     this.routingSaving = true;
     try {
       const result = await this.routingService.update(this.routingDraft);
@@ -426,14 +416,10 @@ export class SettingsComponent extends DataPageBase implements OnInit, OnDestroy
     }
   }
 
-  private async reload(): Promise<void> {
+  /** Read the connections again: the providers tab added, changed or
+   *  removed one, and the chat tab chooses among them. */
+  async reload(): Promise<void> {
     this.connections = await this.service.list();
-  }
-
-  get myGroups(): { group_id: string; group_name: string }[] {
-    return (this.profile?.groups ?? []).filter(
-      (group) => group.group_id !== 'everyone',
-    );
   }
 
   // ── Tabs ────────────────────────────────────────────────────────────
@@ -477,252 +463,5 @@ export class SettingsComponent extends DataPageBase implements OnInit, OnDestroy
         : tab === 'audit' ? '/settings/audit'
         : '/settings',
     ]);
-  }
-
-  get canCreate(): boolean { return this.auth.can('settings:llm:create'); }
-  get canUpdate(): boolean { return this.auth.can('settings:llm:update'); }
-  get canDelete(): boolean { return this.auth.can('settings:llm:delete'); }
-  get canSetDefault(): boolean {
-    return this.auth.can('settings:llm:setdefault');
-  }
-  get canTransfer(): boolean { return this.auth.can('settings:llm:transfer'); }
-
-  // ── The list ────────────────────────────────────────────────────────
-
-  get visible(): LlmConnection[] {
-    const query = this.query.trim().toLowerCase();
-    if (!query) return this.connections;
-    return this.connections.filter((connection) =>
-      [connection.name, connection.keys.provider, connection.keys.model,
-       connection.keys.endpoint].join(' ').toLowerCase().includes(query));
-  }
-
-  /** Creator-only, like the secret layer: being shared a connection is
-   *  permission to use it, never authority over it — unless this person
-   *  holds the manage-any grant, the administrator's escape. */
-  isMine(connection: LlmConnection): boolean {
-    return connection.created_by === (this.profile?.user_id ?? '')
-      || this.auth.can('settings:llm:manage_any');
-  }
-
-  summary(connection: LlmConnection): string {
-    const keys = connection.keys;
-    return [keys.provider, keys.model, keys.endpoint]
-      .filter(Boolean).join(' · ');
-  }
-
-  /** A connection that is not for thinking: embedding or transcription. */
-  isEmbedding(connection: LlmConnection): boolean {
-    return (connection.keys.purpose || 'chat') !== 'chat';
-  }
-
-  purposeLabel(connection: LlmConnection): string {
-    switch (connection.keys.purpose) {
-      case 'embedding': return 'Embedding model — for finding the right agent, not for chats.';
-      case 'transcription': return 'Transcription model — writes spoken messages down, not for chats.';
-      default: return '';
-    }
-  }
-
-  // ── The editor dialog ───────────────────────────────────────────────
-
-  private blankDraft(): LlmConnectionDraft {
-    return { name: '', provider: '', model: '', endpoint: '', reasoning_effort: '', purpose: 'chat', api_key: '' };
-  }
-
-  get isCreating(): boolean { return this.editingId === ''; }
-
-  startCreate(): void {
-    this.editingId = '';
-    this.draft = this.blankDraft();
-    this.shareMode = 'private';
-    this.selectedGroups.clear();
-    this.selectedUsers.clear();
-    this.error = '';
-  }
-
-  startEdit(connection: LlmConnection): void {
-    this.editingId = connection.resource_ref;
-    this.draft = {
-      name: connection.name,
-      provider: connection.keys.provider,
-      model: connection.keys.model,
-      endpoint: connection.keys.endpoint,
-      reasoning_effort: connection.keys.reasoning_effort || '',
-      purpose: connection.keys.purpose || 'chat',
-      api_key: '', // write-only: blank means keep
-    };
-    const groups = connection.owner?.groups || [];
-    // The creator sits in users on every connection; anyone BEYOND them
-    // is a deliberate person-share.
-    const others = (connection.owner?.users || [])
-      .filter((u) => u !== connection.created_by);
-    if (groups.includes('everyone')) this.shareMode = 'org';
-    else if (groups.length) this.shareMode = 'groups';
-    else if (others.length) this.shareMode = 'users';
-    else this.shareMode = 'private';
-    this.selectedGroups = new Set(groups.filter((g) => g !== 'everyone'));
-    this.selectedUsers = new Set(others);
-    this.error = '';
-  }
-
-  toggleUser(userId: string): void {
-    if (this.selectedUsers.has(userId)) this.selectedUsers.delete(userId);
-    else this.selectedUsers.add(userId);
-  }
-
-  toggleGroup(groupId: string): void {
-    if (this.selectedGroups.has(groupId)) this.selectedGroups.delete(groupId);
-    else this.selectedGroups.add(groupId);
-  }
-
-  private buildOwner(): { groups: string[]; users: string[] } {
-    if (this.shareMode === 'org') return { groups: ['everyone'], users: [] };
-    if (this.shareMode === 'groups') {
-      return { groups: Array.from(this.selectedGroups), users: [] };
-    }
-    if (this.shareMode === 'users') {
-      return { groups: [], users: Array.from(this.selectedUsers) };
-    }
-    return { groups: [], users: [] }; // creator is kept server-side
-  }
-
-  /** How a row says who can use it. */
-  shareLabel(connection: LlmConnection): string {
-    const groups = connection.owner?.groups || [];
-    if (groups.includes('everyone')) return 'Organization-wide';
-    if (groups.length) {
-      return `${groups.length} group${groups.length === 1 ? '' : 's'}`;
-    }
-    const others = (connection.owner?.users || [])
-      .filter((u) => u !== connection.created_by);
-    if (others.length) {
-      return `${others.length} ${others.length === 1 ? 'person' : 'people'}`;
-    }
-    return 'Private';
-  }
-
-  closeEditor(): void {
-    if (!this.saving) this.editingId = null;
-  }
-
-  /** What is still missing, said before the request rather than after.
-   *  The key is only demanded for a NEW connection — on an existing one,
-   *  blank keeps the stored key. */
-  get blocker(): string {
-    if (!this.draft.name.trim()) return 'Give it a name.';
-    if (!this.draft.provider) return 'Choose a provider.';
-    if (!this.draft.model.trim()) {
-      return 'Name the model — the provider’s own name, copied exactly.';
-    }
-    if (!this.draft.endpoint.trim()) return 'Endpoint is required.';
-    if (this.isCreating && !this.draft.api_key.trim()) {
-      return 'The API key is required.';
-    }
-    if (this.shareMode === 'groups' && !this.selectedGroups.size) {
-      return 'Pick at least one group, or share it another way.';
-    }
-    if (this.shareMode === 'users' && !this.selectedUsers.size) {
-      return 'Pick at least one person, or share it another way.';
-    }
-    return '';
-  }
-
-  async save(): Promise<void> {
-    if (this.blocker || this.saving) return;
-    this.saving = true;
-    try {
-      const draft: LlmConnectionDraft = {
-        name: this.draft.name.trim(),
-        provider: this.draft.provider,
-        model: this.draft.model.trim(),
-        endpoint: this.draft.endpoint.trim(),
-        reasoning_effort: this.draft.purpose === 'embedding' ? '' : (this.draft.reasoning_effort || ''),
-        purpose: this.draft.purpose || 'chat',
-        api_key: this.draft.api_key,
-        owner: this.buildOwner(),
-      };
-      const result = this.isCreating
-        ? await this.service.create(draft)
-        : await this.service.update(this.editingId!, draft);
-      if (result.error) return this.fail(result.error);
-
-      this.editingId = null;
-      await this.reload();
-      this.flash(`"${result.connection?.name}" saved.`);
-    } finally {
-      this.saving = false;
-    }
-  }
-
-  // ── Default ─────────────────────────────────────────────────────────
-
-  async makeDefault(connection: LlmConnection): Promise<void> {
-    if (connection.is_default || this.busyId) return;
-    this.busyId = connection.resource_ref;
-    try {
-      const result = await this.service.setDefault(connection.resource_ref);
-      if (result.error) return this.fail(result.error);
-      await this.reload();
-      this.flash(`"${connection.name}" is now the default.`);
-    } finally {
-      this.busyId = '';
-    }
-  }
-
-  // ── Removing ────────────────────────────────────────────────────────
-
-  requestDelete(connection: LlmConnection): void {
-    this.deleteTarget = connection;
-    this.error = '';
-  }
-
-  closeDelete(): void {
-    if (!this.busyId) this.deleteTarget = null;
-  }
-
-  async remove(connection: LlmConnection): Promise<void> {
-    this.busyId = connection.resource_ref;
-    try {
-      const result = await this.service.remove(connection.resource_ref);
-      if (result.error) return this.fail(result.error);
-      this.deleteTarget = null;
-      await this.reload();
-      this.flash(`"${connection.name}" removed.`);
-    } finally {
-      this.busyId = '';
-    }
-  }
-
-
-  // ── Handing over ────────────────────────────────────────────────────
-
-  transferTarget: LlmConnection | null = null;
-  transferring = false;
-
-  requestTransfer(item: LlmConnection): void {
-    this.transferTarget = item;
-    this.error = '';
-  }
-
-  closeTransfer(): void {
-    if (!this.transferring) this.transferTarget = null;
-  }
-
-  async transfer(person: { user_id: string; user_name: string; email: string }): Promise<void> {
-    const item = this.transferTarget;
-    if (!item) return;
-    this.transferring = true;
-    try {
-      const result = await this.service.transfer(item.resource_ref, person.user_id);
-      // Closed either way: a refusal is said on the page, where it can
-      // be read, not under the dialog.
-      this.transferTarget = null;
-      if (result.error) return this.fail(result.error);
-      await this.reload();
-      this.flash(`Handed over to ${person.user_name || person.email}.`);
-    } finally {
-      this.transferring = false;
-    }
   }
 }

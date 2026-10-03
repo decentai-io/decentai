@@ -1,12 +1,11 @@
 import { Component, OnInit } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { MatDialog } from '@angular/material/dialog';
-import { firstValueFrom } from 'rxjs';
 import { AiSessionService } from 'src/app/services/ai-session.service';
 import { AttentionService } from 'src/app/services/attention.service';
 import { ProfileService } from 'src/app/services/profile.service';
 import { AlertComponent } from 'src/app/components/alert/alert.component';
-import { ChatLlmDialogComponent } from '../chat-llm-dialog/chat-llm-dialog.component';
+import { ChatModel } from '../chat-model-picker/chat-model-picker.component';
 
 /** The chats page: a new conversation starts at the composer, and every
  *  earlier one is listed under it — searched, archived, restored, or
@@ -50,6 +49,7 @@ export class ChatHomeComponent implements OnInit {
     // Refreshed in the background: a new conversation never waits for
     // the list.
     void this.loadChats();
+    void this.resolveModel();
     // An agent's page hands over a prompt to try. It is put in the
     // composer and nothing more: an address is something anybody can
     // write, and a link must not be able to make a chat and speak in
@@ -194,50 +194,58 @@ export class ChatHomeComponent implements OnInit {
     }
   }
 
-  /** Resolve once before creating the chat, so the first message can never
-   *  fall into a chat with no model. A sole key needs no question; with
-   *  several, the remembered choice wins and otherwise the picker opens. */
-  private async llmForNewChat(): Promise<any | null> {
-    const [secrets, profile] = await Promise.all([
+  /** The model the next chat will think with, named under the
+   *  composer and changed there: what this person last picked, else
+   *  the organization's default, else the only provider there is.
+   *  Null while there is no provider at all. */
+  llm: ChatModel | null = null;
+  /** What was last saved as the person's pick, to save again only
+   *  when it changed. */
+  private preferred = '';
+
+  private async resolveModel(): Promise<void> {
+    const [connections, profile] = await Promise.all([
       this.aiSession.listLlmSecrets(),
       this.profileService.get(),
     ]);
-    const usable = secrets.filter((secret: any) => {
-      const keys = secret?.keys || {};
-      return !!(keys.provider && keys.model);
-    });
+    const chat = profile?.preferences?.chat ?? {};
+    const mine = connections.find(
+      (connection: any) => connection.resource_ref === chat.llm_secret_ref);
+    const selected = mine
+      ?? connections.find((connection: any) => connection.is_default)
+      ?? connections[0];
+    // The person's own pick carries its model and effort; a default
+    // starts with the model its connection starts with.
+    this.llm = selected ? this.llmFromSecret(
+      selected, mine ? chat.llm_model || '' : '',
+      mine ? chat.llm_reasoning_effort || '' : '') : null;
+    this.preferred = mine && this.llm ? JSON.stringify(this.llm) : '';
+  }
 
-    if (usable.length === 0) {
+  onModelChosen(llm: ChatModel): void {
+    this.llm = llm;
+  }
+
+  /** Resolved before creating the chat, so the first message can never
+   *  fall into a chat with no model. */
+  private async llmForNewChat(): Promise<ChatModel | null> {
+    if (!this.llm) await this.resolveModel();
+    const llm = this.llm;
+    if (!llm) {
       this.alert({
-        title: 'Set up a language model',
+        title: 'Add a model provider',
         type: 'error',
         messages: [{
           description:
-            'No LLM connection is configured. Add one under Settings first.',
+            'No model provider is set up yet. Add one under Settings, Model providers, and paste its key.',
         }],
       });
       return null;
     }
 
-    const preferredRef = profile?.preferences?.chat?.llm_secret_ref || '';
-    let selected = usable.find(
-      (secret: any) => secret.resource_ref === preferredRef,
-    );
-    if (!selected && usable.length === 1) selected = usable[0];
-
-    let llm = selected ? this.llmFromSecret(selected) : null;
-    if (!llm) {
-      const ref = this.dialog.open(ChatLlmDialogComponent, {
-        width: '480px',
-        maxWidth: '95vw',
-        data: { llm: {} },
-      });
-      llm = await firstValueFrom(ref.afterClosed());
-    }
-    if (!llm) return null;
-
-    if (llm.secret_ref !== preferredRef) {
-      const saved = await this.profileService.saveDefaultLlm(llm.secret_ref);
+    if (JSON.stringify(llm) !== this.preferred) {
+      const saved = await this.profileService.saveDefaultLlm(
+        llm.secret_ref, llm.model, llm.reasoning_effort || '');
       if (saved.error) {
         this.alert({
           title: 'Default model not saved',
@@ -246,17 +254,19 @@ export class ChatHomeComponent implements OnInit {
         });
         return null;
       }
+      this.preferred = JSON.stringify(llm);
     }
     return llm;
   }
 
-  private llmFromSecret(secret: any): any {
+  private llmFromSecret(secret: any, model = '', effort = ''): ChatModel {
     const keys = secret.keys || {};
     return {
       provider: keys.provider,
-      model: keys.model,
+      model: model || keys.model,
       secret_ref: secret.resource_ref,
       ...(keys.endpoint ? { endpoint: keys.endpoint } : {}),
+      ...(effort ? { reasoning_effort: effort } : {}),
     };
   }
 

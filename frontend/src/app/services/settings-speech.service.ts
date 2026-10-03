@@ -3,6 +3,14 @@ import { Injectable } from '@angular/core';
 import { LlmConnection } from './settings-llm.service';
 import { RequestService } from './request.service';
 
+/** Which model writes spoken messages down: a connection shared with
+ *  everyone, and one of its provider's transcription models. */
+export interface SpeechSettings {
+  /** '' for none: the composer offers no microphone. */
+  transcription_connection_id: string;
+  transcription_model: string;
+}
+
 /** Client for Settings:Speech — the organization's transcription model,
  *  and the door a recording goes through to come back as words. */
 @Injectable({ providedIn: 'root' })
@@ -10,18 +18,16 @@ export class SettingsSpeechService {
   constructor(private request: RequestService) {}
 
   async get(): Promise<{
-    speech: { transcription_connection_id: string }; transcription_connection: LlmConnection | null;
+    speech: SpeechSettings; transcription_connection: LlmConnection | null;
   }> {
     const r = await this.request.gateway('Settings:Speech:get');
     return { speech: r?.speech, transcription_connection: r?.transcription_connection ?? null };
   }
 
-  async update(transcriptionConnectionId: string): Promise<{
-    speech?: { transcription_connection_id: string }; error?: string;
+  async update(speech: SpeechSettings): Promise<{
+    speech?: SpeechSettings; error?: string;
   }> {
-    return this.request.gateway('Settings:Speech:update', {
-      transcription_connection_id: transcriptionConnectionId,
-    });
+    return this.request.gateway('Settings:Speech:update', { ...speech });
   }
 
   /** Whether a transcription model is configured at all — asked once,

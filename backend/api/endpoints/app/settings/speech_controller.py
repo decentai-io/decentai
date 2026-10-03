@@ -58,24 +58,27 @@ class SpeechController:
         return self._answer(user), 200
 
     def update(self, data: dict, user: dict):
-        """The transcription connection: one of this organization's,
-        made for transcription, shared with everyone."""
+        """The transcription model: a connection of this
+        organization's shared with everyone, and which of its
+        provider's models writes speech down."""
         payload = self._payload(data)
         ref = str(payload.get("transcription_connection_id") or "").strip()
+        model = str(payload.get("transcription_model") or "").strip() if ref else ""
         if ref:
             doc = self.connections.get_in(self._org(user), ref)
             if doc is None:
                 return {"error": "That connection does not exist."}, 404
-            if doc.get("purpose") != "transcription":
-                return {"error": "That connection is not a transcription "
-                                 "model."}, 400
+            if not model:
+                return {"error": "Choose the transcription model as well "
+                                 "as the provider it is served by."}, 400
             if not self.connections.org_wide(doc.get("owner")):
                 return {"error": "Share the transcription connection with "
                                  "the whole organization first: every "
                                  "member's composer will use it."}, 400
-        self.organizations.set_speech(
-            self._org(user), {"transcription_connection_id": ref})
-        self.logger.info(f"{user.get('email')} set the transcription model to {ref or 'none'}")
+        self.organizations.set_speech(self._org(user), {
+            "transcription_connection_id": ref, "transcription_model": model})
+        self.logger.info(f"{user.get('email')} set the transcription model to "
+                         f"{model + ' on ' + ref if ref else 'none'}")
         return self._answer(user), 200
 
     # ------------------------------------------------------------------
@@ -84,8 +87,8 @@ class SpeechController:
         is configured, so a composer can show its microphone only when
         speaking will work."""
         payload = self._payload(data)
-        ref = str(self.organizations.speech(self._org(user))
-                  .get("transcription_connection_id") or "")
+        speech = self.organizations.speech(self._org(user))
+        ref = str(speech.get("transcription_connection_id") or "")
         if payload.get("probe"):
             return {"configured": bool(ref)}, 200
         if not ref:
@@ -122,7 +125,7 @@ class SpeechController:
             text = self._transcribe(
                 endpoint=str(keys.get("endpoint") or ""),
                 api_key=str(values.get("api_key") or ""),
-                model=str(keys.get("model") or ""),
+                model=str(speech.get("transcription_model") or ""),
                 filename=f"speech.{extension}", audio=audio, mime=mime,
                 language=language)
         except Exception as exc:

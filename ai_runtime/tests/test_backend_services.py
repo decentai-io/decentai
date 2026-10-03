@@ -102,6 +102,33 @@ class TestTheContract:
         assert contract["chat_level"] == 2
         assert gateway.last("Settings:Llm:Use")[1]["connection_id"] == "llm_1"
 
+    def test_the_model_is_the_chats_and_the_provider_and_address_the_connections(self):
+        """A connection is one key to every model its provider serves:
+        the block's model stands, and so does how hard it thinks; whose
+        key it is and where it is sent are the connection's, whatever
+        the block says."""
+        services, _ = build({
+            "AI:Chat:Contract": {
+                "agents": [], "grants": [], "chat_level": 1,
+                "llm": {"provider": "anthropic", "model": "gpt-5-mini",
+                        "endpoint": "https://elsewhere.example/v1",
+                        "reasoning_effort": "low", "secret_ref": "llm_1"},
+                "routing": {"threshold": 15, "embedding": {
+                    "provider": "openai", "model": "text-embedding-3-large",
+                    "secret_ref": "llm_1"}}},
+            "Settings:Llm:Use": {
+                "keys": {"provider": "openai", "model": "gpt-5",
+                         "endpoint": "https://api.openai.com/v1"},
+                "values": {"api_key": "sk-x"}},
+        })
+        contract = run(services.contract("chat_1"))
+        assert contract["llm"] == {
+            "provider": "openai", "model": "gpt-5-mini",
+            "endpoint": "https://api.openai.com/v1",
+            "reasoning_effort": "low", "secret_ref": "llm_1", "api_key": "sk-x"}
+        assert contract["routing"]["embedding"]["model"] == "text-embedding-3-large"
+        assert contract["routing"]["embedding"]["api_key"] == "sk-x"
+
     def test_no_model_is_an_honest_none(self):
         services, _ = build({"AI:Chat:Contract": {
             "agents": [], "grants": [], "chat_level": 1, "llm": None,

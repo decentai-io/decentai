@@ -51,9 +51,13 @@ Actions worth knowing when writing a policy:
 
 Every stored thing — a credential, a record, a file, a skill, a model connection — follows one rule: private to its creator until shared; shareable with groups the sharer is in, with people they share a group with, and organization-wide only with the escape grant for that domain; editable only by its creator unless that same grant is held. Seeing something is never authority over it. Its creator, or a holder of that grant, may **hand it over** to another member, who becomes its owner with the sharing untouched.
 
-## Language models
+## Model providers
 
-**Settings → Language models** holds the organization's connections. One is the default for every chat that did not choose; a person may set their own default; a chat may choose another it can see. Keys are write-only.
+**Settings → Model providers** holds the providers the organization has a key for. Adding one is choosing the provider and pasting its key: the address is filled in, and the provider is asked whether the key works before it is saved. One key serves every model the provider has — the models a chat thinks with, and the ones that embed and write speech down. A model on your own computer or network is added as *Your own server*, by its address.
+
+One provider is the default for every chat that did not choose; a person's last pick is what their next chat starts with; a chat may choose any model of any provider its person can see. Keys are write-only.
+
+**Settings → Chat configuration** chooses two more models, each a provider shared with the whole organization and one of its models: the one that writes spoken messages down (without it the composer has no microphone), and the embedding model agent routing finds the right agent with.
 
 ## Connected apps
 

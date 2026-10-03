@@ -6,3 +6,8 @@ Licensed under the Apache License, Version 2.0. See LICENSE.
 This product includes software developed by third parties under their own
 licences, listed in backend/requirements.txt, ai_runtime/requirements.txt
 and frontend/package.json.
+
+The catalog of language-model providers and their models in
+contracts/llm_providers.json and contracts/llm_models.json is derived
+from models.dev (https://github.com/anomalyco/models.dev),
+Copyright (c) 2025 models.dev, used under the MIT License.

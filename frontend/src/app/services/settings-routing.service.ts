@@ -8,6 +8,8 @@ import { RequestService } from './request.service';
 export interface RoutingSettings {
   /** The embedding connection's ref, or '' for none: every agent listed. */
   embedding_connection_id: string;
+  /** Which of that connection's provider's models embeds. */
+  embedding_model: string;
   /** Above this many enabled agents, a chat routes instead of listing all. */
   threshold: number;
   /** How many agents the assistant is shown per message. */

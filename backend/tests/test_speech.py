@@ -1,51 +1,55 @@
-"""Speech to text (Settings:Speech): the transcription purpose, the
-organization's choice, the composer's door, and what it refuses."""
+"""Speech to text (Settings:Speech): the organization's choice of a
+connection and one of its provider's transcription models, the
+composer's door, and what it refuses."""
 
 import base64
 from types import SimpleNamespace
 
 from conftest import app_call
-from test_agent_routing import connection, everyone
+from test_agent_routing import connection
 
 
-def transcription_connection(admin):
-    payload = {
-        "endpoint": "https://api.example.test/v1", "name": "whisper",
-        "provider": "openai", "model": "whisper-1", "api_key": "sk-secret",
-        "purpose": "transcription", "owner": everyone(),
-    }
-    response = app_call(admin, "Settings:Llm:Create", payload)
-    assert response.status_code == 200, response.text
-    return response.json()["connection"]
+def choose_whisper(admin):
+    shared = connection(admin, "openai", shared=True)
+    chosen = app_call(admin, "Settings:Speech:Update", {
+        "transcription_connection_id": shared["resource_ref"],
+        "transcription_model": "whisper-1"})
+    assert chosen.status_code == 200, chosen.text
+    return shared
 
 
 class TestChoosingTheModel:
-    def test_a_transcription_model_is_never_a_chats_default(self, admin, seed):
-        whisper = transcription_connection(admin)
-        assert whisper["keys"]["purpose"] == "transcription"
-        assert whisper["is_default"] is False
-        refused = app_call(admin, "Settings:Llm:Setdefault", {"connection_id": whisper["resource_ref"]})
-        assert refused.status_code == 400
-
-    def test_only_a_shared_transcription_model_can_be_chosen(self, admin, seed):
-        chat = connection(admin, "chat")
-        assert app_call(admin, "Settings:Speech:Update", {
-            "transcription_connection_id": chat["resource_ref"]}).status_code == 400
-        whisper = transcription_connection(admin)
+    def test_the_model_is_a_shared_connection_and_one_of_its_models(self, admin, seed):
+        private = connection(admin, "mine",
+                             owner={"groups": [], "users": [seed.admin["_id"]]})
+        refused = app_call(admin, "Settings:Speech:Update", {
+            "transcription_connection_id": private["resource_ref"],
+            "transcription_model": "whisper-1"})
+        assert refused.status_code == 400 and "whole organization" in refused.text
+        shared = connection(admin, "openai", shared=True)
+        refused = app_call(admin, "Settings:Speech:Update", {
+            "transcription_connection_id": shared["resource_ref"]})
+        assert refused.status_code == 400 and "transcription model" in refused.text
         chosen = app_call(admin, "Settings:Speech:Update", {
-            "transcription_connection_id": whisper["resource_ref"]})
+            "transcription_connection_id": shared["resource_ref"],
+            "transcription_model": "whisper-1"})
         assert chosen.status_code == 200, chosen.text
-        assert chosen.json()["transcription_connection"]["resource_ref"] == whisper["resource_ref"]
+        assert chosen.json()["transcription_connection"]["resource_ref"] == shared["resource_ref"]
         assert app_call(admin, "Settings:Speech:Get", {}).json()["speech"] == {
-            "transcription_connection_id": whisper["resource_ref"]}
+            "transcription_connection_id": shared["resource_ref"],
+            "transcription_model": "whisper-1"}
+        # No connection is no model either.
+        cleared = app_call(admin, "Settings:Speech:Update", {
+            "transcription_connection_id": "", "transcription_model": "whisper-1"})
+        assert cleared.json()["speech"] == {
+            "transcription_connection_id": "", "transcription_model": ""}
 
 
 class TestTranscribing:
     def test_a_recording_becomes_words_through_the_chosen_model(self, admin, seed, monkeypatch):
         from api.endpoints.app.settings.speech_controller import SpeechController
 
-        whisper = transcription_connection(admin)
-        app_call(admin, "Settings:Speech:Update", {"transcription_connection_id": whisper["resource_ref"]})
+        choose_whisper(admin)
         seen = {}
 
         def create(**kwargs):
@@ -72,15 +76,13 @@ class TestTranscribing:
         refused = app_call(admin, "Settings:Speech:Transcribe", {
             "content_base64": base64.b64encode(b"x").decode("ascii")})
         assert refused.status_code == 404 and "No transcription model" in refused.text
-        whisper = transcription_connection(admin)
-        app_call(admin, "Settings:Speech:Update", {"transcription_connection_id": whisper["resource_ref"]})
+        choose_whisper(admin)
         assert app_call(admin, "Settings:Speech:Transcribe", {"probe": True}).json() == {"configured": True}
 
     def test_a_broken_recording_is_refused_before_any_model_is_asked(self, admin, seed, monkeypatch):
         from api.endpoints.app.settings.speech_controller import SpeechController
 
-        whisper = transcription_connection(admin)
-        app_call(admin, "Settings:Speech:Update", {"transcription_connection_id": whisper["resource_ref"]})
+        choose_whisper(admin)
         monkeypatch.setattr(SpeechController, "_client",
                             staticmethod(lambda e, k: (_ for _ in ()).throw(AssertionError("asked"))))
         assert app_call(admin, "Settings:Speech:Transcribe", {"content_base64": "not base64!"}).status_code == 400

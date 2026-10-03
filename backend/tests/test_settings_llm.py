@@ -32,8 +32,7 @@ class TestTheKeyIsWriteOnly:
         connection = response.json()["connection"]
         assert connection["keys"] == {
             "provider": "anthropic", "model": "claude-sonnet-5",
-            "endpoint": "https://api.anthropic.com", "reasoning_effort": "",
-            "purpose": "chat",
+            "endpoint": "https://api.anthropic.com",
         }
         assert "api_key" not in str(response.json())
         assert "sk-ant" not in str(listed(admin))
@@ -72,30 +71,78 @@ class TestTheKeyIsWriteOnly:
         assert resolved["values"]["api_key"] == "sk-ant-2"
 
 
-class TestReasoningEffort:
-    """How hard a reasoning model thinks before each step is the
-    connection's to say: kept with the connection, handed to the runtime
-    with the key, and refused when it is not a word the providers know."""
+class TestOneKeyEveryModel:
+    """A connection is a provider and its key. Which model is the
+    chat's to choose, and how hard it thinks is chosen with it."""
 
-    def test_the_effort_is_kept_and_handed_to_the_runtime(self, admin, seed):
+    def test_a_connection_says_nothing_of_purpose_or_effort(self, admin, seed):
         from database.stores import LlmConnectionStore, UserStore
         response = make_connection(admin, provider="openai", model="gpt-5",
-                                   reasoning_effort="Low")
+                                   reasoning_effort="low", purpose="embedding")
         assert response.status_code == 200, response.text
-        ref = response.json()["connection"]["resource_ref"]
-        assert response.json()["connection"]["keys"]["reasoning_effort"] == "low"
-        resolved = LlmConnectionStore().use(UserStore.to_public(seed.admin), ref)
-        assert resolved["keys"]["reasoning_effort"] == "low"
-        # Back to the provider's default: blank, kept as blank.
-        updated = app_call(admin, "Settings:Llm:Update", {
-            "connection_id": ref, "reasoning_effort": ""})
-        assert updated.status_code == 200, updated.text
-        assert updated.json()["connection"]["keys"]["reasoning_effort"] == ""
+        connection = response.json()["connection"]
+        assert set(connection["keys"]) == {"provider", "model", "endpoint"}
+        resolved = LlmConnectionStore().use(
+            UserStore.to_public(seed.admin), connection["resource_ref"])
+        assert set(resolved["keys"]) == {"provider", "model", "endpoint"}
 
-    def test_an_effort_the_providers_do_not_know_is_refused(self, admin, seed):
-        response = make_connection(admin, reasoning_effort="turbo")
-        assert response.status_code == 400
-        assert "Reasoning effort" in response.text
+    def test_a_chat_names_any_model_of_the_connections_provider(self, admin, seed):
+        from test_ai_messages import make_chat
+        ref = make_connection(admin).json()["connection"]["resource_ref"]
+        chat_id = make_chat(admin)
+        chosen = app_call(admin, "AI:Chat:Update", {"chat_id": chat_id, "config": {
+            "llm": {"secret_ref": ref, "model": "claude-opus-5-5",
+                    "reasoning_effort": "High",
+                    # Whose key it is and where it is sent are the
+                    # connection's, whatever a block says.
+                    "provider": "openai", "endpoint": "https://elsewhere.example/v1"}}})
+        assert chosen.status_code == 200, chosen.text
+        served = app_call(admin, "AI:Chat:Get", {"chat_id": chat_id}).json()["data"]
+        assert served["chat"]["config"]["llm"] == {
+            "provider": "anthropic", "model": "claude-opus-5-5",
+            "endpoint": "https://api.anthropic.com", "secret_ref": ref,
+            "reasoning_effort": "high"}
+
+    def test_a_block_that_names_no_model_gets_the_one_the_connection_starts_with(
+            self, admin, seed):
+        from test_ai_messages import make_chat
+        ref = make_connection(admin).json()["connection"]["resource_ref"]
+        chat_id = make_chat(admin)
+        app_call(admin, "AI:Chat:Update", {"chat_id": chat_id, "config": {
+            "llm": {"secret_ref": ref}}})
+        served = app_call(admin, "AI:Chat:Get", {"chat_id": chat_id}).json()["data"]
+        assert served["chat"]["config"]["llm"] == {
+            "provider": "anthropic", "model": "claude-sonnet-5",
+            "endpoint": "https://api.anthropic.com", "secret_ref": ref}
+
+    def test_an_effort_that_is_not_a_word_is_refused(self, admin, seed):
+        from test_ai_messages import make_chat
+        ref = make_connection(admin).json()["connection"]["resource_ref"]
+        refused = app_call(admin, "AI:Chat:Update", {"chat_id": make_chat(admin), "config": {
+            "llm": {"secret_ref": ref, "reasoning_effort": "very hard!"}}})
+        assert refused.status_code == 400 and "Reasoning effort" in refused.text
+
+    def test_the_model_last_picked_is_what_the_next_chat_starts_with(self, admin, seed):
+        from test_ai_messages import make_chat
+        first = make_connection(admin).json()["connection"]["resource_ref"]
+        second = make_connection(
+            admin, name="OpenAI", provider="openai", model="gpt-5",
+            endpoint="https://api.openai.com/v1").json()["connection"]["resource_ref"]
+        saved = app_call(admin, "Account:Profile:Update", {"preferences": {"chat": {
+            "llm_secret_ref": second, "llm_model": "gpt-5-mini",
+            "llm_reasoning_effort": "low"}}})
+        assert saved.status_code == 200, saved.text
+        served = app_call(admin, "AI:Chat:Get", {"chat_id": make_chat(admin)}).json()["data"]
+        assert served["chat"]["config"]["llm"] == {
+            "provider": "openai", "model": "gpt-5-mini",
+            "endpoint": "https://api.openai.com/v1", "secret_ref": second,
+            "reasoning_effort": "low"}
+        # With the preferred connection gone the model goes with it: the
+        # organization's default answers, with the model IT starts with.
+        app_call(admin, "Settings:Llm:Delete", {"connection_id": second})
+        served = app_call(admin, "AI:Chat:Get", {"chat_id": make_chat(admin)}).json()["data"]
+        assert served["chat"]["config"]["llm"]["secret_ref"] == first
+        assert served["chat"]["config"]["llm"]["model"] == "claude-sonnet-5"
 
 
 class TestValidation:
@@ -106,6 +153,30 @@ class TestValidation:
             assert response.status_code == 200, response.text
             assert response.json()["connection"]["keys"]["provider"] == provider
         assert len(listed(admin)) == 7
+
+    def test_a_provider_the_catalog_added_round_trips_like_the_first_ones(self, admin, seed):
+        for provider in ("togetherai", "fireworks-ai", "cerebras", "minimax"):
+            response = make_connection(admin, name=provider, provider=provider,
+                                       endpoint="https://gateway.example.test/v1")
+            assert response.status_code == 200, response.text
+            assert response.json()["connection"]["keys"]["provider"] == provider
+
+    def test_a_provider_outside_the_catalog_is_refused_and_told_the_way_in(self, admin, seed):
+        refused = make_connection(admin, provider="google-vertex")
+        assert refused.status_code == 400
+        assert "openai_compatible" in refused.json()["error"]
+
+    def test_an_endpoint_with_a_blank_left_in_it_is_refused(self, admin, seed):
+        refused = make_connection(
+            admin, provider="amazon-bedrock",
+            endpoint="https://bedrock-runtime.<aws-region>.amazonaws.com")
+        assert refused.status_code == 400
+        assert "blank to fill in" in refused.json()["error"]
+        saved = make_connection(
+            admin, provider="amazon-bedrock",
+            endpoint="https://bedrock-runtime.eu-west-1.amazonaws.com")
+        assert saved.status_code == 200, saved.text
+        assert saved.json()["connection"]["keys"]["provider"] == "amazon-bedrock"
 
     def test_endpoint_is_required_on_create_and_cannot_be_cleared(self, admin, seed):
         for endpoint in (None, "", "   "):
@@ -153,6 +224,57 @@ class TestValidation:
         assert make_connection(other).status_code == 200
 
 
+class TestTheCatalog:
+    """Settings:Llm:Providers — what the form that adds a connection is
+    drawn from."""
+
+    def test_the_page_is_served_the_catalog_the_store_validates_against(self, admin, seed):
+        from contracts.llm_providers import LlmProviders
+
+        response = app_call(admin, "Settings:Llm:Providers")
+        assert response.status_code == 200, response.text
+        served = response.json()["providers"]
+        assert served == LlmProviders.all()
+        assert served[-1]["id"] == "openai_compatible"
+        assert all(set(entry) - {"popular"} == {"id", "name", "protocol", "endpoint"}
+                   for entry in served)
+        assert any(entry.get("popular") for entry in served)
+
+    def test_every_provider_served_is_one_a_connection_may_name(self, admin, seed):
+        served = app_call(admin, "Settings:Llm:Providers").json()["providers"]
+        for entry in served[:12]:
+            response = make_connection(
+                admin, name=entry["id"], provider=entry["id"],
+                endpoint=entry["endpoint"].replace("<", "").replace(">", "")
+                or "https://gateway.example.test/v1")
+            assert response.status_code == 200, (entry["id"], response.text)
+
+    def test_asked_about_one_provider_it_answers_with_that_providers_models(self, admin, seed):
+        response = app_call(admin, "Settings:Llm:Providers", {"provider": "amazon-bedrock"})
+        assert response.status_code == 200, response.text
+        models = response.json()["models"]
+        haiku = next(model for model in models
+                     if model["id"] == "us.anthropic.claude-haiku-4-5-20251001-v1:0")
+        assert haiku["name"] == "Claude Haiku 4.5 (US)" and haiku["kind"] == "chat"
+        assert "providers" not in response.json()
+        # Asked for one kind, only that kind is answered.
+        speech = app_call(admin, "Settings:Llm:Providers",
+                          {"provider": "openai", "kind": "transcription"}).json()["models"]
+        assert speech and {model["kind"] for model in speech} == {"transcription"}
+        unknown = app_call(admin, "Settings:Llm:Providers", {"provider": "nobody"})
+        assert unknown.json() == {"models": []}
+
+    def test_a_model_the_list_does_not_know_is_still_a_model(self, admin, seed):
+        saved = make_connection(admin, provider="amazon-bedrock", model="released-tomorrow",
+                                endpoint="https://bedrock-runtime.us-east-1.amazonaws.com")
+        assert saved.status_code == 200, saved.text
+
+    def test_seeing_the_catalog_is_every_members_like_seeing_connections(self):
+        from server.authentication.catalog import BASELINE_ACTIONS
+
+        assert "settings:llm:providers" in BASELINE_ACTIONS
+
+
 class TestTheDefault:
     def test_the_first_connection_is_the_default(self, admin, seed):
         first = make_connection(admin).json()["connection"]
@@ -189,21 +311,16 @@ class TestTheDefault:
         assert len(remaining) == 1
         assert remaining[0]["is_default"] is True
 
-    def test_the_default_stays_a_chat_model(self, admin, seed):
-        """No chat thinks with an embedding or transcription model, so
-        none becomes the default — not when the default is deleted, not
-        by a change of purpose, not by spelling."""
-        first = make_connection(admin, purpose="Chat").json()["connection"]
+    def test_any_connection_may_be_the_default(self, admin, seed):
+        """A connection is a provider, and every provider here serves a
+        model a chat can think with: the first is the default, and
+        deleting it hands the default to the one that is left."""
+        first = make_connection(admin).json()["connection"]
         assert first["is_default"] is True
-        make_connection(admin, name="Embedder", purpose="embedding")
-
-        turned = app_call(admin, "Settings:Llm:Update", {
-            "connection_id": first["resource_ref"], "purpose": "embedding"})
-        assert turned.status_code == 400, turned.text
-
+        make_connection(admin, name="Second")
         app_call(admin, "Settings:Llm:Delete",
                  {"connection_id": first["resource_ref"]})
-        assert [c["is_default"] for c in listed(admin)] == [False]
+        assert [c["is_default"] for c in listed(admin)] == [True]
 
 
 class TestTheRuntimeDoor:
@@ -483,3 +600,148 @@ def runtime_use(anon, seed, payload):
         json={"endpoint": "Settings:Llm:Use", "data": payload},
         headers=runtime_headers(seed),
     )
+
+
+class TestAskingTheProvider:
+    """Before a connection is saved the provider is asked one small
+    thing with the key, and its answer is told to the person."""
+
+    @staticmethod
+    def answering(monkeypatch, respond, seen=None):
+        import httpx
+        from api.services.llm_probe import ProviderProbe
+
+        def handler(request):
+            if seen is not None:
+                seen.append(request)
+            return respond(request)
+
+        monkeypatch.setattr(ProviderProbe, "_client", lambda self: httpx.Client(
+            transport=httpx.MockTransport(handler)))
+
+    def test_each_protocol_is_asked_in_its_own_way(self, monkeypatch):
+        import httpx
+        from api.services.llm_probe import ProviderProbe
+
+        seen = []
+        self.answering(monkeypatch, lambda request: httpx.Response(
+            200, json={"data": [{"id": "b-model"}, {"id": "a-model"}]}), seen)
+        assert ProviderProbe("openai", "", "sk-1").check() == {
+            "outcome": "works", "reason": ""}
+        assert ProviderProbe("anthropic", "https://api.anthropic.com", "sk-2").models() == [
+            "a-model", "b-model"]
+        ProviderProbe("gemini", "https://generativelanguage.googleapis.com/v1beta", "g-3").check()
+        ProviderProbe("amazon-bedrock", "https://bedrock-runtime.eu-west-1.amazonaws.com",
+                      "b-4", "anthropic.claude-haiku-4-5-20251001-v1:0").check()
+        openai, anthropic, gemini, bedrock = seen[0], seen[1], seen[2], seen[3]
+        assert str(openai.url) == "https://api.openai.com/v1/models"
+        assert openai.headers["authorization"] == "Bearer sk-1"
+        assert anthropic.url.path == "/v1/models" and anthropic.headers["x-api-key"] == "sk-2"
+        assert gemini.url.path == "/v1beta/models" and gemini.headers["x-goog-api-key"] == "g-3"
+        assert bedrock.method == "POST" and bedrock.url.raw_path.decode().endswith(
+            "/model/anthropic.claude-haiku-4-5-20251001-v1%3A0/converse")
+
+    def test_a_refusal_no_answer_and_an_answer_that_says_neither(self, monkeypatch):
+        import httpx
+        from api.services.llm_probe import ProviderProbe
+
+        self.answering(monkeypatch, lambda request: httpx.Response(
+            401, json={"error": {"message": "Incorrect API key provided."}}))
+        refused = ProviderProbe("openai", "", "sk-wrong").check()
+        assert refused["outcome"] == "refused" and "Incorrect API key" in refused["reason"]
+
+        def nobody(request):
+            raise httpx.ConnectError("name not resolved")
+        self.answering(monkeypatch, nobody)
+        assert ProviderProbe("openai_compatible", "https://nowhere.example/v1",
+                             "k").check()["outcome"] == "unreachable"
+
+        self.answering(monkeypatch, lambda request: httpx.Response(404, text="Not Found"))
+        assert ProviderProbe("openai_compatible", "https://gateway.example/v1",
+                             "k").check()["outcome"] == "unknown"
+
+    def test_a_key_the_provider_refuses_is_not_saved_unless_the_person_insists(
+            self, admin, seed, monkeypatch):
+        import httpx
+        self.answering(monkeypatch, lambda request: httpx.Response(
+            401, json={"error": {"message": "Incorrect API key provided."}}))
+        refused = make_connection(admin, check=True)
+        assert refused.status_code == 400
+        assert "refused the key" in refused.json()["error"]
+        assert refused.json()["check"]["outcome"] == "refused"
+        assert listed(admin) == []
+        # Saved all the same by not asking.
+        assert make_connection(admin).status_code == 200
+
+    def test_a_key_that_works_is_saved_and_says_so(self, admin, seed, monkeypatch):
+        import httpx
+        self.answering(monkeypatch, lambda request: httpx.Response(200, json={"data": []}))
+        saved = make_connection(admin, check=True)
+        assert saved.status_code == 200, saved.text
+        assert saved.json()["check"] == {"outcome": "works", "reason": ""}
+        # An edit asks with the stored key when none is typed.
+        seen = []
+        self.answering(monkeypatch, lambda request: httpx.Response(200, json={"data": []}), seen)
+        updated = app_call(admin, "Settings:Llm:Update", {
+            "connection_id": saved.json()["connection"]["resource_ref"],
+            "model": "claude-opus-5-5", "check": True})
+        assert updated.status_code == 200, updated.text
+        assert seen[0].headers["x-api-key"] == "sk-ant-1"
+
+    def test_a_server_with_no_list_of_models_is_saved_with_what_it_said(
+            self, admin, seed, monkeypatch):
+        import httpx
+        self.answering(monkeypatch, lambda request: httpx.Response(404, text="Not Found"))
+        saved = make_connection(admin, provider="openai_compatible", model="local",
+                                endpoint="https://gateway.example.test/v1", check=True)
+        assert saved.status_code == 200, saved.text
+        assert saved.json()["check"]["outcome"] == "unknown"
+
+
+class TestTheModelsOfAConnection:
+    """Settings:Llm:Models — what a chat's picker lists under one
+    connection, and what routing and speech choose among."""
+
+    def test_a_catalogued_provider_offers_its_models_by_kind(self, admin, seed):
+        ref = make_connection(
+            admin, provider="openai", model="gpt-5",
+            endpoint="https://api.openai.com/v1").json()["connection"]["resource_ref"]
+        chat = app_call(admin, "Settings:Llm:Models", {"connection_id": ref})
+        assert chat.status_code == 200, chat.text
+        assert chat.json()["live"] is False
+        assert {model["kind"] for model in chat.json()["models"]} == {"chat"}
+        assert "gpt-5" in [model["id"] for model in chat.json()["models"]]
+        speech = app_call(admin, "Settings:Llm:Models", {
+            "connection_id": ref, "kind": "transcription"}).json()["models"]
+        assert "whisper-1" in [model["id"] for model in speech]
+
+    def test_the_model_a_connection_starts_with_is_always_offered(self, admin, seed):
+        ref = make_connection(admin, model="a-model-released-tomorrow").json()[
+            "connection"]["resource_ref"]
+        models = app_call(admin, "Settings:Llm:Models", {"connection_id": ref}).json()["models"]
+        assert models[0] == {"id": "a-model-released-tomorrow",
+                             "name": "a-model-released-tomorrow", "kind": "chat"}
+        embedding = app_call(admin, "Settings:Llm:Models", {
+            "connection_id": ref, "kind": "embedding"}).json()["models"]
+        assert "a-model-released-tomorrow" not in [model["id"] for model in embedding]
+
+    def test_a_server_the_catalog_says_nothing_of_is_asked_for_its_own(
+            self, admin, seed, monkeypatch):
+        import httpx
+        seen = []
+        TestAskingTheProvider.answering(monkeypatch, lambda request: httpx.Response(
+            200, json={"data": [{"id": "qwen3:8b"}, {"id": "llama3.3"}]}), seen)
+        ref = make_connection(
+            admin, provider="openai_compatible", model="llama3.3", api_key="local-key",
+            endpoint="http://host.docker.internal:11434/v1").json()["connection"]["resource_ref"]
+        answer = app_call(admin, "Settings:Llm:Models", {"connection_id": ref}).json()
+        assert answer["live"] is True
+        assert [model["id"] for model in answer["models"]] == ["llama3.3", "qwen3:8b"]
+        assert str(seen[0].url) == "http://host.docker.internal:11434/v1/models"
+        assert seen[0].headers["authorization"] == "Bearer local-key"
+
+    def test_a_connection_nobody_shared_with_you_offers_you_nothing(self, admin, seed):
+        assert app_call(admin, "Settings:Llm:Models", {
+            "connection_id": "llm_nobody_has"}).status_code == 404
+        from server.authentication.catalog import BASELINE_ACTIONS
+        assert "settings:llm:models" in BASELINE_ACTIONS

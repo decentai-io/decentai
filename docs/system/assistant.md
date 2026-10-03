@@ -226,7 +226,7 @@ the frame lists every enabled agent and the model chooses; that is the
 whole of it for a few dozen. Past the threshold `reasoning/agent_router.py`
 runs before each beat that follows a message: the person's words are
 embedded with the organization's embedding model (an LLM connection
-whose purpose is `embedding`, shared with everyone, resolved through the
+shared with everyone and one of its provider's embedding models, resolved through the
 contract's `routing.embedding` block the way the chat's model is), every
 agent is scored by its closest vector, the top `candidates` (50) are
 reranked by the chat's model when `rerank` is on (`prompts/rerank.md`),

@@ -192,7 +192,7 @@ import { ChatActivityDialogComponent } from './pages/app/ai/chat/chat-activity-d
 import { ChatActivityPanelComponent } from './pages/app/ai/chat/chat-activity-panel/chat-activity-panel.component';
 import { ChatAgentsDialogComponent } from './pages/app/ai/chat/chat-agents-dialog/chat-agents-dialog.component';
 import { ChatSkillsDialogComponent } from './pages/app/ai/chat/chat-skills-dialog/chat-skills-dialog.component';
-import { ChatLlmDialogComponent } from './pages/app/ai/chat/chat-llm-dialog/chat-llm-dialog.component';
+import { ChatModelPickerComponent } from './pages/app/ai/chat/chat-model-picker/chat-model-picker.component';
 import { ChatApprovalCardComponent } from './pages/app/ai/chat/chat-approval-card/chat-approval-card.component';
 import { FilePickerComponent } from './pages/app/ai/chat/file-picker/file-picker.component';
 import { ChatFilePickerDialogComponent } from './pages/app/ai/chat/chat-file-picker-dialog/chat-file-picker-dialog.component';
@@ -222,6 +222,8 @@ import { McpComponent } from './pages/app/data/mcp/mcp.component';
 import { MemoryComponent } from './pages/app/settings/memory/memory.component';
 import { ApiKeysComponent } from './pages/app/settings/api-keys/api-keys.component';
 import { SafetyComponent } from './pages/app/settings/safety/safety.component';
+import { ModelProvidersComponent } from './pages/app/settings/model-providers/model-providers.component';
+import { ModelSelectComponent } from './components/model-select/model-select.component';
 import { ConnectedAppsComponent } from './pages/app/settings/connected-apps/connected-apps.component';
 import { SchedulesComponent } from './pages/app/ai/schedules/schedules.component';
 import { AuditComponent } from './pages/app/ai/audit/audit.component';
@@ -271,6 +273,8 @@ import { ServiceWorkerModule } from '@angular/service-worker';
     MemoryComponent,
     ApiKeysComponent,
     SafetyComponent,
+    ModelProvidersComponent,
+    ModelSelectComponent,
     ConnectedAppsComponent,
     SchedulesComponent,
     AuditComponent,
@@ -289,7 +293,7 @@ import { ServiceWorkerModule } from '@angular/service-worker';
     ChatActivityPanelComponent,
     ChatAgentsDialogComponent,
     ChatSkillsDialogComponent,
-    ChatLlmDialogComponent,
+    ChatModelPickerComponent,
     ChatApprovalCardComponent,
     FilePickerComponent,
     ChatFilePickerDialogComponent,

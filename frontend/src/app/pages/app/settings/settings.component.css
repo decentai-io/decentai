@@ -127,6 +127,8 @@
 /* ── The editor dialog ───────────────────────────────────────────────── */
 .llm-form { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 14px; }
 .llm-form .full { grid-column: 1 / -1; }
+.llm-more > summary { cursor: pointer; }
+.llm-more > .llm-form { margin-top: 12px; }
 
 .field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
 .field-label {

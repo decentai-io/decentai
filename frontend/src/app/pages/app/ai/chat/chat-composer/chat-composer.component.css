@@ -222,6 +222,18 @@
 }
 
 /* ── Under the row: why you cannot send yet, when that is the case ── */
+/* Under the box: the model on the left, what the composer has to say
+   on the rest of the line. */
+.composer-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 4px 0;
+  min-height: 26px;
+}
+.composer-foot .composer-hint { flex: 1; min-width: 0; padding: 0; }
+.composer-foot app-chat-model-picker + .composer-hint { text-align: right; }
+
 .composer-hint {
   padding: 7px 4px 0;
   text-align: center;
