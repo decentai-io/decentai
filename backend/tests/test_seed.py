@@ -29,11 +29,12 @@ class TestInitDb:
         assert _run_init() == 0
         assert _run_init() == 0
 
-        # Two chains: FullAccess→Administrator→Administrators, and the
-        # baseline BaseAccess→User→Everyone. Re-runs must not duplicate them.
-        assert len(PolicyStore().list(seed.org["_id"])) == 2
-        assert len(RoleStore().list(seed.org["_id"])) == 2
-        assert len(GroupStore().list(seed.org["_id"])) == 2
+        # Three chains: FullAccess→Administrator→Administrators, the
+        # baseline BaseAccess→User→Everyone, and MemberAccess→Member→
+        # Members. Re-runs must not duplicate them.
+        assert len(PolicyStore().list(seed.org["_id"])) == 3
+        assert len(RoleStore().list(seed.org["_id"])) == 3
+        assert len(GroupStore().list(seed.org["_id"])) == 3
         assert len(UserStore().list(seed.org["_id"])) == 1
 
     def test_nothing_is_left_outside_an_organization(self, app, seed):
