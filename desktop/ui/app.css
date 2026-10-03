@@ -1,49 +1,32 @@
 /* The DecentAI desktop app's one window.
 
-   The brand's palette — paper, ink, one green — with a dark counterpart
-   chosen by the system. Sized for a small fixed window: one column,
+   The brand's dark palette: ink for the ground, paper for the words, one
+   green. Sized for a small fixed window: one column,
    one decision on screen at a time. Type is the system's own: the app
    must look right before anything has been downloaded. */
 
+/* One look: dark, whatever the system's own. */
 :root {
-  --paper: #f7f6f2;
-  --sheet: #ffffff;
-  --ink: #14161a;
-  --ink-soft: #4c525b;
-  --ink-faint: #6e747e;
-  --rule: #e5e1d8;
-  --rule-soft: #eeebe4;
-  --seal: #0e7c5b;
-  --seal-ink: #0b6a4e;
-  --seal-on: #ffffff;
-  --seal-wash: rgba(14, 124, 91, .08);
-  --seal-edge: rgba(14, 124, 91, .24);
-  --danger: #b31616;
-  --danger-wash: rgba(179, 22, 22, .07);
+  --paper: #0c0e11;
+  --sheet: #14171b;
+  --ink: #ecebe8;
+  --ink-soft: #a7adb6;
+  --ink-faint: #767d87;
+  --rule: #262b31;
+  --rule-soft: #1b1f24;
+  --seal: #34be91;
+  --seal-ink: #4fcf9f;
+  --seal-on: #06251b;
+  --seal-wash: rgba(52, 190, 145, .10);
+  --seal-edge: rgba(52, 190, 145, .28);
+  --danger: #f87171;
+  --danger-wash: rgba(248, 113, 113, .09);
   --display: "IBM Plex Serif", Georgia, "Times New Roman", serif;
   --body: "IBM Plex Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
   --mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
   --radius: 8px;
   --radius-lg: 12px;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --paper: #0c0e11;
-    --sheet: #14171b;
-    --ink: #ecebe8;
-    --ink-soft: #a7adb6;
-    --ink-faint: #767d87;
-    --rule: #262b31;
-    --rule-soft: #1b1f24;
-    --seal: #34be91;
-    --seal-ink: #4fcf9f;
-    --seal-on: #06251b;
-    --seal-wash: rgba(52, 190, 145, .10);
-    --seal-edge: rgba(52, 190, 145, .28);
-    --danger: #f87171;
-    --danger-wash: rgba(248, 113, 113, .09);
-  }
+  color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
@@ -57,12 +40,6 @@ body {
   font-family: var(--body); font-size: 14.5px; line-height: 1.55;
   -webkit-font-smoothing: antialiased;
   user-select: none; cursor: default;
-}
-
-.only-dark { display: none; }
-@media (prefers-color-scheme: dark) {
-  .only-light { display: none; }
-  .only-dark { display: block; }
 }
 
 /* Header */
@@ -120,7 +97,7 @@ code { font-family: var(--mono); font-size: .92em; user-select: text; }
 .btn:disabled { opacity: .45; cursor: default; }
 .btn--primary { background: var(--seal); border-color: transparent; color: var(--seal-on); }
 .btn--primary:hover:not(:disabled) { border-color: transparent; filter: brightness(1.07); }
-.btn--danger { background: var(--danger); border-color: transparent; color: #fff; }
+.btn--danger { background: var(--danger); border-color: transparent; color: #2a0707; }
 .btn--danger:hover:not(:disabled) { border-color: transparent; filter: brightness(1.07); }
 .btn--small { padding: 7px 14px; font-size: 13px; }
 .link {

@@ -6,37 +6,34 @@ computer only. How it works underneath is
 
 ## What you need
 
-- **Windows 10 or 11**, with Docker Desktop, or nothing: where Docker
-  is not running, the starter offers to install Podman with `winget`.
-  That asks for administrator rights once, and may bring the Windows
-  Subsystem for Linux up to date first — every container on the
-  computer stops for a moment, and the starter asks before it does.
+- **Windows 10 or 11**, with Docker Desktop, or nothing: where neither
+  Docker nor Podman is there, the app offers to install Podman with
+  `winget`. That asks for your permission once.
 - **A Mac** (Apple silicon or Intel), with Docker Desktop, or nothing:
-  where Docker is not running, the starter offers to install Podman with
-  Homebrew, or says where to get it.
+  the app offers to install Podman with Homebrew, or says where to get
+  it.
 - A key for the AI model you choose — Anthropic, OpenAI, OpenRouter,
   Gemini, or another OpenAI-compatible service, or a model you host
   yourself.
 
 ## Install
 
-Download the starter from the [latest release](https://github.com/decentai-io/decentai/releases/latest):
-`DecentAI-windows.zip` for Windows, `DecentAI-macos.zip` for a Mac.
-Unpack it somewhere it can stay, and open `DecentAI.cmd` (Windows) or
-`DecentAI.command` (Mac).
+Download the app from the [latest release](https://github.com/decentai-io/decentai/releases/latest):
+`DecentAI-Setup.exe` for Windows, `DecentAI.dmg` for a Mac. Open it and
+it installs like any program, with DecentAI in the Start menu (or the
+Applications folder).
 
-The files are not signed for Windows or macOS, so the system asks once
-whether to run them. On Windows choose **More info → Run anyway**. On a
-Mac the first open is refused: click **Done**, open **System Settings →
-Privacy & Security**, and under *Security* choose **Open Anyway** for
-`DecentAI.command`.
+The installers are not signed for Windows or macOS yet, so the system
+asks once whether to run them. On Windows choose **More info → Run
+anyway**. On a Mac the first open is refused: click **Done**, open
+**System Settings → Privacy & Security**, and under *Security* choose
+**Open Anyway**.
 
-The starter asks for your email and a password (ten characters or more,
-with a letter and a number), installs, and opens DecentAI in a window of
-its own at `http://localhost:4280`. It offers a shortcut — on Windows on
-the desktop and in the Start menu, on a Mac `DecentAI.app` in your
-Applications folder — and after that one click opens DecentAI, starting
-it first if it is stopped.
+Open DecentAI. It looks for Docker or Podman, starts the one it finds,
+and shows a form: your email and a password (ten characters or more,
+with a letter and a number), checked as you type. **Install DecentAI**
+downloads it, sets it up and starts it; **Open DecentAI** then shows it
+in a window of its own, at `http://localhost:4280`.
 
 The first start downloads the images, which takes a while: most of it is the
 browser the Browser agent drives; later updates download only what
@@ -54,20 +51,42 @@ changed.
 
 ## Every day
 
-On Windows `DecentAI.cmd …`; on a Mac `./DecentAI.command …`:
+The app's window says whether DecentAI is running, and has:
+
+| | Does |
+|---|---|
+| **Open DecentAI** | shows it in a window of its own |
+| **Stop**, **Start** | stops it — nothing is removed — and starts it again |
+| **Update** | appears when a newer release exists: a copy of the database is kept first, and the version you have is put back if the new one does not start |
+| **Check for updates** | looks again |
+| **Where my data is** | the places on this computer DecentAI keeps things in |
+| **Uninstall** | removes DecentAI and everything it kept, offering a copy of the database in your Documents folder first |
+
+Closing the window leaves an icon by the clock (the menu bar on a Mac),
+with Open, Start and Stop in its menu. DecentAI itself keeps running
+whether the app is open or not.
+
+## From a command line
+
+The app is the way in for a person; the same things, and a few more,
+can be asked for from a terminal with the starter scripts in the
+repository (`launcher/starter/`). On Windows `DecentAI.cmd …`; on a Mac
+`./DecentAI.command …`:
 
 | Command | Does |
 |---|---|
 | (nothing) | starts DecentAI if it is stopped, and opens it |
 | `status` | what is installed and what is running |
 | `stop` | stops it; nothing is removed |
-| `update` | installs a newer release, after asking; a copy of the database is kept first, and the old version is put back if the new one does not start |
+| `update` | installs a newer release, after asking |
 | `backup` | a copy of the database, now |
 | `stop-everything` | ends everything the agents are doing, when a chat's own Stop is not enough |
 | `reset-password` | a new password, when you have forgotten yours: it asks whose (the first person's, unless you say) and the new one twice |
 | `engine` | which engine the install is on, and why |
-| `shortcuts` | makes the shortcuts: the desktop and Start menu on Windows, `DecentAI.app` on a Mac |
 | `develop <folder>` | lets the git repositories in a folder of yours be agent sources, as `/develop` or `/develop/<its folder>`; `develop off` takes it back |
+
+An install made with a script is found by the app, and the other way
+round: both keep the same record of it.
 
 `DECENTAI_PORT` chooses another port for a first install, when 4280 is
 taken. `DECENTAI_DNS` says where DecentAI looks names up: addresses of
@@ -113,8 +132,14 @@ DECENTAI_UNSIGNED=1 ./launcher/starter/macos/DecentAI.command
 
 ## If something does not start
 
-- **The starter says the engine did not start.** Open Docker Desktop
-  (or `podman machine start`) and run the starter again. An install
+What the app asked for and what it was answered is kept in `app.log`,
+beside what it remembers (**Where my data is** says where). It is what
+to send when asking for help.
+
+
+- **The app says the engine is not running.** **Start** it from the
+  app, or open Docker Desktop (or run `podman machine start`) and look
+  again. An install
   made on one engine is never started on the other.
 - **`status` shows a service that is not healthy.** `update --again`
   reinstalls the same version with a fresh copy of the database kept.

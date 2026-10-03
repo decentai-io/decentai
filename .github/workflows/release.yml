@@ -1,5 +1,5 @@
 # A release: the images, the signed file that names them, and the
-# starters a person downloads. Runs when a version is tagged (v1.4.0).
+# desktop app a person downloads. Runs when a version is tagged (v1.4.0).
 #
 # What it needs of the repository:
 #   - the secret RELEASE_SIGNING_KEY: the private half of a key whose
@@ -77,27 +77,8 @@ jobs:
           push: true
           tags: ${{ env.REGISTRY }}/decentai-caddy:${{ steps.version.outputs.number }}
 
-      # The file names each image by its digest, so what is signed is
-      # what is installed. It is read back with the keys the launcher
-      # carries: a key no launcher accepts fails the release here.
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: The release file, signed
-        working-directory: launcher
-        env:
-          DECENTAI_RELEASE_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
-        run: |
-          pip install --quiet cryptography
-          python -m launcher.publish release release.json \
-            --version "${{ steps.version.outputs.number }}" \
-            --backend "${REGISTRY}/decentai-backend@${{ steps.backend.outputs.digest }}" \
-            --runtime "${REGISTRY}/decentai-ai-runtime@${{ steps.runtime.outputs.digest }}" \
-            --frontend "${REGISTRY}/decentai-caddy@${{ steps.frontend.outputs.digest }}" \
-            --notes "${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ github.ref_name }}"
-
-      # The launcher is built after the file, which it carries, and
-      # knowing where later releases will be published.
+      # The launcher, knowing where later releases will be published.
+      # It is built before the release file, which names it.
       - name: Launcher image
         id: launcher
         uses: docker/build-push-action@v6
@@ -111,6 +92,21 @@ jobs:
           build-args: |
             RELEASE_URL=${{ github.server_url }}/${{ github.repository }}/releases/latest/download/release.json
           tags: ${{ env.REGISTRY }}/decentai-launcher:${{ steps.version.outputs.number }}
+
+      # The file names each image, the launcher's among them, by its
+      # digest, so what is signed is what is installed. It is read back
+      # with the keys the launcher and the app carry: a key neither
+      # accepts fails the release here.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: The release file, signed
+        working-directory: launcher
+        env:
+          DECENTAI_RELEASE_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
+        run: |
+          pip install --quiet cryptography
+          python -m launcher.publish release release.json             --version "${{ steps.version.outputs.number }}"             --backend "${REGISTRY}/decentai-backend@${{ steps.backend.outputs.digest }}"             --runtime "${REGISTRY}/decentai-ai-runtime@${{ steps.runtime.outputs.digest }}"             --frontend "${REGISTRY}/decentai-caddy@${{ steps.frontend.outputs.digest }}"             --launcher "${REGISTRY}/decentai-launcher@${{ steps.launcher.outputs.digest }}"             --notes "${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ github.ref_name }}"
 
       # The starters, with the launcher they start written into them by
       # its digest in place of a build of one's own.
@@ -139,3 +135,55 @@ jobs:
             out/release.json out/release.json.sig \
             --title "DecentAI ${{ steps.version.outputs.number }}" \
             --generate-notes
+
+  # The desktop app, for each system it runs on: an installer a person
+  # downloads once. Built after the release is out, and added to it, so
+  # that an installer that fails to build does not hold a release back.
+  app:
+    needs: release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - system: windows-latest
+            built: desktop/src-tauri/target/release/bundle/nsis/*-setup.exe
+            name: DecentAI-Setup.exe
+            arguments: ""
+          - system: macos-latest
+            built: desktop/src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
+            name: DecentAI.dmg
+            arguments: "--target universal-apple-darwin"
+    runs-on: ${{ matrix.system }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.system == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri
+
+      - name: The app's version is the release's
+        shell: bash
+        working-directory: desktop/src-tauri
+        run: |
+          jq --arg version "${GITHUB_REF_NAME#v}" '.version = $version' tauri.conf.json > versioned.json
+          mv versioned.json tauri.conf.json
+
+      - name: Build
+        shell: bash
+        working-directory: desktop
+        run: |
+          npm ci
+          npx tauri build ${{ matrix.arguments }}
+
+      - name: Add it to the release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cp ${{ matrix.built }} "${{ matrix.name }}"
+          gh release upload "${GITHUB_REF_NAME}" "${{ matrix.name }}" --clobber
