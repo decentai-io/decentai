@@ -9,4 +9,4 @@
 docs/system/desktop-install.md describes it.
 """
 
-VERSION = "0.2.0"
+VERSION = "0.2.1"
