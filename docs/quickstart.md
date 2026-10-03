@@ -80,7 +80,9 @@ internal authority, so the browser warns once; accept it. Sign in with
 ## 5. Give it a model
 
 **Settings → Language models → New connection.** Choose the provider —
-its address is filled in; a service that is not listed and speaks
+its address is filled in, with a `<blank>` left for you where it differs
+per account, such as Amazon Bedrock's region; a service that is not
+listed and speaks
 OpenAI's protocol is *Custom / OpenAI-compatible*, with its address
 typed — name the model exactly as the provider names it, paste the key,
 save.

@@ -16,6 +16,7 @@ describe('SettingsComponent', () => {
     { id: 'anthropic', name: 'Anthropic', protocol: 'anthropic', endpoint: 'https://api.anthropic.com' },
     { id: 'openrouter', name: 'OpenRouter', protocol: 'openai', endpoint: 'https://openrouter.ai/api/v1' },
     { id: 'together', name: 'Together AI', protocol: 'openai', endpoint: 'https://api.together.xyz/v1' },
+    { id: 'amazon-bedrock', name: 'Amazon Bedrock', protocol: 'bedrock', endpoint: 'https://bedrock-runtime.<aws-region>.amazonaws.com' },
     { id: 'openai_compatible', name: 'Custom / OpenAI-compatible', protocol: 'openai', endpoint: '' },
   ];
 
@@ -81,6 +82,21 @@ describe('SettingsComponent', () => {
     component.draft.endpoint = 'https://my-gateway.example/v1';
     component.selectProvider('openrouter');
     expect(component.draft.endpoint).toBe('https://my-gateway.example/v1');
+  });
+
+  it('holds a connection back until the blanks in its endpoint are filled in', () => {
+    const component = create();
+    component.startCreate();
+    component.draft.name = 'Bedrock';
+    component.draft.model = 'us.anthropic.claude-sonnet-4-5-20250929-v1:0';
+    component.draft.api_key = 'key';
+    component.selectProvider('amazon-bedrock');
+    expect(component.draft.endpoint).toContain('<aws-region>');
+    expect(component.blocker).toContain('Fill in the endpoint');
+    expect(component.endpointHelp).toContain('your region');
+
+    component.draft.endpoint = 'https://bedrock-runtime.eu-west-1.amazonaws.com';
+    expect(component.blocker).toBe('');
   });
 
   it('keeps saved endpoints when opening the editor', () => {

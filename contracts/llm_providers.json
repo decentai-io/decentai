@@ -114,6 +114,12 @@
       "endpoint": "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1"
     },
     {
+      "id": "amazon-bedrock",
+      "name": "Amazon Bedrock",
+      "protocol": "bedrock",
+      "endpoint": "https://bedrock-runtime.<aws-region>.amazonaws.com"
+    },
+    {
       "id": "ambient",
       "name": "Ambient",
       "protocol": "openai",
@@ -148,6 +154,12 @@
       "name": "Auriko",
       "protocol": "openai",
       "endpoint": "https://api.auriko.ai/v1"
+    },
+    {
+      "id": "azure",
+      "name": "Azure",
+      "protocol": "openai",
+      "endpoint": "https://<azure-resource-name>.openai.azure.com/openai/v1"
     },
     {
       "id": "bailing",
@@ -228,6 +240,12 @@
       "endpoint": "https://api-sherlock.cloudferro.com/openai/v1/"
     },
     {
+      "id": "cloudflare-workers-ai",
+      "name": "Cloudflare Workers AI",
+      "protocol": "openai",
+      "endpoint": "https://api.cloudflare.com/client/v4/accounts/<cloudflare-account-id>/ai/v1"
+    },
+    {
       "id": "cohere",
       "name": "Cohere",
       "protocol": "openai",
@@ -280,6 +298,12 @@
       "name": "DaoXE",
       "protocol": "openai",
       "endpoint": "https://daoxe.com/v1"
+    },
+    {
+      "id": "databricks",
+      "name": "Databricks",
+      "protocol": "openai",
+      "endpoint": "https://<databricks-host>/ai-gateway/mlflow/v1"
     },
     {
       "id": "deepinfra",
@@ -466,6 +490,12 @@
       "name": "InferX",
       "protocol": "openai",
       "endpoint": "https://model.inferx.net/endpoints/v1"
+    },
+    {
+      "id": "infomaniak",
+      "name": "Infomaniak",
+      "protocol": "openai",
+      "endpoint": "https://api.infomaniak.com/2/ai/<infomaniak-product-id>/openai/v1"
     },
     {
       "id": "io-net",
@@ -904,6 +934,12 @@
       "name": "SiliconFlow (China)",
       "protocol": "openai",
       "endpoint": "https://api.siliconflow.cn/v1"
+    },
+    {
+      "id": "snowflake-cortex",
+      "name": "Snowflake Cortex",
+      "protocol": "openai",
+      "endpoint": "https://<snowflake-account>.snowflakecomputing.com/api/v2/cortex/v1"
     },
     {
       "id": "stackit",

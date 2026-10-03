@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from ai_runtime.llms.connector import (
     AnthropicConnector,
+    BedrockConnector,
     FakeConnector,
     OpenAIConnector,
 )
@@ -17,7 +18,7 @@ class LLMConnectorFactory:
 
     Which providers exist is the catalog's to say
     (contracts/llm_providers.py); this class knows only which connector
-    speaks each of the two protocols a provider there may name. So a
+    speaks each of the protocols a provider there may name. So a
     provider that answers one of them is an entry in the catalog and no
     line here, and a provider with a protocol of its own is a connector
     and a line in ``PROTOCOLS``.
@@ -26,6 +27,7 @@ class LLMConnectorFactory:
     PROTOCOLS = {
         "openai": OpenAIConnector,
         "anthropic": AnthropicConnector,
+        "bedrock": BedrockConnector,
     }
 
     #: Scripted, no network, and in no catalog: nobody is offered it on
@@ -58,4 +60,8 @@ class LLMConnectorFactory:
         if provider not in cls.OWN_ADDRESS and not str(
                 config.get("endpoint") or "").strip():
             raise ValueError(f"{provider} requires endpoint")
+        if LlmProviders.unfilled(config.get("endpoint")):
+            raise ValueError(
+                f"{provider}'s endpoint still has a blank to fill in "
+                f"({config.get('endpoint')})")
         return connector_class(config)

@@ -1,6 +1,7 @@
 """One connector per provider, and what they all have in common.
 
     anthropic.py     system prompt is a top-level parameter, not a message
+    bedrock.py       Amazon's Converse: blocks, toolSpec, the model in the address
     openai.py        ...and every server that speaks its protocol
     fake.py          scripted, no network — see its own docstring
 
@@ -34,11 +35,13 @@ through.
 """
 
 from ai_runtime.llms.connector.anthropic import AnthropicConnector
+from ai_runtime.llms.connector.bedrock import BedrockConnector
 from ai_runtime.llms.connector.fake import FakeConnector
 from ai_runtime.llms.connector.openai import OpenAIConnector
 
 __all__ = [
     "AnthropicConnector",
+    "BedrockConnector",
     "FakeConnector",
     "OpenAIConnector",
 ]

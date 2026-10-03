@@ -83,8 +83,13 @@ export class SettingsComponent extends DataPageBase implements OnInit, OnDestroy
   }
 
   get endpointHelp(): string {
-    return this.draft.provider === 'openai_compatible'
-      ? 'Enter your OpenAI-compatible API base URL, including its version path.'
+    if (this.draft.provider === 'openai_compatible') {
+      return 'Enter your OpenAI-compatible API base URL, including its version path.';
+    }
+    // An address that differs per customer arrives with its blanks marked.
+    const preset = this.providers.find(p => p.id === this.draft.provider)?.endpoint ?? '';
+    return /[<>]/.test(preset)
+      ? 'Replace each <...> in the endpoint with your own value — your region, account or resource name.'
       : 'The provider endpoint is filled in for you. You can change it to use your own gateway.';
   }
 
@@ -610,6 +615,9 @@ export class SettingsComponent extends DataPageBase implements OnInit, OnDestroy
       return 'Name the model — the provider’s own name, copied exactly.';
     }
     if (!this.draft.endpoint.trim()) return 'Endpoint is required.';
+    if (/[<>]/.test(this.draft.endpoint)) {
+      return 'Fill in the endpoint: replace each <...> with your own account’s value.';
+    }
     if (this.isCreating && !this.draft.api_key.trim()) {
       return 'The API key is required.';
     }

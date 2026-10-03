@@ -115,9 +115,21 @@ class TestValidation:
             assert response.json()["connection"]["keys"]["provider"] == provider
 
     def test_a_provider_outside_the_catalog_is_refused_and_told_the_way_in(self, admin, seed):
-        refused = make_connection(admin, provider="amazon-bedrock")
+        refused = make_connection(admin, provider="google-vertex")
         assert refused.status_code == 400
         assert "openai_compatible" in refused.json()["error"]
+
+    def test_an_endpoint_with_a_blank_left_in_it_is_refused(self, admin, seed):
+        refused = make_connection(
+            admin, provider="amazon-bedrock",
+            endpoint="https://bedrock-runtime.<aws-region>.amazonaws.com")
+        assert refused.status_code == 400
+        assert "blank to fill in" in refused.json()["error"]
+        saved = make_connection(
+            admin, provider="amazon-bedrock",
+            endpoint="https://bedrock-runtime.eu-west-1.amazonaws.com")
+        assert saved.status_code == 200, saved.text
+        assert saved.json()["connection"]["keys"]["provider"] == "amazon-bedrock"
 
     def test_endpoint_is_required_on_create_and_cannot_be_cleared(self, admin, seed):
         for endpoint in (None, "", "   "):
@@ -185,7 +197,8 @@ class TestTheCatalog:
         for entry in served[:12]:
             response = make_connection(
                 admin, name=entry["id"], provider=entry["id"],
-                endpoint=entry["endpoint"] or "https://gateway.example.test/v1")
+                endpoint=entry["endpoint"].replace("<", "").replace(">", "")
+                or "https://gateway.example.test/v1")
             assert response.status_code == 200, (entry["id"], response.text)
 
     def test_seeing_the_catalog_is_every_members_like_seeing_connections(self):

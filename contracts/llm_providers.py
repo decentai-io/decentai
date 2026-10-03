@@ -11,9 +11,12 @@ The list is ``llm_providers.json`` beside this file, written by
 
     id        what a connection stores
     name      what a person reads
-    protocol  ``openai`` (chat completions) or ``anthropic`` (messages)
-    endpoint  where the provider answers; empty for the custom entry,
-              whose address is the person's to type
+    protocol  ``openai`` (chat completions), ``anthropic`` (messages)
+              or ``bedrock`` (Amazon's Converse)
+    endpoint  where the provider answers. A ``<blank>`` in it is the
+              customer's own part — an account, a region — which the
+              person fills in; the custom entry's is empty, the whole
+              address being theirs to type
 
 This module holds no key and reaches no network, and it does not decide
 where a chat's request goes: a connection carries its own endpoint, which
@@ -30,7 +33,7 @@ from typing import Any, ClassVar, Dict, List, Optional, Tuple
 
 class LlmProviders:
     PATH: ClassVar[Path] = Path(__file__).with_name("llm_providers.json")
-    PROTOCOLS: ClassVar[Tuple[str, ...]] = ("openai", "anthropic")
+    PROTOCOLS: ClassVar[Tuple[str, ...]] = ("openai", "anthropic", "bedrock")
 
     _entries: ClassVar[Optional[Dict[str, Dict[str, str]]]] = None
 
@@ -51,6 +54,11 @@ class LlmProviders:
     @classmethod
     def ids(cls) -> Tuple[str, ...]:
         return tuple(cls._load())
+
+    @staticmethod
+    def unfilled(endpoint: Any) -> bool:
+        """Whether an address still carries a blank from the catalog."""
+        return "<" in str(endpoint or "") or ">" in str(endpoint or "")
 
     @classmethod
     def find(cls, provider: Any) -> Optional[Dict[str, str]]:

@@ -145,6 +145,10 @@ class LlmConnectionStore(OrgScopedStore):
             endpoint = str(fields.get("endpoint") or "").strip()
             if not endpoint:
                 raise ValueError("Endpoint is required.")
+            if LlmProviders.unfilled(endpoint):
+                raise ValueError(
+                    "The endpoint still has a blank to fill in: replace "
+                    "each <...> with your own account's value.")
             cleaned["endpoint"] = endpoint
         if "reasoning_effort" in fields:
             # How hard a reasoning model thinks before each beat. Blank

@@ -17,14 +17,20 @@ same providers as any other, and what a deployment offers is what was
 reviewed in a commit. Refreshing it is running this again and reading
 the diff.
 
+An address that differs per customer carries a ``${NAME}`` in
+models.dev; here it becomes ``<name>``, a blank the person fills in on
+the form. The angle brackets cannot be part of an address, so a
+connection saved with one still in it is refused rather than tried.
+
 What it deliberately leaves out:
 
-- A provider with a protocol of its own, or a way of signing in that is
-  not a key — Amazon Bedrock, Google Vertex, Azure, GitHub Copilot. Each
-  would be a connector, and a connector is code somebody reviews.
-- A provider whose address differs per customer (it carries a
-  ``${...}`` in models.dev), and one that is on the person's own machine.
-  Both are reached with ``openai_compatible`` and the address typed.
+- A provider reached only by signing in, or by a credential that is not
+  one string a person can paste — GitHub Copilot, Google Vertex. Amazon
+  Bedrock is here because it issues an API key; its protocol is its own,
+  so it names the connector written for it.
+- A model on the person's own machine. It is reached with
+  ``openai_compatible`` and the address typed, since where that machine
+  is, as seen from the platform, is nothing a catalog can know.
 - Models. A connection names its model in the provider's own words, and
   a list kept here would be out of date the week it was written.
 """
@@ -32,6 +38,7 @@ What it deliberately leaves out:
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 import tomllib
@@ -71,7 +78,12 @@ class ProviderCatalogWriter:
         "deepinfra": ("openai", "https://api.deepinfra.com/v1/openai"),
         "perplexity": ("openai", "https://api.perplexity.ai"),
         "togetherai": ("openai", "https://api.together.xyz/v1"),
+        "azure": ("openai", "https://${AZURE_RESOURCE_NAME}.openai.azure.com/openai/v1"),
+        "amazon-bedrock": ("bedrock", "https://bedrock-runtime.${AWS_REGION}.amazonaws.com"),
     }
+
+    #: ``${ACCOUNT_ID}``, as models.dev marks what differs per customer.
+    BLANK = re.compile(r"\$\{([A-Za-z0-9_]+)\}")
 
     #: Listed in models.dev with an address, and not reachable with a
     #: key: the person signs in, and the token is exchanged for another.
@@ -122,24 +134,31 @@ class ProviderCatalogWriter:
                 "id": renamed[0] if renamed else provider_id,
                 "name": renamed[1] if len(renamed) > 1 else name,
                 "protocol": protocol,
-                "endpoint": endpoint,
+                "endpoint": self._with_blanks(endpoint),
             }
         protocol = self.PROTOCOLS.get(str(declared.get("npm") or ""))
         endpoint = str(declared.get("api") or "").strip()
-        if protocol is None or not self._same_for_everyone(endpoint):
+        if protocol is None or not self._public(endpoint):
             return None
         return {
             "id": provider_id,
             "name": name,
             "protocol": protocol,
-            "endpoint": self._for_connector(protocol, endpoint),
+            "endpoint": self._with_blanks(self._for_connector(protocol, endpoint)),
         }
 
+    @classmethod
+    def _with_blanks(cls, endpoint: str) -> str:
+        """``${ACCOUNT_ID}`` as ``<account-id>``: what the person reads
+        on the form, and what the store knows was not filled in."""
+        return cls.BLANK.sub(
+            lambda found: "<" + found.group(1).lower().replace("_", "-") + ">",
+            endpoint)
+
     @staticmethod
-    def _same_for_everyone(endpoint: str) -> bool:
-        """A public address with nothing left to fill in."""
-        if not endpoint or "${" in endpoint:
-            return False
+    def _public(endpoint: str) -> bool:
+        """An https address that is not this machine's. One that begins
+        with a blank has no scheme to check and is left out."""
         parts = urlsplit(endpoint)
         host = (parts.hostname or "").lower()
         return parts.scheme == "https" and host not in ("", "localhost") \

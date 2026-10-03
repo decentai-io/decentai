@@ -36,9 +36,10 @@ export interface LlmConnection {
 export interface LlmProvider {
   id: string;
   name: string;
-  protocol: 'openai' | 'anthropic';
-  /** Where the provider answers; empty for the custom entry, whose
-   *  address the person types. */
+  protocol: 'openai' | 'anthropic' | 'bedrock';
+  /** Where the provider answers. A `<blank>` in it is the customer's
+   *  own part (an account, a region) and is filled in on the form; the
+   *  custom entry's is empty, the whole address being the person's. */
   endpoint: string;
 }
 

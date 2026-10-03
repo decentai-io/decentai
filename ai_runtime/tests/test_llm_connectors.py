@@ -8,6 +8,7 @@ import pytest
 
 from ai_runtime.llms import (
     AnthropicConnector,
+    BedrockConnector,
     FakeConnector,
     LLMConnectorFactory,
     OpenAIConnector,
@@ -55,11 +56,14 @@ class TestTheCatalog:
     the backend, the page and this factory."""
 
     def test_every_provider_in_the_catalog_gets_the_connector_of_its_protocol(self):
-        speaks = {"openai": OpenAIConnector, "anthropic": AnthropicConnector}
+        speaks = {"openai": OpenAIConnector, "anthropic": AnthropicConnector,
+                  "bedrock": BedrockConnector}
+        assert set(speaks) == set(LlmProviders.PROTOCOLS)
         for entry in LlmProviders.all():
+            filled = entry["endpoint"].replace("<", "").replace(">", "")
             connector = LLMConnectorFactory.create({
                 "provider": entry["id"], "api_key": "k", "model": "m",
-                "endpoint": entry["endpoint"] or "https://gateway.example.test/v1",
+                "endpoint": filled or "https://gateway.example.test/v1",
             })
             assert type(connector) is speaks[entry["protocol"]], entry["id"]
 
@@ -73,6 +77,18 @@ class TestTheCatalog:
             if entry["id"] != "openai_compatible":
                 assert entry["endpoint"].startswith("https://"), entry["id"]
                 assert "${" not in entry["endpoint"], entry["id"]
+
+    def test_an_address_with_a_blank_left_in_it_is_refused_not_tried(self):
+        # <aws-region> is the person's to fill in; a request to an
+        # address that still carries it could only fail somewhere less
+        # clear than here.
+        bedrock = LlmProviders.find("amazon-bedrock")
+        assert LlmProviders.unfilled(bedrock["endpoint"])
+        with pytest.raises(ValueError, match="blank to fill in"):
+            LLMConnectorFactory.create({
+                "provider": "amazon-bedrock", "api_key": "k", "model": "m",
+                "endpoint": bedrock["endpoint"]})
+        assert not LlmProviders.unfilled("https://bedrock-runtime.eu-west-1.amazonaws.com")
 
     def test_only_the_custom_entry_leaves_its_address_to_the_person(self):
         blank = [entry["id"] for entry in LlmProviders.all() if not entry["endpoint"]]
@@ -136,12 +152,25 @@ class TestWritingTheCatalog:
         assert kept["acme"]["protocol"] == "anthropic"
         assert kept["acme"]["endpoint"] == "https://api.acme.example/anthropic"
 
+    def test_what_differs_per_customer_is_kept_as_a_blank_to_fill_in(self, tmp_path):
+        kept = self.checkout(tmp_path, acme=(
+            'name = "Acme"\nnpm = "@ai-sdk/openai-compatible"\n'
+            'api = "https://${ACME_ACCOUNT_ID}.acme.example/v1"\n'))
+        assert kept["acme"]["endpoint"] == "https://<acme-account-id>.acme.example/v1"
+
+    def test_bedrock_names_its_own_protocol_and_leaves_the_region_blank(self, tmp_path):
+        kept = self.checkout(
+            tmp_path, amazon_bedrock='name = "Amazon Bedrock"\nnpm = "@ai-sdk/amazon-bedrock"\n')
+        assert kept["amazon-bedrock"] == {
+            "id": "amazon-bedrock", "name": "Amazon Bedrock", "protocol": "bedrock",
+            "endpoint": "https://bedrock-runtime.<aws-region>.amazonaws.com"}
+
     def test_what_no_connector_reaches_as_it_is_is_left_out(self, tmp_path):
         kept = self.checkout(
             tmp_path,
-            own_protocol='name = "A"\nnpm = "@ai-sdk/amazon-bedrock"\n',
-            per_customer=('name = "B"\nnpm = "@ai-sdk/openai-compatible"\n'
-                          'api = "https://${ACCOUNT}.b.example/v1"\n'),
+            own_protocol='name = "A"\nnpm = "@ai-sdk/google-vertex"\n',
+            no_scheme=('name = "B"\nnpm = "@ai-sdk/openai-compatible"\n'
+                       'api = "${GATEWAY_BASE_URL}/v1"\n'),
             this_machine=('name = "C"\nnpm = "@ai-sdk/openai-compatible"\n'
                           'api = "http://127.0.0.1:1234/v1"\n'),
             github_copilot=('name = "D"\nnpm = "@ai-sdk/openai-compatible"\n'
@@ -172,6 +201,124 @@ class TestWritingTheCatalog:
         assert document["providers"][-1] == ProviderCatalogWriter.CUSTOM
         names = [entry["name"].casefold() for entry in document["providers"][:-1]]
         assert names == sorted(names)
+
+
+class TestBedrock:
+    """Converse: Bedrock's own request shape, with a Bedrock API key as
+    the bearer."""
+
+    ENDPOINT = "https://bedrock-runtime.eu-west-1.amazonaws.com"
+    MODEL = "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
+
+    def connector(self, respond, seen):
+        import httpx
+
+        def handler(request):
+            seen.append(request)
+            return respond(request)
+
+        connector = LLMConnectorFactory.create({
+            "provider": "amazon-bedrock", "endpoint": self.ENDPOINT + "/",
+            "api_key": "bedrock-api-key-test", "model": self.MODEL})
+        connector._client = lambda: httpx.AsyncClient(
+            transport=httpx.MockTransport(handler))
+        return connector
+
+    @staticmethod
+    def answer(content, stop="end_turn"):
+        import httpx
+        return lambda request: httpx.Response(200, json={
+            "output": {"message": {"role": "assistant", "content": content}},
+            "stopReason": stop})
+
+    def test_the_model_is_in_the_address_and_the_key_is_the_bearer(self):
+        seen = []
+        connector = self.connector(self.answer([{"text": "ready"}]), seen)
+        reply = run(connector.chat([
+            {"role": "system", "content": "Be brief."},
+            {"role": "user", "content": "Say ready."}], max_tokens=64))
+        request = seen[0]
+        assert str(request.url) == (
+            self.ENDPOINT + "/model/us.anthropic.claude-sonnet-4-5-20250929-v1%3A0/converse")
+        assert request.headers["authorization"] == "Bearer bedrock-api-key-test"
+        body = json.loads(request.content)
+        assert body["system"] == [{"text": "Be brief."}]
+        assert body["messages"] == [{"role": "user", "content": [{"text": "Say ready."}]}]
+        assert body["inferenceConfig"] == {"maxTokens": 64}
+        assert "toolConfig" not in body
+        assert reply.content == "ready" and reply.stop_reason == "end_turn"
+
+    def test_an_arn_stays_one_segment_of_the_address(self):
+        seen = []
+        connector = self.connector(self.answer([{"text": "ok"}]), seen)
+        connector.model = "arn:aws:bedrock:eu-west-1:1:inference-profile/eu.model"
+        run(connector.chat([{"role": "user", "content": "hi"}]))
+        assert seen[0].url.raw_path.decode().endswith(
+            "/model/arn%3Aaws%3Abedrock%3Aeu-west-1%3A1%3Ainference-profile%2Feu.model/converse")
+
+    def test_tools_go_as_tool_specs_and_a_tool_use_comes_back_as_the_action(self):
+        seen = []
+        connector = self.connector(self.answer(
+            [{"text": "Looking."},
+             {"toolUse": {"toolUseId": "t1", "name": "lookup", "input": {"query": "hello"}}}],
+            stop="tool_use"), seen)
+        reply = run(connector.chat([{"role": "user", "content": "Find hello"}], tools=[{
+            "type": "function", "function": {"name": "lookup", "description": "Look up.",
+                "parameters": {"type": "object", "properties": {"query": {"type": "string"}}}}}]))
+        body = json.loads(seen[0].content)
+        assert body["toolConfig"] == {
+            "toolChoice": {"any": {}},
+            "tools": [{"toolSpec": {"name": "lookup", "description": "Look up.",
+                "inputSchema": {"json": {"type": "object",
+                                         "properties": {"query": {"type": "string"}}}}}}]}
+        assert reply.calls == [{"name": "lookup", "arguments": {"query": "hello"}}]
+        assert json.loads(reply.content) == {"action": "lookup", "query": "hello"}
+
+    def test_two_turns_of_one_role_reach_converse_as_one(self):
+        # The transcript carries observations as user turns after user
+        # turns; Converse refuses a conversation that does not alternate.
+        system, messages = BedrockConnector.split_messages([
+            {"role": "system", "content": "A"},
+            {"role": "user", "content": "one"},
+            {"role": "user", "content": [{"type": "text", "text": "two"}]},
+            {"role": "assistant", "content": "three"},
+            {"role": "tool", "content": "four"},
+            {"role": "user", "content": ""},
+        ])
+        assert system == [{"text": "A"}]
+        assert messages == [
+            {"role": "user", "content": [{"text": "one"}, {"text": "two"}]},
+            {"role": "assistant", "content": [{"text": "three"}]},
+            {"role": "user", "content": [{"text": "four"}]},
+        ]
+
+    def test_a_picture_is_named_by_its_format_and_travels_as_it_was_made(self):
+        block = BedrockConnector.image_block("image/jpeg", "QUJD")
+        assert block == {"image": {"format": "jpeg", "source": {"bytes": "QUJD"}}}
+        _, messages = BedrockConnector.split_messages([
+            {"role": "user", "content": [{"type": "text", "text": "What is this?"}, block]}])
+        assert messages[0]["content"] == [{"text": "What is this?"}, block]
+
+    def test_a_refusal_is_raised_in_bedrocks_own_words(self):
+        import httpx
+        connector = self.connector(lambda request: httpx.Response(
+            400, json={"message": "Input is too long for requested model."}), [])
+        from ai_runtime.llms.connector.tools import is_context_overflow
+        with pytest.raises(Exception, match="Bedrock answered 400") as refused:
+            run(connector.chat([{"role": "user", "content": "hi"}]))
+        assert is_context_overflow(refused.value)
+
+    def test_a_reply_cut_at_the_cap_says_so_in_the_word_the_cycle_knows(self):
+        connector = self.connector(self.answer([{"text": "half"}], stop="max_tokens"), [])
+        assert run(connector.chat([{"role": "user", "content": "hi"}])).stop_reason == "max_tokens"
+
+    def test_key_model_and_endpoint_are_all_required(self):
+        for missing in ("api_key", "model", "endpoint"):
+            config = {"provider": "amazon-bedrock", "api_key": "k", "model": "m",
+                      "endpoint": self.ENDPOINT}
+            config.pop(missing)
+            with pytest.raises(ValueError, match=missing):
+                LLMConnectorFactory.create(config)
 
 
 class TestPictures:
