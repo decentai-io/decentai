@@ -1,6 +1,6 @@
 <!-- chat-composer.component.html -->
 <!-- One row: attach, what you write, send. Attachments wait above it as
-     chips until the message goes. -->
+     chips until the message goes; the model is named on the line below. -->
 <div class="composer_wrapper">
   @if (userUploads.length > 0) {
     <ul class="composer-attachments" aria-label="Attachments">
@@ -143,9 +143,15 @@
     </button>
   </div>
 
-  @if (hint || notice || isUploading || recording || transcribing) {
-    <div class="composer-hint" [class.is-unavailable]="disabled || isUploading">
-      {{ isUploading ? 'Uploading attachments…' : recording ? 'Listening… press the square to stop' : transcribing ? 'Writing it down…' : notice || hint }}
+  @if (modelPicker || hint || notice || isUploading || recording || transcribing) {
+    <div class="composer-foot">
+      @if (modelPicker) {
+        <app-chat-model-picker [llm]="llm" [disabled]="modelLocked"
+                               (chosen)="modelChosen.emit($event)"></app-chat-model-picker>
+      }
+      <div class="composer-hint" [class.is-unavailable]="disabled || isUploading">
+        {{ isUploading ? 'Uploading attachments…' : recording ? 'Listening… press the square to stop' : transcribing ? 'Writing it down…' : notice || hint }}
+      </div>
     </div>
   }
 </div>

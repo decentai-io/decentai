@@ -79,7 +79,7 @@ class TestAModelThatDoesNotAnswer:
     def test_a_refused_key_says_so_with_the_providers_words(self):
         said = self.said_after(self.Refusal(401, "invalid x-api-key"))
         assert "refused the API key" in said and "invalid x-api-key" in said
-        assert "Settings → Language models" in said
+        assert "Settings → Model providers" in said
 
     def test_an_unknown_model_and_an_empty_account_are_told_apart(self):
         assert "does not know this model" in self.said_after(

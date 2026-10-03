@@ -1,0 +1,79 @@
+<div class="model-picker">
+  <button type="button" class="model-chip" [class.is-unset]="!llm?.model"
+          [disabled]="disabled" (click)="toggle()"
+          aria-haspopup="listbox" [attr.aria-expanded]="open"
+          [attr.aria-label]="'Model: ' + label">
+    <lucide-icon name="brain-circuit" [size]="14"></lucide-icon>
+    <span class="model-chip-name">{{ label }}</span>
+    <lucide-icon name="chevron-down" [size]="13"></lucide-icon>
+  </button>
+
+  <!-- How hard a model that thinks before answering is asked to. -->
+  @if (efforts.length) {
+    <select class="model-effort" aria-label="Reasoning effort" [disabled]="disabled"
+            [ngModel]="llm?.reasoning_effort || ''" (ngModelChange)="chooseEffort($event)">
+      <option value="">Default effort</option>
+      @for (effort of efforts; track effort) {
+        <option [value]="effort">{{ effortLabel(effort) }}</option>
+      }
+    </select>
+  }
+
+  @if (open) {
+    <div class="model-panel" [class.is-below]="below" [style.max-height.px]="panelHeight"
+         role="dialog" aria-label="Choose a model">
+      <label class="model-search">
+        <lucide-icon name="search" [size]="14"></lucide-icon>
+        <input type="text" [(ngModel)]="query" placeholder="Search models"
+               aria-label="Search models" #search />
+      </label>
+
+      <div class="model-list" role="listbox">
+        @if (loading && !groups.length) {
+          <p class="model-note">Loading models…</p>
+        } @else if (!groups.length) {
+          <p class="model-note">
+            No provider yet. Add one and paste its key, and its models
+            are listed here.
+          </p>
+        } @else if (!visible.length) {
+          <p class="model-note">No model matches "{{ query }}".</p>
+        }
+
+        @if (recent.length) {
+          <p class="model-group">Recent</p>
+          @for (entry of recent; track entry.connection.resource_ref + entry.model.id) {
+            <button type="button" class="model-option" role="option"
+                    [attr.aria-selected]="isCurrent(entry.connection, entry.model)"
+                    (click)="choose(entry.connection, entry.model)">
+              <span class="model-name">{{ entry.model.name }}</span>
+              <span class="model-of">{{ entry.connection.name }}</span>
+              @if (isCurrent(entry.connection, entry.model)) {
+                <lucide-icon name="check" [size]="14"></lucide-icon>
+              }
+            </button>
+          }
+        }
+
+        @for (group of visible; track group.connection.resource_ref) {
+          <p class="model-group">{{ group.connection.name }}</p>
+          @for (model of group.models; track model.id) {
+            <button type="button" class="model-option" role="option"
+                    [attr.aria-selected]="isCurrent(group.connection, model)"
+                    (click)="choose(group.connection, model)">
+              <span class="model-name">{{ model.name }}</span>
+              @if (isCurrent(group.connection, model)) {
+                <lucide-icon name="check" [size]="14"></lucide-icon>
+              }
+            </button>
+          }
+        }
+      </div>
+
+      <a class="model-add" routerLink="/settings" (click)="close()">
+        <lucide-icon name="plus" [size]="14"></lucide-icon>
+        Add a provider
+      </a>
+    </div>
+  }
+</div>

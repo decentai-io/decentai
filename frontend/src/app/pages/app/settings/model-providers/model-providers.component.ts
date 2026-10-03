@@ -126,7 +126,11 @@ export class ModelProvidersComponent extends DataPageBase {
   get offered(): LlmProvider[] {
     const query = this.providerQuery.trim().toLowerCase();
     const named = this.providers.filter((provider) => !!provider.endpoint);
-    if (!query) return named.filter((provider) => provider.popular);
+    if (!query) {
+      // The few most people look for, the most looked-for first.
+      return named.filter((provider) => provider.popular)
+        .sort((a, b) => Number(a.popular) - Number(b.popular));
+    }
     return named.filter((provider) =>
       `${provider.name} ${provider.id}`.toLowerCase().includes(query));
   }
@@ -146,7 +150,11 @@ export class ModelProvidersComponent extends DataPageBase {
     this.providerQuery = '';
     this.draft = this.blankDraft();
     this.resetEditor(true);
-    this.shareMode = 'private';
+    // On a person's own computer a provider is for whoever uses the
+    // install — and speech and agent routing take only a provider
+    // shared with everyone. Served to an organization, it starts as
+    // its creator's alone, like everything a person makes.
+    this.shareMode = this.auth.isDesktop ? 'org' : 'private';
     this.selectedGroups.clear();
     this.selectedUsers.clear();
     this.error = '';

@@ -192,7 +192,7 @@ import { ChatActivityDialogComponent } from './pages/app/ai/chat/chat-activity-d
 import { ChatActivityPanelComponent } from './pages/app/ai/chat/chat-activity-panel/chat-activity-panel.component';
 import { ChatAgentsDialogComponent } from './pages/app/ai/chat/chat-agents-dialog/chat-agents-dialog.component';
 import { ChatSkillsDialogComponent } from './pages/app/ai/chat/chat-skills-dialog/chat-skills-dialog.component';
-import { ChatLlmDialogComponent } from './pages/app/ai/chat/chat-llm-dialog/chat-llm-dialog.component';
+import { ChatModelPickerComponent } from './pages/app/ai/chat/chat-model-picker/chat-model-picker.component';
 import { ChatApprovalCardComponent } from './pages/app/ai/chat/chat-approval-card/chat-approval-card.component';
 import { FilePickerComponent } from './pages/app/ai/chat/file-picker/file-picker.component';
 import { ChatFilePickerDialogComponent } from './pages/app/ai/chat/chat-file-picker-dialog/chat-file-picker-dialog.component';
@@ -293,7 +293,7 @@ import { ServiceWorkerModule } from '@angular/service-worker';
     ChatActivityPanelComponent,
     ChatAgentsDialogComponent,
     ChatSkillsDialogComponent,
-    ChatLlmDialogComponent,
+    ChatModelPickerComponent,
     ChatApprovalCardComponent,
     FilePickerComponent,
     ChatFilePickerDialogComponent,

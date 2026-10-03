@@ -300,9 +300,7 @@ export class AiSessionService {
    *  by the settings module. Keys metadata only; never the api key. */
   async listLlmSecrets(): Promise<any[]> {
     const res = await this.request.gateway('Settings:Llm:list');
-    // An embedding or transcription connection is not for thinking.
-    return ((res as any)?.connections || []).filter(
-      (connection: any) => (connection?.keys?.purpose || 'chat') === 'chat');
+    return (res as any)?.connections || [];
   }
 
   // ── Attachments ───────────────────────────────────────────────

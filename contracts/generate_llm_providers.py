@@ -95,12 +95,13 @@ class ProviderCatalogWriter:
         "amazon-bedrock": ("bedrock", "https://bedrock-runtime.${AWS_REGION}.amazonaws.com"),
     }
 
-    #: The few most people look for, by the id the catalog gives them.
-    #: A page shows these first and the rest behind a search.
-    POPULAR = frozenset({
-        "openai", "anthropic", "gemini", "amazon-bedrock", "azure",
-        "openrouter", "groq", "mistral", "xai", "deepseek",
-    })
+    #: The few most people look for, by the id the catalog gives them,
+    #: the most looked-for first. A page shows these, in this order, and
+    #: the rest behind a search.
+    POPULAR = (
+        "anthropic", "openai", "gemini", "openrouter", "amazon-bedrock",
+        "azure", "groq", "mistral", "xai", "deepseek",
+    )
 
     #: Speech-to-text models, which models.dev does not list: the ones
     #: served on OpenAI's audio protocol, by the catalog's provider id.
@@ -204,7 +205,7 @@ class ProviderCatalogWriter:
                 "endpoint": self._with_blanks(self._for_connector(protocol, endpoint)),
             }
         if entry["id"] in self.POPULAR:
-            entry["popular"] = True
+            entry["popular"] = self.POPULAR.index(entry["id"]) + 1
         return entry
 
     def _protocol(self, library: Any, shape: Any = None) -> Optional[str]:

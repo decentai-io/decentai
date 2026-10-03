@@ -4,7 +4,7 @@
       <span class="start-mark"><lucide-icon name="sparkles" [size]="22"></lucide-icon></span>
       <div><h2 id="start-chat-title">How can I help?</h2><p>Ask a question, plan work, or use an installed agent.</p></div>
     </div>
-    <div class="composer-section"><app-chat-composer (promptSent)="onPrompt($event)" [disabled]="isLoading" [draft]="draft"></app-chat-composer></div>
+    <div class="composer-section"><app-chat-composer (promptSent)="onPrompt($event)" [disabled]="isLoading" [draft]="draft" [modelPicker]="true" [llm]="llm" (modelChosen)="onModelChosen($event)"></app-chat-composer></div>
   </section>
 
   <!-- Every conversation, under the composer: the latest first, a few

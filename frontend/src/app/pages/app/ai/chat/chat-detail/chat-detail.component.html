@@ -138,10 +138,6 @@
           <lucide-icon name="pencil" [size]="17"></lucide-icon>
           <span>Rename chat</span>
         </button>
-        <button mat-menu-item (click)="onMessagesActionClicked({ type: 'llmSettings' })">
-          <lucide-icon name="brain-circuit" [size]="17"></lucide-icon>
-          <span>Language model</span>
-        </button>
         <button mat-menu-item (click)="onMessagesActionClicked({ type: 'agents' })">
           <lucide-icon name="bot" [size]="17"></lucide-icon>
           <span>Agents</span>
@@ -280,6 +276,10 @@
       [disabled]="composerDisabled"
       [placeholder]="composerPlaceholder"
       [hint]="composerHint"
+      [modelPicker]="true"
+      [llm]="chat?.config?.llm"
+      [modelLocked]="isChatLoading || !maySend"
+      (modelChosen)="onModelChosen($event)"
     ></app-chat-composer>
   </div>
   </div>

@@ -238,8 +238,7 @@
         <!-- The provider was asked and said no, or nobody answered:
              nothing was saved, and the person decides. -->
         <div class="data-alert error dialog-error" *ngIf="refused as said" role="alert">
-          <strong>{{ said.outcome === 'refused' ? 'Not saved: the key was refused.' : 'Not saved: nothing answered at that address.' }}</strong>
-          {{ said.reason }}
+          <span><strong>Not saved.</strong> {{ said.reason }}</span>
           <button class="btn" type="button" (click)="save(false)" [disabled]="saving">
             Save anyway
           </button>

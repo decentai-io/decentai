@@ -118,7 +118,7 @@
       "name": "Amazon Bedrock",
       "protocol": "bedrock",
       "endpoint": "https://bedrock-runtime.<aws-region>.amazonaws.com",
-      "popular": true
+      "popular": 5
     },
     {
       "id": "ambient",
@@ -137,7 +137,7 @@
       "name": "Anthropic",
       "protocol": "anthropic",
       "endpoint": "https://api.anthropic.com",
-      "popular": true
+      "popular": 1
     },
     {
       "id": "anyapi",
@@ -162,7 +162,7 @@
       "name": "Azure",
       "protocol": "openai",
       "endpoint": "https://<azure-resource-name>.openai.azure.com/openai/v1",
-      "popular": true
+      "popular": 6
     },
     {
       "id": "bailing",
@@ -319,7 +319,7 @@
       "name": "DeepSeek",
       "protocol": "openai",
       "endpoint": "https://api.deepseek.com",
-      "popular": true
+      "popular": 10
     },
     {
       "id": "llmgateway",
@@ -416,7 +416,7 @@
       "name": "Google Gemini",
       "protocol": "gemini",
       "endpoint": "https://generativelanguage.googleapis.com/v1beta",
-      "popular": true
+      "popular": 3
     },
     {
       "id": "greenpt",
@@ -429,7 +429,7 @@
       "name": "Groq",
       "protocol": "openai",
       "endpoint": "https://api.groq.com/openai/v1",
-      "popular": true
+      "popular": 7
     },
     {
       "id": "helicone",
@@ -664,7 +664,7 @@
       "name": "Mistral",
       "protocol": "openai",
       "endpoint": "https://api.mistral.ai/v1",
-      "popular": true
+      "popular": 8
     },
     {
       "id": "mixlayer",
@@ -797,7 +797,7 @@
       "name": "OpenAI",
       "protocol": "openai-responses",
       "endpoint": "https://api.openai.com/v1",
-      "popular": true
+      "popular": 2
     },
     {
       "id": "opencode-go",
@@ -822,7 +822,7 @@
       "name": "OpenRouter",
       "protocol": "openai",
       "endpoint": "https://openrouter.ai/api/v1",
-      "popular": true
+      "popular": 4
     },
     {
       "id": "opper",
@@ -1177,7 +1177,7 @@
       "name": "xAI",
       "protocol": "openai",
       "endpoint": "https://api.x.ai/v1",
-      "popular": true
+      "popular": 9
     },
     {
       "id": "xiaomi",

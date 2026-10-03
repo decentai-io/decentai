@@ -530,7 +530,7 @@ class Assistant:
         said = " ".join(str(exc).split())[: cls.MODEL_REASON_MAX_CHARS]
         return (f"The language model is unavailable. {what}. "
                 + (f"It said: {said} " if said else "")
-                + "The connection is set under Settings → Language models.")
+                + "The key is set under Settings → Model providers.")
 
     #: How providers say a reply stopped at the output cap.
     CUT_OFF = ("length", "max_tokens")

@@ -19,6 +19,7 @@ import { AiSessionService } from 'src/app/services/ai-session.service';
 import { SettingsSpeechService } from 'src/app/services/settings-speech.service';
 import { MicrophoneService } from 'src/app/services/microphone.service';
 import { ChatFilePickerDialogComponent } from '../chat-file-picker-dialog/chat-file-picker-dialog.component';
+import { ChatModel } from '../chat-model-picker/chat-model-picker.component';
 
 @Component({
   selector: 'app-chat-composer',
@@ -47,6 +48,14 @@ export class ChatComposerComponent implements OnChanges, OnInit, OnDestroy {
   /** Words put in the box for the person to read, change and send —
    *  a prompt handed over by another page. Never sent on their behalf. */
   @Input() draft = '';
+
+  /** The model picker, on the line under the box: shown where the
+   *  page says so, naming `llm`, and still usable while the composer
+   *  itself is closed for want of a model (`modelLocked` closes it). */
+  @Input() modelPicker = false;
+  @Input() llm: ChatModel | null = null;
+  @Input() modelLocked = false;
+  @Output() modelChosen = new EventEmitter<ChatModel>();
 
   @ViewChild('messageInput') messageInput!: ElementRef<HTMLTextAreaElement>;
   @ViewChild('fileInput') fileInput!: ElementRef<HTMLInputElement>;

@@ -16,8 +16,9 @@ The list is ``llm_providers.json`` beside this file, written by
               customer's own part — an account, a region — which the
               person fills in; the custom entry's is empty, the whole
               address being theirs to type
-    popular   set on the few most people look for, so a page can show
-              them first and the other two hundred behind a search
+    popular   set on the few most people look for — their place among
+              them, from 1 — so a page can show them first, in that
+              order, and the other two hundred behind a search
 
 ``llm_models.json``, written with it, lists the models each provider is
 known to serve — an offer for a page, never a gate: any model may be

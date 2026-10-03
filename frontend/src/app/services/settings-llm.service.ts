@@ -40,8 +40,9 @@ export interface LlmProvider {
    *  own part (an account, a region) and is filled in on the form; the
    *  custom entry's is empty, the whole address being the person's. */
   endpoint: string;
-  /** One of the few most people look for: shown first. */
-  popular?: boolean;
+  /** Set on the few most people look for, which a page shows first:
+   *  its place among them, from 1. */
+  popular?: number;
 }
 
 export type LlmModelKind = 'chat' | 'embedding' | 'transcription';

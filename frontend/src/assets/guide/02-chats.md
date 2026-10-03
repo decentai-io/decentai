@@ -73,7 +73,7 @@ Ask for something *on Friday morning* or *every Monday at 9* and the assistant s
 
 ## Time zone and models
 
-Each chat has a time zone the assistant counts in — "Friday 9 am" is your Friday — and a language model. The organization sets a default model; a chat may choose another from **the chat's model dialog** if more than one is configured.
+Each chat has a time zone the assistant counts in — "Friday 9 am" is your Friday — and a language model, named under the box you write in. Press the name to choose another: every model of every provider you have a key for is listed, the ones you picked lately first, and typing narrows the list. For a model that thinks before answering, how hard it thinks is chosen beside it. The change applies from the chat's next turn, and your next new chat starts with the model you last picked.
 
 ## The chat's activity and audit
 

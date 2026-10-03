@@ -102,17 +102,19 @@ class TestTheCatalog:
         assert blank == ["openai_compatible"]
 
     def test_the_providers_people_look_for_first_are_marked_and_all_there(self):
-        popular = {entry["id"] for entry in LlmProviders.all() if entry.get("popular")}
-        assert popular == set(ProviderCatalogWriter.POPULAR)
+        popular = sorted((entry["popular"], entry["id"])
+                         for entry in LlmProviders.all() if entry.get("popular"))
+        assert [name for _, name in popular] == list(ProviderCatalogWriter.POPULAR)
+        assert [place for place, _ in popular] == list(range(1, len(popular) + 1))
 
     def test_openai_and_gemini_are_asked_in_their_own_protocols(self):
         assert LlmProviders.find("openai") == {
             "id": "openai", "name": "OpenAI", "protocol": "openai-responses",
-            "endpoint": "https://api.openai.com/v1", "popular": True}
+            "endpoint": "https://api.openai.com/v1", "popular": 2}
         assert LlmProviders.find("gemini") == {
             "id": "gemini", "name": "Google Gemini", "protocol": "gemini",
             "endpoint": "https://generativelanguage.googleapis.com/v1beta",
-            "popular": True}
+            "popular": 3}
 
     def test_an_anthropic_address_carries_no_version_path(self):
         # The Anthropic client adds /v1 itself; an address ending in it
@@ -244,7 +246,7 @@ class TestWritingTheCatalog:
         assert kept["amazon-bedrock"] == {
             "id": "amazon-bedrock", "name": "Amazon Bedrock", "protocol": "bedrock",
             "endpoint": "https://bedrock-runtime.<aws-region>.amazonaws.com",
-            "popular": True}
+            "popular": 5}
 
     def test_what_no_connector_reaches_as_it_is_is_left_out(self):
         kept, _ = self.written(
