@@ -14,6 +14,7 @@ from typing import Any, Dict
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
+from database.stores import SessionStore
 from server.authentication.flows import AuthController
 from server.setup.app_state import get_access_controller
 from server.custom_logging import CustomLoggerFactory
@@ -40,11 +41,17 @@ def _client(request: Request) -> Dict[str, str]:
     }
 
 
-def _set_session_cookie(response: JSONResponse, request: Request, token: str) -> JSONResponse:
+def _set_session_cookie(response: JSONResponse, request: Request, token: str,
+                        remember: bool = False) -> JSONResponse:
+    """The cookie that names the session. Asked to be remembered, it
+    outlives the browser being closed, for as long as the session does;
+    otherwise it goes when the browser does."""
     settings = request.app.state.settings
     response.set_cookie(
         key=COOKIE_NAME,
         value=token,
+        max_age=(int(SessionStore.lifetime(True).total_seconds())
+                 if remember else None),
         httponly=True,                      # unreachable from JavaScript
         secure=settings.jwt_cookie_secure,
         samesite=settings.jwt_cookie_samesite,
@@ -65,9 +72,11 @@ def _clear_session_cookie(response: JSONResponse, request: Request) -> JSONRespo
 
 
 def _start_session(request: Request, controller: AuthController,
-                   body: Dict[str, Any], user_doc: Dict[str, Any]) -> JSONResponse:
+                   body: Dict[str, Any], user_doc: Dict[str, Any],
+                   remember: bool = False) -> JSONResponse:
     """Open a server-side session and hand back its signed cookie."""
-    session = controller.open_session(user_doc, **_client(request))
+    session = controller.open_session(
+        user_doc, remember=remember, **_client(request))
     token = get_access_controller().create_session_token(session, user_doc)
 
     if not token:
@@ -75,7 +84,8 @@ def _start_session(request: Request, controller: AuthController,
         controller.close_session(session["_id"])
         return JSONResponse({"error": "Could not start a session."}, status_code=500)
 
-    return _set_session_cookie(JSONResponse(body, status_code=200), request, token)
+    return _set_session_cookie(
+        JSONResponse(body, status_code=200), request, token, remember)
 
 
 # ----------------------------------------------------------------------
@@ -137,14 +147,17 @@ async def reset_password(request: Request):
 async def login(request: Request):
     """Email + password. An address belongs to one account, so one step."""
     controller = AuthController()
+    payload = await _body(request)
     body, status, user_doc = await asyncio.to_thread(
-        controller.login, await _body(request),
+        controller.login, payload,
         client_ip=_client(request)["ip_address"])
 
     if status != 200 or user_doc is None:
         return JSONResponse(body, status_code=status)
 
-    return _start_session(request, controller, body, user_doc)
+    # "Keep me signed in": a longer session, and a cookie that stays.
+    return _start_session(request, controller, body, user_doc,
+                          remember=payload.get("remember") is True)
 
 
 # ----------------------------------------------------------------------

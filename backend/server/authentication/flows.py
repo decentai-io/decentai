@@ -328,9 +328,7 @@ class AuthController:
         """How a password is reset where this install sends no email."""
         if getattr(get_settings(), "deployment_kind", "") == "desktop":
             return ("This DecentAI sends no email. On the computer it runs on, "
-                    "run its starter with reset-password to set a new password: "
-                    "DecentAI.cmd reset-password on Windows, "
-                    "./DecentAI.command reset-password on a Mac.")
+                    "open the DecentAI app and choose Reset a password.")
         return ("This DecentAI is not set up to send email. Ask whoever runs "
                 "it to set a new password for you.")
 
@@ -380,13 +378,15 @@ class AuthController:
 
     # ------------------------------------------------------------------
     def open_session(
-        self, user_doc: Dict[str, Any], user_agent: str = "", ip_address: str = ""
+        self, user_doc: Dict[str, Any], user_agent: str = "", ip_address: str = "",
+        remember: bool = False,
     ) -> Dict[str, Any]:
         return self.sessions.create(
             user_id=user_doc["_id"],
             org_id=user_doc.get("org_id"),
             user_agent=user_agent,
             ip_address=ip_address,
+            remember=remember,
         )
 
     def close_session(self, session_id: str) -> bool:

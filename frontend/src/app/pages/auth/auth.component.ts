@@ -25,6 +25,9 @@ export class AuthComponent implements OnInit {
 
   email = '';
   password = '';
+  /** Keep the sign-in on this device. What was chosen last is offered
+   *  again, with the email it was chosen for. */
+  remember = false;
   name = '';
   orgName = '';
 
@@ -63,7 +66,10 @@ export class AuthComponent implements OnInit {
     const reset = params.get('reset');
     if (reset) {
       this.openReset(reset);
+      return;
     }
+
+    this.recallChoice();
   }
 
   // ------------------------------------------------------------------
@@ -87,9 +93,11 @@ export class AuthComponent implements OnInit {
       const result = await this.auth.login({
         email: this.email.trim(),
         password: this.password,
+        remember: this.remember,
       });
 
       if (result.ok) {
+        this.keepChoice();
         this.enterApp();
         return;
       }
@@ -103,6 +111,34 @@ export class AuthComponent implements OnInit {
   // ------------------------------------------------------------------
   // Forgotten password
   // ------------------------------------------------------------------
+
+  /** The key the remembered email is kept under on this device. */
+  private static readonly REMEMBERED = 'decentai.remembered-email';
+
+  /** Offer again what was chosen at the last sign-in on this device. */
+  private recallChoice(): void {
+    try {
+      const email = localStorage.getItem(AuthComponent.REMEMBERED) || '';
+      if (email && !this.email) {
+        this.email = email;
+        this.remember = true;
+      }
+    } catch {
+      // Storage that cannot be read: the form starts empty, as it did.
+    }
+  }
+
+  private keepChoice(): void {
+    try {
+      if (this.remember) {
+        localStorage.setItem(AuthComponent.REMEMBERED, this.email.trim());
+      } else {
+        localStorage.removeItem(AuthComponent.REMEMBERED);
+      }
+    } catch {
+      // Nothing is lost but the convenience.
+    }
+  }
 
   startForgot(): void {
     this.mode = 'forgot';

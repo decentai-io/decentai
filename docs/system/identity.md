@@ -316,7 +316,8 @@ signed cookie that *names* it. The cookie is a pointer, not a container:
 its claims are read to find the session, and never to decide anything.
 Every request re-reads the session and the user behind it, which is what
 makes disabling, deleting or signing out take effect immediately rather
-than whenever the cookie would have expired. Sessions last seven days and
+than whenever the cookie would have expired. Sessions last seven days, or ninety
+when the person asked to be kept signed in on that device, and
 record the browser and address they were opened from. A request carrying
 the cookie from a page of another origin — another site, or another
 program on another port of this computer, which browsers send the cookie

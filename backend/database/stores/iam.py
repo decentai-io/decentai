@@ -1103,8 +1103,14 @@ class SessionStore(MongoStore):
 
     COLLECTION = "sessions"
 
-    # A week, matching the cookie's lifetime.
+    # A week: how long a sign-in lasts when nothing more was asked.
     LIFETIME = timedelta(days=7)
+    # A sign-in the person asked to be kept on their own device.
+    REMEMBERED = timedelta(days=90)
+
+    @classmethod
+    def lifetime(cls, remember: bool) -> timedelta:
+        return cls.REMEMBERED if remember else cls.LIFETIME
 
     def create(
         self,
@@ -1112,6 +1118,7 @@ class SessionStore(MongoStore):
         org_id: str,
         user_agent: str = "",
         ip_address: str = "",
+        remember: bool = False,
     ) -> Dict[str, Any]:
         now = utc_now()
         doc = {
@@ -1121,7 +1128,7 @@ class SessionStore(MongoStore):
             "user_agent": str(user_agent or "")[:400],
             "ip_address": str(ip_address or "")[:64],
             "created_at": now,
-            "expires_at": now + self.LIFETIME,
+            "expires_at": now + self.lifetime(remember),
         }
         self.col.insert_one(doc)
         return doc

@@ -95,9 +95,15 @@ does what a container cannot do for itself:
 - **runs the launcher** for each thing asked (`launcher.rs`), handing it
   the exact release it read (`--release`, by that version's address),
   and shows each line it prints as progress;
-- **opens DecentAI** in a browser window of its own (`window.rs`): a
-  real browser, because the platform uses what one has — the
-  microphone, the camera, notifications;
+- **shows DecentAI** in a window of its own (`window.rs`), so that what
+  a person sees, pins and switches to is DecentAI under its own icon.
+  The page in it is given none of the app's commands. A window the page
+  opens itself — the sign-in of a connected account — opens as asked
+  and stays tied to the page waiting for it; a link to anywhere else is
+  handed to the person's browser;
+- **resets a password** (`reset-password`, through the launcher), for
+  an install that has no email to send a link with: whoever can open
+  the app holds the install already;
 - **removes everything** on Uninstall: the launcher takes the stack and
   its volumes down, and the app takes the copy of the database out to
   the Documents folder, then removes the launcher's volume, the images

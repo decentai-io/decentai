@@ -11,7 +11,8 @@ POST /auth/login
 ```
 
 Sets an `access_token` cookie that names a server-side session, valid
-for a week or until logout. `GET /auth/me` returns the identity and the
+for a week — ninety days when the login carried `remember: true`, which
+also keeps the cookie past the browser being closed — or until logout. `GET /auth/me` returns the identity and the
 actions it holds — what the web app uses to decide which controls to
 show. `POST /auth/logout` ends the session.
 

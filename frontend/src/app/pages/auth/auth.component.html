@@ -114,6 +114,11 @@
           />
         </label>
 
+        <label class="auth-remember">
+          <input type="checkbox" name="remember" [(ngModel)]="remember" [disabled]="busy" />
+          <span>Keep me signed in on this device</span>
+        </label>
+
         <button class="btn btn--primary" type="submit" [disabled]="busy">
           {{ busy ? "Signing in…" : "Sign in" }}
         </button>

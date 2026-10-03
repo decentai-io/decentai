@@ -30,7 +30,7 @@ anyway**. On a Mac the first open is refused: click **Done**, open
 **Open Anyway**.
 
 Open DecentAI. It looks for Docker or Podman, starts the one it finds,
-and shows a form: your email and a password (ten characters or more,
+and shows a form: your name, your email and a password (ten characters or more,
 with a letter and a number), checked as you type. **Install DecentAI**
 downloads it, sets it up and starts it; **Open DecentAI** then shows it
 in a window of its own, at `http://localhost:4280`.
@@ -55,10 +55,11 @@ The app's window says whether DecentAI is running, and has:
 
 | | Does |
 |---|---|
-| **Open DecentAI** | shows it in a window of its own |
+| **Open DecentAI** | shows it in a window of the app's own; a link to another site opens in your browser |
 | **Stop**, **Start** | stops it — nothing is removed — and starts it again |
 | **Update** | appears when a newer release exists: a copy of the database is kept first, and the version you have is put back if the new one does not start |
 | **Check for updates** | looks again |
+| **Reset a password** | a new password for you, or for another person of this install, when one is forgotten |
 | **Where my data is** | the places on this computer DecentAI keeps things in |
 | **Uninstall** | removes DecentAI and everything it kept, offering a copy of the database in your Documents folder first |
 
@@ -149,6 +150,6 @@ to send when asking for help.
   be reached.
 - **The page does not open.** Another program may hold port 4280.
 - **You forgot your password.** This DecentAI sends no email, so
-  "Forgot password" cannot send a link. Run the starter with
-  `reset-password` on this computer; it ends every session of the account and lifts the
-  lockout after wrong passwords.
+  "Forgot password" cannot send a link. In the app choose **Reset a
+  password**: it sets a new one, ends every session of the account and
+  lifts the lockout after wrong passwords.

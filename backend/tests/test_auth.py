@@ -54,6 +54,35 @@ class TestLogin:
         assert admin.get("/auth/me").status_code == 401
 
 
+class TestKeepMeSignedIn:
+    def sign_in(self, anon, seed, **extra):
+        response = anon.post("/auth/login", json={
+            "email": ADMIN_EMAIL, "password": ADMIN_PASSWORD, **extra})
+        assert response.status_code == 200
+        return response
+
+    def session(self, seed):
+        from database.stores import SessionStore
+        return SessionStore().col.find_one(
+            {"user_id": seed.admin["_id"]}, sort=[("created_at", -1)])
+
+    def test_not_asked_the_cookie_goes_with_the_browser(self, anon, seed):
+        cookie = self.sign_in(anon, seed).headers["set-cookie"].lower()
+        assert "max-age" not in cookie
+        session = self.session(seed)
+        assert (session["expires_at"] - session["created_at"]).days == 7
+
+    def test_asked_the_cookie_and_the_session_last_ninety_days(self, anon, seed):
+        cookie = self.sign_in(anon, seed, remember=True).headers["set-cookie"].lower()
+        assert f"max-age={90 * 24 * 3600}" in cookie
+        session = self.session(seed)
+        assert (session["expires_at"] - session["created_at"]).days == 90
+
+    def test_anything_but_true_is_not_asking(self, anon, seed):
+        cookie = self.sign_in(anon, seed, remember="yes").headers["set-cookie"].lower()
+        assert "max-age" not in cookie
+
+
 class TestThrottle:
     def test_five_failures_lock_the_account(self, anon):
         for _ in range(5):

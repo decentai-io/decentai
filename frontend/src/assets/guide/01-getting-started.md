@@ -8,7 +8,9 @@ This guide walks the workspace in the order you will meet it. Read this chapter 
 
 There is no self-service signup. Your organization's administrator invites you by email; the invitation link lets you set a password. From then on you sign in with that email and password.
 
-If you forget the password, use *Forgot password* on the sign-in page. A reset link is sent to the same address.
+If you forget the password, use *Forgot password* on the sign-in page. A reset link is sent to the same address. On your own computer no mail is sent: open the DecentAI app and choose *Reset a password*.
+
+*Keep me signed in on this device* keeps the sign-in for ninety days, past the browser being closed, and offers your email again next time. Leave it off on a computer that is not yours.
 
 ## The workspace
 

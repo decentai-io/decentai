@@ -102,6 +102,8 @@ export class AuthService {
   async login(payload: {
     email: string;
     password: string;
+    /** Keep the sign-in on this device past the browser being closed. */
+    remember?: boolean;
   }): Promise<{ ok: boolean; error?: string; throttled?: boolean }> {
     const { status, data } = await this.post('auth/login', payload);
 
