@@ -58,32 +58,30 @@ contracts/     the manifest schema and validator, shared by all of the above
 sim/           the runtime's reference services, in memory — how the runtime
                is tested without a backend, and how an agent is tested alone
 bootstrap/     first-run seeding, key generation, organizations, rotation
-launcher/      the desktop install: the launcher container, and the starters for
-               Windows and macOS
+launcher/      the desktop install: the launcher container, and starter
+               scripts for a command line
+desktop/       the desktop app a person installs: a window and an icon by
+               the clock, over the launcher
 tests/         the suite that spans backend and runtime
 docs/          guides, how each part works, and the reference
 ```
 
 ## On your own computer
 
-On Windows or a Mac. Download the starter from the
-[latest release](https://github.com/decentai-io/decentai/releases/latest) — `DecentAI-windows.zip` or
-`DecentAI-macos.zip` — unpack it, and open `DecentAI.cmd` (Windows) or
-`DecentAI.command` (Mac). It uses Docker if it is running and Podman
-otherwise, offers to install Podman where there is neither, and
-downloads the release: images built by this repository's release
-workflow, named in a file the launcher believes for its signature.
+On Windows or a Mac. Download the app from the
+[latest release](https://github.com/decentai-io/decentai/releases/latest) — `DecentAI-Setup.exe` or `DecentAI.dmg` —
+install it and open it. It uses Docker if it is running and Podman
+otherwise, offers to install Podman where there is neither, asks for
+the first person's email and a password in a form, and downloads the
+release: images built by this repository's release workflow, named in a
+file the app and the launcher believe for its signature.
 
 To run a build of your own instead, see
 [docs/guides/desktop.md](docs/guides/desktop.md#a-build-of-your-own).
 
-It asks for the first person's email and a password, starts DecentAI
-at `http://localhost:4280` — reachable from this computer only — and
-opens it in a window of its own. `DecentAI.cmd status`, `stop`,
-`update`, `backup`, `stop-everything` and `reset-password` do what they
-say, and
-`DecentAI.cmd develop <folder>` lets the git repositories in a folder
-of yours be agent sources while you write an agent. The whole guide is
+DecentAI then runs at `http://localhost:4280`, reachable from this
+computer only, and the app starts, stops, updates and uninstalls it.
+The whole guide is
 [docs/guides/desktop.md](docs/guides/desktop.md); how it works is
 [docs/system/desktop-install.md](docs/system/desktop-install.md).
 

@@ -6,7 +6,7 @@
 
     python -m launcher.publish release release.json --version 1.4.0 \\
         --backend …@sha256:… --runtime …@sha256:… --frontend …@sha256:… \\
-        --notes https://…
+        --launcher …@sha256:… --notes https://…
         writes the release file and, beside it, its signature, made
         with the private key in DECENTAI_RELEASE_KEY
 
@@ -73,13 +73,16 @@ class Publisher:
 
     @staticmethod
     def document(version: str, images: Dict[str, str], notes: str = "",
-                 released_at: str = "") -> dict:
+                 released_at: str = "", launcher: str = "") -> dict:
         document = {
             "schema_version": SCHEMA_VERSION,
             "version": version,
             "released_at": released_at or datetime.now(timezone.utc).strftime(
                 "%Y-%m-%dT%H:%M:%SZ"),
             "images": {part: images.get(part, "") for part in PARTS},
+            # The launcher this release is installed with: the desktop
+            # app fetches it by this name.
+            "launcher": launcher,
             # The launcher that is published with a release is the
             # oldest one known to install it.
             "minimum_launcher": VERSION,
@@ -90,6 +93,8 @@ class Publisher:
             raise ReleaseError("That is not a release: " + "; ".join(problems))
         loose = [part for part in PARTS
                  if "@sha256:" not in document["images"][part]]
+        if "@sha256:" not in launcher:
+            loose.append("the launcher")
         if loose:
             raise ReleaseError(
                 "A published release names each image by its digest "
@@ -141,6 +146,8 @@ def parser() -> argparse.ArgumentParser:
     for part in PARTS:
         release.add_argument(f"--{part}", required=True,
                              help="the image, by digest")
+    release.add_argument("--launcher", required=True,
+                         help="the launcher's image, by digest")
     release.add_argument("--notes", default="")
     release.add_argument("--keys", default=str(
         Path(__file__).resolve().parent.parent / "keys"),
@@ -160,7 +167,7 @@ def main(argv=None) -> int:
         document = Publisher.document(
             arguments.version,
             {part: getattr(arguments, part) for part in PARTS},
-            notes=arguments.notes)
+            notes=arguments.notes, launcher=arguments.launcher)
         path = Publisher.write(arguments.path, document,
                                os.environ.get(Publisher.KEY_VARIABLE) or "")
         release = Publisher.check(path, arguments.keys)

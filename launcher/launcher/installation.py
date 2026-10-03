@@ -280,6 +280,34 @@ class Installation:
             old.unlink()
         return target
 
+    def uninstall(self, keep: bool = False) -> Optional[Path]:
+        """Take the stack off this computer: its containers, its
+        network and its volumes — the database, uploaded files, approved
+        agents and agent environments. With ``keep``, a copy of the
+        database is made first and its path returned; it is in the
+        launcher's own folder, which whoever started the launcher
+        removes last, after taking the copy out.
+
+        An install that was begun and never finished is removed the
+        same way."""
+        if not self.settings.installed and not self.settings.begun:
+            raise InstallationError("DecentAI is not installed here.")
+        self._must_reach_the_engine()
+        images = self.settings.install().get("images") or {
+            part: "none" for part in ("backend", "runtime", "frontend")}
+        self._use(images)
+        kept = None
+        if keep and self.settings.installed:
+            self.say("Keeping a copy of the database…")
+            self.engine.compose("up", "-d", "mongo", long=True)
+            kept = self.backup(
+                str(self.settings.install().get("version") or "uninstall"))
+        self.say("Removing DecentAI…")
+        self.engine.compose("--profile", "seed", "down", "--volumes",
+                            "--remove-orphans", long=True)
+        self.settings.forget()
+        return kept
+
     def restore(self, copy: Path) -> None:
         self.engine.compose(
             "exec", "-T", "mongo", "sh", "-c", self.RESTORE,

@@ -152,10 +152,12 @@ the function as `call.conversation`. A worker serves every chat of an
 organization, so anything a function keeps open between calls (a
 browser) is kept under this key and handed to no other conversation.
 
-`function` is the agent's canonical name, `agent.tool.function` — the
-one vocabulary the whole platform speaks (agent ids are unique per
-organization, so there is nothing to translate). `inputs` were
-validated by the host; the worker trusts them.
+`function` is `agent.tool.function` as the package declares it: the
+agent segment is the manifest's own id, the name its code was written
+against. The rest of the platform speaks the approval's ref in that
+place, and the host translates on the way in (`agents/approved.py`), so
+a worker never sees a ref. `inputs` were validated by the host; the
+worker trusts them.
 
 There is deliberately no capability flag here. The model is asked for
 like any resource — `call.llm()` becomes an `llm.complete` request —

@@ -108,6 +108,16 @@ class Settings:
         self._write(self.INSTALL, json.dumps(install, indent=1, sort_keys=True))
         return install
 
+    def forget(self) -> None:
+        """Remove what an install wrote here: its settings, its keys and
+        the record of it. The backups stay: a copy somebody asked to be
+        kept is among them."""
+        for name in (self.INSTALL, self.BACKEND, self.RUNTIME, self.MONGO,
+                     self.DEVELOP, self.NAMES):
+            path = self.state / name
+            if path.exists():
+                path.unlink()
+
     @property
     def port(self) -> int:
         return int(self.install().get("port") or self.DEFAULT_PORT)

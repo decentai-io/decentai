@@ -21,7 +21,7 @@ Where the code that reads it lives:
 
 Judging and running an agent's functions is elsewhere
 (`ai_runtime/execution/`), and so is deciding *which* function to call
-(`ai_runtime/chat/agent_loop.py`). The agents module holds packages and
+(`ai_runtime/reasoning/assistant.py`). The agents module holds packages and
 their workers; it never chooses and never judges.
 
 ---
@@ -42,20 +42,26 @@ approving the same agent are two approvals of **one** digest, and the
 approval is the backend's concern — this module holds code, and code is
 named by what it is.
 
-For everything a person touches — grants, chat selection, data
-categories — the agent's **own id is the name**, and it is **unique
-within an organization, enforced at approval**: installing a second
-agent that calls itself `jira` is refused, not renamed. One word means
-one agent everywhere it appears, and nothing anywhere translates
-between vocabularies.
+The id a manifest declares is the **author's** name for the package:
+the manifest, the code and the worker speak it, and nothing outside the
+package is keyed by it. For everything the platform decides — grants,
+the chat's contract, data categories, secret slots, the audit trail —
+the name is the **approval ref**, `agt_<80 random bits>`, minted when an
+organization installs the agent and kept across its updates. Two
+organizations installing the same package have two refs, and so do two
+agents in one organization that both call themselves `jira`: neither is
+refused, and the second is shown under a name qualified by its source.
+The runtime translates between the two names in one place
+(`agents/approved.py`); `docs/system/agent-code.md` has the whole
+account.
 
 ---
 
 ## The manifest
 
-Six top-level blocks. `schema_version`, `agent` and `implementation` are
-required; `authorization`, `resources` and `tools` are optional in the
-grammar and present in any agent that does anything.
+Seven top-level blocks. `schema_version`, `agent`, `implementation`,
+`network` and `tools` are required; `authorization` and `resources` are
+optional.
 
 ### `agent` — who it is
 
@@ -68,13 +74,17 @@ agent:
   version: "1.1.0"              # semver, exactly three parts
   description: Saves and finds notes.
   tags: [notes, productivity]
-  instructions: >               # the system prompt for THIS agent's loop
+  instructions: >               # what the assistant reads on opening it
     Use the notebook tools only when the user wants to save or find
     notes. Never invent note contents or identifiers.
 ```
 
-`instructions` is the agent's own system prompt — the manifest supplies
-it, which is why one generic loop can drive every agent.
+`instructions` is the author's guidance on using the agent. The
+assistant receives it, with the agent's catalog of functions, as the
+result of opening the agent — one assistant drives every agent, and
+reads each one's instructions when it turns to it. They advise what to
+try; what a call may do is decided by the levels and resources below,
+whatever the instructions say.
 
 There is deliberately nothing here about how long the agent may run, how
 many steps it may take, or how much it may spend. A manifest declares

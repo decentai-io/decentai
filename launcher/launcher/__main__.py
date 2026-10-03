@@ -4,6 +4,7 @@
     start / stop      every day
     status            what is installed, and what is running
     update            a newer release, by one word
+    uninstall         take it off this computer
     backup            a copy of the database, now
     stop-everything   end everything the agents are doing
     develop           a folder of your own agents, as a source
@@ -22,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import getpass
+import json
 import os
 import sys
 from pathlib import Path
@@ -103,6 +105,13 @@ class CommandLine:
 
     def status(self) -> int:
         status = self.installation.status()
+        if self.arguments.json:
+            # For the desktop app, which shows it and does not read prose.
+            status["begun"] = self.settings.begun
+            status["launcher"] = VERSION
+            status["images"] = self.settings.install().get("images") or {}
+            self.say(json.dumps(status, sort_keys=True))
+            return 0
         if not status["installed"]:
             self.say("DecentAI is not installed here.")
             return 1
@@ -139,6 +148,20 @@ class CommandLine:
                 self.say("Nothing was changed.")
                 return 0
         self.say(self.installation.update(release, again=self.arguments.again))
+        return 0
+
+    def uninstall(self) -> int:
+        if not self.arguments.yes:
+            self.say("This removes DecentAI from this computer: its chats, "
+                     "files, agents, saved credentials and its keys. It "
+                     "cannot be undone.")
+            if input("Remove it? (yes/no) ").strip().lower() not in ("y", "yes"):
+                self.say("Nothing was removed.")
+                return 0
+        kept = self.installation.uninstall(keep=self.arguments.keep)
+        if kept is not None:
+            self.say(f"Kept: {kept.name}")
+        self.say("DecentAI was removed.")
         return 0
 
     def backup(self) -> int:
@@ -203,9 +226,17 @@ def parser() -> argparse.ArgumentParser:
         "reset-password", help="a new password, where there is no email to send a link")
     reset.add_argument("--email", help="whose; the first person's when left out")
 
+    status = commands.add_parser("status", help="what is installed, and what is running")
+    status.add_argument("--json", action="store_true",
+                        help="as one line of JSON, for a program to read")
+
+    uninstall = commands.add_parser("uninstall", help="take it off this computer")
+    uninstall.add_argument("--yes", action="store_true", help="do not ask first")
+    uninstall.add_argument("--keep", action="store_true",
+                           help="keep a copy of the database first")
+
     for name, text in (("start", "start what is installed"),
                        ("stop", "stop it; nothing is removed"),
-                       ("status", "what is installed, and what is running"),
                        ("backup", "a copy of the database, now"),
                        ("stop-everything", "end everything the agents are doing")):
         commands.add_parser(name, help=text)
@@ -214,7 +245,7 @@ def parser() -> argparse.ArgumentParser:
 
 def main(argv=None) -> int:
     arguments = parser().parse_args(argv)
-    for name, default in (("release", None), ("unsigned", False)):
+    for name, default in (("release", None), ("unsigned", False), ("json", False)):
         if not hasattr(arguments, name):
             setattr(arguments, name, default)
     try:

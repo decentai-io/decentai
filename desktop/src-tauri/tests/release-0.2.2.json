@@ -1,0 +1,12 @@
+{
+  "schema_version": "1.0",
+  "version": "0.2.2",
+  "released_at": "2026-10-02T21:46:14Z",
+  "images": {
+    "backend": "ghcr.io/decentai-io/decentai-backend@sha256:7164ec4585a3735b631caea23bada281ad93fbba924450e3b10c253ae441cca9",
+    "runtime": "ghcr.io/decentai-io/decentai-ai-runtime@sha256:a493bd44f5b8217868d974b40b8005c6676e2b3ea413e6c49066373b0288fcb6",
+    "frontend": "ghcr.io/decentai-io/decentai-caddy@sha256:75f80d8985f81845aa7a32c15810e126d93274e06946ec3182913ded743f222f"
+  },
+  "minimum_launcher": "0.1.3",
+  "notes": "https://github.com/decentai-io/decentai/releases/tag/v0.2.2"
+}

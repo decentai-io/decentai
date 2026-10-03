@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>DecentAI</title>
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <header class="head">
+    <img class="logo" src="brand/decentai-lockup-horizontal-dark.svg" alt="DecentAI">
+    <span class="head-version" id="app-version"></span>
+  </header>
+
+  <main id="view" class="view" aria-live="polite"></main>
+
+  <!-- Each screen the app can show. One is copied into the view at a
+       time; app.js fills in what changes. -->
+
+  <template id="screen-looking">
+    <section class="screen screen--quiet">
+      <div class="spinner" aria-hidden="true"></div>
+      <p class="lead">Looking at this computer…</p>
+    </section>
+  </template>
+
+  <template id="screen-engine">
+    <section class="screen">
+      <h1 data-slot="title"></h1>
+      <p class="lead" data-slot="text"></p>
+      <div class="actions">
+        <button class="btn btn--primary" data-act="engine-primary"></button>
+        <button class="btn" data-act="look-again">Look again</button>
+      </div>
+      <p class="note" data-slot="note"></p>
+    </section>
+  </template>
+
+  <template id="screen-setup">
+    <section class="screen">
+      <h1>Set up DecentAI</h1>
+      <p class="lead">It runs on this computer and is reachable from this computer only. You are its first person.</p>
+      <form id="setup" novalidate>
+        <label class="field">
+          <span>Your email</span>
+          <input name="email" type="email" autocomplete="email" required>
+          <small class="problem" data-for="email"></small>
+        </label>
+        <label class="field">
+          <span>A password</span>
+          <input name="password" type="password" autocomplete="new-password" required>
+        </label>
+        <ul class="rules" aria-label="The password needs">
+          <li data-rule="length">10 characters or more</li>
+          <li data-rule="letter">a letter</li>
+          <li data-rule="number">a number</li>
+        </ul>
+        <label class="field">
+          <span>The password again</span>
+          <input name="again" type="password" autocomplete="new-password" required>
+          <small class="problem" data-for="again"></small>
+        </label>
+        <div class="actions">
+          <button class="btn btn--primary" type="submit" disabled>Install DecentAI</button>
+        </div>
+        <p class="note">The first start downloads DecentAI, which takes a while on a slow connection. Nothing is sent anywhere: your email is only how you sign in here.</p>
+      </form>
+    </section>
+  </template>
+
+  <template id="screen-working">
+    <section class="screen">
+      <h1 data-slot="title"></h1>
+      <div class="bar" role="progressbar" aria-label="Working"><div class="bar-fill"></div></div>
+      <ol class="steps" data-slot="steps"></ol>
+      <p class="note" data-slot="note"></p>
+    </section>
+  </template>
+
+  <template id="screen-running">
+    <section class="screen">
+      <span class="state state--on"><span class="dot"></span>Running</span>
+      <h1>DecentAI is running</h1>
+      <p class="lead">Open it in a window of its own, at <code data-slot="address"></code>.</p>
+      <div class="notice" data-slot="update" hidden>
+        <div>
+          <strong data-slot="update-title"></strong>
+          <span data-slot="update-text"></span>
+        </div>
+        <button class="btn btn--primary btn--small" data-act="update">Update</button>
+      </div>
+      <div class="actions">
+        <button class="btn btn--primary" data-act="open">Open DecentAI</button>
+        <button class="btn" data-act="stop">Stop</button>
+      </div>
+      <footer class="foot">
+        <span data-slot="version"></span>
+        <span class="foot-links">
+          <button class="link" data-act="check">Check for updates</button>
+          <button class="link" data-act="data">Where my data is</button>
+          <button class="link link--danger" data-act="uninstall">Uninstall</button>
+        </span>
+      </footer>
+    </section>
+  </template>
+
+  <template id="screen-stopped">
+    <section class="screen">
+      <span class="state"><span class="dot"></span>Stopped</span>
+      <h1>DecentAI is stopped</h1>
+      <p class="lead">Nothing of yours was removed. Chats, files and agents are as you left them.</p>
+      <div class="actions">
+        <button class="btn btn--primary" data-act="start">Start DecentAI</button>
+      </div>
+      <footer class="foot">
+        <span data-slot="version"></span>
+        <span class="foot-links">
+          <button class="link" data-act="data">Where my data is</button>
+          <button class="link link--danger" data-act="uninstall">Uninstall</button>
+        </span>
+      </footer>
+    </section>
+  </template>
+
+  <template id="screen-failed">
+    <section class="screen">
+      <h1 data-slot="title">That did not work</h1>
+      <p class="lead" data-slot="text"></p>
+      <pre class="said" data-slot="said" hidden></pre>
+      <div class="actions">
+        <button class="btn btn--primary" data-act="look-again">Try again</button>
+      </div>
+    </section>
+  </template>
+
+  <template id="screen-data">
+    <section class="screen">
+      <h1>Where your data is</h1>
+      <p class="lead">Everything DecentAI keeps is on this computer, held by <span data-slot="engine"></span>:</p>
+      <ul class="plain" data-slot="places"></ul>
+      <p class="note">A copy of the database is kept before every update. Uninstall offers one more before it removes anything.</p>
+      <div class="actions">
+        <button class="btn" data-act="back">Back</button>
+      </div>
+    </section>
+  </template>
+
+  <template id="screen-uninstall">
+    <section class="screen">
+      <h1>Uninstall DecentAI</h1>
+      <p class="lead">This removes DecentAI from this computer: its chats, files, agents, saved credentials and its keys. It cannot be undone.</p>
+      <label class="check">
+        <input type="checkbox" name="keep" checked>
+        <span>Keep a copy of the database in my Documents folder first</span>
+      </label>
+      <label class="check">
+        <input type="checkbox" name="images">
+        <span>Also remove the downloaded parts (frees the most space; a later install downloads them again)</span>
+      </label>
+      <div class="actions">
+        <button class="btn btn--danger" data-act="uninstall-now">Remove DecentAI</button>
+        <button class="btn" data-act="back">Keep it</button>
+      </div>
+    </section>
+  </template>
+
+  <template id="screen-gone">
+    <section class="screen">
+      <h1>DecentAI was removed</h1>
+      <p class="lead" data-slot="text"></p>
+      <p class="note">To take the app itself off this computer, uninstall “DecentAI” from your system's list of apps.</p>
+      <div class="actions">
+        <button class="btn" data-act="look-again">Set it up again</button>
+      </div>
+    </section>
+  </template>
+
+  <script src="app.js"></script>
+</body>
+</html>

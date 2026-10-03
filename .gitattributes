@@ -5,3 +5,8 @@
 
 *.png binary
 *.ico binary
+*.icns binary
+
+# A release as it was published, kept to check its signature against:
+# the bytes are the thing.
+desktop/src-tauri/tests/* -text
