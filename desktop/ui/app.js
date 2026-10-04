@@ -25,6 +25,12 @@ class Backend {
   onChanged(changed) {
     this.tauri.event.listen('changed', () => changed());
   }
+
+  /** `left()` the first time DecentAI's window is closed with DecentAI
+   *  left running. */
+  onLeft(left) {
+    this.tauri.event.listen('left', () => left());
+  }
 }
 
 /** Stands where the native side would, in a plain browser: a computer
@@ -39,11 +45,16 @@ class PretendBackend {
     this.running = this.installed && !asked.has('stopped');
     this.update = asked.has('update');
     this.fails = asked.get('fails') || '';
+    this.choices = { start_at_sign_in: false, stop_on_close: false };
+    this.leaves = asked.has('left');
     this.said = () => {};
   }
 
   onProgress(said) { this.said = said; }
   onChanged() {}
+  /** `?left=1` shows what is said the first time DecentAI's window is
+   *  closed. */
+  onLeft(left) { if (this.leaves) setTimeout(left, 1200); }
 
   wait(ms) { return new Promise((done) => setTimeout(done, ms)); }
 
@@ -75,7 +86,11 @@ class PretendBackend {
           address: 'http://localhost:4280',
           first_person: this.installed ? 'sara@example.com' : '',
           update: this.update ? { version: '0.4.0', notes: '' } : null,
+          choices: { ...this.choices },
         };
+      case 'choose':
+        this.choices[payload.name] = payload.on;
+        return null;
       case 'install':
         await this.lines(['Downloading the backend…', 'Downloading the runtime…',
           'Downloading the frontend…', 'Making this install\'s keys…',
@@ -163,8 +178,11 @@ class App {
     this.view = document.getElementById('view');
     this.state = null;
     this.steps = null;
+    /** Whether this is the app being opened, and not a later look. */
+    this.opening = true;
     backend.onProgress((text) => this.said(text));
     backend.onChanged(() => { if (!this.steps) this.look(); });
+    backend.onLeft(() => this.left());
   }
 
   // -- screens ---------------------------------------------------------
@@ -197,7 +215,23 @@ class App {
     } catch (failed) {
       return this.failed('This computer could not be looked at.', failed);
     }
+    const opening = this.opening;
+    this.opening = false;
     this.settle();
+    // Opened with DecentAI running and nothing to decide: DecentAI is
+    // what the person came for, and this window steps aside for it.
+    if (opening && this.state.installed && this.state.running && !this.state.update) {
+      this.open();
+    }
+  }
+
+  /** Show DecentAI in its own window; this one steps aside. */
+  async open() {
+    try {
+      await this.backend.ask('open');
+    } catch (failed) {
+      this.failed('DecentAI could not be opened.', failed);
+    }
   }
 
   /** The screen the state calls for. */
@@ -272,12 +306,13 @@ class App {
 
   setup() {
     const view = this.show('setup');
-    this.credentials(view.querySelector('form'), (fields) => {
-      this.work('Installing DecentAI', 'install', {
+    this.credentials(view.querySelector('form'), async (fields) => {
+      const done = await this.work('Installing DecentAI', 'install', {
         name: fields.name.value.trim(),
         email: fields.email.value.trim(),
         password: fields.password.value,
       }, null, 'Keep this window open. The download is the long part; the rest takes a minute.');
+      if (done !== undefined && this.state.running) this.open();
     });
   }
 
@@ -314,13 +349,14 @@ class App {
       address: state.address,
       version: this.installed(),
     }, {
-      open: () => this.backend.ask('open'),
+      open: () => this.open(),
       stop: (button) => this.work('Stopping DecentAI', 'stop', {}, button),
       update: (button) => this.work(
         `Updating to ${state.update.version}`, 'update', {}, button,
         'Chats that are working are interrupted. A copy of the database is kept first, '
         + 'and the version you have is put back if the new one does not start.'),
       check: () => this.look(),
+      settings: () => this.settings(),
       reset: () => this.reset(),
       data: () => this.data(),
       uninstall: () => this.uninstall(),
@@ -336,10 +372,50 @@ class App {
 
   stopped() {
     this.show('stopped', { version: this.installed() }, {
-      start: (button) => this.work('Starting DecentAI', 'start', {}, button),
+      start: (button) => this.start(button),
+      settings: () => this.settings(),
       reset: () => this.reset(),
       data: () => this.data(),
       uninstall: () => this.uninstall(),
+    });
+  }
+
+  /** Start DecentAI, and show it once it has started. */
+  async start(button) {
+    const done = await this.work('Starting DecentAI', 'start', {}, button);
+    if (done !== undefined && this.state.running) this.open();
+  }
+
+  /** What the person chooses about the app itself. Each is kept the
+   *  moment it is ticked; one the computer refuses is unticked again,
+   *  with the reason. */
+  settings() {
+    const view = this.show('settings', {}, { back: () => this.settle() });
+    const problem = view.querySelector('[data-slot="problem"]');
+    for (const box of view.querySelectorAll('input[type=checkbox]')) {
+      box.checked = Boolean((this.state.choices || {})[box.name]);
+      box.addEventListener('change', async () => {
+        problem.hidden = true;
+        try {
+          await this.backend.ask('choose', { name: box.name, on: box.checked });
+          this.state.choices[box.name] = box.checked;
+        } catch (failed) {
+          box.checked = !box.checked;
+          problem.hidden = false;
+          problem.textContent = String((failed && failed.message) || failed);
+        }
+      });
+    }
+  }
+
+  /** DecentAI's window was closed and DecentAI runs on. Said once. */
+  left() {
+    if (this.steps) return;
+    this.show('left', {}, {
+      open: () => this.open(),
+      stop: (button) => this.work('Stopping DecentAI', 'stop', {}, button),
+      settings: () => this.settings(),
+      back: () => this.settle(),
     });
   }
 

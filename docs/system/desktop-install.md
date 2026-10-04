@@ -101,6 +101,19 @@ does what a container cannot do for itself:
   opens itself — the sign-in of a connected account — opens as asked
   and stays tied to the page waiting for it; a link to anywhere else is
   handed to the person's browser;
+- **steps aside for it**: once DecentAI's window is shown the app's own
+  is hidden, and opening the app with DecentAI running and no update
+  waiting shows DecentAI. The app's window is at the icon by the clock,
+  and under **Manage** in the menu DecentAI's window carries — a menu
+  of the app's, and not a button in the page, so that stopping
+  DecentAI is never something a page can do;
+- **leaves DecentAI running** when its window is closed, since
+  schedules and watches run only while it does, and says so the first
+  time. A person may choose that closing stops it (`stop_on_close`,
+  kept with the engine in `starter.json`);
+- **starts with the computer**, where the person chose that: the
+  system's own start-at-sign-in runs the app with `--background`, which
+  starts the engine and then DecentAI and shows no window;
 - **resets a password** (`reset-password`, through the launcher), for
   an install that has no email to send a link with: whoever can open
   the app holds the install already;

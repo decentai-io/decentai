@@ -16,7 +16,8 @@
         "resizable": false,
         "theme": "Dark",
         "backgroundColor": "#0c0e11",
-        "center": true
+        "center": true,
+        "visible": false
       }
     ],
     "security": {

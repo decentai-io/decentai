@@ -133,6 +133,8 @@ input.is-wrong { border-color: var(--danger); }
 
 .check { display: flex; align-items: flex-start; gap: 10px; color: var(--ink-soft); cursor: pointer; }
 .check input { margin-top: 3px; accent-color: var(--seal); }
+.check strong { display: block; color: var(--ink); font-weight: 600; }
+.note .link { font-size: inherit; }
 
 /* Work under way */
 .bar { height: 4px; border-radius: 2px; background: var(--rule-soft); overflow: hidden; }

@@ -9,8 +9,9 @@
 
 use std::path::PathBuf;
 
+use tauri::menu::Menu;
 use tauri::webview::NewWindowResponse;
-use tauri::{AppHandle, Manager, Url, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Manager, Url, WebviewUrl, WebviewWindowBuilder, Wry};
 
 use crate::program::Program;
 
@@ -20,8 +21,9 @@ impl Window {
     const LABEL: &'static str = "decentai";
 
     /// Show DecentAI at `address`: the window it is already in, brought
-    /// to the front, or a new one.
-    pub fn show(app: &AppHandle, address: &str) -> Result<(), String> {
+    /// to the front, or a new one — which carries `menu`, where a
+    /// window has one of its own.
+    pub fn show(app: &AppHandle, address: &str, menu: Option<Menu<Wry>>) -> Result<(), String> {
         if let Some(open) = app.get_webview_window(Self::LABEL) {
             let _ = open.unminimize();
             let _ = open.show();
@@ -32,10 +34,14 @@ impl Window {
             .parse()
             .map_err(|_| format!("'{address}' is not an address DecentAI can be opened at."))?;
         let home = address.clone();
-        WebviewWindowBuilder::new(app, Self::LABEL, WebviewUrl::External(address))
+        let mut window = WebviewWindowBuilder::new(app, Self::LABEL, WebviewUrl::External(address))
             .title("DecentAI")
             .inner_size(1280.0, 860.0)
-            .min_inner_size(420.0, 560.0)
+            .min_inner_size(420.0, 560.0);
+        if let Some(menu) = menu {
+            window = window.menu(menu);
+        }
+        window
             // A window the page opens itself. Its own — the sign-in
             // window of a connected account starts empty and is led to
             // the provider — is opened as asked, and stays tied to the
@@ -55,10 +61,11 @@ impl Window {
     }
 
     /// Close it: DecentAI was stopped or removed, and the page in it
-    /// has nothing behind it.
+    /// has nothing behind it. Taken away rather than asked to close:
+    /// asking is what a person does, and is answered as theirs.
     pub fn close(app: &AppHandle) {
         if let Some(open) = app.get_webview_window(Self::LABEL) {
-            let _ = open.close();
+            let _ = open.destroy();
         }
     }
 

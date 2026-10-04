@@ -22,9 +22,10 @@ mod release;
 mod window;
 
 use serde::Serialize;
-use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
+use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{AppHandle, Emitter, Manager, WindowEvent};
+use tauri::{AppHandle, Emitter, Manager, WindowEvent, Wry};
+use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 
 use engine::Engine;
 use kept::Kept;
@@ -45,6 +46,15 @@ struct Update {
     version: String,
 }
 
+/// What the person chose about the app itself.
+#[derive(Serialize)]
+struct Choices {
+    /// DecentAI is started when the person signs in to this computer.
+    start_at_sign_in: bool,
+    /// DecentAI is stopped when its window is closed.
+    stop_on_close: bool,
+}
+
 /// What the window shows: the engine, the install, a newer release.
 #[derive(Serialize)]
 struct State {
@@ -57,6 +67,7 @@ struct State {
     /// Whose install it is: the person a forgotten password is reset for.
     first_person: String,
     update: Option<Update>,
+    choices: Choices,
 }
 
 #[derive(Serialize)]
@@ -115,6 +126,7 @@ impl Desktop {
             address: String::new(),
             first_person: String::new(),
             update: None,
+            choices: self.choices(),
         };
         if !ready {
             return Ok(state);
@@ -161,6 +173,12 @@ impl Desktop {
         launcher.run(&["start"], None, &|_| {}).map(|_| ())
     }
 
+    /// Start it and show it: what the icon by the clock means by Start.
+    fn start_and_open(&self) -> Result<(), String> {
+        self.start()?;
+        self.open()
+    }
+
     fn stop(&self) -> Result<(), String> {
         let (launcher, _) = self.launcher()?;
         launcher.run(&["stop"], None, &|_| {})?;
@@ -189,7 +207,92 @@ impl Desktop {
         if status.address.is_empty() {
             return Err("DecentAI is not installed here yet.".into());
         }
-        Window::show(&self.app, &status.address)
+        if !status.running() {
+            return Err("DecentAI is stopped.".into());
+        }
+        let menu = Self::window_menu(&self.app).map_err(|failed| failed.to_string())?;
+        Window::show(&self.app, &status.address, menu)?;
+        // DecentAI is what the person came for: the app's own window
+        // steps aside, and is a click on the icon by the clock away.
+        if let Some(own) = self.app.get_webview_window("main") {
+            let _ = own.hide();
+        }
+        Ok(())
+    }
+
+    // ------------------------------------------------------------------
+    // What the person chose about the app
+    // ------------------------------------------------------------------
+
+    /// The word the app is started with at sign-in.
+    const IN_THE_BACKGROUND: &'static str = "--background";
+    const STOP_ON_CLOSE: &'static str = "stop_on_close";
+    const TOLD_IT_KEEPS_RUNNING: &'static str = "told_it_keeps_running";
+
+    fn choices(&self) -> Choices {
+        Choices {
+            start_at_sign_in: self.app.autolaunch().is_enabled().unwrap_or(false),
+            stop_on_close: Kept::here().get(Self::STOP_ON_CLOSE) == "yes",
+        }
+    }
+
+    fn choose(&self, name: &str, on: bool) -> Result<(), String> {
+        match name {
+            "start_at_sign_in" => {
+                let launch = self.app.autolaunch();
+                let done = if on { launch.enable() } else { launch.disable() };
+                done.map_err(|failed| {
+                    format!("This computer would not take that setting: {failed}")
+                })
+            }
+            "stop_on_close" => {
+                Kept::here().keep(Self::STOP_ON_CLOSE, if on { "yes" } else { "no" });
+                Ok(())
+            }
+            _ => Err(format!("'{name}' is not a setting of this app.")),
+        }
+    }
+
+    /// The person closed DecentAI's window. It keeps running — schedules
+    /// and watches run only while it does — unless they chose otherwise;
+    /// and the first time, they are told so.
+    fn left(&self) {
+        let kept = Kept::here();
+        if kept.get(Self::STOP_ON_CLOSE) == "yes" {
+            Desktop::from_the_tray(&self.app, Desktop::stop);
+            return;
+        }
+        if kept.get(Self::TOLD_IT_KEEPS_RUNNING) != "yes" {
+            kept.keep(Self::TOLD_IT_KEEPS_RUNNING, "yes");
+            self.show_window();
+            let _ = self.app.emit_to("main", "left", ());
+        }
+    }
+
+    /// The computer was signed in to, and the person chose to have
+    /// DecentAI started then: the engine, then DecentAI, with nothing on
+    /// screen. Where either does not start, the app is by the clock and
+    /// says why when it is opened.
+    fn in_the_background(app: &AppHandle) {
+        let app = app.clone();
+        std::thread::spawn(move || {
+            let kept = Kept::here();
+            if kept.get("engine").is_empty() {
+                return; // nothing was ever installed from here
+            }
+            if Engine::chosen(&kept).start(&|_| {}).is_err() {
+                return;
+            }
+            let desktop = Desktop::new(&app);
+            if let Ok((launcher, _)) = desktop.launcher() {
+                if let Ok(status) = launcher.status() {
+                    if status.installed && !status.running() {
+                        let _ = launcher.run(&["start"], None, &|_| {});
+                    }
+                }
+            }
+            let _ = app.emit("changed", ());
+        });
     }
 
     fn data(&self) -> Result<Places, String> {
@@ -297,13 +400,54 @@ impl Desktop {
         });
     }
 
+    /// What DecentAI's own window offers of the app: a menu, and not a
+    /// button in the page — the page is given none of the app's
+    /// commands, so nothing shown in a chat can stop DecentAI.
+    fn manage(app: &AppHandle) -> tauri::Result<Submenu<Wry>> {
+        let item = |id: &str, text: &str| MenuItem::with_id(app, id, text, true, None::<&str>);
+        Submenu::with_items(
+            app,
+            "Manage",
+            true,
+            &[
+                &item("manage-show", "Updates, settings and uninstall…")?,
+                &PredefinedMenuItem::separator(app)?,
+                &item("manage-stop", "Stop DecentAI")?,
+            ],
+        )
+    }
+
+    /// The menu DecentAI's window carries. On a Mac a menu is the
+    /// app's and not a window's: it is set once, at start.
+    fn window_menu(app: &AppHandle) -> tauri::Result<Option<Menu<Wry>>> {
+        if cfg!(target_os = "macos") {
+            return Ok(None);
+        }
+        Ok(Some(Menu::with_items(app, &[&Self::manage(app)?])?))
+    }
+
+    fn from_the_menu(app: &AppHandle, id: &str) {
+        match id {
+            "manage-show" => {
+                Desktop::new(app).show_window();
+                let _ = app.emit_to("main", "changed", ());
+            }
+            "manage-stop" => {
+                let desktop = Desktop::new(app);
+                desktop.show_window();
+                Desktop::from_the_tray(app, Desktop::stop);
+            }
+            _ => {}
+        }
+    }
+
     fn tray(app: &AppHandle) -> tauri::Result<()> {
         let item = |id: &str, text: &str| MenuItem::with_id(app, id, text, true, None::<&str>);
         let menu = Menu::with_items(
             app,
             &[
                 &item("open", "Open DecentAI")?,
-                &item("show", "Show this app")?,
+                &item("show", "Updates, settings and uninstall…")?,
                 &PredefinedMenuItem::separator(app)?,
                 &item("start", "Start")?,
                 &item("stop", "Stop")?,
@@ -318,7 +462,7 @@ impl Desktop {
             .on_menu_event(|app, event| match event.id.as_ref() {
                 "open" => Desktop::from_the_tray(app, Desktop::open),
                 "show" => Desktop::new(app).show_window(),
-                "start" => Desktop::from_the_tray(app, Desktop::start),
+                "start" => Desktop::from_the_tray(app, Desktop::start_and_open),
                 "stop" => Desktop::from_the_tray(app, Desktop::stop),
                 "quit" => app.exit(0),
                 _ => {}
@@ -390,6 +534,11 @@ fn uninstall(app: AppHandle, keep: bool, images: bool) -> Result<Removed, String
 }
 
 #[tauri::command(async)]
+fn choose(app: AppHandle, name: String, on: bool) -> Result<(), String> {
+    Desktop::new(&app).choose(&name, on)
+}
+
+#[tauri::command(async)]
 fn start_engine(app: AppHandle) -> Result<(), String> {
     Desktop::new(&app).start_engine()
 }
@@ -401,28 +550,49 @@ fn install_engine(app: AppHandle) -> Result<(), String> {
 
 pub fn run() {
     tauri::Builder::default()
-        // Opened a second time, the app that is already open is shown.
+        // Opened a second time, the app that is already open shows
+        // DecentAI — or its own window, where DecentAI is not running.
         .plugin(tauri_plugin_single_instance::init(|app, _arguments, _folder| {
-            Desktop::new(app).show_window();
+            Desktop::from_the_tray(app, Desktop::open);
         }))
+        // Started with the computer, where the person chose that: with
+        // a word that says so, since nothing is put on screen then.
+        .plugin(tauri_plugin_autostart::init(
+            MacosLauncher::LaunchAgent,
+            Some(vec![Desktop::IN_THE_BACKGROUND]),
+        ))
         .setup(|app| {
             Desktop::tray(app.handle())?;
+            if cfg!(target_os = "macos") {
+                let menu = Menu::default(app.handle())?;
+                menu.append(&Desktop::manage(app.handle())?)?;
+                app.set_menu(menu)?;
+            }
+            app.on_menu_event(|app, event| Desktop::from_the_menu(app, event.id().as_ref()));
+            if std::env::args().any(|said| said == Desktop::IN_THE_BACKGROUND) {
+                Desktop::in_the_background(app.handle());
+            } else {
+                Desktop::new(app.handle()).show_window();
+            }
             Ok(())
         })
         .on_window_event(|window, event| {
             // Closing the app's own window leaves the icon by the clock:
             // DecentAI itself runs whether the app is open or not. The
-            // window DecentAI is shown in simply closes.
+            // window DecentAI is shown in closes, and DecentAI runs on
+            // unless the person chose that closing stops it.
             if let WindowEvent::CloseRequested { api, .. } = event {
                 if Window::is_the_apps_own(window.label()) {
                     api.prevent_close();
                     let _ = window.hide();
+                } else {
+                    Desktop::new(window.app_handle()).left();
                 }
             }
         })
         .invoke_handler(tauri::generate_handler![
             state, install, start, stop, update, open, data, uninstall, start_engine,
-            install_engine, reset_password
+            install_engine, reset_password, choose
         ])
         .run(tauri::generate_context!())
         .expect("DecentAI could not start");

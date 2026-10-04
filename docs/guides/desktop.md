@@ -52,21 +52,36 @@ changed.
 
 ## Every day
 
-The app's window says whether DecentAI is running, and has:
+Opening the app shows DecentAI, in a window of its own, when it is
+running and there is nothing to decide. The app's own window says
+whether DecentAI is running and which version is installed, and has:
 
 | | Does |
 |---|---|
-| **Open DecentAI** | shows it in a window of the app's own; a link to another site opens in your browser |
-| **Stop**, **Start** | stops it — nothing is removed — and starts it again |
-| **Update** | appears when a newer release exists: a copy of the database is kept first, and the version you have is put back if the new one does not start |
+| **Open DecentAI** | shows it in a window of the app's own, and steps aside; a link to another site opens in your browser |
+| **Stop**, **Start** | stops it — nothing is removed — and starts it again, and shows it |
+| **Update** | appears when a newer release exists, and says which you have and which is available: a copy of the database is kept first, and the version you have is put back if the new one does not start |
 | **Check for updates** | looks again |
+| **Settings** | two choices, both off until you make them: start DecentAI when you sign in to this computer, and stop it when you close its window |
 | **Reset a password** | a new password for you, or for another person of this install, when one is forgotten |
 | **Where my data is** | the places on this computer DecentAI keeps things in |
 | **Uninstall** | removes DecentAI and everything it kept, offering a copy of the database in your Documents folder first |
 
-Closing the window leaves an icon by the clock (the menu bar on a Mac),
-with Open, Start and Stop in its menu. DecentAI itself keeps running
-whether the app is open or not.
+Closing either window leaves an icon by the clock (the menu bar on a
+Mac), with Open, Start and Stop in its menu, and the app's own window
+under *Updates, settings and uninstall*. DecentAI's window has the same
+under **Manage** in its menu.
+
+**DecentAI keeps running when its window is closed.** Schedules and
+watches run only while it does, so closing the window is not stopping
+it; the first time, the app says so. To stop it: **Manage → Stop
+DecentAI**, or Stop at the icon by the clock. To have closing the
+window stop it, tick that in Settings.
+
+**After the computer restarts** DecentAI is running again once its
+container engine is, and an engine does not always start by itself.
+With *Start DecentAI when I sign in to this computer* ticked, the app
+starts the engine and DecentAI then, without showing a window.
 
 ## More than one person
 

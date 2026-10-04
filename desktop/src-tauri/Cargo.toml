@@ -18,6 +18,8 @@ tauri = { version = "2", features = ["tray-icon"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tauri-plugin-single-instance = "2"
+# Started when the person signs in to the computer, where they chose that.
+tauri-plugin-autostart = "2"
 # The release file: fetched over HTTPS, believed for its signature.
 ureq = "2"
 ed25519-dalek = "2"
