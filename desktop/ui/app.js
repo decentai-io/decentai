@@ -62,7 +62,7 @@ class PretendBackend {
     switch (command) {
       case 'state':
         return {
-          app_version: '0.3.0',
+          app_version: '0.4.0',
           engine: {
             name: this.engine === 'missing' ? '' : 'Docker',
             ready: this.engine === 'ready',
@@ -71,10 +71,10 @@ class PretendBackend {
           },
           installed: this.installed,
           running: this.running,
-          version: this.installed ? '0.2.2' : '',
+          version: this.installed ? (this.update ? '0.3.0' : '0.4.0') : '',
           address: 'http://localhost:4280',
           first_person: this.installed ? 'sara@example.com' : '',
-          update: this.update ? { version: '0.3.0', notes: '' } : null,
+          update: this.update ? { version: '0.4.0', notes: '' } : null,
         };
       case 'install':
         await this.lines(['Downloading the backend…', 'Downloading the runtime…',
@@ -91,7 +91,7 @@ class PretendBackend {
         return null;
       case 'update':
         await this.lines(['Downloading the backend…', 'Keeping a copy of the database…',
-          'Installing 0.3.0…']);
+          'Installing 0.4.0…']);
         this.update = false;
         return null;
       case 'uninstall':
@@ -197,8 +197,6 @@ class App {
     } catch (failed) {
       return this.failed('This computer could not be looked at.', failed);
     }
-    document.getElementById('app-version').textContent =
-      this.state.app_version ? `App ${this.state.app_version}` : '';
     this.settle();
   }
 
@@ -300,11 +298,21 @@ class App {
     (form.elements.email.value ? form.elements.password : form.elements.email).focus();
   }
 
+  /** Which DecentAI is installed — and which app this is, where the two
+   *  differ: the app and DecentAI are released together and updated
+   *  apart, and a number with no name beside it is read as DecentAI's. */
+  installed() {
+    const state = this.state;
+    const app = state.app_version && state.app_version !== state.version
+      ? ` · this app is ${state.app_version}` : '';
+    return `DecentAI ${state.version} is installed${app}`;
+  }
+
   running() {
     const state = this.state;
     this.show('running', {
       address: state.address,
-      version: `Version ${state.version}`,
+      version: this.installed(),
     }, {
       open: () => this.backend.ask('open'),
       stop: (button) => this.work('Stopping DecentAI', 'stop', {}, button),
@@ -320,14 +328,14 @@ class App {
     if (state.update) {
       this.view.querySelector('[data-slot="update"]').hidden = false;
       this.view.querySelector('[data-slot="update-title"]').textContent =
-        `Version ${state.update.version} is available`;
+        `DecentAI ${state.update.version} is available`;
       this.view.querySelector('[data-slot="update-text"]').textContent =
-        'Updating takes about a minute.';
+        `You have ${state.version}. Updating takes about a minute.`;
     }
   }
 
   stopped() {
-    this.show('stopped', { version: `Version ${this.state.version}` }, {
+    this.show('stopped', { version: this.installed() }, {
       start: (button) => this.work('Starting DecentAI', 'start', {}, button),
       reset: () => this.reset(),
       data: () => this.data(),

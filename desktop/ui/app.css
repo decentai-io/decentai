@@ -48,7 +48,6 @@ body {
   padding: 18px 28px 0;
 }
 .logo { height: 26px; }
-.head-version { color: var(--ink-faint); font-size: 12px; }
 
 /* The one screen */
 .view { flex: 1; display: flex; padding: 14px 28px 24px; min-height: 0; }
