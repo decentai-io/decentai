@@ -262,7 +262,7 @@ class Mailer:
 
     ``SMTP_HOST`` and ``MAIL_FROM`` are the switch: without both nothing is
     sent, and each message is logged instead — what local development and
-    a desktop install, which have no mail server, want. ``SMTP_SECURITY``
+    an install on one's own computer, which have no mail server, want. ``SMTP_SECURITY``
     says how the connection is protected: ``starttls`` (port 587, the
     default), ``ssl`` (port 465), or ``none`` for a relay on a trusted
     network."""

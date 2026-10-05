@@ -563,53 +563,21 @@ MICROSOFT = {
 }
 
 
-@pytest.fixture()
-def desktop(app):
-    """The deployment as bootstrap/setup.py makes it: on one person's
-    own computer."""
-    import dataclasses
+class TestWhatEveryScreenIsTold:
+    def test_whether_this_install_sends_email(self, admin, seed):
+        assert admin.get("/auth/me").json()["sends_email"] is False
 
-    from server.setup.app_state import get_state
+    def test_that_it_does_where_a_mail_server_is_set(self, admin, seed, mail):
+        assert admin.get("/auth/me").json()["sends_email"] is True
 
-    state = get_state()
-    original = state.settings
-    state.settings = dataclasses.replace(original, deployment_kind="desktop")
-    yield state.settings
-    state.settings = original
-
-
-class TestWhatADeploymentIs:
-    def test_a_deployment_is_a_web_one_unless_it_says(self, monkeypatch):
-        from server.setup.app_settings import Settings
-
-        monkeypatch.delenv("DEPLOYMENT_KIND", raising=False)
-        assert Settings.from_env().deployment_kind == "web"
-        assert Settings.from_env().is_desktop is False
-
-    def test_one_on_a_persons_own_computer_says_desktop(self, monkeypatch):
-        from server.setup.app_settings import Settings
-
-        monkeypatch.setenv("DEPLOYMENT_KIND", " Desktop ")
-        assert Settings.from_env().deployment_kind == "desktop"
-        assert Settings.from_env().is_desktop is True
-
-    def test_a_kind_nobody_knows_is_the_stricter_one(self, monkeypatch):
-        from server.setup.app_settings import Settings
-
-        monkeypatch.setenv("DEPLOYMENT_KIND", "laptop")
-        assert Settings.from_env().deployment_kind == "web"
-
-    def test_every_screen_is_told(self, admin, seed):
-        assert admin.get("/auth/me").json()["deployment"] == {"kind": "web"}
-
-    def test_every_screen_is_told_of_a_desktop(self, admin, seed, desktop):
-        assert admin.get("/auth/me").json()["deployment"] == {"kind": "desktop"}
+    def test_nothing_of_what_kind_of_deployment_it_is(self, admin, seed):
+        assert "deployment" not in admin.get("/auth/me").json()
 
 
 class TestAnAppWithoutASecret:
     """An app registered for a person's own computer is given no secret
-    by its provider. A desktop deployment takes one without; a web
-    deployment does not."""
+    by its provider. Which kind an app is, is the provider's to say:
+    a registration is taken with a secret or without one."""
 
     @staticmethod
     def _register(admin, **draft):
@@ -617,37 +585,31 @@ class TestAnAppWithoutASecret:
             "provider": "microsoft", "client_id": "cid-public",
             "endpoints": addresses(MICROSOFT), **draft})
 
-    def test_a_web_deployment_still_requires_one(self, admin, seed):
-        made = self._register(admin)
-        assert made.status_code == 400 and "Client secret is required" in made.text
-        listed = app_call(admin, "Settings:Oauth:List").json()
-        assert listed["apps"] == [] and listed["secret_required"] is True
-
-    def test_a_desktop_takes_the_id_alone(self, admin, seed, desktop):
+    def test_the_id_alone_is_taken(self, admin, seed):
         from database.stores import OauthAppStore
 
         made = self._register(admin)
         assert made.status_code == 200, made.text
         assert made.json()["app"]["has_secret"] is False
         listed = app_call(admin, "Settings:Oauth:List").json()
-        assert listed["secret_required"] is False
+        assert "secret_required" not in listed
         assert [(a["provider"], a["has_secret"]) for a in listed["apps"]] == [
             ("microsoft", False)]
         used = OauthAppStore().use(seed.org["_id"], "microsoft")
         assert used == {"provider": "microsoft", "client_id": "cid-public",
                         "client_secret": "", "endpoints": addresses(MICROSOFT)}
 
-    def test_a_desktop_keeps_a_secret_it_is_given(self, admin, seed, desktop):
+    def test_a_secret_that_was_issued_is_kept(self, admin, seed):
         from database.stores import OauthAppStore
 
-        made = self._register(admin, client_secret="csec-desktop")
+        made = self._register(admin, client_secret="csec-issued")
         assert made.status_code == 200 and made.json()["app"]["has_secret"] is True
-        assert "csec-desktop" not in made.text
+        assert "csec-issued" not in made.text
         assert OauthAppStore().use(
-            seed.org["_id"], "microsoft")["client_secret"] == "csec-desktop"
+            seed.org["_id"], "microsoft")["client_secret"] == "csec-issued"
 
     def test_the_exchange_names_the_app_by_its_id_alone(
-            self, admin, seed, provider, desktop):
+            self, admin, seed, provider):
         define(admin, slug="outlook_probe", oauth=MICROSOFT)
         assert self._register(admin).status_code == 200
         page, ref = connect(admin, admin, definition_id="outlook_probe")
@@ -662,7 +624,7 @@ class TestAnAppWithoutASecret:
         assert provider.shapes[0] == (None, False)
 
     def test_a_refresh_names_it_the_same_way(
-            self, admin, anon, seed, provider, desktop):
+            self, admin, anon, seed, provider):
         from database.stores.data.secrets import SecretStore
 
         define(admin, slug="outlook_probe", oauth=MICROSOFT)
@@ -677,7 +639,7 @@ class TestAnAppWithoutASecret:
             "client_id": "cid-public"}
 
     def test_a_provider_that_wants_the_client_in_a_header_gets_the_id_in_the_body(
-            self, admin, seed, provider, desktop):
+            self, admin, seed, provider):
         """HTTP Basic with no password is a secret all the same, an
         empty one."""
         notion = {**TestProvidersOffTheCommonPath.NOTION}

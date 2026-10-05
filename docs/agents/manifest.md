@@ -524,9 +524,9 @@ carry.
 | `token_format` | `form` (default) or `json` |
 | `token_path` | A dotted path to the token object inside the response, when it is nested (Slack: `authed_user`) |
 
-Unknown `oauth` keys are refused. A provider that gives a desktop
-application no client secret is supported: the deployment registers the
-client id alone.
+Unknown `oauth` keys are refused. A provider that gives an application
+registered for a person's own computer no client secret is supported:
+the client id alone is registered.
 
 What to think about:
 

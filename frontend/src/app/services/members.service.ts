@@ -64,7 +64,7 @@ export class MembersService {
     });
   }
 
-  /** Add a person where no invitation can be sent — a desktop. The
+  /** Add a person where no invitation can be sent: no mail server. The
    *  answer carries a temporary password, shown once. */
   async create(
     email: string,

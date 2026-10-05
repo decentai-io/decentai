@@ -115,14 +115,8 @@
         <span class="dialog-icon"><lucide-icon name="globe" [size]="21"></lucide-icon></span>
         <div>
           <h2 id="app-editor-title">{{ isCreating ? "Register an app" : "Rotate " + labelFor(draft.provider) }}</h2>
-          <p *ngIf="isCreating && secretRequired">
-            Create a <em>web application</em> OAuth client in the provider's console with the
-            redirect URL shown on this page, then paste what it gives you.
-          </p>
-          <!-- On a desktop: what to choose in the provider's console is
-               not what a server would choose, so it is said. -->
-          <p *ngIf="isCreating && !secretRequired">{{ steps }}</p>
-          <p *ngIf="!isCreating && showsSecret">A blank secret keeps the stored one.</p>
+          <p *ngIf="isCreating">{{ steps }}</p>
+          <p *ngIf="!isCreating">A blank secret keeps the stored one.</p>
         </div>
         <button class="icon-button" type="button" (click)="closeEditor()" [disabled]="saving" aria-label="Close">
           <lucide-icon name="x" [size]="19"></lucide-icon>
@@ -186,7 +180,7 @@
           <span class="field-label">Client id</span>
           <input class="txt" [(ngModel)]="draft.client_id" autocomplete="off" />
         </label>
-        <label class="field" *ngIf="showsSecret">
+        <label class="field">
           <span class="field-label">
             Client secret
             <span class="field-flag" *ngIf="secretOptional">optional</span>

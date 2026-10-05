@@ -44,9 +44,9 @@ class TestAResetFromTheMachine:
 
 
 class TestANewAddressWithIt:
-    """A desktop's first person is made without being asked who they
-    are, and names their own address the day others are to use the
-    install: the same account, signed in to by another name."""
+    """The first person bootstrap/setup.py makes is nobody's address,
+    and they name their own the day others are to use the install: the
+    same account, signed in to by another name."""
 
     OWN = "sara@example.org"
 
@@ -86,21 +86,11 @@ class TestForgottenWithNoEmail:
     def forgot(app, email):
         return TestClient(app).post("/auth/password/forgot", json={"email": email})
 
-    def test_a_desktop_points_at_the_computer_it_runs_on(self, app, seed, monkeypatch):
-        import dataclasses
-
-        from server.setup.app_state import get_state
-
-        state = get_state()
-        monkeypatch.setattr(state, "settings",
-                            dataclasses.replace(state.settings, deployment_kind="desktop"))
+    def test_the_answer_points_at_the_machine_it_runs_on(self, app, seed):
         answer = self.forgot(app, ADMIN_EMAIL).json()
         assert answer["requested"] is False
         assert "bootstrap/reset_password.py" in answer["message"]
-
-    def test_a_server_says_who_to_ask(self, app, seed):
-        answer = self.forgot(app, ADMIN_EMAIL).json()
-        assert "Ask whoever runs it" in answer["message"]
+        assert "ask whoever runs it" in answer["message"]
 
     def test_every_address_gets_the_same_answer_and_no_link_is_made(self, app, seed):
         from database.stores import PasswordResetStore, UserStore

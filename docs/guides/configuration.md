@@ -26,7 +26,6 @@ Three values are generated, never chosen:
 | `CORS_ALLOW_ORIGINS` | `http://localhost:4200` | Comma-separated origins the browser may call from. A request carrying the session cookie from any other origin is not signed in. |
 | `PUBLIC_APP_URL` | `http://localhost:4200` | Where users reach the app; the base for links in invitations and resets, and an origin the session cookie is accepted from. |
 | `OAUTH_REDIRECT_URL` | `PUBLIC_APP_URL` + `/oauth/callback` | Where a provider sends the browser back after consent — the redirect URI registered with every connected app. Set it in development, where the API has a port of its own. |
-| `DEPLOYMENT_KIND` | `web` | What the deployment is: `web`, served to an organization at an address of its own, or `desktop`, on one person's own computer, which `bootstrap/setup.py` sets. On a desktop there is no email, so people are added with a password shown once, and a connected app may be registered without a secret. |
 
 ### Sessions
 

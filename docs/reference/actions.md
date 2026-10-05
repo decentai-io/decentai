@@ -32,7 +32,7 @@ Generated from `backend/server/authentication/catalog.py` by
 |---|---|---|---|
 | `iam:user:list` | View users |  |  |
 | `iam:user:get` | View one user |  |  |
-| `iam:user:create` | Add a person and hand them a temporary password, where no invitation can be sent |  |  |
+| `iam:user:create` | Add a person and hand them a temporary password, where no mail server is set to send an invitation by |  |  |
 | `iam:user:reset_password` | Give a person who forgot their password a temporary one |  |  |
 | `iam:user:update` | Edit a user's profile |  |  |
 | `iam:user:set_groups` | Place a user into groups |  |  |

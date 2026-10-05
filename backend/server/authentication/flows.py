@@ -71,8 +71,10 @@ class AuthController:
             "organization": OrganizationStore.to_public(
                 self.organization.get(org_id)),
             "allowed_actions": self.policy.allowed_actions(user_doc),
-            # What the deployment is, for the screens that differ by it.
-            "deployment": {"kind": get_settings().deployment_kind},
+            # Whether this install sends email: where it does not,
+            # people are added with a password handed over, and no
+            # screen offers an invitation nobody would receive.
+            "sends_email": Mailer(get_settings()).configured,
         }
 
     # ------------------------------------------------------------------
@@ -378,11 +380,9 @@ class AuthController:
     @staticmethod
     def _reset_without_email() -> str:
         """How a password is reset where this install sends no email."""
-        if getattr(get_settings(), "deployment_kind", "") == "desktop":
-            return ("This DecentAI sends no email. A new password is set on "
-                    "the computer it runs on, with bootstrap/reset_password.py.")
-        return ("This DecentAI is not set up to send email. Ask whoever runs "
-                "it to set a new password for you.")
+        return ("This DecentAI sends no email. A new password is set on the "
+                "machine it runs on, with bootstrap/reset_password.py: ask "
+                "whoever runs it, if that is not you.")
 
     def _reset_url(self, token: str) -> str:
         base = (get_settings().public_app_url or "").rstrip("/")

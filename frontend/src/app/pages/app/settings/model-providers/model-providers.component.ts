@@ -164,11 +164,10 @@ export class ModelProvidersComponent extends DataPageBase {
     this.providerQuery = '';
     this.draft = this.blankDraft();
     this.resetEditor(true);
-    // On a person's own computer a provider is for whoever uses the
-    // install — and speech and agent routing take only a provider
-    // shared with everyone. Served to an organization, it starts as
-    // its creator's alone, like everything a person makes.
-    this.shareMode = this.auth.isDesktop ? 'org' : 'private';
+    // It starts as its creator's alone, like everything a person
+    // makes. Speech and agent routing take only a provider shared
+    // with everyone, which is a choice made on this form.
+    this.shareMode = 'private';
     this.selectedGroups.clear();
     this.selectedUsers.clear();
     this.error = '';

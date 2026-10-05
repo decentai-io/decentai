@@ -15,25 +15,6 @@ def _env_list(name: str, default: str = "", separator: str = ",") -> List[str]:
     return [item.strip() for item in raw.split(separator) if item.strip()]
 
 
-#: What a deployment is: the platform served to an organization at an
-#: address of its own, or installed on one person's computer.
-DEPLOYMENT_KINDS = ("web", "desktop")
-
-
-def _env_deployment_kind() -> str:
-    """DEPLOYMENT_KIND constrained to what the platform knows; an
-    unknown value is a web deployment, which is the stricter of the
-    two."""
-    value = (os.getenv("DEPLOYMENT_KIND") or "web").strip().lower()
-    if value not in DEPLOYMENT_KINDS:
-        import logging
-
-        logging.getLogger("Settings").warning(
-            f"DEPLOYMENT_KIND='{value}' is not web/desktop — using web."
-        )
-        return "web"
-    return value
-
 
 def _env_samesite() -> str:
     """JWT_COOKIE_SAMESITE constrained to what browsers accept; an
@@ -102,12 +83,6 @@ def _load_settings() -> Dict[str, Any]:
 
         "cors_allow_origins": _env_list("CORS_ALLOW_ORIGINS", "http://localhost:4200"),
 
-        # web: served to an organization at an address of its own.
-        # desktop: on one person's own computer, as bootstrap/setup.py
-        # sets it up. It decides what cannot be the same for both — an
-        # app registered for a desktop has no secret to keep.
-        "deployment_kind": _env_deployment_kind(),
-
         # session token signing + cookie
         "token_secret_key": os.getenv("TOKEN_SECRET_KEY"),
         "jwt_cookie_secure": _env_bool("JWT_COOKIE_SECURE", True),
@@ -118,8 +93,8 @@ def _load_settings() -> Dict[str, Any]:
         "jwt_cookie_domain": os.getenv("JWT_COOKIE_DOMAIN") or None,
 
         # email — any SMTP server. Without SMTP_HOST and MAIL_FROM the
-        # mailer logs messages instead of sending them, which is what local
-        # development and a desktop install want.
+        # mailer logs messages instead of sending them, and people are
+        # added with a password handed over instead of an invitation.
         "smtp_host": os.getenv("SMTP_HOST", ""),
         "smtp_port": _env_port("SMTP_PORT", 0),
         "smtp_username": os.getenv("SMTP_USERNAME", ""),
@@ -200,9 +175,6 @@ class Settings:
 
     # app
     cors_allow_origins: Optional[List[str]] = None
-    # web, or desktop
-    deployment_kind: str = "web"
-
     # session token signing (HS256, one process signs and verifies)
     token_secret_key: Optional[str] = ""
     jwt_cookie_secure: bool = True
@@ -246,10 +218,6 @@ class Settings:
     # the Marketplace's one-click source, and where local sources may be
     reference_catalog_url: str = ""
     agent_source_folder: str = ""
-
-    @property
-    def is_desktop(self) -> bool:
-        return self.deployment_kind == "desktop"
 
     @classmethod
     def from_env(cls) -> "Settings":

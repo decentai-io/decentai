@@ -12,9 +12,8 @@ keeps a record of where each one went.
 
 ## What a person sets
 
-One page, **Settings → Safety**, for the deployment: on a desktop the
-person is its administrator, and on a server the administrator sets it
-for everybody (`Settings:Safety`, kept on the organization). Five rows;
+One page, **Settings → Safety**, which the administrator sets for
+everybody (`Settings:Safety`, kept on the organization). Five rows;
 the four about agents each start at the strictest choice:
 
 | Row | The choices | The start |

@@ -20,11 +20,12 @@ import { DataPageBase } from '../../data-page-base';
  * The provider id is the join key: an agent whose credential says
  * `provider: google` connects through the `google` row here.
  *
- * ON A DESKTOP the app is registered for a person's own computer, and
- * a provider gives such an app no secret to keep, or one it does not
- * treat as a secret. So the form asks for the id alone wherever that
- * is all the provider hands out, and says what to choose in the
- * provider's console, which is not what a server would choose.
+ * A SECRET IS THE PROVIDER'S TO ISSUE. An app registered for a server
+ * is given one to keep. An app registered for a person's own computer
+ * is given none by some providers, or one they do not treat as a
+ * secret. The form cannot know which kind was registered, so where a
+ * provider issues both kinds the secret is optional, and the form says
+ * what to choose in the provider's console.
  */
 @Component({
   selector: 'app-connected-apps',
@@ -40,10 +41,6 @@ export class ConnectedAppsComponent extends DataPageBase implements OnInit {
   /** What installed agents' credentials name — offered first, because
    *  an id picked from a manifest cannot be misspelt. */
   declared: DeclaredProvider[] = [];
-  /** Whether this deployment keeps a secret for every app: a web one
-   *  does, a desktop one takes an app that has none. */
-  secretRequired = true;
-
   /** null = closed, '' = adding, id = editing. */
   editingId: string | null = null;
   draft = { provider: '', client_id: '', client_secret: '' };
@@ -66,27 +63,26 @@ export class ConnectedAppsComponent extends DataPageBase implements OnInit {
    *  A convention, not a fence: any id that fits the pattern works,
    *  and an agent may name one that is not here.
    *
-   *  `desktop` is what the provider hands an app registered for a
-   *  person's own computer: `id` when the id is all of it, and the
-   *  words that say what to choose in its console. A provider without
-   *  it hands out an id and a secret there as it does anywhere. */
+   *  `secretOptional` marks a provider that also issues apps with no
+   *  secret, and `steps` says what to choose in its console. A
+   *  provider with neither hands every app an id and a secret. */
   readonly known: {
     id: string; label: string; console: string;
-    desktop?: { gives: 'id' | 'id-and-secret'; steps: string };
+    secretOptional?: boolean; steps?: string;
   }[] = [
     { id: 'google', label: 'Google', console: 'https://console.cloud.google.com/apis/credentials',
-      desktop: { gives: 'id-and-secret',
-        steps: 'Create an OAuth client ID of the type Web application, and add the redirect URL shown '
-          + 'on this page to its authorized redirect URIs. Google gives every app an id and a secret.' } },
+      steps: 'Create an OAuth client ID of the type Web application, and add the redirect URL shown '
+        + 'on this page to its authorized redirect URIs. Google gives every app an id and a secret.' },
     { id: 'microsoft', label: 'Microsoft', console: 'https://entra.microsoft.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade',
-      desktop: { gives: 'id',
-        steps: 'Register an application, then under Authentication add the platform Mobile and desktop '
-          + 'applications with the redirect URL shown on this page. It has an Application (client) ID '
-          + 'and no secret.' } },
+      secretOptional: true,
+      steps: 'Register an application, then under Authentication add a platform with the redirect URL '
+        + 'shown on this page. The platform Web has an id and a secret. For DecentAI on a computer of '
+        + 'your own, choose Mobile and desktop applications instead: it has an Application (client) ID '
+        + 'and no secret, so leave the secret empty.' },
     { id: 'dropbox', label: 'Dropbox', console: 'https://www.dropbox.com/developers/apps',
-      desktop: { gives: 'id',
-        steps: 'Create an app and add the redirect URL shown on this page. Its App key is the '
-          + 'client id, and its secret is not needed.' } },
+      secretOptional: true,
+      steps: 'Create an app and add the redirect URL shown on this page. Its App key is the '
+        + 'client id. Its secret may be left empty.' },
     { id: 'slack', label: 'Slack', console: 'https://api.slack.com/apps' },
     { id: 'github', label: 'GitHub', console: 'https://github.com/settings/developers' },
     { id: 'gitlab', label: 'GitLab', console: 'https://gitlab.com/-/user_settings/applications' },
@@ -112,39 +108,29 @@ export class ConnectedAppsComponent extends DataPageBase implements OnInit {
     this.apps = page.apps;
     this.redirectUri = page.redirect_uri;
     this.declared = page.declared;
-    this.secretRequired = page.secret_required;
   }
 
   // ── What the form asks for ──────────────────────────────────────────
 
-  /** What the chosen provider hands a desktop app, when that is known. */
-  private get desktop(): { gives: 'id' | 'id-and-secret'; steps: string } | undefined {
-    if (this.secretRequired) return undefined;
-    return this.known.find((k) => k.id === this.draft.provider)?.desktop;
+  /** What this page knows of the chosen provider, if anything. */
+  private get chosen(): { secretOptional?: boolean; steps?: string } | undefined {
+    return this.known.find((k) => k.id === this.draft.provider);
   }
 
-  /** Whether the form shows the secret at all. Hidden only where the
-   *  id is known to be the whole of what the provider hands out. */
-  get showsSecret(): boolean {
-    return this.desktop?.gives !== 'id';
-  }
-
-  /** Whether the secret may be left empty: on a desktop, for a
-   *  provider this page knows nothing of. One it knows either hands
-   *  out the id alone, and the field is not shown, or issues a secret
-   *  and needs it: saying so here is kinder than a refused sign-in. */
+  /** Whether the secret may be left empty: for a provider that issues
+   *  apps without one, and for one this page knows nothing of. One it
+   *  knows to hand every app a secret needs it: saying so here is
+   *  kinder than a refused sign-in. */
   get secretOptional(): boolean {
-    if (this.secretRequired) return false;
-    return !this.known.some((k) => k.id === this.draft.provider);
+    return this.chosen ? !!this.chosen.secretOptional : true;
   }
 
-  /** What to choose in the provider's console, on a desktop. */
+  /** What to choose in the provider's console. */
   get steps(): string {
-    if (this.secretRequired) return '';
-    if (this.desktop) return this.desktop.steps;
+    if (this.chosen?.steps) return this.chosen.steps;
     return this.secretOptional
-      ? 'Register an app with the provider for this computer, with the redirect URL shown on '
-        + 'this page, then paste what it gives you. Leave the secret empty if it gave none.'
+      ? 'Register an app in the provider’s console with the redirect URL shown on this page, '
+        + 'then paste what it gives you. Leave the secret empty if it gave none.'
       : 'Register an app in the provider’s console with the redirect URL shown on this page, '
         + 'then paste the id and the secret it gives you.';
   }
@@ -273,13 +259,12 @@ export class ConnectedAppsComponent extends DataPageBase implements OnInit {
         || !(where.token_url || '').startsWith('https://')) {
       return false;
     }
-    if (!this.isCreating || !this.showsSecret || this.secretOptional) return true;
+    if (!this.isCreating || this.secretOptional) return true;
     return !!client_secret.trim();
   }
 
-  /** What is sent: nothing, for a field the form did not show. */
   private get secret(): string {
-    return this.showsSecret ? this.draft.client_secret : '';
+    return this.draft.client_secret;
   }
 
   async save(): Promise<void> {

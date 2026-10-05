@@ -17,7 +17,6 @@ from database.stores.agents import AgentManifestStore
 from database.stores.data.definitions import DefinitionStore
 from database.stores.settings.oauth import OauthAppStore
 from server.custom_logging import CustomLoggerFactory
-from server.setup.app_state import get_settings
 
 
 class OauthAppController:
@@ -37,12 +36,6 @@ class OauthAppController:
         return str(user.get("org_id") or "")
 
     @staticmethod
-    def _secret_required() -> bool:
-        """A web deployment keeps a secret. An app registered for a
-        person's own computer may have been given none."""
-        return not get_settings().is_desktop
-
-    @staticmethod
     def _redirect_uri() -> str:
         from api.services.oauth import OauthFlow
 
@@ -58,7 +51,6 @@ class OauthAppController:
             "apps": self.store.list(self._org(user)),
             "redirect_uri": self._redirect_uri(),
             "declared": self._declared(self._org(user)),
-            "secret_required": self._secret_required(),
         }, 200
 
     @staticmethod
@@ -125,7 +117,6 @@ class OauthAppController:
                 endpoints=self._endpoints(self._org(user), payload.get("provider"),
                                           payload.get("endpoints")),
                 created_by=str(user.get("user_id") or ""),
-                secret_required=self._secret_required(),
             )
         except ValueError as exc:
             return {"error": str(exc)}, 400

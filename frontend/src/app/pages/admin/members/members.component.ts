@@ -12,10 +12,10 @@ import { DataPageBase } from '../../app/data-page-base';
 /**
  * Admin → Users: the deployment's people, and who has been invited.
  *
- * Where the deployment sends email, everyone arrives by invitation. On a
- * person's own computer it sends none: the administrator adds a person
- * here and hands them a temporary password, and resets a forgotten one
- * the same way. A user's access is exactly their groups, so this page is
+ * Where the deployment sends email, everyone arrives by invitation.
+ * Where no mail server is set it sends none: the administrator adds a
+ * person here and hands them a temporary password, and resets a
+ * forgotten one the same way. A user's access is exactly their groups, so this page is
  * where group membership is managed; what those groups grant is composed
  * on the Groups/Roles/Policies pages.
  *
@@ -41,7 +41,7 @@ export class MembersComponent extends DataPageBase implements OnInit {
   editingId: string | null = null;
   selected = new Set<string>();
 
-  /** Invite form — on a desktop, the form a person is added with. */
+  /** Invite form — where no email is sent, the form a person is added with. */
   inviting = false;
   inviteName = '';
   /** A temporary password just made, shown once: whose, and what. */
@@ -88,10 +88,10 @@ export class MembersComponent extends DataPageBase implements OnInit {
       : this.auth.can('iam:invitation:create');
   }
 
-  /** People are added here, not invited: no email is sent from a
-   *  person's own computer. */
+  /** People are added here, not invited: this install sends no
+   *  email, and an invitation would reach nobody. */
   get adds(): boolean {
-    return this.auth.isDesktop;
+    return !this.auth.sendsEmail;
   }
 
   get canResetPassword(): boolean {

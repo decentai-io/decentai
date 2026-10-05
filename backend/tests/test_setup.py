@@ -108,7 +108,6 @@ class TestTheFirstTime:
     def test_it_is_one_persons_own_computer_in_plain_http(self, setup):
         setup.run()
         said = setup.settings.values()
-        assert said["DEPLOYMENT_KIND"] == "desktop"
         assert said["LISTEN"] == "127.0.0.1" and said["SITE_ADDRESS"] == ":80"
         assert said["PUBLIC_APP_URL"] == said["CORS_ALLOW_ORIGINS"] == "http://localhost:4280"
         # A cookie marked for HTTPS alone would never be sent back.

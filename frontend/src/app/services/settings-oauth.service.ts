@@ -45,15 +45,12 @@ export class SettingsOauthService {
 
   async list(): Promise<{
     apps: OauthApp[]; redirect_uri: string; declared: DeclaredProvider[];
-    secret_required: boolean;
   }> {
     const r = await this.request.gateway('Settings:Oauth:list');
     return {
       apps: Array.isArray(r?.apps) ? r.apps : [],
       redirect_uri: String(r?.redirect_uri || ''),
       declared: Array.isArray(r?.declared) ? r.declared : [],
-      // A deployment that does not say keeps a secret, as every one did.
-      secret_required: r?.secret_required !== false,
     };
   }
 

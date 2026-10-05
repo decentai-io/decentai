@@ -1,9 +1,9 @@
 """Set a person's password from the machine DecentAI runs on.
 
-For an install with no email — a desktop above all — where a forgotten
-password has nowhere to send a reset link. It grants nothing new:
-whoever can run commands where DecentAI runs already holds its
-database. It does what a reset link does: the new password is set,
+For an install with no email — one on a person's own computer above
+all — where a forgotten password has nowhere to send a reset link. It
+grants nothing new: whoever can run commands where DecentAI runs
+already holds its database. It does what a reset link does: the new password is set,
 every session and pending reset of the account ends, and the account's
 lockout after wrong passwords is lifted.
 

@@ -31,7 +31,6 @@ differently from a computer of one's own:
 |---|---|
 | `SITE_ADDRESS` | the domain people type. With DNS pointing at the host, Caddy obtains and renews Let's Encrypt certificates by itself |
 | `PUBLIC_APP_URL`, `CORS_ALLOW_ORIGINS` | `https://` and that domain. Links in invitations and password resets use the first |
-| `DEPLOYMENT_KIND` | `web` |
 | `JWT_COOKIE_SECURE` | `true` |
 | `SMTP_HOST`, `MAIL_FROM` and the server's sign-in | any provider's SMTP server, so invitations and password resets are sent rather than logged ([configuration](configuration.md)) |
 

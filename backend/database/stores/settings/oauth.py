@@ -29,8 +29,10 @@ secret and the person's tokens.
 that runs on a server, where it can be kept. An app registered for a
 person's own computer is given none — Microsoft's refuses one — and
 what stands in its place is the one-time value every consent round
-trip already carries (PKCE). So on a desktop deployment the secret is
-optional; on a web deployment it is required, as it always was.
+trip already carries (PKCE). Which of the two an app is, is its
+provider's to say and not the platform's to guess: a secret that was
+issued is kept and used, and a registration without one names the app
+by its id alone.
 """
 
 from __future__ import annotations
@@ -134,16 +136,13 @@ class OauthAppStore(OrgScopedStore):
         return SecretCipher.encrypt({"client_secret": secret}, doc_id)
 
     def create(self, org_id: str, provider: Any, client_id: Any,
-               client_secret: Any, endpoints: Any, created_by: str = "",
-               secret_required: bool = True) -> Dict[str, Any]:
-        """``secret_required`` is the deployment's to say: a web
-        deployment keeps a secret, a desktop one may have none."""
+               client_secret: Any, endpoints: Any,
+               created_by: str = "") -> Dict[str, Any]:
+        """``client_secret`` may be empty: the provider issued none."""
         provider = self.clean_provider(provider)
         client_id = self._clean_name(client_id, "Client id")
         endpoints = self.clean_endpoints(endpoints)
         secret = str(client_secret or "")
-        if secret_required and not secret.strip():
-            raise ValueError("Client secret is required.")
         doc_id = f"oap_{new_id()}"
         doc = {
             "_id": doc_id,

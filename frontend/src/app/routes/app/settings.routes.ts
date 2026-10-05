@@ -65,8 +65,7 @@ export const SettingsRoutes: Routes = [
     canActivate: [permissionGuard],
     data: { requiredAction: 'settings:oauth:list', tab: 'apps' },
   },
-  // What agents may do without asking: the organization's, and on a
-  // desktop the person's own.
+  // What agents may do without asking, for the organization.
   {
     path: 'safety',
     component: SettingsComponent,

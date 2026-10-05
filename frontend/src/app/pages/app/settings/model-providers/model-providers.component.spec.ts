@@ -34,7 +34,7 @@ describe('ModelProvidersComponent', () => {
   };
 
   function create(connections: any[] = [], calls: Record<string, any> = {},
-                  answer: (draft: any) => any = () => ({}), isDesktop = false) {
+                  answer: (draft: any) => any = () => ({})) {
     const component = new ModelProvidersComponent(
       {
         catalogModels: async (id: string) => served[id] ?? [],
@@ -52,7 +52,7 @@ describe('ModelProvidersComponent', () => {
         },
         remove: async () => ({ deleted: true }),
       } as any,
-      { can: () => true, isDesktop } as any,
+      { can: () => true } as any,
     );
     component.connections = connections;
     component.providers = catalog;
@@ -338,17 +338,7 @@ describe('ModelProvidersComponent', () => {
     expect(component.notice).toContain('could not be asked');
   });
 
-  it('shares a new provider with everyone on a desktop install, and with nobody on a served one', async () => {
-    const calls: Record<string, any> = {};
-    const desktop = create([], calls, () => ({}), true);
-    desktop.startCreate();
-    expect(desktop.shareMode).toBe('org');
-    desktop.selectProvider(provider('anthropic'));
-    await settle();
-    desktop.setKey('sk-1');
-    await desktop.save();
-    expect(calls['created'][0].owner).toEqual({ groups: ['everyone'], users: [] });
-
+  it('starts a new provider as its creator’s alone', async () => {
     const served = create();
     served.startCreate();
     expect(served.shareMode).toBe('private');

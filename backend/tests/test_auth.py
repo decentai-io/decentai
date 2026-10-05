@@ -62,23 +62,13 @@ class TestAHandedOverPassword:
 
     EMAIL = "sara@test.org"
 
-    @pytest.fixture
-    def desktop(self, app):
-        import dataclasses
-        from server.setup.app_state import get_state
-        state = get_state()
-        original = state.settings
-        state.settings = dataclasses.replace(original, deployment_kind="desktop")
-        yield
-        state.settings = original
-
     def add(self, admin):
         response = app_call(admin, "IAM:User:create", {
             "email": self.EMAIL, "user_name": "Sara"})
         assert response.status_code == 200, response.text
         return response.json()
 
-    def test_added_with_a_password_shown_once(self, admin, seed, desktop):
+    def test_added_with_a_password_shown_once(self, admin, seed):
         body = self.add(admin)
         assert body["user"]["email"] == self.EMAIL
         assert body["user"]["must_change_password"] is True
@@ -88,7 +78,7 @@ class TestAHandedOverPassword:
         assert password not in str(UserStore().get_by_email(self.EMAIL))
 
     def test_it_signs_nobody_in_until_they_choose_their_own(
-            self, admin, anon, seed, desktop):
+            self, admin, anon, seed):
         password = self.add(admin)["password"]
 
         refused = anon.post("/auth/login", json={
@@ -119,7 +109,7 @@ class TestAHandedOverPassword:
             "email": self.EMAIL, "password": password}).status_code == 401
 
     def test_a_wrong_handed_over_password_chooses_nothing(
-            self, admin, anon, seed, desktop):
+            self, admin, anon, seed):
         self.add(admin)
         refused = anon.post("/auth/password/first", json={
             "email": self.EMAIL, "current_password": "not-the-one-1",
@@ -127,7 +117,7 @@ class TestAHandedOverPassword:
         assert refused.status_code == 401
 
     def test_a_reset_ends_their_sessions_and_hands_over_a_new_one(
-            self, app, admin, anon, seed, desktop):
+            self, app, admin, anon, seed):
         from fastapi.testclient import TestClient
         first = self.add(admin)
         anon.post("/auth/password/first", json={
@@ -148,19 +138,20 @@ class TestAHandedOverPassword:
             "email": self.EMAIL, "password": handed})
         assert asked.status_code == 403 and asked.json()["change_required"] is True
 
-    def test_nobody_resets_their_own_or_a_stranger(self, admin, seed, desktop):
+    def test_nobody_resets_their_own_or_a_stranger(self, admin, seed):
         own = app_call(admin, "IAM:User:reset_password", {
             "user_id": seed.admin["_id"]})
         assert own.status_code == 400 and "your own" in own.text
         assert app_call(admin, "IAM:User:reset_password", {
             "user_id": "nobody"}).status_code == 404
 
-    def test_where_invitations_are_sent_nobody_is_added_this_way(self, admin, seed):
+    def test_where_invitations_are_sent_nobody_is_added_this_way(
+            self, admin, seed, mail):
         refused = app_call(admin, "IAM:User:create", {
             "email": self.EMAIL, "user_name": "Sara"})
         assert refused.status_code == 400 and "invitation" in refused.text
 
-    def test_adding_needs_a_name_an_address_and_no_twin(self, admin, seed, desktop):
+    def test_adding_needs_a_name_an_address_and_no_twin(self, admin, seed):
         assert app_call(admin, "IAM:User:create", {
             "email": "nonsense", "user_name": "Sara"}).status_code == 400
         assert app_call(admin, "IAM:User:create", {
@@ -170,9 +161,9 @@ class TestAHandedOverPassword:
             "email": self.EMAIL, "user_name": "Sara"}).text
 
 
-class TestAnAgentInstalledOnADesktop:
-    """It reaches Members as well as whoever installed it; on a server,
-    its installer and no further."""
+class TestWhoAnInstalledAgentReaches:
+    """Whoever installed it, and no further: everything wider is
+    somebody's decision, made on the agent's page."""
 
     def granted_groups(self, seed, agent_ref="agt_probe"):
         from api.endpoints.app.agents.agent_controller import AgentController
@@ -185,24 +176,10 @@ class TestAnAgentInstalledOnADesktop:
         [grant] = AgentGrantStore().for_agent(seed.org["_id"], agent_ref)
         return set(grant["owner"]["groups"])
 
-    @pytest.fixture
-    def members(self, seed):
+    def test_only_its_installer_even_where_there_is_a_members_group(self, app, seed):
         from provisioning import OrganizationProvisioner
-        return OrganizationProvisioner().seed(seed.org["_id"])["members"]
 
-    def test_on_a_desktop_members_may_call_it(self, app, seed, members):
-        import dataclasses
-        from server.setup.app_state import get_state
-        state = get_state()
-        original = state.settings
-        state.settings = dataclasses.replace(original, deployment_kind="desktop")
-        try:
-            assert self.granted_groups(seed) == {
-                seed.admins_group["_id"], members["_id"]}
-        finally:
-            state.settings = original
-
-    def test_on_a_server_only_its_installer(self, app, seed, members):
+        OrganizationProvisioner().seed(seed.org["_id"])
         assert self.granted_groups(seed) == {seed.admins_group["_id"]}
 
 

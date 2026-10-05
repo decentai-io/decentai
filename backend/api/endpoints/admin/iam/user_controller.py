@@ -24,6 +24,7 @@ from database.stores.data.skills import SkillStore
 from database.stores.settings.llm import LlmConnectionStore
 from database.stores import LoginThrottle
 from server.authentication.credentials import PasswordHasher
+from server.authentication.mail import Mailer
 from server.setup.app_state import get_settings
 
 
@@ -81,11 +82,13 @@ class UserController(IAMController):
         return {"user": self._public(self._org(user), target)}, 200
 
     def create(self, data: dict, user: dict):
-        """Add a person, on a deployment that sends no invitations: a
-        desktop. The answer carries a temporary password, once; nothing
-        keeps it. The person is asked for one of their own before their
-        first session exists."""
-        if not get_settings().is_desktop:
+        """Add a person, where no invitation can be sent: an install
+        with no mail server. The answer carries a temporary password,
+        once; nothing keeps it. The person is asked for one of their
+        own before their first session exists. Where mail is sent, an
+        invitation is the way in: its link proves the address is the
+        person's, which a password handed over cannot."""
+        if Mailer(get_settings()).configured:
             return {"error": "People join this DecentAI by invitation."}, 400
 
         payload = self._payload(data)

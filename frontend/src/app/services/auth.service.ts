@@ -33,9 +33,9 @@ export interface Identity {
   user: AuthUser;
   organization: AuthOrganization;
   allowed_actions: string[];
-  /** What the deployment is: served to an organization at an address
-   *  of its own, or installed on one person's computer. */
-  deployment?: { kind: 'web' | 'desktop' };
+  /** Whether this install sends email. Where it does not, people are
+   *  added with a password handed over, and nobody is invited. */
+  sends_email?: boolean;
   /** Rides along on /auth/me: the action vocabulary, for the policy editor. */
   catalog?: CatalogService[];
 }
@@ -62,10 +62,10 @@ export class AuthService {
 
   identity: Identity | null = null;
 
-  /** Whether this is the platform on one person's own computer. A
-   *  deployment that does not say is a web one. */
-  get isDesktop(): boolean {
-    return this.identity?.deployment?.kind === 'desktop';
+  /** Whether this install sends email: invitations and reset links.
+   *  One that does not say does. */
+  get sendsEmail(): boolean {
+    return this.identity?.sends_email !== false;
   }
   private allowed = new Set<string>();
 

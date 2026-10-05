@@ -77,9 +77,9 @@ Users page offers it already ticked for a new person. It is seeded once
 and is an ordinary group from then on — an administrator edits what it
 grants, or removes it, and it is not put back. Which agents its people
 may call is a separate decision, made on each agent: a newly installed
-agent reaches whoever installed it and their groups, and on a person's
-own computer Members as well, where the people are few and were added
-by the one installing. Either grant is withdrawn on the agent's page.
+agent reaches whoever installed it and their groups, and nobody else
+until somebody decides so on the agent's page, where the grant is
+withdrawn too.
 
 Creating an organization, and disabling or re-enabling one, happen from
 outside the application entirely — they are deployment operations, not
@@ -321,9 +321,11 @@ and never from the request that accepts it: the link proves control of one
 mailbox, and that is the only address it can produce. The organization
 comes from the invitation for the same reason.
 
-**A person added by hand.** A desktop sends no email, so there an
-administrator adds a person directly (`IAM:User:create`, refused on a web
-deployment) and is shown a temporary password once, to hand over. The same
+**A person added by hand.** An install with no mail server sends no
+invitation, so there an administrator adds a person directly
+(`IAM:User:create`, refused where mail is sent: an invitation's link
+proves the address is the person's, which a password handed over
+cannot) and is shown a temporary password once, to hand over. The same
 is done for a person who forgot theirs (`IAM:User:reset_password`, on any
 deployment), which also ends their sessions. It is bounded as group
 assignment is: nobody resets the password of a person holding more than
@@ -365,7 +367,7 @@ whether or not the address has an account, in the same time — the mail
 leaves on a thread of its own — and the link itself travels by email and
 nowhere else. Where no mail server is set, no link is made at all: the
 answer says how this install resets a password instead
-(`bootstrap/reset_password.py` on a desktop, whoever runs it on a server).
+(`bootstrap/reset_password.py`, run by whoever runs the install).
 
 **Failed attempts.** Sign-in attempts are counted in a fifteen-minute
 window: a handful of wrong passwords locks that account briefly, and a

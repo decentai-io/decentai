@@ -234,7 +234,7 @@ ACTION_CATALOG: Dict[str, Dict[str, Any]] = {
             "iam:user:get": "View one user",
             "iam:user:create": (
                 "Add a person and hand them a temporary password, where "
-                "no invitation can be sent"
+                "no mail server is set to send an invitation by"
             ),
             "iam:user:reset_password": (
                 "Give a person who forgot their password a temporary one"
