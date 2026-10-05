@@ -374,7 +374,7 @@
   color: var(--foreground); font-size: 13px; line-height: 1.45;
 }
 .chat-kill-actions { display: flex; gap: 8px; flex: none; }
-.chat-kill-btn { color: var(--destructive-strong, #c33); }
+.chat-kill-btn { color: var(--destructive-strong); }
 .chat-kill-btn:hover:not(:disabled) { background: color-mix(in srgb, var(--destructive) 10%, transparent); }
 @media (max-width: 680px) {
   .chat-kill-ask { flex-direction: column; align-items: stretch; }
@@ -382,7 +382,7 @@
 }
 
 /* The header's one word on what this chat needs. */
-.chat-attention { display:inline-flex; align-items:center; gap:6px; flex:none; margin-left:10px; padding:1px 9px; border-radius:999px; font-size:11.5px; font-weight:600; line-height:18px; white-space:nowrap; }
+.chat-attention { display:inline-flex; align-items:center; gap:6px; flex:none; margin-left:10px; padding:1px 9px; border-radius:var(--ui-radius-pill); font-size:11.5px; font-weight:600; line-height:18px; white-space:nowrap; }
 .chat-attention-dot { width:6px; height:6px; border-radius:50%; background:currentColor; }
 .chat-attention.is-working { color:var(--muted-foreground); background:var(--surface-subtle); }
 .chat-attention.is-working .chat-attention-dot { animation: chat-attention-pulse 1.2s ease-in-out infinite; }

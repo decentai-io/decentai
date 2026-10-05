@@ -23,14 +23,20 @@ it. Being shown something is never authority over it.
 | Agent sources | `created_by_id` | the steward | `agents:agent:source_manage_any` |
 | Installed agents | the organization | anyone holding `agents:agent:delete` | not needed |
 | Agent grants, credential grants | the organization | anyone holding the grant action | not needed |
-| Chats, messages, stored results, schedules, approvals | `user_id` | the person only; a shared reader may open, not drive or delete | none |
+| Chats, messages, stored results, schedules, approvals | `user_id` | the person only: a chat cannot be shared, and opening one and sending to it are separate actions (`ai:chat:get`, `ai:chat:sendmessage`) | none |
 | Memories | `user_id` | the person only | none |
+| MCP servers | `created_by` | the person only; never shared or transferred | none |
 | API keys | `user_id` | the person only | none, deliberately |
 | Audit events | actor recorded | nobody — append-only | — |
 
 The escape grants are held by FullAccess through its wildcard, so an
-administrator is never locked out of infrastructure a colleague set up,
-and a narrower role can be given without them. Each is checked where
+administrator is never locked out of infrastructure a colleague set up
+— the two infrastructure grants reach every model connection and agent
+source of the organization, an unshared one included — and a narrower
+role can be given without them. The four `set_owner_any` grants reach
+only documents their holder can already see: a credential or record a
+colleague kept private changes hands when its owner hands it over or is
+deleted, and not otherwise. Each is checked where
 the domain checks its steward (`Sharing.may_edit(..., escape=...)`), so
 the rule has one implementation.
 
@@ -52,8 +58,8 @@ audited.
 - **Deleting a source** is refused while agents are installed from it:
   the source holds the map from the repository's ids to the refs the
   agents were approved under. The remove dialog lists those agents and
-  offers **Uninstall these and remove source**, which uninstalls each
-  and then deletes the source.
+  offers **Uninstall N and remove source**, which uninstalls each and
+  then deletes the source.
 - **Uninstalling an agent** is never refused. It withdraws the approval,
   deletes its grants and credential grants, prunes the credential
   definitions nothing else uses, and reclaims package bytes no other
@@ -62,14 +68,16 @@ audited.
 
 ## Deleting a chat
 
-The runtime connection is closed, the delegation rows go, then
-messages, stored results, events, approvals and schedules, then the
-chat's own uploads, bytes included. Files the chat merely referenced
+The schedules go first, and the runtime is told while its connection
+still stands, since it holds the chat's clock in memory. Then the
+connection is closed and the delegation rows go, then messages, stored
+results, events and approvals, then the chat's own uploads, bytes
+included, then the chat. Files the chat merely referenced
 are untouched.
 
 ## A person leaving
 
-`IAM:User:delete` takes a `successor` — an active member of the
+`IAM:User:delete` takes a `successor_id` — an active member of the
 organization, the deleting administrator by default — and
 `IAM:User:leaving` previews what the person owns, by domain, with
 counts, so the administrator sees the hand-over before confirming.
@@ -80,6 +88,7 @@ counts, so the administrator sees the hand-over before confirming.
 | schedules | deleted with their chats — nothing keeps acting for a person who is gone |
 | chats and everything under them | deleted, with the chat cascade; conversations are personal |
 | memories | deleted |
+| MCP servers, push subscriptions, the note of which sample data they loaded | deleted |
 | secrets, records, files, skills | stewardship transferred to the successor; the owner map keeps every group and person it named; a credential granted to agents keeps working |
 | LLM connections, agent sources | stewardship transferred to the successor |
 | agent grants naming the person | deleted |
@@ -89,9 +98,8 @@ counts, so the administrator sees the hand-over before confirming.
 ## Disabling a person
 
 Disabling keeps everything the person owns. It drops their browser
-sessions, password resets and API keys, closes their live runtime
-sessions — delegations die at their next verification — and **pauses
-their schedules**, so nothing acts unattended for someone who may not
+sessions, password resets and API keys, deletes their delegations and
+closes their live runtime sessions, and **pauses their schedules**, so nothing acts unattended for someone who may not
 act. Re-enabling restores the person and leaves the schedules paused;
 they resume what they still want.
 

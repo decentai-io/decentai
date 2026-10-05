@@ -23,7 +23,7 @@
   text-align: left;
   font: inherit;
   cursor: pointer;
-  border-radius: 6px;
+  border-radius: var(--ui-radius-sm);
 }
 .work-row--button:disabled { cursor: default; }
 .work-row--button:not(:disabled):hover { background: color-mix(in srgb, var(--foreground) 4%, transparent); }
@@ -34,7 +34,7 @@
   font-variant-numeric: tabular-nums;
   color: var(--muted-foreground);
   background: color-mix(in srgb, var(--foreground) 7%, transparent);
-  border-radius: 999px;
+  border-radius: var(--ui-radius-pill);
   padding: 0 6px;
   flex-shrink: 0;
 }
@@ -67,7 +67,7 @@
 .steps { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; list-style: none; }
 .step { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 8px; align-items: start; }
 .step-index {
-  font-size: 11px; line-height: 20px; text-align: center; border-radius: 999px;
+  font-size: 11px; line-height: 20px; text-align: center; border-radius: var(--ui-radius-pill);
   color: var(--muted-foreground); background: var(--secondary); font-variant-numeric: tabular-nums;
 }
 .step-main { display: flex; flex-direction: column; gap: 1px; min-width: 0; }

@@ -56,7 +56,8 @@ deleted = await call.resources.delete_data("note", ref)        # True or False
 ```
 
 A record is `{"resource_ref": "…", "keys": {...}, "values": {...}}`:
-both halves come back, `values` decrypted. `list_data` filters are
+both halves come back, `values` decrypted. `update_data` changes the
+fields you send and keeps the rest. `list_data` filters are
 equality on `keys` fields; `values` cannot be filtered on. The fields you write are split into `keys` and
 `values` by the manifest, and checked against it — types, `required`,
 `select` options.
@@ -314,7 +315,7 @@ next call.
 An opaque key, the same for every call in one chat and different in
 every other. Keep something alive between calls — a browser a follow-up
 should find where it was — under this key and only this key: one worker
-serves every chat of the deployment. Empty outside a chat. Close what
+serves every chat of the organization that approved the agent. Empty outside a chat. Close what
 nobody has used for a while; a thing shown to a person, or held by a
 call, is in use.
 
@@ -327,6 +328,19 @@ your manifest declared. A refused host comes back as an HTTP 403 whose
 body says why. A client that ignores the environment's proxy on purpose
 finds the platform's under its own name, `DECENTAI_PROXY`. A confined
 worker cannot look a name up: the proxy does, so your code does not.
+
+What does not work behind the proxy, and what to do instead:
+
+| In your agent | Behind the proxy |
+|---|---|
+| `session.trust_env = False`, or a proxy of its own | cut off — use `DECENTAI_PROXY` |
+| `socket.getaddrinfo`, to check an address before connecting | refused — the proxy resolves and checks; check only an address written as one |
+| a raw socket, or a protocol that is not HTTP | cut off — open it with `Tunnel`, below, and declare the host with its port |
+| a browser it starts itself | cut off, unless it is handed the proxy |
+
+A refusal's words name what to add to the manifest — *…did not declare
+files.example.com among the hosts it connects to* — so pass them on as
+they are.
 
 For a protocol that is not the web's — mail, a database — declare the
 host with its port and open the connection through the SDK:

@@ -70,6 +70,17 @@ class TestActingAsThePerson:
         assert app_call(script, "Settings:ApiKey:Revoke",
                         {"key_id": listed[0]["key_id"]}).status_code == 403
 
+    def test_a_key_cannot_change_its_persons_password(self, app, admin, seed):
+        from conftest import ADMIN_EMAIL, ADMIN_PASSWORD
+
+        script = with_key(app, make_key(admin)["key"])
+        refused = script.post("/auth/password", json={
+            "current_password": ADMIN_PASSWORD, "new_password": "Another-pass-42"})
+        assert refused.status_code == 403 and "not with a key" in refused.text
+        # Nothing changed: the person still signs in as before.
+        assert TestClient(app).post("/auth/login", json={
+            "email": ADMIN_EMAIL, "password": ADMIN_PASSWORD}).status_code == 200
+
     def test_a_wrong_key_is_nobody(self, app, seed):
         assert app_call(with_key(app, "dk_not_a_key"), "Data:Record:List", {}).status_code == 401
 

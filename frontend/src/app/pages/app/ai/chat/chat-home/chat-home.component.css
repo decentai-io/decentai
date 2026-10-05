@@ -67,7 +67,7 @@
 @media (prefers-reduced-motion:reduce) { .sk-line::after { animation:none; } }
 
 /* What a chat needs from the person, on its row. */
-.chat-flag { display:inline-flex; align-items:center; gap:5px; flex:none; padding:1px 8px; border-radius:999px; font-size:11px; font-weight:600; line-height:18px; }
+.chat-flag { display:inline-flex; align-items:center; gap:5px; flex:none; padding:1px 8px; border-radius:var(--ui-radius-pill); font-size:11px; font-weight:600; line-height:18px; }
 .chat-flag-dot { width:6px; height:6px; border-radius:50%; background:currentColor; }
 .chat-flag.is-working { color:var(--muted-foreground); background:var(--surface-subtle); }
 .chat-flag.is-working .chat-flag-dot { animation: chat-flag-pulse 1.2s ease-in-out infinite; }

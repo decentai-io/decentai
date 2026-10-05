@@ -9,8 +9,10 @@ when a chat needs them. Reading a source never runs its code.
 
 An administrator saves a git repository on **Agents → Marketplace** by
 its address. The platform fetches it at a commit, reads its catalog
-file (`decentai-agents.yaml`) and every manifest it names, validates
-them, and shows what each agent declares — without running anything.
+file (`decentai-agents.yaml`, naming 1 to 100 agents) and every
+manifest it names, validates them, and shows what each agent declares —
+without running anything. A repository with no catalog file and a
+`manifest.yaml` at its root is read as a catalog of that one agent.
 A private repository is read with a credential the administrator
 saved. On a person's own computer, a folder they handed over
 ([a DecentAI of your own](../agents/developing.md#a-decentai-of-your-own))
@@ -19,7 +21,9 @@ may hold sources too, added by path (`AGENT_SOURCE_FOLDER`).
 **A source belongs to the organization that saved it**, and reaches
 nobody else. Inside that organization the owner map decides who sees
 it; anyone shown it may refresh it, since the snapshot is what they
-all install from, while editing and deleting stay with its creator.
+all install from, while editing and deleting stay with its creator,
+or with a holder of `agents:agent:source_manage_any`, who sees and
+maintains every source of the organization.
 Two organizations wanting the same repository each save it: each
 install is its own approval, its own copy of the bytes, its own secret
 definitions and its own grants. No organization supplies another's
@@ -70,10 +74,17 @@ The runtime keeps code **by content**: one folder per digest,
 `store/<hex>/`, and one environment per declared dependency list — two
 versions that declare the same list share it ([the sandbox](sandbox.md) says who builds it). The
 thousandth organization's approval of the same bytes adds nothing to
-the disk; two versions are two digests. Before anything is written the
-bytes are checked against the digest and the packaged manifest against
-the approved hash, so tampered bytes fail closed for everyone rather
-than poisoning a copy several organizations share.
+the disk; two versions are two digests. The bytes are checked against
+the digest before anything is written, and the packaged manifest
+against the approved hash once it is unpacked, before any dependency is
+installed or any of its code runs; a mismatch removes what was
+unpacked. So tampered bytes fail closed for everyone rather than
+poisoning a copy several organizations share.
+
+The store is on a volume. In the stack this repository starts, the
+runtime and the agents' container both hold it, at the same path: the
+runtime installs and reads, and the workers, which run in the agents'
+container, load from it ([the sandbox](sandbox.md)).
 
 A worker process is kept per approval, not per digest, so what an
 agent holds in memory is never shared between organizations
@@ -96,8 +107,11 @@ does not hold is pulled through the backend's fenced door
   pull code approved by an organization whose person is connected to
   it.
 - **Once per digest.** A per-digest lock means two chats never install
-  the same package twice, and a digest that will not verify or load is
-  remembered and not tried again by the same process.
+  the same package twice. A package that arrived and would not verify
+  or load is remembered and not tried again until the next sweep, which
+  forgets refusals whose bytes are no longer on disk. A package that
+  never arrived is not remembered at all: the next chat asks for it
+  again.
 - **Failure is per agent.** An agent that fails is logged and left out
   of that chat's roster; the rest serve and the chat opens.
 - **Prepared ahead.** An install or update sends `agents_changed`
@@ -118,8 +132,9 @@ schedule belongs to a chat.
 
 ## Reclaiming
 
-The backend reclaims its half per organization on every uninstall: an
-archive no approval names is deleted.
+The backend reclaims its half per organization on every install,
+update and uninstall: an archive no approval names is deleted, which is
+what removes the version an update left behind.
 
 The runtime's half is a sweep it runs itself (`host.reclaim`), because
 its disk is shared by digest. After an install it reads
@@ -131,15 +146,17 @@ per-organization answer could never authorise a deletion. Hashes
 travel, nothing else, to a process already holding the code they name.
 
 The sweep keeps that set plus what this process is using — every live
-session's roster, every running worker — and removes the rest, code
-and environment together. An unanswered read deletes nothing, and so
+session's roster, every running worker — and removes the rest: the
+code, and its environment where no other version on disk shares it. An unanswered read deletes nothing, and so
 does an empty answer: a platform that has forgotten every approval is
 one to distrust, not to obey.
 
 ## More than one runtime process
 
-With code pulled by digest and verified on arrival, a runtime holds no
-state that is not a cache of something the backend owns — except a turn
-in flight, which lives in one process's memory. So several runtime
+With code pulled by digest and verified on arrival, the code a runtime
+holds is a cache of something the backend owns. Two things on the same
+volume are not, and exist nowhere else: the record of what agents did
+([what is written down](monitoring.md)) and what each agent keeps in
+its own home. And a turn in flight lives in one process's memory. So several runtime
 processes need routing that keeps a chat on one process; the platform
 does not provide that routing, and runs one runtime process.

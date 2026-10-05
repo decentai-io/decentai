@@ -197,6 +197,12 @@ async def change_password(request: Request):
     user = get_access_controller().verify_request_auth(request)
     if not user:
         return JSONResponse({"error": "unauthorized"}, status_code=401)
+    if str(user.get("token_type") or "").upper() != "WEB":
+        # A key acts for its person and is not the person: what would
+        # lock them out of their own account is theirs alone to do.
+        return JSONResponse(
+            {"error": "A password is changed from a signed-in browser "
+                      "session, not with a key."}, status_code=403)
 
     body, status = await asyncio.to_thread(
         AuthController().change_password, user, await _body(request))

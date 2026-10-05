@@ -47,7 +47,9 @@ An assistant job carries two fields beside a function job's:
 
 ```
 kind    "function" (default) | "assistant"
-child   the child's chat id, for assistant jobs
+child   the child's id within the chat (`sub_` and eight hex
+        characters), for assistant jobs; the session joins it to the
+        chat's id to name the child's own thread
 ```
 
 An assistant job carries no `agent`/`function`; its `result` is the
@@ -75,7 +77,7 @@ reapable — through a **child view** of the parent's services:
 |---|---|
 | state, messages, inbox, plan | the child's own id — its thread is a real record |
 | storage (`store_result`, `read_result`) | the parent's chat — the results are this conversation's, and the goal may name refs |
-| memories | the parent's chat, read at open; `remember` is refused ("tell the parent") — durable facts are the parent's to save, visibly |
+| memories | the parent's chat, read at open; `remember` is refused ("Durable facts are the parent's to save, visibly — put it in your report.") |
 | skills, secrets, data, files | the same services and provider — the same gates |
 | approvals | opened under the child's id, so the host knows whose job parked |
 | emissions | the parent's audience, each frame tagged `"child": "<id>"` so a client may thread them |
@@ -91,7 +93,9 @@ a report read after the incarnation that heard the finish is gone
 takes the reason from the child's own transcript. Plan items the
 parent gave it (`spawn {items}`) take its outcome when it reports:
 done with the job id and every storage ref its calls produced, all of
-it in the parent's trace by then, or blocked with its reason.
+it in the parent's trace by then, or blocked with its reason. A child
+that reports `completed` and ran no call that succeeded leaves its
+items blocked, with that as the reason: a report is not evidence.
 
 A child that exhausts the valve, loses its model, or is denied an
 approval does what any assistant does — says so honestly and
@@ -114,37 +118,41 @@ them.
 A child's level-3 call parks *the child's job* (the child keeps
 thinking, as the model says). The card reaches the parent's audience
 tagged with the child id; the decision comes back through the parent's
-socket as `approval_decided`. The host routes it: the parent's own
-waiting jobs first, then its live children's, then — for a child whose
-process died — by hydrating the child named on the parent's assistant
-job and letting it resume through the executor's re-verification gates.
+socket as `approval_decided`. The parent's session routes it
+(`Session.deliver_approval`): to the parent's own waiting job, then to
+the call the parent itself is parked on, then to its live children,
+then to a card of its own that is still open; a decision that fits none
+is logged and dropped. No child is hydrated to receive one: children
+are re-opened when the parent's session opens, and are live by then.
 `hello` lists the pending cards of the parent and its children
 together: one present tense per conversation.
 
 ## What dies, what survives
 
-- **Cancel.** `cancel_job` on an assistant job stops the child
-  (cooperative, between beats) and cancels the child's own jobs through
-  its pool; the job settles `cancelled`. The parent's `stop` does the
+- **Cancel.** `cancel_job` on an assistant job stops the child where it
+  stands, in the middle of a beat included, and cancels the child's own
+  jobs through its pool; the job settles `cancelled`. The parent's `stop` does the
   same to every child.
 - **The parent's process dies.** On hydration an assistant job that is
-  `running` is not an orphan: the host re-opens the child from its
-  durable state, re-attaches the waiter, and the child's own
+  `running` is not an orphan: the parent's session re-opens the child
+  from its durable state, re-attaches the waiter, and the child's own
   unfinished-business rule pumps it. Only a child with no state to
   hydrate settles as the honest error orphan recovery already produces.
 - **The child's process is the parent's process** — one host — so
   there is no separate child death to handle.
-- **Reaping** applies to a child exactly as to any session: idle,
-  unwatched, forgotten; the next event hydrates it. A child with a
-  waiting approval is held, like any session.
+- **Reaping** does not apply to a child by itself: the host reaps the
+  sessions in its registry, and children are held by their parent's
+  session, not there. A child lives until it reports or is cancelled,
+  and a parent with a live child counts as working and is not reaped.
 
 ## Where it lives
 
 | Piece | File |
 |---|---|
-| the `spawn` action, `kind`/`child` on a job, `remember` and `spawn` refused in a child | `ai_runtime/reasoning/assistant.py`, `ai_runtime/reasoning/state.py` |
-| the child view of services, the child's build, finish → `job_done`, the trace fold, cancel | `ai_runtime/chat/session.py` |
-| child ids in the registry, relay to the parent's socket, approval routing, `hello` across children, re-opening on hydration | `ai_runtime/server/host.py` |
+| the `spawn` action and its refusal in a child, `kind`/`child` on a job | `ai_runtime/reasoning/assistant.py`, `ai_runtime/reasoning/state.py` |
+| the child view of services, the child's build, `remember` refused in a child, finish → `job_done`, the trace fold, cancel, relay to the parent's audience, approval routing, re-opening children when the parent opens | `ai_runtime/chat/session.py` |
+| `hello` listing the cards of a parent and its children together | `ai_runtime/server/host.py` |
+| a child's thread as its own record (`<chat>/<thread>`) | `ai_runtime/services/backend.py` |
 | the action in the prompt | `ai_runtime/prompts/assistant.md` |
 
 Tests: `ai_runtime/tests/test_sub_assistants.py`.

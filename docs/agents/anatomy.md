@@ -25,7 +25,8 @@ your-repo/
 
 The catalog: the one file that says which agents a repository offers and
 where each one lives. It sits at the root of the repository, under
-exactly this name. This is the catalog of a repository that offers
+exactly this name. (A repository with no catalog and a `manifest.yaml`
+at its root is read as a catalog of that one agent.) This is the catalog of a repository that offers
 several agents:
 
 ```yaml
@@ -57,7 +58,7 @@ It has three parts.
 | Key | Required | What it is |
 |---|---|---|
 | `id` | yes | A name for the catalog: lowercase letters, digits and `_`, starting with a letter, 2 to 64 characters. |
-| `name` | no | What the repository is called on the platform when somebody installs from its address. Where two repositories offer an agent of the same id, the second is told apart by this name. |
+| `name` | no | What the repository is called where somebody installs straight from its address. A source saved on the Marketplace is called what the person typed, or the last part of its address; where two sources offer an agent of the same id, the second is told apart by its source's name. |
 | `description` | no | A sentence or two for a person deciding whether to use the repository. The platform keeps it with the catalog; it is not shown on a page today. |
 
 **`agents`** lists what the repository offers, 1 to 100 entries. An
@@ -152,7 +153,8 @@ code lacks makes the package broken: approving an agent runs none of
 its code, so the approval goes through, and the platform finds out when
 it first loads the package — it starts the agent in its own
 environment, sees the function is missing, and serves none of the
-agent. The Agents page shows it as broken, with the reason. The same
+agent. The Agents page shows it as **Could not prepare**, with the
+reason. The same
 happens when the entrypoint does not import or is not an `AgentBase`.
 
 A function id that is a Python keyword — `import`, `raise` — is written
@@ -170,7 +172,7 @@ with a trailing underscore (`import_`, `raise_`) and the SDK finds it.
 | `await call.post(text, show=[…])` | Say something to the person yourself, now |
 | `await call.ask(question, choices=[…])` | Ask the person and wait; your timeout pauses meanwhile |
 | `await call.credential(host, fields)` | A login, asked for as you work — `credentials: true` |
-| `await call.propose(code, purpose, …)` · `call.install(…)` | Code put before the person, and its packages — `code: true` |
+| `await call.propose(code, purpose, …)` · `call.install(…)` | Code put before the person, and its packages. Asking needs no declaration; `code: true` is what opens the hosts and installs the packages a card the person allowed named |
 | `call.screen` | A screen the person can watch and take over |
 | `call.conversation` | The chat's opaque key, for what you keep between calls |
 

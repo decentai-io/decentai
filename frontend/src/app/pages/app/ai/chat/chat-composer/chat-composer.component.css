@@ -253,7 +253,7 @@
 
 /* The microphone: an attach-style button that turns red while listening. */
 .composer-mic.is-recording {
-  color: var(--destructive-strong, #d33);
+  color: var(--destructive-strong);
   animation: composer-pulse 1.2s ease-in-out infinite;
 }
 @keyframes composer-pulse {

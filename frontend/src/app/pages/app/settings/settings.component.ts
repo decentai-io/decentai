@@ -46,7 +46,13 @@ export class SettingsComponent extends DataPageBase implements OnInit, OnDestroy
   loading = true;
   tab: SettingsTab = 'llm';
 
+  /** The connections this person can use: what the chat tab chooses
+   *  among. */
   connections: LlmConnection[] = [];
+  /** The connections the providers tab shows: the same, or, for a
+   *  holder of the manage-any grant, every one of the organization,
+   *  a colleague's unshared one included, to maintain them. */
+  managed: LlmConnection[] = [];
   profile: Profile | null = null;
   peers: { user_id: string; user_name: string; email: string }[] = [];
 
@@ -85,6 +91,7 @@ export class SettingsComponent extends DataPageBase implements OnInit, OnDestroy
       this.canSeeLlm ? this.profiles.peers() : Promise.resolve([]),
     ]);
     this.connections = connections;
+    this.managed = await this.everyConnection();
     this.providers = providers;
     this.profile = profile;
     this.peers = peers;
@@ -420,6 +427,12 @@ export class SettingsComponent extends DataPageBase implements OnInit, OnDestroy
    *  removed one, and the chat tab chooses among them. */
   async reload(): Promise<void> {
     this.connections = await this.service.list();
+    this.managed = await this.everyConnection();
+  }
+
+  private async everyConnection(): Promise<LlmConnection[]> {
+    return this.canSeeLlm && this.auth.can('settings:llm:manage_any')
+      ? this.service.list(true) : this.connections;
   }
 
   // ── Tabs ────────────────────────────────────────────────────────────

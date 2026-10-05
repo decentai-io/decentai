@@ -231,7 +231,7 @@ What this costs: every environment downloads its packages again, and a
 declared package that is not on the index — named by an address
 somewhere else — is refused, as an undeclared host would be. A
 deployment with an index of its own names it
-([configuration](../guides/configuration.md)). A requirement names a
+([configuration](../run/configuration.md)). A requirement names a
 package; one that begins as an option (`-r`, `--index-url`) is refused
 before anything runs, confined or not.
 
@@ -473,8 +473,8 @@ for an agent that ignores the usual ones on purpose. The published web
 agents — the Web Reader, Web Watch and Feeds, which refuse internal
 addresses themselves — go through the proxy when there is one and
 leave the name to it; the Browser agent hands the proxy to its
-browser, with no way around it. [Writing an
-agent](../guides/writing-an-agent.md) lists what does not work behind
+browser, with no way around it. [What your code is
+given](../agents/sdk.md#connecting-out) lists what does not work behind
 the proxy, and how to tell.
 
 ## The runtime's own settings

@@ -207,6 +207,23 @@ class TestKeepMeSignedIn:
         session = self.session(seed)
         assert (session["expires_at"] - session["created_at"]).days == 90
 
+    @staticmethod
+    def token_days(response):
+        """How long the token inside the cookie says it is good for."""
+        import jwt
+
+        token = response.cookies.get("access_token")
+        claims = jwt.decode(token, options={"verify_signature": False})
+        return (claims["exp"] - claims["iat"]) // (24 * 3600)
+
+    def test_the_token_in_the_cookie_lasts_as_long_as_the_session(self, anon, seed):
+        # Signed for a week whatever was asked, a kept sign-in ended on
+        # the eighth day with its session and its cookie still there.
+        assert self.token_days(self.sign_in(anon, seed, remember=True)) == 90
+
+    def test_and_a_week_when_nothing_was_asked(self, anon, seed):
+        assert self.token_days(self.sign_in(anon, seed)) == 7
+
     def test_anything_but_true_is_not_asking(self, anon, seed):
         cookie = self.sign_in(anon, seed, remember="yes").headers["set-cookie"].lower()
         assert "max-age" not in cookie

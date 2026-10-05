@@ -6,6 +6,7 @@ images to build.
 
 ## What you need
 
+
 - Docker with Compose v2, running (Docker Desktop on Windows or macOS;
   Docker Engine on Linux).
 - Python 3.9 or later. The setup script imports nothing but the
@@ -17,6 +18,7 @@ images to build.
   else is needed to start.
 
 ## 1. Start it
+
 
 From the repository root:
 
@@ -50,6 +52,7 @@ not in git.
 
 ## 2. Open it
 
+
 Open the address the script printed. It is `http://localhost:4280` with
 a sign-in after the `#`, a part of an address a browser sends nowhere;
 the sign-in page takes it out of the address and signs you in. You are
@@ -67,6 +70,7 @@ Another port, said the first time: `python bootstrap/setup.py --port 4300`.
 
 ## 3. Give it a model
 
+
 **Settings → Model providers → Add a provider.** Choose the provider —
 the well-known ones are listed, the rest are behind the search — and
 paste its key. The address is filled in (Amazon Bedrock asks for your
@@ -81,6 +85,7 @@ Keys are write-only: nobody reads one back.
 
 ## 4. Install an agent
 
+
 **Agents → Marketplace.** Add the [`decentai-agents`](https://github.com/decentai-io/decentai-agents) repository as a
 source, by its address — or set `REFERENCE_CATALOG_URL` in `deploy.env`
 to that address first, and the marketplace offers it with one click.
@@ -90,6 +95,7 @@ credential, two small packages — and approve. Installing as the
 administrator grants it to you.
 
 ## 5. The first chat
+
 
 **AI → Chats → New chat.** Enable Notebook in the chat's agents, then:
 
@@ -102,63 +108,19 @@ answer is worth a table. Open the chat's **Activity & audit** to see the
 two calls as the platform recorded them: agent, function, level, inputs
 in outline, outcome, duration.
 
-## Every day
+## Every day, and when something is wrong
 
-```bash
-docker compose --env-file deploy.env stop     # stop it; nothing is removed
-python bootstrap/setup.py                     # start it, and say the address
-docker compose --env-file deploy.env logs -f backend
-```
-
-After pulling newer code, `python bootstrap/setup.py` builds and starts
-it: the seeder runs first and brings the database's schema up to date.
-
-To remove it altogether, its data with it:
-`docker compose --env-file deploy.env down --volumes`, then delete
-`deploy.env`.
-
-## Somebody else
-
-The sign-in page is there the whole time; the address the script
-prints only fills it in for you. To add a person, **Admin → Users → Add
-person**: with no email to send an invitation by, you are shown a
-temporary password once, to hand over, and they choose their own at
-their first sign-in.
-
-The first person's own address and password are in `deploy.env`
-(`ADMIN_EMAIL`, `ADMIN_PASSWORD`). To sign in by an address and a
-password of your own instead, see *A forgotten password, without email*
-in [Deploying](guides/deploying.md): the same line, with
-`RESET_NEW_EMAIL`.
-
-People on other computers need an address they can reach, and HTTPS:
-that is a server, and [Deploying](guides/deploying.md) says how.
-
-## If something does not start
-
-- **The script says Docker did not answer.** Docker Desktop is not
-  running, or `docker compose` is not installed.
-- **The port is taken.** `docker compose` says the address is already in
-  use: delete `deploy.env` if nothing was started with it yet and run
-  the script with `--port`, or change `PORT`, `PUBLIC_APP_URL` and
-  `CORS_ALLOW_ORIGINS` in it together.
-- **The seeder failed.** `docker compose --env-file deploy.env logs init`.
-- **The backend restarts.** `docker compose --env-file deploy.env logs
-  backend`. A wrong `MONGO_URI` password shows as an authentication
-  error; a missing `TOKEN_SECRET_KEY` says so in the first lines.
-- **Chats say the runtime is unavailable.** `docker compose --env-file
-  deploy.env logs ai-runtime`. The runtime refuses connections whose
-  signature does not verify: `BACKEND_SERVICE_PUBLIC_KEY` must be the
-  pair of the backend's private key.
-- **The address opens the sign-in page with a refusal.** The first
-  person's password was changed since `deploy.env` was written: sign in
-  with the one it was changed to.
+Stopping and starting, updating, backing up, adding people, a forgotten
+password and what the agents are given are in
+[Operating it](operating.md). What to look at when it does not start
+is in [Troubleshooting](troubleshooting.md).
 
 ## Where next
 
-- [Concepts](concepts.md), to know what you just used.
+
+- [Concepts](../system/concepts.md), to know what you just used.
 - The in-app **Help → Guide** for the rest of the platform as a person
   sees it.
-- [Writing an agent](agents/README.md), and
-  [handing DecentAI the folder you write them in](agents/developing.md#a-decentai-of-your-own).
-- [Deploying](guides/deploying.md) when this leaves one machine.
+- [Writing an agent](../agents/README.md), and
+  [handing DecentAI the folder you write them in](../agents/developing.md#a-decentai-of-your-own).
+- [Deploying](deploying.md) when this leaves one machine.

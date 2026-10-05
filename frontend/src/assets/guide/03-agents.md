@@ -4,11 +4,11 @@ An agent is a reviewed program the assistant can drive: a manifest that declares
 
 ## Where agents come from
 
-A **source** is a git repository that carries a catalog: a file listing the agents it offers, each in its own folder with its manifest. The platform reads the catalog without running any code, validates every manifest, and shows what is on offer.
+A **source** is a git repository that carries a catalog: a file listing the agents it offers, each in its own folder with its manifest. A repository that holds one agent, with its manifest at the top, is a source too. The platform reads the catalog without running any code, validates every manifest, and shows what is on offer.
 
-Administrators add sources on **Agents → Marketplace**. A source may be private; a credential with read access is stored with it, and the platform fetches with that credential and nobody else's.
+Administrators add sources on **Agents → Marketplace**, under *Agent catalogs*, with **Add catalog**. A source may be private; a credential with read access is stored with it, and the platform fetches with that credential and nobody else's.
 
-A source belongs to whoever added it. They may edit, share, refresh and remove it, and so may anyone holding the *manage any source* grant, which every administrator has. **Hand over** on a source passes it to a colleague; it goes to a successor automatically when its owner is removed from the organization.
+A source belongs to whoever added it. They may edit, share, refresh and remove it, and so may anyone holding the *manage any source* grant, which every administrator has. The hand-over button on a source passes it to a colleague; it goes to a successor automatically when its owner is removed from the organization.
 
 ## Installing
 
@@ -17,17 +17,17 @@ Every agent carries a few prompts to try first, written by its author. They appe
 An agent that keeps records may also ship **sample data**: the records and files that let you try it before you have any of your own. The marketplace says what a sheet would load; the agent's page loads it with one click as *your own* records and files — private to you, editable, visible under Saved data and Files — and removes it again in one click. Nothing marks them as samples once loaded; the platform simply remembers what it minted for you.
 
 
-Installing an agent is an **approval**: an administrator reads what the agent declares — its functions and their levels, the records and files it will keep, the credential shape it needs, the Python dependencies it asks for, the hosts it connects to — and approves that exact commit. The platform packages that folder, stores the bytes itself, and installs the declared dependencies into a private environment. The code cannot change under you: an update is a new approval.
+Installing an agent is an **approval** of one exact commit. **Details** on an agent's card shows what it declares — its functions and their levels, the records and files it will keep, the credential shape it needs, the Python dependencies it asks for, the hosts it connects to — and that is the page to read before approving. The app does not make you: **Install** on the card, and **Install selected** for several at once, approve without opening it. The platform packages that folder, stores the bytes itself, and installs the declared dependencies into a private environment. The code cannot change under you: an update is a new approval.
 
 **Where it connects** is part of that reading, and stays on the agent's page afterwards. An agent names its hosts; one whose host is yours to say — your own site, your own server — names the field of its credential that holds the address; one whose work is the open web says *any website*. A host is shown with a port beside it (`imap.gmail.com:993`) when the agent speaks something other than the web's protocol there, mail for instance, and it is reached on that port and no other. Every agent has to say: one whose manifest does not is refused, and cannot be installed.
 
-When the source moves ahead, the marketplace shows *update available* on the agents that changed, with the version waiting. Updating is the same read-and-approve. When the source moves ahead and its catalog no longer lists an agent you installed — it was renamed or withdrawn upstream — the agent shows *no longer in the source's catalog*: there is nothing to update to, so uninstall it and install its replacement. Uninstall is offered on an installed agent whatever state it is in.
+When the source moves ahead, the agents that changed say so, with the version installed and the one waiting — *v1.0.0 installed · v1.1.0 offered* on the marketplace, *v1.1.0 available* on the Installed page. Updating is the same read-and-approve. When the source moves ahead and its catalog no longer lists an agent you installed — it was renamed or withdrawn upstream — the agent shows *no longer in the source's catalog*: there is nothing to update to, so uninstall it and install its replacement. Uninstall is offered on an installed agent whatever state it is in.
 
 ## Granting
 
-Installing makes an agent available; a **grant** makes it usable by a person or a group. Administrators grant on **Agents → Installed**, per agent. A grant may also narrow what the agent may do — for example, only certain notebooks — using the scopes the manifest declares.
+Installing makes an agent available; a **grant** makes it usable by a person or a group. The first install grants it to whoever installed it and to every group they are in. Anyone else is given it on **Agents → Installed**, on the agent's **Access** tab, where a grant is also taken away. A grant may narrow what the agent may do — for example, only certain notebooks — using the scopes the manifest declares.
 
-A chat can only enable agents its person has been granted. The assistant cannot reach beyond that.
+A chat can only enable agents its person has been granted. The assistant cannot reach beyond that. Which of your agents a new chat starts with is yours to say: **In new chats** on each agent on the Installed page, and in a chat's Agents dialog, **Reset to my defaults**.
 
 ## Credentials
 
@@ -35,7 +35,7 @@ An agent that talks to an outside service declares the *shape* of the credential
 
 ## What an agent's page shows
 
-Each installed agent has a page with four tabs: **Overview**, what was approved — where it connects, what it keeps, the packages it asked for — with prompts to try and its sample data; **Credentials**, shown when the agent declares any, with the credentials saved for it or lent to it; **Functions**, the list of what it can do with the level of each and the records it touches; **Access**, who is granted and with what scope.
+Each installed agent has a page with four tabs: **Overview**, what was approved — where it connects, what it keeps, the packages it asked for, and how it is confined on this install — with prompts to try and its sample data; **Credentials**, shown when the agent declares any, with the credentials saved for it or lent to it; **Functions**, the list of what it can do with the level of each and the records it touches; **Access**, who is granted and with what scope.
 
 ## Uninstalling
 

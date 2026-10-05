@@ -8,13 +8,13 @@ it.
 ## The tests
 
 The tests run your agent **the way the platform runs it**: in a worker
-process of its own, from an environment holding exactly the
-dependencies your manifest declares, over the platform's own protocol,
+process of its own, from an environment holding the dependencies the
+manifests in your catalog declare, over the platform's own protocol,
 against simulated records, files and secrets. No server, no browser, no
 network. What passes is what would be installed.
 
-You need Python 3.11 or later, and the DecentAI platform's source — the
-harness is the platform's own code.
+You need Python 3.11 or later (the platform's images run 3.12), and the
+DecentAI platform's source — the harness is the platform's own code.
 
 To run Note's tests, from the root of the platform's repository:
 
@@ -72,6 +72,22 @@ And on `invoke`, `chat_level=` is the chat's trust: a function above it
 asks for approval, and with nobody wired in to approve, it is refused.
 That is how you test that a level-3 action really is gated.
 
+Two more things a test often needs:
+
+- **A file the person attached.** Put one in the simulator and pass its
+  reference as the input:
+  `(await provider.create_file("chat_attachment", "report.pdf", data))["resource_ref"]`.
+  A file named in a call's inputs is readable under any file resource
+  the function may `read`, as an attachment is in a chat.
+- **A service your agent calls.** Stand a small server up on this
+  machine and point the agent at it through the secret you stock, so
+  the HTTP client under test is the real one. The agents the project
+  publishes do this.
+
+The first run builds the environment under your tests folder
+(`.workerenv`). Delete it after changing a manifest's `dependencies`;
+the SDK inside it is refreshed by itself.
+
 ### What to test
 
 Start with the package: `examples/tests/test_note.py` has the check installation
@@ -94,7 +110,7 @@ you do:
 
 ## A DecentAI of your own
 
-Run DecentAI on your computer ([quickstart](../quickstart.md)). Then
+Run DecentAI on your computer ([quickstart](../run/quickstart.md)). Then
 hand it the folder you write agents in, and its git repositories become
 agent sources — no push, no account anywhere. Beside
 `docker-compose.yml`, in a file named `docker-compose.override.yml`,
@@ -124,11 +140,15 @@ Approve your agent and talk to it in a chat.
 A source is read **at a commit**, exactly as it would be from anywhere
 else. So the loop is:
 
-1. Change your agent, and `git commit`.
+1. Change your agent, bump `agent.version`, and `git commit`.
 2. On the source, press **Refresh**.
 3. On your agent, take the **Update** it offers.
 
-Bump `agent.version` whenever the manifest changes: a version, once
+Bump the version for every change you want to try, a change to the code
+alone included. An update is offered when the manifest in the source
+differs from the one approved, and the version is part of the manifest:
+a commit that changes only Python offers nothing. A manifest changed
+under the same version is refused when you take it — a version, once
 approved, is never approved again with other content.
 
 Deleting the file and starting the backend again takes the folder

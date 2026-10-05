@@ -19,6 +19,9 @@
   --popover-foreground: #0a0a0a;
   --primary: #10b981;              /* emerald — the single identity color */
   --primary-foreground: #ffffff;
+  /* A web page's own paper, the same in either theme: what the live
+     screen's picture sits on while it loads. */
+  --page-paper: #ffffff;
   /* The same emerald, deep enough to carry white text: #ffffff on
      --primary is 2.5:1, which is not a readable button. Fills that hold
      --primary-foreground use this; dots, borders, focus rings and icons

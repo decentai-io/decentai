@@ -1,67 +1,26 @@
-# Deploying
+# Operating it
 
-The platform is one image per process, configured entirely by
-environment. Moving between a laptop, a virtual machine and a cloud
-changes values, never code.
+Everything done to a running DecentAI from the machine it runs on:
+starting and stopping, updating, backing up, people and passwords, what
+the agents are given, keys, and removing it. Each `docker compose` line
+is written for a computer of one's own; on a server every one of them
+takes the two `-f` files [Deploying](deploying.md) starts it with.
 
-## Compose on a host
-
-On a person's own computer `python bootstrap/setup.py` is the whole
-procedure ([quickstart](../quickstart.md)). A server with an address of
-its own is set up by hand, because what it is — its address, who its
-administrator is, where its mail goes — is yours to say.
-
-**1. Generate the secrets.** With Python 3.12 and `cryptography`:
+## Starting, stopping, looking
 
 ```bash
-python bootstrap/generate_service_keys.py     # the backend↔runtime signing pair
-python bootstrap/generate_secret_keys.py      # the keys that encrypt stored values
-python -c "import secrets; print(secrets.token_urlsafe(48))"   # TOKEN_SECRET_KEY
+docker compose --env-file deploy.env stop     # stop it; nothing is removed
+python bootstrap/setup.py                     # start it, and say the address
+docker compose --env-file deploy.env logs -f backend
 ```
 
-None of them is written to disk by the scripts.
+## Updating
 
-**2. Write `deploy.env`.** `cp deploy.env.example deploy.env`, replace
-every `change-me` — the three generated values exactly as printed, a
-database password (the same one inside `MONGO_URI`), and the first
-administrator's name, email and password — and set what a server sets
-differently from a computer of one's own:
+After pulling newer code, `python bootstrap/setup.py` builds and starts
+it: the seeder runs first and brings the database's schema up to date.
 
-| Setting | On a server |
-|---|---|
-| `SITE_ADDRESS` | the domain people type. With DNS pointing at the host, Caddy obtains and renews Let's Encrypt certificates by itself |
-| `PUBLIC_APP_URL`, `CORS_ALLOW_ORIGINS` | `https://` and that domain. Links in invitations and password resets use the first |
-| `JWT_COOKIE_SECURE` | `true` |
-| `SMTP_HOST`, `MAIL_FROM` and the server's sign-in | any provider's SMTP server, so invitations and password resets are sent rather than logged ([configuration](configuration.md)) |
-
-**3. Start it**, with the file that makes Caddy the server's front
-door laid over the stack:
-
-```bash
-docker compose -f docker-compose.yml -f docker-compose.server.yml \
-    --env-file deploy.env up -d --build
-```
-
-Only Caddy publishes ports (80 and 443); the backend, runtime and
-database live on the private Compose network. Agent code runs in a
-container of its own, `agents`, on a second network that reaches the
-runtime and nothing else ([the sandbox](../system/sandbox.md)). Every
-`docker compose` line below takes the same two `-f` files on a server.
-
-Sign in at the address with the administrator from `deploy.env`.
-
-## Behind a load balancer
-
-When something in front already terminates TLS, Caddy listens on plain
-HTTP and `docker-compose.yml` alone is the stack: leave
-`SITE_ADDRESS=:80`, and set `LISTEN=0.0.0.0` and `PORT` to the port the
-balancer forwards to. The load balancer's health check must
-reach the backend's `/healthz`, which Caddy proxies without regard to
-the Host header. Set `FORWARDED_ALLOW_IPS` to the proxy's address range
-so the backend trusts `X-Forwarded-For` for session records and the
-login lockout.
-
-## Upgrading
+On a server, the same in steps, so that the old code serves until the
+new is ready:
 
 1. Pull the new code.
 2. **Seed first.** `docker compose --env-file deploy.env run --rm init`
@@ -75,7 +34,7 @@ login lockout.
 Deploy by commit, not by `latest`: tag images with the short git SHA so
 a rollback is a matter of naming the previous tag.
 
-## Rollback
+### Going back
 
 Re-run `up` with the previous images. The schema is additive across
 versions — a newer seed adds collections, indexes and actions and
@@ -95,6 +54,22 @@ Four volumes hold everything durable:
 The encryption keys in `deploy.env` are part of the backup: a database
 without `SECRET_ENCRYPTION_KEYS` is a database whose every credential
 and record value is unreadable.
+
+## People
+
+The sign-in page is there the whole time; the address the script
+prints only fills it in for you. To add a person, **Admin → Users → Add
+person**: with no email to send an invitation by, you are shown a
+temporary password once, to hand over, and they choose their own at
+their first sign-in.
+
+The first person's own address and password are in `deploy.env`
+(`ADMIN_EMAIL`, `ADMIN_PASSWORD`). To sign in by an address and a
+password of your own instead, see *A forgotten password, without email*
+below: the same line, with `RESET_NEW_EMAIL`.
+
+People on other computers need an address they can reach, and HTTPS:
+that is a server, and [Deploying](deploying.md) says how.
 
 ## A forgotten password, without email
 
@@ -116,6 +91,23 @@ new address to sign in by as well. That is how the first person
 `bootstrap/setup.py` made, whose address is nobody's, takes an address
 and a password of their own; the address the script prints no longer
 signs anybody in after that, and the sign-in page is used.
+
+## What the agents are given
+
+All agents share one container, and it is given so much memory and so
+much processor by whoever starts it: `AGENTS_MEMORY` (`2g`, `1500m`) and
+`AGENTS_CPUS` (`2`, `1.5`) in `deploy.env`. Unset is no limit. A change
+takes effect when the agents' container is started again:
+
+```bash
+docker compose --env-file deploy.env up -d agents
+```
+
+An agent that takes more memory than they are given together is ended,
+and the chat it was working for says which
+([the sandbox](../system/sandbox.md#what-the-agents-are-given-together)).
+What each agent uses now, and what was seen of it, is **Settings →
+Monitoring** ([what is written down](../system/monitoring.md)).
 
 ## Rotating the encryption key
 
@@ -146,3 +138,9 @@ python bootstrap/organizations.py disable --org <org_id>
 
 Creating one seeds its access chains and prints the invitation link for
 its first administrator.
+
+## Removing it
+
+To remove it altogether, its data with it:
+`docker compose --env-file deploy.env down --volumes`, then delete
+`deploy.env`.

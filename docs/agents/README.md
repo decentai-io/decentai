@@ -110,7 +110,25 @@ what separates an agent people trust from one they check by hand:
 - **Keep a trail somebody can audit**, ordered by when things were
   written rather than by a date a caller supplied.
 
-When you have read Note, read the agents the project publishes, in the
+The agents the project publishes keep a few more habits worth copying.
+Money is decimals to the cent and is never converted between
+currencies. A date is `YYYY-MM-DD` or nothing: an ambiguous day and
+month is not read. What a model extracted is checked against the text
+word for word and marked verified or assumed. A file the agent produced
+is read back before it is returned, and an original is never modified.
+
+When you have read Note, read those agents, in the
 [`decentai-agents`](https://github.com/decentai-io/decentai-agents)
-repository — mail, calendars, spreadsheets, documents, a browser, code —
-for how these ideas look at full size.
+repository, for how these ideas look at full size. Each has a README
+naming its limits and what it needs, and some are worth reading for one
+pattern:
+
+| Agent | Shows |
+|---|---|
+| Notebook | records with `user_access`, files, a schedulable function |
+| Gmail, Outlook | a connected account by `oauth`; level-3 sends; a watch that wakes a schedule only for new mail |
+| Mail | a protocol that is not HTTP, through the proxy (`decentai_sdk.net.Tunnel`), hosts with ports |
+| Documents, Sheets, Slides | reading uploads by reference, producing files as bytes and reading them back |
+| Tasks, Expenses | a model reading text with every quote checked, decimal money, dates only when exact |
+| Browser | a person's sign-in asked for on a card (`call.credential`), the live screen (`call.screen`) |
+| Code | a program shown on the code card (`call.propose`) and its packages installed (`call.install`) |

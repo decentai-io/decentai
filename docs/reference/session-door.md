@@ -2,8 +2,9 @@
 
 How a running runtime serves assistants. The worker protocol is the
 contract *below* the mind (host ↔ agent process); this is the contract
-*above* it (consumer ↔ session). Version: **1** — announced in the
-hello, refused on mismatch.
+*above* it (consumer ↔ session). Version: **2** — announced in the
+hello. Nothing compares it yet: a consumer that speaks another version
+is not refused, and is the one to notice.
 
 The door is built around **sessions** ([the
 assistant](../system/assistant.md)), hosted by the runtime, spoken to
@@ -63,7 +64,7 @@ await services.contract(chat_id) -> {
   "timezone":   "Asia/Dubai",      # the person's zone, for the clock and cron
   "llm":        {...} | None,      # provider/model/credential config
   "llm_missing": "...",            # when llm is None: why, and where to set it
-  "max_beats":  75,                # the chat's turn budget; 0 is no valve
+  "max_beats":  20,                # the chat's turn budget; 0 is no valve
   "max_skills": 40,                # how many skills the frame lists; 0 is all
   "skills":     [...] | None,      # the chat's chosen skills; None is every one
   "mcp":        [{ref, name, host,           # the person's own MCP servers that
@@ -114,13 +115,16 @@ turns that into an honest reply on the first event that needs a model
   grant withdrawn. Rather than have each of those notify the runtime,
   `host.refresh(chat_id)` asks the services again at the start of a
   turn — a person's message, or a wakeup through the inside door — and
-  the session adopts the answer: roster, trust level, grants. The
+  the session adopts the answer: roster, trust level, grants, the
+  model where it changed, the turn budget, how many and which skills
+  are listed, the routing numbers and the safety settings. The
   transcript is untouched and the frame is rewritten, so the mind reads
   the agents it now has. Work already in flight keeps the level it
   began with; a services call that fails leaves the session serving
   what it was built with.
 - **Reaped when idle and unwatched.** No socket, no active jobs, no
-  running cycle → the host forgets it after a grace period. Nothing
+  running cycle, no question waiting for the person → the host forgets
+  it after a grace period of a minute. Nothing
   is lost: the mind was persisted at its last beat, and the next
   event hydrates it back. Reaping is memory hygiene, not teardown.
 - **Shutdown is abandonment, by design.** The host cancels the pumps
@@ -153,7 +157,7 @@ translate to and no `AI:*` command surface on this door.
 
 | frame | carries | becomes |
 |---|---|---|
-| `user_message` | `text`, `parts?` | `session.deliver_user` — persisted first, absorbed on the next beat, never refused |
+| `user_message` | `text`, `parts?`, `client_message_id?` | `session.deliver_user` — persisted first, absorbed on the next beat, never refused |
 | `approval_decided` | `approval_id`, `approved`, `action_hash` | `session.deliver_approval` — the live park settles, or the hydrated job resumes through every gate; `action_hash` is the card's own record of what was approved, and the resumed inputs must hash to it |
 | `schedules_changed` | — | a person paused, resumed, wrote or deleted one of the chat's rows on the page: the host re-reads the chat's rows from the services and the clock replaces its copy. No mind is built. A forged one can only make the clock re-read what the store already says. |
 | `credential` | `credential` | the dialer's fresh key for the chat. A delegation lives an hour and a kept-open socket (a scheduled chat's) may live for days, so the relay renews over the socket instead of re-dialing: the host hands the key to the services and the clock adopts any rows it unlocks. No mind is built. A forged one can only hand the services a key the platform then refuses. |
@@ -177,12 +181,19 @@ carrying the `seq` its durable record was given — so replay and the
 socket name one event the same way, and an audience hearing both can
 tell a repeat from news (a frame the log refused travels without one):
 `message_created`, `activity`, `plan_updated`, `memory_saved`,
-`approval_requested`, `schedule_set`, `schedule_removed`, `sleeping`
-(the assistant paused until a time, or a stop ended the pause), and the
-pair that brackets every cycle — `working` when the mind starts
-advancing, `idle` when it stops (a say ends nothing, so nothing else
-could tell an audience when to stop waiting). The vocabulary belongs
-to the Session, and the door adds two frames of its own:
+`approval_requested`, `question_asked` and `question_closed` (a card
+that asks the person something, and its end), `schedule_set`,
+`schedule_removed`, `sleeping` (the assistant paused until a time, or a
+stop ended the pause), `stopped` (a kill ended the work), and the pair
+that brackets every cycle — `working` when the mind starts advancing,
+`idle` when it stops (a say ends nothing, so nothing else could tell an
+audience when to stop waiting). Four more are news for whoever is
+watching and are never recorded: `screen_frame` and `screen_closed` (a
+browser an agent shows), `chat_titled`, and `screen_unavailable`. The
+whole list is `EVENT_NAMES` and `DELIVERED_EVENTS` in
+`contracts/chat.py`. The vocabulary belongs to the Session, and the
+door adds three frames of its own — `hello`, `agent_status`, and
+`error` for a frame it could not take:
 
 ```json
 {"event": "hello", "protocol_version": 2, "chat_id": "…", "working": false,
@@ -202,10 +213,10 @@ present tense only.
  "text": "Preparing Notebook: …"}
 ```
 
-sent before the hello, only when the build has to materialize an
-agent the host does not yet hold (`docs/system/agent-code.md`): a first open
-waits on a package fetch and a pip install, and a wait with no words
-reads as a fault. Socket-only, never recorded — the durable story of
+sent whenever an agent has to be materialized that the host does not
+yet hold (`docs/system/agent-code.md`): at build, before the hello; at
+a turn's refresh; and after an install. A first open waits on a package
+fetch and a pip install, and a wait with no words reads as a fault. Socket-only, never recorded — the durable story of
 an install is the platform's audit. A `failed` phase carries the
 reason, so an agent absent from the roster is not a silent absence.
 

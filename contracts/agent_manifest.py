@@ -799,6 +799,22 @@ class ManifestValidator:
         watches = function.get("watch")
         if watches is not None and not isinstance(watches, bool):
             self._fail(path, "watch must be true or false")
+        if watches is True:
+            # The platform calls it when a person opens the screen, not
+            # because they approved anything and with no model behind
+            # it: a card asking to allow it would be asking about a
+            # click, and there is no chat's model to answer.
+            if function.get("permission_level") != 0:
+                self._fail(
+                    f"{path}.watch",
+                    "a watch function must be permission_level 0 — the "
+                    "platform calls it when the person opens the screen, "
+                    "and nothing was asked that could be approved")
+            if function.get("llm") is True:
+                self._fail(
+                    f"{path}.watch",
+                    "a watch function cannot declare llm: true — the "
+                    "platform calls it without the model")
 
         self._function_resources(function.get("resources"), path, tool_resources)
 

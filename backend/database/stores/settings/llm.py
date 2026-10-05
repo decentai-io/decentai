@@ -173,13 +173,30 @@ class LlmConnectionStore(OrgScopedStore):
 
     # ------------------------------------------------------------------
 
-    def list(self, user: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """The connections THIS caller can see, default first."""
+    def list(self, user: Dict[str, Any],
+             every: bool = False) -> List[Dict[str, Any]]:
+        """The connections THIS caller can see, default first. With
+        ``every`` — the manage-any grant, on the page connections are
+        kept on — every connection of the organization: one cannot
+        maintain what one cannot see. Seeing one there is not being
+        able to use it; what a chat may think with stays the owner
+        map's to say (``use``)."""
+        query = ({"org_id": str(user.get("org_id") or "")} if every
+                 else self._visibility(user))
         return [
             self.to_public(doc)
-            for doc in self.col.find(self._visibility(user))
+            for doc in self.col.find(query)
             .sort([("is_default", -1), ("name", 1)])
         ]
+
+    def in_organization(self, org_id: str,
+                        doc_id: str) -> Optional[Dict[str, Any]]:
+        """A connection of this organization by its id, whoever may see
+        it: for the manage-any grant, and nobody else."""
+        if not doc_id:
+            return None
+        return self.col.find_one({
+            "org_id": str(org_id or ""), "_id": str(doc_id)})
 
     def visible(self, user: Dict[str, Any],
                 doc_id: str) -> Optional[Dict[str, Any]]:

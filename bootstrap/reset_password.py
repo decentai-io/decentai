@@ -15,7 +15,7 @@ and they name their own the day somebody else is to use the install
 too.
 
 Run in the backend's image, where the platform's code and settings are
-(docs/guides/deploying.md has the line); the password travels by
+(docs/run/operating.md has the line); the password travels by
 environment, once, and is kept nowhere.
 """
 

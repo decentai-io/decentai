@@ -125,11 +125,14 @@ export class ChatDetailComponent implements OnInit, OnDestroy {
   /** Chat trust level (0-3) — lives in the chat's config; changing it
    *  updates the config and reconnects the chat. */
   trustLevel = 1;
+  /** A function runs without asking when its level is at or below the
+   *  chat's; each hint says what that leaves to ask about. The same
+   *  four, in fewer words, as Settings → Chat configuration offers. */
   readonly trustOptions = [
-    { level: 0, label: 'Ask for everything', hint: 'Approve every action' },
-    { level: 1, label: 'Standard', hint: 'Reads run; changes ask' },
-    { level: 2, label: 'Trusted', hint: 'Wider changes run too' },
-    { level: 3, label: 'Autonomous', hint: 'External actions run too' },
+    { level: 0, label: 'Ask for every change', hint: 'Reads run; every change asks' },
+    { level: 1, label: 'Standard', hint: 'Ordinary changes run; wider ones ask' },
+    { level: 2, label: 'Trusted', hint: 'Wider changes run; outside actions ask' },
+    { level: 3, label: 'Autonomous', hint: 'Everything runs without asking' },
   ];
 
   /** How many steps one message may take before the chat stops and

@@ -2,7 +2,7 @@
 
 What the platform does to an agent, and what an agent does that the
 platform can see, is written down as it happens, where a person can be
-shown it. This is not the [audit trail](../concepts.md#the-audit-trail): that is the
+shown it. This is not the [audit trail](concepts.md#the-audit-trail): that is the
 record, in the database, of what a person or an agent was allowed and
 did through the platform. This is what was seen of the agents'
 processes, for somebody looking.

@@ -362,13 +362,17 @@ class Repository:
             raise RepositoryError(
                 f"Invalid or duplicate catalog agent id '{local_id}'.")
 
+        # Asked of the path as written: resolved, a link is no longer
+        # one, and a folder that only points at another was read as an
+        # agent's own.
+        linked = (root / relative).is_symlink()
         target = (root / relative).resolve()
         try:
             target.relative_to(root)
         except ValueError as exc:
             raise RepositoryError(
                 f"Agent path '{relative}' escapes the repository.") from exc
-        if target.is_symlink() or not (target / MANIFEST_FILENAME).is_file():
+        if linked or not (target / MANIFEST_FILENAME).is_file():
             raise RepositoryError(
                 f"Agent '{local_id}' has no safe manifest at '{relative}'.")
         if any(path.is_symlink() for path in target.rglob("*")):

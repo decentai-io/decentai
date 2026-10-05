@@ -161,5 +161,5 @@
 
 /* The fires after the next one, and how many of the last runs failed. */
 .task-upcoming { margin: 2px 0 0; color: var(--muted-foreground); font-size: 12px; }
-.task-failures { margin-left: auto; padding: 1px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; color: var(--destructive-strong, #c33); background: color-mix(in srgb, var(--destructive) 10%, transparent); }
+.task-failures { margin-left: auto; padding: 1px 8px; border-radius: var(--ui-radius-pill); font-size: 11px; font-weight: 600; color: var(--destructive-strong); background: color-mix(in srgb, var(--destructive) 10%, transparent); }
 .task-doing a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }

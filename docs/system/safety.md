@@ -13,8 +13,10 @@ keeps a record of where each one went.
 ## What a person sets
 
 One page, **Settings → Safety**, which the administrator sets for
-everybody (`Settings:Safety`, kept on the organization). Five rows;
-the four about agents each start at the strictest choice:
+everybody (`Settings:Safety`, kept on the organization). Five rows,
+each starting where the platform stood before the setting existed: the
+Browser's scripts and the Code agent's programs ask every time, any
+package may be installed, and MCP servers are allowed:
 
 | Row | The choices | The start |
 |---|---|---|
@@ -119,7 +121,7 @@ what it became.
   would break the page.
 - **It does not change what an approved manifest declared.** An agent
   that declared its hosts reaches those, less the blocked ones.
-- **It is one setting for the deployment**, not one per person.
+- **It is one setting for the organization**, not one per person.
 - **The record has no page of its own.** It is read in the audit trail.
 - **Where nothing confines agents**, no proxy stands in their way: the
   blocked names are not enforced and nothing is counted. The agent's

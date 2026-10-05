@@ -4,9 +4,12 @@ Where everything a person owns is kept: their credentials, the documents
 they upload, the knowledge they write for the assistant, and the records
 agents keep on their behalf.
 
-Four different subjects, one shape. This document describes that shape,
-what each domain adds to it, and the boundaries it enforces on every read
-and every write.
+Four different subjects, one shape — and a fifth on the same shape,
+the remote tool servers a person adds for their own chats
+([MCP servers](mcp.md)), which is personal only: never shared, never
+handed over, its credential withheld from every read. This document
+describes the shape, what each domain adds to it, and the boundaries it
+enforces on every read and every write.
 
 ## Why there is a shape at all
 
@@ -64,8 +67,7 @@ returns a document.
 The split is the heart of the shape.
 
 **Keys** are plaintext and queryable. They are what a list page shows and
-what a filter matches on: a hostname, a title, a filename, a provider
-name. They are safe to show to anyone allowed to know the document
+what a filter matches on: a hostname, a title, a provider name. They are safe to show to anyone allowed to know the document
 exists.
 
 **Values** are encrypted at rest. They are the substance: an API token,
@@ -92,9 +94,13 @@ for being larger.
 
 Reads are filtered, not checked. Every read on the shared shape composes
 its query from three things: the organization, the domain, and the
-owner map. There is no read that starts from a document id alone and
-then asks whether the caller should have it — the query cannot match a
-document the caller may not see.
+owner map. No read served to a caller starts from a document id alone
+and then asks whether the caller should have it — the query cannot
+match a document the caller may not see. What looks a document up by
+its id alone is the platform's own work inside one request: the return
+from a provider's sign-in finding the credential it is reconnecting,
+a transfer finding what changes hands, and the count of who else
+refers to a file's bytes.
 
 This is a deliberate ordering. A check that happens after a lookup is a
 check somebody can forget to write; a filter that is part of the lookup
@@ -129,7 +135,8 @@ when the steward is deleted — with the sharing left exactly as it was.
 
 Both rules lift together, for one domain at a time, through a named
 grant — *share files organization-wide and maintain files created by
-others*, and one equivalent per domain. They are separate grants on
+others*, and one equivalent per domain, reaching what its holder can
+already see ([sharing](sharing.md#the-escape-grant)). They are separate grants on
 purpose: trusting somebody with everyone's files is not the same
 decision as trusting them with everyone's credentials.
 
@@ -187,9 +194,12 @@ proceeding with an empty credential is worse than a model that stops.
 ### Secrets
 
 Credentials, and the strictest domain. Values are never returned by any
-read, under any permission — the only way out is a dedicated *use*
-operation, available exclusively to the runtime acting inside a chat on
-someone's behalf, never to a person through the API. What a person can
+read, under any permission — the only ways out are two dedicated
+operations, available exclusively to the runtime acting inside a chat on
+someone's behalf, never to a person through the API: `Secrets:Secret:Use`
+for the credential granted to an agent's slot, and
+`Secrets:Credential:Resolve` for a site's login an agent asked the
+person for. What a person can
 see of a credential is its plaintext half: which provider, which host,
 which account.
 
@@ -266,10 +276,11 @@ declare no fields of its own for such a credential, and may not
 declare those names.
 
 Two secrets are involved, with two owners. The **registration** — the
-client id and secret a provider issued to this software — is the
-organization's, pasted once by an administrator under *Settings →
-Connected apps* (`oauth_apps`, one per provider id, the secret
-encrypted and write-only). The **grant** is the person's, and is the
+client id a provider issued to this software and, where it issued one,
+the secret — is the organization's, pasted once by an administrator
+under *Settings → Connected apps* (`oauth_apps`, one per provider id,
+the secret encrypted and write-only; a registration without one names
+the app by its id alone). The **grant** is the person's, and is the
 credential. The provider id is the join key: an agent whose credential
 says `provider: google` connects through the organization's `google`
 registration, and a second agent saying the same reuses it.
@@ -293,8 +304,9 @@ nothing), exchanges the code, reads the identity and creates
 the credential — or, for a reconnect, refreshes the existing one in
 place. At use time the backend refreshes an expiring access token
 before handing values out, and what an agent receives is the account
-and a short-lived access token: the refresh token never leaves the
-backend. A grant the provider no longer accepts marks the credential
+and an access token — short-lived where the provider expires it, kept
+as never expiring where the provider gives it neither a lifetime nor a
+refresh token: the refresh token never leaves the backend. A grant the provider no longer accepts marks the credential
 `needs_reconnect` and the agent is told, in words, to have it
 reconnected.
 
@@ -345,7 +357,8 @@ of providers, by `contracts/generate_llm_providers.py` — from the one
 file models.dev publishes, `https://models.dev/api.json` — and is a file
 in the repository rather than a request made while the platform runs: an
 install with no way out lists what any other does, and a new provider
-arrives in a commit somebody read. It is refreshed for each release. A
+arrives in a commit somebody read. It is refreshed by running the
+script and committing what it wrote; nothing runs it by itself. A
 provider that speaks one of the five protocols is an entry and no code;
 one with a protocol of its own would be a connector as well. A provider reached
 only by signing in, or by a credential that is not one string a person
@@ -384,10 +397,12 @@ there is no way to mint one describing bytes that were never written,
 because a document whose storage location came from a caller is a
 document that can point anywhere.
 
-The storage identifier is derived from the content and the folder it
-lands in, and that folder embeds the uploader. So the same file uploaded
-twice by one person is one record, and by two people is two — each
-belonging to the person who uploaded it. Bytes are removed only when the
+The storage identifier is derived from the bytes, the filename, what
+the caller said of the file, and the folder it lands in, and that
+folder embeds the uploader. So the same file uploaded twice by one
+person, under the same name and for the same purpose, is one record;
+under another name, or by two people, it is two — each belonging to the
+person who uploaded it. Bytes are removed only when the
 last document referring to them goes.
 
 Where bytes actually live is a connector's business. This platform
@@ -433,8 +448,9 @@ That places a demand on listing: a list returns the catalog only, and
 does not decrypt. Decrypting every body to render a page of titles would
 pay for work nobody asked for, and would stake the whole page on every
 key still being present. It is also what makes progressive disclosure
-possible: a chat carries one line per skill, and reads a body only when
-the assistant judges it relevant.
+possible: a chat carries one line per skill, up to the number the chat
+lists (40 unless changed, with the rest counted), and reads a body only
+when the assistant judges it relevant.
 
 ---
 

@@ -18,7 +18,7 @@ The assistant decides which functions to call and in which order. When it lacks 
 
 ## What it is doing
 
-While the assistant works, one line under its name says what it is doing — *Searching with Notebook…* — and the answer arrives beneath that line. When it is done the line settles to a summary such as *Worked through 3 steps · 4.1s*. Click the line to see the steps: each function it called, the agent's own last word on it, how long it took, and whether it failed.
+While the assistant works, one line at the foot of the conversation, just above the box you write in, says what it is doing — *Step 2 · Searching with Notebook…*. When it is done the line settles under the answer to a summary such as *Done · 3 steps · 4.1s*. Click the line to see the steps: each function it called, the agent's own last word on it, how long it took, and whether it failed.
 
 For anything that takes more than one step, the assistant writes a short plan, and the line opens to that instead: each item, whether it is to do, in progress, done, or blocked, and what proved it done. A plan is a record the platform checks — an item marked done with nothing behind it is shown as *unverified*. When the answer lands and everything is done the plan folds back into the line; it disappears when your next ask begins. A plan that is waiting on your answer stays until you give it.
 
@@ -38,12 +38,11 @@ A scheduled run may ask too: the card waits in its chat until you answer or it e
 
 The assistant's words are its own. What appears *beside* them is the platform's:
 
-- **Verified** marks on writes — a note saved, a task created, a record updated — appear only when the call succeeded.
 - **Tables and charts** are stored results, rendered from storage: rows a call returned that the assistant chose to show, with the columns it picked, or a view the agent itself built. Beneath each is the agent it came from — *from Outlook*. The assistant shows one when the answer is the rows, not when the rows were the means to a sentence.
 - **Files** it produced — a document, a workbook, a statement — appear as file cards you can open or download.
 - **Messages from an agent**: an agent may report something itself — an import finished, and what came in — shown under the assistant with the agent's name beneath it. The assistant hears it too, and does not say it again.
 
-If the assistant claims something the platform could not verify, there is no mark beside it. Treat a bare claim as a claim.
+A write — a note saved, a task created — draws nothing of its own: what proves it is the chat's **Activity & audit**, where every call is listed with whether it succeeded, and the plan, where an item with nothing behind it is shown as *unverified*. Treat a bare claim in the assistant's words as a claim.
 
 ## Attachments
 
@@ -51,7 +50,7 @@ Drop a file into the chat and it is stored for that chat and offered to the assi
 
 The folder button beside the paperclip attaches a file the platform already holds — one you uploaded on the Files page, attached in another chat, or an agent produced — by reference, without uploading it again. Mention a file without attaching it — *summarize the report I uploaded yesterday* — and the assistant looks through the files you can see and puts its best guesses on a card. Tick the ones you meant, search for any it missed, or choose none. What you pick is attached to the chat as if you had dropped it in. Nothing is used without your say-so.
 
-An agent that drives something visible, a browser above all, can show it in the chat as it goes: a *Live view* appears above the composer with what the agent sees. *Take over* puts your mouse and keyboard on it, for a CAPTCHA or a sign-in a site wants a human for; *Hand back*, or Esc, returns control to the agent.
+An agent that drives something visible, a browser above all, can show it in the chat as it goes: a *Live view* appears with what the agent sees, beside the conversation on a wide screen and above the box you write in on a narrow one. *Take over* puts your mouse and keyboard on it, for a CAPTCHA or a sign-in a site wants a human for; *Hand back*, or Esc, returns control to the agent. The view has the browser's tabs and an address box of its own, can be minimized or hidden, and **Close the browser** ends it. **Open the browser** in the chat header shows it before anything was asked of it.
 
 An agent that reaches a login form it has no login for asks you on a card: the site, the fields, and where the login is used. What you type is saved as one of your secrets and never shown to the assistant; the *Credentials* chapter has the rules.
 
@@ -77,10 +76,18 @@ Each chat has a time zone the assistant counts in — "Friday 9 am" is your Frid
 
 ## The chat's activity and audit
 
-The *Activity & audit* dialog on a chat is the platform's record of that chat: every function that ran, with the agent, its level, the inputs in outline, whether it succeeded, how long it took, and the result it stored; every approval asked and answered; every credential read by name. It is written by the platform as the work happens and cannot be edited.
+**More actions** (⋮) → **Activity & audit** opens the platform's record of that chat, in two views. **The record** is what was done: every function that ran, with the agent, its level, the inputs in outline, whether it succeeded, how long it took, and the result it stored; every approval asked and answered; every credential read by name. It is written by the platform as the work happens and cannot be edited.
 
 Beside it, **The assistant** shows what the model of this chat was shown and what it answered, in order: its instructions, each thing that arrived, and the action it chose each time. Open an entry to read it whole. It is yours to read and nobody else's, an administrator included. The earlier part of a long chat is there as the summary it was folded into.
 
-## Stopping everything
+## The chat's own settings
+
+**More actions** (⋮) in the chat header holds what is this chat's alone: its name, its **agents**, its **skills**, its **trust level**, its **turn budget** — how many steps one message may take before the chat stops and asks to continue: 20, 40, 60, 100 or unlimited — and how many skills it lists. **Refresh and reconnect** is there for a chat that seems stuck. What a new chat starts with is under **Settings → Chat configuration**, as *Your chat defaults*.
+
+The box you write in also has a camera, to take a photo and attach it, and a microphone, to speak a message, where the organization chose a model that writes speech down.
+
+## Stopping
+
+**Stop generating**, in the box you write in, ends the answer being written. The stop sign in a chat's header, **Stop everything in this chat**, asks first and then ends everything that chat is doing: running work, helpers, its browser, questions waiting on you.
 
 The stop sign at the top of every page ends all of your chats at once: running work, helpers, browsers, questions waiting on you, and scheduled runs. Nothing of yours starts again until you press **Resume** in the bar that appears. It stops your own work only, and what was already done stays done.

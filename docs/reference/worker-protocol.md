@@ -67,8 +67,15 @@ must never need to be.
 The worker process is:
 
 ```
-<envs/<hex>>/python -m decentai_sdk.worker
+<envs/<hex>>/python -I -m decentai_sdk.worker
 ```
+
+`-I` keeps the interpreter to its own environment: nothing of the
+machine's site packages or the caller's working directory is imported.
+Where agents are confined the line is wrapped by the spawn helper,
+which becomes the agent's own user before it becomes the worker, and
+in the stack this repository starts it is the agents' container that
+runs it ([the sandbox](../system/sandbox.md)).
 
 with the agent folder and everything else delivered over the handshake —
 argv carries nothing, and the environment is an allow-list, not an
@@ -94,7 +101,7 @@ over one connection per worker. Nothing below changes: the same lines,
 in the same order, between the same two parties.
 
 Newline-delimited JSON over the worker's stdin and stdout, UTF-8, one
-object per line, **2 MiB per line**. A line that is not a JSON object,
+object per line, **2 MiB per line** in either direction. A line that is not a JSON object,
 or too long, is a protocol fault: the host kills the worker; a worker
 reading a bad line exits. stderr is a log channel — captured by the
 host, written to its own log, never parsed. **EOF on stdin is the order
@@ -222,9 +229,12 @@ the `ResourceDenied` the SDK raises.
 
 **A screen the person can watch (`call.screen`).** Three notifications,
 no replies. Worker → host: `screen.frame` `{call_id, image_base64,
-mime, width, height, frame, taken}` — one picture of what the function
-is driving, at most 300 KB, relayed to the chat's audience and never
-recorded (`frame` is the picture's own count, not the record's `seq`);
+mime, width, height, frame, taken, tabs?}` — one picture of what the
+function is driving, a JPEG or a PNG of at most 300 KB (the SDK sends
+no larger one, and the host drops one that is), relayed to the chat's
+audience and never recorded (`frame` is the picture's own count, not
+the record's `seq`; `tabs` is what stands behind the picture, at most
+20 of `{index, title, address, active}`);
 `screen.closed` `{call_id}` when it stops. Host → worker: `screen.input`
 `{call_id, events}` — what the person did on it: `{type: mouse, action:
 down|up|move|wheel, x, y, button?, deltaX?, deltaY?}`, `{type: key,
@@ -233,11 +243,12 @@ action: take|release|close}` when they take or hand back control or
 close the live view (a function that only shows ends on it; one that
 works on regardless ignores it), `{type: navigate, url}` — an address
 the person typed into the live view, which the function takes to the
-page through its own address policy — and `{type:
+page through its own address policy — `{type: tab, action:
+switch|close|new, index?}` for a hand on the tabs, and `{type:
 say, text}` — what they wrote in the chat while the call runs, which
-the session sends to every call showing a screen. Input reaches only
-the call that showed the screen, and is dropped when that call has
-ended.
+the session sends to every call showing a screen. One message from the
+page carries at most 64 events. Input reaches only the call that showed
+the screen, and is dropped when that call has ended.
 
 **The spool.** A line is capped, and a scan or a signed form runs to
 many megabytes. So the host opens a folder per worker at spawn
@@ -272,19 +283,38 @@ The host owns every clock. When an invocation exceeds its manifest
 {"id": 9, "method": "cancel", "params": {"call_id": "c_9f2…"}}
 ```
 
-The worker cancels that task cooperatively and answers the original
-invoke with an error result. If the *worker itself* does not respond
-within a short grace period (5 seconds), the host kills the process.
+The worker answers the cancel itself with `{"cancelled": true|false}`,
+cancels that task cooperatively, and answers the original invoke with
+an error result. If the *worker itself* does not respond within a short
+grace period (5 seconds), the host kills the process.
 Killing
 a worker fails **every** in-flight invocation on it with an honest error
 result; nothing is retried automatically, because the host cannot know
 what a half-run function changed.
 
+The other clocks on this wire:
+
+| What | How long | Then |
+|---|---|---|
+| the handshake after a worker starts | 60 s | the worker is killed |
+| a function whose manifest names no `timeout_seconds` | 60 s | it is cancelled as above |
+| the probe at install, which starts the worker once to see it load | 120 s | the install fails with the reason |
+| reaching the spawner, where agents have a container of their own | 10 s for a connection; 120 s at start for the container to be there | the call fails; the runtime does not start |
+| ending a confined worker, which ends everything its user runs | 60 s | the helper's own failure is logged |
+
 Lifecycle rules:
 
 - **Lazy start, kept warm.** A worker is spawned on the first invocation
-  of its agent, then kept alive until the agent is updated or
-  uninstalled, or the runtime stops. Spawning again is always safe.
+  of its agent, then kept alive until its code changes — noticed at the
+  next call, which starts a fresh one — it dies, or the runtime stops.
+  Uninstalling an agent does not stop its running worker: nothing can
+  call it any more, and it goes with the runtime. Spawning again is
+  always safe.
+- **Ended for memory.** Where the agents share a container that is
+  given so much memory, the spawner ends the agent holding most before
+  the engine would have to, and every call in flight on it fails with
+  the reason, which the chat says ([the sandbox](../system/sandbox.md),
+  [what is written down](../system/monitoring.md)).
 - **Crash = broken invocations + a clean slate.** A worker that exits
   uninvited fails its in-flight calls; the next invocation spawns a
   fresh one. Ending a confined worker ends everything its user runs —

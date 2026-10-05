@@ -53,8 +53,15 @@ class LlmController:
 
     def list(self, data: dict, user: dict):
         """Every connection this caller can see, default first. Keys
-        metadata only — the api key is write-only, here as everywhere."""
-        return {"connections": self.store.list(user)}, 200
+        metadata only — the api key is write-only, here as everywhere.
+
+        ``manage: true`` is the page connections are kept on asking: a
+        holder of the manage-any grant is listed every connection of
+        the organization there, a colleague's unshared one included,
+        and anybody else what they would have been listed anyway."""
+        every = (self._payload(data).get("manage") is True
+                 and self._may_manage_any(user))
+        return {"connections": self.store.list(user, every=every)}, 200
 
     def providers(self, data: dict, user: dict):
         """The providers a connection may name, for the form that adds
@@ -179,7 +186,7 @@ class LlmController:
         holds the manage-any grant, the administrator's escape that
         keeps an organization from being locked out of a connection a
         colleague set up."""
-        doc = self.store.visible(user, connection_id)
+        doc = self._reached(user, connection_id)
         if doc is None:
             return {"error": "Connection not found."}, 404
         if str(doc.get("created_by") or "") != str(user.get("user_id") or "") \
@@ -189,6 +196,18 @@ class LlmController:
                          "change or delete it.",
             }, 403
         return None
+
+    def _reached(self, user: dict, connection_id: str):
+        """The connection an edit is about: one the caller can see, or,
+        holding the manage-any grant, any of the organization's. A
+        connection is private until its creator shares it, so an
+        escape that reached only what was already shared left the
+        organization locked out of exactly the one it was made for:
+        a key a colleague set up and never shared."""
+        doc = self.store.visible(user, connection_id)
+        if doc is None and self._may_manage_any(user):
+            doc = self.store.in_organization(self._org(user), connection_id)
+        return doc
 
     def transfer(self, data: dict, user: dict):
         """Hand a connection to another member: the creator's act, or an
@@ -200,7 +219,7 @@ class LlmController:
         refusal = self._edit_refusal(user, connection_id)
         if refusal:
             return refusal
-        doc = self.store.visible(user, connection_id)
+        doc = self._reached(user, connection_id)
         successor, why = successor_or_error(
             self._org(user), payload.get("user_id"),
             excluding=str(doc.get("created_by") or ""))
@@ -232,7 +251,7 @@ class LlmController:
             # The key typed now, or the stored one where none was: what
             # is asked about is the connection as it would be saved.
             connection_id = str(payload.get("connection_id") or "")
-            stored = self.store.visible(user, connection_id) or {}
+            stored = self._reached(user, connection_id) or {}
             typed = str(payload.get("api_key") or "").strip()
             key = typed or ((self.store.use(user, connection_id) or {})
                             .get("values") or {}).get("api_key")

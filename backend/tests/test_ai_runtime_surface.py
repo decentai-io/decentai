@@ -698,14 +698,19 @@ class TestWatchInTheContract:
         import copy
 
         document = copy.deepcopy(manifest_doc)
-        document["tools"][0]["functions"][0]["watch"] = True
+        # A watch is called for nobody's ask, so it is a read: the
+        # manifest's validator refuses one at any other level.
+        tool = document["tools"][0]
+        watching = next(function for function in tool["functions"]
+                        if function.get("permission_level") == 0
+                        and not function.get("llm"))
+        watching["watch"] = True
         control["manifest"] = document
         installed = app_call(admin, "Agents:Agent:Install", {
             "url": "https://example.test/notebook.git"})
         assert installed.status_code == 200, installed.text
         ref = installed.json()["data"]["agent"]["agent_id"]
-        tool = document["tools"][0]
-        expected = f"{ref}.{tool['id']}.{tool['functions'][0]['id']}"
+        expected = f"{ref}.{tool['id']}.{watching['id']}"
 
         chat_id = make_chat(admin)
         contract = app_call(admin, "AI:Chat:Open", {"chat_id": chat_id}).json()["data"]["contract"]

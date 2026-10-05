@@ -1,6 +1,6 @@
 # Laid over docker-compose.yml on a server with an address of its own:
 # Caddy answers on 80 and 443 for SITE_ADDRESS, and obtains and renews
-# its certificate by itself (docs/guides/deploying.md).
+# its certificate by itself (docs/run/deploying.md).
 #
 #   docker compose -f docker-compose.yml -f docker-compose.server.yml \
 #       --env-file deploy.env up -d --build

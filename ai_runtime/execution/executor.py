@@ -24,7 +24,7 @@ import jsonschema
 from contracts.chat import (
     DISPLAYS_PER_CALL_MAX, POST_MAX_CHARS, POSTS_PER_CALL_MAX, agent_source,
     code_asked, display_stored, event_error, CHOICE_MAX_CHARS, CHOICES_MAX,
-    QUESTION_MAX_CHARS,
+    QUESTION_MAX_CHARS, SCREEN_FRAME_MAX_BYTES,
 )
 from ai_runtime.agents.library import InstalledAgent
 from ai_runtime.agents.mcp import McpServer
@@ -553,6 +553,11 @@ class FunctionExecutor:
             if event_error({"event": "screen_frame", **frame}) or Pictures.problem(
                     frame.get("mime", "image/jpeg"), frame.get("image_base64"),
                     Pictures.FRAME_TYPES):
+                return
+            # A frame is small because many are sent, to every browser
+            # that watches. The SDK keeps to the size; an agent that
+            # does not use it is held to it here.
+            if len(frame["image_base64"]) > SCREEN_FRAME_MAX_BYTES * 4 // 3 + 4:
                 return
             await self.screen_sink(kind, frame, source)
         return screen

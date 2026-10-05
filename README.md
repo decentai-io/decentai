@@ -34,15 +34,16 @@ agent starts from [`examples/note/`](examples/note/) and [docs/agents/](docs/age
 
 | If you want to… | Read |
 |---|---|
-| run it on your own computer | [Run it](#run-it), below, and [docs/quickstart.md](docs/quickstart.md) through the first chat |
-| put it on a server | [docs/guides/deploying.md](docs/guides/deploying.md) |
-| understand the moving parts | [docs/concepts.md](docs/concepts.md) |
-| use it as a person | the **Help → Guide** section inside the app (source: `frontend/src/assets/guide/`) |
-| develop on it | [docs/guides/local-development.md](docs/guides/local-development.md) |
-| configure or deploy it | [docs/guides/configuration.md](docs/guides/configuration.md), [docs/guides/deploying.md](docs/guides/deploying.md) |
+| run it on your own computer | [Run it](#run-it), below, and [docs/run/quickstart.md](docs/run/quickstart.md) through the first chat |
+| keep it running: update, back up, add people, set limits | [docs/run/operating.md](docs/run/operating.md), with every setting in [docs/run/configuration.md](docs/run/configuration.md) |
+| put it on a server | [docs/run/deploying.md](docs/run/deploying.md) |
+| understand the moving parts | [docs/system/concepts.md](docs/system/concepts.md), then the pages it names |
 | write an agent | [docs/agents/](docs/agents/README.md), with the example in [`examples/note/`](examples/note/) |
-| call it from a script | [docs/guides/api.md](docs/guides/api.md) |
-| know how each part works, and why | [docs/system/](docs/system/), indexed in [docs/README.md](docs/README.md) |
+| call it from a script | [docs/reference/api.md](docs/reference/api.md) |
+| change the platform itself | [CONTRIBUTING.md](CONTRIBUTING.md) and [docs/contributing/local-development.md](docs/contributing/local-development.md) |
+| use it as a person | the **Help → Guide** section inside the app (source: `frontend/src/assets/guide/`) |
+
+Every page is listed, by what you came to do, in [docs/README.md](docs/README.md).
 
 ## The repository
 
@@ -90,10 +91,10 @@ python bootstrap/setup.py                       # start it again
 ```
 
 The rest — a language model, an agent source, the first agent, the
-first chat — is [docs/quickstart.md](docs/quickstart.md). This
+first chat — is [docs/run/quickstart.md](docs/run/quickstart.md). This
 repository is the platform and nothing around it: it publishes no
 installer and no images. A server with an address of its own is
-[docs/guides/deploying.md](docs/guides/deploying.md).
+[docs/run/deploying.md](docs/run/deploying.md).
 
 ## Tests
 

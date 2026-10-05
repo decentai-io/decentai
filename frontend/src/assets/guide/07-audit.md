@@ -1,6 +1,6 @@
 # The audit trail
 
-The platform keeps a record of what agents did. It is written at the moments that matter, by the platform itself — never by the assistant, and never carrying a secret value — and it cannot be edited.
+The platform keeps a record of what agents did, and of what people changed. It is written at the moments that matter, by the platform itself — never by the assistant, and never carrying a secret value — and it cannot be edited.
 
 ## What is recorded
 
@@ -10,7 +10,9 @@ The platform keeps a record of what agents did. It is written at the moments tha
 | **Approval requested / answered** | a call cost more than the chat's level | the function, the level, who decided and what |
 | **Credential read** | an agent used a credential | which credential, by name |
 | **Model key read** | a chat used a language model | which connection |
-| **Agent installed / removed**, **granted / revoked**, **source added / changed** | an administrator acted | the agent and the version |
+| **Agent installed / removed**, **granted / revoked**, **source added / changed / refreshed / removed** | an administrator acted | the agent and the version |
+| **Sharing changed**, **Safety setting changed**, **person disabled / deleted** | somebody with the right acted | what changed, from what to what |
+| **Platform action** | any other change made through the platform — a record edited, a setting saved — and each one that was refused | the action, by whom, and the outcome |
 
 *Inputs in outline* means exactly that: long values are cut, long lists are counted, and the whole is bounded. The trail says what was asked, never copies a document into itself.
 
@@ -18,7 +20,7 @@ The platform keeps a record of what agents did. It is written at the moments tha
 
 - **In a chat**, the *Activity & audit* dialog is that chat's trail as a timeline. Each row opens to its details; a function that stored a result can open the result itself.
 - **Settings → Audit → Mine** is your own trail across every chat you own, with search, event filters, a date window, and paging into the past.
-- **Settings → Audit → Organization** includes everyone's trail and organization events such as installs, grants, and sources. This view requires administrative access.
+- **Settings → Audit → Organization** includes everyone's trail and organization events such as installs, grants, and sources. This view requires administrative access; without it the page shows your own trail and no tabs.
 
 Your own trail is yours by default: reading what agents did for you is not a privilege to hand out.
 

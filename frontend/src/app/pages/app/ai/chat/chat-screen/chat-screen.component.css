@@ -43,7 +43,7 @@
 .screen-picture {
   display: block; width: auto; height: auto; max-width: 100%; max-height: inherit;
   user-select: none; -webkit-user-drag: none; outline: none;
-  background: #fff;
+  background: var(--page-paper);
 }
 /* The tabs behind the picture: one row, scrolling sideways when they
    are many, the one in front marked. */

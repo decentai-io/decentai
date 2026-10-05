@@ -15,7 +15,7 @@
 .mcp-about { display:flex; align-items:flex-start; justify-content:space-between; gap:14px; padding:15px 16px; border-bottom:1px solid var(--border-color); background:var(--surface-subtle); }
 .mcp-about h2 { margin:0 0 3px; font-size:15px; font-weight:650; }
 .mcp-about p { margin:0; color:var(--muted); font-size:12px; overflow-wrap:anywhere; }
-.mcp-state { flex-shrink:0; padding:3px 9px; border-radius:999px; color:var(--accent-strong); background:var(--accent-soft); font-size:11.5px; font-weight:600; }
+.mcp-state { flex-shrink:0; padding:3px 9px; border-radius:var(--ui-radius-pill); color:var(--accent-strong); background:var(--accent-soft); font-size:11.5px; font-weight:600; }
 .mcp-state.off { color:var(--muted); background:var(--surface-2); }
 
 .mcp-replace { display:grid; gap:8px; padding:14px 16px; border-bottom:1px solid var(--border-color); }

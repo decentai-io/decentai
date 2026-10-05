@@ -178,6 +178,51 @@ class TestPictures:
         assert len(shown) == 1
 
 
+class TestAScreensFrame:
+    """A frame is small because many are sent, to every browser that
+    watches. The SDK keeps to the size; the platform holds an agent
+    that does not use it to the same."""
+
+    @staticmethod
+    def shown(frame_bytes):
+        import base64
+        from types import SimpleNamespace
+
+        sent = []
+
+        async def sink(kind, frame, source):
+            sent.append(kind)
+
+        executor = FunctionExecutor(screen_sink=sink)
+        agent = SimpleNamespace(
+            agent_id="agt_probe", manifest=SimpleNamespace(name="Probe"))
+        screen = executor._screen_for(agent, "probe.main.watch", "c_1")
+        run(screen("frame", {
+            "image_base64": base64.b64encode(PNG + b"x" * frame_bytes).decode(),
+            "mime": "image/png", "width": 800, "height": 600, "frame": 1}))
+        return sent
+
+    def test_one_within_the_size_is_shown(self):
+        assert self.shown(200_000) == ["frame"]
+
+    def test_one_above_it_is_dropped_and_the_function_runs_on(self):
+        from contracts.chat import SCREEN_FRAME_MAX_BYTES
+
+        assert self.shown(SCREEN_FRAME_MAX_BYTES + 1) == []
+
+
+class TestTheLineBothEndsRead:
+    def test_the_worker_reads_as_long_a_line_as_the_runtime_does(self):
+        """Shorter on the worker's side, a line the runtime was right
+        to send ended the worker that read it."""
+        from ai_runtime.agents.spawner_service import SpawnerService
+        from ai_runtime.agents.worker_handle import WorkerHandle
+        from decentai_sdk import worker
+
+        assert worker.MAX_LINE_BYTES == WorkerHandle.LINE_LIMIT \
+            == SpawnerService.LINE_LIMIT
+
+
 class TestManifestDeclaration:
     def _document(self, llm_line=""):
         import yaml

@@ -10,7 +10,7 @@ Each stop names the file, the functions to read in order, what to
 check while reading, and the tests that hold the behaviour — run one
 after a stop to see the claims fail when the code is changed.
 
-About 14,000 lines without the tests. Stops 1 to 5 are the path of a
+About 17,000 lines without the tests. Stops 1 to 5 are the path of a
 message and are most of what matters; a first pass through them is a
 day's reading.
 
@@ -29,7 +29,7 @@ Three pages, in this order. The code keeps their words.
 
 | Read | For |
 |---|---|
-| `main.py` | what is built at start: `Confinement.configure`, the `AgentLibrary`, the services (the backend's, or `sim/`) |
+| `main.py` | what is built at start, in this order: `Events.configure` and `Spawner.configure` (where agents run, and the wait for their container when it is another one), `Confinement.configure`, the `AgentLibrary`, the services (the backend's, or `sim/`) |
 | `server/app.py` `create_app` | the `SessionHost`, the `Scheduler`, and what stops at shutdown |
 | `server/routes/auth.py`, `server/routes/chat.py` | who may dial, and the loop that hands every frame to the host |
 
@@ -112,8 +112,10 @@ Check:
 - `kill`: jobs cancelled, helpers killed, cards expired, the browser
   closed, and the counts emitted in `stopped`. Read what it does when
   one of those steps raises.
-- A helper's `ChildServices`: it cannot save memory, and its cards and
-  screen surface in the parent's audience under its own id.
+- A helper's `ChildServices`: its storage and memories are the
+  parent's, and its cards and screen surface in the parent's audience
+  under its own id. That it cannot save memory is not there: it is the
+  `memory_writer` `Session.open` hands a child (`Session._refuse_memory`).
 
 Tests: `tests/test_session.py`, `tests/test_sub_assistants.py`,
 `tests/test_fold.py`.
@@ -174,7 +176,7 @@ Tests: `tests/test_assistant.py`, `tests/test_plan.py`,
 ## 5. Execution: the gates, then the worker
 
 `execution/executor.py`, class `FunctionExecutor`. `_invoke` is the
-most important forty lines in the runtime — every call an agent ever
+most important sixty lines in the runtime — every call an agent ever
 runs passes through it, in this order:
 
 1. the function exists in the approved manifest;
@@ -201,7 +203,11 @@ and the other end of the wire in `decentai_sdk/worker.py`.
 Check:
 
 - No path reaches `_execute` around the gates: `resume_invoke` (an
-  approved card) re-runs every check except the card.
+  approved card) checks again that the agent may be reached, that the
+  grant allows the call, that the inputs are the ones the card showed
+  (by their hash) and that they fit the schema. It does not resolve
+  references or apply defaults again: those were settled before the
+  card.
 - `grants.py` `_satisfies`: when a call gives no value for a scope a
   statement constrains, a deny applies and an allow does not — read the
   `unknown` argument. `may_reach` is only the early gate; `allows` is
@@ -300,7 +306,10 @@ Check:
   grants and level (`SessionHost.fire_context`). A function not marked
   `schedulable` in its manifest cannot be put on the clock at all.
 - `ChatClock.sleep`: one per chat, a day at most, taken off by a stop
-  (`Session.ask_to_stop`) and by the kill (`Scheduler.cancel_chat`).
+  (`Session.ask_to_stop`) and by the kill (`Session.kill`, through
+  `ChatClock.wake_up`). `Scheduler.cancel_chat` ends fires that are
+  under way and removes no row; a kill that finds no session for the
+  chat leaves the sleep where it is.
 
 Tests: the schedule classes in `tests/test_session.py`,
 `tests/test_cron.py`, `tests/test_event_sources.py`.
@@ -318,7 +327,9 @@ Tests: the schedule classes in `tests/test_session.py`,
   (`Assistant._cut_off`).
 - `contracts/chat.py` — the frames and message parts, typed. The page's
   copy is `frontend/src/app/models/chat-protocol.ts`, and
-  `tests/test_chat_contract.py` fails when the two disagree.
+  `tests/test_chat_contract.py` — in the repository's own `tests/`, the
+  spanning suite, where every other `tests/…` on this page is
+  `ai_runtime/tests/` — fails when the two disagree.
 
 ## Running what you read
 

@@ -9,8 +9,10 @@
 3. An administrator reads the manifest — dependencies, tools, permissions,
    scopes, secrets, data, files — and **approves the agent by name**.
 4. Approval **pins the agent to the exact commit reviewed**. The runtime
-   pulls exactly those bytes, by digest, when a chat first needs them, and
-   installs the declared dependencies into a private environment.
+   pulls exactly those bytes, by digest, and installs the declared
+   dependencies into a private environment: right after the approval
+   where whoever approved has a chat, and otherwise when a chat first
+   needs them.
 
 Nothing is discovered, nothing is implicit, and nothing runs before a
 person has said yes to a specific version at a specific commit.

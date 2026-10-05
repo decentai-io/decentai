@@ -583,6 +583,31 @@ class TestUserAccess:
         assert any("duplicate operations" in e for e in errors_of(bad))
 
 
+class TestWatch:
+    """`watch: true` names the function the platform calls when a
+    person opens the agent's screen: nothing was asked that could be
+    approved, and no model is behind it."""
+
+    def test_a_level_zero_function_may_be_the_watch(self, document):
+        # note.find is a level-0 read.
+        good = broken(document, lambda d: d["tools"][0]["functions"][1].update(
+            watch=True))
+        assert errors_of(good) == []
+
+    def test_a_function_that_would_ask_may_not(self, document):
+        # sync.push is level 3.
+        bad = broken(document, lambda d: d["tools"][2]["functions"][1].update(
+            watch=True))
+        assert any("watch function must be permission_level 0" in e
+                   for e in errors_of(bad))
+
+    def test_nor_one_that_asks_the_model(self, document):
+        bad = broken(document, lambda d: d["tools"][0]["functions"][1].update(
+            watch=True, llm=True))
+        assert any("watch function cannot declare llm" in e
+                   for e in errors_of(bad))
+
+
 class TestSchedulable:
     """`schedulable: true` marks a function as designed to run on a
     clock, with the ceilings a run nobody watches carries. Cadence and

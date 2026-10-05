@@ -25,7 +25,7 @@ only (docker-compose.yml), so nobody else reaches the page at all.
 Run again, it starts what is there and prints the address: the keys
 are made once, because a database is readable with the keys it was
 written with and no others. A `deploy.env` written by hand for a
-server is left alone (docs/guides/deploying.md says how that one is
+server is left alone (docs/run/deploying.md says how that one is
 started).
 """
 
@@ -307,7 +307,7 @@ class Setup:
             raise SetupError(
                 f"{Settings.FILE} here is a server's (PUBLIC_APP_URL="
                 f"{address or 'unset'}), written by hand: it is started as "
-                f"docs/guides/deploying.md says, and signed in to with the "
+                f"docs/run/deploying.md says, and signed in to with the "
                 f"administrator it names.")
 
 

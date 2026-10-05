@@ -24,4 +24,4 @@ Agents read files by reference — the reference the chat gives them when you at
 
 ## Skills
 
-**Data → Skills** holds short instructions your organization wrote for the assistant: how to write a customer quotation, what the expense policy says, how meeting notes are laid out. The assistant reads the catalog of skills in every chat and pulls one in when the task calls for it. Authoring is a grant; reading is baseline.
+**Data → Skills** holds short instructions your organization wrote for the assistant: how to write a customer quotation, what the expense policy says, how meeting notes are laid out. The assistant reads the catalog of skills in every chat — the first 40 unless the chat's *Skills listed* says otherwise, and only the ones chosen in the chat's Skills dialog when you chose — and pulls one in when the task calls for it. **Add skill** writes one, private to you until you share it. Authoring is a grant; reading is baseline.

@@ -50,7 +50,7 @@ Three values are generated, never chosen:
 | `FILE_STORAGE_PROVIDER` | `local` | Where uploaded bytes go. `local` is the one this platform ships; another store is one connector in `backend/database/file_connectors/`. Reads follow each file's own stamp. |
 | `UPLOADS_DIR` | `./uploads` | The folder for `local`. Keep it short on Windows. |
 | `AGENT_PACKAGE_DIR` | `data/agent-packages` | Where approved agent packages are kept — the only copy the platform controls. A package's filename is a digest, so keep the path short on Windows. |
-| `MAX_UPLOAD_MB` | `25` | The largest single upload accepted; bytes are held in memory while hashed. |
+| `MAX_UPLOAD_MB` | `25` | The largest single upload accepted, between 1 and 5000; bytes are held in memory while hashed. |
 
 ### The runtime, from the backend's side
 
@@ -65,13 +65,13 @@ Three values are generated, never chosen:
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `SMTP_HOST` | unset | The mail server invitations, password resets and notifications are sent through — any provider's SMTP server. Unset, or without `MAIL_FROM`, nothing is sent: an invitation's link is handed to the administrator who made it, "Forgot password" says how this install resets one instead of making a link, and a notification email is logged. |
+| `SMTP_HOST` | unset | The mail server invitations, password resets and notifications are sent through — any provider's SMTP server. Unset, or without `MAIL_FROM`, nothing is sent: the Users page adds a person with a temporary password shown once instead of inviting them (an invitation made by a script is handed its link back), "Forgot password" says how this install resets one instead of making a link, and no notification email is attempted. |
 | `SMTP_PORT` | `587`, or `465` for `ssl` | The server's port. |
 | `SMTP_SECURITY` | `starttls` | `starttls`, `ssl`, or `none` for a relay on a trusted network. |
 | `SMTP_USERNAME`, `SMTP_PASSWORD` | unset | Sign-in to the server, when it asks for one. The password is a secret. |
 | `MAIL_FROM` | unset | The sender address, one the server is allowed to send as. |
 | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` | unset | The deployment's web push pair (`bootstrap/generate_vapid_keys.py`). Unset, nothing is pushed; a person is told by email instead, where email is set up. The private key is a secret. |
-| `VAPID_SUBJECT` | unset | A `mailto:` address push services may contact about this deployment. |
+| `VAPID_SUBJECT` | `mailto:admin@example.com` | A `mailto:` address push services may contact about this deployment. |
 
 ### Logs
 
@@ -93,15 +93,16 @@ start.
 | Variable | Meaning |
 |---|---|
 | `ORG_NAME` | The organization's name. |
-| `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_NAME` | The first administrator; required on first run, ignored once they exist. |
+| `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_NAME` | The first administrator; required on first run. Once they exist nothing of theirs is changed, except that an administrator found disabled or out of the Administrators group is put back: the seeder never leaves an organization nobody can manage. |
+| `RESET_EMAIL`, `RESET_PASSWORD`, `RESET_NEW_EMAIL` | Read by `bootstrap/reset_password.py` alone, for the one run that sets a password ([operating it](operating.md#a-forgotten-password-without-email)). Never kept in `deploy.env`. |
 | `INIT_DB_FRESH` | `true` drops the whole database before seeding. Never set by accident; say it out loud. |
 
 ### Encryption
 
 | Variable | Meaning |
 |---|---|
-| `SECRET_ENCRYPTION_KEYS` | `version:key` pairs, comma-separated. Every stored credential and record value is encrypted under one of them; a value's version is recorded with it. |
-| `SECRET_ENCRYPTION_ACTIVE` | The version new writes use. |
+| `SECRET_ENCRYPTION_KEYS` | `version:key` pairs, comma-separated. Every stored credential and record value is encrypted under one of them; a value's version is recorded with it. Unset, the backend derives a development key from `TOKEN_SECRET_KEY` and says so in a warning: a database written that way is moved to real keys with `bootstrap/reencrypt_secrets.py`. |
+| `SECRET_ENCRYPTION_ACTIVE` | The version new writes use; the highest one when unset. |
 
 A database without these keys is a database whose encrypted values are
 gone. Back them up with it.
@@ -118,9 +119,9 @@ gone. Back them up with it.
 | `BACKEND_TOKEN_ISSUER` | `decentai-backend` | The issuer claim the runtime expects. |
 | `AI_RUNTIME_TOKEN_AUDIENCE` | `decentai-ai-runtime` | The audience claim the runtime expects. |
 | `LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING` or `ERROR`. |
-| `AI_RUNTIME_EGRESS_PORT` | `8002` | Where the proxy that confined agents connect through listens, on this machine only. The container's firewall rule is written for the same port when the container starts. |
+| `AI_RUNTIME_EGRESS_PORT` | `8002` | Where the proxy that confined agents connect through listens: on this machine only where workers run beside the runtime, and on the runtime's container, reached over the network it shares with the agents' container and nothing else, in the Compose stack. The firewall rule of the container workers run in is written for the same port when it starts. |
 | `AI_RUNTIME_PACKAGE_HOSTS` | `pypi.org, files.pythonhosted.org` | Where packages come from: the hosts the builder of an agent's declared packages may reach, and the whole of them. Separated by commas. |
-| `AI_RUNTIME_AGENTS_SPAWNER` | empty | Where the agents' container answers, as `host:port` (`agents:8003` in Compose). Empty starts agents' workers beside the runtime, in its own container or on a developer's machine. |
+| `AI_RUNTIME_AGENTS_SPAWNER` | empty | Where the agents' container answers, as `host:port`. `docker-compose.yml` writes `agents:8003` itself and does not read it from `deploy.env`. Empty starts agents' workers beside the runtime, in its own container or on a developer's machine. |
 
 The agents' container is the runtime's image started as the spawner
 (`python -m ai_runtime.agents.spawner_service`), and reads:
@@ -128,7 +129,8 @@ The agents' container is the runtime's image started as the spawner
 | Variable | Default | Meaning |
 |---|---|---|
 | `AI_AGENTS_PROXY` | empty | Where the runtime's proxy answers, as `host:port` (`ai-runtime:8002` in Compose). What a worker sends to the proxy's port in its own container is passed on to here. |
-| `AI_AGENTS_SPAWNER_PORT` | `8003` | Where the spawner answers the runtime. |
+| `AI_AGENTS_SPAWNER_PORT` | `8003` | Where the spawner answers the runtime. Fixed at 8003 in the Compose stack, which does not pass it on. |
+| `LOG_LEVEL`, `TZ` | as the runtime's | Passed to the agents' container by name. |
 | `AI_RUNTIME_EGRESS_PORT` | `8002` | The proxy's port, as workers are pointed at it; the same number as the runtime's. |
 | `AI_RUNTIME_AGENTS_INSTALL_DIR` | `/data/agents` | The volume both containers hold, at the same path in both. |
 
@@ -201,9 +203,14 @@ key never reach it. A new setting for the runtime is named in
 
 ### Knobs for agents
 
-Set on the runtime, passed on to every worker. A worker is given these,
-what a process needs to run at all, and nothing else of the runtime's
-environment.
+Set on the runtime, passed on to every worker. A worker is given these
+by family — every `DECENTAI_BROWSER_*`, `DECENTAI_CODE_*`,
+`DECENTAI_WEB_*` and `DECENTAI_AGENT_*` name, the last for whatever a
+deployment wants its own agents to read — with the proxy's address,
+where its browsers are, and what a process needs to run at all (locale,
+certificates), and nothing else of the runtime's environment. In the
+Compose stack the runtime is itself handed its settings by name, so a
+name not listed in `docker-compose.yml` reaches neither.
 
 | Variable | Default | Meaning |
 |---|---|---|
@@ -219,11 +226,15 @@ environment.
 
 | Variable | Meaning |
 |---|---|
-| `PORT` | The port DecentAI is opened at on the machine; `4280` unless said. `PUBLIC_APP_URL` and `CORS_ALLOW_ORIGINS` carry the same number. |
-| `LISTEN` | Who may reach that port: `127.0.0.1`, this machine alone, unless said; `0.0.0.0` behind a load balancer. |
+| `PORT` | The port DecentAI is opened at on the machine; `4280` unless said. `PUBLIC_APP_URL` and `CORS_ALLOW_ORIGINS` carry the same number. Not read under `docker-compose.server.yml`, which publishes 80 and 443. |
+| `LISTEN` | Who may reach that port: `127.0.0.1`, this machine alone, unless said; `0.0.0.0` behind a load balancer. Not read under `docker-compose.server.yml` either. |
 | `SITE_ADDRESS` | What Caddy answers for: `:80`, plain HTTP on any name, unless said — a computer of one's own, or a load balancer that terminates TLS. With `docker-compose.server.yml`, a domain, which gets automatic certificates. |
 | `MONGO_ROOT_USERNAME`, `MONGO_ROOT_PASSWORD` | The database's root account, which `MONGO_URI` must carry too. |
-| `BACKEND_UPSTREAM` | Where Caddy proxies backend paths; defaults to `backend:8000`. |
+
+The web server's image reads one more, `BACKEND_UPSTREAM` (where it
+proxies the backend's paths, `backend:8000` unless said). The Compose
+stack does not pass it on: it is for a deployment that runs the image
+some other way.
 
 ## What is deliberately not a setting
 

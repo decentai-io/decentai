@@ -35,6 +35,6 @@ Stopping a chat, or stopping everything, stops a call that is under way.
 
 ## Switching one off, or removing it
 
-The switch on a server's row turns the whole server off without losing your choices. **Remove** deletes it and its credential at once.
+The switch on a server's row turns the whole server off without losing your choices. **Remove** deletes it and its credential at once. Open a server to give it a new credential — **Replace credential**, or **Add credential** where it had none.
 
 An administrator can switch MCP servers off for the whole deployment in **Settings → Safety**. Servers already added stay listed but cannot be called until it is allowed again.

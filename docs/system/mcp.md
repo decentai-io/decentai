@@ -44,6 +44,11 @@ Each tool has two things that are the person's to say:
   at 3**. A chat asks first for any tool priced above its own level, on
   the same card an agent's function gets.
 
+A server that offers **resources** is read from as well as called:
+listing them and reading one are two functions at level 0, with no
+switch and no price to set. Switching every tool off leaves them
+readable; what stops them is switching the server off.
+
 **What a server says can change after it was looked over.** Reading it
 again (*Read again*, or a change of address or credential) compares
 what it offers now with what was kept: a tool that is new, or whose
@@ -93,7 +98,9 @@ The address is the person's word, and what comes back is the server's.
   schema that is not one is replaced by "any object".
 - **It is bounded.** 4 MiB of one answer, 200 tools, 2,000 characters
   of a description, 200,000 characters of a result, two minutes for a
-  call.
+  call, and 60 seconds for any single wait on the server: the greeting,
+  the listing of its tools, and a call that sends nothing back for that
+  long.
 - **Pictures and sounds are not carried.** A result's text and its
   structured content are; anything else is said to be there.
 
@@ -112,7 +119,7 @@ The address is the person's word, and what comes back is the server's.
 
 ## Switching it off for everyone
 
-**Settings → Safety → MCP servers**, the deployment's
+**Settings → Safety → MCP servers**, the organization's
 ([safety](safety.md)). Blocked, nobody can add or read a server and no
 chat is told of one — the contract's list is empty and the runtime's
 door is refused. What was added stays where it was, to be seen and

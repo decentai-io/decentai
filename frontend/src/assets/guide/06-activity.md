@@ -4,7 +4,7 @@ Chats set things in motion that outlive the moment they were open. **AI → Sche
 
 ## Schedules
 
-A schedule is something the assistant's clock does later: once, at a time; every so many minutes; or on a calendar expression such as *every Monday at 09:00*, always in the chat's time zone.
+A schedule is something the assistant's clock does later: once, at a time; every so many minutes, hours or days; or on a calendar expression such as *every Monday at 09:00*, always in the chat's time zone.
 
 Two kinds:
 
@@ -17,11 +17,11 @@ You can make a schedule from a chat, in words, or from the Schedules page: descr
 
 Every call that costs more than its chat's level waits for a person, on a card in its chat. A chat with a card waiting is marked in the chat list and counted in the sidebar; open the chat to decide. **Settings → Chat configuration** lets you be notified on your devices, and by email when none can be reached.
 
-An approval that nobody answers expires; the assistant is told and does not proceed.
+An approval waits for you; it does not run out by itself. It ends unanswered when its chat is stopped, and the assistant does not proceed. A *question* an agent asked is different: one nobody answers within a day expires.
 
 ## Background work
 
-Some work runs in the background while the chat goes on: a long import, a helper assistant working on a bounded goal. It is shown in its own chat, in the line under the assistant's name, and when it finishes the chat is told and picks up from there.
+Some work runs in the background while the chat goes on: a long import, a helper assistant working on a bounded goal. It is shown in its own chat, in a bar under the chat's header — *Working in the background* — and as a *Working* flag on the chat in the list; when it finishes the chat is told and picks up from there.
 
 ## When everything is stopped
 

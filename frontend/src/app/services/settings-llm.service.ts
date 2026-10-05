@@ -96,8 +96,12 @@ export interface LlmSaved {
 export class SettingsLlmService {
   constructor(private request: RequestService) {}
 
-  async list(): Promise<LlmConnection[]> {
-    const r = await this.request.gateway('Settings:Llm:list');
+  /** The connections this person can see. With `manage`, asked by the
+   *  page connections are kept on: a holder of the manage-any grant is
+   *  listed every connection of the organization, to maintain them. */
+  async list(manage = false): Promise<LlmConnection[]> {
+    const r = await this.request.gateway(
+      'Settings:Llm:list', manage ? { manage: true } : {});
     return Array.isArray(r?.connections) ? r.connections : [];
   }
 

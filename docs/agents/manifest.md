@@ -235,6 +235,12 @@ number from 1 to 65535.
 **A manifest with no `network` block is refused.** Say `hosts: []` when
 your agent connects to nothing. Note does.
 
+**Name what your code calls, and where it lands.** The consent and
+token addresses in an `oauth` block are the platform's to call, not
+yours to list, and a link your agent only shows to a person is not a
+connection. A provider that answers a download with a redirect to
+another host has your agent connect there too: name that host as well.
+
 A reviewer reads the list beside your functions and your packages, and
 it stays on the agent's page afterwards. Where the platform confines
 agents, the list is enforced: a host that is not on it is refused, and
@@ -536,6 +542,22 @@ What to think about:
   registration. Use the id other agents use for the same provider.
 - **Declare only the scopes you actually call.** A scope you ask for is
   one a reviewer has to justify and a person has to grant.
+- **Sharing one connected account between agents.** A person's saved
+  account can be granted to another agent's slot for the same provider
+  when the scopes it was connected with include that slot's. Agents
+  meant to share one sign-in therefore ask for scopes the other's
+  connection covers: the project's Google and Microsoft agents each
+  list the same set for that reason.
+- **Providers off the common path.** Slack's user scopes go in
+  `user_scope` and are joined with a comma, and its tokens are nested
+  under `authed_user`; Todoist joins scopes with a comma; Notion proves
+  itself with HTTP Basic, takes a JSON token request, and names the
+  account in the token response (`identity: {source: token, …}`);
+  Dropbox's "who am I" is a `POST`.
+- **A token that never expires.** A provider that issues a token with
+  neither a lifetime nor a refresh token (Slack, Todoist, Notion) has
+  it kept as never expiring and handed out as it is, until it is
+  revoked.
 
 ### Files
 
@@ -715,8 +737,10 @@ each reaches further than a reviewer would otherwise assume:
   install the packages it named (`call.install`).
 - **`watch: true`** — the function the platform calls, without the
   model, when the person opens your agent's screen from the chat's
-  header (`call.screen`). One per agent: where several declare it, the
-  first is the one called.
+  header (`call.screen`). It must be `permission_level: 0` and may not
+  declare `llm: true`: nothing was asked that could be approved, and no
+  model is behind the call. One per agent: where several declare it,
+  the first is the one called.
 
 Most agents need none of them.
 
@@ -753,6 +777,11 @@ output field must be **absent**, not `null`, when you have no value.
 an offset — `2026-09-21T09:00:00+00:00` — is 25 characters. A
 `maxLength: 20` on it rejects every legitimate input, and the failure
 arrives as a validation error nobody expects.
+
+**Three things YAML reads differently from how you wrote them.** A
+field named `on` is the boolean true, and so are `yes` and `no` as
+option values, unless quoted. A description containing `: ` unquoted is
+read as a mapping. Quote all three.
 
 ### `x-resource`
 

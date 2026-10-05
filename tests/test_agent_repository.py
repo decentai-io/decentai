@@ -180,6 +180,27 @@ class TestFetching:
         with pytest.raises(RepositoryError, match="symbolic link"):
             Repository().discover(root)
 
+    def test_an_agents_folder_that_is_a_link_is_refused(self, tmp_path):
+        """A folder that only points at another, inside the repository
+        or not, is not an agent's own: resolved first, the link was no
+        longer one and was read."""
+        from api.services.agents.repository import Repository, RepositoryError
+
+        root = tmp_path / "repository"
+        real = root / "real"
+        real.mkdir(parents=True)
+        (real / "manifest.yaml").write_text("agent: {id: jira}\n", encoding="utf-8")
+        (root / "decentai-agents.yaml").write_text(yaml.safe_dump({
+            "schema_version": "1.0", "catalog": {"id": "linked", "name": "Linked"},
+            "agents": [{"id": "jira", "path": "jira"}],
+        }), encoding="utf-8")
+        try:
+            (root / "jira").symlink_to(real, target_is_directory=True)
+        except OSError:
+            pytest.skip("this machine does not let a test make a link")
+        with pytest.raises(RepositoryError, match="no safe manifest"):
+            Repository().discover(root)
+
     def test_a_ref_resolves_to_one_commit(self, repository):
         from util import remove_tree
         from api.services.agents.repository import Repository

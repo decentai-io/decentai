@@ -18,7 +18,8 @@ a frontend change is expected to leave clean.
 Two rules that are load-bearing across the codebase:
 
 - **Authority never arrives through a door.** What a chat may do is
-  answered by the backend's contract, per chat, at session build. A
+  answered by the backend's contract, per chat, read again at every
+  turn. A
   socket, a frame, a model's output: none of them state entitlement.
 - **The manifest's word is the gate.** An agent may only do what its
   manifest declares, and the platform enforces it at the executor, at

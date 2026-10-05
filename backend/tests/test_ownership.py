@@ -97,6 +97,49 @@ class TestConnections:
             "connection_id": ref}).status_code == 200
 
 
+    def test_and_one_the_colleague_never_shared(self, app, admin, seed):
+        """A connection is private until its creator shares it. The
+        escape reached only what was already shared, which left the
+        organization locked out of exactly the one it exists for."""
+        member, _ = colleague(app, admin, seed, [
+            "settings:llm:list", "settings:llm:create", "settings:llm:update",
+            "settings:llm:delete", "account:profile:get", "account:profile:peers"])
+        made = app_call(member, "Settings:Llm:Create", {
+            "endpoint": "https://api.example.test/v1",
+            "name": "Kept to themselves", "provider": "openai",
+            "model": "gpt-4o", "api_key": "sk-theirs"})
+        assert made.status_code == 200, made.text
+        ref = made.json()["connection"]["resource_ref"]
+
+        def names(listing):
+            return [c["name"] for c in listing.json()["connections"]]
+
+        # Not theirs to think with: what a chat may use is the owner
+        # map's to say, and the plain list is what a chat chooses from.
+        assert names(app_call(admin, "Settings:Llm:List", {})) == []
+        # Theirs to see where connections are kept, and to maintain.
+        assert names(app_call(admin, "Settings:Llm:List", {"manage": True})) \
+            == ["Kept to themselves"]
+        assert app_call(admin, "Settings:Llm:Update", {
+            "connection_id": ref, "model": "gpt-4.1"}).status_code == 200
+        assert app_call(admin, "Settings:Llm:Delete", {
+            "connection_id": ref}).status_code == 200
+
+    def test_asking_to_manage_shows_nobody_else_more(self, app, admin, seed):
+        made = app_call(admin, "Settings:Llm:Create", {
+            "endpoint": "https://api.example.test/v1",
+            "name": "The administrator's own", "provider": "openai",
+            "model": "gpt-4o", "api_key": "sk-admins"})
+        assert made.status_code == 200, made.text
+        member, _ = colleague(app, admin, seed, [
+            "settings:llm:list", "settings:llm:delete", "account:profile:get"])
+        listed = app_call(member, "Settings:Llm:List", {"manage": True})
+        assert listed.json()["connections"] == []
+        assert app_call(member, "Settings:Llm:Delete", {
+            "connection_id": made.json()["connection"]["resource_ref"],
+        }).status_code == 404
+
+
 from test_ai_messages import make_chat
 
 

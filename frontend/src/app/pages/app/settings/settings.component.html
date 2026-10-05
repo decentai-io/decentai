@@ -278,7 +278,7 @@
   </ng-container>
 
   <app-model-providers *ngIf="!loading && tab === 'llm'"
-                       [connections]="connections" [providers]="providers"
+                       [connections]="managed" [providers]="providers"
                        [profile]="profile" [peers]="peers" (changed)="reload()">
   </app-model-providers>
 </div>

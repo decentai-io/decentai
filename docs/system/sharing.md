@@ -41,8 +41,9 @@ exist in the caller's organization are refused loudly rather than
 stored inertly: a share that silently reaches nobody is a typo, and
 typos get refused.
 
-**Who may change it.** The creator, recorded in `created_by` — its
-*steward*. Seeing a shared document is never authority over it — a
+**Who may change it.** The creator, recorded in `created_by`
+(`created_by_id` on an agent source, where `created_by` is the
+creator's address) — its *steward*. Seeing a shared document is never authority over it — a
 colleague you shared a credential with can use it, not edit or delete
 it. A row with no creator recorded is editable by nobody but the
 holder of the domain's manage-any grant.
@@ -55,8 +56,9 @@ organization: `created_by` changes, the old steward's place in the owner
 map is taken by the new one, and every group and person it named keeps
 seeing it. The steward may transfer, so may a holder of the domain's
 escape grant, and the platform does it for everything a person owns when
-they are deleted (see *Identity and Access*). A transfer to oneself is
-refused; it is not a transfer.
+they are deleted (see *Identity and Access*). A transfer to whoever is
+the steward already is refused; it is not a transfer. A holder of the
+escape grant may take a colleague's document for themselves.
 
 ---
 
@@ -79,6 +81,10 @@ included. Nothing a person makes reaches anyone else until they say so.
 organization-wide (naming Everyone) is not open to everybody; it is
 part of what the escape grant lifts.
 
+MCP servers are a person's own and stay so: always private to whoever
+added one, never shared, never transferred, with no escape grant
+([MCP servers](mcp.md)).
+
 **INFRASTRUCTURE** — LLM connections, agent sources. These exist to be
 used, so naming Everyone is open to whoever creates one. The creator is
 always retained among the users — an infrastructure record is never
@@ -100,16 +106,23 @@ that take it as-is.
 Each domain names one action — `secrets:secret:set_owner_any`,
 `files:file:set_owner_any`, and so on — that lifts the boundary and the
 creator-only rule together. A holder may share organization-wide, into
-any group, to any person, and maintain documents created by others. It
-is one grant per domain on purpose: the administrator who may re-home
-every credential is not automatically the administrator who may re-home
-every file.
+any group, to any person, and maintain documents created by others
+**that they can see**: a document is looked up through the holder's own
+visibility first, so what a colleague kept to themselves — a private
+credential, a private record — is not reached by it. It is one grant
+per domain on purpose: the administrator who may re-home every
+credential is not automatically the administrator who may re-home every
+file.
 
-Infrastructure has its own pair. Agent sources and model connections are
-not shared documents — a source is either private or organization-wide,
-a connection is visible to everyone — but they have a steward all the
-same, and `agents:agent:source_manage_any` and `settings:llm:manage_any`
-let a holder edit, remove and transfer any of them. Both sit
+Infrastructure has its own pair, and they reach further. Agent sources
+and model connections are shared documents like the rest — private
+until their creator says otherwise — but an organization depends on
+them, so `agents:agent:source_manage_any` and `settings:llm:manage_any`
+let a holder see, edit, remove and transfer **every** one of the
+organization's, a colleague's unshared one included. Seeing a model
+connection that way, on the page connections are kept on, is not being
+able to think with it: what a chat may use stays the owner map's to
+say. Both sit
 under the wildcard, so an organization's administrators hold them
 without a change, and a narrower role can be given the marketplace
 without them.

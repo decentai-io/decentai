@@ -11,7 +11,7 @@
 #
 # As written it serves this computer only, in plain HTTP. A server with
 # an address of its own lays docker-compose.server.yml over it
-# (docs/guides/deploying.md). Only Caddy publishes a port; everything
+# (docs/run/deploying.md). Only Caddy publishes a port; everything
 # else lives on the private compose network.
 services:
   mongo:

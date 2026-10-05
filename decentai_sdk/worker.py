@@ -36,7 +36,11 @@ from decentai_sdk.base import AgentBase, Completion, FunctionCall, ResourceDenie
 from decentai_sdk.manifest import Manifest
 
 PROTOCOL_VERSION = 1
-MAX_LINE_BYTES = 1024 * 1024
+#: One line of the wire, in either direction: what the runtime reads
+#: from a worker (ai_runtime/agents/worker_handle.py LINE_LIMIT) the
+#: worker reads from the runtime. Bytes above a quarter of it travel by
+#: the spool, never by the line.
+MAX_LINE_BYTES = 2 * 1024 * 1024
 PACKAGE_PREFIX = "decentai_agents"
 
 logger = logging.getLogger("decentai_sdk.worker")
@@ -96,7 +100,7 @@ class Wire:
                 self._deliver(None)  # EOF — the order to die
                 return
             if len(line) > MAX_LINE_BYTES:
-                self._deliver(WireFault("incoming line exceeds 1 MiB"))
+                self._deliver(WireFault("incoming line exceeds 2 MiB"))
                 return
             if not line.strip():
                 continue

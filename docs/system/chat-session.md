@@ -30,12 +30,13 @@ The contract, method by method, against the backend's records. "Runtime
 verb" means an endpoint on the `/app` gateway that the RUNTIME
 principal — the delegation — may call; the fence
 (`RUNTIME_ENDPOINTS` in `backend/server/authentication/catalog.py`) is
-these verbs and nothing else. Every chat-bound verb also checks that the
+these verbs and nothing else, and that list is the authority where
+this table and it differ. Every chat-bound verb also checks that the
 delegation was minted for the chat it names.
 
 | services method | runtime verb | record |
 |---|---|---|
-| `contract(chat_id)` | `AI:Chat:Contract` | computed by `chat_session/contract.py`: the chat's `llm` block (credential resolved), `agents` (installed ∩ granted ∩ narrowed — each `{agent_id, name, local_agent_id, package_digest, manifest_hash}`, what the runtime pulls the code by; `docs/system/agent-code.md`), `grants` (the permission statements), `chat_level`, `timezone` (the person's IANA zone, from the chat's config; the runtime stamps its clock and counts cron cadences in it), `max_beats` (the chat's `max_turns`; 0 is unlimited — no valve), `max_skills` (how many skills the frame lists; the platform's 40 unless the chat says otherwise, 0 lists every one — `settings/skills_cap.py`), `skills` (WHICH skills, when the chat narrowed them: the `enabled_skills` refs, or None for every visible one; the runtime lists only those and cuts the list down when the choice changes mid-chat), `routing` (how the runtime finds the right agent among many — the organization's `Settings:Routing` numbers: threshold, shortlist, candidates, rerank, open_max — and `embedding`, the embedding connection as a block with `secret_ref`, resolved at `Settings:Llm:Use` like the chat's model, or None when none is chosen), `safety` (the organization's blocked sites and package list, which the runtime holds agents to), and `llm_missing` (when there is no model: why, and where it is set) |
+| `contract(chat_id)` | `AI:Chat:Contract` | computed by `chat_session/contract.py`: the chat's `llm` block (credential resolved), `agents` (installed ∩ granted ∩ narrowed — each `{agent_id, name, local_agent_id, package_digest, manifest_hash}`, what the runtime pulls the code by; `docs/system/agent-code.md`), `grants` (the permission statements), `chat_level`, `timezone` (the person's IANA zone, from the chat's config; the runtime stamps its clock and counts cron cadences in it), `max_beats` (the chat's `max_turns`; 0 is unlimited — no valve), `max_skills` (how many skills the frame lists; the platform's 40 unless the chat says otherwise, 0 lists every one — `settings/skills_cap.py`), `skills` (WHICH skills, when the chat narrowed them: the `enabled_skills` refs, or None for every visible one; the runtime lists only those and cuts the list down when the choice changes mid-chat), `routing` (how the runtime finds the right agent among many — the organization's `Settings:Routing` numbers: threshold, shortlist, candidates, rerank, open_max — and `embedding`, the embedding connection as a block with `secret_ref`, resolved at `Settings:Llm:Use` like the chat's model, or None when none is chosen), `safety` (the organization's blocked sites and package list, which the runtime holds agents to), and `llm_missing` (when there is no model: why, and where it is set); and `mcp`, the person's MCP servers with the tools they left on, each of which also adds one allow statement to `grants` (`<server ref>.*.*`) ([MCP servers](mcp.md)) |
 | `load_state` / `save_state` | `AI:State:Get` / `AI:State:Save` | `ai_chats.state` — the mind, one document, replaced whole on every beat; size-capped, version stamped by the runtime |
 | `persist_message` / `history` | `AI:Message:Create` / `AI:Message:List` | `ai_messages`; the actor may carry `parent` for a child's goal |
 | `record_event` / `events_since` | `AI:Event:Record` / `AI:Event:Since` | `ai_chat_events` with `direction: "in"` — the inbox: per-chat sequence, durable before absorbed |
@@ -44,7 +45,7 @@ delegation was minted for the chat it names.
 | `wait_approval` | — (no request; the decision arrives as a frame) | the runtime parks on the frame, not on a long poll |
 | `resolve_approval` | `AI:Approval:Decide` (person verb) | records the decision, then the relay sends `approval_decided` |
 | (prepare) | — (`agents_changed` frame, backend → runtime, after `Agents:Agent:Install`) | the runtime pulls the package and builds its environment at once, through the installer's most recent chat, so the first chat to name the agent finds it ready |
-| schedules page | `AI:Activity:List` (person, `ai:activity:list`) | every schedule of the person's chats with `chat_title`, `runs` (each `at`, `status`, `woke`, `took_ms`, `error`/`result`) and `upcoming` (the next fires, computed here from the row's cron in its zone or its period); the runtime's clock refuses a twin — the same function/note/inputs at the same cron/period in one chat — naming the row that already is. The frontend's Schedules page is `/ai/schedules` |
+| schedules page | `AI:Activity:List` (person, `ai:activity:list`) | across every chat of the person's, four things — `schedules`, `approvals` waiting, `jobs` running, and whether their work is `stopped` — of which the first is every schedule of the person's chats (a sleep is not among them) with `chat_title`, `runs` (each `at`, `status`, `woke`, `took_ms`, `error`/`result`) and `upcoming` (the next fires, computed here from the row's cron in its zone or its period); the runtime's clock refuses a twin — the same function/note/inputs at the same cron/period in one chat — naming the row that already is. The frontend's Schedules page is `/ai/schedules` |
 | notifications | `Settings:Notifications:*` (baseline) + `server/notifications.py` | when a runtime opens a card (`AI:Approval:Open`) or the assistant writes a message (`AI:Message:Create`, actor `ai`, root thread) and no browser of the chat's person has it open, the notifier pushes to every device the person subscribed (web push, VAPID pair from `VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY`/`VAPID_SUBJECT`; dead endpoints dropped) and, when none was reached, emails them unless they turned email off — one email per chat per ten minutes, answers pushed at most every two minutes per chat. Delivery runs on its own thread; the record is what the person finds either way |
 | attention | `AI:Chat:List` rows carry `attention {working, cards, unseen}` | `working` = the runtime's last working/idle event (`runtime.working`, set as `AI:Event:Append` records them) or jobs still active in the last saved state (`runtime.active_jobs`, set by `AI:State:Save`); `cards` = pending cards in the chat; `unseen` = the chat moved since `runtime.seen_at`, which the browser socket sets on connect and disconnect. The sidebar counts chats with cards or news; the chats list flags each row; the chat header says Working or N waiting |
 | kill | `AI:Chat:Stop {force: true}` (person, `ai:chat:stop`) | the kill switch: the backend expires every pending card of the chat on the record first, then the runtime is sent `{event: stop, force: true}`; the host runs `session.kill()` off the socket's loop — the cycle and job tasks cancelled where they stand (a worker call overruled, a deaf worker killed), children killed, the chat's browser closed through the watch function, jobs marked cancelled, state persisted, a `stopped {jobs, children, cards}` event relayed — and forgets the session so the next message starts quiet. No runtime serving the chat: the record is still quiet and the page says so |
@@ -56,9 +57,12 @@ delegation was minted for the chat it names.
 | `list_memories` / `add_memory` | `Settings:Memory:List` / `Settings:Memory:Create` | the person's memories |
 | `save_plan` | `AI:Chat:Plan` | `ai_chats.plan` |
 | `title_chat` | `AI:Chat:Title` | `ai_chats.title` from the chat's content — one small call to the chat's model after the first answer and every few turns; kept unless the person named the chat (`title_by: person`, set by `AI:Chat:Update`); the page hears `chat_titled` |
-| `provider` (data, files, secrets) | `Data:Record:*`, `Files:File:*`, `Secrets:Secret:Use`, `Settings:Llm:Use` | [the data layer](data-layer.md) |
+| `provider` (data, files, secrets) | `Data:Record:List` / `Get` / `Shapes` / `Create` / `Update` / `Delete`, `Files:File:Upload` / `Download` / `Get` / `List` / `Delete`, `Secrets:Secret:Use` / `Instances`, `Settings:Llm:Use` — no transfer and no change of owner: what an agent keeps stays whose it is | [the data layer](data-layer.md) |
+| (a site's login an agent asked for) | `Secrets:Credential:Resolve` | the person's saved login for that site, once they consented ([the live screen](live-screen.md)) |
+| (an MCP server's address and credential, at a call) | `Mcp:Server:Use` | [MCP servers](mcp.md) |
 | `schedules` (`load` / `add` / `ran` / `remove`) | `AI:Schedule:Load` / `Add` / `Ran` / `Remove` | `ai_schedules`: the clock's rows, read per chat and written one row at a time — a row the assistant set, what a fire did to one (its next time and its history; a fire can end a row and never switches one back on), a row it took off. A chat holds at most 50; one-shots that already ran make room. `Ran` answers `gone` for a row the person deleted meanwhile, and the clock drops it. The person's own doors (only a function the person was given, and that its manifest calls schedulable) — `AI:Schedule:Create` / `Update` (pause, resume) / `Delete` — write the same rows from the Schedules page (`AI:Schedule:Functions` lists what the form may offer: the functions the person was given that are schedulable), shaped exactly as the runtime shapes them (first run worked out with `contracts/cron.py` in the chat's zone), one row at a time too, then send the chat's runtime session `schedules_changed` through the relay so the clock re-reads them. Two hands on one chat's rows never overwrite each other: a pause on the page stands even when the row was firing as it was made |
 | (pull) | `Agents:Agent:Fetch_package` | code by digest, verified on arrival ([agent code](agent-code.md)) |
+| (reclaim) | `Agents:Agent:Pinned_digests` | every digest any organization still approves, so the runtime deletes only what nobody does |
 
 Three things follow from the table:
 
@@ -69,20 +73,24 @@ Three things follow from the table:
   arrives on the socket — the backend never holds a request open.
 - **One writer per record, with one exception.** The runtime writes
   state, events, plan and approvals-as-opened; the person writes
-  decisions and messages. Schedule rows have both: the runtime replaces
-  them as its clock moves, and the person's doors change one row and
-  tell the clock to read again.
+  decisions and messages. Schedule rows have both: the runtime writes
+  a row as its clock moves it, one row at a time, and the person's
+  doors change one row and tell the clock to read again.
 
 ## Child threads
 
 A sub-assistant (`docs/system/sub-assistants.md`) persists its own
 state, transcript, inbox and plan under `<chat>/sub_xxxxxxxx`. The
 backend knows chats, not children, so a child's records live **on its
-parent's chat under a thread**: every runtime verb above takes an
-optional `thread`, the credential stays the parent's, the guard stays
+parent's chat under a thread**: the verbs that keep a mind — state,
+plan, messages, the inbox of events, and opening a card — take an
+optional `thread`; the credential stays the parent's, the guard stays
 chat-bound, and the records are the parent's document's — `state` and
-`plan` under `threads.<thread>`, messages and events tagged `thread`,
-an inbox counter per thread, cards tagged with whose they are. What
+`plan` under `threads.<thread>`, messages and inbox events tagged
+`thread`, an inbox counter per thread, cards tagged with whose they
+are. What a child tells the audience travels as the parent's events,
+each carrying `child`; storage, the audit record, schedules and the
+contract are the chat's and take no thread. What
 the person reads as the chat never includes a thread's messages; a
 client that wants to show a child's thread asks for it by name.
 
@@ -102,15 +110,16 @@ is renewed over the socket. `RuntimeClientManager.renew_due` mints a
 fresh delegation for every live dial older than three quarters of an
 hour and sends it as a `credential` frame; the host hands it to its
 services and the clock adopts any rows it unlocks. The old row is
-retired the moment the new one is minted, so the runtime's calls never
-lapse for want of a key while the backend runs.
+retired the moment the new one is minted, which is the one moment a
+call the runtime has in flight can be refused: the new key is the next
+frame on the wire, and the call after it carries it.
 
 Over the socket the relay speaks the door's vocabulary and nothing
 else:
 
 | frontend says | relay sends | runtime answers with |
 |---|---|---|
-| `AI:Chat:Input {text, parts}` | `user_message` | `message_created`, then work |
+| `AI:Chat:Input {text, attachments, client_message_id}` (`parts` is taken for `attachments`) | `user_message` | `message_created`, then work; a resend with the same `client_message_id` is the same message |
 | `AI:Approval:Decide` (via the gateway, recorded first) | `approval_decided` | the job or park resumes |
 | `AI:Approval:Decide {answer}` — a question's (via the gateway, recorded first) | `question_answered` | the asking call continues, or hears it expired |
 | `AI:Chat:Stop` | `stop` | the assistant idles and says so |

@@ -7,7 +7,7 @@ Every screen in this platform is assembled from the same few decisions:
 which colours exist, which faces set type, which icons are drawn, how
 sharp a corner is, and what separates one surface from the next. Each of
 those could have been decided again in each component, and that is the
-version where the Activity page's status chips are indigo because indigo
+version where the Schedules page's status chips are indigo because indigo
 was on hand the day they were written, the chat's code blocks are set in
 a face nothing else uses, and a card has a ten-pixel corner beside a
 panel with an eight. None of those is a bug. Together they are the
@@ -38,21 +38,26 @@ them an `@theme inline` block exposes the radius and font scales
 (`--radius-*`, `--font-sans`, `--font-serif`, `--font-mono`) as ordinary
 custom properties, which is why component CSS can spend them directly.
 This file is the source of truth. A colour that is not defined here does
-not exist.
+not exist — with one exception, said here so that it is not found by
+surprise: `styles.scss` sets `--foreground` and `--muted-foreground`
+again for the signed-in app, in both themes, and defines `--scrim`.
 
 **`frontend/src/styles.scss` — the bridge and the global shapes.** It
 aliases the older Material-era token names (`--p`, `--surf`, `--s1`…) to
 the shadcn ones so unmigrated components re-theme for free; it defines
-the chat family (`--chat-*`) and the ported-page scale (`--tp-*`) as
+the chat family (`--chat-*`) and the ported-page scale (`--ui-*`) as
 *aliases* of the scales above rather than as second literals; and it
 carries the Angular Material M3 theme and the markdown typography that
 have nowhere else to go. New code should not add to the bridge.
 
 **`data-shared.css`, `iam-shared.css`, `agent-shared.css` — the page
 families.** Each is listed in the `styleUrls` of the components that
-belong to it (26, 17 and 7 of them), and each opens with a `:host` block
-that gives that family its semantic names — `--ink`, `--muted`,
-`--surface`, `--accent-strong` — in terms of the tokens above. A page in
+belong to it (31, 20 and 7 of them). `data-shared.css` opens with a
+`:host` block that gives the families their semantic names — `--ink`,
+`--muted`, `--surface`, `--accent-strong` — in terms of the tokens
+above; the other two are listed after it and use its names. Those names
+exist on a page of a family and nowhere else: the sidebar and the chat
+spend the tokens directly. A page in
 a family inherits its panels, buttons, lists and empty states from the
 shared file and adds only what is genuinely its own.
 
@@ -70,7 +75,7 @@ no amber, no slate, and no fourth hue introduced to mean "in progress"
 or "warning" — `--warning` is deliberately a neutral, because an
 interface that spends a colour on attention has one fewer colour left
 for identity. Where a state genuinely needs to separate from its
-neighbours without a hue, draw a border: the Activity page's
+neighbours without a hue, draw a border: the Schedules page's
 waiting-on-a-person chip is ruled rather than recoloured, and that is
 the pattern to copy.
 
@@ -89,10 +94,8 @@ how a component ends up rendering in a face the project never loaded.
 explicitly in `AppModule`'s `LucideAngularModule.pick({…})`. An icon not
 in that list does not render, which is the point: the list is the
 inventory. Icons are SVG, so they size by `width`/`height` and the
-`[size]` input, never by `font-size`. `MatIconModule` remains imported
-for the chrome Angular Material draws inside its own date picker and
-paginator; that is the only reason it is there, and no template should
-add a `<mat-icon>`.
+`[size]` input, never by `font-size`. `MatIconModule` is imported
+nowhere, and no template should add a `<mat-icon>`.
 
 **One radius scale.** Six steps and nothing between them:
 
@@ -105,7 +108,7 @@ add a `<mat-icon>`.
 | `--radius-2xl` | 16px | large surfaces: chat bubbles, the composer, hero media |
 | `--radius-pill` | 999px | pills, chips, anything fully round |
 
-`--tp-radius-sm`, `--tp-radius-card`, `--tp-radius-pill` and
+`--ui-radius-sm`, `--ui-radius-card`, `--ui-radius-pill` and
 `--chat-radius` are aliases of these; `50%` for a circle is not a radius
 decision and needs no token. A value that is not on the scale is drift,
 not nuance.

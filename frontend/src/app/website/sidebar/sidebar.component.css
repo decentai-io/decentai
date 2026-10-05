@@ -284,7 +284,7 @@ button {
 /* How many chats need the person: cards waiting, or news since they looked. */
 .nav-badge {
   margin-left: auto; min-width: 18px; padding: 0 6px;
-  border-radius: 999px; background: var(--accent-strong, #0a7a4f); color: #fff;
+  border-radius: var(--ui-radius-pill); background: var(--primary-fill); color: var(--primary-foreground);
   font-size: 11px; font-weight: 600; line-height: 18px; text-align: center;
   font-variant-numeric: tabular-nums;
 }

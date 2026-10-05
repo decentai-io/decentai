@@ -10,7 +10,7 @@ The encrypted half is written once and never returned by any read. What a person
 
 ## Connected accounts
 
-Some credentials are not typed in. When an agent's credential is a Google, Microsoft or similar account, its row on the Secrets page and the agent's Credentials tab shows **Connect account** instead of a form. You sign in with the provider in a new window, allow what the agent asked for, and come back with the credential made and named after the account. The platform keeps the tokens and renews them; the agent only ever receives a short-lived access token.
+Some credentials are not typed in. When an agent's credential is a Google, Microsoft or similar account, there is no form to fill in: the agent's Credentials tab shows **Connect account**, and on the Secrets page **Add secret** lists it as *Sign in with* the provider. You sign in with the provider in a new window, allow what the agent asked for, and come back with the credential made and named after the account. The platform keeps the tokens and renews them; the agent only ever receives a short-lived access token.
 
 If the provider stops accepting the grant — you changed your password, an administrator revoked it — the credential shows **needs reconnect**, the agent says so in the chat, and **Reconnect** signs you in again without making a second credential.
 
@@ -26,7 +26,7 @@ Saved logins sit in their own section on the Secrets page: which agents are allo
 
 ## Who may use one
 
-A credential is private to the person who made it until they share it, and sharing is deliberate: with named groups, named people, or — with a specific grant — the whole organization. You cannot share beyond what you can reach yourself, and only the creator may edit or delete.
+A credential is private to the person who made it until they share it, and sharing is deliberate: with named groups, named people, or — with a specific grant — the whole organization. You cannot share beyond what you can reach yourself, and only the creator may edit or delete — or, for a credential shared with them, a person holding the grant to maintain credentials created by others.
 
 The creator can also **hand over** a credential to a colleague, who becomes its owner; everyone it was shared with keeps using it, and agents granted it keep working. The same hand-over exists for records, files, skills, model connections and agent sources.
 

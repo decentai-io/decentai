@@ -90,7 +90,14 @@ class AccessController:
     ) -> Optional[str]:
         """Sign a cookie naming a session. Claims are a pointer plus log
         fields — authorization never reads them, so stale claims can't
-        widen access."""
+        widen access.
+
+        The token lasts as long as the session it names. Signed for a
+        week whatever the session was given, a sign-in a person asked
+        to be kept for ninety days stopped working after seven: the
+        row and the cookie were still there, and the token inside the
+        cookie had expired."""
+        lasts = session["expires_at"] - session["created_at"]
         return self.token_controller.create_token(
             {
                 "token_type": "WEB",
@@ -100,6 +107,7 @@ class AccessController:
                 "email": user_doc.get("email", ""),
             },
             self.secret_key,
+            ttl_seconds=int(lasts.total_seconds()),
         )
 
     def _resolve_session(

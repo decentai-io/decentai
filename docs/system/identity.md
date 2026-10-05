@@ -141,6 +141,7 @@ pass:
 | sessions, resets, API keys, invitations, runtime delegations | dropped |
 | chats, and everything under them: messages, approvals, uploads, schedules | deleted; conversations are personal |
 | memories | deleted; a profile of a person nobody can read is a liability |
+| MCP servers, push subscriptions, the note of which sample data they loaded | deleted; each is the person's alone and is handed to nobody |
 | secrets, records, files, skills | stewardship passes to the successor; whoever they were shared with keeps seeing them; a credential granted to agents keeps working |
 | model connections, agent sources | stewardship passes to the successor |
 | agent grants naming the person | removed |
@@ -195,7 +196,7 @@ Where permission is actually written.
 | `policy_id` | Unique identifier |
 | `name` | Human-readable name, unique within the organization |
 | `description` | What the policy is for |
-| `permissions` | A list of statements |
+| `permissions` | An object holding a `statements` list; a statement may carry `constraints` |
 | `created_at` | When it was created |
 
 A statement names an effect and the actions it applies to:
@@ -260,8 +261,15 @@ than at the next login or the next cache expiry.
 Some things are not privileges. Every user may read and correct their own
 profile, read and delete what the assistant has been told to remember
 about them, read the organization's written knowledge, and see the shape
-of a credential form well enough to fill it in. These are granted by a
-baseline policy attached to Everyone.
+of a credential form well enough to fill it in. Every user may also
+make and revoke their own API keys, add and remove their own MCP
+servers, set and pause their own schedules, stop and resume all of their
+own work, hand on what they made, start a connected account's sign-in,
+see which model providers exist, load and remove an agent's sample data,
+read their own audit trail, and manage their own notifications. These
+are granted by a baseline policy attached to Everyone; the list itself
+is `BASELINE_ACTIONS`, beside the catalog. Chatting is not in it: that
+is Members'.
 
 The baseline is versioned. When the platform gains a new baseline action,
 it is added to existing deployments exactly once — because an
@@ -310,8 +318,8 @@ anyone may write one.
 ## Becoming a user, and proving it later
 
 Nobody signs themselves up. A person exists in an organization because
-somebody who was already there invited them — or, on a person's own
-computer, added them.
+somebody who was already there invited them — or, where no mail server
+is set, added them.
 
 **Invitation.** An invitation records the address invited, the
 organization, any groups the person should land in, who invited them, and
@@ -325,7 +333,10 @@ comes from the invitation for the same reason.
 invitation, so there an administrator adds a person directly
 (`IAM:User:create`, refused where mail is sent: an invitation's link
 proves the address is the person's, which a password handed over
-cannot) and is shown a temporary password once, to hand over. The same
+cannot) and is shown a temporary password once, to hand over. An
+invitation made there all the same, by a script, is not lost: its link
+is handed back to whoever made it (`accept_url`) and never anywhere
+else. The same
 is done for a person who forgot theirs (`IAM:User:reset_password`, on any
 deployment), which also ends their sessions. It is bounded as group
 assignment is: nobody resets the password of a person holding more than
@@ -339,18 +350,24 @@ password is reset on the computer itself (`bootstrap/reset_password.py`).
 **Password.** Passwords are stored as a slow one-way hash, deliberately
 expensive to compute, over a fixed-length digest of the password — so that
 a long passphrase is never silently truncated by the hashing algorithm's
-input limit. A password must be at least 10 characters and contain a
-letter and a digit. Composition rules beyond that are absent on purpose;
-length does more for safety than required punctuation.
+input limit. A password must be at least 10 characters and at most 256,
+contain a letter and a digit, and neither start nor end with a space.
+Composition rules beyond that are absent on purpose; length does more
+for safety than required punctuation.
 
 **Session.** Signing in creates a session row and hands the browser a
 signed cookie that *names* it. The cookie is a pointer, not a container:
 its claims are read to find the session, and never to decide anything.
-Every request re-reads the session and the user behind it, which is what
-makes disabling, deleting or signing out take effect immediately rather
-than whenever the cookie would have expired. Sessions last seven days, or ninety
-when the person asked to be kept signed in on that device, and
-record the browser and address they were opened from. A request carrying
+Every request resolves the session and the user behind it — from the
+database, or from a copy the process keeps for at most a minute and
+drops the moment either changes — which is what makes disabling,
+deleting or signing out take effect immediately rather than whenever
+the cookie would have expired. An API key is never kept that way: it is
+looked up on every call. Sessions last seven days, or ninety when the
+person asked to be kept signed in on that device; the cookie and the
+token inside it last as long as the session, and without that ask the
+cookie goes when the browser is closed. Sessions record the browser and
+address they were opened from. A request carrying
 the cookie from a page of another origin — another site, or another
 program on another port of this computer, which browsers send the cookie
 to as well — is not signed in: the browser names that page in `Origin`,
@@ -378,9 +395,11 @@ attacker's budget against the rest. The throttle is consulted before the
 password is checked, so a locked window answers the same for a right
 password as for a wrong one.
 
-Each of these — invitations, sessions, resets, throttling — is scoped and
-swept the same way as everything else: they belong to an organization,
-they die with the user, and they are re-read rather than trusted.
+Each of these — invitations, sessions, resets — is scoped and swept the
+same way as everything else: they belong to an organization, they die
+with the user, and they are re-read rather than trusted. The counts of
+failed attempts are the exception: they are kept by address and by
+account name, belong to no organization, and go when their window ends.
 
 ---
 

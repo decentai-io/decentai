@@ -1,13 +1,22 @@
 # Local development
 
-Three processes and a database, each started by hand, each reading a
-`config.env` beside it. This is the everyday path; Compose is for
-running the finished thing.
+Three processes and a database, each started by hand: the backend and
+the runtime each read a `config.env` beside them, and the web app reads
+`frontend/src/environments/environment.ts`. This is the everyday path
+for changing the platform; Compose is for running the finished thing.
+
+Started this way the runtime starts agents' workers itself, as your own
+user, and confines nothing: no separate user per agent, no fence around
+its files, no proxy in front of its connections. It says so at start.
+What the sandbox does is seen in the Compose stack
+([the sandbox](../system/sandbox.md)).
 
 ## What you need
 
-- Python 3.12, with `pip install -r backend/requirements.txt -r
-  ai_runtime/requirements.txt`.
+- Python 3.11 or later (the images run 3.12), with `pip install -r
+  backend/requirements.txt -r backend/requirements-dev.txt -r
+  ai_runtime/requirements.txt`. The second file is what the tests
+  need.
 - Node 20 or later, with `cd frontend && npm install`.
 - MongoDB on `localhost:27017` — a local service, or
   `docker run -d -p 27017:27017 mongo:7`.
@@ -46,23 +55,27 @@ baseline; the schema version it prints tells you where you are.
 
 Open `http://localhost:4200` and sign in.
 
-## The three test suites
+## The four test suites
 
 ```bash
-python -m pytest ai_runtime/tests -q       # runtime
-cd backend && python -m pytest tests -q     # backend
+python -m pytest ai_runtime/tests -q        # runtime
+(cd backend && python -m pytest tests -q)   # backend
 python -m pytest tests -q                   # spanning
+python -m pytest examples/tests -q          # the Note example, in a real worker
 ```
 
 - The **runtime** suite needs no database. It runs agents in real
   worker processes over the real protocol, against the simulator's
   services, with a scripted model. First run builds a shared virtual
-  environment for the fixture agents under `ai_runtime/tests/`; delete
-  it after changing the SDK, or a stale copy is what the workers load.
+  environment for the fixture agents under `ai_runtime/tests/`; the SDK
+  inside it is refreshed by itself, and it is deleted only after a
+  fixture agent's dependencies change.
 - The **backend** suite needs MongoDB and uses its own database,
   `decentai_test`, wiped between tests.
 - The **spanning** suite loads the backend's harness and proves that an
   approval on one side becomes code serving on the other.
+- The **example's** suite runs Note the way an agent author would, with
+  the harness in `examples/tests/`.
 
 Run the backend and spanning suites one at a time: they share the test
 database, and two at once corrupt each other's baseline. On Windows,
@@ -70,17 +83,21 @@ pytest occasionally fails to render a traceback; `--tb=line` avoids it.
 
 ## Working on an agent
 
-Agents are developed in their own repository. The published ones are in
-the [`decentai-agents`](https://github.com/decentai-io/decentai-agents) repository, whose `tests/` show the
-pattern: a session-scoped fixture installs every catalog agent into one
-environment, and each test invokes functions through the real executor
-against the in-memory provider, with
+The example agent and its harness are here: `examples/note/` and
+`examples/tests/`, where a session-scoped fixture installs every agent
+of the catalog into one environment and each test invokes functions
+through the real executor against the in-memory provider.
+[Running your agent on your own machine](../agents/developing.md) is
+the page for it. An agent in a repository of its own copies that
+harness and runs it with this repository on the path:
 
 ```bash
 PYTHONPATH=<path to this repository> python -m pytest tests -q
 ```
 
-See [Writing an agent](writing-an-agent.md).
+The agents the project publishes, in the
+[`decentai-agents`](https://github.com/decentai-io/decentai-agents)
+repository, are tested that way.
 
 ## The simulator
 
