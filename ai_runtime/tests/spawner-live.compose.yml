@@ -1,0 +1,53 @@
+# The two containers of test_spawner_live.py, and nothing else of the
+# platform: the runtime's image twice, as docker-compose.yml starts it —
+# once holding the tests in place of the runtime, once as the agents'
+# container beside it. The repository is mounted read-only for the
+# tests; the platform's code in both containers is the image's own.
+name: decentai-spawner-live
+
+services:
+  runtime:
+    build:
+      context: ../..
+      dockerfile: ai_runtime/Dockerfile
+    command: ["sleep", "infinity"]
+    environment:
+      AI_RUNTIME_AGENTS_SPAWNER: agents:8003
+    volumes:
+      - agents_data:/data/agents
+      - ../..:/src:ro
+    networks:
+      - default
+      - agents
+    depends_on:
+      agents:
+        condition: service_healthy
+
+  agents:
+    build:
+      context: ../..
+      dockerfile: ai_runtime/Dockerfile
+    cap_add:
+      - NET_ADMIN
+    # What the agents are given, small enough for a test to use up.
+    mem_limit: 400m
+    cpus: 1.5
+    command: ["python", "-m", "ai_runtime.agents.spawner_service"]
+    environment:
+      AI_AGENTS_PROXY: runtime:8002
+    volumes:
+      - agents_data:/data/agents
+    networks:
+      - agents
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 8003), 4).close()"]
+      interval: 3s
+      timeout: 5s
+      retries: 10
+
+networks:
+  agents:
+    internal: true
+
+volumes:
+  agents_data:

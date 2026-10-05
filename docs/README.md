@@ -20,8 +20,6 @@ document in the same commit.
 
 ## Guides
 
-- [On your own computer](guides/desktop.md) — installing DecentAI on
-  Windows with the launcher, and every day after.
 - [Local development](guides/local-development.md) — three processes
   and a MongoDB, the tests, the simulator.
 - [Configuration](guides/configuration.md) — every setting, what it
@@ -41,8 +39,8 @@ describe is `examples/note/`.
   make the example yours.
 - [An agent, file by file](agents/anatomy.md) — the catalog, the
   manifest, the entrypoint, the tools, and what a function is given.
-- [The manifest](agents/manifest.md) — every key, its rule, and what to
-  think about while writing it.
+- [The manifest](agents/manifest.md) — the contract an agent is held
+  to: every key, its rule, and what to think about while writing it.
 - [What your code is given](agents/sdk.md) — records, files, secrets,
   the model, tables, posts, questions, logins, code, a screen.
 - [On your own machine](agents/developing.md) — the tests, and a
@@ -77,13 +75,15 @@ The platform:
 - [MCP servers](system/mcp.md) — remote tool servers a person adds
   for their own chats: what is read, what each tool costs, and what is
   not taken on trust.
+- [What is written down](system/monitoring.md) — what the platform
+  did to an agent and what the agent did, kept for a person to be
+  shown: workers' lives, the helper's jobs, logs, every connection,
+  processes; where it is kept and how it is read.
 - [The live screen](system/live-screen.md) — a browser the person
   watches in the chat and takes over; sign-in cards.
 - [The chat session](system/chat-session.md) — the backend as the
   runtime's services: the contract method by method, the dial, the
   vocabulary.
-- [The desktop install](system/desktop-install.md) — the launcher, the
-  engines, the Windows starter, releases and updates.
 
 The runtime:
 
@@ -94,8 +94,6 @@ The runtime:
 
 ## Reference
 
-- [The agent manifest](reference/agent-manifest.md) — the contract an
-  agent is held to, field by field.
 - [The worker protocol](reference/worker-protocol.md) — how the runtime
   speaks to an agent's process.
 - [The session door](reference/session-door.md) — the one way a chat is

@@ -103,9 +103,9 @@ def _load_settings() -> Dict[str, Any]:
         "cors_allow_origins": _env_list("CORS_ALLOW_ORIGINS", "http://localhost:4200"),
 
         # web: served to an organization at an address of its own.
-        # desktop: installed on one person's computer by the launcher,
-        # which sets this. It decides what cannot be the same for both
-        # — an app registered for a desktop has no secret to keep.
+        # desktop: on one person's own computer, as bootstrap/setup.py
+        # sets it up. It decides what cannot be the same for both — an
+        # app registered for a desktop has no secret to keep.
         "deployment_kind": _env_deployment_kind(),
 
         # session token signing + cookie

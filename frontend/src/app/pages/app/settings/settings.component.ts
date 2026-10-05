@@ -14,7 +14,7 @@ import {
 } from 'src/app/services/settings-llm.service';
 import { DataPageBase } from '../data-page-base';
 
-type SettingsTab = 'llm' | 'chat' | 'memory' | 'keys' | 'apps' | 'safety' | 'audit';
+type SettingsTab = 'llm' | 'chat' | 'memory' | 'keys' | 'apps' | 'safety' | 'monitoring' | 'audit';
 
 /**
  * Settings: what the platform itself is configured with, and what a
@@ -429,6 +429,7 @@ export class SettingsComponent extends DataPageBase implements OnInit, OnDestroy
   get canSeeKeys(): boolean { return this.auth.can('settings:apikey:list'); }
   get canSeeApps(): boolean { return this.auth.can('settings:oauth:list'); }
   get canSeeSafety(): boolean { return this.auth.can('settings:safety:get'); }
+  get canSeeMonitoring(): boolean { return this.auth.can('agents:monitor:usage'); }
   get canSeeAudit(): boolean { return this.auth.can('ai:audit:list'); }
   get auditView(): 'mine' | 'org' {
     return this.route.snapshot.data['auditView'] === 'org' ? 'org' : 'mine';
@@ -443,6 +444,7 @@ export class SettingsComponent extends DataPageBase implements OnInit, OnDestroy
     if (named === 'keys' && this.canSeeKeys) return 'keys';
     if (named === 'apps' && this.canSeeApps) return 'apps';
     if (named === 'safety' && this.canSeeSafety) return 'safety';
+    if (named === 'monitoring' && this.canSeeMonitoring) return 'monitoring';
     if (named === 'audit' && this.canSeeAudit) return 'audit';
     if (this.canSeeLlm) return 'llm';
     if (this.canSeeMemory) return 'memory';
@@ -460,6 +462,7 @@ export class SettingsComponent extends DataPageBase implements OnInit, OnDestroy
         : tab === 'keys' ? '/settings/keys'
         : tab === 'apps' ? '/settings/apps'
         : tab === 'safety' ? '/settings/safety'
+        : tab === 'monitoring' ? '/settings/monitoring'
         : tab === 'audit' ? '/settings/audit'
         : '/settings',
     ]);

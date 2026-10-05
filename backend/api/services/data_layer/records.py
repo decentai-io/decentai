@@ -83,7 +83,7 @@ class DataController(ResourceController):
         """What the manifest's ``user_access`` lets a person do to this
         kind directly. Absent is nothing: the records are the agent's
         to write. Reading and deleting are not the manifest's to grant
-        — a person always may (docs/reference/agent-manifest.md)."""
+        — a person always may (docs/agents/manifest.md)."""
         return operation in (resource.get("user_access") or [])
 
     REFUSED = ("{agent} keeps these records itself — they can be read and "

@@ -85,10 +85,24 @@ export class ModelProvidersComponent extends DataPageBase {
    *  name already, and the address where it is the person's own. */
   summary(connection: LlmConnection): string {
     const provider = this.providerName(connection.keys.provider);
+    if (connection.keys.provider === ModelProvidersComponent.AZURE) {
+      // Azure is somebody's own endpoint and a deployment they named.
+      return [provider === connection.name ? '' : provider,
+              this.hostOf(connection.keys.endpoint),
+              `deployment ${connection.keys.model}`].filter(Boolean).join(' · ');
+    }
     const own = this.catalogEndpoint(connection.keys.provider)
       ? '' : connection.keys.endpoint;
     return [provider === connection.name ? '' : provider, own,
             `starts with ${connection.keys.model}`].filter(Boolean).join(' · ');
+  }
+
+  private hostOf(address: string): string {
+    try {
+      return new URL(address).host;
+    } catch {
+      return address;
+    }
   }
 
   private catalogEndpoint(provider: string): string {
@@ -195,6 +209,139 @@ export class ModelProvidersComponent extends DataPageBase {
   /** What a blank is usually filled with, so the common case is no step. */
   private readonly blankDefaults: Record<string, string> = { 'aws-region': 'us-east-1' };
 
+  /** A blank, as its provider's own console calls it, and where there
+   *  it is found. One not named here is asked for by its own words. */
+  private static readonly BLANKS: Record<string, { label: string; help: string; example: string }> = {
+    'aws-region': {
+      label: 'AWS region',
+      help: 'The region your Bedrock models are enabled in.',
+      example: 'us-east-1',
+    },
+    'cloudflare-account-id': {
+      label: 'Cloudflare account ID',
+      help: 'In the Cloudflare dashboard, on the Workers AI overview.',
+      example: '',
+    },
+    'databricks-host': {
+      label: 'Databricks workspace',
+      help: 'Your workspace’s address, without https://.',
+      example: 'dbc-a1b2c3d4-e5f6.cloud.databricks.com',
+    },
+    'infomaniak-product-id': {
+      label: 'Infomaniak product ID',
+      help: 'The number of your AI Tools product, in the Infomaniak manager.',
+      example: '',
+    },
+    'snowflake-account': {
+      label: 'Snowflake account',
+      help: 'Your account identifier: the part of your Snowflake address before .snowflakecomputing.com.',
+      example: 'myorg-myaccount',
+    },
+  };
+
+  /** Where a provider's key is made, for the few most people use: the
+   *  one thing the form asks for, and the one a person has to go and
+   *  fetch. */
+  private static readonly KEYS: Record<string, { where: string; url: string }> = {
+    anthropic: { where: 'the Anthropic Console, under API keys',
+                 url: 'https://console.anthropic.com/settings/keys' },
+    openai: { where: 'the OpenAI platform, under API keys',
+              url: 'https://platform.openai.com/api-keys' },
+    gemini: { where: 'Google AI Studio, under Get API key',
+              url: 'https://aistudio.google.com/apikey' },
+    openrouter: { where: 'OpenRouter, under Keys',
+                  url: 'https://openrouter.ai/settings/keys' },
+    'amazon-bedrock': { where: 'the AWS console: Amazon Bedrock, then API keys',
+                        url: 'https://console.aws.amazon.com/bedrock/home#/api-keys' },
+    azure: { where: 'the Azure portal: your resource, then Keys and Endpoint',
+             url: 'https://portal.azure.com' },
+    groq: { where: 'the Groq console, under API Keys',
+            url: 'https://console.groq.com/keys' },
+    mistral: { where: 'the Mistral console, under API keys',
+               url: 'https://console.mistral.ai/api-keys' },
+    xai: { where: 'the xAI console, under API keys', url: 'https://console.x.ai' },
+    deepseek: { where: 'the DeepSeek platform, under API keys',
+                url: 'https://platform.deepseek.com/api_keys' },
+  };
+
+  /** The models a new connection starts with, by the beginning of
+   *  their id, where the newest the catalog lists is not the one to
+   *  start with: a provider that serves other makers' models lists
+   *  those among its own. An empty list is a provider whose model is
+   *  the person's to choose — what they may call there depends on
+   *  their account. */
+  private static readonly STARTS: Record<string, string[]> = {
+    anthropic: ['claude-sonnet'],
+    openai: ['gpt-'],
+    gemini: ['gemini-'],
+    openrouter: ['anthropic/claude-sonnet', 'openai/gpt-'],
+    'amazon-bedrock': [],
+    groq: ['llama-'],
+    mistral: ['mistral-medium', 'mistral-large', 'mistral-'],
+    xai: ['grok-'],
+    deepseek: ['deepseek-'],
+  };
+
+  /** How many models a plain list holds before it is searched instead. */
+  static readonly LONG_LIST = 40;
+
+  /** Addresses a model on this computer usually answers at, as the
+   *  platform sees them from inside its container. */
+  readonly ownServers = [
+    { name: 'Ollama', address: 'http://host.docker.internal:11434/v1' },
+    { name: 'LM Studio', address: 'http://host.docker.internal:1234/v1' },
+  ];
+
+  get keyPlace(): { where: string; url: string } | null {
+    return ModelProvidersComponent.KEYS[this.draft.provider] ?? null;
+  }
+
+  blankHelp(blank: string): string {
+    return ModelProvidersComponent.BLANKS[blank]?.help ?? '';
+  }
+
+  blankExample(blank: string): string {
+    const example = ModelProvidersComponent.BLANKS[blank]?.example ?? '';
+    return example ? `e.g. ${example}` : '';
+  }
+
+  /** The list is long enough to be searched rather than scrolled. */
+  get searchingModels(): boolean {
+    return this.models.length > ModelProvidersComponent.LONG_LIST;
+  }
+
+  /** The model a new connection starts with: the first of the
+   *  provider's own where that is known, the newest listed where it is
+   *  not, and none where the person must choose. */
+  private startingModel(provider: string, models: LlmModel[]): string {
+    const starts = ModelProvidersComponent.STARTS[provider];
+    if (!starts) return models[0]?.id ?? '';
+    for (const start of starts) {
+      const found = models.find((model) => model.id.startsWith(start));
+      if (found) return found.id;
+    }
+    return starts.length ? models[0]?.id ?? '' : '';
+  }
+
+  /** What an address has in each blank of the catalog's, or null when
+   *  it is not that address at all — a gateway of the person's own. */
+  private blanksIn(template: string, address: string): Record<string, string> | null {
+    const names = [...template.matchAll(/<([^>]+)>/g)].map((found) => found[1]);
+    const pattern = template.replace(/\/+$/, '')
+      .split(/<[^>]+>/)
+      .map((piece) => piece.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+      .join('([^/]+?)');
+    const found = new RegExp(`^${pattern}$`).exec(address.replace(/\/+$/, ''));
+    if (!found) return null;
+    return Object.fromEntries(names.map((name, index) => [name, found[index + 1]]));
+  }
+
+  /** A model on this computer, by one of the addresses such a server
+   *  usually answers at. */
+  useOwnServer(address: string): void {
+    this.setEndpoint(address);
+  }
+
   readonly awsRegions = [
     'us-east-1', 'us-east-2', 'us-west-2', 'ca-central-1', 'sa-east-1',
     'eu-west-1', 'eu-west-2', 'eu-west-3', 'eu-central-1', 'eu-north-1',
@@ -223,6 +370,70 @@ export class ModelProvidersComponent extends DataPageBase {
     return this.providers.find((p) => p.id === this.draft.provider) ?? null;
   }
 
+  // ── Azure ───────────────────────────────────────────────────────────
+  //
+  // Azure is not shaped like the others: a customer has an endpoint of
+  // their own, shown in the portal in several forms, and calls a
+  // deployment by a name they chose, not a model from a list. So the
+  // form asks for what the portal shows — the endpoint, pasted as it
+  // is; the key; the deployment's name — and the platform works out the
+  // address requests go to (contracts/llm_providers.py, `azure`).
+
+  static readonly AZURE = 'azure';
+  private static readonly AZURE_HOSTS = [
+    '.openai.azure.com', '.cognitiveservices.azure.com', '.services.ai.azure.com',
+  ];
+
+  /** The chosen provider is called by deployment, at the person's own
+   *  endpoint. */
+  get byDeployment(): boolean {
+    return this.draft.provider === ModelProvidersComponent.AZURE;
+  }
+
+  /** What a pasted Azure endpoint comes to — the address requests go
+   *  to, and the deployment it named where it named one — or null for
+   *  one that is not Azure's own. The backend settles it the same way;
+   *  this is so the form can say what it understood. */
+  private azure(pasted: string): { endpoint: string; deployment: string } | null {
+    const text = pasted.trim();
+    if (!text) return null;
+    let url: URL;
+    try {
+      url = new URL(text.includes('://') ? text : `https://${text}`);
+    } catch {
+      return null;
+    }
+    const host = url.host.toLowerCase();
+    if (!ModelProvidersComponent.AZURE_HOSTS.some(
+        (suffix) => host.endsWith(suffix) && host.length > suffix.length)) {
+      return null;
+    }
+    const named = /\/openai\/deployments\/([^/?#]+)/.exec(url.pathname);
+    return { endpoint: `https://${host}/openai/v1`,
+             deployment: named ? decodeURIComponent(named[1]) : '' };
+  }
+
+  /** The endpoint as the person pasted it. A target URI names the
+   *  deployment too, and that is filled in where it is still empty. */
+  setAzureEndpoint(pasted: string): void {
+    this.draft.endpoint = pasted;
+    this.refused = null;
+    const found = this.azure(pasted);
+    if (found?.deployment && !this.draft.model.trim()) this.draft.model = found.deployment;
+    if (this.nameIsAuto && found) {
+      this.draft.name = this.freeName(`Azure ${new URL(found.endpoint).host.split('.')[0]}`);
+    }
+  }
+
+  /** What the form understood of the endpoint, said under the field. */
+  get azureUnderstood(): string {
+    const pasted = this.draft.endpoint.trim();
+    if (!pasted) return '';
+    const found = this.azure(pasted);
+    if (!found) return 'That is not an Azure endpoint. It is used as written.';
+    return found.endpoint === pasted ? '' : `Requests go to ${found.endpoint}`;
+  }
+
   /** Whether the address is the person's to type in full: the custom
    *  entry has none of its own. */
   get endpointIsYours(): boolean {
@@ -233,6 +444,13 @@ export class ModelProvidersComponent extends DataPageBase {
     this.choosing = false;
     this.draft = { ...this.blankDraft(), provider: provider.id };
     this.resetEditor(true);
+    if (this.byDeployment) {
+      // Nothing is filled in: the endpoint and the deployment are the
+      // person's own, and there is no list to choose from.
+      this.draft.name = this.freeName(provider.name);
+      this.typingModel = true;
+      return;
+    }
     this.endpointTemplate = /<[^>]+>/.test(provider.endpoint) ? provider.endpoint : '';
     for (const blank of this.blanks) this.blankValues[blank] = this.blankDefaults[blank] ?? '';
     this.draft.endpoint = this.filled(provider.endpoint);
@@ -267,7 +485,7 @@ export class ModelProvidersComponent extends DataPageBase {
     // A slow answer for a provider since changed is nobody's list.
     if (this.draft.provider !== provider) return;
     this.models = models;
-    if (choose) this.draft.model = models[0]?.id ?? '';
+    if (choose) this.draft.model = this.startingModel(provider, models);
     this.typingModel = !models.length
       || (!!this.draft.model && !models.some((m) => m.id === this.draft.model));
   }
@@ -284,7 +502,7 @@ export class ModelProvidersComponent extends DataPageBase {
 
   pickFromList(): void {
     this.typingModel = false;
-    this.draft.model = this.models[0]?.id ?? '';
+    this.draft.model = this.startingModel(this.draft.provider, this.models);
   }
 
   /** The customer's own parts of the provider's address, by name. */
@@ -293,6 +511,8 @@ export class ModelProvidersComponent extends DataPageBase {
   }
 
   blankLabel(blank: string): string {
+    const known = ModelProvidersComponent.BLANKS[blank]?.label;
+    if (known) return known;
     const words = blank.replace(/-/g, ' ');
     return words.startsWith('aws ') ? 'AWS ' + words.slice(4)
       : words.charAt(0).toUpperCase() + words.slice(1);
@@ -346,7 +566,21 @@ export class ModelProvidersComponent extends DataPageBase {
     };
     // A saved connection keeps its name and its address as they are.
     this.resetEditor(false);
-    void this.loadModels(this.draft.provider, false);
+    if (this.byDeployment) {
+      this.typingModel = true;
+    } else {
+      // The same fields it was added with: an address that is the
+      // provider's own with the person's parts in it is shown as those
+      // parts. One that is not — a gateway — stays an address.
+      const template = this.catalogEndpoint(this.draft.provider);
+      const parts = /<[^>]+>/.test(template)
+        ? this.blanksIn(template, this.draft.endpoint) : null;
+      if (parts) {
+        this.endpointTemplate = template;
+        this.blankValues = parts;
+      }
+      void this.loadModels(this.draft.provider, false);
+    }
     const groups = connection.owner?.groups || [];
     // The creator sits in users on every connection; anyone BEYOND them
     // is a deliberate person-share.
@@ -397,16 +631,24 @@ export class ModelProvidersComponent extends DataPageBase {
    *  blank keeps the stored key. */
   get blocker(): string {
     if (!this.draft.provider) return 'Choose a provider.';
+    if (this.byDeployment) {
+      if (!this.draft.endpoint.trim()) return 'Paste your Azure endpoint.';
+      if (this.isCreating && !this.draft.api_key.trim()) return 'Paste the API key.';
+      if (!this.draft.model.trim()) return 'Name your deployment.';
+    }
     const missing = this.blanks.find((blank) => !(this.blankValues[blank] ?? '').trim());
     if (missing) return `Enter your ${this.blankLabel(missing)}.`;
     if (!this.draft.endpoint.trim()) return 'Enter the address the server answers at.';
     if (/[<>]/.test(this.draft.endpoint)) {
       return 'Fill in the address: replace each <...> with your own account’s value.';
     }
-    if (this.isCreating && !this.draft.api_key.trim()) return 'Paste the API key.';
+    // A server of the person's own may ask for no key at all.
+    if (this.isCreating && !this.endpointIsYours && !this.draft.api_key.trim()) {
+      return 'Paste the API key.';
+    }
     if (!this.draft.model.trim()) {
-      return this.models.length ? 'Choose the model to start with.'
-        : 'Name the model to start with — the provider’s own id for it.';
+      return this.models.length ? 'Choose a model.'
+        : 'Name the model, as the server calls it.';
     }
     if (!this.draft.name.trim()) return 'Give it a name.';
     if (this.shareMode === 'groups' && !this.selectedGroups.size) {
@@ -431,7 +673,11 @@ export class ModelProvidersComponent extends DataPageBase {
         provider: this.draft.provider,
         model: this.draft.model.trim(),
         endpoint: this.draft.endpoint.trim(),
-        api_key: this.draft.api_key,
+        // A server that asks for no key is still spoken to with one:
+        // the protocol has a place for it, and the store keeps none
+        // empty.
+        api_key: this.draft.api_key.trim() || !this.isCreating || !this.endpointIsYours
+          ? this.draft.api_key : 'none',
         owner: this.buildOwner(),
         check,
       };

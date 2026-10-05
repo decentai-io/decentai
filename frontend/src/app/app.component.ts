@@ -43,6 +43,13 @@ export class AppComponent implements OnInit, OnDestroy {
       return;
     }
 
+    // A sign-in handed over in the address (bootstrap/setup.py's
+    // link): the sign-in page takes it out of the address and uses it.
+    if (window.location.hash.startsWith('#enter=')) {
+      this.datastore.setview('auth');
+      return;
+    }
+
     // Otherwise resolve the session before showing anything. Without one the
     // sign-in screen takes over the whole shell — there is no sidebar or
     // content to render for someone we cannot identify.

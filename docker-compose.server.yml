@@ -1,0 +1,21 @@
+# Laid over docker-compose.yml on a server with an address of its own:
+# Caddy answers on 80 and 443 for SITE_ADDRESS, and obtains and renews
+# its certificate by itself (docs/guides/deploying.md).
+#
+#   docker compose -f docker-compose.yml -f docker-compose.server.yml \
+#       --env-file deploy.env up -d --build
+services:
+  caddy:
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:?the address people open, in deploy.env}
+    ports: !override
+      - "80:80"
+      - "443:443"
+    volumes:
+      # Certificates, and the account they were issued to.
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:

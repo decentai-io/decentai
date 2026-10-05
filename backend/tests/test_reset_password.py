@@ -10,14 +10,14 @@ from conftest import ADMIN_EMAIL, ADMIN_PASSWORD
 NEW_PASSWORD = "Another-pass-42"
 
 
-def reset(email, password):
+def reset(email, password, new_email=""):
     module = importlib.import_module("reset_password")
-    return module.PasswordReset(email, password).run()
+    return module.PasswordReset(email, password, new_email).run()
 
 
-def login(app, password):
+def login(app, password, email=ADMIN_EMAIL):
     return TestClient(app).post(
-        "/auth/login", json={"email": ADMIN_EMAIL, "password": password})
+        "/auth/login", json={"email": email, "password": password})
 
 
 class TestAResetFromTheMachine:
@@ -43,6 +43,41 @@ class TestAResetFromTheMachine:
         assert login(app, NEW_PASSWORD).status_code == 200
 
 
+class TestANewAddressWithIt:
+    """A desktop's first person is made without being asked who they
+    are, and names their own address the day others are to use the
+    install: the same account, signed in to by another name."""
+
+    OWN = "sara@example.org"
+
+    def test_the_account_signs_in_by_the_new_address_only(self, app, seed):
+        from database.stores import UserStore
+
+        before = UserStore().get_by_email(ADMIN_EMAIL)["_id"]
+        assert reset(ADMIN_EMAIL, NEW_PASSWORD, self.OWN) == 0
+        assert login(app, NEW_PASSWORD, self.OWN).status_code == 200
+        assert login(app, NEW_PASSWORD).status_code == 401
+        # The same person: what they kept and may do is unchanged.
+        assert UserStore().get_by_email(self.OWN)["_id"] == before
+
+    def test_an_address_somebody_has_is_refused_and_nothing_changes(
+            self, app, seed, capsys):
+        from database.stores import UserStore
+        from server.authentication.credentials import PasswordHasher
+
+        users = UserStore()
+        admin = users.get_by_email(ADMIN_EMAIL)
+        users.create(admin["org_id"], "taken@example.org", "Taken",
+                     PasswordHasher.hash("Somebody-else-9"))
+        assert reset(ADMIN_EMAIL, NEW_PASSWORD, "taken@example.org") == 1
+        assert "is somebody's already" in capsys.readouterr().err
+        assert login(app, ADMIN_PASSWORD).status_code == 200
+
+    def test_the_same_address_again_is_only_a_new_password(self, app, seed):
+        assert reset(ADMIN_EMAIL, NEW_PASSWORD, ADMIN_EMAIL.upper()) == 0
+        assert login(app, NEW_PASSWORD).status_code == 200
+
+
 class TestForgottenWithNoEmail:
     """With no mail server, "Forgot password" says how this install
     resets one — the same answer for every address, and no link made."""
@@ -51,7 +86,7 @@ class TestForgottenWithNoEmail:
     def forgot(app, email):
         return TestClient(app).post("/auth/password/forgot", json={"email": email})
 
-    def test_a_desktop_points_at_the_app(self, app, seed, monkeypatch):
+    def test_a_desktop_points_at_the_computer_it_runs_on(self, app, seed, monkeypatch):
         import dataclasses
 
         from server.setup.app_state import get_state
@@ -61,7 +96,7 @@ class TestForgottenWithNoEmail:
                             dataclasses.replace(state.settings, deployment_kind="desktop"))
         answer = self.forgot(app, ADMIN_EMAIL).json()
         assert answer["requested"] is False
-        assert "open the DecentAI app and choose Reset a password" in answer["message"]
+        assert "bootstrap/reset_password.py" in answer["message"]
 
     def test_a_server_says_who_to_ask(self, app, seed):
         answer = self.forgot(app, ADMIN_EMAIL).json()

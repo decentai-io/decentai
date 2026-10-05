@@ -26,7 +26,7 @@ Three values are generated, never chosen:
 | `CORS_ALLOW_ORIGINS` | `http://localhost:4200` | Comma-separated origins the browser may call from. A request carrying the session cookie from any other origin is not signed in. |
 | `PUBLIC_APP_URL` | `http://localhost:4200` | Where users reach the app; the base for links in invitations and resets, and an origin the session cookie is accepted from. |
 | `OAUTH_REDIRECT_URL` | `PUBLIC_APP_URL` + `/oauth/callback` | Where a provider sends the browser back after consent — the redirect URI registered with every connected app. Set it in development, where the API has a port of its own. |
-| `DEPLOYMENT_KIND` | `web` | What the deployment is: `web`, served to an organization at an address of its own, or `desktop`, on one person's computer. The launcher sets `desktop`. On a desktop a connected app may be registered without a secret. |
+| `DEPLOYMENT_KIND` | `web` | What the deployment is: `web`, served to an organization at an address of its own, or `desktop`, on one person's own computer, which `bootstrap/setup.py` sets. On a desktop there is no email, so people are added with a password shown once, and a connected app may be registered without a secret. |
 
 ### Sessions
 
@@ -60,7 +60,7 @@ Three values are generated, never chosen:
 | `AI_RUNTIME_URL` | `http://127.0.0.1:8001` | Where the backend dials a chat's session. |
 | `BACKEND_SERVICE_PRIVATE_KEY` | required for chats | Signs the backend's identity toward the runtime; the runtime holds the public half. |
 | `REFERENCE_CATALOG_URL` | unset | A repository the marketplace offers as a source with one click. Unset, it offers none. |
-| `AGENT_SOURCE_FOLDER` | unset | A folder on the backend's own disk whose git repositories may be agent sources, added by their path (`/develop/my-agents`). For somebody writing agents on their own computer; the desktop launcher's `develop` sets it. Unset — every server — a source is fetched from a repository's address only. |
+| `AGENT_SOURCE_FOLDER` | unset | A folder on the backend's own disk whose git repositories may be agent sources, added by their path (`/develop/my-agents`). For somebody writing agents on their own computer ([a DecentAI of your own](../agents/developing.md#a-decentai-of-your-own)). Unset — every server — a source is fetched from a repository's address only. |
 
 ### Email
 
@@ -121,29 +121,58 @@ gone. Back them up with it.
 | `LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING` or `ERROR`. |
 | `AI_RUNTIME_EGRESS_PORT` | `8002` | Where the proxy that confined agents connect through listens, on this machine only. The container's firewall rule is written for the same port when the container starts. |
 | `AI_RUNTIME_PACKAGE_HOSTS` | `pypi.org, files.pythonhosted.org` | Where packages come from: the hosts the builder of an agent's declared packages may reach, and the whole of them. Separated by commas. |
+| `AI_RUNTIME_AGENTS_SPAWNER` | empty | Where the agents' container answers, as `host:port` (`agents:8003` in Compose). Empty starts agents' workers beside the runtime, in its own container or on a developer's machine. |
+
+The agents' container is the runtime's image started as the spawner
+(`python -m ai_runtime.agents.spawner_service`), and reads:
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `AI_AGENTS_PROXY` | empty | Where the runtime's proxy answers, as `host:port` (`ai-runtime:8002` in Compose). What a worker sends to the proxy's port in its own container is passed on to here. |
+| `AI_AGENTS_SPAWNER_PORT` | `8003` | Where the spawner answers the runtime. |
+| `AI_RUNTIME_EGRESS_PORT` | `8002` | The proxy's port, as workers are pointed at it; the same number as the runtime's. |
+| `AI_RUNTIME_AGENTS_INSTALL_DIR` | `/data/agents` | The volume both containers hold, at the same path in both. |
+
+What the agents' container is given is the engine's to hold it to, and
+is set where the container is started:
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `AGENTS_MEMORY` | no limit | Memory the agents are given together, as the engine reads it: `2g`, `1500m`. |
+| `AGENTS_CPUS` | no limit | Processors the agents are given together: `2`, `1.5`. |
+
+`docker-compose.yml` reads both from `deploy.env`; a change takes
+effect when the agents' container is started again (`docker compose
+--env-file deploy.env up -d agents`). The spawner reads what was set from the kernel
+and ends the agent using most memory before the engine would have to
+([the sandbox](../system/sandbox.md)).
 
 ### What holds an agent to the hosts it declared
 
-Inside the runtime's image an agent's worker runs as a user of its own
-and connects through a proxy the runtime runs, which lets it reach the
-hosts its manifest declared ([the sandbox](../system/sandbox.md)). One
-firewall rule makes the proxy the only way out, and setting it takes a
-right the container is given when it is started:
+An agent's worker runs in the agents' container, as a user of its
+own, and connects through a proxy the runtime runs, which lets it
+reach the hosts its manifest declared
+([the sandbox](../system/sandbox.md)). The agents' container is on a
+network that reaches the runtime and nothing else. One firewall rule
+inside it keeps a worker to the proxy's port, and so from other agents
+and from the spawner, and setting it takes a right the container is
+given when it is started:
 
 ```yaml
-ai-runtime:
+agents:
   cap_add:
     - NET_ADMIN
 ```
 
 `docker-compose.yml` grants it. The right is used once, at start, for
-that one rule in the container's own network; the runtime never holds
-it. Without it the stack runs all the same, and the runtime's log says
-that nothing holds an agent to the proxy.
+that one rule in the container's own network; nothing started there
+ever holds it, and the runtime's container is not given it. Without it
+the stack runs all the same, and the runtime's log says that nothing
+holds an agent to the proxy.
 
 ### Where an agent's packages come from
 
-Inside the runtime's image the packages an agent declared are
+In the agents' container the packages an agent declared are
 downloaded and built by a user of their own, which reaches the hosts
 in `AI_RUNTIME_PACKAGE_HOSTS` and nothing else. A deployment with a
 package index of its own sets both what pip is told and what the
@@ -159,8 +188,9 @@ AI_RUNTIME_PACKAGE_HOSTS=packages.example.com
 
 ### What the runtime's container is given
 
-Agent code runs in the runtime's container, so that container holds the
-runtime's own settings and nothing else. In Compose the backend and the
+The runtime's container holds the runtime's own settings and nothing
+else, and the agents' container, where agent code runs, holds none of
+the platform's. In Compose the backend and the
 seeder are handed `deploy.env` whole; the runtime is handed the
 variables `docker-compose.yml` names for it — the table above, the
 knobs below, where packages come from, and how the machine reaches
@@ -190,7 +220,9 @@ environment.
 
 | Variable | Meaning |
 |---|---|
-| `SITE_ADDRESS` | What Caddy serves: a domain gets automatic certificates; `localhost` or an IP a self-signed one; `:80` behind a load balancer that terminates TLS. |
+| `PORT` | The port DecentAI is opened at on the machine; `4280` unless said. `PUBLIC_APP_URL` and `CORS_ALLOW_ORIGINS` carry the same number. |
+| `LISTEN` | Who may reach that port: `127.0.0.1`, this machine alone, unless said; `0.0.0.0` behind a load balancer. |
+| `SITE_ADDRESS` | What Caddy answers for: `:80`, plain HTTP on any name, unless said — a computer of one's own, or a load balancer that terminates TLS. With `docker-compose.server.yml`, a domain, which gets automatic certificates. |
 | `MONGO_ROOT_USERNAME`, `MONGO_ROOT_PASSWORD` | The database's root account, which `MONGO_URI` must carry too. |
 | `BACKEND_UPSTREAM` | Where Caddy proxies backend paths; defaults to `backend:8000`. |
 

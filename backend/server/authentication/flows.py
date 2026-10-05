@@ -379,8 +379,8 @@ class AuthController:
     def _reset_without_email() -> str:
         """How a password is reset where this install sends no email."""
         if getattr(get_settings(), "deployment_kind", "") == "desktop":
-            return ("This DecentAI sends no email. On the computer it runs on, "
-                    "open the DecentAI app and choose Reset a password.")
+            return ("This DecentAI sends no email. A new password is set on "
+                    "the computer it runs on, with bootstrap/reset_password.py.")
         return ("This DecentAI is not set up to send email. Ask whoever runs "
                 "it to set a new password for you.")
 

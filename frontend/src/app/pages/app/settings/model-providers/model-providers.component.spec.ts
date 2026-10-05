@@ -112,8 +112,9 @@ describe('ModelProvidersComponent', () => {
     expect(component.choosing).toBeFalse();
     expect(component.draft.endpoint).toBe('https://api.anthropic.com');
     expect(component.draft.name).toBe('Anthropic');
-    // The newest the catalog knows is what it starts with.
-    expect(component.draft.model).toBe('claude-opus-5-5');
+    // It starts with the provider's everyday model, not whichever the
+    // catalog lists as newest.
+    expect(component.draft.model).toBe('claude-sonnet-5');
     expect(component.blocker).toBe('Paste the API key.');
     component.setKey('sk-x');
     expect(component.blocker).toBe('');
@@ -146,6 +147,47 @@ describe('ModelProvidersComponent', () => {
     expect(component.blocker).toBe('Enter your AWS region.');
   });
 
+  it('leaves the model to the person where what they may call depends on their account', async () => {
+    const component = create();
+    component.startCreate();
+    component.selectProvider(provider('amazon-bedrock'));
+    await settle();
+
+    component.setKey('key');
+    expect(component.draft.model).toBe('');
+    expect(component.blocker).toBe('Choose a model.');
+  });
+
+  it('says where a popular provider’s key is made, and what a blank is in its own console’s words', () => {
+    const component = create();
+    component.startCreate();
+    component.selectProvider(provider('anthropic'));
+    expect(component.keyPlace?.url).toBe('https://console.anthropic.com/settings/keys');
+    component.selectProvider(provider('together'));
+    expect(component.keyPlace).toBeNull();
+
+    expect(component.blankLabel('snowflake-account')).toBe('Snowflake account');
+    expect(component.blankHelp('snowflake-account')).toContain('snowflakecomputing.com');
+    // One nobody described is asked for by its own words.
+    expect(component.blankLabel('some-other-part')).toBe('Some other part');
+    expect(component.blankHelp('some-other-part')).toBe('');
+  });
+
+  it('shows an edit the fields it was added with', async () => {
+    const component = create();
+    component.startEdit(connection('Bedrock', { keys: {
+      provider: 'amazon-bedrock', model: 'us.anthropic.claude-sonnet-4-5-20250929-v1:0',
+      endpoint: 'https://bedrock-runtime.eu-west-1.amazonaws.com',
+    } }));
+    await settle();
+
+    expect(component.blanks).toEqual(['aws-region']);
+    expect(component.blankValues['aws-region']).toBe('eu-west-1');
+    component.setBlank('aws-region', 'us-west-2');
+    expect(component.draft.endpoint).toBe('https://bedrock-runtime.us-west-2.amazonaws.com');
+    expect(component.blocker).toBe('');
+  });
+
   it('asks a server of one’s own for its address and a model by name', async () => {
     const component = create();
     component.startCreate();
@@ -158,10 +200,69 @@ describe('ModelProvidersComponent', () => {
     component.setEndpoint('http://host.docker.internal:11434/v1');
     // Named after where it is, until the person names it.
     expect(component.draft.name).toBe('host.docker.internal:11434');
-    component.setKey('any');
+    // No key is asked for: a model on one's own computer has none.
     expect(component.blocker).toContain('Name the model');
     component.chooseModel('llama3.3');
     expect(component.blocker).toBe('');
+  });
+
+  it('fills in the address of a server on this computer, and saves one that has no key', async () => {
+    const calls: Record<string, any> = {};
+    const component = create([], calls);
+    component.startCreate();
+    component.selectProvider(provider('openai_compatible'));
+    await settle();
+
+    component.useOwnServer(component.ownServers[0].address);
+    expect(component.draft.endpoint).toBe('http://host.docker.internal:11434/v1');
+    component.chooseModel('llama3.3');
+    await component.save();
+    // The protocol has a place for a key, so one is sent that says so.
+    expect(calls['created'][0].api_key).toBe('none');
+  });
+
+  // ── Azure ───────────────────────────────────────────────────────────
+
+  it('asks Azure for an endpoint, a key and a deployment’s name, and nothing from a list', async () => {
+    const component = create();
+    component.providers = [...catalog, { id: 'azure', name: 'Azure', protocol: 'openai',
+      endpoint: 'https://<azure-resource-name>.openai.azure.com/openai/v1', popular: 6 }];
+    component.startCreate();
+    component.selectProvider(component.providers.find((p) => p.id === 'azure')!);
+    await settle();
+
+    expect(component.byDeployment).toBeTrue();
+    expect(component.blanks).toEqual([]);
+    expect(component.blocker).toBe('Paste your Azure endpoint.');
+
+    // A deployment's target URI, as the portal shows it: it names the
+    // deployment too.
+    component.setAzureEndpoint('https://foundry-sara.cognitiveservices.azure.com/openai/'
+      + 'deployments/my-gpt/chat/completions?api-version=2025-01-01-preview');
+    expect(component.azureUnderstood).toBe(
+      'Requests go to https://foundry-sara.cognitiveservices.azure.com/openai/v1');
+    expect(component.draft.model).toBe('my-gpt');
+    expect(component.blocker).toBe('Paste the API key.');
+    component.setKey('az-key');
+    expect(component.blocker).toBe('');
+  });
+
+  it('shows an Azure connection being edited the same three fields', async () => {
+    const component = create();
+    component.startEdit(connection('Azure', { keys: {
+      provider: 'azure', model: 'my-gpt',
+      endpoint: 'https://sara.openai.azure.com/openai/v1',
+    } }));
+    await settle();
+
+    expect(component.byDeployment).toBeTrue();
+    expect(component.draft.endpoint).toBe('https://sara.openai.azure.com/openai/v1');
+    expect(component.draft.model).toBe('my-gpt');
+    expect(component.azureUnderstood).toBe('');
+    expect(component.blocker).toBe('');
+    expect(component.summary(connection('Azure', { keys: {
+      provider: 'azure', model: 'my-gpt', endpoint: 'https://sara.openai.azure.com/openai/v1',
+    } }))).toContain('deployment my-gpt');
   });
 
   it('lets a model the list does not have be typed, and goes back to the list', async () => {
@@ -177,7 +278,7 @@ describe('ModelProvidersComponent', () => {
     expect(component.draft.model).toBe('claude-released-tomorrow');
     component.pickFromList();
     expect(component.typingModel).toBeFalse();
-    expect(component.draft.model).toBe('claude-opus-5-5');
+    expect(component.draft.model).toBe('claude-sonnet-5');
   });
 
   // ── Saving ──────────────────────────────────────────────────────────
@@ -192,7 +293,7 @@ describe('ModelProvidersComponent', () => {
     await component.save();
 
     expect(calls['created'][0]).toEqual(jasmine.objectContaining({
-      name: 'Anthropic', provider: 'anthropic', model: 'claude-opus-5-5',
+      name: 'Anthropic', provider: 'anthropic', model: 'claude-sonnet-5',
       endpoint: 'https://api.anthropic.com', api_key: 'sk-1', check: true,
     }));
     expect(component.editingId).toBeNull();

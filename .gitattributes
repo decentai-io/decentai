@@ -1,12 +1,7 @@
 # Scripts a Mac or Linux runs keep their own line endings wherever they
 # are checked out.
-*.command text eol=lf
 *.sh text eol=lf
 
 *.png binary
 *.ico binary
 *.icns binary
-
-# A release as it was published, kept to check its signature against:
-# the bytes are the thing.
-desktop/src-tauri/tests/* -text

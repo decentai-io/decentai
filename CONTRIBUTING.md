@@ -34,14 +34,13 @@ it deliberately does not do. Comments explain *why*, never *what*.
 
 ## Tests
 
-Five suites, each owning its layer, each run from the repository root.
+Four suites, each owning its layer, each run from the repository root.
 They must all pass before a pull request is reviewed:
 
 ```bash
 python -m pytest ai_runtime/tests -q      # runtime — no database needed
 (cd backend && python -m pytest tests -q)  # backend — needs MongoDB on localhost
 python -m pytest tests -q                  # spanning — both, end to end
-(cd launcher && python -m pytest tests -q) # the desktop launcher and starter
 python -m pytest examples/tests -q         # the Note example, in a real worker
 ```
 

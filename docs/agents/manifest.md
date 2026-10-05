@@ -188,12 +188,20 @@ implementation:
 | Key | Required | Rule |
 |---|---|---|
 | `entrypoint` | yes | `<module>:<ClassName>`, e.g. `agent:NoteAgent`. The module is a file in the agent's folder. |
-| `dependencies` | no | A list of pip requirements: `"humanize>=4.9,<5"`. Installed into an environment of this agent's own. A requirement that begins with `-` (an option such as `--index-url`) is refused. |
+| `dependencies` | no | A list of pip requirements: `"humanize>=4.9,<5"`. Installed into an environment apart from the platform's own; agents that declare the same list share one. A requirement that begins with `-` (an option such as `--index-url`) is refused. |
 
 The SDK (`decentai_sdk`) is always there; do not list it.
 
 A reviewer reads the dependency list before approving, and only that
 list is installed. Pin a range, and list only what the code imports.
+
+Nothing is installed before approval, and your code installs nothing
+itself. Where the platform confines agents, the list is downloaded and
+built by a user of its own that reaches the package index and nothing
+else ([the sandbox](../system/sandbox.md)), so a requirement that names
+an address somewhere else is not fetched. An agent whose dependencies
+cannot be installed does not load: the Agents page shows it as failed,
+with the reason.
 
 ## `network`
 
@@ -333,8 +341,8 @@ It takes two declarations. The agent names the dimension once:
 authorization:
   scopes:
     notebook:
-      type: string                 # the only type in schema 1.0
-      description: Notebook name, such as personal or work.
+      type: string                 # required; the only type in schema 1.0
+      description: Notebook name, such as personal or work.   # required
       normalization: lowercase     # optional: lowercase or uppercase
 ```
 
@@ -393,7 +401,10 @@ Every resource has:
 | `user_access` | no | What a person may do **directly**, from the records page, with no agent in the loop. Data: `create`, `update`. Files: `create`. Secrets: none. |
 
 `read`, `list` and `delete` are never declarable in `user_access`: the
-owner always sees and may always delete their own records.
+owner always sees and may always delete their own records. What a person
+writes directly is checked against `fields` exactly as your agent's own
+writes are, so your code never reads back a record of a shape the
+manifest did not declare.
 
 `family` is refused on any resource: a credential is granted to an
 agent, never claimed by naming a shared slug.
@@ -406,6 +417,9 @@ fields:
   - {name: status,    label: Status, type: select, storage: keys,   options: [open, done]}
   - {name: api_token, label: Token,  type: secret, storage: values, required: true}
 ```
+
+A data resource, and a secret without an `oauth` block, declares at
+least one field.
 
 | Key | Rule |
 |---|---|
@@ -457,7 +471,10 @@ means migrating whatever is already stored under the old answer.
 
 A secret is the credential an agent needs, by shape. It never names a
 stored credential: installing derives a slot private to this agent, and
-which saved credential answers it is a person's **grant**.
+which saved credential answers it is a person's **grant**. A saved
+credential is offered to a slot only where its fields match the slot's
+exactly, so one key for several agents is filled in once and then
+granted to each.
 
 A secret is either **typed** or **connected**, and the manifest decides
 which.
@@ -698,7 +715,8 @@ each reaches further than a reviewer would otherwise assume:
   install the packages it named (`call.install`).
 - **`watch: true`** — the function the platform calls, without the
   model, when the person opens your agent's screen from the chat's
-  header (`call.screen`).
+  header (`call.screen`). One per agent: where several declare it, the
+  first is the one called.
 
 Most agents need none of them.
 
@@ -722,7 +740,8 @@ reviewer cannot read at a glance is one nobody checks.
   `format`, `minItems`, `maxItems`, `minProperties`, and anything
   beginning `x-`.
 - Refused: `$ref`, `$defs`, `if`/`then`/`else`, `allOf`, `anyOf`,
-  `oneOf`, `not`.
+  `oneOf`, `not`, and any keyword not listed above. `description` is
+  one: a hint about an input goes in the function's description.
 - Types: `object`, `array`, `string`, `number`, `integer`, `boolean`,
   `null`, or a list of them.
 

@@ -565,8 +565,8 @@ MICROSOFT = {
 
 @pytest.fixture()
 def desktop(app):
-    """The deployment as the launcher makes it: on one person's own
-    computer."""
+    """The deployment as bootstrap/setup.py makes it: on one person's
+    own computer."""
     import dataclasses
 
     from server.setup.app_state import get_state
@@ -586,7 +586,7 @@ class TestWhatADeploymentIs:
         assert Settings.from_env().deployment_kind == "web"
         assert Settings.from_env().is_desktop is False
 
-    def test_the_launcher_says_desktop(self, monkeypatch):
+    def test_one_on_a_persons_own_computer_says_desktop(self, monkeypatch):
         from server.setup.app_settings import Settings
 
         monkeypatch.setenv("DEPLOYMENT_KIND", " Desktop ")

@@ -35,7 +35,7 @@ class McpController(ResourceController):
     NAME_MAX = 80
     HEADER_NAME_MAX = 80
     HEADER_VALUE_MAX = 4000
-    #: The scale every function is priced on (docs/reference/agent-manifest.md).
+    #: The scale every function is priced on (docs/agents/manifest.md).
     LEVELS = (0, 1, 2, 3)
     #: Where a tool starts: an action that leaves the platform.
     DEFAULT_LEVEL = 3

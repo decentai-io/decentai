@@ -1,0 +1,212 @@
+<!-- A tab of the Settings page: the page owns the header. -->
+<div class="data-page">
+  <nav class="settings-tabs" role="tablist" aria-label="Monitoring views">
+    <button class="settings-tab" type="button" role="tab"
+            [class.on]="view === 'agents'" [attr.aria-selected]="view === 'agents'"
+            (click)="select('agents')">
+      <lucide-icon name="gauge" [size]="15"></lucide-icon>
+      Agents
+    </button>
+    <button class="settings-tab" type="button" role="tab" *ngIf="canSeeEvents"
+            [class.on]="view === 'events'" [attr.aria-selected]="view === 'events'"
+            (click)="select('events')">
+      <lucide-icon name="scroll-text" [size]="15"></lucide-icon>
+      Events
+    </button>
+    <button class="settings-tab" type="button" role="tab" *ngIf="canSeeEvents"
+            [class.on]="view === 'connections'" [attr.aria-selected]="view === 'connections'"
+            (click)="select('connections')">
+      <lucide-icon name="network" [size]="15"></lucide-icon>
+      Connections
+    </button>
+  </nav>
+
+  <div class="data-alert error" *ngIf="error">{{ error }}</div>
+
+  <!-- ── What the agents use now ─────────────────────────────────── -->
+  <section class="panel" *ngIf="view === 'agents'">
+    <div class="data-loading" *ngIf="loadingUsage">
+      <span class="ui-spinner" role="status" aria-label="Loading"></span>
+      <span>Asking what the agents use…</span>
+    </div>
+
+    <ng-container *ngIf="usage as u">
+      <ng-container *ngIf="u.services.length">
+        <div class="panel-head">
+          <div>
+            <h2>The platform</h2>
+            <p>What each part holds now, as it read of its own container.</p>
+          </div>
+        </div>
+        <ul class="mon-agents mon-services">
+          <li class="mon-agent mon-agent-head" aria-hidden="true">
+            <span>Part</span><span>Memory</span><span>Processor</span><span></span><span>On disk</span><span></span>
+          </li>
+          <li *ngFor="let service of u.services; trackBy: byService">
+            <div class="mon-agent">
+              <span class="mon-name">{{ service.name }}</span>
+              <span class="mon-memory">
+                {{ service.memory == null ? "—" : bytes(service.memory) }}<span class="mon-of" *ngIf="service.memory_limit"> of {{ bytes(service.memory_limit) }}</span>
+                <span class="mon-bar" *ngIf="fullnessOf(service) != null" role="img"
+                      [attr.aria-label]="fullnessOf(service) + '% of what it is given'">
+                  <span [style.width.%]="fullnessOf(service)" [class.high]="fullnessOf(service)! >= 90"></span>
+                </span>
+              </span>
+              <span>{{ service.cpu == null ? "—" : processors(service.cpu) }}</span>
+              <span></span>
+              <span>{{ service.disk == null ? "—" : bytes(service.disk) }}</span>
+              <span></span>
+            </div>
+          </li>
+        </ul>
+        <div class="panel-head sub">
+          <div>
+            <h2>The agents</h2>
+            <p>What they are given together, and what each running agent holds.</p>
+          </div>
+        </div>
+      </ng-container>
+
+      <div class="empty-state" *ngIf="!u.counted">
+        <span class="empty-mark"><lucide-icon name="gauge" [size]="22"></lucide-icon></span>
+        <strong>Not counted here</strong>
+        <p>Agents have no container of their own in this install, so nothing adds up what each one uses.</p>
+      </div>
+
+      <ng-container *ngIf="u.counted">
+        <div class="mon-given">
+          <div class="mon-stat">
+            <span class="mon-key">Memory the agents are given</span>
+            <strong>{{ u.limits.memory ? bytes(u.limits.memory) : "No limit" }}</strong>
+          </div>
+          <div class="mon-stat">
+            <span class="mon-key">Memory they hold now</span>
+            <strong>{{ u.memory == null ? "Unknown" : bytes(u.memory) }}</strong>
+            <span class="mon-bar" *ngIf="fullness != null" role="img"
+                  [attr.aria-label]="fullness + '% of what they are given'">
+              <span [style.width.%]="fullness" [class.high]="fullness >= 90"></span>
+            </span>
+          </div>
+          <div class="mon-stat">
+            <span class="mon-key">Processors they are given</span>
+            <strong>{{ u.limits.cpus ? u.limits.cpus : "No limit" }}</strong>
+          </div>
+        </div>
+
+        <ul class="mon-warnings" *ngIf="notHeld.length">
+          <li *ngFor="let line of notHeld">
+            <lucide-icon name="shield-check" [size]="14"></lucide-icon>{{ line }}
+          </li>
+        </ul>
+
+        <div class="empty-state" *ngIf="!u.agents.length">
+          <span class="empty-mark"><lucide-icon name="gauge" [size]="22"></lucide-icon></span>
+          <strong>No agent is running</strong>
+          <p>An agent starts when a chat first calls it, and is listed here while it runs.</p>
+        </div>
+
+        <ul class="mon-agents" *ngIf="u.agents.length">
+          <li class="mon-agent mon-agent-head" aria-hidden="true">
+            <span>Agent</span><span>Memory</span><span>Processor</span><span>Processes</span><span>On disk</span><span></span>
+          </li>
+          <li *ngFor="let agent of u.agents; trackBy: byAgent">
+            <div class="mon-agent">
+              <span class="mon-name">{{ agent.name }}</span>
+              <span class="mon-memory">
+                {{ bytes(agent.memory) }}
+                <span class="mon-bar" *ngIf="share(agent) != null" role="img"
+                      [attr.aria-label]="share(agent) + '% of what the agents are given'">
+                  <span [style.width.%]="share(agent)"></span>
+                </span>
+              </span>
+              <span>{{ processors(agent.cpu) }}</span>
+              <span>{{ agent.processes }}</span>
+              <span>{{ agent.disk == null ? "—" : bytes(agent.disk) }}</span>
+              <span class="mon-actions">
+                <button class="btn ghost" type="button" *ngIf="canSeeFiles"
+                        (click)="toggleFiles(agent)" [attr.aria-expanded]="filesOf === agent.agent">
+                  <lucide-icon name="folder-open" [size]="14"></lucide-icon>
+                  Files
+                </button>
+              </span>
+            </div>
+            <div class="mon-files" *ngIf="filesOf === agent.agent">
+              <div class="data-loading" *ngIf="loadingFiles">
+                <span class="ui-spinner" role="status" aria-label="Loading"></span>
+                <span>Listing what it keeps…</span>
+              </div>
+              <ng-container *ngIf="files as f">
+                <p class="mon-files-note" *ngIf="f.note">{{ f.note }}</p>
+                <p class="mon-files-note" *ngIf="!f.note && !f.count">It keeps no files now. An agent's folder is emptied each time it starts.</p>
+                <p class="mon-files-note" *ngIf="f.count">
+                  {{ f.count }} {{ f.count === 1 ? "file" : "files" }}, {{ bytes(f.bytes) }}<span *ngIf="f.count > f.files.length">; the first {{ f.files.length }} are listed</span>.
+                </p>
+                <ul class="mon-file-rows" *ngIf="f.files.length">
+                  <li *ngFor="let file of f.files">
+                    <code>{{ file.path }}</code>
+                    <span>{{ bytes(file.bytes) }}</span>
+                    <span>{{ when(file.modified) }}</span>
+                  </li>
+                </ul>
+              </ng-container>
+            </div>
+          </li>
+        </ul>
+      </ng-container>
+    </ng-container>
+  </section>
+
+  <!-- ── What was seen of them ───────────────────────────────────── -->
+  <section class="panel" *ngIf="view !== 'agents'">
+    <form class="audit-filters" (ngSubmit)="reload()">
+      <select class="txt sel" [(ngModel)]="agent" name="agent" aria-label="Agent">
+        <option value="">Every agent</option>
+        <option *ngFor="let choice of agentChoices" [value]="choice.value">{{ choice.label }}</option>
+      </select>
+      <select class="txt sel" *ngIf="view === 'events'" [(ngModel)]="kind" name="kind" aria-label="Kind of event">
+        <option *ngFor="let choice of kinds" [value]="choice.value">{{ choice.label }}</option>
+      </select>
+      <label class="mon-check" *ngIf="view === 'connections'">
+        <input type="checkbox" [(ngModel)]="refusedOnly" name="refusedOnly" />
+        Refused or not reached only
+      </label>
+      <button class="btn primary" type="submit" [disabled]="loading">Apply</button>
+      <button class="btn ghost" type="button" *ngIf="filtered" (click)="clearFilters()" [disabled]="loading">Clear</button>
+    </form>
+
+    <div class="data-loading" *ngIf="loading">
+      <span class="ui-spinner" role="status" aria-label="Loading"></span>
+      <span>Reading what was written down…</span>
+    </div>
+
+    <div class="empty-state" *ngIf="!loading && !shown.length">
+      <span class="empty-mark"><lucide-icon [name]="view === 'connections' ? 'network' : 'scroll-text'" [size]="22"></lucide-icon></span>
+      <strong>{{ filtered ? "Nothing matches" : "Nothing written down yet" }}</strong>
+      <p *ngIf="view === 'connections'">Every connection an agent asks for is listed here, made or refused. What it carried is never read.</p>
+      <p *ngIf="view === 'events'">What the platform does to an agent, and what the agent does, appears here as it happens.</p>
+    </div>
+
+    <ul class="audit-rows" *ngIf="!loading && shown.length">
+      <li class="audit-row" *ngFor="let event of shown" [class.open]="isOpen(event)">
+        <button class="audit-head" type="button" (click)="toggle(event)" [attr.aria-expanded]="isOpen(event)">
+          <span class="audit-when">{{ when(event.at) }}</span>
+          <span class="audit-chip" [ngClass]="'tone-' + tone(event)">{{ chip(event) }}</span>
+          <span class="audit-main">
+            <span class="audit-label">{{ label(event) }}</span>
+            <span class="audit-summary">{{ summary(event) }}</span>
+          </span>
+          <lucide-icon class="audit-caret" [name]="isOpen(event) ? 'chevron-up' : 'chevron-down'" [size]="16"></lucide-icon>
+        </button>
+        <div class="audit-body" *ngIf="isOpen(event)">
+          <pre class="audit-json">{{ details(event) }}</pre>
+        </div>
+      </li>
+    </ul>
+
+    <div class="audit-more" *ngIf="!loading && nextBefore != null">
+      <button class="btn" type="button" (click)="loadMore()" [disabled]="loadingMore">
+        {{ loadingMore ? "Loading…" : "Load older" }}
+      </button>
+    </div>
+  </section>
+</div>

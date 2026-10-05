@@ -94,12 +94,23 @@ you do:
 
 ## A DecentAI of your own
 
-Install DecentAI on your computer. Then hand it the folder you write
-agents in, and its git repositories become agent sources — no push, no
-account anywhere:
+Run DecentAI on your computer ([quickstart](../quickstart.md)). Then
+hand it the folder you write agents in, and its git repositories become
+agent sources — no push, no account anywhere. Beside
+`docker-compose.yml`, in a file named `docker-compose.override.yml`,
+which Compose reads by itself and git ignores:
 
-```bat
-DecentAI.cmd develop C:\Users\you\agents
+```yaml
+services:
+  backend:
+    environment:
+      AGENT_SOURCE_FOLDER: /develop
+    volumes:
+      - /home/you/agents:/develop:ro      # C:/Users/you/agents on Windows
+```
+
+```bash
+docker compose --env-file deploy.env up -d backend
 ```
 
 DecentAI now reads that folder, and only that folder, as `/develop`.
@@ -120,10 +131,9 @@ else. So the loop is:
 Bump `agent.version` whenever the manifest changes: a version, once
 approved, is never approved again with other content.
 
-`DecentAI.cmd develop` alone says which folder is handed over;
-`DecentAI.cmd develop off` takes it back. The folder is read, never
-written, and a DecentAI that was not handed a folder takes sources from
-repository addresses only.
+Deleting the file and starting the backend again takes the folder
+back. The folder is read, never written, and a DecentAI that was not
+handed a folder takes sources from repository addresses only.
 
 In a chat, your agent runs as every agent does: confined, reaching only
 the hosts its manifest declares. What it cannot reach, or what the

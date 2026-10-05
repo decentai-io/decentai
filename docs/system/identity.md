@@ -332,7 +332,7 @@ proves who the person is and opens nothing: signing in with it is answered
 `change_required` and no session, and the person chooses their own
 (`POST /auth/password/first`, which asks for the handed-over one again)
 before their first session exists. An administrator's own forgotten
-password is reset from the desktop app, on the computer itself.
+password is reset on the computer itself (`bootstrap/reset_password.py`).
 
 **Password.** Passwords are stored as a slow one-way hash, deliberately
 expensive to compute, over a fixed-length digest of the password — so that
@@ -364,8 +364,8 @@ how they would have kept access. Requesting a reset answers identically
 whether or not the address has an account, in the same time — the mail
 leaves on a thread of its own — and the link itself travels by email and
 nowhere else. Where no mail server is set, no link is made at all: the
-answer says how this install resets a password instead (the starter's
-`reset-password` on a desktop, whoever runs it on a server).
+answer says how this install resets a password instead
+(`bootstrap/reset_password.py` on a desktop, whoever runs it on a server).
 
 **Failed attempts.** Sign-in attempts are counted in a fifteen-minute
 window: a handful of wrong passwords locks that account briefly, and a

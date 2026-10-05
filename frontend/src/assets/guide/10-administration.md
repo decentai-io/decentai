@@ -46,6 +46,7 @@ Actions worth knowing when writing a policy:
 | `secrets:secret:set_owner_any` | Sharing credentials organization-wide and maintaining others' |
 | `data:record:set_owner_any` | The same for records |
 | `ai:audit:list_all` | Reading the organization's whole audit trail |
+| `agents:monitor:usage`, `agents:monitor:events`, `agents:monitor:files` | Seeing what agents use and what was seen of them, on **Settings → Monitoring** |
 | `settings:llm:create` | Adding language-model connections |
 | `skills:skill:create` | Writing skills for everyone |
 
@@ -80,6 +81,19 @@ On your own computer the form asks for less. An app registered for a person's co
 A looser choice applies only to code the assistant read and found to do what it says: code that does more, or that it could not read, is always shown. What ran without a card is said in the chat with its code, and the **Audit** trail says the setting allowed it.
 
 The trail also says where each call connected: an entry for a function that ran names the sites its agent reached, and how many more. The platform sees names, never what was sent.
+
+## Monitoring
+
+**Settings → Monitoring** shows what your organization's agents use and what was seen of them. Administrators see it; anyone else needs the `agents:monitor` actions. Nothing on the page changes anything.
+
+- **The platform.** On an install that is one organization's, what each part holds now: the backend, the runtime, the agents' container and the database, with what the database keeps on disk.
+- **Agents.** How much memory and how many processors the agents are given together, how much they hold now, and for each running agent its memory, its share of the processor, how many processes it runs and how much it keeps on disk. **Files** lists what an agent keeps in its own folder. An agent is listed only while it runs: it starts when a chat first calls it.
+- **Events.** When each agent started and ended and why, each line it wrote to its log, each process it started, and each job the platform did to it. Choose an agent or a kind to narrow the list.
+- **Connections.** Every connection an agent asked for, made or refused, with the site, how much was sent and received, and why one was refused.
+
+What a connection carried is never read: the platform sees a site's name and how many bytes passed. A process that lasted under a second can be missed. An agent's own log is the agent's to write, so read an agent's code before approving it.
+
+The agents are given memory together, not each. When they run out, the agent holding most is ended, the chat it was working for says so, and this page shows it as **ended for memory**. How much they are given is set where DecentAI is started: `AGENTS_MEMORY` and `AGENTS_CPUS` in its `deploy.env`.
 
 ## Operating
 

@@ -567,6 +567,10 @@ ACTION_CATALOG: Dict[str, Dict[str, Any]] = {
         "actions": {
             "ai:state:get": "Your assistant reads its own mind back",
             "ai:state:save": "Your assistant persists its mind, every beat",
+            "ai:state:transcript": (
+                "Read what the assistant of your own chat was told and "
+                "what it decided"
+            ),
         },
     },
     "ai:activity": {
@@ -721,6 +725,21 @@ ACTION_CATALOG: Dict[str, Dict[str, Any]] = {
                 "Let several installed agents use one of your "
                 "credentials at once"
             ),
+        },
+    },
+    "agents:monitor": {
+        "label": "Monitoring agents",
+        "actions": {
+            "agents:monitor:usage": (
+                "See how much memory and processor each running agent "
+                "uses, and what the agents are given"
+            ),
+            "agents:monitor:events": (
+                "Read what was seen of agents' processes: when each "
+                "started and ended, its log, every connection it made "
+                "or was refused, the processes it started"
+            ),
+            "agents:monitor:files": "See the files an agent keeps",
         },
     },
     "ai:audit": {

@@ -500,6 +500,16 @@ class UserStore(OrgScopedStore):
                     ).get("defaults") or {}
         return str(defaults.get(str(family)) or "")
 
+    def set_email(self, user_id: str, email: str) -> None:
+        """The address a person signs in with. The caller has checked
+        that nobody else has it."""
+        access_cache.drop_user(user_id)
+        self.col.update_one(
+            {"_id": user_id},
+            {"$set": {"email": self.normalize_email(email),
+                      "updated_at": utc_now()}},
+        )
+
     def set_password(self, user_id: str, password_hash: str,
                      must_change: bool = False) -> None:
         """A new password. ``must_change`` says somebody else chose it —

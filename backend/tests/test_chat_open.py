@@ -88,6 +88,27 @@ class TestTheContract:
         assert contract["llm"] is None
         assert "no longer available" in contract["llm_missing"]
 
+    def test_a_chat_whose_connection_is_gone_carries_on_with_the_default(
+        self, admin, seed
+    ):
+        """Deleting a connection does not leave its chats without a
+        model while the person has another: they carry on with the one
+        a new chat of theirs would start with."""
+        gone = make_connection(admin).json()["connection"]["resource_ref"]
+        chat = open_chat(admin, config={"llm": {
+            "provider": "anthropic", "model": "claude-sonnet-5",
+            "secret_ref": gone,
+        }}).json()["data"]["chat"]
+        kept = make_connection(
+            admin, name="Another").json()["connection"]["resource_ref"]
+        assert app_call(admin, "Settings:Llm:Delete", {
+            "connection_id": gone}).status_code == 200
+
+        contract = open_chat(
+            admin, chat_id=chat["chat_id"]).json()["data"]["contract"]
+        assert contract["llm"]["secret_ref"] == kept
+        assert "llm_missing" not in contract
+
     def test_a_blockless_provider_is_served_as_written(self, admin, seed):
         """The scripted connector carries no secret_ref and must pass."""
         chat_id = open_chat(admin, config={"llm": {

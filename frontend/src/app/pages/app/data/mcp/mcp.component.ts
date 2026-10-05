@@ -32,7 +32,7 @@ export class McpComponent extends DataPageBase implements OnInit {
   readonly levels: Level[] = [
     { value: 0, label: 'Reads', help: 'Changes nothing.' },
     { value: 1, label: 'Changes', help: 'An ordinary change.' },
-    { value: 2, label: 'Changes, sandboxed', help: 'A change with wider reach.' },
+    { value: 2, label: 'Wider changes', help: 'A change with wider reach, still inside the platform.' },
     { value: 3, label: 'Acts outside', help: 'Sends, posts, buys: leaves the platform.' },
   ];
 

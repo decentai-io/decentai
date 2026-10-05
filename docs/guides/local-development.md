@@ -107,4 +107,4 @@ find out.
 | the chat session and door | `ai_runtime/chat/`, `ai_runtime/server/` |
 | the manifest contract | `contracts/`, `decentai_sdk/manifest.py` |
 | pages | `frontend/src/app/pages/`, services in `frontend/src/app/services/` |
-| the desktop install | `launcher/` (the launcher container), `launcher/starter/windows/` |
+| setting it up on a computer | `bootstrap/setup.py`, `docker-compose.yml`, `deploy.env.example` |

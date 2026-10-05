@@ -62,6 +62,13 @@ RUN sed 's/\r$//' ai_runtime/start.sh > /usr/local/bin/decentai-runtime-start \
 # pulls each one again, by its digest, when a chat next names it.
 ENV AI_RUNTIME_AGENTS_INSTALL_DIR=/data/agents
 
+# How the containers this image runs in are laid out, said to whatever
+# starts them from the image alone, without the compose file beside
+# it: 2 is agents in a container of their own, this image started a
+# second time as the spawner (docker-compose.yml). An image that says
+# nothing is from before that.
+LABEL io.decentai.layout="2"
+
 EXPOSE 8001
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
     CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/internal/health/live', timeout=4)"]

@@ -18,8 +18,8 @@ A sandboxed agent:
 
 ## Where it holds
 
-In an install made by [the launcher](desktop-install.md) all four
-parts are enforced: the container's options are the launcher's to set.
+In a stack started from `docker-compose.yml`, all four parts are
+enforced: the containers' options are the Compose file's to set.
 
 A stack started by hand without those options still runs. The runtime
 finds out at start what it can enforce, writes it to its log, and an
@@ -27,19 +27,70 @@ agent's page says plainly what is not enforced where it runs. Started
 outside a container — a developer's own machine — no part is enforced,
 and the runtime says so.
 
+## A container of their own
+
+Agent code runs in a container that holds nothing else: the **agents'
+container**. The runtime decides everything about a worker — which
+code, which user, which environment, when it ends — and starts none of
+them.
+
+    runtime's container                      agents' container
+    ───────────────────                      ─────────────────
+    the assistant, the executor,   ──────▶   the spawner, the spawn helper,
+    the proxy, every decision       socket   every worker, the builder
+
+- **The spawner** (`ai_runtime/agents/spawner_service.py`) is the one
+  process of the platform's in that container. It starts what the
+  runtime asks for and carries a worker's lines to the runtime and
+  back. It decides nothing, and what a worker is entitled to is never
+  said to it: a worker's asks pass through it as lines, and are
+  answered by the runtime.
+- **It is the runtime's image**, started with another command, so the
+  interpreter and the browsers are the same files on both sides.
+- **One volume, at one path, in both**: the store, the environments,
+  and the workers' homes and spools. A path means the same thing on
+  both sides, and only starting a process crosses
+  (`ai_runtime/agents/spawner.py`).
+- **Only the runtime commands the spawner.** Every request carries a
+  key the spawner made at its first start and left on the volume
+  (`spawner.key`), which the platform's user reads and no agent's
+  does.
+- **Its network reaches the runtime and nothing else.** No route leads
+  from it to the internet, the database or the backend, so the
+  runtime's proxy is the only way out whatever a worker does. Workers
+  are pointed at the proxy's port on their own container's address,
+  and the spawner passes what arrives there to the runtime's proxy,
+  unread.
+- **A worker whose runtime hung up is ended**, with everything its
+  user runs. A runtime that died leaves nothing running.
+- **The agents' container holds no setting of the platform's.** What a
+  worker is given, the runtime sends with the order to start it.
+
+What this adds to a user of its own and a fence: an agent cannot see
+the runtime's processes at all, a runaway agent is the agents'
+container's to bear and not the runtime's, and the runtime's container
+is given no right beyond an ordinary container's.
+
+**One container still works.** A runtime not told where the agents'
+container is (`AI_RUNTIME_AGENTS_SPAWNER`) starts workers beside
+itself, as a developer's machine does, and everything below holds in
+that one container.
+
 ## A user of its own — the spawn helper
 
-The runtime is an ordinary user and cannot start a child as somebody
-else. A small program does it, and does nothing else
+The platform's own user is an ordinary one and cannot start a child
+as somebody else. A small program does it, and does nothing else
 (`ai_runtime/agents/spawn_helper.c`, driven by
 `ai_runtime/agents/confinement.py`).
 
-    runtime ──spawns──▶ helper ──becomes──▶ worker   (the agent's user)
+    spawner ──spawns──▶ helper ──becomes──▶ worker   (the agent's user)
 
-The helper is started in place of the worker, with the same pipes. It:
+The helper is started in place of the worker, with the same pipes, by
+whoever starts workers: the spawner, on the runtime's order, or the
+runtime itself where there is one container. It:
 
-1. refuses a caller that is not the runtime, and a user outside the
-   range kept for workers;
+1. refuses a caller that is not the platform's user, and a user
+   outside the range kept for workers;
 2. sets the limits;
 3. gives up the right to gain privileges, for itself and every process
    it will ever start;
@@ -213,6 +264,56 @@ and a worker is kept warm across calls, so a healthy one would be
 ended for having served long enough. The host's clock bounds each
 call.
 
+### What the agents are given together
+
+The agents' container is given so much memory and so much processor by
+whoever starts it: `AGENTS_MEMORY` and `AGENTS_CPUS` in `deploy.env`.
+Unset is no limit. The
+engine holds the container to both, and neither is a manifest's to ask
+for.
+
+- **Processor** is shared: at the limit the agents are slowed
+  together, and none is ended.
+- **Memory** cannot be slowed, only refused. At the limit the kernel
+  ends a process of its own choosing, which need not be the one that
+  took the memory. So the spawner looks every second at what each
+  agent holds, and when the agents together hold nine tenths of what
+  they are given it ends the agent holding most, with everything its
+  user runs (`ai_runtime/agents/usage.py`,
+  `SpawnerService._hold_to_what_is_given`).
+
+Every agent is a user of its own, so an agent's share is what its
+user's processes hold that is theirs alone. What they share with every
+other process — the interpreter, a browser's own code — is charged to
+none of them.
+
+**The call it was serving is told why**, in words for the person:
+*Browser was ended because the agents ran out of memory: it was using
+1.9 GB, the most of any agent, of the 2.0 GB the agents are given
+together.* Where the kernel was faster, a worker found killed in the
+moments after is told of as ended by the system. Either way the next
+call starts a fresh worker.
+
+The spawner answers, to the runtime, what the container is given and
+what each running agent uses now: memory, share of the processor, how
+many processes, and what it keeps on disk (`usage`).
+
+**What an agent keeps on disk is measured by its own user.** Its home
+is its user's alone to read, so nobody else can add it up. The runtime
+hands the spawner, with the order to start a worker, the line that
+measures that agent's home and spool as the agent's user
+(`WorkerPlace.measure_line`), and the spawner runs it every half
+minute while the worker runs. It measures and ends; the worker is left
+as it is. The number is counted, and held to no limit.
+
+**What an agent left behind is collected.** A process whose parent
+ended becomes the spawner's child, and once over stays in the kernel's
+table, counted against its user's limit on processes, until it is
+waited for. The spawner waits for each.
+
+In one container, where the runtime starts workers itself, none of
+this runs: the container's limits are the runtime's too.
+
 ## The network
 
 ### The manifest names the hosts
@@ -318,6 +419,10 @@ in the audit trail names where its worker connected while it ran
 ([Safety](safety.md)). Names and counts only: the proxy never sees
 what is sent.
 
+**Every connection is written down**, made or refused, with whose it
+was, where to, how many bytes went each way and how long it lasted;
+refused, why ([what is written down](monitoring.md)).
+
 **Verifying a package admits nothing.** Verification imports the code,
 and code that connects as it is imported is not waiting to be asked.
 
@@ -332,23 +437,31 @@ chats to serve.
 
 ### A firewall rule leaves the proxy as the only way out
 
-Set by `ai_runtime/start.sh`, the image's first step. For every user
-in the workers' range, a connection to the proxy is accepted and every
-other connection is refused — another port of this machine, the
-internet, and looking a name up. Code that ignores the proxy reaches
-nothing. Nobody else in the container is touched by the rule.
+Set by `ai_runtime/start.sh`, the image's first step, in the container
+workers run in. For every user in the workers' range, a connection to
+the proxy's port on the container's own address is accepted and every
+other connection is refused — another port of the container, the
+spawner's among them, another agent's, the internet, and looking a
+name up. Code that ignores the proxy reaches nothing. Nobody else in
+the container is touched by the rule.
+
+In the agents' container the network already leads nowhere but the
+runtime. The rule is what keeps one agent from another inside it — a
+browser's own port, a server a worker started — and from the spawner.
 
 The rule is set when the container starts, as root, by the one step
-that holds the right to set it. The runtime is then started as its own
-ordinary user, with that right removed from everything it will ever
-start. Compose and the launcher grant the container the right
-(`NET_ADMIN`); it applies inside the container's own network and gives
-nothing over the person's machine. A shell opened in the container is
+that holds the right to set it. What follows is started as the
+platform's own ordinary user, with that right removed from everything
+it will ever start. The Compose file grants the agents'
+container the right (`NET_ADMIN`); it applies inside the container's
+own network and gives nothing over the person's machine. The runtime's
+container is given no such right. A shell opened in a container is
 therefore root's.
 
-**Where the right was not given** the runtime starts all the same. It
-tries, as a worker would, to reach a port of its own that nothing but
-the rule stands in front of, and says what it found.
+**Where the right was not given** the stack starts all the same. The
+runtime tries, as a worker would, to reach a port where workers run
+that nothing but the rule stands in front of — the spawner's own — and
+says what it found.
 
 ### An agent that looks names up itself
 
@@ -366,10 +479,11 @@ the proxy, and how to tell.
 
 ## The runtime's own settings
 
-The runtime is handed its settings by name (`docker-compose.yml`,
-`launcher/compose.yml`): the database's password, the encryption keys
-and the backend's private key never reach the container where agent
-code runs. The person still fills in one file.
+The runtime is handed its settings by name (`docker-compose.yml`):
+the database's password, the encryption keys
+and the backend's private key never reach it. The agents' container,
+where agent code runs, is handed none of the platform's settings at
+all. The person still fills in one file.
 
 ## What the runtime says at start
 
@@ -405,18 +519,26 @@ enforced in this install; and nothing to configure.
   host; what it sends there is its own doing. Reading the manifest and
   the code before approving is the answer to that.
 - **It does not replace the container.** The container is what stands
-  between the platform and the person's machine.
-- **Memory is the container's.** A limit on address space breaks a
-  browser, so an agent's memory is bounded by the container's.
+  between the platform and the person's machine, and containers on one
+  machine share its kernel: a flaw in the kernel is a way out of both.
+- **Memory is not given per agent.** A limit on address space breaks a
+  browser, so the agents are given memory together, and one agent can
+  use what another needs until the one holding most is ended. Between
+  two looks, a second apart, an agent can take memory faster than it
+  is ended; then the kernel chooses.
+- **What an agent keeps on disk is counted and not limited.** The size
+  of one file is limited; how much an agent writes in all is not. The
+  count is half a minute old at most.
 - **Disk in total is not limited.** The size of one file is; the total
   an agent writes is not.
 - **A package's `.pth` file** runs a line of its own whenever the
   environment's interpreter starts — always as a worker or the
   builder, confined. The runtime never starts that interpreter once a
   package is in it: what it unpacks, it unpacks with its own.
-- **It does not hide that other processes exist.** A worker can list
-  them and read how they were started; a secret never belongs on a
-  command line.
+- **It does not hide that other agents' processes exist.** A worker
+  can list the processes of its container — the spawner's and other
+  agents', never the runtime's — and read how they were started; a
+  secret never belongs on a command line.
 - **A worker's own processes cannot talk to each other over this
   machine's address**: the firewall refuses that like any other
   connection, so a program that needs it does not work confined.
@@ -436,3 +558,14 @@ enforced in this install; and nothing to configure.
   environment, reaches the index and no other host, and is ended when
   it does not end. It runs where the helper is — inside the runtime's
   image — and is skipped everywhere else; the file says how to run it.
+- `ai_runtime/tests/test_spawner.py` — the spawner itself, with a real
+  worker started through it; runs anywhere.
+- `ai_runtime/tests/test_spawner_live.py` — the same hostile agent,
+  with the runtime in one container and the agent in the other: it is
+  its own user there, cannot read the spawner's key or reach the
+  spawner, reaches a declared host through both containers, and is
+  ended when the runtime hangs up. It runs in a stack of the two
+  containers (`ai_runtime/tests/spawner-live.compose.yml`); the file
+  says how. It passes on Docker and on rootless Podman: there too the
+  agents' container is given its limits, sets its firewall rule, and
+  reaches the runtime and nothing else.

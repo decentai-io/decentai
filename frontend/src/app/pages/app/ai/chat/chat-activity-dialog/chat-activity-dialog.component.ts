@@ -1,7 +1,9 @@
 import { Component, Inject, OnInit } from '@angular/core';
 import { MAT_DIALOG_DATA, MatDialogRef } from '@angular/material/dialog';
 
-import { AiSessionService } from 'src/app/services/ai-session.service';
+import {
+  AiSessionService, AssistantTranscript, TranscriptEntry,
+} from 'src/app/services/ai-session.service';
 import { auditLabel, auditSummary, auditTone, durationLabel } from './audit-words';
 
 /** A stored result opened from an execution's row. */
@@ -22,6 +24,11 @@ interface ResultView {
  * This is where a person reads it, oldest first, each row opening to
  * what it holds and, for a function that returned something, the
  * result itself.
+ *
+ * Beside it, "The assistant": what the model of this chat was shown and
+ * what it answered, in order — its instructions, each thing that
+ * arrived, each action it chose. The person's own, read from the
+ * assistant's kept state; nothing in it can be changed here.
  */
 @Component({
   selector: 'app-chat-activity-dialog',
@@ -34,6 +41,11 @@ interface ResultView {
 })
 export class ChatActivityDialogComponent implements OnInit {
   loading = true;
+  view: 'record' | 'assistant' = 'record';
+  /** What the assistant was shown: read the first time it is asked for. */
+  transcript: AssistantTranscript | null = null;
+  loadingTranscript = false;
+  openTurns = new Set<number>();
   events: any[] = [];
   expanded = new Set<string>();
   results: Record<string, ResultView> = {};
@@ -52,6 +64,72 @@ export class ChatActivityDialogComponent implements OnInit {
       this.events = (await this.aiSession.listAudit(chatId)).slice().reverse();
     }
     this.loading = false;
+  }
+
+  // ── The assistant ────────────────────────────────────────────────────
+
+  async show(view: 'record' | 'assistant'): Promise<void> {
+    this.view = view;
+    if (view !== 'assistant' || this.transcript || this.loadingTranscript) return;
+    const chatId = this.data?.chat_id;
+    if (!chatId) return;
+    this.loadingTranscript = true;
+    try {
+      this.transcript = await this.aiSession.transcript(chatId);
+    } finally {
+      this.loadingTranscript = false;
+    }
+  }
+
+  /** The action the model chose, where an entry is one. */
+  private action(entry: TranscriptEntry): any | null {
+    if (entry.role !== 'assistant') return null;
+    try {
+      const parsed = JSON.parse(entry.content);
+      return parsed && typeof parsed === 'object' ? parsed : null;
+    } catch {
+      return null;
+    }
+  }
+
+  turnChip(entry: TranscriptEntry): string {
+    return entry.role === 'system' ? 'instructions'
+      : entry.role === 'assistant' ? 'decided' : 'told';
+  }
+
+  turnTone(entry: TranscriptEntry): string {
+    return entry.role === 'assistant' ? 'ok'
+      : entry.role === 'system' ? 'live' : 'muted';
+  }
+
+  /** One line for the row: the action and what it was aimed at, or the
+   *  first line of what the model was told. */
+  turnSummary(entry: TranscriptEntry): string {
+    const action = this.action(entry);
+    if (action) {
+      const kind = String(action.action || 'answered');
+      const aimed = action.function || action.agent || action.skill
+        || action.text || action.goal || '';
+      const rest = String(aimed).replace(/\s+/g, ' ').trim();
+      return rest ? `${kind}: ${rest.slice(0, 140)}` : kind;
+    }
+    if (entry.role === 'system') return 'What the assistant is and how it works';
+    const first = entry.content.split('\n').find((line) => line.trim()) || '';
+    return first.trim().slice(0, 160) || '(nothing)';
+  }
+
+  turnText(entry: TranscriptEntry): string {
+    const action = this.action(entry);
+    return action ? JSON.stringify(action, null, 2) : entry.content;
+  }
+
+  toggleTurn(entry: TranscriptEntry): void {
+    if (this.openTurns.has(entry.index)) this.openTurns.delete(entry.index);
+    else this.openTurns.add(entry.index);
+  }
+
+  isTurnOpen(entry: TranscriptEntry): boolean {
+    return this.openTurns.has(entry.index);
   }
 
   // ── Counts for the header ────────────────────────────────────────────

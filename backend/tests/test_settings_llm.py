@@ -698,6 +698,106 @@ class TestAskingTheProvider:
         assert saved.json()["check"]["outcome"] == "unknown"
 
 
+class TestAzure:
+    """Azure is called by deployment, at an endpoint of the customer's
+    own: a person pastes what the portal shows and names their
+    deployment, and is told at the form when either is wrong."""
+
+    KEPT = "https://foundry-sara.cognitiveservices.azure.com/openai/v1"
+
+    def test_an_endpoint_pasted_in_any_form_comes_to_the_same_address(self):
+        from contracts.llm_providers import LlmProviders
+
+        for pasted in (
+                "https://foundry-sara.cognitiveservices.azure.com",
+                "https://foundry-sara.cognitiveservices.azure.com/",
+                "foundry-sara.cognitiveservices.azure.com",
+                "https://Foundry-Sara.cognitiveservices.azure.com/openai/v1/",
+                "https://foundry-sara.cognitiveservices.azure.com/openai/deployments/"
+                "gpt-4o/chat/completions?api-version=2025-01-01-preview"):
+            assert LlmProviders.settled("azure", pasted) == self.KEPT, pasted
+        assert LlmProviders.settled(
+            "azure", "https://sara.openai.azure.com/") == "https://sara.openai.azure.com/openai/v1"
+        assert LlmProviders.settled(
+            "azure", "sara.services.ai.azure.com") == "https://sara.services.ai.azure.com/openai/v1"
+
+    def test_a_target_uri_names_the_deployment_too(self):
+        from contracts.llm_providers import LlmProviders
+
+        found = LlmProviders.azure(
+            "https://sara.openai.azure.com/openai/deployments/my-gpt/chat/"
+            "completions?api-version=2025-01-01-preview")
+        assert found == {"endpoint": "https://sara.openai.azure.com/openai/v1",
+                         "deployment": "my-gpt"}
+        assert LlmProviders.azure("https://sara.openai.azure.com")["deployment"] == ""
+
+    def test_a_gateway_of_ones_own_and_another_provider_are_left_as_written(self):
+        from contracts.llm_providers import LlmProviders
+
+        gateway = "https://llm.sara.example/azure"
+        assert LlmProviders.azure(gateway) is None
+        assert LlmProviders.settled("azure", gateway) == gateway
+        # Only Azure's: the same host under another provider is not touched.
+        assert LlmProviders.settled(
+            "openai_compatible", "https://sara.openai.azure.com") == "https://sara.openai.azure.com"
+
+    def test_the_connection_is_kept_with_the_address_requests_go_to(self, admin, seed):
+        saved = make_connection(
+            admin, provider="azure", model="my-gpt",
+            endpoint="https://foundry-sara.cognitiveservices.azure.com/")
+        assert saved.status_code == 200, saved.text
+        connection = saved.json()["connection"]
+        assert connection["keys"]["endpoint"] == self.KEPT
+        # An edit that pastes another form of it settles the same way.
+        updated = app_call(admin, "Settings:Llm:Update", {
+            "connection_id": connection["resource_ref"],
+            "endpoint": "https://sara.openai.azure.com"})
+        assert updated.json()["connection"]["keys"]["endpoint"] == (
+            "https://sara.openai.azure.com/openai/v1")
+
+    def test_the_deployment_itself_is_asked(self, monkeypatch):
+        import httpx
+        from api.services.llm_probe import ProviderProbe
+
+        seen = []
+        TestAskingTheProvider.answering(monkeypatch, lambda request: httpx.Response(
+            200, json={"choices": [{"message": {"content": "Hello"}}]}), seen)
+        answer = ProviderProbe(
+            "azure", "https://foundry-sara.cognitiveservices.azure.com", "az-key",
+            "my-gpt").check()
+        assert answer == {"outcome": "works", "reason": ""}
+        asked = seen[0]
+        assert asked.method == "POST"
+        assert str(asked.url) == self.KEPT + "/chat/completions"
+        assert asked.headers["api-key"] == "az-key"
+        assert b'"model":"my-gpt"' in asked.content.replace(b" ", b"")
+
+    def test_a_deployment_that_is_not_there_is_not_saved_and_is_named(
+            self, admin, seed, monkeypatch):
+        import httpx
+
+        TestAskingTheProvider.answering(monkeypatch, lambda request: httpx.Response(
+            404, json={"error": {"code": "DeploymentNotFound",
+                                 "message": "The API deployment for this resource does not exist."}}))
+        refused = make_connection(
+            admin, provider="azure", model="gpt-6",
+            endpoint="https://foundry-sara.cognitiveservices.azure.com", check=True)
+        assert refused.status_code == 400
+        said = refused.json()["error"]
+        assert "no deployment named 'gpt-6'" in said
+        assert "does not exist" in said
+        assert listed(admin) == []
+
+    def test_a_chat_is_offered_the_deployment_and_no_list_of_models(self, admin, seed):
+        saved = make_connection(
+            admin, provider="azure", model="my-gpt",
+            endpoint="https://sara.openai.azure.com")
+        offered = app_call(admin, "Settings:Llm:Models", {
+            "connection_id": saved.json()["connection"]["resource_ref"]}).json()
+        assert offered["models"] == [{"id": "my-gpt", "name": "my-gpt", "kind": "chat"}]
+        assert offered["live"] is False
+
+
 class TestTheModelsOfAConnection:
     """Settings:Llm:Models — what a chat's picker lists under one
     connection, and what routing and speech choose among."""

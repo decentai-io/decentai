@@ -31,6 +31,11 @@
         open, how often a script or a program is shown to you before it
         runs, and the packages a program may install.
       </p>
+      <p *ngIf="tab === 'monitoring'">
+        What agents use now and what was seen of them: when each started
+        and ended, its log, the processes it started, and every connection
+        it made or was refused. Nothing a connection carried is read.
+      </p>
       <p *ngIf="tab === 'audit'">
         A permanent record of platform changes, access, approvals, and agent activity.
       </p>
@@ -76,6 +81,12 @@
       <lucide-icon name="shield-check" [size]="15"></lucide-icon>
       Safety
     </button>
+    <button class="settings-tab" type="button" role="tab" *ngIf="canSeeMonitoring"
+            [class.on]="tab === 'monitoring'" [attr.aria-selected]="tab === 'monitoring'"
+            (click)="selectTab('monitoring')">
+      <lucide-icon name="activity" [size]="15"></lucide-icon>
+      Monitoring
+    </button>
     <button class="settings-tab" type="button" role="tab" *ngIf="canSeeAudit"
             [class.on]="tab === 'audit'" [attr.aria-selected]="tab === 'audit'"
             (click)="selectTab('audit')">
@@ -96,6 +107,7 @@
   <app-api-keys *ngIf="tab === 'keys'"></app-api-keys>
   <app-connected-apps *ngIf="tab === 'apps'"></app-connected-apps>
   <app-safety *ngIf="tab === 'safety'"></app-safety>
+  <app-monitoring *ngIf="tab === 'monitoring'"></app-monitoring>
   <app-audit *ngIf="tab === 'audit'" [initialView]="auditView"></app-audit>
 
   <ng-container *ngIf="!loading && tab === 'chat'">

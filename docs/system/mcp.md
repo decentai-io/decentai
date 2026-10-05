@@ -38,7 +38,7 @@ Each tool has two things that are the person's to say:
 
 - **Whether it is on.** A tool that is off is not in any chat.
 - **What it costs to call** — its level, on the scale every function is
-  priced on ([agent manifest](../reference/agent-manifest.md)): 0 reads,
+  priced on ([the manifest](../agents/manifest.md)): 0 reads,
   1 changes, 2 changes with wider reach, 3 acts outside the platform. A
   server does not say what its tools do to the world, so each **starts
   at 3**. A chat asks first for any tool priced above its own level, on

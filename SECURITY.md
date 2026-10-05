@@ -21,10 +21,10 @@ read by a function that did not declare it, an approval bypassed, a
 package served that does not hash to its approved digest, a delegation
 used outside its chat, one organization seeing another's records.
 
-Where the platform confines agents — an install made by the launcher,
-or the Compose stack in this repository — each agent runs as a user of its own, reads and writes only its own
-files, and reaches only the hosts its manifest declared, through the
-platform's proxy ([The sandbox](docs/system/sandbox.md)). A way past any
+Where the platform confines agents — the Compose stack in this
+repository — each agent runs as a user of its own, reads and writes
+only its own files, and reaches only the hosts its manifest declared,
+through the platform's proxy ([The sandbox](docs/system/sandbox.md)). A way past any
 of that is in scope too.
 
 ## What is deliberately out of scope
@@ -34,6 +34,6 @@ of that is in scope too.
   declared; what it sends there is its own doing. Reading the manifest
   and the code before approving is the control.
 - **A stack started without confinement.** Where a part of the sandbox
-  does not hold — a stack started by hand without the launcher's
-  options, or outside a container — the runtime says so at start and
+  does not hold — a stack started without what docker-compose.yml
+  gives it, or outside a container — the runtime says so at start and
   an agent's page says what is not enforced there.

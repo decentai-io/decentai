@@ -1,0 +1,44 @@
+/* Monitoring: numbers and a record, both read. The tabs and the rows
+   of what happened are the Audit tab's own (its stylesheet is loaded
+   beside this one); this adds what the agents use now. Tokens come
+   from data-shared.css; nothing hardcodes a colour that cannot follow
+   the theme. */
+
+.mon-given { display:grid; grid-template-columns:repeat(auto-fit, minmax(190px, 1fr)); gap:12px; margin-bottom:16px; }
+.mon-stat { display:flex; flex-direction:column; gap:5px; padding:12px 14px; border:1px solid var(--border-color); border-radius:var(--ui-radius-card); background:var(--surface-subtle); }
+.mon-key { color:var(--muted); font-size:12px; }
+.mon-stat strong { font-size:17px; font-weight:600; font-variant-numeric:tabular-nums; }
+
+.mon-bar { display:block; height:5px; border-radius:var(--ui-radius-pill); background:var(--secondary); overflow:hidden; }
+.mon-bar > span { display:block; height:100%; background:var(--accent); }
+.mon-bar > span.high { background:var(--destructive); }
+
+.mon-warnings { list-style:none; margin:0 0 16px; padding:10px 12px; display:flex; flex-direction:column; gap:6px; border:1px solid color-mix(in srgb, var(--warning) 30%, transparent); border-radius:var(--ui-radius-card); background:var(--warning-bg); color:var(--warning); font-size:var(--ui-text-sm); }
+.mon-warnings li { display:flex; align-items:center; gap:8px; }
+
+.mon-agents { list-style:none; margin:0; padding:0; }
+.mon-agents > li { border-bottom:1px solid var(--border); }
+.mon-agents > li:last-child { border-bottom:none; }
+.mon-agent { display:grid; grid-template-columns:minmax(130px, 2fr) minmax(120px, 2fr) 84px 84px 84px 90px; align-items:center; gap:12px; padding:10px 4px; font-size:13.5px; font-variant-numeric:tabular-nums; }
+.mon-agent-head { color:var(--muted); font-size:12px; padding-top:4px; padding-bottom:6px; }
+.mon-name { font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.mon-memory { display:flex; flex-direction:column; gap:5px; }
+.mon-actions { display:flex; justify-content:flex-end; }
+.mon-actions .btn { padding:4px 9px; font-size:12px; }
+
+.mon-files { padding:2px 4px 14px; }
+.mon-files-note { margin:0 0 8px; color:var(--muted); font-size:12px; }
+.mon-file-rows { list-style:none; margin:0; padding:8px 12px; border:1px solid var(--border-color); border-radius:var(--ui-radius-card); background:var(--surface-subtle); max-height:300px; overflow:auto; }
+.mon-file-rows li { display:grid; grid-template-columns:1fr 90px 170px; gap:12px; padding:3px 0; font-size:12px; color:var(--muted); font-variant-numeric:tabular-nums; }
+.mon-file-rows code { color:var(--foreground); font-size:11.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+.mon-services { margin-bottom:6px; }
+.mon-of { color:var(--muted); font-size:12px; }
+
+.mon-check { display:inline-flex; align-items:center; gap:7px; color:var(--muted); font-size:var(--ui-text-sm); }
+
+@media (max-width: 720px) {
+  .mon-agent { grid-template-columns:1fr 1fr; }
+  .mon-agent-head { display:none; }
+  .mon-file-rows li { grid-template-columns:1fr; gap:2px; }
+}

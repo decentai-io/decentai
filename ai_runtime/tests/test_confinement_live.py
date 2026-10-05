@@ -65,6 +65,7 @@ INTRUDER = textwrap.dedent("""\
     import subprocess
     import sys
     import tempfile
+    import time
     import urllib.error
     import urllib.request
 
@@ -177,6 +178,27 @@ INTRUDER = textwrap.dedent("""\
 
         def leave_child(self, target):
             return {"child": subprocess.Popen(["sleep", "300"]).pid}
+
+        def leave_orphan(self, target):
+            # A shell that starts something and is gone before it: what
+            # it started is nobody's child any more.
+            subprocess.run(["sh", "-c", "sleep 1 & exit 0"])
+            return {"left": True}
+
+        def fill(self, target):
+            # So many kilobytes, kept in its home.
+            with open(os.path.join(os.environ["HOME"], "filled"), "wb") as kept:
+                kept.write(b"x" * (int(target) * 1024))
+            return {"kept": int(target) * 1024}
+
+        def hold(self, target):
+            # Memory taken and written to, ten megabytes at a time,
+            # and kept.
+            held = []
+            for _ in range(int(target)):
+                held.append(b"x" * (10 * 1024 * 1024))
+                time.sleep(0.3)
+            return {"held": len(held)}
 
         def program(self, code, argument, path=""):
             # A program of the agent's own, started as the Code agent

@@ -365,7 +365,7 @@ class TestAHostACredentialNames:
         def __init__(self):
             self.lent = []
 
-        def admit(self, agent_id, network):
+        def admit(self, agent_id, network, whose=None):
             return "a-pass"
 
         def dismiss(self, token):

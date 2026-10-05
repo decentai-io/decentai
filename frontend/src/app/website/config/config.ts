@@ -14,6 +14,7 @@ export const settingsTabs: { path: string; action: string }[] = [
   { path: 'keys', action: 'settings:apikey:list' },
   { path: 'apps', action: 'settings:oauth:list' },
   { path: 'safety', action: 'settings:safety:get' },
+  { path: 'monitoring', action: 'agents:monitor:usage' },
   { path: 'audit', action: 'ai:audit:list' },
   { path: 'audit/org', action: 'ai:audit:list_all' },
 ];

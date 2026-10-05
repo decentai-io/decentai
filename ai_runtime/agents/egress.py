@@ -41,17 +41,24 @@ import ipaddress
 import secrets
 import socket
 import threading
+import time
 from typing import Callable, ClassVar, Dict, List, Optional, Tuple
 from urllib.parse import urlsplit
 
+from ai_runtime.agents.events import Events
 from ai_runtime.runtime_logging import RuntimeLoggerFactory
 
 
 class Admission:
     """What one worker may reach: what its agent's manifest declared."""
 
-    def __init__(self, agent_id: str, network: dict):
+    def __init__(self, agent_id: str, network: dict,
+                 whose: Optional[Dict[str, object]] = None):
         self.agent_id = agent_id
+        #: Whose worker this is, as what it does is written down: the
+        #: approved agent's ref, and the name a person knows it by.
+        self.whose = {"agent": str((whose or {}).get("agent") or ""),
+                      "name": str((whose or {}).get("name") or agent_id)}
         network = network or {}
         #: Every host, where the manifest said so. One that says nothing
         #: opens nothing.
@@ -178,8 +185,14 @@ class EgressProxy:
     #: no name is looked up.
     resolver: ClassVar[Optional[Callable[[str, int], List[str]]]] = None
 
-    def __init__(self, port: int, allow_loopback: bool = False):
+    def __init__(self, port: int, allow_loopback: bool = False,
+                 listen: str = ""):
         self.port = int(port)
+        #: Where the proxy listens. A worker is always pointed at its
+        #: own container's address (HOST): where agents run in a
+        #: container of their own, that container passes what arrives
+        #: there on to this one, and the proxy listens for it.
+        self.listen = str(listen or self.HOST)
         #: The tests' escape, as the web agents have it: a loopback
         #: address and nothing else. Never in a deployment.
         self.allow_loopback = bool(allow_loopback)
@@ -217,7 +230,7 @@ class EgressProxy:
         asyncio.set_event_loop(loop)
         try:
             server = loop.run_until_complete(asyncio.start_server(
-                self._serve, self.HOST, self.port, limit=self.HEAD_LIMIT))
+                self._serve, self.listen, self.port, limit=self.HEAD_LIMIT))
         except OSError as exc:
             self._problem = f"the proxy could not listen on {self.port}: {exc}"
             ready.set()
@@ -256,12 +269,13 @@ class EgressProxy:
     # Who may pass
     # ------------------------------------------------------------------
 
-    def admit(self, agent_id: str, network: dict) -> str:
+    def admit(self, agent_id: str, network: dict,
+              whose: Optional[Dict[str, object]] = None) -> str:
         """A pass for one worker. What it opens is what ``network`` —
         the manifest's own answer — declared."""
         token = secrets.token_urlsafe(24)
         with self._guard:
-            self._admissions[token] = Admission(agent_id, network)
+            self._admissions[token] = Admission(agent_id, network, whose)
         return token
 
     def dismiss(self, token: str) -> None:
@@ -353,6 +367,10 @@ class EgressProxy:
                           writer: asyncio.StreamWriter) -> None:
         upstream: Optional[asyncio.StreamWriter] = None
         held = ""
+        # What is written down of this connection, as it becomes known:
+        # whose, where to, and how it ended. Never what was sent.
+        seen: Dict[str, object] = {}
+        began = time.monotonic()
         try:
             try:
                 head = await asyncio.wait_for(
@@ -367,35 +385,55 @@ class EgressProxy:
                 if admission is None:
                     raise Refused(407, "this proxy serves the platform's "
                                        "own workers, and does not know you")
+                seen.update(admission.whose)
                 held = self._hold(token)
                 tunnel = method == "CONNECT"
                 host, port, path = self._where(method, target)
+                seen.update(host=host, port=port,
+                            how="tunnel" if tunnel else method)
                 self._check_name(admission, host, port)
                 address = await self._public_address(host, port)
+                seen["address"] = address
             except Refused as refusal:
-                await self._refuse(writer, refusal, head)
+                if await self._refuse(writer, refusal, head):
+                    seen.update(allowed=False, status=refusal.status,
+                                why=refusal.why)
                 return
 
+            seen["allowed"] = True
             try:
                 upstream_reader, upstream = await asyncio.wait_for(
                     asyncio.open_connection(address, port), self.CONNECT_SECONDS)
             except (OSError, asyncio.TimeoutError) as exc:
+                seen.update(reached=False,
+                            why=str(exc or "no answer in time"))
                 await self._answer(writer, 502, f"{host} could not be reached: "
                                                 f"{exc or 'no answer in time'}")
                 return
 
+            seen["reached"] = True
             with self._guard:
                 admission.reached[host] = admission.reached.get(host, 0) + 1
             if tunnel:
                 writer.write(b"HTTP/1.1 200 Connection established\r\n\r\n")
                 await writer.drain()
+                asked = 0
             else:
-                upstream.write(self._forwarded(method, path, host, port, headers))
+                # What it asked is sent on by the proxy's own hand, and
+                # is counted with what the worker sends after.
+                forwarded = self._forwarded(method, path, host, port, headers)
+                asked = len(forwarded)
+                upstream.write(forwarded)
                 await upstream.drain()
-            await self._pass(reader, writer, upstream_reader, upstream)
+            sent, seen["received"] = await self._pass(
+                reader, writer, upstream_reader, upstream)
+            seen["sent"] = sent + asked
         except (ConnectionError, OSError):
             pass
         finally:
+            if "allowed" in seen:
+                Events.record("connection", **seen,
+                              seconds=round(time.monotonic() - began, 2))
             if held:
                 self._release(held)
             for stream in (writer, upstream):
@@ -580,10 +618,11 @@ class EgressProxy:
         return ("\r\n".join(lines) + "\r\n\r\n").encode("latin-1")
 
     async def _refuse(self, writer: asyncio.StreamWriter, refusal: Refused,
-                      head: bytes) -> None:
-        # A program that was given a pass asks once without it, is told
-        # to show it, and asks again: that first answer is how a proxy
-        # is spoken to, and no refusal of anybody.
+                      head: bytes) -> bool:
+        """Answer a refusal. Returns whether it was one: a program
+        that was given a pass asks once without it, is told to show
+        it, and asks again — that first answer is how a proxy is
+        spoken to, and no refusal of anybody."""
         challenge = (refusal.status == 407
                      and b"proxy-authorization:" not in head.lower())
         if not challenge:
@@ -592,6 +631,7 @@ class EgressProxy:
             self.logger.warning(
                 f"Refused ({refusal.status}): {refusal.why} [{asked}]")
         await self._answer(writer, refusal.status, refusal.why)
+        return not challenge
 
     #: What marks an answer as the proxy's own and not the host's.
     REFUSED_HEADER = "X-DecentAI-Refused"
@@ -620,14 +660,16 @@ class EgressProxy:
     async def _pass(self, reader: asyncio.StreamReader,
                     writer: asyncio.StreamWriter,
                     upstream_reader: asyncio.StreamReader,
-                    upstream: asyncio.StreamWriter) -> None:
+                    upstream: asyncio.StreamWriter) -> Tuple[int, int]:
         """Bytes both ways, until both sides have said all they had —
-        or neither has said anything for ``IDLE_SECONDS``."""
+        or neither has said anything for ``IDLE_SECONDS``. Returns how
+        many went each way: out from the worker, and back to it."""
         loop = asyncio.get_running_loop()
         heard = [loop.time()]       # when a byte last moved, either way
+        passed = [0, 0]             # out, back
 
         async def one_way(source: asyncio.StreamReader,
-                          sink: asyncio.StreamWriter) -> None:
+                          sink: asyncio.StreamWriter, way: int) -> None:
             try:
                 while True:
                     try:
@@ -642,6 +684,7 @@ class EgressProxy:
                     if not chunk:
                         break
                     heard[0] = loop.time()
+                    passed[way] += len(chunk)
                     sink.write(chunk)
                     await sink.drain()
             except (ConnectionError, OSError):
@@ -653,5 +696,6 @@ class EgressProxy:
                 except (ConnectionError, OSError, RuntimeError):
                     pass
 
-        await asyncio.gather(one_way(reader, upstream),
-                             one_way(upstream_reader, writer))
+        await asyncio.gather(one_way(reader, upstream, 0),
+                             one_way(upstream_reader, writer, 1))
+        return passed[0], passed[1]

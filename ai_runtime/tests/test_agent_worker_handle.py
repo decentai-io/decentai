@@ -376,7 +376,7 @@ class TestTheWorkersEnvironment:
         monkeypatch.setenv("PYTHONPATH", "/somewhere")
         monkeypatch.setenv("DECENTAI_WEB_ALLOW_LOOPBACK", "1")
         monkeypatch.setenv("DECENTAI_PROXY", "http://127.0.0.1:3128")
-        monkeypatch.setenv("DECENTAI_LAUNCHER_PASSWORD", "not for agents")
+        monkeypatch.setenv("DECENTAI_INSTALLER_PASSWORD", "not for agents")
         monkeypatch.setenv("LC_ALL", "C.UTF-8")
         monkeypatch.setenv("PLAYWRIGHT_BROWSERS_PATH", "/opt/ms-playwright")
 
@@ -388,7 +388,7 @@ class TestTheWorkersEnvironment:
         # The way out, where a deployment names one; nothing else of the
         # platform's own.
         assert environment["DECENTAI_PROXY"] == "http://127.0.0.1:3128"
-        assert "DECENTAI_LAUNCHER_PASSWORD" not in environment
+        assert "DECENTAI_INSTALLER_PASSWORD" not in environment
         assert environment["LC_ALL"] == "C.UTF-8"
         assert environment["PLAYWRIGHT_BROWSERS_PATH"] == "/opt/ms-playwright"
         # What the interpreter itself needs is still there.

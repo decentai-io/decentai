@@ -34,8 +34,8 @@ agent starts from [`examples/note/`](examples/note/) and [docs/agents/](docs/age
 
 | If you want to… | Read |
 |---|---|
-| run it on your own computer | [On your own computer](#on-your-own-computer), below, and [docs/guides/desktop.md](docs/guides/desktop.md) |
-| run it on a server in ten minutes | [docs/quickstart.md](docs/quickstart.md) |
+| run it on your own computer | [Run it](#run-it), below, and [docs/quickstart.md](docs/quickstart.md) through the first chat |
+| put it on a server | [docs/guides/deploying.md](docs/guides/deploying.md) |
 | understand the moving parts | [docs/concepts.md](docs/concepts.md) |
 | use it as a person | the **Help → Guide** section inside the app (source: `frontend/src/assets/guide/`) |
 | develop on it | [docs/guides/local-development.md](docs/guides/local-development.md) |
@@ -57,62 +57,52 @@ decentai_sdk/  what agent code imports: AgentBase, ToolBase, the manifest
 contracts/     the manifest schema and validator, shared by all of the above
 sim/           the runtime's reference services, in memory — how the runtime
                is tested without a backend, and how an agent is tested alone
-bootstrap/     first-run seeding, key generation, organizations, rotation
-launcher/      the desktop install: the launcher container, and starter
-               scripts for a command line
-desktop/       the desktop app a person installs: a window and an icon by
-               the clock, over the launcher
+bootstrap/     setting it up on a computer (setup.py), first-run seeding,
+               key generation, organizations, rotation
 tests/         the suite that spans backend and runtime
 examples/      Note, the agent every other is written from, and its tests;
                decentai-agents.yaml at the root offers it as a source
 docs/          guides, how each part works, and the reference
 ```
 
-## On your own computer
+## Run it
 
-On Windows or a Mac. Download the app from the
-[latest release](https://github.com/decentai-io/decentai/releases/latest) — `DecentAI-Setup.exe` or `DecentAI.dmg` —
-install it and open it. It uses Docker if it is running and Podman
-otherwise, offers to install Podman where there is neither, asks for
-the first person's email and a password in a form, and downloads the
-release: images built by this repository's release workflow, named in a
-file the app and the launcher believe for its signature.
-
-To run a build of your own instead, see
-[docs/guides/desktop.md](docs/guides/desktop.md#a-build-of-your-own).
-
-DecentAI then runs at `http://localhost:4280`, reachable from this
-computer only, and the app starts, stops, updates and uninstalls it.
-The whole guide is
-[docs/guides/desktop.md](docs/guides/desktop.md); how it works is
-[docs/system/desktop-install.md](docs/system/desktop-install.md).
-
-## On a server, in ten minutes
-
-With Docker and Python 3.12:
+With Docker (and its Compose) running, and Python 3.9 or later:
 
 ```bash
-python bootstrap/generate_service_keys.py     # the backend↔runtime signing pair
-python bootstrap/generate_secret_keys.py      # the keys that encrypt stored secrets
-python -c "import secrets; print(secrets.token_urlsafe(48))"   # TOKEN_SECRET_KEY
-cp deploy.env.example deploy.env              # then fill in every change-me
-docker compose --env-file deploy.env up -d --build
+git clone https://github.com/decentai-io/decentai.git
+cd decentai
+python bootstrap/setup.py
 ```
 
-Open `https://localhost`, accept the self-signed certificate, sign in
-with the administrator from `deploy.env`. The rest — a language model,
-an agent source, the first agent, the first chat — is
-[docs/quickstart.md](docs/quickstart.md).
+The first time, this writes `deploy.env` — the keys, the database's
+password and a first person, all generated, none of them yours to think
+up — builds the images, starts the stack, and prints an address. Open
+it: DecentAI is at `http://localhost:4280`, served to this computer
+only, and the address signs you in. There is no sign-up and no sign-in
+page to get past; the platform's sign-in is still there for the day you
+add somebody else.
+
+```bash
+python bootstrap/setup.py --link                # the address again
+docker compose --env-file deploy.env stop       # stop it; nothing is removed
+python bootstrap/setup.py                       # start it again
+```
+
+The rest — a language model, an agent source, the first agent, the
+first chat — is [docs/quickstart.md](docs/quickstart.md). This
+repository is the platform and nothing around it: it publishes no
+installer and no images. A server with an address of its own is
+[docs/guides/deploying.md](docs/guides/deploying.md).
 
 ## Tests
 
-Five suites, each owning its layer, each run from the repository root:
+Four suites, each owning its layer, each run from the repository root:
 
 ```bash
 python -m pytest ai_runtime/tests -q       # runtime: real workers, no database
 (cd backend && python -m pytest tests -q)   # backend: real app, MongoDB on localhost
 python -m pytest tests -q                   # spanning: an approval on one side, code serving on the other
-(cd launcher && python -m pytest tests -q)  # the desktop launcher and both starters
 python -m pytest examples/tests -q          # the Note example, in a real worker
 ```
 

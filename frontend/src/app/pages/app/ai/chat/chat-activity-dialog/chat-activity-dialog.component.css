@@ -229,3 +229,31 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* ── Which of the two is read: the record, or the assistant ─────────── */
+.act-views {
+  display: flex;
+  gap: 4px;
+  padding: 8px 18px 0;
+  border-bottom: 1px solid var(--border);
+}
+.act-views button {
+  padding: 7px 11px 8px;
+  margin-bottom: -1px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--muted-foreground);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.act-views button:hover { color: var(--foreground); }
+.act-views button.on {
+  color: var(--chat-accent-strong);
+  border-bottom-color: var(--primary);
+}
+
+.act-fold { margin: 0 0 12px; font-size: 12.5px; color: var(--muted-foreground); }
+.act-fold summary { cursor: pointer; padding: 4px 0; }

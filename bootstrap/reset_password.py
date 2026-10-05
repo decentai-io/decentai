@@ -9,8 +9,14 @@ lockout after wrong passwords is lifted.
 
     RESET_EMAIL=you@example.com RESET_PASSWORD=... python bootstrap/reset_password.py
 
-The launcher runs it (`DecentAI.cmd reset-password`), in the backend's
-image; the password travels by environment, once, and is kept nowhere.
+``RESET_NEW_EMAIL`` gives the account a new address to sign in with as
+well: the first person bootstrap/setup.py makes is nobody's address,
+and they name their own the day somebody else is to use the install
+too.
+
+Run in the backend's image, where the platform's code and settings are
+(docs/guides/deploying.md has the line); the password travels by
+environment, once, and is kept nowhere.
 """
 
 import os
@@ -28,11 +34,13 @@ load_dotenv(BACKEND_ROOT / "config.env", override=False)
 
 
 class PasswordReset:
-    """One account, one new password."""
+    """One account, one new password — and a new address, where one
+    is given."""
 
-    def __init__(self, email: str, password: str):
+    def __init__(self, email: str, password: str, new_email: str = ""):
         self.email = str(email or "")
         self.password = str(password or "")
+        self.new_email = str(new_email or "")
 
     def run(self) -> int:
         from database.stores import (LoginThrottle, PasswordResetStore,
@@ -50,6 +58,16 @@ class PasswordReset:
         user = users.get_by_email(email)
         if user is None:
             return self._refuse(f"There is no account for {email}.")
+
+        new_email = users.normalize_email(self.new_email)
+        if new_email and new_email != email:
+            if "@" not in new_email:
+                return self._refuse("The new address is not an email address.")
+            if users.get_by_email(new_email) is not None:
+                return self._refuse(f"{new_email} is somebody's already.")
+            users.set_email(user["_id"], new_email)
+            print(f"email: {email} signs in as {new_email} now")
+            email = new_email
 
         users.set_password(user["_id"], PasswordHasher.hash(self.password))
         SessionStore().delete_for_user(user["_id"])
@@ -77,7 +95,8 @@ def main() -> int:
     state.settings = Settings.from_env()
     state.db = MongoDB(state.settings)
     return PasswordReset(os.getenv("RESET_EMAIL", ""),
-                         os.getenv("RESET_PASSWORD", "")).run()
+                         os.getenv("RESET_PASSWORD", ""),
+                         os.getenv("RESET_NEW_EMAIL", "")).run()
 
 
 if __name__ == "__main__":

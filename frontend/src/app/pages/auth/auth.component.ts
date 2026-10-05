@@ -4,7 +4,7 @@ import { AuthService } from '../../services/auth.service';
 import { DataStoreService } from '../../services/datastore.service';
 import { NavigatorService } from '../../services/navigator.service';
 
-type Mode = 'login' | 'invitation' | 'forgot' | 'reset' | 'first';
+type Mode = 'login' | 'invitation' | 'forgot' | 'reset' | 'first' | 'entering';
 
 /**
  * Signing in is one step: email and password. One organization per
@@ -13,6 +13,12 @@ type Mode = 'login' | 'invitation' | 'forgot' | 'reset' | 'first';
  *
  * The other modes are how those links land: `invitation` and `reset` are
  * opened from emailed URLs, `forgot` asks for a reset link.
+ *
+ * `entering` is a sign-in handed to the page: whoever set the install
+ * up on a person's own computer (bootstrap/setup.py) opens it at
+ * `#enter=…`, an email and a password in the part of an address that is
+ * never sent anywhere, and the page signs in with them through the same
+ * door as a person typing them.
  */
 @Component({
   selector: 'app-auth',
@@ -55,6 +61,12 @@ export class AuthComponent implements OnInit {
   ) {}
 
   ngOnInit(): void {
+    const handed = this.handedSignIn();
+    if (handed) {
+      this.enter(handed.email, handed.password);
+      return;
+    }
+
     const params = new URLSearchParams(window.location.search);
 
     const invite = params.get('invite');
@@ -70,6 +82,56 @@ export class AuthComponent implements OnInit {
     }
 
     this.recallChoice();
+  }
+
+  // ------------------------------------------------------------------
+  // A sign-in handed over
+  // ------------------------------------------------------------------
+
+  /** The sign-in in the address's fragment, if there is one — and out
+   *  of the address before anything else is done with it: it is a
+   *  password, and must not stay where a history could keep it. */
+  private handedSignIn(): { email: string; password: string } | null {
+    const found = /^#enter=([A-Za-z0-9_-]+)$/.exec(window.location.hash);
+    if (!found) {
+      return null;
+    }
+    if (window.history?.replaceState) {
+      window.history.replaceState(
+        {}, '', window.location.pathname + window.location.search);
+    }
+    try {
+      const bytes = Uint8Array.from(
+        atob(found[1].replace(/-/g, '+').replace(/_/g, '/')),
+        (letter) => letter.charCodeAt(0));
+      const said = JSON.parse(new TextDecoder().decode(bytes));
+      const email = String(said?.email || '');
+      const password = String(said?.password || '');
+      return email && password ? { email, password } : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Sign in with what was handed over. Where it is refused the form
+   *  is shown, with the reason, for a person to sign in themselves. */
+  private async enter(email: string, password: string): Promise<void> {
+    this.mode = 'entering';
+    this.busy = true;
+    try {
+      const result = await this.auth.login({ email, password, remember: true });
+      if (result.ok) {
+        this.enterApp();
+        return;
+      }
+      this.error = result.error || 'That sign-in was not accepted.';
+    } catch {
+      this.error = 'DecentAI could not be reached.';
+    } finally {
+      this.busy = false;
+    }
+    this.email = email;
+    this.mode = 'login';
   }
 
   // ------------------------------------------------------------------
@@ -365,6 +427,9 @@ export class AuthComponent implements OnInit {
   // ------------------------------------------------------------------
 
   get title(): string {
+    if (this.mode === 'entering') {
+      return 'Opening DecentAI…';
+    }
     if (this.mode === 'invitation') {
       if (this.checkingInvite) {
         return 'Checking your invitation…';
@@ -387,6 +452,9 @@ export class AuthComponent implements OnInit {
   }
 
   get subtitle(): string {
+    if (this.mode === 'entering') {
+      return '';
+    }
     if (this.mode === 'invitation') {
       if (this.checkingInvite) {
         return '';

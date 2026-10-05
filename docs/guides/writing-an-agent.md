@@ -3,9 +3,9 @@
 The complete walkthrough — the folder, every manifest key, everything
 the SDK gives, the tests, trying an agent on your own computer,
 publishing — is in [docs/agents/](../agents/README.md). The
-field-by-field contract the platform enforces is
-[The agent manifest](../reference/agent-manifest.md). This
-page is what a developer of the platform needs beside those two: the
+key-by-key contract the platform enforces is
+[The manifest](../agents/manifest.md). This
+page is what a developer of the platform needs beside those: the
 harness, where an agent connects, a credential obtained by signing in,
 and the mistakes the reviewer catches.
 
@@ -15,8 +15,8 @@ and the mistakes the reviewer catches.
 agent that uses every feature the platform can enforce. Beside it,
 [docs/agents/](../agents/README.md) has every manifest key and
 everything the SDK gives, how to try an agent on your own computer
-(`DecentAI.cmd develop <folder>`), and the checklist to run before
-asking anyone to approve it.
+([a DecentAI of your own](../agents/developing.md#a-decentai-of-your-own)),
+and the checklist to run before asking anyone to approve it.
 
 The [`decentai-agents`](https://github.com/decentai-io/decentai-agents) repository holds the agents the project
 publishes, each with a README naming its limits and what it needs.

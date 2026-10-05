@@ -1,4 +1,4 @@
-"""Manifest v1 validation and typed access (docs/reference/agent-manifest.md).
+"""Manifest v1 validation and typed access (docs/agents/manifest.md).
 
 Shared by both sides of the boundary: the backend validates manifests at
 installation approval, the runtime validates them at load — with this one
@@ -32,7 +32,7 @@ STORAGE_KINDS = {"keys", "values"}
 OAUTH_FIELD_NAMES = ("account", "access_token", "refresh_token", "expires_at", "status")
 PROVIDER_PATTERN = re.compile(r"^[a-z][a-z0-9_]{1,31}$")
 #: Everything an oauth block may say. The last five are how a provider
-#: departs from the common shape (docs/guides/writing-an-agent.md).
+#: departs from the common shape (docs/agents/manifest.md).
 OAUTH_KEYS = {"provider", "authorize_url", "token_url", "scopes",
               "authorize_params", "identity", "scope_param",
               "scope_separator", "token_auth", "token_format", "token_path"}

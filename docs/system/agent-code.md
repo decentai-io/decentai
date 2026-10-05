@@ -12,9 +12,9 @@ its address. The platform fetches it at a commit, reads its catalog
 file (`decentai-agents.yaml`) and every manifest it names, validates
 them, and shows what each agent declares — without running anything.
 A private repository is read with a credential the administrator
-saved. On a desktop, a folder the person handed over
-([`develop`](desktop-install.md)) may hold sources too, added by path
-(`AGENT_SOURCE_FOLDER`).
+saved. On a person's own computer, a folder they handed over
+([a DecentAI of your own](../agents/developing.md#a-decentai-of-your-own))
+may hold sources too, added by path (`AGENT_SOURCE_FOLDER`).
 
 **A source belongs to the organization that saved it**, and reaches
 nobody else. Inside that organization the owner map decides who sees
@@ -31,8 +31,8 @@ Installing an agent packages its one folder at the source's commit,
 stores the archive under `(organization, sha256-digest)`
 (`backend/database/agent_packages.py`), and writes the approval row
 (`agent_manifests`) with the `package_digest`, the `manifest_hash` and
-the package's own id. The approval mints a platform ref,
-`agt_<80 random bits>`, that no other organization can name.
+the package's own id. The approval mints a platform ref, `agt_` and
+twenty random characters, that no other organization can name.
 
 - **A version is immutable.** A version, once approved, is never
   approved again with other content; a changed manifest is a new

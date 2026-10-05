@@ -48,6 +48,7 @@ import json
 import re
 from pathlib import Path
 from typing import Any, ClassVar, Dict, List, Optional, Tuple
+from urllib.parse import urlsplit
 
 
 class LlmProviders:
@@ -159,6 +160,73 @@ class LlmProviders:
     def unfilled(endpoint: Any) -> bool:
         """Whether an address still carries a blank from the catalog."""
         return "<" in str(endpoint or "") or ">" in str(endpoint or "")
+
+    # ------------------------------------------------------------------
+    # Azure
+    # ------------------------------------------------------------------
+    #
+    # Azure is not shaped like the others. A customer has an endpoint of
+    # their own, shown in the portal in several forms, and calls a
+    # DEPLOYMENT, by a name they chose — not a model from a list. So a
+    # person pastes what the portal shows, and names their deployment.
+
+    #: Azure's provider id.
+    AZURE: ClassVar[str] = "azure"
+    #: The hosts Azure serves models at.
+    AZURE_HOSTS: ClassVar[Tuple[str, ...]] = (
+        ".openai.azure.com", ".cognitiveservices.azure.com",
+        ".services.ai.azure.com")
+    AZURE_DEPLOYMENT: ClassVar[re.Pattern] = re.compile(
+        r"/openai/deployments/([^/?#]+)")
+
+    @classmethod
+    def by_deployment(cls, provider: Any) -> bool:
+        """Whether a connection of this provider names a deployment of
+        the customer's own where others name a model: there is no list
+        to offer, and the name is typed."""
+        return str(provider or "").strip().lower() == cls.AZURE
+
+    @classmethod
+    def azure(cls, pasted: Any) -> Optional[Dict[str, str]]:
+        """What an Azure endpoint, pasted in any form the portal shows
+        it, comes to: ``{endpoint, deployment}`` — the address requests
+        go to, and the deployment the address named, where it named one
+        (a deployment's "target URI" does). None for an address that is
+        not Azure's own: a gateway of the person's, left as they wrote
+        it.
+
+            https://x.openai.azure.com/
+            https://x.cognitiveservices.azure.com/openai/deployments/
+                gpt-4o/chat/completions?api-version=2025-01-01-preview
+            x.services.ai.azure.com
+
+        all come to ``https://<host>/openai/v1``, the address Azure
+        answers OpenAI's protocol at."""
+        text = str(pasted or "").strip()
+        if not text:
+            return None
+        try:
+            parts = urlsplit(text if "://" in text else "https://" + text)
+            host = (parts.hostname or "").lower()
+        except ValueError:
+            return None
+        if not any(host.endswith(suffix) and host != suffix.lstrip(".")
+                   for suffix in cls.AZURE_HOSTS):
+            return None
+        named = cls.AZURE_DEPLOYMENT.search(parts.path or "")
+        return {"endpoint": f"https://{host}/openai/v1",
+                "deployment": named.group(1) if named else ""}
+
+    @classmethod
+    def settled(cls, provider: Any, endpoint: Any) -> str:
+        """The address a connection is saved with: what was given, and
+        for Azure the address its pasted endpoint comes to."""
+        given = str(endpoint or "").strip()
+        if cls.by_deployment(provider):
+            found = cls.azure(given)
+            if found is not None:
+                return found["endpoint"]
+        return given
 
     @classmethod
     def find(cls, provider: Any) -> Optional[Dict[str, Any]]:

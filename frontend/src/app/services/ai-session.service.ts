@@ -35,6 +35,28 @@ export interface AuditPage {
   error?: string;
 }
 
+/** One thing the model was shown, or one thing it answered. */
+export interface TranscriptEntry {
+  index: number;
+  /** system: its instructions. user: what arrived — the person's
+   *  words, a result, a notice. assistant: the action it chose. */
+  role: string;
+  content: string;
+  /** Whether only the first part of a long entry is here. */
+  cut: boolean;
+  /** Pictures shown to the model beside it: counted, never copied. */
+  images: number;
+}
+
+export interface AssistantTranscript {
+  entries: TranscriptEntry[];
+  /** What was folded away to keep the mind small. */
+  summary: string;
+  /** The agents the assistant has open. */
+  opened: string[];
+  error?: string;
+}
+
 @Injectable({ providedIn: 'root' })
 export class AiSessionService {
   private chatsCache: any[] | null = null;
@@ -236,6 +258,18 @@ export class AiSessionService {
   async listAudit(chatId: string): Promise<any[]> {
     const res = await this.ai('AI:Audit:List', { chat_id: chatId, limit: 500 });
     return res.data?.events || [];
+  }
+
+  /** What the assistant of one of the person's own chats was told and
+   *  what it decided, in the order the model was shown it. */
+  async transcript(chatId: string): Promise<AssistantTranscript> {
+    const res = await this.ai('AI:State:Transcript', { chat_id: chatId });
+    return {
+      entries: res.data?.entries || [],
+      summary: res.data?.summary || '',
+      opened: res.data?.opened || [],
+      error: res.error,
+    };
   }
 
   /** The person's own trail across every chat they own, narrowed and

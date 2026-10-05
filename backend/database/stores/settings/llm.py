@@ -143,6 +143,18 @@ class LlmConnectionStore(OrgScopedStore):
             cleaned["endpoint"] = endpoint
         return cleaned
 
+    @staticmethod
+    def _settled(fields: Dict[str, Any], provider: Any) -> Dict[str, Any]:
+        """The fields with the address as it is kept: an Azure endpoint
+        pasted in any of the forms the portal shows it becomes the one
+        requests go to. ``provider`` is the connection's — the one in
+        the fields, or the stored one where they change only the
+        address."""
+        if "endpoint" not in fields:
+            return fields
+        return {**fields, "endpoint": LlmProviders.settled(
+            fields.get("provider") or provider, fields["endpoint"])}
+
     def _name_taken(self, org_id: str, creator: str, name: str,
                     excluding: str = "") -> bool:
         """Whether THIS person already has a connection by this name.
@@ -200,7 +212,7 @@ class LlmConnectionStore(OrgScopedStore):
             "org_id": org_id,
             "name": name,
             "owner": owner,
-            **self._clean(fields, partial=False),
+            **self._settled(self._clean(fields, partial=False), ""),
             "values": SecretCipher.encrypt({"api_key": key}, doc_id),
             # The first connection is the default because a default
             # must exist for chats to start; every later one is a choice.
@@ -236,7 +248,8 @@ class LlmConnectionStore(OrgScopedStore):
                     f"You already have a connection named '{name}'.")
             changes["name"] = name
         if fields:
-            changes.update(self._clean(fields, partial=True))
+            changes.update(self._settled(
+                self._clean(fields, partial=True), doc.get("provider")))
         if str(api_key or "").strip():
             changes["values"] = SecretCipher.encrypt(
                 {"api_key": str(api_key)}, doc["_id"])

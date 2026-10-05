@@ -28,14 +28,13 @@ import logging
 import os
 import shutil
 import stat
-import subprocess
-import tempfile
-import threading
 import uuid
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from ai_runtime.agents.confinement import WorkerPlace
+from ai_runtime.agents.events import Events
+from ai_runtime.agents.spawner import Spawner
 from ai_runtime.runtime_logging import RuntimeLoggerFactory
 from decentai_sdk.manifest import Manifest
 
@@ -107,7 +106,7 @@ class WorkerHandle:
     #: for agents — DECENTAI_BROWSER_*, DECENTAI_CODE_*, DECENTAI_WEB_*,
     #: and DECENTAI_AGENT_* for whatever a deployment wants its agents
     #: to read. Named family by family: other DECENTAI_ names are the
-    #: platform's own (the runtime's user ids, a launcher's password),
+    #: platform's own (the runtime's user ids, an installer's password),
     #: and nothing of those is an agent's to see. The spool and the
     #: proxy address are set at spawn.
     PASSED_PREFIXES = ("LC_", "DECENTAI_BROWSER_", "DECENTAI_CODE_",
@@ -150,6 +149,9 @@ class WorkerHandle:
         #: and a spool of its own. None where nothing confines, and the
         #: worker runs as this process's user.
         self.place = place
+        #: The approved agent's ref, for what this worker does to be
+        #: written down under; its place's name where it has one.
+        self.agent_ref = ""
         #: async (method, params) -> result — answers the worker's asks
         #: (resources.*, llm.complete). An exception becomes the error
         #: response the SDK surfaces as ResourceDenied.
@@ -239,6 +241,13 @@ class WorkerHandle:
                 pass
         return base64.b64encode(data).decode("ascii")
 
+    def whose(self) -> Dict[str, Any]:
+        """Whose worker this is, as what it does is written down."""
+        if self.place is not None:
+            return self.place.whose()
+        name, _ = self._declared(self.manifest_document)
+        return {"agent": self.agent_ref, "name": name}
+
     # ------------------------------------------------------------------
     @property
     def alive(self) -> bool:
@@ -249,6 +258,7 @@ class WorkerHandle:
         serving — the loader's old verdict, delivered by the worker."""
         argv = self._spawn_argv(self.python)
         environment = self._clean_environment()
+        stop = whose = None
         if self.place is not None:
             errors = await asyncio.get_running_loop().run_in_executor(
                 None, self.place.prepare)
@@ -258,18 +268,21 @@ class WorkerHandle:
             self.place.admit(*self._declared(self.manifest_document))
             argv = self.place.argv(argv, self._runs_from(self.python, self.folder))
             environment = self.place.environment(environment)
+            # With whose it is, how what it keeps on disk is measured.
+            stop = self.place.stop_line()
+            whose = {**self.place.whose(), "measure": self.place.measure_line()}
         else:
-            self.spool = Path(tempfile.mkdtemp(prefix="decentai-spool-"))
+            self.spool = Spawner.current.spool()
             environment["DECENTAI_SPOOL_DIR"] = str(self.spool)
-        self.process = await asyncio.create_subprocess_exec(
-            *argv,
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            cwd=str(self.folder),
-            env=environment,
-            limit=self.LINE_LIMIT,
-        )
+        # Started where workers run (spawner.py): here, or in the
+        # agents' own container, with its lines carried over.
+        try:
+            self.process = await Spawner.current.start(
+                argv, environment, str(self.folder), self.LINE_LIMIT,
+                stop=stop, whose=whose)
+        except (OSError, asyncio.TimeoutError) as exc:
+            Events.record("worker.failed", **self.whose(), why=str(exc))
+            return [f"the worker could not be started: {exc}"]
         self._serve_task = asyncio.get_running_loop().create_task(self._serve())
         asyncio.get_running_loop().create_task(self._drain_stderr())
 
@@ -282,11 +295,15 @@ class WorkerHandle:
                 self.HANDSHAKE_TIMEOUT_SECONDS,
             )
         except WorkerError as exc:
-            await self.kill()
+            await self.kill(f"it was refused at its greeting: {exc}")
             return [str(exc)]
         except asyncio.TimeoutError:
-            await self.kill()
+            await self.kill("it did not answer its greeting")
             return ["the worker did not answer the handshake"]
+        Events.record(
+            "worker.started", **self.whose(),
+            confined=self.place is not None,
+            where="the agents' container" if Spawner.current.remote else "here")
         return []
 
     async def invoke(self, call_id: str, function: str,
@@ -314,7 +331,7 @@ class WorkerHandle:
                 )
             except (WorkerError, asyncio.TimeoutError):
                 pass
-        await self.kill()
+        await self.kill("it was asked to leave")
 
     async def kill(self, reason: str = "the worker is gone") -> None:
         """End the worker. It dies once: whoever asks again — the reader
@@ -342,6 +359,9 @@ class WorkerHandle:
                 None, self.place.clear)
         elif spool is not None:
             shutil.rmtree(spool, ignore_errors=True)
+        Events.record(
+            "worker.ended", **self.whose(), why=reason,
+            code=self.process.returncode if self.process is not None else None)
         # Last: a caller woken by this may start the next worker in the
         # same place at once, and the clearing above must be behind it.
         self._fail_pending(reason)
@@ -420,6 +440,9 @@ class WorkerHandle:
                 reason = "the worker sent a line that is not a message"
                 break
             self._route(message)
+        # Ended where it runs, for using more than agents are given:
+        # the calls it was serving are told that, in those words.
+        reason = getattr(self.process, "ended_because", "") or reason
         if reason != "the worker died":
             self.logger.error(reason)
         await self.kill(reason)
@@ -477,6 +500,7 @@ class WorkerHandle:
             text = line.decode("utf-8", "replace").rstrip()
             if text:
                 self.logger.log(logging.DEBUG, f"[worker] {text}")
+                Events.record("log", **self.whose(), line=text)
 
     def _fail_pending(self, reason: str) -> None:
         for future in list(self._pending.values()):
@@ -496,8 +520,8 @@ class WorkerHandle:
         when the package verified.
 
         Synchronous on purpose — install() is synchronous, and a
-        one-shot exchange needs no event loop. A watchdog kills a
-        wedged worker so a refusal can never become a hang.
+        one-shot exchange needs no event loop. A worker that outlasts
+        ``timeout`` is ended, so a refusal can never become a hang.
 
         Verification imports the package, so it is confined like any
         other run of it: ``place`` is installation's own, shared by
@@ -524,54 +548,41 @@ class WorkerHandle:
                place: Optional[WorkerPlace]) -> List[str]:
         argv = cls._spawn_argv(python)
         environment = cls._clean_environment()
+        # The whole exchange, written ahead: a worker answers its
+        # greeting, then the order to leave, and is gone. One program
+        # run to its end, wherever workers run (spawner.py).
+        greeting = "".join(json.dumps(request) + "\n" for request in (
+            {"id": 1, "method": "hello",
+             "params": cls._hello_params(Path(folder), manifest_document)},
+            {"id": 2, "method": "shutdown", "params": {}},
+        ))
         if place is not None:
-            argv = place.argv(argv, cls._runs_from(python, folder))
-            environment = place.environment(environment)
+            # A confined worker is another user's: its place runs it,
+            # and ends it when it outlasts its time.
+            code, said = place.run(
+                argv, reads=cls._runs_from(python, folder),
+                environment=environment, timeout=timeout, feed=greeting,
+                errors=Spawner.DROP, cwd=str(folder))
+        else:
+            code, said = Spawner.current.run(
+                argv, environment=environment, cwd=str(folder),
+                timeout=timeout, feed=greeting, errors=Spawner.DROP)
+        if said.startswith(Spawner.COULD_NOT_RUN):
+            return [f"worker could not be spawned: {said}"]
+        answers = said.splitlines()
         try:
-            process = subprocess.Popen(
-                argv,
-                stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL,
-                cwd=str(folder), env=environment,
-                text=True, encoding="utf-8",
-            )
-        except OSError as exc:
-            return [f"worker could not be spawned: {exc}"]
-
-        def end() -> None:
-            # A confined worker is another user's, which this process
-            # may not signal.
-            if place is not None:
-                place.stop()
-                return
-            process.kill()
-
-        watchdog = threading.Timer(timeout, end)
-        watchdog.start()
-        try:
-            def exchange(request: dict) -> dict:
-                process.stdin.write(json.dumps(request) + "\n")
-                process.stdin.flush()
-                line = process.stdout.readline()
-                if not line:
-                    raise WorkerError("the worker died during verification")
-                return json.loads(line)
-
-            reply = exchange({
-                "id": 1, "method": "hello",
-                "params": cls._hello_params(Path(folder), manifest_document),
-            })
-            if "error" in reply:
-                return [str((reply.get("error") or {}).get("message") or "refused")]
-            exchange({"id": 2, "method": "shutdown", "params": {}})
-            process.wait(timeout=10)
-            return []
-        except (WorkerError, OSError, ValueError, subprocess.TimeoutExpired) as exc:
-            return [f"worker verification failed: {exc}"]
-        finally:
-            watchdog.cancel()
-            if process.poll() is None:
-                end()
-                process.wait()
+            reply = json.loads(answers[0])
+        except (IndexError, ValueError):
+            reply = None
+        if not isinstance(reply, dict):
+            return ["worker verification failed: "
+                    + (said.strip()[-300:] or "the worker died during verification")]
+        if "error" in reply:
+            return [str((reply.get("error") or {}).get("message") or "refused")]
+        if code != 0 or len(answers) < 2:
+            return ["worker verification failed: "
+                    + (said.strip()[-300:] if code != 0
+                       else "the worker died during verification")]
+        return []
 
 

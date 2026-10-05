@@ -15,7 +15,8 @@ over a MongoDB database.
   no credentials of its own: everything durable goes through the
   backend, under a delegation minted per chat. Agent code runs in
   worker processes with private environments, one per approved agent
-  per organization.
+  per organization — in a deployment, in a container of the agents'
+  own that the runtime commands.
 - The web app is a static Angular application served by Caddy, which
   also proxies the backend's paths so the browser sees one origin.
 
@@ -58,8 +59,8 @@ belongs to the ask it answered and is cleared when the next ask arrives
 with nothing left open.
 
 Every chat has a **trust level** from 0 to 3. Every function has a
-**permission level** on the same scale — a read, a change inside the
-platform, a sandboxed change, an action that leaves the platform. A
+**permission level** on the same scale — a read, an ordinary change, a
+change with wider reach, an action that leaves the platform. A
 function above the chat's level pauses for a person's **approval** of
 that exact call.
 
@@ -94,7 +95,7 @@ manifest declared. The executor enforces the manifest at every call:
 inputs validated, resources limited to what the function declared,
 outputs validated before anything is shown as fact.
 
-*Design notes: [agent-manifest.md](reference/agent-manifest.md),
+*Design notes: [manifest.md](agents/manifest.md),
 [agent-code.md](system/agent-code.md),
 [worker-protocol.md](reference/worker-protocol.md).*
 

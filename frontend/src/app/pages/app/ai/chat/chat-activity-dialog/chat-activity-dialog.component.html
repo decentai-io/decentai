@@ -6,8 +6,73 @@
     </button>
   </div>
 
+  <nav class="act-views" role="tablist" aria-label="What to read">
+    <button type="button" role="tab" [class.on]="view === 'record'"
+            [attr.aria-selected]="view === 'record'" (click)="show('record')">The record</button>
+    <button type="button" role="tab" [class.on]="view === 'assistant'"
+            [attr.aria-selected]="view === 'assistant'" (click)="show('assistant')">The assistant</button>
+  </nav>
+
   <div class="ctx-body">
-    @if (loading) {
+    @if (view === 'assistant') {
+      @if (loadingTranscript) {
+        <p class="ctx-note">Reading what the assistant was shown…</p>
+      } @else if (transcript?.error) {
+        <p class="ctx-note">{{ transcript?.error }}</p>
+      } @else {
+        @if (transcript; as t) {
+        <section class="ctx-section">
+          <div class="act-counts" *ngIf="t.entries.length">
+            <span class="act-count"><strong>{{ t.entries.length }}</strong> {{ t.entries.length === 1 ? 'entry' : 'entries' }}</span>
+            <span class="act-count" *ngIf="t.opened.length"><strong>{{ t.opened.length }}</strong> agent{{ t.opened.length === 1 ? '' : 's' }} open</span>
+          </div>
+
+          @if (t.summary) {
+            <details class="act-fold">
+              <summary>The earlier part of this chat, as it was folded to keep it small</summary>
+              <pre class="act-json">{{ t.summary }}</pre>
+            </details>
+          }
+
+          @if (!t.entries.length) {
+            <p class="ctx-note">The assistant has not been shown anything in this chat yet.</p>
+          }
+
+          <ol class="act-events">
+            @for (entry of t.entries; track entry.index) {
+              <li class="act-event" [class.act-event--open]="isTurnOpen(entry)">
+                <button class="act-event-head" type="button" (click)="toggleTurn(entry)"
+                        [attr.aria-expanded]="isTurnOpen(entry)">
+                  <span class="act-status" [ngClass]="'act-' + turnTone(entry)">{{ turnChip(entry) }}</span>
+                  <span class="act-event-main">
+                    <span class="act-event-name">{{ turnSummary(entry) }}</span>
+                  </span>
+                  <lucide-icon class="act-caret" [name]="isTurnOpen(entry) ? 'chevron-up' : 'chevron-down'" [size]="18"></lucide-icon>
+                </button>
+                @if (isTurnOpen(entry)) {
+                  <div class="act-event-body">
+                    <pre class="act-json">{{ turnText(entry) }}</pre>
+                    @if (entry.cut) { <span class="act-id">Only the first part of this entry is shown.</span> }
+                    @if (entry.images) { <span class="act-id">{{ entry.images }} picture{{ entry.images === 1 ? '' : 's' }} shown to the model beside this.</span> }
+                  </div>
+                }
+              </li>
+            }
+          </ol>
+        </section>
+
+        <section class="ctx-section">
+          <p class="ctx-note">
+            This is what the model was shown and what it answered, in order:
+            its instructions, each thing that arrived, and the action it chose
+            each time. It is yours to read and nobody else's, and nothing in it
+            can be edited. No secret value is in it: the model is never shown
+            one.
+          </p>
+        </section>
+        }
+      }
+    } @else if (loading) {
       <p class="ctx-note">Reading the record…</p>
     } @else {
       <section class="ctx-section">

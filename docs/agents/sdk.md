@@ -85,7 +85,11 @@ secret = await call.resources.use_secret("connection")
 token = secret["api_token"]                  # values decrypted, for this call only
 ```
 
-`use_secret` gives the credential the platform resolves for your slot.
+`use_secret` gives the credential the platform resolves for your slot,
+in this order: the one the chat is bound to, else the one granted to
+your agent, else the person's default, else the only one they hold.
+Several with no default is a refusal, never a guess.
+
 A person may hold several for one slot — two mailboxes. List them and
 choose:
 
@@ -97,9 +101,11 @@ chosen = next(a for a in accounts if a["keys"].get("account") == wanted)
 secret = await call.resources.use_secret("mailbox", ref=chosen["resource_ref"])
 ```
 
-The listing carries no value. A good pattern is an optional `account`
-input on the functions that act, so "check my other inbox" works without
-anybody changing a default.
+The listing carries no value. A ref your slot could not have been
+handed — a credential saved for something else and not granted to your
+agent — is refused at `use_secret`, whoever can see it. A good pattern
+is an optional `account` input on the functions that act, so "check my
+other inbox" works without anybody changing a default.
 
 ## `call.progress`
 
@@ -133,8 +139,11 @@ answer = await call.llm("What does this page show?",
                         images=[{"mime": "image/jpeg", "content_base64": jpeg_b64}])
 ```
 
-A named file is read under your function's file grant. A model that
-cannot see pictures refuses, and you are told which.
+A named file is read under your function's file grant. Either way the
+picture is checked to be one: a PNG, JPEG, GIF or WebP by its own first
+bytes, whatever it is called, at most 5 MiB, and at most sixteen in one
+ask. What is not is refused with the reason. A model that cannot see
+pictures refuses, and you are told which.
 
 **The model reads; your code decides.** Ask for quotes and structure,
 check every quote against the source before showing it as fact, and do
@@ -212,6 +221,13 @@ everything again. `None` is a decline, nobody to ask, or a day gone.
 The answer is the fields by name, with `host` and `account` beside them.
 The values reach your process and nothing else; the model sees labels.
 
+Fields accumulate: a later ask for a token on a host that already holds
+a login adds the field, keeps the login, and asks only for the token.
+The saved login is an ordinary secret of the person's — shared, handed
+over and deleted as any other — and your agent never writes one. A
+browser session you want to keep is a data resource of your own,
+declared with `storage: values`.
+
 ## `call.propose` and `call.install`
 
 For an agent that writes code for what the person asked and wants to
@@ -238,13 +254,19 @@ Write the purpose for a person who does not read code, and name
 everything the code touches: a host or a file the code uses and the card
 does not name is what the review is there to find.
 
+Without `code: true` on the function, a card is the person's consent
+and nothing else: what the code can reach when it runs is still what
+the manifest declared.
+
 With `code: true` on the function, an allowed card is also a **grant
 for that call**: the hosts it named are opened on your worker's way out
 until the call ends, and `call.install` installs exactly the packages it
 named — by the platform, never by your code. Hosts are names
-(`api.example.com`, `db.example.com:5432`); packages are a name and, if
-it matters, a version (`requests==2.32.3`). Anything else is refused
-before the card is shown. A deployment's **Safety** setting may let some
+(`api.example.com`, `db.example.com:5432`), never an address and never
+every host under a name; packages are a name and, if it matters, a
+version (`requests==2.32.3`). Anything else is refused before the card
+is shown. A declined card grants nothing. Where nothing confines agents
+(the agent's page says when), the hosts are not held to the card. A deployment's **Safety** setting may let some
 code through without a card, or keep a list of packages; your function
 hears `True` either way, and the chat is told what ran.
 
@@ -271,18 +293,30 @@ handing back control (`{"type": "control", "action": "take"}`);
 person wrote in the chat while this call runs, so a run can be steered.
 A frame may carry `tabs=[{"index", "title", "address", "active"}]`, and a
 person's hand on a tab arrives as `{"type": "tab", "action": "switch" |
-"close" | "new", "index": n}`.
+"close" | "new", "index": n}`. At most twenty tabs are told of.
+
+A frame is a JPEG or a PNG of at most 300,000 bytes. A larger one is
+not sent and `show` answers `False`; one that is not the picture it
+says it is is dropped by the platform. Either way the function runs on.
+
+A person may take control unasked. Honour `taken`: pause, feed their
+events to what you drive, and look again when they hand it back.
 
 A function with `watch: true` is the one the platform calls, without the
 model, when the person opens your agent's screen from the chat's header.
 It streams until `call.screen.closed`, and is never offered to the model.
+What the person did on the screen by hand — a sign-in above all — is the
+function's to keep before it ends: what it showed may be gone by the
+next call.
 
 ## `call.conversation`
 
 An opaque key, the same for every call in one chat and different in
 every other. Keep something alive between calls — a browser a follow-up
 should find where it was — under this key and only this key: one worker
-serves every chat of the deployment. Empty outside a chat.
+serves every chat of the deployment. Empty outside a chat. Close what
+nobody has used for a while; a thing shown to a person, or held by a
+call, is in use.
 
 ## Connecting out
 
@@ -290,7 +324,9 @@ Your worker's one way out is the platform's proxy, and its address is in
 the environment (`HTTPS_PROXY` and friends). `requests`, `httpx` and
 `urllib` use it by themselves: write your HTTP as usual, to the hosts
 your manifest declared. A refused host comes back as an HTTP 403 whose
-body says why.
+body says why. A client that ignores the environment's proxy on purpose
+finds the platform's under its own name, `DECENTAI_PROXY`. A confined
+worker cannot look a name up: the proxy does, so your code does not.
 
 For a protocol that is not the web's — mail, a database — declare the
 host with its port and open the connection through the SDK:
@@ -315,6 +351,9 @@ class NoteAgent(AgentBase):
 ```
 
 A tool class sets `id` and defines one `async` method per function;
-`self.agent` reaches the agent from a tool. Both classes may define
+`self.agent` reaches the agent from a tool. The code declares nothing
+about itself: the manifest is handed to it, a method the manifest does
+not declare cannot be called, and a package whose code lacks a function
+the manifest declares does not load. Both classes may define
 `async def close(self)` to release what they hold. Keep state in your
 records, not in memory: a worker may be restarted between any two calls.

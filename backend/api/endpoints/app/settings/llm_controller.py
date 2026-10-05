@@ -92,9 +92,12 @@ class LlmController:
             return {"error": "Connection not found."}, 404
         kind = str(payload.get("kind") or "chat").strip().lower()
         provider = connection.get("provider", "")
-        models = LlmProviders.models(provider, kind)
+        # A provider that is called by deployment offers no list: the
+        # catalog's models are not what this customer deployed.
+        by_deployment = LlmProviders.by_deployment(provider)
+        models = [] if by_deployment else LlmProviders.models(provider, kind)
         live = False
-        if not LlmProviders.models(provider):
+        if not by_deployment and not LlmProviders.models(provider):
             resolved = self.store.use(user, connection["_id"]) or {}
             listed = ProviderProbe(
                 provider, connection.get("endpoint"),

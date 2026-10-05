@@ -147,7 +147,7 @@ it; the page's `chat-protocol.ts` is written by hand against it, and
 - **Parts** are `markdown`, `file`, `table`, `graph` and `success`.
   A `table` or `graph` part is either a stored
   result the model shows, or a display a call offered — an agent's
-  `call.show.table` / `call.show.chart` (`docs/reference/agent-manifest.md`),
+  `call.show.table` / `call.show.chart` (`docs/agents/sdk.md`),
   kept with the call's result and shown only when the model names it in
   `say.show`. Displays are how charts reach a chat.
 - **An agent may speak for itself** (`call.post`): an `ai` message whose

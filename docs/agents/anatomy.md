@@ -190,7 +190,7 @@ can.
 
 The network is held to the hosts your manifest declares wherever the
 platform confines agents ([the sandbox](../system/sandbox.md)), which is
-every install the launcher makes. A
+every stack started from `docker-compose.yml`. A
 runtime started by hand on a developer's machine confines nothing, and
 says so; write the agent for the confined case.
 

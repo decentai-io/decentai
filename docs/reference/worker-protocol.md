@@ -87,6 +87,12 @@ needed) so relative imports inside the package work.
 
 ## Framing
 
+Where agents run in a container of their own
+([the sandbox](../system/sandbox.md)), the worker's pipes are held by
+the spawner there, which carries each line to the runtime and back
+over one connection per worker. Nothing below changes: the same lines,
+in the same order, between the same two parties.
+
 Newline-delimited JSON over the worker's stdin and stdout, UTF-8, one
 object per line, **2 MiB per line**. A line that is not a JSON object,
 or too long, is a protocol fault: the host kills the worker; a worker

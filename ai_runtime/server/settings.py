@@ -30,6 +30,10 @@ class RuntimeSettings:
     host: str = "0.0.0.0"
     port: int = 8001
     agents_install_dir: str = field(default_factory=_default_install_dir)
+    #: Where agents' processes are started, when that is a container of
+    #: their own (``agents:8003``, docs/system/sandbox.md). Empty starts
+    #: them here, beside the runtime.
+    agents_spawner: str = ""
     #: Where the proxy confined workers are held to listens
     #: (docs/system/sandbox.md). The container's firewall rule is written
     #: for this port before the runtime starts, so it is a setting and
@@ -61,6 +65,7 @@ class RuntimeSettings:
                 os.getenv("AI_RUNTIME_AGENTS_INSTALL_DIR", "")
                 or _default_install_dir()
             ),
+            agents_spawner=os.getenv("AI_RUNTIME_AGENTS_SPAWNER", "").strip(),
             egress_port=int(os.getenv("AI_RUNTIME_EGRESS_PORT", "8002")),
             egress_allows_loopback=(
                 os.getenv("DECENTAI_WEB_ALLOW_LOOPBACK", "") == "1"),

@@ -131,9 +131,16 @@ class SessionContract:
             ref = str(block.get("secret_ref") or "").strip()
             if not ref or LlmConnectionStore().visible(user, ref) is not None:
                 return dict(block), ""
+            # The connection it chose was deleted, or is no longer
+            # shared with this person. A chat is not left without a
+            # model over that while the person has another: it carries
+            # on with the one a new chat of theirs would start with.
+            resolved = ModelChoice().default(user, chosen_by(user))
+            if resolved is not None:
+                return resolved, ""
             return None, (
                 "This chat's model connection is no longer available to "
-                "you — pick another in the chat's settings."
+                "you, and there is no other — add one under Settings."
             )
 
         resolved = ModelChoice().default(user, chosen_by(user))

@@ -1,5 +1,8 @@
 # Settings and secrets, kept on the machine that made them
 deploy.env
+# What one person lays over the stack on their own computer: a folder
+# of agents they write (docs/agents/developing.md).
+docker-compose.override.yml
 **/config.env
 !**/config.env.example
 .env
@@ -48,6 +51,3 @@ frontend/.sass-cache/
 .claude/
 .DS_Store
 Thumbs.db
-
-# A release signed on this machine while trying the workflow's steps
-launcher/release.json.sig

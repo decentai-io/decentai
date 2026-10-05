@@ -9,7 +9,7 @@ the actions a chat's delegation may call, and nothing else.
 Generated from `backend/server/authentication/catalog.py` by
 `docs/reference/generate.py`; do not edit by hand.
 
-183 actions in 34 services; 52 baseline.
+187 actions in 35 services; 52 baseline.
 
 ## Own account
 
@@ -264,6 +264,7 @@ Generated from `backend/server/authentication/catalog.py` by
 |---|---|---|---|
 | `ai:state:get` | Your assistant reads its own mind back |  | yes |
 | `ai:state:save` | Your assistant persists its mind, every beat |  | yes |
+| `ai:state:transcript` | Read what the assistant of your own chat was told and what it decided |  |  |
 
 ## Activity
 
@@ -355,6 +356,14 @@ Generated from `backend/server/authentication/catalog.py` by
 | `agents:agent:secretrevoke` | Take a credential away from an installed agent |  |  |
 | `agents:agent:secretlendable` | See which other installed agents a connected account could be lent to |  |  |
 | `agents:agent:secretlendmany` | Let several installed agents use one of your credentials at once |  |  |
+
+## Monitoring agents
+
+| Action | Grants | Baseline | Runtime |
+|---|---|---|---|
+| `agents:monitor:usage` | See how much memory and processor each running agent uses, and what the agents are given |  |  |
+| `agents:monitor:events` | Read what was seen of agents' processes: when each started and ended, its log, every connection it made or was refused, the processes it started |  |  |
+| `agents:monitor:files` | See the files an agent keeps |  |  |
 
 ## AI audit trail
 

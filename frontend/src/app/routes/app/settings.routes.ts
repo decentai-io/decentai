@@ -73,6 +73,13 @@ export const SettingsRoutes: Routes = [
     canActivate: [permissionGuard],
     data: { requiredAction: 'settings:safety:get', tab: 'safety' },
   },
+  // What agents use and did: read-only, and a grant of its own.
+  {
+    path: 'monitoring',
+    component: SettingsComponent,
+    canActivate: [permissionGuard],
+    data: { requiredAction: 'agents:monitor:usage', tab: 'monitoring' },
+  },
   {
     path: 'audit',
     component: SettingsComponent,

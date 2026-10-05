@@ -128,7 +128,7 @@ export class ChatDetailComponent implements OnInit, OnDestroy {
   readonly trustOptions = [
     { level: 0, label: 'Ask for everything', hint: 'Approve every action' },
     { level: 1, label: 'Standard', hint: 'Reads run; changes ask' },
-    { level: 2, label: 'Trusted', hint: 'Sandboxed changes run' },
+    { level: 2, label: 'Trusted', hint: 'Wider changes run too' },
     { level: 3, label: 'Autonomous', hint: 'External actions run too' },
   ];
 

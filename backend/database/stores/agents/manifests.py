@@ -174,9 +174,11 @@ class AgentManifestStore(OrgScopedStore):
     def new_ref() -> str:
         """A fresh platform ref.
 
-        80 random bits keep the derived `<agent_ref>__<resource>` slug
-        within the definition service's 60-character contract even when
-        the manifest uses its maximum 32-character resource id."""
+        `agt_` and the first twenty hex characters of a uuid4: 74 random
+        bits, the version and variant marks being fixed. Twenty keeps
+        the derived `<agent_ref>__<resource>` slug within the definition
+        service's 60-character contract even when the manifest uses its
+        maximum 32-character resource id."""
         return f"agt_{new_id()[:20]}"
 
     def existing_ref(self, org_id: str, source_id: str,

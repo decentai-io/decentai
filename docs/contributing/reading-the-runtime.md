@@ -241,6 +241,23 @@ With [the sandbox](../system/sandbox.md) open beside it.
   the code store by digest, the per-agent environment and its build,
   and the two names of an agent (the platform's ref outside, the
   package's id inside).
+- `agents/spawner.py`, `agents/spawner_service.py` — where a worker's
+  process is started: beside the runtime (`Spawner`), or in the agents'
+  own container, asked over a socket (`RemoteSpawner`) and started
+  there by `SpawnerService`, which also carries the worker's lines
+  (`_start`, `_carry`) and passes workers' connections on to the
+  runtime's proxy (`_pass_on`).
+- `agents/usage.py` — what the agents' container is given and what
+  each agent uses, read from the kernel (`AgentsUsage.sample`), and who
+  is ended when they use nearly all of it (`over`). The spawner's
+  `_watch` looks every second and does the ending.
+- `agents/events.py` — what agents did, written down as it happens
+  (`Events.record`), by the places that see it: the helper's jobs and
+  programs run as an agent (`confinement.py`), a worker's life and log
+  (`worker_handle.py`), each connection (`egress.py`), the processes
+  an agent starts (`spawner_service.py`). Read by the backend through
+  `server/routes/monitor.py`. With
+  [what is written down](../system/monitoring.md) open beside it.
 
 Check:
 
@@ -252,10 +269,15 @@ Check:
   timeout (`_hold`, `_release`, `_pass`).
 - Installing an agent's dependencies runs under the builder's place,
   with only the package hosts open.
+- The spawner starts nothing for a request without the key, and ends a
+  worker whose runtime hung up (`SpawnerService._serve`, `_start`).
 
 Tests: `tests/test_confinement.py`, `tests/test_egress.py`,
-`tests/test_agent_environments.py`, and `tests/test_confinement_live.py`
-(Linux only; skipped elsewhere).
+`tests/test_agent_environments.py`, `tests/test_spawner.py`,
+`tests/test_usage.py`, `tests/test_events.py`, and the
+two that need the image: `tests/test_confinement_live.py` (one
+container) and `tests/test_spawner_live.py` (the runtime and the agents
+in two). Both are skipped elsewhere, and each file says how it is run.
 
 ## 7. The clock
 

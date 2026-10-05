@@ -165,13 +165,28 @@
             <input class="txt" type="url" [ngModel]="draft.endpoint"
                    (ngModelChange)="setEndpoint($event)"
                    placeholder="http://host.docker.internal:11434/v1" />
-            <small class="field-help">The base address of its OpenAI-compatible API, with its version path. A server on this computer is reached at host.docker.internal, not localhost.</small>
+            <small class="field-help">
+              On this computer:
+              <button class="link" type="button" *ngFor="let server of ownServers"
+                      (click)="useOwnServer(server.address)">{{ server.name }}</button>
+              — or the base address of any OpenAI-compatible API, with its version path. A server on this computer is reached at host.docker.internal, not localhost.
+            </small>
+          </label>
+          <!-- Azure: the endpoint as the portal shows it, pasted. -->
+          <label class="field full" *ngIf="byDeployment">
+            <span class="field-label">Endpoint</span>
+            <input class="txt" type="url" [ngModel]="draft.endpoint"
+                   (ngModelChange)="setAzureEndpoint($event)"
+                   placeholder="https://your-resource.openai.azure.com/" />
+            <small class="field-help">Paste it as the Azure portal shows it: the resource's endpoint, or a deployment's target URI.</small>
+            <small class="field-help" *ngIf="azureUnderstood">{{ azureUnderstood }}</small>
           </label>
           <label class="field full" *ngFor="let blank of blanks">
             <span class="field-label">{{ blankLabel(blank) }}</span>
             <input class="txt" [ngModel]="blankValues[blank]" (ngModelChange)="setBlank(blank, $event)"
                    [attr.list]="blank === 'aws-region' ? 'llm-aws-regions' : null"
-                   [placeholder]="blank === 'aws-region' ? 'e.g. us-east-1' : ''" />
+                   [placeholder]="blankExample(blank)" />
+            <small class="field-help" *ngIf="blankHelp(blank)">{{ blankHelp(blank) }}</small>
           </label>
           <datalist id="llm-aws-regions">
             <option *ngFor="let region of awsRegions" [value]="region"></option>
@@ -185,25 +200,48 @@
             <input class="txt" type="password" autocomplete="new-password"
                    [ngModel]="draft.api_key" (ngModelChange)="setKey($event)"
                    [placeholder]="isCreating ? 'Paste the key' : '••••••  (unchanged)'" />
-            <small class="field-help" *ngIf="endpointIsYours">A server that asks for no key still needs something here: type any word.</small>
+            <small class="field-help" *ngIf="endpointIsYours">Leave it empty for a server that asks for none.</small>
+            <small class="field-help" *ngIf="keyPlace as place">
+              A key is made in {{ place.where }}:
+              <a [href]="place.url" target="_blank" rel="noopener">{{ place.url }}</a>
+            </small>
           </label>
 
-          <label class="field full">
-            <span class="field-label">Model to start with</span>
-            <select class="txt" *ngIf="!typingModel"
-                    [ngModel]="draft.model" (ngModelChange)="chooseModel($event)">
-              <option value="" disabled hidden>Choose a model…</option>
-              <option *ngFor="let model of models" [value]="model.id">{{ model.name }}</option>
-              <option [value]="other">Another model…</option>
-            </select>
-            <span class="model-typed" *ngIf="typingModel">
+          <!-- Azure: the deployment, by the name the person gave it. -->
+          <label class="field full" *ngIf="byDeployment">
+            <span class="field-label">Deployment name</span>
+            <input class="txt" [ngModel]="draft.model" (ngModelChange)="chooseModel($event)"
+                   placeholder="The name you gave the deployment in Azure" />
+            <small class="field-help">The deployment's own name, not the model's: Azure calls a model by the name you deployed it under. Another deployment of this endpoint can be named in a chat.</small>
+          </label>
+
+          <label class="field full" *ngIf="!byDeployment">
+            <span class="field-label">Model</span>
+            <!-- A long list is searched: typing narrows it, and an id
+                 that is not on it is taken as typed. -->
+            <ng-container *ngIf="searchingModels; else shortList">
               <input class="txt" [ngModel]="draft.model" (ngModelChange)="chooseModel($event)"
-                     placeholder="The provider's own id for the model" />
-              <button class="btn ghost" type="button" *ngIf="models.length" (click)="pickFromList()">
-                Choose from the list
-              </button>
-            </span>
-            <small class="field-help">What a chat thinks with until another is picked. Every other model of this provider can be chosen in a chat.</small>
+                     list="llm-models" placeholder="Type to search {{ models.length }} models" />
+              <datalist id="llm-models">
+                <option *ngFor="let model of models" [value]="model.id">{{ model.name }}</option>
+              </datalist>
+            </ng-container>
+            <ng-template #shortList>
+              <select class="txt" *ngIf="!typingModel"
+                      [ngModel]="draft.model" (ngModelChange)="chooseModel($event)">
+                <option value="" disabled hidden>Choose a model…</option>
+                <option *ngFor="let model of models" [value]="model.id">{{ model.name }}</option>
+                <option [value]="other">Another model…</option>
+              </select>
+              <span class="model-typed" *ngIf="typingModel">
+                <input class="txt" [ngModel]="draft.model" (ngModelChange)="chooseModel($event)"
+                       [placeholder]="endpointIsYours ? 'As the server calls it, e.g. llama3.3' : 'The provider\'s own id for the model'" />
+                <button class="btn ghost" type="button" *ngIf="models.length" (click)="pickFromList()">
+                  Choose from the list
+                </button>
+              </span>
+            </ng-template>
+            <small class="field-help">New chats start with it. Any chat can switch to another model of this provider.</small>
           </label>
 
           <details class="field full llm-more" [open]="showMore" (toggle)="showMore = $any($event.target).open">
@@ -214,7 +252,7 @@
                 <input class="txt" [ngModel]="draft.name" (ngModelChange)="setName($event)"
                        placeholder="e.g. Anthropic" />
               </label>
-              <label class="field full" *ngIf="!endpointIsYours">
+              <label class="field full" *ngIf="!endpointIsYours && !byDeployment">
                 <span class="field-label">Address</span>
                 <input class="txt" type="url" [ngModel]="draft.endpoint"
                        (ngModelChange)="setEndpoint($event)" />
@@ -256,7 +294,7 @@
         </button>
         <button class="btn primary" type="button" (click)="save()"
                 [disabled]="!!blocker || saving">
-          {{ saving ? "Checking the key…" : isCreating ? "Connect" : "Save changes" }}
+          {{ saving ? (byDeployment ? "Asking your deployment…" : "Checking the key…") : isCreating ? "Connect" : "Save changes" }}
         </button>
       </footer>
     </section>

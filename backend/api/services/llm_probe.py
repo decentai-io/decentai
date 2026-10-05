@@ -12,6 +12,11 @@ nothing and which every protocol but one offers. Bedrock's runtime has
 no list a key can read, so it is asked for a reply of a few tokens from
 the model the connection starts with.
 
+Azure is asked the same way and for the same reason: its list names
+models, and a connection there names a DEPLOYMENT of the customer's own,
+which only a request to it can find. A deployment that is not there is a
+refusal, said with its name.
+
 The same list is what a server the catalog says nothing about is offered
 by: a model on the person's own machine, or a gateway of theirs, names
 its models here and nowhere else.
@@ -48,9 +53,12 @@ class ProviderProbe:
         self.provider = str(provider or "").strip().lower()
         self.api_key = str(api_key or "")
         self.model = str(model or "").strip()
+        endpoint = LlmProviders.settled(self.provider, endpoint)
         route = LlmProviders.route(self.provider, self.model, endpoint) or {}
         self.protocol = route.get("protocol", "")
         self.endpoint = str(route.get("endpoint") or "").strip().rstrip("/")
+        #: The connection names a deployment: the list says nothing of it.
+        self.by_deployment = LlmProviders.by_deployment(self.provider)
 
     # ------------------------------------------------------------------
     def check(self) -> Dict[str, str]:
@@ -61,6 +69,8 @@ class ProviderProbe:
 
     def models(self) -> List[str]:
         """The ids the provider lists, or nothing when it would not say."""
+        if self.by_deployment:
+            return []   # its list is of models, never of deployments
         outcome, _, listed = self._ask()
         return listed if outcome == self.WORKS else []
 
@@ -77,6 +87,11 @@ class ProviderProbe:
         if response.status_code in (401, 403):
             return self.REFUSED, (
                 "The provider refused the key: " + self._reason(response)), []
+        if self.by_deployment and response.status_code == 404:
+            return self.REFUSED, (
+                f"Azure has no deployment named '{self.model}' at "
+                f"{self.endpoint}. Check the endpoint and the deployment's "
+                f"name in the Azure portal. Azure said: {self._reason(response)}"), []
         if response.status_code >= 400:
             return self.UNKNOWN, (
                 f"The provider answered {response.status_code}, which does "
@@ -101,6 +116,17 @@ class ProviderProbe:
                 headers={"Authorization": f"Bearer {self.api_key}"},
                 json={"messages": [{"role": "user", "content": [{"text": "Hi"}]}],
                       "inferenceConfig": {"maxTokens": 16}})
+        if self.by_deployment:
+            # A few tokens from the deployment itself: the one question
+            # whose answer says the endpoint, the key and the name are
+            # all right.
+            return client.post(
+                f"{self.endpoint}/chat/completions",
+                headers={"Authorization": f"Bearer {self.api_key}",
+                         "api-key": self.api_key},
+                json={"model": self.model,
+                      "messages": [{"role": "user", "content": "Hi"}],
+                      "max_completion_tokens": 16})
         # OpenAI's two protocols, and every server that speaks either.
         return client.get(f"{self.endpoint}/models",
                           headers={"Authorization": f"Bearer {self.api_key}"})

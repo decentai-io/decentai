@@ -1,12 +1,18 @@
-# The full self-hosted stack: MongoDB, the one-shot seeder, the backend,
-# the private AI runtime, and Caddy as the single public entry (TLS +
-# SPA + reverse proxy). Every setting comes from one file:
+# The whole platform on one machine: MongoDB, the one-shot seeder, the
+# backend, the private AI runtime, the agents' container, and Caddy as
+# the one door (the web app and the backend on one origin). Every
+# setting comes from one file, deploy.env:
 #
-#   cp deploy.env.example deploy.env   # then fill in every change-me
+#   python bootstrap/setup.py      # writes deploy.env, starts this, says where
+#
+# or, with a deploy.env written by hand from deploy.env.example:
+#
 #   docker compose --env-file deploy.env up -d --build
 #
-# Only Caddy publishes ports; everything else lives on the private
-# compose network.
+# As written it serves this computer only, in plain HTTP. A server with
+# an address of its own lays docker-compose.server.yml over it
+# (docs/guides/deploying.md). Only Caddy publishes a port; everything
+# else lives on the private compose network.
 services:
   mongo:
     image: mongo:7
@@ -63,27 +69,28 @@ services:
         condition: service_completed_successfully
 
   # The runtime has no database — everything durable goes through the
-  # backend's delegation surface, so it depends on nothing at start.
+  # backend's delegation surface.
   #
-  # It is handed its settings by name, never the file: agent code runs
-  # in this container, and the database's password, the encryption keys
-  # and the backend's private key are not this container's to hold. A
-  # name with no value is passed on when deploy.env (or the shell)
-  # sets it, and is absent when neither does.
+  # It decides everything about an agent and runs none of their code:
+  # it asks the agents' container to start each worker, and speaks to
+  # it over that connection (docs/system/sandbox.md). It is handed its
+  # settings by name, never the file: the database's password, the
+  # encryption keys and the backend's private key are not this
+  # container's to hold. A name with no value is passed on when
+  # deploy.env (or the shell) sets it, and is absent when neither does.
   ai-runtime:
     build:
       context: .
       dockerfile: ai_runtime/Dockerfile
     restart: unless-stopped
-    # The right to set one firewall rule, in this container's own
-    # network and nowhere else: the users kept for agents' workers
-    # reach the runtime's proxy and nothing else. It is used once, at
-    # start, and the runtime itself never holds it
-    # (docs/system/sandbox.md). Without it the stack runs all the same,
-    # and says that nothing holds an agent to the hosts it declared.
-    cap_add:
-      - NET_ADMIN
+    networks:
+      - default
+      - agents
+    depends_on:
+      agents:
+        condition: service_healthy
     environment:
+      AI_RUNTIME_AGENTS_SPAWNER: agents:8003
       BACKEND_SERVICE_PUBLIC_KEY: ${BACKEND_SERVICE_PUBLIC_KEY:?set in deploy.env}
       BACKEND_INTERNAL_URL: ${BACKEND_INTERNAL_URL:-http://backend:8000}
       AI_RUNTIME_AGENTS_INSTALL_DIR: ${AI_RUNTIME_AGENTS_INSTALL_DIR:-/data/agents}
@@ -117,19 +124,58 @@ services:
     volumes:
       - agents_data:/data/agents
 
+  # Agent code runs here, and nothing else does: the runtime's image,
+  # started as the spawner, holding no setting of the platform's. What
+  # a worker is given of the settings above, the runtime sends with it.
+  #
+  # Its network reaches the runtime and nothing else, so the runtime's
+  # proxy is an agent's only way out. The right below sets one firewall
+  # rule, in this container's own network and nowhere else: the users
+  # kept for agents' workers reach the proxy's port and nothing else,
+  # which keeps one agent from another inside the container. It is
+  # used once, at start, and nothing started here ever holds it.
+  # Without it the stack runs all the same, and says so.
+  agents:
+    build:
+      context: .
+      dockerfile: ai_runtime/Dockerfile
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+    # What the agents are given together, of memory and of processor;
+    # 0 is no limit. The engine holds the container to it, and the
+    # spawner ends the agent using most before the engine has to.
+    mem_limit: ${AGENTS_MEMORY:-0}
+    cpus: ${AGENTS_CPUS:-0}
+    command: ["python", "-m", "ai_runtime.agents.spawner_service"]
+    environment:
+      AI_AGENTS_PROXY: ai-runtime:${AI_RUNTIME_EGRESS_PORT:-8002}
+      AI_RUNTIME_EGRESS_PORT:
+      AI_RUNTIME_AGENTS_INSTALL_DIR: ${AI_RUNTIME_AGENTS_INSTALL_DIR:-/data/agents}
+      LOG_LEVEL:
+      TZ:
+    volumes:
+      - agents_data:/data/agents
+    networks:
+      - agents
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 8003), 4).close()"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+
+  # The one door: plain HTTP on one port, from this computer only
+  # unless deploy.env says otherwise (LISTEN, PORT).
   caddy:
     build:
       context: .
       dockerfile: frontend/Dockerfile
     restart: unless-stopped
     environment:
-      SITE_ADDRESS: ${SITE_ADDRESS:?set in deploy.env}
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
     ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - caddy_data:/data
-      - caddy_config:/config
+      - "${LISTEN:-127.0.0.1}:${PORT:-4280}:80"
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:2019/config/"]
       interval: 10s
@@ -140,10 +186,14 @@ services:
       backend:
         condition: service_healthy
 
+networks:
+  # Between the runtime and the agents' container, and nowhere else:
+  # nothing on it reaches the internet, the database or the backend.
+  agents:
+    internal: true
+
 volumes:
   agents_data:
   agent_packages:
   mongo_data:
   uploads_data:
-  caddy_data:
-  caddy_config:

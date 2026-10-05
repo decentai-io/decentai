@@ -3,7 +3,7 @@
 Ask the library for an agent by the digest of its code; it holds one of
 each. Choosing which agent to run is somebody else's job, and running
 its functions is a worker's (docs/reference/worker-protocol.md) — the host never
-imports agent code. What an agent may declare is docs/reference/agent-manifest.md,
+imports agent code. What an agent may declare is docs/agents/manifest.md,
 in full.
 
     library.py        AgentLibrary — THE interface, and the only thing
@@ -20,6 +20,13 @@ in full.
     confinement.py    a user, a home and a spool per approved agent, and
                       the spawn helper (spawn_helper.c) that starts a
                       worker as that user — docs/system/sandbox.md
+    spawner.py        where an agent's processes are started: here, or
+                      in a container of their own, asked over a socket
+    spawner_service.py  what runs in that container, and starts them
+    usage.py          what the agents' container is given, what each
+                      agent uses, and who is ended when it runs out
+    events.py         what agents did, written down as it happens, for
+                      a person to be shown — docs/system/monitoring.md
 
 The classes agent code subclasses live in ``decentai_sdk`` — the
 platform boundary, shipped into every environment.
@@ -28,7 +35,9 @@ platform boundary, shipped into every environment.
 from ai_runtime.agents.approved import ApprovedAgent
 from ai_runtime.agents.confinement import Confinement
 from ai_runtime.agents.environments import AgentEnvironment
+from ai_runtime.agents.events import Events
 from ai_runtime.agents.library import AgentLibrary, AgentRefused, InstalledAgent
+from ai_runtime.agents.spawner import Spawner
 from ai_runtime.agents.worker_handle import WorkerError, WorkerHandle
 
 __all__ = [
@@ -37,7 +46,9 @@ __all__ = [
     "AgentRefused",
     "ApprovedAgent",
     "Confinement",
+    "Events",
     "InstalledAgent",
+    "Spawner",
     "WorkerError",
     "WorkerHandle",
 ]

@@ -222,6 +222,7 @@ import { McpComponent } from './pages/app/data/mcp/mcp.component';
 import { MemoryComponent } from './pages/app/settings/memory/memory.component';
 import { ApiKeysComponent } from './pages/app/settings/api-keys/api-keys.component';
 import { SafetyComponent } from './pages/app/settings/safety/safety.component';
+import { MonitoringComponent } from './pages/app/settings/monitoring/monitoring.component';
 import { ModelProvidersComponent } from './pages/app/settings/model-providers/model-providers.component';
 import { ModelSelectComponent } from './components/model-select/model-select.component';
 import { ConnectedAppsComponent } from './pages/app/settings/connected-apps/connected-apps.component';
@@ -273,6 +274,7 @@ import { ServiceWorkerModule } from '@angular/service-worker';
     MemoryComponent,
     ApiKeysComponent,
     SafetyComponent,
+    MonitoringComponent,
     ModelProvidersComponent,
     ModelSelectComponent,
     ConnectedAppsComponent,

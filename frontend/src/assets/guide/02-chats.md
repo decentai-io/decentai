@@ -79,6 +79,8 @@ Each chat has a time zone the assistant counts in — "Friday 9 am" is your Frid
 
 The *Activity & audit* dialog on a chat is the platform's record of that chat: every function that ran, with the agent, its level, the inputs in outline, whether it succeeded, how long it took, and the result it stored; every approval asked and answered; every credential read by name. It is written by the platform as the work happens and cannot be edited.
 
+Beside it, **The assistant** shows what the model of this chat was shown and what it answered, in order: its instructions, each thing that arrived, and the action it chose each time. Open an entry to read it whole. It is yours to read and nobody else's, an administrator included. The earlier part of a long chat is there as the summary it was folded into.
+
 ## Stopping everything
 
 The stop sign at the top of every page ends all of your chats at once: running work, helpers, browsers, questions waiting on you, and scheduled runs. Nothing of yours starts again until you press **Resume** in the bar that appears. It stops your own work only, and what was already done stays done.

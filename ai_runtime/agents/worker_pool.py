@@ -299,6 +299,7 @@ class WorkerPool:
                 # approval, as the worker itself is.
                 place=Confinement.place_for(key),
             )
+            handle.agent_ref = key
             # Each callback knows which worker is speaking: the router
             # answers an ask only for an invocation sent to that worker.
             handle.router = partial(self._route, handle)
@@ -352,8 +353,10 @@ class WorkerPool:
                 except Exception:
                     # The transport may belong to a closed loop; the OS
                     # does not care which loop a pid came from.
+                    # A worker in the agents' container has no pid here.
                     try:
-                        os.kill(process.pid, 15)
+                        if isinstance(process.pid, int):
+                            os.kill(process.pid, 15)
                     except OSError:
                         pass
         self._handles.clear()

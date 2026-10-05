@@ -10,12 +10,23 @@ if str(PROJECT_ROOT) not in sys.path:
 
 load_dotenv(Path(__file__).resolve().parent / "config.env", override=False)
 
-from ai_runtime.agents import AgentLibrary, Confinement
+from ai_runtime.agents import AgentLibrary, Confinement, Events, Spawner
 from ai_runtime.server import create_app
 from ai_runtime.server.settings import RuntimeSettings
 
 
 settings = RuntimeSettings.from_env()
+
+# What agents do is written down from here on, where a person can be
+# shown it (docs/system/monitoring.md).
+Events.configure(settings.agents_install_dir, "runtime")
+
+# Where agents' processes are started: here, or in a container of
+# their own, which starts beside this one and is waited for — what
+# follows asks it whether workers can be confined.
+spawner = Spawner.configure(settings.agents_spawner, settings.agents_install_dir)
+if spawner.remote:
+    spawner.wait()
 
 # Whether an agent's worker runs as a user of its own here, found out
 # and said before anything is started: the warm-up below verifies

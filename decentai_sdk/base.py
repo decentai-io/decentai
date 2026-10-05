@@ -1,4 +1,4 @@
-"""The classes agent code subclasses (docs/reference/agent-manifest.md).
+"""The classes agent code subclasses (docs/agents/sdk.md).
 
 Code mirrors the manifest: an AgentBase subclass composes ToolBase
 subclasses; each manifest function is a method on its tool class, named by
