@@ -37,11 +37,12 @@ own audience sees or drives the screen.
 **Sizes and rates.** A frame is at most 300 KB (`SCREEN_FRAME_MAX_BYTES`
 in `contracts/chat.py`): the SDK does not send a larger one, and the
 host drops one an agent sent without it. The Browser agent, which is in
-the agents' repository and not this one, sends at most four frames a
-second at 1280 pixels wide, and only when the picture changed; while
-the person drives, frames follow their input but no more often than one
-every 120 ms. The host drops a frame it cannot relay rather than
-queueing it.
+the agents' repository and not this one, sends frames 1280 pixels
+wide: one at each step of a run; one every 0.35 seconds while the
+browser is handed to the person, or one a second while it is only
+watched; and one every 100 ms, at lighter quality, while the person
+drives. It sends each as it is taken, changed or not. The host drops a
+frame it cannot relay rather than queueing it.
 
 ## What an agent uses
 
@@ -68,7 +69,9 @@ holds to level 0 and no model — is what the
 platform calls when the person asks to see the browser before anything
 is asked of it: the chat header's browser button sends `AI:Chat:Watch`,
 the session calls that function directly, and it streams until the
-panel is closed or a run takes the browser. Without such an agent in
+panel is closed, for an hour at most. A run that takes the browser
+meanwhile does not end it: the picture goes on, and the person's hand
+waits until the run is done. Without such an agent in
 the chat the page is told `screen_unavailable`.
 
 ## What the person sees

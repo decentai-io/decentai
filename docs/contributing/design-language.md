@@ -151,9 +151,10 @@ platform does not use, alias that name in the family's `:host` block —
 `data-shared.css` does exactly this for `--border-color` and
 `--text-muted` — rather than leaving a literal behind as a fallback.
 
-Two smaller consequences worth knowing. A wash over the user's chat
-bubble must be mixed from `--chat-user-ink`, because that bubble inverts
-with the theme and a fixed black wash disappears on it in one mode. And
+Two smaller consequences worth knowing. A wash over the ink tile — the
+assistant's code block, which inverts with the theme — must be mixed
+from `--chat-user-ink`, because a fixed black wash disappears on it in
+one mode. And
 a shadow, where one is permitted, is tinted from `--foreground` in
 light and is black in dark, not a blue-grey that reads as a fourth hue
 at low alpha.

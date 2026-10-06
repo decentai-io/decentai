@@ -540,9 +540,11 @@ cannot be confined it runs agents unconfined.
 When a runtime tells the platform an agent's code is ready on it, it
 says with that word what it holds the agent to: a user of its own, its
 files fenced, its connections fenced. The agent's page shows it under
-*How it is confined here* — one sentence when all three hold, and a
-sentence for each that does not. With several runtimes it is one
-runtime's word, as *ready* is.
+*How it is confined here* — one sentence when all three hold;
+otherwise a sentence for what does not: no user of its own, which
+stands for its files too; or its files not fenced; and its connections
+not held to its hosts. With several runtimes it is one runtime's word,
+as *ready* is.
 
 What a person sees, then: at approval, the hosts an agent connects to;
 on an agent's page, a line for any part of the promise that is not

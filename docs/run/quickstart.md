@@ -122,8 +122,10 @@ source, by its address — or set `REFERENCE_CATALOG_URL` in `deploy.env`
 to that address first, and the marketplace offers it with one click.
 Its catalog is read without running any of its code. Open the source
 and press **Review and install** on **Notebook**: read what it declares
-— functions and their levels, the records it keeps, no credential, two
-small packages — and press **Approve and install**. Installing as the
+— functions and their levels, where it connects (nowhere), one
+credential and two small packages, and that it keeps data of its own —
+and press **Approve and install**. The credential is for a sync that
+Notebook only simulates; saving and finding notes need none. Installing as the
 administrator grants it to you.
 
 ## 5. The first chat

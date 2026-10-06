@@ -155,7 +155,7 @@ agent:
 | `version` | yes | `MAJOR.MINOR.PATCH`, digits only, and quoted: `"1.2.0"` — unquoted, YAML may read `1.10` as a number. Bump it with **every** change to the manifest — see "Versions are immutable" below. A label for people: the platform tells one version's code from another's by the hash of the package. |
 | `description` | yes | A sentence or two a person reads on the agent's page. |
 | `tags` | no | A list of strings, none blank: words for what the agent is about. |
-| `examples` | no | At most 6, each `{title, prompt}`; title ≤ 80 characters, prompt ≤ 500. Shown first on the agent's page and offered as a chat's opening. |
+| `examples` | no | At most 6, each `{title, prompt}`; title ≤ 80 characters, prompt ≤ 500. Shown on the agent's page under *Try asking*, each with a **Start a chat** button that opens a new chat with the prompt in the box, for the person to send. |
 | `instructions` | no | A string: what the chat's model reads once it has opened your agent. It advises the model; it does not widen what a function may do. |
 
 **What the agent is found by.** Where many agents are installed, the
