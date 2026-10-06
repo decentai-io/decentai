@@ -108,8 +108,9 @@ and then asks whether the caller should have it — the query cannot
 match a document the caller may not see. What looks a document up by
 its id alone is the platform's own work inside one request: the return
 from a provider's sign-in finding the credential it is reconnecting,
-a transfer finding what changes hands, and the count of who else
-refers to a file's bytes.
+a transfer finding what changes hands, the count of who else refers to
+a file's bytes, and a write reading back the document it has just
+written, which the caller was already shown.
 
 This is a deliberate ordering. A check that happens after a lookup is a
 check somebody can forget to write; a filter that is part of the lookup
