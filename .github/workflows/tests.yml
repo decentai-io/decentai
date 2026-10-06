@@ -108,7 +108,10 @@ jobs:
   agents:
     name: the published agents, against this platform
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 90
+    env:
+      # Where the browser below is put, and where a worker looks for it.
+      PLAYWRIGHT_BROWSERS_PATH: /opt/ms-playwright
     steps:
       - uses: actions/checkout@v4
         with:
@@ -125,9 +128,20 @@ jobs:
             decentai/ai_runtime/requirements.txt
             decentai-agents/tests/requirements.txt
       - run: pip install -r decentai/ai_runtime/requirements.txt -r decentai-agents/tests/requirements.txt
+      # The Browser agent's tests drive a real browser, which the
+      # runtime's image carries and this machine does not: the same
+      # line of Playwright the image has (ai_runtime/Dockerfile), and
+      # its Chromium. Without one those tests wait for a browser that
+      # never opens.
+      - run: |
+          sudo mkdir -p "$PLAYWRIGHT_BROWSERS_PATH"
+          sudo chown "$USER" "$PLAYWRIGHT_BROWSERS_PATH"
+          pip install "playwright>=1.59,<1.60"
+          playwright install --with-deps chromium
       # A change here that an agent in the catalog no longer fits is
       # found here, before it is found by whoever installs the agent.
-      - run: python -m pytest tests -q
+      # A test that stands still for five minutes says where it stands.
+      - run: python -m pytest tests -q -o faulthandler_timeout=300
         working-directory: decentai-agents
         env:
           PYTHONPATH: ../decentai
