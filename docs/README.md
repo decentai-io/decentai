@@ -25,7 +25,11 @@ guide, under **Help → Guide** (its source is
 ## Understand it
 
 Start with [Concepts](system/concepts.md): the parts and the
-vocabulary, each section naming the page that goes deeper.
+vocabulary, each section naming the page that goes deeper. To change
+the platform, read [Architecture](system/architecture.md) next: what
+runs and what speaks to what, one message from the page to an agent
+and back, who is trusted with what, where everything is kept, and
+where to make a change.
 
 The platform:
 
