@@ -132,6 +132,10 @@ class FunctionExecutor:
         #: call_id -> the hosts that call's worker connected to, from
         #: the call's end until its line on the trail is written.
         self._reached: Dict[str, Dict[str, int]] = {}
+        #: call_id -> whose screen it is, for every call that has shown
+        #: a frame and not said it closed. A screen is a call's: when
+        #: the call ends, however it ends, whoever is watching is told.
+        self._screens: Dict[str, Dict[str, Any]] = {}
         #: async (host, fields, account, site, refresh, source) -> values
         #: | None — the chat resolving a login an agent asks for as it
         #: works, through the person's cards. None where nobody can
@@ -543,6 +547,7 @@ class FunctionExecutor:
 
         async def screen(kind: str, params: Dict[str, Any]) -> None:
             if kind != "frame":
+                self._screens.pop(call_id, None)
                 await self.screen_sink(kind, {"call_id": call_id}, source)
                 return
             # What reaches a person's browser is a frame by the chat's
@@ -560,8 +565,22 @@ class FunctionExecutor:
             # does not use it is held to it here.
             if len(frame["image_base64"]) > SCREEN_FRAME_MAX_BYTES * 4 // 3 + 4:
                 return
+            self._screens[call_id] = source
             await self.screen_sink(kind, frame, source)
         return screen
+
+    async def _end_screen(self, call_id: str) -> None:
+        """A call is over: a screen it showed and never closed is
+        closed for it. A function that returned, raised, ran out of
+        time or lost its worker says nothing of its screen, and a
+        picture left standing reads as something still running."""
+        source = self._screens.pop(call_id, None)
+        if source is None or self.screen_sink is None:
+            return
+        try:
+            await self.screen_sink("closed", {"call_id": call_id}, source)
+        except Exception as exc:
+            self.logger.warning(f"A screen could not be told closed: {exc}")
 
     async def screen_input(self, call_id: str, events: list) -> bool:
         """The person acting on a screen a running call shows."""
@@ -752,6 +771,7 @@ class FunctionExecutor:
                 grant.close()
             if context.reached:
                 self._reached[call_id] = dict(context.reached)
+            await self._end_screen(call_id)
 
         if status == "success":
             output_error = self._validate(function_spec.get("outputs"), result)

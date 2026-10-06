@@ -36,7 +36,7 @@
       <button class="btn primary" type="button"
               *ngIf="canInstall && agent.status === 'update_available'"
               (click)="update.emit(agent)" [disabled]="busyId === agent.agent_id">
-        Update
+        Review update
       </button>
       <!-- Always offered, whatever else is true of the agent: an update
            waiting, the catalog no longer listing it. Uninstalling is how
