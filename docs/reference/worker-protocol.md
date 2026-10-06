@@ -235,7 +235,7 @@ no larger one, and the host drops one that is), relayed to the chat's
 audience and never recorded (`frame` is the picture's own count, not
 the record's `seq`; `tabs` is what stands behind the picture, at most
 20 of `{index, title, address, active}`);
-`screen.closed` `{call_id}` when it stops. Host → worker: `screen.input`
+`screen.closed` `{call_id}` when the function closes it (`call.screen.close()`); a call that ends with its screen still open sends none. Host → worker: `screen.input`
 `{call_id, events}` — what the person did on it: `{type: mouse, action:
 down|up|move|wheel, x, y, button?, deltaX?, deltaY?}`, `{type: key,
 action: down|up, key, code?, text?, modifiers?}`, `{type: control,

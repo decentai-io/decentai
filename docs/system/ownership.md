@@ -96,6 +96,7 @@ counts, so the administrator sees the hand-over before confirming.
 | LLM connections, agent sources | stewardship transferred to the successor |
 | agent grants naming the person | the person is taken out of them; a grant left naming nobody is deleted |
 | credential grants | kept; they name the secret, which now has a steward |
+| the shapes of credentials (`secret_definitions`), the apps registered with providers (`oauth_apps`) | kept as they are, and not handed over: they are the organization's, and still name who made them |
 | audit events | kept, with the actor as recorded — a trail outlives its actors |
 
 ## Disabling a person
