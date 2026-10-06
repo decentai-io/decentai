@@ -81,7 +81,10 @@ A string field whose whole value is `@ref` becomes the id the platform
 gave that row or file when it was loaded, so rows may point at each
 other; a ref must be declared before it is used, in the same sheet. Rows
 are checked against the manifest by the platform at load time, like a
-person's own record.
+person's own record. A file is checked against its slot's `constraints`
+when the sheet is read: one of a kind the slot does not list is an
+error of the sheet, shown in the marketplace, and the sheet does not
+load.
 
 ```yaml
 story: One line saying whose data this is.       # at most 200 characters

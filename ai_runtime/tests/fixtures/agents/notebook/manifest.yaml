@@ -82,7 +82,7 @@ resources:
       description: Exported or imported note collections.
       binding: {cardinality: many, required: false}
       constraints:
-        mime_types: [text/csv, application/json]
+        mime_types: [text/csv, application/json, text/markdown]
         max_size_mb: 5
 
 tools:

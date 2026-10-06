@@ -7,9 +7,10 @@ from __future__ import annotations
 
 import hashlib
 import json
-import mimetypes
 import os
 from typing import BinaryIO
+
+from contracts.file_types import FileTypes
 
 
 class FileConnector:
@@ -27,8 +28,10 @@ class FileConnector:
 
     @staticmethod
     def _content_type(filename: str) -> str:
-        content_type, _ = mimetypes.guess_type(filename)
-        return content_type if content_type else "application/octet-stream"
+        # The platform's own table first: the interpreter's does not
+        # know a Word document or a workbook on a small image, and a
+        # file is the same kind wherever it is stored.
+        return FileTypes.of(filename)
 
     @staticmethod
     def _hash_and_size(

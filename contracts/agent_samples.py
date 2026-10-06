@@ -39,6 +39,8 @@ from typing import Any, Dict, List, Optional
 
 import yaml
 
+from contracts.file_types import FileTypes
+
 SAMPLES_FILENAME = "samples.yaml"
 
 MAX_RECORDS = 200
@@ -107,6 +109,7 @@ class SampleSheet:
 class _Reader:
     def __init__(self, manifest: Dict[str, Any], root: Optional[Path]):
         self.root = root
+        self.manifest = manifest or {}
         self.errors: List[str] = []
         resources = (manifest or {}).get("resources") or {}
         self.data = {str(r.get("id") or ""): r for r in resources.get("data") or []
@@ -151,6 +154,19 @@ class _Reader:
                 self.fail(f"{path}.slot", f"'{slot}' is not a file slot the manifest declares")
             relative = str(item.get("path") or "")
             resolved = self._file_path(relative, path)
+            if slot in self.file_slots and resolved is not None:
+                # A slot takes what its manifest lists, the agent's
+                # own sample among it: said here, where the sheet is
+                # read, and not when somebody loads it.
+                size = None
+                if self.root is not None:
+                    size = (self.root / relative).stat().st_size
+                unfit = FileTypes.refusal(
+                    FileTypes.constraints_of(self.manifest, slot),
+                    Path(relative).name, size)
+                if unfit:
+                    self.fail(f"{path}.path", unfit)
+                    resolved = None
             if ref and slot in self.file_slots and resolved is not None:
                 out.append({"ref": ref, "slot": slot, "path": relative,
                             "filename": Path(relative).name})
