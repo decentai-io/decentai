@@ -354,8 +354,8 @@ events to what you drive, and look again when they hand it back.
 
 A screen is the call's. When your function returns, raises or runs out
 of time, the platform tells whoever is watching that it ended, and the
-last picture stays, marked idle. `close()` says so sooner, while the
-function goes on with something else.
+panel closes. `close()` says so sooner, while the function goes on
+with something else.
 
 A function with `watch: true` is the one the platform calls, without the
 model, when the person opens your agent's screen from the chat's header.
