@@ -89,9 +89,10 @@ Keys are write-only: nobody reads one back.
 **Agents → Marketplace.** Add the [`decentai-agents`](https://github.com/decentai-io/decentai-agents) repository as a
 source, by its address — or set `REFERENCE_CATALOG_URL` in `deploy.env`
 to that address first, and the marketplace offers it with one click.
-The catalog is read without running any of its code. Install **Notebook**: read what it
-declares — functions and their levels, the records it keeps, no
-credential, two small packages — and approve. Installing as the
+Its catalog is read without running any of its code. Open the source
+and press **Review and install** on **Notebook**: read what it declares
+— functions and their levels, the records it keeps, no credential, two
+small packages — and press **Approve and install**. Installing as the
 administrator grants it to you.
 
 ## 5. The first chat
