@@ -63,13 +63,16 @@ reach the backend's `/healthz`, which Caddy proxies without regard to
 the Host header. Leave `FORWARDED_ALLOW_IPS` as it is: the backend's
 only peer is Caddy, and that setting is about the backend's peer.
 
-Behind a balancer the backend does not learn a client's own address
-today: `frontend/Caddyfile` names no trusted proxy, so Caddy does not
-take the balancer's word for it and passes on the balancer's own.
-Session records show that address, and the login lockout's count by
-address counts everybody as one: twenty wrong passwords in fifteen
-minutes, from anybody, lock sign-in for all until the window passes.
-The count by account is unaffected.
+**Set `TRUSTED_PROXIES` to the balancer's own address range**
+(`10.0.0.0/8`; several, with spaces between). A balancer says where
+each request came from, and Caddy takes that word only from the
+addresses named there. Unset, it takes nobody's, and every person is
+the balancer to the backend: a session's record names the balancer,
+and the sign-in lockout that counts by address counts everybody as
+one — twenty wrong passwords in fifteen minutes, from anybody, lock
+sign-in for all until the window passes. Name the balancer and
+nothing wider: whatever is named there is believed about who it is
+speaking for.
 
 ## After it is up
 

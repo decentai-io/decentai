@@ -23,7 +23,10 @@ act on details that were never said. So:
 - **Authority is inherited, never widened.** The child runs under the
   parent's contract — the same grants, trust level, model, and budget —
   optionally narrowed to the agents the parent names. A child cannot
-  spawn: depth is one, by construction, not by policy.
+  spawn: depth is one, by construction, not by policy. Nor can it
+  sleep, set a schedule or remove one — the clock is the chat's — or
+  save a memory: it is told so when it asks, and says in its report
+  what should be done.
 
 ## The action
 

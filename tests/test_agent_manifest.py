@@ -516,6 +516,21 @@ class TestFieldStorageContradictions:
             }))
         assert errors_of(good) == []
 
+    def test_a_requirement_that_is_an_option_is_refused(self, document):
+        """What begins with a dash would be read as an order by the
+        program that installs the packages. It was approved, and the
+        agent then failed to load."""
+        for option in ("--index-url https://packages.example.test/simple",
+                       "-r requirements.txt", "  -e ."):
+            bad = broken(document, lambda d, option=option: d[
+                "implementation"].update(dependencies=["humanize>=4.9,<5",
+                                                       option]))
+            assert any("is an option, not a requirement" in error
+                       for error in errors_of(bad)), option
+        good = broken(document, lambda d: d["implementation"].update(
+            dependencies=["humanize>=4.9,<5", "python-docx>=1.1,<2"]))
+        assert errors_of(good) == []
+
     def test_a_secret_has_no_object_field(self, document):
         """A credential's fields are what a person types into a form.
         The place credentials are kept has no object, so a manifest

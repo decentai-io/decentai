@@ -226,6 +226,18 @@ class ManifestValidator:
                 "implementation.dependencies",
                 "must be a list of pip requirement strings",
             )
+            return
+        # A requirement names a package. What begins as an option
+        # (-r, --index-url) would be read as one by the program that
+        # installs them: refused here, where a manifest is read, and
+        # not found out when the approved agent fails to load
+        # (ai_runtime/agents/environments.py refuses it there too).
+        for index, dependency in enumerate(dependencies):
+            if dependency.strip().startswith("-"):
+                self._fail(
+                    f"implementation.dependencies[{index}]",
+                    f"'{dependency.strip()}' is an option, not a requirement",
+                )
 
     def _authorization(self, authorization: Any) -> None:
         if authorization is None:
