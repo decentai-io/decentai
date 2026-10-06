@@ -101,7 +101,10 @@ records:
 ```
 
 At most 200 records and 20 files. Every field must be one the manifest
-declares, with a value of its type; a required field must be there.
+declares, with a value of its type; a required field must be there. A
+`ref` is a short name of its own: a lowercase letter, then lowercase
+letters, digits and `_`, at most 40 characters. The sheet has `story`,
+`files` and `records`, and any other key at its top is refused.
 
 Keep sample data obviously fictional, and keep it consistent: if one
 sheet names invoice `INV-1043`, the sheet that quotes it should use the

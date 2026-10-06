@@ -320,7 +320,17 @@ Lifecycle rules:
   fresh one. Ending a confined worker ends everything its user runs —
   a browser never outlives the worker that started it.
 - **Shutdown** is a `shutdown` request (the worker calls the agent's
-  `close()` and exits), and stdin EOF is its backstop.
+  `close()`, answers `{}` and exits), and stdin EOF is its backstop.
+- **What a worker refuses**, each as an error on the request that asked:
+  an `invoke` before the handshake (`no handshake`), one with no
+  `call_id`, one whose `call_id` is already running, one for a function
+  the agent does not have (`unknown function`), a second `hello`
+  (`already handshaken`), and a method it does not know.
+- **A spool is read by its own path and nothing else**: a
+  `content_path` outside the worker's spool, one that is a link, and
+  one that is not a file are each refused.
+- Every worker is started with `PYTHONDONTWRITEBYTECODE=1`: it writes
+  nothing beside the code it was given.
 
 ## Hostility assumptions
 
