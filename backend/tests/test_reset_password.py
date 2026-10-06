@@ -113,3 +113,15 @@ class TestWhatItRefuses:
 
     def test_no_email_at_all(self, app, seed):
         assert reset("", NEW_PASSWORD) == 1
+
+
+class TestWhatActsForTheAccount:
+    def test_its_api_keys_are_revoked_as_a_reset_link_revokes_them(
+            self, app, seed, admin):
+        from conftest import app_call
+        from test_api_keys import make_key, with_key
+
+        key = make_key(admin)["key"]
+        assert app_call(with_key(app, key), "Data:Record:List", {}).status_code == 200
+        assert reset(ADMIN_EMAIL, NEW_PASSWORD) == 0
+        assert app_call(with_key(app, key), "Data:Record:List", {}).status_code == 401

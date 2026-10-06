@@ -112,12 +112,14 @@ class Assistant:
     MAX_IMAGES_PER_MESSAGE = 4
 
     #: What a permission level MEANS, in the words the person approving
-    #: one is shown.
+    #: one is shown and a manifest's author is told
+    #: (docs/agents/manifest.md): the model choosing a function reads
+    #: the same scale as the person who set the chat's trust level.
     LEVELS = {
-        0: "observe",
-        1: "read / compute",
-        2: "contained change",
-        3: "external / irreversible",
+        0: "read",
+        1: "ordinary change",
+        2: "wider change",
+        3: "outside action",
     }
 
     def __init__(
@@ -342,20 +344,12 @@ class Assistant:
                 self.state.plan.replace([])
                 self._plan_cleared = True
             return
-        payload = {k: v for k, v in event.items()
+        # A wakeup's result is held to the budget of an observation,
+        # with the same note. It is fitted before it is recorded
+        # (Session.deliver_event); fitted again here it is unchanged,
+        # and an event recorded by an older version is fitted now.
+        payload = {k: v for k, v in self.fitted(event).items()
                    if k not in ("event", "seq")}
-        # A wakeup carries its fire's whole result, and a schedulable
-        # function can return more than one beat should be shown. The
-        # budget that bounds an observation bounds it here, with the
-        # same note — the fire stored the whole, and read pages it.
-        result = payload.get("result")
-        if isinstance(result, dict) and len(
-                json.dumps(payload, default=str)) > self.OBSERVATION_MAX_CHARS:
-            payload = {
-                **{k: v for k, v in payload.items() if k != "result"},
-                **self._previewed(str(payload.get("status") or "success"),
-                                  result),
-            }
         self.state.messages.append({
             "role": "user",
             "content": f"EVENT {kind} at {stamp}:\n"
@@ -1705,6 +1699,22 @@ class Assistant:
         if len(serialized) > self.OBSERVATION_MAX_CHARS:
             observation = self._previewed(status, result)
         return observation
+
+    def fitted(self, event: Dict[str, Any]) -> Dict[str, Any]:
+        """An event whose ``result`` is more than one beat should be
+        shown, with the result as its preview: a wakeup carries its
+        fire's whole result, and a schedulable function can return a
+        great deal. The fire stored the whole, and ``read`` pages it.
+        Any other event is handed back as it came."""
+        result = event.get("result")
+        carried = {k: v for k, v in event.items() if k not in ("event", "seq")}
+        if not isinstance(result, dict) or len(
+                json.dumps(carried, default=str)) <= self.OBSERVATION_MAX_CHARS:
+            return event
+        return {
+            **{k: v for k, v in event.items() if k != "result"},
+            **self._previewed(str(event.get("status") or "success"), result),
+        }
 
     def _previewed(self, status: str, result: Any) -> Dict[str, Any]:
         """A result too large to show whole, as the model is shown it:

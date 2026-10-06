@@ -21,6 +21,12 @@ from database.stores.base import MongoStore
 from util import iso, utc_now
 
 
+class DefinitionUnchanged(ValueError):
+    """A version that would say what the last one says. A refusal like
+    any other to whoever asked for a new version, and told apart from
+    the others by whoever asks at every install and expects it."""
+
+
 class DefinitionStore(MongoStore):
     COLLECTION = "secret_definitions"
 
@@ -329,7 +335,8 @@ class DefinitionStore(MongoStore):
             for key in ("label", "description", "fields", "oauth")
         )
         if unchanged:
-            raise ValueError("Nothing changed — no new version created.")
+            raise DefinitionUnchanged(
+                "Nothing changed — no new version created.")
 
         return self._insert_version(author, content, version=current["version"] + 1)
 

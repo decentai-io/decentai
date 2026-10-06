@@ -775,6 +775,43 @@ class TestTheLiveContract:
         assert session.chat_level == 3
         assert session.assistant.chat_level == 3
 
+    def test_a_chat_at_level_zero_is_at_zero(self):
+        """Zero is the level where every change asks first. Read as
+        "nothing said" it became the standard, 1, and an ordinary
+        change ran unasked in the chat of somebody who chose to be
+        asked."""
+        host, services = build([action(action="finish"),
+                                action(action="finish")])
+        services.contracts["chat_1"]["chat_level"] = 0
+
+        async def scenario():
+            await host.handle("chat_1",
+                              {"event": "user_message", "text": "one"})
+            session = host.sessions["chat_1"]
+            await session.wait_idle()
+            built_at = session.chat_level
+            # And again as the next turn begins, where it is read anew.
+            await host.handle("chat_1",
+                              {"event": "user_message", "text": "two"})
+            await session.wait_idle()
+            fired_at = (await host.fire_context("chat_1")).chat_level
+            return built_at, session.chat_level, fired_at
+
+        assert run(scenario()) == (0, 0, 0)
+
+    def test_a_contract_that_says_no_level_is_the_standard(self):
+        host, services = build([action(action="finish")])
+        services.contracts["chat_1"].pop("chat_level", None)
+
+        async def scenario():
+            await host.handle("chat_1",
+                              {"event": "user_message", "text": "one"})
+            session = host.sessions["chat_1"]
+            await session.wait_idle()
+            return session.chat_level
+
+        assert run(scenario()) == 1
+
     def test_the_model_picked_since_the_build_thinks_the_next_turn(self):
         """The person picked another model on the page. Nothing told the
         runtime; the next turn re-reads the contract, sees the llm block

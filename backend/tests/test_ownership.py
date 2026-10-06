@@ -273,6 +273,29 @@ class TestLeaving:
         names = [c["name"] for c in app_call(admin, "Settings:Llm:List", {}).json()["connections"]]
         assert "Theirs" in names
 
+    def test_a_secret_whose_name_the_successor_already_uses_is_renamed(
+            self, app, admin, seed, control, manifest_doc):
+        """A secret's name is one per kind and creator. A hand-over
+        that met its twin stopped there, with the leaver's chats
+        already gone and the person still on the list."""
+        control["manifest"] = manifest_doc
+        define(admin)
+        member, doc = colleague(app, admin, seed, SECRET_ACTIONS)
+        mine = secret_of(admin, "prod")
+        theirs = secret_of(member, "prod")
+
+        gone = app_call(admin, "IAM:User:Delete", {"user_id": doc["_id"]})
+        assert gone.status_code == 200, gone.text
+        assert gone.json()["transferred"]["secrets"] == 1
+        from database.stores import UserStore
+        assert UserStore().get(doc["_id"]) is None
+
+        kept = app_call(admin, "Secrets:Secret:Get", {"resource_ref": mine})
+        handed = app_call(admin, "Secrets:Secret:Get", {"resource_ref": theirs})
+        assert kept.json()["resource"]["name"] == "prod"
+        assert handed.json()["resource"]["name"] == "prod (transferred)"
+        assert handed.json()["resource"]["created_by"] == seed.admin["_id"]
+
     def test_a_successor_must_be_an_active_member(self, app, admin, seed):
         member, doc = colleague(app, admin, seed, SECRET_ACTIONS)
         assert app_call(admin, "IAM:User:Delete", {

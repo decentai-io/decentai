@@ -3,9 +3,10 @@
 For an install with no email — one on a person's own computer above
 all — where a forgotten password has nowhere to send a reset link. It
 grants nothing new: whoever can run commands where DecentAI runs
-already holds its database. It does what a reset link does: the new password is set,
-every session and pending reset of the account ends, and the account's
-lockout after wrong passwords is lifted.
+already holds its database. It does what a reset link does: the new
+password is set, every session and pending reset of the account ends,
+its API keys are revoked, and the account's lockout after wrong
+passwords is lifted.
 
     RESET_EMAIL=you@example.com RESET_PASSWORD=... python bootstrap/reset_password.py
 
@@ -43,8 +44,9 @@ class PasswordReset:
         self.new_email = str(new_email or "")
 
     def run(self) -> int:
-        from database.stores import (LoginThrottle, PasswordResetStore,
-                                     SessionStore, UserStore)
+        from database.stores import (ApiKeyStore, LoginThrottle,
+                                     PasswordResetStore, SessionStore,
+                                     UserStore)
         from server.authentication.credentials import PasswordHasher
 
         users = UserStore()
@@ -72,9 +74,14 @@ class PasswordReset:
         users.set_password(user["_id"], PasswordHasher.hash(self.password))
         SessionStore().delete_for_user(user["_id"])
         PasswordResetStore().delete_for_user(user["_id"])
+        # A key acts as its person, and whoever needed the password
+        # set here may be whoever lost the account: as a reset link
+        # does (server/authentication/flows.py).
+        revoked = ApiKeyStore().revoke_all_for_user(user["_id"])
         LoginThrottle().record_success(email)
 
-        print(f"password: set for {email}; every session of the account has ended")
+        print(f"password: set for {email}; every session of the account has ended"
+              + (f", and {revoked} API key(s) revoked" if revoked else ""))
         if user.get("status") == UserStore.STATUS_DISABLED:
             print(f"note: {email} is disabled, and cannot sign in until an "
                   f"administrator enables the account again")

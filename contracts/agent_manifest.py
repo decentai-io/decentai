@@ -27,6 +27,22 @@ ENTRYPOINT_PATTERN = re.compile(r"^[A-Za-z0-9_.]+:[A-Za-z_][A-Za-z0-9_]*$")
 RESOURCE_KINDS = ("secrets", "data", "files")
 FIELD_TYPES = {"string", "number", "select", "object", "secret"}
 STORAGE_KINDS = {"keys", "values"}
+#: What the place credentials are kept holds a secret's shape to
+#: (backend/database/stores/data/definitions.py). Said here as well, so
+#: that a manifest it would refuse is refused where a manifest is read
+#: and not at install, after somebody approved it:
+#: tests/test_agent_manifest.py holds the two to each other.
+#:
+#: A secret's shape is kept under "<the approval's ref>__<its id>", and
+#: that whole name is at most 60 characters: the ref is 24 and the
+#: join 2, which leaves the id 34.
+SECRET_ID_MAX_CHARS = 34
+SECRET_FIELD_NAME_PATTERN = re.compile(r"^[a-z][a-z0-9_]{1,59}$")
+SECRET_FIELDS_MAX = 50
+#: ``name`` is every credential's own label.
+SECRET_RESERVED_FIELD_NAMES = ("name",)
+#: A credential's fields are what a person types into a form.
+SECRET_FIELD_TYPES = FIELD_TYPES - {"object"}
 #: What the platform writes into a connected account's credential; a
 #: manifest may not declare these names itself.
 OAUTH_FIELD_NAMES = ("account", "access_token", "refresh_token", "expires_at", "status")
@@ -285,6 +301,13 @@ class ManifestValidator:
                     continue
                 seen_ids[resource_id] = kind
 
+                if kind == "secrets" and len(resource_id) > SECRET_ID_MAX_CHARS:
+                    self._fail(
+                        path,
+                        f"a secret's id is at most {SECRET_ID_MAX_CHARS} "
+                        f"characters",
+                    )
+
                 self._require_str(resource, "label", path)
                 self._binding(resource.get("binding"), path)
 
@@ -312,9 +335,10 @@ class ManifestValidator:
                     # manifest may declare no fields at all.
                     self._oauth(resource.get("oauth"), path)
                     self._fields(resource.get("fields"), path, optional=True,
-                                 reserved=OAUTH_FIELD_NAMES)
+                                 reserved=OAUTH_FIELD_NAMES, secret=True)
                 elif kind in ("secrets", "data"):
-                    self._fields(resource.get("fields"), path)
+                    self._fields(resource.get("fields"), path,
+                                 secret=kind == "secrets")
                 else:
                     self._file_constraints(resource.get("constraints"), path)
 
@@ -575,12 +599,14 @@ class ManifestValidator:
             self._fail(path, f"unknown keys: {sorted(unknown)}")
 
     def _fields(self, fields: Any, path: str, optional: bool = False,
-                reserved: tuple = ()) -> None:
+                reserved: tuple = (), secret: bool = False) -> None:
         if optional and not fields:
             return
         if not isinstance(fields, list) or not fields:
             self._fail(path, "fields must be a non-empty list")
             return
+        if secret and len(fields) > SECRET_FIELDS_MAX:
+            self._fail(path, f"a secret has at most {SECRET_FIELDS_MAX} fields")
 
         seen = set()
         for index, field in enumerate(fields):
@@ -599,10 +625,18 @@ class ManifestValidator:
             if name in reserved:
                 self._fail(field_path,
                            f"'{name}' is filled in by the platform's OAuth flow")
+            if secret and not SECRET_FIELD_NAME_PATTERN.match(name):
+                self._fail(field_path,
+                           "a secret's field name is 2 to 60 characters")
+            if secret and name in SECRET_RESERVED_FIELD_NAMES:
+                self._fail(field_path,
+                           f"'{name}' is every credential's own label, and "
+                           f"not a field's to take")
 
-            if field.get("type") not in FIELD_TYPES:
+            allowed = SECRET_FIELD_TYPES if secret else FIELD_TYPES
+            if field.get("type") not in allowed:
                 self._fail(
-                    field_path, f"type must be one of {sorted(FIELD_TYPES)}"
+                    field_path, f"type must be one of {sorted(allowed)}"
                 )
             if field.get("storage") not in STORAGE_KINDS:
                 self._fail(field_path, "storage must be keys or values")

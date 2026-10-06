@@ -84,7 +84,7 @@ sources of the same thing.
 
 | event | carries | meaning |
 |---|---|---|
-| `user_message` | message id, text, attachments | the person spoke — including while work is running. Absorbed on the next beat; never refused, never queued behind a "busy" wall. |
+| `user_message` | message id, text, attachments | the person spoke — including while work is running. Absorbed on the next beat; never queued behind a "busy" wall, and refused only for its length: more than 256 KB of text is turned away at the door, before anything is kept, and belongs in a file. |
 | `job_done` | job_id, result, status | a background invocation finished (success or error — both are results). |
 | `wakeup` | schedule_id, and `note` or `function` with its `result`; `slept: true` after a sleep | a schedule fired (the reminders design's clock, natively). |
 | `agent_posted` | agent, function, text | an agent said something to the person directly (`call.post`), beside the conversation. The assistant is told so that it does not repeat it; the words are data, not instructions. |

@@ -516,6 +516,70 @@ class TestFieldStorageContradictions:
             }))
         assert errors_of(good) == []
 
+    def test_a_secret_has_no_object_field(self, document):
+        """A credential's fields are what a person types into a form.
+        The place credentials are kept has no object, so a manifest
+        that declared one was approved and then failed to install."""
+        bad = broken(document, lambda d: d["resources"]["secrets"][0][
+            "fields"].append({
+                "name": "blob", "label": "Blob",
+                "type": "object", "storage": "values",
+            }))
+        assert any("type must be one of" in error for error in errors_of(bad))
+
+    def test_a_secrets_names_are_held_to_what_keeps_credentials(self, document):
+        def with_field(name):
+            return broken(document, lambda d: d["resources"]["secrets"][0][
+                "fields"].append({"name": name, "label": "X",
+                                  "type": "string", "storage": "keys"}))
+
+        assert any("2 to 60 characters" in e for e in errors_of(with_field("a")))
+        assert any("own label" in e for e in errors_of(with_field("name")))
+        assert errors_of(with_field("ab")) == []
+
+        def with_id(resource_id):
+            def rename(d):
+                secret = d["resources"]["secrets"][0]
+                old, secret["id"] = secret["id"], resource_id
+                text = yaml.safe_dump(d).replace(f"{old}.", f"{resource_id}.")
+                d.clear()
+                d.update(yaml.safe_load(text))
+                d["resources"]["secrets"][0]["id"] = resource_id
+            return broken(document, rename)
+
+        assert any("at most 34 characters" in e
+                   for e in errors_of(with_id("s" * 35)))
+
+    def test_a_secret_has_at_most_fifty_fields(self, document):
+        bad = broken(document, lambda d: d["resources"]["secrets"][0][
+            "fields"].extend(
+                {"name": f"field_{n}", "label": "X", "type": "string",
+                 "storage": "keys"} for n in range(50)))
+        assert any("at most 50 fields" in error for error in errors_of(bad))
+
+    def test_what_the_validator_holds_a_secret_to_is_what_keeps_it(self):
+        """The numbers are said twice, once where a manifest is read
+        and once where a credential's shape is kept. This is what
+        holds them to each other."""
+        import sys
+
+        from contracts import agent_manifest as said
+
+        backend = Path(__file__).resolve().parent.parent / "backend"
+        if str(backend) not in sys.path:
+            sys.path.insert(0, str(backend))
+        from database.stores.data.definitions import DefinitionStore as kept
+
+        assert said.SECRET_FIELD_NAME_PATTERN.pattern == kept.SLUG_PATTERN.pattern
+        assert said.SECRET_FIELDS_MAX == kept.MAX_FIELDS
+        assert tuple(said.SECRET_RESERVED_FIELD_NAMES) == tuple(
+            kept.RESERVED_FIELD_NAMES)
+        assert said.SECRET_FIELD_TYPES <= set(kept.FIELD_TYPES)
+        # "<agt_ + 20>__<id>" is held to the same pattern: 60 in all.
+        assert kept.SLUG_PATTERN.match("agt_" + "a" * 20 + "__" + "s" * 34)
+        assert not kept.SLUG_PATTERN.match("agt_" + "a" * 20 + "__" + "s" * 35)
+        assert said.SECRET_ID_MAX_CHARS == 34
+
     def test_a_secret_cannot_live_in_keys(self, document):
         """Keys are plaintext. A secret there is a credential stored in
         the open, whatever the author intended."""

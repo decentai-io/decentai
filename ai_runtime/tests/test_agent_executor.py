@@ -699,6 +699,10 @@ class TestSeveralCredentials:
             listed = await access.list_secrets("google")
             assert [a["keys"]["account"] for a in listed] == [
                 "a@work.example", "a@home.example"]
+            # Every key the backend's listing has (docs/agents/sdk.md):
+            # code written to the page runs under the stand-in.
+            assert all({"resource_ref", "name", "keys", "is_default",
+                        "is_bound"} <= set(a) for a in listed)
             assert all("values" not in a and "access_token" not in a
                        for a in listed), "a listing carries no value"
             assert [a["is_default"] for a in listed] == [True, False]

@@ -14,7 +14,7 @@ next hydration — exactly once (docs/system/assistant.md).
 
 import json
 
-from contracts.chat import event_error
+from contracts.chat import USER_TEXT_MAX_BYTES, event_error
 from database.stores import ChatEventStore, ChatStore
 from util import utc_now
 
@@ -23,6 +23,10 @@ from .base import AIController
 
 class EventController(AIController):
     EVENT_MAX_BYTES = 16384
+    #: An inbound event may be larger than an outbound one: a wakeup
+    #: carries the preview of its fire's result, which is bounded in
+    #: characters (the assistant's observation budget) and not in bytes.
+    INBOX_MAX_BYTES = 65536
     EVENTS_KEPT = 200
     DEFAULT_LIMIT = 100
     #: Never truncates a legitimate replay: the tail kept per chat is
@@ -106,12 +110,28 @@ class EventController(AIController):
                 data, "invalid_request",
                 "event must be an object with an event name.",
             )
-        size = len(json.dumps(event, default=str).encode("utf-8"))
-        if size > self.EVENT_MAX_BYTES:
+        # A person's words are the one thing in the inbox that is not
+        # the platform's to bound here: the message is already kept
+        # whole, and an event refused for its length would leave words
+        # on the page that the assistant never hears. They have a bound
+        # of their own, held at the door before anything is kept.
+        text = event.get("text") if event["event"] == "user_message" else None
+        if isinstance(text, str):
+            if len(text.encode("utf-8")) > USER_TEXT_MAX_BYTES:
+                return self._fail(
+                    data, "event_too_large",
+                    f"A message is at most {USER_TEXT_MAX_BYTES} bytes "
+                    f"of text.",
+                )
+            measured = {k: v for k, v in event.items() if k != "text"}
+        else:
+            measured = event
+        size = len(json.dumps(measured, default=str).encode("utf-8"))
+        if size > self.INBOX_MAX_BYTES:
             return self._fail(
                 data, "event_too_large",
                 f"Event is {size} bytes; the limit is "
-                f"{self.EVENT_MAX_BYTES}.",
+                f"{self.INBOX_MAX_BYTES}.",
             )
 
         chats = ChatStore()
