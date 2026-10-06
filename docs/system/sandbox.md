@@ -63,7 +63,9 @@ them.
   unread.
 - **A worker whose runtime hung up is ended**, with everything its
   user runs. A runtime that died leaves nothing running.
-- **The agents' container holds no setting of the platform's.** What a
+- **The agents' container holds no secret of the platform's.** It is
+  told where the runtime's proxy is, the port, the folder agents are
+  kept in, the log level and the time zone, and nothing else. What a
   worker is given, the runtime sends with the order to start it.
 
 What this adds to a user of its own and a fence: an agent cannot see
@@ -166,7 +168,7 @@ the worker starts, a browser included, and cannot be taken off.
 
 | A worker may | Where |
 |---|---|
-| read and run | the system (`/usr`, `/lib`, `/bin`, `/etc`, `/sys`), the browsers the image carries, its own package, its own environment |
+| read and run | the system (`/usr`, `/lib` and its variants, `/bin`, `/sbin`, `/etc`, `/sys`, `/var/cache/fontconfig`), the browsers the image carries, its own package, its own environment |
 | do anything | its home, its spool |
 | write, where whose-it-is still decides | `/dev`, `/proc`, `/tmp` |
 | nothing | the platform's own code, the store and the environments of other agents, the table of users, and every other folder |
@@ -266,7 +268,7 @@ somewhere else — is refused, as an undeclared host would be. A
 deployment with an index of its own names it
 ([configuration](../run/configuration.md)). A requirement names a
 package; one that begins as an option (`-r`, `--index-url`) is refused
-before anything runs, confined or not.
+before pip is started, confined or not.
 
 **Packages for one run are built the same way.** Code a person allowed
 may need packages no manifest named. The code card names them, and for
@@ -310,8 +312,9 @@ for.
 - **Memory** cannot be slowed, only refused. At the limit the kernel
   ends a process of its own choosing, which need not be the one that
   took the memory. So the spawner looks every second at what each
-  agent holds, and when the agents together hold nine tenths of what
-  they are given it ends the agent holding most, with everything its
+  agent holds, and when the agents' container holds nine tenths of what
+  it is given — the kernel's own number, the spawner and what is shared
+  among it — it ends the agent holding most, with everything its
   user runs (`ai_runtime/agents/usage.py`,
   `SpawnerService._hold_to_what_is_given`).
 
@@ -419,8 +422,9 @@ half an hour is closed.
 
 **A refusal says why, where a program can read it.** A client shows
 its caller one line of a refused tunnel's answer, so the reason is on
-that line: *Gmail did not declare elsewhere.example.org among the
-hosts it connects to*.
+that line: *Gmail (agt_…) did not declare elsewhere.example.org among
+the hosts it connects to* — the name a person knows the agent by, and
+its ref.
 
 **A host a credential names is lent, and taken back.** A worker serves
 every person of an organization, and a host one person's credential
@@ -493,8 +497,9 @@ therefore root's.
 
 **Where the right was not given** the stack starts all the same. The
 runtime tries, as a worker would, to reach a port where workers run
-that nothing but the rule stands in front of — the spawner's own — and
-says what it found.
+that nothing but the rule stands in front of — the spawner's own, or in
+one container a port the runtime opens for the purpose — and says what
+it found.
 
 ### An agent that looks names up itself
 
@@ -515,8 +520,9 @@ the proxy, and how to tell.
 The runtime is handed its settings by name (`docker-compose.yml`):
 the database's password, the encryption keys
 and the backend's private key never reach it. The agents' container,
-where agent code runs, is handed none of the platform's settings at
-all. The person still fills in one file.
+where agent code runs, is handed no secret at all: where the proxy is,
+its port, the folder, the log level and the time zone. The person still
+fills in one file.
 
 ## What the runtime says at start
 
@@ -525,8 +531,8 @@ Landlock the kernel has, prepares a place from end to end, and tries
 the network as a worker would. It writes what it found — *Workers are
 confined*, or *Workers are NOT confined here* and why; *Workers' files
 are fenced*, or that they are not; *Workers' connections are fenced*,
-or that they are not. On a kernel whose Landlock is before its sixth
-version it says that agents are not kept from each other's sockets;
+or that they are not. On a kernel that has Landlock, before its sixth
+version, it says that agents are not kept from each other's sockets;
 where there is no firewall rule and the fence holds workers to the
 proxy's port, it says that, and what that does not stop. Where workers
 cannot be confined it runs agents unconfined.
@@ -569,8 +575,9 @@ enforced in this install; and nothing to configure.
   an agent writes is not.
 - **A package's `.pth` file** runs a line of its own whenever the
   environment's interpreter starts — always as a worker or the
-  builder, confined. The runtime never starts that interpreter once a
-  package is in it: what it unpacks, it unpacks with its own.
+  builder, confined. The runtime starts that interpreter once, to
+  unpack the declared packages while nothing is in it yet, and never
+  after: packages for one run it unpacks with its own.
 - **On a kernel before 6.12, it does not keep two agents from a
   socket that has a name and no file.** Both must mean to: one has to
   open it and the other to connect. The runtime says so at start.

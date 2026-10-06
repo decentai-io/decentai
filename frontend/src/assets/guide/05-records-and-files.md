@@ -1,4 +1,4 @@
-# Records and files
+# Saved data and files
 
 Agents keep things between conversations: a task with its owner and due date, an invoice with its lines, or a purchase request with its requirements. These appear under **Data → Saved data**, where you can find, inspect, share, and delete them whether or not the agent is still installed.
 

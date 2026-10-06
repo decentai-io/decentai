@@ -13,9 +13,11 @@ What goes wrong when DecentAI is started, and where to look.
   the script with `--port`, or change `PORT`, `PUBLIC_APP_URL` and
   `CORS_ALLOW_ORIGINS` in it together.
 - **The seeder failed.** `docker compose --env-file deploy.env logs init`.
+  A wrong `MONGO_URI` password shows here, as an authentication error:
+  the seeder is the first to connect, and the backend does not start
+  until it has finished.
 - **The backend restarts.** `docker compose --env-file deploy.env logs
-  backend`. A wrong `MONGO_URI` password shows as an authentication
-  error; a missing `TOKEN_SECRET_KEY` says so in the first lines.
+  backend`. A missing `TOKEN_SECRET_KEY` says so in the first lines.
 - **Chats say the runtime is unavailable.** `docker compose --env-file
   deploy.env logs ai-runtime`. The runtime refuses connections whose
   signature does not verify: `BACKEND_SERVICE_PUBLIC_KEY` must be the

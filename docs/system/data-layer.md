@@ -62,6 +62,15 @@ documents share — the category an agent declared, or a name a person
 chose. Asking for a category returns a set; asking for a reference
 returns a document.
 
+What `resource_id` holds, by domain:
+
+| Domain | `resource_id` |
+|---|---|
+| a secret | the definition it was made from: an agent's is `agt_<ref>__<slot>` |
+| a record | `agt_<ref>__<slot>` for an agent's, or the label a person chose |
+| a file | the id of the stored bytes, which is one file's alone; a file's slot is in `keys.category` |
+| a skill, an MCP server | one constant each (`skill`, `mcp`) |
+
 ### Keys and values
 
 The split is the heart of the shape.
@@ -131,7 +140,10 @@ over it. Someone who was given sight of a credential cannot change its
 values, re-share it, or delete it. The creator is the document's
 steward, and stewardship can be handed to another active member — by the
 steward, by a holder of the domain's escape grant, or by the platform
-when the steward is deleted — with the sharing left exactly as it was.
+when the steward is deleted. The sharing is kept, with the new steward
+in the old one's place: the groups and the other people named stay, and
+the previous steward no longer sees a document unless a group still
+covers them.
 
 Both rules lift together, for one domain at a time, through a named
 grant — *share files organization-wide and maintain files created by
@@ -179,9 +191,11 @@ the page renders. What must never happen is silence: a consumer that
 treats an unreadable document as an empty one tells somebody their
 skill has no body, and sends them to re-author work that is sitting
 there intact. Unreadable is not empty, and the difference is a key, not
-the content. Nor is anything written over it: an edit to a record whose
-values cannot be read is refused, so the values are there when the key
-is back.
+the content. Nor is an agent's record written over: an edit to one
+whose values cannot be read is refused, so the values are there when
+the key is back. A person's own free-form record and a skill's body are
+not read before they are written, and an edit that sends new values
+replaces what was there.
 
 For **use**, there is no such tolerance. When the runtime asks for a
 credential to act with, a failure to decrypt is an error, loudly. A model
@@ -299,8 +313,9 @@ backend for the consent URL (`Secrets:Oauth:Start`), pinned to a
 single-use, ten-minute state row with a PKCE verifier and the browser
 session that asked; the provider sends the browser to one callback
 route, `/oauth/callback`, which spends the state, refuses unless the
-same session came back (a consent link sent to somebody else connects
-nothing), exchanges the code, reads the identity and creates
+same person came back, in the same session where the flow began in one
+(a consent link sent to somebody else connects nothing), exchanges the
+code, reads the identity and creates
 the credential — or, for a reconnect, refreshes the existing one in
 place. At use time the backend refreshes an expiring access token
 before handing values out, and what an agent receives is the account

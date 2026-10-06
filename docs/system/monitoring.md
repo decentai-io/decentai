@@ -12,13 +12,14 @@ processes, for somebody looking.
 `ai_runtime/agents/events.py`. One line of JSON for each thing that
 happened, with when (`at`), what (`kind`), and — where it is an
 agent's — whose: the approval's ref (`agent`), the name a person knows
-it by (`name`) and its user (`user`).
+it by (`name`) and, where the line is about a process, its user
+(`user`). A `connection` line has the first two.
 
 | Kind | Written when | By | Says |
 |---|---|---|---|
 | `worker.started` | a worker answered its greeting | the runtime | whether it is confined, and where it runs |
 | `worker.ended` | a worker is gone | the runtime | why, in words, and its exit code |
-| `worker.failed` | a worker could not be started at all | the runtime | why |
+| `worker.failed` | the process could not be started | the runtime | why. A worker whose place could not be prepared has no line of this kind: the `helper` lines say what was refused |
 | `helper` | the spawn helper was asked to do one of its jobs | the runtime | the job (`check`, `own`, `clear`, `stop`, `sweep`), what it was asked with, how long it took, and what it said if it refused |
 | `program` | one program was run to its end as an agent's user: a build, a verification | the runtime | the program, its exit code, how long |
 | `log` | a worker wrote a line to its log | the runtime | the line |
@@ -38,7 +39,9 @@ there.
   certificate, so for a tunnel — every `https` connection — neither the
   address asked for nor a byte of the exchange is seen, and none is
   written. Of a plain `http` request the path is seen and is left out
-  all the same.
+  all the same. (A request the proxy refuses is another matter, and
+  another place: its first line, address and all, goes to the runtime's
+  own log, cut at 200 characters.)
 - **Every process.** The spawner looks once a second. A process that
   started and ended between two looks is not seen. For the instant a
   worker is still the spawn helper that becomes it, it is passed over

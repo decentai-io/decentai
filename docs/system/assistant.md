@@ -29,8 +29,11 @@ word belongs to the packages it calls.
   state. A user message is not a fresh construction of the world — it
   is one more event arriving at a mind that already exists.
 - **Waiting is not stopping.** Background jobs run while the assistant
-  keeps thinking; an approval parks one job, not the mind; a user can
-  interject at any moment and be heard on the next beat.
+  keeps thinking; an approval asked of a background job parks that job,
+  not the mind; a user can interject at any moment and be heard on the
+  next beat. A call made in the foreground (`invoke`) is the one
+  exception: its beat waits for the answer, and what the person says
+  meanwhile is heard when it has one.
 - **Work ends when it is done or blocked**, and the assistant says
   which. Limits exist (below) but they are pacing and safety, not a
   counter that discards intent.
@@ -163,12 +166,14 @@ start → running ──────────────→ done / failed / 
 
 - Jobs run through the same executor and worker pool as `invoke` —
   every gate applies, evidence accrues to the trace identically.
-- **An approval parks the job, not the assistant.** A level-3 call in a
-  level-1 chat becomes `waiting_approval`; the card goes to the user;
-  the assistant continues other work or finishes and idles. The
-  decision — seconds or days later, live session or freshly hydrated —
-  arrives as an event, re-verified by the executor's existing
-  action-hash and grant gates before anything runs.
+- **An approval parks the job, not the assistant.** A level-3 call
+  begun with `start` in a level-1 chat becomes `waiting_approval`; the
+  card goes to the user; the assistant continues other work or finishes
+  and idles. The decision — seconds or days later, live session or
+  freshly hydrated — arrives as the `approval_decided` frame,
+  re-verified by the executor's existing action-hash and grant gates
+  before anything runs. The same call made with `invoke` holds its beat
+  until the card is answered (`Session.wait_approval`).
 - Job results land in the trace like any invocation, so evidence does
   not care whether a call was foreground or background.
 
@@ -220,9 +225,12 @@ The actions are one vocabulary in two forms. The prompt describes them;
 beat offers those to the connector. A provider that speaks tool
 calling (OpenAI-compatible, OpenAI's Responses, Anthropic, Bedrock,
 Gemini) is asked for exactly one
-call per beat and hands it back as the action's JSON — so the model
-cannot answer in prose between actions, cannot glue two together, and
-cannot misspell a field; the provider validated the call. The cycle
+call per beat and hands it back as the action's JSON — so the model is
+steered away from answering in prose between actions, from gluing two
+together and from misspelling a field. It is steering and not a
+guarantee: the tools are not sent as strict, a provider that refuses a
+forced call is asked without one for the rest of the connection, and
+the cycle still handles prose and several calls in one reply. The cycle
 reads the same `{"action": …}` it always did, and a scripted or
 tool-less connector still answers in JSON text. The prose and bounce
 paths remain as the safety net for a reply with no call in it.

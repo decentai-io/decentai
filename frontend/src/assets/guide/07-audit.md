@@ -10,8 +10,8 @@ The platform keeps a record of what agents did, and of what people changed. It i
 | **Approval requested / answered** | a call cost more than the chat's level | the function, the level, who decided and what |
 | **Credential read** | an agent used a credential | which credential, by name |
 | **Model key read** | a chat used a language model | which connection |
-| **Agent installed / removed**, **granted / revoked**, **source added / changed / refreshed / removed** | an administrator acted | the agent and the version |
-| **Sharing changed**, **Safety setting changed**, **person disabled / deleted** | somebody with the right acted | what changed, from what to what |
+| **Agent installed / uninstalled**, **Agent granted / grant revoked**, **Agent source added / changed / refreshed / removed / handed over**, **Agent lent a credential / credential taken back**, **Sample data loaded / removed** | an administrator acted | the agent and the version |
+| **Sharing changed**, **Safety setting changed**, **Person disabled / enabled / deleted** | somebody with the right acted | what changed, from what to what |
 | **Platform action** | any other change made through the platform — a record edited, a setting saved — and each one that was refused | the action, by whom, and the outcome |
 
 *Inputs in outline* means exactly that: long values are cut, long lists are counted, and the whole is bounded. The trail says what was asked, never copies a document into itself.

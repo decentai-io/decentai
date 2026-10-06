@@ -26,8 +26,14 @@ from decentai_sdk.base import AgentBase, ToolBase, ResourceDenied
 | `call.conversation` | The chat's opaque key | — |
 
 Where a function runs without a chat, `show`, `ask` and `propose`
-give `None`, `post` gives `False`, and `screen.show` gives `False`, so
-the same code runs everywhere. A scheduled run has its chat.
+give `None` and `post` gives `False`, so the same code runs everywhere.
+`screen.show` still answers `True` — the frame is sent, and goes
+nowhere — and `call.credential` is refused (`ResourceDenied`): there is
+nobody to type a login.
+
+A scheduled run has its chat for what it tells a person: it can `show`,
+`post` and `ask`. It cannot `propose` code (`None`), ask for a login
+(refused) or show a screen, and its `call.conversation` is empty.
 
 Anything the platform refuses raises **`ResourceDenied`** with the
 reason in words. Catch it where you can do something better; otherwise
@@ -78,7 +84,9 @@ platform's upload limit; large files travel through a folder the
 platform opens for your worker, and your code never sees the difference.
 `read_file` also gives `filename` and the file's type. A file a person
 attached to the chat is read by its ref under any file resource your
-function may `read`. `create_file` answers with the new file's
+function may `read`, where the ref is in this call's inputs or was the
+answer to its `call.ask`; a ref learned any other way is looked for in
+your own slot. `create_file` answers with the new file's
 `resource_ref`.
 
 ```python
@@ -145,6 +153,11 @@ picture is checked to be one: a PNG, JPEG, GIF or WebP by its own first
 bytes, whatever it is called, at most 5 MiB, and at most sixteen in one
 ask. What is not is refused with the reason. A model that cannot see
 pictures refuses, and you are told which.
+
+A picture your function carries travels on the worker's own line, which
+is 2 MiB long: keep one under about 1.5 MiB (base64 makes it a third
+larger), and store a larger one as a file and name it. A line that is
+too long ends the worker.
 
 **The model reads; your code decides.** Ask for quotes and structure,
 check every quote against the source before showing it as fact, and do
@@ -217,7 +230,9 @@ and per site. The card asks them to type it the first time, to allow
 your agent on this site when it is saved already, or to choose between
 accounts. A field with `remember: False` is asked every time and stored
 nowhere. `account` picks one of several; `refresh=True` asks for
-everything again. `None` is a decline, nobody to ask, or a day gone.
+everything again. `None` is a decline, or a day gone. Where there is
+nobody to ask — a scheduled run, a test that gave no `credentialer` —
+the call is refused instead (`ResourceDenied`).
 
 The answer is the fields by name, with `host` and `account` beside them.
 The values reach your process and nothing else; the model sees labels.

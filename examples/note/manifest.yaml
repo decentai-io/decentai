@@ -24,7 +24,7 @@ schema_version: "1.0"
 agent:
   id: note
   name: Note
-  version: "1.2.2"
+  version: "1.2.3"
   description: >
     Your working memory across conversations. Save what was decided,
     find what you wrote last month, summarize a notebook, import or
@@ -180,7 +180,9 @@ tools:
             notebook: {type: string, minLength: 1, maxLength: 60}
             title:    {type: string, minLength: 1, maxLength: 200}
             priority: {type: integer, minimum: 1, maximum: 5}
-            content:  {type: string, maxLength: 20000}
+            # Kept in keys, where a filter can reach it, and a key
+            # holds at most 8,192 characters.
+            content:  {type: string, maxLength: 8192}
             note_ref:
               type: string
               x-resource: {type: data, id: note}
@@ -218,7 +220,7 @@ tools:
             title:    {type: string}
             notebook: {type: string}
             priority: {type: integer}
-            content:  {type: string}
+            content:  {type: string, maxLength: 8192}
 
       - id: find
         name: Find Notes

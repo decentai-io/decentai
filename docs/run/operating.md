@@ -23,26 +23,35 @@ On a server, the same in steps, so that the old code serves until the
 new is ready:
 
 1. Pull the new code.
-2. **Seed first.** `docker compose --env-file deploy.env run --rm init`
+2. **Seed first.** `docker compose --env-file deploy.env run --rm --build init`
    applies the schema and grants any new baseline actions while the old
-   code still serves; nothing about the seeder is destructive unless
+   code still serves. `--build` is what makes it the new seeder: without
+   it `run` uses the image built last time. It drops no data unless
    `INIT_DB_FRESH=true` is set, which drops the database and is never
    set by accident.
 3. `docker compose --env-file deploy.env up -d --build` rolls the
    services.
 
-Deploy by commit, not by `latest`: tag images with the short git SHA so
-a rollback is a matter of naming the previous tag.
+Deploy by commit: note the commit a deployment was built from, so that
+going back is a matter of naming it.
 
 ### Going back
 
-Re-run `up` with the previous images. The schema is additive across
-versions — a newer seed adds collections, indexes and actions and
-removes nothing — so older code runs against a newer database.
+Check out the commit that was running and `up -d --build` again. The
+images are built here and have no names of their own to go back to.
+
+A newer seed adds collections and actions and drops no data, so older
+code runs against a newer database. Two things are removed, by every
+version as it starts: an index its schema does not declare, and, from
+every policy, an action its catalog no longer has. Older code started
+again puts its own indexes back the same way.
 
 ## What to back up
 
-Four volumes hold everything durable:
+Four volumes hold everything durable. (A server started with
+`docker-compose.server.yml` has two more, `caddy_data` and
+`caddy_config`: the certificates and the account they were issued to,
+which are issued again if lost.)
 
 | Volume | Holds |
 |---|---|
@@ -73,7 +82,7 @@ that is a server, and [Deploying](deploying.md) says how.
 
 ## A forgotten password, without email
 
-Where no mail server is set, "Forgot password" says the password is set
+Where no mail server is set, "Forgot your password?" says the password is set
 on the machine DecentAI runs on — what a reset link does, ending every
 session of the account and revoking its API keys:
 
@@ -114,13 +123,30 @@ Monitoring** ([what is written down](../system/monitoring.md)).
 Stored values are encrypted under versioned keys; old versions keep
 decrypting, so rotation is non-destructive:
 
-1. `python bootstrap/generate_secret_keys.py --rotate "<current SECRET_ENCRYPTION_KEYS>"`
-   prints the map with a new active version appended.
-2. Update `SECRET_ENCRYPTION_KEYS` and `SECRET_ENCRYPTION_ACTIVE`, and
-   restart the backend. New writes use the new key.
-3. `python bootstrap/reencrypt_secrets.py` rewrites every stored value
-   under the active key (`--check` first shows the counts). When it
-   reports nothing left, drop the old version from the map.
+The tools are run in the backend's image, where the platform's code and
+the settings in `deploy.env` are, as the password line above is: on the
+machine itself they would find neither the database nor the keys.
+
+1. Make the new key:
+
+   ```bash
+   docker compose --env-file deploy.env run --rm init \
+     python /opt/decentai/bootstrap/generate_secret_keys.py \
+     --rotate "<current SECRET_ENCRYPTION_KEYS>"
+   ```
+
+   It prints the map with a new active version appended.
+2. Update `SECRET_ENCRYPTION_KEYS` and `SECRET_ENCRYPTION_ACTIVE` in
+   `deploy.env`, and restart the backend. New writes use the new key.
+3. Rewrite every stored value under the active key (`--check` first
+   shows the counts):
+
+   ```bash
+   docker compose --env-file deploy.env run --rm init \
+     python /opt/decentai/bootstrap/reencrypt_secrets.py
+   ```
+
+   When it reports nothing left, drop the old version from the map.
 
 The same tool moves a development database off the derived development
 key once real keys are configured.
@@ -131,13 +157,19 @@ One deployment may host many, each fully separated from the others.
 They are created, paused and resumed from the command line:
 
 ```bash
-python bootstrap/organizations.py list
-python bootstrap/organizations.py create --name "Acme" --admin ada@acme.example
-python bootstrap/organizations.py disable --org <org_id>
+docker compose --env-file deploy.env run --rm init \
+  python /opt/decentai/bootstrap/organizations.py list
+docker compose --env-file deploy.env run --rm init \
+  python /opt/decentai/bootstrap/organizations.py create --name "Acme" --admin ada@acme.example
+docker compose --env-file deploy.env run --rm init \
+  python /opt/decentai/bootstrap/organizations.py disable --org <org_id>
 ```
 
-Creating one seeds its access chains and prints the invitation link for
-its first administrator.
+Creating one seeds its access chains and prints the invitation for its
+first administrator as a path (`/?invite=…`), to put after the
+deployment's address. A disabled organization's people are signed out
+within a minute: the running backend keeps a session it has just seen
+for that long.
 
 ## Removing it
 

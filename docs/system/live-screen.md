@@ -51,7 +51,7 @@ that showed it.
 
 | `call.screen…` | Does |
 |---|---|
-| `show(jpeg, width, height, tabs=None)` | pushes a frame; `tabs` tells what else is open — a name, an address, which one is in front — and the live view shows them above the picture |
+| `show(image, width, height, mime="image/jpeg", tabs=None)` | pushes a frame — a PNG is passed with `mime="image/png"`, or it is dropped as not being what it says; `tabs` tells what else is open — a name, an address, which one is in front — and the live view shows them above the picture |
 | `close()` | ends the stream |
 | `inputs()` | drains the events the person sent since last asked; a hand on a tab arrives as `{"type": "tab", "action": "switch" \| "close" \| "new", "index"}` |
 | `taken` | whether the person holds control now |

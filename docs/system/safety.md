@@ -23,7 +23,7 @@ package may be installed, and MCP servers are allowed:
 | **Sites no agent may open** | a list of names; `example.com` covers every host under it | empty |
 | **A script in a page** | *Ask every time* · *Ask once for a site in a chat* | every time |
 | **A program** | *Ask every time* · *Do not ask again for a correction* · *Ask only when it reaches a site or uses a credential* | every time |
-| **Packages a program may install** | *Any the card names* · *Only from my list* | any |
+| **Packages a program may install** | *Any package the card names* · *Only packages on my list* | any |
 | **MCP servers** | *People may add MCP servers* · *No MCP servers* | allowed |
 
 Three rules hold under every choice:
@@ -36,7 +36,9 @@ Three rules hold under every choice:
    leaves a message in the chat, in the agent's name: what it was for,
    what the review made of it, and the code (its first twenty-five
    lines). Its card is on the record, answered by the setting, and the
-   audit trail says so.
+   audit trail says so. In a sub-assistant's work the chat is shown one
+   line, *Ran without asking…* with what it was for; the whole is on
+   the card's record.
 3. **Only a person's own yes counts as having allowed.** "Once for a
    site" and "a correction" both rest on something a person allowed
    before. A card the setting settled is not that: a setting never
@@ -54,7 +56,7 @@ What each looser choice means, exactly:
 
 | Row | Where | How |
 |---|---|---|
-| Sites no agent may open | the proxy (`ai_runtime/agents/egress.py`) | a name on the list is refused to every worker, a manifest that says `any` included, and the refusal says the site is on the list. The list is of names, so while it holds any, nothing is reached by a bare address — an address says nothing of whose site it is. The list is told to the worker's pass as each call begins, so a change applies from the next call |
+| Sites no agent may open | the proxy (`ai_runtime/agents/egress.py`) | a name on the list is refused to every worker, a manifest that says `any` included, and the refusal says the site is on the list. The list is of names, so while it holds any, no worker reaches anything by a bare address — an address says nothing of whose site it is. (An MCP server is called by the runtime and not through the proxy: its name is held to the list in the executor, and an address is not refused there.) The list is told to the worker's pass as each call begins, so a change applies from the next call |
 | A script, a program | the backend, as the card is opened (`backend/api/services/chat_session/code_rules.py`) | the runtime proposes and has the code read; `AI:Approval:Open` then answers the card itself where the rule allows, and says so (`settled`). The runtime opens cards and never decides them, so it cannot loosen itself |
 | MCP servers | the backend (`backend/api/services/data_layer/mcp.py`) | blocked, nobody adds or reads a server, the chat's contract names none, and the runtime's door to a server's address is refused ([MCP servers](mcp.md)) |
 | Packages | the runtime, where a proposal is checked before its card (`ai_runtime/execution/code_grant.py`) | a package that is not on the list is refused before anybody is asked, and the agent is told which names are. A listed package's own dependencies are installed with it |

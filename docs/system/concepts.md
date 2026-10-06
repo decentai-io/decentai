@@ -56,10 +56,12 @@ groups:
 
 - **Administrators**, who may do everything.
 - **Everyone**, whose role carries the **baseline**: what any member
-  may do without a decision — their own profile, what the assistant
-  remembers about them, their own API keys, schedules, MCP servers and
-  notifications, their own audit trail, and stopping their own work.
-  The baseline does not include chatting.
+  may do without a decision — among it their own profile, what the
+  assistant remembers about them, their own API keys, schedules, MCP
+  servers and notifications, their own audit trail, reading skills,
+  handing their own things to a colleague, and stopping their own work
+  (`BASELINE_ACTIONS`, `backend/server/authentication/catalog.py`, is
+  the list). The baseline does not include chatting.
 - **Members**, which grants everyday use: chats and what the assistant
   does in them, files, saved data, credentials, and seeing the agents
   they were given. A new person is offered it; a person in Everyone
@@ -162,7 +164,9 @@ every chat's schedules; approval cards and background work are shown in
 the chat they belong to.
 
 A person may **stop** one chat, or everything of theirs at once: what
-is running ends, and nothing starts again until they say so
+is running ends. Stopping everything also holds: nothing of theirs
+starts again until they say so. A stop of one chat holds nothing — the
+next message works, and the chat's schedules go on firing
 ([safety settings](safety.md)).
 
 ## The audit trail

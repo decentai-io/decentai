@@ -1,6 +1,6 @@
 # Administration
 
-Who exists, and what each of them may do. It is reached from the menu on your name at the foot of the sidebar: **Admin console** shows your **Profile**, the **Organization** (its name), and **IAM** — Users, Groups, Roles and Policies — to those who hold the actions to manage them, and **Main workspace** in the same menu goes back.
+Who exists, and what each of them may do. It is reached from the menu on your name at the top right of the page: **Admin console** shows **Account** with your **Profile**, and **IAM** — the **Organization** (its name), Users, Groups, Roles and Policies — to those who hold the actions to manage them, and **Main workspace** in the same menu goes back.
 
 ## The model
 

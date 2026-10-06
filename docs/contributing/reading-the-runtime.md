@@ -42,7 +42,12 @@ Check:
   object ends it.
 - `detach` runs on every way out of the route.
 
-Tests: `ai_runtime/tests/test_session_door.py`.
+Tests: `ai_runtime/tests/test_session_door.py` holds the host the
+routes hand to, with a socket of its own making. The routes
+themselves — the refusal before `accept`, the catch around a frame,
+the `detach` on the way out — are dialled only by
+`tests/test_full_stack.py` and the backend's
+`backend/tests/test_runtime_client.py`, on the path that works.
 
 ## 2. The host: one session per chat
 
@@ -102,8 +107,9 @@ Check:
   including when the cycle raises. The last thing it does is look for
   events that arrived meanwhile, with no suspension between that look
   and the return.
-- Every inbound event is recorded by the services before it is
-  absorbed, and the cursor moves with the state in one save
+- Every user message and wakeup is recorded by the services before it
+  is absorbed (`Session._post`; a `stop` is posted straight to the mind
+  and is not recorded), and the cursor moves with the state in one save
   (`Assistant._absorb`, `_persist`) — that pair is what makes
   absorption exactly-once across a restart.
 - `_approve`: the card stores the hash of agent, function and inputs
@@ -218,9 +224,10 @@ Check:
   the decision.
 - `ResourceAccess._require`: an operation the function did not declare
   is refused here, in the runtime, whatever the worker asks for.
-- `WorkerPool._answer`: every ask from a worker is answered against the
-  context of the call it named, so one call cannot use another's
-  authority. A timeout or a cancel tells the worker to stop
+- `WorkerPool._route`, then `_answer`: every ask from a worker is
+  answered against the context of the call it named — `_route` finds
+  it, and refuses a call id that is not live on that worker — so one
+  call cannot use another's authority. A timeout or a cancel tells the worker to stop
   (`_overrule`) instead of only abandoning the wait.
 - `WorkerHandle._clean_environment`: what of the host's environment a
   worker inherits.
@@ -231,7 +238,9 @@ Tests: `ai_runtime/tests/test_agent_executor.py`,
 `ai_runtime/tests/test_agent_worker_pool.py`,
 `ai_runtime/tests/test_agent_worker_handle.py`,
 `ai_runtime/tests/test_agent_worker.py`,
-`ai_runtime/tests/test_code_grant.py`, `ai_runtime/tests/test_mcp.py`.
+`ai_runtime/tests/test_code_grant.py`, `ai_runtime/tests/test_mcp.py`,
+`ai_runtime/tests/test_agent_llm.py` (pictures) and
+`ai_runtime/tests/test_agent_writes.py` (what a write must be).
 
 ## 6. The sandbox
 

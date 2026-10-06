@@ -66,7 +66,8 @@ version.
 ## The remote is simulated
 
 `sync.*` consume a real bound secret but never make a network request:
-the digest they return is computed from the notes and the token. That
+the digest `sync.push` returns is computed from the notes and the
+token. That
 keeps the example safe and deterministic while still exercising the
 whole secret path — installing it asks a deployment to trust nothing
 outside itself.

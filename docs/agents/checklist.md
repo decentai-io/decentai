@@ -31,7 +31,7 @@ rest is what goes wrong quietly.
       survived the trip.
 - [ ] `user_access` is on the resources a person should be able to edit
       themselves, and off the ones they should not.
-- [ ] No two agents in your catalog write the same records.
+- [ ] No agent of yours expects to read another's records: each install keeps its own, under its own name, and the platform does not let one reach another's.
 
 ## The functions
 

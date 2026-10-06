@@ -22,7 +22,7 @@ Some agents cannot know in advance which sites you will send them to — a brows
 
 The next time, no card. A saved login is used again only by the agent you typed it for, on the site you typed it for: another agent, or the same agent on another site of the same company, shows a consent card first, and you can allow it, decline, or update the details. Two accounts on one site are two logins, and the agent asks which. A code the site sends you each time is asked each time and kept nowhere.
 
-Saved logins sit in their own section on the Secrets page: which agents are allowed on which sites, with each consent revocable, and the same sharing, hand-over and delete as any secret.
+Saved logins sit in their own section on the Secrets page: which agents are allowed on which sites, with each consent revocable, and a hand-over and a delete of its own on each.
 
 ## Who may use one
 
@@ -34,11 +34,11 @@ Being able to see a credential is not the same as an agent being able to use it.
 
 ## How an agent uses one
 
-When a function that declared the slot runs, the platform finds the credential for that chat: the one the chat chose, else one lent to the agent, else your default, else the only one you can see. The agent's code asks for it by name — *use the connection* — and receives its values, decrypted, for that call: that agent's code, and no other agent's. The model never sees them. Every use is written to the audit trail as a credential read, by name, never by value.
+When a function that declared the slot runs, the platform finds the credential for that chat: the one the chat chose, else one lent to the agent, else the one you pinned, else the only one you can see. The agent's code asks for it by name — *use the connection* — and receives its values, decrypted, for that call: that agent's code, and no other agent's. The model never sees them. Every use is written to the audit trail as a credential read, by name, never by value.
 
 ## Personal credentials for shared agents
 
-A person may keep their own credential — their own mailbox, their own calendar — and set it as their default for a slot. Then the shared Gmail or Outlook agent acts as them in their chats, and as a colleague in the colleague's. One installed agent, many accounts, each person's own.
+A person may keep their own credential — their own mailbox, their own calendar — and pin it as the one that answers for a slot — the pin on the agent's **Credentials** tab. Then the shared Gmail or Outlook agent acts as them in their chats, and as a colleague in the colleague's. One installed agent, many accounts, each person's own.
 
 ## When an agent is updated
 

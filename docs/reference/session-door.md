@@ -235,8 +235,10 @@ then offers the frame — stamped with the sequence the log answered —
 to the attached socket, if any — dropped silently if none, dropped
 silently if the send fails. Delivery is a
 courtesy; the record is the services'. Every other method passes
-through untouched, so the wrapper is one class with one overridden
-method, not a second services implementation.
+through untouched, so the wrapper is one class with two methods of
+its own — `emit`, decorated, and `relay`, for what is delivered and
+never recorded (a screen's frames) — not a second services
+implementation.
 
 ## The clock beside the host
 
