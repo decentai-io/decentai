@@ -143,6 +143,10 @@ class AgentPackage:
                         raise PackagingError(f"'{entry.name}' is unreadable.")
                     with destination.open("wb") as handle:
                         handle.write(source.read())
+                    # What the build wrote down of a file's mode is one
+                    # bit: whether its owner may run it.
+                    if entry.mode & 0o100:
+                        destination.chmod(0o755)
         except tarfile.TarError as exc:
             raise PackagingError(f"That package is not readable: {exc}") from exc
 
