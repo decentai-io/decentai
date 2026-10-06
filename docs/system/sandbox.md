@@ -16,6 +16,9 @@ A sandboxed agent:
    administrator approved;
 4. uses **no more than the platform allows**.
 
+Beneath the four, a worker is refused the **system calls** it has no
+use for: what a way out of all of the above is most often made of.
+
 ## Where it holds
 
 In a stack started from `docker-compose.yml`, all four parts are
@@ -228,6 +231,60 @@ proxy is serving, and it matters most where the container was not
 given the right to set the rule. Alone it is less than the rule: it
 names a port and not an address, and it is about TCP, so it does not
 stop a name being looked up.
+
+## System calls — seccomp
+
+A user of its own and a fence decide what a worker may open. They do
+not decide what it may ask of the kernel, and a flaw in the kernel is
+reached by asking. So the helper puts a filter on a worker last of
+all, after it has become the agent's user and been fenced, and the
+kernel refuses the calls on it — for the worker and everything it
+starts, a browser included. It cannot be taken off, and needs no right
+the container was not given (`filter_calls`,
+`ai_runtime/agents/spawn_helper.c`).
+
+It is a list of what is **refused**, not of what is allowed: an agent
+may bring any package, and a list of what is allowed would be a list
+of what somebody forgot.
+
+| Refused | The calls | Why |
+|---|---|---|
+| a place of one's own to be root in, and mounting there | `unshare` and `clone` when a namespace is asked for, `setns`, `mount`, `umount2`, `pivot_root`, and the newer mount calls | most ways out of a container begin by making a namespace |
+| reading and writing another process | `ptrace`, `process_vm_readv`, `process_vm_writev`, `pidfd_getfd` | a worker's processes are its own, and need no such door between them |
+| the kernel's own machinery | `bpf`, `perf_event_open`, `userfaultfd`, `io_uring_*`, loading a module or another kernel, the keyring calls, `open_by_handle_at` | large, and where flaws are found |
+| sockets a worker has no use for | every family but unix, IPv4 and IPv6, and netlink for routes and devices only | each family is more of the kernel to reach |
+
+`clone3` is answered *no such call*, and not *refused*: its flags are
+behind a pointer the filter cannot read, and the C library, told the
+call is not there, asks with `clone`, whose flags it can. A thread and
+a program are started as they always were.
+
+A refusal is the ordinary one a program already handles — *operation
+not permitted*, or *address family not supported* for a socket — so a
+package that tries one of these finds it unavailable and goes on, or
+says so.
+
+**What it is beside.** The container's engine has a filter of its own,
+and on Docker's it already refuses much of this. The helper's does not
+depend on it: it is the same on an engine with another filter or none,
+and it refuses what Docker's lets through, `ptrace` among it. An
+engine's filter changes from one version to the next — a recent
+Docker refuses some of the socket families itself — and this one does
+not change with it.
+
+**The image's browser runs under it.** A browser is the largest thing
+a worker starts. It is launched, loads a page, runs a script and is
+pictured under the filter as it is without.
+
+**It can be turned off**, for an agent whose package needs a call the
+filter refuses, until the package or the filter is mended:
+`AI_RUNTIME_SYSCALL_FILTER=0` ([configuration](../run/configuration.md)).
+The runtime says so at start, every start.
+
+**Where it does not hold.** The filter is written for the two kinds of
+machine the image is built for, x86-64 and arm64. On another there is
+none, and the runtime says so. Nothing is filtered where nothing
+confines: a developer's machine, started by hand.
 
 ## Packages — the builder
 
@@ -531,7 +588,8 @@ Landlock the kernel has, prepares a place from end to end, and tries
 the network as a worker would. It writes what it found — *Workers are
 confined*, or *Workers are NOT confined here* and why; *Workers' files
 are fenced*, or that they are not; *Workers' connections are fenced*,
-or that they are not. On a kernel that has Landlock, before its sixth
+or that they are not; *Workers' system calls are filtered*, or that
+they are not and why. On a kernel that has Landlock, before its sixth
 version, it says that agents are not kept from each other's sockets;
 where there is no firewall rule and the fence holds workers to the
 proxy's port, it says that, and what that does not stop. Where workers
@@ -599,6 +657,8 @@ enforced in this install; and nothing to configure.
   hostile on purpose. Each of its functions tries one thing, and the
   test passes when the attempt is refused: read the runtime's settings,
   signal the runtime, write into the store, read another agent's home,
+  open a socket of a family it has no use for, ask to be traced, make a
+  namespace of its own (and still start a thread and a program),
   connect past the proxy, connect to an undeclared host, connect to the
   backend, start more processes than allowed, start the helper again,
   connect to a socket with a name and no file that somebody else

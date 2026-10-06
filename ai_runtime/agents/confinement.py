@@ -339,8 +339,17 @@ class WorkerPlace:
             str(self.confinement.helper), "run", str(self.user), str(self.home),
             str(Confinement.MAX_PROCESSES), str(Confinement.MAX_OPEN_FILES),
             str(Confinement.MAX_FILE_BYTES), *self.fence(reads, held),
+            *self.filter(),
             "--", *[str(a) for a in worker_argv],
         ]
+
+    def filter(self) -> List[str]:
+        """The word that has the helper refuse a worker the system
+        calls it has no use for (``s:1``, seccomp). Empty where this
+        machine cannot, and where the deployment turned it off. It does
+        not depend on the fence: a kernel with no Landlock filters
+        calls all the same."""
+        return ["s:1"] if self.confinement.filters_calls else []
 
     def fence(self, reads: Sequence[str | Path] = (),
               held: bool = True) -> List[str]:
@@ -474,6 +483,11 @@ class Confinement:
     #: (return_code, output). Set it and no helper runs.
     runner: ClassVar[Optional[Callable[[Sequence[str]], tuple]]] = None
 
+    #: The setting that turns the system-call filter off (``0``): for
+    #: an agent whose package needs a call the filter refuses, until
+    #: the package or the filter is mended. On unless it says so.
+    FILTER_SETTING: ClassVar[str] = "AI_RUNTIME_SYSCALL_FILTER"
+
     def __init__(self, install_dir: str | Path, helper: Optional[Path] = None):
         self.workers_dir = Path(install_dir) / self.WORKERS_FOLDER
         self.helper = Path(helper) if helper is not None else self.HELPER
@@ -492,6 +506,12 @@ class Confinement:
         #: name and no file, which every user may otherwise connect
         #: to — another agent's among them: Landlock's sixth version.
         self.fence_keeps_sockets = False
+        #: Whether a worker is refused the system calls it has no use
+        #: for (seccomp): the helper can put the filter on here, and
+        #: the deployment has not turned it off.
+        self.filters_calls = False
+        #: Whether the helper could put that filter on, asked or not.
+        self.can_filter_calls = False
         #: The proxy workers are pointed at, once it is serving.
         self.egress: Optional[EgressProxy] = None
         #: Whether the proxy is the only way out: the container's
@@ -679,6 +699,24 @@ class Confinement:
             confinement.logger.warning(
                 "Workers' files are NOT fenced here: this kernel has no "
                 "Landlock. An agent reads what any user may read.")
+        if confinement.filters_calls:
+            confinement.logger.info(
+                "Workers' system calls are filtered: an agent is refused "
+                "the calls a way out of a container is most often made "
+                "of — a namespace or a mount of its own, another "
+                "process's memory, the kernel's own machinery, and "
+                "sockets of a family it has no use for.")
+        elif confinement.can_filter_calls:
+            confinement.logger.warning(
+                "Workers' system calls are NOT filtered here: "
+                f"{cls.FILTER_SETTING}=0 turned the filter off. An agent "
+                "is held to what the container's own filter refuses.")
+        else:
+            confinement.logger.warning(
+                "Workers' system calls are NOT filtered here: this "
+                "machine has no seccomp filter the helper can use. An "
+                "agent is held to what the container's own filter "
+                "refuses.")
         if confinement.fences and not confinement.fence_keeps_sockets:
             confinement.logger.warning(
                 "Agents are NOT kept from each other's sockets here: "
@@ -710,6 +748,11 @@ class Confinement:
         self.fence_lets_files_move = self._landlock(said) >= 2
         self.fence_holds_connections = self._landlock(said) >= 4
         self.fence_keeps_sockets = self._landlock(said) >= 6
+        self.can_filter_calls = bool(
+            re.search(r"^seccomp=1$", str(said or ""), re.MULTILINE))
+        self.filters_calls = (
+            self.can_filter_calls
+            and os.environ.get(self.FILTER_SETTING, "1").strip() != "0")
         return self.verification_place().prepare()
 
     @staticmethod

@@ -146,6 +146,51 @@ INTRUDER = textwrap.dedent("""\
                         mine.connect("\\0" + target)
             return attempt(work)
 
+        def socket_of_family(self, target):
+            # A socket of a family a worker has no use for; the number
+            # the system answered with tells who refused it.
+            family, _, kind = target.partition(":")
+            try:
+                socket.socket(int(family), int(kind or 1)).close()
+                return {"happened": True, "errno": 0}
+            except OSError as refused:
+                return {"happened": False, "errno": refused.errno}
+
+        def trace(self, target):
+            # Asking to be traced: the first step of reading and
+            # writing another process's memory.
+            import ctypes
+            libc = ctypes.CDLL(None, use_errno=True)
+            if libc.ptrace(0, 0, 0, 0) == 0:
+                return {"happened": True, "errno": 0}
+            return {"happened": False, "errno": ctypes.get_errno()}
+
+        def namespace(self, target):
+            # A place of its own to be root in.
+            import ctypes
+            libc = ctypes.CDLL(None, use_errno=True)
+            if libc.unshare(0x10000000) == 0:
+                return {"happened": True, "errno": 0}
+            return {"happened": False, "errno": ctypes.get_errno()}
+
+        def ordinary_work(self, target):
+            # What a filter must not break: a thread, a program, a
+            # socket to talk to oneself over.
+            import threading
+            done = []
+            thread = threading.Thread(target=lambda: done.append("thread"))
+            thread.start()
+            thread.join()
+            done.append(subprocess.run(
+                ["/bin/echo", "program"], capture_output=True,
+                text=True).stdout.strip())
+            left, right = socket.socketpair()
+            left.sendall(b"pair")
+            done.append(right.recv(4).decode())
+            left.close()
+            right.close()
+            return {"done": done}
+
         def lookup(self, target):
             return attempt(lambda: socket.getaddrinfo(target, 443)[0][4][0])
 
@@ -368,6 +413,13 @@ def held(confinement):
 
 
 @pytest.fixture
+def filtered(confinement):
+    if not confinement.filters_calls:
+        pytest.skip("this machine has no seccomp filter the helper can use")
+    return confinement
+
+
+@pytest.fixture
 def fenced_builds(confinement):
     if not confinement.builder_place().fenced:
         pytest.skip("this kernel's Landlock does not let a fenced "
@@ -584,6 +636,39 @@ class TestAFencedWorker:
                     f"http://api.example.com:{site}/v1/items",
                     hosts=["api.example.com"])
         assert found["status"] == 200, found
+
+
+class TestAFilteredWorker:
+    """What neither a user of its own nor a fence takes away: the
+    system calls themselves. A worker is refused those it has no use
+    for, and a way out of a container is most often made of."""
+
+    EPERM, EAFNOSUPPORT = 1, 97
+
+    def test_it_opens_no_socket_of_a_family_it_has_no_use_for(
+            self, ground, place, filtered):
+        """A packet socket: refused without the filter too, for want
+        of a right, and with it refused as a family that is not there
+        — which is the filter's answer, and tells the two apart."""
+        found = ask(ground, place, "socket_of_family", "17:3")
+        assert found == {"happened": False, "errno": self.EAFNOSUPPORT}, found
+
+    def test_it_cannot_ask_to_be_traced(self, ground, place, filtered):
+        """Let through by a container's own filter on any recent
+        kernel; refused here."""
+        found = ask(ground, place, "trace")
+        assert found == {"happened": False, "errno": self.EPERM}, found
+
+    def test_it_makes_no_namespace_of_its_own(self, ground, place, filtered):
+        found = ask(ground, place, "namespace")
+        assert found == {"happened": False, "errno": self.EPERM}, found
+
+    def test_what_a_program_ordinarily_does_still_works(
+            self, ground, place, filtered):
+        """A thread is started with a call the filter answers "no such
+        call", so that the library asks the older way: it must start."""
+        found = ask(ground, place, "ordinary_work")
+        assert found == {"done": ["thread", "program", "pair"]}, found
 
 
 class TestTheSharedTemporaryFolder:

@@ -27,7 +27,7 @@
  *       to (/tmp, /dev/shm), as that user.
  *
  *   decentai-spawn run <user> <home> <processes> <open-files> <file-bytes>
- *                      [r:<path> | w:<path> | c:<port>]... -- <program> [arguments...]
+ *                      [r:<path> | w:<path> | c:<port> | s:1]... -- <program> [arguments...]
  *       Become <user> and then <program>. With paths named, the
  *       program and everything it starts may read and run what is
  *       under an r: path, do anything under a w: path, and open
@@ -36,7 +36,11 @@
  *       port named, they connect over TCP to that port and to no
  *       other; a kernel that cannot do that is a refusal too. Where
  *       the kernel can, a fenced program also reaches no socket that
- *       has a name and no file, unless one of its own made it.
+ *       has a name and no file, unless one of its own made it. With
+ *       s:1, the program and everything it starts are refused the
+ *       system calls a worker has no use for and a way out of a
+ *       container is most often made of (seccomp); where this machine
+ *       has no such filter, that is a refusal.
  *
  * What it refuses, whoever asks: a caller that is not the runtime's
  * user, a user outside the range kept for workers, and a folder that is
@@ -54,8 +58,12 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <grp.h>
+#include <linux/audit.h>
 #include <linux/capability.h>
+#include <linux/filter.h>
 #include <linux/landlock.h>
+#include <linux/seccomp.h>
+#include <stddef.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -342,6 +350,8 @@ static void fence(int count, char **rules)
         const char *path = rules[index] + 2;
         int opened;
 
+        if (rules[index][0] == 's')
+            continue;
         if (rules[index][0] == 'c') {
             struct port_attr way_out;
 
@@ -383,6 +393,197 @@ static void fence(int count, char **rules)
 
 /* ------------------------------------------------------------------ */
 
+/*
+ * The system calls a worker is refused.
+ *
+ * A worker is an ordinary program: it reads and writes files, starts
+ * programs, opens connections. What is refused here is what such a
+ * program has no use for, and what a way out of a container is most
+ * often made of. Everything else is let through, because an agent may
+ * bring any package, and a list of what is allowed would be a list of
+ * what somebody forgot.
+ *
+ *   - making a place of one's own to be root in, and mounting there:
+ *     unshare and clone with a namespace asked for, setns, mount and
+ *     its newer forms, pivot_root. clone3 is answered "no such call":
+ *     its flags are behind a pointer and cannot be read here, and the
+ *     C library then asks with clone, whose flags can.
+ *   - reading and writing another process: ptrace, process_vm_readv
+ *     and _writev, pidfd_getfd.
+ *   - the kernel's own machinery: bpf, perf_event_open, userfaultfd,
+ *     io_uring, loading a module or another kernel, the keyring,
+ *     opening a file by its handle.
+ *   - sockets of any family but the three a program connects with
+ *     (unix, IPv4, IPv6) and netlink, and of netlink only what asks
+ *     about routes and devices.
+ *
+ * A filter cannot be taken off, and holds for everything the program
+ * starts. It needs no right: only that the process has given up
+ * gaining any, which it has by then.
+ *
+ * Known to the two machines the image is built for. On another, there
+ * is no filter, and `check` says so.
+ */
+#if defined(__x86_64__)
+#define FILTER_ARCH AUDIT_ARCH_X86_64
+#elif defined(__aarch64__)
+#define FILTER_ARCH AUDIT_ARCH_AARCH64
+#endif
+
+#ifdef FILTER_ARCH
+
+#define NAMESPACES 0x7E020080u   /* every CLONE_NEW* flag */
+#define FAMILY_UNIX 1
+#define FAMILY_INET 2
+#define FAMILY_INET6 10
+#define FAMILY_NETLINK 16
+#define NETLINK_OF_ROUTES 0
+#define NETLINK_OF_DEVICES 15
+
+#define ANSWER(code) BPF_STMT(BPF_RET | BPF_K, (code))
+#define REFUSE_WITH(error) \
+    ANSWER(SECCOMP_RET_ERRNO | ((error) & SECCOMP_RET_DATA))
+#define LET_THROUGH ANSWER(SECCOMP_RET_ALLOW)
+#define READ(field) \
+    BPF_STMT(BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, field))
+/* The low half of an argument: flags and families are small numbers,
+ * and both machines keep the low half first. */
+#define READ_ARGUMENT(n) \
+    BPF_STMT(BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, args[n]))
+#define IF_EQUAL(value, then, otherwise) \
+    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, (value), (then), (otherwise))
+#define REFUSED_CALL(call, error) \
+    IF_EQUAL((call), 0, 1), REFUSE_WITH(error)
+
+static int filter_calls(void)
+{
+    static struct sock_filter program[] = {
+        /* A call made the way another kind of machine makes it has
+         * other numbers, and would walk past every line below. */
+        READ(arch),
+        IF_EQUAL(FILTER_ARCH, 1, 0),
+        REFUSE_WITH(ENOSYS),
+        READ(nr),
+#if defined(__x86_64__)
+        BPF_JUMP(BPF_JMP | BPF_JGE | BPF_K, 0x40000000u, 0, 1),
+        REFUSE_WITH(ENOSYS),
+#endif
+
+        REFUSED_CALL(__NR_clone3, ENOSYS),
+
+        REFUSED_CALL(__NR_setns, EPERM),
+        REFUSED_CALL(__NR_mount, EPERM),
+        REFUSED_CALL(__NR_umount2, EPERM),
+        REFUSED_CALL(__NR_pivot_root, EPERM),
+#ifdef __NR_open_tree
+        REFUSED_CALL(__NR_open_tree, EPERM),
+        REFUSED_CALL(__NR_move_mount, EPERM),
+        REFUSED_CALL(__NR_fsopen, EPERM),
+        REFUSED_CALL(__NR_fsconfig, EPERM),
+        REFUSED_CALL(__NR_fsmount, EPERM),
+        REFUSED_CALL(__NR_fspick, EPERM),
+#endif
+#ifdef __NR_mount_setattr
+        REFUSED_CALL(__NR_mount_setattr, EPERM),
+#endif
+
+        REFUSED_CALL(__NR_ptrace, EPERM),
+        REFUSED_CALL(__NR_process_vm_readv, EPERM),
+        REFUSED_CALL(__NR_process_vm_writev, EPERM),
+#ifdef __NR_pidfd_getfd
+        REFUSED_CALL(__NR_pidfd_getfd, EPERM),
+#endif
+
+        REFUSED_CALL(__NR_bpf, EPERM),
+        REFUSED_CALL(__NR_perf_event_open, EPERM),
+        REFUSED_CALL(__NR_userfaultfd, EPERM),
+#ifdef __NR_io_uring_setup
+        REFUSED_CALL(__NR_io_uring_setup, EPERM),
+        REFUSED_CALL(__NR_io_uring_enter, EPERM),
+        REFUSED_CALL(__NR_io_uring_register, EPERM),
+#endif
+        REFUSED_CALL(__NR_init_module, EPERM),
+        REFUSED_CALL(__NR_finit_module, EPERM),
+        REFUSED_CALL(__NR_delete_module, EPERM),
+        REFUSED_CALL(__NR_kexec_load, EPERM),
+#ifdef __NR_kexec_file_load
+        REFUSED_CALL(__NR_kexec_file_load, EPERM),
+#endif
+        REFUSED_CALL(__NR_add_key, EPERM),
+        REFUSED_CALL(__NR_request_key, EPERM),
+        REFUSED_CALL(__NR_keyctl, EPERM),
+        REFUSED_CALL(__NR_open_by_handle_at, EPERM),
+
+        /* Each of the three below reads an argument, which leaves the
+         * call's number forgotten: so each answers for itself, and a
+         * call that is not it steps over the whole of it. */
+
+        /* unshare(flags): a namespace asked for. */
+        IF_EQUAL(__NR_unshare, 0, 4),
+        READ_ARGUMENT(0),
+        BPF_JUMP(BPF_JMP | BPF_JSET | BPF_K, NAMESPACES, 0, 1),
+        REFUSE_WITH(EPERM),
+        LET_THROUGH,
+
+        /* clone(flags, ...): the same. Both machines put flags first. */
+        IF_EQUAL(__NR_clone, 0, 4),
+        READ_ARGUMENT(0),
+        BPF_JUMP(BPF_JMP | BPF_JSET | BPF_K, NAMESPACES, 0, 1),
+        REFUSE_WITH(EPERM),
+        LET_THROUGH,
+
+        /* socket(family, type, protocol). */
+        IF_EQUAL(__NR_socket, 0, 11),
+        READ_ARGUMENT(0),
+        IF_EQUAL(FAMILY_UNIX, 7, 0),
+        IF_EQUAL(FAMILY_INET, 6, 0),
+        IF_EQUAL(FAMILY_INET6, 5, 0),
+        IF_EQUAL(FAMILY_NETLINK, 1, 0),
+        REFUSE_WITH(EAFNOSUPPORT),
+        READ_ARGUMENT(2),
+        IF_EQUAL(NETLINK_OF_ROUTES, 1, 0),
+        IF_EQUAL(NETLINK_OF_DEVICES, 0, 1),
+        LET_THROUGH,
+        REFUSE_WITH(EPERM),
+
+        LET_THROUGH,
+    };
+    static struct sock_fprog filter = {
+        .len = (unsigned short)(sizeof(program) / sizeof(program[0])),
+        .filter = program,
+    };
+
+    return prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, &filter, 0, 0);
+}
+
+#else
+
+static int filter_calls(void)
+{
+    errno = ENOSYS;
+    return -1;
+}
+
+#endif
+
+/* Whether a filter can be put on here: tried, on a process of its own
+ * that is gone the moment it has answered. */
+static int can_filter_calls(void)
+{
+    int status = 0;
+    pid_t child = fork();
+
+    if (child < 0)
+        return 0;
+    if (child == 0) {
+        give_up_privileges();
+        _exit(filter_calls() == 0 ? 0 : 1);
+    }
+    if (waitpid(child, &status, 0) < 0)
+        return 0;
+    return WIFEXITED(status) && WEXITSTATUS(status) == 0;
+}
+
 static int check(void)
 {
     int status = 0;
@@ -401,6 +602,7 @@ static int check(void)
         return REFUSED;
     /* What else the caller may ask for here. */
     printf("landlock=%d\n", landlock_version());
+    printf("seccomp=%d\n", can_filter_calls());
     return 0;
 }
 
@@ -577,10 +779,10 @@ static int run(int count, char **arguments)
 {
     static const char usage[] =
         "run <user> <home> <processes> <open-files> <file-bytes> "
-        "[r:<path> | w:<path> | c:<port>]... -- <program> [arguments...]";
+        "[r:<path> | w:<path> | c:<port> | s:1]... -- <program> [arguments...]";
     uid_t user;
     struct stat about;
-    int spool = 0, home, rules, program;
+    int spool = 0, home, rules, program, fenced = 0, filtered = 0;
 
     if (count < 8)
         refuse(usage);
@@ -592,10 +794,16 @@ static int run(int count, char **arguments)
 
             if (port < 1 || port > LAST_PORT)
                 refuse(usage);
+            fenced++;
+            continue;
+        }
+        if (strcmp(rule, "s:1") == 0) {
+            filtered = 1;
             continue;
         }
         if ((rule[0] != 'r' && rule[0] != 'w') || rule[1] != ':' || rule[2] != '/')
             refuse(usage);
+        fenced++;
     }
     program = rules + 1;
     if (program >= count)
@@ -622,8 +830,12 @@ static int run(int count, char **arguments)
 
     give_up_privileges();
     become(user, user);
-    if (rules > 6)
+    if (fenced > 0)
         fence(rules - 6, arguments + 6);
+    /* Last, so that nothing this program itself still had to do is
+     * refused to it; what it becomes, and what that starts, is held. */
+    if (filtered && filter_calls() != 0)
+        fail("this machine cannot filter system calls (no seccomp)");
 
     execv(arguments[program], arguments + program);
     fail(arguments[program]);
