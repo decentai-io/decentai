@@ -574,7 +574,7 @@ export class ChatDetailComponent implements OnInit, OnDestroy {
         this.clearKillTimer();
         this.killing = false;
         // The browser went with the rest, and nothing says so on its own.
-        this.settleScreen();
+        this.endScreen();
         this.state.setSleeping(null);
         this.state.stopped(parts.length
           ? `Stopped everything: ${parts.join(', ')}.`
@@ -623,10 +623,12 @@ export class ChatDetailComponent implements OnInit, OnDestroy {
         return;
 
       case 'screen_closed':
-        // The call ended; the browser behind the picture may stay open
-        // for the next run, so the last frame stays, marked idle, until
-        // a new frame replaces it.
-        if (this.screen?.call_id === String(data.call_id || '')) this.settleScreen();
+        // The call that showed it is over, and the panel goes with it:
+        // a picture left standing reads as something still running.
+        // The browser behind it may stay open for the next run — the
+        // header's button opens it again, and a new frame brings the
+        // panel back.
+        if (this.screen?.call_id === String(data.call_id || '')) this.endScreen();
         return;
 
       case 'message_created':
@@ -669,6 +671,18 @@ export class ChatDetailComponent implements OnInit, OnDestroy {
   private settleScreen(): void {
     if (this.screen && !this.screen.idle) this.screen = { ...this.screen, idle: true };
     this.screenTaken = false;
+  }
+
+  /** The live view gone altogether: its call ended, or everything in
+   *  the chat was stopped. Nothing is kept of it, so the header's
+   *  button asks for the browser afresh and the next frame is a new
+   *  panel. (A lost connection only settles it: the same call may go
+   *  on showing when the connection is back.) */
+  private endScreen(): void {
+    this.screen = null;
+    this.screenTaken = false;
+    this.screenHidden = false;
+    this.hiddenCallId = '';
   }
 
   /** A socket that came back replays the event log, and the log does

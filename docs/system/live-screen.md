@@ -86,11 +86,14 @@ the chat the page is told `screen_unavailable`.
   to the frame's size, and Hand back resumes with the agent told to look
   again. Enter on the picture takes over; Esc hands back. A hand on a
   tab takes control first.
-- **The last frame stays** after a call ends, marked idle, until the
-  next run replaces it. The page is told the call ended whether or not
-  the function closed its screen: a screen is its call's, and the
-  runtime closes one a call left open
-  (`FunctionExecutor._end_screen`). The panel can be minimised, hidden, and opened
+- **The panel closes when its call ends**, and when everything in the
+  chat is stopped. The page is told the call ended whether or not the
+  function closed its screen: a screen is its call's, and the runtime
+  closes one a call left open (`FunctionExecutor._end_screen`). The
+  browser behind it may stay open for the next run: the header's
+  button opens it again, and a new call's first frame brings the panel
+  back. A lost connection only marks the picture idle, since the same
+  call may go on showing when the connection returns. The panel can be minimised, hidden, and opened
   again from the header.
 - **An address box and the tabs.** The person types an address to go
   to, and switches, closes or opens a tab; each is sent as input.
