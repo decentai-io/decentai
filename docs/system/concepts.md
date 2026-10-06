@@ -1,7 +1,10 @@
 # Concepts
 
 The vocabulary of the platform, and how the pieces fit. Each section
-names the design note that goes deeper.
+names the design note that goes deeper. The words these pages use, with
+the name each has in the code, are [listed at the end](#the-words); the
+whole as one picture — the containers, who speaks to whom, the path of
+one message — is [Architecture](architecture.md).
 
 ## The parts
 
@@ -29,10 +32,13 @@ Started from the repository that is six containers: the database, a
 seeder that runs once and exits, the backend, the runtime, the agents'
 container, and Caddy ([quickstart](../run/quickstart.md)).
 
-Two things are kept beside the agents and not in the database: the
-approved code as the runtime installed it, which is a cache of what the
-backend holds, and the record of what agents did
-([what is written down](monitoring.md)).
+Besides the database, the backend keeps the bytes of stored files and
+each approved agent's code as an archive, on two volumes of its own.
+Two things are kept beside the agents: the approved code as the runtime
+installed it, which is a cache of what the backend holds, and the
+record of what agents did ([what is written down](monitoring.md)).
+[Architecture](architecture.md#where-everything-is-kept) lists all of
+it.
 
 The runtime is tested against an in-memory simulator of the backend's
 services (`sim/`), which is also how an agent is tested alone.
@@ -190,3 +196,66 @@ A person may make keys that act as them from a script, with their own
 permissions checked on every request. Only the hash is kept; the key is
 shown once; revoking is the only edit; disabling the person revokes
 theirs.
+
+## The words
+
+The pages are written in plain words, and several of those words stand
+for one exact thing in the code. Each is here once, with that name.
+Where a word is used for more than one thing, each is said.
+
+| Word | What it is | In the code |
+|---|---|---|
+| **action** | one operation the gateway dispatches, and the name a policy grants: `Domain:Controller:action` | `ACTION_CATALOG`, `backend/server/authentication/catalog.py` |
+| **agent** | an approved program: a manifest and the code that does what it declares | `InstalledAgent`, `ai_runtime/agents/library.py` |
+| **approval** | two things. An administrator approving one exact version of an agent (an *install*). And a person's yes to one call whose level is above the chat's trust (a *card*) | `agent_manifests`; `ai_approvals` |
+| **audience** | whoever is watching a chat now: the page's open socket | — |
+| **baseline** | what every member may do without a decision | `BASELINE_ACTIONS` |
+| **beat** | one turn of the assistant's cycle: one call to the model, one action | `Assistant._beat` |
+| **card** | something in the chat that waits for a person: an approval, a question, code to allow, a login | `ai_approvals` |
+| **catalog** | two things. The list of every action. And the file in a repository that lists its agents | `ACTION_CATALOG`; `decentai-agents.yaml` |
+| **category** | see *slot* | |
+| **the clock** | what fires schedules and ends sleeps | `Scheduler`, `ai_runtime/chat/scheduler.py` |
+| **contract** | four things. *The manifest*, an agent's contract with the platform. *The chat's contract*, what this chat may do, answered by the backend each turn. *The services contract*, the methods the runtime asks of the backend. And the package `contracts/`, the shapes both sides share | `AI:Chat:Contract`; `BackendServices`; `contracts/` |
+| **delegation** | the credential the backend makes per chat, under which the runtime calls back as the person. Also *runtime access token*, *the chat's credential* | `chat_session/identity/delegation.py`; `runtime_sessions` |
+| **definition** | the shape of a credential: its fields. An agent's is derived from its manifest at install | `secret_definitions` |
+| **door** | a way in. *The session door* is the runtime's socket for one chat; a *gateway door* is an action | `ai_runtime/server/routes/chat.py` |
+| **escape grant** | an action that lets its holder reach past the usual rule. `…:set_owner_any` lifts whom a thing may be shared to and who may edit it; `…:manage_any` reaches every source or connection, and does not lift whom one may be shared to | [sharing](sharing.md) |
+| **event** | two things. *Inbound*: what the assistant is told — a message, a finished job, a wakeup — kept in the inbox before it is heard. *Outbound*: what the runtime tells the page | `ai_chat_events`, direction `in` and `out` |
+| **executor** | what stands between the assistant and an agent's function: the gates a call passes | `FunctionExecutor`, `ai_runtime/execution/executor.py` |
+| **the fence** | two things. What a delegation may call: a fixed list of actions. And what a worker may open: its own files | `RUNTIME_ENDPOINTS`; Landlock, `ai_runtime/agents/spawn_helper.c` |
+| **fold** | the assistant shortening its own transcript when it grows | [the assistant](assistant.md) |
+| **frame** | one message on a socket. (In [the assistant](assistant.md) also the assistant's standing instructions) | `contracts/chat.py` |
+| **gateway** | `POST /app`: the one route every action goes through, and where permission is checked | `APIRouter.route`, `backend/api/api_router.py` |
+| **grant** | five things. A *policy* allowing an action. An *agent grant*: who may use an installed agent. A *secret grant*: a credential lent to an agent. The chat contract's `grants`: which functions this chat may call, and narrowed how. A *code grant*: what a person allowed one program | `policies`; `agent_grants`; `agent_secret_grants`; `FunctionGrants`; `ai_runtime/execution/code_grant.py` |
+| **the helper** | the one program that may start a process as another user | `decentai-spawn`, `ai_runtime/agents/spawn_helper.c` |
+| **host** | three things. The runtime, as an agent's worker sees it. The object that holds the runtime's sessions. And a machine on the network an agent connects to | —; `SessionHost`; `network.hosts` |
+| **inbox** | a chat's inbound events, each with a sequence number, kept until heard | `ai_chat_events`, direction `in` |
+| **job** | a function running in the background, begun with `start` | `ai_runtime/reasoning/state.py` |
+| **key** | five things. The plain half of a stored document (`keys`). An encryption key. An API key (`dk_…`). The spawner's key. And, loosely, a delegation | |
+| **level** | 0 to 3, on a function (what it costs) and on a chat (its trust): a function above the chat's level asks first | `permission_level`; `chat_level` |
+| **manifest** | an agent's declaration: what it can do, keep and reach | `manifest.yaml`; `contracts/agent_manifest.py` |
+| **the mind** | the assistant of one chat | `Assistant`, `ai_runtime/reasoning/assistant.py` |
+| **parked** | waiting for a person's answer, with the state saved | `waiting_approval` |
+| **pass** | the token that tells the proxy whose worker is connecting | `EgressProxy.admit`, `ai_runtime/agents/egress.py` |
+| **place** | one agent's user, home and spool where workers run | `WorkerPlace`, `ai_runtime/agents/confinement.py` |
+| **the platform's user** | the ordinary user the runtime and the spawner run as | `decentai` |
+| **principal** | who a request acts as: a person, an API key (the person), or a runtime under a delegation | `principal_type` |
+| **the proxy** | the only way from a worker to the internet | `EgressProxy`, port 8002 |
+| **reference**, **ref** | the id of one stored document (`resource_ref`), as against the label many share (`resource_id`). An *approval's ref* is an installed agent's id: `agt_` and twenty characters | |
+| **relay** | the backend's side of a chat's two sockets: it dials the runtime and passes frames each way | `backend/api/services/chat_session/relay.py` |
+| **roster** | the agents one chat may use, as the runtime holds them | `Session.roster` |
+| **the runtime's fence** | see *the fence* | |
+| **services** | what the runtime asks of the backend, as one object | `BackendServices`; `SimSessionServices` in tests |
+| **service token** | the backend proving to the runtime that it is the backend, for sixty seconds | `chat_session/identity/service.py` |
+| **session** | two things. A person's sign-in. And one chat as the runtime holds it | `sessions`; `Session`, `ai_runtime/chat/session.py` |
+| **slot** | one resource of one installed agent — its notes, its documents, its connection — and the name its things are kept under: `agt_<ref>__<resource id>`. Also *category* | `resource_id`; `keys.category` for a file |
+| **source** | a repository agents are installed from | `ai_agent_sources` |
+| **spawner** | the platform's one process in the agents' container: it starts what the runtime orders | `ai_runtime/agents/spawner_service.py`, port 8003 |
+| **spool** | a folder a worker and the runtime both reach, for bytes too large for a line | `<install_dir>/workers/<agent>/spool` |
+| **steward** | the one person who may change a stored thing: its creator, until it is handed over | `created_by` |
+| **the stand-in**, **the sim** | the backend's services in memory, which the runtime is tested on | `sim/` |
+| **thread** | a sub-assistant's own conversation inside a chat | `<chat_id>/sub_…` |
+| **trace** | what the assistant actually ran in this chat, which evidence is checked against | `state.trace` |
+| **trust level** | see *level* | |
+| **valve** | the limit on how many beats one message may take before the chat stops and asks | `max_beats` |
+| **worker** | the process one approved agent's code runs in | `decentai_sdk/worker.py`; `WorkerHandle` |
