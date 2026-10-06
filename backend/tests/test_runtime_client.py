@@ -145,7 +145,14 @@ class TestTheDial:
             assert event["data"]["chat_id"] == chat_id
             assert event["data"]["protocol_version"] == 2
 
-        assert fake_runtime.closed.wait(timeout=5)
+            # The person leaves, and the dial goes with them. Said
+            # here, inside the block: leaving the block cancels the
+            # app's side of the socket at once and closes its loop,
+            # and a teardown cut there may or may not get its closing
+            # frame out — which says nothing of a server, whose loop
+            # goes on.
+            frontend.close()
+            assert fake_runtime.closed.wait(timeout=5)
 
     def test_input_becomes_the_doors_user_message(self, admin, fake_runtime):
         chat_id = create_chat(admin)
@@ -277,7 +284,9 @@ class TestScheduledOwnership:
         ) as frontend:
             assert frontend.receive_json()["data"]["event"] == "hello"
             assert dialed(quiet)
-        assert fake_runtime.closed.wait(timeout=5)
+            # Inside the block, as above: the teardown runs to its end.
+            frontend.close()
+            assert fake_runtime.closed.wait(timeout=5)
         assert not dialed(quiet)
 
         asyncio.run(manager.close_all())
