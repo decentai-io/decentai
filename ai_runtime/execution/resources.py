@@ -33,6 +33,8 @@ from typing import Any, Dict, List, Optional, Set
 # The exception is the SDK's — agent code catches it, so it must exist
 # where only the SDK is importable. Re-exported here for the executor
 # and everything else that always spelled it from this module.
+from contracts.file_types import FileTypes
+from contracts.record_fields import RecordFields
 from decentai_sdk.base import ResourceDenied
 
 __all__ = ["ResourceAccess", "ResourceDenied"]
@@ -41,11 +43,20 @@ __all__ = ["ResourceAccess", "ResourceDenied"]
 class ResourceAccess:
     def __init__(self, grants: Dict[str, Dict[str, set]],
         provider, definitions: Optional[Dict[str, Dict[str, Dict[str, str]]]] = None,
-        namespace: str = "", handed: Optional[Set[str]] = None):
+        namespace: str = "", handed: Optional[Set[str]] = None,
+        fields: Optional[Dict[str, List[Dict[str, Any]]]] = None,
+        constraints: Optional[Dict[str, Dict[str, Any]]] = None):
         self.grants = grants
         self.provider = provider
         # kind -> resource_id -> {field name: "keys" | "values"}
         self.definitions = definitions or {}
+        #: data resource id -> the fields its manifest declared, as
+        #: RecordFields reads them. A write to one of these is held to
+        #: them: the manifest is the contract for what an agent keeps
+        #: as it is for what it calls.
+        self.fields = fields or {}
+        #: file resource id -> the constraints its manifest declared.
+        self.constraints = constraints or {}
         self.namespace = namespace
         #: Refs this call was handed — named in its inputs, or a file the
         #: person gave in answer to its question. Those it may read
@@ -75,7 +86,22 @@ class ResourceAccess:
     def _canonical(self, resource_id: str) -> str:
         return f"{self.namespace}__{resource_id}" if self.namespace else resource_id
 
-    def _split(self, kind: str, resource_id: str, fields: Dict[str, Any]):
+    def _split(self, kind: str, resource_id: str, fields: Dict[str, Any],
+               partial: bool = False):
+        """What is written, as the two halves the data layer keeps.
+        Where the resource's fields are known the write is checked
+        against them first — a field that was not declared, a value
+        that is not its field's type, a required one left out — and
+        refused in words the agent's author can act on."""
+        declared = self.fields.get(resource_id) if kind == "data" else None
+        if declared is not None:
+            try:
+                return RecordFields.split(
+                    declared, fields, partial=partial, nothing_is_nothing=True)
+            except ValueError as refused:
+                raise ResourceDenied(
+                    f"{kind}.{resource_id}: {refused} The manifest declares "
+                    f"what this resource keeps.")
         storage = (self.definitions.get(kind) or {}).get(resource_id) or {}
         keys: Dict[str, Any] = {}
         values: Dict[str, Any] = {}
@@ -125,7 +151,7 @@ class ResourceAccess:
 
     async def update_data(self, resource_id: str, ref: str, fields: Dict[str, Any]) -> Dict[str, Any]:
         self._require("data", resource_id, "update")
-        keys, values = self._split("data", resource_id, fields)
+        keys, values = self._split("data", resource_id, fields, partial=True)
         return await self.provider.update_data(self._canonical(resource_id), ref, keys, values)
 
     async def delete_data(self, resource_id: str, ref: str) -> bool:
@@ -157,6 +183,11 @@ class ResourceAccess:
                 raise ResourceDenied("content_base64 is not valid base64")
         else:
             raw = content if content is not None else ""
+        size = len(raw.encode("utf-8") if isinstance(raw, str) else raw)
+        refused = FileTypes.refusal(
+            self.constraints.get(resource_id), filename, size)
+        if refused:
+            raise ResourceDenied(f"files.{resource_id}: {refused}")
         return await self.provider.create_file(
             self._canonical(resource_id), filename, raw)
 

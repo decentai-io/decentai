@@ -441,7 +441,7 @@ FILE_MANIFEST = textwrap.dedent("""\
           label: Doc
           binding: {cardinality: many, required: false}
           constraints:
-            mime_types: [application/octet-stream]
+            mime_types: [application/octet-stream, text/plain]
             max_size_mb: 1
     tools:
       - id: main

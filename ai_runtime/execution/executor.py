@@ -21,6 +21,7 @@ from typing import Any, Callable, Dict, Optional, Tuple
 
 import jsonschema
 
+from contracts.record_fields import RecordFields
 from contracts.chat import (
     DISPLAYS_PER_CALL_MAX, POST_MAX_CHARS, POSTS_PER_CALL_MAX, agent_source,
     code_asked, display_stored, event_error, CHOICE_MAX_CHARS, CHOICES_MAX,
@@ -682,6 +683,15 @@ class FunctionExecutor:
             definitions=self._definitions(agent),
             namespace=agent.agent_id,
             handed=self._refs_in(inputs),
+            fields={
+                resource["id"]: RecordFields.declared(resource)
+                for resource in agent.manifest.resources("data")
+            },
+            constraints={
+                resource["id"]: resource["constraints"]
+                for resource in agent.manifest.resources("files")
+                if isinstance(resource.get("constraints"), dict)
+            },
         )
         context = CallContext(
             resources=access,

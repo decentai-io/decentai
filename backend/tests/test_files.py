@@ -445,3 +445,53 @@ class TestWhoMadeIt:
             "resource_ref": mine["resource_ref"],
             "keys": {"category": f"{agent['agent_id']}__document"}})
         assert moved.status_code == 400
+
+
+class TestWhatASlotTakes:
+    """A file resource's ``constraints`` are the manifest's word on what
+    the slot holds (docs/agents/manifest.md): the kinds, and how large.
+    They are held for whoever stores there."""
+
+    def install(self, admin, control, manifest_doc):
+        control["manifest"] = manifest_doc
+        return app_call(admin, "Agents:Agent:Install", {
+            "url": "https://example.test/notebook.git"}).json()["data"]["agent"]
+
+    def as_agent(self, seed, content, filename, category):
+        from api.services.data_layer import FileController
+        from database.stores import UserStore
+
+        principal = {**UserStore.to_public(seed.admin),
+                     "principal_type": "runtime"}
+        return FileController().upload({"data": {
+            "filename": filename, "file_bytes": io.BytesIO(content),
+            "meta": {"category": category}}}, principal)
+
+    def test_a_kind_the_slot_does_not_list_is_refused_to_the_agent_itself(
+            self, admin, seed, control, manifest_doc):
+        agent = self.install(admin, control, manifest_doc)
+        slot = f"{agent['agent_id']}__document"
+        body, status = self.as_agent(seed, b"hello", "notes.txt", slot)
+        assert status == 400
+        assert "notes.txt is text/plain" in body["error"]
+        _, status = self.as_agent(seed, b"a,b;1,2", "notes.csv", slot)
+        assert status == 200
+
+    def test_a_file_over_the_slots_size_is_refused(
+            self, admin, seed, control, manifest_doc):
+        agent = self.install(admin, control, manifest_doc)
+        body, status = self.as_agent(
+            seed, b"x" * (5 * 1024 * 1024 + 1), "big.csv",
+            f"{agent['agent_id']}__document")
+        assert status == 400 and "larger than the 5 MB" in body["error"]
+
+    def test_a_file_in_no_agents_slot_is_any_kind(self, admin, seed):
+        assert _upload(admin, b"x", "anything.xyz123").status_code == 200
+
+    def test_a_word_document_is_one_wherever_it_is_stored(self, admin, seed):
+        """The interpreter's own table does not know one on a small
+        image, and it was kept as "unknown"."""
+        kept = _upload(admin, b"PK", "report.docx").json()["resource"]
+        assert kept["values"]["file_type"] == (
+            "application/vnd.openxmlformats-officedocument."
+            "wordprocessingml.document")

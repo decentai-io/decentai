@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from contracts.agent_manifest import (
     OAUTH_CHOICES, OAUTH_NAME_PATTERN, OAUTH_PATH_PATTERN,
 )
+from contracts.record_fields import RecordFields
 from database.stores.agents import AgentManifestStore
 from database.stores.base import MongoStore
 from util import iso, utc_now
@@ -442,69 +443,11 @@ class DefinitionStore(MongoStore):
         """Validate instance fields against a definition version and route
         them into (keys, values). ``partial`` skips the required check —
         updates validate only what they touch."""
-        if fields is None:
-            fields = {}
-        if not isinstance(fields, dict):
-            raise ValueError("Fields must be an object of name/value pairs.")
-
-        spec = {field["name"]: field for field in definition.get("fields") or []}
-
-        unknown = [name for name in fields if name not in spec]
-        if unknown:
-            raise ValueError(f"Unknown fields: {', '.join(sorted(unknown))}.")
-
-        keys: Dict[str, Any] = {}
-        values: Dict[str, Any] = {}
-        for name, value in fields.items():
-            cleaned = cls._clean_field_value(spec[name], value)
-            (values if spec[name]["storage"] == "values" else keys)[name] = cleaned
-
-        if not partial:
-            missing = [
-                field["label"] for field in spec.values()
-                if field["required"] and not cls._provided(field, fields.get(field["name"]))
-            ]
-            if missing:
-                raise ValueError(f"Required: {', '.join(missing)}.")
-
-        return keys, values
+        # The rule is one rule, shared with the runtime, which holds an
+        # agent's own writes to the same fields (contracts/record_fields.py).
+        return RecordFields.split(definition.get("fields") or [], fields,
+                                  partial=partial)
 
     @staticmethod
     def _provided(field: Dict[str, Any], value: Any) -> bool:
-        if value is None:
-            return False
-        if field["type"] in ("string", "secret", "select") and str(value).strip() == "":
-            return False
-        return True
-
-    @staticmethod
-    def _clean_field_value(field: Dict[str, Any], value: Any) -> Any:
-        name, field_type = field["label"], field["type"]
-
-        if field_type in ("string", "secret"):
-            if not isinstance(value, str):
-                raise ValueError(f"{name} must be text.")
-            return value.strip() if field_type == "string" else value
-        if field_type == "number":
-            if isinstance(value, bool) or not isinstance(value, (int, float)):
-                raise ValueError(f"{name} must be a number.")
-            return value
-        if field_type == "boolean":
-            if not isinstance(value, bool):
-                raise ValueError(f"{name} must be true or false.")
-            return value
-        if field_type == "select":
-            value = str(value or "").strip()
-            if value not in field["options"]:
-                raise ValueError(
-                    f"{name} must be one of: {', '.join(field['options'])}."
-                )
-            return value
-        # Manifest data resources may declare structured payloads; the
-        # authored-definition editor never offers this type, so secrets
-        # are untouched by it.
-        if field_type == "object":
-            if not isinstance(value, dict):
-                raise ValueError(f"{name} must be an object.")
-            return value
-        raise ValueError(f"{name}: unsupported field type.")
+        return RecordFields.provided(field, value)

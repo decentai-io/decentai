@@ -414,6 +414,16 @@ writes directly is checked against `fields` exactly as your agent's own
 writes are, so your code never reads back a record of a shape the
 manifest did not declare.
 
+What is checked, for both: a field that was not declared is refused; a
+value is its field's type — text for `string`, a number for `number`,
+one of the `options` for `select`, a map for `object`; and a `required`
+field is there when a record is created. An update is held to what it
+writes and misses nothing. One thing is your code's alone: a field
+given as `None` is kept as no value, where a person's form must send
+text or leave the field out. `None` is not a value for a `required`
+field. A write that is refused raises `ResourceDenied` with the reason
+(`contracts/record_fields.py` is the rule, and the one both use).
+
 `family` is refused on any resource: a credential is granted to an
 agent, never claimed by naming a shared slug.
 
@@ -576,6 +586,18 @@ What to think about:
 `constraints` is optional; `mime_types` a non-empty list, `max_size_mb`
 a positive number. A file's content never changes: replacing one is a
 delete and a create.
+
+A slot that declares constraints is held to them, for whoever stores
+there: your code's `create_file`, a person adding a file on the page,
+and your own sample sheet. A file is told by its **name**, not by its
+bytes: `report.docx` is a Word document wherever it is stored
+(`contracts/file_types.py` names the kinds, the same in a container as
+on your machine), and a name nothing knows is
+`application/octet-stream`, which a slot that lists its types does not
+take. An entry may end in `/*` and take every kind of a sort
+(`image/*`). A slot that declares no constraints takes any file up to
+the platform's upload limit. A file that is refused says which kinds
+the slot takes.
 
 ## `tools`
 

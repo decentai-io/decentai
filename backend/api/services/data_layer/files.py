@@ -6,6 +6,7 @@ from __future__ import annotations
 from typing import Any, Dict, Optional
 
 from api.services.data_layer.base import Refusal, ResourceController
+from contracts.file_types import FileTypes
 from database.crypto import SecretCipherError
 from database.stores.data.files import FileStore
 from server.setup.app_state import get_settings
@@ -170,6 +171,12 @@ class FileController(ResourceController):
         refusal = self._slot_refusal(user, meta.get("category"), agent_samples)
         if refusal:
             return refusal
+        # What the slot's manifest said it takes, held for whoever
+        # stores there: the agent, its sample sheet, or a person.
+        unfit = FileTypes.refusal(
+            self._slot_constraints(user, meta.get("category")), filename, size)
+        if unfit:
+            return {"error": unfit}, 400
 
         connector = self.write_connector
         stored, status = connector.upload({
@@ -263,6 +270,22 @@ class FileController(ResourceController):
             return {"error": "The agent keeps these files itself — they can "
                              "be read and deleted here, not added."}, 403
         return None
+
+    @staticmethod
+    def _slot_constraints(user: dict, category: Any):
+        """The ``constraints`` an installed agent's manifest declared
+        for the slot a file is being stored in (``agt_<ref>__<slot>``);
+        None for a file that is in no agent's slot, and for a slot that
+        declared none."""
+        category = str(category or "")
+        if not (category.startswith("agt_") and "__" in category):
+            return None
+        from database.stores import AgentManifestStore
+
+        agent_ref, _, slot = category.partition("__")
+        agent = AgentManifestStore().installed_in(
+            str(user.get("org_id") or ""), agent_ref)
+        return FileTypes.constraints_of((agent or {}).get("manifest") or {}, slot)
 
     def create(self, data: dict, user: dict):
         """Not part of this domain — a file document exists because bytes
