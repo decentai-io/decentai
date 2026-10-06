@@ -129,25 +129,237 @@ already told the user that") and never reaches the user.
 
 | action | shape | meaning |
 |---|---|---|
-| `say` | `{text, final?, show?}` | tell the user something now — a progress note, a question, an answer. A response may be several says; saying does not end anything by itself. Like every action it is observed (`{"said": true}`), so the beat closes on a user turn: the next decision is finish-or-more, never a continuation of the model's own message — which is what a chat model does with a transcript that ends on its own words, and how a reply used to arrive twice. `final: true` says the reply is complete: the turn ends there, with no beat spent on a finish that could only repeat it, and the audience's idle frame follows the words at once. A reply that carries no JSON action at all is words for the user — there is no other channel they could belong to — and is delivered as a say (observed as such, with a reminder); only a malformed attempt at an action bounces. |
-| `close_agent` | `{agent}` | close an opened agent: its catalog leaves the open set and its functions the tool menu. At most `routing.open_max` (the organization's number, 8 by default) stay open; opening one more closes the least recently used, and the observation says which. `invoke` marks an agent used, so the open set is ordered by recency and `FunctionTools` offers the most recently used first. |
-| `find_agents` | `{query?}` | search the installed agents by meaning, in any language (`reasoning/agent_router.py`): the words are embedded with the organization's embedding model and every agent's vectors — name and description, example prompts, function descriptions, computed once per package and kept on disk — are scored by cosine; best first (at most twenty), with a closeness each. With no words, all by name. Without an embedding model there is nothing to search by, and the answer says every agent is listed under AGENTS already. |
-| `open_agent` | `{agent}` | load an agent's catalog (instructions, function names, descriptions, permission prices) into context. From the next beat on, each of its functions is also offered as a tool of its own carrying the manifest's input schema whole (reasoning/actions.py, `FunctionTools`), so the model fills inputs against the real contract instead of a shape summary. Enforced: invoking an unopened agent is refused with "open it first". The system frame lists agents as one line each; details are paid for only when used. |
+| `say` | `{text, final?, show?}` | tell the user something now — a progress note, a question, an answer; `final: true` ends the turn with it — [below](#say) |
+| `close_agent` | `{agent}` | close an opened agent; at most `routing.open_max` stay open — [below](#close_agent) |
+| `find_agents` | `{query?}` | search the installed agents by meaning, in any language — [below](#find_agents) |
+| `open_agent` | `{agent}` | load an agent's catalog into context, and offer its functions as tools — [below](#open_agent) |
 | `invoke` | `{function, inputs}` | call a function and wait for the observation — for quick calls. A call to a function's own tool is rewritten to this action before anything else sees it, so the transcript, the gates, the trace and evidence keep one vocabulary. Passes every executor gate; the provider steers by the schema but never validates for it. |
 | `start` | `{function, inputs}` | the same call as a **job**: returns `{job_id}` immediately; the result arrives later as a `job_done` event. Concurrency is real — the worker pool was built for it. |
-| `spawn` | `{goal, agents?, items?}` | a bounded goal for a child mind — a job whose worker is a session (sub-assistants.md). Its report is a `job_done` carrying its finish reason, a summary and its own plan; its invocations join the parent's trace as evidence. The job is done only when the child finished `completed` — a question nobody answered, a blocked plan, a model that went away are not done. Plan items named in `items` take the child's outcome: done with the job and its storage refs as evidence, or blocked with its reason. A child that finished `completed` and ran nothing that succeeded leaves them blocked, saying so. |
+| `spawn` | `{goal, agents?, items?}` | a bounded goal for a child mind ([sub-assistants](sub-assistants.md)) — [below](#spawn) |
 | `cancel_job` | `{job_id}` | stop one running job — a child included. |
 | `read` | `{storage_ref, path?, from?}` | read back a stored result, or a slice of it, continuing from where the last read stopped. |
-| `find_files` | `{query, names?, kind?}` | the file the user meant when nothing is attached. The model reads the person's words, in whatever language, and says what the file is: `names`, the parts its file name is likely to carry, and `kind` (pdf, document, spreadsheet, presentation, image, data, audio, video); `query` is the person's own description, shown on the card. The session lists everything the person can see (their delegation, the backend's visibility), ranks it by those two (`chat/files.py` — no word of the person's is interpreted in code; with neither, or nothing matching, the most recent), and puts the best five on a files card (`question_asked`, `expects: files`); the person ticks, unticks, searches the rest, and may choose several or none. What they choose is recorded as their own message of file parts and enters the transcript exactly as an attachment does — a picture among them is shown at the next call — and the observation carries each file's `file_ref`. Nobody answering in a day, or answering with none, is an observation too. |
-| `read_file` | `{file_ref, from?}` | a document the user attached or chose, as text, a page at a time (`reasoning/documents.py`): text, Markdown, CSV, JSON and a PDF's text layer (pypdf), decoded and windowed to 12,000 characters, `from` continuing where the last page stopped. The download is the same one that fetches a picture for the model, under the person's own delegation, so the backend's visibility rules decide what a ref reaches and a made-up ref finds nothing. A picture, a spreadsheet, a Word document, a scan or a file past 8 MB is declined with a note saying whose it is to open — an agent's, by ref. |
+| `find_files` | `{query, names?, kind?}` | the file the user meant when nothing is attached: a card of the likeliest, for the person to choose from — [below](#find_files) |
+| `read_file` | `{file_ref, from?}` | a document the user attached or chose, as text, a page at a time — [below](#read_file) |
 | `use_skill` | `{skill}` | load one skill body as an observation. |
-| `recall` | `{query?}` | search the summary's archive — every line a fold let go of, with its section and the date it was last in the summary — for entries carrying all the words, newest first; no words, the newest. The archive is the mind's own state (`AssistantState.archive`), so this reads nothing from the platform. |
+| `recall` | `{query?}` | search what the summary let go of — [below](#recall) |
 | `remember` | `{text}` | save one durable fact, visibly. |
-| `plan` | `{steps}` / `{item or step, status?, evidence?, blocker?, depends_on?}` | set or update the work items the user sees (reasoning/plan.py): at most 12, of 200 characters each. Ids are the runtime's (`w1`, `w2`…); `step` names an item by its place instead. While an item is active, every successful invocation's storage ref and every finished job's id land on it as evidence; the model may name evidence too, but only refs the trace holds — anything else is refused. Done with no evidence is kept and shown as unverified, never refused: "answer the question" has no trace. Blocked needs a blocker; active needs its dependencies done. A plan belongs to the ask it answered: when the person's next message arrives and every item is done, the runtime clears it and tells the page; anything still open — a blocked item most of all, since the person is usually answering it — stays, so a plan spans the messages it takes. |
-| `schedule` | `{note}` or `{function, inputs?, wake_field?}` + one of `at` / `delay_seconds` / `every_seconds` / `cron` | set the clock: a note wakes the assistant with a `wakeup`; a function runs unattended (manifest-`schedulable` only) and wakes it only when `wake_field` comes back non-empty. `cron` is five fields on the calendar, read in the chat's time zone (`contracts/cron.py`); the zone comes from the contract, and every stamp the mind reads is written in it. Each fire is remembered on the row (`runs`: when, status, woke, a result summary), bounded, for a page to read. Announced to the user. |
-| `unschedule` | `{schedule_id}` | remove one of this chat's own schedules. |
-| `sleep` | `{seconds, why}` | pause in the middle of work that is waiting on something outside — an export being prepared, a page that said to try again — and be woken then: the assistant goes idle at once, and a `wakeup` event arrives after `seconds` (at most a day) carrying `why` and `slept: true`. One per chat; a new one replaces the last. A message from the person meanwhile is heard at once, as always, and the sleep still wakes the chat later. A stop, or the kill, cancels it. The audience is told with a `sleeping` frame (`until`, `why`; `until` null when a stop ended it), and the hello carries the same for one who arrives later, so the chat shows when it will carry on. It is the assistant's own and not a schedule of the person's: it is not on the Schedules page, keeps no history, and is gone once it has fired. A helper cannot sleep. |
-| `finish` | `{reason?, summary?}` | nothing left to do **right now**: go idle until the next event, and say why — `completed`, `awaiting_user`, `awaiting_events`, `blocked`, `budget` (default completed). This is how a reply ends, how a goal completes, and how the assistant waits for jobs it cannot proceed without — idle-until-event *is* the wait. Enforced in code: `completed` is refused while plan items are pending or active, `awaiting_events` while nothing is running or scheduled, `blocked` with no blocked item. `say` with `final` is a completed finish and meets the same rule; the words are still delivered. |
+| `plan` | `{steps}` / `{item or step, status?, evidence?, blocker?, depends_on?}` | set or update the work items the user sees: at most 12 — [below](#plan) |
+| `schedule` | `{note}` or `{function, inputs?, wake_field?}` + one of `at` / `delay_seconds` / `every_seconds` / `cron` | set the clock: a note that wakes the assistant, or a function that runs unattended — [below](#schedule) |
+| `unschedule` | `{schedule_id}` | remove one of this chat's own schedules. A helper cannot. |
+| `sleep` | `{seconds, why}` | pause in the middle of work that is waiting on something outside, and be woken then — [below](#sleep) |
+| `finish` | `{reason?, summary?}` | nothing left to do **right now**: go idle until the next event, and say why — [below](#finish) |
+
+Twelve of them have more to say than a row holds:
+
+### `say`
+
+`{text, final?, show?}`
+
+Tell the user something now — a progress note, a question, an answer. A
+response may be several says; saying does not end anything by itself.
+
+Like every action it is observed (`{"said": true}`), so the beat closes
+on a user turn: the next decision is finish-or-more, never a
+continuation of the model's own message — which is what a chat model
+does with a transcript that ends on its own words, and how a reply used
+to arrive twice.
+
+`final: true` says the reply is complete: the turn ends there, with no
+beat spent on a finish that could only repeat it, and the audience's
+idle frame follows the words at once.
+
+A reply that carries no JSON action at all is words for the user — there
+is no other channel they could belong to — and is delivered as a say
+(observed as such, with a reminder); only a malformed attempt at an
+action bounces.
+
+### `close_agent`
+
+`{agent}`
+
+Close an opened agent: its catalog leaves the open set and its functions
+the tool menu.
+
+At most `routing.open_max` (the organization's number, 8 by default)
+stay open; opening one more closes the least recently used, and the
+observation says which. `invoke` marks an agent used, so the open set is
+ordered by recency and `FunctionTools` offers the most recently used
+first.
+
+### `find_agents`
+
+`{query?}`
+
+Search the installed agents by meaning, in any language
+(`reasoning/agent_router.py`): the words are embedded with the
+organization's embedding model and every agent's vectors — name and
+description, example prompts, function descriptions, computed once per
+package and kept on disk — are scored by cosine; best first (at most
+twenty), with a closeness each.
+
+With no words, all by name. Without an embedding model there is nothing
+to search by, and the answer says every agent is listed under AGENTS
+already.
+
+### `open_agent`
+
+`{agent}`
+
+Load an agent's catalog (instructions, function names, descriptions,
+permission prices) into context.
+
+From the next beat on, each of its functions is also offered as a tool
+of its own carrying the manifest's input schema whole
+(reasoning/actions.py, `FunctionTools`), so the model fills inputs
+against the real contract instead of a shape summary.
+
+Enforced: invoking an unopened agent is refused with "open it first".
+The system frame lists agents as one line each; details are paid for
+only when used.
+
+### `spawn`
+
+`{goal, agents?, items?}`
+
+A bounded goal for a child mind — a job whose worker is a session
+(sub-assistants.md). Its report is a `job_done` carrying its finish
+reason, a summary and its own plan; its invocations join the parent's
+trace as evidence.
+
+The job is done only when the child finished `completed` — a question
+nobody answered, a blocked plan, a model that went away are not done.
+
+Plan items named in `items` take the child's outcome: done with the job
+and its storage refs as evidence, or blocked with its reason. A child
+that finished `completed` and ran nothing that succeeded leaves them
+blocked, saying so.
+
+### `find_files`
+
+`{query, names?, kind?}`
+
+The file the user meant when nothing is attached. The model reads the
+person's words, in whatever language, and says what the file is:
+`names`, the parts its file name is likely to carry, and `kind` (pdf,
+document, spreadsheet, presentation, image, data, audio, video); `query`
+is the person's own description, shown on the card.
+
+The session lists everything the person can see (their delegation, the
+backend's visibility), ranks it by those two (`chat/files.py` — no word
+of the person's is interpreted in code; with neither, or nothing
+matching, the most recent), and puts the best five on a files card
+(`question_asked`, `expects: files`); the person ticks, unticks,
+searches the rest, and may choose several or none.
+
+What they choose is recorded as their own message of file parts and
+enters the transcript exactly as an attachment does — a picture among
+them is shown at the next call — and the observation carries each file's
+`file_ref`.
+
+Nobody answering in a day, or answering with none, is an observation
+too.
+
+### `read_file`
+
+`{file_ref, from?}`
+
+A document the user attached or chose, as text, a page at a time
+(`reasoning/documents.py`): text, Markdown, CSV, JSON and a PDF's text
+layer (pypdf), decoded and windowed to 12,000 characters, `from`
+continuing where the last page stopped.
+
+The download is the same one that fetches a picture for the model, under
+the person's own delegation, so the backend's visibility rules decide
+what a ref reaches and a made-up ref finds nothing.
+
+A picture, a spreadsheet, a Word document, a scan or a file past 8 MB is
+declined with a note saying whose it is to open — an agent's, by ref.
+
+### `recall`
+
+`{query?}`
+
+Search the summary's archive — every line a fold let go of, with its
+section and the date it was last in the summary — for entries carrying
+all the words, newest first; no words, the newest. The archive is the
+mind's own state (`AssistantState.archive`), so this reads nothing from
+the platform.
+
+### `plan`
+
+`{steps}` / `{item or step, status?, evidence?, blocker?, depends_on?}`
+
+Set or update the work items the user sees (reasoning/plan.py): at most
+12, of 200 characters each. Ids are the runtime's (`w1`, `w2`…); `step`
+names an item by its place instead.
+
+While an item is active, every successful invocation's storage ref and
+every finished job's id land on it as evidence; the model may name
+evidence too, but only refs the trace holds — anything else is refused.
+
+Done with no evidence is kept and shown as unverified, never refused:
+"answer the question" has no trace. Blocked needs a blocker; active
+needs its dependencies done.
+
+A plan belongs to the ask it answered: when the person's next message
+arrives and every item is done, the runtime clears it and tells the
+page; anything still open — a blocked item most of all, since the person
+is usually answering it — stays, so a plan spans the messages it takes.
+
+### `schedule`
+
+`{note}` or `{function, inputs?, wake_field?}` + one of `at` / `delay_seconds` / `every_seconds` / `cron`
+
+Set the clock: a note wakes the assistant with a `wakeup`; a function
+runs unattended (manifest-`schedulable` only) and wakes it only when
+`wake_field` comes back non-empty.
+
+`cron` is five fields on the calendar, read in the chat's time zone
+(`contracts/cron.py`); the zone comes from the contract, and every stamp
+the mind reads is written in it.
+
+Each fire is remembered on the row (`runs`: when, status, woke, a result
+summary), bounded, for a page to read. Announced to the user. A helper
+cannot schedule: the clock is the chat's, and it is told to say in its
+report what should be.
+
+### `sleep`
+
+`{seconds, why}`
+
+Pause in the middle of work that is waiting on something outside — an
+export being prepared, a page that said to try again — and be woken
+then: the assistant goes idle at once, and a `wakeup` event arrives
+after `seconds` (at most a day) carrying `why` and `slept: true`.
+
+One per chat; a new one replaces the last. A message from the person
+meanwhile is heard at once, as always, and the sleep still wakes the
+chat later. A stop, or the kill, cancels it.
+
+The audience is told with a `sleeping` frame (`until`, `why`; `until`
+null when a stop ended it), and the hello carries the same for one who
+arrives later, so the chat shows when it will carry on.
+
+It is the assistant's own and not a schedule of the person's: it is not
+on the Schedules page, keeps no history, and is gone once it has fired.
+A helper cannot sleep.
+
+### `finish`
+
+`{reason?, summary?}`
+
+Nothing left to do **right now**: go idle until the next event, and say
+why — `completed`, `awaiting_user`, `awaiting_events`, `blocked`,
+`budget` (default completed).
+
+This is how a reply ends, how a goal completes, and how the assistant
+waits for jobs it cannot proceed without — idle-until-event *is* the
+wait.
+
+Enforced in code: `completed` is refused while plan items are pending or
+active, `awaiting_events` while nothing is running or scheduled,
+`blocked` with no blocked item. `say` with `final` is a completed finish
+and meets the same rule; the words are still delivered.
 
 There is no `delegate` and no separate `task` action. Long work is the
 assistant working long; background work is `start`; work that outlives

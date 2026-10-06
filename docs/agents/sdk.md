@@ -82,7 +82,9 @@ await call.resources.delete_file("document", ref)
 A file reaches your function whole, whatever its size up to the
 platform's upload limit; large files travel through a folder the
 platform opens for your worker, and your code never sees the difference.
-`read_file` also gives `filename` and the file's type. A file a person
+`read_file` also gives `filename` and the file's type. A record handed
+to your function the same way — its ref in the call's inputs — is read
+by `read_data` wherever it is kept, as a file is. A file a person
 attached to the chat is read by its ref under any file resource your
 function may `read`, where the ref is in this call's inputs or was the
 answer to its `call.ask`; a ref learned any other way is looked for in
@@ -179,6 +181,12 @@ offers a call. Chart types: `bar`, `line`, `pie`. Each returns the
 display's id, or `None` where nobody could see it. Nothing may depend on
 an offer being shown.
 
+A title is at most 120 characters and a series' name 60. A table has at
+least one row: `call.show.table([])` is refused, so show nothing when
+there is nothing. A display is at most 262,144 bytes as it is kept;
+over that it is refused, and says to show fewer rows. Each refusal is a
+`ResourceDenied`.
+
 ## `call.post`
 
 ```python
@@ -202,7 +210,8 @@ A card in the chat. The person picks a choice or answers in their own
 words, and the text comes back — or, with `expects="file"`, they attach a
 file and its ref comes back (choices are not offered then). Your timeout
 stops while it waits; an unanswered question expires after a day and
-answers `None`. At most 1,000 characters and eight choices.
+answers `None`. At most 1,000 characters and eight choices, each of at
+most 100 characters.
 
 Ask **before** you write, and have a safe answer for `None`. A question
 lives only as long as the call: if the runtime restarts, the call ends,
@@ -236,6 +245,12 @@ the call is refused instead (`ResourceDenied`).
 
 The answer is the fields by name, with `host` and `account` beside them.
 The values reach your process and nothing else; the model sees labels.
+
+One to twenty fields. A field is `name` and `type` (`text` or
+`secret`), with `label` if the name is not what a person should read,
+`remember: False` for one never kept, and `required: False` for one
+that may be left empty. A name is lowercased and cut at 60 characters,
+a label at 80, `account` and `site` at 200; the host is at most 253.
 
 Fields accumulate: a later ask for a token on a host that already holds
 a login adds the field, keeps the login, and asks only for the token.
@@ -287,7 +302,13 @@ code through without a card, or keep a list of packages; your function
 hears `True` either way, and the chat is told what ran.
 
 Limits: code up to 20,000 characters, purpose up to 600, thirty names of
-each kind.
+each kind, each name — and `where`, the place the code runs — at most
+253 characters.
+
+`call.install` takes the list a card named and answers with the folder
+the packages are in. The same list asked for again, in this call or a
+later one, is handed back at once: it is installed once. An empty list
+is refused.
 
 ## `call.screen`
 
@@ -314,6 +335,19 @@ person's hand on a tab arrives as `{"type": "tab", "action": "switch" |
 A frame is a JPEG or a PNG of at most 300,000 bytes. A larger one is
 not sent and `show` answers `False`; one that is not the picture it
 says it is is dropped by the platform. Either way the function runs on.
+`show` takes a JPEG unless told otherwise: pass a PNG with
+`mime="image/png"`, or it is one of the frames that are dropped.
+
+| `call.screen…` | |
+|---|---|
+| `show(image, width, height, mime="image/jpeg", tabs=None)` | one frame; `True` when it was sent |
+| `inputs()` | what the person did since last asked, and nothing twice |
+| `wait_input(timeout=1.0)` | the same, waiting up to that many seconds for the first |
+| `said()` | what the person wrote in the chat since last asked |
+| `taken` | whether the person holds control |
+| `open` | whether a frame has been shown and the screen not closed since |
+| `closed` | whether the person closed the screen: a `watch` function streams until it is |
+| `close()` | ends the stream |
 
 A person may take control unasked. Honour `taken`: pause, feed their
 events to what you drive, and look again when they hand it back.
@@ -368,8 +402,16 @@ raw = Tunnel.open("imap.example.com", 993, timeout=30)
 link = ssl.create_default_context().wrap_socket(raw, server_hostname="imap.example.com")
 ```
 
-`TunnelRefused` carries the proxy's status and reason. Where nothing
-confines agents, `Tunnel.open` connects straight.
+`TunnelRefused` carries the proxy's status and reason: `.status` is
+403 for a host or a port your manifest did not declare, and 502 for a
+host that did not answer. Where nothing confines agents, `Tunnel.open`
+connects straight. `Tunnel.proxy()` is the proxy's address, or `None`
+where there is none, and `Tunnel.through(proxy, host, port)` opens the
+connection through one you name.
+
+A refusal over HTTP — a 403 from a `requests` call — may be the proxy's
+or the host's own. The proxy's carries the header
+`X-DecentAI-Refused` with the status, which tells them apart.
 
 ## The agent class
 
@@ -379,10 +421,20 @@ class NoteAgent(AgentBase):
         return [NotesTool(self), ArchiveTool(self)]
 ```
 
-A tool class sets `id` and defines one `async` method per function;
-`self.agent` reaches the agent from a tool. The code declares nothing
+A tool class sets `id` and defines one `async` method per function,
+named as the function's id. A function whose id is a word Python keeps
+for itself — `import`, `class`, `global` — is the method with an
+underscore after it (`import_`): the manifest keeps the plain id.
+`self.agent` reaches the agent from a tool, and from the agent
+`self.tool("notes")` reaches a tool by its id, `self.manifest` is the
+manifest, and `self.agent_id` its id. Both classes have `self.logger`:
+what it writes is in the worker's log, under **Settings → Monitoring**. The code declares nothing
 about itself: the manifest is handed to it, a method the manifest does
 not declare cannot be called, and a package whose code lacks a function
 the manifest declares does not load. Both classes may define
 `async def close(self)` to release what they hold. Keep state in your
 records, not in memory: a worker may be restarted between any two calls.
+
+What your function raises reaches the assistant as a failed call with
+the exception's own words, cut at 300 characters: say in them what the
+person can do about it.

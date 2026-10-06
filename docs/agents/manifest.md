@@ -154,7 +154,7 @@ agent:
 | `name` | yes | What people see. Change it freely. |
 | `version` | yes | `MAJOR.MINOR.PATCH`, digits only, and quoted: `"1.2.0"` — unquoted, YAML may read `1.10` as a number. Bump it with **every** change to the manifest — see "Versions are immutable" below. A label for people: the platform tells one version's code from another's by the hash of the package. |
 | `description` | yes | A sentence or two a person reads on the agent's page. |
-| `tags` | no | A list of strings: words for what the agent is about. |
+| `tags` | no | A list of strings, none blank: words for what the agent is about. |
 | `examples` | no | At most 6, each `{title, prompt}`; title ≤ 80 characters, prompt ≤ 500. Shown first on the agent's page and offered as a chat's opening. |
 | `instructions` | no | A string: what the chat's model reads once it has opened your agent. It advises the model; it does not widen what a function may do. |
 
@@ -189,7 +189,7 @@ implementation:
 
 | Key | Required | Rule |
 |---|---|---|
-| `entrypoint` | yes | `<module>:<ClassName>`, e.g. `agent:NoteAgent`. The module is a file in the agent's folder. |
+| `entrypoint` | yes | `<module>:<ClassName>`, e.g. `agent:NoteAgent`. The module is a file in the agent's folder, or one inside a package there, written with dots (`core.agent:NoteAgent`). |
 | `dependencies` | no | A list of pip requirements: `"humanize>=4.9,<5"`. Installed into an environment apart from the platform's own; agents that declare the same list share one. A requirement that begins with `-` (an option such as `--index-url`) is refused. |
 
 The SDK (`decentai_sdk`) is always there; do not list it.
@@ -233,6 +233,12 @@ Rules: at most 50 entries, no duplicates, lowercase names, never an
 address (`10.0.0.7`), never a scheme or a path, and never `*` alone —
 every host is `hosts: any`, said once instead of the list. A port is a
 number from 1 to 65535.
+
+A name is a whole one: at least two parts with a dot between, the last
+beginning with a letter (`api.example.com`). `localhost`, a name of one
+word and a name with `_` in it are refused. A `from_secret` entry holds
+`from_secret` and, if it needs one, `port` — a number, not a string —
+and nothing else.
 
 **A manifest with no `network` block is refused.** Say `hosts: []` when
 your agent connects to nothing. Note does.
@@ -405,7 +411,7 @@ Every resource has:
 | `id` | yes | See Ids |
 | `label` | yes | What people see |
 | `description` | no | A sentence for the person who binds or reviews it |
-| `binding` | yes | `{cardinality: one \| many, required: true \| false}` — one record or many, and whether the agent cannot work without it |
+| `binding` | yes | `{cardinality: one \| many, required: true \| false}` — one record or many, and whether the agent cannot work without it. `required` may be left out, and is then `false` |
 | `user_access` | no | What a person may do **directly**, from the records page, with no agent in the loop. Data: `create`, `update`. Files: `create`. Secrets: none. |
 
 `read`, `list` and `delete` are never declarable in `user_access`: the
@@ -539,16 +545,16 @@ carry.
 
 | `oauth` key | Rule |
 |---|---|
-| `provider` | Required. A short id (`google`, `microsoft`, `slack`). **The join key**: a deployment registers one application per provider, and every agent naming it uses that registration. |
+| `provider` | Required. A short id (`google`, `microsoft`, `slack`): lowercase letters, digits and `_`, 2 to 32 characters. **The join key**: a deployment registers one application per provider, and every agent naming it uses that registration. |
 | `authorize_url`, `token_url` | Required, `https://` |
-| `scopes` | Required, non-empty. |
+| `scopes` | Required, non-empty; each a string that is not blank. |
 | `authorize_params` | Extra query parameters for the consent page, strings only |
-| `identity` | Whose account it is: `{url, field}` read with the new token (`method: GET \| POST`, optional `headers`), or `{source: token, field}` read from the token response. `field` is a dotted path, default `email`. |
-| `scope_param` | The query parameter scopes go in, when not `scope` (Slack: `user_scope`) |
+| `identity` | Whose account it is: `{url, field}` read with the new token (`method: GET \| POST`, optional `headers`), or `{source: token, field}` read from the token response. `field` is a dotted path of at most six names, default `email`. `source` is `url` (the default) or `token`, and with `token` there is no `url`. Any other key is refused. |
+| `scope_param` | The query parameter scopes go in, when not `scope` (Slack: `user_scope`): lowercase letters, digits and `_`, at most 32 characters |
 | `scope_separator` | `" "` (default) or `","` |
 | `token_auth` | `body` (default) or `basic` — how the client proves itself to `token_url` |
 | `token_format` | `form` (default) or `json` |
-| `token_path` | A dotted path to the token object inside the response, when it is nested (Slack: `authed_user`) |
+| `token_path` | A dotted path of at most six names to the token object inside the response, when it is nested (Slack: `authed_user`) |
 
 Unknown `oauth` keys are refused. A provider that gives an application
 registered for a person's own computer no client secret is supported:
@@ -556,6 +562,12 @@ the client id alone is registered.
 
 What to think about:
 
+- **The addresses are the registration's.** An organization registers
+  its application with the provider's consent and token addresses, and
+  yours must be the same ones, the identity address too: where they
+  differ, connecting is refused, and says which. A saved account is
+  offered to your slot only where its provider is yours as well as its
+  fields.
 - **`provider` is shared.** The application is registered once, under
   **Settings → Connected apps**, and every agent naming that provider
   uses it — so a second mail agent installed tomorrow needs no new
@@ -654,7 +666,7 @@ tools:
 | `permission_level` | yes | `0`, `1`, `2` or `3` |
 | `timeout_seconds` | no | A positive whole number; default 60. Paused while the function waits on a person. |
 | `resources` | no | `{kind: {resource_id: operation or [operations]}}` — what **this** function may do. Each resource must be in the tool's list. Operations: `list`, `read`, `use`, `create`, `update`, `delete`. |
-| `authorization` | no | `scopes` — each entry names an agent scope and binds it to one of the function's inputs: `{from_input: <input property>, required: bool}`. A value is required unless the binding says `required: false`. |
+| `authorization` | no | `scopes` — each entry names an agent scope and binds it to one of the function's inputs: `{from_input: <input property>, required: bool}`; the property is one at the top of `inputs`, not one nested inside another. A value is required unless the binding says `required: false`. |
 | `inputs`, `outputs` | yes | JSON Schema, below |
 | `llm` | no | `true`: the function may call the chat's model (`call.llm`) |
 | `schedulable` | no | `true`: a schedule may run it unattended |
@@ -721,6 +733,9 @@ The platform builds the resource object your function receives from the
 `read` on fails at run time with a clear message. A function without
 `delete` cannot delete even though a sibling function can. Declare the
 operations your code actually performs — and only those.
+
+An operation is said once: a list that names one twice, an empty list,
+and a kind that is not `secrets`, `data` or `files` are each refused.
 
 Which operation each call needs:
 
@@ -826,7 +841,9 @@ file_ref: {type: string, x-resource: {type: file, id: document}}
 ```
 
 Marks a string as a reference to one of your declared resources
-(`type` is `secret`, `data` or `file`). On an input it tells the
+(`type` is `secret`, `data` or `file`). The node it marks is a string,
+or one that may be a string (`type: [string, "null"]`), and its `id` is
+a resource of that kind the manifest declares. On an input it tells the
 platform what may be wired in; on an output it tells the platform what
 you made. **A file your function made is handed to the person with the
 assistant's answer only when its output field is marked this way**, under
