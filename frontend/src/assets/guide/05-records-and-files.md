@@ -14,7 +14,7 @@ Where a manifest allows it, the **+** button offers the kind and generates the f
 
 ## Sharing records
 
-A record an agent stored for you is private. You may share it with your groups, with named people, or organization-wide if you hold that grant. Sharing a record also lets those people's assistant read it when an agent looks there. Only the creator may change sharing.
+A record an agent stored for you is private. You may share it with your groups, with named people, or organization-wide if you hold that grant. Sharing a record also lets those people's assistant read it when an agent looks there. Only the creator may change sharing here. Somebody holding the grant to maintain others' records may too, though this page offers its buttons to the creator alone.
 
 ## Files
 

@@ -71,7 +71,10 @@ card is shown is not in it.
 Two stops are the person's own, and neither waits for anything to
 agree to end.
 
-**One chat.** The stop in a chat, held, is its kill
+**One chat.** A chat has two stops. The one beside the message box,
+*Stop generating*, asks the assistant to stop where it next can. The
+one in the chat's header, *Stop everything in this chat*, once
+confirmed, is its kill
 ([session door](../reference/session-door.md), `stop` with `force`):
 every job is cancelled where it stands, a worker that does not end is
 ended, the chat's helpers and its browser go, its open cards expire and

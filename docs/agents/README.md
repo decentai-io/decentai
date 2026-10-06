@@ -119,16 +119,16 @@ is read back before it is returned, and an original is never modified.
 
 When you have read Note, read those agents, in the
 [`decentai-agents`](https://github.com/decentai-io/decentai-agents)
-repository, for how these ideas look at full size. Each has a README
-naming its limits and what it needs, and some are worth reading for one
-pattern:
+repository, for how these ideas look at full size. Each has a README,
+most of them naming the agent's limits and what it needs, and some are
+worth reading for one pattern:
 
 | Agent | Shows |
 |---|---|
 | Notebook | records with `user_access`, files, a schedulable function |
 | Gmail, Outlook | a connected account by `oauth`; level-3 sends; a watch that wakes a schedule only for new mail |
 | Mail | a protocol that is not HTTP, through the proxy (`decentai_sdk.net.Tunnel`), hosts with ports |
-| Documents, Sheets, Slides | reading uploads by reference, producing files as bytes and reading them back |
-| Tasks, Expenses | a model reading text with every quote checked, decimal money, dates only when exact |
+| Documents, Spreadsheets (`sheets`), Presentations (`slides`) | reading uploads by reference, producing files as bytes and reading them back |
+| Tasks, Expenses | a model reading text with every quote checked, dates only when exact; in Expenses, decimal money |
 | Browser | a person's sign-in asked for on a card (`call.credential`), the live screen (`call.screen`) |
 | Code | a program shown on the code card (`call.propose`) and its packages installed (`call.install`) |
