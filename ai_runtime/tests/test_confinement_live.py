@@ -127,6 +127,25 @@ INTRUDER = textwrap.dedent("""\
             return attempt(lambda: socket.create_connection(
                 (host, int(port)), 5).close())
 
+        def socket_by_name(self, target):
+            # A socket that has a name and no file: nobody's, so no
+            # permission stands in front of it.
+            def work():
+                with socket.socket(socket.AF_UNIX) as mine:
+                    mine.settimeout(5)
+                    mine.connect("\\0" + target)
+            return attempt(work)
+
+        def socket_of_its_own(self, target):
+            def work():
+                with socket.socket(socket.AF_UNIX) as door:
+                    door.bind("\\0" + target)
+                    door.listen(1)
+                    with socket.socket(socket.AF_UNIX) as mine:
+                        mine.settimeout(5)
+                        mine.connect("\\0" + target)
+            return attempt(work)
+
         def lookup(self, target):
             return attempt(lambda: socket.getaddrinfo(target, 443)[0][4][0])
 
@@ -333,6 +352,22 @@ def fenced(confinement):
 
 
 @pytest.fixture
+def keeps_sockets(confinement):
+    if not confinement.fence_keeps_sockets:
+        pytest.skip("this kernel's Landlock does not keep a fenced "
+                    "program from sockets that are not its own")
+    return confinement
+
+
+@pytest.fixture
+def held(confinement):
+    if confinement.egress is None or not confinement.fence_holds_connections:
+        pytest.skip("this kernel's Landlock does not hold a fenced "
+                    "program to a port")
+    return confinement
+
+
+@pytest.fixture
 def fenced_builds(confinement):
     if not confinement.builder_place().fenced:
         pytest.skip("this kernel's Landlock does not let a fenced "
@@ -519,6 +554,36 @@ class TestAFencedWorker:
     def test_what_it_starts_is_fenced_with_it(self, ground, place, fenced):
         found = ask(ground, place, "child_reads", "/opt")
         assert found["happened"] is False, found
+
+    def test_it_cannot_reach_a_socket_that_is_not_its_own(
+            self, ground, place, keeps_sockets):
+        """A socket with a name and no file belongs to nobody: without
+        the fence any user connects to it, another agent's worker
+        among them."""
+        import socket
+
+        name = f"decentai-live-{uuid.uuid4().hex[:12]}"
+        with socket.socket(socket.AF_UNIX) as door:
+            door.bind("\0" + name)
+            door.listen(1)
+            found = ask(ground, place, "socket_by_name", name)
+        assert found == {"happened": False, "detail": "PermissionError"}, found
+
+    def test_it_reaches_a_socket_of_its_own(self, ground, place, keeps_sockets):
+        name = f"decentai-live-{uuid.uuid4().hex[:12]}"
+        found = ask(ground, place, "socket_of_its_own", name)
+        assert found["happened"] is True, found
+
+    def test_its_own_fence_holds_it_to_the_proxys_port(
+            self, ground, place, held, site):
+        """Beside the firewall rule, and where the container was not
+        given the right to set one, instead of it."""
+        assert ask(ground, place, "connect", f"127.0.0.1:{site}",
+                   hosts="any")["happened"] is False
+        found = ask(ground, place, "fetch",
+                    f"http://api.example.com:{site}/v1/items",
+                    hosts=["api.example.com"])
+        assert found["status"] == 200, found
 
 
 class TestTheSharedTemporaryFolder:
