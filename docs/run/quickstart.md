@@ -14,8 +14,39 @@ images to build.
 - A language-model API key — Anthropic, OpenAI, OpenRouter, Gemini,
   DeepSeek, Groq, Mistral, xAI, any other provider in the platform's
   catalog, or another OpenAI-compatible service — for the assistant to
-  think with. A model served on your own computer works too. Nothing
-  else is needed to start.
+  think with. A model served on your own computer works too, if it is
+  one that can do the work (below). Nothing else is needed to start.
+
+### What it costs
+
+Measured on one laptop, with Docker Desktop and a fast connection;
+yours will differ, and these are for knowing what to expect.
+
+| | |
+|---|---|
+| The first start | about seven minutes, nearly all of it building the images. Starting again after an update: about three |
+| Disk | about 2.6 GB of images: the runtime's is 1.4 GB, most of it the browser an agent may drive, and the agents' container uses the same one; the database's is 0.9 GB, the backend's 0.3 GB, the web app's under 0.1 GB. What you keep is beside that, and small until you keep a lot |
+| Memory, with nobody using it | about 400 MB across the five containers. A working agent adds its own; a browser, a good deal more |
+
+### A model on your own computer
+
+It has to do two things a small model often cannot.
+
+- **Answer inside a minute.** The platform waits sixty seconds for
+  each reply and then asks again. A model that takes longer never
+  answers: the chat stays on *Preparing the next step…*.
+- **Read all of its instructions.** What the assistant is told before
+  you say a word is about 18,000 characters — some 4,500 tokens — with
+  one agent installed, and each agent it opens adds that agent's
+  functions. A server whose window is smaller than that drops the
+  beginning, and Ollama's is 4,096 tokens unless it is told otherwise.
+  Give the model 16,000 or more.
+
+In a test here, a three-billion-parameter model on a processor alone
+did neither and did not get through the first chat. A model that is
+offered for calling tools, on a graphics card, with the window raised,
+is the place to start. [Troubleshooting](troubleshooting.md#a-chat-does-not-answer)
+says what a chat shows when the model is the trouble.
 
 ## 1. Start it
 
