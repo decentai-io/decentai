@@ -45,17 +45,27 @@ from database.mongo_db import load_database_schema
 COLLECTIONS = list(load_database_schema()["collections"])
 
 
+#: Where the suite's MongoDB is: the one MONGO_URI names, as the backend
+#: itself reads it, and the local one where nothing is said.
+MONGO_URI = os.environ.get("MONGO_URI", "mongodb://localhost:27017")
+
+
 def _mongo_reachable() -> bool:
+    from pymongo.uri_parser import parse_uri
+
     try:
-        with socket.create_connection(("127.0.0.1", 27017), timeout=1):
+        with socket.create_connection(
+                parse_uri(MONGO_URI)["nodelist"][0], timeout=1):
             return True
-    except OSError:
+    except (OSError, ValueError):
         return False
 
 
 def pytest_collection_modifyitems(config, items):
     if not _mongo_reachable():
-        skip = pytest.mark.skip(reason="MongoDB is not reachable on 27017")
+        skip = pytest.mark.skip(
+            reason="MongoDB is not reachable where MONGO_URI says "
+                   "(localhost:27017 where it says nothing)")
         for item in items:
             item.add_marker(skip)
 

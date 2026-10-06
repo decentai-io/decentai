@@ -164,6 +164,12 @@ class TestReencryptTool:
               ("files", "values"), ("llm_connections", "values"),
               ("oauth_apps", "values"), ("ai_agent_sources", "credential_token"))
 
+    def database(self):
+        """The database the tool is about to be run against: the one
+        the environment names, which the tool reads too."""
+        return MongoClient(os.environ.get(
+            "MONGO_URI", "mongodb://localhost:27017"))["decentai_test"]
+
     def seed_dev_blob(self, collection, field):
         """A document encrypted under the derived dev key, as a
         deployment before real keys would have written it."""
@@ -173,7 +179,7 @@ class TestReencryptTool:
         doc_id = f"reenc-{collection}"
         blob = SecretCipher.encrypt({"password": "s3cret"}, doc_id)
         assert blob["key_version"] == "dev"
-        db = MongoClient("127.0.0.1", 27017)["decentai_test"]
+        db = self.database()
         db[collection].delete_many({})
         # Only the blob matters here, not the rest of a valid row.
         db[collection].insert_one(
@@ -205,7 +211,7 @@ class TestReencryptTool:
                 f"{collection}.{field}: would re-encrypt 1, skipped 0"
                 in result.stdout
             )
-        db = MongoClient("127.0.0.1", 27017)["decentai_test"]
+        db = self.database()
         assert db["secrets"].find_one("reenc-secrets")["values"][
             "key_version"] == "dev"
 

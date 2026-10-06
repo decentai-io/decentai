@@ -46,7 +46,14 @@ python -m pytest examples/tests -q         # the Note example, in a real worker
 ```
 
 Run the backend and spanning suites one at a time: they share the test
-database. New behaviour comes with a test that pins it at the layer that
+database (`decentai_test`, on the MongoDB `MONGO_URI` names, or the
+local one where it names none).
+
+Every pull request is run through all four, and through three things a
+laptop does not do (`.github/workflows/tests.yml`): the confinement
+tests, inside the runtime's image on a Linux kernel; a build of every
+image, the web app's included; and the published agents' own suite
+against the change. New behaviour comes with a test that pins it at the layer that
 enforces it, and a test's name should read as the sentence it proves.
 
 ## Pull requests
