@@ -268,14 +268,20 @@ class TestWhatTheAgentsAreGiven:
             handle = WorkerHandle(
                 environment.python, package, document, place=place)
             assert await handle.start() == []
+            found = None
             try:
                 for _ in range(50):
                     said = Spawner.current.usage()
                     mine = [agent for agent in said["agents"]
                             if agent["user"] == place.user]
-                    if mine and mine[0]["memory"] > 0:
-                        return mine[0]
+                    # A worker answers its greeting before it has
+                    # grown: caught in its first moment it holds a few
+                    # hundred kilobytes, and a megabyte soon after.
+                    found = mine[0] if mine else found
+                    if found and found["memory"] > MB:
+                        break
                     await asyncio.sleep(0.2)
+                return found
             finally:
                 await handle.stop()
 
