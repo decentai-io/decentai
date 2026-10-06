@@ -1,0 +1,133 @@
+# Every suite CONTRIBUTING.md names, and the ones a laptop cannot run:
+# the confinement tests need the runtime's image and a Linux kernel.
+# On every pull request, and on main when one lands.
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A newer push to the same branch makes the older run pointless.
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  runtime:
+    name: runtime, docs and the example
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            ai_runtime/requirements.txt
+            examples/tests/requirements.txt
+      - run: pip install -r ai_runtime/requirements.txt -r examples/tests/requirements.txt
+      # The runtime's suite holds the checks on the documentation too
+      # (ai_runtime/tests/test_docs.py): a page that names what the
+      # code no longer has fails here.
+      - run: python -m pytest ai_runtime/tests -q
+      - run: python -m pytest examples/tests -q
+
+  backend:
+    name: backend and spanning
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    services:
+      mongo:
+        image: mongo:7
+        ports:
+          - 27017:27017
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            backend/requirements.txt
+            backend/requirements-dev.txt
+            ai_runtime/requirements.txt
+      - run: pip install -r backend/requirements.txt -r backend/requirements-dev.txt -r ai_runtime/requirements.txt
+      # One after the other, in one job: the two share the test database.
+      - run: python -m pytest tests -q
+        working-directory: backend
+      - run: python -m pytest tests -q
+
+  confinement:
+    name: confinement, in the runtime's image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      LIVE: ai_runtime/tests/spawner-live.compose.yml
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -f ai_runtime/Dockerfile -t decentai-ai-runtime .
+      # What the kernel under this run can hold a worker to; the tests
+      # of what it cannot are skipped, and say so.
+      - run: docker run --rm decentai-ai-runtime sh -c 'uname -r; cat /sys/kernel/security/lsm 2>/dev/null || true'
+      - name: one container
+        run: |
+          docker run --rm --init --cap-add NET_ADMIN -v "$PWD:/src:ro" -w /src \
+            decentai-ai-runtime sh -c '
+              python -m venv --system-site-packages /tmp/t &&
+              /tmp/t/bin/pip install -q pytest &&
+              /tmp/t/bin/python -m pytest -p no:cacheprovider --tb=short -rs \
+                ai_runtime/tests/test_confinement_live.py -q'
+      - name: the runtime and the agents' container
+        run: |
+          docker compose -f "$LIVE" up -d --build
+          docker compose -f "$LIVE" exec -T -u decentai -w /src runtime sh -c '
+            pip install -q --target /tmp/pytest pytest &&
+            PYTHONPATH=/tmp/pytest python -m pytest -p no:cacheprovider \
+              --tb=short -rs ai_runtime/tests/test_spawner_live.py -q'
+      - if: failure()
+        run: docker compose -f "$LIVE" logs --tail 200
+      - if: always()
+        run: docker compose -f "$LIVE" down -v
+
+  images:
+    name: the backend's image and the web app's
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -f backend/Dockerfile .
+      # Builds the web app on the way: a page that does not compile
+      # fails here.
+      - run: docker build -f frontend/Dockerfile .
+
+  agents:
+    name: the published agents, against this platform
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: decentai
+      - uses: actions/checkout@v4
+        with:
+          repository: decentai-io/decentai-agents
+          path: decentai-agents
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            decentai/ai_runtime/requirements.txt
+            decentai-agents/tests/requirements.txt
+      - run: pip install -r decentai/ai_runtime/requirements.txt -r decentai-agents/tests/requirements.txt
+      # A change here that an agent in the catalog no longer fits is
+      # found here, before it is found by whoever installs the agent.
+      - run: python -m pytest tests -q
+        working-directory: decentai-agents
+        env:
+          PYTHONPATH: ../decentai
