@@ -75,7 +75,7 @@ that is a server, and [Deploying](deploying.md) says how.
 
 Where no mail server is set, "Forgot password" says the password is set
 on the machine DecentAI runs on — what a reset link does, ending every
-session of the account:
+session of the account and revoking its API keys:
 
 ```bash
 docker compose --env-file deploy.env run --rm \

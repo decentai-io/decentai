@@ -89,16 +89,20 @@ def main() -> int:
         print(f"admin: {admin_email} already exists — done")
         return 0
 
+    # A first administrator is made where nobody administers, and
+    # nowhere else. The settings keep the first person's address and
+    # password for as long as the file is kept, and this runs at every
+    # start: an administrator who has since taken an address of their
+    # own (bootstrap/reset_password.py) is nobody at the old one, and
+    # making that person again would open the door they closed, with
+    # the password that is still written down.
+    if any(member.get("status") == UserStore.STATUS_ACTIVE
+           for member in users.list_by_group(administrators["_id"])):
+        print("admin: an administrator exists — done")
+        return 0
+
     admin_password = os.getenv("ADMIN_PASSWORD", "")
     if not admin_email or not admin_password:
-        # A run that names no first administrator creates none — and
-        # needs none where the organization already has one who can
-        # sign in. That is every run after the first on a person's own
-        # computer: the password was said once, and is kept nowhere.
-        if any(member.get("status") == UserStore.STATUS_ACTIVE
-               for member in users.list_by_group(administrators["_id"])):
-            print("admin: an administrator exists — done")
-            return 0
         print("ERROR: set ADMIN_EMAIL and ADMIN_PASSWORD to create the first "
               "administrator.", file=sys.stderr)
         return 1

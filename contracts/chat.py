@@ -41,6 +41,12 @@ CHART_SERIES_MAX = 8
 DISPLAYS_PER_CALL_MAX = 5
 DISPLAY_MAX_BYTES = 262144
 #: What one call may say for itself (call.post): a message, not a report.
+#: How much a person may say in one message, in bytes of text. The
+#: message is kept whole and so is the inbox event that carries it to
+#: the assistant: more than this is refused at the door, before
+#: anything is kept, and belongs in a file.
+USER_TEXT_MAX_BYTES = 262144
+
 POST_MAX_CHARS = 4000
 POSTS_PER_CALL_MAX = 3
 #: What an agent may ask a person (call.ask), and how long it waits.

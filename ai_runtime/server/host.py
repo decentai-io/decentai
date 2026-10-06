@@ -186,6 +186,15 @@ class SessionHost:
             self.sessions[chat_id] = session
             return session
 
+    @staticmethod
+    def _chat_level(contract: Dict[str, Any]) -> int:
+        """The chat's trust level, as the contract says it. Zero is a
+        level — the one where every change asks first — and not the
+        absence of one: only a contract that says nothing is read as
+        the standard, 1."""
+        said = contract.get("chat_level")
+        return 1 if said is None else int(said)
+
     async def _build(self, chat_id: str) -> Session:
         contract = dict(await self.services.contract(chat_id) or {})
         roster = self._with_mcp(
@@ -199,7 +208,7 @@ class SessionHost:
             RelayingServices(self.services, self._relay),
             workers=self.workers,
             grants=FunctionGrants(contract.get("grants")),
-            chat_level=int(contract.get("chat_level") or 1),
+            chat_level=self._chat_level(contract),
             max_beats=contract.get("max_beats"),
             max_skills=contract.get("max_skills"),
             skills=contract.get("skills"),
@@ -237,7 +246,7 @@ class SessionHost:
             roster=self._with_mcp(
                 chat_id, await self._roster(chat_id, contract.get("agents")),
                 contract.get("mcp")),
-            chat_level=int(contract.get("chat_level") or 1),
+            chat_level=self._chat_level(contract),
             executor=FunctionExecutor(
                 provider=self.services.provider,
                 grants=FunctionGrants(contract.get("grants")),
@@ -289,7 +298,7 @@ class SessionHost:
         self._prepare_routing(roster, contract)
         session.adopt(
             roster=roster,
-            chat_level=int(contract.get("chat_level") or 1),
+            chat_level=self._chat_level(contract),
             grants=FunctionGrants(contract.get("grants")),
             # A model picked on the page since the build: the next turn
             # thinks with it, no refresh and no new chat needed.

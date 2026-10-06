@@ -368,13 +368,37 @@ class ResourceStore(MongoStore):
                                          "created_by": str(user_id or "")})
 
     def _reassign(self, doc: Dict[str, Any], to_user_id: str) -> None:
+        """The creator changes; the map keeps its groups and people with
+        the new steward in the old one's place. A name the successor
+        already uses for the same kind of thing gets a suffix: a
+        secret's name is one per kind and creator, and a hand-over
+        that met its twin would otherwise stop halfway through a
+        person's leaving."""
         owner = dict(doc.get("owner") or {})
         previous = str(doc.get("created_by") or "")
         users = [u for u in (owner.get("users") or []) if u != previous]
         if to_user_id not in users:
             users.append(to_user_id)
-        self.col.update_one({"_id": doc["_id"]}, {"$set": {
+        changed = {
             "created_by": to_user_id,
             "owner": {"groups": list(owner.get("groups") or []), "users": users},
             "updated_at": utc_now(),
-        }})
+        }
+        if isinstance(doc.get("name"), str) and doc["name"]:
+            changed["name"] = self._name_free_for(doc, to_user_id)
+        self.col.update_one({"_id": doc["_id"]}, {"$set": changed})
+
+    def _name_free_for(self, doc: Dict[str, Any], to_user_id: str) -> str:
+        """The document's name, or the first of "name (transferred)",
+        "name (transferred 2)" ... that the successor does not hold
+        under the same resource id."""
+        name = doc["name"]
+        tried = 0
+        while self.col.count_documents({
+                "_id": {"$ne": doc["_id"]},
+                "resource_id": doc.get("resource_id"),
+                "created_by": to_user_id, "name": name}):
+            tried += 1
+            name = (f"{doc['name']} (transferred)" if tried == 1
+                    else f"{doc['name']} (transferred {tried})")
+        return name

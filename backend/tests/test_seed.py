@@ -89,6 +89,36 @@ class TestTheFirstAdministrator:
         assert _run_init() == 1
         assert "set ADMIN_EMAIL and ADMIN_PASSWORD" in capsys.readouterr().err
 
+    def test_an_administrator_who_took_another_address_is_not_made_again(
+            self, app, seed, monkeypatch, capsys):
+        """The settings keep the first person's address and password,
+        and the seeder runs at every start. Somebody who has since
+        named an address of their own is nobody at the old one: made
+        again, the password still written down would sign in."""
+        from database.stores import UserStore
+
+        users = UserStore()
+        users.set_email(seed.admin["_id"], "mine@test.org")
+        monkeypatch.setenv("ADMIN_EMAIL", "admin@test.org")
+        monkeypatch.setenv("ADMIN_PASSWORD", "AdminPass123")
+        assert _run_init() == 0
+        assert "an administrator exists" in capsys.readouterr().out
+        assert users.get_by_email("admin@test.org") is None
+        assert len(users.list(seed.org["_id"])) == 1
+
+    def test_the_named_person_is_made_where_nobody_administers(
+            self, app, seed, monkeypatch):
+        """The way back in, when the last administrator is gone."""
+        from database.stores import UserStore
+
+        users = UserStore()
+        users.set_email(seed.admin["_id"], "mine@test.org")
+        users.set_status(seed.admin["_id"], UserStore.STATUS_DISABLED)
+        monkeypatch.setenv("ADMIN_EMAIL", "admin@test.org")
+        monkeypatch.setenv("ADMIN_PASSWORD", "AdminPass123")
+        assert _run_init() == 0
+        assert users.get_by_email("admin@test.org") is not None
+
     def test_an_administrator_who_was_disabled_is_not_one(
             self, app, seed, monkeypatch):
         from database.stores import UserStore
@@ -129,3 +159,81 @@ class TestStaleActions:
         capsys.readouterr()
         init_db.drop_stale_actions()
         assert "dropped" not in capsys.readouterr().out
+
+
+class TestTheBaselineIsOfferedOnce:
+    """A baseline action added by a newer version reaches a policy
+    that exists, once. One an administrator took away stays away."""
+
+    def policy(self, seed):
+        from database.stores import PolicyStore
+
+        return PolicyStore().get_by_name(seed.org["_id"], "BaseAccess")
+
+    def actions(self, policy):
+        return {action
+                for statement in policy["permissions"]["statements"]
+                for action in statement["actions"]}
+
+    def older(self, policy, **changed):
+        """The policy as a version before this one left it."""
+        from database.stores import PolicyStore
+
+        PolicyStore().col.update_one({"_id": policy["_id"]}, {"$set": changed})
+
+    def test_an_action_taken_away_is_not_put_back(self, app, seed):
+        from database.stores import PolicyStore
+        from provisioning import OrganizationProvisioner
+        from server.authentication.catalog import BASELINE_ACTIONS
+
+        # As the seeder leaves a policy: what it was offered is on it.
+        policy = OrganizationProvisioner(
+            announce=lambda *_: None).apply_baseline_revision(self.policy(seed))
+        assert sorted(policy["baseline_offered"]) == sorted(BASELINE_ACTIONS)
+        taken = sorted(BASELINE_ACTIONS)[0]
+        PolicyStore().update(policy["_id"], permissions={"statements": [
+            {"effect": "Allow", "resources": ["*"],
+             "actions": [a for a in BASELINE_ACTIONS if a != taken]}]})
+        self.older(policy, baseline_revision=1)
+
+        OrganizationProvisioner(announce=lambda *_: None).apply_baseline_revision(
+            self.policy(seed))
+        assert taken not in self.actions(self.policy(seed))
+
+    def test_an_action_it_was_never_offered_is_given(self, app, seed):
+        from database.stores import PolicyStore
+        from provisioning import OrganizationProvisioner
+        from server.authentication.catalog import BASELINE_ACTIONS
+
+        policy = self.policy(seed)
+        new = sorted(BASELINE_ACTIONS)[0]
+        rest = [a for a in BASELINE_ACTIONS if a != new]
+        PolicyStore().update(policy["_id"], permissions={"statements": [
+            {"effect": "Allow", "resources": ["*"], "actions": rest}]})
+        self.older(policy, baseline_revision=1, baseline_offered=sorted(rest))
+
+        OrganizationProvisioner(announce=lambda *_: None).apply_baseline_revision(
+            self.policy(seed))
+        assert new in self.actions(self.policy(seed))
+
+    def test_a_policy_from_before_the_record_is_offered_everything_once(
+            self, app, seed):
+        from database.stores import PolicyStore
+        from provisioning import OrganizationProvisioner
+        from server.authentication.catalog import BASELINE_ACTIONS
+
+        policy = self.policy(seed)
+        gone = sorted(BASELINE_ACTIONS)[0]
+        PolicyStore().update(policy["_id"], permissions={"statements": [
+            {"effect": "Allow", "resources": ["*"],
+             "actions": [a for a in BASELINE_ACTIONS if a != gone]}]})
+        PolicyStore().col.update_one(
+            {"_id": policy["_id"]},
+            {"$set": {"baseline_revision": 1},
+             "$unset": {"baseline_offered": ""}})
+
+        OrganizationProvisioner(announce=lambda *_: None).apply_baseline_revision(
+            self.policy(seed))
+        after = self.policy(seed)
+        assert gone in self.actions(after)
+        assert sorted(after["baseline_offered"]) == sorted(BASELINE_ACTIONS)

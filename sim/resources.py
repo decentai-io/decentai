@@ -88,8 +88,10 @@ class InMemoryResourceProvider:
 
     async def list_secrets(self, resource_id):
         return [
+            # No chat binds a credential here, so none is bound; the
+            # key is there because the backend's listing has it.
             {"resource_ref": ref, "name": name, "keys": dict(keys),
-             "is_default": default}
+             "is_default": default, "is_bound": False}
             for ref, name, keys, _, default in self._instances(resource_id)
         ]
 

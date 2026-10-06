@@ -118,6 +118,42 @@ class TestState:
 
 
 class TestInbox:
+    def test_a_persons_words_are_kept_whole_whatever_their_length(
+            self, anon, admin, seed, signing_key):
+        """The message is kept whole, so the event that carries it to
+        the assistant is too: refused for its length, it left words on
+        the page that nobody heard."""
+        from contracts.chat import USER_TEXT_MAX_BYTES
+
+        chat_id = make_chat(admin)
+        long = "x" * 60000
+        kept = runtime_call(anon, seed, chat_id, "AI:Event:Record", {
+            "event": {"event": "user_message", "text": long,
+                      "message_id": "msg_1"}})
+        assert kept.status_code == 200, kept.text
+        since = runtime_call(anon, seed, chat_id, "AI:Event:Since",
+                             {"cursor": 0}).json()["data"]["events"]
+        assert since[0]["text"] == long
+
+        over = runtime_call(anon, seed, chat_id, "AI:Event:Record", {
+            "event": {"event": "user_message",
+                      "text": "x" * (USER_TEXT_MAX_BYTES + 1)}})
+        assert over.status_code == 400
+        assert over.json()["error"]["code"] == "event_too_large"
+
+    def test_an_event_that_is_not_a_persons_words_is_still_bounded(
+            self, anon, admin, seed, signing_key):
+        chat_id = make_chat(admin)
+        over = runtime_call(anon, seed, chat_id, "AI:Event:Record", {
+            "event": {"event": "wakeup", "result": {"rows": "x" * 70000}}})
+        assert over.status_code == 400
+        assert over.json()["error"]["code"] == "event_too_large"
+        # Not by calling itself a message, either.
+        dressed = runtime_call(anon, seed, chat_id, "AI:Event:Record", {
+            "event": {"event": "user_message", "text": "hello",
+                      "padding": "x" * 70000}})
+        assert dressed.status_code == 400
+
     def test_events_are_sequenced_and_read_past_a_cursor(
             self, anon, admin, seed, signing_key):
         chat_id = make_chat(admin)

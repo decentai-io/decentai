@@ -550,8 +550,12 @@ class Session:
             await child._steer(text, attachments)
 
     async def deliver_event(self, event: Dict[str, Any]) -> None:
-        """A wakeup, a data change — the world's other voices."""
-        await self._post(dict(event))
+        """A wakeup, a data change — the world's other voices. A
+        wakeup carries its fire's result, and one too large to show
+        the mind is cut to its preview here, before it is recorded:
+        the inbox refuses what is over its size, and a wakeup refused
+        there was a result nobody was woken with."""
+        await self._post(self.assistant.fitted(dict(event)))
 
     async def _read_image(self, ref: str) -> Dict[str, Any]:
         """A picture the person attached, encoded, for the mind to look

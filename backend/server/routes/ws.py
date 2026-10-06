@@ -12,6 +12,7 @@ recorded one carries it to the runtime.
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
+from contracts.chat import USER_TEXT_MAX_BYTES
 from database.stores import ChatStore, UserStore
 from server.setup.app_state import (
     get_access_controller, get_runtime_clients, get_ws_manager,
@@ -88,6 +89,17 @@ async def chat_websocket(websocket: WebSocket, chat_id: str):
                                detail="You may not send messages in this chat.")
                     continue
                 payload = raw["data"]
+                # Refused here, before anything is kept: a message
+                # saved and then too long for the assistant to be
+                # handed would be words on the page that nobody heard.
+                if len(str(payload.get("text") or "").encode("utf-8")) \
+                        > USER_TEXT_MAX_BYTES:
+                    await tell(
+                        "invalid_input",
+                        detail=f"A message is at most "
+                               f"{USER_TEXT_MAX_BYTES // 1024} KB of text. "
+                               f"Attach longer text as a file.")
+                    continue
                 # The page says "attachments"; the door says "parts" —
                 # the same file parts, the markdown part being the text.
                 parts = payload.get("parts")

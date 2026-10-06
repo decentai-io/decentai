@@ -55,6 +55,8 @@ Patterns:
 |---|---|
 | `agent.id` | `^[a-z][a-z0-9_]{1,31}$` — lowercase letters, digits and `_`, starting with a letter, 2 to 32 characters |
 | every other id | `^[a-z][a-z0-9_]*$` — the same characters, any length |
+| a secret's `id` | the same, at most 34 characters |
+| a field's `name` in a secret | the same, 2 to 60 characters, and not `name`: that is every credential's own label |
 
 Each must be unique where it lives: a tool among the agent's tools, a
 function within its tool, a field within its resource. Resource ids are
@@ -425,13 +427,13 @@ fields:
 ```
 
 A data resource, and a secret without an `oauth` block, declares at
-least one field.
+least one field. A secret declares at most 50.
 
 | Key | Rule |
 |---|---|
 | `name` | See Ids; unique in the resource |
 | `label` | What people see |
-| `type` | `string`, `number`, `select`, `object`, `secret` |
+| `type` | `string`, `number`, `select`, `object`, `secret`. A secret's fields are what a person types into a form: no `object` there |
 | `storage` | `keys` or `values` |
 | `required` | `true` or `false` (default `false`) |
 | `options` | Required for `select`: a non-empty list of strings |

@@ -935,6 +935,32 @@ class TestAttachments:
 
 
 class TestOtherVoices:
+    def test_a_wakeup_too_large_for_the_inbox_is_recorded_as_its_preview(self):
+        """The inbox refuses what is over its size. A wakeup recorded
+        with its fire's whole result was refused there, and nobody was
+        woken with what the fire found."""
+        session, services = build([action(action="finish")])
+        rows = [{"message_id": f"AAMk{i:04x}", "subject": f"Invoice {i}",
+                 "snippet": "x" * 200} for i in range(400)]
+
+        async def scenario():
+            await session.open()
+            await session.deliver_event({
+                "event": "wakeup", "schedule_id": "sch_1",
+                "function": "outlook.watch.new_mail",
+                "result": {"messages": rows, "storage_ref": "stg_mail"}})
+            await session.wait_idle()
+
+        run(scenario())
+        recorded = services.inbox["chat_1"][-1]
+        assert recorded["event"] == "wakeup"
+        assert "result" not in recorded and recorded["truncated"] is True
+        assert recorded["storage_ref"] == "stg_mail"
+        assert len(json.dumps(recorded)) < 20000
+        heard = [m for m in session.assistant.state.messages
+                 if "EVENT wakeup" in str(m.get("content"))]
+        assert len(heard) == 1 and "stg_mail" in heard[0]["content"]
+
     def test_a_wakeup_event_wakes_the_assistant(self):
         """The reminders design's entry point: a schedule fires, the
         assistant is woken with the event, works, and reports."""

@@ -11,6 +11,7 @@ from api.services.agents.acquisition import AcquisitionError
 from api.services.agents.sources import GitSource
 from contracts.agent_manifest import Manifest, ManifestValidator, manifest_hash
 from database.stores import AuditStore
+from database.stores.data.definitions import DefinitionUnchanged
 from database.stores.data.secrets import SecretStore
 
 
@@ -141,9 +142,19 @@ class AgentInstallMixin:
             # different commit that carries the same manifest.
 
         resource_namespace = platform_agent_id
-        derived_secrets = self._derive_secret_definitions(
-            manifest, user, resource_namespace
-        )
+        try:
+            derived_secrets = self._derive_secret_definitions(
+                manifest, user, resource_namespace
+            )
+        except ValueError as refused:
+            # The validator holds a secret's shape to what the place
+            # credentials are kept accepts, so this is not expected;
+            # were the two ever to part, it is said, and nothing is
+            # approved with a credential's shape left as it was.
+            return self._fail(
+                data, "invalid_manifest",
+                f"Manifest validation failed: {refused}",
+            )
         resources = {
             "secrets": derived_secrets,
             "data": {
@@ -337,7 +348,7 @@ class AgentInstallMixin:
                     self.definitions.add_version(
                         user, slug, label, description, fields, oauth=oauth
                     )
-                except ValueError:
+                except DefinitionUnchanged:
                     pass  # identical content — the recorded version stands
             mapping[resource["id"]] = self.definitions.latest(
                 self._org(user), slug)["_id"]

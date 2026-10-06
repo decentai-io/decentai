@@ -204,7 +204,15 @@ class OrganizationProvisioner:
                 for entry in granted
             )
 
-        missing = [a for a in BASELINE_ACTIONS if not covered(a)]
+        # What this policy was offered before is on the policy. An
+        # action offered then and not held now was taken away by an
+        # administrator, and is not put back. A policy from before the
+        # record was kept says nothing of what it was offered: it is
+        # offered everything once, and the record begins.
+        offered = policy.get("baseline_offered")
+        known = set(offered) if isinstance(offered, list) else set()
+        missing = [a for a in BASELINE_ACTIONS
+                   if a not in known and not covered(a)]
         if missing:
             statements.append(
                 {"effect": "Allow", "actions": missing, "resources": ["*"]}
@@ -220,7 +228,8 @@ class OrganizationProvisioner:
 
         self.policies.col.update_one(
             {"_id": policy["_id"]},
-            {"$set": {"baseline_revision": BASELINE_REVISION}},
+            {"$set": {"baseline_revision": BASELINE_REVISION,
+                      "baseline_offered": sorted(BASELINE_ACTIONS)}},
         )
         return self.policies.get(policy["_id"])
 
