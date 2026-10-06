@@ -370,7 +370,7 @@
   display: flex; align-items: center; justify-content: space-between; gap: 14px;
   margin: 8px 0 0; padding: 10px 14px;
   border: 1px solid color-mix(in srgb, var(--destructive) 35%, transparent);
-  border-radius: var(--radius-lg); background: color-mix(in srgb, var(--destructive) 7%, var(--surface));
+  border-radius: var(--radius-lg); background: color-mix(in srgb, var(--destructive) 7%, var(--card));
   color: var(--foreground); font-size: 13px; line-height: 1.45;
 }
 .chat-kill-actions { display: flex; gap: 8px; flex: none; }
@@ -384,15 +384,15 @@
 /* The header's one word on what this chat needs. */
 .chat-attention { display:inline-flex; align-items:center; gap:6px; flex:none; margin-left:10px; padding:1px 9px; border-radius:var(--ui-radius-pill); font-size:11.5px; font-weight:600; line-height:18px; white-space:nowrap; }
 .chat-attention-dot { width:6px; height:6px; border-radius:50%; background:currentColor; }
-.chat-attention.is-working { color:var(--muted-foreground); background:var(--surface-subtle); }
+.chat-attention.is-working { color:var(--muted-foreground); background:var(--secondary); }
 .chat-attention.is-working .chat-attention-dot { animation: chat-attention-pulse 1.2s ease-in-out infinite; }
 .chat-attention.is-asleep .chat-attention-dot { animation:none; opacity:.45; }
 .chat-attention.is-cards { color:var(--warning); background:var(--warning-bg); }
 @keyframes chat-attention-pulse { 0%,100% { opacity:1; } 50% { opacity:.3; } }
 
 /* The chat's background work, at the top, until it reports back. */
-.chat-jobs { display:flex; align-items:center; gap:10px; margin:8px 0 0; padding:8px 14px; border:1px solid var(--border-color); border-radius:var(--radius-lg); background:var(--surface-subtle); font-size:12.5px; color:var(--muted-foreground); }
-.chat-jobs-dot { width:7px; height:7px; border-radius:50%; background:var(--accent-strong); animation: chat-attention-pulse 1.2s ease-in-out infinite; flex:none; }
+.chat-jobs { display:flex; align-items:center; gap:10px; margin:8px 0 0; padding:8px 14px; border:1px solid var(--border); border-radius:var(--radius-lg); background:var(--secondary); font-size:12.5px; color:var(--muted-foreground); }
+.chat-jobs-dot { width:7px; height:7px; border-radius:50%; background:var(--accent-foreground); animation: chat-attention-pulse 1.2s ease-in-out infinite; flex:none; }
 .chat-jobs-text { flex:1; min-width:0; }
 .chat-jobs-text strong { color:var(--foreground); font-weight:600; }
 .chat-jobs-text em { font-style:normal; color:var(--warning); }

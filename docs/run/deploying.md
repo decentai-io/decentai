@@ -12,7 +12,8 @@ procedure ([quickstart](quickstart.md)). A server with an address of
 its own is set up by hand, because what it is — its address, who its
 administrator is, where its mail goes — is yours to say.
 
-**1. Generate the secrets.** With Python 3.12 and `cryptography`:
+**1. Generate the secrets.** With Python 3.12 and the backend's
+packages (`pip install -r backend/requirements.txt`):
 
 ```bash
 python bootstrap/generate_service_keys.py     # the backend↔runtime signing pair
@@ -59,9 +60,16 @@ HTTP and `docker-compose.yml` alone is the stack: leave
 `SITE_ADDRESS=:80`, and set `LISTEN=0.0.0.0` and `PORT` to the port the
 balancer forwards to. The load balancer's health check must
 reach the backend's `/healthz`, which Caddy proxies without regard to
-the Host header. Set `FORWARDED_ALLOW_IPS` to the proxy's address range
-so the backend trusts `X-Forwarded-For` for session records and the
-login lockout.
+the Host header. Leave `FORWARDED_ALLOW_IPS` as it is: the backend's
+only peer is Caddy, and that setting is about the backend's peer.
+
+Behind a balancer the backend does not learn a client's own address
+today: `frontend/Caddyfile` names no trusted proxy, so Caddy does not
+take the balancer's word for it and passes on the balancer's own.
+Session records show that address, and the login lockout's count by
+address counts everybody as one: twenty wrong passwords in fifteen
+minutes, from anybody, lock sign-in for all until the window passes.
+The count by account is unaffected.
 
 ## After it is up
 

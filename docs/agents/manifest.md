@@ -190,7 +190,7 @@ implementation:
 | Key | Required | Rule |
 |---|---|---|
 | `entrypoint` | yes | `<module>:<ClassName>`, e.g. `agent:NoteAgent`. The module is a file in the agent's folder. |
-| `dependencies` | no | A list of pip requirements: `"humanize>=4.9,<5"`. Installed into an environment apart from the platform's own; agents that declare the same list share one. A requirement that begins with `-` (an option such as `--index-url`) is refused. |
+| `dependencies` | no | A list of pip requirements: `"humanize>=4.9,<5"`. Installed into an environment apart from the platform's own; agents that declare the same list share one. A requirement that begins with `-` (an option such as `--index-url`) is not installed: the manifest is read and approved all the same, and the agent then fails to load, with the reason on its page. |
 
 The SDK (`decentai_sdk`) is always there; do not list it.
 
@@ -472,6 +472,14 @@ That is the good outcome: the failure is loud instead of silent.
 Structure goes in `values`, or inside the text, or across several scalar
 keys.
 
+What the two halves hold, whatever the manifest says: a record has at
+most 50 keys and 50 values, a name is at most 120 characters, a value
+kept in `keys` is at most 8,192 characters, and one kept in `values` at
+most 4 MiB, 10 MiB for a record's values together
+(`backend/database/stores/data/resources.py`). A function that takes
+text for a `keys` field says so in its inputs (`maxLength: 8192`), or
+the write is refused where the call was let through.
+
 Note puts a note's `content` in `keys`, as a string, and its
 sync `api_token` in the secret's `values`:
 
@@ -670,7 +678,8 @@ understates a function is what fails review.
 
 A function whose level exceeds the chat's trust level **pauses for a
 human**; that is all a level does. A person chooses each chat's trust,
-and it starts at the standard, 1: levels 0 and 1 run, and levels 2 and 3
+and it starts at their own default — the standard, 1, unless they
+changed it: at 1, levels 0 and 1 run, and levels 2 and 3
 raise an approval card. The runtime re-verifies the exact inputs before
 running what was approved.
 
@@ -763,8 +772,10 @@ each reaches further than a reviewer would otherwise assume:
   model, when the person opens your agent's screen from the chat's
   header (`call.screen`). It must be `permission_level: 0` and may not
   declare `llm: true`: nothing was asked that could be approved, and no
-  model is behind the call. One per agent: where several declare it,
-  the first is the one called.
+  model is behind the call. One per chat: the header's button opens
+  the first agent in the chat that declares one, and that agent's first
+  such function. It is called with `{}` to open and
+  `{"action": "quit"}` to close, so its inputs must take an `action`.
 
 Most agents need none of them.
 

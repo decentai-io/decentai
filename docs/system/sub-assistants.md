@@ -115,8 +115,10 @@ them.
 
 ## Approvals: whose card is it
 
-A child's level-3 call parks *the child's job* (the child keeps
-thinking, as the model says). The card reaches the parent's audience
+A child's level-3 call parks *the child's job*. The parent keeps
+thinking; the child does too where the call was a `start`, and waits
+for the answer where it was an `invoke`. The card reaches the parent's
+audience
 tagged with the child id; the decision comes back through the parent's
 socket as `approval_decided`. The parent's session routes it
 (`Session.deliver_approval`): to the parent's own waiting job, then to

@@ -25,7 +25,7 @@ The sidebar on the left is the map:
 | **Settings** | Model providers, chat defaults and notifications, memory, API keys, connected apps, safety, monitoring, and the audit trail. |
 | **Help → Guide** | This guide. |
 
-People, groups, roles and policies are not in the sidebar. Whoever administers the organization opens the menu on their name at the foot of the sidebar and chooses **Admin console**: the sidebar becomes the administration's — your profile, the organization, and **IAM** with Users, Groups, Roles and Policies — and **Main workspace** in the same menu brings the workspace back.
+People, groups, roles and policies are not in the sidebar. Whoever administers the organization opens the menu on their name at the top right of the page and chooses **Admin console**: the sidebar becomes the administration's — **Account** with your Profile, and **IAM** with Organization, Users, Groups, Roles and Policies — and **Main workspace** in the same menu brings the workspace back.
 
 What you see depends on what your role allows. A page you cannot use is simply not shown; nothing you can see is a page of buttons that refuse.
 

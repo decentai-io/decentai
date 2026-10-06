@@ -67,7 +67,7 @@ entry is an **id and a path, and nothing else**:
 | Key | Required | What it is |
 |---|---|---|
 | `id` | yes | The agent's id. It must equal the `agent.id` in that agent's manifest, and no two entries may share one. |
-| `path` | yes | The agent's folder, from the root of the repository. It must hold a `manifest.yaml`. |
+| `path` | yes | The agent's folder, from the root of the repository. It must hold a `manifest.yaml`. (Left out, the root itself is read as the folder; say it.) |
 
 What an agent is called and what it does are its manifest's to say, so
 that there is one answer rather than two that can disagree. That is why

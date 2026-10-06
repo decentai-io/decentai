@@ -48,8 +48,11 @@ cd frontend && npm start                       # :4200
 ```
 
 The seeder is idempotent: it creates the organization, the access
-chains and the administrator once, and afterwards only applies what a
-newer version added — a new collection, a new baseline action. Run it
+chains and the administrator once, and afterwards applies what a
+newer version added — a new collection, a new baseline action — takes
+from every policy an action the catalog no longer has, and puts the
+named administrator back in Administrators, enabled, if they were
+taken out. Run it
 after every pull that touched `backend/database/schema.json` or the
 baseline; the schema version it prints tells you where you are.
 
@@ -114,7 +117,7 @@ find out.
 
 | Concern | Path |
 |---|---|
-| gateway endpoints | `backend/api/endpoints/`, one controller class per `Domain:Controller` |
+| gateway endpoints | `backend/api/endpoints/`, one controller class per `Domain:Controller`; the data layer's (`Data`, `Files`, `Secrets`, `Skills`, `Mcp`) are in `backend/api/services/data_layer/`. `backend/api/routing/registry/` maps each name to its class |
 | the action catalog and baseline | `backend/server/authentication/catalog.py` |
 | stores over Mongo | `backend/database/stores/` |
 | the schema | `backend/database/schema.json` |

@@ -23,7 +23,7 @@
 .agent-search small { color:var(--muted); white-space:nowrap; }
 .no-agent-results { padding:32px; color:var(--muted); text-align:center; border:1px dashed var(--border-color); border-radius:var(--radius-xl); }
 .agent-card { display:grid; grid-template-columns:auto minmax(0,1fr) auto; grid-template-areas:'icon copy arrow' 'kinds kinds kinds'; gap:12px; padding:17px; text-align:left; color:inherit; border:1px solid var(--border-color); border-radius:var(--radius-xl); background:var(--surface); cursor:pointer; }
-.agent-card:hover { border-color:var(--border-strong); box-shadow:0 5px 18px color-mix(in srgb,var(--foreground) 7%,transparent); transform:translateY(-1px); }
+.agent-card:hover { border-color:var(--border-strong); }
 .agent-card-icon { grid-area:icon; display:grid; place-items:center; width:38px; height:38px; color:var(--accent-strong); border-radius:var(--radius-lg); background:var(--accent-soft); }
 .agent-card-copy { grid-area:copy; display:flex; flex-direction:column; gap:3px; min-width:0; }
 .agent-card-copy strong { overflow:hidden; text-overflow:ellipsis; font-size:14px; }

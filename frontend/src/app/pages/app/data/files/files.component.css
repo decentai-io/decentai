@@ -18,7 +18,7 @@
 .source-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:12px; }
 .no-source-results { padding:32px; color:var(--muted); text-align:center; border:1px dashed var(--border-color); border-radius:var(--radius-xl); }
 .source-card { display:grid; grid-template-columns:auto minmax(0,1fr) auto; grid-template-areas:'icon copy arrow' 'types types types'; gap:12px; padding:17px; text-align:left; color:inherit; border:1px solid var(--border-color); border-radius:var(--radius-xl); background:var(--surface); cursor:pointer; }
-.source-card:hover { border-color:var(--border-strong); box-shadow:0 5px 18px color-mix(in srgb,var(--foreground) 7%,transparent); transform:translateY(-1px); }
+.source-card:hover { border-color:var(--border-strong); }
 .source-card-icon { grid-area:icon; display:grid; place-items:center; width:38px; height:38px; color:var(--accent-strong); border-radius:var(--radius-lg); background:var(--accent-soft); }
 .source-card-copy { grid-area:copy; display:flex; flex-direction:column; gap:3px; min-width:0; }
 .source-card-copy strong { overflow:hidden; text-overflow:ellipsis; font-size:14px; }

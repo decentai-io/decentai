@@ -4,7 +4,7 @@ A chat is a conversation with the assistant and the agents you enabled for it. T
 
 ## Your chats
 
-**AI → Chats** opens on a box to type in: write there to start a new chat. Beneath it are all your earlier chats, newest first and grouped by day, in a list that scrolls on its own. Type in *Search chats* to narrow it by title — Enter opens the first match. Point at a chat to archive it, which puts it out of the way, or to delete it, which asks first and cannot be undone. Switch the list to **Archived** to find a chat you put away and restore it. Inside a chat, **Chats** at the top left brings you back.
+**AI → Chats** opens on a box to type in: write there to start a new chat. Beneath it are all your earlier chats, newest first and grouped by when each was last used — Today, Yesterday, Previous 7 days, then by month — in a list that scrolls on its own. Type in *Search chats* to narrow it by title — Enter opens the first match. Point at a chat to archive it, which puts it out of the way, or to delete it, which asks first and cannot be undone. Switch the list to **Archived** to find a chat you put away and restore it. Inside a chat, **Chats** at the top left brings you back.
 
 ## Asking
 
@@ -82,7 +82,7 @@ Beside it, **The assistant** shows what the model of this chat was shown and wha
 
 ## The chat's own settings
 
-**More actions** (⋮) in the chat header holds what is this chat's alone: its name, its **agents**, its **skills**, its **trust level**, its **turn budget** — how many steps one message may take before the chat stops and asks to continue: 20, 40, 60, 100 or unlimited — and how many skills it lists. **Refresh and reconnect** is there for a chat that seems stuck. What a new chat starts with is under **Settings → Chat configuration**, as *Your chat defaults*.
+**More actions** (⋮) in the chat header holds what is this chat's alone: its name, its **agents**, its **skills**, its **turn budget** — how many steps one message may take before the chat stops and asks to continue: 20, 40, 60, 100 or unlimited — and how many skills it lists — with the chat's **Activity & audit**. The chat's **trust level** is the shield beside it in the header, and **Refresh and reconnect**, for a chat that seems stuck, the button next to that; on a narrow screen both are inside More actions. What a new chat starts with is under **Settings → Chat configuration**, as *Your chat defaults*.
 
 The box you write in also has a camera, to take a photo and attach it, and a microphone, to speak a message, where the organization chose a model that writes speech down.
 

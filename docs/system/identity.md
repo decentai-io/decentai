@@ -50,10 +50,12 @@ deployment hosts many, and they cannot see each other.
 | `created_at` | When it was stood up |
 
 Every user, group, role, policy, invitation, session and stored resource
-belongs to exactly one organization, and every query is independently
-scoped by it. Isolation is a property of each lookup rather than a filter
-applied at the edge, so a missing check cannot widen a query into another
-tenant's data.
+belongs to exactly one organization. Every read that takes an id from a
+caller carries the organization with it (`get_in`, `list_in`, in
+`backend/database/stores/iam.py`), so naming another tenant's id finds
+nothing. Reads the platform makes by ids it took from such a read — a
+user's own groups, a role's policies, the session a cookie names — go
+by the id alone, and rest on the first.
 
 `org_id` is the identifier authorization uses. `org_name` may change and
 means nothing to any decision.
@@ -86,7 +88,11 @@ outside the application entirely — they are deployment operations, not
 features of the product, and no administrator inside an organization can
 perform them. A disabled organization keeps all of its data and refuses
 everyone in it: its members' sessions are dropped, and any that survives
-the moment of the decision is refused on its next request.
+the moment of the decision is refused. Because the decision is made by
+another process (`bootstrap/organizations.py`), the running backend
+learns of it when what it remembers of a session runs out: a session
+used in the last minute goes on for up to a minute more. An API key is
+looked up every time, and is refused at once.
 
 ## User
 
@@ -220,10 +226,12 @@ actions. A document large enough to be unreadable is refused at the door
 rather than evaluated.
 
 **Every action is validated when the policy is saved.** An action that is
-not in the platform's vocabulary is rejected outright, and a wildcard must
-have a literal prefix that matches something real. A typo becomes an error
-at the moment it is written, rather than a permission that silently never
-applies.
+not in the platform's vocabulary is rejected outright, and a wildcard's
+text before its first `*` must begin some real action
+(`ActionCatalog.is_valid_pattern`, `backend/server/authentication/policy.py`).
+A typo in a whole name, or before the star, becomes an error at the
+moment it is written. What follows the star is not checked:
+`iam:user:*typo` is saved, and matches nothing.
 
 ---
 
@@ -256,6 +264,13 @@ an organization disabled — discards what it invalidates at the moment it
 happens. Revocation therefore takes effect on the next request rather
 than at the next login or the next cache expiry.
 
+That is so of a change made through the application. The cache is one
+process's own, kept for sixty seconds (`AccessCache`,
+`backend/database/stores/base.py`): a change made from the command
+line — an organization disabled, a password set by
+`bootstrap/reset_password.py` — is another process's, and takes effect
+in the backend within that minute.
+
 ### The baseline
 
 Some things are not privileges. Every user may read and correct their own
@@ -275,7 +290,10 @@ The baseline is versioned. When the platform gains a new baseline action,
 it is added to existing deployments exactly once — because an
 administrator is entitled to remove a baseline action deliberately, and a
 seed that re-asserted the whole list on every restart would quietly undo
-that decision.
+that decision. What a policy has been offered is kept on it
+(`baseline_offered`), and a new revision gives only what is not there.
+A policy from before that record was kept is offered everything once,
+and the record begins.
 
 ---
 
@@ -335,8 +353,11 @@ invitation, so there an administrator adds a person directly
 proves the address is the person's, which a password handed over
 cannot) and is shown a temporary password once, to hand over. An
 invitation made there all the same, by a script, is not lost: its link
-is handed back to whoever made it (`accept_url`) and never anywhere
-else. The same
+is handed back to whoever made it (`accept_url`), and the mail that
+could not be sent is written to the backend's log, link and all — a
+log on such an install is to be kept as a password is. The link is
+handed back whenever the mail was not delivered, a mail server that
+refused it included. The same
 is done for a person who forgot theirs (`IAM:User:reset_password`, on any
 deployment), which also ends their sessions. It is bounded as group
 assignment is: nobody resets the password of a person holding more than

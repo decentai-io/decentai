@@ -10,7 +10,7 @@ A key **is you**. Every request it makes is checked against your own permissions
 
 Open **Settings → API keys** and press **+**. Give it a name you will recognise later — the script, the machine. The key is shown **once**, with a copy button. Copy it then; the page cannot show it again, because only its hash is kept.
 
-You may hold twenty live keys. Revoke one on the same page when its script is retired; scripts using it are refused from their next call. A revoked key stays listed as a record of what existed.
+You may hold twenty live keys. Revoke one on the same page when its script is retired; scripts using it are refused from their next call. A revoked key is kept as a record of what existed; tick **Show revoked** to see it.
 
 Keys are made and revoked from a signed-in browser session only. A key cannot make or revoke keys, so a leaked one cannot make itself permanent or lock you out.
 

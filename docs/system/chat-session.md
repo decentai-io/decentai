@@ -90,7 +90,9 @@ chat-bound, and the records are the parent's document's — `state` and
 `thread`, an inbox counter per thread, cards tagged with whose they
 are. What a child tells the audience travels as the parent's events,
 each carrying `child`; storage, the audit record, schedules and the
-contract are the chat's and take no thread. What
+contract are the chat's and take no thread — a sub-assistant cannot
+schedule, since a row of its own would not be the chat's and the
+backend refuses it. What
 the person reads as the chat never includes a thread's messages; a
 client that wants to show a child's thread asks for it by name.
 
@@ -145,9 +147,12 @@ it; the page's `chat-protocol.ts` is written by hand against it, and
 `tests/test_chat_contract.py` fails when the two disagree.
 
 - **Events** are the runtime's outbound frames — `message_created`,
-  `working`, `idle`, `activity`, `plan_updated`, `memory_saved`,
-  `approval_requested`, `schedule_set`, `schedule_removed`, `sleeping`,
-  and the door's socket-only `hello`, `agent_status` and `error`. The runtime
+  `working`, `idle`, `stopped`, `activity`, `plan_updated`,
+  `memory_saved`, `approval_requested`, `question_asked`,
+  `question_closed`, `schedule_set`, `schedule_removed`, `sleeping`,
+  and the socket-only `hello`, `agent_status`, `screen_frame`,
+  `screen_closed` and `error` (`EVENT_MODELS`, `contracts/chat.py`).
+  The runtime
   also delivers `chat_titled` and `screen_unavailable` to an open chat
   without recording them. The relay adds `runtime_unavailable`,
   `runtime_disconnected`, `invalid_input` and `work_stopped` (the

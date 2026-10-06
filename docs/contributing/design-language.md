@@ -45,8 +45,10 @@ again for the signed-in app, in both themes, and defines `--scrim`.
 **`frontend/src/styles.scss` — the bridge and the global shapes.** It
 aliases the older Material-era token names (`--p`, `--surf`, `--s1`…) to
 the shadcn ones so unmigrated components re-theme for free; it defines
-the chat family (`--chat-*`) and the ported-page scale (`--ui-*`) as
-*aliases* of the scales above rather than as second literals; and it
+the chat family (`--chat-*`) and the ported pages' radii
+(`--ui-radius-*`) as *aliases* of the scales above rather than as
+second literals, and their text sizes (`--ui-text-*`) as sizes of
+their own; and it
 carries the Angular Material M3 theme and the markdown typography that
 have nowhere else to go. New code should not add to the bridge.
 
@@ -69,7 +71,8 @@ Five, and they are load-bearing. A change that breaks one of them
 changes this note first.
 
 **Three colours, and the third is an error.** Emerald `#10b981` is the
-single identity colour. Everything else is a tint of black or white.
+single identity colour. Everything else is a grey: the neutrals are
+the zinc scale, a grey with the faintest blue in it, and no other.
 Red is reserved for errors and appears nowhere else. There is no indigo,
 no amber, no slate, and no fourth hue introduced to mean "in progress"
 or "warning" — `--warning` is deliberately a neutral, because an
@@ -121,8 +124,8 @@ exception is a surface that genuinely floats over the entire page — a
 modal, the mobile drawer, a Material menu or date-picker panel — which
 takes `--shadow-overlay`. That token exists so the exception is countable
 and revocable: set it to `none` and the rule becomes absolute. Focus is
-its own thing and is always `--chat-focus-ring`, never a hand-written
-ring.
+its own thing: `--chat-focus-ring`, or for a control the keyboard
+reaches a two-pixel outline in `--ring`, and no other ring.
 
 ---
 
@@ -151,8 +154,9 @@ platform does not use, alias that name in the family's `:host` block —
 Two smaller consequences worth knowing. A wash over the user's chat
 bubble must be mixed from `--chat-user-ink`, because that bubble inverts
 with the theme and a fixed black wash disappears on it in one mode. And
-a shadow, where one is permitted, is tinted from `--foreground`, not
-from a blue-grey that reads as a fourth hue at low alpha.
+a shadow, where one is permitted, is tinted from `--foreground` in
+light and is black in dark, not a blue-grey that reads as a fourth hue
+at low alpha.
 
 ---
 

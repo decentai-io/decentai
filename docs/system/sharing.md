@@ -103,8 +103,10 @@ that take it as-is.
 
 ## The escape grant
 
-Each domain names one action — `secrets:secret:set_owner_any`,
-`files:file:set_owner_any`, and so on — that lifts the boundary and the
+Each of the four domains a person keeps things in names one action —
+`secrets:secret:set_owner_any`, `files:file:set_owner_any`,
+`data:record:set_owner_any`, `skills:skill:set_owner_any` — that lifts
+the boundary and the
 creator-only rule together. A holder may share organization-wide, into
 any group, to any person, and maintain documents created by others
 **that they can see**: a document is looked up through the holder's own
@@ -114,7 +116,11 @@ per domain on purpose: the administrator who may re-home every
 credential is not automatically the administrator who may re-home every
 file.
 
-Infrastructure has its own pair, and they reach further. Agent sources
+Infrastructure has its own pair, and they are a different grant: they
+reach every document, and do not lift the boundary on whom one may be
+shared to. A holder of one still shares a source or a connection only
+into groups they sit in and to their own peers (`reach_refusal` is
+asked of them as of anybody). Agent sources
 and model connections are shared documents like the rest — private
 until their creator says otherwise — but an organization depends on
 them, so `agents:agent:source_manage_any` and `settings:llm:manage_any`

@@ -49,10 +49,13 @@ Three response shapes exist:
   speech), answer the payload directly — `{"resources": […]}`,
   `{"user": {…}}` — and fail with `{"error": "…"}`.
 - The gateway's own refusals, made before any controller is reached —
-  an action the caller does not hold (403), an endpoint that does not
-  exist, a body that is not one, a failure inside the platform (500) —
+  an action the caller does not hold (403), an endpoint that is missing
+  from the body or does not exist, a failure inside a controller (500) —
   are `{"title": …, "type": "error", "messages": [{"description": …}]}`,
   with no `error` key.
+- Two are made before the gateway and answer `{"error": "…"}`: a body
+  that is not JSON (400, `Invalid JSON body`), and a JSON body that is
+  not an object (500, `Internal server error`).
 
 The HTTP status says which happened. A script reads `error` from the
 first two shapes and `messages[0].description` from the third.

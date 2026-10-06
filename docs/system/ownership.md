@@ -23,7 +23,7 @@ it. Being shown something is never authority over it.
 | Agent sources | `created_by_id` | the steward | `agents:agent:source_manage_any` |
 | Installed agents | the organization | anyone holding `agents:agent:delete` | not needed |
 | Agent grants, credential grants | the organization | anyone holding the grant action | not needed |
-| Chats, messages, stored results, schedules, approvals | `user_id` | the person only: a chat cannot be shared, and opening one and sending to it are separate actions (`ai:chat:get`, `ai:chat:sendmessage`) | none |
+| Chats, messages, stored results, schedules, approvals | `user_id` | the person only: a chat cannot be shared, and opening one and sending to it are separate actions (`ai:chat:open`, `ai:chat:sendmessage`) | none |
 | Memories | `user_id` | the person only | none |
 | MCP servers | `created_by` | the person only; never shared or transferred | none |
 | API keys | `user_id` | the person only | none, deliberately |
@@ -36,9 +36,12 @@ source of the organization, an unshared one included — and a narrower
 role can be given without them. The four `set_owner_any` grants reach
 only documents their holder can already see: a credential or record a
 colleague kept private changes hands when its owner hands it over or is
-deleted, and not otherwise. Each is checked where
-the domain checks its steward (`Sharing.may_edit(..., escape=...)`), so
-the rule has one implementation.
+deleted, and not otherwise. In the four data-layer domains it is
+checked where the domain checks its steward
+(`Sharing.may_edit(..., escape=...)`,
+`backend/api/services/data_layer/base.py`). Model connections, agent
+sources and MCP servers compare the steward themselves, each in its
+own controller, to the same rule.
 
 ## Transfer
 

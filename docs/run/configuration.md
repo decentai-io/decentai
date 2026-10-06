@@ -65,7 +65,7 @@ Three values are generated, never chosen:
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `SMTP_HOST` | unset | The mail server invitations, password resets and notifications are sent through — any provider's SMTP server. Unset, or without `MAIL_FROM`, nothing is sent: the Users page adds a person with a temporary password shown once instead of inviting them (an invitation made by a script is handed its link back), "Forgot password" says how this install resets one instead of making a link, and no notification email is attempted. |
+| `SMTP_HOST` | unset | The mail server invitations, password resets and notifications are sent through — any provider's SMTP server. Unset, or without `MAIL_FROM`, nothing is sent: the Users page adds a person with a temporary password shown once instead of inviting them (an invitation made by a script is handed its link back), "Forgot your password?" says how this install resets one instead of making a link, and no notification email is attempted. |
 | `SMTP_PORT` | `587`, or `465` for `ssl` | The server's port. |
 | `SMTP_SECURITY` | `starttls` | `starttls`, `ssl`, or `none` for a relay on a trusted network. |
 | `SMTP_USERNAME`, `SMTP_PASSWORD` | unset | Sign-in to the server, when it asks for one. The password is a secret. |
