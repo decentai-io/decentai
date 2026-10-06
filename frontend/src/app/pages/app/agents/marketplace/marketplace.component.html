@@ -2,7 +2,7 @@
   <header class="data-header">
     <div class="data-heading">
       <h1>Marketplace</h1>
-      <p>Discover, review, and install agents from trusted catalogs.</p>
+      <p>Discover, review, and install agents from sources you trust.</p>
     </div>
   </header>
 
@@ -27,11 +27,11 @@
     <section class="source-browser" *ngIf="!current">
       <div class="source-browser-head">
         <div>
-          <h2>Agent catalogs</h2>
-          <p>Choose a catalog to browse its agents.</p>
+          <h2>Agent sources</h2>
+          <p>Choose a source to browse its agents.</p>
         </div>
         <button class="btn primary add-icon-button" type="button" *ngIf="!formOpen"
-                (click)="startCreate()" aria-label="Add catalog" matTooltip="Add catalog">
+                (click)="startCreate()" aria-label="Add source" matTooltip="Add source">
           <lucide-icon name="plus" [size]="18"></lucide-icon>
         </button>
       </div>
@@ -39,7 +39,7 @@
         <div class="market-search source-search" *ngIf="visible.length">
           <lucide-icon name="search" [size]="15"></lucide-icon>
           <input class="txt" [ngModel]="sourceQuery" (ngModelChange)="searchSources($event)"
-                 name="source-search" placeholder="Search catalogs" aria-label="Search catalogs" />
+                 name="source-search" placeholder="Search sources" aria-label="Search sources" />
           <button class="search-clear" type="button" *ngIf="sourceQuery" (click)="searchSources('')"
                   aria-label="Clear search"><lucide-icon name="x" [size]="14"></lucide-icon></button>
         </div>
@@ -61,15 +61,15 @@
 
       <div class="empty-state" *ngIf="!visible.length">
         <span class="empty-mark"><lucide-icon name="store" [size]="22"></lucide-icon></span>
-        <strong>No catalogs yet</strong>
-        <p>Add a catalog to make its agents available here.</p>
+        <strong>No sources yet</strong>
+        <p>Add a source to make its agents available here.</p>
       </div>
       <div class="empty-state compact" *ngIf="visible.length && !filteredSources.length">
-        <strong>No matching catalogs</strong><p>Try another name or URL.</p>
+        <strong>No matching sources</strong><p>Try another name or URL.</p>
       </div>
       <footer class="market-pagination" *ngIf="filteredSources.length > sourcePageSize">
         <span>Showing {{ (sourcePage - 1) * sourcePageSize + 1 }}–{{ sourcePage * sourcePageSize < filteredSources.length ? sourcePage * sourcePageSize : filteredSources.length }} of {{ filteredSources.length }} catalogs</span>
-        <nav aria-label="Catalog pages"><span>Page {{ sourcePage }} of {{ sourcePageCount }}</span>
+        <nav aria-label="Source pages"><span>Page {{ sourcePage }} of {{ sourcePageCount }}</span>
           <button type="button" (click)="sourcePage = sourcePage - 1" [disabled]="sourcePage === 1" aria-label="Previous page"><lucide-icon name="chevron-left" [size]="16"></lucide-icon></button>
           <button type="button" (click)="sourcePage = sourcePage + 1" [disabled]="sourcePage === sourcePageCount" aria-label="Next page"><lucide-icon name="chevron-right" [size]="16"></lucide-icon></button>
         </nav>
@@ -81,7 +81,7 @@
     <section class="source-panel" *ngIf="current as source"
              [class.is-error]="source.status === 'error' && source.owned">
       <button class="back-link source-back" type="button" (click)="backToSources()">
-        <lucide-icon name="arrow-left" [size]="15"></lucide-icon> All catalogs
+        <lucide-icon name="arrow-left" [size]="15"></lucide-icon> All sources
       </button>
       <header class="source-head">
         <div class="source-identity">
@@ -222,8 +222,11 @@
                 Installed
               </span>
               <span class="spacer"></span>
+              <!-- Installing is agreeing to what the agent declares,
+                   so the way to install is through the page that says
+                   it: approving is on that page, and nowhere else. -->
               <button class="btn ghost sm" type="button"
-                      *ngIf="entryStatus(entry) !== 'broken'"
+                      *ngIf="entryStatus(entry) !== 'broken' && !installable(entry)"
                       [disabled]="!!busyId"
                       (click)="openReview(source, entry)">
                 <lucide-icon name="info" [size]="14"></lucide-icon>
@@ -232,10 +235,9 @@
               <button class="btn primary sm" type="button"
                       *ngIf="installable(entry)"
                       [disabled]="!!busyId"
-                      (click)="installNow(source, entry)">
-                {{ busyId === entryKey(entry)
-                    ? "Installing…"
-                    : entryStatus(entry) === "update_available" ? "Update" : "Install" }}
+                      (click)="openReview(source, entry)">
+                {{ entryStatus(entry) === "update_available"
+                    ? "Review update" : "Review and install" }}
               </button>
             </footer>
           </article>
@@ -279,7 +281,7 @@
       </header>
       <div class="modal-body">
         <p *ngIf="!removalBlocker(removing)">
-          The catalog leaves this page. No agent is installed from it, so
+          The source leaves this page. No agent is installed from it, so
           nothing else changes; add the repository again to list it again.
         </p>
         <div class="blocker" *ngIf="removalBlocker(removing)">

@@ -399,24 +399,6 @@ export class MarketplaceComponent extends DataPageBase implements OnInit {
     }
   }
 
-  /** One agent, straight in — the review page is there for whoever wants
-   *  to read what they are agreeing to first. */
-  async installNow(source: AgentSource, entry: CatalogEntry): Promise<void> {
-    if (this.busyId) return;
-    this.busyId = this.entryKey(entry);
-    try {
-      const result = await this.service.installCatalogAgent(source, entry);
-      if (result.error) return this.fail(result.error);
-      this.busyId = '';
-      this.selected.delete(this.selectionKey(source, entry));
-      await this.load();
-      this.flash(`${entry.manifest?.agent?.name || entry.id} installed — it `
-        + `is on the Installed Agents page now.`);
-    } finally {
-      this.busyId = '';
-    }
-  }
-
   async openReview(source: AgentSource, entry: CatalogEntry): Promise<void> {
     this.catalogScrollY = window.scrollY;
     this.review = { source, entry };
@@ -452,6 +434,7 @@ export class MarketplaceComponent extends DataPageBase implements OnInit {
       const result = await this.service.installCatalogAgent(source, entry);
       if (result.error) return this.fail(result.error);
       this.busyId = '';
+      this.selected.delete(this.selectionKey(source, entry));
       this.closeReview();
       await this.load();
       this.flash(`${entry.manifest?.agent?.name || entry.id} installed — it is `

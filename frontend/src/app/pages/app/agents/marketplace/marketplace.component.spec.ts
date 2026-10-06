@@ -80,9 +80,9 @@ describe('MarketplaceComponent', () => {
     expect(component.visible[1].owned).toBe(false);
   });
 
-  it('filters catalogs by their own name, and agents inside the open one', () => {
-    // Two searches, two levels: the catalog box narrows the list of
-    // catalogs, the agent box narrows what the open one offers.
+  it('filters sources by their own name, and agents inside the open one', () => {
+    // Two searches, two levels: the source box narrows the list of
+    // sources, the agent box narrows what the open one offers.
     const component = createComponent();
     component.sources = [
       source('one', [entry('invoices')]),
