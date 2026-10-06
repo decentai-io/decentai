@@ -42,7 +42,7 @@ Check:
   object ends it.
 - `detach` runs on every way out of the route.
 
-Tests: `tests/test_session_door.py`.
+Tests: `ai_runtime/tests/test_session_door.py`.
 
 ## 2. The host: one session per chat
 
@@ -72,7 +72,8 @@ Check:
   and no question is open. `_kill` holds the build lock, so a chat
   cannot be rebuilt in the middle of being stopped.
 
-Tests: `tests/test_session_door.py`, `tests/test_pull_by_digest.py`.
+Tests: `ai_runtime/tests/test_session_door.py`,
+`ai_runtime/tests/test_pull_by_digest.py`.
 
 ## 3. The session: the chat's body
 
@@ -117,8 +118,9 @@ Check:
   under its own id. That it cannot save memory is not there: it is the
   `memory_writer` `Session.open` hands a child (`Session._refuse_memory`).
 
-Tests: `tests/test_session.py`, `tests/test_sub_assistants.py`,
-`tests/test_fold.py`.
+Tests: `ai_runtime/tests/test_session.py`,
+`ai_runtime/tests/test_sub_assistants.py`,
+`ai_runtime/tests/test_fold.py`.
 
 ## 4. The assistant: the cycle
 
@@ -169,9 +171,11 @@ Check:
 - The model never receives a secret: follow `use_secret` in stop 5 and
   confirm nothing on its return path reaches `state.messages`.
 
-Tests: `tests/test_assistant.py`, `tests/test_plan.py`,
-`tests/test_evidence_files.py`, `tests/test_agent_router.py`,
-`tests/test_summarizer.py`.
+Tests: `ai_runtime/tests/test_assistant.py`,
+`ai_runtime/tests/test_plan.py`,
+`ai_runtime/tests/test_evidence_files.py`,
+`ai_runtime/tests/test_agent_router.py`,
+`ai_runtime/tests/test_summarizer.py`.
 
 ## 5. Execution: the gates, then the worker
 
@@ -223,9 +227,11 @@ Check:
 - `execution/pictures.py`: a picture from an agent is checked for type
   and size before a model or a page is given it.
 
-Tests: `tests/test_agent_executor.py`, `tests/test_agent_worker_pool.py`,
-`tests/test_agent_worker_handle.py`, `tests/test_agent_worker.py`,
-`tests/test_code_grant.py`, `tests/test_mcp.py`.
+Tests: `ai_runtime/tests/test_agent_executor.py`,
+`ai_runtime/tests/test_agent_worker_pool.py`,
+`ai_runtime/tests/test_agent_worker_handle.py`,
+`ai_runtime/tests/test_agent_worker.py`,
+`ai_runtime/tests/test_code_grant.py`, `ai_runtime/tests/test_mcp.py`.
 
 ## 6. The sandbox
 
@@ -278,12 +284,14 @@ Check:
 - The spawner starts nothing for a request without the key, and ends a
   worker whose runtime hung up (`SpawnerService._serve`, `_start`).
 
-Tests: `tests/test_confinement.py`, `tests/test_egress.py`,
-`tests/test_agent_environments.py`, `tests/test_spawner.py`,
-`tests/test_usage.py`, `tests/test_events.py`, and the
-two that need the image: `tests/test_confinement_live.py` (one
-container) and `tests/test_spawner_live.py` (the runtime and the agents
-in two). Both are skipped elsewhere, and each file says how it is run.
+Tests: `ai_runtime/tests/test_confinement.py`,
+`ai_runtime/tests/test_egress.py`,
+`ai_runtime/tests/test_agent_environments.py`,
+`ai_runtime/tests/test_spawner.py`, `ai_runtime/tests/test_usage.py`,
+`ai_runtime/tests/test_events.py`, and the two that need the image:
+`ai_runtime/tests/test_confinement_live.py` (one container) and
+`ai_runtime/tests/test_spawner_live.py` (the runtime and the agents in
+two). Both are skipped elsewhere, and each file says how it is run.
 
 ## 7. The clock
 
@@ -311,8 +319,9 @@ Check:
   under way and removes no row; a kill that finds no session for the
   chat leaves the sleep where it is.
 
-Tests: the schedule classes in `tests/test_session.py`,
-`tests/test_cron.py`, `tests/test_event_sources.py`.
+Tests: the schedule classes in `ai_runtime/tests/test_session.py`,
+`ai_runtime/tests/test_cron.py`,
+`ai_runtime/tests/test_event_sources.py`.
 
 ## 8. The edges
 
@@ -327,9 +336,8 @@ Tests: the schedule classes in `tests/test_session.py`,
   (`Assistant._cut_off`).
 - `contracts/chat.py` — the frames and message parts, typed. The page's
   copy is `frontend/src/app/models/chat-protocol.ts`, and
-  `tests/test_chat_contract.py` — in the repository's own `tests/`, the
-  spanning suite, where every other `tests/…` on this page is
-  `ai_runtime/tests/` — fails when the two disagree.
+  `tests/test_chat_contract.py` — in the spanning suite, the
+  repository's own `tests/` — fails when the two disagree.
 
 ## Running what you read
 

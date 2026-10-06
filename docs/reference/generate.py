@@ -30,7 +30,8 @@ def runtime_may(action: str) -> bool:
     return any(fnmatch.fnmatchcase(action, pattern) for pattern in RUNTIME_ENDPOINTS)
 
 
-def main() -> int:
+def page() -> str:
+    """The page, as it would be written."""
     lines = [
         "# Actions",
         "",
@@ -59,8 +60,12 @@ def main() -> int:
                          f"{'yes' if action in baseline else ''} | "
                          f"{'yes' if runtime_may(action) else ''} |")
         lines.append("")
+    return "\n".join(lines) + "\n"
+
+
+def main() -> int:
     out = Path(__file__).resolve().parent / "actions.md"
-    out.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
+    out.write_text(page(), encoding="utf-8", newline="\n")
     print(f"wrote {out.relative_to(ROOT)}")
     return 0
 
