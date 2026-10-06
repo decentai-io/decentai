@@ -4,8 +4,10 @@ What goes wrong when DecentAI is started, and where to look.
 
 ## It does not start
 
-- **The script says Docker did not answer.** Docker Desktop is not
-  running, or `docker compose` is not installed.
+- **The script says Docker did not answer.** `docker compose` is not
+  installed.
+- **The script says Docker is not running.** Start Docker Desktop, or
+  the Docker service on Linux, and run the script again.
 - **The port is taken.** `docker compose` says the address is already in
   use: delete `deploy.env` if nothing was started with it yet and run
   the script with `--port`, or change `PORT`, `PUBLIC_APP_URL` and

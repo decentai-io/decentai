@@ -80,6 +80,7 @@ class TestTheFirstTime:
         assert link.startswith("http://localhost:4280/#enter=")
         assert docker.asked == [
             "compose version",
+            "info --format {{.ServerVersion}}",
             "build -q -f backend/Dockerfile .",
             "run --rm sha256:the-backend-image python "
             "/opt/decentai/bootstrap/generate_service_keys.py",
@@ -166,6 +167,15 @@ class TestWhatCanGoWrong:
             setup.run()
         assert not setup.settings.written
 
+    def test_docker_that_is_not_running(self, setup, docker):
+        """Compose answers with no engine behind it; what is said is
+        what to do, before anything is built."""
+        docker.fails["info"] = "failed to connect to the docker API"
+        with pytest.raises(module.SetupError, match="is not running"):
+            setup.run()
+        assert not setup.settings.written
+        assert not any(asked.startswith("build") for asked in docker.asked)
+
     def test_an_image_that_does_not_build_writes_no_settings(self, setup, docker):
         docker.fails["build -q"] = "COPY failed"
         with pytest.raises(module.SetupError, match="could not be built"):
@@ -203,6 +213,7 @@ class TestRunAgain:
         link = setup.run()
         assert setup.settings.path.read_text(encoding="utf-8") == before
         assert docker.asked == ["compose version",
+                                "info --format {{.ServerVersion}}",
                                 "compose --env-file deploy.env up -d --build"]
         assert handed(link)["email"] == "me@decentai.local"
 
@@ -240,7 +251,7 @@ class TestAServersSettings:
         with pytest.raises(module.SetupError, match="is a server's"):
             server.run()
         assert server.settings.path.read_text(encoding="utf-8") == before
-        assert docker.asked == ["compose version"]
+        assert docker.asked == ["compose version", "info --format {{.ServerVersion}}"]
 
     def test_it_gives_no_address_that_signs_in(self, server):
         with pytest.raises(module.SetupError, match="is a server's"):

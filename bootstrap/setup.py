@@ -300,6 +300,15 @@ class Setup:
             raise SetupError(
                 "Docker with Compose is needed, and did not answer: "
                 + (said.strip().splitlines() or ["no answer"])[-1])
+        # Compose answers for itself with nothing behind it, so the
+        # engine is asked too: a build that finds none says so in
+        # Docker's words, which name a pipe and not what to do.
+        code, _ = self.engine.ask(["info", "--format", "{{.ServerVersion}}"])
+        if code != 0:
+            raise SetupError(
+                "Docker is installed and is not running. Start Docker "
+                "Desktop — or the Docker service, on Linux — and run this "
+                "again.")
 
     def _must_be_local(self) -> None:
         address = self._address()
