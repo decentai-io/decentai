@@ -1,4 +1,5 @@
 import { Component, OnDestroy, OnInit } from '@angular/core';
+import { Router } from '@angular/router';
 
 import { AgentOffer, AgentsService } from 'src/app/services/agents.service';
 import { Group, GroupService } from 'src/app/services/group.service';
@@ -79,6 +80,7 @@ export class AgentsComponent extends DataPageBase implements OnInit, OnDestroy {
     private profile: ProfileService,
     private secrets: SecretsService,
     private groupService: GroupService,
+    private router?: Router,
   ) {
     super();
   }
@@ -375,19 +377,14 @@ export class AgentsComponent extends DataPageBase implements OnInit, OnDestroy {
     }
   }
 
-  /** Take the version waiting at the agent's source. */
-  async update(agent: AgentOffer): Promise<void> {
-    this.busyId = agent.agent_id;
-    try {
-      const result = await this.service.install(agent.agent_id);
-      if (result.error) return this.fail(result.error);
-      await this.reload();
-      await this.countCredentials();
-      if (this.openAgent) this.openCredentials = this.credentials(this.openAgent);
-      this.flash(`${agent.name || agent.agent_id} updated.`);
-    } finally {
-      this.busyId = '';
-    }
+  /** The version waiting at the agent's source, opened where it is
+   *  read: an update is a new approval, and approving is on the page
+   *  that says what the update changes and nowhere else. Nothing is
+   *  installed from here. */
+  update(agent: AgentOffer): void {
+    void this.router?.navigate(['/agents/marketplace'], {
+      queryParams: { review: agent.agent_id },
+    });
   }
 
   // ── Choosing several at once ────────────────────────────────────────

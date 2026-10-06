@@ -1,4 +1,5 @@
 import { Component, OnInit } from '@angular/core';
+import { ActivatedRoute } from '@angular/router';
 import {
   AgentSource, AgentsService, CatalogEntry,
 } from 'src/app/services/agents.service';
@@ -67,6 +68,7 @@ export class MarketplaceComponent extends DataPageBase implements OnInit {
     private service: AgentsService,
     private profiles: ProfileService,
     public auth: AuthService,
+    private route?: ActivatedRoute,
   ) {
     super();
   }
@@ -78,6 +80,25 @@ export class MarketplaceComponent extends DataPageBase implements OnInit {
   async ngOnInit(): Promise<void> {
     await this.load();
     this.loading = false;
+    const wanted = this.route?.snapshot.queryParamMap.get('review');
+    if (wanted) await this.openReviewOf(wanted);
+  }
+
+  /** An installed agent's own page asked for its update to be read
+   *  (`?review=<the agent's ref>`): its source is opened and the review
+   *  with it. An agent no source lists any more has nothing to review,
+   *  and the page says so. */
+  async openReviewOf(agentRef: string): Promise<void> {
+    for (const source of this.sources) {
+      const entry = this.entriesFor(source)
+        .find((candidate) => candidate.agent_ref === agentRef);
+      if (entry) {
+        this.select(source);
+        await this.openReview(source, entry);
+        return;
+      }
+    }
+    this.fail('No source lists that agent any more: there is nothing to review.');
   }
 
   private async load(): Promise<void> {

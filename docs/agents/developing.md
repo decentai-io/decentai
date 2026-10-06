@@ -142,7 +142,7 @@ else. So the loop is:
 
 1. Change your agent, bump `agent.version`, and `git commit`.
 2. On the source, press the refresh button (**Refresh catalog**).
-3. On your agent, take the **Update** it offers. That button installs the waiting version at once; to read what the update changes first, use **Review update** on its card in the marketplace.
+3. On your agent, press **Review update**: it opens what the new version declares and what it changes, and **Approve update** installs it.
 
 Bump the version for every change you want to try, a change to the code
 alone included. An update is offered when the manifest in the source

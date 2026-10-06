@@ -211,6 +211,57 @@ class TestAScreensFrame:
         assert self.shown(SCREEN_FRAME_MAX_BYTES + 1) == []
 
 
+class TestAScreenEndsWithItsCall:
+    """A screen is a call's. One the function showed and never closed
+    is closed for it when the call is over, so that a picture nobody
+    is behind does not stand in the chat as though something ran."""
+
+    SHOWS = textwrap.dedent("""\
+        from decentai_sdk.base import AgentBase, ToolBase
+
+        PNG = bytes.fromhex("89504e470d0a1a0a") + b"x" * 64
+
+        class MainTool(ToolBase):
+            id = "main"
+
+            async def run(self, call):
+                what = call.inputs.get("what")
+                await call.screen.show(PNG, 800, 600, mime="image/png")
+                if what == "closes":
+                    await call.screen.close()
+                if what == "raises":
+                    raise RuntimeError("it broke")
+                return {"shown": True}, "success"
+
+        class DemoAgent(AgentBase):
+            def tools(self):
+                return [MainTool(self)]
+    """)
+
+    def told(self, tmp_path, what):
+        sent = []
+
+        async def sink(kind, frame, source):
+            sent.append(kind)
+
+        write_agent(tmp_path, "demo", files={"agent.py": self.SHOWS})
+        agents, errors = load_agents(tmp_path)
+        assert errors == {}, errors
+        agent = agents["demo"]
+        result, status = run(FunctionExecutor(screen_sink=sink).invoke(
+            agent, "demo.main.run", {"what": what}, chat_level=2))
+        return sent, status
+
+    def test_one_left_open_is_closed_when_the_function_returns(self, tmp_path):
+        assert self.told(tmp_path, "leaves") == (["frame", "closed"], "success")
+
+    def test_one_left_open_is_closed_when_the_function_fails(self, tmp_path):
+        assert self.told(tmp_path, "raises") == (["frame", "closed"], "error")
+
+    def test_one_the_function_closed_is_not_closed_twice(self, tmp_path):
+        assert self.told(tmp_path, "closes") == (["frame", "closed"], "success")
+
+
 class TestTheLineBothEndsRead:
     def test_the_worker_reads_as_long_a_line_as_the_runtime_does(self):
         """Shorter on the worker's side, a line the runtime was right

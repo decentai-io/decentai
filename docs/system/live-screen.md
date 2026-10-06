@@ -87,7 +87,10 @@ the chat the page is told `screen_unavailable`.
   again. Enter on the picture takes over; Esc hands back. A hand on a
   tab takes control first.
 - **The last frame stays** after a call ends, marked idle, until the
-  next run replaces it. The panel can be minimised, hidden, and opened
+  next run replaces it. The page is told the call ended whether or not
+  the function closed its screen: a screen is its call's, and the
+  runtime closes one a call left open
+  (`FunctionExecutor._end_screen`). The panel can be minimised, hidden, and opened
   again from the header.
 - **An address box and the tabs.** The person types an address to go
   to, and switches, closes or opens a tab; each is sent as input.

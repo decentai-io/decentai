@@ -163,7 +163,7 @@
             <button class="btn primary sm" type="button"
                     *ngIf="canInstall && agent.status === 'update_available'"
                     (click)="update(agent)" [disabled]="busyId === agent.agent_id">
-              Update
+              Review update
             </button>
           </footer>
         </article>
