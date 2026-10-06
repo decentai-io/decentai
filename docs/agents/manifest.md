@@ -190,7 +190,7 @@ implementation:
 | Key | Required | Rule |
 |---|---|---|
 | `entrypoint` | yes | `<module>:<ClassName>`, e.g. `agent:NoteAgent`. The module is a file in the agent's folder. |
-| `dependencies` | no | A list of pip requirements: `"humanize>=4.9,<5"`. Installed into an environment apart from the platform's own; agents that declare the same list share one. A requirement that begins with `-` (an option such as `--index-url`) is not installed: the manifest is read and approved all the same, and the agent then fails to load, with the reason on its page. |
+| `dependencies` | no | A list of pip requirements: `"humanize>=4.9,<5"`. Installed into an environment apart from the platform's own; agents that declare the same list share one. A requirement that begins with `-` (an option such as `--index-url`) is refused. |
 
 The SDK (`decentai_sdk`) is always there; do not list it.
 

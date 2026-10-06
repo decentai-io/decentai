@@ -91,8 +91,9 @@ chat-bound, and the records are the parent's document's — `state` and
 are. What a child tells the audience travels as the parent's events,
 each carrying `child`; storage, the audit record, schedules and the
 contract are the chat's and take no thread — a sub-assistant cannot
-schedule, since a row of its own would not be the chat's and the
-backend refuses it. What
+schedule or remove a schedule, and is told so when it asks
+(`Assistant.NOT_A_HELPERS`): a row of its own would not be the chat's.
+What
 the person reads as the chat never includes a thread's messages; a
 client that wants to show a child's thread asks for it by name.
 

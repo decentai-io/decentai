@@ -345,6 +345,35 @@ class TestTheChildsLimits:
         assert services.memories.get("chat_1") in (None, [])
 
 
+    def test_a_child_cannot_schedule_and_is_told_what_to_do_instead(self):
+        """A schedule is the chat's. A helper that asked for one was
+        refused by the backend, as a write that is not the chat's,
+        with words about a row; it is told here, in its own."""
+        session, services = build([
+            action(action="spawn", goal="Try to set a clock."),
+            action(action="finish"),
+            action(action="schedule", note="check again", after_seconds=60),
+            action(action="unschedule", schedule_id="sch_1"),
+            action(action="say", text="I cannot do those."),
+            action(action="finish", summary="Declined both."),
+            action(action="say", text="Noted."),
+            action(action="finish"),
+        ])
+
+        async def scenario():
+            await session.open()
+            await session.deliver_user("go")
+            await session.wait_idle()
+
+        run(scenario())
+        child_id = f"chat_1/{child_of(session).child}"
+        observations = [m["content"]
+                        for m in services.states[child_id]["messages"]
+                        if m["content"].startswith("OBSERVATION")]
+        assert "not a helper's to set or remove" in observations[0]
+        assert "not a helper's to set or remove" in observations[1]
+
+
 class TestHydration:
     def test_a_parent_hydrated_mid_spawn_finds_its_child(self):
         services = SimSessionServices()          # approvals HELD open

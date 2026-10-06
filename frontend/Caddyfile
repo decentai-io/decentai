@@ -5,6 +5,28 @@
 # bare "localhost" or IP gets a self-signed certificate from Caddy's
 # internal CA. Behind a load balancer that already terminates TLS this
 # is ":80", and the Host header arrives intact for the matchers below.
+
+# ── Whose word is taken for a client's address ──────────────────────
+#
+# Whatever connects here says where its request came from
+# (X-Forwarded-For), and anybody can say anything. The word is taken
+# only from the addresses named in TRUSTED_PROXIES — the load balancer
+# in front, by its range — and from nobody where none is named: the
+# backend is then told the address that connected, which is the truth.
+#
+# Without it, behind a balancer, every person is the balancer to the
+# backend: the sign-in lockout that counts by address counts them as
+# one, and a session's record names the balancer.
+#
+# The default names this container itself, which is nobody: a browser
+# on the same computer arrives from the engine's own address, and is
+# not to be believed about where it is.
+{
+	servers {
+		trusted_proxies static {$TRUSTED_PROXIES:127.0.0.1/32}
+	}
+}
+
 {$SITE_ADDRESS:localhost} {
 	encode gzip
 

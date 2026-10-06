@@ -1537,7 +1537,17 @@ class Assistant:
         return {"skill": ref, "title": str(skill.get("title") or ""),
                 "text": body}
 
+    #: What a helper is told when it asks for the clock. A schedule is
+    #: the chat's: a row of a helper's own would be nobody's, and the
+    #: backend refuses it — said here, in words the helper can act on,
+    #: and not as the refusal of a write.
+    NOT_A_HELPERS = ("A schedule is the chat's, and not a helper's to "
+                     "set or remove. Say in your report what should be "
+                     "scheduled; the assistant you work for can.")
+
     async def _schedule(self, action: Dict[str, Any]) -> Dict[str, Any]:
+        if self.finish_sink is not None:
+            return {"error": self.NOT_A_HELPERS}
         if self.clock is None:
             return {"error": "No clock serves this chat."}
         spec = {k: v for k, v in action.items() if k != "action"}
@@ -1560,6 +1570,8 @@ class Assistant:
         schedule_id = str(action.get("schedule_id") or "").strip()
         if not schedule_id:
             return {"error": "unschedule needs a schedule_id."}
+        if self.finish_sink is not None:
+            return {"error": self.NOT_A_HELPERS}
         if self.clock is None:
             return {"error": "No clock serves this chat."}
         try:
