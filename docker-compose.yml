@@ -97,6 +97,8 @@ services:
       AI_RUNTIME_HOST:
       AI_RUNTIME_PORT:
       AI_RUNTIME_EGRESS_PORT:
+      # 0 turns off the filter on what system calls a worker may make
+      AI_RUNTIME_SYSCALL_FILTER:
       # where an agent's declared packages come from
       AI_RUNTIME_PACKAGE_HOSTS:
       PIP_INDEX_URL:

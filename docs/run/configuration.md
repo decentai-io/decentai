@@ -120,6 +120,7 @@ gone. Back them up with it.
 | `AI_RUNTIME_TOKEN_AUDIENCE` | `decentai-ai-runtime` | The audience claim the runtime expects. |
 | `LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING` or `ERROR`. |
 | `AI_RUNTIME_EGRESS_PORT` | `8002` | Where the proxy that confined agents connect through listens: on this machine only where workers run beside the runtime, and on the runtime's container, reached over the network it shares with the agents' container and nothing else, in the Compose stack. The firewall rule of the container workers run in is written for the same port when it starts. |
+| `AI_RUNTIME_SYSCALL_FILTER` | on | `0` turns off the filter on the system calls a worker may make ([the sandbox](../system/sandbox.md#system-calls--seccomp)): for an agent whose package needs a call the filter refuses, until one of the two is mended. The runtime says at start that it is off. |
 | `AI_RUNTIME_PACKAGE_HOSTS` | `pypi.org, files.pythonhosted.org` | Where packages come from: the hosts the builder of an agent's declared packages may reach, and the whole of them. Separated by commas. |
 | `AI_RUNTIME_AGENTS_SPAWNER` | empty | Where the agents' container answers, as `host:port`. `docker-compose.yml` writes `agents:8003` itself and does not read it from `deploy.env`. Empty starts agents' workers beside the runtime, in its own container or on a developer's machine. |
 

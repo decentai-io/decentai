@@ -359,6 +359,48 @@ class TestFence:
             assert confinement.fence_holds_connections is connections
             assert confinement.fence_keeps_sockets is sockets
 
+    def test_a_worker_is_refused_the_calls_it_has_no_use_for(
+            self, helper, tmp_path):
+        """Where the helper can put the filter on (seccomp), every
+        worker is started with the word that asks for it."""
+        helper.says = "landlock=3\nseccomp=1\n"
+        confinement = Confinement(tmp_path)
+        assert confinement.check() == []
+        assert confinement.filters_calls is True
+        argv = confinement.place("agt_aaaa").argv(["/envs/x/bin/python"])
+        assert "s:1" in argv[7:argv.index("--")]
+
+    def test_the_filter_does_not_wait_on_the_fence(self, helper, tmp_path):
+        """A kernel with no Landlock fences no files, and filters
+        calls all the same."""
+        helper.says = "landlock=0\nseccomp=1\n"
+        confinement = Confinement(tmp_path)
+        assert confinement.check() == []
+        argv = confinement.place("agt_aaaa").argv(["/envs/x/bin/python"])
+        assert argv[7:argv.index("--")] == ["s:1"]
+
+    def test_a_machine_that_cannot_filter_is_not_asked_to(
+            self, helper, tmp_path):
+        for said in ("landlock=3\nseccomp=0\n", "landlock=3\n"):
+            helper.says = said
+            confinement = Confinement(tmp_path)
+            assert confinement.check() == []
+            assert confinement.filters_calls is False
+            argv = confinement.place("agt_aaaa").argv(["/envs/x/bin/python"])
+            assert "s:1" not in argv
+
+    def test_a_deployment_may_turn_the_filter_off(
+            self, helper, tmp_path, monkeypatch):
+        """For an agent whose package needs a call the filter refuses,
+        until one of the two is mended."""
+        monkeypatch.setenv("AI_RUNTIME_SYSCALL_FILTER", "0")
+        helper.says = "landlock=3\nseccomp=1\n"
+        confinement = Confinement(tmp_path)
+        assert confinement.check() == []
+        assert confinement.can_filter_calls is True
+        assert confinement.filters_calls is False
+        assert "s:1" not in confinement.place("agt_aaaa").argv(["/x/python"])
+
     def test_the_rules_stand_before_the_program(self, helper, tmp_path):
         helper.says = "landlock=1\n"
         confinement = Confinement(tmp_path)

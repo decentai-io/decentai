@@ -117,9 +117,16 @@ and updating. Where to look is at the end.
   | *Workers' files are NOT fenced here* | the kernel has no Landlock | a kernel from 5.13 on, with Landlock among its security modules |
   | *Agents are NOT kept from each other's sockets here* | the kernel's Landlock is before its sixth version | a kernel from 6.12 on. Until then two agents that both mean to can pass bytes to each other |
   | *Builds are NOT fenced here* | Landlock's first version | a kernel from 5.19 on |
+  | *Workers' system calls are NOT filtered here* | `AI_RUNTIME_SYSCALL_FILTER=0` is set, or the machine is neither x86-64 nor arm64 | unset it; on another kind of machine there is no filter |
 
   Each is a part of [the sandbox](../system/sandbox.md) and says there
   what it does and does not hold.
+- **An agent's package fails with *Operation not permitted*, in a call
+  that is not about a file or a host.** It asked the kernel for
+  something a worker is refused
+  ([the sandbox](../system/sandbox.md#system-calls--seccomp)). If the
+  agent cannot do without it, `AI_RUNTIME_SYSCALL_FILTER=0` turns the
+  filter off for every agent, until the package is mended.
 - **An agent was ended.** *…was ended because the agents ran out of
   memory*: the agents share what `AGENTS_MEMORY` gives them, and the
   one holding most is the one ended
