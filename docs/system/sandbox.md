@@ -194,6 +194,39 @@ What the fence is not:
 - **A kernel without Landlock fences nothing.** The runtime says so at
   start; a worker is still its own user there.
 
+### What the same fence holds besides files
+
+Landlock grew with the kernel, and the helper asks for what the kernel
+it runs on has. The runtime learns the version at start and asks for
+no more than that.
+
+| Landlock | Kernel | What a fenced worker is held to |
+|---|---|---|
+| 1 | 5.13 | the paths named for it |
+| 2 | 5.19 | and may move a file between its own folders |
+| 3 | 6.2 | and may not empty a file it may not write |
+| 4 | 6.7 | and connects over TCP to the proxy's port and no other |
+| 6 | 6.12 | and reaches no socket that has a name and no file, unless one of its own made it |
+
+**A socket with a name and no file is nobody's.** It has no owner and
+no permissions, the firewall rule is about addresses and does not see
+it, and every agent's worker runs in the one container. Without the
+fence, two agents that both mean to can pass bytes to each other over
+one — an agent that connects nowhere handing what it read to an agent
+that connects anywhere. From Landlock's sixth version a fenced worker
+connects to such a socket only where the worker itself, or something
+it started, made it. A worker and what it starts are not kept from
+each other.
+
+**The port is a second hold, not the first.** The firewall rule is
+what leaves the proxy as the only way out (below). Where the kernel
+can, the fence says the same of TCP: a worker connects to the proxy's
+port, and to no other port anywhere. It is asked for only where a
+proxy is serving, and it matters most where the container was not
+given the right to set the rule. Alone it is less than the rule: it
+names a port and not an address, and it is about TCP, so it does not
+stop a name being looked up.
+
 ## Packages — the builder
 
 A manifest declares the packages its agent needs, and the runtime
@@ -492,8 +525,11 @@ Landlock the kernel has, prepares a place from end to end, and tries
 the network as a worker would. It writes what it found — *Workers are
 confined*, or *Workers are NOT confined here* and why; *Workers' files
 are fenced*, or that they are not; *Workers' connections are fenced*,
-or that they are not. Where workers cannot be confined it runs agents
-unconfined.
+or that they are not. On a kernel whose Landlock is before its sixth
+version it says that agents are not kept from each other's sockets;
+where there is no firewall rule and the fence holds workers to the
+proxy's port, it says that, and what that does not stop. Where workers
+cannot be confined it runs agents unconfined.
 
 When a runtime tells the platform an agent's code is ready on it, it
 says with that word what it holds the agent to: a user of its own, its
@@ -535,6 +571,9 @@ enforced in this install; and nothing to configure.
   environment's interpreter starts — always as a worker or the
   builder, confined. The runtime never starts that interpreter once a
   package is in it: what it unpacks, it unpacks with its own.
+- **On a kernel before 6.12, it does not keep two agents from a
+  socket that has a name and no file.** Both must mean to: one has to
+  open it and the other to connect. The runtime says so at start.
 - **It does not hide that other agents' processes exist.** A worker
   can list the processes of its container — the spawner's and other
   agents', never the runtime's — and read how they were started; a
@@ -552,7 +591,9 @@ enforced in this install; and nothing to configure.
   test passes when the attempt is refused: read the runtime's settings,
   signal the runtime, write into the store, read another agent's home,
   connect past the proxy, connect to an undeclared host, connect to the
-  backend, start more processes than allowed, start the helper again.
+  backend, start more processes than allowed, start the helper again,
+  connect to a socket with a name and no file that somebody else
+  opened.
   A package that is hostile while it is built, from an index on the
   same machine, reads nobody's settings, writes nothing into the
   environment, reaches the index and no other host, and is ended when

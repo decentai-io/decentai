@@ -29,6 +29,13 @@ class Helper:
         return 0, self.says if argv[1] == "check" else ""
 
 
+class Proxy:
+    """Stands where the proxy would: a port, and nothing serving."""
+
+    def __init__(self, port):
+        self.port = port
+
+
 @pytest.fixture
 def helper():
     stand_in = Helper()
@@ -291,6 +298,66 @@ class TestFence:
         assert second.check() == []
         assert second.place("agt_aaaa").fence() != []
         assert second.builder_place().fence() != []
+
+    def test_the_fence_holds_a_worker_to_the_proxys_port(
+            self, helper, tmp_path):
+        """Landlock's fourth version names the ports a program may
+        connect to: the proxy's, and no other."""
+        helper.says = "landlock=4\n"
+        confinement = Confinement(tmp_path)
+        assert confinement.check() == []
+        confinement.egress = Proxy(8002)
+        place = confinement.place("agt_aaaa")
+        assert [rule for rule in place.fence() if rule.startswith("c:")] == ["c:8002"]
+        argv = place.argv(["/envs/x/bin/python"])
+        assert "c:8002" in argv[7:argv.index("--")]
+
+    def test_an_older_fence_is_not_asked_to_hold_connections(
+            self, helper, tmp_path):
+        """The helper refuses what the kernel cannot do, so it is not
+        asked."""
+        helper.says = "landlock=3\n"
+        confinement = Confinement(tmp_path)
+        assert confinement.check() == []
+        confinement.egress = Proxy(8002)
+        rules = confinement.place("agt_aaaa").fence()
+        assert rules and not any(rule.startswith("c:") for rule in rules)
+
+    def test_a_worker_with_no_proxy_keeps_the_ways_it_had(
+            self, helper, tmp_path):
+        """A port is named only where there is a proxy on it: with
+        none, holding a worker to a port would leave it nothing."""
+        helper.says = "landlock=6\n"
+        confinement = Confinement(tmp_path)
+        assert confinement.check() == []
+        rules = confinement.place("agt_aaaa").fence()
+        assert rules and not any(rule.startswith("c:") for rule in rules)
+
+    def test_the_proof_of_the_firewall_rule_goes_without(
+            self, helper, tmp_path):
+        """What is asked there is whether the rule holds a worker; a
+        worker held by its own fence would answer for the rule."""
+        helper.says = "landlock=6\n"
+        confinement = Confinement(tmp_path)
+        assert confinement.check() == []
+        confinement.egress = Proxy(8002)
+        place = confinement.verification_place()
+        rules = place.fence(held=False)
+        assert rules and not any(rule.startswith("c:") for rule in rules)
+        place.run(["/usr/bin/true"], held=False)
+        asked = next(line for line in helper.asked if "/usr/bin/true" in line)
+        assert not any(word.startswith("c:") for word in asked)
+
+    def test_what_the_kernel_offers_is_known_by_its_version(
+            self, helper, tmp_path):
+        for version, connections, sockets in (
+                (3, False, False), (4, True, False), (5, True, False),
+                (6, True, True), (7, True, True)):
+            helper.says = f"landlock={version}\n"
+            confinement = Confinement(tmp_path)
+            assert confinement.check() == []
+            assert confinement.fence_holds_connections is connections
+            assert confinement.fence_keeps_sockets is sockets
 
     def test_the_rules_stand_before_the_program(self, helper, tmp_path):
         helper.says = "landlock=1\n"

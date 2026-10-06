@@ -27,12 +27,16 @@
  *       to (/tmp, /dev/shm), as that user.
  *
  *   decentai-spawn run <user> <home> <processes> <open-files> <file-bytes>
- *                      [r:<path> | w:<path>]... -- <program> [arguments...]
+ *                      [r:<path> | w:<path> | c:<port>]... -- <program> [arguments...]
  *       Become <user> and then <program>. With paths named, the
  *       program and everything it starts may read and run what is
  *       under an r: path, do anything under a w: path, and open
  *       nothing else (Landlock). A path that is not there is passed
- *       over; a kernel that cannot do this is a refusal.
+ *       over; a kernel that cannot do this is a refusal. With a c:
+ *       port named, they connect over TCP to that port and to no
+ *       other; a kernel that cannot do that is a refusal too. Where
+ *       the kernel can, a fenced program also reaches no socket that
+ *       has a name and no file, unless one of its own made it.
  *
  * What it refuses, whoever asks: a caller that is not the runtime's
  * user, a user outside the range kept for workers, and a folder that is
@@ -101,6 +105,30 @@
 #ifndef LANDLOCK_ACCESS_FS_TRUNCATE
 #define LANDLOCK_ACCESS_FS_TRUNCATE (1ULL << 14)
 #endif
+#ifndef LANDLOCK_ACCESS_NET_CONNECT_TCP
+#define LANDLOCK_ACCESS_NET_CONNECT_TCP (1ULL << 1)
+#endif
+#ifndef LANDLOCK_SCOPE_ABSTRACT_UNIX_SOCKET
+#define LANDLOCK_SCOPE_ABSTRACT_UNIX_SOCKET (1ULL << 0)
+#endif
+/* The kind of rule that names a port; the header's own name for it is
+ * an enumerator, which cannot be asked after. */
+#define RULE_OF_A_PORT 2
+#define LAST_PORT 65535
+
+/* What a fence is made from and what names a port in it, as the
+ * kernel reads them today. The header's own may be older and shorter;
+ * a kernel that is older reads a longer one as long as what it does
+ * not know is zero, which it is wherever that kernel was not asked. */
+struct fence_attr {
+    __u64 handled_access_fs;
+    __u64 handled_access_net;
+    __u64 scoped;
+};
+struct port_attr {
+    __u64 allowed_access;
+    __u64 port;
+};
 
 /* Every right the first version knows. */
 #define FENCED_AT_FIRST ( \
@@ -276,12 +304,16 @@ static int landlock_version(void)
  */
 static void fence(int count, char **rules)
 {
-    struct landlock_ruleset_attr fenced;
+    struct fence_attr fenced;
     int version = landlock_version();
-    int ruleset, index;
+    int ruleset, index, ports = 0;
 
     if (version < 1)
         refuse("this kernel cannot fence files (no Landlock)");
+    for (index = 0; index < count; index++)
+        ports += rules[index][0] == 'c';
+    if (ports > 0 && version < 4)
+        refuse("this kernel cannot hold connections to a port (Landlock before its fourth version)");
 
     memset(&fenced, 0, sizeof(fenced));
     fenced.handled_access_fs = FENCED_AT_FIRST;
@@ -289,6 +321,15 @@ static void fence(int count, char **rules)
         fenced.handled_access_fs |= LANDLOCK_ACCESS_FS_REFER;
     if (version >= 3)
         fenced.handled_access_fs |= LANDLOCK_ACCESS_FS_TRUNCATE;
+    /* Connecting is taken away only from one who was told where it
+     * may still connect: a worker with no way out named keeps the
+     * ways it had. */
+    if (ports > 0)
+        fenced.handled_access_net = LANDLOCK_ACCESS_NET_CONNECT_TCP;
+    /* A socket with a name and no file is nobody's, and every user of
+     * this machine may connect to it: another agent's among them. */
+    if (version >= 6)
+        fenced.scoped = LANDLOCK_SCOPE_ABSTRACT_UNIX_SOCKET;
 
     ruleset = (int)syscall(SYS_landlock_create_ruleset,
                            &fenced, sizeof(fenced), 0);
@@ -299,8 +340,21 @@ static void fence(int count, char **rules)
         struct landlock_path_beneath_attr beneath;
         struct stat about;
         const char *path = rules[index] + 2;
-        int opened = open(path, O_PATH | O_CLOEXEC);
+        int opened;
 
+        if (rules[index][0] == 'c') {
+            struct port_attr way_out;
+
+            memset(&way_out, 0, sizeof(way_out));
+            way_out.allowed_access = LANDLOCK_ACCESS_NET_CONNECT_TCP;
+            way_out.port = (__u64)number(path, "the port");
+            if (syscall(SYS_landlock_add_rule, ruleset,
+                        RULE_OF_A_PORT, &way_out, 0) != 0)
+                fail(path);
+            continue;
+        }
+
+        opened = open(path, O_PATH | O_CLOEXEC);
         if (opened < 0) {
             if (errno == ENOENT)
                 continue;
@@ -523,7 +577,7 @@ static int run(int count, char **arguments)
 {
     static const char usage[] =
         "run <user> <home> <processes> <open-files> <file-bytes> "
-        "[r:<path> | w:<path>]... -- <program> [arguments...]";
+        "[r:<path> | w:<path> | c:<port>]... -- <program> [arguments...]";
     uid_t user;
     struct stat about;
     int spool = 0, home, rules, program;
@@ -533,6 +587,13 @@ static int run(int count, char **arguments)
     for (rules = 6; rules < count && strcmp(arguments[rules], "--") != 0; rules++) {
         const char *rule = arguments[rules];
 
+        if (rule[0] == 'c' && rule[1] == ':') {
+            long port = number(rule + 2, "the port");
+
+            if (port < 1 || port > LAST_PORT)
+                refuse(usage);
+            continue;
+        }
         if ((rule[0] != 'r' && rule[0] != 'w') || rule[1] != ':' || rule[2] != '/')
             refuse(usage);
     }

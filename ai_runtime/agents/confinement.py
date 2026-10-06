@@ -247,12 +247,13 @@ class WorkerPlace:
             environment: Optional[Dict[str, str]] = None,
             timeout: Optional[float] = None,
             feed: Optional[str] = None, errors: str = Spawner.MERGE,
-            cwd: str = "/") -> tuple:
+            cwd: str = "/", held: bool = True) -> tuple:
         """One program, run here to its end as this place's user.
         Returns (return code, what it said). Whatever it started ends
         with it, and one that outlasts ``timeout`` is ended the only
-        way another user's program can be: through the helper."""
-        line = self.argv(argv, reads)
+        way another user's program can be: through the helper.
+        ``held`` is ``argv``'s."""
+        line = self.argv(argv, reads, held)
         began = time.monotonic()
         code = None
         try:
@@ -325,31 +326,43 @@ class WorkerPlace:
         return found
 
     def argv(self, worker_argv: Sequence[str],
-             reads: Sequence[str | Path] = ()) -> List[str]:
+             reads: Sequence[str | Path] = (), held: bool = True) -> List[str]:
         """The spawn line: the helper, which becomes the worker.
 
         ``reads`` is what this worker runs from — its package and its
         environment. Where the kernel can fence files, the worker
         opens those, the system, its own home and spool, and nothing
-        else."""
+        else. ``held`` is whether the fence holds it to the proxy's
+        port as well, where the kernel can; only the proof that the
+        firewall rule does goes without."""
         return [
             str(self.confinement.helper), "run", str(self.user), str(self.home),
             str(Confinement.MAX_PROCESSES), str(Confinement.MAX_OPEN_FILES),
-            str(Confinement.MAX_FILE_BYTES), *self.fence(reads),
+            str(Confinement.MAX_FILE_BYTES), *self.fence(reads, held),
             "--", *[str(a) for a in worker_argv],
         ]
 
-    def fence(self, reads: Sequence[str | Path] = ()) -> List[str]:
-        """The paths the worker may open, as the helper takes them:
-        ``r:`` to read and run, ``w:`` for everything. Empty where the
-        kernel cannot fence."""
+    def fence(self, reads: Sequence[str | Path] = (),
+              held: bool = True) -> List[str]:
+        """What the worker is fenced into, as the helper takes it:
+        ``r:`` a path to read and run, ``w:`` a path for everything,
+        and ``c:`` the one port it may connect to — the proxy's, where
+        there is a proxy and the kernel's Landlock holds connections.
+        Empty where the kernel cannot fence."""
         if not self.fenced:
             return []
         readable = [*Confinement.SYSTEM_READS, *Confinement.browsers(), *reads]
         writable = [self.home, self.spool, *Confinement.SYSTEM_WRITES]
+        proxy = self.confinement.egress
+        way_out = (
+            [f"c:{proxy.port}"]
+            if held and proxy is not None
+            and self.confinement.fence_holds_connections
+            else [])
         return (
             [f"r:{Path(path).as_posix()}" for path in readable]
             + [f"w:{Path(path).as_posix()}" for path in writable]
+            + way_out
         )
 
     @property
@@ -471,6 +484,14 @@ class Confinement:
         #: Whether a fenced program may move a file from one folder to
         #: another: Landlock's second version, and every one after.
         self.fence_lets_files_move = False
+        #: Whether the fence holds a program to the ports named for it:
+        #: Landlock's fourth version. A second hold beside the firewall
+        #: rule, and over TCP only.
+        self.fence_holds_connections = False
+        #: Whether a fenced program is kept from sockets that have a
+        #: name and no file, which every user may otherwise connect
+        #: to — another agent's among them: Landlock's sixth version.
+        self.fence_keeps_sockets = False
         #: The proxy workers are pointed at, once it is serving.
         self.egress: Optional[EgressProxy] = None
         #: Whether the proxy is the only way out: the container's
@@ -534,6 +555,11 @@ class Confinement:
                 "offered, and nothing stops an agent going around it. "
                 "The container was not given the right to set a "
                 "firewall rule.")
+            if self.fence_holds_connections:
+                self.logger.warning(
+                    "Workers' own fence holds them to the proxy's port "
+                    "over TCP all the same. It does not stop a name "
+                    "being looked up, nor anything that is not TCP.")
 
     #: What the verification user tries: the port it must not reach,
     #: then the proxy's. One word each.
@@ -565,11 +591,13 @@ class Confinement:
                     # Through the place's own run: the program is
                     # another user's, and only that ends it when it
                     # outlasts its time.
+                    # Not held by its own fence: what is asked is
+                    # whether the firewall rule holds without it.
                     _, said = place.run(
                         [sys.executable, "-I", "-c", self.REACH,
                          str(closed), str(self.egress.port)],
                         environment={"PATH": os.environ.get("PATH", "")},
-                        timeout=self.HELPER_TIMEOUT_SECONDS)
+                        timeout=self.HELPER_TIMEOUT_SECONDS, held=False)
                 finally:
                     place.clear()
         return said.split() == ["refused", "reached"]
@@ -651,6 +679,12 @@ class Confinement:
             confinement.logger.warning(
                 "Workers' files are NOT fenced here: this kernel has no "
                 "Landlock. An agent reads what any user may read.")
+        if confinement.fences and not confinement.fence_keeps_sockets:
+            confinement.logger.warning(
+                "Agents are NOT kept from each other's sockets here: "
+                "this kernel's Landlock is before its sixth version. "
+                "Two agents that both mean to can pass bytes to each "
+                "other over a socket that has a name and no file.")
         if confinement.fences and not confinement.fence_lets_files_move:
             confinement.logger.warning(
                 "Builds are NOT fenced here: this kernel's Landlock is "
@@ -674,6 +708,8 @@ class Confinement:
             return [self._refusal("check", code, said)]
         self.fences = self._landlock(said) >= 1
         self.fence_lets_files_move = self._landlock(said) >= 2
+        self.fence_holds_connections = self._landlock(said) >= 4
+        self.fence_keeps_sockets = self._landlock(said) >= 6
         return self.verification_place().prepare()
 
     @staticmethod
