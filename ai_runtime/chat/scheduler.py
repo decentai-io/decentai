@@ -48,6 +48,9 @@ class Schedule:
     #: How much of a run's result the record keeps — enough to say what
     #: came back, never the payload.
     RESULT_CHARS = 400
+    #: The least a repeating row waits after a fire, whatever its next
+    #: run was computed to be.
+    SOONEST_AGAIN_SECONDS = 60.0
 
     def __init__(self, chat_id: str, mode: str,
                  function: str = "", inputs: Optional[dict] = None,
@@ -147,6 +150,11 @@ class Schedule:
             self.next_run_at = now + float(self.every_seconds)
         else:
             self.enabled = False
+        # Held here as well as where it is computed: a row whose next
+        # run is not after this one fires at every tick, and each fire
+        # may be a turn of the model.
+        if self.enabled and self.next_run_at <= now:
+            self.next_run_at = now + self.SOONEST_AGAIN_SECONDS
 
 
 class ScheduleRunner:
@@ -271,6 +279,9 @@ class Scheduler:
         #: schedule_id -> the fire of that row now under way. A row is
         #: never fired again while it is here.
         self._firing: Dict[str, asyncio.Task] = {}
+        #: schedule_id -> the chat that fire is for: the row may be
+        #: unscheduled while it fires, and the fire is still the chat's.
+        self._firing_for: Dict[str, str] = {}
         self.logger = RuntimeLoggerFactory.get_logger(self.__class__.__name__)
 
     # ------------------------------------------------------------------
@@ -290,6 +301,7 @@ class Scheduler:
             tasks.append(self._task)
             self._task = None
         self._firing = {}
+        self._firing_for = {}
         for task in tasks:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
@@ -300,8 +312,7 @@ class Scheduler:
         stopped and its row moves on. Returns how many were ended."""
         ended = 0
         for schedule_id, task in list(self._firing.items()):
-            schedule = self.find(schedule_id)
-            if schedule is not None and schedule.chat_id == chat_id:
+            if self._firing_for.get(schedule_id) == chat_id:
                 task.cancel()
                 ended += 1
         return ended
@@ -362,12 +373,34 @@ class Scheduler:
     def replace_for(self, chat_id: str, rows: List[Dict[str, Any]]) -> int:
         """One chat's rows, as the store now holds them — after a
         person paused, resumed, wrote or deleted one on the page
-        (``schedules_changed``, docs/reference/session-door.md). Nothing is
-        saved: the store is what changed, this is the clock catching
+        (``schedules_changed``, docs/reference/session-door.md), and every
+        time the chat dials, in case that word never arrived. Nothing
+        is saved: the store is what changed, this is the clock catching
         up. Returns how many rows the chat now has."""
+        held = {s.schedule_id: s for s in self.schedules
+                if s.chat_id == chat_id}
+        owed = set(self._owed)
         self.forget_chat(chat_id)
         fresh = [Schedule.from_dict(row) for row in rows
                  if str(row.get("chat_id") or "") == chat_id]
+        for schedule in fresh:
+            before = held.get(schedule.schedule_id)
+            if before is None or (schedule.last_run_at or 0) >= (
+                    before.last_run_at or 0):
+                continue
+            # These rows were read before the store had what the last
+            # fire did to this one (the read and the write crossed, or
+            # the write is still owed). What the person set is taken;
+            # what the fire did is kept, or the row would fire again.
+            schedule.last_run_at = before.last_run_at
+            schedule.runs = list(before.runs)
+            if schedule.next_run_at <= before.last_run_at:
+                schedule.next_run_at = before.next_run_at
+                if not before.enabled and not (
+                        before.cron or before.every_seconds):
+                    schedule.enabled = False      # a one-off, and done
+            if schedule.schedule_id in owed:
+                self._owed.add(schedule.schedule_id)
         self.schedules += fresh
         return len(fresh)
 
@@ -402,6 +435,7 @@ class Scheduler:
             task = asyncio.get_running_loop().create_task(
                 self._fire(schedule, now))
             self._firing[schedule.schedule_id] = task
+            self._firing_for[schedule.schedule_id] = schedule.chat_id
             started.append(task)
         if wait and started:
             await asyncio.gather(*started, return_exceptions=True)
@@ -450,10 +484,18 @@ class Scheduler:
             current.record_run(now, outcome)
             current.advance(now)
             # Firing is the side effect and writing is what keeps it
-            # from repeating after a restart.
-            await self._write(current)
+            # from repeating after a restart. A stop that lands while
+            # it is written does not undo the writing: it goes on, and
+            # is owed again at the next tick in case it did not land.
+            try:
+                await asyncio.shield(self._write(current))
+            except asyncio.CancelledError:
+                if self._firing.get(schedule.schedule_id) is None:
+                    raise  # the clock itself is stopping
+                self._owed.add(current.schedule_id)
         finally:
             self._firing.pop(schedule.schedule_id, None)
+            self._firing_for.pop(schedule.schedule_id, None)
 
     async def _write(self, schedule: Schedule) -> None:
         """What a fire did to one row, to the store."""

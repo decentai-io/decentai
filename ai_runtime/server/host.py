@@ -592,8 +592,11 @@ class SessionHost:
         self.services.grant(chat_id, credential)
         if self.clock is not None:
             try:
-                self.clock.adopt(
-                    await self.services.schedules.load_for(chat_id))
+                # As the store holds them now, and not only the rows
+                # that are new: a pause or a delete whose word never
+                # reached this process is caught up with here.
+                self.clock.replace_for(
+                    chat_id, await self.services.schedules.load_for(chat_id))
             except Exception as exc:
                 self.logger.warning(
                     f"Schedules for {chat_id} not loaded: {exc}")
