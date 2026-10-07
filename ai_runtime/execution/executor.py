@@ -307,6 +307,12 @@ class FunctionExecutor:
             approved = await self._request_approval(
                 agent, canonical_name, level, chat_level, inputs
             )
+            if approved is None:
+                return {"error": (
+                    f"'{canonical_name}' needs the person's approval, and "
+                    f"they could not be asked just now. Nothing was run, "
+                    f"and nobody refused it."
+                )}, "error"
             if not approved:
                 return self._denial(canonical_name, level)
 
@@ -1249,7 +1255,9 @@ class FunctionExecutor:
         level: int,
         chat_level: int,
         inputs: Dict[str, Any],
-    ) -> bool:
+    ) -> Optional[bool]:
+        """Whether the person allowed it — or None when they could not
+        be asked at all, which is not their answer."""
         if self.approver is None:
             return False
         try:
@@ -1266,5 +1274,5 @@ class FunctionExecutor:
             }))
         except Exception as exc:
             self.logger.error(f"Approval request failed: {exc}")
-            return False
+            return None
 

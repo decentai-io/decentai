@@ -209,6 +209,14 @@ class Session:
         self._pumped = asyncio.Event()
         #: killed: what reaches it now is for the session built next
         self.dead = False
+        #: left as a crash leaves it (``abandon``): its cards stay open
+        #: on the record, for the process that comes next
+        self._abandoned = False
+        #: approval ids a call of THIS incarnation is waiting on
+        self._awaited: set = set()
+        #: decisions for a call a dead process parked, that arrived
+        #: while a cycle was running: settled when it comes to rest
+        self._decisions_owed: list = []
         self._running: Optional[asyncio.Task] = None
         self.logger = RuntimeLoggerFactory.get_logger(self.__class__.__name__)
 
@@ -422,7 +430,7 @@ class Session:
             # A site blocked on the page, or a list of packages changed:
             # the next call is held to the new word.
             self.safety = dict(safety)
-        for child in self.children.values():
+        for child in self.helpers():
             # Authority is inherited, never widened — and never kept
             # after it was withdrawn: a helper still running is held to
             # the same new word.
@@ -553,7 +561,7 @@ class Session:
         for call_id in list(self.screens):
             await self.assistant.executor.screen_input(
                 call_id, [{"type": "say", "text": said}])
-        for child in list(self.children.values()):
+        for child in self.helpers():
             await child._steer(text, attachments)
 
     async def deliver_event(self, event: Dict[str, Any]) -> None:
@@ -610,16 +618,22 @@ class Session:
             return
         parked = self.assistant.state.parked
         if (parked and parked.get("approval_id") == approval_id
-                and self.idle):
+                and approval_id not in self._awaited):
             # A foreground park whose beat died with the last process:
-            # the same resume, the observation the invoke would have
-            # produced, and the cycle wakes to read it.
-            await self._resume_parked(parked, approved, action_hash)
+            # nothing in this one is waiting on it. The same resume,
+            # the observation the invoke would have produced, and the
+            # cycle wakes to read it — now, or when the cycle that is
+            # running comes to rest (``_advance``).
+            if self.idle:
+                await self._resume_parked(parked, approved, action_hash)
+            else:
+                self._decisions_owed.append(
+                    (approval_id, approved, action_hash))
             self._pump()
             return
         # Whose card is it: a live child's resumes through that child,
         # the same paths.
-        for child in list(self.children.values()):
+        for child in self.helpers():
             if child.holds_approval(approval_id):
                 await child.deliver_approval(approval_id, approved,
                                              action_hash)
@@ -640,7 +654,7 @@ class Session:
         that died, and the page hears the question expired rather than
         the answer vanishing. Words for an agent's question; the chosen
         files, as a list, for the assistant's files question."""
-        for child in list(self.children.values()):
+        for child in self.helpers():
             if approval_id in child.questions:
                 await child.deliver_answer(approval_id, answer)
                 return
@@ -652,6 +666,13 @@ class Session:
             await self._emit({"event": "question_closed",
                               "approval_id": approval_id,
                               "status": "expired"})
+
+    def helpers(self) -> list:
+        """The live helpers that have a mind. One is listed from the
+        moment it is made, and opening it takes several calls to the
+        platform: until then there is nothing in it to ask."""
+        return [child for child in list(self.children.values())
+                if child.assistant is not None]
 
     def holds_approval(self, approval_id: str) -> bool:
         state = self.assistant.state
@@ -669,7 +690,8 @@ class Session:
             {"approval_id": job.approval_id, "job_id": job.job_id,
              "function": job.function, "agent": job.agent_id,
              "agent_name": self._agent_name(job.agent_id)}
-            for job in state.active_jobs() if job.approval_id
+            for job in state.active_jobs()
+            if job.approval_id and job.status == WAITING_APPROVAL
         ]
         if state.parked:
             agent_id = str(state.parked.get("agent_id") or "")
@@ -726,7 +748,7 @@ class Session:
     #: goes on without it
     QUIT_BROWSER_SECONDS = 20.0
 
-    async def kill(self) -> Dict[str, int]:
+    async def kill(self, browser: bool = True) -> Dict[str, int]:
         """The kill switch: nothing waits for a beat to finish.
 
         The cycle and every job task are cancelled where they stand — a
@@ -750,6 +772,10 @@ class Session:
             except (asyncio.CancelledError, Exception):
                 pass
         tasks = [task for task in self.assistant._job_tasks.values() if not task.done()]
+        # Counted before their jobs are cancelled: a helper leaves the
+        # list as its job ends, and is stopped on its way out
+        # (``_spawn_child``).
+        counts["children"] = len(self.children)
         for task in tasks:
             task.cancel()
         counts["jobs"] = len(tasks)
@@ -760,7 +786,6 @@ class Session:
                 await child.kill()
             except Exception as exc:
                 self.logger.warning(f"Child of {self.chat_id} not killed cleanly: {exc}")
-            counts["children"] += 1
         self.children.clear()
         if self.watching is not None and not self.watching.done():
             self.watching.cancel()
@@ -769,7 +794,8 @@ class Session:
             except (asyncio.CancelledError, Exception):
                 pass
         self.watching = None
-        await self._quit_browser()
+        if browser:
+            await self._quit_browser()
 
         state = self.assistant.state
         for job in state.active_jobs():
@@ -833,8 +859,11 @@ class Session:
         """A crash, on demand — for tests and chaos. Tasks die where
         they stand; the state is whatever the last beat persisted, which
         is exactly the situation hydration exists for."""
+        self._abandoned = True
         if self._running is not None and not self._running.done():
             self._running.cancel()
+        if self.assistant is None:
+            return
         for task in list(self.assistant._job_tasks.values()):
             task.cancel()
 
@@ -862,7 +891,10 @@ class Session:
         decision arrives and the cycle it wakes has finished."""
         while True:
             await self.wait_idle()
-            if self.idle and not self.assistant.state.active_jobs():
+            state = self.assistant.state
+            # A call of its own parked on a card is work under way too:
+            # the decision resumes it, and it is done after that.
+            if self.idle and not state.active_jobs() and not state.parked:
                 return
             self._pumped.clear()
             await self._pumped.wait()
@@ -921,8 +953,22 @@ class Session:
             compacted = self.assistant.state.compact()
             if folded or compacted:
                 await self._save_state(self.assistant.state)
+            if await self._settle_owed_decisions():
+                continue
             if self.assistant.inbox.empty():
                 return
+
+    async def _settle_owed_decisions(self) -> bool:
+        """The decisions that arrived for a dead process's park while
+        a cycle ran. True when one was settled: the cycle reads it."""
+        settled = False
+        while self._decisions_owed:
+            approval_id, approved, action_hash = self._decisions_owed.pop(0)
+            parked = self.assistant.state.parked
+            if parked and parked.get("approval_id") == approval_id:
+                await self._resume_parked(parked, approved, action_hash)
+                settled = True
+        return settled
 
     async def _fold(self, force: bool = False) -> bool:
         """The fold between beats (assistant.fold): the transcript into
@@ -1033,7 +1079,18 @@ class Session:
             await child.wait_done()
             return await child.report()
         except asyncio.CancelledError:
-            child.abandon()
+            if self._abandoned or child.assistant is None:
+                child.abandon()
+            else:
+                # Stopped, not crashed: what the helper was doing ends,
+                # and the cards it had out are closed with it.
+                try:
+                    await asyncio.shield(child.kill(browser=False))
+                except asyncio.CancelledError:
+                    pass
+                except Exception as exc:
+                    self.logger.warning(
+                        f"Helper {child_id} not stopped cleanly: {exc}")
             raise
         finally:
             self.children.pop(job.job_id, None)
@@ -1179,6 +1236,10 @@ class Session:
         if job is not None:
             job.status = WAITING_APPROVAL
             job.approval_id = str(approval_id)
+            # The inputs the card was opened on: defaults applied,
+            # references resolved. A job resumed after a restart is
+            # rebuilt from these, and must hash to its card.
+            job.inputs = dict(parked.inputs)
         else:
             self.assistant.state.parked = {
                 "approval_id": str(approval_id),
@@ -1189,7 +1250,19 @@ class Session:
         # The park must be durable before the card is out: once the
         # user can walk away from the question, a process death here
         # is survivable by hydration.
-        await self._save_state(self.assistant.state)
+        try:
+            await self._save_state(self.assistant.state)
+        except Exception:
+            # Not durable, so not asked: the card is taken back, and
+            # whoever called hears that nobody could be asked — not
+            # that somebody said no.
+            if job is not None:
+                job.status = RUNNING
+                job.approval_id = ""
+            else:
+                self.assistant.state.parked = None
+            await self._close_card(str(approval_id))
+            raise
         agent_name = str(request.get("agent_name") or "")
         await self.services.emit(self.chat_id, {
             "event": "approval_requested", "approval_id": approval_id,
@@ -1203,12 +1276,41 @@ class Session:
                                    parked.function, job_id=job_id),
         })
 
-        decision = bool(await self.services.wait_approval(approval_id))
+        self._awaited.add(str(approval_id))
+        try:
+            decision = bool(await self.services.wait_approval(approval_id))
+        except asyncio.CancelledError:
+            # The call was stopped while its card waited. Nobody will
+            # hear the answer: the card is closed, on the record and on
+            # the page. (A crash is the other case, and leaves it.)
+            if not self._abandoned:
+                await self._close_card(str(approval_id))
+            raise
+        finally:
+            self._awaited.discard(str(approval_id))
         if job is not None and job.status == WAITING_APPROVAL:
             job.status = RUNNING
         elif job is None:
             self.assistant.state.parked = None
         return decision
+
+    async def _close_card(self, approval_id: str) -> None:
+        """A card nobody will hear the answer to: expired on the
+        record, closed on the page. Carried through a cancellation,
+        since that is when it is called."""
+        async def close():
+            try:
+                await self.services.expire_approval(self.chat_id, approval_id)
+            except Exception as exc:
+                self.logger.warning(f"Card {approval_id} not expired: {exc}")
+            await self._emit({"event": "question_closed",
+                              "approval_id": approval_id, "status": "expired"})
+        try:
+            await asyncio.shield(close())
+        except asyncio.CancelledError:
+            pass
+        except Exception as exc:
+            self.logger.warning(f"Card {approval_id} not closed: {exc}")
 
     async def agent_ask(self, question: str, choices: list,
                         source: Dict[str, Any],
@@ -1323,6 +1425,11 @@ class Session:
             await self._emit({"event": "question_closed",
                               "approval_id": approval_id, "status": "expired"})
             return None
+        except asyncio.CancelledError:
+            # The call asking was stopped: its question goes with it.
+            if not self._abandoned:
+                await self._close_card(approval_id)
+            raise
         finally:
             self.questions.pop(approval_id, None)
         await self._emit({"event": "question_closed",
@@ -1355,6 +1462,10 @@ class Session:
         "language the person writes in. Say what it is about, not what "
         "was said. Answer with the name only.")
 
+    #: How long a name for the chat may take. It is a nicety, and the
+    #: next message waits behind it.
+    TITLE_SECONDS = 20.0
+
     async def _name_chat(self) -> None:
         """A name for the chat, from its content: one small call to the
         chat's model after the first answer, and again every few turns
@@ -1365,9 +1476,14 @@ class Session:
             return
         if not getattr(self.connector, "names_chats", True):
             return
+        if not self.assistant.inbox.empty():
+            return      # something is waiting to be heard: that first
         messages = [m for m in self.assistant.state.messages
                     if m.get("role") in ("user", "assistant")]
-        turns = sum(1 for m in messages if m.get("role") == "user")
+        # The person's own messages: an event or a function's result is
+        # in the transcript under the same role, and is not a turn.
+        turns = sum(1 for m in messages if m.get("role") == "user"
+                    and str(m.get("content") or "").startswith("["))
         if turns == 0 or (self.named_at and turns - self.named_at < self.TITLE_EVERY_TURNS):
             return
         if not any(m.get("role") == "assistant" for m in messages):
@@ -1377,9 +1493,10 @@ class Session:
             f"{'Person' if m.get('role') == 'user' else 'Assistant'}: "
             f"{str(m.get('content') or '')[:500]}" for m in messages[-6:])
         try:
-            reply = await self.connector.chat(
+            reply = await asyncio.wait_for(self.connector.chat(
                 [{"role": "system", "content": self.TITLE_PROMPT},
-                 {"role": "user", "content": excerpt[:3000]}], max_tokens=24)
+                 {"role": "user", "content": excerpt[:3000]}], max_tokens=24),
+                self.TITLE_SECONDS)
             # A model may answer with nothing, or with blank lines first;
             # the first line with words is the name, and none is no name.
             lines = [line for line in str(getattr(reply, "content", "") or "").splitlines()
@@ -1441,7 +1558,7 @@ class Session:
         child."""
         if call_id in self.screens:
             return await self.assistant.executor.screen_input(call_id, events)
-        for child in list(self.children.values()):
+        for child in self.helpers():
             if await child.deliver_screen_input(call_id, events):
                 return True
         return False

@@ -902,7 +902,7 @@ class SessionHost:
         cards = session.pending_cards()
         # One present tense per conversation: a child's waiting card is
         # this audience's to answer too.
-        for child in session.children.values():
+        for child in session.helpers():
             cards.extend({**card, "child": child.chat_id}
                          for card in child.pending_cards())
         return {
