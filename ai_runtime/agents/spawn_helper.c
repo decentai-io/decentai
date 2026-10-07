@@ -92,6 +92,9 @@
 #define REFUSED 126
 #define NAME_MAX_LENGTH 64
 #define CLEAR_MAX_DEPTH 64
+/* How many times a folder is gone over to empty it: once, and once
+ * more for every CLEAR_MAX_DEPTH levels something in it was nested. */
+#define CLEAR_MAX_PASSES 4096
 #define FOLDER_FLAGS (O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
 /* A worker's folder is closed to everyone but the worker, the runtime
  * included. It is opened as a place and not for reading: enough to see
@@ -644,20 +647,28 @@ static int own(const char *user_text, const char *path)
     return 0;
 }
 
-static void remove_contents(int folder, int depth)
+/* Set when something that was to be removed is still there. */
+static int left_behind = 0;
+/* Set when a folder too deep to walk in one go was lifted to the top,
+ * to be emptied on the next pass; and how many have been. */
+static int lifted = 0;
+static unsigned long lifted_count = 0;
+
+static void remove_contents(int top, int folder, int depth)
 {
     DIR *listing;
     struct dirent *entry;
     int copy;
 
-    if (depth > CLEAR_MAX_DEPTH)
-        refuse("the folder is deeper than anything a worker should make");
     copy = dup(folder);
     if (copy < 0)
         fail("dup");
     listing = fdopendir(copy);
     if (listing == NULL)
         fail("reading the folder");
+    /* The copy reads from where the folder was last read to: from the
+     * start, for a pass after the first. */
+    rewinddir(listing);
 
     while ((entry = readdir(listing)) != NULL) {
         int child;
@@ -668,20 +679,57 @@ static void remove_contents(int folder, int depth)
             continue;
         /* Not a file: a folder, which is emptied and then removed.
          * A link was removed above, never followed. */
-        child = openat(folder, entry->d_name, FOLDER_FLAGS);
-        if (child < 0)
+        if (depth >= CLEAR_MAX_DEPTH) {
+            /* Deeper than is walked in one go. Not refused, which
+             * would leave a place nothing could ever empty again:
+             * lifted to the top, and emptied on the next pass. */
+            char name[64];
+
+            snprintf(name, sizeof(name), ".deep-%lu", lifted_count++);
+            if (renameat(folder, entry->d_name, top, name) == 0)
+                lifted = 1;
+            else
+                left_behind = 1;
             continue;
+        }
+        child = openat(folder, entry->d_name, FOLDER_FLAGS);
+        if (child < 0) {
+            /* A folder its owner closed to itself (no leave to list
+             * it). Opened to its owner, which this is, and tried
+             * again: skipped, it would be left full. */
+            (void)fchmodat(folder, entry->d_name, 0700, 0);
+            child = openat(folder, entry->d_name, FOLDER_FLAGS);
+        }
+        if (child < 0) {
+            left_behind = 1;
+            continue;
+        }
         (void)fchmod(child, 0700);
-        remove_contents(child, depth + 1);
+        remove_contents(top, child, depth + 1);
         close(child);
-        (void)unlinkat(folder, entry->d_name, AT_REMOVEDIR);
+        if (unlinkat(folder, entry->d_name, AT_REMOVEDIR) != 0
+                && errno != ENOENT)
+            left_behind = 1;
     }
     closedir(listing);
+}
+
+/* Empty a folder, however deep what is in it goes. */
+static void empty(int folder)
+{
+    int passes = 0;
+
+    do {
+        lifted = 0;
+        left_behind = 0;
+        remove_contents(folder, folder, 0);
+    } while ((lifted || left_behind) && ++passes < CLEAR_MAX_PASSES);
 }
 
 static int clear(const char *path)
 {
     struct stat about;
+    char through[64];
     int spool = 0, inside;
     int folder = worker_folder(path, &spool);
 
@@ -692,13 +740,23 @@ static int clear(const char *path)
     if (!is_worker(about.st_uid))
         refuse("that folder belongs to somebody else");
 
+    /* Its owner may have closed the folder to itself (mode 000), and
+     * could then not open it to empty it — now, or ever again. It is
+     * opened to its owner first: the folder itself, by its descriptor,
+     * and nothing more than its owner already had the right to do. */
+    snprintf(through, sizeof(through), "/proc/self/fd/%d", folder);
+    if (chmod(through, (about.st_mode & 07777) | 0700) != 0)
+        fail("opening the folder to its owner");
+
     /* As its owner, so that nothing but its owner's is ever deleted. */
     give_up_privileges();
     become(about.st_uid, about.st_uid);
     inside = openat(folder, ".", FOLDER_FLAGS);
     if (inside < 0)
         fail("opening the folder as its owner");
-    remove_contents(inside, 0);
+    empty(inside);
+    if (lifted || left_behind)
+        refuse("something in the folder could not be removed");
     return 0;
 }
 
@@ -744,7 +802,7 @@ static int sweep(const char *user_text)
             if (child < 0)
                 continue;
             (void)fchmod(child, 0700);
-            remove_contents(child, 1);
+            empty(child);
             close(child);
             (void)unlinkat(folder, entry->d_name, AT_REMOVEDIR);
         }

@@ -180,6 +180,8 @@ class EgressProxy:
     #: others of the runtime's own sockets.
     MAX_PER_WORKER = 128
     MAX_CONNECTIONS = 1024
+    #: Connections that have not yet said whose they are.
+    MAX_UNREAD = 256
 
     #: Test seam — a callable (host, port) -> [addresses]. Set it and
     #: no name is looked up.
@@ -205,6 +207,9 @@ class EgressProxy:
         self._serving: set = set()
         #: token -> connections that worker has open now.
         self._open: Dict[str, int] = {}
+        #: connections that have not yet said whose they are, the
+        #: longest silent first
+        self._unread: Dict[object, asyncio.StreamWriter] = {}
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         self._thread: Optional[threading.Thread] = None
         self._problem = ""
@@ -372,12 +377,26 @@ class EgressProxy:
         seen: Dict[str, object] = {}
         began = time.monotonic()
         try:
+            # Until it has said whose it is, a connection is nobody's
+            # and counted against nobody: so those are counted too, by
+            # themselves, and past the number the one that has said
+            # nothing for longest is closed to make room.
+            unread = object()
+            self._unread[unread] = writer
+            while len(self._unread) > self.MAX_UNREAD:
+                silent = self._unread.pop(next(iter(self._unread)))
+                try:
+                    silent.close()
+                except RuntimeError:
+                    pass
             try:
                 head = await asyncio.wait_for(
                     reader.readuntil(b"\r\n\r\n"), self.HEAD_SECONDS)
             except (asyncio.IncompleteReadError, asyncio.LimitOverrunError,
                     asyncio.TimeoutError, ConnectionError):
                 return
+            finally:
+                self._unread.pop(unread, None)
             try:
                 method, target, headers = self._parse(head)
                 token = self._token(headers)
@@ -477,12 +496,15 @@ class EgressProxy:
     @staticmethod
     def _where(method: str, target: str) -> Tuple[str, int, str]:
         """(host, port, path) of what was asked for."""
+        try:
+            parts = urlsplit("//" + target if method == "CONNECT" else target)
+        except ValueError:
+            # `[abc:443`: brackets that hold no address.
+            raise Refused(400, "that address cannot be read")
         if method == "CONNECT":
-            parts = urlsplit("//" + target)
             path = ""
             default = 443
         else:
-            parts = urlsplit(target)
             if parts.scheme.lower() != "http":
                 raise Refused(400, "a proxy is asked for a whole address: "
                                    "http://host/path, or CONNECT host:port")

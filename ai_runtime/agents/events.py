@@ -80,11 +80,27 @@ class Events:
         if log is None:
             return
         try:
-            log.write({"at": round(time.time(), 3), "kind": str(kind),
+            log.write({"at": cls._moment(), "kind": str(kind),
                        **{name: cls._plain(value) for name, value in said.items()
                           if value is not None}})
         except Exception:
             pass
+
+    #: The time the last event of this process was given.
+    _last: ClassVar[float] = 0.0
+    _clock: ClassVar[threading.Lock] = threading.Lock()
+
+    @classmethod
+    def _moment(cls) -> float:
+        """Now, and never the moment an earlier event was given: a page
+        of events ends at a time and the next begins before it, so two
+        events at one time would have one of them fall between pages."""
+        with cls._clock:
+            moment = round(time.time(), 6)
+            if moment <= cls._last:
+                moment = round(cls._last + 0.000001, 6)
+            cls._last = moment
+            return moment
 
     @classmethod
     def _plain(cls, value: Any) -> Any:

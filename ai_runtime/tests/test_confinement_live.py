@@ -105,6 +105,36 @@ INTRUDER = textwrap.dedent("""\
                     "groups": os.getgroups(), "home": os.environ["HOME"],
                     "kept_was_there": was_there, "temporary": temporary_name}
 
+        def close_home(self, target):
+            # Its own home, closed to itself: nothing may then list it.
+            home = os.environ["HOME"]
+            with open(os.path.join(home, "kept"), "w") as handle:
+                handle.write("mine")
+            os.chmod(home, 0)
+            return {"closed": True}
+
+        def leave_unlistable(self, target):
+            # A folder its owner may enter and write to, and not list.
+            hidden = os.path.join(os.environ["HOME"], "hidden")
+            os.mkdir(hidden)
+            with open(os.path.join(hidden, "kept"), "w") as handle:
+                handle.write("mine")
+            os.chmod(hidden, 0o300)
+            return {"left": True}
+
+        def nest_deep(self, target):
+            # Deeper than a folder is walked in one go.
+            home = os.environ["HOME"]
+            os.mkdir(os.path.join(home, "deep"))
+            os.chdir(os.path.join(home, "deep"))
+            for _ in range(200):
+                os.mkdir("d")
+                os.chdir("d")
+            with open("kept", "w") as handle:
+                handle.write("mine")
+            os.chdir(home)
+            return {"depth": 200}
+
         def runtime_settings(self, target):
             return attempt(lambda: len(
                 open(f"/proc/{os.getppid()}/environ", "rb").read()))
@@ -669,6 +699,30 @@ class TestAFilteredWorker:
         call", so that the library asks the older way: it must start."""
         found = ask(ground, place, "ordinary_work")
         assert found == {"done": ["thread", "program", "pair"]}, found
+
+
+class TestAWorkerThatSpoilsItsOwnPlace:
+    """A worker owns its home and may do to it what an owner may. None
+    of it leaves a place that cannot be emptied and started in again —
+    which, in the place every package is first run in, would be every
+    later installation."""
+
+    def test_a_home_closed_to_its_owner_is_opened_and_emptied(
+            self, ground, place):
+        assert ask(ground, place, "close_home")["closed"] is True
+        assert ask(ground, place, "whoami")["kept_was_there"] is False
+
+    def test_a_folder_its_owner_cannot_list_is_emptied_too(
+            self, ground, place):
+        assert ask(ground, place, "leave_unlistable")["left"] is True
+        found = ask(ground, place, "read", str(place.home))
+        assert found["happened"] is True and "hidden" not in found["detail"]
+
+    def test_folders_nested_deeper_than_is_walked_at_once_are_emptied(
+            self, ground, place):
+        assert ask(ground, place, "nest_deep")["depth"] == 200
+        found = ask(ground, place, "read", str(place.home))
+        assert found["happened"] is True and "deep" not in found["detail"]
 
 
 class TestTheSharedTemporaryFolder:

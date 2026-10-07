@@ -165,6 +165,12 @@ class AgentLibrary:
         #: is a broken venv.
         self._locks: Dict[Path, threading.Lock] = {}
         self._locks_guard = threading.Lock()
+        #: One lock per digest, held through an install: the second
+        #: chat to name an agent waits for the first to finish with it.
+        self._digest_locks: Dict[str, threading.Lock] = {}
+        #: The digests an install is at work on, between its folder
+        #: arriving and its code being proven.
+        self._installing: set = set()
         self.logger = RuntimeLoggerFactory.get_logger(self.__class__.__name__)
 
     def _lock_for(self, environment: AgentEnvironment) -> threading.Lock:
@@ -191,6 +197,11 @@ class AgentLibrary:
         installed = self._agents.get(digest)
         if installed is not None:
             return installed
+        # Being installed: its folder is there and nothing about it is
+        # proven yet. Whoever asks is told it is not here, and goes on
+        # to `install`, which waits its turn.
+        if digest in self._installing:
+            return None
         if digest in self._errors or not self.has(digest):
             return None
         self._register(digest)
@@ -212,7 +223,16 @@ class AgentLibrary:
         """Register every digest on disk. Called once at startup; after
         that, `install` and `agent` register what they need."""
         for digest in self._digests():
-            self._register(digest)
+            try:
+                self._register(digest)
+            except Exception as exc:
+                # One folder that cannot be read is one agent that does
+                # not serve — never a runtime that does not start.
+                self._errors[digest] = [
+                    f"could not be read ({type(exc).__name__})"]
+                self.logger.error(
+                    f"Agent {digest} did not register: "
+                    f"{type(exc).__name__}: {exc}")
         self.sweep_environments()
         broken = len(self._errors) - len(self._waiting)
         self.logger.info(
@@ -270,10 +290,25 @@ class AgentLibrary:
         what makes the thousandth approval of one agent free.
 
         The order is the guarantee: the bytes are verified against the
-        digest and the manifest against its hash BEFORE anything is
-        written, and a failure at any step leaves what was already
-        serving exactly as it was.
+        digest before anything is written, the manifest against its
+        hash before a dependency is installed or a line of the code is
+        run, and a failure at any step leaves what was already serving
+        exactly as it was.
         """
+        if not DIGEST_RE.match(str(digest or "")):
+            raise AgentRefused(
+                f"'{digest}' is not a package digest.", 400)
+        with self._locks_guard:
+            turn = self._digest_locks.setdefault(digest, threading.Lock())
+        with turn:
+            self._installing.add(digest)
+            try:
+                return self._install(digest, archive, expected_manifest_hash)
+            finally:
+                self._installing.discard(digest)
+
+    def _install(self, digest: str, archive: Optional[bytes],
+                 expected_manifest_hash: str = "") -> InstalledAgent:
         fresh = not self.has(digest)
         if fresh:
             if archive is None:
@@ -317,15 +352,27 @@ class AgentLibrary:
             errors = self._register(digest, manifest)
             if errors:
                 raise AgentRefused("; ".join(errors))
-        except AgentRefused:
+        except BaseException as exc:
             # Rollback only what THIS install created: a refused
             # re-install must not tear down the environment a serving
-            # agent already stands on.
+            # agent already stands on. Whatever went wrong, and not
+            # only what was refused in words: a folder left behind by
+            # an error nobody expected is served at the next start.
             if fresh_environment and environment is not None:
                 environment.remove()
             if fresh:
+                self._agents.pop(digest, None)
+                self._errors.pop(digest, None)
+                self._waiting.discard(digest)
                 self._discard(self._folder(digest))
-            raise
+            if isinstance(exc, AgentRefused) or not isinstance(exc, Exception):
+                raise
+            self.logger.error(
+                f"Install of {digest[:19]}… failed: "
+                f"{type(exc).__name__}: {exc}", exc_info=True)
+            raise AgentRefused(
+                f"The package could not be installed "
+                f"({type(exc).__name__}).") from exc
         finally:
             if lock is not None:
                 lock.release()
@@ -462,6 +509,11 @@ class AgentLibrary:
                 AgentPackage.extract(archive, staging)
             except PackagingError as exc:
                 return [str(exc)]
+            except OSError as exc:
+                # The disk's own refusal, said without the disk's paths.
+                self.logger.error(f"Package not unpacked: {exc}")
+                return [f"The package could not be unpacked "
+                        f"({type(exc).__name__})."]
             self.store_dir.mkdir(parents=True, exist_ok=True)
             staging.replace(self._folder(digest))
         finally:

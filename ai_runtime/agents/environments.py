@@ -171,17 +171,46 @@ class AgentEnvironment:
         target = self._site_packages()
         if target is None:
             return ["environment has no site-packages to receive the SDK"]
+        # Copied beside, then put in place: a worker starting from this
+        # environment meanwhile finds the SDK there, the old or the
+        # new, and not a folder half gone.
+        tag = f"{os.getpid()}-{threading.get_ident()}"
+        staging = target / f".decentai_sdk-new-{tag}"
+        aside = target / f".decentai_sdk-old-{tag}"
+        placed = target / "decentai_sdk"
         try:
-            shutil.rmtree(target / "decentai_sdk", ignore_errors=True)
+            shutil.rmtree(staging, ignore_errors=True)
             shutil.copytree(
-                self._sdk_source(), target / "decentai_sdk",
+                self._sdk_source(), staging,
                 ignore=shutil.ignore_patterns("__pycache__"),
             )
+            try:
+                if placed.exists():
+                    placed.rename(aside)
+                staging.rename(placed)
+            except OSError:
+                # Where a folder in use cannot be moved: the old way.
+                shutil.rmtree(placed, ignore_errors=True)
+                shutil.copytree(staging, placed)
         except OSError as exc:
             return [f"SDK copy failed: {exc}"]
+        finally:
+            shutil.rmtree(staging, ignore_errors=True)
+            shutil.rmtree(aside, ignore_errors=True)
         (self.root / self.SDK_MARKER).write_text(
             self.sdk_digest(), encoding="utf-8")
         return []
+
+    #: One lock per environment folder, for the SDK's copy: a worker
+    #: about to start and an install both bring it up to date, from
+    #: two threads.
+    _sdk_locks: Dict[str, threading.Lock] = {}
+    _sdk_locks_guard = threading.Lock()
+
+    def _sdk_lock(self) -> threading.Lock:
+        with AgentEnvironment._sdk_locks_guard:
+            return AgentEnvironment._sdk_locks.setdefault(
+                str(self.root), threading.Lock())
 
     def refresh_sdk(self) -> List[str]:
         """The SDK copied in at build is the SDK of that day, and the
@@ -193,12 +222,15 @@ class AgentEnvironment:
             return []
         marker = self.root / self.SDK_MARKER
         current = self.sdk_digest()
-        try:
-            if marker.read_text(encoding="utf-8").strip() == current:
-                return []
-        except OSError:
-            pass
-        errors = self._copy_sdk()
+        # Looked at again under the lock: whoever waited for another's
+        # copy finds it made, and makes none.
+        with self._sdk_lock():
+            try:
+                if marker.read_text(encoding="utf-8").strip() == current:
+                    return []
+            except OSError:
+                pass
+            errors = self._copy_sdk()
         if not errors:
             self.logger.info(
                 f"SDK refreshed in environment {self.root.name[:12]}")
@@ -366,8 +398,13 @@ class AgentEnvironment:
 
     @classmethod
     def _builder_environment(cls) -> Dict[str, str]:
-        return {name: os.environ[name] for name in cls.BUILDER_VARIABLES
+        said = {name: os.environ[name] for name in cls.BUILDER_VARIABLES
                 if os.environ.get(name)}
+        # Builds share a user and a home. Where packages come from is
+        # what the deployment said, above — never a configuration file
+        # an earlier build left in that home for the next one to read.
+        said["PIP_CONFIG_FILE"] = os.devnull
+        return said
 
     @staticmethod
     def _take(source: Path, target: Path) -> List[str]:
