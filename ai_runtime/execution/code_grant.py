@@ -49,11 +49,15 @@ class CodeGrant:
                         f"one host, such as api.example.com, or "
                         f"api.example.com:8443")
         for package in code.get("packages") or []:
-            if not AgentEnvironment.requirement(package):
+            # Read once, the way it will be installed: the name checked
+            # against the list is the name handed to the installer, and
+            # not another reading of the same words.
+            asked = AgentEnvironment.requirement(package)
+            if not asked:
                 return (f"'{package}' is not a package a person can allow: "
                         f"name it, and its version where that matters — "
                         f"pandas, requests==2.32.3")
-            if listed is not None and cls.package(package) not in {
+            if listed is not None and cls.package(asked) not in {
                     cls.package(name) for name in listed}:
                 return (f"'{package}' is not on the list of packages a "
                         f"program may install here. The list is: "

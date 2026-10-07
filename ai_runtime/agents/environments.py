@@ -300,7 +300,13 @@ class AgentEnvironment:
     def requirement(asked: str) -> str:
         """A package as it may be asked for, or '' when it is not one:
         ``pandas``, ``requests==2.32.3``, ``uvicorn[standard]>=0.30``."""
-        written = "".join(str(asked or "").split())
+        asked = str(asked or "").strip()
+        # Space is allowed round a version (`requests >= 2.32`) and
+        # nowhere inside a name: `requests evil` is two words and not a
+        # package called `requestsevil`.
+        if re.search(r"[A-Za-z0-9_.\]-]\s+[A-Za-z0-9_.\[-]", asked):
+            return ""
+        written = "".join(asked.split())
         return written if REQUIREMENT_RE.match(written) else ""
 
     def extras(self, requirements: List[str],

@@ -83,7 +83,10 @@ class FunctionGrants:
                 if unknown:
                     continue
                 return False
-            if scopes[name] not in allowed:
+            # As text on both sides: a policy written `5` and a call
+            # that gives "5" name the same thing, and a deny must not
+            # be passed by the type a value arrived in.
+            if str(scopes[name]) not in {str(value) for value in allowed}:
                 return False
         return True
 

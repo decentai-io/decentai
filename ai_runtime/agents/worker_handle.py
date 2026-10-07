@@ -282,6 +282,9 @@ class WorkerHandle:
                 stop=stop, whose=whose)
         except (OSError, asyncio.TimeoutError) as exc:
             Events.record("worker.failed", **self.whose(), why=str(exc))
+            # Nothing runs, so nothing will die and clear up after
+            # itself: what was laid out for it is taken back here.
+            await self._release()
             return [f"the worker could not be started: {exc}"]
         self._serve_task = asyncio.get_running_loop().create_task(self._serve())
         asyncio.get_running_loop().create_task(self._drain_stderr())
@@ -294,6 +297,12 @@ class WorkerHandle:
                 ),
                 self.HANDSHAKE_TIMEOUT_SECONDS,
             )
+        except asyncio.CancelledError:
+            # Whoever asked for this worker stopped waiting (a person
+            # pressed stop on a slow first call). Nobody will be handed
+            # it, so nobody would ever end it: it ends here.
+            await asyncio.shield(self.kill("its start was cancelled"))
+            raise
         except WorkerError as exc:
             await self.kill(f"it was refused at its greeting: {exc}")
             return [str(exc)]
@@ -316,7 +325,17 @@ class WorkerHandle:
         if conversation:
             params["conversation"] = conversation
         answer = await self._request("invoke", params)
-        return dict(answer.get("result") or {}), str(answer.get("status") or "error")
+        # The worker's word, so its shape is checked: an answer that is
+        # not a result is the worker's failure, said as one.
+        result = answer.get("result") if isinstance(answer, dict) else None
+        status = answer.get("status") if isinstance(answer, dict) else None
+        if result is None:
+            result = {}
+        if not isinstance(result, dict) or status not in ("success", "error"):
+            raise WorkerError(
+                "the worker answered a call with something that is not a "
+                "result")
+        return dict(result), status
 
     async def cancel(self, call_id: str) -> bool:
         answer = await self._request("cancel", {"call_id": call_id})
@@ -352,6 +371,17 @@ class WorkerHandle:
             await self._end()
         if self.process is not None:
             await self.process.wait()
+        await self._release()
+        Events.record(
+            "worker.ended", **self.whose(), why=reason,
+            code=self.process.returncode if self.process is not None else None)
+        # Last: a caller woken by this may start the next worker in the
+        # same place at once, and the clearing above must be behind it.
+        self._fail_pending(reason)
+
+    async def _release(self) -> None:
+        """Take back what a worker was given to run with: its pass at
+        the proxy and its place, or its spool folder."""
         spool, self.spool = self.spool, None
         if self.place is not None:
             self.place.dismiss()
@@ -359,12 +389,6 @@ class WorkerHandle:
                 None, self.place.clear)
         elif spool is not None:
             shutil.rmtree(spool, ignore_errors=True)
-        Events.record(
-            "worker.ended", **self.whose(), why=reason,
-            code=self.process.returncode if self.process is not None else None)
-        # Last: a caller woken by this may start the next worker in the
-        # same place at once, and the clearing above must be behind it.
-        self._fail_pending(reason)
 
     async def _end(self) -> None:
         """End the process. A confined worker is another user's, which
@@ -439,7 +463,15 @@ class WorkerHandle:
             if not isinstance(message, dict):
                 reason = "the worker sent a line that is not a message"
                 break
-            self._route(message)
+            try:
+                self._route(message)
+            except Exception as exc:
+                # JSON, and a mapping, and still not a message ("id" a
+                # list, "params" a word). The reader must not end and
+                # leave the worker alive and unread.
+                reason = ("the worker sent a message of the wrong shape "
+                          f"({type(exc).__name__})")
+                break
         # Ended where it runs, for using more than agents are given:
         # the calls it was serving are told that, in those words.
         reason = getattr(self.process, "ended_because", "") or reason
@@ -490,11 +522,27 @@ class WorkerHandle:
         except Exception as exc:
             return await self._send({"id": request_id,
                                      "error": {"message": str(exc) or "refused"}})
-        await self._send({"id": request_id, "result": result})
+        try:
+            await self._send({"id": request_id, "result": result})
+        except (TypeError, ValueError) as exc:
+            # An answer JSON cannot say. The ask is answered all the
+            # same, or the function waits out its whole timeout.
+            await self._send({"id": request_id, "error": {"message": (
+                f"the platform's answer could not be sent "
+                f"({type(exc).__name__})")}})
 
     async def _drain_stderr(self) -> None:
         while True:
-            line = await self.process.stderr.readline()
+            try:
+                line = await self.process.stderr.readline()
+            except ValueError:
+                # A line longer than the reader takes. What was read of
+                # it is dropped, and the log goes on after it.
+                Events.record("log", **self.whose(),
+                              line="(a line too long to keep was dropped)")
+                continue
+            except (ConnectionError, OSError):
+                return
             if not line:
                 return
             text = line.decode("utf-8", "replace").rstrip()

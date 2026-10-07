@@ -28,6 +28,7 @@ import jsonschema
 
 from ai_runtime.agents.library import InstalledAgent
 from ai_runtime.agents.worker_handle import WorkerError
+from ai_runtime.runtime_logging import RuntimeLoggerFactory
 from contracts.mcp import McpClient, McpError
 from decentai_sdk.manifest import Manifest
 
@@ -148,15 +149,47 @@ class McpServer(InstalledAgent):
             return {"type": "object"}
         return cleaned
 
+    #: Keywords whose value maps NAMES to schemas: the keys are an
+    #: input's own names, the server's to choose, and not keywords.
+    NAMED = ("properties", "patternProperties", "$defs", "definitions",
+             "dependentSchemas")
+    #: Keywords whose value is data, kept as the server wrote it.
+    DATA = ("enum", "const", "default", "examples", "required",
+            "dependentRequired")
+    #: Keywords that name another document. A schema is checked against
+    #: a call's inputs on this machine, and following one would have the
+    #: runtime fetch an address, or read a file, a server chose.
+    ELSEWHERE = ("$id", "$schema", "$anchor", "$dynamicAnchor",
+                 "$recursiveAnchor", "id")
+    REFERENCES = ("$ref", "$dynamicRef", "$recursiveRef")
+
     @classmethod
     def _without_annotations(cls, node: Any) -> Any:
-        if isinstance(node, dict):
-            return {key: cls._without_annotations(value)
-                    for key, value in node.items()
-                    if not str(key).startswith("x-")}
+        """A schema node without what is not a server's to say: the
+        platform's ``x-`` annotations, and anything pointing outside
+        the schema itself. A reference within it (``#/$defs/…``) is
+        kept."""
         if isinstance(node, list):
             return [cls._without_annotations(item) for item in node]
-        return node
+        if not isinstance(node, dict):
+            return node
+        cleaned: Dict[str, Any] = {}
+        for key, value in node.items():
+            name = str(key)
+            if name.startswith("x-") or name in cls.ELSEWHERE:
+                continue
+            if name in cls.REFERENCES:
+                if isinstance(value, str) and value.startswith("#"):
+                    cleaned[key] = value
+                continue
+            if name in cls.DATA:
+                cleaned[key] = value
+            elif name in cls.NAMED and isinstance(value, dict):
+                cleaned[key] = {inner: cls._without_annotations(child)
+                                for inner, child in value.items()}
+            else:
+                cleaned[key] = cls._without_annotations(value)
+        return cleaned
 
     # ------------------------------------------------------------------
     # The call
@@ -181,6 +214,16 @@ class McpServer(InstalledAgent):
                                              inputs)
         except McpError as exc:
             raise WorkerError(str(exc))
+        except WorkerError:
+            raise
+        except Exception as exc:
+            # Whatever else went wrong on the way to the server or in
+            # reading it: the call failed, and is said to have, in the
+            # one kind of failure the executor words and records.
+            RuntimeLoggerFactory.get_logger("McpServer").warning(
+                f"MCP call failed: {type(exc).__name__}: {exc}")
+            raise WorkerError(
+                f"the server could not be called ({type(exc).__name__})")
         result: Dict[str, Any] = {"text": self._bounded(answered["text"])}
         if answered["structured"] is not None:
             result["data"] = answered["structured"]

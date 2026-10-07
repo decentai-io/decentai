@@ -20,6 +20,7 @@ import uuid
 from typing import Any, Callable, Dict, Optional, Tuple
 
 import jsonschema
+import referencing
 
 from contracts.record_fields import RecordFields
 from contracts.chat import (
@@ -189,12 +190,52 @@ class FunctionExecutor:
         when the caller brings none."""
         started = time.monotonic()
         call_id = call_id or f"c_{uuid.uuid4().hex[:12]}"
-        result, status = await self._invoke(agent, canonical_name, inputs,
-                                            chat_level, call_id)
+        try:
+            result, status = await self._invoke(agent, canonical_name, inputs,
+                                                chat_level, call_id)
+        except asyncio.CancelledError:
+            # Stopped from outside. The call still happened, as far as
+            # it got, and the trail says so before the stop goes on.
+            await self._witness_cancelled(
+                agent, canonical_name, inputs, chat_level, started,
+                reached=self._reached.pop(call_id, None))
+            raise
+        except Exception as exc:
+            result, status = self._broke(canonical_name, exc)
         await self._record(agent, canonical_name, inputs, chat_level,
                            result, status, started,
                            reached=self._reached.pop(call_id, None))
         return result, status
+
+    def _broke(self, canonical_name: str,
+               exc: Exception) -> Tuple[Dict[str, Any], str]:
+        """Something on the platform's own side raised while a call was
+        made. It ends as every call ends — a result, and a line on the
+        trail — and not as an exception in whoever asked."""
+        self.logger.error(
+            f"{canonical_name}: the call could not be completed: "
+            f"{type(exc).__name__}: {exc}", exc_info=True)
+        return {"error": (
+            f"'{canonical_name}' could not be completed: the platform "
+            f"failed while running it ({type(exc).__name__}). Whether it "
+            f"took effect is not known."
+        )}, "error"
+
+    async def _witness_cancelled(self, agent: InstalledAgent,
+                                 canonical_name: str, inputs: Any,
+                                 chat_level: int, started: float,
+                                 resumed: bool = False,
+                                 reached: Optional[Dict[str, int]] = None,
+                                 ) -> None:
+        try:
+            await asyncio.shield(self._record(
+                agent, canonical_name, inputs, chat_level,
+                {"error": f"'{canonical_name}' was cancelled"}, "error",
+                started, resumed=resumed, reached=reached))
+        except asyncio.CancelledError:
+            pass  # cancelled again: the record goes on, shielded
+        except Exception as exc:
+            self.logger.warning(f"Cancelled call not recorded: {exc}")
 
     async def _invoke(
         self,
@@ -233,11 +274,23 @@ class FunctionExecutor:
                 }, "error"
 
         inputs = self._apply_defaults(function_spec.get("inputs") or {}, inputs)
+        if not self._sayable(inputs):
+            # NaN and Infinity are numbers to Python and to no schema,
+            # store or trail: a model's reply may hold one, and a call
+            # may not.
+            return {"error": "Invalid inputs: a number that is not one "
+                             "(NaN or Infinity)."}, "error"
         schema_error = self._validate(function_spec.get("inputs"), inputs)
         if schema_error:
             return {"error": f"Invalid inputs: {schema_error}"}, "error"
 
         scopes = self._scope_values(agent, function_spec, inputs)
+        unjudged = self._scope_unjudged(scopes)
+        if unjudged:
+            return {"error": (
+                f"'{canonical_name}' must be told one {unjudged}, as a "
+                f"single value: what a call acts on is judged by name."
+            )}, "error"
         unnamed = self._scope_unnamed(function_spec, scopes)
         if unnamed:
             return {"error": (
@@ -285,10 +338,16 @@ class FunctionExecutor:
         values: Dict[str, Any] = {}
         for name, binding in declared.items():
             source = (binding or {}).get("from_input")
-            if not source or inputs.get(source) is None:
+            value = inputs.get(source) if source else None
+            # Empty text names nothing, exactly as leaving the input
+            # out does — and is judged as that. Read as a value it
+            # would be one no deny lists, while a function is free to
+            # take it to mean "all of them".
+            if isinstance(value, str) and not value.strip():
+                value = None
+            if value is None:
                 values[name] = None
                 continue
-            value = inputs[source]
             normalization = (vocabulary.get(name) or {}).get("normalization")
             if isinstance(value, str) and normalization == "lowercase":
                 value = value.lower()
@@ -296,6 +355,25 @@ class FunctionExecutor:
                 value = value.upper()
             values[name] = value
         return values
+
+    @staticmethod
+    def _scope_unjudged(scopes: Dict[str, Any]) -> str:
+        """The first scope whose value is not one value — a list, an
+        object — or ''. A policy names values; several at once cannot
+        be held to it."""
+        for name, value in scopes.items():
+            if value is not None and not isinstance(
+                    value, (str, int, float, bool)):
+                return name
+        return ""
+
+    @staticmethod
+    def _sayable(value: Any) -> bool:
+        try:
+            json.dumps(value, allow_nan=False, default=str)
+        except ValueError:
+            return False
+        return True
 
     @staticmethod
     def _scope_unnamed(function_spec: Dict[str, Any],
@@ -635,18 +713,25 @@ class FunctionExecutor:
         if self.storage is None:
             return None
 
+        # Displays on their way to the store: counted with those kept,
+        # so a dozen offered at once are held to the same limit.
+        storing = [0]
+
         async def show(spec: Dict[str, Any]) -> Optional[str]:
-            if len(displays) >= DISPLAYS_PER_CALL_MAX:
+            if len(displays) + storing[0] >= DISPLAYS_PER_CALL_MAX:
                 raise WorkerError(f"A call may offer at most "
                                   f"{DISPLAYS_PER_CALL_MAX} displays.")
             stored, problem = display_stored(spec)
             if problem:
                 raise WorkerError(f"Display refused: {problem}")
+            storing[0] += 1
             try:
                 storage_ref = await self.storage(canonical_name, stored)
             except Exception as exc:
                 self.logger.warning(f"Display storage failed: {exc}")
                 storage_ref = None
+            finally:
+                storing[0] -= 1
             if not storage_ref:
                 # Nowhere to keep it (a fire with no chat) or the store
                 # failed and said so above: the offer is simply not
@@ -692,6 +777,15 @@ class FunctionExecutor:
         worker holds none of it; every ask resolves back here, per
         call_id, against this context (worker_pool.py)."""
         call_id = call_id or f"c_{uuid.uuid4().hex[:12]}"
+        # Before anything runs: a function whose declared outputs are
+        # not a schema would do its work, and its writes, and then fail.
+        for part in ("inputs", "outputs"):
+            unreadable = self._schema_problem(function_spec.get(part))
+            if unreadable:
+                return {"error": (
+                    f"'{canonical_name}' cannot run: its manifest's {part} "
+                    f"are not a schema ({unreadable})."
+                )}, "error"
         displays: list = []
         # Declared or nothing: only a function that said it runs code
         # is opened what a card names.
@@ -773,6 +867,13 @@ class FunctionExecutor:
                 self._reached[call_id] = dict(context.reached)
             await self._end_screen(call_id)
 
+        # The keys the platform writes on a result are read as its own
+        # word by everything after this — the trail, the evidence, the
+        # page. A function that wrote one itself has it taken out.
+        if isinstance(result, dict):
+            result = {key: value for key, value in result.items()
+                      if key not in self.PLATFORM_KEYS}
+
         if status == "success":
             output_error = self._validate(function_spec.get("outputs"), result)
             if output_error:
@@ -820,6 +921,10 @@ class FunctionExecutor:
     # ------------------------------------------------------------------
     # The trail
     # ------------------------------------------------------------------
+
+    #: What only the platform writes on a call's result: where it was
+    #: kept, what it offered to show, and how a gate refused it.
+    PLATFORM_KEYS = ("storage_ref", "displays", "denied", "not_permitted")
 
     #: How many hosts one call's line on the trail names.
     REACHED_MAX = 20
@@ -910,6 +1015,9 @@ class FunctionExecutor:
             if len(value) > cls.OUTLINE_ITEMS_MAX:
                 shown.append({"_more": len(value) - cls.OUTLINE_ITEMS_MAX})
             return shown
+        if isinstance(value, float) and (
+                value != value or value in (float("inf"), float("-inf"))):
+            return str(value)
         if isinstance(value, (int, float, bool)) or value is None:
             return value
         return str(value)[: cls.OUTLINE_STRING_MAX]
@@ -926,8 +1034,17 @@ class FunctionExecutor:
         gates again, then the trail."""
         started = time.monotonic()
         call_id = f"c_{uuid.uuid4().hex[:12]}"
-        result, status = await self._resume_invoke(
-            agent, parked, expected_hash, decision, repark, call_id)
+        try:
+            result, status = await self._resume_invoke(
+                agent, parked, expected_hash, decision, repark, call_id)
+        except asyncio.CancelledError:
+            await self._witness_cancelled(
+                agent, parked.function, parked.inputs, parked.chat_level,
+                started, resumed=True,
+                reached=self._reached.pop(call_id, None))
+            raise
+        except Exception as exc:
+            result, status = self._broke(parked.function, exc)
         await self._record(agent, parked.function, parked.inputs,
                            parked.chat_level, result, status, started,
                            resumed=True,
@@ -976,6 +1093,12 @@ class FunctionExecutor:
         resumed_scopes = self._scope_values(
             agent, function_spec, parked.inputs
         )
+        if self._scope_unjudged(resumed_scopes) or self._scope_unnamed(
+                function_spec, resumed_scopes):
+            return {"error": (
+                f"'{canonical_name}' must be told what it acts on: the "
+                f"stored call names no value for it."
+            )}, "error"
         if self.grants is not None and not self.grants.allows(
             canonical_name, resumed_scopes
         ):
@@ -1057,18 +1180,44 @@ class FunctionExecutor:
                 filled[name] = spec["default"]
         return filled
 
+    #: Nothing outside a schema is ever read to check a value against
+    #: it: a reference to another document (an address, a file) finds
+    #: an empty registry and is an error, never a request.
+    _NOWHERE = referencing.Registry()
+
     @staticmethod
-    def _validate(schema: Any, value: Dict[str, Any]) -> Optional[str]:
+    def _schema_problem(schema: Any) -> str:
+        """Why this is not a schema a value can be checked against, or
+        ''. Absent is none declared, and not a problem."""
+        if not isinstance(schema, dict):
+            return ""
+        try:
+            jsonschema.Draft202012Validator.check_schema(schema)
+        except jsonschema.SchemaError as exc:
+            return str(exc.message)[:200]
+        except Exception as exc:
+            return type(exc).__name__
+        return ""
+
+    @classmethod
+    def _validate(cls, schema: Any, value: Dict[str, Any]) -> Optional[str]:
         if not isinstance(schema, dict):
             return None
+        unreadable = cls._schema_problem(schema)
+        if unreadable:
+            return f"the declared schema is not one ({unreadable})"
         try:
-            jsonschema.validate(
-                value, schema, cls=jsonschema.Draft202012Validator
-            )
-        except jsonschema.ValidationError as exc:
-            location = ".".join(str(part) for part in exc.absolute_path)
-            return f"{location or '(root)'}: {exc.message}"
-        return None
+            found = jsonschema.exceptions.best_match(
+                jsonschema.Draft202012Validator(
+                    schema, registry=cls._NOWHERE).iter_errors(value))
+        except Exception as exc:
+            # A reference to something that is not in the schema.
+            return (f"the declared schema names something outside itself "
+                    f"({type(exc).__name__})")
+        if found is None:
+            return None
+        location = ".".join(str(part) for part in found.absolute_path)
+        return f"{location or '(root)'}: {found.message}"
 
     @staticmethod
     def _definitions(agent: InstalledAgent) -> Dict[str, Dict[str, Dict[str, str]]]:
