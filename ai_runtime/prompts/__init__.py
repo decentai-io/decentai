@@ -10,6 +10,7 @@ alone — so the JSON examples inside a prompt are written the way the
 model must emit them, not doubled for Python's format().
 """
 
+import re
 from pathlib import Path
 from typing import Dict
 
@@ -31,10 +32,13 @@ class Prompts:
 
     @classmethod
     def render(cls, name: str, **values) -> str:
-        text = cls.text(name)
-        for key, value in values.items():
-            text = text.replace("{" + key + "}", str(value))
-        return text
+        # In one pass: what fills a blank is text, and a `{plan}` a
+        # person once wrote into a memory is not another blank.
+        return re.sub(
+            r"\{(\w+)\}",
+            lambda blank: str(values[blank.group(1)])
+            if blank.group(1) in values else blank.group(0),
+            cls.text(name))
 
 
 __all__ = ["Prompts"]

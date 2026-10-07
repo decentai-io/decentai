@@ -37,7 +37,7 @@ from __future__ import annotations
 import json
 import re
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from ai_runtime.prompts import Prompts
 from ai_runtime.reasoning.assistant import Assistant
@@ -119,16 +119,19 @@ class Summarizer:
         return self.transcript_size(assistant.state.messages) > self.FOLD_ABOVE_CHARS
 
     @classmethod
-    def split(cls, messages: List[Dict[str, Any]], keep_chars: int
+    def split(cls, messages: List[Dict[str, Any]], keep_chars: int,
+              keep_min: Optional[int] = None,
               ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
         """(folding, kept): the tail that stays in full is at least
-        ``keep_chars`` and KEEP_RECENT_MIN messages, extended back to a
-        safe boundary — never starting on an observation."""
+        ``keep_chars`` and ``keep_min`` messages (KEEP_RECENT_MIN unless
+        said), extended back to a safe boundary — never starting on an
+        observation."""
+        keep_min = cls.KEEP_RECENT_MIN if keep_min is None else keep_min
         body = messages[1:]
         start = len(body)
         kept_chars = 0
         while start > 0 and (kept_chars < keep_chars
-                             or len(body) - start < cls.KEEP_RECENT_MIN):
+                             or len(body) - start < keep_min):
             start -= 1
             kept_chars += cls.size(body[start])
         while start > 0 and cls._is_observation(body[start]):
@@ -150,13 +153,15 @@ class Summarizer:
             # forced fold must fold something whatever the size.
             keep = min(self.FORCED_KEEP_CHARS,
                        self.transcript_size(state.messages) // 2)
-        folding, kept = self.split(state.messages, keep)
+        # Forced, the newest message alone may stay: a few very long
+        # messages are exactly what a provider refuses for length, and
+        # holding six of them back would fold nothing.
+        folding, kept = self.split(state.messages, keep,
+                                   keep_min=1 if force else None)
         if not folding:
             return False
         try:
-            lines = "\n".join(
-                f"{m.get('role')}: {self._words(m.get('content'))}"
-                for m in folding)
+            lines = self._for_summary(folding)
             reply = await self.connector.chat([
                 {"role": "system", "content": Prompts.text("summary")},
                 {"role": "user", "content":
@@ -166,15 +171,46 @@ class Summarizer:
         except Exception as exc:
             self.logger.warning(f"Summary skipped: {exc}")
             return False
-        summary = self.shape(reply.content)
-        if not summary:
+        # A model that answered nothing wrote no summary. Shaped, its
+        # nothing is five headings with "(none)" under each — which is
+        # something, and would replace the transcript it was asked to
+        # keep the sense of.
+        written = str(getattr(reply, "content", "") or "")
+        if not any(self.sections(written).values()):
+            self.logger.warning(
+                "Summary skipped: the model answered with nothing to keep")
             return False
+        summary = self.shape(written)
         self.archive(state, state.summary, reply.content, summary,
                      self._when(assistant))
         state.summary = summary
         state.messages = [state.messages[0]] + kept
         assistant.reframe()
         return True
+
+    #: How much of one message, and of all of them, a summary is asked
+    #: to read: a request to shorten the transcript must itself fit.
+    PIECE_CHARS = 6_000
+    REQUEST_CHARS = 60_000
+
+    @classmethod
+    def _for_summary(cls, folding: List[Dict[str, Any]]) -> str:
+        """The messages being folded, as the summary's model reads
+        them: a very long one by its beginning and its end, and the
+        whole no longer than a request may be — the newest kept."""
+        pieces = []
+        for message in folding:
+            words = cls._words(message.get("content"))
+            if len(words) > cls.PIECE_CHARS:
+                head = (cls.PIECE_CHARS * 3) // 4
+                words = (f"{words[:head]} … "
+                         f"{words[-(cls.PIECE_CHARS - head):]}")
+            pieces.append(f"{message.get('role')}: {words}")
+        lines = "\n".join(pieces)
+        if len(lines) > cls.REQUEST_CHARS:
+            lines = ("(earlier messages left out for length)\n"
+                     + lines[-cls.REQUEST_CHARS:])
+        return lines
 
     # -- the archive --------------------------------------------------------
     @staticmethod
@@ -225,8 +261,11 @@ class Summarizer:
         current = None
         for raw in str(text or "").splitlines():
             line = raw.strip()
-            heading = re.sub(r"[^A-Z ]", "", line.upper()).strip()
-            if heading in found and len(line) <= len(heading) + 4:
+            # A heading, however a model dressed it: `**OPEN THREADS:**`,
+            # `### DONE:`. A line of prose that begins with the same
+            # word (`Done.`) is not one.
+            heading = line.strip(" #*_:-").upper()
+            if heading in found:
                 current = heading
                 continue
             if not line or line.lower() in ("(none)", "none", "-"):
@@ -247,8 +286,12 @@ class Summarizer:
         for name in SECTIONS:
             lines = found[name]
             budget = cls.SECTION_CHARS[name]
-            while lines and sum(len(l) + 1 for l in lines) > budget:
+            while len(lines) > 1 and sum(len(l) + 1 for l in lines) > budget:
                 lines = lines[1:]
+            if lines and len(lines[0]) + 1 > budget:
+                # One line longer than its whole section: cut to fit,
+                # and not dropped with nothing in its place.
+                lines = [lines[0][: budget - 2] + "…"]
             out.append(name)
             out.extend(lines or ["(none)"])
             out.append("")

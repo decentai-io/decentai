@@ -153,7 +153,10 @@ class Evidence:
                         resource = schema.get("x-resource") if isinstance(schema, dict) else None
                         ref = row.get(field)
                         if not resource or resource.get("type") != "file" \
-                                or not isinstance(ref, str) or ref in seen:
+                                or not isinstance(ref, str) \
+                                or not ref.strip() or ref in seen:
+                            # (an empty ref names no file: a part made
+                            # of it is refused, and the message with it)
                             continue
                         seen.add(ref)
                         part = {"type": "file", "resource_ref": ref,
@@ -334,17 +337,30 @@ class Evidence:
                 trace: List[Dict[str, Any]]) -> str:
         """The one line the runtime speaks for a model that said
         nothing: what was verified, or an honest account of why not."""
+        failed = [e for e in trace if e.get("status") == "error"]
+        error = next((str((e.get("result") or {}).get("error") or "").strip()
+                      for e in failed
+                      if isinstance(e.get("result"), dict)), "")
+        # Said beside what did work, where both happened.
+        also = ""
+        if failed:
+            also = (f" {len(failed)} call{'s' if len(failed) != 1 else ''} "
+                    f"failed" + (f": {error.rstrip('.')}." if error else "."))
         if writes:
             done = ", ".join(p["text"][len("Verified: "):] for p in writes)
-            return f"Verified: {done}."
+            return f"Verified: {done}.{also}"
         if reads:
             count = sum(r["count"] for r in reads)
             if count == 0:
-                return "The search ran and came back empty — nothing matches yet."
-            return f"Found {count} result{'s' if count != 1 else ''}."
+                return ("The search ran and came back empty — nothing "
+                        f"matches yet.{also}")
+            return f"Found {count} result{'s' if count != 1 else ''}.{also}"
         if not trace:
             return ""
-        error = next((str((e.get("result") or {}).get("error") or "").strip()
-                      for e in trace if e.get("status") == "error"), "")
+        worked = len(trace) - len(failed)
+        if worked:
+            # It ran and answered — one thing, not a list to count.
+            return (f"{worked} call{'s' if worked != 1 else ''} ran and "
+                    f"came back.{also}")
         return "No verified result came back" + \
             (f": {error.rstrip('.')}." if error else ".")

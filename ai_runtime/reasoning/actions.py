@@ -316,6 +316,13 @@ class FunctionTools:
                     self.omitted.append(canonical)
                     continue
                 name = self.encode(canonical)
+                if self.names.get(name, canonical) != canonical:
+                    # `a__b.c` and `a.b__c` are written the same once
+                    # dots become double underscores. The second is
+                    # tagged with a hash of its whole name, so a call
+                    # runs the function it named.
+                    tag = hashlib.sha1(canonical.encode("utf-8")).hexdigest()[:8]
+                    name = f"{name[: TOOL_NAME_MAX - len(tag) - 1]}_{tag}"
                 self.names[name] = canonical
                 self.tools.append(self._tool(name, function, chat_level))
 

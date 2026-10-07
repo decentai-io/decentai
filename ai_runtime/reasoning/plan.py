@@ -117,12 +117,16 @@ class Plan:
         evidence and its blocker. Rewriting an item makes it new, which
         is the honest reading: if the words changed, the thing done
         under the old words is not obviously this."""
-        kept = {item.text: item for item in self.items}
+        # By their words, each in turn: two items that say the same
+        # thing are two items, and both keep what they had.
+        kept: Dict[str, List[WorkItem]] = {}
+        for item in self.items:
+            kept.setdefault(item.text, []).append(item)
         self.items = []
         for text in (str(t).strip()[: self.STEP_MAX_CHARS] for t in texts):
             if not text or len(self.items) >= self.MAX_STEPS:
                 continue
-            previous = kept.pop(text, None)
+            previous = kept[text].pop(0) if kept.get(text) else None
             if previous is not None:
                 self.items.append(previous)
             else:
@@ -157,22 +161,26 @@ class Plan:
                            f"successful call or a finished job's id, or "
                            f"mark the item done without evidence.")
 
+        # Worked out here and written at the end: an update that is
+        # refused below has changed nothing.
+        depends = list(item.depends_on)
         if depends_on is not None:
             wanted = [str(d) for d in (depends_on or []) if str(d)] \
                 if isinstance(depends_on, list) else []
             missing = [d for d in wanted if self.get(d) is None or d == item.id]
             if missing:
                 return False, f"No such item to depend on: {', '.join(missing)}."
-            item.depends_on = list(dict.fromkeys(wanted))
+            depends = list(dict.fromkeys(wanted))
 
         if status == BLOCKED and not (blocker or item.blocker):
             return False, "A blocked item needs a blocker: say what stops it."
         if status == ACTIVE:
-            waiting = [d for d in item.depends_on
+            waiting = [d for d in depends
                        if (self.get(d) or WorkItem(d, d)).status != DONE]
             if waiting:
                 return False, (f"{item.id} waits on {', '.join(waiting)}, "
                                f"not done yet.")
+        item.depends_on = depends
 
         for ref_ in named:
             if ref_ not in item.evidence:

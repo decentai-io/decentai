@@ -488,6 +488,9 @@ class Session:
             assistant.reframe()
         if connector is not None:
             assistant.connector = connector
+            # Whether a model takes pictures was learned of the model
+            # before: this one is asked afresh.
+            assistant._images_allowed = True
         if assistant.clock is not None:
             assistant.clock.roster = roster
         # The frame names the agents and marks what needs approval — it

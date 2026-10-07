@@ -751,10 +751,19 @@ class Assistant:
             if not blocks:
                 out.append(self._words_only(message, unseen=len(named)))
                 continue
+            words = message.get("content")
+            unseen = len(named) - len(blocks)
+            if unseen:
+                # Some are in front of it and some are not: said, or it
+                # answers as though it had seen them all.
+                words = (f"{words or ''}\n[{unseen} of the {len(named)} "
+                         f"image(s) attached here could not be shown to "
+                         f"you — too many at once, too large, or "
+                         f"unreadable. Say so if it matters.]")
             out.append({
                 **{key: value for key, value in message.items()
                    if key != "images"},
-                "content": [text_block(message.get("content")), *blocks],
+                "content": [text_block(words), *blocks],
             })
         return out
 
@@ -915,6 +924,7 @@ class Assistant:
             self._observe({"error": "A say needs text. Say what you found "
                                     "or decided, or choose another action."})
             return False, refused
+        accounted = self.state.evidence_cursor
         self.state.evidence_cursor = len(self.state.trace)
         try:
             await self.say_sink(composed["text"], composed["parts"])
@@ -929,10 +939,24 @@ class Assistant:
                 # Refused with nothing riding beside the words: the
                 # words themselves were the problem. Told to the model,
                 # never raised — a raise here killed the cycle once.
+                self.state.evidence_cursor = accounted
                 self._observe({"error": f"The platform refused that "
                                         f"message: {str(exc)[:200]}"})
                 return False, refused
-            await self.say_sink(composed["text"], [])
+            try:
+                if not composed["text"]:
+                    raise ValueError("there were no words to send alone")
+                await self.say_sink(composed["text"], [])
+            except Exception as again:
+                # Nothing reached the person, so nothing was presented:
+                # the work stays to be shown by the next message.
+                self.state.evidence_cursor = accounted
+                self._observe({"error": (
+                    f"The platform refused that message and what it "
+                    f"showed ({str(exc)[:200]}), and the words alone "
+                    f"could not be sent ({str(again)[:120]}). Say it "
+                    f"again in words.")})
+                return False, refused
             self._observe({"warning": (
                 "Your message was delivered without its data parts — "
                 f"the platform refused them: {str(exc)[:200]}")})
@@ -1719,7 +1743,13 @@ class Assistant:
                 result: Any, status: str,
                 job_id: str = "") -> Dict[str, Any]:
         kept = self._bounded(result)
-        entry = {"agent": agent_id, "function": function, "inputs": inputs,
+        # The trace is saved with the mind at every beat, under a size
+        # the platform holds it to: what a call was given is kept whole
+        # only while it is small, as what it returned is.
+        given = inputs
+        if len(json.dumps(inputs, default=str)) > self.TRACE_RESULT_MAX_CHARS:
+            given = self._preview(inputs, self.TRACE_RESULT_MAX_CHARS)
+        entry = {"agent": agent_id, "function": function, "inputs": given,
                  "status": status, "result": kept}
         if kept is not result and status == "success":
             # The trace keeps a cut copy of a large result. What a
@@ -1841,12 +1871,15 @@ class Assistant:
         used = 2
         for item in items:
             piece = len(json.dumps(item, default=str)) + 2
-            if kept and used + piece > budget:
+            if used + piece > budget:
+                if not kept:
+                    # The first item is itself more than the budget: it
+                    # is shown as its own preview, and never whole —
+                    # one row can be a document.
+                    kept.append(cls._preview(item, max(budget - 2, 200)))
                 break
             kept.append(item)
             used += piece
-            if used > budget:
-                break
         return {"items_total": len(items), "items_shown": len(kept),
                 "items": kept}
 
@@ -1867,21 +1900,41 @@ class Assistant:
         if not isinstance(value, dict):
             return value
 
+        # What is not a list first, each value clipped — to less than
+        # the usual length where there are many, so that together they
+        # take at most half of the budget. Then the lists share what is
+        # left, measured, and not a guess that is halved until it fits:
+        # that left a result of many short rows with a handful shown.
         lists = [f for f, v in value.items() if isinstance(v, list)]
-        share = budget // max(1, len(lists))
+        others = [f for f in value if f not in lists]
+        cap = cls.PREVIEW_VALUE_CHARS
+        if others:
+            cap = min(cap, max(24, (budget // 2) // len(others) - 24))
         preview: Dict[str, Any] = {}
-        for field, item in value.items():
-            if isinstance(item, list):
-                preview[field] = cls._fit_list(item, share)
-            elif isinstance(item, dict):
-                preview[field] = clip(json.dumps(item, default=str),
-                                      cls.PREVIEW_VALUE_CHARS)
+        for field in others:
+            item = value[field]
+            if isinstance(item, dict):
+                preview[field] = clip(json.dumps(item, default=str), cap)
             elif isinstance(item, str):
-                preview[field] = clip(item, cls.PREVIEW_VALUE_CHARS)
+                preview[field] = clip(item, cap)
             else:
                 preview[field] = item
-        if len(json.dumps(preview, default=str)) > budget and budget > 1000:
-            return cls._preview(value, budget // 2)
+        taken = len(json.dumps(preview, default=str))
+        # Each list's own wrapping (its name, its two counts) is about
+        # eighty characters.
+        left = budget - taken - 80 * len(lists)
+        share = max(left // max(1, len(lists)), 200)
+        fitted = {field: cls._fit_list(value[field], share) for field in lists}
+        # In the order the result had them.
+        preview = {field: fitted[field] if field in fitted else preview[field]
+                   for field in value}
+        if len(json.dumps(preview, default=str)) > budget:
+            # A shape nothing above bounds (a great many fields): said
+            # as text, cut to the budget.
+            # (to two thirds of it: said as text inside JSON, every
+            # quote in it is written as two characters).
+            return {"clipped": clip(json.dumps(preview, default=str),
+                                    max((budget * 2) // 3, 16))}
         return preview
 
     SUMMARY_MAX_CHARS = 90
