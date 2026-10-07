@@ -80,6 +80,21 @@ and updating. Where to look is at the end.
   resume.*** The bar at the top of every page says so, and has the
   button that resumes.
 
+- **The microphone is missing from the box you write in.** Speech to
+  text is off, or it is set to the platform's own model and the
+  `speech` container is not running: `docker compose --env-file
+  deploy.env ps speech`. A browser that cannot record offers none
+  either.
+- ***The speech to text model is still being fetched.*** It is
+  downloaded once, about 490 MB; **Settings → Chat configuration →
+  Speech** says how far it is. *The download did not finish* there
+  means the machine could not reach the publisher: it is tried again
+  when somebody next speaks, and `docker compose --env-file deploy.env
+  logs speech` says what was in the way
+  ([operating](operating.md#speech-on-this-machine)).
+- **A reply has no *Read aloud* control.** Text to speech is off until
+  an administrator turns it on, on the same page.
+
 ## An agent does not install, or does not work
 
 - **The source could not be read.** The line under the source says

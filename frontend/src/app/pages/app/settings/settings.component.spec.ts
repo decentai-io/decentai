@@ -36,7 +36,13 @@ describe('SettingsComponent', () => {
         },
       } as any,
       {
-        get: async () => ({ speech: { transcription_connection_id: '', transcription_model: '' } }),
+        get: async () => ({
+          speech: {
+            transcription_source: 'local', transcription_connection_id: '', transcription_model: '',
+            speech_source: 'off', speech_connection_id: '', speech_model: '', speech_voice: '',
+          },
+          local: { reachable: true, transcription: { state: 'ready', bytes: 9, of: 9, error: '' } },
+        }),
         update: async (speech: any) => {
           calls['speech'] = speech;
           return { speech };
@@ -48,6 +54,8 @@ describe('SettingsComponent', () => {
       // The route names the tab; the router is only navigated.
       { snapshot: { data: {} } } as any,
       { navigate: async () => true } as any,
+      // The voice: whether replies are said is not asked for here.
+      { available: false, automatic: false, refresh: async () => false } as any,
     );
     return component;
   }
@@ -107,7 +115,13 @@ describe('SettingsComponent', () => {
     await component.ngOnInit();
     expect(component.speechDirty).toBeFalse();
 
+    // The platform's own model is what an organization starts with.
+    expect(component.speech.transcription_source).toBe('local');
+    expect(component.localStanding('transcription')).toContain('ready');
+    expect(component.speechBlocker).toBe('');
+
     // A provider alone does not say which of its models writes speech down.
+    component.speech.transcription_source = 'connection';
     component.chooseSpeech({ connectionId: 'llm_OpenAI', model: '' });
     expect(component.speechBlocker).toBe('Choose the transcription model.');
     await component.saveSpeech();
@@ -117,8 +131,19 @@ describe('SettingsComponent', () => {
     expect(component.speechBlocker).toBe('');
     await component.saveSpeech();
     expect(calls['speech']).toEqual({
-      transcription_connection_id: 'llm_OpenAI', transcription_model: 'whisper-1' });
+      transcription_source: 'connection',
+      transcription_connection_id: 'llm_OpenAI', transcription_model: 'whisper-1',
+      speech_source: 'off', speech_connection_id: '', speech_model: '', speech_voice: '' });
     expect(component.speechDirty).toBeFalse();
+
+    // A provider that speaks is named with its model and its voice.
+    component.speech.speech_source = 'connection';
+    expect(component.speechBlocker).toBe('Choose the provider that speaks.');
+    component.speech.speech_connection_id = 'llm_OpenAI';
+    component.speech.speech_model = 'tts-1';
+    expect(component.speechBlocker).toBe('Name the voice.');
+    component.speech.speech_voice = 'alloy';
+    expect(component.speechBlocker).toBe('');
   });
 
   it('saves the embedding model with the routing numbers', async () => {

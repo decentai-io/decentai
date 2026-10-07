@@ -30,7 +30,8 @@ NOT_OURS = {".git", "node_modules", "dist", ".angular", ".venv", "venv",
 #: The top of every path the repository keeps, so that a path in a page
 #: is told from any other words with a slash between them.
 TOPS = ("ai_runtime", "backend", "bootstrap", "brand", "contracts",
-        "decentai_sdk", "docs", "examples", "frontend", "sim", "tests")
+        "decentai_sdk", "docs", "examples", "frontend", "sim", "speech",
+        "tests")
 
 #: Paths a page names that are made where the platform runs, and are
 #: not kept: a person's own settings, and the agents they installed.

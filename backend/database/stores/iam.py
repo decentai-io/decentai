@@ -79,11 +79,22 @@ class OrganizationStore(MongoStore):
         "open_max": (1, 30),
     }
 
-    #: A spoken message is written down by the organization's
-    #: transcription connection (Settings:Speech); none means the
-    #: composer offers no microphone.
-    SPEECH_DEFAULTS = {"transcription_connection_id": "",
-                       "transcription_model": ""}
+    #: What writes a spoken message down and says a reply aloud
+    #: (Settings:Speech), each the organization's choice.
+    SPEECH_DEFAULTS = {
+        # Speech to text: with what — "local" (the platform's own
+        # model), "connection" or "off" — and for a connection, which
+        # and which of its models. Empty is an organization that has
+        # not chosen, which the controller reads as its default.
+        "transcription_source": "",
+        "transcription_connection_id": "",
+        "transcription_model": "",
+        # Text to speech, the same, and the provider's voice.
+        "speech_source": "",
+        "speech_connection_id": "",
+        "speech_model": "",
+        "speech_voice": "",
+    }
 
     #: What agents may do without asking (Settings:Safety). Every
     #: value starts where the platform stood before the setting

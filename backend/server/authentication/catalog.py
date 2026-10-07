@@ -153,6 +153,8 @@ BASELINE_ACTIONS = (
     # Speaking a message instead of typing it — the composer's
     # microphone, for whoever may write a message at all.
     "settings:speech:transcribe",
+    # Hearing a reply instead of reading it, for whoever may read one.
+    "settings:speech:speak",
     # Being reached when a chat needs you: every person's own devices
     # and their own choice about email. Nothing here reaches anyone else.
     "settings:notifications:get",
@@ -374,13 +376,21 @@ ACTION_CATALOG: Dict[str, Dict[str, Any]] = {
         },
     },
     "settings:speech": {
-        "label": "Speech to text",
+        "label": "Speech",
         "actions": {
-            "settings:speech:get": "See which model writes spoken messages down",
-            "settings:speech:update": "Choose the transcription model",
-            # Baseline: anyone who can write a message may speak one.
+            "settings:speech:get": (
+                "See what writes spoken messages down and says replies aloud"
+            ),
+            "settings:speech:update": (
+                "Choose what writes spoken messages down and says replies aloud"
+            ),
+            # Baseline: anyone who can write a message may speak one,
+            # and anyone who can read a reply may hear it.
             "settings:speech:transcribe": (
                 "Speak a message instead of typing it"
+            ),
+            "settings:speech:speak": (
+                "Hear a reply instead of reading it"
             ),
         },
     },

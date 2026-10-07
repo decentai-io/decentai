@@ -57,6 +57,7 @@ Three values are generated, never chosen:
 | Variable | Default | Meaning |
 |---|---|---|
 | `AI_RUNTIME_URL` | `http://127.0.0.1:8001` | Where the backend dials a chat's session. |
+| `SPEECH_URL` | `http://speech:8004` | Where the backend asks the platform's own speech models ([the speech container](#the-speech-container)). Nothing answering there is not an error: an organization that keeps speech local is told it is not running, and one that chose a provider never asks. |
 | `BACKEND_SERVICE_PRIVATE_KEY` | required for chats | Signs the backend's identity toward the runtime; the runtime holds the public half. |
 | `REFERENCE_CATALOG_URL` | unset | A repository the marketplace offers as a source with one click. Unset, it offers none. |
 | `AGENT_SOURCE_FOLDER` | unset | A folder on the backend's own disk whose git repositories may be agent sources, added by their path (`/develop/my-agents`). For somebody writing agents on their own computer ([a DecentAI of your own](../agents/developing.md#a-decentai-of-your-own)). Unset — every server — a source is fetched from a repository's address only. |
@@ -222,6 +223,26 @@ name not listed in `docker-compose.yml` reaches neither.
 | `DECENTAI_BROWSER_PROMPT_CHARS` | `60000` | How many characters the Browser agent shows its model at each step. |
 | `DECENTAI_BROWSER_FOLD_EVERY` | `10` | How many steps pass before the Browser agent folds older ones into its running account. |
 | `DECENTAI_CODE_RUN_SECONDS` | `300` | How long one program the Code agent runs may take. |
+
+## The speech container
+
+Speech to text and text to speech from models that run on the machine
+the platform runs on (`speech/`). It holds no setting of the
+platform's and no key: it is asked by the backend alone, on the
+private network, and what an organization does with it is chosen in
+the app (**Settings → Chat configuration → Speech**).
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `SPEECH_FETCH` | `transcription` | What is fetched as the container first starts, with nobody having asked: speech to text, which is on in a new organization. `transcription,speech` fetches the voices too; set and empty, nothing — for a machine that is to download nothing until an administrator chooses. Whatever this says, a model is fetched when it is chosen in the app. |
+| `SPEECH_IDLE_SECONDS` | `900` | How long a model nobody is using stays in memory. Both loaded are about a gigabyte; let go, the next request waits a second or two. |
+| `SPEECH_MODEL_HOST` | `https://huggingface.co` | Where the models are published. A mirror of them, for a machine that cannot reach the publisher: the same paths under another address. What arrives is held to the digests in `speech/catalogue.py` wherever it came from. |
+| `SPEECH_MODELS_DIR` | `/data/models` | Where the models are kept: a volume in the Compose stack, so they are fetched once. |
+| `SPEECH_PORT` | `8004` | Where it listens. `SPEECH_URL` carries the same number. |
+
+It reads `HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY` and `SSL_CERT_FILE` as
+the other containers do: fetching a model is the one time it reaches
+the internet.
 
 ## Compose only
 

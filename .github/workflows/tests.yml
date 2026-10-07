@@ -94,6 +94,41 @@ jobs:
       - if: always()
         run: docker compose -f "$LIVE" down -v
 
+  speech:
+    name: speech, with its real models
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -f speech/Dockerfile -t decentai-speech .
+      - name: without its models
+        run: |
+          docker run --rm -v "$PWD:/src:ro" -w /src decentai-speech sh -c '
+            pip install -q --target /tmp/pytest pytest &&
+            PYTHONPATH=/tmp/pytest python -m pytest -p no:cacheprovider               --tb=short speech/tests/test_speech_service.py -q'
+      # The models are 600 MB from somebody else's server. They are
+      # kept between runs, and fetched again only when the list of
+      # them changes.
+      - uses: actions/cache@v4
+        with:
+          path: speech-models
+          key: speech-models-${{ hashFiles('speech/catalogue.py') }}
+      - name: Piper says a sentence in each language, and Whisper writes it back down
+        run: |
+          mkdir -p speech-models && chmod 0777 speech-models
+          docker run -d --name speech --network host             -e SPEECH_FETCH=transcription,speech             -v "$PWD/speech-models:/data/models" decentai-speech
+          docker run --rm --network host -v "$PWD:/src:ro" -w /src             -e SPEECH_LIVE_URL=http://127.0.0.1:8004 decentai-speech sh -c '
+              pip install -q --target /tmp/pytest pytest &&
+              PYTHONPATH=/tmp/pytest python -m pytest -p no:cacheprovider                 --tb=short speech/tests/test_speech_live.py -q -rs'
+      - if: failure()
+        run: docker logs --tail 100 speech
+      # What the container wrote is its own user's; the step that
+      # keeps it for the next run reads it as this one.
+      - if: always()
+        run: |
+          docker rm -f speech || true
+          sudo chmod -R a+rX speech-models || true
+
   images:
     name: the backend's image and the web app's
     runs-on: ubuntu-24.04

@@ -2,6 +2,7 @@ import { AfterViewChecked, Component, ElementRef, Input, OnChanges, OnDestroy, R
 import { Clipboard } from '@angular/cdk/clipboard';
 import { MarkdownService } from 'ngx-markdown';
 import { AiSessionService } from 'src/app/services/ai-session.service';
+import { ReadAloudService } from 'src/app/services/read-aloud.service';
 import { ChatMarkdownService } from './chat-markdown.service';
 
 @Component({
@@ -54,7 +55,18 @@ export class ChatMessageComponent implements OnChanges, AfterViewChecked, OnDest
     private aiSession: AiSessionService,
     private host: ElementRef<HTMLElement>,
     private renderer: Renderer2,
+    public readAloud: ReadAloudService,
   ) {}
+
+  /** What this reply is known by to the voice: one reply is said at a
+   *  time, and the control shows which. */
+  get speechKey(): string {
+    return String(this.message?.message_id || '');
+  }
+
+  get isSpeaking(): boolean {
+    return !!this.speechKey && this.readAloud.speaking === this.speechKey;
+  }
 
   ngOnChanges(): void {
     this.contentExpanded = false;

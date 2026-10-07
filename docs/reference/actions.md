@@ -9,7 +9,7 @@ the actions a chat's delegation may call, and nothing else.
 Generated from `backend/server/authentication/catalog.py` by
 `docs/reference/generate.py`; do not edit by hand.
 
-187 actions in 35 services; 52 baseline.
+188 actions in 35 services; 53 baseline.
 
 ## Own account
 
@@ -126,13 +126,14 @@ Generated from `backend/server/authentication/catalog.py` by
 | `settings:notifications:update` | Choose whether an email may follow | yes |  |
 | `settings:notifications:test` | Send yourself a test notification | yes |  |
 
-## Speech to text
+## Speech
 
 | Action | Grants | Baseline | Runtime |
 |---|---|---|---|
-| `settings:speech:get` | See which model writes spoken messages down |  |  |
-| `settings:speech:update` | Choose the transcription model |  |  |
+| `settings:speech:get` | See what writes spoken messages down and says replies aloud |  |  |
+| `settings:speech:update` | Choose what writes spoken messages down and says replies aloud |  |  |
 | `settings:speech:transcribe` | Speak a message instead of typing it | yes |  |
+| `settings:speech:speak` | Hear a reply instead of reading it | yes |  |
 
 ## Safety
 

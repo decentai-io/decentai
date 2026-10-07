@@ -84,7 +84,9 @@ Beside it, **The assistant** shows what the model of this chat was shown and wha
 
 **More actions** (⋮) in the chat header holds what is this chat's alone: its name, its **agents**, its **skills**, its **turn budget** — how many steps one message may take before the chat stops and asks to continue: 20, 40, 60, 100 or unlimited — and how many skills it lists — with the chat's **Activity & audit**. The chat's **trust level** is the shield beside it in the header, and **Refresh and reconnect**, for a chat that seems stuck, the button next to that; on a narrow screen both are inside More actions. What a new chat starts with is under **Settings → Chat configuration**, as *Your chat defaults*.
 
-The box you write in also has a camera, to take a photo and attach it, and a microphone, to speak a message, where the organization chose a model that writes speech down.
+The box you write in also has a camera, to take a photo and attach it, and a microphone, to speak a message: press it, speak, press the square, and what you said is written into the box for you to send or change. The recording is not kept. The microphone is there unless the organization turned speech to text off.
+
+Where the organization turned text to speech on, each reply has a **Read aloud** control beside *Copy*: the reply is said, a sentence or two at a time, and the same control stops it. To have every reply said as it arrives, tick *Read replies aloud as they arrive* under **Settings → Chat configuration → Your chat defaults**; that choice is this device's alone.
 
 ## Stopping
 

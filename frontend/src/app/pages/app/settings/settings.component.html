@@ -149,6 +149,14 @@
           </select>
         </label>
       </div>
+      <div class="routing-form" *ngIf="readAloud.available">
+        <label class="field full routing-toggle">
+          <input type="checkbox" [checked]="readAloud.automatic"
+                 (change)="readAloud.automatic = $any($event.target).checked" />
+          <span>Read replies aloud as they arrive
+            <small class="field-help">On this device only, and kept without saving. Any reply can also be heard from the control beside it.</small></span>
+        </label>
+      </div>
       <div class="routing-actions">
         <button class="btn primary" type="button" (click)="saveChatDefaults()"
                 [disabled]="!chatDefaultsDirty || chatDefaultsSaving">
@@ -198,21 +206,60 @@
     <section class="routing-section" *ngIf="canSeeSpeech">
       <header class="llm-section-header">
         <div>
-          <h2>Speech to text</h2>
-          <p>A message spoken into the composer's microphone is written down by this model before it is sent. The recording is transcribed and dropped, never stored.</p>
+          <h2>Speech</h2>
+          <p>A message spoken into the composer's microphone is written down before it is sent, and a reply can be said aloud instead of read. Neither is stored: a recording is transcribed and dropped, and a reply's audio is played and gone.</p>
         </div>
       </header>
       <div class="routing-form">
         <label class="field full">
+          <span class="field-label">Speech to text</span>
+          <select class="txt" [(ngModel)]="speech.transcription_source" [disabled]="!canEditSpeech">
+            <option value="local">On this machine — the platform's own model</option>
+            <option value="connection">A provider</option>
+            <option value="off">Off — no microphone in the composer</option>
+          </select>
+          <small class="field-help" *ngIf="speech.transcription_source === 'local'">Whisper, running beside the platform: nothing spoken leaves this machine. {{ localStanding('transcription') }}</small>
+        </label>
+        <label class="field full" *ngIf="speech.transcription_source === 'connection'">
           <span class="field-label">Transcription model</span>
           <app-model-select kind="transcription" [connections]="sharedConnections"
                             [connectionId]="speech.transcription_connection_id"
                             [model]="speech.transcription_model" [disabled]="!canEditSpeech"
-                            noneLabel="None — no microphone in the composer"
+                            noneLabel="Choose a provider"
                             (changed)="chooseSpeech($event)">
           </app-model-select>
           <small class="field-help">A provider you have a key for, and one of its speech-to-text models: OpenAI and Groq serve them. Only providers shared with the whole organization are listed, since everyone's composer uses this.</small>
         </label>
+
+        <label class="field full">
+          <span class="field-label">Text to speech</span>
+          <select class="txt" [(ngModel)]="speech.speech_source" [disabled]="!canEditSpeech">
+            <option value="off">Off — replies are read, not heard</option>
+            <option value="local">On this machine — the platform's own voices</option>
+            <option value="connection">A provider</option>
+          </select>
+          <small class="field-help" *ngIf="speech.speech_source === 'local'">Piper, running beside the platform, with a voice for English and one for Arabic: nothing said leaves this machine. {{ localStanding('speech') }}</small>
+        </label>
+        <ng-container *ngIf="speech.speech_source === 'connection'">
+          <label class="field full">
+            <span class="field-label">Provider</span>
+            <select class="txt" [(ngModel)]="speech.speech_connection_id" [disabled]="!canEditSpeech">
+              <option value="">Choose a provider</option>
+              <option *ngFor="let connection of sharedConnections" [value]="connection.resource_ref">{{ connection.name }}</option>
+            </select>
+            <small class="field-help">One that serves OpenAI's speech protocol, shared with the whole organization: everyone's chat uses it.</small>
+          </label>
+          <label class="field">
+            <span class="field-label">Speech model</span>
+            <input class="txt" type="text" [(ngModel)]="speech.speech_model" [disabled]="!canEditSpeech" placeholder="gpt-4o-mini-tts" />
+            <small class="field-help">As the provider names it.</small>
+          </label>
+          <label class="field">
+            <span class="field-label">Voice</span>
+            <input class="txt" type="text" [(ngModel)]="speech.speech_voice" [disabled]="!canEditSpeech" placeholder="alloy" />
+            <small class="field-help">One of the provider's voices.</small>
+          </label>
+        </ng-container>
       </div>
       <div class="routing-actions" *ngIf="canEditSpeech">
         <span class="form-blocker" *ngIf="speechBlocker">{{ speechBlocker }}</span>

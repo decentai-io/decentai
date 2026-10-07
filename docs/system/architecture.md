@@ -52,6 +52,7 @@ seeder runs once at every start and exits.
 | `mongo` | `mongo:7` | the database | 27017, inside only |
 | `ai-runtime` | `ai_runtime/` | one assistant per chat, the executor and its gates, the clock, the agents' proxy | 8001 (the door), 8002 (the proxy) |
 | `agents` | the runtime's, started as `python -m ai_runtime.agents.spawner_service` | the spawner, and every agent's worker | 8003 |
+| `speech` | `speech/` | speech to text and text to speech, from models that run here ([below](#speech)) | 8004 |
 
 Two networks. Everything but `agents` is on `default`. `ai-runtime`
 and `agents` are on `agents`, which is `internal: true`: nothing on it
@@ -64,6 +65,49 @@ the backend ([the chat session](chat-session.md)). That is what lets
 the process that runs other people's code be handed so little
 ([the sandbox](sandbox.md#the-runtimes-own-settings)).
 
+## Speech
+
+A message can be spoken instead of typed, and a reply said aloud
+instead of read. Each is the organization's to turn on, and each is
+done by one of two things: a provider the organization named, or the
+platform's own models, in the `speech` container.
+
+```
+browser ── Settings:Speech:Transcribe / :Speak ──► backend
+                                                     │
+                     an organization's choice ───────┤
+                                                     ├──► speech   (local)
+                                                     └──► a provider (connection)
+```
+
+- **The backend decides, the container only answers.** Who may speak
+  and listen, and with what, is `Settings:Speech`
+  (`backend/api/endpoints/app/settings/speech_controller.py`). The
+  container is asked by the backend alone, holds no key and no
+  setting of the platform's, and publishes no port.
+- **One protocol for both.** The container speaks the audio protocol
+  the providers speak (`/v1/audio/transcriptions`, `/v1/audio/speech`),
+  so the choice between them is an address
+  (`backend/api/services/speech_local.py`).
+- **The models are not in the image.** Whisper *small* writes speech
+  down in any language; a Piper voice says English and another says
+  Arabic. Each is fetched once into a volume, from a list that pins
+  the published revision and the digest of every file
+  (`speech/catalogue.py`): a file that is not the published one is
+  thrown away. Speech to text is fetched as the container first
+  starts, the voices when text to speech is turned on.
+- **Nothing is kept.** A recording comes in and words go back; words
+  come in and audio goes back. Neither is stored, here or in the
+  backend.
+- **On the processor.** Both models run without a graphics card, one
+  request at a time each, and are let go from memory when nobody has
+  used them for a while.
+
+The engines' own terms are theirs: Whisper's and its model are MIT's,
+Piper is GPL-3.0, which is why it runs in a container of its own and
+nothing else in the platform imports it. A voice carries the terms of
+the recordings it was trained on ([operating](../run/operating.md#speech-on-this-machine)).
+
 ## Who speaks to whom, and by what right
 
 | From → to | Over | Carrying | Says |
@@ -72,6 +116,7 @@ the process that runs other people's code be handed so little
 | browser → backend | `WS /chats/{chat_id}` (`backend/server/routes/ws.py`) | the session cookie, and an `Origin` the deployment names | the same person, speaking in one chat |
 | backend → runtime | `WS /chats/{chat_id}` on the runtime (`ai_runtime/server/routes/chat.py`) | the **service token** and the chat's **delegation** | "this is the backend", and "act for this person in this chat" |
 | backend → runtime | `GET /internal/monitor/…` (`ai_runtime/server/routes/monitor.py`) | the service token | "this is the backend" |
+| backend → speech | `POST /v1/audio/…`, `GET /status`, `POST /prepare` (`speech/service.py`) | nothing: the private network is the only way to it | a recording to write down, or words to say |
 | runtime → backend | `POST /app` (`Gateway`, `ai_runtime/services/backend.py`) | the delegation, as `Bearer` | the person's own permissions, fenced (below) |
 | runtime → agents | TCP, port 8003 (`ai_runtime/agents/spawner.py`) | the spawner's key, from `<install_dir>/spawner.key` | "start this, as this user"; one connection per worker carries its lines |
 | worker → proxy | the proxy's port on the worker's own container, passed on to `ai-runtime:8002` | the worker's pass, a token in the proxy's address | which agent's worker this is, and so which hosts it may reach |
@@ -249,6 +294,7 @@ what they are for:
 | `uploads_data` | backend | the bytes of every stored file |
 | `agent_packages` | backend | each approved agent's code, as an archive by its digest: the copy the platform controls |
 | `agents_data` | ai-runtime and agents, at one path | the agents' code unpacked, their environments, each worker's home and spool, the spawner's key, and what is written down of what agents did ([monitoring](monitoring.md)) |
+| `speech_models` | speech | the speech models, as fetched: lost, they are fetched again |
 
 **Memory, and what a restart loses.**
 

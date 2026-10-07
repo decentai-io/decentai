@@ -1,5 +1,6 @@
 # The whole platform on one machine: MongoDB, the one-shot seeder, the
-# backend, the private AI runtime, the agents' container, and Caddy as
+# backend, the private AI runtime, the agents' container, the speech
+# container, and Caddy as
 # the one door (the web app and the backend on one origin). Every
 # setting comes from one file, deploy.env:
 #
@@ -67,6 +68,43 @@ services:
         condition: service_healthy
       init:
         condition: service_completed_successfully
+
+  # Speech to text and text to speech from models that run here, so a
+  # spoken message and a reply said aloud need no provider and leave
+  # the machine for nobody (speech/service.py). The image carries the
+  # engines and no model: models are fetched once, into the volume,
+  # from a pinned list — speech to text as the container first starts,
+  # since that is on in a new organization, and the voices when an
+  # administrator turns text to speech on. Only the backend asks it.
+  speech:
+    build:
+      context: .
+      dockerfile: speech/Dockerfile
+    restart: unless-stopped
+    environment:
+      # What is fetched at start with nobody having asked:
+      # "transcription" where this says nothing, nothing where it is
+      # empty.
+      SPEECH_FETCH:
+      # How long a model nobody is using is kept in memory.
+      SPEECH_IDLE_SECONDS:
+      # A mirror of the models, where the publisher cannot be reached.
+      SPEECH_MODEL_HOST:
+      LOG_LEVEL:
+      TZ:
+      # how this machine reaches the internet, and whom it trusts
+      HTTP_PROXY:
+      HTTPS_PROXY:
+      NO_PROXY:
+      SSL_CERT_FILE:
+    volumes:
+      - speech_models:/data/models
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8004/healthz', timeout=4)"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
 
   # The runtime has no database — everything durable goes through the
   # backend's delegation surface.
@@ -201,4 +239,5 @@ volumes:
   agents_data:
   agent_packages:
   mongo_data:
+  speech_models:
   uploads_data:

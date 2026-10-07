@@ -54,6 +54,8 @@ ai_runtime/    the private agent execution process: the assistant's cycle,
                the executor and its gates, agent workers, the clock
 frontend/      the web application (Angular), served with the backend on one
                address by Caddy (frontend/Caddyfile)
+speech/        speech to text and text to speech from models that run on
+               the machine itself, in a container of their own
 decentai_sdk/  what agent code imports: AgentBase, ToolBase, the manifest
 contracts/     the manifest schema and validator, shared by all of the above
 sim/           the runtime's reference services, in memory — how the runtime

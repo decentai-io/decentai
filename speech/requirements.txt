@@ -1,0 +1,22 @@
+# speech — the container that writes speech down and says text aloud,
+# with models that run here (speech/service.py).
+
+# Web server / ASGI
+fastapi~=0.136.1
+uvicorn~=0.46.0
+pydantic~=2.12
+# Not imported anywhere: FastAPI needs it to read an uploaded recording.
+python-multipart>=0.0.22
+# Fetching the models, through the machine's proxy where it has one.
+httpx~=0.28
+
+# Speech to text: Whisper on CTranslate2, on the processor.
+faster-whisper==1.2.1
+# Not imported here: faster-whisper decodes a recording with it, and
+# does not yet read one with the releases after 16.
+av>=14,<17
+
+# Text to speech: Piper, on ONNX Runtime. GPL-3.0 — the reason it runs
+# in a container of its own and is imported by nothing else in the
+# platform (NOTICE).
+piper-tts==1.8.0

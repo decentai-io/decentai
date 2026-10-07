@@ -73,6 +73,22 @@
 
         @if (!continuation && message?.parts?.length) {
         <div class="ai-header-actions">
+          @if (readAloud.available) {
+          <button
+            class="ai-action-btn"
+            type="button"
+            (click)="readAloud.toggle(speechKey, copyText ?? getFullText())"
+            [class.speaking]="isSpeaking"
+            [matTooltip]="isSpeaking ? 'Stop' : 'Read aloud'"
+            [attr.aria-label]="isSpeaking ? 'Stop reading aloud' : 'Read this reply aloud'"
+            [attr.aria-pressed]="isSpeaking"
+          >
+            <lucide-icon
+              [name]="isSpeaking ? (readAloud.preparing ? 'loader-circle' : 'square') : 'volume-2'"
+              [class.ai-action-waiting]="isSpeaking && readAloud.preparing"
+              [size]="16"></lucide-icon>
+          </button>
+          }
           <button
             class="ai-action-btn"
             type="button"
@@ -86,6 +102,9 @@
         </div>
         }
       </div>
+      @if (speechKey && readAloud.problemAt === speechKey) {
+        <div class="file-inline-error" role="alert">{{ readAloud.problem }}</div>
+      }
       <div class="ai-content" [class.long-content-collapsed]="isLongResponse && !contentExpanded">
         @for (part of renderParts; track $index; let i = $index) {
           @if (part.type === 'markdown') {

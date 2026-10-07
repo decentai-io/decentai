@@ -27,6 +27,8 @@ describe('ChatDetailComponent approval lifecycle', () => {
       state as any,
       // The viewport: how wide the page is, which nothing here asks.
       {} as any,
+      // The voice: nothing here is said aloud.
+      { arrived: () => {}, stop: () => {}, refresh: async () => false } as any,
     );
     return component;
   }
@@ -171,6 +173,7 @@ describe('ChatDetailComponent title', () => {
       {} as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any,
       { acceptSequence: () => true } as any,
       {} as any,
+      { arrived: () => {}, stop: () => {}, refresh: async () => false } as any,
     );
   }
 

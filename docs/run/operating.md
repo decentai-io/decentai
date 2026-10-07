@@ -59,6 +59,7 @@ which are issued again if lost.)
 | `uploads_data` | file bytes |
 | `agent_packages` | the approved agent packages — the only copy the platform controls |
 | `agents_data` | the runtime's installed environments; rebuildable from the packages |
+| `speech_models` | the platform's own speech models; downloaded again when missing, so not worth a backup |
 
 The encryption keys in `deploy.env` are part of the backup: a database
 without `SECRET_ENCRYPTION_KEYS` is a database whose every credential
@@ -117,6 +118,43 @@ and the chat it was working for says which
 ([the sandbox](../system/sandbox.md#what-the-agents-are-given-together)).
 What each agent uses now, and what was seen of it, is **Settings →
 Monitoring** ([what is written down](../system/monitoring.md)).
+
+## Speech on this machine
+
+A message can be spoken and a reply said aloud with models that run
+beside the platform, in the `speech` container: nothing spoken or said
+leaves the machine. What an organization uses is chosen under
+**Settings → Chat configuration → Speech**: the platform's own models,
+a provider, or neither, for each of the two.
+
+- **What is downloaded, and when.** Speech to text (Whisper *small*,
+  about 490 MB) as the stack first starts, since it is on in a new
+  organization. The voices (about 130 MB for English and Arabic) when
+  an administrator turns text to speech on. Each once: they are kept in
+  the `speech_models` volume, across updates. The settings page says
+  how far a download is.
+- **A machine that is to download nothing** sets `SPEECH_FETCH=` in
+  `deploy.env`; one that cannot reach the publisher names a mirror
+  ([configuration](configuration.md#the-speech-container)).
+- **What it costs.** About a gigabyte of memory with both loaded,
+  given back after a quarter of an hour unused. On a laptop's
+  processor a short message is written down in a few seconds, and a
+  sentence is said in less than it takes to hear it.
+- **How good it is.** English is written down well. Arabic is
+  understood and comes back with small mistakes; an organization that
+  needs better turns speech to text to a provider. Whisper *small* is
+  the size that answers quickly without a graphics card.
+- **The voices' terms.** A voice is trained on somebody's recordings
+  and carries their terms. The English voice is trained on LJ Speech,
+  which is in the public domain. The Arabic voice is the one published
+  for Piper, and the terms of its recordings are not stated where they
+  are published: where that matters — a product built on this, a
+  regulated buyer — use a provider for text to speech in Arabic, or
+  leave it off.
+- **Without it.** The stack runs without the container: stop it
+  (`docker compose --env-file deploy.env stop speech`) and an
+  organization that kept speech local is told its models are not
+  running, with no microphone offered.
 
 ## Rotating the encryption key
 

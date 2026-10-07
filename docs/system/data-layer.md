@@ -341,7 +341,9 @@ it is used, from the ones that provider serves: a chat's `llm` block
 names the connection (`secret_ref`), the model and, for a model that
 thinks before answering, how hard (`reasoning_effort`); agent routing
 names a connection and its embedding model (`Settings:Routing`), speech
-a connection and its transcription model (`Settings:Speech`). So one key
+a connection and its transcription or speech model where the
+organization chose a provider over the platform's own models
+(`Settings:Speech`, [architecture](architecture.md#speech)). So one key
 is pasted once and serves every model its provider has. A connection
 carries one `model` of its own, the one it starts with: what a chat that
 chose nothing thinks with. When a block is saved the provider and the

@@ -186,8 +186,18 @@
   color: var(--foreground);
 }
 
-.ai-action-btn.copied {
+.ai-action-btn.copied,
+.ai-action-btn.speaking {
   color: var(--chat-accent-strong);
+}
+
+/* The first piece of a reply being said is on its way. */
+.ai-action-waiting {
+  animation: ai-action-turn 0.9s linear infinite;
+}
+
+@keyframes ai-action-turn {
+  to { transform: rotate(360deg); }
 }
 
 .ai-action-btn lucide-icon {

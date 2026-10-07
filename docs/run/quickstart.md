@@ -25,6 +25,7 @@ yours will differ, and these are for knowing what to expect.
 | | |
 |---|---|
 | The first start | about seven minutes, nearly all of it building the images. Starting again after an update: about three |
+| Downloaded once it is up | about 490 MB, in the background: the model that writes a spoken message down on this machine ([operating](operating.md#speech-on-this-machine)). Nothing waits for it but the microphone |
 | Disk | about 2.6 GB of images: the runtime's is 1.4 GB, most of it the browser an agent may drive, and the agents' container uses the same one; the database's is 0.9 GB, the backend's 0.3 GB, the web app's under 0.1 GB. What you keep is beside that, and small until you keep a lot |
 | Memory, with nobody using it | about 400 MB across the five containers. A working agent adds its own; a browser, a good deal more |
 

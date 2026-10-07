@@ -125,6 +125,9 @@ def _load_settings() -> Dict[str, Any]:
         # where the AI runtime is reachable
         "ai_runtime_url": os.getenv("AI_RUNTIME_URL", "http://127.0.0.1:8001"),
 
+        # where the platform's own speech models are reachable
+        "speech_url": os.getenv("SPEECH_URL", "http://speech:8004"),
+
         # Where approved agent code is kept.
         "agent_package_dir": os.getenv(
             "AGENT_PACKAGE_DIR", "data/agent-packages"),
@@ -186,6 +189,8 @@ class Settings:
 
     # where the AI runtime is reachable
     ai_runtime_url: str = "http://127.0.0.1:8001"
+    # where the platform's own speech models are reachable
+    speech_url: str = "http://speech:8004"
     agent_package_dir: str = "data/agent-packages"
 
     # database

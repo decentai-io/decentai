@@ -4,8 +4,17 @@ Copyright 2026 The DecentAI Authors
 Licensed under the Apache License, Version 2.0. See LICENSE.
 
 This product includes software developed by third parties under their own
-licences, listed in backend/requirements.txt, ai_runtime/requirements.txt
-and frontend/package.json.
+licences, listed in backend/requirements.txt, ai_runtime/requirements.txt,
+speech/requirements.txt and frontend/package.json.
+
+The speech container (speech/) runs Piper (https://github.com/OHF-Voice/piper1-gpl),
+which is licensed under the GNU General Public License v3.0. It is run as a
+separate program in a container of its own and is not linked into, or
+imported by, any other part of this product. The container downloads its
+models when it is used; they are not part of this product's source or its
+images: the Whisper "small" model (OpenAI, MIT License, as converted by
+Systran) and Piper voices from https://huggingface.co/rhasspy/piper-voices,
+each under the terms of the recordings it was trained on.
 
 The catalog of language-model providers and their models in
 contracts/llm_providers.json and contracts/llm_models.json is derived

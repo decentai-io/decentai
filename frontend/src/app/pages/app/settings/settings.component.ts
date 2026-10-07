@@ -5,7 +5,8 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { AuthService } from 'src/app/services/auth.service';
 import { ModelChoice } from 'src/app/components/model-select/model-select.component';
 import { RoutingSettings, SettingsRoutingService } from 'src/app/services/settings-routing.service';
-import { SettingsSpeechService, SpeechSettings } from 'src/app/services/settings-speech.service';
+import { LocalSpeech, SettingsSpeechService, SpeechSettings } from 'src/app/services/settings-speech.service';
+import { ReadAloudService } from 'src/app/services/read-aloud.service';
 import { SwPush } from '@angular/service-worker';
 import { NotificationSettings, NotificationsService } from 'src/app/services/notifications.service';
 import { Profile, ProfileService } from 'src/app/services/profile.service';
@@ -41,6 +42,7 @@ export class SettingsComponent extends DataPageBase implements OnInit, OnDestroy
 
   ngOnDestroy(): void {
     this.subscriptions.unsubscribe();
+    this.stopWatchingSpeech();
   }
 
   loading = true;
@@ -77,6 +79,7 @@ export class SettingsComponent extends DataPageBase implements OnInit, OnDestroy
     private swPush: SwPush,
     private route: ActivatedRoute,
     private router: Router,
+    public readAloud: ReadAloudService,
   ) {
     super();
   }
@@ -97,6 +100,7 @@ export class SettingsComponent extends DataPageBase implements OnInit, OnDestroy
     this.peers = peers;
     this.loading = false;
     this.readChatDefaults();
+    void this.readAloud.refresh();
     await Promise.all([this.loadRouting(), this.loadSpeech(), this.loadNotifications()]);
   }
 
@@ -241,44 +245,106 @@ export class SettingsComponent extends DataPageBase implements OnInit, OnDestroy
     }
   }
 
-  // ── Speech to text ──────────────────────────────────────────────────
+  // ── Speech: a message spoken, a reply said aloud ────────────────────
 
   get canSeeSpeech(): boolean { return this.auth.can('settings:speech:get'); }
   get canEditSpeech(): boolean { return this.auth.can('settings:speech:update'); }
 
-  /** No connection = no transcription model: the composer offers no
-   *  microphone. */
-  speech: SpeechSettings = { transcription_connection_id: '', transcription_model: '' };
+  /** What an organization that has chosen nothing has: its messages
+   *  written down by the platform's own model, its replies not said. */
+  speech: SpeechSettings = {
+    transcription_source: 'local', transcription_connection_id: '', transcription_model: '',
+    speech_source: 'off', speech_connection_id: '', speech_model: '', speech_voice: '',
+  };
+  /** Where the platform's own models stand on this machine. */
+  localSpeech: LocalSpeech = { reachable: false };
   private speechSaved = '';
+  private speechWatch: ReturnType<typeof setTimeout> | null = null;
   speechSaving = false;
 
   get speechDirty(): boolean { return JSON.stringify(this.speech) !== this.speechSaved; }
 
-  /** A provider alone does not say which of its models writes speech down. */
+  /** A provider alone does not say which of its models, or in what voice. */
   get speechBlocker(): string {
-    return this.speech.transcription_connection_id && !this.speech.transcription_model
-      ? 'Choose the transcription model.' : '';
+    const speech = this.speech;
+    if (speech.transcription_source === 'connection'
+        && !(speech.transcription_connection_id && speech.transcription_model)) {
+      return 'Choose the transcription model.';
+    }
+    if (speech.speech_source === 'connection') {
+      if (!speech.speech_connection_id) return 'Choose the provider that speaks.';
+      if (!speech.speech_model.trim()) return 'Name the speech model.';
+      if (!speech.speech_voice.trim()) return 'Name the voice.';
+    }
+    return '';
   }
 
   chooseSpeech(choice: ModelChoice): void {
     this.speech = {
+      ...this.speech,
       transcription_connection_id: choice.connectionId,
       transcription_model: choice.model,
     };
   }
 
+  /** One of the platform's own models, in a sentence: there, on its
+   *  way and how far, or what is in the way. */
+  localStanding(what: 'transcription' | 'speech'): string {
+    if (!this.localSpeech.reachable) {
+      return 'The platform\'s speech container is not running here, so its own models cannot be used.';
+    }
+    const model = this.localSpeech[what];
+    const megabytes = (bytes: number) => `${Math.round(bytes / (1024 * 1024))} MB`;
+    if (!model) return '';
+    if (model.state === 'ready') return `On this machine and ready (${megabytes(model.of)}).`;
+    if (model.state === 'fetching') {
+      const percent = model.of ? Math.floor(model.bytes * 100 / model.of) : 0;
+      return `Downloading: ${percent}% of ${megabytes(model.of)}.`;
+    }
+    if (model.state === 'failed') {
+      return `The download did not finish (${model.error || 'no reason given'}). It is tried again when someone next uses it.`;
+    }
+    return `Not on this machine yet: ${megabytes(model.of)}, downloaded once when this is saved.`;
+  }
+
+  private takeSpeech(answer: { speech?: SpeechSettings; local?: LocalSpeech }): void {
+    if (answer.speech) this.speech = { ...this.speech, ...answer.speech };
+    if (answer.local) this.localSpeech = answer.local;
+    this.speechSaved = JSON.stringify(this.speech);
+    this.watchSpeech();
+  }
+
+  /** While one of the platform's own models is on its way, the page
+   *  asks again every few seconds, so the figure moves. */
+  private watchSpeech(): void {
+    if (this.speechWatch) clearTimeout(this.speechWatch);
+    this.speechWatch = null;
+    const fetching = [this.localSpeech.transcription, this.localSpeech.speech]
+      .some((model) => model?.state === 'fetching');
+    if (!fetching) return;
+    this.speechWatch = setTimeout(async () => {
+      try {
+        this.localSpeech = (await this.speechService.get()).local;
+      } catch {
+        return;
+      }
+      this.watchSpeech();
+    }, 3000);
+  }
+
+  private stopWatchingSpeech(): void {
+    if (this.speechWatch) clearTimeout(this.speechWatch);
+    this.speechWatch = null;
+  }
+
   private async loadSpeech(): Promise<void> {
     if (!this.canSeeSpeech) return;
     try {
-      const answer = await this.speechService.get();
-      this.speech = {
-        transcription_connection_id: answer.speech?.transcription_connection_id || '',
-        transcription_model: answer.speech?.transcription_model || '',
-      };
+      this.takeSpeech(await this.speechService.get());
     } catch {
       // Left as it is: nothing chosen.
+      this.speechSaved = JSON.stringify(this.speech);
     }
-    this.speechSaved = JSON.stringify(this.speech);
   }
 
   async saveSpeech(): Promise<void> {
@@ -287,8 +353,10 @@ export class SettingsComponent extends DataPageBase implements OnInit, OnDestroy
     try {
       const result = await this.speechService.update(this.speech);
       if (result.error) return this.fail(result.error);
-      this.speechSaved = JSON.stringify(this.speech);
-      this.flash('Speech to text saved.');
+      this.takeSpeech(result);
+      // Whether replies can be said has just been decided.
+      void this.readAloud.refresh();
+      this.flash('Speech saved.');
     } finally {
       this.speechSaving = false;
     }

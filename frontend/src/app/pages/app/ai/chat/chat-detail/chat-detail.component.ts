@@ -16,6 +16,7 @@ import { Subscription } from 'rxjs';
 import { ChatTurn, FileChoice, PlanStep } from 'src/app/models/chat-protocol';
 import { ScreenInputEvent, ScreenTab, ScreenView } from '../chat-screen/chat-screen.component';
 import { ViewportService } from 'src/app/services/viewport.service';
+import { ReadAloudService } from 'src/app/services/read-aloud.service';
 import {
   ChatConnectionService, ChatConnectionState,
 } from 'src/app/services/chat-connection.service';
@@ -246,10 +247,12 @@ export class ChatDetailComponent implements OnInit, OnDestroy {
     private connection: ChatConnectionService,
     private state: ChatStateService,
     private viewport: ViewportService,
+    private readAloud: ReadAloudService,
   ) {}
 
   ngOnInit(): void {
     this.state.reset();
+    void this.readAloud.refresh();
     this.subscriptions.add(this.viewport.narrow$.subscribe((narrow) => (this.isNarrow = narrow)));
     this.subscriptions.add(this.viewport.wide$.subscribe((wide) => (this.isWide = wide)));
     this.subscriptions.add(this.state.state$.subscribe((state) => {
@@ -354,6 +357,8 @@ export class ChatDetailComponent implements OnInit, OnDestroy {
   ngOnDestroy(): void {
     this.destroyed = true;
     this.clearKillTimer();
+    // A reply being said belongs to the chat that was left.
+    this.readAloud.stop();
     // Leaving with the browser in hand gives it back: the agent would
     // otherwise wait on a person who is no longer there.
     if (this.screenTaken && this.screen && !this.screen.idle) {
@@ -643,7 +648,15 @@ export class ChatDetailComponent implements OnInit, OnDestroy {
   private onMessageCreated(message: any): void {
     if (!message) return;
     this.upsertMessage(message);
-    if (message.actor === 'ai') this.state.answered();
+    if (message.actor === 'ai') {
+      this.state.answered();
+      // Said as it arrives, where the person asked for that.
+      this.readAloud.arrived(
+        String(message.message_id || ''),
+        (message.parts || []).filter((part: any) => part?.text)
+          .map((part: any) => part.text).join('\n\n'),
+        message.created_at);
+    }
   }
 
   /** Every agent this chat can reach, by the ref the platform routes
