@@ -71,6 +71,6 @@ LABEL io.decentai.layout="2"
 
 EXPOSE 8001
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-    CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/internal/health/live', timeout=4)"]
+    CMD ["python", "-c", "import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:%s/internal/health/live' % (os.environ.get('AI_RUNTIME_PORT', '').strip() or 8001), timeout=4)"]
 ENTRYPOINT ["decentai-runtime-start"]
 CMD ["python", "ai_runtime/main.py"]

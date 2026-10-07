@@ -105,8 +105,13 @@ class AssistantState:
                  evidence_cursor: int = 0,
                  summary: str = "",
                  parked: Optional[Dict[str, Any]] = None,
-                 archive: Optional[List[Dict[str, Any]]] = None):
+                 archive: Optional[List[Dict[str, Any]]] = None,
+                 stopped: bool = False):
         self.messages = messages if messages is not None else []
+        #: the person stopped it, and nothing has asked anything of it
+        #: since: a mind rebuilt from this state rests, whatever its
+        #: transcript ends on.
+        self.stopped = bool(stopped)
         #: a FOREGROUND invocation waiting on a human — the card the
         #: audience must be able to find, and the invocation a freshly
         #: hydrated mind resumes through the gates when the decision
@@ -186,6 +191,7 @@ class AssistantState:
             "summary": self.summary,
             "parked": self.parked,
             "archive": self.archive,
+            "stopped": self.stopped,
         }
 
     @classmethod
@@ -208,6 +214,7 @@ class AssistantState:
             else None,
             archive=[entry for entry in (data.get("archive") or [])
                      if isinstance(entry, dict)],
+            stopped=bool(data.get("stopped")),
         )
 
     def serialized_size(self) -> int:

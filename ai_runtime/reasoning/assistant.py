@@ -243,6 +243,8 @@ class Assistant:
         self.inbox: asyncio.Queue = asyncio.Queue()
         self._job_tasks: Dict[str, asyncio.Task] = {}
         self._stopping = False
+        #: whether the person spoke after the stop being honoured
+        self._asked_since_stop = False
         self.logger = RuntimeLoggerFactory.get_logger(self.__class__.__name__)
 
     # ------------------------------------------------------------------
@@ -266,11 +268,25 @@ class Assistant:
         while True:
             self._drain()
             if self._stopping:
+                # The jobs are ended and waited for, so that what each
+                # says as it ends is in front of the mind now, and read
+                # as the end of something stopped — not found in the
+                # inbox afterwards and taken for news to think about.
                 await self._cancel_all_jobs()
-                await self._persist()
+                self._drain()
+                asked = self._asked_since_stop
+                self._asked_since_stop = False
+                # Written down, so that a mind rebuilt from this state
+                # rests as this one does (Session._unfinished).
+                self.state.stopped = not asked
                 self._stopping = False
-                return
+                await self._persist()
+                if not asked:
+                    return
+                # The person stopped it and then spoke: that is a new
+                # ask, and it is answered.
 
+            self.state.stopped = False
             if self._route_pending:
                 await self._route()
             finished = await self._beat()
@@ -313,7 +329,18 @@ class Assistant:
             self.state.cursor = seq
         if kind == "stop":
             self._stopping = True
+            self._asked_since_stop = False
+            # Said in the transcript, where the next turn reads it:
+            # otherwise it ends on a result and reads as work to go on
+            # with.
+            self.state.messages.append({
+                "role": "user",
+                "content": f"EVENT stop at {self._stamp()}:\n"
+                           + self.STOPPED_NOTE,
+            })
             return
+        if kind == "user_message" and self._stopping:
+            self._asked_since_stop = True
         # Everything absorbed is stamped with the local time it arrived
         # — the mind's only clock, and always current when it thinks,
         # because a beat follows an absorption.
@@ -1346,10 +1373,19 @@ class Assistant:
             return {"job_id": job_id, "cancelling": True}
         return {"job_id": job_id, "error": "No such running job."}
 
+    #: What the transcript says where the person stopped it.
+    STOPPED_NOTE = ("The person pressed stop. What was under way was "
+                    "stopped and its jobs cancelled. Do not continue it "
+                    "unless they ask.")
+    #: How long a stop waits for the jobs it cancelled to end.
+    STOP_WAIT_SECONDS = 15.0
+
     async def _cancel_all_jobs(self) -> None:
-        for task in list(self._job_tasks.values()):
-            if not task.done():
-                task.cancel()
+        tasks = [task for task in self._job_tasks.values() if not task.done()]
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            await asyncio.wait(tasks, timeout=self.STOP_WAIT_SECONDS)
 
     # -- read ------------------------------------------------------------
     async def _read(self, action: Dict[str, Any]) -> Dict[str, Any]:

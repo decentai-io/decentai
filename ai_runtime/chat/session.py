@@ -207,6 +207,8 @@ class Session:
         self.report_reason = ""
         self.last_say = ""
         self._pumped = asyncio.Event()
+        #: killed: what reaches it now is for the session built next
+        self.dead = False
         self._running: Optional[asyncio.Task] = None
         self.logger = RuntimeLoggerFactory.get_logger(self.__class__.__name__)
 
@@ -373,6 +375,11 @@ class Session:
         Rest ends on the assistant's word — a finish, a reply."""
         if fresh:
             return bool(history) and history[-1].get("actor") == "user"
+        if state.stopped:
+            # The person stopped it. Its transcript may well end on a
+            # function's result; it is at rest all the same, until
+            # something is asked of it.
+            return False
         return (bool(state.messages)
                 and state.messages[-1].get("role") == "user")
 
@@ -568,6 +575,10 @@ class Session:
         sequence, then posted carrying it. A mind that dies before the
         beat persists finds it again at the next hydration."""
         event["seq"] = await self.services.record_event(self.chat_id, event)
+        if self.dead:
+            # Killed while this was on its way in. It is on the record,
+            # and the session built next absorbs it from there.
+            return
         self.assistant.post(event)
         self._pump()
 
@@ -727,6 +738,10 @@ class Session:
         rebuilds a quiet chat that knows what it did. Returns what went:
         jobs cancelled, children killed, cards expired."""
         self.assistant._stopping = True
+        # From here this session is nobody's: what reaches it is kept
+        # on the record for the session built next, and not thought
+        # about by this one (``_post``).
+        self.dead = True
         counts = {"jobs": 0, "children": 0, "cards": 0}
         if self._running is not None and not self._running.done():
             self._running.cancel()
@@ -762,6 +777,15 @@ class Session:
             job.result = {"status": "cancelled", "reason": "stopped by the person"}
         state.parked = None
         state.beats = 0
+        # Said where the next session reads it, in its state and in its
+        # transcript: stopped, and not to be gone on with.
+        state.stopped = True
+        if state.messages:
+            state.messages.append({
+                "role": "user",
+                "content": f"EVENT stop at {self.assistant._stamp()}:\n"
+                           + self.assistant.STOPPED_NOTE,
+            })
         cards = {str(card.get("approval_id") or "") for card in self.pending_cards()}
         try:
             cards.update(str(card.get("approval_id") or "")

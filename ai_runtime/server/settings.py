@@ -60,19 +60,37 @@ class RuntimeSettings:
             backend_service_audience=os.getenv("AI_RUNTIME_TOKEN_AUDIENCE", "decentai-ai-runtime"),
             backend_url=os.getenv("BACKEND_INTERNAL_URL", "").strip(),
             host=os.getenv("AI_RUNTIME_HOST", "0.0.0.0"),
-            port=int(os.getenv("AI_RUNTIME_PORT", "8001")),
+            port=cls._port("AI_RUNTIME_PORT", 8001),
             agents_install_dir=(
                 os.getenv("AI_RUNTIME_AGENTS_INSTALL_DIR", "")
                 or _default_install_dir()
             ),
             agents_spawner=os.getenv("AI_RUNTIME_AGENTS_SPAWNER", "").strip(),
-            egress_port=int(os.getenv("AI_RUNTIME_EGRESS_PORT", "8002")),
+            # As start.sh reads it, which wrote the firewall rule with
+            # it: a value that is not a number is the default.
+            egress_port=cls._port("AI_RUNTIME_EGRESS_PORT", 8002,
+                                  or_default=True),
             egress_allows_loopback=(
                 os.getenv("DECENTAI_WEB_ALLOW_LOOPBACK", "") == "1"),
             package_hosts=cls._hosts(
                 os.getenv("AI_RUNTIME_PACKAGE_HOSTS", ""))
             or cls.package_hosts,
         )
+
+    @staticmethod
+    def _port(name: str, default: int, or_default: bool = False) -> int:
+        """A port a setting names: the default where it is left blank,
+        and a refusal that names the setting where it is not a port."""
+        said = os.getenv(name, "").strip()
+        if not said:
+            return default
+        if said.isdigit() and 1 <= int(said) <= 65535:
+            return int(said)
+        if or_default:
+            return default
+        raise ValueError(
+            f"{name} must be a port, a number from 1 to 65535; "
+            f"it is '{said}'.")
 
     @staticmethod
     def _hosts(said: str) -> tuple:

@@ -83,6 +83,11 @@ class RelayingServices:
     def __init__(self, services, deliver):
         self._services = services
         self._deliver = deliver
+        #: One emission at a time per chat, from its record to its
+        #: delivery: two that overlap would otherwise reach the page in
+        #: the order their records answered, and the page drops a frame
+        #: whose sequence is below one it has seen.
+        self._turns: Dict[str, asyncio.Lock] = {}
 
     def __getattr__(self, name):
         return getattr(self._services, name)
@@ -93,14 +98,17 @@ class RelayingServices:
         await self._deliver(chat_id, event)
 
     async def emit(self, chat_id: str, event: dict) -> Optional[int]:
-        seq = await self._services.emit(chat_id, event)
-        # The frame the audience hears carries the sequence its record
-        # got, so replay and live delivery name one event the same way
-        # and a client can tell a repeat from news. A frame that was
-        # not recorded travels without one — it cannot be replayed, so
-        # there is nothing to reconcile it against.
-        await self._deliver(
-            chat_id, {**event, "seq": seq} if isinstance(seq, int) else event)
+        async with self._turns.setdefault(chat_id, asyncio.Lock()):
+            seq = await self._services.emit(chat_id, event)
+            # The frame the audience hears carries the sequence its
+            # record got, so replay and live delivery name one event
+            # the same way and a client can tell a repeat from news. A
+            # frame that was not recorded travels without one — it
+            # cannot be replayed, so there is nothing to reconcile it
+            # against.
+            await self._deliver(
+                chat_id,
+                {**event, "seq": seq} if isinstance(seq, int) else event)
         return seq
 
 
@@ -122,6 +130,8 @@ class SessionHost:
         self.sessions: Dict[str, Session] = {}
         self.sockets: Dict[str, Any] = {}
         self._builds: Dict[str, asyncio.Lock] = {}
+        #: chat -> how many deliveries are on their way in to its session
+        self._busy: Dict[str, int] = {}
         #: one materialization at a time per digest — two chats needing
         #: the same package install it once
         self._installs: Dict[str, asyncio.Lock] = {}
@@ -290,6 +300,21 @@ class SessionHost:
             # than losing its agents to a blip.
             self.logger.warning(f"Contract for {chat_id} not re-read: {exc}")
             return
+        try:
+            await self._adopt(chat_id, session, contract)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            # The same rule, for everything read from it: an agent that
+            # will not install, a model block that will not build. The
+            # turn goes on with what the session had — the person's
+            # message is already stored and shown, and must reach the
+            # mind whatever became of this.
+            self.logger.error(
+                f"Contract for {chat_id} not applied: {exc}", exc_info=True)
+
+    async def _adopt(self, chat_id: str, session: Session,
+                     contract: Dict[str, Any]) -> None:
         llm = contract.get("llm") or None
         changed_model = llm != getattr(session, "llm_config", None)
         roster = self._with_mcp(
@@ -371,7 +396,13 @@ class SessionHost:
         The slow path is narrated to the attached audience, if any
         (``agent_status`` frames, docs/reference/session-door.md): a first open
         waits on pip, and a wait with no words reads as a fault."""
-        installed = self.library.agent(digest)
+        try:
+            installed = self.library.agent(digest)
+        except ValueError as exc:
+            # Not a digest at all: a fault in the approval's row. This
+            # agent is absent, and the chat opens with the others.
+            self.logger.error(f"Agent {ref} absent for {chat_id}: {exc}")
+            return None
         if installed is not None:
             # Already serving — built by an earlier chat, or by the
             # warm-up, which had no delegation to say so with.
@@ -441,7 +472,10 @@ class SessionHost:
         # and a chat is connected, so there is a delegation to ask with.
         # Outside the lock: reclaiming is housekeeping, and nothing else
         # should wait behind it.
-        await self.reclaim(chat_id)
+        try:
+            await self.reclaim(chat_id)
+        except Exception as exc:
+            self.logger.warning(f"Nothing reclaimed after an install: {exc}")
         return installed
 
     async def reclaim(self, chat_id: str) -> int:
@@ -479,7 +513,14 @@ class SessionHost:
         for digest in stored():
             if digest in keep:
                 continue
-            self.library.forget(digest)
+            try:
+                # Deleting a package and its environment is the disk's
+                # time, and not the loop's.
+                await asyncio.to_thread(self.library.forget, digest)
+            except Exception as exc:
+                self.logger.warning(
+                    f"{digest[:19]}… not reclaimed: {exc}")
+                continue
             removed += 1
         # A refusal remembers BYTES, and these bytes are not here: either
         # this sweep just deleted them, or they never landed at all —
@@ -488,7 +529,11 @@ class SessionHost:
         # is the "unavailable until a restart" trap. Anything the library
         # still holds keeps its refusal: that package is unchanged.
         for digest in list(self._refused):
-            if not self.library.has(digest):
+            try:
+                held = self.library.has(digest)
+            except ValueError:
+                held = False
+            if not held:
                 self._refused.pop(digest, None)
         if removed:
             self.logger.info(f"Reclaimed {removed} unapproved package(s)")
@@ -661,7 +706,33 @@ class SessionHost:
                         str(entry.get("manifest_hash") or ""),
                         name=str(entry.get("name") or ref)))
             return
-        session = await self.session(chat_id)
+        with self._arriving(chat_id):
+            session = await self.session(chat_id)
+            await self._hand(chat_id, session, kind, frame)
+        self._schedule_reap(chat_id)
+
+    def _arriving(self, chat_id: str):
+        """Held while something is being delivered to a chat's session:
+        the reaper leaves that session alone (``_reap``). Without it a
+        session could be forgotten between being found and being
+        spoken to, run the turn as nobody's, and the next message build
+        a second one beside it."""
+        host = self
+
+        class Arriving:
+            def __enter__(self):
+                host._busy[chat_id] = host._busy.get(chat_id, 0) + 1
+
+            def __exit__(self, *_exc):
+                left = host._busy.get(chat_id, 0) - 1
+                if left > 0:
+                    host._busy[chat_id] = left
+                else:
+                    host._busy.pop(chat_id, None)
+        return Arriving()
+
+    async def _hand(self, chat_id: str, session: Session, kind: str,
+                    frame: Dict[str, Any]) -> None:
         if kind == "user_message":
             # A turn begins: the contract is read again, so a change made
             # since this session was built is in force before a word of
@@ -680,6 +751,11 @@ class SessionHost:
                 client_message_id=str(frame.get("client_message_id") or ""),
                 before_thinking=lambda: self.refresh(chat_id),
             )
+            if session.dead:
+                # Killed while the message was on its way in. It is on
+                # the record; the session built now absorbs it, and
+                # answers.
+                await self.session(chat_id)
         elif kind == "approval_decided":
             await session.deliver_approval(
                 str(frame.get("approval_id") or ""),
@@ -715,7 +791,6 @@ class SessionHost:
             # that waited out a long beat would leave the chat deaf to
             # everything after it — the kill switch first of all.
             session.ask_to_stop()
-        self._schedule_reap(chat_id)
 
     async def _kill(self, chat_id: str) -> None:
         """End everything a chat is doing, now, and forget the session
@@ -760,11 +835,14 @@ class SessionHost:
     async def deliver_event(self, chat_id: str, event: Dict[str, Any]) -> None:
         """The inside door — the scheduler's way in. Not reachable
         from any socket."""
-        session = await self.session(chat_id)
-        # A wakeup starts a turn as surely as a person does, and the
-        # chat may have changed since the last one.
-        await self.refresh(chat_id)
-        await session.deliver_event(event)
+        with self._arriving(chat_id):
+            session = await self.session(chat_id)
+            # A wakeup starts a turn as surely as a person does, and the
+            # chat may have changed since the last one.
+            await self.refresh(chat_id)
+            await session.deliver_event(event)
+            if session.dead:
+                await self.session(chat_id)
         self._schedule_reap(chat_id)
 
 
@@ -860,6 +938,8 @@ class SessionHost:
         session = self.sessions.get(chat_id)
         if session is None or chat_id in self.sockets:
             return
+        if self._busy.get(chat_id):
+            return      # something is on its way in to it
         if not session.idle:
             return
         if session.questions:

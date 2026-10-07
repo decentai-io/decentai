@@ -1,0 +1,227 @@
+"""A stop is a stop: it holds through the jobs it cancels and through a
+rebuilt session, and what the person says after it is still heard. And
+the host, around it: a message stored is a message that reaches the
+mind, and frames arrive in the order they were recorded.
+"""
+
+import asyncio
+import json
+from pathlib import Path
+
+from ai_runtime.chat import Session
+from ai_runtime.llms import FakeConnector
+from ai_runtime.server.host import RelayingServices, SessionHost
+from ai_runtime.tests.fixture_agents import load_agents
+from sim.session_services import SimSessionServices
+
+AGENTS_DIR = Path(__file__).resolve().parent / "fixtures" / "agents"
+
+
+def run(awaitable):
+    return asyncio.run(awaitable)
+
+
+def action(**kwargs):
+    return json.dumps(kwargs)
+
+
+def build(script, services=None, **kwargs):
+    agents, errors = load_agents(AGENTS_DIR)
+    assert errors == {}
+    services = services or SimSessionServices()
+    return Session("chat_1", agents, FakeConnector(script), services,
+                   **kwargs), services
+
+
+def said(services):
+    return [part["content"]
+            for message in services.messages.get("chat_1", [])
+            if message.get("actor") == "ai"
+            for part in message.get("parts", [])
+            if part.get("type") == "markdown"]
+
+
+class SlowToSave(SimSessionServices):
+    """Saves as a platform over the network does: not at once."""
+
+    async def save_state(self, chat_id, state):
+        await asyncio.sleep(0.05)
+        await super().save_state(chat_id, state)
+
+
+class TestAStopHolds:
+    def test_through_the_jobs_it_cancels(self):
+        """Each cancelled job says so as it ends. That is the end of
+        something stopped, and not news to think about."""
+        session, services = build([
+            action(action="open_agent", agent="notebook"),
+            action(action="start", function="notebook.note.find", inputs={}),
+        ], SlowToSave())
+
+        async def scenario():
+            await session.open()
+            await session.deliver_user("search")
+            await session.stop()
+            await asyncio.sleep(0.2)
+            await session.wait_idle()
+        run(scenario())
+        assert len(session.connector.calls) <= 2
+
+    def test_through_the_next_session_built(self):
+        """Stopped in the middle of a task, its transcript ends on a
+        result. A session rebuilt from it rests; it does not carry on."""
+        session, services = build([
+            action(action="open_agent", agent="notebook"),
+            action(action="invoke", function="notebook.note.find", inputs={}),
+        ])
+
+        async def stopped_mid_task():
+            await session.open()
+            await session.deliver_user("search")
+            await session.stop()
+        run(stopped_mid_task())
+        assert services.states["chat_1"]["stopped"] is True
+
+        rebuilt, _ = build([action(action="say", text="All done.", final=True)],
+                           services)
+
+        async def later():
+            await rebuilt.open()
+            await rebuilt.wait_idle()
+        run(later())
+        assert rebuilt.connector.calls == [] and "All done." not in said(services)
+
+    def test_a_kill_is_written_down_the_same_way(self):
+        session, services = build([
+            action(action="open_agent", agent="notebook"),
+        ])
+
+        async def scenario():
+            await session.open()
+            await session.deliver_user("search")
+            await session.wait_idle()
+            await session.kill()
+        run(scenario())
+        state = services.states["chat_1"]
+        assert state["stopped"] is True
+        assert "pressed stop" in state["messages"][-1]["content"]
+
+
+class TestWhatIsSaidAfterAStopIsHeard:
+    def test_a_message_taken_in_the_same_pass_as_the_stop_is_answered(self):
+        session, services = build([
+            action(action="say", text="Here I am.", final=True),
+        ])
+
+        async def scenario():
+            await session.open()
+            session.ask_to_stop()
+            await session.deliver_user("are you there?")
+            await session.wait_idle()
+        run(scenario())
+        assert said(services) == ["Here I am."]
+        assert services.states["chat_1"]["stopped"] is False
+
+    def test_a_message_that_reaches_a_killed_session_is_kept_for_the_next(
+            self):
+        session, services = build([])
+
+        async def scenario():
+            await session.open()
+            await session.kill()
+            await session.deliver_user("after the kill")
+        run(scenario())
+        assert session.connector.calls == []
+
+        following, _ = build(
+            [action(action="say", text="Heard.", final=True)], services)
+
+        async def next_session():
+            await following.open()
+            await following.wait_idle()
+        run(next_session())
+        assert said(services) == ["Heard."]
+
+
+class TestTheHostAroundIt:
+    def test_frames_reach_the_page_in_the_order_they_were_recorded(self):
+        delivered = []
+
+        class Recording:
+            def __init__(self):
+                self.seq = 0
+
+            async def emit(self, chat_id, event):
+                self.seq += 1
+                mine = self.seq
+                # The first record answers last.
+                await asyncio.sleep(0.05 if mine == 1 else 0)
+                return mine
+
+        async def deliver(chat_id, event):
+            delivered.append(event["seq"])
+
+        async def scenario():
+            relaying = RelayingServices(Recording(), deliver)
+            await asyncio.gather(relaying.emit("chat_1", {"event": "a"}),
+                                 relaying.emit("chat_1", {"event": "b"}))
+        run(scenario())
+        assert delivered == [1, 2]
+
+    def test_reading_the_present_again_never_costs_the_turn(self):
+        """The message is stored and shown before the contract is read
+        again. Whatever that reading runs into, it comes back, and the
+        message goes on to the mind."""
+        host = SessionHost.__new__(SessionHost)
+
+        class Services:
+            async def contract(self, chat_id):
+                return {"agents": []}
+
+        async def breaks(*_args, **_kwargs):
+            raise RuntimeError("an agent would not install")
+        host.sessions = {"chat_1": object()}
+        host.services = Services()
+        host._adopt = breaks
+        import logging
+        host.logger = logging.getLogger("test")
+        run(host.refresh("chat_1"))
+
+    def test_a_session_something_is_on_its_way_in_to_is_not_reaped(self):
+        host = SessionHost.__new__(SessionHost)
+
+        class Idle:
+            idle, questions = True, {}
+        import logging
+        host.logger = logging.getLogger("test")
+        host.sessions, host.sockets = {"chat_1": Idle()}, {}
+        host._builds, host._busy = {}, {}
+        with host._arriving("chat_1"):
+            host._reap("chat_1")
+            assert "chat_1" in host.sessions
+        host._reap("chat_1")
+        assert "chat_1" not in host.sessions
+
+
+class TestAPortSetting:
+    def settings(self, monkeypatch, **said):
+        from ai_runtime.server.settings import RuntimeSettings
+        monkeypatch.setenv("BACKEND_SERVICE_PUBLIC_KEY", "a key")
+        for name, value in said.items():
+            monkeypatch.setenv(name, value)
+        return RuntimeSettings.from_env()
+
+    def test_left_blank_it_is_the_default(self, monkeypatch):
+        found = self.settings(monkeypatch, AI_RUNTIME_PORT=" ",
+                              AI_RUNTIME_EGRESS_PORT="")
+        assert (found.port, found.egress_port) == (8001, 8002)
+
+    def test_one_that_is_not_a_port_is_refused_by_name(self, monkeypatch):
+        import pytest
+        with pytest.raises(ValueError, match="AI_RUNTIME_PORT"):
+            self.settings(monkeypatch, AI_RUNTIME_PORT="eighty")
+
+    def test_the_proxys_is_read_as_the_firewall_rule_read_it(
+            self, monkeypatch):
+        assert self.settings(
+            monkeypatch, AI_RUNTIME_EGRESS_PORT="x").egress_port == 8002

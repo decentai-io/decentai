@@ -485,10 +485,11 @@ class Scheduler:
             current.advance(now)
             # Firing is the side effect and writing is what keeps it
             # from repeating after a restart. A stop that lands while
-            # it is written does not undo the writing: it goes on, and
-            # is owed again at the next tick in case it did not land.
+            # it is written may have cut the writing short: the row is
+            # owed, and written again before the next tick fires
+            # anything.
             try:
-                await asyncio.shield(self._write(current))
+                await self._write(current)
             except asyncio.CancelledError:
                 if self._firing.get(schedule.schedule_id) is None:
                     raise  # the clock itself is stopping
