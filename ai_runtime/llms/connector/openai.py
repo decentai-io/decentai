@@ -6,9 +6,11 @@ speaking the OpenAI chat-completions protocol plugs in here.
 
 from __future__ import annotations
 
+import httpx
 from openai import AsyncOpenAI
 
 from ai_runtime.llms.connector.tools import (
+    setting,
     ModelReply, is_tool_choice_refusal,
 )
 
@@ -33,8 +35,11 @@ class OpenAIConnector:
             base_url=str(config.get("endpoint") or "") or None,
             # A hung provider call must not stall a reasoning turn forever;
             # transient 5xx/connection errors retry with backoff in the SDK.
-            timeout=float(config.get("timeout_seconds") or 60),
-            max_retries=int(config.get("max_retries") or 2),
+            timeout=setting(config, "timeout_seconds", 60, 1, 600),
+            max_retries=int(setting(config, "max_retries", 2, 0, 10)),
+            # A redirect is not followed: followed to another origin,
+            # the key in this client's headers would go there with it.
+            http_client=httpx.AsyncClient(follow_redirects=False),
         )
         self.tool_choice = self.TOOL_CHOICE
         #: minimal / low / medium / high, or nothing: sent only when the

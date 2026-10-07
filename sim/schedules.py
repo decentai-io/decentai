@@ -21,7 +21,15 @@ class MemoryScheduleStore:
         edited them (``schedules_changed``)."""
         return [r for r in self.rows if r.get("chat_id") == chat_id]
 
+    #: As the platform's store: a chat holds at most this many.
+    MAX_ROWS = 50
+
     async def add(self, row: Dict[str, Any]) -> None:
+        chat_id = row.get("chat_id")
+        if sum(1 for kept in self.rows
+               if kept.get("chat_id") == chat_id) >= self.MAX_ROWS:
+            raise ValueError(
+                f"A chat may hold at most {self.MAX_ROWS} schedules.")
         self.rows.append(dict(row))
 
     async def ran(self, row: Dict[str, Any]) -> bool:
@@ -33,4 +41,5 @@ class MemoryScheduleStore:
 
     async def remove(self, chat_id: str, schedule_id: str) -> None:
         self.rows = [r for r in self.rows
-                     if r.get("schedule_id") != schedule_id]
+                     if not (r.get("schedule_id") == schedule_id
+                             and r.get("chat_id") == chat_id)]

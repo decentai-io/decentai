@@ -11,9 +11,10 @@ from __future__ import annotations
 
 import asyncio
 import itertools
+import json
 from typing import Any, Callable, Dict, List, Optional
 
-from contracts.chat import event_error
+from contracts.chat import event_error, part_error
 
 from sim.resources import InMemoryResourceProvider
 from sim.schedules import MemoryScheduleStore
@@ -115,8 +116,23 @@ class SimSessionServices:
     async def load_state(self, chat_id: str) -> Optional[dict]:
         return self.states.get(chat_id)
 
+    #: The platform's own limits (backend/api/endpoints/app/ai): what
+    #: it refuses, this refuses, or a test passes here against
+    #: something a deployment would turn away.
+    STATE_MAX_BYTES = 512 * 1024
+    EVENT_MAX_BYTES = 16384
+    HISTORY_LIMIT = 100
+    ACTORS = ("user", "ai", "system", "parent")
+
     async def save_state(self, chat_id: str, state: dict) -> None:
-        self.states[chat_id] = state
+        written = json.dumps(state, default=str)
+        if len(written.encode("utf-8")) > self.STATE_MAX_BYTES:
+            raise ValueError(
+                f"The state is {len(written.encode('utf-8'))} bytes; the "
+                f"limit is {self.STATE_MAX_BYTES}.")
+        # A copy, as a store keeps one: what the mind does to its own
+        # state after this is not yet saved.
+        self.states[chat_id] = json.loads(written)
 
     # -- messages --------------------------------------------------------
     async def persist_message(self, chat_id: str, actor: str, text: str,
@@ -124,6 +140,15 @@ class SimSessionServices:
                               source=None):
         """The message and whether this call created it — a client
         message id sent again finds the message it already made."""
+        if actor not in self.ACTORS:
+            raise ValueError("actor must be user, ai, system, or parent.")
+        if not str(text or "") and not parts:
+            raise ValueError("parts must be a non-empty list of objects.")
+        for part in parts or []:
+            problem = part_error(part)
+            if problem:
+                raise ValueError(f"A part does not fit the chat contract "
+                                 f"({problem}): {part}")
         rows = self.messages.setdefault(chat_id, [])
         if client_message_id:
             for existing in rows:
@@ -145,10 +170,14 @@ class SimSessionServices:
         return message, True
 
     async def history(self, chat_id: str) -> List[dict]:
-        return list(self.messages.get(chat_id, []))
+        return list(self.messages.get(chat_id, []))[-self.HISTORY_LIMIT:]
 
     # -- the inbox: events in, durable before absorbed --------------------
     async def record_event(self, chat_id: str, event: dict) -> int:
+        size = len(json.dumps(event, default=str).encode("utf-8"))
+        if size > self.EVENT_MAX_BYTES:
+            raise ValueError(f"The event is {size} bytes; the limit is "
+                             f"{self.EVENT_MAX_BYTES}.")
         rows = self.inbox.setdefault(chat_id, [])
         seq = len(rows) + 1
         rows.append({**event, "seq": seq})
@@ -211,7 +240,8 @@ class SimSessionServices:
     async def resolve_approval(self, approval_id: str,
                                decision: bool) -> bool:
         record = self.approvals.get(approval_id)
-        if record is None or record["future"].done():
+        if record is None or record["future"].done() \
+                or record.get("status") == "expired":
             return False
         record["future"].set_result(bool(decision))
         return True
@@ -231,7 +261,8 @@ class SimSessionServices:
 
     async def resolve_answer(self, approval_id: str, answer: str) -> bool:
         record = self.approvals.get(approval_id)
-        if record is None or record["future"].done():
+        if record is None or record["future"].done() \
+                or record.get("status") == "expired":
             return False
         record["future"].set_result(answer)
         return True

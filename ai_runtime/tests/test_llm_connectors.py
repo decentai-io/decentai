@@ -1093,7 +1093,10 @@ def test_compatible_provider_request_and_tool_response(monkeypatch, provider, en
 
     async def exercise():
         async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
-            monkeypatch.setattr(module, "AsyncOpenAI", lambda **kw: AsyncOpenAI(http_client=client, **kw))
+            # In place of the connector's own client, which follows no
+            # redirect: the stand-in transport answers instead.
+            monkeypatch.setattr(module, "AsyncOpenAI", lambda **kw: AsyncOpenAI(
+                **{**kw, "http_client": client}))
             connector = LLMConnectorFactory.create({"provider": provider, "endpoint": endpoint,
                 "api_key": "test-key", "model": "chosen-model"})
             reply = await connector.chat([{"role": "user", "content": "Find hello"}], tools=[{

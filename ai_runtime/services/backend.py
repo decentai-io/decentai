@@ -55,8 +55,17 @@ class Gateway:
             "request_id": f"runtime_{secrets.token_urlsafe(18)}",
             **(data or {}),
         }}
-        response = await self._client.post(
-            "/app", json=body, headers={"Authorization": f"Bearer {token}"})
+        try:
+            response = await self._client.post(
+                "/app", json=body, headers={"Authorization": f"Bearer {token}"})
+        except httpx.HTTPError as exc:
+            # A timeout, a refused connection: said as every failure of
+            # the platform is, with what happened where its own text is
+            # empty (a read timeout's is).
+            said = str(exc).strip()
+            raise GatewayError(
+                f"{endpoint} could not reach the platform: "
+                f"{type(exc).__name__}" + (f": {said[:300]}" if said else ""))
         try:
             payload = response.json()
         except ValueError:
@@ -71,9 +80,8 @@ class Gateway:
                 and "request_id" in payload:
             if payload.get("status") == "error":
                 error = payload.get("error") or {}
-                raise GatewayError(
-                    str(error.get("message") if isinstance(error, dict)
-                        else error) or f"{endpoint} failed")
+                said = error.get("message") if isinstance(error, dict) else error
+                raise GatewayError(str(said or f"{endpoint} failed"))
             return payload.get("data") or {}
         return payload if isinstance(payload, dict) else {}
 
@@ -503,9 +511,14 @@ class BackendSchedules:
         platform no longer accepts is dropped: nothing can be written
         as that chat until its next dial brings a new one."""
         chat_id = str(chat_id or "")
+        sent_with = self.services.credentials.get(chat_id)
         try:
             return await self.services.call(chat_id, endpoint, data)
         except GatewayError as exc:
-            if exc.status == 401:
+            # Only the key this write was sent with. One renewed while
+            # the write was on its way is a different key, which nothing
+            # has refused.
+            if exc.status == 401 and \
+                    self.services.credentials.get(chat_id) == sent_with:
                 self.services.revoke(chat_id)
             raise

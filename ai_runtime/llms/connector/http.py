@@ -15,11 +15,18 @@ from typing import Any, Dict
 
 import httpx
 
+from ai_runtime.llms.connector.tools import setting
+
 
 class ProviderError(RuntimeError):
     """A provider refused or failed. The message is its own, so that the
     cycle's reading of a refusal (too long, no pictures) works on it as
-    on any provider's."""
+    on any provider's; ``status_code`` is the status it answered with,
+    under the name the client libraries give theirs."""
+
+    def __init__(self, message: str, status_code: int | None = None):
+        super().__init__(message)
+        self.status_code = status_code
 
 
 class HttpConnector:
@@ -41,8 +48,8 @@ class HttpConnector:
                 raise ValueError(f"{self.NAME} connector requires {name}")
         # A hung provider call must not stall a reasoning turn forever;
         # a busy one is asked again, as the client libraries do.
-        self.timeout = float(config.get("timeout_seconds") or 60)
-        self.max_retries = int(config.get("max_retries") or 2)
+        self.timeout = setting(config, "timeout_seconds", 60, 1, 600)
+        self.max_retries = int(setting(config, "max_retries", 2, 0, 10))
 
     def _client(self) -> httpx.AsyncClient:
         """The plain client, so that the way this machine reaches the
@@ -81,6 +88,7 @@ class HttpConnector:
                             or attempt >= self.max_retries:
                         raise ProviderError(
                             f"{self.NAME} answered {response.status_code}: "
-                            f"{self._reason(response)[:600]}")
+                            f"{self._reason(response)[:600]}",
+                            response.status_code)
                 await asyncio.sleep(self.RETRY_WAIT * (2 ** attempt))
                 attempt += 1

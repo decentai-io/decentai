@@ -122,10 +122,48 @@ CONTEXT_OVERFLOW_MARKS = (
 )
 
 
+#: How providers word "the account may not ask for more": out of
+#: credit, over a quota. Such an answer often names tokens and models
+#: too, and is about neither the transcript nor a picture.
+ACCOUNT_MARKS = (
+    "quota", "credit", "billing", "payment", "insufficient_funds",
+    "insufficient funds", "balance",
+)
+
+
+def setting(config: dict, name: str, default: float,
+            low: float, high: float) -> float:
+    """A number a connection sets, held to what makes sense for it;
+    the default where it is not set, or not a number. Zero is a
+    number: ``max_retries: 0`` asks for no retries, and gets none."""
+    said = (config or {}).get(name)
+    if said is None or isinstance(said, bool):
+        return default
+    try:
+        value = float(said)
+    except (TypeError, ValueError):
+        return default
+    if value != value:      # NaN
+        return default
+    if value < low:
+        # Below what can be: none of it where none is possible (no
+        # retries), and the default where it is not (a timeout of 0
+        # would be no call at all).
+        return low if low == 0 else default
+    return min(value, high)
+
+
+def _about_the_account(exc: Exception, reason: str) -> bool:
+    return (getattr(exc, "status_code", None) == 402
+            or any(mark in reason for mark in ACCOUNT_MARKS))
+
+
 def is_context_overflow(exc: Exception) -> bool:
     """Whether a provider refused because the transcript outgrew the
     model's window — the one refusal the mind can answer by folding."""
     reason = str(exc).lower()
+    if _about_the_account(exc, reason):
+        return False
     return any(mark in reason for mark in CONTEXT_OVERFLOW_MARKS)
 
 
@@ -137,5 +175,11 @@ def is_image_refusal(exc: Exception) -> bool:
     week it is written, and a self-hosted endpoint is nobody's list at
     all. So the request is made, and a refusal is the answer."""
     reason = str(exc).lower()
+    # A limit on requests or an empty account names the model, and a
+    # model's name may hold the word: that is not a refusal to look.
+    if getattr(exc, "status_code", None) == 429 \
+            or "rate limit" in reason or "rate_limit" in reason \
+            or _about_the_account(exc, reason):
+        return False
     return (any(mark in reason for mark in IMAGE_REFUSAL_MARKS)
             or VISION.search(reason) is not None)

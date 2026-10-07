@@ -161,12 +161,14 @@ class ResourceAccess:
     # -- files -----------------------------------------------------------
     async def list_files(self, resource_id: str) -> List[Dict[str, Any]]:
         self._require("files", resource_id, "list")
-        return await self.provider.list_files(self._canonical(resource_id))
+        return [self._file_row(row) for row in
+                await self.provider.list_files(self._canonical(resource_id))]
 
     async def read_file(self, resource_id: str, ref: str) -> Dict[str, Any]:
         self._require("files", resource_id, "read")
-        return self._readable(
-            await self.provider.read_file(self._read_slot(resource_id, ref), ref))
+        return self._file_row(self._readable(
+            await self.provider.read_file(self._read_slot(resource_id, ref), ref)),
+            ref)
 
     async def create_file(self, resource_id: str, filename: str,
                           content: Optional[str] = None,
@@ -188,8 +190,26 @@ class ResourceAccess:
             self.constraints.get(resource_id), filename, size)
         if refused:
             raise ResourceDenied(f"files.{resource_id}: {refused}")
-        return await self.provider.create_file(
-            self._canonical(resource_id), filename, raw)
+        return self._file_row(await self.provider.create_file(
+            self._canonical(resource_id), filename, raw))
+
+    @staticmethod
+    def _file_row(record: Any, ref: str = "") -> Dict[str, Any]:
+        """A file's row as a function reads it, the same whoever keeps
+        the files: its ref, its name, its type and its size at the top.
+        The platform keeps the last three under ``values`` and the
+        simulation at the top; a function written against one must not
+        fail against the other."""
+        row = dict(record or {})
+        values = row.get("values") if isinstance(row.get("values"), dict) else {}
+        for name in ("filename", "file_type", "file_size"):
+            if row.get(name) is None and values.get(name) is not None:
+                row[name] = values[name]
+        if row.get("file_type") is None and row.get("filename"):
+            row["file_type"] = FileTypes.of(str(row["filename"]))
+        if ref and not row.get("resource_ref"):
+            row["resource_ref"] = ref
+        return row
 
     @staticmethod
     def _readable(record: Dict[str, Any]) -> Dict[str, Any]:
@@ -199,6 +219,8 @@ class ResourceAccess:
         record = dict(record or {})
         raw = record.get("content")
         if isinstance(raw, (bytes, bytearray)):
+            if record.get("file_size") is None:
+                record["file_size"] = len(raw)
             record["content_base64"] = base64.b64encode(bytes(raw)).decode("ascii")
             try:
                 record["content"] = bytes(raw).decode("utf-8")

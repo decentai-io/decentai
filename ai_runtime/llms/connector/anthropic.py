@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import re
 
+import httpx
 from anthropic import AsyncAnthropic
 
-from ai_runtime.llms.connector.tools import ModelReply, anthropic_tools
+from ai_runtime.llms.connector.tools import (
+    ModelReply, anthropic_tools, setting)
 
 
 class AnthropicConnector:
@@ -30,8 +32,11 @@ class AnthropicConnector:
             api_key=api_key,
             # Optional override for gateways/proxies; SDK default otherwise.
             base_url=str(config.get("endpoint") or "") or None,
-            timeout=float(config.get("timeout_seconds") or 60),
-            max_retries=int(config.get("max_retries") or 2),
+            timeout=setting(config, "timeout_seconds", 60, 1, 600),
+            max_retries=int(setting(config, "max_retries", 2, 0, 10)),
+            # A redirect is not followed: followed to another origin,
+            # the key in this client's headers would go there with it.
+            http_client=httpx.AsyncClient(follow_redirects=False),
         )
 
     @staticmethod
