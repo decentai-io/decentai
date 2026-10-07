@@ -78,7 +78,8 @@ class Cron:
         values: Set[int] = set()
         for piece in text.split(","):
             step = 1
-            if "/" in piece:
+            stepped = "/" in piece
+            if stepped:
                 piece, step_text = piece.split("/", 1)
                 step = cls._number(step_text, {}, "step")
                 if step < 1:
@@ -91,7 +92,10 @@ class Cron:
                               cls._number(last, names, text))
             else:
                 start = cls._number(piece, names, text)
-                end = high if "/" in text else start
+                # `5/15` is "from 5, every 15"; a plain `5` is 5 alone.
+                # Asked of this piece, not of the whole list: in
+                # `0,*/20` the 0 is only 0.
+                end = high if stepped else start
             if not (low <= start <= end <= high):
                 raise CronError(
                     f"'{text}' is out of range — this field takes "
@@ -146,6 +150,15 @@ class Cron:
             elif moment.minute not in self.minutes:
                 moment += timedelta(minutes=1)
             else:
-                return moment.timestamp()
+                # Where clocks go back an hour comes round twice, and a
+                # time on the wall names two moments. The first that is
+                # after ``timestamp`` is the answer — never one before
+                # it, which a search from the second pass would
+                # otherwise return and a clock would fire on at once.
+                for fold in (0, 1):
+                    found = moment.replace(fold=fold).timestamp()
+                    if found > timestamp:
+                        return found
+                moment += timedelta(minutes=1)
         raise CronError(
             f"'{self.expression}' never comes round within a year.")

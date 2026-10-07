@@ -219,7 +219,7 @@ tools:
               x-resource: {type: data, id: note}
             title:    {type: string}
             notebook: {type: string}
-            priority: {type: integer}
+            priority: {type: number}
             content:  {type: string, maxLength: 8192}
 
       - id: find
@@ -262,7 +262,7 @@ tools:
                     x-resource: {type: data, id: note}
                   title:    {type: string}
                   notebook: {type: string}
-                  priority: {type: [integer, "null"]}
+                  priority: {type: [number, "null"]}
             total: {type: integer}
 
       - id: summarize

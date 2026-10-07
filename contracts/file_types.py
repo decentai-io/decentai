@@ -78,6 +78,16 @@ class FileTypes:
         ".zip": "application/zip",
     }
 
+    #: What a packed file is, by how the standard library names the
+    #: packing.
+    PACKED = {
+        "gzip": "application/gzip",
+        "bzip2": "application/x-bzip2",
+        "xz": "application/x-xz",
+        "br": "application/x-brotli",
+        "compress": "application/x-compress",
+    }
+
     @classmethod
     def of(cls, filename: str) -> str:
         """The type a file's name says, the same wherever it is asked."""
@@ -85,7 +95,11 @@ class FileTypes:
         known = cls.KNOWN.get(extension)
         if known:
             return known
-        guessed, _ = mimetypes.guess_type(str(filename or ""))
+        guessed, packed = mimetypes.guess_type(str(filename or ""))
+        if packed:
+            # `notes.tar.gz` is guessed as a tar, packed with gzip: the
+            # file is what it is packed as, not what is inside.
+            return cls.PACKED.get(packed, cls.UNKNOWN)
         return guessed or cls.UNKNOWN
 
     @classmethod
@@ -127,7 +141,11 @@ class FileTypes:
     def constraints_of(cls, manifest: Dict[str, Any],
                        resource_id: str) -> Optional[Dict[str, Any]]:
         """What a manifest's file resource declared, or None."""
-        for resource in ((manifest or {}).get("resources") or {}).get("files") or []:
+        resources = manifest.get("resources") if isinstance(manifest, dict) else None
+        files = resources.get("files") if isinstance(resources, dict) else None
+        for resource in files if isinstance(files, list) else []:
+            if not isinstance(resource, dict):
+                continue
             if str(resource.get("id") or "") == str(resource_id):
                 constraints = resource.get("constraints")
                 return constraints if isinstance(constraints, dict) else None

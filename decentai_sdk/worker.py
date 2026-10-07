@@ -22,6 +22,7 @@ import base64
 import importlib
 import importlib.machinery
 import importlib.util
+import inspect
 import json
 import logging
 import os
@@ -278,6 +279,8 @@ class AgentWorker:
         await self._close_agent()
 
     def _dispatch(self, message: dict) -> None:
+        if not isinstance(message, dict):
+            return  # JSON, and not a message: nothing to answer
         if "method" in message and "id" in message:
             self._serve(message)
         elif "id" in message:
@@ -286,10 +289,13 @@ class AgentWorker:
             # The person acting on a screen a function is showing:
             # handed to that call's screen, or dropped when the call
             # has ended — there is nobody to act for.
-            params = message.get("params") or {}
+            params = message.get("params")
+            if not isinstance(params, dict):
+                return
             screen = self.screens.get(str(params.get("call_id") or ""))
-            if screen is not None:
-                screen.receive(list(params.get("events") or []))
+            events = params.get("events")
+            if screen is not None and isinstance(events, list):
+                screen.receive(list(events))
 
     # ------------------------------------------------------------------
     # Requests FROM the host
@@ -298,6 +304,8 @@ class AgentWorker:
         method = message.get("method")
         params = message.get("params") or {}
         request_id = message["id"]
+        if not isinstance(params, dict):
+            return self._refuse(request_id, "params must be an object")
 
         if method == "hello":
             self._answer(request_id, self._hello(params))
@@ -330,12 +338,18 @@ class AgentWorker:
         if self.agent is not None:
             return "already handshaken"
 
-        manifest = Manifest(params.get("manifest") or {})
         folder = Path(str(params.get("folder") or ""))
         if not folder.is_dir():
             return f"agent folder '{folder}' does not exist"
 
-        module_path, class_name = manifest.entrypoint
+        try:
+            manifest = Manifest(params.get("manifest") or {})
+            module_path, class_name = manifest.entrypoint
+            agent_id = manifest.agent_id
+        except Exception as exc:
+            return f"the manifest cannot be read: {type(exc).__name__}: {exc}"
+        if not isinstance(agent_id, str) or not agent_id:
+            return "the manifest names no agent"
         try:
             module = self._mount(folder, manifest.agent_id, module_path)
         except Exception as exc:
@@ -353,15 +367,19 @@ class AgentWorker:
         except Exception as exc:
             return f"entrypoint construction failed: {exc}"
 
-        missing = agent.missing_functions()
-        if missing:
-            return f"functions declared but not implemented: {missing}"
+        try:
+            missing = agent.missing_functions()
+            if missing:
+                return f"functions declared but not implemented: {missing}"
+            functions = [name for name, _, _ in manifest.functions()]
+        except Exception as exc:
+            return f"the agent's functions cannot be read: {exc}"
 
         self.agent = agent
         return {
             "agent_id": manifest.agent_id,
             "version": manifest.version,
-            "functions": [name for name, _, _ in manifest.functions()],
+            "functions": functions,
         }
 
     @staticmethod
@@ -432,7 +450,12 @@ class AgentWorker:
             conversation=str(params.get("conversation") or ""),
         )
         try:
-            outcome = await method(call)
+            # Awaited where it can be: a function written without
+            # `async` has already run by now, and its answer is its
+            # answer — not a failure for having no await in it.
+            outcome = method(call)
+            if inspect.isawaitable(outcome):
+                outcome = await outcome
         except asyncio.CancelledError:
             self.wire.send({"id": request_id, "result": {
                 "result": {"error": f"'{name}' was cancelled by the platform"},
@@ -465,8 +488,21 @@ class AgentWorker:
             return
 
         result, status = outcome
-        self.wire.send({"id": request_id,
-                        "result": {"result": result, "status": status}})
+        try:
+            self.wire.send({"id": request_id,
+                            "result": {"result": result, "status": status}})
+        except (TypeError, ValueError) as exc:
+            # A result holding what JSON cannot say — a date, a set,
+            # bytes. The call is answered all the same: unanswered, the
+            # platform waits out the whole timeout for a function that
+            # finished long ago.
+            self.wire.send({"id": request_id, "result": {
+                "result": {"error": (
+                    f"'{name}' returned a result that is not JSON "
+                    f"({str(exc)[:200]}) — return text, numbers, lists "
+                    f"and objects")},
+                "status": "error",
+            }})
 
     def _cancel(self, request_id: Any, params: dict) -> None:
         task = self.invocations.get(str(params.get("call_id") or ""))

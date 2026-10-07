@@ -114,6 +114,8 @@ class Screen:
     #: How many tabs a frame may tell of, and how long a name or an
     #: address may be (contracts/chat.py).
     TABS_MAX = 20
+    #: the largest place a tab may say it has (contracts/chat.py, ScreenTab)
+    TAB_INDEX_MAX = 1000
     TAB_TITLE_CHARS = 200
     TAB_ADDRESS_CHARS = 300
 
@@ -171,7 +173,7 @@ class Screen:
             except (TypeError, ValueError):
                 index = position
             told.append({
-                "index": max(1, index),
+                "index": min(max(1, index), cls.TAB_INDEX_MAX),
                 "title": str(tab.get("title") or "")[: cls.TAB_TITLE_CHARS],
                 "address": str(tab.get("address") or "")[: cls.TAB_ADDRESS_CHARS],
                 "active": tab.get("active") is True,
@@ -454,7 +456,15 @@ class FunctionCall:
         if system:
             messages.append({"role": "system", "content": str(system)})
         messages.append({"role": "user", "content": str(prompt)})
-        pictures = [dict(i) for i in images or [] if isinstance(i, dict)]
+        if images is not None and not (
+                isinstance(images, (list, tuple))
+                and all(isinstance(i, dict) for i in images)):
+            # Said to the function, and not dropped: the model would be
+            # asked without the picture and answer as if it had seen it.
+            raise ValueError(
+                "images is a list of {\"resource_id\": …, \"ref\": …} — "
+                "a picture is named, not passed as bytes or as a bare ref")
+        pictures = [dict(i) for i in images or []]
         if pictures:
             answer = await self._llm(messages, max_tokens, pictures)
         else:
@@ -532,11 +542,18 @@ class AgentBase:
             return None
 
         function_id = function_spec["id"]
-        method = getattr(tool, function_id, None)
-        if method is None and keyword.iskeyword(function_id):
+        if keyword.iskeyword(function_id):
             # A function id like "import" cannot be a Python method name;
             # the PEP 8 convention (trailing underscore) implements it.
-            method = getattr(tool, function_id + "_", None)
+            function_id += "_"
+        # A function is a method the tool's own class wrote. What every
+        # tool has from ToolBase (`close`) is not one, though it has
+        # the name: it would resolve where nothing was implemented.
+        if getattr(ToolBase, function_id, None) is not None and \
+                getattr(type(tool), function_id, None) is getattr(
+                    ToolBase, function_id):
+            return None
+        method = getattr(tool, function_id, None)
         return method if callable(method) else None
 
     def missing_functions(self) -> List[str]:

@@ -74,13 +74,20 @@ class Tunnel:
         credentials = base64.b64encode(
             f"{where.username or ''}:{where.password or ''}".encode("utf-8")
         ).decode("ascii")
+        try:
+            request = (f"CONNECT {target} HTTP/1.1\r\nHost: {target}\r\n"
+                       f"Proxy-Authorization: Basic {credentials}\r\n\r\n"
+                       ).encode("latin-1")
+        except UnicodeEncodeError:
+            # Said before anything is opened, and as the error a
+            # connection that could not be made is said in.
+            raise OSError(f"'{host}' is not a host name that can be "
+                          f"connected to") from None
         link = socket.create_connection((where.hostname, where.port), timeout)
         try:
-            link.sendall((f"CONNECT {target} HTTP/1.1\r\nHost: {target}\r\n"
-                          f"Proxy-Authorization: Basic {credentials}\r\n\r\n"
-                          ).encode("latin-1"))
+            link.sendall(request)
             head = cls._head(link)
-        except OSError:
+        except BaseException:
             link.close()
             raise
         line = head.split(b"\r\n", 1)[0].decode("latin-1", "replace")

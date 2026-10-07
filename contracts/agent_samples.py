@@ -40,6 +40,7 @@ from typing import Any, Dict, List, Optional
 import yaml
 
 from contracts.file_types import FileTypes
+from contracts.record_fields import RecordFields
 
 SAMPLES_FILENAME = "samples.yaml"
 
@@ -109,14 +110,25 @@ class SampleSheet:
 class _Reader:
     def __init__(self, manifest: Dict[str, Any], root: Optional[Path]):
         self.root = root
-        self.manifest = manifest or {}
+        # The manifest beside a sheet has been parsed and not yet
+        # validated: whatever of it is not the shape a manifest has is
+        # read as not there, and the validator is the one to say so.
+        self.manifest = manifest if isinstance(manifest, dict) else {}
         self.errors: List[str] = []
-        resources = (manifest or {}).get("resources") or {}
-        self.data = {str(r.get("id") or ""): r for r in resources.get("data") or []
-                     if isinstance(r, dict)}
-        self.file_slots = {str(f.get("id") or "") for f in resources.get("files") or []
-                           if isinstance(f, dict)}
+        resources = self.manifest.get("resources")
+        if not isinstance(resources, dict):
+            resources = {}
+        self.data = {str(r.get("id") or ""): r
+                     for r in self._listed(resources.get("data"))}
+        self.file_slots = {str(f.get("id") or "")
+                           for f in self._listed(resources.get("files"))}
         self.refs: set = set()
+
+    @staticmethod
+    def _listed(value: Any) -> List[dict]:
+        """The mappings of a list, or nothing when it is not a list."""
+        return [item for item in value if isinstance(item, dict)] \
+            if isinstance(value, list) else []
 
     def fail(self, path: str, message: str) -> None:
         self.errors.append(f"{path}: {message}")
@@ -129,7 +141,8 @@ class _Reader:
             self.fail("story", f"must be at most {MAX_STORY} characters")
         unknown = set(document) - {"story", "files", "records"}
         if unknown:
-            self.fail(SAMPLES_FILENAME, f"unknown keys: {sorted(unknown)}")
+            self.fail(SAMPLES_FILENAME,
+                      f"unknown keys: {sorted(map(str, unknown))}")
 
         files = self._files(document.get("files"))
         records = self._records(document.get("records"))
@@ -216,13 +229,18 @@ class _Reader:
                 continue
             self._fields(resource, fields, path)
             ref = self._ref(item.get("ref"), path, required=False)
-            out.append({"ref": ref, "slot": slot, "fields": fields})
+            # A field written as nothing is a field left out: that is
+            # how it was read above, and how it is handed on to be
+            # loaded, where nothing is not a value a person may write.
+            out.append({"ref": ref, "slot": slot,
+                        "fields": {name: value for name, value in fields.items()
+                                   if value is not None}})
         return out
 
     def _fields(self, resource: dict, fields: dict, path: str) -> None:
-        spec = {str(f.get("name") or ""): f for f in resource.get("fields") or []
-                if isinstance(f, dict)}
-        unknown = sorted(set(fields) - set(spec))
+        spec = {str(f.get("name") or ""): f
+                for f in self._listed(resource.get("fields"))}
+        unknown = sorted(str(name) for name in fields if name not in spec)
         if unknown:
             self.fail(f"{path}.fields", f"unknown fields: {', '.join(unknown)}")
         for name, field in spec.items():
@@ -235,29 +253,30 @@ class _Reader:
 
     def _value(self, field: dict, value: Any, path: str) -> None:
         kind = str(field.get("type") or "string")
-        if isinstance(value, str):
+        # A pointer becomes the id of what it names, and an id is text:
+        # it belongs in a text field and nowhere else. In a number or a
+        # select it is read as any other text there, and refused.
+        if isinstance(value, str) and kind in ("string", "secret"):
             pointer = POINTER_RE.match(value)
             if pointer:
                 if pointer.group(1) not in self.refs:
                     self.fail(path, f"points at '{pointer.group(1)}', which is not declared above it")
                 return
-        if kind in ("string", "secret"):
-            if not isinstance(value, str):
-                self.fail(path, "must be text")
-            elif field.get("required") and not value.strip():
-                self.fail(path, "is required")
-        elif kind == "number":
-            if isinstance(value, bool) or not isinstance(value, (int, float)):
-                self.fail(path, "must be a number")
-        elif kind == "boolean":
-            if not isinstance(value, bool):
-                self.fail(path, "must be true or false")
-        elif kind == "select":
-            if str(value) not in [str(o) for o in field.get("options") or []]:
-                self.fail(path, f"must be one of {field.get('options')}")
-        elif kind == "object":
-            if not isinstance(value, dict):
-                self.fail(path, "must be a mapping")
+        # The rule a value is held to when the sheet is loaded
+        # (contracts/record_fields.py), asked here and not written out
+        # a second time: what reads clean loads.
+        options = field.get("options")
+        declared = {"label": "it", "type": kind, "required": False,
+                    "options": [str(o) for o in options]
+                    if isinstance(options, list) else []}
+        try:
+            RecordFields.cleaned(declared, value)
+        except ValueError as exc:
+            self.fail(path, str(exc)[len("it "):].rstrip(".")
+                      if str(exc).startswith("it ") else str(exc))
+            return
+        if field.get("required") and not RecordFields.provided(declared, value):
+            self.fail(path, "is required")
 
     def _ref(self, raw: Any, path: str, required: bool = True) -> str:
         if raw is None:

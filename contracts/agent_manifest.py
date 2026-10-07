@@ -108,6 +108,9 @@ def manifest_hash(document: Any) -> str:
 
 
 MAX_TOOLS = 16
+#: What every tool is given by the SDK's ToolBase (decentai_sdk/base.py):
+#: a function is a method named by its id, and these names are taken.
+RESERVED_FUNCTION_IDS = ("agent", "close", "id", "logger")
 MAX_FUNCTIONS_PER_TOOL = 25
 MAX_SCHEMA_DEPTH = 5
 
@@ -118,6 +121,9 @@ SCHEMA_KEYWORDS = {
     "maxLength", "pattern", "format", "minItems", "maxItems",
     "minProperties",
 }
+#: The keywords whose value is a count.
+SCHEMA_COUNT_KEYWORDS = ("minLength", "maxLength", "minItems", "maxItems",
+                         "minProperties")
 FORBIDDEN_KEYWORDS = {
     "$ref", "$defs", "if", "then", "else", "allOf", "anyOf", "oneOf", "not",
 }
@@ -136,6 +142,55 @@ class ManifestValidator:
         if not isinstance(document, dict):
             return ["manifest must be a mapping"]
 
+        # A manifest is hashed as JSON when it is approved, so what JSON
+        # cannot say is refused first: a key that is not text (YAML
+        # allows `1: x`), a date YAML read out of an unquoted value.
+        # Nothing below has to wonder what a key is.
+        self._plain(document, "manifest", depth=0)
+        if self.errors:
+            return self.errors
+
+        try:
+            self._document(document)
+        except Exception as exc:  # the promise is a list, never a raise
+            self.errors.append(
+                f"manifest could not be read ({type(exc).__name__}: {exc})")
+        return self.errors
+
+    #: Deeper than any manifest goes; a document nested past this is
+    #: refused before anything walks it.
+    MAX_DOCUMENT_DEPTH = 32
+
+    def _plain(self, value: Any, path: str, depth: int) -> None:
+        if depth > self.MAX_DOCUMENT_DEPTH:
+            self._fail(path, "is nested too deeply")
+        elif isinstance(value, dict):
+            for key, child in value.items():
+                if not isinstance(key, str):
+                    self._fail(path, f"key {key!r} must be text — quote it")
+                else:
+                    self._plain(child, f"{path}.{key}", depth + 1)
+        elif isinstance(value, list):
+            for index, child in enumerate(value):
+                self._plain(child, f"{path}[{index}]", depth + 1)
+        elif isinstance(value, float):
+            if value != value or value in (float("inf"), float("-inf")):
+                self._fail(path, "must be a finite number")
+        elif not (value is None or isinstance(value, (str, int, bool))):
+            self._fail(
+                path, f"a {type(value).__name__} is not a manifest value — "
+                      f"quote it to say it as text")
+
+    @staticmethod
+    def _among(value: Any, allowed: Any) -> bool:
+        """``value in allowed``, where a list or a mapping written in a
+        word's place is simply not among them."""
+        try:
+            return value in allowed
+        except TypeError:
+            return False
+
+    def _document(self, document: dict) -> None:
         if document.get("schema_version") != SCHEMA_VERSION:
             self.errors.append(
                 f"schema_version must be \"{SCHEMA_VERSION}\""
@@ -147,8 +202,6 @@ class ManifestValidator:
         self._resources(document.get("resources"))
         self._network(document.get("network"))
         self._tools(document.get("tools"))
-
-        return self.errors
 
     # ------------------------------------------------------------------
     def _fail(self, path: str, message: str) -> None:
@@ -265,7 +318,8 @@ class ManifestValidator:
                 self._fail(path, "type must be \"string\" in schema v1")
             self._require_str(scope, "description", path)
             normalization = scope.get("normalization")
-            if normalization is not None and normalization not in NORMALIZATIONS:
+            if normalization is not None and not self._among(
+                    normalization, NORMALIZATIONS):
                 self._fail(
                     path, "normalization must be uppercase or lowercase"
                 )
@@ -506,20 +560,20 @@ class ManifestValidator:
                     "'update' — a file's content is immutable; replacing "
                     "one is a delete and a create",
                 )
-            elif operation not in allowed:
+            elif not self._among(operation, allowed):
                 self._fail(
                     f"{path}.user_access",
                     f"unknown operation '{operation}' "
                     f"(allowed for {kind}: {sorted(allowed)})",
                 )
-        if len(set(user_access)) != len(user_access):
+        if any(user_access.count(operation) > 1 for operation in user_access):
             self._fail(f"{path}.user_access", "duplicate operations")
 
     def _binding(self, binding: Any, path: str) -> None:
         if not isinstance(binding, dict):
             self._fail(path, "binding is required")
             return
-        if binding.get("cardinality") not in CARDINALITIES:
+        if not self._among(binding.get("cardinality"), CARDINALITIES):
             self._fail(f"{path}.binding", "cardinality must be one or many")
         required = binding.get("required", False)
         if not isinstance(required, bool):
@@ -646,11 +700,11 @@ class ManifestValidator:
                            f"not a field's to take")
 
             allowed = SECRET_FIELD_TYPES if secret else FIELD_TYPES
-            if field.get("type") not in allowed:
+            if not self._among(field.get("type"), allowed):
                 self._fail(
                     field_path, f"type must be one of {sorted(allowed)}"
                 )
-            if field.get("storage") not in STORAGE_KINDS:
+            if not self._among(field.get("storage"), STORAGE_KINDS):
                 self._fail(field_path, "storage must be keys or values")
 
             # Keys are the queryable half, and the data layer holds them
@@ -778,7 +832,7 @@ class ManifestValidator:
                 self._fail(f"{path}.resources.{kind}", "must be a list of ids")
                 continue
             for resource_id in ids:
-                if resource_id not in self.resources[kind]:
+                if not self._among(resource_id, self.resources[kind]):
                     self._fail(
                         f"{path}.resources.{kind}",
                         f"'{resource_id}' is not a declared agent resource",
@@ -798,12 +852,17 @@ class ManifestValidator:
         if not isinstance(fn_id, str) or not ID_PATTERN.match(fn_id):
             self._fail(path, "id must match ^[a-z][a-z0-9_]*$")
             fn_id = None
+        elif fn_id in RESERVED_FUNCTION_IDS:
+            self._fail(
+                path, f"id '{fn_id}' is a name every tool already has, and "
+                      f"not a function's to take")
 
         self._require_str(function, "name", path)
         self._require_str(function, "description", path)
 
         level = function.get("permission_level")
-        if isinstance(level, bool) or level not in PERMISSION_LEVELS:
+        if isinstance(level, bool) or not self._among(
+                level, PERMISSION_LEVELS):
             self._fail(
                 path, "permission_level is required and must be 0, 1, 2, or 3"
             )
@@ -910,10 +969,11 @@ class ManifestValidator:
                         "operations must be one operation or a non-empty list",
                     )
                     continue
-                unknown = [op for op in operations if op not in OPERATIONS]
+                unknown = [op for op in operations
+                           if not self._among(op, OPERATIONS)]
                 if unknown:
                     self._fail(entry_path, f"unknown operations: {unknown}")
-                if len(set(operations)) != len(operations):
+                if any(operations.count(op) > 1 for op in operations):
                     self._fail(entry_path, "duplicate operations")
 
     def _schedulable(self, schedulable: Any, path: str, function: dict) -> None:
@@ -1016,7 +1076,7 @@ class ManifestValidator:
         types = declared_type if isinstance(declared_type, list) else [declared_type]
         if declared_type is not None:
             for item in types:
-                if item not in SCHEMA_TYPES:
+                if not self._among(item, SCHEMA_TYPES):
                     self._fail(path, f"unknown schema type '{item}'")
 
         additional = node.get("additionalProperties")
@@ -1030,6 +1090,7 @@ class ManifestValidator:
         ):
             self._fail(path, "required must be a list of property names")
 
+        self._keyword_values(node, path)
         self._x_resource(node, path)
 
         properties = node.get("properties")
@@ -1044,6 +1105,39 @@ class ManifestValidator:
         if items is not None:
             self._schema_node(items, f"{path}.items", depth + 1)
 
+    def _keyword_values(self, node: dict, path: str) -> None:
+        """What each keyword's own value must be. A schema is handed to
+        the checker as it is at every call, and a value it cannot read
+        (`minLength: "abc"`, a pattern that is not one) fails the call,
+        not the input: refused here, where a manifest is reviewed."""
+        def whole(value: Any) -> bool:
+            return (isinstance(value, int) and not isinstance(value, bool)
+                    and value >= 0)
+
+        def number(value: Any) -> bool:
+            return (isinstance(value, (int, float))
+                    and not isinstance(value, bool))
+
+        for keyword in SCHEMA_COUNT_KEYWORDS:
+            if keyword in node and not whole(node[keyword]):
+                self._fail(path, f"{keyword} must be a whole number, 0 or more")
+        for keyword in ("minimum", "maximum"):
+            if keyword in node and not number(node[keyword]):
+                self._fail(path, f"{keyword} must be a number")
+        if "enum" in node and not (
+                isinstance(node["enum"], list) and node["enum"]):
+            self._fail(path, "enum must be a non-empty list")
+        if "format" in node and not isinstance(node["format"], str):
+            self._fail(path, "format must be a string")
+        if "pattern" in node:
+            pattern = node["pattern"]
+            try:
+                if not isinstance(pattern, str):
+                    raise re.error("not text")
+                re.compile(pattern)
+            except (re.error, RecursionError, OverflowError):
+                self._fail(path, "pattern must be a regular expression")
+
     def _x_resource(self, node: dict, path: str) -> None:
         reference = node.get("x-resource")
         if reference is None:
@@ -1052,13 +1146,14 @@ class ManifestValidator:
             self._fail(path, "x-resource must be a mapping")
             return
 
-        kind = X_RESOURCE_KINDS.get(reference.get("type"))
+        kind = (X_RESOURCE_KINDS.get(reference.get("type"))
+                if isinstance(reference.get("type"), str) else None)
         if kind is None:
             self._fail(
                 path, "x-resource type must be secret, data, or file"
             )
             return
-        if reference.get("id") not in self.resources[kind]:
+        if not self._among(reference.get("id"), self.resources[kind]):
             self._fail(
                 path,
                 f"x-resource id '{reference.get('id')}' is not a declared "

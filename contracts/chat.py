@@ -250,7 +250,14 @@ def display_stored(spec: Any) -> tuple:
                                     "data": list(series.values)}
                                    for series in display.series]},
                   "chartType": display.chart_type, "title": display.title}
-    size = len(json.dumps(stored, default=str).encode("utf-8"))
+    try:
+        size = len(json.dumps(stored, default=str, allow_nan=False)
+                   .encode("utf-8"))
+    except ValueError:
+        # NaN and Infinity are numbers to Python and not to JSON: a
+        # display holding one could be neither kept nor drawn.
+        return None, ("the display holds a number that is not one (NaN "
+                      "or Infinity) — leave the cell empty instead")
     if size > DISPLAY_MAX_BYTES:
         return None, (f"the display is {size} bytes; the limit is "
                       f"{DISPLAY_MAX_BYTES} — show fewer rows")

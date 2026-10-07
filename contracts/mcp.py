@@ -128,7 +128,9 @@ class McpClient:
             try:
                 found = await asyncio.get_running_loop().getaddrinfo(
                     host, port, type=socket.SOCK_STREAM)
-            except OSError as exc:
+            except (OSError, UnicodeError, OverflowError) as exc:
+                # A name with an empty or over-long label is refused by
+                # the encoding before any lookup is made.
                 raise McpError(f"{host} does not resolve: {exc}")
             addresses = [entry[4][0] for entry in found]
         if not addresses:
@@ -151,7 +153,10 @@ class McpClient:
             raise McpError(why)
         parts = urlsplit(self.url)
         self._host = parts.hostname.lower()
-        port = parts.port or (443 if parts.scheme == "https" else 80)
+        try:
+            port = parts.port or (443 if parts.scheme == "https" else 80)
+        except ValueError:
+            raise McpError("The address names a port that is not one.")
         address = await self._resolve(self._host, port)
         literal = f"[{address}]" if ":" in address else address
         path = parts.path or "/"
@@ -200,8 +205,11 @@ class McpClient:
             return []
         found = []
         for tool in await self._pages("tools/list", "tools", self.TOOLS_MAX):
-            name = str(tool.get("name") or "")[: self.NAME_MAX]
-            if not name:
+            name = str(tool.get("name") or "")
+            # The name is what a call sends back, so it is kept whole
+            # or not at all: a name cut short is not the server's, and
+            # two long ones could be cut to the same.
+            if not name or len(name) > self.NAME_MAX:
                 continue
             schema = tool.get("inputSchema")
             found.append({
@@ -237,7 +245,7 @@ class McpClient:
         said to be there and not carried."""
         answer = await self.request("resources/read", {"uri": str(uri)})
         texts, others = [], []
-        for item in answer.get("contents") or []:
+        for item in self._list(answer.get("contents")):
             if not isinstance(item, dict):
                 continue
             if isinstance(item.get("text"), str):
@@ -254,13 +262,14 @@ class McpClient:
         answer = await self.request(
             "tools/call", {"name": str(name), "arguments": dict(arguments or {})})
         texts, others = [], []
-        for block in answer.get("content") or []:
+        for block in self._list(answer.get("content")):
             if not isinstance(block, dict):
                 continue
             if block.get("type") == "text" and isinstance(block.get("text"), str):
                 texts.append(block["text"])
             elif (block.get("type") == "resource"
-                  and isinstance((block.get("resource") or {}).get("text"), str)):
+                  and isinstance(block.get("resource"), dict)
+                  and isinstance(block["resource"].get("text"), str)):
                 texts.append(block["resource"]["text"])
             else:
                 others.append(str(block.get("type") or "unknown"))
@@ -276,13 +285,18 @@ class McpClient:
     # The wire
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _list(value: Any) -> list:
+        """A server's list, or none where it sent something else."""
+        return value if isinstance(value, list) else []
+
     async def _pages(self, method: str, field: str, limit: int) -> List[dict]:
         found: List[dict] = []
         cursor = None
         for _ in range(self.PAGES_MAX):
             answer = await self.request(
                 method, {"cursor": cursor} if cursor else {})
-            found.extend(item for item in answer.get(field) or []
+            found.extend(item for item in self._list(answer.get(field))
                          if isinstance(item, dict))
             cursor = answer.get("nextCursor")
             if not cursor or len(found) >= limit:

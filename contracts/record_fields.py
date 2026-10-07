@@ -22,7 +22,7 @@ a credential, and the runtime, for what an agent's function writes.
 Nothing given, by an agent, is nothing kept: ``None`` is how code says
 a field has no value, where a form leaves a box empty. It is kept as
 nothing and is not a value of the wrong type — and it does not satisfy
-``required``. A person's write is not given this: a form that sends
+``required``, on a create or on an update. A person's write is not given this: a form that sends
 nothing where text belongs is a form to fix.
 """
 
@@ -80,14 +80,16 @@ class RecordFields:
                 cleaned = cls.cleaned(spec[name], value)
             (values if spec[name]["storage"] == "values" else keys)[name] = cleaned
 
-        if not partial:
-            missing = [
-                field["label"] for field in spec.values()
-                if field["required"]
-                and not cls.provided(field, fields.get(field["name"]))
-            ]
-            if missing:
-                raise ValueError(f"Required: {', '.join(missing)}.")
+        # An update is held to what it writes: a required field may be
+        # left out of one, and may not be written empty by one.
+        missing = [
+            field["label"] for field in spec.values()
+            if field["required"]
+            and (field["name"] in fields or not partial)
+            and not cls.provided(field, fields.get(field["name"]))
+        ]
+        if missing:
+            raise ValueError(f"Required: {', '.join(missing)}.")
 
         return keys, values
 

@@ -30,6 +30,7 @@ import gzip
 import hashlib
 import io
 import tarfile
+import zlib
 from pathlib import Path
 from typing import Iterator, List, Tuple
 
@@ -137,7 +138,18 @@ class AgentPackage:
                         raise PackagingError(
                             f"'{entry.name}' escapes the agent folder."
                         ) from exc
-                    destination.parent.mkdir(parents=True, exist_ok=True)
+                    if destination == target:
+                        raise PackagingError(
+                            f"'{entry.name}' is not a plain file.")
+                    try:
+                        destination.parent.mkdir(parents=True, exist_ok=True)
+                    except (FileExistsError, NotADirectoryError) as exc:
+                        raise PackagingError(
+                            f"'{entry.name}' is beneath another file."
+                        ) from exc
+                    if destination.is_dir():
+                        raise PackagingError(
+                            f"'{entry.name}' is also a folder.")
                     source = tar.extractfile(entry)
                     if source is None:  # pragma: no cover - defensive
                         raise PackagingError(f"'{entry.name}' is unreadable.")
@@ -147,7 +159,10 @@ class AgentPackage:
                     # bit: whether its owner may run it.
                     if entry.mode & 0o100:
                         destination.chmod(0o755)
-        except tarfile.TarError as exc:
+        except (tarfile.TarError, EOFError, zlib.error,
+                gzip.BadGzipFile) as exc:
+            # A truncated archive ends as EOFError, a damaged one as
+            # zlib's own error: neither is tarfile's.
             raise PackagingError(f"That package is not readable: {exc}") from exc
 
     # ------------------------------------------------------------------

@@ -10,6 +10,8 @@ from decentai_sdk.base import ToolBase
 
 COLUMNS = ["title", "notebook", "priority", "content"]
 MAX_IMPORT_ROWS = 1000
+#: The longest text the store keeps in one field.
+MAX_TEXT_CHARS = 8192
 
 
 class ArchiveTool(ToolBase):
@@ -99,6 +101,9 @@ class ArchiveTool(ToolBase):
                 "notebook": notebook,
                 "title": str(row.get("title") or "Untitled"),
             }
+            if len(fields["title"]) > MAX_TEXT_CHARS:
+                return {"error": f"A title is longer than {MAX_TEXT_CHARS} "
+                                 f"characters: '{fields['title'][:60]}…'."}, "error"
             priority = row.get("priority")
             if priority not in (None, ""):
                 try:
@@ -116,6 +121,9 @@ class ArchiveTool(ToolBase):
             if note_content not in (None, ""):
                 if not isinstance(note_content, str):
                     return {"error": f"Invalid content for '{fields['title']}'."}, "error"
+                if len(note_content) > MAX_TEXT_CHARS:
+                    return {"error": f"The content of '{fields['title']}' is "
+                                     f"longer than {MAX_TEXT_CHARS} characters."}, "error"
                 fields["content"] = note_content
 
             parsed_notes.append(fields)
