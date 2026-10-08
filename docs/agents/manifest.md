@@ -144,7 +144,7 @@ Who the agent is.
 agent:
   id: note
   name: Note
-  version: "1.2.4"
+  version: "1.2.5"
   description: >
     Your working memory across conversations. Save what was decided,
     find what you wrote last month, summarize a notebook.
@@ -744,7 +744,7 @@ tools:
         resources:
           data:
             note: list              # this function's actual reach
-            settings: read
+            settings: list
 ```
 
 The platform builds the resource object your function receives from the

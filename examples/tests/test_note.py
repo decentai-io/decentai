@@ -411,6 +411,40 @@ class TestTalkingToThePerson:
         assert second["created"] is True and second["note_ref"] != first["note_ref"]
         assert len(provider.data["note__note"]) == 2
 
+    def test_find_lists_in_the_order_the_persons_settings_say(self, agents):
+        """The one row of `settings` is the person's own, written on the
+        records page; find reads it and orders what it lists."""
+        provider = InMemoryResourceProvider()
+        executor = FunctionExecutor(provider=provider)
+
+        async def titles(sort_order=None):
+            provider.data.pop("note__settings", None)
+            if sort_order:
+                await provider.create_data(
+                    "note__settings", {"sort_order": sort_order}, {})
+            found, status = await executor.invoke(
+                agents["note"], "note.notes.find", {"notebook": "work"})
+            assert status == "success", found
+            return [note["title"] for note in found["notes"]]
+
+        async def scenario():
+            for title in ("Banana", "Cherry", "Apple"):
+                await executor.invoke(agents["note"], "note.notes.save", {
+                    "notebook": "work", "title": title})
+            [banana] = [ref for ref, row in provider.data["note__note"].items()
+                        if row["keys"]["title"] == "Banana"]
+            await executor.invoke(agents["note"], "note.notes.save", {
+                "note_ref": banana, "notebook": "work", "title": "Banana",
+                "content": "changed last"})
+            return (await titles(), await titles("title"),
+                    await titles("created"), await titles("updated"))
+
+        as_stored, by_title, by_created, by_updated = run(scenario())
+        assert as_stored == ["Banana", "Cherry", "Apple"]
+        assert by_title == ["Apple", "Banana", "Cherry"]
+        assert by_created == ["Apple", "Cherry", "Banana"]
+        assert by_updated == ["Banana", "Apple", "Cherry"]
+
     def test_find_offers_its_matches_as_a_table(self, agents):
         kept = []
 

@@ -96,7 +96,9 @@ class NotesTool(ToolBase):
         limit = int(call.inputs.get("limit") or 25)
 
         filters = {"notebook": notebook} if notebook else {}
-        records = await call.resources.list_data("note", filters)
+        records = self.ordered(
+            await call.resources.list_data("note", filters),
+            await self.sort_order(call))
 
         matches = [
             {
@@ -120,6 +122,28 @@ class NotesTool(ToolBase):
             await call.show.table(shown, columns=["title", "notebook", "priority"],
                                   title="Notes")
         return {"notes": shown, "total": len(matches)}, "success"
+
+    @staticmethod
+    async def sort_order(call) -> str:
+        """The order this person keeps their notes in: the one row of
+        the `settings` resource, where they have one. It is theirs to
+        write on the records page; this function only reads it."""
+        rows = await call.resources.list_data("settings")
+        return str(rows[0]["keys"].get("sort_order") or "") if rows else ""
+
+    @staticmethod
+    def ordered(records, sort_order):
+        """The notes in the person's order: by title, or the newest
+        first by when each was written or last changed. With no
+        setting they stay as the store listed them."""
+        if sort_order == "title":
+            return sorted(records, key=lambda record: str(
+                record["keys"].get("title") or "").casefold())
+        stamp = {"created": "created_at", "updated": "updated_at"}.get(sort_order)
+        if stamp:
+            return sorted(records, key=lambda record: str(record.get(stamp) or ""),
+                          reverse=True)
+        return records
 
     async def summarize(self, call):
         """The chat's model, through the platform: ``call.llm`` is the

@@ -24,7 +24,7 @@ schema_version: "1.0"
 agent:
   id: note
   name: Note
-  version: "1.2.4"
+  version: "1.2.5"
   description: >
     Your working memory across conversations. Save what was decided,
     find what you wrote last month, summarize a notebook, import or
@@ -225,7 +225,9 @@ tools:
       - id: find
         name: Find Notes
         description: >
-          List notes, optionally narrowed to one notebook and a text query.
+          List notes, optionally narrowed to one notebook and a text query,
+          in the order the user's settings say (by title, or newest first)
+          when they have set one.
           Safe to run unattended: a schedule can call it on a cadence and
           wake the assistant only when "notes" comes back non-empty.
         permission_level: 0
@@ -235,9 +237,12 @@ tools:
         # that breaks it is refused.
         schedulable: true
         resources:
+          # `list` on settings too: the person's one row is found by
+          # listing the slot, and its sort_order is the order of the
+          # result.
           data:
             note: list
-            settings: read
+            settings: list
         authorization:
           scopes:
             notebook: {from_input: notebook, required: false}

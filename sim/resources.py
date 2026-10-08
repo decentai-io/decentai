@@ -14,6 +14,8 @@ mediation has already said yes.
 from __future__ import annotations
 
 import secrets as _secrets
+import time
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 from contracts.file_types import FileTypes
@@ -36,6 +38,13 @@ class InMemoryResourceProvider:
     def _ref(prefix: str) -> str:
         return f"{prefix}_{_secrets.token_hex(8)}"
 
+    def _now(self) -> str:
+        """This moment, and never the one before it: two records made
+        in one instant still have an order."""
+        moment = max(time.time(), getattr(self, "_last_moment", 0.0) + 1e-6)
+        self._last_moment = moment
+        return datetime.fromtimestamp(moment, timezone.utc).isoformat()
+
     @staticmethod
     def _public(record: Dict[str, Any]) -> Dict[str, Any]:
         # As the backend answers a read of a data record: the plain half
@@ -46,6 +55,8 @@ class InMemoryResourceProvider:
             "resource_id": record["resource_id"],
             "keys": dict(record["keys"]),
             "values": dict(record.get("values") or {}),
+            "created_at": record.get("created_at"),
+            "updated_at": record.get("updated_at"),
         }
 
     # -- secrets ---------------------------------------------------------
@@ -124,9 +135,13 @@ class InMemoryResourceProvider:
 
     async def create_data(self, resource_id, keys, values):
         ref = self._ref("data")
+        now = self._now()
         record = {
             "resource_ref": ref, "resource_id": resource_id,
             "keys": dict(keys or {}), "values": dict(values or {}),
+            # When it was written and last changed, as the platform's
+            # store answers them: ISO text, which sorts as time does.
+            "created_at": now, "updated_at": now,
         }
         self.data.setdefault(resource_id, {})[ref] = record
         return self._public(record)
@@ -137,6 +152,7 @@ class InMemoryResourceProvider:
             raise KeyError(f"Unknown data ref '{ref}'")
         record["keys"].update(keys or {})
         record["values"].update(values or {})
+        record["updated_at"] = self._now()
         return self._public(record)
 
     async def delete_data(self, resource_id, ref):
