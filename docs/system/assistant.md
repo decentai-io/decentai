@@ -437,6 +437,12 @@ start → running ──────────────→ done / failed / 
   that could not be saved is not asked at all: the card is taken back,
   and the call's result says the person could not be asked just now —
   not that they refused.
+- A Deny covers where the call was going, and not only the function
+  that asked. The hosts a denied call's inputs named are refused to
+  every function of that agent for the rest of the ask, at any
+  permission level, and the model is told why; the person's next
+  message clears it. Without this a denied visit was made anyway by a
+  function that needs no card.
 - Job results land in the trace like any invocation, so evidence does
   not care whether a call was foreground or background.
 

@@ -409,3 +409,54 @@ class DemoAgent(AgentBase):
         # And on the trail, as every call is.
         assert any("cancelled" in str(line.get("error"))
                    for line in services.audit)
+
+
+class TestADenyCoversWhereTheCallWasGoing:
+    """The person refused a visit. Another function of the same agent,
+    at a level that asks nobody, is not a way to make it anyway."""
+
+    def harness(self, script):
+        from ai_runtime.tests.test_assistant import Harness
+        harness = Harness(script)
+        reached = []
+
+        async def invoke(agent, function, inputs, chat_level, call_id=""):
+            reached.append((function, dict(inputs)))
+            if function.endswith("sync.push"):
+                return {"error": "was not approved.", "denied": True}, "error"
+            return {"notes": [], "total": 0}, "success"
+        harness.assistant.executor.invoke = invoke
+        return harness, reached
+
+    def test_the_same_agent_is_refused_the_same_host_for_the_ask(self):
+        harness, reached = self.harness([
+            action(action="open_agent", agent="notebook"),
+            action(action="invoke", function="notebook.sync.push",
+                   inputs={"url": "https://example.com/report"}),
+            action(action="invoke", function="notebook.note.find",
+                   inputs={"url": "example.com"}),
+            action(action="invoke", function="notebook.note.find",
+                   inputs={"url": "https://elsewhere.org/"}),
+            action(action="finish"),
+        ])
+        run(harness.user("open the report").assistant.run())
+        assert [function for function, _ in reached] == [
+            "notebook.sync.push", "notebook.note.find"]
+        assert reached[1][1] == {"url": "https://elsewhere.org/"}
+        assert any("refused 'notebook' a visit to example.com"
+                   in str(m.get("content")) for m in harness.state.messages)
+
+    def test_what_they_refused_is_theirs_to_ask_for_again(self):
+        harness, reached = self.harness([
+            action(action="open_agent", agent="notebook"),
+            action(action="invoke", function="notebook.sync.push",
+                   inputs={"url": "https://example.com/report"}),
+            action(action="finish"),
+            action(action="invoke", function="notebook.note.find",
+                   inputs={"url": "https://example.com/report"}),
+            action(action="finish"),
+        ])
+        run(harness.user("open the report").assistant.run())
+        run(harness.user("just look at it, then").assistant.run())
+        assert [function for function, _ in reached] == [
+            "notebook.sync.push", "notebook.note.find"]

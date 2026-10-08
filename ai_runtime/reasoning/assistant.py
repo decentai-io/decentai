@@ -27,6 +27,7 @@ import base64
 import contextvars
 import difflib
 import json
+import re
 import time
 import uuid
 from datetime import datetime
@@ -251,6 +252,9 @@ class Assistant:
         #: whether anything but talking was done since the last thing
         #: the world said (a message, a wakeup, a job's end)
         self._acted = False
+        #: agent -> the hosts the person refused it in this ask, by a
+        #: Deny on a call that named them; forgotten when they speak
+        self._denied: Dict[str, set] = {}
         #: the call this beat is waiting on, and whether the person's
         #: stop is what ended it
         self._foreground: Optional[asyncio.Future] = None
@@ -351,6 +355,10 @@ class Assistant:
             return
         if kind == "user_message" and self._stopping:
             self._asked_since_stop = True
+        if kind == "user_message":
+            # A new ask: what they refused in the last one is theirs to
+            # ask for again.
+            self._denied = {}
         # Whatever arrives starts a new stretch of work.
         self._acted = False
         # Everything absorbed is stamped with the local time it arrived
@@ -1132,7 +1140,37 @@ class Assistant:
                 "agents": found,
                 "note": "open_agent takes any id, listed here or not."}
 
-    def _gate(self, function: str):
+    #: A web address, or a bare host, as an input may write one.
+    _ADDRESS = re.compile(
+        r"^(?:[a-z][a-z0-9+.-]*://)?(?:[^/@\s]*@)?"
+        r"((?:[a-z0-9-]+\.)+[a-z]{2,}|\d{1,3}(?:\.\d{1,3}){3})"
+        r"(?::\d+)?(?:[/?#]|$)", re.IGNORECASE)
+
+    @classmethod
+    def _hosts_named(cls, value: Any) -> set:
+        """The hosts a call's inputs name: every address among them,
+        by its host, lower case."""
+        if isinstance(value, str):
+            found = cls._ADDRESS.match(value.strip())
+            return {found.group(1).lower()} if found else set()
+        if isinstance(value, dict):
+            value = list(value.values())
+        if isinstance(value, (list, tuple)):
+            return set().union(*(cls._hosts_named(item) for item in value)) \
+                if value else set()
+        return set()
+
+    def _refused_already(self, agent_id: str, inputs: Any) -> str:
+        """The host this call names that the person has just refused
+        this agent, or ''. A Deny is their word on where the agent may
+        go in this ask, and not only on the one function that asked:
+        another function of the same agent, at a level that asks
+        nobody, would otherwise go there all the same."""
+        refused = self._denied.get(agent_id) or set()
+        named = self._hosts_named(inputs) & refused
+        return sorted(named)[0] if named else ""
+
+    def _gate(self, function: str, inputs: Any = None):
         """(agent, None) when the call may be attempted, (None, error
         observation) otherwise. Open-before-invoke is enforced here:
         calling into a catalog never loaded means calling with guessed
@@ -1157,6 +1195,13 @@ class Assistant:
                 f"do something on the screen themselves, tell them so: ask "
                 f"them to open the live view, do it, and say when it is "
                 f"done. Then continue with the agent's other functions.")}
+        refused = self._refused_already(agent_id, inputs)
+        if refused:
+            return None, {"error": (
+                f"The user refused '{agent_id}' a visit to {refused} a "
+                f"moment ago. That is their answer for this request, by "
+                f"this function or any other. Do not go there another "
+                f"way: tell them what you could not do, or ask them.")}
         # Used now: last to be closed for room, first to be offered.
         self.state.touch_agent(agent_id)
         return agent, None
@@ -1226,7 +1271,7 @@ class Assistant:
         inputs = action.get("inputs")
         inputs = inputs if isinstance(inputs, dict) else {}
 
-        agent, refusal = self._gate(function)
+        agent, refusal = self._gate(function, inputs)
         if refusal is not None:
             return refusal
 
@@ -1274,7 +1319,7 @@ class Assistant:
         inputs = action.get("inputs")
         inputs = inputs if isinstance(inputs, dict) else {}
 
-        agent, refusal = self._gate(function)
+        agent, refusal = self._gate(function, inputs)
         if refusal is not None:
             return refusal
 
@@ -1853,6 +1898,12 @@ class Assistant:
     def _record(self, agent_id: str, function: str, inputs: Dict[str, Any],
                 result: Any, status: str,
                 job_id: str = "") -> Dict[str, Any]:
+        if status != "success" and isinstance(result, dict) \
+                and result.get("denied") is True:
+            # The person said no. Where the call was going is kept for
+            # the rest of this ask (``_refused_already``).
+            self._denied.setdefault(agent_id, set()).update(
+                self._hosts_named(inputs))
         kept = self._bounded(result)
         # The trace is saved with the mind at every beat, under a size
         # the platform holds it to: what a call was given is kept whole
