@@ -125,12 +125,21 @@ afterwards rests and does not go on with what was stopped.
 
 ## Actions
 
+Each entry of the assistant's own in the transcript keeps the model
+that wrote it (never sent to a provider), and where the chat's model
+is changed the transcript says so once, in a line the new model reads:
+the actions above it were another model's, and are not its to answer
+for.
+
 What the assistant may emit, one action per beat, as strict JSON —
 the same discipline as before (malformed output bounces; two bounces
 in a row cost no beat of the budget, counted again after any reply
 that parses), because it worked. Two habits of smaller models are absorbed
 rather than bounced, because a bounce is what makes them loop: a reply
-that glues several actions together runs the first and is told so; a
+that glues several actions together runs the first and is told so —
+and on the third such reply in one ask the turn ends there, with a line
+telling the person that this model does not keep to one step at a time
+and another may work better; a
 `say` that is the same as something already said in the same turn, or
 nearly — case and punctuation aside, 92% alike — is refused ("You have
 already told the user that") and never reaches the user.

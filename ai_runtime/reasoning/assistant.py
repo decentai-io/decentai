@@ -252,6 +252,8 @@ class Assistant:
         #: whether anything but talking was done since the last thing
         #: the world said (a message, a wakeup, a job's end)
         self._acted = False
+        #: replies in this ask that carried more than one action
+        self._glued = 0
         #: agent -> the hosts the person refused it in this ask, by a
         #: Deny on a call that named them; forgotten when they speak
         self._denied: Dict[str, set] = {}
@@ -359,6 +361,7 @@ class Assistant:
             # A new ask: what they refused in the last one is theirs to
             # ask for again.
             self._denied = {}
+            self._glued = 0
         # Whatever arrives starts a new stretch of work.
         self._acted = False
         # Everything absorbed is stamped with the local time it arrived
@@ -514,8 +517,7 @@ class Assistant:
             if prose is None:
                 if self._bounces() < self.FREE_PARSE_BOUNCES:
                     self.state.beats -= 1
-                self.state.messages.append(
-                    {"role": "assistant", "content": str(response)})
+                self.state.messages.append(self._own(str(response)))
                 self.state.messages.append({
                     "role": "user",
                     "content": f"{self.BOUNCE_MARK} Emit exactly one action.",
@@ -531,8 +533,26 @@ class Assistant:
             implicit = True
 
         action = actions[0]
-        self.state.messages.append(
-            {"role": "assistant", "content": json.dumps(action)})
+        if len(actions) > 1:
+            self._glued += 1
+            if self._glued >= self.GLUED_REPLIES_MAX:
+                # Told twice and doing it again: this model does not
+                # keep to the format, and running the first of its
+                # actions each time only spends the turn. It ends here,
+                # with the cause in words the person can act on.
+                self._glued = 0
+                self.state.messages.append(self._own(str(response)))
+                await self._say_raw(
+                    "I stopped here: the model this chat uses keeps "
+                    "sending several steps at once instead of one, so I "
+                    "cannot follow what it means to do. What was done so "
+                    "far is kept. A different model may work better for "
+                    "this chat.")
+                self.state.beats = 0
+                if self.finish_sink is not None:
+                    await self.finish_sink("", "blocked")
+                return True
+        self.state.messages.append(self._own(json.dumps(action)))
         if len(actions) > 1:
             self.state.messages.append({
                 "role": "user",
@@ -541,6 +561,10 @@ class Assistant:
                            f"per beat.",
             })
         return await self._act(action, implicit=implicit)
+
+    #: How many replies of several actions one ask may hold before the
+    #: turn is ended on them.
+    GLUED_REPLIES_MAX = 3
 
     #: What a provider's refusal means, by the status it answered with.
     MODEL_REFUSALS = {
@@ -826,10 +850,50 @@ class Assistant:
                          f"unreadable. Say so if it matters.]")
             out.append({
                 **{key: value for key, value in message.items()
-                   if key != "images"},
+                   if key not in self.KEPT_NOT_SENT},
                 "content": [text_block(words), *blocks],
             })
         return out
+
+    #: What a transcript entry keeps for the record and a provider is
+    #: never sent: the pictures by name, and which model wrote it.
+    KEPT_NOT_SENT = ("images", "model")
+
+    @property
+    def model_id(self) -> str:
+        """The model this mind thinks with now, as its connection
+        names it; '' where it names none (a scripted one)."""
+        return str(getattr(self.connector, "model", "") or "")
+
+    def _own(self, content: str) -> Dict[str, Any]:
+        """One entry of the assistant's own, with the model that wrote
+        it: a chat's model can be changed, and the record of who did
+        what must not depend on remembering when."""
+        entry: Dict[str, Any] = {"role": "assistant", "content": content}
+        if self.model_id:
+            entry["model"] = self.model_id
+        return entry
+
+    def model_changed(self, before: str) -> None:
+        """The chat's model was changed, and this is the first the new
+        one sees of the transcript. Said in it, once: every action
+        above the line was another model's, and the one reading must
+        not answer for them as its own."""
+        if not self.state.messages or before == self.model_id:
+            return
+        self.state.messages.append({
+            "role": "user",
+            "content": f"EVENT model_changed at {self._stamp()}:\n"
+                       f"The chat's model was changed here"
+                       + (f", from {before}" if before else "")
+                       + (f" to {self.model_id}" if self.model_id else "")
+                       + ". The actions above this line were taken by "
+                         "another model. Read them as what happened, not "
+                         "as what you chose: if asked who did something, "
+                         "say it was the assistant under the earlier "
+                         "model, and do not claim the user asked for "
+                         "anything their own messages do not show.",
+        })
 
     def _words_only(self, message: Dict[str, Any],
                     unseen: int = 0) -> Dict[str, Any]:
@@ -837,7 +901,7 @@ class Assistant:
         could not be sent, the words say so — an assistant that cannot
         see a screenshot must not answer as though it had."""
         plain = {key: value for key, value in message.items()
-                 if key != "images"}
+                 if key not in self.KEPT_NOT_SENT}
         if unseen:
             plain["content"] = (
                 f"{plain.get('content') or ''}\n[{unseen} image(s) attached "

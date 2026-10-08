@@ -497,10 +497,12 @@ class Session:
             # The frame is rebuilt from the new number and the new list.
             assistant.reframe()
         if connector is not None:
+            before = assistant.model_id
             assistant.connector = connector
             # Whether a model takes pictures was learned of the model
             # before: this one is asked afresh.
             assistant._images_allowed = True
+            assistant.model_changed(before)
         if assistant.clock is not None:
             assistant.clock.roster = roster
         # The frame names the agents and marks what needs approval — it
@@ -1220,6 +1222,11 @@ class Session:
             self.chat_id, storage_ref, path)
 
     async def _record_audit(self, event: Dict[str, Any]) -> None:
+        # With the model that asked for the call: a chat's model can be
+        # changed, and the trail is where "which one did this" is read.
+        model = self.assistant.model_id if self.assistant is not None else ""
+        if model and "model" not in event:
+            event = {**event, "model": model[:200]}
         await self.services.record_audit(self.chat_id, event)
 
     async def _llm(self, messages: list, max_tokens=None,

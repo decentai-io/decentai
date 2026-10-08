@@ -12,6 +12,7 @@ from ai_runtime.chat import Session
 from ai_runtime.llms import FakeConnector
 from ai_runtime.server.host import RelayingServices, SessionHost
 from ai_runtime.tests.fixture_agents import load_agents
+from ai_runtime.tests.test_assistant import Harness
 from sim.session_services import SimSessionServices
 
 AGENTS_DIR = Path(__file__).resolve().parent / "fixtures" / "agents"
@@ -416,7 +417,6 @@ class TestADenyCoversWhereTheCallWasGoing:
     at a level that asks nobody, is not a way to make it anyway."""
 
     def harness(self, script):
-        from ai_runtime.tests.test_assistant import Harness
         harness = Harness(script)
         reached = []
 
@@ -460,3 +460,97 @@ class TestADenyCoversWhereTheCallWasGoing:
         run(harness.user("just look at it, then").assistant.run())
         assert [function for function, _ in reached] == [
             "notebook.sync.push", "notebook.note.find"]
+
+
+class Named(FakeConnector):
+    """A scripted model that has a name, as a real connection does."""
+
+    def __init__(self, model, responses):
+        super().__init__(responses)
+        self.model = model
+
+
+class TestTheRecordSaysWhichModelDidWhat:
+    def test_an_action_is_kept_with_its_model_and_sent_without_it(self):
+        connector = Named("kimi-k2.5", [
+            action(action="open_agent", agent="notebook"),
+            action(action="say", text="Opened.", final=True),
+        ])
+        session, services = build([], services=None)
+        session.connector = connector
+
+        async def scenario():
+            await session.open()
+            await session.deliver_user("open it")
+            await session.wait_idle()
+        run(scenario())
+        own = [m for m in services.states["chat_1"]["messages"]
+               if m["role"] == "assistant"]
+        assert own and all(m["model"] == "kimi-k2.5" for m in own)
+        # A provider is sent the words, and not our note about them.
+        assert all("model" not in message
+                   for call in connector.calls for message in call["messages"])
+
+    def test_a_call_is_on_the_trail_with_its_model(self):
+        connector = Named("kimi-k2.5", [
+            action(action="open_agent", agent="notebook"),
+            action(action="invoke", function="notebook.note.find", inputs={}),
+            action(action="finish"),
+        ])
+        session, services = build([])
+        session.connector = connector
+
+        async def scenario():
+            await session.open()
+            await session.deliver_user("find my notes")
+            await session.wait_idle()
+        run(scenario())
+        [line] = services.audit
+        assert line["model"] == "kimi-k2.5"
+
+    def test_a_model_changed_mid_chat_is_told_the_earlier_actions_were_not_its(
+            self):
+        session, services = build([])
+        session.connector = Named("kimi-k2.5", [
+            action(action="say", text="Hello.", final=True)])
+
+        async def scenario():
+            await session.open()
+            await session.deliver_user("hi")
+            await session.wait_idle()
+            session.adopt(
+                roster=session.roster, chat_level=session.chat_level,
+                grants=session.grants,
+                connector=Named("deepseek-v3.2", [
+                    action(action="say", text="Not me.", final=True)]),
+                llm_config={"model": "deepseek-v3.2"})
+            await session.deliver_user("who said hello?")
+            await session.wait_idle()
+        run(scenario())
+        transcript = services.states["chat_1"]["messages"]
+        [line] = [m for m in transcript
+                  if "EVENT model_changed" in str(m["content"])]
+        assert "from kimi-k2.5 to deepseek-v3.2" in line["content"]
+        assert [m["model"] for m in transcript if m["role"] == "assistant"] == [
+            "kimi-k2.5", "deepseek-v3.2"]
+
+
+class TestAModelThatWillNotKeepToOneAction:
+    def test_the_turn_ends_on_the_third_such_reply_and_says_why(self):
+        glued = (action(action="open_agent", agent="notebook") + "\n"
+                 + action(action="open_agent", agent="notebook"))
+        harness = Harness([glued, glued, glued,
+                           action(action="open_agent", agent="notebook")])
+        run(harness.user("do several things").assistant.run())
+        assert len(harness.connector.calls) == 3
+        assert "several steps at once" in harness.said[-1]["text"]
+
+    def test_the_count_starts_again_when_the_person_speaks(self):
+        glued = (action(action="open_agent", agent="notebook") + "\n"
+                 + action(action="open_agent", agent="notebook"))
+        harness = Harness([glued, glued, action(action="finish"),
+                           glued, glued, action(action="finish")])
+        run(harness.user("one").assistant.run())
+        run(harness.user("two").assistant.run())
+        assert not any("several steps at once" in s["text"]
+                       for s in harness.said)

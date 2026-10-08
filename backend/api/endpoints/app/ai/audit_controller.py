@@ -54,7 +54,7 @@ class AuditController(AIController):
             key: event.get(key)
             for key in ("agent_id", "agent_name", "permission_level",
                         "chat_level", "status", "error", "duration_ms",
-                        "inputs", "resumed")
+                        "inputs", "resumed", "model")
             if event.get(key) is not None
         })
         # Where the call connected, as the runtime's proxy counted it:
