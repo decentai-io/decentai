@@ -346,3 +346,66 @@ class TestAKillEndsASleepWithNoSessionToDoIt:
         assert on_the_clock == ["kept", "theirs"]
         assert sorted(in_the_store) == ["kept", "theirs"]
         assert [event["event"] for event in relayed] == ["sleeping", "stopped"]
+
+
+class TestAStopReachesACallUnderWay:
+    """A browser run may take half an hour. A stop that waited for it
+    to end by itself was no stop: five of them once went unheard for
+    nine minutes."""
+
+    SLOW = '''\
+from decentai_sdk.base import AgentBase, ToolBase
+import asyncio
+
+class MainTool(ToolBase):
+    id = "main"
+
+    async def run(self, call):
+        await call.progress("started")
+        await asyncio.sleep(60)
+        return {"ok": True}, "success"
+
+class DemoAgent(AgentBase):
+    def tools(self):
+        return [MainTool(self)]
+'''
+
+    def test_it_is_ended_at_once_and_the_turn_with_it(self, tmp_path):
+        from ai_runtime.tests.fixture_agents import write_agent
+        write_agent(tmp_path, "demo", files={"agent.py": self.SLOW})
+        agents, errors = load_agents(tmp_path)
+        assert errors == {}
+        services = SimSessionServices()
+        session = Session("chat_1", agents, FakeConnector([
+            action(action="open_agent", agent="demo"),
+            action(action="invoke", function="demo.main.run", inputs={}),
+            # Never reached: what it would have said, or tried again.
+            action(action="invoke", function="demo.main.run", inputs={}),
+        ]), services)
+
+        async def scenario():
+            await session.open()
+            await session.deliver_user("run it")
+            for _ in range(200):
+                if any(e.get("event") == "activity"
+                       and e.get("kind") == "agent_progress"
+                       for e in services.events):
+                    break
+                await asyncio.sleep(0.05)
+            began = asyncio.get_running_loop().time()
+            session.ask_to_stop()
+            await asyncio.wait_for(session.wait_idle(), 20)
+            return asyncio.get_running_loop().time() - began
+
+        took = run(scenario())
+        assert took < 15
+        assert len(session.connector.calls) == 2
+        state = services.states["chat_1"]
+        assert state["stopped"] is True
+        [entry] = [e for e in state["trace"]
+                   if e.get("function") == "demo.main.run"]
+        assert entry["status"] == "error"
+        assert entry["result"]["outcome"] == "stopped_by_person"
+        # And on the trail, as every call is.
+        assert any("cancelled" in str(line.get("error"))
+                   for line in services.audit)

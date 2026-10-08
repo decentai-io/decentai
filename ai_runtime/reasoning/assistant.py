@@ -251,6 +251,10 @@ class Assistant:
         #: whether anything but talking was done since the last thing
         #: the world said (a message, a wakeup, a job's end)
         self._acted = False
+        #: the call this beat is waiting on, and whether the person's
+        #: stop is what ended it
+        self._foreground: Optional[asyncio.Future] = None
+        self._interrupted = False
         self.logger = RuntimeLoggerFactory.get_logger(self.__class__.__name__)
 
     # ------------------------------------------------------------------
@@ -1204,6 +1208,18 @@ class Assistant:
         return bool(self.state.plan.outstanding()
                     or self.state.active_jobs())
 
+    def interrupt(self) -> bool:
+        """The person pressed stop while a call is under way in this
+        beat: the call is ended now, and not waited for. True when
+        there was one. What a background job is doing ends when the
+        stop itself is absorbed (``_cancel_all_jobs``)."""
+        running = self._foreground
+        if running is None or running.done():
+            return False
+        self._interrupted = True
+        running.cancel()
+        return True
+
     # -- invoke ----------------------------------------------------------
     async def _invoke(self, action: Dict[str, Any]) -> Dict[str, Any]:
         function = str(action.get("function") or "")
@@ -1223,8 +1239,30 @@ class Assistant:
         await self._narrate("call_started",
                             f"{spoken}{self._inputs_summary(inputs)}", source)
         started = time.monotonic()
-        result, status = await self.executor.invoke(
-            agent, function, inputs, self.chat_level, call_id=call_id)
+        # The call runs as a task of its own, so that a stop can reach
+        # it while this beat waits (``interrupt``): a browser run is
+        # half an hour's leave, and a stop that waited for it to end by
+        # itself was no stop.
+        running = asyncio.ensure_future(self.executor.invoke(
+            agent, function, inputs, self.chat_level, call_id=call_id))
+        self._foreground = running
+        try:
+            result, status = await running
+        except asyncio.CancelledError:
+            if not self._interrupted or asyncio.current_task().cancelling():
+                raise       # the beat itself was cancelled: a kill
+            # The person's stop ended it. The executor has told the
+            # worker to stop and written the call on the trail; what
+            # the mind is told is that the person stopped it — an
+            # error, since nobody can say how far it got.
+            result, status = {
+                "error": f"'{function}' was stopped by the person before "
+                         f"it finished. How far it got is not known.",
+                "outcome": self.STOPPED_BY_PERSON,
+            }, "error"
+        finally:
+            self._foreground = None
+            self._interrupted = False
         await self._narrate("call_finished", spoken, source, status=status,
                             duration_ms=self._elapsed_ms(started))
         return self._record(agent.agent_id, function, inputs,

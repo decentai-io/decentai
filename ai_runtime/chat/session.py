@@ -734,11 +734,14 @@ class Session:
                    or "")
 
     def ask_to_stop(self) -> None:
-        """The stop button: cooperative, honored between beats. Asked
-        and not waited for — the beat under way may be a long one, and
-        whoever asked has other things to hear meanwhile (the kill
-        switch among them)."""
+        """The stop button: cooperative, honored between beats — and
+        a call the beat under way is waiting on is ended at once, so
+        that the beat comes to its end and the stop is heard. Asked and
+        not waited for: whoever asked has other things to hear
+        meanwhile (the kill switch among them). The session, its cards
+        and the browser the chat kept all stay."""
         self.assistant.post({"event": "stop"})
+        self.assistant.interrupt()
         self._pump()
         # A stop ends a sleep too: nothing should wake a chat the
         # person told to stop.

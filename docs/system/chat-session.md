@@ -261,7 +261,7 @@ decision and a stop are not, and reach the relay from the gateway:
 | `AI:Chat:Watch {action}` | `screen_open` | `screen_frame`s from the roster's watch function, or `screen_unavailable` |
 | `AI:Approval:Decide` (via the gateway, recorded first) | `approval_decided` | the job or park resumes |
 | `AI:Approval:Decide {answer}` — a question's (via the gateway, recorded first) | `question_answered` | the asking call continues, or hears it expired |
-| `AI:Chat:Stop` (via the gateway) | `stop` | the assistant stops between beats and the audience hears `idle`, with no message; with `force`, [the kill](#the-kill) and `stopped` |
+| `AI:Chat:Stop` (via the gateway) | `stop` | the assistant stops between beats, a call it is waiting on being ended at once, and the audience hears `idle`, with no message; with `force`, [the kill](#the-kill) and `stopped` |
 
 Everything the runtime emits reaches the frontend as `AI:Chat:Event`. The `hello` frame on attach carries the present tense
 (whether a turn is under way, active jobs, pending cards, the plan) and
