@@ -193,7 +193,7 @@ class TestThePull:
         first, second = run(scenario())
         assert first.roster == {} and second.roster == {}
         assert not library.has(digest)
-        assert "digest" in host._refused[digest]
+        assert "digest" in host.agents._refused[digest]
         # The same bytes fail the same way: refused once, not per chat.
         assert len(services.pulls) == 1
 
@@ -341,7 +341,7 @@ class TestReclaimingTheDisk:
             # the session that holds it has been forgotten.
             services.pinned = {digest}
             host.sessions.clear()
-            removed = await host.reclaim("chat_1")
+            removed = await host.agents.reclaim("chat_1")
             return stranded, removed
 
         stranded, removed = run(scenario())
@@ -361,7 +361,7 @@ class TestReclaimingTheDisk:
             # The platform has forgotten it — uninstalled everywhere —
             # but this process is still serving it.
             services.pinned = {"sha256:" + "c" * 64}
-            return await host.reclaim("chat_1")
+            return await host.agents.reclaim("chat_1")
 
         assert run(scenario()) == 0
         assert library.has(digest)
@@ -380,7 +380,7 @@ class TestReclaimingTheDisk:
             stranded = self._stranded(library, digest)
             host.sessions.clear()
             services.pinned_digests = refuse
-            return stranded, await host.reclaim("chat_1")
+            return stranded, await host.agents.reclaim("chat_1")
 
         stranded, removed = run(scenario())
         assert removed == 0
@@ -398,7 +398,7 @@ class TestReclaimingTheDisk:
             stranded = self._stranded(library, digest)
             host.sessions.clear()
             services.pinned = set()
-            return stranded, await host.reclaim("chat_1")
+            return stranded, await host.agents.reclaim("chat_1")
 
         stranded, removed = run(scenario())
         assert removed == 0
@@ -423,7 +423,7 @@ class TestReclaimingTheDisk:
 
         async def scenario():
             first = await host.session("chat_1")
-            assert first.roster == {} and digest not in host._refused
+            assert first.roster == {} and digest not in host.agents._refused
             # The moment passes: the door answers, and the agent is there
             # without anyone restarting anything.
             services.fetch_package = PullingServices.fetch_package.__get__(
@@ -446,10 +446,10 @@ class TestReclaimingTheDisk:
 
         async def scenario():
             await host.session("chat_1")            # refuses the tampered bytes
-            assert digest in host._refused
+            assert digest in host.agents._refused
             services.pinned = {"sha256:" + "d" * 64}
             host.sessions.clear()
-            await host.reclaim("chat_1")
+            await host.agents.reclaim("chat_1")
 
         run(scenario())
-        assert digest not in host._refused
+        assert digest not in host.agents._refused

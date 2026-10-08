@@ -153,7 +153,7 @@ The backend reclaims its half per organization on every install,
 update and uninstall: an archive no approval names is deleted, which is
 what removes the version an update left behind.
 
-The runtime's half is a sweep it runs itself (`host.reclaim`), because
+The runtime's half is a sweep it runs itself (`host.agents.reclaim`), because
 its disk is shared by digest. After an install it reads
 `Agents:Agent:Pinned_digests` — every digest **any** organization still
 approves. That read is the one place the platform answers a runtime

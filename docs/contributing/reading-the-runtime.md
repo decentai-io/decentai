@@ -55,8 +55,11 @@ the `detach` on the way out — are dialled only by
 ## 2. The host: one session per chat
 
 `server/host.py`, class `SessionHost`. Read `attach` → `session` →
-`_build` → `_roster` → `_materialize`, then `handle`, then `_hello`,
-then `_reap` and `_kill`.
+`_build`, then `handle`, then `_hello`, then `_reap` and `_kill`. The
+agents a chat is served are `server/roster.py`, class `AgentRoster`
+(`for_chat` → `roster` → `materialize`, and `reclaim`): one per host,
+asked for a chat's roster when a session is built or refreshed and
+when the clock fires.
 
 Check:
 
@@ -65,7 +68,7 @@ Check:
 - `_build` reads the contract from the services — the chat's level,
   its grants, its agents by digest, the person's zone and safety
   settings. Nothing in a frame decides any of these.
-- `_materialize`: an agent the runtime does not hold is fetched by its
+- `AgentRoster.materialize`: an agent the runtime does not hold is fetched by its
   ref, checked against the digest the contract named, and built before
   the hello; a digest that was refused is logged and not retried on
   every frame.

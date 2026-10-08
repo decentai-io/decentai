@@ -103,7 +103,7 @@ turns that into an honest reply on the first event that needs a model
 - **The disk is reclaimed after an install.** A package installs once
   and serves every organization that approved those bytes, so nothing
   that uninstalls it anywhere can safely delete it. Instead the host
-  sweeps its own disk (`host.reclaim`): it asks the platform which
+  sweeps its own disk (`host.agents.reclaim`): it asks the platform which
   digests are still approved *anywhere*
   (`Agents:Agent:Pinned_digests` — the one read answered beyond the
   caller's organization, because the folder is shared), adds what this
