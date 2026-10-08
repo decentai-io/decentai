@@ -89,7 +89,7 @@ the chat the page is told `screen_unavailable`.
 - **The panel closes when its call ends**, and when everything in the
   chat is stopped. The page is told the call ended whether or not the
   function closed its screen: a screen is its call's, and the runtime
-  closes one a call left open (`FunctionExecutor._end_screen`). The
+  closes one a call left open (`CallSurface.end_screen`). The
   browser behind it may stay open for the next run: the header's
   button opens it again, and a new call's first frame brings the panel
   back. A lost connection only marks the picture idle, since the same

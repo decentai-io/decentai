@@ -197,7 +197,7 @@ class TestAScreensFrame:
         executor = FunctionExecutor(sinks=ChatSinks(screen=sink))
         agent = SimpleNamespace(
             agent_id="agt_probe", manifest=SimpleNamespace(name="Probe"))
-        screen = executor._screen_for(agent, "probe.main.watch", "c_1")
+        screen = executor.surface.screen_for(agent, "probe.main.watch", "c_1")
         run(screen("frame", {
             "image_base64": base64.b64encode(PNG + b"x" * frame_bytes).decode(),
             "mime": "image/png", "width": 800, "height": 600, "frame": 1}))

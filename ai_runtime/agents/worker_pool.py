@@ -402,7 +402,7 @@ class WorkerPool:
                       if isinstance(i, dict)]
             if images:
                 # Named, never carried: the executor's llm resolves each
-                # under this call's own file grant (executor._llm_for).
+                # under this call's own file grant (call_surface.py, llm_for).
                 text = await context.llm(
                     params.get("messages") or [], params.get("max_tokens"),
                     images)

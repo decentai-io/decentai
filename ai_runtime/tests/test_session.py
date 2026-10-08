@@ -645,7 +645,7 @@ class TestConversation:
         session.adopt(session.roster, 1, safety={
             "blocked_sites": [], "packages": "listed", "allowed_packages": ["pandas"]})
         assert executor.safety["allowed_packages"] == ["pandas"]
-        assert executor._listed_packages() == ["pandas"]
+        assert executor.surface.listed_packages() == ["pandas"]
 
     def test_a_question_nobody_answers_expires(self):
         session, services = build([action(action="finish")])

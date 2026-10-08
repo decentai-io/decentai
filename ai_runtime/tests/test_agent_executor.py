@@ -1152,7 +1152,7 @@ class TestCodeProposed:
             return True
 
         executor = make_executor(propose=proposer)
-        propose = executor._propose_for(self.agent(tmp_path), "coder.main.run", "c1")
+        propose = executor.surface.propose_for(self.agent(tmp_path), "coder.main.run", "c1")
         assert run(propose({"language": "python", "code": "x = 1",
                             "purpose": "Sets x.",
                             "review": {"verdict": "agrees", "note": "Fine."}}))
@@ -1283,7 +1283,7 @@ class TestAFunctionThatRunsCode:
         pip()
         executor = make_executor(propose=proposer, safety={
             "packages": "listed", "allowed_packages": ["titlecase"]})
-        propose = executor._propose_for(
+        propose = executor.surface.propose_for(
             agent, "coder.main.run", "c1", grant=__import__(
                 "ai_runtime.execution.code_grant", fromlist=["CodeGrant"]).CodeGrant())
         with pytest.raises(Exception) as refused:

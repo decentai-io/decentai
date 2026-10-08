@@ -232,11 +232,15 @@ runs passes through it, in this order:
    (`_request_approval`), and a no is a denial;
 6. `_execute`.
 
-Then `_execute`: the `CallContext` is the call's whole authority. Each
-capability is given only when the manifest declared it — `llm`,
-`credentials`, `code` — and `ResourceAccess`
-(`execution/resources.py`) is built from the operations the function
-declared. `invoke` does not raise for a fault on the platform's own
+Then `_execute`: the `CallContext` is the call's whole authority.
+`ResourceAccess` (`execution/resources.py`) is built from the
+operations the function declared, and everything else the context
+carries comes from `execution/call_surface.py`, class `CallSurface`
+(`for_call`): what a running call may ask of the chat — `ask`, `post`,
+`propose`, `credential`, `screen`, `show`, `progress`, `llm`,
+`install` — each checked for shape there and passed through the chat's
+door of the same name (`ChatSinks`) in the agent's name. Each is given
+only when the manifest declared it — `llm`, `credentials`, `code`. `invoke` does not raise for a fault on the platform's own
 side: it ends as an error result (`_broke`). `_record` writes the audit
 line whichever way the call ended, a cancelled one included
 (`_witness_cancelled`, before the cancellation goes on).
