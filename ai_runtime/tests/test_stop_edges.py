@@ -307,3 +307,40 @@ class TestAStopAnsweredOnACard:
         state = services.states["chat_1"]
         assert state["stopped"] is True
         assert "The person stopped this" in state["messages"][-1]["content"]
+
+
+class TestAKillEndsASleepWithNoSessionToDoIt:
+    def test_the_row_is_taken_off_the_clock(self):
+        """A sleeping chat is an idle one, which is the session the
+        host forgets. Killed then, it must not wake later."""
+        import logging
+        from ai_runtime.chat.scheduler import Schedule, Scheduler
+        from sim.schedules import MemoryScheduleStore
+
+        relayed = []
+
+        async def scenario():
+            store = MemoryScheduleStore()
+            clock = Scheduler(store, runner=None, clock=lambda: 1000.0)
+            for row in (
+                    Schedule("chat_1", "wake", note="resting", sleep=True,
+                             next_run_at=5000.0, schedule_id="nap"),
+                    Schedule("chat_1", "wake", note="a reminder",
+                             next_run_at=5000.0, schedule_id="kept"),
+                    Schedule("chat_2", "wake", note="another's", sleep=True,
+                             next_run_at=5000.0, schedule_id="theirs")):
+                await clock.add(row)
+
+            async def relay(chat_id, event):
+                relayed.append(event)
+            host = SessionHost.__new__(SessionHost)
+            host.clock, host.sessions, host._builds = clock, {}, {}
+            host._relay = relay
+            host.logger = logging.getLogger("test")
+            await host._kill("chat_1")
+            return sorted(row.schedule_id for row in clock.schedules), [
+                row["schedule_id"] for row in store.rows]
+        on_the_clock, in_the_store = run(scenario())
+        assert on_the_clock == ["kept", "theirs"]
+        assert sorted(in_the_store) == ["kept", "theirs"]
+        assert [event["event"] for event in relayed] == ["sleeping", "stopped"]

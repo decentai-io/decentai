@@ -765,6 +765,27 @@ class TestTheValve:
              if "Wrap up now" in str(m.get("content"))), None)
         assert wrap_up is not None
 
+    def test_a_helper_out_of_beats_reports_that_and_not_done(self):
+        """`budget` is the valve's word: a helper that ran out of beats
+        says so in its report, and its parent reads why."""
+        finished = []
+
+        async def finish_sink(summary, reason):
+            finished.append(reason)
+        looping = [action(action="open_agent", agent="notebook")] * 10
+        harness = Harness(looping, max_beats=3, finish_sink=finish_sink)
+        run(harness.user("loop forever").assistant.run())
+        assert finished == ["budget"]
+
+    def test_budget_is_not_a_reason_the_model_may_give(self):
+        harness = Harness([
+            action(action="finish", reason="budget"),
+            action(action="finish"),
+        ])
+        run(harness.user("hello").assistant.run())
+        assert any("finish needs a reason" in str(m.get("content"))
+                   for m in harness.state.messages)
+
     def test_zero_is_no_valve_at_all(self):
         """The person chose unlimited: sixty beats past the standard
         budget pause nothing and say nothing about pausing."""

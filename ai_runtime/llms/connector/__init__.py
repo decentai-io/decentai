@@ -19,9 +19,10 @@ The code here reads nothing from the environment. What it calls does,
 for what the config leaves unsaid: the HTTP client, for the way this
 machine reaches the internet (HTTPS_PROXY, a CA bundle); OpenAI's
 library, for an organization and a project (OPENAI_ORG_ID,
-OPENAI_PROJECT_ID), sent to the connection's address; and OpenAI's and
-Anthropic's libraries, for an address when the connection names none
-(OPENAI_BASE_URL, ANTHROPIC_BASE_URL).
+OPENAI_PROJECT_ID), sent to the connection's address. Never for an
+address: the libraries would read one (OPENAI_BASE_URL,
+ANTHROPIC_BASE_URL) for a client given none, and the factory gives
+every client the catalog's when the connection names none.
 
 ONE INTERFACE. ``async chat(messages, max_tokens, tools) -> ModelReply``
 (tools.py): ``content`` is the reply as the cycle reads it, and beside

@@ -39,7 +39,7 @@ from ai_runtime.execution.executor import FunctionExecutor
 from ai_runtime.llms.connector.tools import (
     NoModel, is_context_overflow, is_image_refusal, text_block)
 from ai_runtime.reasoning.actions import (
-    ACTION_TOOLS, FINISH_REASONS, FunctionTools,
+    ACTION_TOOLS, FINISH_REASONS, OUT_OF_BEATS, FunctionTools,
 )
 from ai_runtime.reasoning.documents import (
     DocumentPage, DocumentText, Unreadable,
@@ -446,6 +446,11 @@ class Assistant:
             # The count starts again: the next event — a job finishing,
             # a schedule waking — is new work, not more of this run.
             self.state.beats = 0
+            # Said as what it is, where a finish is reported: a helper
+            # that ran out of beats did not complete, and its parent
+            # reads why.
+            if self.finish_sink is not None:
+                await self.finish_sink("", OUT_OF_BEATS)
             return True
 
         # The actions travel as tool schemas, and so does every function

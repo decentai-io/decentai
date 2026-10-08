@@ -229,17 +229,20 @@ ACTION_TOOLS: List[Dict[str, Any]] = [
           "saying why. completed is refused while plan items are owed.",
           {"reason": {"type": "string",
                       "enum": ["completed", "awaiting_user",
-                               "awaiting_events", "blocked", "budget"]},
+                               "awaiting_events", "blocked"]},
            "summary": {"type": "string"}}),
 ]
 
 #: Why a finish is a finish. ``completed`` claims the work is done and
 #: is refused while items are owed; ``awaiting_events`` needs something
-#: to wait for; ``blocked`` needs a blocked item. ``awaiting_user`` and
-#: ``budget`` are taken on the model's word, and nothing in the runtime
-#: says ``budget`` itself: the valve pauses without a finish.
+#: to wait for; ``blocked`` needs a blocked item. ``awaiting_user`` is
+#: taken on the model's word.
 FINISH_REASONS = ("completed", "awaiting_user", "awaiting_events",
-                  "blocked", "budget")
+                  "blocked")
+#: The one reason that is not the model's to give: the runaway valve
+#: ended the turn, out of beats. A helper reports it, so its parent can
+#: tell "ran out of steps" from "done".
+OUT_OF_BEATS = "budget"
 
 ACTION_NAMES = [tool["function"]["name"] for tool in ACTION_TOOLS]
 

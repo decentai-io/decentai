@@ -391,9 +391,10 @@ A helper cannot sleep.
 
 Nothing left to do **right now**: go idle until the next event, and say
 why — `completed`, `awaiting_user`, `awaiting_events`, `blocked`
-(default completed). A fifth reason, `budget`, is accepted and nothing
-more: no rule checks it, the valve does not use it, and the prompt does
-not offer it.
+(default completed). A fifth reason, `budget`, is the runtime's and not
+the model's to give: the valve ends a turn that ran out of beats with
+it, and a helper's report carries it, so its parent reads "ran out of
+steps" and not "done".
 
 This is how a goal completes and how the assistant waits for jobs it
 cannot proceed without — idle-until-event *is* the wait. A reply ends

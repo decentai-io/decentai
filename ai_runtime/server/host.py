@@ -806,6 +806,12 @@ class SessionHost:
                 self.clock.cancel_chat(chat_id)
             session = self.sessions.pop(chat_id, None)
             if session is None:
+                # Nothing is running, and the chat may still be asleep:
+                # a sleep is a row on the clock, and a sleeping chat is
+                # an idle one, which is exactly the session the host
+                # forgets. Left there, the row would wake a chat the
+                # person had stopped.
+                await self._end_sleep(chat_id)
                 await self._relay(chat_id, {
                     "event": "stopped", "chat_id": chat_id,
                     "jobs": 0, "children": 0, "cards": 0})
@@ -819,6 +825,24 @@ class SessionHost:
                     "event": "stopped", "chat_id": chat_id,
                     "jobs": 0, "children": 0, "cards": 0,
                     "detail": str(exc)})
+
+    async def _end_sleep(self, chat_id: str) -> None:
+        """Take a chat's sleep off the clock, with no session to do it
+        (``Session._wake_up`` is the same, for one that is running)."""
+        if self.clock is None:
+            return
+        sleeping = [row for row in self.clock.schedules
+                    if row.chat_id == chat_id and row.sleep]
+        for row in sleeping:
+            try:
+                await self.clock.remove(row.schedule_id)
+            except Exception as exc:
+                self.logger.warning(
+                    f"Sleep of {chat_id} not cancelled at kill: {exc}")
+                return
+        if sleeping:
+            await self._relay(chat_id, {
+                "event": "sleeping", "chat_id": chat_id, "until": None})
 
     async def _reload_schedules(self, chat_id: str) -> None:
         if self.clock is None:

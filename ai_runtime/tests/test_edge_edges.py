@@ -206,3 +206,20 @@ class TestAPreviewSaysWhereTheWholeIs:
         assert "is stored" in Assistant._preview_note({}, stored=True)
         unkept = Assistant._preview_note({}, stored=False)
         assert "is stored" not in unkept and "was not kept" in unkept
+
+
+class TestWhereAKeyIsSentIsTheConnectionsToSay:
+    @pytest.mark.parametrize("provider, variable, address", [
+        ("openai", "OPENAI_BASE_URL", "https://api.openai.com/v1"),
+        ("anthropic", "ANTHROPIC_BASE_URL", "https://api.anthropic.com"),
+    ])
+    def test_an_address_in_the_environment_is_not_read(
+            self, monkeypatch, provider, variable, address):
+        """The client libraries would read one for a client given no
+        address. Every client is given the catalog's."""
+        from ai_runtime.llms.factory import LLMConnectorFactory
+        monkeypatch.setenv(variable, "http://elsewhere.invalid/v1")
+        connector = LLMConnectorFactory.create({
+            "provider": provider, "api_key": "test-key",
+            "model": "chosen-model"})
+        assert str(connector.client.base_url).rstrip("/") == address
