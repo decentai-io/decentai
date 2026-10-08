@@ -202,9 +202,9 @@ class TestTheSimulationKeepsAFilesSizeAndType:
 
 class TestAPreviewSaysWhereTheWholeIs:
     def test_only_where_it_was_kept(self):
-        from ai_runtime.reasoning.assistant import Assistant
-        assert "is stored" in Assistant._preview_note({}, stored=True)
-        unkept = Assistant._preview_note({}, stored=False)
+        from ai_runtime.reasoning.observations import preview_note
+        assert "is stored" in preview_note({}, stored=True)
+        unkept = preview_note({}, stored=False)
         assert "is stored" not in unkept and "was not kept" in unkept
 
 

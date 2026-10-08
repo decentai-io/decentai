@@ -161,14 +161,18 @@ Tests: `ai_runtime/tests/test_session.py`,
 
 `reasoning/assistant.py`, class `Assistant`. The largest file; most of
 it is the actions, one method each. Read the cycle first and the
-actions as they come up.
+actions as they come up. Two things the mind does are functions of
+their arguments alone and live beside it: what of a result the model
+is shown (`reasoning/observations.py`) and what the model is told
+(`reasoning/frame.py`).
 
 1. `run`, `_drain`, `_absorb` — advance until idle.
 2. `_beat` — one model call, one action. The valve (`max_beats`,
    `VALVE_GRACE_BEATS`), a reply cut at the length cap, a reply that is
    not an action (`_bounces`, `_prose`), more than one action.
 3. `_act` — the dispatch. Which actions end the cycle (`finish`, a
-   `say` marked final, `sleep`) and which are observed and go on. Two
+   `say` marked final, `sleep`) and which are observed and go on
+   (`OBSERVED_ACTIONS`, each by the method it names). Two
    more ends: in the chat's own assistant, a `say` made after the turn
    has acted when nothing is owed (`_owes_more`), and an `invoke` whose
    result says `outcome: "stopped_by_person"`.
@@ -177,13 +181,15 @@ actions as they come up.
    `blocked` with nothing marked blocked are all refused.
 5. `_gate`, `_invoke`, `_start`, `_run_job`, `resolve_job` — calling a
    function now, or in the background.
-6. `_record`, `_previewed`, `_bounded`, `_preview` — what of a result
-   the model sees, and what the trace keeps.
+6. `_record`, with `reasoning/observations.py` (`previewed`,
+   `bounded`, `preview`) — what of a result the model sees, and what
+   the trace keeps.
 7. `_say`, `_already_said`, with `reasoning/evidence.py` `Evidence` —
    what may be shown under an answer.
-8. `_system_prompt`, `_roster_block`, `_render_catalog`, with
-   `prompts/assistant.md` and `reasoning/actions.py` — everything the
-   model is told.
+8. `reasoning/frame.py` (`system_prompt`, `roster_block`,
+   `render_catalog`, `parse_actions`), with `prompts/assistant.md` and
+   `reasoning/actions.py` — everything the model is told, and how its
+   reply is read.
 
 Then the smaller files as they are met: `reasoning/state.py` (what is
 saved every beat), `reasoning/plan.py`, `reasoning/agent_router.py`

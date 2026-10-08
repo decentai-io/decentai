@@ -12,6 +12,7 @@ import pytest
 from ai_runtime.chat.summarizer import SECTIONS, Summarizer
 from ai_runtime.llms import FakeConnector
 from ai_runtime.prompts import Prompts
+from ai_runtime.reasoning import observations
 from ai_runtime.reasoning.assistant import Assistant
 from ai_runtime.reasoning.evidence import Evidence
 from ai_runtime.reasoning.plan import Plan
@@ -23,12 +24,12 @@ def size(value) -> int:
 
 
 class TestAPreviewFitsItsBudget:
-    BUDGET = Assistant.PREVIEW_MAX_CHARS
+    BUDGET = observations.PREVIEW_MAX_CHARS
 
     def test_many_short_rows_are_shown_as_many_as_fit(self):
         rows = [{"id": i, "title": f"note {i}", "tag": "x" * 80}
                 for i in range(150)]
-        preview = Assistant._preview({"notes": rows, "total": 150})
+        preview = observations.preview({"notes": rows, "total": 150})
         assert size(preview) <= self.BUDGET
         # Most of the budget is rows: not six of a hundred and fifty.
         assert preview["notes"]["items_shown"] > 60
@@ -43,12 +44,12 @@ class TestAPreviewFitsItsBudget:
     ], ids=["a first item that is a document", "sixty long fields",
             "six hundred fields", "two long lists"])
     def test_whatever_the_shape(self, result):
-        assert size(Assistant._preview(result)) <= self.BUDGET
+        assert size(observations.preview(result)) <= self.BUDGET
 
     def test_the_trace_keeps_a_cut_copy_with_its_lists_as_lists(self):
-        kept = Assistant._bounded(
+        kept = observations.bounded(
             {"notes": [{"id": i, "body": "q" * 300} for i in range(400)]})
-        assert size(kept) <= Assistant.TRACE_RESULT_MAX_CHARS + 200
+        assert size(kept) <= observations.TRACE_RESULT_MAX_CHARS + 200
         assert isinstance(kept["notes"], list) and kept["truncated"] is True
 
 

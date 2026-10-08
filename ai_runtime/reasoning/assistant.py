@@ -26,6 +26,7 @@ import asyncio
 import base64
 import contextvars
 import difflib
+import inspect
 import json
 import re
 import time
@@ -45,6 +46,7 @@ from ai_runtime.reasoning.actions import (
 from ai_runtime.reasoning.documents import (
     DocumentPage, DocumentText, Unreadable,
 )
+from ai_runtime.reasoning import frame, observations
 from ai_runtime.reasoning.evidence import Evidence
 from ai_runtime.reasoning.state import (
     ASSISTANT_JOB,
@@ -54,7 +56,6 @@ from ai_runtime.reasoning.state import (
     AssistantState,
     Job,
 )
-from ai_runtime.prompts import Prompts
 from ai_runtime.runtime_logging import RuntimeLoggerFactory
 from ai_runtime.sinks import ChatSinks
 
@@ -89,20 +90,11 @@ class Assistant:
     FREE_PARSE_BOUNCES = 2
     BOUNCE_MARK = "Your last reply was not a single valid JSON action."
 
-    #: How much of a result the model sees whole. Roughly 4,000 tokens —
-    #: small against any current context, and the difference between
-    #: one beat and one beat per row: a table the model cannot see
-    #: whole is one it reads back item by item, a model call each.
-    OBSERVATION_MAX_CHARS = 16000
-    #: When a result is previewed instead, lists are shown as many
-    #: complete items as fit in this, strings clipped at the value cap.
-    PREVIEW_MAX_CHARS = 12000
-    PREVIEW_VALUE_CHARS = 1000
-    #: How much of a result the TRACE keeps. The whole result lives in
-    #: storage under its storage_ref; the trace is the mind's own state,
-    #: persisted every beat and capped by the platform, and one large
-    #: read must not be what makes it unsaveable.
-    TRACE_RESULT_MAX_CHARS = 4000
+    #: How much of a result the model sees whole, and how much the
+    #: trace keeps (observations.py has the reasons). Named here for
+    #: the cycle's own uses.
+    OBSERVATION_MAX_CHARS = observations.OBSERVATION_MAX_CHARS
+    TRACE_RESULT_MAX_CHARS = observations.TRACE_RESULT_MAX_CHARS
 
     #: The largest picture a model is shown, as bytes on disk. Base64
     #: costs a third on top, and providers cap what they accept —
@@ -114,16 +106,9 @@ class Assistant:
     #: megabytes, re-sent on every beat of a turn that may run forty.
     MAX_IMAGES_PER_MESSAGE = 4
 
-    #: What a permission level MEANS, in the words the person approving
-    #: one is shown and a manifest's author is told
-    #: (docs/agents/manifest.md): the model choosing a function reads
-    #: the same scale as the person who set the chat's trust level.
-    LEVELS = {
-        0: "read",
-        1: "ordinary change",
-        2: "wider change",
-        3: "outside action",
-    }
+    #: What a permission level means, in the words the model and the
+    #: person share (frame.py).
+    LEVELS = frame.LEVELS
 
     def __init__(
         self,
@@ -627,6 +612,20 @@ class Assistant:
     # Actions
     # ------------------------------------------------------------------
 
+    #: The actions that are observed and the cycle goes on: the one the
+    #: beat chose is done by the method named, and its outcome is put
+    #: before the model as the next beat's observation. The four that
+    #: can end a turn — say, finish, invoke, sleep — are read in _act.
+    OBSERVED_ACTIONS = {
+        "open_agent": "_open_agent", "close_agent": "_close_agent",
+        "find_agents": "_find_agents", "spawn": "_spawn",
+        "start": "_start", "cancel_job": "_cancel_job",
+        "read": "_read", "find_files": "_find_files",
+        "read_file": "_read_file", "use_skill": "_use_skill",
+        "recall": "_recall", "remember": "_remember", "plan": "_plan",
+        "schedule": "_schedule", "unschedule": "_unschedule",
+    }
+
     async def _act(self, action: Dict[str, Any], implicit: bool = False) -> bool:
         kind = str(action.get("action") or "").lower()
         if kind not in ("say", "finish"):
@@ -644,9 +643,6 @@ class Assistant:
                 await self.sinks.finish(str(action.get("summary") or ""),
                                        str(action.get("reason") or "completed"))
             return True
-        if kind == "spawn":
-            self._observe(await self._spawn(action))
-            return False
         if kind == "say":
             if self._already_said(str(action.get("text") or "")):
                 self._observe({"error": "You have already told the user "
@@ -713,8 +709,12 @@ class Assistant:
                 "did not ask for. They have read it — do not restate "
                 "it, in these words or others."})
             return False
-        if kind == "open_agent":
-            self._observe(await self._open_agent(action))
+        handler = self.OBSERVED_ACTIONS.get(kind)
+        if handler is not None:
+            outcome = getattr(self, handler)(action)
+            if inspect.isawaitable(outcome):
+                outcome = await outcome
+            self._observe(outcome)
             return False
         if kind == "invoke":
             observation = await self._invoke(action)
@@ -734,45 +734,6 @@ class Assistant:
                     await self.sinks.finish("", "awaiting_user")
                 return True
             self._observe(observation)
-            return False
-        if kind == "start":
-            self._observe(await self._start(action))
-            return False
-        if kind == "cancel_job":
-            self._observe(await self._cancel_job(action))
-            return False
-        if kind == "read":
-            self._observe(await self._read(action))
-            return False
-        if kind == "find_files":
-            self._observe(await self._find_files(action))
-            return False
-        if kind == "read_file":
-            self._observe(await self._read_file(action))
-            return False
-        if kind == "use_skill":
-            self._observe(await self._use_skill(action))
-            return False
-        if kind == "find_agents":
-            self._observe(await self._find_agents(action))
-            return False
-        if kind == "close_agent":
-            self._observe(self._close_agent(action))
-            return False
-        if kind == "recall":
-            self._observe(self._recall(action))
-            return False
-        if kind == "remember":
-            self._observe(await self._remember(action))
-            return False
-        if kind == "plan":
-            self._observe(await self._plan(action))
-            return False
-        if kind == "schedule":
-            self._observe(await self._schedule(action))
-            return False
-        if kind == "unschedule":
-            self._observe(await self._unschedule(action))
             return False
         if kind == "sleep":
             slept = await self._sleep(action)
@@ -1340,9 +1301,9 @@ class Assistant:
         call_id = self._call_id()
         source = agent_source(agent.agent_id, agent.manifest.name, function,
                               call_id=call_id)
-        spoken = self._spoken(agent, function)
+        spoken = observations.spoken(agent, function)
         await self._narrate("call_started",
-                            f"{spoken}{self._inputs_summary(inputs)}", source)
+                            f"{spoken}{observations.inputs_summary(inputs)}", source)
         started = time.monotonic()
         # The call runs as a task of its own, so that a stop can reach
         # it while this beat waits (``interrupt``): a browser run is
@@ -1453,8 +1414,8 @@ class Assistant:
 
         await self._narrate(
             "job_started",
-            f"Started in the background: {self._spoken(agent, function)}"
-            f"{self._inputs_summary(inputs)}",
+            f"Started in the background: {observations.spoken(agent, function)}"
+            f"{observations.inputs_summary(inputs)}",
             agent_source(agent.agent_id, agent.manifest.name, function,
                          call_id=call_id, job_id=job.job_id))
         return {"job_id": job.job_id, "status": job.status,
@@ -1503,7 +1464,7 @@ class Assistant:
         self.state.jobs[job.job_id] = job
         self._attach_child(job)
         await self._narrate(
-            "helper_spawned", f"Started a helper: {self._preview(goal, 80)}",
+            "helper_spawned", f"Started a helper: {observations.preview(goal, 80)}",
             {"kind": "helper", "job_id": job.job_id, "child": job.child})
         return {"job_id": job.job_id, "status": job.status,
                 "note": "Works in the background; its report arrives as a "
@@ -1537,7 +1498,7 @@ class Assistant:
             self.logger.error(f"Child {job.job_id} failed: {exc}")
             result, status, entries = {"error": str(exc)[:300]}, "error", []
 
-        job.result = self._bounded(result)
+        job.result = observations.bounded(result)
         job.status = DONE if status == "success" else FAILED
         await self._narrate(
             "job_finished",
@@ -1610,12 +1571,12 @@ class Assistant:
             self.logger.error(f"Job {job.job_id} failed: {exc}")
             result, status = {"error": str(exc)[:300]}, "error"
 
-        job.result = self._bounded(result)
+        job.result = observations.bounded(result)
         job.status = DONE if status == "success" else FAILED
         observation = self._record(job.agent_id, job.function, job.inputs,
                                    result, status, job_id=job.job_id)
         await self._narrate(
-            "job_finished", self._spoken(agent, job.function),
+            "job_finished", observations.spoken(agent, job.function),
             agent_source(agent.agent_id, agent.manifest.name, job.function,
                          call_id=call_id, job_id=job.job_id),
             status=job.status, duration_ms=self._elapsed_ms(started))
@@ -1659,7 +1620,7 @@ class Assistant:
         job = self.state.jobs.get(job_id)
         if job is None:
             return
-        job.result = self._bounded(result)
+        job.result = observations.bounded(result)
         job.status = DONE if status == "success" else FAILED
         observation = self._record(job.agent_id, job.function, job.inputs,
                                    result, status, job_id=job_id)
@@ -1719,7 +1680,7 @@ class Assistant:
             payload["from"] = start
         observation = {"status": "success", "result": payload}
         if len(json.dumps(observation, default=str)) > self.OBSERVATION_MAX_CHARS:
-            payload["value"] = self._preview(value)
+            payload["value"] = observations.preview(value)
             payload["truncated"] = True
             if isinstance(value, list):
                 shown = int(payload["value"].get("items_shown") or 0)
@@ -2028,13 +1989,13 @@ class Assistant:
             # the rest of this ask (``_refused_already``).
             self._denied.setdefault(agent_id, set()).update(
                 self._hosts_named(inputs))
-        kept = self._bounded(result)
+        kept = observations.bounded(result)
         # The trace is saved with the mind at every beat, under a size
         # the platform holds it to: what a call was given is kept whole
         # only while it is small, as what it returned is.
         given = inputs
         if len(json.dumps(inputs, default=str)) > self.TRACE_RESULT_MAX_CHARS:
-            given = self._preview(inputs, self.TRACE_RESULT_MAX_CHARS)
+            given = observations.preview(inputs, self.TRACE_RESULT_MAX_CHARS)
         entry = {"agent": agent_id, "function": function, "inputs": given,
                  "status": status, "result": kept}
         if kept is not result and status == "success":
@@ -2061,7 +2022,7 @@ class Assistant:
         observation = {"status": status, "result": result}
         serialized = json.dumps(observation, default=str)
         if len(serialized) > self.OBSERVATION_MAX_CHARS:
-            observation = self._previewed(status, result)
+            observation = observations.previewed(status, result)
         return observation
 
     def fitted(self, event: Dict[str, Any]) -> Dict[str, Any]:
@@ -2077,255 +2038,33 @@ class Assistant:
             return event
         return {
             **{k: v for k, v in event.items() if k != "result"},
-            **self._previewed(str(event.get("status") or "success"), result),
+            **observations.previewed(str(event.get("status") or "success"), result),
         }
-
-    def _previewed(self, status: str, result: Any) -> Dict[str, Any]:
-        """A result too large to show whole, as the model is shown it:
-        its preview, the reference to the whole, and the note that
-        says how much there is and where the rest can be read."""
-        preview = self._preview(result)
-        return {
-            "status": status,
-            "storage_ref": result.get("storage_ref")
-            if isinstance(result, dict) else None,
-            # What the call offered to show survives the preview: it
-            # is how the model can put the rows in front of a person.
-            "displays": result.get("displays")
-            if isinstance(result, dict) else None,
-            "result_preview": preview,
-            "truncated": True,
-            "note": self._preview_note(
-                preview, stored=isinstance(result, dict)
-                and isinstance(result.get("storage_ref"), str)),
-        }
-
-    @classmethod
-    def _preview_note(cls, preview: Any, stored: bool = True) -> str:
-        """What to tell the model when a result was too big to show whole.
-
-        A note that says only that the result was previewed leaves the
-        model with nothing concrete and a strong urge to explain itself:
-        people are told "the query is big", as though they had asked for
-        too much. They had not — the FUNCTION returned more than fits.
-        So the note counts what was cut, the way the read action's note
-        does, and the counts are the thing worth repeating to a
-        person."""
-        counts = []
-        if isinstance(preview, dict):
-            for field, value in preview.items():
-                if isinstance(value, dict) and "items_total" in value:
-                    counts.append(f"{field}: {value.get('items_shown')} of "
-                                  f"{value.get('items_total')}")
-        head = ("Preview only — " + "; ".join(counts) + ". ") if counts \
-            else "Preview only. "
-        # Where the whole can be read is said only where it was kept:
-        # a failed call's result, or one the store would not take, has
-        # no ref to read it by.
-        where = ("The whole result is stored. Use the read action with "
-                 "this storage_ref and a path to see any part of it. "
-                 if stored else
-                 "The whole result was not kept, so this is all of it "
-                 "that can be seen. ")
-        return head + where + (
-            "If you tell the "
-            "person anything about this, say what you are showing and how "
-            "much there is — never that their request was too large, which "
-            "it was not.")
-
-    @classmethod
-    def _bounded(cls, result: Any) -> Any:
-        """The trace's copy of a result: whole when it fits, else its
-        shape — each list cut to the items that fit, long strings
-        clipped — marked ``truncated`` beside the storage_ref that holds
-        the whole. Lists stay lists, so evidence still sees a read with
-        rows and the reference to render them from."""
-        if not isinstance(result, dict) or len(
-                json.dumps(result, default=str)) <= cls.TRACE_RESULT_MAX_CHARS:
-            return result
-        # What the platform added to the result is not the agent's
-        # output to cut: the displays the call offered are what a later
-        # show is checked against, every one of them.
-        displays = result.get("displays")
-        bounded = cls._preview(
-            {key: value for key, value in result.items() if key != "displays"},
-            cls.TRACE_RESULT_MAX_CHARS)
-        for field, value in list(bounded.items()):
-            if isinstance(value, dict) and "items_total" in value:
-                bounded[field] = value["items"]
-        if displays is not None:
-            bounded["displays"] = displays
-        bounded["truncated"] = True
-        return bounded
-
-    @classmethod
-    def _fit_list(cls, items: list, budget: int) -> Dict[str, Any]:
-        """As many complete items as fit in ``budget`` characters, and
-        how many there were: whole rows, never a clipped middle."""
-        kept: list = []
-        used = 2
-        for item in items:
-            piece = len(json.dumps(item, default=str)) + 2
-            if used + piece > budget:
-                if not kept:
-                    # The first item is itself more than the budget: it
-                    # is shown as its own preview, and never whole —
-                    # one row can be a document.
-                    kept.append(cls._preview(item, max(budget - 2, 200)))
-                break
-            kept.append(item)
-            used += piece
-        return {"items_total": len(items), "items_shown": len(kept),
-                "items": kept}
-
-    @classmethod
-    def _preview(cls, value: Any, budget: Optional[int] = None) -> Any:
-        """A result too large to show whole, by its shape: every field,
-        each list as the first N complete items that fit, each long
-        string clipped. The whole preview fits ``budget``, which is
-        PREVIEW_MAX_CHARS unless another is given."""
-        budget = budget or cls.PREVIEW_MAX_CHARS
-
-        def clip(text: str, cap: int) -> str:
-            return text if len(text) <= cap else text[: cap - 1] + "…"
-
-        if isinstance(value, list):
-            return cls._fit_list(value, budget)
-        if isinstance(value, str):
-            return clip(value, budget)
-        if not isinstance(value, dict):
-            return value
-
-        # What is not a list first, each value clipped — to less than
-        # the usual length where there are many, so that together they
-        # take at most half of the budget. Then the lists share what is
-        # left, measured, and not a guess that is halved until it fits:
-        # that would leave a result of many short rows with a handful
-        # shown.
-        lists = [f for f, v in value.items() if isinstance(v, list)]
-        others = [f for f in value if f not in lists]
-        cap = cls.PREVIEW_VALUE_CHARS
-        if others:
-            cap = min(cap, max(24, (budget // 2) // len(others) - 24))
-        preview: Dict[str, Any] = {}
-        for field in others:
-            item = value[field]
-            if isinstance(item, dict):
-                preview[field] = clip(json.dumps(item, default=str), cap)
-            elif isinstance(item, str):
-                preview[field] = clip(item, cap)
-            else:
-                preview[field] = item
-        taken = len(json.dumps(preview, default=str))
-        # Each list's own wrapping (its name, its two counts) is about
-        # eighty characters.
-        left = budget - taken - 80 * len(lists)
-        share = max(left // max(1, len(lists)), 200)
-        fitted = {field: cls._fit_list(value[field], share) for field in lists}
-        # In the order the result had them.
-        preview = {field: fitted[field] if field in fitted else preview[field]
-                   for field in value}
-        if len(json.dumps(preview, default=str)) > budget:
-            # A shape nothing above bounds (a great many fields): said
-            # as text, cut to the budget.
-            # (to two thirds of it: said as text inside JSON, every
-            # quote in it is written as two characters).
-            return {"clipped": clip(json.dumps(preview, default=str),
-                                    max((budget * 2) // 3, 16))}
-        return preview
-
-    SUMMARY_MAX_CHARS = 90
-    VALUE_MAX_CHARS = 44
-
-    @staticmethod
-    def _spoken(agent, function: str) -> str:
-        """A call as a person would say it: the agent's name and the
-        function's label, never the minted ref the platform routes by.
-        'Outlook · Find Messages', with the canonical name kept only
-        when the manifest gives no label."""
-        manifest = getattr(agent, "manifest", None)
-        agent_name = str(getattr(manifest, "name", "") or getattr(agent, "agent_id", "") or "")
-        label = ""
-        try:
-            found = manifest.function(function) if manifest is not None else None
-            if found:
-                label = str((found[1] or {}).get("name") or "")
-        except Exception:  # noqa: BLE001 — narration must never break a call
-            label = ""
-        if not label:
-            parts = function.split(".")
-            label = ".".join(parts[1:]) if len(parts) == 3 else function
-        return f"{agent_name} · {label}" if agent_name else label
-
-    @classmethod
-    def _inputs_summary(cls, inputs: Dict[str, Any]) -> str:
-        """What this call was actually asked to do, in one watchable
-        line."""
-        if not isinstance(inputs, dict) or not inputs:
-            return ""
-        parts = []
-        for key, value in inputs.items():
-            parts.append(f"{key}={cls._value_summary(value)}")
-            if sum(len(part) for part in parts) > cls.SUMMARY_MAX_CHARS:
-                break
-        summary = ", ".join(parts)
-        if len(summary) > cls.SUMMARY_MAX_CHARS:
-            summary = summary[: cls.SUMMARY_MAX_CHARS - 1].rstrip() + "…"
-        return f" · {summary}"
-
-    @classmethod
-    def _value_summary(cls, value: Any) -> str:
-        if isinstance(value, dict):
-            if isinstance(value.get("storage_ref"), str):
-                return "«stored result»"
-            return "{…}"
-        if isinstance(value, list):
-            return f"[{len(value)}]"
-        if isinstance(value, bool) or value is None:
-            return str(value).lower()
-        if isinstance(value, (int, float)):
-            return str(value)
-        text = str(value)
-        if len(text) > cls.VALUE_MAX_CHARS:
-            text = text[: cls.VALUE_MAX_CHARS - 1].rstrip() + "…"
-        return f'"{text}"' if " " in text else text
 
     # ------------------------------------------------------------------
     # Prompt framing
     # ------------------------------------------------------------------
 
-    AGENT_LINE_MAX_CHARS = 200
     #: The standard cap on skill lines in the frame — the chat's
     #: setting overrides it (max_skills; settings/skills_cap.py).
     DEFAULT_MAX_SKILLS = 40
-    #: Characters the catalog may spend per listed row, so a cap of
-    #: forty is also a cap of eight thousand characters and a raised
-    #: cap grows the budget with it.
-    SKILLS_CATALOG_CHARS_PER_ROW = 200
+    # What the model is told is rendered in frame.py from what the
+    # mind holds; these say which of it.
 
     def _system_prompt(self) -> str:
-        return Prompts.render(
-            "assistant",
-            roster=self._roster_block(),
-            skills=self._skills_block(),
-            memories="\n".join(f"- {text}" for text in self.memories)
-            or "(nothing remembered yet)",
-            plan=self.state.plan.render(),
-            summary=self._summary_block(),
-        )
+        return frame.system_prompt(self.state, self.agents, self._shortlist,
+                                   self.skills, self.max_skills, self.memories)
 
-    def _summary_block(self) -> str:
-        """The summary, and one line saying what has fallen out of it
-        since — how much and since when — so the mind knows there is
-        something to recall rather than believing the summary whole."""
-        summary = (self.state.summary
-                   or "(none — the visible messages are the whole conversation)")
-        archive = self.state.archive
-        if not archive:
-            return summary
-        since = str(archive[0].get("at") or "earlier")
-        return (f"{summary}\n\n({len(archive)} older line(s) have fallen out "
-                f"of this summary since {since}; recall searches them.)")
+    def _roster_block(self) -> str:
+        return frame.roster_block(self.agents, self._shortlist)
+
+    def _skills_block(self) -> str:
+        return frame.skills_block(self.skills, self.max_skills)
+
+    def _render_catalog(self, agent: InstalledAgent) -> str:
+        return frame.render_catalog(agent, self.chat_level)
+
+    parse_actions = staticmethod(frame.parse_actions)
 
     def reframe(self) -> None:
         """Rewrite the system frame from the current state — after the
@@ -2335,125 +2074,7 @@ class Assistant:
             self.state.messages[0] = {
                 "role": "system", "content": self._system_prompt()}
 
-    def _roster_block(self) -> str:
-        """One line per agent. Details are paid for only when opened.
-        More installed than the organization's threshold: the open
-        ones and the closest to the latest message by meaning, with the
-        rest counted (agent_router.py)."""
-        if self._shortlist is not None:
-            listed, omitted = self._shortlist
-            listed = [agent_id for agent_id in listed if agent_id in self.agents]
-        else:
-            listed, omitted = sorted(self.agents), 0
-        lines = []
-        for agent_id in listed:
-            agent = self.agents[agent_id]
-            block = agent.manifest.document.get("agent") or {}
-            description = str(block.get("description") or "").strip()
-            line = f"{agent_id} — {agent.manifest.name}"
-            if description:
-                line += f": {description}"
-            if len(line) > self.AGENT_LINE_MAX_CHARS:
-                line = line[: self.AGENT_LINE_MAX_CHARS - 1] + "…"
-            lines.append(line)
-        if omitted:
-            lines.append(f"({omitted} more agent(s) are installed but not "
-                         f"listed here — the list follows the latest message; "
-                         f"find_agents searches all of them by meaning, in any "
-                         f"language, and open_agent takes any id.)")
-        return "\n".join(lines) or "(none installed)"
-
-    def _skills_block(self) -> str:
-        if not self.skills:
-            return "(none written yet)"
-        lines: List[str] = []
-        unlimited = self.max_skills <= 0
-        rows = self.skills if unlimited else self.skills[: self.max_skills]
-        budget = self.SKILLS_CATALOG_CHARS_PER_ROW * max(self.max_skills, 0)
-        for row in rows:
-            line = (f"{row.get('ref')}: {row.get('title')} "
-                    f"— {row.get('summary')}")
-            if not unlimited and lines and len(line) > budget:
-                break
-            budget -= len(line)
-            lines.append(line)
-        hidden = len(self.skills) - len(lines)
-        if hidden > 0:
-            lines.append(
-                f"({hidden} more skill(s) exist but are not listed here — "
-                f"say so rather than claiming they were never written.)"
-            )
-        return "\n".join(lines)
-
-    def _render_catalog(self, agent: InstalledAgent) -> str:
-        """An opened agent's action space, grouped by tool and priced:
-        names, prices and descriptions. The schemas are not here — they
-        travel as the function tools the next beat offers, whole."""
-        lines: List[str] = []
-        for tool in agent.manifest.document.get("tools") or []:
-            tool_id = str(tool.get("id") or "")
-            title = str(tool.get("name") or tool_id)
-            description = str(tool.get("description") or "").strip()
-            lines.append(
-                f"TOOL {tool_id} — {title}"
-                + (f": {description}" if description else "")
-            )
-            for function in tool.get("functions") or []:
-                if function.get("watch") is True:
-                    continue  # the person's to open, not the model's to call
-                lines.extend(self._render_function(agent, tool_id, function))
-            lines.append("")
-        return "\n".join(lines).strip() or "(this agent declares no functions)"
-
-    def _render_function(self, agent: InstalledAgent, tool_id: str,
-                         function: Dict[str, Any]) -> List[str]:
-        name = f"{agent.agent_id}.{tool_id}.{function.get('id')}"
-        level = int(function.get("permission_level") or 0)
-        cost = self.LEVELS.get(level, "restricted")
-        # The chat's trust level decides this, and the assistant is the
-        # one choosing — so it should know before it chooses.
-        approval = " · NEEDS APPROVAL" if level > self.chat_level else ""
-
-        lines = [f"  {name}  [{cost}{approval}]"]
-        description = str(function.get("description") or "").strip()
-        if description:
-            lines.append(f"    {description}")
-        return lines
-
     # ------------------------------------------------------------------
-    @staticmethod
-    def parse_actions(response: Any) -> List[dict]:
-        """Every JSON object in the reply, in order — fenced or bare,
-        wrapped in prose or not. A model that glues two actions into one
-        reply is a known habit; the cycle takes the first and says so,
-        rather than bouncing the reply and inviting a repeat."""
-        text = response if isinstance(response, str) else str(response or "")
-        text = text.strip()
-        if text.startswith("```"):
-            parts = text.split("```")
-            text = parts[1] if len(parts) > 1 else text
-            if text.startswith("json"):
-                text = text[4:]
-            text = text.strip()
-
-        decoder = json.JSONDecoder()
-        found: List[dict] = []
-        position = 0
-        while True:
-            start = text.find("{", position)
-            if start == -1:
-                return found
-            try:
-                parsed, end = decoder.raw_decode(text, start)
-            except ValueError:
-                position = start + 1
-                continue
-            # An action names itself; any other object in a reply is an
-            # example in prose, not an attempt at one.
-            if isinstance(parsed, dict) and "action" in parsed:
-                found.append(parsed)
-            position = end
-
     async def _persist(self) -> None:
         if self.sinks.save_state is None:
             return
