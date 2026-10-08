@@ -318,7 +318,7 @@ class TestConversation:
 
         async def scenario():
             await session.open()
-            return await session._ask_person(
+            return await session.cards.ask(
                 "Which notebook?", ["Work", "Home"], self.QUESTION_SOURCE)
 
         assert run(scenario()) == "Work"
@@ -330,7 +330,7 @@ class TestConversation:
                       if e["event"] == "question_closed")
         assert (closed["approval_id"], closed["status"]) == (
             asked["approval_id"], "answered")
-        assert session.questions == {}
+        assert session.cards.questions == {}
 
     def test_a_file_question_says_so_on_its_card(self):
         """expects: file rides on the card and the frame, so the page
@@ -344,7 +344,7 @@ class TestConversation:
 
         async def scenario():
             await session.open()
-            return await session._ask_person(
+            return await session.cards.ask(
                 "Attach your passport", [], self.QUESTION_SOURCE,
                 expects="file")
 
@@ -377,7 +377,7 @@ class TestConversation:
             await services.provider.create_file("chat_attachment", "notes.txt", b"n")
             await services.provider.create_file("uploads", "sales-report.csv", b"a,b")
             await session.open()
-            return await session._find_files(
+            return await session.cards.find_files(
                 "the sales report", ["sales", "report"])
 
         outcome = run(scenario())
@@ -394,7 +394,7 @@ class TestConversation:
         assert [(p["type"], p["resource_ref"]) for p in message["parts"]] == [
             ("file", chosen["resource_ref"])]
         assert any(e["event"] == "message_created" for e in services.events)
-        assert session.questions == {}
+        assert session.cards.questions == {}
 
     def test_a_files_question_answered_with_none_is_a_decline(self):
         async def decider(request):
@@ -405,7 +405,7 @@ class TestConversation:
 
         async def scenario():
             await session.open()
-            return await session._find_files("anything")
+            return await session.cards.find_files("anything")
 
         assert run(scenario()) == {"status": "declined", "files": []}
         assert services.messages.get("chat_1", []) == []
@@ -445,10 +445,10 @@ class TestConversation:
 
         async def scenario():
             await session.open()
-            first = await session._credential(
+            first = await session.cards.credential(
                 "atlassian.com", self.LOGIN_FIELDS, None, "acme.atlassian.net",
                 False, self.LOGIN_SOURCE)
-            second = await session._credential(
+            second = await session.cards.credential(
                 "atlassian.com", self.LOGIN_FIELDS, None, "acme.atlassian.net",
                 False, self.LOGIN_SOURCE)
             return first, second
@@ -498,7 +498,7 @@ class TestConversation:
 
         async def scenario():
             await session.open()
-            return await session._credential(
+            return await session.cards.credential(
                 "www.amazon.com", fields, None, "www.amazon.com", False,
                 self.LOGIN_SOURCE)
 
@@ -522,7 +522,7 @@ class TestConversation:
 
         async def scenario():
             await session.open()
-            return await session._credential(
+            return await session.cards.credential(
                 "amazon.com", self.LOGIN_FIELDS, None, None, False, self.LOGIN_SOURCE)
 
         assert run(scenario()) is None
@@ -547,7 +547,7 @@ class TestConversation:
 
         async def scenario():
             await session.open()
-            return await session._propose(dict(self.CODE), self.QUESTION_SOURCE)
+            return await session.cards.propose(dict(self.CODE), self.QUESTION_SOURCE)
 
         assert run(scenario()) is True
         asked = next(e for e in services.events
@@ -574,7 +574,7 @@ class TestConversation:
 
         async def scenario():
             await session.open()
-            return await session._propose(dict(self.CODE), self.QUESTION_SOURCE)
+            return await session.cards.propose(dict(self.CODE), self.QUESTION_SOURCE)
 
         assert run(scenario()) is False
         asked = next(e for e in services.events
@@ -596,7 +596,7 @@ class TestConversation:
 
         async def scenario():
             await session.open()
-            return await session._propose(
+            return await session.cards.propose(
                 dict(self.CODE), {**self.QUESTION_SOURCE, "call_id": "c_7"})
 
         assert run(scenario()) is True
@@ -624,7 +624,7 @@ class TestConversation:
 
         async def scenario():
             await session.open()
-            return await session._propose(code, self.QUESTION_SOURCE)
+            return await session.cards.propose(code, self.QUESTION_SOURCE)
 
         assert run(scenario()) is True
         said = services.messages["chat_1"][0]["parts"][0]["content"]
@@ -649,11 +649,11 @@ class TestConversation:
 
     def test_a_question_nobody_answers_expires(self):
         session, services = build([action(action="finish")])
-        session.QUESTION_WAIT_SECONDS = 0.05
+        session.cards.QUESTION_WAIT_SECONDS = 0.05
 
         async def scenario():
             await session.open()
-            return await session._ask_person("Anyone?", [],
+            return await session.cards.ask("Anyone?", [],
                                              self.QUESTION_SOURCE)
 
         assert run(scenario()) is None
@@ -1974,7 +1974,7 @@ class TestForegroundParks:
             await session.open()
             await session.deliver_user("show me your screen")
             deadline = asyncio.get_running_loop().time() + 20
-            while not session.screens:
+            while not session.cards.screens:
                 assert asyncio.get_running_loop().time() < deadline, "no screen"
                 await asyncio.sleep(0.05)
             await session.deliver_user("go left, not right", parts=[
@@ -2114,7 +2114,7 @@ class TestScreens:
                 {"index": 1, "title": "Inbox", "address": "https://mail.example/", "active": True},
                 {"index": 2, "title": "T" * 200, "address": "", "active": False}]
             assert event_error({k: v for k, v in frame.items()}) is None
-            assert session.screens, "the session knows a screen is showing"
+            assert session.cards.screens, "the session knows a screen is showing"
             delivered = await session.deliver_screen_input(frame["call_id"], [
                 {"type": "control", "action": "take"},
                 {"type": "mouse", "action": "down", "x": 1, "y": 1, "button": "left"},
@@ -2134,7 +2134,7 @@ class TestScreens:
         # Delivered, never recorded.
         assert not any(e.get("event") in ("screen_frame", "screen_closed")
                        for e in services.events)
-        assert session.screens == {}
+        assert session.cards.screens == {}
         observation = next(
             m["content"] for m in session.assistant.state.messages
             if m["content"].startswith("OBSERVATION") and '"inputs"' in m["content"])

@@ -5,6 +5,7 @@ mind, and frames arrive in the order they were recorded.
 """
 
 import asyncio
+from types import SimpleNamespace
 import json
 from pathlib import Path
 
@@ -194,7 +195,8 @@ class TestTheHostAroundIt:
         host = SessionHost.__new__(SessionHost)
 
         class Idle:
-            idle, questions = True, {}
+            idle = True
+            cards = SimpleNamespace(questions={})
         import logging
         host.logger = logging.getLogger("test")
         host.sessions, host.sockets = {"chat_1": Idle()}, {}

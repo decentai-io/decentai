@@ -97,14 +97,17 @@ Read in this order:
 
 1. `open` — rehydration: the saved state, the transcript, the event
    cursor, parked calls and jobs that were running when the process
-   last stopped (`_unfinished`, `_close_orphaned_questions`).
+   last stopped (`_unfinished`, `Cards.close_orphaned`).
 2. `deliver_user`, `deliver_event`, `_post`, `_pump`, `_advance` — how
    anything reaches the mind and how exactly one task advances it.
-3. `_approve`, `deliver_approval`, `_resume_parked`, `_resume_job` — a
-   call above the chat's level parks, a card opens, and the answer
-   resumes that exact call.
-4. `_ask_person`, `_ask_card`, `deliver_answer`, `agent_ask` — an agent
-   asking the person in the middle of a call.
+3. `Cards.approve` (`chat/cards.py`), `deliver_approval`,
+   `_resume_parked`, `_resume_job` — a call above the chat's level
+   parks, a card opens, and the answer resumes that exact call.
+4. `Cards.ask`, `Cards.ask_card`, `deliver_answer`, `agent_ask` — an
+   agent asking the person in the middle of a call. The other cards —
+   `propose`, `credential`, `find_files` — and the screens a call
+   shows (`screen`) are the same file: what is open right now, held
+   where a late audience and a kill can see it.
 5. `ask_to_stop`, `stop`, `kill` — the cooperative stop and the one
    that does not ask.
 6. `_spawn_child`, `report`, `ChildServices` — helpers
@@ -129,11 +132,11 @@ Check:
   and is not recorded), and the cursor moves with the state in one save
   (`Assistant._absorb`, `_persist`) — that pair is what makes
   absorption exactly-once across a restart.
-- `_approve`: the card stores the hash of agent, function and inputs
+- `Cards.approve`: the card stores the hash of agent, function and inputs
   (`execution/executor.py` `action_hash`). `deliver_approval` answers
   only a card this session holds, and the resumed call is checked
   against the hash, so a yes cannot be spent on different inputs.
-- `_approve` and `_ask_card`: a card whose call is cancelled while it
+- `Cards.approve` and `Cards.ask_card`: a card whose call is cancelled while it
   waits is closed (`_close_card`) — expired on the record,
   `question_closed` on the page.
 - `kill`: jobs cancelled, helpers killed, cards expired, the browser

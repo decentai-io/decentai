@@ -680,7 +680,7 @@ class TestQuestions:
         async def scenario():
             session = await host.session("chat_1")
             asking = asyncio.get_running_loop().create_task(
-                session._ask_person("Which?", ["a", "b"], source))
+                session.cards.ask("Which?", ["a", "b"], source))
             await until(lambda: services.approvals)
             approval_id = next(iter(services.approvals))
             await host.handle("chat_1", {"event": "question_answered",
@@ -701,7 +701,7 @@ class TestQuestions:
             mine = await host.session("chat_1")
             await host.session("chat_2")
             asking = asyncio.get_running_loop().create_task(
-                mine._ask_person("Which?", ["a", "b"], source))
+                mine.cards.ask("Which?", ["a", "b"], source))
             await until(lambda: services.approvals)
             approval_id = next(iter(services.approvals))
             for frame in ({"event": "question_answered", "answer": "b"},
@@ -730,7 +730,7 @@ class TestQuestions:
             answers = []
             for answer in (["file_1", "file_2"], {"resource_ref": "sec_9"}, 7):
                 asking = asyncio.get_running_loop().create_task(
-                    session._ask_card({"function": "f", "agent_id": "a",
+                    session.cards.ask_card({"function": "f", "agent_id": "a",
                                        "agent_name": "A", "question": "?",
                                        "choices": []}, source))
                 await until(lambda: len(services.approvals) == len(answers) + 1)

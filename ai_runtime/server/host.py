@@ -968,7 +968,7 @@ class SessionHost:
             return      # something is on its way in to it
         if not session.idle:
             return
-        if session.questions:
+        if session.cards.questions:
             # A scheduled run asked the person something and is waiting.
             # A session rebuilt meanwhile would close the card as one a
             # dead process left.

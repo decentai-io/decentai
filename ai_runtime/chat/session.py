@@ -71,13 +71,13 @@ from ai_runtime.agents.library import InstalledAgent
 from ai_runtime.agents.worker_handle import WorkerError
 from ai_runtime.agents.worker_pool import WorkerPool
 from ai_runtime.llms.connector.tools import text_block
+from ai_runtime.chat.cards import Cards
 from ai_runtime.chat.code_review import CodeReviewer
 from ai_runtime.chat.current import CURRENT_CHAT
-from ai_runtime.chat.files import FileFinder
 from ai_runtime.chat.scheduler import ChatClock, Scheduler
 from ai_runtime.chat.summarizer import Summarizer
 from ai_runtime.execution.executor import FunctionExecutor, ParkedInvocation
-from ai_runtime.reasoning.assistant import CURRENT_JOB_ID, Assistant
+from ai_runtime.reasoning.assistant import Assistant
 from ai_runtime.reasoning.state import (
     ASSISTANT_JOB,
     CANCELLED,
@@ -88,9 +88,6 @@ from ai_runtime.reasoning.state import (
 )
 from ai_runtime.runtime_logging import RuntimeLoggerFactory
 from ai_runtime.sinks import ChatSinks
-from contracts.chat import (
-    QUESTION_MAX_CHARS, QUESTION_WAIT_SECONDS, agent_source,
-)
 from decentai_sdk.base import Completion
 
 
@@ -135,14 +132,9 @@ class ChildServices:
         return await relay(self.parent_id, {**event, "child": self.child_id})
 
 
-class Settled(str):
-    """A card's answer given by the person's own Safety setting, and
-    not by them: no card was shown for it."""
-
 
 class Session:
     #: How long an agent's question waits for a person (contracts/chat.py).
-    QUESTION_WAIT_SECONDS = QUESTION_WAIT_SECONDS
 
     def __init__(
         self,
@@ -196,13 +188,6 @@ class Session:
         self.parent = parent
         #: live children by the parent's job id (docs/system/sub-assistants.md)
         self.children: Dict[str, "Session"] = {}
-        #: Questions an agent's call is waiting on, by card id — live
-        #: only as long as the call (docs: a question cannot survive the
-        #: process that asked it).
-        self.questions: Dict[str, Dict[str, Any]] = {}
-        #: the calls showing a screen right now, by call id, with the
-        #: source each frame is said in
-        self.screens: Dict[str, Dict[str, Any]] = {}
         #: how many of the person's messages the chat had when it was
         #: last named — the name follows the content, every few turns
         self.named_at = 0
@@ -216,7 +201,6 @@ class Session:
 
         self.assistant: Optional[Assistant] = None
         self.summarizer = Summarizer(connector)
-        self.reviewer = CodeReviewer(connector)
         self.fresh = True
         self.report_summary = ""
         self.report_reason = ""
@@ -227,13 +211,24 @@ class Session:
         #: left as a crash leaves it (``abandon``): its cards stay open
         #: on the record, for the process that comes next
         self._abandoned = False
-        #: approval ids a call of THIS incarnation is waiting on
-        self._awaited: set = set()
         #: decisions for a call a dead process parked, that arrived
         #: while a cycle was running: settled when it comes to rest
         self._decisions_owed: list = []
         self._running: Optional[asyncio.Task] = None
         self.logger = RuntimeLoggerFactory.get_logger(self.__class__.__name__)
+        #: The cards this chat puts before the person — approvals,
+        #: questions, code, logins, files — and the screens its calls
+        #: show (cards.py). The doors a running call reaches the person
+        #: by are its methods.
+        self.cards = Cards(
+            services, chat_id, parent=parent,
+            reviewer=CodeReviewer(connector),
+            emit=self._emit, activity=self._activity,
+            save_state=self._save_state,
+            state=lambda: self.assistant.state,
+            abandoned=lambda: self._abandoned,
+            logger=self.logger,
+        )
 
     # ------------------------------------------------------------------
     # Opening: hydrate the mind
@@ -268,11 +263,11 @@ class Session:
         # A child's differ in three: its finish is its report, it
         # spawns nothing, and a memory it tries to keep is refused.
         sinks = ChatSinks(
-            approve=self._approve,
-            ask=self._ask_person,
-            propose=self._propose,
-            credential=self._credential,
-            screen=self._screen,
+            approve=self.cards.approve,
+            ask=self.cards.ask,
+            propose=self.cards.propose,
+            credential=self.cards.credential,
+            screen=self.cards.screen,
             post=self.agent_post,
             progress=self._agent_progress,
             store=self._store_result,
@@ -289,7 +284,7 @@ class Session:
             read_skill=self.services.read_skill,
             read_image=self._read_image,
             read_file=self._read_image,
-            find_files=self._find_files,
+            find_files=self.cards.find_files,
             remember=self._refuse_memory if child else self._remember,
         )
         executor = FunctionExecutor(
@@ -356,7 +351,7 @@ class Session:
                          "again if it should run.",
             }, "error")
         if not child:
-            await self._close_orphaned_questions()
+            await self.cards.close_orphaned()
 
         # What happened while no mind was advancing: every durable
         # event past the bookmark is absorbed now, exactly once. A fresh
@@ -382,20 +377,6 @@ class Session:
         if missed or orphaned or self._unfinished(fresh, state, history):
             self._pump()
         return self
-
-    async def _close_orphaned_questions(self) -> None:
-        """A question lives only as long as the call asking it. One
-        still open on the record when a session opens was asked by a
-        process that died — nothing waits for its answer — so it is
-        closed as expired, and the page stops showing a card that
-        nobody would hear."""
-        for card in await self.services.pending_questions(self.chat_id):
-            approval_id = str(card.get("approval_id") or "")
-            if not approval_id or approval_id in self.questions:
-                continue
-            await self.services.expire_approval(self.chat_id, approval_id)
-            await self._emit({"event": "question_closed",
-                              "approval_id": approval_id, "status": "expired"})
 
     @staticmethod
     def _unfinished(fresh: bool, state: AssistantState,
@@ -481,7 +462,7 @@ class Session:
             self.connector = connector
             self.llm_config = llm_config
             self.summarizer.connector = connector
-            self.reviewer.connector = connector
+            self.cards.reviewer.connector = connector
         assistant = self.assistant
         if assistant is None:
             return
@@ -592,7 +573,7 @@ class Session:
                      f"(file_ref {part.get('resource_ref')})")
         if not said.strip():
             return
-        for call_id in list(self.screens):
+        for call_id in list(self.cards.screens):
             await self.assistant.executor.screen_input(
                 call_id, [{"type": "say", "text": said}])
         for child in self.helpers():
@@ -658,7 +639,7 @@ class Session:
             return
         parked = self.assistant.state.parked
         if (parked and parked.get("approval_id") == approval_id
-                and approval_id not in self._awaited):
+                and approval_id not in self.cards.awaited):
             # A foreground park whose beat died with the last process:
             # nothing in this one is waiting on it. The same resume,
             # the observation the invoke would have produced, and the
@@ -695,17 +676,24 @@ class Session:
         the answer vanishing. Words for an agent's question; the chosen
         files, as a list, for the assistant's files question."""
         for child in self.helpers():
-            if approval_id in child.questions:
+            if approval_id in child.cards.questions:
                 await child.deliver_answer(approval_id, answer)
                 return
         # Only a question this chat asked is answered here — the same
         # second lock as a decision's — and one nobody is waiting on
         # any more is said to have expired.
-        if approval_id not in self.questions or not await \
+        if approval_id not in self.cards.questions or not await \
                 self.services.resolve_answer(approval_id, answer):
             await self._emit({"event": "question_closed",
                               "approval_id": approval_id,
                               "status": "expired"})
+
+    async def agent_ask(self, question: str, choices: list,
+                        source: Dict[str, Any],
+                        expects: str = "") -> Optional[str]:
+        """An agent asking from outside a turn — a scheduled run. The
+        same card, in this chat."""
+        return await self.cards.ask(question, choices, source, expects)
 
     def helpers(self) -> list:
         """The live helpers that have a mind. One is listed from the
@@ -740,7 +728,7 @@ class Session:
                           "function": state.parked.get("function"),
                           "agent": agent_id,
                           "agent_name": self._agent_name(agent_id)})
-        cards.extend(dict(card) for card in self.questions.values())
+        cards.extend(dict(card) for card in self.cards.questions.values())
         return cards
 
     def _agent_name(self, agent_id: str) -> str:
@@ -867,8 +855,8 @@ class Session:
             await self._emit({"event": "question_closed",
                               "approval_id": approval_id, "status": "expired"})
             counts["cards"] += 1
-        self.questions.clear()
-        self.screens.clear()
+        self.cards.questions.clear()
+        self.cards.screens.clear()
         await self._wake_up()
         try:
             await self._save_state(state)
@@ -1263,244 +1251,6 @@ class Session:
         reply = await self.connector.chat(messages, max_tokens)
         return Completion(reply.content, reply.stop_reason)
 
-    # ------------------------------------------------------------------
-    # Approvals: park the job, never the mind
-    # ------------------------------------------------------------------
-
-    async def _approve(self, request: Dict[str, Any]) -> bool:
-        parked = ParkedInvocation(
-            agent_id=str(request.get("agent_id") or ""),
-            function=str(request.get("function") or ""),
-            inputs=dict(request.get("inputs") or {}),
-            permission_level=int(request.get("permission_level") or 0),
-            chat_level=int(request.get("chat_level") or 0),
-        )
-        job_id = CURRENT_JOB_ID.get("")
-        job = self.assistant.state.jobs.get(job_id) if job_id else None
-
-        approval_id = await self.services.open_approval(self.chat_id, {
-            **request, "action_hash": parked.hash(), "job_id": job_id,
-        })
-        if job is not None:
-            job.status = WAITING_APPROVAL
-            job.approval_id = str(approval_id)
-            # The inputs the card was opened on: defaults applied,
-            # references resolved. A job resumed after a restart is
-            # rebuilt from these, and must hash to its card.
-            job.inputs = dict(parked.inputs)
-        else:
-            self.assistant.state.parked = {
-                "approval_id": str(approval_id),
-                "agent_id": parked.agent_id, "function": parked.function,
-                "inputs": parked.inputs,
-                "permission_level": parked.permission_level,
-            }
-        # The park must be durable before the card is out: once the
-        # user can walk away from the question, a process death here
-        # is survivable by hydration.
-        try:
-            await self._save_state(self.assistant.state)
-        except Exception:
-            # Not durable, so not asked: the card is taken back, and
-            # whoever called hears that nobody could be asked — not
-            # that somebody said no.
-            if job is not None:
-                job.status = RUNNING
-                job.approval_id = ""
-            else:
-                self.assistant.state.parked = None
-            await self._close_card(str(approval_id))
-            raise
-        agent_name = str(request.get("agent_name") or "")
-        await self.services.emit(self.chat_id, {
-            "event": "approval_requested", "approval_id": approval_id,
-            "job_id": job_id, "function": parked.function,
-            "permission_level": parked.permission_level,
-            "inputs": parked.inputs,
-            # Who is asking: the ref the decision routes by, and the name
-            # the person deciding knows.
-            "agent": parked.agent_id, "agent_name": agent_name,
-            "source": agent_source(parked.agent_id, agent_name,
-                                   parked.function, job_id=job_id),
-        })
-
-        self._awaited.add(str(approval_id))
-        try:
-            decision = bool(await self.services.wait_approval(approval_id))
-        except asyncio.CancelledError:
-            # The call was stopped while its card waited. Nobody will
-            # hear the answer: the card is closed, on the record and on
-            # the page. (A crash is the other case, and leaves it.)
-            if not self._abandoned:
-                await self._close_card(str(approval_id))
-            raise
-        finally:
-            self._awaited.discard(str(approval_id))
-        if job is not None and job.status == WAITING_APPROVAL:
-            job.status = RUNNING
-        elif job is None:
-            self.assistant.state.parked = None
-        return decision
-
-    async def _close_card(self, approval_id: str) -> None:
-        """A card nobody will hear the answer to: expired on the
-        record, closed on the page. Carried through a cancellation,
-        since that is when it is called."""
-        async def close():
-            try:
-                await self.services.expire_approval(self.chat_id, approval_id)
-            except Exception as exc:
-                self.logger.warning(f"Card {approval_id} not expired: {exc}")
-            await self._emit({"event": "question_closed",
-                              "approval_id": approval_id, "status": "expired"})
-        try:
-            await asyncio.shield(close())
-        except asyncio.CancelledError:
-            pass
-        except Exception as exc:
-            self.logger.warning(f"Card {approval_id} not closed: {exc}")
-
-    async def agent_ask(self, question: str, choices: list,
-                        source: Dict[str, Any],
-                        expects: str = "") -> Optional[str]:
-        """An agent asking from outside a turn — a scheduled run. The
-        same card, in this chat."""
-        return await self._ask_person(question, choices, source, expects)
-
-    async def _ask_person(self, question: str, choices: list,
-                          source: Dict[str, Any],
-                          expects: str = "") -> Optional[str]:
-        """An agent asking the person something mid-call (call.ask): a
-        card in the chat, answered by a choice or in the person's words,
-        waited on for at most a day — the function's own clock stopped
-        meanwhile (worker_pool). A question lives only as long as the
-        call asking it: it is not parked on the state, because a process
-        that dies cannot resume the function that asked."""
-        request = {
-            "function": str(source.get("function") or ""),
-            "agent_id": str(source.get("agent") or ""),
-            "agent_name": str(source.get("agent_name") or ""),
-            "question": question, "choices": list(choices),
-            # A file request: the card offers an attach button, and the
-            # answer that comes back is the attachment's ref.
-            **({"expects": expects} if expects else {}),
-        }
-        answer = await self._ask_card(request, source)
-        return None if answer is None else str(answer)
-
-    async def _propose(self, code: Dict[str, Any],
-                       source: Dict[str, Any]) -> Optional[bool]:
-        """Code an agent wants to run (call.propose): the chat's model
-        reads it first, and the person decides on a card that shows the
-        code, what it is for, what it needs and what the review said.
-        True for allowed, False for declined, None when nobody answered
-        in a day. A review advises the person; it never decides."""
-        review = await self.reviewer.review(code)
-        name = str(source.get("agent_name") or "An agent")
-        question = f"{name} wants to run code: {code.get('purpose') or ''}"
-        answer = await self._ask_card({
-            "function": str(source.get("function") or ""),
-            "agent_id": str(source.get("agent") or ""),
-            "agent_name": str(source.get("agent_name") or ""),
-            "question": question[:QUESTION_MAX_CHARS], "choices": [],
-            "expects": "code", "code": {**code, "review": review},
-            # Which call is asking: a correction is known by it.
-            "call_id": str(source.get("call_id") or ""),
-        }, source)
-        if isinstance(answer, Settled):
-            await self._say_settled(code, review, source)
-        return None if answer is None else answer == "allow"
-
-    #: How much of code that ran without a card the chat is shown; the
-    #: whole of it is on the card's record.
-    SETTLED_CODE_LINES = 25
-
-    async def _say_settled(self, code: Dict[str, Any], review: Dict[str, Any],
-                           source: Dict[str, Any]) -> None:
-        """Code that ran without a card, by the person's own Safety
-        setting, is still said: a message in the agent's name with what
-        it was for, what the review made of it, and the code."""
-        lines = str(code.get("code") or "").rstrip().splitlines()
-        shown = lines[: self.SETTLED_CODE_LINES]
-        more = len(lines) - len(shown)
-        text = (
-            f"**Ran without asking**, as the Safety setting allows. "
-            f"{code.get('purpose') or ''}\n\n"
-            + (f"_{review.get('note')}_\n\n" if review.get("note") else "")
-            + f"```{code.get('language') or ''}\n" + "\n".join(shown) + "\n```"
-            + (f"\n\n…and {more} more line{'' if more == 1 else 's'}."
-               if more > 0 else "")
-        )
-        if self.parent is not None:
-            await self._activity("agent_progress", text.split("\n", 1)[0], source)
-            return
-        message, _ = await self.services.persist_message(
-            self.chat_id, "ai", text, [], source=source)
-        await self._emit({"event": "message_created", "message": message})
-
-    async def _ask_card(self, request: Dict[str, Any],
-                        source: Dict[str, Any]) -> Any:
-        """One question card, whoever asks: opened on the record, shown
-        to the audience, waited on for at most a day, closed either way.
-        The answer as the frame brought it, or None when nobody
-        answered in time."""
-        job_id = CURRENT_JOB_ID.get("")
-        request = {"kind": "question", "job_id": job_id, **request}
-        # The platform may answer a card itself, where the person's own
-        # setting says it need not be shown (code, and only code): it is
-        # on the record as settled, and nobody is asked.
-        opened = await self.services.open_card(self.chat_id, request)
-        approval_id = str(opened.get("approval_id") or "")
-        if opened.get("settled"):
-            return Settled(opened["settled"])
-        card = {
-            "approval_id": approval_id, "kind": "question", "job_id": job_id,
-            "function": request["function"], "agent": request["agent_id"],
-            "agent_name": request["agent_name"],
-            **{k: v for k, v in request.items()
-               if k in ("question", "choices", "expects", "candidates",
-                        "query", "credential", "code")},
-        }
-        self.questions[approval_id] = card
-        await self._emit({"event": "question_asked", "source": source,
-                          **{k: v for k, v in card.items() if k != "kind"}})
-        try:
-            answer = await asyncio.wait_for(
-                self.services.wait_answer(approval_id),
-                self.QUESTION_WAIT_SECONDS)
-        except asyncio.TimeoutError:
-            await self.services.expire_approval(self.chat_id, approval_id)
-            await self._emit({"event": "question_closed",
-                              "approval_id": approval_id, "status": "expired"})
-            return None
-        except asyncio.CancelledError:
-            # The call asking was stopped: its question goes with it.
-            if not self._abandoned:
-                await self._close_card(approval_id)
-            raise
-        finally:
-            self.questions.pop(approval_id, None)
-        await self._emit({"event": "question_closed",
-                          "approval_id": approval_id, "status": "answered"})
-        return answer
-
-    async def _screen(self, kind: str, params: Dict[str, Any],
-                      source: Dict[str, Any]) -> None:
-        """A screen a function shows (call.screen), relayed to whoever
-        is watching this chat and never recorded: a frame is the
-        present tense, and a replay of pictures is nothing anyone asked
-        for. The relay is the host's; a session with no audience drops
-        the frame."""
-        call_id = str(params.get("call_id") or "")
-        if kind == "closed":
-            self.screens.pop(call_id, None)
-            await self.services.relay(self.chat_id, {
-                "event": "screen_closed", "call_id": call_id, "source": source})
-            return
-        self.screens[call_id] = source
-        await self.services.relay(self.chat_id, {
-            **params, "event": "screen_frame", "source": source})
-
     #: The chat is named after the first answer, and again every this
     #: many of the person's messages, so the name follows the content.
     TITLE_EVERY_TURNS = 5
@@ -1604,156 +1354,12 @@ class Session:
         """The person acting on a screen — mouse, keys, wheel, taking or
         releasing control — to the call showing it, here or in a live
         child."""
-        if call_id in self.screens:
+        if call_id in self.cards.screens:
             return await self.assistant.executor.screen_input(call_id, events)
         for child in self.helpers():
             if await child.deliver_screen_input(call_id, events):
                 return True
         return False
-
-    #: How many cards one ask may go through before it gives up: an
-    #: entry, a consent, a choice and a code is the longest honest road.
-    CREDENTIAL_STEPS = 6
-
-    async def _credential(self, host: str, fields: list, account, site,
-                          refresh: bool, source: Dict[str, Any]):
-        """A login an agent asks for as it works (call.credential): the
-        backend says what the vault holds and which card is owed, the
-        person answers it, and the backend is asked again — until the
-        values are there or the person said no.
-
-        The values travel from the vault to the worker and nowhere
-        else: not through a card's record, not through the transcript.
-        A field asked every time rides one frame and is kept by nobody."""
-        resolver = self.services.resolve_credential
-        pinned, once, chosen_account = "", {}, account or ""
-        for _ in range(self.CREDENTIAL_STEPS):
-            try:
-                outcome = await resolver(self.chat_id, {
-                    "host": host, "site": site or "", "fields": fields,
-                    "account": chosen_account, "resource_ref": pinned,
-                    "agent_ref": str(source.get("agent") or ""),
-                    "refresh": refresh,
-                }) or {}
-            except Exception as exc:
-                raise WorkerError(f"The login could not be resolved: {exc}")
-            status = str(outcome.get("status") or "")
-            if status == "ready":
-                asks = list(outcome.get("ask") or [])
-                values = dict(outcome.get("values") or {})
-                if asks and not all(f.get("name") in once for f in asks):
-                    answer = await self._credential_card(
-                        "once", outcome, source, fields=asks)
-                    if not isinstance(answer, dict):
-                        return None
-                    once = {**once, **answer}
-                return {**values, **once}
-            if status == "missing":
-                answer = await self._credential_card("entry", outcome, source)
-                if not isinstance(answer, dict) or not answer.get("resource_ref"):
-                    return None
-                pinned = str(answer["resource_ref"])
-                once = {**once, **dict(answer.get("once") or {})}
-                refresh = False
-                continue
-            if status == "consent":
-                answer = await self._credential_card("consent", outcome, source)
-                if answer == "allow":
-                    pinned = str(outcome.get("resource_ref") or "")
-                    continue
-                if answer == "update":
-                    pinned = str(outcome.get("resource_ref") or "")
-                    refresh = True
-                    continue
-                return None
-            if status == "choose":
-                answer = await self._credential_card("choose", outcome, source)
-                if not isinstance(answer, str) or not answer:
-                    return None
-                pinned = answer
-                continue
-            raise WorkerError(str(outcome.get("error") or "The login could not be resolved."))
-        return None
-
-    async def _credential_card(self, mode: str, outcome: Dict[str, Any],
-                               source: Dict[str, Any], fields=None):
-        """One credential card, in the agent's name, waited on like a
-        question. The card carries labels and refs — never a value."""
-        host = str(outcome.get("host") or "")
-        account = str(outcome.get("account") or "")
-        question = {
-            "entry": (f"Sign in to {host}" + (f" as {account}" if account else "")),
-            "consent": f"Allow {source.get('agent_name') or 'this agent'} to use "
-                       f"your {host} login{' (' + account + ')' if account else ''} "
-                       f"on {outcome.get('site') or host}?",
-            "choose": f"Which {host} login should be used?",
-            "once": f"{host} asks for a code",
-        }[mode]
-        return await self._ask_card({
-            "function": str(source.get("function") or ""),
-            "agent_id": str(source.get("agent") or ""),
-            "agent_name": str(source.get("agent_name") or ""),
-            "question": question, "choices": [], "expects": "credential",
-            "credential": {
-                "mode": mode, "host": host, "site": str(outcome.get("site") or ""),
-                "account": account,
-                "agent_ref": str(outcome.get("agent_ref") or source.get("agent") or ""),
-                "resource_id": str(outcome.get("resource_id") or ""),
-                "definition_ref": str(outcome.get("definition_ref") or ""),
-                "resource_ref": str(outcome.get("resource_ref") or ""),
-                "existing": bool(outcome.get("existing")),
-                "fields": list(fields if fields is not None else outcome.get("fields") or []),
-                "instances": list(outcome.get("instances") or []),
-            },
-        }, source)
-
-    async def _find_files(self, query: str, names: Any = None,
-                          kind: str = "") -> Dict[str, Any]:
-        """The assistant looking for the file the person meant
-        (find_files): everything they can see, ranked by the name and
-        the kind the assistant read from their words (``query`` is
-        those words, for the card to show), the best few proposed on a
-        card the person decides —
-        ticking, unticking, searching for what was missed. What they
-        choose becomes an attachment of this chat, recorded under their
-        name so the page shows it and any agent can read it by ref.
-
-        ``status`` is chosen, declined (the card answered with none),
-        expired (nobody answered in a day) or unavailable."""
-        try:
-            visible = await self.services.list_files(self.chat_id)
-        except Exception as exc:
-            return {"status": "error", "files": [],
-                    "error": f"Files could not be listed: {exc}"}
-        candidates = FileFinder().rank(visible, names, kind)
-        answer = await self._ask_card({
-            "function": "find_files", "agent_id": "", "agent_name": "",
-            "question": f"Which files did you mean by \u201c{query[:200]}\u201d?",
-            "choices": [], "expects": "files",
-            "candidates": candidates, "query": query[:200],
-        }, {"kind": "assistant"})
-        if answer is None:
-            return {"status": "expired", "files": []}
-        chosen = [
-            {"resource_ref": str(item["resource_ref"]),
-             "filename": str(item.get("filename") or ""),
-             "file_type": str(item.get("file_type") or ""),
-             "file_size": int(item.get("file_size") or 0)}
-            for item in (answer if isinstance(answer, list) else [])
-            if isinstance(item, dict) and item.get("resource_ref")
-        ]
-        if not chosen:
-            return {"status": "declined", "files": []}
-        # The person's choice, recorded as their message: file parts
-        # under their name, the shape the composer produces, so the
-        # page shows the files and a later reload still finds them.
-        message, created = await self.services.persist_message(
-            self.chat_id, "user", "",
-            [{"type": "file", **item} for item in chosen])
-        if created:
-            await self.services.emit(
-                self.chat_id, {"event": "message_created", "message": message})
-        return {"status": "chosen", "files": chosen}
 
     async def _resume_parked(self, parked: Dict[str, Any], approved: bool,
                              action_hash: str = "") -> None:
