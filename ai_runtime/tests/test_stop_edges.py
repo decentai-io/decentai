@@ -225,3 +225,85 @@ class TestAPortSetting:
             self, monkeypatch):
         assert self.settings(
             monkeypatch, AI_RUNTIME_EGRESS_PORT="x").egress_port == 8002
+
+
+class TestAReplyAfterTheWorkEndsTheTurn:
+    """A model that does not mark its reply final used to be asked
+    "finish, or continue the work?" — and with no work left, one that
+    does not think to finish invents some."""
+
+    def test_nothing_owed_and_no_further_beat(self):
+        session, services = build([
+            action(action="open_agent", agent="notebook"),
+            action(action="invoke", function="notebook.note.find", inputs={}),
+            action(action="say", text="You have no notes."),
+            # Never reached: what such a model did next.
+            action(action="invoke", function="notebook.note.save",
+                   inputs={"notebook": "cats", "title": "Invented"}),
+        ])
+
+        async def scenario():
+            await session.open()
+            await session.deliver_user("do I have any notes?")
+            await session.wait_idle()
+        run(scenario())
+        assert len(session.connector.calls) == 3
+        assert said(services) == ["You have no notes."]
+        assert not services.provider.data.get("notebook__note")
+
+    def test_a_say_that_comes_first_still_goes_on_to_what_it_announced(self):
+        session, services = build([
+            action(action="say", text="Let me look."),
+            action(action="open_agent", agent="notebook"),
+            action(action="invoke", function="notebook.note.find", inputs={}),
+            action(action="say", text="You have no notes.", final=True),
+        ])
+
+        async def scenario():
+            await session.open()
+            await session.deliver_user("do I have any notes?")
+            await session.wait_idle()
+        run(scenario())
+        assert said(services) == ["Let me look.", "You have no notes."]
+
+    def test_work_still_on_the_plan_keeps_the_turn_going(self):
+        session, services = build([
+            action(action="plan", steps=["look", "report"]),
+            action(action="open_agent", agent="notebook"),
+            action(action="say", text="Looking now."),
+            action(action="finish", reason="awaiting_user"),
+        ])
+
+        async def scenario():
+            await session.open()
+            await session.deliver_user("check my notes")
+            await session.wait_idle()
+        run(scenario())
+        assert len(session.connector.calls) == 4
+
+
+class TestAStopAnsweredOnACard:
+    def test_ends_the_turn_and_is_not_tried_again(self):
+        """The function says the person themselves stopped it. That is
+        their word on the ask, not a result to retry."""
+        session, services = build([
+            action(action="open_agent", agent="notebook"),
+            action(action="invoke", function="notebook.note.find", inputs={}),
+            # Never reached: the retry.
+            action(action="invoke", function="notebook.note.find", inputs={}),
+        ])
+
+        async def stopped(agent, function, inputs, chat_level, call_id=""):
+            return {"outcome": "stopped_by_person",
+                    "summary": "Stopped, as the person asked."}, "success"
+
+        async def scenario():
+            await session.open()
+            session.assistant.executor.invoke = stopped
+            await session.deliver_user("find my notes")
+            await session.wait_idle()
+        run(scenario())
+        assert len(session.connector.calls) == 2
+        state = services.states["chat_1"]
+        assert state["stopped"] is True
+        assert "The person stopped this" in state["messages"][-1]["content"]

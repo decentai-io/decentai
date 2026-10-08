@@ -1433,8 +1433,9 @@ class TestTheClockAction:
         session, scheduler, services = self.clocked([
             action(action="schedule", note="Pay rent",
                    delay_seconds=3600),
+            # Said after the work, with nothing owed: the turn ends on
+            # it, with no beat spent asking whether to finish.
             action(action="say", text="I'll remind you in an hour."),
-            action(action="finish"),
             action(action="say", text="Reminder: pay rent."),
             action(action="finish"),
         ])
@@ -1450,9 +1451,9 @@ class TestTheClockAction:
             assert row.every_seconds is None
             # The user saw it set, and the mind read its id back.
             assert any(e["event"] == "schedule_set" for e in services.events)
-            # ... schedule observation, say, its observation, finish.
+            # ... schedule observation, then the say the turn ended on.
             assert row.schedule_id in session.assistant.state.messages[
-                -4]["content"]
+                -2]["content"]
 
             # An hour later: the clock wakes the mind with the note.
             await scheduler.tick(now=1000.0 + 3601)

@@ -245,6 +245,9 @@ class Assistant:
         self._stopping = False
         #: whether the person spoke after the stop being honoured
         self._asked_since_stop = False
+        #: whether anything but talking was done since the last thing
+        #: the world said (a message, a wakeup, a job's end)
+        self._acted = False
         self.logger = RuntimeLoggerFactory.get_logger(self.__class__.__name__)
 
     # ------------------------------------------------------------------
@@ -341,6 +344,8 @@ class Assistant:
             return
         if kind == "user_message" and self._stopping:
             self._asked_since_stop = True
+        # Whatever arrives starts a new stretch of work.
+        self._acted = False
         # Everything absorbed is stamped with the local time it arrived
         # — the mind's only clock, and always current when it thinks,
         # because a beat follows an absorption.
@@ -590,6 +595,9 @@ class Assistant:
 
     async def _act(self, action: Dict[str, Any], implicit: bool = False) -> bool:
         kind = str(action.get("action") or "").lower()
+        if kind not in ("say", "finish"):
+            # Something was done in this ask, beyond talking.
+            self._acted = True
 
         if kind == "finish":
             refusal = self._finish_refusal(
@@ -638,6 +646,22 @@ class Assistant:
                 if self.finish_sink is not None:
                     await self.finish_sink("", "completed")
                 return True
+            if self._acted and not self._owes_more()                     and self.finish_sink is None                     and self.state.messages[-1].get("role") == "assistant":
+                # Said after the work, and nothing is owed: no item
+                # open on the plan, no job running. That is the end of
+                # the turn, whether or not the model marked its reply
+                # final. Asked "finish, or continue the work?" with no
+                # work left, a model that does not think to finish
+                # invents some — and at a trust level that asks nobody,
+                # it runs. (A say that comes first, before anything was
+                # done, is an announcement or a question, and the turn
+                # goes on to what it announced. A helper is left out:
+                # nobody reads its say, and it ends on its own finish,
+                # whose summary is its report. So is a say the model
+                # was just told something about — a part refused — which
+                # it may have to answer.)
+                self.state.beats = 0
+                return True
             # Observed like every other action, so the beat closes on a
             # user turn. Without this the transcript ended on the
             # model's own message, and a chat model asked to continue
@@ -648,14 +672,32 @@ class Assistant:
                 "delivered to the user as a say. Every beat is exactly "
                 "one JSON action. " if implicit else "Delivered to the "
                 "user. ") + "Finish if the reply is complete; otherwise "
-                "continue the work. They have read it — do not restate "
+                "continue only what is still owed — the plan's open "
+                "items, the jobs still running — and nothing the user "
+                "did not ask for. They have read it — do not restate "
                 "it, in these words or others."})
             return False
         if kind == "open_agent":
             self._observe(await self._open_agent(action))
             return False
         if kind == "invoke":
-            self._observe(await self._invoke(action))
+            observation = await self._invoke(action)
+            if self._stopped_by_person(observation):
+                # The person answered Stop on a card the function put
+                # to them. That is their word on this ask: the turn
+                # ends here, as a stop does, and whatever comes next
+                # is for them to ask. Told as a success and nothing
+                # more, it read as a result to retry.
+                self._observe({**observation, "note": (
+                    "The person stopped this. The turn ends here. Do "
+                    "not try it again, by this function or another, "
+                    "unless they ask.")})
+                self.state.stopped = True
+                self.state.beats = 0
+                if self.finish_sink is not None:
+                    await self.finish_sink("", "awaiting_user")
+                return True
+            self._observe(observation)
             return False
         if kind == "start":
             self._observe(await self._start(action))
@@ -1130,6 +1172,26 @@ class Assistant:
     @staticmethod
     def _elapsed_ms(started: float) -> int:
         return int((time.monotonic() - started) * 1000)
+
+    #: What a function's result says, as its ``outcome``, when the
+    #: person themselves stopped it — a Stop answered on its card
+    #: (docs/agents/sdk.md). A call that ends so ends the turn.
+    STOPPED_BY_PERSON = "stopped_by_person"
+
+    @classmethod
+    def _stopped_by_person(cls, observation: Dict[str, Any]) -> bool:
+        for shown in (observation.get("result"),
+                      observation.get("result_preview")):
+            if isinstance(shown, dict) \
+                    and shown.get("outcome") == cls.STOPPED_BY_PERSON:
+                return True
+        return False
+
+    def _owes_more(self) -> bool:
+        """Whether anything is still owed in this turn once something
+        has been said: an item open on the plan, a job still running."""
+        return bool(self.state.plan.outstanding()
+                    or self.state.active_jobs())
 
     # -- invoke ----------------------------------------------------------
     async def _invoke(self, action: Dict[str, Any]) -> Dict[str, Any]:
