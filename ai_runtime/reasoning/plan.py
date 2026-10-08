@@ -93,9 +93,6 @@ class Plan:
         return f"w{self._next - 1}"
 
     # ------------------------------------------------------------------
-    def __bool__(self) -> bool:
-        return bool(self.items)
-
     def to_steps(self) -> List[Dict[str, Any]]:
         return [item.to_dict() for item in self.items]
 
@@ -208,9 +205,6 @@ class Plan:
     def blocked(self) -> List[WorkItem]:
         return [i for i in self.items if i.status == BLOCKED]
 
-    def finished(self) -> bool:
-        return bool(self.items) and not self.outstanding()
-
     def all_done(self) -> bool:
         """Every item done — nothing owed, nothing blocked. A blocked
         item is not finished work: it is usually what the person is
@@ -218,7 +212,7 @@ class Plan:
         return bool(self.items) and all(i.status == DONE for i in self.items)
 
     # ------------------------------------------------------------------
-    def render(self, instruction: bool = True) -> str:
+    def render(self) -> str:
         """The block the model reads every beat: each item by id, where
         it stands, what proves it, what blocks it, what it waits on."""
         if not self.items:
@@ -243,7 +237,7 @@ class Plan:
             lines.append(line)
 
         owed = len(self.outstanding())
-        if owed and instruction:
+        if owed:
             lines.append(
                 f"\n{owed} item(s) still to do. Continue the plan — a "
                 f"finish claiming completion will be refused while items "

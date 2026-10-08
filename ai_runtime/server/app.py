@@ -1,13 +1,17 @@
+import asyncio
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
 
 from fastapi import FastAPI
 
 from ai_runtime.chat.scheduler import ScheduleRunner, Scheduler
-from ai_runtime.execution.executor import FunctionExecutor
 from ai_runtime.server.host import ServingRoster, SessionHost
 from ai_runtime.server.routes import router
 from ai_runtime.server.settings import RuntimeSettings
+
+
+#: How long shutdown waits for the workers to leave before ending them.
+WORKERS_STOP_SECONDS = 20.0
 
 
 def create_app(settings: RuntimeSettings | None = None, services=None,
@@ -39,20 +43,11 @@ def create_app(settings: RuntimeSettings | None = None, services=None,
         # chat, with an executor the host builds from that chat's
         # contract (host.fire_context). What wakes a mind goes through
         # the inside door a socket cannot reach.
-        roster = ServingRoster(library, host)
-        fires = FunctionExecutor(
-            provider=services.provider,
-            storage=host.store_current,
-            post_sink=host.agent_post,
-            # The process's one pool: an agent has one worker here,
-            # whoever calls it. Ending a confined worker ends everything
-            # its user runs, and a second worker of the same agent in a
-            # pool of its own would be among it.
-            workers=host.workers,
-        )
+        # No executor of the clock's own: the host builds one for each
+        # fire, held to that chat's grants, on the process's one pool.
         scheduler = Scheduler(
             services.schedules,
-            ScheduleRunner(roster, fires, host.deliver_event),
+            ScheduleRunner(ServingRoster(host), None, host.deliver_event),
         )
         host.clock = scheduler
 
@@ -68,6 +63,21 @@ def create_app(settings: RuntimeSettings | None = None, services=None,
         # process hydrates exactly what a crash would have left.
         if host is not None:
             host.shutdown()
+            # The workers are not abandoned: each is asked to leave and
+            # then ended, and what it was given to run with — its spool
+            # folder, its place — is taken back. Bounded, and ended
+            # outright where asking takes too long.
+            try:
+                await asyncio.wait_for(
+                    host.workers.stop(), WORKERS_STOP_SECONDS)
+            except Exception:
+                host.workers.terminate()
+        close = getattr(getattr(services, "gateway", None), "close", None)
+        if close is not None:
+            try:
+                await close()
+            except Exception:
+                pass
 
     app = FastAPI(
         title="DecentAI Private Runtime", version="1.0.0",

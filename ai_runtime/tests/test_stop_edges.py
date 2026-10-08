@@ -61,7 +61,8 @@ class TestAStopHolds:
         async def scenario():
             await session.open()
             await session.deliver_user("search")
-            await session.stop()
+            session.ask_to_stop()
+            await session.wait_idle()
             await asyncio.sleep(0.2)
             await session.wait_idle()
         run(scenario())
@@ -78,7 +79,8 @@ class TestAStopHolds:
         async def stopped_mid_task():
             await session.open()
             await session.deliver_user("search")
-            await session.stop()
+            session.ask_to_stop()
+            await session.wait_idle()
         run(stopped_mid_task())
         assert services.states["chat_1"]["stopped"] is True
 

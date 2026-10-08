@@ -12,7 +12,7 @@ recorded one carries it to the runtime.
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from contracts.chat import USER_TEXT_MAX_BYTES
+from contracts.chat import SCREEN_INPUT_EVENTS_MAX, USER_TEXT_MAX_BYTES
 from database.stores import ChatStore, UserStore
 from server.setup.app_state import (
     get_access_controller, get_runtime_clients, get_ws_manager,
@@ -136,7 +136,8 @@ async def chat_websocket(websocket: WebSocket, chat_id: str):
                 await get_runtime_clients().send(chat_id, user, {
                     "event": "screen_input",
                     "call_id": str(payload.get("call_id") or ""),
-                    "events": events[:64] if isinstance(events, list) else [],
+                    "events": events[:SCREEN_INPUT_EVENTS_MAX]
+                    if isinstance(events, list) else [],
                 })
                 continue
             # The person asks to see an agent's browser before asking it

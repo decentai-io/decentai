@@ -80,10 +80,10 @@ class TestRules:
 
     def test_finished_means_nothing_pending_or_active(self):
         plan = Plan([{"text": "a"}, {"text": "b"}])
-        assert not plan.finished()
+        assert plan.outstanding()
         plan.update("w1", "done")
         plan.update("w2", "blocked", blocker="x")
-        assert plan.finished() and plan.outstanding() == []
+        assert plan.items and plan.outstanding() == []
 
 
 class TestAllDone:
@@ -101,5 +101,5 @@ class TestAllDone:
         plan.replace(["One", "Two"])
         plan.update("w1", "done")
         plan.update("w2", "blocked", blocker="waiting on the user")
-        assert plan.finished() is True                  # nothing owed
+        assert plan.items and not plan.outstanding()                  # nothing owed
         assert plan.all_done() is False                 # but not over

@@ -1,6 +1,6 @@
 from pymongo.errors import DuplicateKeyError
 
-from contracts.chat import PART_TYPES, part_error
+from contracts.chat import COLUMNS_MAX, PART_TYPES, part_error
 from database.stores import ChatMessageStore, ChatStorageStore
 from util import new_id, utc_now
 
@@ -82,9 +82,9 @@ class MessageController(AIController):
             return "path must be a string"
         columns = part.get("columns")
         if columns is not None and (
-                not isinstance(columns, list) or len(columns) > 24
+                not isinstance(columns, list) or len(columns) > COLUMNS_MAX
                 or not all(isinstance(c, str) and c for c in columns)):
-            return "columns must be a list of up to 24 column names"
+            return f"columns must be a list of up to {COLUMNS_MAX} column names"
         return None
 
     def create(self, data, user):

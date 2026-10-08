@@ -230,13 +230,15 @@ class TestTheClocksRows:
             await clock.start()
             first = [s.schedule_id for s in clock.schedules]
             services.grant("chat_3", "tok-3")
-            added = clock.adopt(await services.schedules.load_for("chat_3"))
-            again = clock.adopt(await services.schedules.load_for("chat_3"))
+            added = clock.replace_for(
+                "chat_3", await services.schedules.load_for("chat_3"))
+            again = clock.replace_for(
+                "chat_3", await services.schedules.load_for("chat_3"))
             await clock.stop()
             return first, added, again, [s.chat_id for s in clock.schedules]
 
         first, added, again, chats = run(scenario())
-        assert first == ["sch_chat_1"] and added == 1 and again == 0
+        assert first == ["sch_chat_1"] and added == 1 and again == 1
         assert chats == ["chat_1", "chat_3"]
 
 

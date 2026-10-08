@@ -763,11 +763,6 @@ class Session:
             return None
         return {"until": row.next_run_at, "why": row.note}
 
-    async def stop(self) -> None:
-        """Asked to stop, and waited for until it has."""
-        self.ask_to_stop()
-        await self.wait_idle()
-
     #: how long closing the chat's browser may take before the kill
     #: goes on without it
     QUIT_BROWSER_SECONDS = 20.0
@@ -1225,7 +1220,7 @@ class Session:
         await self.services.record_audit(self.chat_id, event)
 
     async def _llm(self, messages: list, max_tokens=None,
-                   images: Optional[list] = None) -> str:
+                   images: Optional[list] = None) -> Completion:
         """The chat's model, for an agent (call.llm): the reply and why
         it stopped, as a ``Completion``. Pictures ride on the last
         message as the connector's own blocks — the same way the mind

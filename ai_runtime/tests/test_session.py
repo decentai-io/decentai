@@ -995,7 +995,8 @@ class TestOtherVoices:
             await session.deliver_user("search")
             # Two script entries only: the stop must prevent any third
             # model call.
-            await session.stop()
+            session.ask_to_stop()
+            await session.wait_idle()
 
         run(scenario())
         assert services.states["chat_1"]  # the state was persisted
@@ -1611,7 +1612,8 @@ class TestTheClockPersists:
         store = CountingStore()
         store.rows = [self.row("a"), self.row("b")]
         scheduler, fired = self.scheduler(store)
-        scheduler.adopt(store.rows)
+        for chat in sorted({row["chat_id"] for row in store.rows}):
+            scheduler.replace_for(chat, store.rows)
         run(scheduler.tick())
         assert fired == ["a", "b"]
         # One row at a time, each its own: nothing else is rewritten.
@@ -1637,7 +1639,8 @@ class TestTheClockPersists:
         store = FlakyStore()
         store.rows = [self.row("a")]
         scheduler, fired = self.scheduler(store)
-        scheduler.adopt(store.rows)
+        for chat in sorted({row["chat_id"] for row in store.rows}):
+            scheduler.replace_for(chat, store.rows)
         # Fires; the write fails — remembered, not swallowed.
         run(scheduler.tick())
         assert fired == ["a"] and store.written == 0
@@ -1653,7 +1656,7 @@ class TestTheClockPersists:
 
         store = MemoryScheduleStore()
         scheduler, fired = self.scheduler(store)
-        scheduler.adopt([self.row("a")])      # the store holds no such row
+        scheduler.replace_for("chat_1", [self.row("a")])      # the store holds no such row
         run(scheduler.tick())
         assert fired == ["a"] and scheduler.schedules == []
         assert store.rows == []
@@ -1677,7 +1680,8 @@ class TestTheClockPersists:
                 return {"status": "ok"}
 
         scheduler = Scheduler(store, Runner(), clock=lambda: 1000.0)
-        scheduler.adopt(store.rows)
+        for chat in sorted({row["chat_id"] for row in store.rows}):
+            scheduler.replace_for(chat, store.rows)
         run(scheduler.tick())
         run(scheduler.tick())
         assert fired == ["a"]
@@ -1703,7 +1707,8 @@ class TestTheClockPersists:
         other = {**self.row("z"), "chat_id": "chat_2"}
         store.rows = [self.row("a"), self.row("b"), other]
         scheduler, fired = self.scheduler(store)
-        scheduler.adopt(store.rows)
+        for chat in sorted({row["chat_id"] for row in store.rows}):
+            scheduler.replace_for(chat, store.rows)
         run(scheduler.tick())
         # b went with a (its own fire was already under way; its row is
         # no longer there to write); the other chat's row is untouched.
@@ -1733,7 +1738,8 @@ class TestTheClockPersists:
                     return {"status": "ok"}
 
             scheduler = Scheduler(store, Runner(), clock=lambda: 1000.0)
-            scheduler.adopt(store.rows)
+            for chat in sorted({row["chat_id"] for row in store.rows}):
+                scheduler.replace_for(chat, store.rows)
             await scheduler.tick(wait=False)
             await asyncio.sleep(0.05)
             quick_done = store.rows[1]["next_run_at"] > 1000.0
@@ -1764,7 +1770,8 @@ class TestTheClockPersists:
                     await asyncio.Event().wait()   # never, by itself
 
             scheduler = Scheduler(store, Runner(), clock=lambda: 1000.0)
-            scheduler.adopt(store.rows)
+            for chat in sorted({row["chat_id"] for row in store.rows}):
+                scheduler.replace_for(chat, store.rows)
             await scheduler.tick(wait=False)
             await asyncio.sleep(0.05)
             ended = scheduler.cancel_chat("chat_1")

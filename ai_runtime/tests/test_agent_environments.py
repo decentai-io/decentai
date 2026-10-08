@@ -214,7 +214,7 @@ class TestABuildWhereWorkersAreConfined:
         yield stand_in
         Confinement.runner = None
         Confinement.current = None
-        Confinement.SUPPORTED = Confinement.supported_here()
+        Confinement.SUPPORTED = os.name == "posix"
 
     @pytest.fixture
     def runtime(self):

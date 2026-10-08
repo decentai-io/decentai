@@ -83,10 +83,6 @@ class LlmProviders:
         return [dict(entry) for entry in cls._load().values()]
 
     @classmethod
-    def ids(cls) -> Tuple[str, ...]:
-        return tuple(cls._load())
-
-    @classmethod
     def models(cls, provider: Any, kind: str = "") -> List[Dict[str, Any]]:
         """The models a provider is known to serve, newest first, and
         only those of one ``kind`` when one is named; empty for a

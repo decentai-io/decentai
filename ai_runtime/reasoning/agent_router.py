@@ -292,7 +292,7 @@ class AgentRouter:
         return found
 
     async def find(self, agents: Dict[str, Any], query: str,
-                   embedding: Dict[str, Any], limit: int = 0) -> Optional[List[Dict[str, Any]]]:
+                   embedding: Dict[str, Any]) -> Optional[List[Dict[str, Any]]]:
         """The agents closest to the words, best first — id, name,
         description and closeness — or None when the model will not
         answer. With no words, all of them by name."""
@@ -313,4 +313,4 @@ class AgentRouter:
             item["closeness"] = round(scored.get(item["id"], 0.0), 3)
         described.sort(key=lambda d: (-d["closeness"], d["name"].lower()))
         return [d for d in described if d["closeness"] > self.FIND_FLOOR][
-            :int(limit or self.FIND_LIMIT)]
+            :self.FIND_LIMIT]

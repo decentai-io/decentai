@@ -54,8 +54,8 @@ class McpClient:
     DESCRIPTION_MAX = 2000
     PAGES_MAX = 20
 
-    #: Tests and a developer's own machine: a server on this machine,
-    #: over plain http. Never set in a deployment.
+    #: A test's: a server on this machine, over plain http. Nothing
+    #: outside the tests sets it, and no setting does.
     allow_local: ClassVar[bool] = False
     #: Test seam — a callable (host, port) -> [addresses]. Set it and
     #: no name is looked up.

@@ -463,13 +463,8 @@ class Confinement:
         path = (os.environ.get("PLAYWRIGHT_BROWSERS_PATH") or "").strip()
         return [path] if path else []
 
-    @staticmethod
-    def supported_here() -> bool:
-        """Whether this is a system the helper is built for."""
-        return os.name == "posix"
-
-    #: Test seam — what ``supported_here`` answered, for a test to say
-    #: otherwise.
+    #: Whether this is a system the helper is built for. A test says
+    #: otherwise by setting it, and puts back what it found.
     SUPPORTED: ClassVar[bool] = os.name == "posix"
 
     #: What confines workers in this process, or None.

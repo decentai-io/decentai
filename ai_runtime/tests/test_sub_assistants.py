@@ -158,7 +158,7 @@ class TestTheReport:
         assert item["status"] == "done" and item["verified"] is True
         assert item["evidence"][0] == job.job_id
         assert item["evidence"][1].startswith("stg_")      # the save
-        assert session.assistant.state.plan.finished()
+        assert session.assistant.state.plan.items and not session.assistant.state.plan.outstanding()
         # The audience saw the plan settle before the parent spoke.
         settled = [e for e in services.events if e["event"] == "plan_updated"
                    and e["steps"][0]["status"] == "done"]
@@ -309,7 +309,8 @@ class TestWhileItWorks:
             await session.deliver_user("fan out")
             await until(lambda: len(session.assistant.state.jobs) == 3
                         and ai_texts(services) == ["Three running."])
-            await session.stop()
+            session.ask_to_stop()
+            await session.wait_idle()
 
         run(scenario())
         refusals = [m for m in session.assistant.state.messages

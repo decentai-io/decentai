@@ -508,7 +508,7 @@ class TestTheCycle:
         first = harness.state.plan.to_steps()[0]
         assert first["status"] == "done" and first["id"] == "w1"
         assert first["verified"] is False           # done by word alone
-        assert not harness.state.plan.finished()
+        assert harness.state.plan.outstanding()
         # The frame's PLAN is the plan as it now stands, not the one
         # the mind was framed with: rewritten on every plan action.
         frame = harness.state.messages[0]["content"]
@@ -629,7 +629,7 @@ class TestWorkItems:
         run(harness.user("do one thing").assistant.run())
         assert [s["text"] for s in harness.said] == ["All done!"]
         assert any("w1 still owed" in o for o in self.observations(harness))
-        assert harness.state.plan.finished()
+        assert harness.state.plan.items and not harness.state.plan.outstanding()
 
     def test_invented_evidence_and_a_bare_block_are_refused(self):
         harness = Harness([
@@ -1102,12 +1102,12 @@ class TestEvidence:
 
 class TestToolsOffered:
     def test_every_beat_offers_the_actions_as_tools(self):
-        from ai_runtime.reasoning.actions import ACTION_NAMES, ACTION_TOOLS
+        from ai_runtime.reasoning.actions import ACTION_TOOLS
 
         harness = Harness([action(action="finish")])
         run(harness.user("hi").assistant.run())
         assert harness.connector.calls[0]["tools"] == ACTION_TOOLS
-        assert set(ACTION_NAMES) == {
+        assert {tool["function"]["name"] for tool in ACTION_TOOLS} == {
             "say", "open_agent", "invoke", "start", "cancel_job", "read",
             "find_files", "read_file", "use_skill", "recall", "remember",
             "plan", "schedule", "unschedule", "sleep", "spawn", "finish",

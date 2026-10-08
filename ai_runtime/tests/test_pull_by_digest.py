@@ -205,7 +205,7 @@ class TestThePull:
         services = PullingServices(archive, digest, expected)
         host = SessionHost(services, library)
         runner = ScheduleRunner(
-            ServingRoster(library, host),
+            ServingRoster(host),
             FunctionExecutor(provider=services.provider), host.deliver_event)
         due = Schedule("chat_1", "invoke", function=f"{REF}.note.find",
                        inputs={})
@@ -227,7 +227,7 @@ class TestThePull:
             {"effect": "allow", "functions": [f"{REF}.note.save"]}])
         host = SessionHost(services, library)
         runner = ScheduleRunner(
-            ServingRoster(library, host),
+            ServingRoster(host),
             FunctionExecutor(provider=services.provider), host.deliver_event)
 
         outcome = run(runner.fire(Schedule(

@@ -356,10 +356,9 @@ class RemoteProcess:
 
     def __init__(self, reader: asyncio.StreamReader,
                  writer: asyncio.StreamWriter, limit: int, pid: Any = None):
-        #: Its process id where it runs. Not ``pid``: that container's
+        #: None, and not its process id where it runs: that container's
         #: numbers mean other processes here, and nothing in this one
         #: may be signalled by them.
-        self.pid_there = int(pid) if isinstance(pid, int) else None
         self.pid = None
         self.returncode: Optional[int] = None
         #: Why the spawner ended it, in words for the person, when it

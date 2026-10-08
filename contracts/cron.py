@@ -125,12 +125,6 @@ class Cron:
             return by_weekday
         return True
 
-    def matches(self, moment: datetime) -> bool:
-        return (moment.minute in self.minutes
-                and moment.hour in self.hours
-                and moment.month in self.months
-                and self._day_matches(moment))
-
     def next_after(self, timestamp: float, tz: Optional[ZoneInfo]) -> float:
         """The first matching minute strictly after ``timestamp``, as a
         timestamp. Searched forward on the calendar in ``tz`` (the

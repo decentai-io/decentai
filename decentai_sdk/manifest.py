@@ -110,12 +110,6 @@ class Manifest:
     def resources(self, kind: str) -> List[dict]:
         return list((self.document.get("resources") or {}).get(kind) or [])
 
-    def resource(self, kind: str, resource_id: str) -> Optional[dict]:
-        for resource in self.resources(kind):
-            if resource.get("id") == resource_id:
-                return resource
-        return None
-
     # -- tools / functions -----------------------------------------------
     def tools(self) -> List[dict]:
         return list(self.document.get("tools") or [])

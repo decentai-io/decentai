@@ -77,7 +77,8 @@ class TestACardNobodyWillAnswer:
             await session.open()
             await session.deliver_user("push in the background")
             approval_id = await card_open(services)
-            await session.stop()
+            session.ask_to_stop()
+            await session.wait_idle()
             await asyncio.sleep(0.05)
             return approval_id
         approval_id = run(scenario())

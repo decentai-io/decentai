@@ -5,6 +5,7 @@ image — by test_confinement_live.py.
 """
 
 import json
+import os
 
 import pytest
 
@@ -44,7 +45,7 @@ def helper():
     yield stand_in
     Confinement.runner = None
     Confinement.current = None
-    Confinement.SUPPORTED = Confinement.supported_here()
+    Confinement.SUPPORTED = os.name == "posix"
 
 
 class TestUsers:

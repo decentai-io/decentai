@@ -53,11 +53,11 @@ class FileFinder:
     }
 
     def rank(self, files: List[Dict[str, Any]], names: Any = None,
-             kind: str = "", limit: int = 0) -> List[Dict[str, Any]]:
+             kind: str = "") -> List[Dict[str, Any]]:
         """The best few, as the card shows them. When nothing matches,
         or nothing was named, the most recent few — a card with an
         empty list would only send the person to the search box."""
-        limit = int(limit or self.LIMIT)
+        limit = self.LIMIT
         parts = self.parts(names)
         hints = self.KINDS.get(str(kind or "").strip().lower(), ())
         scored = []

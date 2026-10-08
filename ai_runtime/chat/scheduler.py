@@ -332,22 +332,6 @@ class Scheduler:
         return next((s for s in self.schedules
                      if s.schedule_id == schedule_id), None)
 
-    def adopt(self, rows: List[Dict[str, Any]]) -> int:
-        """Rows added to what the clock holds, and nothing it holds
-        changed. Idempotent by schedule id; nothing is saved, the rows
-        are already the store's. Returns how many were new. A dial does
-        not come this way: the host takes the chat's rows whole
-        (``replace_for``)."""
-        known = {s.schedule_id for s in self.schedules}
-        added = 0
-        for row in rows:
-            schedule = Schedule.from_dict(row)
-            if schedule.schedule_id not in known:
-                self.schedules.append(schedule)
-                known.add(schedule.schedule_id)
-                added += 1
-        return added
-
     async def remove(self, schedule_id: str) -> None:
         """Off the store first, for the same reason. Raises what the
         store raised, and the row stays."""

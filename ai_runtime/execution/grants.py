@@ -41,12 +41,6 @@ class FunctionGrants:
             if isinstance(statement, dict)
         ]
 
-    def replace(self, permissions: Any) -> None:
-        """Swap the statements in place. A running turn's executor holds
-        a reference to THIS object, so a reconnect's scope message
-        tightens (or widens) even work already in flight."""
-        self.permissions = self._clean(permissions)
-
     @staticmethod
     def _matches(pattern: str, canonical: str) -> bool:
         pattern_parts = str(pattern or "").split(".")

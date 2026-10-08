@@ -52,8 +52,7 @@ class ServingRoster:
     approval ref, materialized, and an executor held to that chat's
     grants."""
 
-    def __init__(self, library, host=None):
-        self.library = library
+    def __init__(self, host):
         self.host = host
 
     async def fire_context(self, chat_id: str):

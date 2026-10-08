@@ -244,7 +244,6 @@ FINISH_REASONS = ("completed", "awaiting_user", "awaiting_events",
 #: tell "ran out of steps" from "done".
 OUT_OF_BEATS = "budget"
 
-ACTION_NAMES = [tool["function"]["name"] for tool in ACTION_TOOLS]
 
 
 def shape(schema: Any) -> str:

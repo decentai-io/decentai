@@ -78,10 +78,9 @@ class AgentRefused(RuntimeError):
     """The code will not be served, and what to answer with. 400 for a
     package that is malformed; 409 for one that is not what was approved."""
 
-    def __init__(self, message: str, status: int = 400):
+    def __init__(self, message: str):
         super().__init__(message)
         self.message = message
-        self.status = status
 
 
 class InstalledAgent:
@@ -299,7 +298,7 @@ class AgentLibrary:
         """
         if not DIGEST_RE.match(str(digest or "")):
             raise AgentRefused(
-                f"'{digest}' is not a package digest.", 400)
+                f"'{digest}' is not a package digest.")
         with self._locks_guard:
             turn = self._digest_locks.setdefault(digest, threading.Lock())
         with turn:
@@ -316,12 +315,10 @@ class AgentLibrary:
             if archive is None:
                 raise AgentRefused(
                     f"This runtime does not hold {digest} and no package "
-                    f"arrived to materialize it from.", 409)
+                    f"arrived to materialize it from.")
             problems = self._materialize(digest, archive)
             if problems:
-                raise AgentRefused(
-                    "; ".join(problems),
-                    409 if "digest" in problems[0] else 400)
+                raise AgentRefused("; ".join(problems))
 
         environment = None
         fresh_environment = False
@@ -600,5 +597,5 @@ class AgentLibrary:
         if expected_hash and manifest_hash(manifest.document) != expected_hash:
             raise AgentRefused(
                 "The package's manifest is not the one that was approved "
-                "— the installed agent was left unchanged.", 409)
+                "— the installed agent was left unchanged.")
         return manifest

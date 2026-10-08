@@ -1,4 +1,4 @@
-"""The envelope every AI-domain endpoint answers in: success, accepted or
+"""The envelope every AI-domain endpoint answers in: success or
 error, with the contract's version, so the runtime reads one shape."""
 
 from __future__ import annotations
@@ -26,15 +26,15 @@ class EndpointResponse(BaseModel):
 
     version: Literal[CONTRACT_VERSION] = CONTRACT_VERSION
     request_id: str
-    status: Literal["success", "accepted", "error"]
+    status: Literal["success", "error"]
     data: dict[str, Any] = Field(default_factory=dict)
     error: OperationError | None = None
 
     @classmethod
-    def success(cls, request_id: str, data: dict | None = None, *, accepted: bool = False):
+    def success(cls, request_id: str, data: dict | None = None):
         return cls(
             request_id=request_id,
-            status="accepted" if accepted else "success",
+            status="success",
             data=data or {},
         )
 

@@ -209,7 +209,7 @@ class TestTheHelper:
             assert "error" in place.files()
         finally:
             Confinement.runner = None
-            Confinement.SUPPORTED = Confinement.supported_here()
+            Confinement.SUPPORTED = os.name == "posix"
 
     def test_asking_for_a_place_gives_nobody_one(self, helper, tmp_path):
         Confinement.current = Confinement(tmp_path)
