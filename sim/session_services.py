@@ -14,7 +14,7 @@ import itertools
 import json
 from typing import Any, Callable, Dict, List, Optional
 
-from contracts.chat import event_error, part_error
+from contracts.chat import ACTORS, event_error, part_error
 
 from sim.resources import InMemoryResourceProvider
 from sim.schedules import MemoryScheduleStore
@@ -122,7 +122,7 @@ class SimSessionServices:
     STATE_MAX_BYTES = 512 * 1024
     EVENT_MAX_BYTES = 16384
     HISTORY_LIMIT = 100
-    ACTORS = ("user", "ai", "system", "parent")
+    ACTORS = ACTORS
 
     async def save_state(self, chat_id: str, state: dict) -> None:
         written = json.dumps(state, default=str)

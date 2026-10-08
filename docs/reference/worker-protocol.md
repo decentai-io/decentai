@@ -264,8 +264,8 @@ the screen, and is dropped when that call has ended.
 **The spool.** A line is capped, and a scan or a signed form runs to
 many megabytes. So the host opens a folder per worker at spawn
 (`DECENTAI_SPOOL_DIR` in the worker's environment, removed when the
-host ends the worker or could not start it; a runtime that stops ends
-no worker itself, and those folders stay),
+host ends the worker or could not start it, a runtime that stops
+ending each of its workers so),
 and bytes whose base64 would exceed 256 KiB go through it instead of
 the line: a read answers with `content_path`, a file the host wrote
 there for the worker to read once and delete; a create sends
@@ -339,8 +339,9 @@ Lifecycle rules:
 - **Shutdown** is a `shutdown` request (the worker answers `{}`,
   cancels what it is running, calls the agent's `close()` and exits),
   and stdin EOF is its backstop. The host sends it to a worker it
-  retires and at the install probe; when the runtime itself stops no
-  request is sent, and the end of input is the only word.
+  retires, at the install probe, and to every worker when the runtime
+  itself stops: each is given a moment to leave, and ended outright
+  past twenty seconds for all of them.
 - **What a worker refuses**, each as an error on the request that asked:
   an `invoke` before the handshake (`no handshake`), one with no
   `call_id`, one whose `call_id` is already running, one for a function

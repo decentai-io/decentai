@@ -20,7 +20,7 @@ import yaml
 from contracts.agent_manifest import ManifestValidator, manifest_hash
 from contracts.agent_package import AgentPackage, PackagingError
 from contracts.agent_samples import SampleSheet
-from contracts.chat import display_stored
+from contracts.chat import CHAT_PROTOCOL_VERSION, display_stored
 from contracts.cron import Cron
 from contracts.file_types import FileTypes
 from contracts.mcp import McpClient, McpError
@@ -388,3 +388,46 @@ class TestTheWorkerLoop:
     ])
     def test_a_request_of_the_wrong_shape_does_not_end_the_loop(self, message):
         self.worker()._dispatch(message)
+
+
+# ── what the page sends ──────────────────────────────────────────────
+
+class TestWhatThePageSends:
+    FILE = {"type": "file", "resource_ref": "fil_1", "filename": "a.pdf"}
+
+    @pytest.mark.parametrize("command", [
+        {"text": "hello"},
+        {"text": "hello", "client_message_id": "cm_1",
+         "protocol_version": CHAT_PROTOCOL_VERSION},
+        {"text": "", "attachments": [FILE]},
+        {"text": "see this", "attachments": [FILE] * 20},
+    ], ids=["words", "as the page sends it", "a file alone", "twenty files"])
+    def test_a_message_is_one(self, command):
+        from contracts.chat import input_error
+        assert input_error(command) is None
+
+    @pytest.mark.parametrize("command", [
+        {"text": "   "},
+        {"text": "hello", "client_message_id": "x" * 129},
+        {"text": "hello", "attachments": [FILE] * 21},
+        {"text": "hello", "attachments": [{"type": "markdown", "content": "x"}]},
+        {"text": "hello", "protocol_version": 99},
+        {"text": 5},
+    ], ids=["neither words nor a file", "an id too long", "too many files",
+            "an attachment that is not a file", "another protocol",
+            "words that are not text"])
+    def test_what_is_not_a_message_is_refused_in_words(self, command):
+        from contracts.chat import input_error
+        assert isinstance(input_error(command), str)
+
+    def test_the_actors_are_kept_once(self):
+        from contracts.chat import ACTORS
+        from sim.session_services import SimSessionServices
+        assert tuple(SimSessionServices.ACTORS) == ACTORS
+
+    def test_only_those_who_speak_are_a_source(self):
+        from contracts.chat import Source
+        from pydantic import ValidationError
+        assert Source(kind="agent").kind == "agent"
+        with pytest.raises(ValidationError):
+            Source(kind="scheduler")

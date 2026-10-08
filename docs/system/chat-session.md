@@ -256,7 +256,7 @@ decision and a stop are not, and reach the relay from the gateway:
 
 | frontend says | relay sends | runtime answers with |
 |---|---|---|
-| `AI:Chat:Input {text, attachments, client_message_id}` (`parts` is taken for `attachments`; the page also sends `protocol_version`, which nothing reads) | `user_message` | `message_created`, then work; a resend with the same `client_message_id` is the same message |
+| `AI:Chat:Input {text, attachments, client_message_id}` (`parts` is taken for `attachments`; the page also sends `protocol_version`. Held to the contract's `ChatInputCommand` before anything is kept: a version that is the contract's, an id of at most 128 characters, at most 20 attachments, each a file part, and words or a file to say; what is not is answered `invalid_input`) | `user_message` | `message_created`, then work; a resend with the same `client_message_id` is the same message |
 | `AI:Chat:Screen {call_id, events}` | `screen_input` | nothing of its own: the events reach the call showing that screen |
 | `AI:Chat:Watch {action}` | `screen_open` | `screen_frame`s from the roster's watch function, or `screen_unavailable` |
 | `AI:Approval:Decide` (via the gateway, recorded first) | `approval_decided` | the job or park resumes |
@@ -389,8 +389,7 @@ the fields of an event or a part.
   shows it and any agent reads it by ref.
 - **Every event and part may carry a `source`**: the assistant, an
   installed agent (its ref, its name, the function, and the call and
-  job it spoke on), or a helper. (The contract's `Source.kind` also
-  allows `scheduler` and `system`; nothing writes either.) The page
+  job it spoke on), or a helper. The page
   shows the agent's name on its activity, on its approval card, and as
   a quiet "from …" under a table or file it produced; the answer itself
   stays the assistant's.

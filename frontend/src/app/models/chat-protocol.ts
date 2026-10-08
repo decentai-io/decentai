@@ -10,7 +10,7 @@ export const CHAT_PROTOCOL_VERSION = 2 as const;
  *  (with the call and job it spoke on), a helper, the scheduler, or the
  *  platform. */
 export interface Source {
-  kind: 'assistant' | 'agent' | 'helper' | 'scheduler' | 'system';
+  kind: 'assistant' | 'agent' | 'helper';
   agent?: string; agent_name?: string; function?: string;
   call_id?: string; job_id?: string; child?: string;
 }

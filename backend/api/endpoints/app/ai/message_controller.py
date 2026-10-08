@@ -1,6 +1,6 @@
 from pymongo.errors import DuplicateKeyError
 
-from contracts.chat import COLUMNS_MAX, PART_TYPES, part_error
+from contracts.chat import ACTORS, COLUMNS_MAX, PART_TYPES, part_error
 from database.stores import ChatMessageStore, ChatStorageStore
 from util import new_id, utc_now
 
@@ -31,7 +31,7 @@ def message_page(chat_id, limit, query=None):
 class MessageController(AIController):
     #: ``parent`` is a sub-assistant's goal, spoken by the mind that
     #: spawned it (docs/system/sub-assistants.md).
-    ACTORS = {"user", "ai", "system", "parent"}
+    ACTORS = set(ACTORS)
     #: The contract's part types (contracts/chat.py). `success` is the
     #: runtime's record of a verified write — machine state the page
     #: keeps on the message and does not render.

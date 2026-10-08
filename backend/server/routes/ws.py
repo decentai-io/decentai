@@ -12,7 +12,8 @@ recorded one carries it to the runtime.
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from contracts.chat import SCREEN_INPUT_EVENTS_MAX, USER_TEXT_MAX_BYTES
+from contracts.chat import (
+    SCREEN_INPUT_EVENTS_MAX, USER_TEXT_MAX_BYTES, input_error)
 from database.stores import ChatStore, UserStore
 from server.setup.app_state import (
     get_access_controller, get_runtime_clients, get_ws_manager,
@@ -105,6 +106,22 @@ async def chat_websocket(websocket: WebSocket, chat_id: str):
                 parts = payload.get("parts")
                 if not isinstance(parts, list):
                     parts = payload.get("attachments")
+                # Held to the contract here, where a person's words
+                # enter: its own id for the message, no more files than
+                # a message carries, each one a file part, and words or
+                # a file to say. Refused in words the page shows.
+                problem = input_error({
+                    key: value for key, value in {
+                        "protocol_version": payload.get("protocol_version"),
+                        "client_message_id": payload.get("client_message_id"),
+                        "text": payload.get("text"),
+                        "attachments": parts,
+                    }.items() if value is not None})
+                if problem:
+                    await tell("invalid_input",
+                               detail=f"That message could not be sent: "
+                                      f"{problem}.")
+                    continue
                 frame = {
                     "event": "user_message",
                     "text": str(payload.get("text") or ""),

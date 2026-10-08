@@ -94,7 +94,7 @@ class Source(ChatModel):
     an agent's own progress to the call it was made on, ``job_id`` a
     background job's lines to the job, ``child`` a helper's to its
     thread."""
-    kind: Literal["assistant", "agent", "helper", "scheduler", "system"]
+    kind: Literal["assistant", "agent", "helper"]
     agent: Optional[str] = None
     agent_name: Optional[str] = None
     function: Optional[str] = None
@@ -158,30 +158,38 @@ PART_MODELS = (MarkdownPart, FilePart, StoredPart, SuccessPart)
 MessagePart = Annotated[Union[PART_MODELS], Field(discriminator="type")]
 
 
-class ChatMessage(ChatModel):
-    message_id: str
-    chat_id: str
-    actor: Literal["user", "ai", "system", "parent"]
-    parts: list[MessagePart]
-    sequence: int
-    thread: Optional[str] = None
-    client_message_id: Optional[str] = None
-    created_at: Optional[str] = None
-
+#: Who a stored message is from: the person, the assistant, the
+#: platform, or a parent speaking to its helper. Kept once, here, for
+#: the backend's check and the simulation's.
+ACTORS = ("user", "ai", "system", "parent")
 
 class ChatInputCommand(ChatModel):
-    """What the page sends to speak (the socket's AI:Chat:Input)."""
+    """What the page sends to speak (the socket's AI:Chat:Input), and
+    what the socket holds it to before anything is kept. Words, files,
+    or both: a message of neither is not one."""
     protocol_version: Literal[CHAT_PROTOCOL_VERSION] = CHAT_PROTOCOL_VERSION
-    client_message_id: str = Field(min_length=1, max_length=128)
-    text: str = Field(min_length=1)
+    #: The page's own name for this submission, so that a resend after
+    #: a lost socket is the same message. A sender that names none
+    #: gives up only that.
+    client_message_id: str = Field(default="", max_length=128)
+    text: str = ""
     attachments: list[FilePart] = Field(default_factory=list, max_length=20)
 
+    @model_validator(mode="after")
+    def _says_something(self):
+        if not self.text.strip() and not self.attachments:
+            raise ValueError("a message needs words or a file")
+        return self
 
-class MessagePage(ChatModel):
-    messages: list[dict[str, Any]]
-    total: int
-    next_before: Optional[int] = None
-    has_more: bool = False
+
+def input_error(command: Any) -> Optional[str]:
+    """Why what the page sent is not a message, in words for the
+    person who sent it; None when it is one."""
+    try:
+        ChatInputCommand.model_validate(command)
+    except ValidationError as exc:
+        return _described(exc)
+    return None
 
 
 # ---------------------------------------------------------------------------
