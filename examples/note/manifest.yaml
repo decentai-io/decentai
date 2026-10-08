@@ -24,7 +24,7 @@ schema_version: "1.0"
 agent:
   id: note
   name: Note
-  version: "1.2.3"
+  version: "1.2.4"
   description: >
     Your working memory across conversations. Save what was decided,
     find what you wrote last month, summarize a notebook, import or
@@ -236,7 +236,7 @@ tools:
         schedulable: true
         resources:
           data:
-            note: [list, read]
+            note: list
             settings: read
         authorization:
           scopes:
@@ -277,7 +277,7 @@ tools:
         # key never reaches the agent.
         llm: true
         resources:
-          data: {note: [list, read]}
+          data: {note: list}
         authorization:
           scopes:
             notebook: {from_input: notebook}
@@ -309,7 +309,7 @@ tools:
         permission_level: 2
         timeout_seconds: 30
         resources:
-          data:  {note: [list, read]}
+          data:  {note: list}
           files: {document: create}
         authorization:
           scopes:
@@ -396,7 +396,7 @@ tools:
         timeout_seconds: 60
         resources:
           secrets: {connection: use}
-          data:    {note: [list, read]}
+          data:    {note: list}
         authorization:
           scopes:
             notebook: {from_input: notebook}

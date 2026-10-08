@@ -184,3 +184,25 @@ class TestAKeyGoesNowhereItWasNotSent:
             "provider": provider, "api_key": "test-key",
             "model": "chosen-model"})
         assert connector.client._client.follow_redirects is False
+
+
+class TestTheSimulationKeepsAFilesSizeAndType:
+    def test_on_the_row_it_answers_with_and_the_rows_it_lists(self):
+        from sim.resources import InMemoryResourceProvider
+
+        async def scenario():
+            provider = InMemoryResourceProvider()
+            made = await provider.create_file("document", "a.csv", "x,y")
+            [listed] = await provider.list_files("document")
+            return made, listed
+        for row in run(scenario()):
+            assert (row["filename"], row["file_type"], row["file_size"]) == (
+                "a.csv", "text/csv", 3)
+
+
+class TestAPreviewSaysWhereTheWholeIs:
+    def test_only_where_it_was_kept(self):
+        from ai_runtime.reasoning.assistant import Assistant
+        assert "is stored" in Assistant._preview_note({}, stored=True)
+        unkept = Assistant._preview_note({}, stored=False)
+        assert "is stored" not in unkept and "was not kept" in unkept

@@ -16,6 +16,7 @@ from __future__ import annotations
 import secrets as _secrets
 from typing import Any, Dict, Optional
 
+from contracts.file_types import FileTypes
 from decentai_sdk.base import ResourceDenied
 
 
@@ -153,9 +154,16 @@ class InMemoryResourceProvider:
 
     async def create_file(self, resource_id, filename, content):
         ref = self._ref("file")
+        raw = content.encode("utf-8") if isinstance(content, str) \
+            else bytes(content or b"")
         record = {
             "resource_ref": ref, "resource_id": resource_id,
             "filename": filename, "content": content,
+            # Kept with the row, as the platform keeps them: a function
+            # that reads a file's size or type off its row finds them
+            # here too.
+            "file_type": FileTypes.of(str(filename or "")),
+            "file_size": len(raw),
         }
         self.files.setdefault(resource_id, {})[ref] = record
         return {k: v for k, v in record.items() if k != "content"}

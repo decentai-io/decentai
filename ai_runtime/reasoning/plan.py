@@ -1,11 +1,10 @@
 """The work in hand — items the user sees, alive across beats, and
 what the trace can prove about each.
 
-A plan used to be an announcement that nothing referred to again; then
-it was state with a status per step, marked by the model's word alone.
-Now each item carries what proves it: while an item is active, every
-successful invocation's storage ref and every finished job's id land on
-it, and a model may name evidence itself — only refs the trace holds.
+A plan is state, with a status per item, and each item carries what
+proves it: while an item is active, every successful invocation's
+storage ref and every finished job's id land on it, and a model may
+name evidence itself — only refs the trace holds.
 An item marked done with nothing behind it stays visible as unverified,
 never refused: a step like "answer the question" has no trace. What
 IS refused is a finish that claims completion while items are owed,

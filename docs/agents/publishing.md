@@ -79,7 +79,12 @@ person's own records, and removes it again, in one click.
 
 A string field whose whole value is `@ref` becomes the id the platform
 gave that row or file when it was loaded, so rows may point at each
-other; a ref must be declared before it is used, in the same sheet. Rows
+other; a ref must be declared before it is used, in the same sheet. The
+rule has a cost: text that is `@` and a lowercase name — a handle —
+cannot be a text field's whole value. It is refused where no ref of
+that name is declared above it, and replaced by an id where one is. A
+pointer belongs in a text field only: in a number or a select, `@ref`
+is checked as any other value there. Rows
 are checked against the manifest by the platform at load time, like a
 person's own record. A file is checked against its slot's `constraints`
 when the sheet is read: one of a kind the slot does not list is an
@@ -89,7 +94,7 @@ load.
 ```yaml
 story: One line saying whose data this is.       # at most 200 characters
 files:
-  - ref: lease                  # a short lowercase name
+  - ref: lease                  # required: a short lowercase name
     slot: source                # a file resource the manifest declares
     path: samples/lease.txt     # inside the agent's folder, at most 2 MB
 records:
@@ -102,6 +107,8 @@ records:
 
 At most 200 records and 20 files. Every field must be one the manifest
 declares, with a value of its type; a required field must be there. A
+field written as `null` is a field left out. A file's `ref` is
+required, and a record's is optional. A
 `ref` is a short name of its own: a lowercase letter, then lowercase
 letters, digits and `_`, at most 40 characters. The sheet has `story`,
 `files` and `records`, and any other key at its top is refused.

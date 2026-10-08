@@ -48,7 +48,9 @@ what makes one folder safe to serve every organization that approved it:
 altered bytes stop BEING that digest and fail closed for all of them,
 rather than poisoning a copy some of them happen to share. The write
 lands under `.incoming-` and is then renamed, so `has()` is never true
-for a package that is only half here.
+for a package whose bytes are only half here. It is true before the
+manifest is checked and the code verified: `agent()` is what says a
+package serves.
 """
 
 from __future__ import annotations
@@ -380,8 +382,8 @@ class AgentLibrary:
 
     def environments_without_an_agent(self) -> List[Path]:
         """Venv folders no digest on disk stands on — left by a package
-        since forgotten, or by the layout before environments were
-        keyed by their dependency set."""
+        since forgotten, or named some other way than by a dependency
+        set."""
         if not self.envs_dir.is_dir():
             return []
         used = self._environments_in_use()
@@ -524,9 +526,7 @@ class AgentLibrary:
     def _discard(folder: Path) -> None:
         """Everything under the store was written by AgentPackage.extract,
         which writes plain readable files and nothing else — so a plain
-        rmtree is enough. The read-only retry this used to carry was for
-        git checkouts, which the runtime stopped making when acquisition
-        became the backend's."""
+        rmtree is enough."""
         if folder.exists():
             shutil.rmtree(folder, ignore_errors=True)
 

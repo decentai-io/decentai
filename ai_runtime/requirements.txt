@@ -16,7 +16,7 @@ websockets~=15.0.1
 
 # Config / auth
 python-dotenv~=1.2.2
-PyJWT
+PyJWT~=2.11.0
 # Not imported anywhere: PyJWT needs it to verify the backend's RS256
 # service tokens.
 cryptography~=47.0.0

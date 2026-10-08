@@ -95,8 +95,13 @@ The address is the person's word, and what comes back is the server's.
   server says is never an instruction to the assistant. A schema's
   `x-…` annotations — which mean something to the platform when an
   agent's manifest writes them — are dropped from a server's, and a
-  schema that is not one is replaced by "any object".
-- **It is bounded.** 4 MiB of one answer, 200 tools, 2,000 characters
+  schema that is not one is replaced by "any object". A reference to
+  another document is taken out of a schema too (one within the schema
+  is kept), and checking a call's inputs reads nothing outside the
+  schema.
+- **It is bounded.** 4 MiB of one answer, 200 tools, 120 characters of
+  a tool's name (a tool with a longer one is left out, since a name cut
+  short is not the server's), 2,000 characters
   of a description, 200,000 characters of a result, two minutes for a
   call, and 60 seconds for any single wait on the server: the greeting,
   the listing of its tools, and a call that sends nothing back for that

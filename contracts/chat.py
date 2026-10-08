@@ -1,5 +1,7 @@
-"""The chat's vocabulary, shared by the runtime, the backend and — by a
-drift test (tests/test_chat_contract.py) — the page.
+"""The chat's vocabulary, shared by the runtime and the backend. The
+page keeps a copy written by hand (chat-protocol.ts), and a drift test
+(tests/test_chat_contract.py) holds that copy's event names and part
+types to these. The fields of each are not compared.
 
 What the runtime sends toward a person is one of the events below, and
 what a message carries is one of the parts. Both may say who produced
@@ -40,13 +42,12 @@ CHART_POINTS_MAX = 200
 CHART_SERIES_MAX = 8
 DISPLAYS_PER_CALL_MAX = 5
 DISPLAY_MAX_BYTES = 262144
-#: What one call may say for itself (call.post): a message, not a report.
 #: How much a person may say in one message, in bytes of text. The
 #: message is kept whole and so is the inbox event that carries it to
 #: the assistant: more than this is refused at the door, before
 #: anything is kept, and belongs in a file.
 USER_TEXT_MAX_BYTES = 262144
-
+#: What one call may say for itself (call.post): a message, not a report.
 POST_MAX_CHARS = 4000
 POSTS_PER_CALL_MAX = 3
 #: What an agent may ask a person (call.ask), and how long it waits.
@@ -126,7 +127,8 @@ class FilePart(ChatModel):
     filename: Optional[str] = None
     file_size: Optional[int] = Field(default=None, ge=0)
     file_type: Optional[str] = None
-    #: The function that made it, for a file an agent produced.
+    #: For a file an agent produced: the name of the function that
+    #: made it.
     text: Optional[str] = None
     source: Optional[Source] = None
 
@@ -496,7 +498,8 @@ class Hello(EventModel):
 
 
 class AgentStatus(EventModel):
-    """An agent being prepared before the hello. Socket-only."""
+    """An agent being prepared: fetched and installed, while a chat
+    waits for it. Socket-only."""
     event: Literal["agent_status"]
     agent: str
     name: str

@@ -36,7 +36,10 @@ Three pages, in this order. The code keeps their words.
 Check:
 
 - The service token is verified before `accept`; a dialer without one
-  sees a failed handshake (4401).
+  sees the handshake fail with HTTP 403. The close code the route names
+  (4401, and 4503 where there are no services) reaches only an
+  in-process test client: a socket that was never accepted has no close
+  frame to carry it.
 - A frame that cannot be handled is that frame's failure: it is said
   on the socket and the loop goes on. Only a frame that is not a JSON
   object ends it.
@@ -62,9 +65,10 @@ Check:
 - `_build` reads the contract from the services — the chat's level,
   its grants, its agents by digest, the person's zone and safety
   settings. Nothing in a frame decides any of these.
-- `_materialize`: an agent the runtime does not hold is pulled by
-  digest, verified and built before the hello; a digest that was
-  refused is said and not retried on every frame.
+- `_materialize`: an agent the runtime does not hold is fetched by its
+  ref, checked against the digest the contract named, and built before
+  the hello; a digest that was refused is logged and not retried on
+  every frame.
 - `handle`: the list of events a dialer may send is closed. Read each
   branch for what a forged frame could cause — the comment on
   `schedules_changed` is the model: it can only make the clock re-read
@@ -73,12 +77,17 @@ Check:
   already open, at its next turn.
 - `_hello` is the present tense only: working, sleeping, jobs, waiting
   cards, the plan. History is the services' business.
-- `_reap`: a session is let go only when it is idle, nobody watches it
-  and no question is open. `_kill` holds the build lock, so a chat
-  cannot be rebuilt in the middle of being stopped.
+- `_reap`: a session is let go only when it is idle, nobody watches
+  it, no question is open and nothing is on its way in to it
+  (`_arriving`). `_kill` holds the build lock, so a chat cannot be
+  rebuilt in the middle of being stopped.
+- `RelayingServices.emit`: one emission at a time per chat, from its
+  record to its delivery, so the socket hears frames in the order they
+  were recorded.
 
 Tests: `ai_runtime/tests/test_session_door.py`,
-`ai_runtime/tests/test_pull_by_digest.py`.
+`ai_runtime/tests/test_pull_by_digest.py`,
+`ai_runtime/tests/test_stop_edges.py`.
 
 ## 3. The session: the chat's body
 
@@ -116,9 +125,16 @@ Check:
   (`execution/executor.py` `action_hash`). `deliver_approval` answers
   only a card this session holds, and the resumed call is checked
   against the hash, so a yes cannot be spent on different inputs.
+- `_approve` and `_ask_card`: a card whose call is cancelled while it
+  waits is closed (`_close_card`) — expired on the record,
+  `question_closed` on the page.
 - `kill`: jobs cancelled, helpers killed, cards expired, the browser
   closed, and the counts emitted in `stopped`. Read what it does when
-  one of those steps raises.
+  one of those steps raises. The stop is written into the saved state
+  (`state.stopped`, as `Assistant.run` writes a cooperative one), and
+  `_unfinished` reads it, so a session rebuilt afterwards rests. A
+  message that reaches a killed session is recorded and not thought
+  about (`_post`, `dead`): the session built next absorbs it.
 - A helper's `ChildServices`: its storage and memories are the
   parent's, and its cards and screen surface in the parent's audience
   under its own id. That it cannot save memory is not there: it is the
@@ -126,7 +142,9 @@ Check:
 
 Tests: `ai_runtime/tests/test_session.py`,
 `ai_runtime/tests/test_sub_assistants.py`,
-`ai_runtime/tests/test_fold.py`.
+`ai_runtime/tests/test_fold.py`,
+`ai_runtime/tests/test_session_edges.py`,
+`ai_runtime/tests/test_stop_edges.py`.
 
 ## 4. The assistant: the cycle
 
@@ -139,7 +157,10 @@ actions as they come up.
    `VALVE_GRACE_BEATS`), a reply cut at the length cap, a reply that is
    not an action (`_bounces`, `_prose`), more than one action.
 3. `_act` — the dispatch. Which actions end the cycle (`finish`, a
-   `say` marked final, `sleep`) and which are observed and go on.
+   `say` marked final, `sleep`) and which are observed and go on. Two
+   more ends: in the chat's own assistant, a `say` made after the turn
+   has acted when nothing is owed (`_owes_more`), and an `invoke` whose
+   result says `outcome: "stopped_by_person"`.
 4. `_finish_refusal` — a finish is held to the state: `completed` with
    plan items still owed, `awaiting_events` with nothing to await and
    `blocked` with nothing marked blocked are all refused.
@@ -155,8 +176,9 @@ actions as they come up.
 
 Then the smaller files as they are met: `reasoning/state.py` (what is
 saved every beat), `reasoning/plan.py`, `reasoning/agent_router.py`
-(which agents are listed, by meaning), `chat/summarizer.py` (folding a
-long transcript).
+(which agents are listed, by meaning), `reasoning/documents.py` (the
+text of a file the assistant reads itself, `read_file`),
+`chat/summarizer.py` (folding a long transcript).
 
 Check:
 
@@ -181,7 +203,9 @@ Tests: `ai_runtime/tests/test_assistant.py`,
 `ai_runtime/tests/test_plan.py`,
 `ai_runtime/tests/test_evidence_files.py`,
 `ai_runtime/tests/test_agent_router.py`,
-`ai_runtime/tests/test_summarizer.py`.
+`ai_runtime/tests/test_documents.py`,
+`ai_runtime/tests/test_summarizer.py`,
+`ai_runtime/tests/test_reasoning_edges.py`.
 
 ## 5. Execution: the gates, then the worker
 
@@ -203,7 +227,10 @@ Then `_execute`: the `CallContext` is the call's whole authority. Each
 capability is given only when the manifest declared it — `llm`,
 `credentials`, `code` — and `ResourceAccess`
 (`execution/resources.py`) is built from the operations the function
-declared. `_record` writes the audit line whichever way the call ended.
+declared. `invoke` does not raise for a fault on the platform's own
+side: it ends as an error result (`_broke`). `_record` writes the audit
+line whichever way the call ended, a cancelled one included
+(`_witness_cancelled`, before the cancellation goes on).
 
 Then the worker side: `agents/worker_pool.py` (`invoke`, `_handle`,
 `_answer`) and `agents/worker_handle.py` (`start`, `_serve`, `_route`,
@@ -226,9 +253,14 @@ Check:
   is refused here, in the runtime, whatever the worker asks for.
 - `WorkerPool._route`, then `_answer`: every ask from a worker is
   answered against the context of the call it named — `_route` finds
-  it, and refuses a call id that is not live on that worker — so one
-  call cannot use another's authority. A timeout or a cancel tells the worker to stop
+  it, and refuses a call id that is not live on that worker — so a
+  call cannot use the authority of a call on another worker. Two calls
+  in flight on one worker can name each other's id. A timeout or a cancel tells the worker to stop
   (`_overrule`) instead of only abandoning the wait.
+- `WorkerHandle.invoke`: a worker's answer is a result only when it is
+  a mapping with a status of `success` or `error`; anything else is the
+  worker's failure. `_serve` ends a worker that sends a message of the
+  wrong shape.
 - `WorkerHandle._clean_environment`: what of the host's environment a
   worker inherits.
 - `execution/pictures.py`: a picture from an agent is checked for type
@@ -238,6 +270,7 @@ Tests: `ai_runtime/tests/test_agent_executor.py`,
 `ai_runtime/tests/test_agent_worker_pool.py`,
 `ai_runtime/tests/test_agent_worker_handle.py`,
 `ai_runtime/tests/test_agent_worker.py`,
+`ai_runtime/tests/test_executor_edges.py`,
 `ai_runtime/tests/test_code_grant.py`, `ai_runtime/tests/test_mcp.py`,
 `ai_runtime/tests/test_agent_llm.py` (pictures) and
 `ai_runtime/tests/test_agent_writes.py` (what a write must be).
@@ -316,6 +349,10 @@ Check:
 - `tick` and `_fire`: each fire is its own task, a row never fires
   twice at once, and what a fire writes back is only its own row
   (`_write`) — a pause made on the page meanwhile stands.
+- `replace_for`: a chat's rows are read again from the store at every
+  dial that carries a credential and at `schedules_changed`
+  (`SessionHost._credentialed`, `_reload_schedules`), and what a fire
+  just did to a row is kept.
 - `ScheduleRunner._fire_invoke`: a scheduled function runs with no
   model call, and wakes the assistant only when the result's
   `wake_field` says so. The call goes through the same
@@ -330,7 +367,8 @@ Check:
 
 Tests: the schedule classes in `ai_runtime/tests/test_session.py`,
 `ai_runtime/tests/test_cron.py`,
-`ai_runtime/tests/test_event_sources.py`.
+`ai_runtime/tests/test_event_sources.py`,
+`ai_runtime/tests/test_clock_edges.py`.
 
 ## 8. The edges
 

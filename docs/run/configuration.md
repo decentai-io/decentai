@@ -113,14 +113,14 @@ gone. Back them up with it.
 | Variable | Default | Meaning |
 |---|---|---|
 | `AI_RUNTIME_HOST` | `0.0.0.0` | Bind address; `127.0.0.1` locally. |
-| `AI_RUNTIME_PORT` | `8001` | Bind port. |
+| `AI_RUNTIME_PORT` | `8001` | Bind port. Left blank it is the default; a value that is not a port is refused at start, by name. |
 | `BACKEND_INTERNAL_URL` | empty | Where the runtime reaches the backend's gateway for its services. Empty runs the runtime standalone on the in-memory simulator, which is for development only. In Compose it is the service name; where the containers share one network, `http://127.0.0.1:8000`. |
 | `BACKEND_SERVICE_PUBLIC_KEY` | required | Verifies that a dial really came from the backend. |
 | `AI_RUNTIME_AGENTS_INSTALL_DIR` | `ai_runtime/installed_agents` | Where installed agent code and its environments live. A volume in a deployment; a short path outside the tree locally. |
 | `BACKEND_TOKEN_ISSUER` | `decentai-backend` | The issuer claim the runtime expects. |
 | `AI_RUNTIME_TOKEN_AUDIENCE` | `decentai-ai-runtime` | The audience claim the runtime expects. |
 | `LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING` or `ERROR`. |
-| `AI_RUNTIME_EGRESS_PORT` | `8002` | Where the proxy that confined agents connect through listens: on this machine only where workers run beside the runtime, and on the runtime's container, reached over the network it shares with the agents' container and nothing else, in the Compose stack. The firewall rule of the container workers run in is written for the same port when it starts. |
+| `AI_RUNTIME_EGRESS_PORT` | `8002` | Where the proxy that confined agents connect through listens: on this machine only where workers run beside the runtime, and on the runtime's container, reached over the network it shares with the agents' container and nothing else, in the Compose stack. The firewall rule of the container workers run in is written for the same port when it starts. A value that is not a number is read as `8002` by both, so the rule and the proxy agree. |
 | `AI_RUNTIME_SYSCALL_FILTER` | on | `0` turns off the filter on the system calls a worker may make ([the sandbox](../system/sandbox.md#system-calls--seccomp)): for an agent whose package needs a call the filter refuses, until one of the two is mended. The runtime says at start that it is off. |
 | `AI_RUNTIME_PACKAGE_HOSTS` | `pypi.org, files.pythonhosted.org` | Where packages come from: the hosts the builder of an agent's declared packages may reach, and the whole of them. Separated by commas. |
 | `AI_RUNTIME_AGENTS_SPAWNER` | empty | Where the agents' container answers, as `host:port`. `docker-compose.yml` writes `agents:8003` itself and does not read it from `deploy.env`. Empty starts agents' workers beside the runtime, in its own container or on a developer's machine. |

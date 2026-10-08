@@ -12,7 +12,8 @@ one credential Bedrock issues that is a single string a person can
 paste, which is what a connection holds. AWS's other ways in — an access
 key signed per request, a profile, a role the machine was given — are
 deliberately not here: each is read from the process's environment or
-its metadata service, and a connector reads neither (connector/__init__).
+its metadata service, and a connector's key comes from neither
+(connector/__init__).
 
 The endpoint is the region's, ``https://bedrock-runtime.<region>.amazonaws.com``,
 and the model is Bedrock's own id for it or an inference profile's
@@ -140,7 +141,8 @@ class BedrockConnector(HttpConnector):
         try:
             answer = await self._converse(body)
         except Exception as exc:
-            if not tools or self.tool_choice == "auto"                     or not is_tool_choice_refusal(exc):
+            if (not tools or self.tool_choice == "auto"
+                    or not is_tool_choice_refusal(exc)):
                 raise
             self.tool_choice = "auto"
             body["toolConfig"]["toolChoice"] = {"auto": {}}

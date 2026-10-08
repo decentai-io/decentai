@@ -3,12 +3,12 @@ describes, in the schema form a model's tool-calling API takes.
 
 One source for two protocols. A connector that speaks native tool
 calling is handed ``ACTION_TOOLS`` and asks the model for exactly one
-call per beat; the model then cannot answer in prose, cannot glue two
-actions together, and cannot misspell a field — the provider validates
-the call against the schema before it reaches the runtime. The reply
-comes back as the same ``{"action": …}`` object the JSON protocol
-always produced, so the cycle, the transcript and the tests are
-unchanged: `assistant.py` still sees one action per beat.
+call per beat. That steers the model and guarantees nothing: a reply
+in prose, two actions in one reply and a call cut short all still
+arrive, and the cycle has an answer for each (`assistant.py`,
+``_beat``). The reply comes back as the same ``{"action": …}`` object
+the JSON protocol produces, so the cycle, the transcript and the tests
+are the same under either: `assistant.py` sees one action per beat.
 
 The descriptions are short on purpose. The prompt carries the
 reasoning about WHEN to use each action; these say WHAT each one is,
@@ -197,7 +197,13 @@ ACTION_TOOLS: List[Dict[str, Any]] = [
            "delay_seconds": {"type": "integer", "minimum": 1},
            "every_seconds": {"type": "integer", "minimum": 60},
            "cron": {"type": "string",
-                    "description": "Five fields, local time."}}),
+                    "description": "Five fields, local time: minute "
+                                   "hour day-of-month month day-of-week. "
+                                   "Takes *, lists, ranges, steps, and "
+                                   "month or weekday names; not @daily, "
+                                   "? or L, nor a range that wraps "
+                                   "(fri-mon). A day-of-month and a "
+                                   "day-of-week both set match either."}}),
     _tool("unschedule", "Remove a schedule.",
           {"schedule_id": {"type": "string"}}, ["schedule_id"]),
     _tool("sleep",
@@ -229,7 +235,9 @@ ACTION_TOOLS: List[Dict[str, Any]] = [
 
 #: Why a finish is a finish. ``completed`` claims the work is done and
 #: is refused while items are owed; ``awaiting_events`` needs something
-#: to wait for; ``blocked`` needs a blocked item.
+#: to wait for; ``blocked`` needs a blocked item. ``awaiting_user`` and
+#: ``budget`` are taken on the model's word, and nothing in the runtime
+#: says ``budget`` itself: the valve pauses without a finish.
 FINISH_REASONS = ("completed", "awaiting_user", "awaiting_events",
                   "blocked", "budget")
 
@@ -269,11 +277,11 @@ class FunctionTools:
 
     One tool per function of every opened agent, carrying the
     manifest's input schema whole — descriptions, enums, nested shapes,
-    defaults — where the catalog text once showed names and types. The
-    model calls the function by name and fills its inputs against the
-    real contract, and the executor still validates every input: the
-    provider steers by the schema, it does not enforce it, and nothing
-    of authority moves.
+    defaults — where the catalog text has names, prices and
+    descriptions and no schema. The model calls the function by name
+    and fills its inputs against the real contract, and the executor
+    still validates every input: the provider steers by the schema, it
+    does not enforce it, and nothing of authority moves.
 
     A call by tool name is rewritten to the ``invoke`` action before
     anything else sees it (``as_action``), so the transcript, the
@@ -296,9 +304,9 @@ class FunctionTools:
         #: tool name -> canonical function name
         self.names: Dict[str, str] = {}
         #: functions past the cap, by canonical name — still callable
-        #: with invoke, and the model is told which they are. Once the
-        #: cap silently dropped the agent opened LAST, and the model
-        #: concluded a mail agent had no send function.
+        #: with invoke, and the model is told which they are. Dropped
+        #: in silence, they would have the model conclude that an agent
+        #: has no such function.
         self.omitted: List[str] = []
         # Most recently opened first: the agent the model just read the
         # instructions of is the one it is about to call.

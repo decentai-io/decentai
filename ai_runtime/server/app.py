@@ -13,7 +13,7 @@ from ai_runtime.server.settings import RuntimeSettings
 def create_app(settings: RuntimeSettings | None = None, services=None,
                library=None, agents=None) -> FastAPI:
     """``services`` is the platform surface the sessions live against
-    (docs/reference/session-door.md) — the sim now, a backend client later.
+    (docs/reference/session-door.md) — the backend's client, or the sim.
     Without one the chat door refuses politely and every other door
     serves as always.
 

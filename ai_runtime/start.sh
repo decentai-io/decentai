@@ -48,7 +48,7 @@ EOF
 then
     echo "start: workers reach the proxy on port $PORT and nothing else"
 else
-    echo "start: no firewall rule for workers (the container was not given NET_ADMIN)"
+    echo "start: no firewall rule for workers (it could not be set; the usual cause is a container not given NET_ADMIN)"
 fi
 
 exec setpriv --reuid decentai --regid decentai --init-groups \

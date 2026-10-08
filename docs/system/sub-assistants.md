@@ -127,8 +127,14 @@ socket as `approval_decided`. The parent's session routes it
 (`Session.deliver_approval`): to the parent's own waiting job, then to
 the call the parent itself is parked on, then to its live children,
 then to a card of its own that is still open; a decision that fits none
-is logged and dropped. No child is hydrated to receive one: children
-are re-opened when the parent's session opens, and are live by then.
+is logged and dropped. A decision for a call the parent parked in a
+process that has since died is applied at once when the parent is at
+rest, and otherwise when the cycle under way ends. No child is hydrated
+to receive one: the parent's session starts re-opening its children as
+it opens. A child is listed from the moment it is made and asked only
+once it has a mind (`Session.helpers`): opening one takes several calls
+to the platform, and until they are done it has no card to show or
+decide.
 `hello` lists the pending cards of the parent and its children
 together: one present tense per conversation.
 
@@ -136,13 +142,18 @@ together: one present tense per conversation.
 
 - **Cancel.** `cancel_job` on an assistant job stops the child where it
   stands, in the middle of a beat included, and cancels the child's own
-  jobs through its pool; the job settles `cancelled`. The parent's `stop` does the
-  same to every child.
+  jobs through its pool; the job settles `cancelled`, and every card
+  the child had out is expired and closed. The parent's `stop` does the
+  same to every child, and so does the kill, which counts them in its
+  `stopped {children}`.
 - **The parent's process dies.** On hydration an assistant job that is
   `running` is not an orphan: the parent's session re-opens the child
   from its durable state, re-attaches the waiter, and the child's own
-  unfinished-business rule pumps it. Only a child with no state to
-  hydrate settles as the honest error orphan recovery already produces.
+  unfinished-business rule pumps it. A child that was waiting on a
+  card — for a job, or for a call of its own — is not done: it reports
+  after the decision has arrived and the cycle that wakes has finished.
+  Only a child with no state to hydrate settles as the honest error
+  orphan recovery already produces.
 - **The child's process is the parent's process** — one host — so
   there is no separate child death to handle.
 - **Reaping** does not apply to a child by itself: the host reaps the

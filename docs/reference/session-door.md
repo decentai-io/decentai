@@ -8,8 +8,8 @@ is not refused, and is the one to notice.
 
 The door is built around **sessions** ([the
 assistant](../system/assistant.md)), hosted by the runtime, spoken to
-by anyone who can prove themselves — the backend, a command line, a
-test.
+by whoever holds the backend's service key — the backend, or a command
+line or a test given it.
 
 Three principles:
 
@@ -30,7 +30,8 @@ Three principles:
 
 One object owns every live session in the process: the **SessionHost**
 (`ai_runtime/server/host.py`). It is the only thing that builds, finds,
-or forgets a Session.
+or forgets a chat's Session; a helper's is built by its parent
+([sub-assistants](../system/sub-assistants.md)).
 
 ```
 SessionHost
@@ -47,7 +48,9 @@ Building a session (`host.session(chat_id)`) is: ask the services for
 the chat's **contract**, assemble the pieces it names, `open()` the
 Session (which hydrates the persisted mind), and remember it. Finding
 one is a dict lookup. Both happen on demand — a socket attaching, a
-schedule firing — whichever comes first.
+schedule's fire waking the mind, posting or asking in the chat —
+whichever comes first. A fire that only runs its function builds none
+(`host.fire_context`).
 
 ### The contract
 
@@ -123,8 +126,8 @@ turns that into an honest reply on the first event that needs a model
   began with; a services call that fails leaves the session serving
   what it was built with.
 - **Reaped when idle and unwatched.** No socket, no active jobs, no
-  running cycle, no question waiting for the person → the host forgets
-  it after a grace period of a minute. Nothing
+  running cycle, no question waiting for the person, nothing on its
+  way in to it → the host forgets it after a grace period of a minute. Nothing
   is lost: the mind was persisted at its last beat, and the next
   event hydrates it back. Reaping is memory hygiene, not teardown.
 - **Shutdown is abandonment, by design.** The host cancels the pumps
@@ -138,14 +141,17 @@ turns that into an honest reply on the first event that needs a model
 
 ## The wire
 
-`WS /chats/{chat_id}`, same handshake
-identity: the service token proves the dialer, and the connection is
-refused before `accept` without it. Beside it the dialer may hand over
+`WS /chats/{chat_id}`. The service token proves the dialer, and the
+connection is refused before `accept` without it: the dialer sees the
+handshake fail with HTTP 403, and no close code. Beside it the dialer may hand over
 a **credential** for the chat (`X-DecentAI-Runtime-Access`) — the key a
 platform reached over a network needs to answer this chat's calls
 (`ai_runtime/services/backend.py`). A credential is not authority: the
 door passes it to the services opaque, and what the chat may do is
-still only what `contract` answers. One socket per chat — a newer
+still only what `contract` answers. A dial that carries one also has
+the host re-read the chat's schedule rows from the services, and the
+clock replaces its copy with them, so a pause or a delete whose
+`schedules_changed` never arrived is caught up with. One socket per chat — a newer
 audience replaces an older one, which is told with a `replaced` close.
 
 Frames are newline-less JSON objects (websocket messages are already
@@ -157,12 +163,12 @@ translate to and no `AI:*` command surface on this door.
 
 | frame | carries | becomes |
 |---|---|---|
-| `user_message` | `text`, `parts?`, `client_message_id?` | `session.deliver_user` — persisted first, absorbed on the next beat, never refused |
+| `user_message` | `text`, `parts?`, `client_message_id?` | `session.deliver_user` — persisted first, absorbed on the next beat. One with no text and no parts is refused by the services, and said as an `error` |
 | `approval_decided` | `approval_id`, `approved`, `action_hash` | `session.deliver_approval` — the live park settles, or the hydrated job resumes through every gate; `action_hash` is the card's own record of what was approved, and the resumed inputs must hash to it |
 | `schedules_changed` | — | a person paused, resumed, wrote or deleted one of the chat's rows on the page: the host re-reads the chat's rows from the services and the clock replaces its copy. No mind is built. A forged one can only make the clock re-read what the store already says. |
-| `credential` | `credential` | the dialer's fresh key for the chat. A delegation lives an hour and a kept-open socket (a scheduled chat's) may live for days, so the relay renews over the socket instead of re-dialing: the host hands the key to the services and the clock adopts any rows it unlocks. No mind is built. A forged one can only hand the services a key the platform then refuses. |
+| `credential` | `credential` | the dialer's fresh key for the chat. A delegation lives an hour and a kept-open socket (a scheduled chat's) may live for days, so the relay renews over the socket instead of re-dialing: the host hands the key to the services, re-reads the chat's rows with it, and the clock replaces its copy. No mind is built. A forged one can only hand the services a key the platform then refuses. |
 | `question_answered` | `approval_id`, `answer` | `session.deliver_answer` — a question card settles: words for an agent's question, a list for the files card, an object for a credential card |
-| `stop` | `force?` | cooperative, honored between beats — asked and not waited for, so the socket goes on hearing. With `force: true` it is the kill switch: every job is cancelled where it stands, the chat's helpers and its browser end, open cards expire, and the audience hears `stopped` |
+| `stop` | `force?` | cooperative, honored between beats — asked and not waited for, so the socket goes on hearing. With `force: true` it is the kill switch: every job is cancelled where it stands, the chat's helpers and its browser end, open cards expire, and the audience hears `stopped` with how many `jobs`, `children` (helpers) and `cards` went. Either stop is written into the saved state, so a session rebuilt afterwards rests until something is asked of it. A message that arrives while the kill is under way is kept on the record, and the session built next absorbs it |
 | `agents_changed` | `agents` | an agent was installed or updated: the host pulls its code and builds its environment now, in the background, so the first chat to name it does not wait. Nothing is served that the contract does not name |
 | `screen_open` | `action?` | the person asks to see an agent's browser before asking it anything, or (`quit`) to close it |
 | `screen_input` | `call_id`, `events` | the person acting on a screen an agent shows — to the call showing it, bounded, dropped when no such call runs |
@@ -182,7 +188,9 @@ socket name one event the same way, and an audience hearing both can
 tell a repeat from news (a frame the log refused travels without one):
 `message_created`, `activity`, `plan_updated`, `memory_saved`,
 `approval_requested`, `question_asked` and `question_closed` (a card
-that asks the person something, and its end), `schedule_set`,
+that asks the person something, and its end — an approval card's too,
+closed as `expired` when the call that opened it was stopped while it
+waited), `schedule_set`,
 `schedule_removed`, `sleeping` (the assistant paused until a time, or a
 stop ended the pause), `stopped` (a kill ended the work), and the pair
 that brackets every cycle — `working` when the mind starts advancing,
@@ -201,7 +209,7 @@ door adds three frames of its own — `hello`, `agent_status`, and
 ```
 
 sent once on attach: the live status an audience rehydrates from —
-whether a turn is under way (`working`), whether the assistant is asleep and until when (`sleeping`: `{until, why}`), what is running right now, which cards await an answer, where the
+whether a turn is under way or a background job still runs or waits on its card (`working`), whether the assistant is asleep and until when (`sleeping`: `{until, why}`), what is running right now, which cards await an answer, where the
 plan stands. History and missed emissions are not the socket's
 business: they live in the services' durable records (messages, the
 event log), and a consumer reads them there. The socket is the
@@ -233,7 +241,9 @@ sockets. The host hands each session a **relaying services wrapper**:
 `emit` writes through to the real services (the durable log) and
 then offers the frame — stamped with the sequence the log answered —
 to the attached socket, if any — dropped silently if none, dropped
-silently if the send fails. Delivery is a
+silently if the send fails. One emission at a time per chat, from its
+record to its delivery, so frames reach the socket in the order they
+were recorded. Delivery is a
 courtesy; the record is the services'. Every other method passes
 through untouched, so the wrapper is one class with two methods of
 its own — `emit`, decorated, and `relay`, for what is delivered and
@@ -250,8 +260,8 @@ under the chat's agents, trust level, the person's grants and their
 constraints, and the organization's Safety settings, leaving the same
 line on the audit trail a call in the chat leaves
 (`host.fire_context`). The assistant cannot put on the clock what the
-person was not given, either. The
-roster is a live view over the library so a fresh install serves
+person was not given, either. A fire
+materializes the agents that contract names, so a fresh install serves
 without a restart, and what wakes a mind goes through
 `host.deliver_event(chat_id, event)` — the inside door, unreachable
 from any socket. The schedule rows are user state, so the services own

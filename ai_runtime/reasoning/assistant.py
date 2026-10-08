@@ -5,7 +5,8 @@ The contract is docs/system/assistant.md; this is its cycle:
     events arrive in the inbox → absorbed into the transcript
     → think once (one model call, one action) → act → observe → persist
     → another beat while there is anything to decide
-    → finish → idle; the next event wakes it
+    → finish, or a reply after the work with nothing owed
+    → idle; the next event wakes it
 
 There are no turns. A user message is one more event arriving at a mind
 that already exists; a background job's completion is another; so is an
@@ -71,18 +72,18 @@ class Assistant:
     #: before the assistant wraps up for it.
     VALVE_GRACE_BEATS = 3
 
-    #: Two messages this alike are the same message. The guard used to
-    #: compare bytes, so a model asked not to repeat itself rephrased
-    #: and passed — which is the form the repetition actually takes.
+    #: Two messages this alike are the same message. Likeness and not
+    #: bytes: a model asked not to repeat itself rephrases, which is
+    #: the form the repetition actually takes.
     #: Set high on purpose: refusing a genuinely new message is the
     #: worse mistake, and the prompt, not this, is what stops a model
     #: from saying the same thing in wholly different words.
     SAME_SAY_RATIO = 0.92
 
     # A malformed emission is corrected, not charged — up to this many
-    # times in one ask. Counted off the transcript, from where the ask
-    # began, so a rehydrated mind keeps its tally and a long
-    # conversation does not run out of them.
+    # times in a row. Counted off the transcript, as the unbroken run
+    # of bounces at its end (``_bounces``), so a rehydrated mind keeps
+    # its tally, and a reply that parses renews them.
     FREE_PARSE_BOUNCES = 2
     BOUNCE_MARK = "Your last reply was not a single valid JSON action."
 
@@ -169,7 +170,8 @@ class Assistant:
         #: read as a document (read_file). The image reader where none
         #: is given: it is one door.
         self.file_reader = file_reader or image_reader
-        #: async (query) -> {status, files} — the files the user meant,
+        #: async (query, names, kind) -> {status, files} — the files the
+        #: user meant,
         #: found among what they can see and chosen by them on a card
         #: (find_files). None where no files can be looked up.
         self.file_finder = file_finder
@@ -185,11 +187,12 @@ class Assistant:
         #: async unschedule(schedule_id) -> dict. None where no clock
         #: serves the session.
         self.clock = clock
-        #: async (job) -> (result, status, child_trace) — runs a child
-        #: session to its report (docs/system/sub-assistants.md). None in a
-        #: child: depth is one by construction.
+        #: async (job, resuming) -> (result, status, child_trace) — runs
+        #: a child session to its report (docs/system/sub-assistants.md).
+        #: None in a child: depth is one by construction.
         self.spawn_sink = spawn_sink
-        #: async (summary) -> None — a child's finish is its report.
+        #: async (summary, reason) -> None — a child's finish is its
+        #: report.
         self.finish_sink = finish_sink
         #: async (state) -> None — persist the mind, every beat.
         #: Resilience, never authority: a failed save costs one beat.
@@ -217,7 +220,7 @@ class Assistant:
         #: organization's routing settings from the contract — the
         #: threshold, the shortlist, the candidates, whether to rerank,
         #: how many agents stay open, and the embedding model. None
-        #: or no embedding: every agent is listed, as always.
+        #: or no embedding: every agent is listed.
         self.router = router
         self.routing: Dict[str, Any] = dict(routing or {})
         #: what the person last said — what the shortlist is for
@@ -476,8 +479,8 @@ class Assistant:
         if self._cut_off(reply):
             # Half an action is not an action: a tool call cut at the
             # cap has arguments that will not parse, and acting on what
-            # is left ran functions with empty inputs and delivered half
-            # a sentence. The model is told and writes it shorter.
+            # is left would run functions with empty inputs and deliver
+            # half a sentence. The model is told and writes it shorter.
             self.state.messages.append({
                 "role": "user",
                 "content": "Your last reply was cut off at the length "
@@ -503,8 +506,8 @@ class Assistant:
                 return False
             # Words with no action in them are for the user: there is
             # no other channel they could belong to, and bouncing them
-            # lost the answer the model had just written — it would
-            # then finish rather than say it again. Delivered as a say
+            # would lose the answer the model has just written — it
+            # would then finish rather than say it again. Delivered as a say
             # and observed as one; only a malformed ATTEMPT at an
             # action still bounces.
             actions = [{"action": "say", "text": prose}]
@@ -539,7 +542,7 @@ class Assistant:
     def _model_failure(cls, exc: Exception) -> str:
         """Why the model did not answer, for the person: what kind of
         failure it was, and the provider's own words for it. A sentence
-        that only said "unavailable" sent people to the logs for a
+        that says only "unavailable" sends people to the logs for a
         mistyped model name."""
         if isinstance(exc, NoModel):
             return f"The language model is unavailable. {exc}"
@@ -646,7 +649,9 @@ class Assistant:
                 if self.finish_sink is not None:
                     await self.finish_sink("", "completed")
                 return True
-            if self._acted and not self._owes_more()                     and self.finish_sink is None                     and self.state.messages[-1].get("role") == "assistant":
+            if (self._acted and not self._owes_more()
+                    and self.finish_sink is None
+                    and self.state.messages[-1].get("role") == "assistant"):
                 # Said after the work, and nothing is owed: no item
                 # open on the plan, no job running. That is the end of
                 # the turn, whether or not the model marked its reply
@@ -662,11 +667,11 @@ class Assistant:
                 # it may have to answer.)
                 self.state.beats = 0
                 return True
-            # Observed like every other action, so the beat closes on a
-            # user turn. Without this the transcript ended on the
-            # model's own message, and a chat model asked to continue
-            # from there says it again in other words. The decision the
-            # next beat owes is finish-or-more, made from a fresh turn.
+            # Any other say is observed like every other action, so the
+            # beat closes on a user turn: a chat model asked to continue
+            # from a transcript that ends on its own message says it
+            # again in other words. The decision the next beat owes is
+            # finish-or-more, made from a fresh turn.
             self._observe({"said": True, "note": (
                 "Your reply carried no JSON action, so its words were "
                 "delivered to the user as a say. Every beat is exactly "
@@ -687,7 +692,7 @@ class Assistant:
                 # to them. That is their word on this ask: the turn
                 # ends here, as a stop does, and whatever comes next
                 # is for them to ask. Told as a success and nothing
-                # more, it read as a result to retry.
+                # more, it would read as a result to retry.
                 self._observe({**observation, "note": (
                     "The person stopped this. The turn ends here. Do "
                     "not try it again, by this function or another, "
@@ -744,7 +749,7 @@ class Assistant:
             if "error" in slept:
                 return False
             # Asleep is idle: the wakeup is the next event, unless the
-            # person speaks first — which is heard at once, as always.
+            # person speaks first — which is heard at once.
             self.state.beats = 0
             return True
 
@@ -959,8 +964,8 @@ class Assistant:
         refused: List[str] = list(composed.get("refused") or [])
         if not composed["text"] and not composed["parts"]:
             # Nothing to say and nothing to show: the platform refuses
-            # an empty message, and once that refusal escaped as an
-            # exception it ended the whole cycle mid-turn. The model
+            # an empty message, and that refusal, escaping as an
+            # exception, would end the whole cycle mid-turn. The model
             # hears it as an ordinary observation instead, and the
             # trace it accounted for stays for the next say.
             self._observe({"error": "A say needs text. Say what you found "
@@ -974,13 +979,14 @@ class Assistant:
             # The words matter more than what rides beside them. A part
             # the platform refuses (a reference it will not accept, a
             # shape it does not know) must not cost the user the reply,
-            # and must never end the cycle: once, a refused part killed
-            # the beat and the person saw nothing after a saved note.
+            # and must never end the cycle: a refused part that killed
+            # the beat would leave the person with nothing after a saved
+            # note.
             self.logger.error(f"Say with parts refused: {exc}")
             if not composed["parts"]:
                 # Refused with nothing riding beside the words: the
                 # words themselves were the problem. Told to the model,
-                # never raised — a raise here killed the cycle once.
+                # never raised — a raise here would kill the cycle.
                 self.state.evidence_cursor = accounted
                 self._observe({"error": f"The platform refused that "
                                         f"message: {str(exc)[:200]}"})
@@ -1871,20 +1877,22 @@ class Assistant:
             if isinstance(result, dict) else None,
             "result_preview": preview,
             "truncated": True,
-            "note": self._preview_note(preview),
+            "note": self._preview_note(
+                preview, stored=isinstance(result, dict)
+                and isinstance(result.get("storage_ref"), str)),
         }
 
     @classmethod
-    def _preview_note(cls, preview: Any) -> str:
+    def _preview_note(cls, preview: Any, stored: bool = True) -> str:
         """What to tell the model when a result was too big to show whole.
 
-        It used to say only that the result was previewed, which left the
+        A note that says only that the result was previewed leaves the
         model with nothing concrete and a strong urge to explain itself:
-        people were told "the query is big", as though they had asked for
+        people are told "the query is big", as though they had asked for
         too much. They had not — the FUNCTION returned more than fits.
-        So the note now counts what was cut, the way the read action's
-        note already does, and the counts are the thing worth repeating
-        to a person."""
+        So the note counts what was cut, the way the read action's note
+        does, and the counts are the thing worth repeating to a
+        person."""
         counts = []
         if isinstance(preview, dict):
             for field, value in preview.items():
@@ -1893,9 +1901,16 @@ class Assistant:
                                   f"{value.get('items_total')}")
         head = ("Preview only — " + "; ".join(counts) + ". ") if counts \
             else "Preview only. "
-        return head + (
-            "The whole result is stored. Use the read action with this "
-            "storage_ref and a path to see any part of it. If you tell the "
+        # Where the whole can be read is said only where it was kept:
+        # a failed call's result, or one the store would not take, has
+        # no ref to read it by.
+        where = ("The whole result is stored. Use the read action with "
+                 "this storage_ref and a path to see any part of it. "
+                 if stored else
+                 "The whole result was not kept, so this is all of it "
+                 "that can be seen. ")
+        return head + where + (
+            "If you tell the "
             "person anything about this, say what you are showing and how "
             "much there is — never that their request was too large, which "
             "it was not.")
@@ -1949,7 +1964,8 @@ class Assistant:
     def _preview(cls, value: Any, budget: Optional[int] = None) -> Any:
         """A result too large to show whole, by its shape: every field,
         each list as the first N complete items that fit, each long
-        string clipped. The whole preview fits PREVIEW_MAX_CHARS."""
+        string clipped. The whole preview fits ``budget``, which is
+        PREVIEW_MAX_CHARS unless another is given."""
         budget = budget or cls.PREVIEW_MAX_CHARS
 
         def clip(text: str, cap: int) -> str:
@@ -1966,7 +1982,8 @@ class Assistant:
         # the usual length where there are many, so that together they
         # take at most half of the budget. Then the lists share what is
         # left, measured, and not a guess that is halved until it fits:
-        # that left a result of many short rows with a handful shown.
+        # that would leave a result of many short rows with a handful
+        # shown.
         lists = [f for f, v in value.items() if isinstance(v, list)]
         others = [f for f in value if f not in lists]
         cap = cls.PREVIEW_VALUE_CHARS

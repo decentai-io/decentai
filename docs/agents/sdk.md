@@ -51,6 +51,15 @@ A success is checked against `outputs` before anything is shown as
 fact. An error's `error` is what the assistant reads and says: name the
 rule that refused and why, and write nothing when you refuse.
 
+A result holds what JSON can say: text, numbers, booleans, lists and
+objects. One that holds anything else — a date, a set, bytes — is
+answered as an error result that says so.
+
+Four keys of a result are the platform's own: `storage_ref`,
+`displays`, `denied` and `not_permitted`. One your function returns
+under any of those names is taken out, before the result is checked
+against `outputs`.
+
 ## `call.resources`
 
 ```python
@@ -66,7 +75,8 @@ both halves come back, `values` decrypted. `update_data` changes the
 fields you send and keeps the rest. `list_data` filters are
 equality on `keys` fields; `values` cannot be filtered on. The fields you write are split into `keys` and
 `values` by the manifest, and checked against it — types, `required`,
-`select` options.
+`select` options. An update may leave a required field out, and may
+not write one empty.
 
 ```python
 files = await call.resources.list_files("document")
@@ -82,7 +92,10 @@ await call.resources.delete_file("document", ref)
 A file reaches your function whole, whatever its size up to the
 platform's upload limit; large files travel through a folder the
 platform opens for your worker, and your code never sees the difference.
-`read_file` also gives `filename` and the file's type. A record handed
+A file's row — what `list_files` lists, and what `read_file` and
+`create_file` answer with — has `resource_ref`, `filename`,
+`file_type` and `file_size` at its top, on the platform and on the
+simulator the tests run on. A record handed
 to your function the same way — its ref in the call's inputs — is read
 by `read_data` wherever it is kept, as a file is. A file a person
 attached to the chat is read by its ref under any file resource your
@@ -154,7 +167,9 @@ A named file is read under your function's file grant. Either way the
 picture is checked to be one: a PNG, JPEG, GIF or WebP by its own first
 bytes, whatever it is called, at most 5 MiB, and at most sixteen in one
 ask. What is not is refused with the reason. A model that cannot see
-pictures refuses, and you are told which.
+pictures refuses, and you are told which. Each entry of `images` is a
+mapping of one of those two forms: bytes, or a ref as bare text, raise
+`ValueError` before the model is asked.
 
 A picture your function carries travels on the worker's own line, which
 is 2 MiB long: keep one under about 1.5 MiB (base64 makes it a third
@@ -178,8 +193,8 @@ An **offer**, not a message: the assistant decides whether the person
 sees it, and the page draws it with your agent's name. Plain values in
 each cell; at most 500 rows, 24 columns, 200 points, 8 series, and 5
 offers a call. Chart types: `bar`, `line`, `pie`. Each returns the
-display's id, or `None` where nobody could see it. Nothing may depend on
-an offer being shown.
+display's id, or `None` where nobody could see it or it could not be
+kept. Nothing may depend on an offer being shown.
 
 A title is at most 120 characters and a series' name 60. A table has at
 least one row: `call.show.table([])` is refused, so show nothing when
@@ -216,6 +231,19 @@ most 100 characters.
 Ask **before** you write, and have a safe answer for `None`. A question
 lives only as long as the call: if the runtime restarts, the call ends,
 and a later answer is told back as expired.
+
+When the person's answer is to stop — a **Stop** among your choices —
+say so in what you return: a result whose `outcome` is
+`"stopped_by_person"` ends the assistant's turn, and the assistant is
+told not to try again unless the person asks. Any other result is one
+the assistant may act on, by trying again among other things. `outcome`
+is an output like any other: declare it in the function's `outputs`.
+
+```python
+if answer == "Stop":
+    return {"outcome": "stopped_by_person",
+            "summary": "Stopped before sending, as you asked."}, "success"
+```
 
 ## `call.credential`
 
@@ -295,8 +323,8 @@ until the call ends, and `call.install` installs exactly the packages it
 named — by the platform, never by your code. Hosts are names
 (`api.example.com`, `db.example.com:5432`), never an address and never
 every host under a name; packages are a name and, if it matters, a
-version (`requests==2.32.3`). Anything else is refused before the card
-is shown. A declined card grants nothing. Where nothing confines agents
+version (`requests==2.32.3`), with no space inside the name. Anything
+else is refused before the card is shown. A declined card grants nothing. Where nothing confines agents
 (the agent's page says when), the hosts are not held to the card. A deployment's **Safety** setting may let some
 code through without a card, or keep a list of packages; your function
 hears `True` either way, and the chat is told what ran.
@@ -307,8 +335,9 @@ each kind, each name — and `where`, the place the code runs — at most
 
 `call.install` takes the list a card named and answers with the folder
 the packages are in. The same list asked for again, in this call or a
-later one, is handed back at once: it is installed once. An empty list
-is refused.
+later one, is not installed again: the folder it is in is handed back.
+The platform installs one list at a time, so an ask may wait while
+another agent's packages are installed. An empty list is refused.
 
 ## `call.screen`
 
@@ -378,8 +407,9 @@ call, is in use.
 Your worker's one way out is the platform's proxy, and its address is in
 the environment (`HTTPS_PROXY` and friends). `requests`, `httpx` and
 `urllib` use it by themselves: write your HTTP as usual, to the hosts
-your manifest declared. A refused host comes back as an HTTP 403 whose
-body says why. A client that ignores the environment's proxy on purpose
+your manifest declared. A refused host is answered with a 403 that
+says why; how that reaches your code depends on the address, below. A
+client that ignores the environment's proxy on purpose
 finds the platform's under its own name, `DECENTAI_PROXY`. A confined
 worker cannot look a name up: the proxy does, so your code does not.
 
@@ -414,9 +444,17 @@ connects straight. `Tunnel.proxy()` is the proxy's address, or `None`
 where there is none, and `Tunnel.through(proxy, host, port)` opens the
 connection through one you name.
 
-A refusal over HTTP — a 403 from a `requests` call — may be the proxy's
-or the host's own. The proxy's carries the header
-`X-DecentAI-Refused` with the status, which tells them apart.
+A refusal reaches an HTTP client in one of two ways, by the address it
+asked for:
+
+| Address | What your code gets |
+|---|---|
+| `https://` | An exception, and no response: `requests.exceptions.ProxyError` from `requests`, `httpx.ProxyError` from `httpx`, `urllib.error.URLError` from `urllib`. The reason is in the exception's text. |
+| `http://` | A response: status 403, the reason in its body, and the header `X-DecentAI-Refused` with the status. |
+
+So catch the exception around a call to an `https://` address. A 403
+that does arrive as a response may be the proxy's or the host's own,
+and the header tells them apart.
 
 ## The agent class
 
@@ -429,7 +467,9 @@ class NoteAgent(AgentBase):
 A tool class sets `id` and defines one `async` method per function,
 named as the function's id. A function whose id is a word Python keeps
 for itself — `import`, `class`, `global` — is the method with an
-underscore after it (`import_`): the manifest keeps the plain id.
+underscore after it (`import_`): the manifest keeps the plain id. A
+method written without `async` is run and its answer taken all the
+same; most of what `call` offers is awaited, so write `async def`.
 `self.agent` reaches the agent from a tool, and from the agent
 `self.tool("notes")` reaches a tool by its id, `self.manifest` is the
 manifest, and `self.agent_id` its id. Both classes have `self.logger`:

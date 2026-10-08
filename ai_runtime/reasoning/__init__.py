@@ -2,7 +2,7 @@
 
 The contract is docs/system/assistant.md. This package is the mind and
 nothing else: model in, actions out. Every side effect crosses an
-injected seam (say_sink, skill_reader, memory_writer, plan sinks,
+injected seam (say_sink, skill_reader, memory_writer, plan_sink,
 state_sink), so this package imports execution and agents — the law it
 operates under — and never chat, the embodiment that hosts it.
 

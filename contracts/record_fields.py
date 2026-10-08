@@ -113,6 +113,8 @@ class RecordFields:
             if isinstance(value, bool) or not isinstance(value, (int, float)):
                 raise ValueError(f"{name} must be a number.")
             return value
+        # A credential definition's type, kept by the backend; a
+        # manifest's field never declares it.
         if field_type == "boolean":
             if not isinstance(value, bool):
                 raise ValueError(f"{name} must be true or false.")

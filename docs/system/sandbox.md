@@ -11,7 +11,8 @@ whatever its code tries.
 A sandboxed agent:
 
 1. reads and writes **only its own files**;
-2. runs as **its own user**, and can neither see nor stop anything else;
+2. runs as **its own user**, and can stop nothing else, nor see more of
+   another process than that it exists and how it was started;
 3. reaches **only the hosts its manifest declared** and an
    administrator approved;
 4. uses **no more than the platform allows**.
@@ -111,7 +112,7 @@ the runtime does not have:
 | Job | What it does |
 |---|---|
 | `own` | hands a worker's home or spool to its user |
-| `clear` | empties one, as the user it belongs to, so nothing but that user's is ever deleted |
+| `clear` | empties one, as the user it belongs to, so nothing but that user's is ever deleted. A folder its owner closed — the home itself, or one inside it that its owner may not list or write — is opened to its owner first and then emptied; what is nested deeper than is walked in one go (64 levels) is lifted to the top and emptied on the next pass. A `clear` that left anything behind says so, and is refused |
 | `stop` | ends every process of a user |
 | `sweep` | deletes what a user left in the folders every user may write to |
 
@@ -154,7 +155,9 @@ agent yet. The last is the builder's (below).
 | the runtime's own processes, and other agents' | their users | that they exist and how they were started (`/proc`), and nothing of their memory, environment or files; no signal reaches them |
 
 **A home is emptied before every start.** A worker holds no state, and
-a folder that outlived it would be one. At start the runtime also
+a folder that outlived it would be one. A worker cannot keep one by
+closing a folder or nesting it deep (`clear`, above), and where a home
+could not be emptied the worker is not started. At start the runtime also
 gives up the places nobody has started a worker in for thirty days —
 what their users left, their folders, and their users. An agent given
 up is given a place again the day it is called.
@@ -181,10 +184,13 @@ them: a fence can only take away, so whoever asks for one ends with
 less than they had.
 
 **`/tmp` is writable** because a browser keeps its lock there whatever
-it is told. What a worker leaves there is its own and closed to every
-other user, and the helper sweeps it away, with `/dev/shm`, before
-every start and after every stop. A worker cannot open another user's
-files there; it can see their names.
+it is told. What a worker leaves there is its own and, as the helper
+starts it, closed to every other user, and the helper sweeps it away,
+with `/dev/shm`, before every start and after every stop. A worker
+cannot open another user's files there unless their owner opened them
+to it — which an owner can do, here as anywhere whose-it-is decides, so
+two agents that both mean to can pass bytes through a file in `/tmp` or
+`/dev/shm` on any kernel; it can see their names.
 
 What the fence is not:
 
@@ -307,7 +313,9 @@ install is two steps by two users:
 What the runtime takes from the builder's spool is a plain file with a
 wheel's name: a link is not followed, and anything else left there is
 left. Nothing is kept between builds, because what one build left
-would be what the next agent installs. Builds share a user, so one
+would be what the next agent installs; and a build reads no pip
+configuration file, so one left in the home builds share decides
+nothing for the next. Builds share a user, so one
 runs at a time, and one that does not end in five minutes is ended
 with everything it started.
 
@@ -475,7 +483,10 @@ installs no certificate.
 **The way out is bounded.** One worker may hold 128 connections open
 through the proxy at once and the proxy 1,024 in all; one more is
 refused, and told so. A connection that carries nothing either way for
-half an hour is closed.
+half an hour is closed. A connection that has not yet said whose it is
+counts against no worker, so those are counted by themselves: the proxy
+holds at most 256 of them, and one more closes the one that has said
+nothing for longest. Each has 30 seconds, and 64 KiB, to say it.
 
 **A refusal says why, where a program can read it.** A client shows
 its caller one line of a refused tunnel's answer, so the reason is on
@@ -513,9 +524,13 @@ in the audit trail names where its worker connected while it ran
 ([Safety](safety.md)). Names and counts only: the proxy never sees
 what is sent.
 
-**Every connection is written down**, made or refused, with whose it
-was, where to, how many bytes went each way and how long it lasted;
-refused, why ([what is written down](monitoring.md)).
+**Every connection the proxy answered is written down**, made or
+refused, with whose it was, where to, how many bytes went each way and
+how long it lasted; refused, why ([what is written down](monitoring.md)).
+Two things are not: a connection that ended before it had said what it
+wanted — silent too long, or saying too much — and a program's first
+asking without its pass, which is how a proxy is spoken to and no
+refusal of anybody.
 
 **Verifying a package admits nothing.** Verification imports the code,
 and code that connects as it is imported is not waiting to be asked.

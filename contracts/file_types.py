@@ -10,13 +10,13 @@ A file resource may declare ``constraints``: the types it takes
 file is told by its name, as it is everywhere on the platform — the
 bytes are not read to find out.
 
-The interpreter's own table (``mimetypes``) is asked first for what it
-knows wherever it runs, and it does not know the same things
-everywhere: on a small Linux image a Word document, a workbook and a
-deck are nothing to it, where on a person's own computer they are
-named by the system. The kinds agents write and read most are
-therefore said here, and mean the same in a container as on a
-developer's machine. A name nothing knows is
+The interpreter's own table (``mimetypes``) does not know the same
+things everywhere: on a small Linux image a Word document, a workbook
+and a deck are nothing to it, where on a person's own computer they
+are named by the system. The kinds agents write and read most are
+therefore said here and asked first, and mean the same in a container
+as on a developer's machine; ``mimetypes`` is asked for the rest. A
+name nothing knows is
 ``application/octet-stream``, which a slot that lists its types does
 not take.
 

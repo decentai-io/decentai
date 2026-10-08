@@ -12,16 +12,18 @@ provider sees anything:
   so two agents' ``preferences`` never collide.
 - **Storage split**: a flat ``fields`` dict is split into queryable
   ``keys`` and encrypted ``values`` by the manifest's per-field
-  ``storage`` declaration (undeclared fields default to keys).
+  ``storage`` declaration. A field the manifest did not declare is
+  refused; where a resource's field list is not known, what is not
+  marked ``values`` goes to keys.
 
 The provider behind it is duck-typed — async methods (use_secret,
 list/read/create/update/delete_data, list/read/create/delete_file, and
 their kin), all speaking the data layer's record shape: ``{resource_ref, resource_id,
 keys: {...}, values: {...}}``, values decrypted for the agent that owns
 the record. Production's one implementation
-is the chat's BackendResourceProvider, persisting through the backend's
-/app gateway as the user; sim/resources.py holds the in-memory stand-in
-tests run on.
+is BackendProvider (ai_runtime/services/provider.py), persisting through
+the backend's /app gateway as the user; sim/resources.py holds the
+in-memory stand-in tests run on.
 """
 
 from __future__ import annotations
@@ -115,14 +117,13 @@ class ResourceAccess:
     # -- secrets ---------------------------------------------------------
     async def use_secret(self, resource_id: str,
                          ref: Optional[str] = None) -> Dict[str, Any]:
-        # Canonical like every other kind. A secret used to be able to
-        # name a shared "family" slug instead, which is how an agent
-        # reached a credential nobody gave it: the category named no
-        # agent, so the platform could not tell who was asking. Which
-        # credential answers is now the platform's to decide from the
-        # grants against this agent — or, by ref, one the agent picked
-        # from list_secrets, which the platform still checks is this
-        # slot's to use.
+        # Canonical like every other kind. A category that named no
+        # agent (a shared "family" slug) would leave the platform
+        # unable to tell who was asking, and an agent able to reach a
+        # credential nobody gave it. Which credential answers is the
+        # platform's to decide from the grants against this agent —
+        # or, by ref, one the agent picked from list_secrets, which
+        # the platform still checks is this slot's to use.
         self._require("secrets", resource_id, "use")
         return await self.provider.use_secret(
             self._canonical(resource_id), str(ref or "") or None)
@@ -174,9 +175,9 @@ class ResourceAccess:
                           content: Optional[str] = None,
                           content_base64: Optional[str] = None) -> Dict[str, Any]:
         """Text as ``content``, bytes as ``content_base64``. The provider
-        gets bytes either way it can take them; the wire carried only
-        JSON strings, which is why a workbook or a PDF used to arrive
-        as replacement characters."""
+        gets bytes either way it can take them. The wire carries only
+        JSON strings, so bytes come encoded: sent as text, a workbook
+        or a PDF would arrive as replacement characters."""
         self._require("files", resource_id, "create")
         if content_base64 is not None:
             try:

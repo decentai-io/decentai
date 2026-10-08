@@ -20,7 +20,7 @@ the tools to see how little code each feature actually needs.
 | `archive.export` | 2 | Files: `create` a document under declared constraints (MIME types, size). |
 | `archive.import` | 2 | Files: `read` a document a person may have uploaded themselves (`user_access: [create]`), validated whole before any note is written. **`call.post`**: reports what came in, in its own name, with the imported rows as a table. |
 | `sync.status` | 0 | Secrets: `use` a bound connection — `keys` readable, `values` encrypted and reaching only the function that declared it; audited by name, never by value. |
-| `sync.push` | 3 | External and irreversible: in an ordinary chat this asks the person for approval, and the runtime re-verifies the exact inputs before it runs. |
+| `sync.push` | 3 | External and irreversible: in an ordinary chat this asks the person for approval, and what runs is the call the card showed. |
 
 Also on show: two real pip dependencies (the platform builds this agent a
 private environment and installs exactly those), the hosts it connects

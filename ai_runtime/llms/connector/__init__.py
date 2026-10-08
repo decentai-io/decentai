@@ -9,12 +9,19 @@
     http.py          the POST the two without a client library share
 
 CONFIG-PURE. A connector is constructed from an explicit config dict
-(provider, model, endpoint, api_key, ...) and never reads the
-environment: which LLM a chat uses comes from its chat config, and the
-key from the model connection it names, read as the turn begins. So
-rotating a key or changing a model is a backend operation that the next
-turn picks up, and no deployment ever holds an LLM secret in its own
-configuration.
+(provider, model, endpoint, api_key, ...): which LLM a chat uses comes
+from its chat config, and the key from the model connection it names,
+read as the turn begins. So rotating a key or changing a model is a
+backend operation that the next turn picks up, and no deployment ever
+holds an LLM secret in its own configuration.
+
+The code here reads nothing from the environment. What it calls does,
+for what the config leaves unsaid: the HTTP client, for the way this
+machine reaches the internet (HTTPS_PROXY, a CA bundle); OpenAI's
+library, for an organization and a project (OPENAI_ORG_ID,
+OPENAI_PROJECT_ID), sent to the connection's address; and OpenAI's and
+Anthropic's libraries, for an address when the connection names none
+(OPENAI_BASE_URL, ANTHROPIC_BASE_URL).
 
 ONE INTERFACE. ``async chat(messages, max_tokens, tools) -> ModelReply``
 (tools.py): ``content`` is the reply as the cycle reads it, and beside

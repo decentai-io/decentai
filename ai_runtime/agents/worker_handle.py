@@ -5,8 +5,8 @@ One class, two ways in:
 - a ``WorkerHandle`` instance — the long-lived client an execution
   layer holds: spawns the worker from its private venv, handshakes,
   keeps any number of invocations in flight, routes the worker's asks
-  (resources, llm) to whoever may answer them, and owns the process's
-  death.
+  (worker_pool.py names them) to whoever may answer them, and owns the
+  process's death.
 - ``WorkerHandle.probe`` — installation's verification station: spawn,
   hello, shutdown, synchronously. What the handshake refuses is a
   broken package, named at install time in the exact environment the
@@ -153,7 +153,7 @@ class WorkerHandle:
         #: written down under; its place's name where it has one.
         self.agent_ref = ""
         #: async (method, params) -> result — answers the worker's asks
-        #: (resources.*, llm.complete). An exception becomes the error
+        #: (the pool's router). An exception becomes the error
         #: response the SDK surfaces as ResourceDenied.
         self.router: Optional[Callable] = None
         #: async (call_id, description) -> None — progress notifications.
@@ -174,9 +174,9 @@ class WorkerHandle:
         self.spool: Optional[Path] = None
         self.logger = RuntimeLoggerFactory.get_logger(self.__class__.__name__)
 
-    #: Base64 this long or shorter travels inline on the line as it
-    #: always has; longer goes through the spool. A line is capped at
-    #: LINE_LIMIT, and a scan or a signed form runs to many megabytes.
+    #: Base64 this long or shorter travels inline on the line; longer
+    #: goes through the spool. A line is capped at LINE_LIMIT, and a
+    #: scan or a signed form runs to many megabytes.
     INLINE_LIMIT = 256 * 1024
 
     def _spool_out(self, method: str, result: Any) -> Any:
@@ -199,8 +199,8 @@ class WorkerHandle:
 
     async def _spool_in(self, method: str, params: dict) -> dict:
         """A create whose bytes the worker left in the spool: read them
-        back into the shape the router has always taken, and remove
-        the file. Read on a thread — this loop serves every chat."""
+        back into the shape the router takes, and remove the file. Read
+        on a thread — this loop serves every chat."""
         if method != "resources.create_file" or not params.get("content_path"):
             return params
         if self.spool is None:
@@ -255,7 +255,8 @@ class WorkerHandle:
 
     async def start(self) -> List[str]:
         """Spawn and handshake. Returns errors, empty when the worker is
-        serving — the loader's old verdict, delivered by the worker."""
+        serving: whether the package loads is the worker's to say, from
+        the environment it runs in."""
         argv = self._spawn_argv(self.python)
         environment = self._clean_environment()
         stop = whose = None
@@ -506,9 +507,9 @@ class WorkerHandle:
                 self.screen(call_id, kind, params))
 
     async def _serve_ask(self, message: dict) -> None:
-        """One worker ask (resources.*, llm.complete), answered by the
-        router. No router, or a router refusal, is an error response —
-        which the SDK surfaces in the function as ResourceDenied."""
+        """One worker ask, answered by the router. No router, or a router
+        refusal, is an error response — which the SDK surfaces in the
+        function as ResourceDenied."""
         request_id = message["id"]
         if self.router is None:
             return await self._send({"id": request_id, "error": {

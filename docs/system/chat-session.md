@@ -36,32 +36,33 @@ delegation was minted for the chat it names.
 
 | services method | runtime verb | record |
 |---|---|---|
-| `contract(chat_id)` | `AI:Chat:Contract` | what this chat may do, in thirteen fields — [below](#the-contract) |
+| `contract(chat_id)` | `AI:Chat:Contract`, then `Settings:Llm:Use` for the key of the chat's model and of the embedding model | what this chat may do, in twelve fields — [below](#the-contract) |
 | `load_state` / `save_state` | `AI:State:Get` / `AI:State:Save` | `ai_chats.state` — the mind, one document, replaced whole on every beat; size-capped, version stamped by the runtime |
 | `persist_message` / `history` | `AI:Message:Create` / `AI:Message:List` | `ai_messages`; the actor may carry `parent` for a child's goal |
 | `record_event` / `events_since` | `AI:Event:Record` / `AI:Event:Since` | `ai_chat_events` with `direction: "in"` — the inbox: per-chat sequence, durable before absorbed |
 | `emit` | `AI:Event:Append` | `ai_chat_events` with `direction: "out"` — the audience's replayable log |
-| `open_approval` | `AI:Approval:Open` | `ai_approvals`: chat, the request (function, inputs, level, action hash, job id or none), `pending` |
-| `wait_approval` | — (no request; the decision arrives as a frame) | the runtime parks on the frame, not on a long poll |
-| `resolve_approval` | `AI:Approval:Decide` (person verb) | records the decision, then the relay sends `approval_decided` |
+| `open_approval` / `open_card` | `AI:Approval:Open` | `ai_approvals`: chat, the request (function, inputs, level, action hash, job id or none), `pending`. `open_card` is the same door for a question card, and is told `settled` when the Safety setting answered it and no person is asked |
+| `wait_approval` / `wait_answer` | — (no request; the decision or the answer arrives as a frame) | the runtime parks on the frame, not on a long poll |
+| `resolve_approval` / `resolve_answer` | `AI:Approval:Decide` (person verb) | records the decision or the answer, then the relay sends `approval_decided` or `question_answered`, and the runtime hands it to whatever waits |
 | (prepare) | — (`agents_changed` frame, backend → runtime, after `Agents:Agent:Install`) | the runtime pulls the package and builds its environment at once, through the installer's most recent chat, so the first chat to name the agent finds it ready |
 | schedules page | `AI:Activity:List` (person, `ai:activity:list`) | what the person sees of every chat of theirs: schedules, cards waiting, jobs running, and whether their work is stopped — [below](#the-schedules-page) |
 | notifications | `Settings:Notifications:*` (baseline) + `server/notifications.py` | a push, or an email, when a card opens or the assistant answers and nobody has the chat open — [below](#notifications) |
 | attention | `AI:Chat:List` rows carry `attention {working, cards, unseen}` | what the chats list and the sidebar flag: working, cards, news — [below](#attention) |
 | kill | `AI:Chat:Stop {force: true}` (person, `ai:chat:stop`) | the kill switch: cards expired on the record, then the runtime told to stop where it stands — [below](#the-kill) |
 | readiness | `Agents:Agent:Prepared` (runtime-only, `agents:agent:prepared`) | the runtime's word that an agent's code is ready on it, or would not build and why — [below](#readiness) |
-| `pending_questions` / `expire_approval` | `AI:Approval:List` / `AI:Approval:Expire` | the question cards still open on the chat, and closing one: a question nobody answered in a day, or one a session opening finds left by a dead process |
+| `pending_questions` / `pending_cards` / `expire_approval` | `AI:Approval:List` / `AI:Approval:Expire` | the question cards still open on the chat, every open card whatever its kind (what a kill expires), and closing one: a question nobody answered in a day, one a session opening finds left by a dead process, or a card whose call was stopped |
 | `store_result` / `read_result` | `AI:Storage:Create` / `AI:Storage:Get` | `ai_chat_storage` |
-| `record_audit` | `AI:Audit:Record` | `ai_audit`: one `execution` event per function the executor ran — agent, function, level, the inputs in outline, outcome, duration, the stored result's ref. The person reads their trail with `AI:Audit:List`; the organization's whole trail is `AI:Audit:List_all`, a grant of its own |
+| `record_audit` | `AI:Audit:Record` | `ai_audit`: one `execution` event per call the executor was asked for, whatever its outcome — one the gates refused, one the person denied, one that was cancelled and one the platform failed on included — agent, function, level, the inputs in outline, outcome, duration, the stored result's ref. The person reads their trail with `AI:Audit:List`; the organization's whole trail is `AI:Audit:List_all`, a grant of its own |
 | `list_skills` / `read_skill` | `Skills:Skill:List` / `Skills:Skill:Get` | the data layer's skills |
 | `list_memories` / `add_memory` | `Settings:Memory:List` / `Settings:Memory:Create` | the person's memories |
 | `save_plan` | `AI:Chat:Plan` | `ai_chats.plan` |
 | `title_chat` | `AI:Chat:Title` | `ai_chats.title` from the chat's content — one small call to the chat's model after the first answer and every few turns; kept unless the person named the chat (`title_by: person`, set by `AI:Chat:Update`); the page hears `chat_titled` |
-| `provider` (data, files, secrets) | `Data:Record:List` / `Get` / `Shapes` / `Create` / `Update` / `Delete`, `Files:File:Upload` / `Download` / `Get` / `List` / `Delete`, `Secrets:Secret:Use` / `Instances`, `Settings:Llm:Use` — no transfer and no change of owner: what an agent keeps stays whose it is | [the data layer](data-layer.md) |
+| `provider` (data, files, secrets) | `Data:Record:List` / `Get` / `Create` / `Update` / `Delete`, `Files:File:Upload` / `Download` / `List` / `Delete`, `Secrets:Secret:Use` / `Instances` — no transfer and no change of owner: what an agent keeps stays whose it is. (The fence also lists `Data:Record:Shapes` and `Files:File:Get`, which the runtime does not call) | [the data layer](data-layer.md) |
+| `read_image` / `list_files` | `Files:File:Download` / `Files:File:List` | a file the person attached or chose, encoded, for the model to look at or for `read_file`; and every file the person can see, for `find_files`. Under the chat's delegation, with no agent and no grant in the picture |
 | (a site's login an agent asked for) | `Secrets:Credential:Resolve` | the person's saved login for that site, once they consented ([the live screen](live-screen.md)) |
 | (an MCP server's address and credential, at a call) | `Mcp:Server:Use` | [MCP servers](mcp.md) |
 | `schedules` (`load` / `add` / `ran` / `remove`) | `AI:Schedule:Load` / `Add` / `Ran` / `Remove` | `ai_schedules`: the clock's rows, read per chat and written one row at a time; at most 50 a chat — [below](#the-clocks-rows) |
-| (pull) | `Agents:Agent:Fetch_package` | code by digest, verified on arrival ([agent code](agent-code.md)) |
+| (pull) | `Agents:Agent:Fetch_package` | code asked for by the agent's ref, checked against the approved digest on arrival ([agent code](agent-code.md)) |
 | (reclaim) | `Agents:Agent:Pinned_digests` | every digest any organization still approves, so the runtime deletes only what nobody does |
 
 Seven rows have more to say than a row holds:
@@ -141,10 +142,13 @@ The kill switch: the backend expires every pending card of the chat on
 the record first, then the runtime is sent `{event: stop, force: true}`;
 the host runs `session.kill()` off the socket's loop — the cycle and job
 tasks cancelled where they stand (a worker call overruled, a deaf worker
-killed), children killed, the chat's browser closed through the watch
-function, jobs marked cancelled, state persisted, a `stopped {jobs,
-children, cards}` event relayed — and forgets the session so the next
-message starts quiet.
+killed), helpers stopped the same way and their cards closed, the chat's
+browser closed through the watch function, jobs marked cancelled, every
+card still open expired, the chat's sleep taken off the clock, the stop
+written into the state (`stopped`) and the transcript, state persisted,
+a `stopped {jobs, children, cards}` event relayed — and forgets the
+session. The session built for the next message reads that the chat was
+stopped and rests until something is asked of it; a message is answered.
 
 No runtime serving the chat: the record is still quiet and the page says
 so.
@@ -184,8 +188,14 @@ the chat's zone), one row at a time too, then send the chat's runtime
 session `schedules_changed` through the relay so the clock re-reads
 them.
 
-Two hands on one chat's rows never overwrite each other: a pause on the
-page stands even when the row was firing as it was made.
+Two hands on one chat's rows never overwrite each other in the store: a
+pause on the page stands even when the row was firing as it was made.
+The clock's own copy follows the store. It reads a chat's rows again
+when it is told (`schedules_changed`) and every time the chat dials or
+its credential is renewed, so a change whose word never arrived is
+caught up with then; what the person set is taken, and what the clock's
+last fire did to a row is kept, so a row read back from before that
+fire does not fire again.
 
 Three things follow from the table:
 
@@ -241,14 +251,17 @@ call the runtime has in flight can be refused: the new key is the next
 frame on the wire, and the call after it carries it.
 
 Over the socket the relay speaks the door's vocabulary and nothing
-else:
+else. The first three rows are frames on the browser's socket; a
+decision and a stop are not, and reach the relay from the gateway:
 
 | frontend says | relay sends | runtime answers with |
 |---|---|---|
-| `AI:Chat:Input {text, attachments, client_message_id}` (`parts` is taken for `attachments`) | `user_message` | `message_created`, then work; a resend with the same `client_message_id` is the same message |
+| `AI:Chat:Input {text, attachments, client_message_id}` (`parts` is taken for `attachments`; the page also sends `protocol_version`, which nothing reads) | `user_message` | `message_created`, then work; a resend with the same `client_message_id` is the same message |
+| `AI:Chat:Screen {call_id, events}` | `screen_input` | nothing of its own: the events reach the call showing that screen |
+| `AI:Chat:Watch {action}` | `screen_open` | `screen_frame`s from the roster's watch function, or `screen_unavailable` |
 | `AI:Approval:Decide` (via the gateway, recorded first) | `approval_decided` | the job or park resumes |
 | `AI:Approval:Decide {answer}` — a question's (via the gateway, recorded first) | `question_answered` | the asking call continues, or hears it expired |
-| `AI:Chat:Stop` | `stop` | the assistant idles and says so |
+| `AI:Chat:Stop` (via the gateway) | `stop` | the assistant stops between beats and the audience hears `idle`, with no message; with `force`, [the kill](#the-kill) and `stopped` |
 
 Everything the runtime emits reaches the frontend as `AI:Chat:Event`. The `hello` frame on attach carries the present tense
 (whether a turn is under way, active jobs, pending cards, the plan) and
@@ -268,7 +281,9 @@ socket path. It announces nothing to the runtime — the runtime asks.
 What the runtime sends toward a person, and what a message carries, is
 defined once: `contracts/chat.py`. The runtime and the backend import
 it; the page's `chat-protocol.ts` is written by hand against it, and
-`tests/test_chat_contract.py` fails when the two disagree.
+`tests/test_chat_contract.py` fails when the two disagree about which
+events and which part types there are. It compares those names and not
+the fields of an event or a part.
 
 - **Events** are the runtime's outbound frames — `message_created`,
   `working`, `idle`, `stopped`, `activity`, `plan_updated`,
@@ -292,7 +307,9 @@ it; the page's `chat-protocol.ts` is written by hand against it, and
   markdown part carries the agent's `source` — shown under the assistant
   with a "from …" caption — in a live call, a background job or a
   scheduled run. The assistant hears it as an `agent_posted` inbox
-  event, marked as data, at its next beat; hearing it never wakes it.
+  event, marked as data, at its next beat; a post starts no cycle of
+  its own. (A session rebuilt before that beat finds the event past
+  its bookmark and runs a cycle to absorb it.)
 - **An agent may ask the person** (`call.ask`): `question_asked` puts a
   card in the chat — a card of the approval kind in `ai_approvals`,
   `kind: question` — answered by a choice or in the person's own words
@@ -372,7 +389,8 @@ it; the page's `chat-protocol.ts` is written by hand against it, and
   shows it and any agent reads it by ref.
 - **Every event and part may carry a `source`**: the assistant, an
   installed agent (its ref, its name, the function, and the call and
-  job it spoke on), a helper, the scheduler, or the platform. The page
+  job it spoke on), or a helper. (The contract's `Source.kind` also
+  allows `scheduler` and `system`; nothing writes either.) The page
   shows the agent's name on its activity, on its approval card, and as
   a quiet "from …" under a table or file it produced; the answer itself
   stays the assistant's.

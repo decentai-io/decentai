@@ -10,7 +10,8 @@ uses, so the runtime is exercised end to end without a database:
 
     session_services.py   SimSessionServices — the contract, in dicts
     resources.py          InMemoryResourceProvider — data, files, secrets
-    schedules.py          the clock's rows, in memory or in one JSON file
+    schedules.py          MemoryScheduleStore — the clock's rows, in memory
+    mcp_server.py         FakeMcpServer — a stand-in MCP server, for tests
 
 Everything here honours the same rules the backend does — a schedule
 row's shape, an approval that lands once, events durable before they

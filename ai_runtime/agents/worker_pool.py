@@ -3,8 +3,9 @@
 One pool per process is the intent: approved agent -> one live
 WorkerHandle, spawned on first invocation, kept warm, replaced after
 death. The pool is also the ROUTER — the single place a worker's asks
-(resources.*, llm.complete, show, post, ask) are answered, by resolving the ask's
-call_id to the invocation that is entitled to answer it:
+(resources.*, llm.complete, show, post, ask, propose, install,
+credential) are answered, by resolving the ask's call_id to the
+invocation that is entitled to answer it:
 
     context = CallContext(resources, llm, progress)   built per invocation
     pool.invoke(agent, call_id, function, inputs, context, timeout)
@@ -246,8 +247,8 @@ class WorkerPool:
 
     async def _overrule(self, handle: WorkerHandle, call_id: str) -> None:
         """Cancel cooperatively; a worker that cannot even answer the
-        cancel within the grace is killed — the enforceability the
-        in-process executor never had."""
+        cancel within the grace is killed — which a process of its own
+        makes possible, and code run inside the host would not."""
         try:
             await asyncio.wait_for(handle.cancel(call_id),
                                    WorkerHandle.GRACE_SECONDS)

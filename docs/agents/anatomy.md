@@ -207,6 +207,27 @@ What the agent does, what it will not do, what it needs bound before it
 works, and — for an example — which platform feature each function is
 there to show. A reviewer reads this before approving; write it for them.
 
+## What goes into the package
+
+When an agent is installed, its folder is packed into one archive, and
+that archive is the code that runs ([agent code](../system/agent-code.md)).
+Everything in the folder goes in, except:
+
+- a file or a folder named `.git`, `.gitignore`, `.gitattributes`,
+  `.github`, `__pycache__`, `.pytest_cache`, `.mypy_cache`,
+  `.ruff_cache`, `.venv`, `venv`, `node_modules`, `.DS_Store`, `.idea`
+  or `.vscode`, at any depth, with everything beneath it;
+- a file whose name ends in `.pyc`, `.pyo` or `.pyd`.
+
+These are left out without a word, so give no folder of your own code
+one of those names: a `tools/venv/` would be missing when the agent
+runs.
+
+A package holds at most 5,000 files and 64 MB, counted before it is
+compressed and with the sample files among them. A folder over either
+limit is refused when somebody installs the agent, with the reason. So
+is one that holds a symbolic link, or nothing at all.
+
 ## What the assistant sees of your agent
 
 The chat's model sees your agent's name and description among the

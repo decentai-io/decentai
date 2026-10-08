@@ -194,9 +194,10 @@ message can be refused.
    (`AI:Event:Record`), and only then is the assistant given it.
 5. **The assistant thinks one beat** (`Assistant._beat`,
    `ai_runtime/reasoning/assistant.py`): one call to the model, one
-   action back. The model's key is asked of the backend for the call
-   (`Settings:Llm:Use`) and is in the runtime's memory, in plain, while
-   it is used. Here the action is `invoke note.note.save`.
+   action back. The model's key is asked of the backend with the
+   contract, as the turn begins (`Settings:Llm:Use`), and is in the
+   runtime's memory, in plain, while it is used. Here the action is
+   `invoke note.note.save`.
 6. **The executor's gates** (`FunctionExecutor._invoke`,
    `ai_runtime/execution/executor.py`), in order.
    **Decision 4:** the function is one the approved manifest declares;
@@ -221,9 +222,14 @@ message can be refused.
    resource; the fields are the ones the manifest declared. The
    runtime then writes through the backend (`Data:Record:Create`,
    decision 3 again), naming the agent's own slot.
-9. **The result comes back**: checked against the function's output
-   schema, stored (`AI:Storage:Create`), written to the audit trail
-   (`AI:Audit:Record`), and shown to the assistant as an observation.
+9. **The result comes back**: the keys only the platform writes on a
+   result (`storage_ref`, `displays`, `denied`, `not_permitted`) taken
+   out of what the function returned, then checked against the
+   function's output schema, stored (`AI:Storage:Create`), written to
+   the audit trail (`AI:Audit:Record`), and shown to the assistant as
+   an observation. Every call ends this way, as a result and a line on
+   the trail: one that a gate refused, one that was cancelled, and one
+   the platform itself failed on (`FunctionExecutor.invoke`).
 10. **The assistant answers** (`say`): the message is stored and an
     event appended (`AI:Event:Append`); the runtime sends the frame up
     its socket, and the backend's relay passes it to the page as

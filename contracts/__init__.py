@@ -1,4 +1,4 @@
-"""Versioned contracts shared by the DecentAI backend and private runtime."""
+"""Versioned contracts shared by the DecentAI backend and runtime."""
 
 from contracts.protocol import EndpointResponse, OperationError
 from contracts.version import CONTRACT_VERSION

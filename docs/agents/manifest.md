@@ -28,11 +28,19 @@ naming the path it is about (`tools[0].functions[2].inputs: …`).
 `schema_version` names the grammar this page describes. There is one,
 and a manifest that says anything else is refused.
 
-A key the platform does not know is ignored at the top level and inside
-`agent` and `implementation`, and refused inside `network` and `oauth`
-and as a kind under `resources`. Do not rely on a key being ignored — and
-mind that a misspelt optional block (`authorisation:`) is ignored too:
-the manifest is accepted and the agent has none of what the block said.
+A key the platform does not know is ignored at the top level, inside
+`agent`, `implementation` and `authorization`, and on a tool, a
+function, a resource, a field, a `binding`, a scope and a file's
+`constraints`. It is refused inside `network`, `oauth` and `identity`,
+as a kind under `resources`, and as a keyword in a schema. Do not rely
+on a key being ignored — and mind that a misspelt optional key is ignored
+too: with `authorisation:` the manifest is accepted and the agent has
+none of what the block said, and a function's `timeout_second: 120`
+leaves it with the default.
+
+A manifest holds what JSON can say. A value YAML reads as a date
+(`2026-09-21`, unquoted) and a key that is not text (`1:`) are refused
+wherever they are, with the path: quote them.
 
 ## Ids
 
@@ -57,6 +65,7 @@ Patterns:
 | every other id | `^[a-z][a-z0-9_]*$` — the same characters, any length |
 | a secret's `id` | the same, at most 34 characters |
 | a field's `name` in a secret | the same, 2 to 60 characters, and not `name`: that is every credential's own label |
+| a function's `id` | the same, and not `agent`, `close`, `id` or `logger`: every tool class has those names already |
 
 Each must be unique where it lives: a tool among the agent's tools, a
 function within its tool, a field within its resource. Resource ids are
@@ -135,11 +144,11 @@ Who the agent is.
 agent:
   id: note
   name: Note
-  version: "1.2.2"
+  version: "1.2.4"
   description: >
     Your working memory across conversations. Save what was decided,
     find what you wrote last month, summarize a notebook.
-  tags: [notes, productivity]
+  tags: [template, notes, productivity]
   examples:
     - title: "Save a decision"
       prompt: "Save a note in the \"meetings\" notebook: we agreed to move in November."
@@ -185,6 +194,7 @@ implementation:
   entrypoint: agent:NoteAgent
   dependencies:
     - "humanize>=4.9,<5"
+    - "titlecase>=2.4,<3"
 ```
 
 | Key | Required | Rule |
@@ -201,7 +211,10 @@ Nothing is installed before approval, and your code installs nothing
 itself. Where the platform confines agents, the list is downloaded and
 built by a user of its own that reaches the package index and nothing
 else ([the sandbox](../system/sandbox.md)), so a requirement that names
-an address somewhere else is not fetched. An agent whose dependencies
+an address somewhere else is not fetched. Such a requirement — a direct
+address, a `git+` address, a path — is not refused when the manifest is
+read, and where nothing confines agents the runtime's own pip is handed
+the list as it is. An agent whose dependencies
 cannot be installed does not load: the Agents page shows it as failed,
 with the reason.
 
@@ -373,7 +386,9 @@ value:
 The manifest says what a scope means and where its value comes from. A
 deployment's policy says which values a person is allowed. At each call
 the platform reads the value from the input and checks it against the
-policy before your code runs.
+policy before your code runs. The value is one value: a list or an
+object in that input is refused. Empty text is no value, and is judged
+as leaving the input out.
 
 What to think about:
 
@@ -390,7 +405,8 @@ What to think about:
   through, and one that forbids some values stops it. Leave a scope
   optional only where "all of them" is a real request.
 - **`normalization`** makes `Work` and `work` one value to a policy. Use
-  it wherever people type the name.
+  it wherever people type the name. Your function is handed the input
+  as it was written.
 
 ## `resources`
 
@@ -424,10 +440,11 @@ What is checked, for both: a field that was not declared is refused; a
 value is its field's type — text for `string`, a number for `number`,
 one of the `options` for `select`, a map for `object`; and a `required`
 field is there when a record is created. An update is held to what it
-writes and misses nothing. One thing is your code's alone: a field
+writes: it may leave a required field out, and may not write one
+empty. One thing is your code's alone: a field
 given as `None` is kept as no value, where a person's form must send
 text or leave the field out. `None` is not a value for a `required`
-field. A write that is refused raises `ResourceDenied` with the reason
+field, on a create or an update. A write that is refused raises `ResourceDenied` with the reason
 (`contracts/record_fields.py` is the rule, and the one both use).
 
 `family` is refused on any resource: a credential is granted to an
@@ -661,7 +678,7 @@ tools:
 
 | Key | Required | Rule |
 |---|---|---|
-| `id` | yes | Unique in the tool; the name of the method in code. A Python keyword (`import`) is written `import_` in code. |
+| `id` | yes | Unique in the tool; the name of the method in code. A Python keyword (`import`) is written `import_` in code. Not `agent`, `close`, `id` or `logger`. |
 | `name`, `description` | yes | The description is what the chat's model reads to decide when to call it. |
 | `permission_level` | yes | `0`, `1`, `2` or `3` |
 | `timeout_seconds` | no | A positive whole number; default 60. Paused while the function waits on a person. |
@@ -692,8 +709,10 @@ A function whose level exceeds the chat's trust level **pauses for a
 human**; that is all a level does. A person chooses each chat's trust,
 and it starts at their own default — the standard, 1, unless they
 changed it: at 1, levels 0 and 1 run, and levels 2 and 3
-raise an approval card. The runtime re-verifies the exact inputs before
-running what was approved.
+raise an approval card. What runs is the call the card showed. Where
+the runtime restarted while the card waited, the stored call goes
+through every gate again, and runs only if its inputs are exactly the
+ones approved.
 
 | A chat's trust | What runs without asking |
 |---|---|
@@ -724,7 +743,7 @@ tools:
       - id: find
         resources:
           data:
-            note: [list, read]      # this function's actual reach
+            note: list              # this function's actual reach
             settings: read
 ```
 
@@ -813,14 +832,24 @@ reviewer cannot read at a glance is one nobody checks.
   `default`, `minimum`, `maximum`, `minLength`, `maxLength`, `pattern`,
   `format`, `minItems`, `maxItems`, `minProperties`, and anything
   beginning `x-`.
+- A keyword's own value is checked: `minLength`, `maxLength`,
+  `minItems`, `maxItems` and `minProperties` are whole numbers, 0 or
+  more; `minimum` and `maximum` are numbers; `enum` is a non-empty
+  list; `pattern` is a regular expression; `format` is a string.
+- `format` is read and never enforced: `format: email` takes any
+  string. Use `pattern` for a shape that must hold.
 - Refused: `$ref`, `$defs`, `if`/`then`/`else`, `allOf`, `anyOf`,
   `oneOf`, `not`, and any keyword not listed above. `description` is
   one: a hint about an input goes in the function's description.
 - Types: `object`, `array`, `string`, `number`, `integer`, `boolean`,
   `null`, or a list of them.
 
-Inputs are validated, and defaults applied, before your code sees them.
-Outputs are validated before anything is shown as fact: an optional
+Defaults are applied to inputs, and then the inputs are validated,
+before your code sees them. A `default` is applied only on a property
+at the top of `inputs`, not on one nested inside another. It is not
+checked when the manifest is read: one that breaks its own property's
+rule (`minimum: 5, default: 1`) refuses every call that leaves the
+input out. Outputs are validated before anything is shown as fact: an optional
 output field must be **absent**, not `null`, when you have no value.
 
 **Size your string bounds against real values.** A full ISO instant with
@@ -843,9 +872,10 @@ file_ref: {type: string, x-resource: {type: file, id: document}}
 Marks a string as a reference to one of your declared resources
 (`type` is `secret`, `data` or `file`). The node it marks is a string,
 or one that may be a string (`type: [string, "null"]`), and its `id` is
-a resource of that kind the manifest declares. On an input it tells the
-platform what may be wired in; on an output it tells the platform what
-you made. **A file your function made is handed to the person with the
+a resource of that kind the manifest declares. On an input it says
+which resource the reference is to, for whoever reads the manifest;
+the platform does not hold the value to it at a call. On an output it
+tells the platform what you made. **A file your function made is handed to the person with the
 assistant's answer only when its output field is marked this way**, under
 the `filename` returned beside it. Several files are a list of objects,
 each with its own file field and `filename`:

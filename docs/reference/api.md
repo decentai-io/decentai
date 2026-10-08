@@ -37,13 +37,16 @@ The name is the permission: the caller must hold the action
 chain, or the answer is 403. The full list, with what each grants, is
 [the actions reference](actions.md).
 
-Three response shapes exist:
+Four response shapes exist:
 
 - The AI and Agents controllers, and of Settings the memory and API-key
   ones, answer in an envelope —
   `{"version": …, "request_id": …, "status": "success", "data": {…}, "error": null}`
   — and fail with `"error": {"code": …, "message": …}` in the same
-  envelope.
+  envelope, the message at most 2048 characters. `request_id` is the
+  caller's own: sent inside `data`, it comes back on the answer, and is
+  empty when none was sent. `version` is the envelope's
+  (`contracts/version.py`), `1` today; nothing compares it yet.
 - The identity and data-layer controllers, and the rest of Settings
   (model providers, routing, safety, connected apps, notifications,
   speech), answer the payload directly — `{"resources": […]}`,
@@ -57,8 +60,10 @@ Three response shapes exist:
   that is not JSON (400, `Invalid JSON body`), and a JSON body that is
   not an object (500, `Internal server error`).
 
-The HTTP status says which happened. A script reads `error` from the
-first two shapes and `messages[0].description` from the third.
+The HTTP status says which happened. A script reads
+`error.message` from the first shape, `error` — the sentence itself —
+from the second and the fourth, and `messages[0].description` from the
+third.
 
 ### Worked calls
 

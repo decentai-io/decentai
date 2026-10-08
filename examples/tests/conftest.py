@@ -1,8 +1,8 @@
 """The harness: the agent as the platform installs it.
 
-`agents` builds the agent's own virtual environment once per session,
-installs exactly the dependencies its manifest declares, and hands back
-an InstalledAgent. Functions then execute in a real worker process, over
+`agents` builds one virtual environment once per session, installs the
+dependencies the catalog's manifests declare, all together, and hands
+back an InstalledAgent for each agent. Functions then execute in a real worker process, over
 the real worker protocol, against the platform's simulated resources —
 no backend, no browser, no network.
 

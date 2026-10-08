@@ -10,8 +10,9 @@ processes, for somebody looking.
 ## What is written
 
 `ai_runtime/agents/events.py`. One line of JSON for each thing that
-happened, with when (`at`), what (`kind`), and — where it is an
-agent's — whose: the approval's ref (`agent`), the name a person knows
+happened, with when (`at`: a time in seconds, to the microsecond, and
+never the same for two events one process wrote), what (`kind`), and —
+where it is an agent's — whose: the approval's ref (`agent`), the name a person knows
 it by (`name`) and, where the line is about a process, its user
 (`user`). A `connection` line has the first two.
 
@@ -66,8 +67,12 @@ platform's user's alone, and an agent's fence does not open them.
 
 Bounded by size and not by time: a file that reaches 8 MiB is put
 aside, and each writer keeps eight, so the log is at most 128 MiB and
-the oldest lines go first. Nothing here is needed for the platform to
-work, and removing the folder loses only the past.
+the oldest lines go first. One writer's files hold every agent's lines,
+of every organization, and nothing limits how many `log` lines a worker
+writes: an agent that writes enough of them pushes the older lines out,
+its own and every other agent's, connections among them. Nothing here
+is needed for the platform to work, and removing the folder loses only
+the past.
 
 Recording never fails what it records: a line that cannot be written
 is one line less.

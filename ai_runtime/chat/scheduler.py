@@ -333,10 +333,11 @@ class Scheduler:
                      if s.schedule_id == schedule_id), None)
 
     def adopt(self, rows: List[Dict[str, Any]]) -> int:
-        """Rows that became loadable after start — a chat whose
-        credential arrived late (docs/system/chat-session.md). Idempotent by
-        schedule id; nothing is saved, the rows are already the
-        store's. Returns how many were new."""
+        """Rows added to what the clock holds, and nothing it holds
+        changed. Idempotent by schedule id; nothing is saved, the rows
+        are already the store's. Returns how many were new. A dial does
+        not come this way: the host takes the chat's rows whole
+        (``replace_for``)."""
         known = {s.schedule_id for s in self.schedules}
         added = 0
         for row in rows:
@@ -359,7 +360,7 @@ class Scheduler:
     def forget_chat(self, chat_id: str) -> None:
         """A chat's rows, off this clock and untouched in the store:
         the chat was deleted, or this process may no longer act for it.
-        A chat that dials again brings them back (``adopt``)."""
+        A chat that dials again brings them back (``replace_for``)."""
         self._owed -= {s.schedule_id for s in self.schedules
                        if s.chat_id == chat_id}
         self.schedules = [s for s in self.schedules if s.chat_id != chat_id]

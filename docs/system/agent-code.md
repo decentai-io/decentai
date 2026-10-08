@@ -2,8 +2,9 @@
 
 How an agent's code gets from a repository to a running worker: a
 source is read, an administrator approves one exact version, the
-backend keeps those bytes, and a runtime pulls them by their digest
-when a chat needs them. Reading a source never runs its code.
+backend keeps those bytes, and a runtime pulls them, and checks them
+against their digest, when a chat needs them. Reading a source never
+runs its code.
 
 ## Sources
 
@@ -41,6 +42,18 @@ on the row. A fetch that fails puts the approval back as it was
 approval mints a platform ref, `agt_` and
 twenty random characters, that no other organization can name.
 
+- **A package is source, and is held to that**
+  (`contracts/agent_package.py`). The folder may hold at most 5,000
+  files and 64 MB in all, before compression, and no symbolic link; one
+  that breaks any of these is refused when it is packaged, with the
+  reason, and the approval is put back. Some names are left out, and
+  nothing says so: whatever lies under a folder named `.git`,
+  `.github`, `__pycache__`, `.pytest_cache`, `.mypy_cache`,
+  `.ruff_cache`, `.venv`, `venv`, `node_modules`, `.idea` or `.vscode`,
+  at any depth; the files `.gitignore`, `.gitattributes` and
+  `.DS_Store`; and every file ending `.pyc`, `.pyo` or `.pyd`. Code an
+  agent needs when it runs must not sit under one of those names. Of a
+  file's permissions one thing is kept: whether its owner may run it.
 - **A version is immutable.** A version, once approved, is never
   approved again with other content; a changed manifest is a new
   version.
@@ -101,8 +114,9 @@ and manifest hash. When a session is built, every agent the runtime
 does not hold is pulled through the backend's fenced door
 (`Agents:Agent:Fetch_package`), as that chat's delegation:
 
-    fetch the archive by digest → verify → unpack into store/<hex>/
-    → build the environment → verify it loads → serve
+    ask for the archive by the agent's ref → check it against the
+    digest → unpack into store/<hex>/ → build the environment
+    → verify it loads → serve
 
 - **No new trust.** The door answers a delegated runtime only, for the
   organization's own approved agents only, with the digest taken from

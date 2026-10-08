@@ -1,4 +1,5 @@
-"""Manifest v1 validation and typed access (docs/agents/manifest.md).
+"""Manifest v1 validation (docs/agents/manifest.md). The typed access
+is the SDK's ``Manifest``, re-exported at the foot of this file.
 
 Shared by both sides of the boundary: the backend validates manifests at
 installation approval, the runtime validates them at load — with this one
@@ -92,11 +93,11 @@ def manifest_hash(document: Any) -> str:
     it when an administrator approves a manifest, and the runtime checks
     it against the manifest inside the package before it replaces a
     working agent. So it is here, with the validator, for the reason
-    stated at the top of this file — it was written out twice, once in
-    each process, and two implementations of a fingerprint agree only
-    until one of them is edited. A drift of one separator would fail
-    every install with "the manifest is not the one that was approved",
-    which is true of nothing and points at nothing.
+    stated at the top of this file: two implementations of a
+    fingerprint, one in each process, agree only until one of them is
+    edited. A drift of one separator would fail every install with
+    "the manifest is not the one that was approved", which is true of
+    nothing and points at nothing.
 
     sort_keys because YAML preserves author order and JSON must not
     inherit it; the tight separators because whitespace is not content.
@@ -135,8 +136,8 @@ class ManifestValidator:
     def validate(self, document: Any) -> List[str]:
         self.errors: List[str] = []
         self.scopes: Dict[str, dict] = {}
-        # kind -> {resource_id: resource dict}, plus a flat id set for the
-        # per-agent uniqueness rule (categories share one derived namespace).
+        # kind -> {resource_id: resource dict}. The per-agent uniqueness
+        # rule (categories share one derived namespace) is _resources' own.
         self.resources: Dict[str, Dict[str, dict]] = {k: {} for k in RESOURCE_KINDS}
 
         if not isinstance(document, dict):
@@ -377,9 +378,8 @@ class ManifestValidator:
                 self._require_str(resource, "label", path)
                 self._binding(resource.get("binding"), path)
 
-                # `family` used to opt a secret into a SHARED definition —
-                # the agent named a slug and joined whatever was already
-                # there, which meant claiming a name was enough to reach
+                # `family` asks to join a SHARED definition by naming its
+                # slug, and claiming a name must not be enough to reach
                 # somebody else's stored credential. Refused rather than
                 # ignored: resource keys are not whitelisted, so silently
                 # dropping it would leave an agent that relied on joining

@@ -1,8 +1,9 @@
 // The chat protocol as the page speaks it (docs/system/chat-session.md):
 // durable records over HTTP, and the runtime door's frames — relayed by
 // the backend as AI:Chat:Event — over the socket.
-// The vocabulary is contracts/chat.py's; tests/test_chat_contract.py
-// fails when this file and it disagree.
+// The vocabulary is contracts/chat.py's, written here by hand;
+// tests/test_chat_contract.py fails when the event names or the part
+// types of the two differ. The fields of each are not compared.
 export const CHAT_PROTOCOL_VERSION = 2 as const;
 
 /** Who produced an event or a part: the assistant, an installed agent

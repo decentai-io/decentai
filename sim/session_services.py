@@ -106,10 +106,10 @@ class SimSessionServices:
     async def pinned_digests(self, chat_id: str) -> Optional[set]:
         """Which packages are still approved anywhere (host.reclaim).
 
-        None until a test says otherwise, and the host reads an empty
-        answer as "do not delete anything" — so the sim's default is to
-        keep every package, which is what a runtime with no platform
-        behind it should do."""
+        None until a test says otherwise, and the host cannot read
+        that as a set of digests: it deletes nothing, as it does for an
+        empty answer — so the sim's default is to keep every package,
+        which is what a runtime with no platform behind it should do."""
         return self.pinned
 
     # -- state -----------------------------------------------------------

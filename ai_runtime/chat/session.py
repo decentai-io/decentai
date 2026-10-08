@@ -5,10 +5,13 @@ AssistantState from the store, wires the assistant's seams to real
 persistence and delivery, pumps events into it, and keeps it advancing.
 It may serve a live socket or nobody at all — a session with no
 connection is simply an assistant working unwatched, which is what a
-"background task" now is.
+"background task" is.
 
 The services object is the platform surface, duck-typed so the sim and
-the future backend implement one contract:
+the backend's client implement one contract. What a session lives
+against is below; what the host alone calls (a chat's credential, a
+package fetched, the digests still pinned, an MCP server, an agent's
+code reported ready or failed) is in server/host.py:
 
     load_state(chat_id) / save_state(chat_id, state_dict)
     persist_message(chat_id, actor, text, parts, client_message_id="",
@@ -18,13 +21,24 @@ the future backend implement one contract:
     record_event(chat_id, event_dict) -> seq     the inbox: durable
     events_since(chat_id, cursor) -> [events]    before absorbed
     emit(chat_id, event_dict)                    events to the user
+    relay(chat_id, event_dict)                   to the socket alone
     open_approval(chat_id, request) -> approval_id
     wait_approval(approval_id) -> bool           blocks until decided
     resolve_approval(approval_id, decision)      settle a waiter
+    open_card(chat_id, request) -> {approval_id, settled}
+                                                 a question card, and the
+                                                 platform's own answer
+                                                 if it gave one
+    wait_answer(approval_id) -> answer           blocks until answered
+    resolve_answer(approval_id, answer) -> bool  settle a waiter
     pending_questions(chat_id) -> [cards]        questions still open
+    pending_cards(chat_id) -> [cards]            every card still open
     expire_approval(chat_id, approval_id)        close one unanswered
+    resolve_credential(chat_id, payload) -> dict a login an agent asks for
     store_result(chat_id, source, result) -> storage_ref
     read_result(chat_id, storage_ref, path) -> value
+    read_image(chat_id, ref) -> dict             a stored file, encoded
+    list_files(chat_id) -> [rows]                the files the person sees
     record_audit(chat_id, event)                 the trail: what ran
     list_skills() / read_skill(ref)
     list_memories(chat_id) / add_memory(chat_id, text)
@@ -42,8 +56,8 @@ assistant**. A foreground `invoke` that needs approval blocks only its
 own beat; a background job that needs one is marked `waiting_approval`
 while everything else continues. If the process dies with a job
 waiting, the next session hydrates it and the decision resumes it
-through the executor's re-verification gates (`resume_invoke`) — the
-same fail-closed path the old checkpoint resume proved out.
+through the executor's re-verification gates (`resume_invoke`), fail
+closed.
 """
 
 from __future__ import annotations
@@ -392,10 +406,6 @@ class Session:
                 and state.messages[-1].get("role") == "user")
 
     # ------------------------------------------------------------------
-    # Events in — each delivery pumps the cycle
-    # ------------------------------------------------------------------
-
-    # ------------------------------------------------------------------
     # The present, re-read
     # ------------------------------------------------------------------
 
@@ -497,6 +507,10 @@ class Session:
         # is written from the roster and the level, so it is rewritten.
         assistant.reframe()
 
+    # ------------------------------------------------------------------
+    # Events in — each delivery pumps the cycle
+    # ------------------------------------------------------------------
+
     async def deliver_user(self, text: str, parts: Optional[list] = None,
                            actor: str = "user",
                            client_message_id: str = "",
@@ -516,7 +530,8 @@ class Session:
         an agent it names — belongs there rather than in front of the
         whole method. Persisting needs none of it, and a person waiting
         to see their own words should not be waiting on a pip install.
-        Nobody passing it keeps the old order exactly."""
+        Without it the mind is given the message as soon as it is
+        echoed."""
         message, created = await self.services.persist_message(
             self.chat_id, actor,
             text, list(parts or []),
@@ -595,13 +610,19 @@ class Session:
 
     async def deliver_approval(self, approval_id: str, approved: bool,
                                action_hash: str = "") -> None:
-        """The human decided. Two paths, one rule:
+        """The human decided. Where the one who asked is decides the
+        path, tried in this order:
 
-        - the job's task is alive in THIS incarnation → settle its
-          waiting approval and let the in-flight executor continue;
-        - the task died with a previous incarnation → the hydrated job
-          resumes through resume_invoke, every gate re-run against
-          current state, fail closed.
+        - a job whose task died with a previous incarnation → the
+          hydrated job resumes through resume_invoke, every gate re-run
+          against current state, fail closed;
+        - a foreground call parked by a beat that died the same way →
+          the same resume, at once when this session is at rest, and
+          when the running cycle comes to rest otherwise;
+        - a live child's card → that child, by these same paths;
+        - a card this chat does not hold → logged and ignored;
+        - else the asker is alive in THIS incarnation → settle its
+          waiting approval and let the in-flight executor continue.
 
         ``action_hash`` is the platform's copy of what was approved —
         recorded on the card when it was opened, carried back with the
@@ -756,12 +777,15 @@ class Session:
 
         The cycle and every job task are cancelled where they stand — a
         worker call is overruled, and a worker that ignores that is
-        killed (worker_pool.py) — children are killed the same way, the
-        browser the chat kept is closed, every card nobody will now
-        answer is expired, and the mind is persisted with its jobs
-        marked cancelled. What was done stays done; the next message
-        rebuilds a quiet chat that knows what it did. Returns what went:
-        jobs cancelled, children killed, cards expired."""
+        killed (worker_pool.py) — a helper is killed the same way as its
+        job is cancelled (``_spawn_child``), and any still listed after
+        that is killed here, the browser the chat kept is closed, every
+        card nobody will now answer is expired, and the mind is
+        persisted with its jobs marked cancelled and the stop written
+        into it. What was done stays done; the next message rebuilds a
+        chat that knows what it did and that it was stopped. Returns
+        what went: jobs cancelled, the children there were when the stop
+        came, cards expired."""
         self.assistant._stopping = True
         # From here this session is nobody's: what reaches it is kept
         # on the record for the session built next, and not thought
@@ -859,9 +883,10 @@ class Session:
                     return
 
     def abandon(self) -> None:
-        """A crash, on demand — for tests and chaos. Tasks die where
-        they stand; the state is whatever the last beat persisted, which
-        is exactly the situation hydration exists for."""
+        """A crash, on demand — the host's shutdown, a helper whose
+        parent was abandoned, and tests. Tasks die where they stand; the
+        state is whatever the last beat persisted, which is exactly the
+        situation hydration exists for."""
         self._abandoned = True
         if self._running is not None and not self._running.done():
             self._running.cancel()
@@ -980,8 +1005,8 @@ class Session:
         changed, so a death after a fold hydrates the folded mind."""
         if not force:
             # Between beats the question is asked cheaply first: a
-            # summarizer that cannot say (an older one, a test's) folds
-            # at idle as it always did.
+            # summarizer that cannot say (a test's) is left to fold at
+            # idle.
             needed = getattr(self.summarizer, "needed", None)
             if needed is None or not needed(self.assistant):
                 return False
@@ -1201,10 +1226,11 @@ class Session:
 
     async def _llm(self, messages: list, max_tokens=None,
                    images: Optional[list] = None) -> str:
-        """The chat's model, for an agent (call.llm). Pictures ride on
-        the last message as the connector's own blocks — the same way
-        the mind is shown a screenshot — and a connector without them
-        is told so rather than handed base64 as words."""
+        """The chat's model, for an agent (call.llm): the reply and why
+        it stopped, as a ``Completion``. Pictures ride on the last
+        message as the connector's own blocks — the same way the mind
+        is shown a screenshot — and a connector without them is told so
+        rather than handed base64 as words."""
         if images:
             maker = getattr(self.connector, "image_block", None)
             if maker is None:

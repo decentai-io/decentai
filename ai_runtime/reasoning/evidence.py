@@ -5,18 +5,19 @@ not evidence, the executor trace is, and this module decides what may
 appear AS DATA beside the model's words. The words themselves travel
 as written; the runtime never speaks over the model, and never twice.
 
-Three rules, each learned from a conversation that read badly:
+Three rules:
 
 - **A table is shown when the model shows it, and only when the trace
   proves it.** It is either a display a call offered (``call.show`` —
-  a table or a chart the agent built, kept with the call's result) or ``say`` names what to show — a stored result of a call
-  made in this conversation, the field holding its rows, a title, the
-  columns worth seeing — and the runtime attaches it only when that
-  result is a successful call the trace holds and the field is a
-  declared list with rows. Nothing is attached on a rule of its own: a
-  read is usually the means to a sentence, and a table under every
-  reply read as noise. What is refused is said back to the model,
-  never to the user.
+  a table or a chart the agent built, kept with the call's result) or
+  what ``say`` names to show — a stored result of a call made in this
+  conversation, the field holding its rows, a title, the columns
+  worth seeing — and the runtime attaches it only when that result is
+  a successful call the trace holds and the field is a declared list
+  with rows. Nothing is attached on a rule of its own: a read is
+  usually the means to a sentence, and a table under every reply
+  reads as noise. What is refused is said back to the model, never to
+  the user.
 - **A write is recorded, not announced.** Every successful write rides
   the message as a ``success`` part — machine state the page keeps but
   does not render — so an audit can see what was verified without the
@@ -131,8 +132,8 @@ class Evidence:
 
         The name travels with the ref. Every file-producing function in
         the catalog returns ``filename`` beside its file field, and
-        without it the page had nothing to call these but "File" — six
-        downloads in a row all read "File · FILE", which is no more
+        without it the page has nothing to call these but "File" — six
+        downloads in a row that all read "File · FILE" are no more
         useful than six blank rows."""
         parts: List[Dict[str, Any]] = []
         seen = set()

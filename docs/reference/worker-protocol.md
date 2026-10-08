@@ -101,10 +101,14 @@ over one connection per worker. Nothing below changes: the same lines,
 in the same order, between the same two parties.
 
 Newline-delimited JSON over the worker's stdin and stdout, UTF-8, one
-object per line, **2 MiB per line** in either direction. A line that is not a JSON object,
+object per line, **2 MiB per line** in either direction — checked by
+whoever reads the line, and measured by neither side as it writes. A line that is not a JSON object,
 or too long, is a protocol fault: the host kills the worker; a worker
-reading a bad line exits. stderr is a log channel — captured by the
-host, written to its own log, never parsed. **EOF on stdin is the order
+reading a bad line exits. So is a message from a worker that is JSON
+of the wrong shape (an `id` that is a list): the host ends that worker
+as one that broke the protocol. stderr is a log channel — captured by the
+host, written to its own log, never parsed; a line too long to keep is
+dropped and the log goes on. **EOF on stdin is the order
 to die**: a worker that has lost its host exits on its own.
 
 Three shapes, JSON-RPC in spirit:
@@ -135,8 +139,8 @@ First message, host → worker:
 
 The manifest arrives as JSON because the host already validated it — the
 worker does not parse yaml, which is why the SDK needs no yaml. The
-worker imports the entrypoint, constructs the agent, and answers with
-what the loader verifies:
+worker imports the entrypoint, constructs the agent, checks that every
+declared function is implemented, and answers:
 
 ```json
 {"id": 1, "result": {"agent_id": "notebook", "version": "1.0.3",
@@ -145,7 +149,9 @@ what the loader verifies:
 
 or `{"id": 1, "error": {"message": "functions declared but not
 implemented: [...]"}}` — a failing import, a wrong base class, a missing
-method. A handshake error fails the call that needed the worker, with
+method, a manifest that cannot be read. The host reads only whether the
+answer is an error; the three values are compared with nothing. A
+handshake error fails the call that needed the worker, with
 the reasons; the next call tries a fresh worker.
 
 ## Invocation
@@ -188,8 +194,13 @@ The answer is the function's contract, never an exception:
 
 `status` is `success` or `error`, as functions return them; an
 exception inside the function becomes an error result inside the worker.
+So does a return that is not `(dict, "success" | "error")`, and a result
+that JSON cannot say — a date, a set, bytes. A function written without
+`async` runs and answers like any other.
 A protocol-level `error` on an invoke means the worker itself is broken,
-not the function. The host validates `result` against the manifest's
+not the function; so does an answer whose `result` is not an object or
+whose `status` is neither word, which the host takes as the worker's
+failure and not as a result. The host validates `result` against the manifest's
 output schema — the worker's answer is claimed, not believed.
 
 **Concurrency is the contract, not an option.** The worker runs an
@@ -252,7 +263,9 @@ the screen, and is dropped when that call has ended.
 
 **The spool.** A line is capped, and a scan or a signed form runs to
 many megabytes. So the host opens a folder per worker at spawn
-(`DECENTAI_SPOOL_DIR` in the worker's environment, removed at death),
+(`DECENTAI_SPOOL_DIR` in the worker's environment, removed when the
+host ends the worker or could not start it; a runtime that stops ends
+no worker itself, and those folders stay),
 and bytes whose base64 would exceed 256 KiB go through it instead of
 the line: a read answers with `content_path`, a file the host wrote
 there for the worker to read once and delete; a create sends
@@ -272,7 +285,8 @@ And one notification, worker → host, no reply:
 The SDK's `FunctionCall` implements this surface over the wire; agent
 code is written against the same `call.resources` / `call.llm()` /
 `call.progress()` / `call.show` / `call.post()` / `call.ask()` /
-`call.propose()` / `call.install()`.
+`call.propose()` / `call.install()` / `call.credential()` /
+`call.screen`.
 
 ## Cancellation, timeouts, and death
 
@@ -306,7 +320,10 @@ Lifecycle rules:
 
 - **Lazy start, kept warm.** A worker is spawned on the first invocation
   of its agent, then kept alive until its code changes — noticed at the
-  next call, which starts a fresh one — it dies, or the runtime stops.
+  next call, which retires it and starts a fresh one; calls still in
+  flight on the old one end with it, as error results — it dies, or the
+  runtime stops. A worker whose start is cancelled (a stop pressed
+  during a slow first call) is ended, since nobody would be handed it.
   Uninstalling an agent does not stop its running worker: nothing can
   call it any more, and it goes with the runtime. Spawning again is
   always safe.
@@ -319,13 +336,18 @@ Lifecycle rules:
   uninvited fails its in-flight calls; the next invocation spawns a
   fresh one. Ending a confined worker ends everything its user runs —
   a browser never outlives the worker that started it.
-- **Shutdown** is a `shutdown` request (the worker calls the agent's
-  `close()`, answers `{}` and exits), and stdin EOF is its backstop.
+- **Shutdown** is a `shutdown` request (the worker answers `{}`,
+  cancels what it is running, calls the agent's `close()` and exits),
+  and stdin EOF is its backstop. The host sends it to a worker it
+  retires and at the install probe; when the runtime itself stops no
+  request is sent, and the end of input is the only word.
 - **What a worker refuses**, each as an error on the request that asked:
   an `invoke` before the handshake (`no handshake`), one with no
   `call_id`, one whose `call_id` is already running, one for a function
   the agent does not have (`unknown function`), a second `hello`
-  (`already handshaken`), and a method it does not know.
+  (`already handshaken`), a `hello` whose manifest cannot be read, a
+  request whose `params` is not an object, and a method it does not
+  know. None of them ends the worker.
 - **A spool is read by its own path and nothing else**: a
   `content_path` outside the worker's spool, one that is a link, and
   one that is not a file are each refused.
@@ -342,9 +364,11 @@ exactly this boundary without changing a message. Confined or not:
   entitle it to, per call, mediated live by the host.
 - Every worker answer is size-capped and schema-checked; a worker
   cannot speak for another agent (its identity is its process), and
-  cannot reach another invocation's authority: an ask is resolved
-  host-side against live state, and answered only when it comes from
-  the worker that invocation was sent to. A call id learned any other
-  way opens nothing — and a worker serves one organization's approval,
-  so it never sees another organization's ids at all.
+  cannot reach the authority of an invocation on another worker: an
+  ask is resolved host-side against live state, and answered only when
+  it comes from the worker that invocation was sent to. A call id
+  learned any other way opens nothing — and a worker serves one
+  organization's approval, so it never sees another organization's ids
+  at all. Two calls in flight on one worker are one agent's code, and
+  nothing on the wire keeps one from asking under the other's id.
 - A worker that violates framing is killed, not accommodated.

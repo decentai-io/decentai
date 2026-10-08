@@ -6,7 +6,7 @@ everything but the system frame and a recent tail is folded into the
 summary, and the frame is rewritten to carry it. One model call, only
 when there is enough to fold.
 
-Three rules decide what a fold is:
+Four rules decide what a fold is:
 
 - **Size, not count.** A transcript is measured in characters. Forty
   short lines are nothing; forty observations near their budget are a
@@ -20,7 +20,6 @@ Three rules decide what a fold is:
   space runs out a section trims its own oldest lines, so an open
   thread never vanishes because the done list grew. Standing
   instructions are the one section the model is told never to drop.
-
 - **Nothing falls out unseen.** A line the new summary no longer
   carries — superseded by the model, or trimmed by a section's budget
   — goes to the mind's archive with its section and the date of the

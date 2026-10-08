@@ -376,7 +376,9 @@ class FunctionCall:
         Only what a card of this call named, written as the card wrote
         it, is installed: propose the code first, and install what it
         needs once the person has allowed it. A list installed before
-        is handed back at once. The function's clock stops meanwhile.
+        is not installed again: its folder is handed back. One list is
+        installed at a time across the platform, so the answer may wait
+        on another's. The function's clock stops meanwhile.
 
         A function whose manifest does not declare ``code: true``, a
         package no allowed card named, and an installation that fails
@@ -441,11 +443,15 @@ class FunctionCall:
         the reply; left out, the model stops when it is done, which is
         the right choice for a reply that is one object or a few lines.
 
-        ``images`` puts pictures in front of the model beside the prompt:
-        each is ``{"resource_id": …, "ref": …}`` naming a file this
-        function may read (a scan, a photo). The platform reads the bytes
-        under the function's own grant and hands them to the model; a
-        model that cannot see pictures refuses with ResourceDenied."""
+        ``images`` puts pictures in front of the model beside the prompt.
+        Each is a mapping of one of two forms: ``{"resource_id": …,
+        "ref": …}`` names a file this function may read (a scan, a
+        photo), and the platform reads the bytes under the function's
+        own grant; ``{"mime": …, "content_base64": …}`` is a picture the
+        function carries itself. Either way the platform checks that it
+        is a picture before the model is shown it. An entry that is not
+        a mapping raises ValueError, and a model that cannot see
+        pictures refuses with ResourceDenied."""
         if self._llm is None:
             raise ResourceDenied(
                 "The platform model is not available here — the function "

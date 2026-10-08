@@ -11,7 +11,11 @@ The tests run your agent **the way the platform runs it**: in a worker
 process of its own, from an environment holding the dependencies the
 manifests in your catalog declare, over the platform's own protocol,
 against simulated records, files and secrets. No server, no browser, no
-network. What passes is what would be installed.
+network. What passes is what would be installed — for a catalog of one
+agent. The harness builds a single environment holding every agent's
+dependencies together, where the platform builds one for each
+dependency list: agents whose pins differ are tested against a mix no
+install has.
 
 You need Python 3.11 or later (the platform's images run 3.12), and the
 DecentAI platform's source — the harness is the platform's own code.

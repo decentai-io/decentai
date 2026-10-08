@@ -47,11 +47,10 @@ INBOUND_EVENTS = {"user_message", "approval_decided", "question_answered",
 
 
 class ServingRoster:
-    """A live view over the library — agent_id → InstalledAgent, read
-    at use time, so an agent installed after construction serves
-    without a restart. ``fire_context`` is what a fire of one chat
-    runs with — its contract's agents, by approval ref, materialized,
-    and an executor held to that chat's grants."""
+    """What the clock reaches the host through. ``fire_context`` is
+    what a fire of one chat runs with — its contract's agents, by
+    approval ref, materialized, and an executor held to that chat's
+    grants."""
 
     def __init__(self, library, host=None):
         self.library = library
@@ -136,7 +135,8 @@ class SessionHost:
         #: the same package install it once
         self._installs: Dict[str, asyncio.Lock] = {}
         #: digest -> why it would not materialize. The same bytes fail
-        #: the same way; not tried again until a restart.
+        #: the same way; not tried again while the library holds them
+        #: (a sweep forgets the refusal of bytes that are gone: reclaim).
         self._refused: Dict[str, str] = {}
         #: (ref, digest, state) already told to the platform. Once per
         #: process: the platform keeps the word, and a restart says it
@@ -159,7 +159,7 @@ class SessionHost:
         """Vectors for this chat's agents, in the background, when the
         organization routes by meaning and there are more agents than
         its threshold: the first turn then finds the index ready, and
-        one that does not lists every agent for that turn."""
+        one that does not waits for it (AgentRouter.scores)."""
         routing = contract.get("routing") or {}
         embedding = routing.get("embedding") if isinstance(routing, dict) else None
         if not isinstance(embedding, dict):
@@ -409,7 +409,7 @@ class SessionHost:
             self._report(chat_id, ref, digest, "ready")
             return installed
         if digest in self._refused:
-            # Said every time rather than once: an agent the chat cannot
+            # Logged every time rather than once: an agent the chat cannot
             # see is the symptom an administrator has to explain, and without
             # this the only trace of why is one line from whenever it
             # first happened.
@@ -448,10 +448,10 @@ class SessionHost:
                 # nothing about the package: a delegation the platform
                 # would not accept, a gateway that timed out, a pull
                 # door that was briefly unreachable. Remembering one of
-                # those hid an installed agent from every chat until the
-                # process restarted — a blip, promoted to an outage, in
-                # silence. The next chat asks again; a fetch that fails
-                # again costs one request.
+                # those would hide the agent from every chat for as long
+                # as the refusal is kept — a blip, promoted to an outage,
+                # in silence. The next chat asks again; a fetch that
+                # fails again costs one request.
                 if arrived:
                     self._refused[digest] = str(exc)
                 self.logger.error(
@@ -633,7 +633,7 @@ class SessionHost:
         credential, never authority — docs/reference/session-door.md). Services
         that need one take it; a platform in-process ignores it. With
         the key, the chat's schedule rows become loadable, and the
-        clock adopts them."""
+        clock takes them as the store holds them."""
         self.services.grant(chat_id, credential)
         if self.clock is not None:
             try:
@@ -763,11 +763,10 @@ class SessionHost:
                 action_hash=str(frame.get("action_hash") or ""),
             )
         elif kind == "question_answered":
-            # Words, or the files the person chose (a list) — the
-            # session knows which question it asked.
             # Words for an agent's question; a list for the files card;
             # an object for a credential card (the saved row's ref, or
-            # the fields asked every time). Only words are coerced.
+            # the fields asked every time). Only words are coerced; the
+            # session knows which question it asked.
             answer = frame.get("answer")
             await session.deliver_answer(
                 str(frame.get("approval_id") or ""),
@@ -845,7 +844,6 @@ class SessionHost:
                 await self.session(chat_id)
         self._schedule_reap(chat_id)
 
-
     async def agent_post(self, text: str, source: Dict[str, Any],
                          parts: list) -> bool:
         """An agent speaking from an unattended fire — the clock running
@@ -909,7 +907,8 @@ class SessionHost:
             "event": "hello",
             "protocol_version": PROTOCOL_VERSION,
             "chat_id": session.chat_id,
-            # Whether the mind is in the middle of a turn right now: an
+            # Whether anything is under way right now — a cycle, or a
+            # background job, one waiting on an approval included: an
             # audience that arrives mid-work has missed the ``working``
             # frame, and would show a chat at rest with no way to stop it.
             "working": not session.idle,

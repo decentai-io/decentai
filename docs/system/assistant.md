@@ -55,7 +55,9 @@ AssistantState
 │                 blocker, depends_on, verified}]
 ├── opened        which agents' catalogs are loaded this session
 ├── trace         every invocation: {agent, function, inputs, status,
-│                 result, job_id?} — bounded by maintenance: the newest
+│                 result, job_id?} — a large result is kept cut, and
+│                 its entry then carries `counts` and `files`, read off
+│                 the whole — bounded by maintenance: the newest
 │                 entries stay, older ones go once a say has presented
 │                 them (results live in storage, evidence in messages)
 ├── jobs          the jobs table: {job_id: {agent_id, function,
@@ -64,10 +66,13 @@ AssistantState
 ├── parked        a FOREGROUND invocation waiting on a human — durable
 │                 before its card goes out, so a late audience finds
 │                 the card and a rehydrated mind resumes it through
-│                 the gates when the decision arrives
+│                 the gates when the decision arrives — at once when
+│                 it is at rest, else when the cycle under way ends
 ├── cursor        how far the durable event stream has been absorbed
 ├── evidence_cursor  how far the trace has been presented to the person
 ├── beats         how many beats this ask has taken, for the budget
+├── stopped       the person stopped it, and nothing has been asked of
+│                 it since: a mind rebuilt from this state rests
 └── archive       every line a fold let go of, for `recall`
 ```
 
@@ -91,7 +96,7 @@ sources of the same thing.
 | `job_done` | job_id, result, status | a background invocation finished (success or error — both are results). |
 | `wakeup` | schedule_id, and `note` or `function` with its `result`; `slept: true` after a sleep | a schedule fired (the reminders design's clock, natively). |
 | `agent_posted` | agent, function, text | an agent said something to the person directly (`call.post`), beside the conversation. The assistant is told so that it does not repeat it; the words are data, not instructions. |
-| `stop` | nothing | the user's stop. Cooperative and honored between beats: running jobs are cancelled, the state is saved, and the assistant goes idle without a word. `force` on the stop is the kill, which ends the work where it stands. |
+| `stop` | nothing | the user's stop. Cooperative and honored between beats: running jobs are cancelled and waited for (up to 15 seconds), so that what each says as it ends is read as the end of something stopped; a line saying the person pressed stop is written into the transcript; the state is saved with `stopped` set; and the assistant goes idle without a word. A message the person sends after the stop is a new ask, and is answered. `force` on the stop is the kill, which ends the work where it stands and leaves the same two marks. |
 
 A person's answer to an approval card is not an inbox event. It arrives
 at the session as a frame (`approval_decided`: the approval, whether it
@@ -114,13 +119,16 @@ moves it, and the beat persists bookmark and transcript as one
 document. A fresh mind frames itself from the message history, so the
 events that delivered those messages count as absorbed; its bookmark
 starts after the last of them. `stop` is the one transient event —
-nobody wants a week-old stop replayed.
+nobody wants a week-old stop replayed. What a stop leaves is in the
+state: `stopped`, and its line in the transcript, so a session rebuilt
+afterwards rests and does not go on with what was stopped.
 
 ## Actions
 
 What the assistant may emit, one action per beat, as strict JSON —
-the same discipline as before (malformed output bounces, free retries
-bounded), because it worked. Two habits of smaller models are absorbed
+the same discipline as before (malformed output bounces; two bounces
+in a row cost no beat of the budget, counted again after any reply
+that parses), because it worked. Two habits of smaller models are absorbed
 rather than bounced, because a bounce is what makes them loop: a reply
 that glues several actions together runs the first and is told so; a
 `say` that is the same as something already said in the same turn, or
@@ -129,7 +137,7 @@ already told the user that") and never reaches the user.
 
 | action | shape | meaning |
 |---|---|---|
-| `say` | `{text, final?, show?}` | tell the user something now — a progress note, a question, an answer; `final: true` ends the turn with it — [below](#say) |
+| `say` | `{text, final?, show?}` | tell the user something now — a progress note, a question, an answer; `final: true` ends the turn with it, and so does a reply made after the work when nothing is owed — [below](#say) |
 | `close_agent` | `{agent}` | close an opened agent; at most `routing.open_max` stay open — [below](#close_agent) |
 | `find_agents` | `{query?}` | search the installed agents by meaning, in any language — [below](#find_agents) |
 | `open_agent` | `{agent}` | load an agent's catalog into context, and offer its functions as tools — [below](#open_agent) |
@@ -156,17 +164,32 @@ Twelve of them have more to say than a row holds:
 `{text, final?, show?}`
 
 Tell the user something now — a progress note, a question, an answer. A
-response may be several says; saying does not end anything by itself.
+response may be several says. A say that comes first, before anything
+was done in this ask, does not end anything by itself: it is an
+announcement or a question, and the turn goes on.
 
-Like every action it is observed (`{"said": true}`), so the beat closes
-on a user turn: the next decision is finish-or-more, never a
-continuation of the model's own message — which is what a chat model
+Such a say is observed like every action (`{"said": true}`), so the
+beat closes on a user turn: the next decision is finish-or-more, never
+a continuation of the model's own message — which is what a chat model
 does with a transcript that ends on its own words, and how a reply used
 to arrive twice.
 
 `final: true` says the reply is complete: the turn ends there, with no
 beat spent on a finish that could only repeat it, and the audience's
 idle frame follows the words at once.
+
+A say made after the assistant has acted ends the turn too, whether or
+not it was marked final, when nothing is owed: no pending or active
+item on the plan, no job running (`Assistant._owes_more`). "Acted"
+means any action but a say or a finish since the last event arrived.
+Asked "finish, or continue?" with no work left, a model that does not
+think to finish invents some. To report and go on working, the rest of
+the work is on the plan; the say is then observed as above and the
+cycle continues with what the plan still owes. Two says are left out of
+this rule: a helper's, which nobody reads and which ends on its own
+finish, and one the model was just told something about — a show the
+trace could not vouch for, parts the platform refused — which it may
+have to answer.
 
 A reply that carries no JSON action at all is words for the user — there
 is no other channel they could belong to — and is delivered as a say
@@ -316,7 +339,23 @@ runs unattended (manifest-`schedulable` only) and wakes it only when
 
 `cron` is five fields on the calendar, read in the chat's time zone
 (`contracts/cron.py`); the zone comes from the contract, and every stamp
-the mind reads is written in it.
+the mind reads is written in it. A field takes `*`, a number, a list, a
+range and a step, and the month and weekday fields take names (`jan`,
+`mon`; Sunday is 0 or 7). Not taken, and refused with the reason:
+`@daily` and its kind, `?`, `L`, and a range that wraps (`fri-mon`).
+When the day of the month and the day of the week are both anything but
+`*`, a day that matches either is taken.
+
+`every_seconds` (at least 60) may be given with `at` or `delay_seconds`,
+which then say when the first run is; a `cron` given with any of the
+others is taken alone.
+
+The clock looks every 30 seconds, so a run happens at the first look
+after its time. A period is counted from the look that fired the row,
+so it is rounded up to the next look: `every_seconds: 70` comes round
+about every 90 seconds. A row's next run is always after the fire it
+follows. A fire that fails is recorded on the row and the row moves on:
+a one-off whose fire failed is spent, and is not tried again.
 
 Each fire is remembered on the row (`runs`: when, status, woke, a result
 summary), bounded, for a page to read. Announced to the user. A helper
@@ -334,7 +373,9 @@ after `seconds` (at most a day) carrying `why` and `slept: true`.
 
 One per chat; a new one replaces the last. A message from the person
 meanwhile is heard at once, as always, and the sleep still wakes the
-chat later. A stop, or the kill, cancels it.
+chat later. A stop cancels it, and so does the kill of a chat the
+runtime holds a session for. A kill that finds no session — a chat at
+rest that nobody is watching — leaves the sleep on the clock.
 
 The audience is told with a `sleeping` frame (`until`, `why`; `until`
 null when a stop ended it), and the hello carries the same for one who
@@ -349,12 +390,14 @@ A helper cannot sleep.
 `{reason?, summary?}`
 
 Nothing left to do **right now**: go idle until the next event, and say
-why — `completed`, `awaiting_user`, `awaiting_events`, `blocked`,
-`budget` (default completed).
+why — `completed`, `awaiting_user`, `awaiting_events`, `blocked`
+(default completed). A fifth reason, `budget`, is accepted and nothing
+more: no rule checks it, the valve does not use it, and the prompt does
+not offer it.
 
-This is how a reply ends, how a goal completes, and how the assistant
-waits for jobs it cannot proceed without — idle-until-event *is* the
-wait.
+This is how a goal completes and how the assistant waits for jobs it
+cannot proceed without — idle-until-event *is* the wait. A reply ends
+this way too, or on its own say ([above](#say)).
 
 Enforced in code: `completed` is refused while plan items are pending or
 active, `awaiting_events` while nothing is running or scheduled,
@@ -385,7 +428,14 @@ start → running ──────────────→ done / failed / 
   freshly hydrated — arrives as the `approval_decided` frame,
   re-verified by the executor's existing action-hash and grant gates
   before anything runs. The same call made with `invoke` holds its beat
-  until the card is answered (`Session.wait_approval`).
+  until the card is answered (`Session._approve`).
+- **A card nobody will answer is closed.** A call stopped while its
+  card waits — a stop, a kill, a cancelled job — has the card expired
+  on the record and closed on the page. A process that dies leaves the
+  card open: the decision, when it comes, resumes the call. A park
+  that could not be saved is not asked at all: the card is taken back,
+  and the call's result says the person could not be asked just now —
+  not that they refused.
 - Job results land in the trace like any invocation, so evidence does
   not care whether a call was foreground or background.
 
@@ -400,12 +450,15 @@ hydrate state ── absorb new events into the transcript
      │       persist state
      ▼
   another beat while there is anything to decide;
-  finish → idle; next event wakes the session
+  finish, or a say that ends the turn → idle;
+  next event wakes the session
 ```
 
-Observations keep the proven mechanics: a result over 16,000
-characters is stored and enters the transcript as a shape-preview plus
-`storage_ref` (the `read` action recovers any part); an event's
+Observations keep the proven mechanics: every successful result is
+stored, and one over 16,000 characters enters the transcript as a
+shape-preview plus its `storage_ref` (the `read` action recovers any
+part) — a failed call's result is not stored, so a large one is
+previewed with no ref; an event's
 observation names the event, and a call's is its status and result,
 answering the action just before it. What an observation carries — a
 function's result, a page, an email, a file's text — is data, and the
@@ -418,7 +471,12 @@ What actually bounds the assistant, in order of authority:
 
 1. **The stop button** — a `stop` event, honored at the next beat; and
    the kill switch, which ends the run, its jobs and its browser where
-   they stand.
+   they stand. A Stop the person answers on a card a function put to
+   them is their word too: an `invoke` whose result says `outcome:
+   "stopped_by_person"` (`Assistant.STOPPED_BY_PERSON`) ends the turn
+   there, observed with a note not to try it again, and the chat is
+   marked `stopped` as after a stop. A helper stopped this way
+   reports `awaiting_user`.
 2. **A runaway valve** — the chat's turn budget, a per-ask beat counter
    whose exhaustion produces an honest "here is where I am, here is
    what remains", with the state intact and continuable. Exhaustion
@@ -450,7 +508,11 @@ paths remain as the safety net for a reply with no call in it.
 A result the model needs is shown whole when it fits the observation
 budget (`OBSERVATION_MAX_CHARS`, ~16,000 characters); beyond that it is
 previewed as the first complete items that fit, and `read` pages
-through the rest with `from`. The budget is what stands between one
+through the rest with `from`. The preview is measured, not guessed, to
+fit its own budget (`PREVIEW_MAX_CHARS`, 12,000 characters): what is
+not a list is clipped to at most half of it, the lists share the rest
+in whole items, and a first item larger than its share is shown as its
+own preview. The observation budget is what stands between one
 beat and one beat per row. A `wakeup` that carries a fire's result is
 held to the same budget on absorption: the fire stored the whole in
 the chat it acts for, so the event shows the preview, the
@@ -473,9 +535,12 @@ package digest and model and kept under `<install_dir>/embeddings/`,
 indexed in the background when a session opens, so a thousand agents
 cost one burst of batched calls once. No rule matches names: an Arabic
 request reaches an English-described agent because the embedding model
-puts them in one space. Any failure — no model, a model that refuses,
-an index not yet whole — lists every agent for that turn and logs why;
-nothing here is authority, and `open_agent` takes any id.
+puts them in one space. A turn that finds the index not yet whole
+waits for it to be built, behind any indexing already under way, and
+then routes; nothing here has a timeout of its own, so a slow embedding
+model is a slow turn. A failure — no model, a model that refuses, an
+index that could not be built — lists every agent for that turn and
+logs why; nothing here is authority, and `open_agent` takes any id.
 
 ## The fold
 
@@ -534,8 +599,12 @@ what may appear AS DATA beside them:
 - **writes** — successful writes (permission level > 0), recorded on
   the message as `success` parts the page keeps but does not render,
   so an audit sees what was verified without the chat gaining a second
-  voice. The runtime's own "Verified: …" line is spoken only for a
-  model that said nothing.
+  voice. The runtime speaks a line of its own only for a model that
+  said nothing (`Evidence._silent`): "Verified: …" for writes, "Found N
+  results." for reads with rows, that the search came back empty for
+  reads with none, how many calls ran and came back where there is
+  neither, and "No verified result came back" with the first error when
+  every call failed.
 - **files** — files the trace created, resolved through the manifest's
   `x-resource` declarations.
 

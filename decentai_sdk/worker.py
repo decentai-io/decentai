@@ -36,11 +36,15 @@ from typing import Any, Dict, List, Optional
 from decentai_sdk.base import AgentBase, Completion, FunctionCall, ResourceDenied, Screen
 from decentai_sdk.manifest import Manifest
 
+#: The wire's version, said in the handshake. The runtime keeps its own
+#: copy (ai_runtime/agents/worker_handle.py PROTOCOL_VERSION), and the
+#: two must be equal.
 PROTOCOL_VERSION = 1
 #: One line of the wire, in either direction: what the runtime reads
 #: from a worker (ai_runtime/agents/worker_handle.py LINE_LIMIT) the
-#: worker reads from the runtime. Bytes above a quarter of it travel by
-#: the spool, never by the line.
+#: worker reads from the runtime. A file whose base64 is longer than an
+#: eighth of it (WireResources.INLINE_LIMIT) travels by the spool, where
+#: the host opened one, and not by the line.
 MAX_LINE_BYTES = 2 * 1024 * 1024
 PACKAGE_PREFIX = "decentai_agents"
 

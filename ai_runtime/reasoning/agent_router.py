@@ -15,8 +15,10 @@ Vectors are computed once per package and embedding model and kept on
 disk beside the packages, so a restart re-reads them and a thousand
 agents cost one burst of batched calls, once. Everything here is a
 courtesy to choosing, never authority: an agent left off the list is
-still openable by id, and when the embedding model is missing, slow or
-refusing, the frame lists every agent as it always did.
+still openable by id, and when the embedding model is missing or
+refusing, the frame lists every agent. Nothing here has a timeout of
+its own: a slow embedding model is a slow turn, for as long as its
+connector waits.
 """
 
 from __future__ import annotations
@@ -141,8 +143,9 @@ class AgentRouter:
 
     async def index(self, agents: Dict[str, Any], embedding: Dict[str, Any]) -> bool:
         """Vectors for every agent that has none yet, in batches, kept
-        on disk. True when every agent is indexed afterwards; a failure
-        is logged and leaves the rest for next time."""
+        on disk. True when every agent is indexed afterwards. Nothing
+        is kept until every batch has answered: a failure is logged and
+        leaves all of them for next time."""
         key = self.model_key(embedding)
         lock = self._locks.setdefault(key, asyncio.Lock())
         async with lock:
@@ -186,9 +189,11 @@ class AgentRouter:
 
     async def scores(self, agents: Dict[str, Any], text: str,
                      embedding: Dict[str, Any]) -> Optional[Dict[str, float]]:
-        """Each agent's closeness to the words, by its closest vector;
-        None when the index is not whole yet or the model will not
-        answer — the caller then lists every agent."""
+        """Each agent's closeness to the words, by its closest vector.
+        An index that is not whole is built first and the turn waits
+        for it, behind any indexing already under way. None when that
+        fails or the model will not answer — the caller then lists
+        every agent."""
         if not agents:
             return {}
         key = self.model_key(embedding)

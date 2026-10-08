@@ -15,6 +15,12 @@ in full.
     worker_handle.py  the host side of the worker protocol: spawn from
                       the venv, handshake, invoke, kill — and the probe
                       installation verifies with
+    worker_pool.py    the running workers, and the router that answers
+                      what each asks, by the call it asks for
+    mcp.py            a remote MCP server in a chat's roster, called
+                      through the same gates as an agent
+    egress.py         the proxy a confined worker is pointed at: the
+                      hosts its manifest declared, and nothing else
     approved.py       one approval's view of a shared package: the same
                       code, addressed by the approval's ref
     confinement.py    a user, a home and a spool per approved agent, and

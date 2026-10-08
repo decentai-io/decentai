@@ -1,12 +1,18 @@
 """The platform executor — the single chokepoint every function invocation
 passes through, no matter which reasoning loop proposed it.
 
-Per invocation: resolve (manifest-declared functions only) → validate
-inputs against the manifest schema → enforce the permission level against
-the chat level (pausing for approval when required) → build the mediated
-FunctionCall → execute under the function's timeout → validate the output.
-Denials, failures, and timeouts come back as ``(result, "error")`` —
-observations for the proposing loop, never exceptions.
+Per invocation: resolve (manifest-declared functions only) → ask the
+grants whether this chat may reach the function → resolve reference
+inputs, apply defaults, validate inputs against the manifest schema →
+read the scopes the call names and hold them to the grants → enforce the
+permission level against the chat level (pausing for approval when
+required) → build the call's context (the mediated resources, and what
+else the manifest allows it) → execute in the agent's worker under the
+function's timeout → validate the output. Denials, failures, timeouts
+and a fault on the platform's own side come back as ``(result,
+"error")`` — observations for the proposing loop, never exceptions. A
+call cancelled from outside is the one thing raised, after its line is
+on the trail.
 """
 
 from __future__ import annotations
@@ -155,9 +161,11 @@ class FunctionExecutor:
         # (the scheduled-action path, tests) = call.llm refuses with the
         # reason.
         self.llm = llm
-        # FunctionGrants. None is unrestricted and is a test's: the
-        # host always passes the delegation's grants, so denied by
-        # default applies.
+        # FunctionGrants. None is unrestricted and is a test's: a
+        # session's executor and a fire's carry the delegation's
+        # grants, so denied by default applies. (The clock's own
+        # executor in server/app.py has none; a fire runs with the
+        # host's, fire_context, and not with that one.)
         self.grants = grants
         # async (source, result) -> storage_ref | None: successful results
         # are recorded to chat storage so parts and later work reference
@@ -331,7 +339,11 @@ class FunctionExecutor:
         The manifest binds each scope to one of the function's inputs and
         says how the value is normalized; a policy constrains which values
         the caller is entitled to. Reading them here — after defaults and
-        validation — means the value judged is the value that runs.
+        validation — means the value judged is read from the inputs the
+        function runs with. It is judged as a policy names it and not
+        always as it was given: normalized the way the manifest says,
+        and empty text as no value named. The function is handed its
+        input as given.
 
         Every scope the function declares is in the answer: one whose
         input this call did not give is there as None, so a policy can
