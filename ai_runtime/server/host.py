@@ -28,6 +28,7 @@ from ai_runtime.execution.grants import FunctionGrants
 from ai_runtime.llms import LLMConnectorFactory
 from ai_runtime.llms.connector.tools import NoModel
 from ai_runtime.runtime_logging import RuntimeLoggerFactory
+from ai_runtime.sinks import ChatSinks
 from contracts.chat import CHAT_PROTOCOL_VERSION
 
 #: The chat contract's own version (contracts/chat.py): one number for
@@ -260,15 +261,18 @@ class SessionHost:
                 provider=self.services.provider,
                 grants=FunctionGrants(contract.get("grants")),
                 safety=contract.get("safety"),
-                audit=audit,
                 # A fire acts for its schedule's chat (chat/current.py):
-                # what it offers to show is kept there, and what its
-                # agent says is posted there.
-                storage=self.store_current,
-                post_sink=self.agent_post,
-                # And what it asks is asked there: a card in the chat,
-                # waited on as one asked in a live call is.
-                asker=self.agent_ask,
+                # what it offers to show is kept there, what its agent
+                # says is posted there, and what it asks is asked there
+                # — a card in the chat, waited on as one asked in a live
+                # call is. The chat's other doors stay shut: a fire has
+                # no mind, and nobody stands behind an approval for it.
+                sinks=ChatSinks(
+                    audit=audit,
+                    store=self.store_current,
+                    post=self.agent_post,
+                    ask=self.agent_ask,
+                ),
                 # The process's one pool: an agent has one worker here,
                 # whoever calls it.
                 workers=self.workers,

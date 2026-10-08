@@ -666,7 +666,7 @@ class TestAScheduledRunAsks:
 
         async def scenario():
             context = await host.fire_context("chat_1")
-            return context.executor.asker
+            return context.executor.sinks.ask
 
         assert run(scenario()) == host.agent_ask
 

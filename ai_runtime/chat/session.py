@@ -87,6 +87,7 @@ from ai_runtime.reasoning.state import (
     Job,
 )
 from ai_runtime.runtime_logging import RuntimeLoggerFactory
+from ai_runtime.sinks import ChatSinks
 from contracts.chat import (
     QUESTION_MAX_CHARS, QUESTION_WAIT_SECONDS, agent_source,
 )
@@ -262,21 +263,40 @@ class Session:
         lap("history")
         child = self.parent is not None
 
-        executor = FunctionExecutor(
-            provider=self.services.provider,
-            approver=self._approve,
-            progress_sink=self._agent_progress,
-            grants=self.grants,
-            storage=self._store_result,
-            resolver=self._read_result,
+        # Every door from the mind, and from a running call, back to
+        # this chat (ai_runtime/sinks.py): built once, handed to both.
+        # A child's differ in three: its finish is its report, it
+        # spawns nothing, and a memory it tries to keep is refused.
+        sinks = ChatSinks(
+            approve=self._approve,
+            ask=self._ask_person,
+            propose=self._propose,
+            credential=self._credential,
+            screen=self._screen,
+            post=self.agent_post,
+            progress=self._agent_progress,
+            store=self._store_result,
+            read_result=self._read_result,
             audit=self._record_audit,
             llm=self._llm,
-            post_sink=self.agent_post,
-            asker=self._ask_person,
-            proposer=self._propose,
+            say=self._say,
+            save_state=self._save_state,
+            plan=self._plan,
+            finish=self._finish if child else None,
+            activity=self._activity,
+            spawn=None if child else self._spawn_child,
+            fold=self._fold,
+            read_skill=self.services.read_skill,
+            read_image=self._read_image,
+            read_file=self._read_image,
+            find_files=self._find_files,
+            remember=self._refuse_memory if child else self._remember,
+        )
+        executor = FunctionExecutor(
+            provider=self.services.provider,
+            sinks=sinks,
+            grants=self.grants,
             safety=self.safety,
-            credentialer=self._credential,
-            screen_sink=self._screen,
             workers=self.workers,
             # One conversation, one browser: a child's runs keep it under
             # the parent's id, so the person's watch opens the browser
@@ -284,23 +304,12 @@ class Session:
             conversation=self.parent or self.chat_id,
         )
         self.assistant = Assistant(
-            state, self.roster, self.connector, executor,
+            state, self.roster, self.connector, executor, sinks,
             chat_level=self.chat_level,
-            say_sink=self._say,
-            state_sink=self._save_state,
-            plan_sink=self._plan,
             clock=(ChatClock(self.clock, self.chat_id, self.roster,
                              self._emit, timezone=self.timezone,
                              grants=lambda: self.grants)
                    if self.clock is not None else None),
-            spawn_sink=None if child else self._spawn_child,
-            finish_sink=self._finish if child else None,
-            skill_reader=self.services.read_skill,
-            image_reader=self._read_image,
-            file_reader=self._read_image,
-            file_finder=self._find_files,
-            memory_writer=self._refuse_memory if child else self._remember,
-            activity_sink=self._activity,
             skills=(self._narrowed(await self.services.list_skills()),
                     lap("skills"))[0],
             memories=(await self.services.list_memories(self.chat_id),
@@ -310,7 +319,6 @@ class Session:
             max_skills=self.max_skills,
             router=self.router,
             routing=self.routing,
-            fold=self._fold,
             # One clock: the mind reads time off the same clock its
             # schedules fire by.
             now=self.clock.clock if self.clock is not None else None,

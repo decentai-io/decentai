@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 
 from ai_runtime.execution.executor import FunctionExecutor
+from ai_runtime.sinks import ChatSinks
 from ai_runtime.tests.fixture_agents import load_agents
 from ai_runtime.execution.resources import ResourceAccess, ResourceDenied
 from sim.resources import InMemoryResourceProvider
@@ -33,11 +34,13 @@ def run(coro):
 
 
 def make_executor(**kwargs):
-    """An executor with a stocked in-memory provider (canonical ids)."""
+    """An executor with a stocked in-memory provider (canonical ids).
+    A door of the chat's goes in by its name (ai_runtime/sinks.py)."""
     kwargs.setdefault("provider", InMemoryResourceProvider(
         secrets={"notebook__connection": {"api_token": "t"}}
     ))
-    return FunctionExecutor(**kwargs)
+    doors = {k: kwargs.pop(k) for k in list(kwargs) if k in ChatSinks.names()}
+    return FunctionExecutor(sinks=ChatSinks(**doors), **kwargs)
 
 
 class TestHappyPath:
@@ -65,7 +68,7 @@ class TestHappyPath:
         async def sink(text, source):
             seen.append((text, source))
 
-        executor = make_executor(progress_sink=sink)
+        executor = make_executor(progress=sink)
         _, status = run(executor.invoke(
             notebook, "notebook.note.save",
             {"notebook": "personal", "title": "Milk"},
@@ -91,7 +94,7 @@ class TestDisplays:
             stored[ref] = result
             return ref
 
-        executor = make_executor(storage=storage)
+        executor = make_executor(store=storage)
 
         async def scenario():
             await executor.invoke(notebook, "notebook.note.save",
@@ -170,7 +173,7 @@ class TestPermissionLevels:
             asked.append(request)
             return True
 
-        executor = make_executor(approver=approver)
+        executor = make_executor(approve=approver)
         _, status = run(executor.invoke(
             notebook, "notebook.sync.status", {}, chat_level=0,
         ))
@@ -184,7 +187,7 @@ class TestPermissionLevels:
             asked.append(request)
             return True
 
-        executor = make_executor(approver=approver)
+        executor = make_executor(approve=approver)
         result, status = run(executor.invoke(
             notebook, "notebook.sync.push", {"notebook": "personal"},
             chat_level=1,
@@ -199,7 +202,7 @@ class TestPermissionLevels:
         async def approver(request):
             return False
 
-        result, status = run(make_executor(approver=approver).invoke(
+        result, status = run(make_executor(approve=approver).invoke(
             notebook, "notebook.sync.push", {"notebook": "personal"},
         ))
         assert status == "error"
@@ -215,7 +218,7 @@ class TestResultStorage:
             stored.append((source, result))
             return "stg_1"
 
-        executor = make_executor(storage=storage)
+        executor = make_executor(store=storage)
         result, status = run(executor.invoke(
             notebook, "notebook.note.save",
             {"notebook": "personal", "title": "Milk"},
@@ -229,7 +232,7 @@ class TestResultStorage:
         async def storage(source, result):
             raise RuntimeError("storage down")
 
-        executor = make_executor(storage=storage)
+        executor = make_executor(store=storage)
         result, status = run(executor.invoke(
             notebook, "notebook.note.save",
             {"notebook": "personal", "title": "Milk"},
@@ -244,7 +247,7 @@ class TestResultStorage:
             stored.append(source)
             return "stg_1"
 
-        executor = make_executor(storage=storage)
+        executor = make_executor(store=storage)
         _, status = run(executor.invoke(
             notebook, "notebook.note.save", {"notebook": "personal"},
         ))
@@ -258,7 +261,7 @@ class TestReferenceInputs:
             assert (storage_ref, path) == ("stg_1", "rows.0.title")
             return "Milk from storage"
 
-        executor = make_executor(resolver=resolver)
+        executor = make_executor(read_result=resolver)
         result, status = run(executor.invoke(
             notebook, "notebook.note.save",
             {"notebook": "personal",
@@ -277,7 +280,7 @@ class TestReferenceInputs:
         async def resolver(storage_ref, path):
             raise RuntimeError("not found")
 
-        executor = make_executor(resolver=resolver)
+        executor = make_executor(read_result=resolver)
         result, status = run(executor.invoke(
             notebook, "notebook.note.save",
             {"notebook": "p", "title": {"storage_ref": "stg_nope"}},
@@ -289,7 +292,7 @@ class TestReferenceInputs:
         async def resolver(storage_ref, path):
             raise AssertionError("must not be called")
 
-        executor = make_executor(resolver=resolver)
+        executor = make_executor(read_result=resolver)
         _, status = run(executor.invoke(
             notebook, "notebook.note.save",
             {"notebook": "p", "title": "t", "content": {"body": "plain"}},
@@ -634,7 +637,7 @@ class TestLoginsAskedForAsItWorks:
                     return [MainTool(self)]
         """))
         executor = FunctionExecutor(provider=InMemoryResourceProvider(),
-                                    credentialer=credentialer)
+                                    sinks=ChatSinks(credential=credentialer))
         # Not declared: the worker's ask is refused as a resource would be.
         result, status = run(executor.invoke(agent, "demo.main.run", {}))
         assert status == "error" and "credentials: true" in str(result), result
@@ -898,7 +901,7 @@ class TestTheTrail:
         async def storage(source, result):
             return "stg_kept"
 
-        executor = make_executor(audit=audit, storage=storage)
+        executor = make_executor(audit=audit, store=storage)
         run(executor.invoke(notebook, "notebook.note.save",
                             {"notebook": "personal", "title": "Milk"}))
         run(executor.invoke(notebook, "notebook.note.nope", {}))
@@ -993,7 +996,7 @@ class TestPosts:
             posts.append((text, source, parts))
             return True
 
-        executor = make_executor(storage=storage, post_sink=post_sink)
+        executor = make_executor(store=storage, post=post_sink)
         result, status = run(executor.invoke(agent, "demo.main.run", {}))
         assert status == "success", result
         assert result["posted"] is True
@@ -1111,7 +1114,7 @@ class TestCodeProposed:
             await asyncio.sleep(1.5)     # longer than the function's 1s
             return True
 
-        result, status = run(make_executor(proposer=proposer).invoke(
+        result, status = run(make_executor(propose=proposer).invoke(
             self.agent(tmp_path), "coder.main.run", {}))
         assert status == "success", result
         assert result["allowed"] is True
@@ -1133,7 +1136,7 @@ class TestCodeProposed:
             return False
 
         agent = self.agent(tmp_path)
-        result, status = run(make_executor(proposer=proposer).invoke(
+        result, status = run(make_executor(propose=proposer).invoke(
             agent, "coder.main.run", {}))
         assert status == "success" and result["allowed"] is False, result
         result, status = run(make_executor().invoke(agent, "coder.main.run", {}))
@@ -1148,7 +1151,7 @@ class TestCodeProposed:
             seen.append(code)
             return True
 
-        executor = make_executor(proposer=proposer)
+        executor = make_executor(propose=proposer)
         propose = executor._propose_for(self.agent(tmp_path), "coder.main.run", "c1")
         assert run(propose({"language": "python", "code": "x = 1",
                             "purpose": "Sets x.",
@@ -1249,7 +1252,7 @@ class TestAFunctionThatRunsCode:
         agent = self.agent(tmp_path)
         ran = pip()
         try:
-            result, status = run(make_executor(proposer=proposer).invoke(
+            result, status = run(make_executor(propose=proposer).invoke(
                 agent, "coder.main.run", {}))
         finally:
             shutil.rmtree(agent.environment.root / "extras", ignore_errors=True)
@@ -1278,7 +1281,7 @@ class TestAFunctionThatRunsCode:
 
         agent = self.agent(tmp_path)
         pip()
-        executor = make_executor(proposer=proposer, safety={
+        executor = make_executor(propose=proposer, safety={
             "packages": "listed", "allowed_packages": ["titlecase"]})
         propose = executor._propose_for(
             agent, "coder.main.run", "c1", grant=__import__(
@@ -1299,7 +1302,7 @@ class TestAFunctionThatRunsCode:
 
         agent = self.agent(tmp_path, declared=False)
         ran = pip()
-        result, status = run(make_executor(proposer=proposer).invoke(
+        result, status = run(make_executor(propose=proposer).invoke(
             agent, "coder.main.run", {}))
         # The first install is refused outright, and the function's
         # second — after a card was allowed — ends it the same way.
@@ -1379,7 +1382,7 @@ class TestQuestions:
             await asyncio.sleep(1.5)     # longer than the function's 1s
             return "home"
 
-        result, status = run(make_executor(asker=asker).invoke(
+        result, status = run(make_executor(ask=asker).invoke(
             self.agent(tmp_path), "asker.main.run", {}))
         assert status == "success", result
         assert result["answer"] == "home"
@@ -1404,7 +1407,7 @@ class TestQuestions:
             files={"agent.py": FILE_ASKING_AGENT})
         agents, errors = load_agents(tmp_path)
         assert errors == {}
-        result, status = run(make_executor(asker=asker).invoke(
+        result, status = run(make_executor(ask=asker).invoke(
             agents["asker"], "asker.main.run", {}))
         assert status == "success", result
         assert result["answer"] == "fil_passport"

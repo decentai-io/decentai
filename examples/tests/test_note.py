@@ -10,6 +10,7 @@ from pathlib import Path
 import yaml
 
 from ai_runtime.execution.executor import FunctionExecutor
+from ai_runtime.sinks import ChatSinks
 from sim.resources import InMemoryResourceProvider
 
 #: The folder the agent's own folder is in.
@@ -298,7 +299,8 @@ class TestTheModel:
             asked.append((messages, max_tokens))
             return "Two notes about the handoff, one urgent."
 
-        executor = FunctionExecutor(provider=InMemoryResourceProvider(), llm=model)
+        executor = FunctionExecutor(provider=InMemoryResourceProvider(),
+                                    sinks=ChatSinks(llm=model))
 
         async def scenario():
             for title, priority in (("Handoff", 1), ("Follow up", 3)):
@@ -325,7 +327,8 @@ class TestTheModel:
             seen.extend(m.get("content", "") for m in messages)
             return "A summary."
 
-        executor = FunctionExecutor(provider=InMemoryResourceProvider(), llm=model)
+        executor = FunctionExecutor(provider=InMemoryResourceProvider(),
+                                    sinks=ChatSinks(llm=model))
 
         async def scenario():
             await executor.invoke(agents["note"], "note.notes.save", {
@@ -342,8 +345,8 @@ class TestTheModel:
         executor gives it none — and it does not need one."""
         executor = FunctionExecutor(
             provider=InMemoryResourceProvider(),
-            llm=lambda *a, **k: (_ for _ in ()).throw(
-                AssertionError("must not be called")))
+            sinks=ChatSinks(llm=lambda *a, **k: (_ for _ in ()).throw(
+                AssertionError("must not be called"))))
         found, status = run(executor.invoke(
             agents["note"], "note.notes.find", {"notebook": "work"}))
         assert status == "success"
@@ -374,7 +377,7 @@ class TestTalkingToThePerson:
     @staticmethod
     def saved_twice(agents, asker):
         provider = InMemoryResourceProvider()
-        executor = FunctionExecutor(provider=provider, asker=asker)
+        executor = FunctionExecutor(provider=provider, sinks=ChatSinks(ask=asker))
 
         async def scenario():
             first, _ = await executor.invoke(agents["note"], "note.notes.save", {
@@ -452,7 +455,8 @@ class TestTalkingToThePerson:
             kept.append((function, stored))
             return f"stg_{len(kept)}"
 
-        executor = FunctionExecutor(provider=InMemoryResourceProvider(), storage=storage)
+        executor = FunctionExecutor(provider=InMemoryResourceProvider(),
+                                    sinks=ChatSinks(store=storage))
 
         async def scenario():
             await executor.invoke(agents["note"], "note.notes.save", {
@@ -478,7 +482,8 @@ class TestTalkingToThePerson:
             return True
 
         provider = InMemoryResourceProvider()
-        executor = FunctionExecutor(provider=provider, storage=storage, post_sink=post_sink)
+        executor = FunctionExecutor(provider=provider, sinks=ChatSinks(store=storage,
+                                                                       post=post_sink))
 
         async def scenario():
             uploaded = await provider.create_file(

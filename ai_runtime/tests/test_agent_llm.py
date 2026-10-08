@@ -15,6 +15,7 @@ import pytest
 
 from contracts.agent_manifest import ManifestValidator
 from ai_runtime.execution.executor import FunctionExecutor
+from ai_runtime.sinks import ChatSinks
 from ai_runtime.tests.fixture_agents import load_agents
 from ai_runtime.llms import FakeConnector
 
@@ -45,7 +46,7 @@ def make_executor(responses, **kwargs):
         reply = await connector.chat(messages, max_tokens)
         return Completion(reply.content, reply.stop_reason)
 
-    executor = FunctionExecutor(llm=llm, **kwargs)
+    executor = FunctionExecutor(sinks=ChatSinks(llm=llm), **kwargs)
     return executor, connector
 
 
@@ -158,7 +159,7 @@ class TestPictures:
             shown.append((messages[-1]["content"], images))
             return "12 March 2031"
 
-        executor = FunctionExecutor(provider=provider, llm=llm)
+        executor = FunctionExecutor(provider=provider, sinks=ChatSinks(llm=llm))
         result, status = run(executor.invoke(
             agents["peeker"], "peeker.main.read", {"ref": "fil_scan"}))
         assert status == "success", result
@@ -193,7 +194,7 @@ class TestAScreensFrame:
         async def sink(kind, frame, source):
             sent.append(kind)
 
-        executor = FunctionExecutor(screen_sink=sink)
+        executor = FunctionExecutor(sinks=ChatSinks(screen=sink))
         agent = SimpleNamespace(
             agent_id="agt_probe", manifest=SimpleNamespace(name="Probe"))
         screen = executor._screen_for(agent, "probe.main.watch", "c_1")
@@ -248,7 +249,7 @@ class TestAScreenEndsWithItsCall:
         agents, errors = load_agents(tmp_path)
         assert errors == {}, errors
         agent = agents["demo"]
-        result, status = run(FunctionExecutor(screen_sink=sink).invoke(
+        result, status = run(FunctionExecutor(sinks=ChatSinks(screen=sink)).invoke(
             agent, "demo.main.run", {"what": what}, chat_level=2))
         return sent, status
 
@@ -429,7 +430,7 @@ class TestACutReply:
         async def llm(messages, max_tokens=None):
             return Completion('{"action": {"do": "rem', "length")
 
-        executor = FunctionExecutor(llm=llm)
+        executor = FunctionExecutor(sinks=ChatSinks(llm=llm))
         result, status = run(executor.invoke(agents["demo"], "demo.main.run", {}))
         assert status == "success", result
         assert result == {"text": '{"action": {"do": "rem', "cut": True, "stop_reason": "length"}

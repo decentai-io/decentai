@@ -56,6 +56,7 @@ from ai_runtime.reasoning.state import (
 )
 from ai_runtime.prompts import Prompts
 from ai_runtime.runtime_logging import RuntimeLoggerFactory
+from ai_runtime.sinks import ChatSinks
 
 #: Which job the current task is running, if any — how an approver
 #: called deep inside the executor knows it is parking a JOB rather
@@ -130,20 +131,10 @@ class Assistant:
         agents: Dict[str, InstalledAgent],
         connector,
         executor: FunctionExecutor,
+        sinks: Optional[ChatSinks] = None,
         *,
-        say_sink: Callable,
         chat_level: int = 1,
-        skill_reader: Optional[Callable] = None,
-        image_reader: Optional[Callable] = None,
-        file_reader: Optional[Callable] = None,
-        file_finder: Optional[Callable] = None,
-        memory_writer: Optional[Callable] = None,
-        plan_sink: Optional[Callable] = None,
         clock: Optional[Any] = None,
-        spawn_sink: Optional[Callable] = None,
-        finish_sink: Optional[Callable] = None,
-        state_sink: Optional[Callable] = None,
-        activity_sink: Optional[Callable] = None,
         skills: Optional[list] = None,
         memories: Optional[list] = None,
         history: Optional[List[Dict[str, Any]]] = None,
@@ -151,7 +142,6 @@ class Assistant:
         max_skills: Optional[int] = None,
         router=None,
         routing: Optional[Dict[str, Any]] = None,
-        fold: Optional[Callable] = None,
         now: Optional[Callable[[], float]] = None,
         timezone: str = "",
     ):
@@ -160,47 +150,27 @@ class Assistant:
         self.connector = connector
         self.executor = executor
         self.chat_level = chat_level
-        #: async (text, parts) -> None — a message reaching the user NOW.
-        self.say_sink = say_sink
-        self.skill_reader = skill_reader
-        #: async (resource_ref) -> the file, base64 — how a picture the
-        #: person attached reaches the model. None where nothing can
-        #: read files, and the words travel alone.
-        self.image_reader = image_reader
-        #: async (resource_ref) -> the file, base64 — the same download,
-        #: read as a document (read_file). The image reader where none
-        #: is given: it is one door.
-        self.file_reader = file_reader or image_reader
-        #: async (query, names, kind) -> {status, files} — the files the
-        #: user meant,
-        #: found among what they can see and chosen by them on a card
-        #: (find_files). None where no files can be looked up.
-        self.file_finder = file_finder
+        #: The chat's doors, by name (ai_runtime/sinks.py): how a
+        #: message reaches the person, how a file or a skill reaches
+        #: the model, where the plan, the state and a memory are kept,
+        #: and — in a helper — the report its finish is. Built by the
+        #: session; a test hands in what it watches. A door that is
+        #: None is one nobody is behind, and each use says what its
+        #: absence means. Only ``say`` cannot be missing: a mind with
+        #: nobody to talk to is not one.
+        if sinks is None or sinks.say is None:
+            raise ValueError("A mind needs somebody to say things to "
+                             "(ChatSinks.say).")
+        self.sinks = sinks
         #: Whether this model has shown it will look at pictures. It
         #: starts hopeful and is only ever set false, by a refusal.
         self._images_allowed = True
-        self.memory_writer = memory_writer
-        #: async (steps) -> None — show and persist the plan.
-        self.plan_sink = plan_sink
         #: A plan cleared on absorption, owed to the page at the next beat.
         self._plan_cleared = False
         #: the chat's hand on the clock: async schedule(spec) -> dict,
         #: async unschedule(schedule_id) -> dict. None where no clock
         #: serves the session.
         self.clock = clock
-        #: async (job, resuming) -> (result, status, child_trace) — runs
-        #: a child session to its report (docs/system/sub-assistants.md).
-        #: None in a child: depth is one by construction.
-        self.spawn_sink = spawn_sink
-        #: async (summary, reason) -> None — a child's finish is its
-        #: report.
-        self.finish_sink = finish_sink
-        #: async (state) -> None — persist the mind, every beat.
-        #: Resilience, never authority: a failed save costs one beat.
-        self.state_sink = state_sink
-        #: async (kind, text, source, **detail) -> None — the work told
-        #: as it happens: calls, jobs, helpers (``activity`` events).
-        self.activity_sink = activity_sink
         self.skills = list(skills or [])
         self.memories = [str(m) for m in (memories or [])]
         self.history = list(history or [])
@@ -230,12 +200,6 @@ class Assistant:
         #: every agent; and whether a message since asks for a new one
         self._shortlist: Optional[Tuple[List[str], int]] = None
         self._route_pending = False
-        #: async (force=False) -> bool: the session's fold — the
-        #: transcript into its summary when it outgrew its budget, or at
-        #: once when the model refused it for length. Called between
-        #: beats, because a long working turn is when the transcript is
-        #: largest. None = never folded here (tests, a child).
-        self.fold = fold
         #: () -> float — the clock the stamps are read from; the
         #: session hands over the scheduler's, so both agree.
         self.now = now or time.time
@@ -315,8 +279,8 @@ class Assistant:
                 await self._route()
             finished = await self._beat()
             await self._persist()
-            if self.fold is not None:
-                await self.fold()
+            if self.sinks.fold is not None:
+                await self.sinks.fold()
 
             if finished:
                 if not self.inbox.empty():
@@ -475,8 +439,8 @@ class Assistant:
             # Said as what it is, where a finish is reported: a helper
             # that ran out of beats did not complete, and its parent
             # reads why.
-            if self.finish_sink is not None:
-                await self.finish_sink("", OUT_OF_BEATS)
+            if self.sinks.finish is not None:
+                await self.sinks.finish("", OUT_OF_BEATS)
             return True
 
         # The actions travel as tool schemas, and so does every function
@@ -575,8 +539,8 @@ class Assistant:
                     "far is kept. A different model may work better for "
                     "this chat.")
                 self.state.beats = 0
-                if self.finish_sink is not None:
-                    await self.finish_sink("", "blocked")
+                if self.sinks.finish is not None:
+                    await self.sinks.finish("", "blocked")
                 return True
         self.state.messages.append(self._own(json.dumps(action)))
         if len(actions) > 1:
@@ -676,8 +640,8 @@ class Assistant:
                 self._observe({"error": refusal})
                 return False
             self.state.beats = 0
-            if self.finish_sink is not None:
-                await self.finish_sink(str(action.get("summary") or ""),
+            if self.sinks.finish is not None:
+                await self.sinks.finish(str(action.get("summary") or ""),
                                        str(action.get("reason") or "completed"))
             return True
         if kind == "spawn":
@@ -713,11 +677,11 @@ class Assistant:
                     self._observe({"said": True, "error": refusal})
                     return False
                 self.state.beats = 0
-                if self.finish_sink is not None:
-                    await self.finish_sink("", "completed")
+                if self.sinks.finish is not None:
+                    await self.sinks.finish("", "completed")
                 return True
             if (self._acted and not self._owes_more()
-                    and self.finish_sink is None
+                    and self.sinks.finish is None
                     and self.state.messages[-1].get("role") == "assistant"):
                 # Said after the work, and nothing is owed: no item
                 # open on the plan, no job running. That is the end of
@@ -766,8 +730,8 @@ class Assistant:
                     "unless they ask.")})
                 self.state.stopped = True
                 self.state.beats = 0
-                if self.finish_sink is not None:
-                    await self.finish_sink("", "awaiting_user")
+                if self.sinks.finish is not None:
+                    await self.sinks.finish("", "awaiting_user")
                 return True
             self._observe(observation)
             return False
@@ -848,7 +812,7 @@ class Assistant:
         keeps the mind small enough to persist, keeps the summary free
         of base64, and costs nothing when there are no pictures."""
         maker = getattr(self.connector, "image_block", None)
-        ready = bool(maker) and self.image_reader is not None \
+        ready = bool(maker) and self.sinks.read_image is not None \
             and self._images_allowed
         out: List[Dict[str, Any]] = []
         for message in messages:
@@ -942,7 +906,7 @@ class Assistant:
         if not ref:
             return None
         try:
-            record = await self.image_reader(ref) or {}
+            record = await self.sinks.read_image(ref) or {}
         except Exception as exc:
             self.logger.warning(f"Image {ref} not read: {exc}")
             return None
@@ -990,14 +954,14 @@ class Assistant:
                     f"the words alone: {exc}")
                 return await self.connector.chat(
                     await self._for_model(self.state.messages), tools=tools)
-            if self.fold is not None and is_context_overflow(exc):
+            if self.sinks.fold is not None and is_context_overflow(exc):
                 # The transcript outgrew the window between folds: fold
                 # now, keeping less, and ask once more. A beat that dies
                 # here would have taken the turn with it.
                 self.logger.warning(
                     f"The transcript outgrew the model's window; folding "
                     f"and asking again: {exc}")
-                if await self.fold(force=True):
+                if await self.sinks.fold(force=True):
                     return await self.connector.chat(
                         await self._for_model(self.state.messages), tools=tools)
             raise
@@ -1081,7 +1045,7 @@ class Assistant:
         accounted = self.state.evidence_cursor
         self.state.evidence_cursor = len(self.state.trace)
         try:
-            await self.say_sink(composed["text"], composed["parts"])
+            await self.sinks.say(composed["text"], composed["parts"])
         except Exception as exc:
             # The words matter more than what rides beside them. A part
             # the platform refuses (a reference it will not accept, a
@@ -1101,7 +1065,7 @@ class Assistant:
             try:
                 if not composed["text"]:
                     raise ValueError("there were no words to send alone")
-                await self.say_sink(composed["text"], [])
+                await self.sinks.say(composed["text"], [])
             except Exception as again:
                 # Nothing reached the person, so nothing was presented:
                 # the work stays to be shown by the next message.
@@ -1121,7 +1085,7 @@ class Assistant:
         """The assistant's own words (valve, failures) — no evidence to
         attach, nothing model-claimed to audit."""
         try:
-            await self.say_sink(text, [])
+            await self.sinks.say(text, [])
         except Exception as exc:
             self.logger.error(f"Say failed: {exc}")
 
@@ -1312,8 +1276,8 @@ class Assistant:
         """One line of the work for whoever watches — what started, what
         finished and how long it took, and who did it — as the chat's
         ``activity`` events (contracts/chat.py)."""
-        if self.activity_sink is not None and text:
-            await self.activity_sink(kind, text, source, **detail)
+        if self.sinks.activity is not None and text:
+            await self.sinks.activity(kind, text, source, **detail)
 
     @staticmethod
     def _call_id() -> str:
@@ -1504,7 +1468,7 @@ class Assistant:
     MAX_CHILDREN = 3
 
     async def _spawn(self, action: Dict[str, Any]) -> Dict[str, Any]:
-        if self.spawn_sink is None:
+        if self.sinks.spawn is None:
             return {"error": "Spawning is not available here — a child "
                              "does the work it was given and reports."}
         goal = str(action.get("goal") or "").strip()
@@ -1562,7 +1526,7 @@ class Assistant:
     async def _run_child(self, job: Job, resuming: bool) -> None:
         CURRENT_JOB_ID.set(job.job_id)
         try:
-            result, status, entries = await self.spawn_sink(job, resuming)
+            result, status, entries = await self.sinks.spawn(job, resuming)
         except asyncio.CancelledError:
             job.status = CANCELLED
             job.result = {"error": "The sub-assistant was cancelled."}
@@ -1732,12 +1696,13 @@ class Assistant:
         if not ref:
             return {"status": "error",
                     "result": {"error": "read needs a storage_ref."}}
-        resolver = getattr(self.executor, "resolver", None)
-        if resolver is None:
+        # The same door the executor resolves a reference input by.
+        read = self.sinks.read_result
+        if read is None:
             return {"status": "error", "result": {
                 "error": "Stored results cannot be read back here."}}
         try:
-            value = await resolver(ref, path)
+            value = await read(ref, path)
         except Exception as exc:
             return {"status": "error", "result": {
                 "error": f"The stored result could not be read: {exc}"}}
@@ -1780,10 +1745,10 @@ class Assistant:
         if not query:
             return {"error": "find_files needs a query: the file as the "
                              "user described it."}
-        if self.file_finder is None:
+        if self.sinks.find_files is None:
             return {"error": "Files cannot be looked up in this chat."}
         try:
-            outcome = await self.file_finder(
+            outcome = await self.sinks.find_files(
                 query, action.get("names"),
                 str(action.get("kind") or "")) or {}
         except Exception as exc:
@@ -1830,10 +1795,11 @@ class Assistant:
         if not ref:
             return {"error": "read_file needs a file_ref, from an "
                              "[attached: …] line."}
-        if self.file_reader is None:
+        reader = self.sinks.read_file or self.sinks.read_image
+        if reader is None:
             return {"error": "Files cannot be read in this chat."}
         try:
-            record = await self.file_reader(ref) or {}
+            record = await reader(ref) or {}
         except Exception as exc:
             return {"error": f"The file could not be read: {exc}"}
         encoded = str(record.get("content_base64") or "")
@@ -1895,10 +1861,10 @@ class Assistant:
         ref = str(action.get("skill") or "").strip()
         if not ref:
             return {"error": "use_skill needs a skill ref."}
-        if self.skill_reader is None:
+        if self.sinks.read_skill is None:
             return {"error": "No skills are available in this chat."}
         try:
-            skill = await self.skill_reader(ref)
+            skill = await self.sinks.read_skill(ref)
         except Exception as exc:
             return {"error": f"The skill could not be read: {exc}"}
         if not skill:
@@ -1920,7 +1886,7 @@ class Assistant:
                      "scheduled; the assistant you work for can.")
 
     async def _schedule(self, action: Dict[str, Any]) -> Dict[str, Any]:
-        if self.finish_sink is not None:
+        if self.sinks.finish is not None:
             return {"error": self.NOT_A_HELPERS}
         if self.clock is None:
             return {"error": "No clock serves this chat."}
@@ -1934,7 +1900,7 @@ class Assistant:
         """Pause until a moment from now, and be woken then with the
         reason. Not a helper's to do: a helper works to its end and
         reports."""
-        if self.clock is None or self.finish_sink is not None:
+        if self.clock is None or self.sinks.finish is not None:
             return {"error": "Nothing can wake you here. Finish for the "
                              "reason that is true."}
         return await self.clock.sleep(
@@ -1944,7 +1910,7 @@ class Assistant:
         schedule_id = str(action.get("schedule_id") or "").strip()
         if not schedule_id:
             return {"error": "unschedule needs a schedule_id."}
-        if self.finish_sink is not None:
+        if self.sinks.finish is not None:
             return {"error": self.NOT_A_HELPERS}
         if self.clock is None:
             return {"error": "No clock serves this chat."}
@@ -1957,12 +1923,12 @@ class Assistant:
         text = str(action.get("text") or "").strip()
         if not text:
             return {"error": "remember needs text."}
-        if self.memory_writer is None:
+        if self.sinks.remember is None:
             return {"error": "Memory is not available in this chat."}
         if any(text == existing for existing in self.memories):
             return {"text": "That is already remembered — carry on."}
         try:
-            await self.memory_writer(text)
+            await self.sinks.remember(text)
         except Exception as exc:
             return {"error": f"The memory could not be saved: {exc}"}
         self.memories.append(text)
@@ -2006,9 +1972,9 @@ class Assistant:
         beat reads a list that contradicts the observation beneath it
         until something else happens to reframe."""
         self.reframe()
-        if self.plan_sink is not None:
+        if self.sinks.plan is not None:
             try:
-                await self.plan_sink(self.state.plan.to_steps())
+                await self.sinks.plan(self.state.plan.to_steps())
             except Exception as exc:
                 return f"The plan could not be shown: {exc}"
         return None
@@ -2489,10 +2455,10 @@ class Assistant:
             position = end
 
     async def _persist(self) -> None:
-        if self.state_sink is None:
+        if self.sinks.save_state is None:
             return
         try:
-            await self.state_sink(self.state)
+            await self.sinks.save_state(self.state)
         except Exception as exc:
             # The mind keeps advancing on a stale checkpoint: a death
             # now loses everything since the last save that landed.

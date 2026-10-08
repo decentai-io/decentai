@@ -14,6 +14,7 @@ from ai_runtime.agents.mcp import McpServer
 from ai_runtime.agents.worker_handle import WorkerError, WorkerHandle
 from ai_runtime.execution.code_grant import CodeGrant
 from ai_runtime.execution.executor import FunctionExecutor
+from ai_runtime.sinks import ChatSinks
 from ai_runtime.execution.grants import FunctionGrants
 from ai_runtime.tests.fixture_agents import (
     MINIMAL_MANIFEST, load_agents, write_agent)
@@ -58,7 +59,8 @@ def demo(tmp_path, body, manifest=None):
 def executor(**kwargs):
     kwargs.setdefault("provider", InMemoryResourceProvider(
         secrets={"notebook__connection": {"api_token": "t"}}))
-    return FunctionExecutor(**kwargs)
+    doors = {k: kwargs.pop(k) for k in list(kwargs) if k in ChatSinks.names()}
+    return FunctionExecutor(sinks=ChatSinks(**doors), **kwargs)
 
 
 def trailed(**kwargs):

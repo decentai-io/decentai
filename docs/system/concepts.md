@@ -222,6 +222,7 @@ Where a word is used for more than one thing, each is said.
 | **escape grant** | an action that lets its holder reach past the usual rule. `…:set_owner_any` lifts whom a thing may be shared to and who may edit it; `…:manage_any` reaches every source or connection, and does not lift whom one may be shared to | [sharing](sharing.md) |
 | **event** | two things. *Inbound*: what the assistant is told — a message, a finished job, a wakeup — kept in the inbox before it is heard. *Outbound*: what the runtime tells the page | `ai_chat_events`, direction `in` and `out` |
 | **executor** | what stands between the assistant and an agent's function: the gates a call passes | `FunctionExecutor`, `ai_runtime/execution/executor.py` |
+| **the chat's doors** | what the mind and a running call may ask of the chat — to say, to ask, to approve, to keep, to write on the trail — as one object the session builds and hands to both. Also *sinks* | `ChatSinks`, `ai_runtime/sinks.py` |
 | **the fence** | two things. What a delegation may call: a fixed list of actions. And what a worker may open: its own files | `RUNTIME_ENDPOINTS`; Landlock, `ai_runtime/agents/spawn_helper.c` |
 | **fold** | the assistant shortening its own transcript when it grows | [the assistant](assistant.md) |
 | **frame** | one message on a socket. (In [the assistant](assistant.md) also the assistant's standing instructions) | `contracts/chat.py` |

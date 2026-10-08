@@ -110,6 +110,14 @@ Read in this order:
 6. `_spawn_child`, `report`, `ChildServices` — helpers
    ([sub-assistants](../system/sub-assistants.md)).
 
+Before `open`, read `ai_runtime/sinks.py`: `ChatSinks` is every door
+from the mind and from a running call back to the chat — say, ask,
+approve, store, audit, and the rest — as one object the session builds
+from its own methods and hands to both. One name per door, the same
+name on the session's side, in the mind, and in the SDK (`call.ask`).
+A field that is None has nobody behind it, and each use says what
+that means.
+
 Check:
 
 - `_advance`: `working` goes out before the cycle and `idle` after it,
@@ -138,7 +146,7 @@ Check:
 - A helper's `ChildServices`: its storage and memories are the
   parent's, and its cards and screen surface in the parent's audience
   under its own id. That it cannot save memory is not there: it is the
-  `memory_writer` `Session.open` hands a child (`Session._refuse_memory`).
+  `remember` door `Session.open` hands a child (`Session._refuse_memory`).
 
 Tests: `ai_runtime/tests/test_session.py`,
 `ai_runtime/tests/test_sub_assistants.py`,
@@ -209,7 +217,8 @@ Tests: `ai_runtime/tests/test_assistant.py`,
 
 ## 5. Execution: the gates, then the worker
 
-`execution/executor.py`, class `FunctionExecutor`. `_invoke` is the
+`execution/executor.py`, class `FunctionExecutor`. It is built from
+the provider, the grants and the chat's `ChatSinks`. `_invoke` is the
 most important sixty lines in the runtime — every call an agent ever
 runs passes through it, in this order:
 

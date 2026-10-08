@@ -11,6 +11,7 @@ import json
 from pathlib import Path
 
 from ai_runtime.execution.executor import FunctionExecutor
+from ai_runtime.sinks import ChatSinks
 from ai_runtime.llms import FakeConnector
 from ai_runtime.reasoning import Assistant, AssistantState
 from ai_runtime.tests.fixture_agents import load_agents
@@ -45,10 +46,15 @@ class Harness:
         async def state_sink(state):
             self.saved_states.append(state.to_dict())
 
+        # The chat's doors (ai_runtime/sinks.py), one object for the
+        # mind and the executor as the session hands them; a test's
+        # own go in by name.
+        doors = {k: kwargs.pop(k) for k in list(kwargs) if k in ChatSinks.names()}
+        self.sinks = ChatSinks(say=say_sink, save_state=state_sink, **doors)
         self.assistant = Assistant(
             self.state, self.agents, self.connector,
-            FunctionExecutor(provider=self.provider),
-            say_sink=say_sink, state_sink=state_sink, **kwargs,
+            FunctionExecutor(provider=self.provider, sinks=self.sinks),
+            self.sinks, **kwargs,
         )
 
     def user(self, text):
@@ -146,7 +152,7 @@ class TestTheCycle:
         async def store(source, result):
             return "stg_found" if "notes" in result else "stg_saved"
 
-        harness.assistant.executor.storage = store
+        harness.assistant.executor.sinks.store = store
         run(harness.user("note it, then list").assistant.run())
         tables = [p for p in harness.said[0]["parts"] if p["type"] == "table"]
         # Shown, and whose rows they are: the agent that found them.
@@ -369,7 +375,7 @@ class TestTheCycle:
             action(action="find_files", query="the sales report",
                    names=["sales", "report"], kind="spreadsheet"),
             action(action="finish"),
-        ], file_finder=finder)
+        ], find_files=finder)
         run(harness.user("summarize the sales report").assistant.run())
         assert asked == [
             ("the sales report", ["sales", "report"], "spreadsheet")]
@@ -388,7 +394,7 @@ class TestTheCycle:
         harness = Harness([
             action(action="find_files", query="the report"),
             action(action="finish"),
-        ], file_finder=finder)
+        ], find_files=finder)
         run(harness.user("summarize the report").assistant.run())
         observation = json.loads(harness.state.messages[3]["content"].split("\n", 1)[1])
         assert observation["files"] == [] and "no files" in observation["note"]
@@ -432,7 +438,7 @@ class TestTheCycle:
         harness = Harness([
             action(action="read_file", file_ref="fil_report"),
             action(action="finish"),
-        ], file_reader=reader)
+        ], read_file=reader)
         run(harness.user("summarize the report").assistant.run())
         observation = json.loads(harness.state.messages[3]["content"].split("\n", 1)[1])
         assert observation["text"] == "region,total\nnorth,12\nsouth,30\n"
@@ -449,7 +455,7 @@ class TestTheCycle:
             action(action="read_file", file_ref="fil_long"),
             action(action="read_file", file_ref="fil_long", **{"from": DocumentPage.MAX_CHARS}),
             action(action="finish"),
-        ], file_reader=reader)
+        ], read_file=reader)
         run(harness.user("read it").assistant.run())
         first = json.loads(harness.state.messages[3]["content"].split("\n", 1)[1])
         second = json.loads(harness.state.messages[5]["content"].split("\n", 1)[1])
@@ -473,7 +479,7 @@ class TestTheCycle:
             action(action="read_file", file_ref="fil_nowhere"),
             action(action="read_file"),
             action(action="finish"),
-        ], file_reader=reader)
+        ], read_file=reader)
         run(harness.user("read them").assistant.run())
         errors = [json.loads(harness.state.messages[i]["content"].split("\n", 1)[1])["error"]
                   for i in (3, 5, 7, 9)]
@@ -502,7 +508,7 @@ class TestTheCycle:
             action(action="plan", steps=["Save the note", "Confirm"]),
             action(action="plan", step=1, status="done"),
             action(action="finish", reason="awaiting_user"),
-        ], plan_sink=plan_sink)
+        ], plan=plan_sink)
         run(harness.user("do two things").assistant.run())
         assert len(shown) == 2
         first = harness.state.plan.to_steps()[0]
@@ -529,7 +535,7 @@ class TestPlanLifecycle:
         async def plan_sink(steps):
             shown.append(steps)
 
-        return Harness(script, plan_sink=plan_sink), shown
+        return Harness(script, plan=plan_sink), shown
 
     def test_a_done_plan_is_cleared_by_the_next_ask(self):
         harness, shown = self.harness([
@@ -598,7 +604,7 @@ class TestWorkItems:
         async def store(source, result):        # results get a ref
             return "stg_saved"
 
-        harness.assistant.executor.storage = store
+        harness.assistant.executor.sinks.store = store
         run(harness.user("save a note").assistant.run())
         saved, telling = harness.state.plan.to_steps()
         assert harness.state.trace[-1]["result"]["storage_ref"] == "stg_saved"
@@ -773,7 +779,7 @@ class TestTheValve:
         async def finish_sink(summary, reason):
             finished.append(reason)
         looping = [action(action="open_agent", agent="notebook")] * 10
-        harness = Harness(looping, max_beats=3, finish_sink=finish_sink)
+        harness = Harness(looping, max_beats=3, finish=finish_sink)
         run(harness.user("loop forever").assistant.run())
         assert finished == ["budget"]
 
@@ -1379,12 +1385,12 @@ class TestObservationBudget:
     def test_a_long_list_is_read_in_pages_with_from(self):
         rows = self.rows(400, size=200)
         harness = Harness([action(action="finish")])
-        harness.assistant.executor.resolver = None
+        harness.assistant.executor.sinks.read_result = None
 
         async def resolver(ref, path):
             return rows
 
-        harness.assistant.executor.resolver = resolver
+        harness.assistant.executor.sinks.read_result = resolver
         first = run(harness.assistant._read({"storage_ref": "stg_1", "path": "notes"}))
         shown = first["result"]["value"]["items_shown"]
         assert first["result"]["value"]["items"] == rows[:shown]
@@ -1414,7 +1420,7 @@ class TestARefusedPart:
                 raise RuntimeError("unknown part type 'success'")
             delivered.append((text, parts))
 
-        harness.assistant.say_sink = refusing_sink
+        harness.assistant.sinks.say = refusing_sink
         run(harness.user("note down: ship it").assistant.run())
         assert delivered == [("Saved your note.", [])]
         # The model heard why, and the turn still finished.

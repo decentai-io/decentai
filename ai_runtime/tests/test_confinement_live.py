@@ -42,6 +42,7 @@ from ai_runtime.agents.library import InstalledAgent
 from ai_runtime.agents.worker_handle import WorkerHandle
 from ai_runtime.agents.worker_pool import CallContext, WorkerPool
 from ai_runtime.tests.fixture_agents import MINIMAL_MANIFEST, write_agent
+from ai_runtime.sinks import ChatSinks
 from contracts.agent_manifest import load_manifest
 
 #: The install directory the image's helper was built for.
@@ -1144,8 +1145,9 @@ class TestAProgramAnAgentRuns:
         async def scenario():
             pool = WorkerPool()
             executor = FunctionExecutor(
-                provider=InMemoryResourceProvider(), workers=pool,
-                proposer=proposer)
+                provider=InMemoryResourceProvider(),
+                workers=pool,
+                sinks=ChatSinks(propose=proposer))
             try:
                 answers = []
                 for inputs in calls:
@@ -1240,8 +1242,10 @@ class TestWhatTheDeploymentSets:
         async def scenario():
             pool = WorkerPool()
             executor = FunctionExecutor(
-                provider=InMemoryResourceProvider(), workers=pool,
-                audit=audit, safety=safety)
+                provider=InMemoryResourceProvider(),
+                workers=pool,
+                safety=safety,
+                sinks=ChatSinks(audit=audit))
             try:
                 answers = []
                 for inputs in calls:

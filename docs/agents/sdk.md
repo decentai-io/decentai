@@ -268,7 +268,8 @@ your agent on this site when it is saved already, or to choose between
 accounts. A field with `remember: False` is asked every time and stored
 nowhere. `account` picks one of several; `refresh=True` asks for
 everything again. `None` is a decline, or a day gone. Where there is
-nobody to ask — a scheduled run, a test that gave no `credentialer` —
+nobody to ask — a scheduled run, a test whose `ChatSinks` has no
+`credential` —
 the call is refused instead (`ResourceDenied`).
 
 The answer is the fields by name, with `host` and `account` beside them.

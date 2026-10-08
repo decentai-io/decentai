@@ -7,6 +7,7 @@ import pytest
 
 from ai_runtime.agents.mcp import McpServer
 from ai_runtime.execution.executor import FunctionExecutor
+from ai_runtime.sinks import ChatSinks
 from ai_runtime.execution.grants import FunctionGrants
 from contracts.mcp import McpClient, McpError, McpTools
 from sim.mcp_server import FakeMcpServer
@@ -158,8 +159,10 @@ class TestThroughTheGates:
     GRANTS = [{"effect": "allow", "functions": ["mcp_1.*.*"]}]
 
     def executor(self, **more):
+        doors = {k: more.pop(k) for k in list(more) if k in ChatSinks.names()}
         return FunctionExecutor(provider=InMemoryResourceProvider(),
-                                grants=FunctionGrants(self.GRANTS), **more)
+                                grants=FunctionGrants(self.GRANTS),
+                                sinks=ChatSinks(**doors), **more)
 
     def test_a_tool_runs_on_the_server_and_answers_here(self, server):
         result, status = run(self.executor().invoke(
@@ -189,7 +192,7 @@ class TestThroughTheGates:
             asked.append(request["function"])
             return False
 
-        result, status = run(self.executor(approver=approver).invoke(
+        result, status = run(self.executor(approve=approver).invoke(
             served(server), "mcp_1.tools.echo", {"text": "hi"}, chat_level=1))
         assert status == "error" and result.get("denied") is True
         assert asked == ["mcp_1.tools.echo"]

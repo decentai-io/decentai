@@ -1,10 +1,11 @@
 """Reasoning: the assistant — the platform's one thinking entity.
 
 The contract is docs/system/assistant.md. This package is the mind and
-nothing else: model in, actions out. Every side effect crosses an
-injected seam (say_sink, skill_reader, memory_writer, plan_sink,
-state_sink), so this package imports execution and agents — the law it
-operates under — and never chat, the embodiment that hosts it.
+nothing else: model in, actions out. Every side effect crosses one
+injected seam — the chat's doors, ``ChatSinks`` (ai_runtime/sinks.py):
+say, plan, save_state, read_skill, remember and the rest — so this
+package imports execution and agents — the law it operates under — and
+never chat, the embodiment that hosts it.
 
     assistant.py     the cycle: events in, one action per beat, until idle
     actions.py       the action vocabulary as tool schemas

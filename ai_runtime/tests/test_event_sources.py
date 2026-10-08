@@ -14,6 +14,7 @@ from ai_runtime.chat.scheduler import (
     ChatClock, Schedule, ScheduleRunner, Scheduler,
 )
 from ai_runtime.execution.executor import FunctionExecutor
+from ai_runtime.sinks import ChatSinks
 from ai_runtime.llms import FakeConnector
 from ai_runtime.tests.fixture_agents import load_agents
 from sim.schedules import MemoryScheduleStore
@@ -395,6 +396,6 @@ class TestTheCalendar:
 
             assistant = Assistant(AssistantState(), {}, FakeConnector([]),
                                   FunctionExecutor(provider=None),
-                                  say_sink=say, now=lambda: instant,
+                                  ChatSinks(say=say), now=lambda: instant,
                                   timezone=tz)
             assert assistant._stamp() == expected

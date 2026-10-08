@@ -51,6 +51,7 @@ gives your tests `agents` — every agent the catalog offers, by id. Then:
 
 ```python
 from ai_runtime.execution.executor import FunctionExecutor
+from ai_runtime.sinks import ChatSinks
 from sim.resources import InMemoryResourceProvider
 
 executor = FunctionExecutor(provider=InMemoryResourceProvider())
@@ -65,12 +66,18 @@ raises: a refusal is `(dict, "error")`.
 | Handed to `FunctionExecutor` | Stands for |
 |---|---|
 | `provider=InMemoryResourceProvider(secrets={"note__connection": {...}})` | Your records, files and secrets. A secret is bound under `<agent_id>__<resource_id>`. What your agent wrote is in `provider.data["<agent_id>__<resource_id>"]` and `provider.files[...]`. |
+| `sinks=ChatSinks(...)` | The chat's doors, by the names your code knows them by (`ai_runtime/sinks.py`). Each one is optional; one that is missing has nobody behind it. |
+
+And on `ChatSinks`:
+
+| Door | Stands for |
+|---|---|
 | `llm=async def model(messages, max_tokens=None, images=None)` | The chat's model. Return what your prompt asks for — and a wrong answer, to see what your code does with one. |
-| `asker=async def ask(question, choices, source, expects="")` | The person answering `call.ask`. Return `None` to be nobody. |
-| `proposer=async def propose(code, source)` | The person answering a code card: `True`, `False` or `None`. |
-| `credentialer=async def credential(host, fields, account, site, refresh, source)` | The person answering `call.credential`: the fields by name, or `None`. |
-| `post_sink=async def post(text, source, parts)` | Where `call.post` goes |
-| `storage=async def keep(function, stored)` | Where results and offered tables are kept; return an id. Without it `call.show` gives `None`. |
+| `ask=async def ask(question, choices, source, expects="")` | The person answering `call.ask`. Return `None` to be nobody. |
+| `propose=async def propose(code, source)` | The person answering a code card: `True`, `False` or `None`. |
+| `credential=async def credential(host, fields, account, site, refresh, source)` | The person answering `call.credential`: the fields by name, or `None`. |
+| `post=async def post(text, source, parts)` | Where `call.post` goes |
+| `store=async def keep(function, stored)` | Where results and offered tables are kept; return an id. Without it `call.show` gives `None`. |
 
 And on `invoke`, `chat_level=` is the chat's trust: a function above it
 asks for approval, and with nobody wired in to approve, it is refused.

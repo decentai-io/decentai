@@ -36,6 +36,7 @@ from contracts.chat import (
 )
 from ai_runtime.agents.library import InstalledAgent
 from ai_runtime.agents.mcp import McpServer
+from ai_runtime.sinks import ChatSinks
 from ai_runtime.agents.worker_handle import WorkerError
 from ai_runtime.agents.confinement import Confinement
 from ai_runtime.agents.worker_pool import CallContext, WorkerPool
@@ -83,12 +84,10 @@ class ParkedInvocation:
 
 
 class FunctionExecutor:
-    """One executor per chat: it carries the chat's approval channel,
-    progress sink, and resource provider; the chat level rides on each
+    """One executor per chat: it carries the chat's resource provider,
+    its grants, and the chat's doors (ai_runtime/sinks.py) — the
+    approval card, the asks, the trail. The chat level rides on each
     invocation because the user can change it mid-conversation.
-
-    ``approver`` is an async callable(request: dict) -> bool — the bridge
-    to the human. Absent approver = every escalation is denied.
     """
 
     DEFAULT_TIMEOUT_SECONDS = 60
@@ -96,23 +95,20 @@ class FunctionExecutor:
     def __init__(
         self,
         provider=None,
-        approver: Optional[Callable] = None,
-        progress_sink: Optional[Callable] = None,
+        sinks: Optional[ChatSinks] = None,
         grants=None,
-        storage: Optional[Callable] = None,
-        audit: Optional[Callable] = None,
-        resolver: Optional[Callable] = None,
-        llm: Optional[Callable] = None,
         workers: Optional[WorkerPool] = None,
-        post_sink: Optional[Callable] = None,
-        asker: Optional[Callable] = None,
-        credentialer: Optional[Callable] = None,
-        screen_sink: Optional[Callable] = None,
         conversation: str = "",
-        proposer: Optional[Callable] = None,
         safety: Optional[Dict[str, Any]] = None,
     ):
         self.provider = provider
+        #: The chat's doors, by name (ai_runtime/sinks.py): what a call
+        #: may ask of the chat, and what is written about it. A door
+        #: that is None has nobody behind it — a test, or a fire from
+        #: the clock — and each use says what that means for it: no
+        #: approve is a denial, no ask is a refusal, no audit is a
+        #: trail with nothing on it.
+        self.sinks = sinks or ChatSinks()
         #: The chat these invocations run in, as an opaque key handed to
         #: every call (call.conversation): what lets a function keep a
         #: browser open between calls for one chat and no other.
@@ -121,17 +117,6 @@ class FunctionExecutor:
         # pool so workers stay warm across chats; absent, the executor
         # lazily owns a private one — the test-and-standalone path.
         self.workers = workers
-        # async (text, source, parts) -> bool: an agent speaking for
-        # itself (call.post), into the chat the call runs for. Absent
-        # (tests) = a post goes nowhere and says so.
-        self.post_sink = post_sink
-        # async (question, choices, source) -> answer | None: an agent
-        # asking the person (call.ask). Absent = nobody to ask; None.
-        self.asker = asker
-        # async (code, source) -> True | False | None: code an agent
-        # wants to run, put before the person (call.propose). Absent =
-        # nobody to ask; None.
-        self.proposer = proposer
         #: What the deployment lets agents do (Settings:Safety), as the
         #: chat's contract carries it: the sites no agent may open, and
         #: the packages a program may install where a list is kept.
@@ -143,43 +128,12 @@ class FunctionExecutor:
         #: a frame and not said it closed. A screen is a call's: when
         #: the call ends, however it ends, whoever is watching is told.
         self._screens: Dict[str, Dict[str, Any]] = {}
-        #: async (host, fields, account, site, refresh, source) -> values
-        #: | None — the chat resolving a login an agent asks for as it
-        #: works, through the person's cards. None where nobody can
-        #: answer (a test).
-        self.credentialer = credentialer
-        #: async (kind, params, source) -> None — a screen a function
-        #: shows, reaching the chat's audience. None where nobody could
-        #: watch.
-        self.screen_sink = screen_sink
-        self.approver = approver
-        # async (text, source) -> None: an agent's own progress lines,
-        # each told as that agent's, on the call it was made on.
-        self.progress_sink = progress_sink
-        # async (messages, max_tokens) -> str: the chat's model, handed
-        # only to functions whose manifest declares ``llm: true``. Absent
-        # (the scheduled-action path, tests) = call.llm refuses with the
-        # reason.
-        self.llm = llm
         # FunctionGrants. None is unrestricted and is a test's: a
         # session's executor and a fire's carry the delegation's
         # grants, so denied by default applies. (The clock's own
         # executor in server/app.py has none; a fire runs with the
         # host's, fire_context, and not with that one.)
         self.grants = grants
-        # async (source, result) -> storage_ref | None: successful results
-        # are recorded to chat storage so parts and later work reference
-        # verified data instead of retyping it.
-        self.storage = storage
-        # async (event) -> None: every invocation, gated or executed, is
-        # recorded on the platform's trail — the agent, the function, its
-        # level, the inputs in outline, the outcome, how long it took. A
-        # witness, never a gate: a failed record logs and the result
-        # stands.
-        self.audit = audit
-        # async (storage_ref, path) -> value: lets any input value be a
-        # reference to a stored result instead of a literal.
-        self.resolver = resolver
 
         self.logger = RuntimeLoggerFactory.get_logger(self.__class__.__name__)
 
@@ -273,7 +227,7 @@ class FunctionExecutor:
 
         # Reference inputs resolve to their stored values BEFORE schema
         # validation — the function sees real data, verified end to end.
-        if self.resolver is not None:
+        if self.sinks.read_result is not None:
             inputs, reference_error = await self._resolve_references(inputs)
             if reference_error:
                 return {
@@ -430,9 +384,9 @@ class FunctionExecutor:
         ``{mime, content_base64}`` to whatever serves the model. A
         picture the agent carries itself is taken too, and either way
         it is checked to be one (pictures.py)."""
-        if self.llm is None:
+        if self.sinks.llm is None:
             return None
-        serve = self.llm
+        serve = self.sinks.llm
 
         async def complete(messages, max_tokens=None, images=None):
             pictures = []
@@ -488,7 +442,7 @@ class FunctionExecutor:
         """The agent asking the person, checked here (words, length,
         choices), then handed to the chat as a card in the agent's name.
         None where there is no one to ask."""
-        if self.asker is None:
+        if self.sinks.ask is None:
             return None
         source = agent_source(agent.agent_id, agent.manifest.name,
                               canonical_name, call_id=call_id)
@@ -515,11 +469,11 @@ class FunctionExecutor:
             if expects == "file":
                 # Buttons answer with words; a file request has none.
                 # The file the person gives is handed to this call.
-                answer = await self.asker(question, [], source, expects="file")
+                answer = await self.sinks.ask(question, [], source, expects="file")
                 if access is not None:
                     access.hand(answer)
                 return answer
-            return await self.asker(question, offered, source)
+            return await self.sinks.ask(question, offered, source)
         return ask
 
     def _propose_for(self, agent: InstalledAgent, canonical_name: str,
@@ -534,7 +488,7 @@ class FunctionExecutor:
         what a card it is allowed names is then opened and installable
         for this call (code_grant.py), so the names are checked before
         the card is shown."""
-        if self.proposer is None:
+        if self.sinks.propose is None:
             return None
         source = agent_source(agent.agent_id, agent.manifest.name,
                               canonical_name, call_id=call_id)
@@ -552,7 +506,7 @@ class FunctionExecutor:
                 why = CodeGrant.problem(asked, self._listed_packages())
                 if why:
                     raise WorkerError(f"The code could not be proposed: {why}")
-            allowed = await self.proposer(asked, source)
+            allowed = await self.sinks.propose(asked, source)
             if allowed is True and grant is not None:
                 grant.allow(asked)
             return allowed
@@ -600,7 +554,7 @@ class FunctionExecutor:
         """A login the agent asks for as it works, checked here for
         shape, then handed to the chat to resolve through the person's
         cards in the agent's name. None where there is no one to ask."""
-        if self.credentialer is None:
+        if self.sinks.credential is None:
             return None
         source = agent_source(agent.agent_id, agent.manifest.name,
                               canonical_name, call_id=call_id)
@@ -627,7 +581,7 @@ class FunctionExecutor:
                     "required": field.get("required", True) is not False,
                     "remember": field.get("remember", True) is not False,
                 })
-            return await self.credentialer(
+            return await self.sinks.credential(
                 host, cleaned, str(account or "")[:200] or None,
                 str(site or "")[:200] or None, bool(refresh), source)
         return credential
@@ -636,7 +590,7 @@ class FunctionExecutor:
                     call_id: str) -> Optional[Callable]:
         """A screen the function shows, in the agent's name, to whoever
         is watching the chat. None where nobody is."""
-        if self.screen_sink is None:
+        if self.sinks.screen is None:
             return None
         source = agent_source(agent.agent_id, agent.manifest.name,
                               canonical_name, call_id=call_id)
@@ -644,7 +598,7 @@ class FunctionExecutor:
         async def screen(kind: str, params: Dict[str, Any]) -> None:
             if kind != "frame":
                 self._screens.pop(call_id, None)
-                await self.screen_sink(kind, {"call_id": call_id}, source)
+                await self.sinks.screen(kind, {"call_id": call_id}, source)
                 return
             # What reaches a person's browser is a frame by the chat's
             # contract and a picture by its own bytes; anything else an
@@ -662,7 +616,7 @@ class FunctionExecutor:
             if len(frame["image_base64"]) > SCREEN_FRAME_MAX_BYTES * 4 // 3 + 4:
                 return
             self._screens[call_id] = source
-            await self.screen_sink(kind, frame, source)
+            await self.sinks.screen(kind, frame, source)
         return screen
 
     async def _end_screen(self, call_id: str) -> None:
@@ -671,10 +625,10 @@ class FunctionExecutor:
         time or lost its worker says nothing of its screen, and a
         picture left standing reads as something still running."""
         source = self._screens.pop(call_id, None)
-        if source is None or self.screen_sink is None:
+        if source is None or self.sinks.screen is None:
             return
         try:
-            await self.screen_sink("closed", {"call_id": call_id}, source)
+            await self.sinks.screen("closed", {"call_id": call_id}, source)
         except Exception as exc:
             self.logger.warning(f"A screen could not be told closed: {exc}")
 
@@ -688,7 +642,7 @@ class FunctionExecutor:
         how many, displays this call offered and no other), then handed
         to the chat as a message in the agent's name. None where there
         is no chat to speak in."""
-        if self.post_sink is None:
+        if self.sinks.post is None:
             return None
         source = agent_source(agent.agent_id, agent.manifest.name,
                               canonical_name, call_id=call_id)
@@ -718,7 +672,7 @@ class FunctionExecutor:
                     "storage_ref": display_id, "source": source,
                 })
             posted.append(text)
-            return bool(await self.post_sink(text, source, parts))
+            return bool(await self.sinks.post(text, source, parts))
         return post
 
     def _show_for(self, canonical_name: str,
@@ -728,7 +682,7 @@ class FunctionExecutor:
         display's id is its storage ref. Nothing here reaches a person:
         the assistant's say.show does, and only for a successful call.
         None where nobody could see it (no storage: the clock, tests)."""
-        if self.storage is None:
+        if self.sinks.store is None:
             return None
 
         # Displays on their way to the store: counted with those kept,
@@ -744,7 +698,7 @@ class FunctionExecutor:
                 raise WorkerError(f"Display refused: {problem}")
             storing[0] += 1
             try:
-                storage_ref = await self.storage(canonical_name, stored)
+                storage_ref = await self.sinks.store(canonical_name, stored)
             except Exception as exc:
                 self.logger.warning(f"Display storage failed: {exc}")
                 storage_ref = None
@@ -767,7 +721,7 @@ class FunctionExecutor:
         """The agent's own narration, told with who is speaking: the
         worker says a line, the chat hears it as this agent's, on this
         call. None when nobody listens (the clock, tests)."""
-        if self.progress_sink is None:
+        if self.sinks.progress is None:
             return None
         source = agent_source(agent.agent_id, agent.manifest.name,
                               canonical_name, call_id=call_id)
@@ -775,7 +729,7 @@ class FunctionExecutor:
         async def progress(description: str) -> None:
             text = str(description or "").strip()
             if text:
-                await self.progress_sink(text, source)
+                await self.sinks.progress(text, source)
         return progress
 
     async def _execute(
@@ -904,9 +858,9 @@ class FunctionExecutor:
 
             # Record the verified result. Storage is audit-plus-reference,
             # not authority: a failed write logs and the result stands.
-            if self.storage is not None:
+            if self.sinks.store is not None:
                 try:
-                    storage_ref = await self.storage(canonical_name, result)
+                    storage_ref = await self.sinks.store(canonical_name, result)
                 except Exception as exc:
                     self.logger.warning(f"Result storage failed: {exc}")
                     storage_ref = None
@@ -967,7 +921,7 @@ class FunctionExecutor:
         a call that ran, one the gates refused, one the person denied.
         ``reached`` is where the call's worker connected while it ran,
         as the proxy counted it: the names, never what was sent."""
-        if self.audit is None:
+        if self.sinks.audit is None:
             return
         declared = agent.manifest.function(agent.declared(canonical_name))
         outcome = status
@@ -1004,7 +958,7 @@ class FunctionExecutor:
             if isinstance(result.get("storage_ref"), str):
                 event["storage_ref"] = result["storage_ref"]
         try:
-            await self.audit(event)
+            await self.sinks.audit(event)
         except Exception as exc:
             self.logger.warning(f"Execution not recorded on the trail: {exc}")
 
@@ -1179,7 +1133,7 @@ class FunctionExecutor:
                 value.get("storage_ref"), str
             ):
                 try:
-                    resolved[name] = await self.resolver(
+                    resolved[name] = await self.sinks.read_result(
                         value["storage_ref"], str(value.get("path") or "")
                     )
                 except Exception as exc:
@@ -1270,10 +1224,10 @@ class FunctionExecutor:
     ) -> Optional[bool]:
         """Whether the person allowed it — or None when they could not
         be asked at all, which is not their answer."""
-        if self.approver is None:
+        if self.sinks.approve is None:
             return False
         try:
-            return bool(await self.approver({
+            return bool(await self.sinks.approve({
                 "agent_id": agent.agent_id,
                 # The id is what the platform routes by; the name is what
                 # the person deciding will recognise. An approval is one
