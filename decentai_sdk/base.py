@@ -126,6 +126,7 @@ class Screen:
         self._said: List[str] = []
         self._arrived: Optional[Any] = None
         self.taken = False
+        self._took = False
         self.open = False
         #: the person closed the live view: a function that only shows
         #: (a watch) ends; one that works on regardless ignores it
@@ -186,6 +187,15 @@ class Screen:
         self.open = False
         await self._send("screen.closed", {})
 
+    def took(self) -> bool:
+        """Whether the person took control since this was last asked —
+        true even when they have handed it back by now. ``taken`` says
+        whether they hold it at this moment; a function that looks only
+        between its own steps asks this, or a take and a release inside
+        one step pass it by."""
+        took, self._took = self._took, False
+        return took
+
     def inputs(self) -> List[Dict[str, Any]]:
         """What the person did since last asked, oldest first, and
         nothing twice."""
@@ -224,6 +234,7 @@ class Screen:
                 continue
             if event.get("type") == "control":
                 self.taken = event.get("action") == "take"
+                self._took = self._took or self.taken
                 if event.get("action") == "close":
                     self.closed = True
             self._pending.append(dict(event))

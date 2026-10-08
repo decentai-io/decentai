@@ -261,6 +261,14 @@ class Assistant:
         #: stop is what ended it
         self._foreground: Optional[asyncio.Future] = None
         self._interrupted = False
+        #: the model call this beat is waiting on, and whether it was
+        #: dropped because the person wrote
+        self._thinking: Optional[asyncio.Future] = None
+        self._rethink = False
+        #: set when the person writes; and whether what they wrote has
+        #: yet to be absorbed
+        self._spoke = asyncio.Event()
+        self._unheard = False
         self.logger = RuntimeLoggerFactory.get_logger(self.__class__.__name__)
 
     # ------------------------------------------------------------------
@@ -362,6 +370,9 @@ class Assistant:
             # ask for again.
             self._denied = {}
             self._glued = 0
+            # ...and they are heard.
+            self._unheard = False
+            self._spoke.clear()
         # Whatever arrives starts a new stretch of work.
         self._acted = False
         # Everything absorbed is stamped with the local time it arrived
@@ -488,13 +499,28 @@ class Assistant:
                                "invoke action by name: "
                                + ", ".join(offered.omitted),
                 })
+        thinking = asyncio.ensure_future(self._ask_model(offered))
+        self._thinking = thinking
         try:
-            reply = await self._ask_model(offered)
+            reply = await thinking
             response = reply.content
+        except asyncio.CancelledError:
+            if not (self._rethink or self._interrupted) \
+                    or asyncio.current_task().cancelling():
+                raise       # the beat itself was cancelled: a kill
+            # The person wrote, or pressed stop, while the model was
+            # still answering. That answer was to a question that has
+            # changed: it is dropped, the beat is not counted, and the
+            # cycle goes round to what they said.
+            self._rethink = self._interrupted = False
+            self.state.beats -= 1
+            return False
         except Exception as exc:
             self.logger.error(f"Model call failed: {exc}")
             await self._say_raw(self._model_failure(exc))
             return True
+        finally:
+            self._thinking = None
 
         if self._cut_off(reply):
             # Half an action is not an action: a tool call cut at the
@@ -1322,6 +1348,12 @@ class Assistant:
         beat: the call is ended now, and not waited for. True when
         there was one. What a background job is doing ends when the
         stop itself is absorbed (``_cancel_all_jobs``)."""
+        thinking = self._thinking
+        if thinking is not None and not thinking.done():
+            # Still answering: the answer is not waited for.
+            self._interrupted = True
+            thinking.cancel()
+            return True
         running = self._foreground
         if running is None or running.done():
             return False
@@ -1355,11 +1387,31 @@ class Assistant:
         running = asyncio.ensure_future(self.executor.invoke(
             agent, function, inputs, self.chat_level, call_id=call_id))
         self._foreground = running
+        # ...and so that what the person writes meanwhile is heard now
+        # (``person_spoke``): the beat stops waiting, the call goes on
+        # in the background as a job, and the mind reads their words
+        # with the call still running — to let it finish, to cancel it,
+        # or to change the plan, as it judges.
+        if not self._unheard:
+            self._spoke.clear()
+        spoke = asyncio.ensure_future(self._spoke.wait())
         try:
-            result, status = await running
+            await asyncio.wait({running, spoke},
+                               return_when=asyncio.FIRST_COMPLETED)
         except asyncio.CancelledError:
-            if not self._interrupted or asyncio.current_task().cancelling():
-                raise       # the beat itself was cancelled: a kill
+            running.cancel()        # the beat itself was cancelled: a kill
+            raise
+        finally:
+            spoke.cancel()
+            self._foreground = None
+        if not running.done():
+            return await self._to_background(
+                agent, function, inputs, running, call_id, spoken)
+        try:
+            result, status = running.result()
+        except asyncio.CancelledError:
+            if not self._interrupted:
+                raise
             # The person's stop ended it. The executor has told the
             # worker to stop and written the call on the trail; what
             # the mind is told is that the person stopped it — an
@@ -1370,12 +1422,50 @@ class Assistant:
                 "outcome": self.STOPPED_BY_PERSON,
             }, "error"
         finally:
-            self._foreground = None
             self._interrupted = False
         await self._narrate("call_finished", spoken, source, status=status,
                             duration_ms=self._elapsed_ms(started))
         return self._record(agent.agent_id, function, inputs,
                             result, status)
+
+    async def _to_background(self, agent: InstalledAgent, function: str,
+                             inputs: Dict[str, Any], running: asyncio.Future,
+                             call_id: str, spoken: str) -> Dict[str, Any]:
+        """A call the beat was waiting on, carried on as a job: the
+        same call, still running, and its result arrives as any job's
+        does. What the mind reads now is that it is still under way."""
+        job = Job(f"job_{uuid.uuid4().hex[:8]}", agent.agent_id,
+                  function, inputs)
+        self.state.jobs[job.job_id] = job
+        task = asyncio.get_running_loop().create_task(
+            self._run_job(job, agent, call_id, running=running))
+        self._job_tasks[job.job_id] = task
+        task.add_done_callback(
+            lambda _: self._job_tasks.pop(job.job_id, None))
+        await self._narrate(
+            "job_started", f"Still running, in the background: {spoken}",
+            agent_source(agent.agent_id, agent.manifest.name, function,
+                         call_id=call_id, job_id=job.job_id))
+        return {"job_id": job.job_id, "status": job.status, "note": (
+            f"'{function}' is still running, now in the background as "
+            f"{job.job_id}: the user wrote while it ran, and their "
+            f"message is next. Read it and decide. If it does not change "
+            f"what this call is for, finish with awaiting_events and you "
+            f"are woken with its result; if they want something else, "
+            f"cancel_job it. Do not start the same call again.")}
+
+    def person_spoke(self) -> None:
+        """The person wrote. Whatever this mind is in the middle of
+        gives way so that they are heard now: a call the beat is
+        waiting on is carried on in the background, and a reply the
+        model is still writing is dropped and asked for again with
+        their words in front of it."""
+        self._unheard = True
+        self._spoke.set()
+        thinking = self._thinking
+        if thinking is not None and not thinking.done():
+            self._rethink = True
+            thinking.cancel()
 
     # -- jobs ------------------------------------------------------------
     async def _start(self, action: Dict[str, Any]) -> Dict[str, Any]:
@@ -1535,13 +1625,17 @@ class Assistant:
             self.state.plan.update(item_id, "blocked", blocker=blocker)
 
     async def _run_job(self, job: Job, agent: InstalledAgent,
-                       call_id: str = "") -> None:
+                       call_id: str = "",
+                       running: Optional[asyncio.Future] = None) -> None:
+        """One job to its end. ``running`` is a call already under way
+        (``_to_background``), awaited here in place of a new one."""
         CURRENT_JOB_ID.set(job.job_id)
         started = time.monotonic()
         try:
-            result, status = await self.executor.invoke(
-                agent, job.function, job.inputs, self.chat_level,
-                call_id=call_id)
+            result, status = await (
+                running if running is not None else self.executor.invoke(
+                    agent, job.function, job.inputs, self.chat_level,
+                    call_id=call_id))
         except asyncio.CancelledError:
             job.status = CANCELLED
             job.result = {"error": "The job was cancelled."}

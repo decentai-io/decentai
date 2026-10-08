@@ -374,12 +374,15 @@ says it is is dropped by the platform. Either way the function runs on.
 | `wait_input(timeout=1.0)` | the same, waiting up to that many seconds for the first |
 | `said()` | what the person wrote in the chat since last asked |
 | `taken` | whether the person holds control |
+| `took()` | whether they took control since last asked, true even when they have handed it back by now |
 | `open` | whether a frame has been shown and the screen not closed since |
 | `closed` | whether the person closed the screen: a `watch` function streams until it is |
 | `close()` | ends the stream |
 
 A person may take control unasked. Honour `taken`: pause, feed their
-events to what you drive, and look again when they hand it back.
+events to what you drive, and look again when they hand it back. A
+function that looks only between its own steps asks `took()` as well:
+a take and a release can both arrive inside one step.
 
 A screen is the call's. When your function returns, raises or runs out
 of time, the platform tells whoever is watching that it ended, and the

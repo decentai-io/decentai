@@ -607,8 +607,14 @@ or that they are not; *Workers' system calls are filtered*, or that
 they are not and why. On a kernel that has Landlock, before its sixth
 version, it says that agents are not kept from each other's sockets;
 where there is no firewall rule and the fence holds workers to the
-proxy's port, it says that, and what that does not stop. Where workers
-cannot be confined it runs agents unconfined.
+proxy's port, it says that, and what that does not stop. Where the
+spawn helper is not there at all — a developer's machine, a system it
+does not run on — agents run unconfined, and the line says so. Where
+the helper is there and workers still cannot be confined (the
+container was not given its rights, the install directory is not the
+one the helper was built for), the runtime does not start, and says
+what to mend; `AI_RUNTIME_ALLOW_UNCONFINED=1` starts it anyway, with
+every agent running as the runtime's own user.
 
 When a runtime tells the platform an agent's code is ready on it, it
 says with that word what it holds the agent to: a user of its own, its

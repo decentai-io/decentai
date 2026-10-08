@@ -562,6 +562,12 @@ class Session:
         if attachments:
             event["attachments"] = attachments
         await self._post(event)
+        if actor == "user" and not self.dead:
+            # Heard now, whatever the mind is in the middle of: a call
+            # it is waiting on goes on in the background, a reply still
+            # being written is asked for again with these words in it.
+            # What to do about them is the assistant's to decide.
+            self.assistant.person_spoke()
         if actor == "user" and (text.strip() or attachments):
             await self._steer(text.strip(), attachments)
 

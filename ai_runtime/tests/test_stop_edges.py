@@ -554,3 +554,91 @@ class TestAModelThatWillNotKeepToOneAction:
         run(harness.user("two").assistant.run())
         assert not any("several steps at once" in s["text"]
                        for s in harness.said)
+
+
+class TestWhatThePersonWritesIsHeardAtOnce:
+    """Whatever the assistant is in the middle of. What to do about it
+    — carry on, cancel, change the plan — is the assistant's to say."""
+
+    SLOW = '''\
+from decentai_sdk.base import AgentBase, ToolBase
+import asyncio
+
+class MainTool(ToolBase):
+    id = "main"
+
+    async def run(self, call):
+        await call.progress("started")
+        await asyncio.sleep(3)
+        return {"ok": True}, "success"
+
+class DemoAgent(AgentBase):
+    def tools(self):
+        return [MainTool(self)]
+'''
+
+    def test_a_call_under_way_goes_on_in_the_background(self, tmp_path):
+        from ai_runtime.tests.fixture_agents import write_agent
+        write_agent(tmp_path, "demo", files={"agent.py": self.SLOW})
+        agents, errors = load_agents(tmp_path)
+        assert errors == {}
+        services = SimSessionServices()
+        session = Session("chat_1", agents, FakeConnector([
+            action(action="open_agent", agent="demo"),
+            action(action="invoke", function="demo.main.run", inputs={}),
+            # Heard while the call runs: it is let finish.
+            action(action="finish", reason="awaiting_events"),
+            action(action="say", text="Done, and I saw your note.", final=True),
+        ]), services)
+        heard_at = {}
+
+        async def scenario():
+            await session.open()
+            await session.deliver_user("run it")
+            for _ in range(200):
+                if any(e.get("kind") == "agent_progress"
+                       for e in services.events):
+                    break
+                await asyncio.sleep(0.05)
+            await session.deliver_user("and tell me when it is done")
+            for _ in range(100):
+                if len(session.connector.calls) >= 3:
+                    break
+                await asyncio.sleep(0.02)
+            # The model was asked again while the call was still running.
+            heard_at["jobs"] = [job.status for job in
+                                session.assistant.state.jobs.values()]
+            heard_at["seen"] = json.dumps(
+                session.connector.calls[2]["messages"])
+            await asyncio.wait_for(session.wait_done(), 30)
+
+        run(scenario())
+        assert heard_at["jobs"] == ["running"]
+        assert "and tell me when it is done" in heard_at["seen"]
+        assert "still running, now in the background" in heard_at["seen"]
+        [job] = session.assistant.state.jobs.values()
+        assert job.status == "done" and job.result["ok"] is True
+        assert said(services) == ["Done, and I saw your note."]
+
+    def test_a_reply_still_being_written_is_asked_for_again(self):
+        class Slow(FakeConnector):
+            async def chat(self, messages, max_tokens=None, tools=None):
+                await asyncio.sleep(0.3)
+                return await super().chat(messages, max_tokens, tools)
+
+        session, services = build([])
+        session.connector = Slow([
+            action(action="say", text="Both heard.", final=True)])
+
+        async def scenario():
+            await session.open()
+            await session.deliver_user("first thing")
+            await asyncio.sleep(0.1)            # the model is answering
+            await session.deliver_user("second thing")
+            await session.wait_idle()
+        run(scenario())
+        # One answer, and it was to both.
+        [call] = session.connector.calls
+        seen = json.dumps(call["messages"])
+        assert "first thing" in seen and "second thing" in seen
+        assert said(services) == ["Both heard."]

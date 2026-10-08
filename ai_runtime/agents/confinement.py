@@ -404,6 +404,10 @@ class WorkerPlace:
         return environment
 
 
+class ConfinementFailed(RuntimeError):
+    """Workers were meant to be confined here and cannot be."""
+
+
 class Confinement:
     #: The helper, where the image puts it.
     HELPER = Path("/usr/local/bin/decentai-spawn")
@@ -482,6 +486,9 @@ class Confinement:
     #: an agent whose package needs a call the filter refuses, until
     #: the package or the filter is mended. On unless it says so.
     FILTER_SETTING: ClassVar[str] = "AI_RUNTIME_SYSCALL_FILTER"
+    #: Set to 1 to start although workers were meant to be confined and
+    #: cannot be. Without it such a runtime does not start.
+    UNCONFINED_SETTING: ClassVar[str] = "AI_RUNTIME_ALLOW_UNCONFINED"
 
     def __init__(self, install_dir: str | Path, helper: Optional[Path] = None):
         self.workers_dir = Path(install_dir) / self.WORKERS_FOLDER
@@ -671,9 +678,27 @@ class Confinement:
     @classmethod
     def _configure(cls, install_dir: str | Path) -> Optional["Confinement"]:
         confinement = cls(install_dir)
+        # Where the helper is, workers are meant to be confined: that
+        # is the runtime's image. Asked before the check, which is what
+        # may fail.
+        meant = cls.SUPPORTED and (
+            cls.runner is not None or Spawner.current.has(confinement.helper))
         reasons = confinement.check()
         if reasons:
             cls.current = None
+            if meant and os.environ.get(
+                    cls.UNCONFINED_SETTING, "").strip() != "1":
+                # Not started as though nothing were wrong: a runtime
+                # that meant to confine and cannot would run every
+                # agent as its own user, able to read what the runtime
+                # reads, with one line in a log to say so.
+                raise ConfinementFailed(
+                    "Workers cannot be confined here, and this is a "
+                    "system where they are meant to be: "
+                    + "; ".join(reasons) + ". Mend what it names — "
+                    "the container's rights, the install directory — "
+                    f"or set {cls.UNCONFINED_SETTING}=1 to run agents "
+                    "as the runtime's own user, knowingly.")
             confinement.logger.warning(
                 "Workers are NOT confined here: " + "; ".join(reasons)
                 + ". An agent runs as the runtime's own user.")

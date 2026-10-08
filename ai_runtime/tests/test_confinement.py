@@ -422,7 +422,20 @@ class TestConfigure:
         assert isinstance(place, WorkerPlace)
         assert Confinement.place_for_verification().user == Confinement.FIRST_USER
 
-    def test_where_it_refuses_nothing_is_confined(self, helper, tmp_path):
+    def test_where_it_is_meant_and_refuses_the_runtime_does_not_start(
+            self, helper, tmp_path):
+        """The helper is here, so workers are meant to be confined. A
+        runtime that cannot is not started as though nothing were
+        wrong."""
+        from ai_runtime.agents.confinement import ConfinementFailed
+        helper.refuses.add("check")
+        with pytest.raises(ConfinementFailed, match="AI_RUNTIME_ALLOW_UNCONFINED"):
+            Confinement.configure(tmp_path)
+        assert Confinement.current is None
+
+    def test_where_it_refuses_and_that_was_said_nothing_is_confined(
+            self, helper, tmp_path, monkeypatch):
+        monkeypatch.setenv("AI_RUNTIME_ALLOW_UNCONFINED", "1")
         helper.refuses.add("check")
         assert Confinement.configure(tmp_path) is None
         assert Confinement.current is None
@@ -442,13 +455,15 @@ class TestConfigure:
             tmp_path, package_hosts=("packages.example.com",))
         assert confinement.package_network()["hosts"] == ["packages.example.com"]
 
-    def test_a_place_that_cannot_be_prepared_confines_nothing(
+    def test_a_place_that_cannot_be_prepared_stops_the_start(
             self, helper, tmp_path):
         """The helper switches users, and refuses this install
         directory: it was built for another. Found out at start, not by
-        the first agent somebody calls."""
+        the first agent somebody calls — and not run past."""
+        from ai_runtime.agents.confinement import ConfinementFailed
         helper.refuses.add("own")
-        assert Confinement.configure(tmp_path) is None
+        with pytest.raises(ConfinementFailed):
+            Confinement.configure(tmp_path)
         assert Confinement.place_for("agt_aaaa") is None
 
     def test_a_system_the_helper_does_not_run_on(self, helper, tmp_path):

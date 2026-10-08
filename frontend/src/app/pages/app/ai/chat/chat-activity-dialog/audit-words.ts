@@ -80,6 +80,9 @@ export function auditSummary(event: any): string {
     if (details.permission_level != null) parts.push(`level ${details.permission_level}`);
     if (details.duration_ms != null) parts.push(durationLabel(details.duration_ms));
     if (details.resumed) parts.push('after approval');
+    // Which model the chat was thinking with: a chat's model can be
+    // changed, and this is where "which one did this" is read.
+    if (details.model) parts.push(`asked by ${details.model}`);
     if (details.error) parts.push(String(details.error));
     parts.push(reachedWords(details));
     return parts.filter(Boolean).join(' · ');
