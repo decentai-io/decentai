@@ -37,8 +37,8 @@ import pytest
 
 from ai_runtime.agents.confinement import Confinement
 from ai_runtime.agents.egress import EgressProxy
-from ai_runtime.agents.events import Events
-from ai_runtime.agents.spawner import Spawner
+from ai_runtime.events import Events
+from ai_runtime.agents.spawner import LocalSpawner, Spawner
 from ai_runtime.agents.worker_handle import WorkerError, WorkerHandle
 # The hostile agent, the stand-in for a host on the internet, and how
 # one attempt is made, are that file's.
@@ -77,7 +77,7 @@ def confinement(site):
         found.egress.stop()
     EgressProxy.resolver = None
     EgressProxy.PORTS_OF_A_NAMED_HOST = ports
-    Spawner.current = Spawner()
+    Spawner.current = LocalSpawner()
     Events.current = None
 
 

@@ -10,7 +10,8 @@ if str(PROJECT_ROOT) not in sys.path:
 
 load_dotenv(Path(__file__).resolve().parent / "config.env", override=False)
 
-from ai_runtime.agents import AgentLibrary, Confinement, Events, Spawner
+from ai_runtime.agents import AgentLibrary, Confinement, Spawner
+from ai_runtime.events import Events
 from ai_runtime.server import create_app
 from ai_runtime.server.settings import RuntimeSettings
 

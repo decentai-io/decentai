@@ -43,7 +43,7 @@ them.
     the assistant, the executor,   ──────▶   the spawner, the spawn helper,
     the proxy, every decision       socket   every worker, the builder
 
-- **The spawner** (`ai_runtime/agents/spawner_service.py`) is the one
+- **The spawner** (`ai_runtime/agents_container/service.py`) is the one
   process of the platform's in that container. It starts what the
   runtime asks for and carries a worker's lines to the runtime and
   back. It decides nothing, and what a worker is entitled to is never
@@ -86,7 +86,7 @@ that one container.
 
 The platform's own user is an ordinary one and cannot start a child
 as somebody else. A small program does it, and does nothing else
-(`ai_runtime/agents/spawn_helper.c`, driven by
+(`ai_runtime/agents_container/spawn_helper.c`, driven by
 `ai_runtime/agents/confinement.py`).
 
     spawner ──spawns──▶ helper ──becomes──▶ worker   (the agent's user)
@@ -247,7 +247,7 @@ all, after it has become the agent's user and been fenced, and the
 kernel refuses the calls on it — for the worker and everything it
 starts, a browser included. It cannot be taken off, and needs no right
 the container was not given (`filter_calls`,
-`ai_runtime/agents/spawn_helper.c`).
+`ai_runtime/agents_container/spawn_helper.c`).
 
 It is a list of what is **refused**, not of what is allowed: an agent
 may bring any package, and a list of what is allowed would be a list
@@ -380,7 +380,7 @@ for.
   agent holds, and when the agents' container holds nine tenths of what
   it is given — the kernel's own number, the spawner and what is shared
   among it — it ends the agent holding most, with everything its
-  user runs (`ai_runtime/agents/usage.py`,
+  user runs (`ai_runtime/agents_container/usage.py`,
   `SpawnerService._hold_to_what_is_given`).
 
 Every agent is a user of its own, so an agent's share is what its

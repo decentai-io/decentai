@@ -267,7 +267,7 @@ class TestTheLineBothEndsRead:
     def test_the_worker_reads_as_long_a_line_as_the_runtime_does(self):
         """Shorter on the worker's side, a line the runtime was right
         to send ended the worker that read it."""
-        from ai_runtime.agents.spawner_service import SpawnerService
+        from ai_runtime.agents_container.service import SpawnerService
         from ai_runtime.agents.worker_handle import WorkerHandle
         from decentai_sdk import worker
 

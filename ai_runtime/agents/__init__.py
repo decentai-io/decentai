@@ -24,15 +24,16 @@ in full.
     approved.py       one approval's view of a shared package: the same
                       code, addressed by the approval's ref
     confinement.py    a user, a home and a spool per approved agent, and
-                      the spawn helper (spawn_helper.c) that starts a
+                      the spawn helper (agents_container/) that starts a
                       worker as that user — docs/system/sandbox.md
-    spawner.py        where an agent's processes are started: here, or
-                      in a container of their own, asked over a socket
-    spawner_service.py  what runs in that container, and starts them
-    usage.py          what the agents' container is given, what each
-                      agent uses, and who is ended when it runs out
-    events.py         what agents did, written down as it happens, for
-                      a person to be shown — docs/system/monitoring.md
+    spawner.py        where an agent's processes are started: here
+                      (LocalSpawner), or in a container of their own,
+                      asked over a socket (RemoteSpawner)
+
+All of this runs in the runtime. What runs in the agents' container —
+the spawner's service, what agents use, the spawn helper — is
+``ai_runtime/agents_container``, and what agents did is written down by
+both through ``ai_runtime/events.py``.
 
 The classes agent code subclasses live in ``decentai_sdk`` — the
 platform boundary, shipped into every environment.
@@ -41,7 +42,6 @@ platform boundary, shipped into every environment.
 from ai_runtime.agents.approved import ApprovedAgent
 from ai_runtime.agents.confinement import Confinement
 from ai_runtime.agents.environments import AgentEnvironment
-from ai_runtime.agents.events import Events
 from ai_runtime.agents.library import AgentLibrary, AgentRefused, InstalledAgent
 from ai_runtime.agents.spawner import Spawner
 from ai_runtime.agents.worker_handle import WorkerError, WorkerHandle
@@ -52,7 +52,6 @@ __all__ = [
     "AgentRefused",
     "ApprovedAgent",
     "Confinement",
-    "Events",
     "InstalledAgent",
     "Spawner",
     "WorkerError",

@@ -13,9 +13,9 @@ import time
 
 import pytest
 
-from ai_runtime.agents.spawner import RemoteSpawner, Spawner
-from ai_runtime.agents.spawner_service import SpawnerService
-from ai_runtime.agents.usage import AgentsUsage, Sample
+from ai_runtime.agents.spawner import LocalSpawner, RemoteSpawner, Spawner
+from ai_runtime.agents_container.service import SpawnerService
+from ai_runtime.agents_container.usage import AgentsUsage, Sample
 from ai_runtime.agents.worker_handle import WorkerError, WorkerHandle
 from ai_runtime.tests.test_spawner import FIXTURE, manifest_document
 from contracts.container import ContainerUsage
@@ -170,7 +170,7 @@ class TestWhatEachAgentUses:
         usage = AgentsUsage(proc, cgroup)
         usage.ticks = 100.0
         clock = iter([1000.0, 1002.0])
-        monkeypatch.setattr("ai_runtime.agents.usage.time.monotonic",
+        monkeypatch.setattr("ai_runtime.agents_container.usage.time.monotonic",
                             lambda: next(clock))
         process(proc, 10, 20001, ticks=(100, 50))
         assert usage.sample().agents[20001]["cpu"] == 0.0      # the first look
@@ -181,7 +181,7 @@ class TestWhatEachAgentUses:
         proc, cgroup = kernel
         usage = AgentsUsage(proc, cgroup)
         clock = iter([1000.0, 1001.0])
-        monkeypatch.setattr("ai_runtime.agents.usage.time.monotonic",
+        monkeypatch.setattr("ai_runtime.agents_container.usage.time.monotonic",
                             lambda: next(clock))
         process(proc, 10, 20001, ticks=(900, 0))
         process(proc, 11, 20001, ticks=(10, 0))
@@ -514,4 +514,4 @@ class TestTheSpawnerHoldsThemToIt:
         assert (code, said.strip()) == (0, "done")
 
     def test_where_processes_start_here_nobody_adds_it_up(self):
-        assert Spawner().usage() is None
+        assert LocalSpawner().usage() is None

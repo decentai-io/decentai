@@ -127,7 +127,7 @@ gone. Back them up with it.
 | `AI_RUNTIME_AGENTS_SPAWNER` | empty | Where the agents' container answers, as `host:port`. `docker-compose.yml` writes `agents:8003` itself and does not read it from `deploy.env`. Empty starts agents' workers beside the runtime, in its own container or on a developer's machine. |
 
 The agents' container is the runtime's image started as the spawner
-(`python -m ai_runtime.agents.spawner_service`), and reads:
+(`python -m ai_runtime.agents_container.service`), and reads:
 
 | Variable | Default | Meaning |
 |---|---|---|

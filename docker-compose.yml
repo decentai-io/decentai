@@ -188,7 +188,7 @@ services:
     # spawner ends the agent using most before the engine has to.
     mem_limit: ${AGENTS_MEMORY:-0}
     cpus: ${AGENTS_CPUS:-0}
-    command: ["python", "-m", "ai_runtime.agents.spawner_service"]
+    command: ["python", "-m", "ai_runtime.agents_container.service"]
     environment:
       AI_AGENTS_PROXY: ai-runtime:${AI_RUNTIME_EGRESS_PORT:-8002}
       AI_RUNTIME_EGRESS_PORT:

@@ -51,7 +51,7 @@ seeder runs once at every start and exits.
 | `init` | the backend's | `bootstrap/init_db.py`: the schema, the access chains, the first administrator | — |
 | `mongo` | `mongo:7` | the database | 27017, inside only |
 | `ai-runtime` | `ai_runtime/` | one assistant per chat, the executor and its gates, the clock, the agents' proxy | 8001 (the door), 8002 (the proxy) |
-| `agents` | the runtime's, started as `python -m ai_runtime.agents.spawner_service` | the spawner, and every agent's worker | 8003 |
+| `agents` | the runtime's, started as `python -m ai_runtime.agents_container.service` | the spawner, and every agent's worker | 8003 |
 | `speech` | `speech/` | speech to text and text to speech, from models that run here ([below](#speech)) | 8004 |
 
 Two networks. Everything but `agents` is on `default`. `ai-runtime`

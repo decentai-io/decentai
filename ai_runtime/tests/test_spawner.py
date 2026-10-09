@@ -1,5 +1,5 @@
 """Agents' processes started in a container of their own (spawner.py,
-spawner_service.py).
+agents_container/service.py).
 
 The service is the real one, listening on this machine, and the worker
 it starts is a real worker from a real environment: what is tested is
@@ -18,7 +18,7 @@ import yaml
 
 from ai_runtime.agents.environments import AgentEnvironment
 from ai_runtime.agents.spawner import RemoteSpawner, Spawner
-from ai_runtime.agents.spawner_service import SpawnerService
+from ai_runtime.agents_container.service import SpawnerService
 from ai_runtime.agents.worker_handle import WorkerError, WorkerHandle
 
 FIXTURE = Path(__file__).resolve().parent / "fixtures" / "agents" / "notebook"

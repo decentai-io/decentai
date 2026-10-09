@@ -16,7 +16,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Request
 
 from ai_runtime.agents.confinement import Confinement
-from ai_runtime.agents.events import Events
+from ai_runtime.events import Events
 from ai_runtime.agents.spawner import Spawner
 from ai_runtime.server.routes.auth import verify_backend_service
 from contracts.container import ContainerUsage

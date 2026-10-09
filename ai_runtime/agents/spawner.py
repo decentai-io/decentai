@@ -6,14 +6,16 @@ itself where a deployment keeps agents in a container of their own:
 
     runtime's container                      agents' container
     ───────────────────                      ─────────────────
-    the assistant, the executor,   ──────▶   the spawner (spawner_service.py),
+    the assistant, the executor,   ──────▶   the spawner (agents_container/),  
     the proxy, every decision       socket   the spawn helper, every worker
 
     Spawner.current.run(argv, ...)           one program, to its end
     await Spawner.current.start(argv, ...)   a worker, kept, with its pipes
 
-``Spawner`` starts them here, in this process's own container or
-machine — a developer's machine, a deployment of one container.
+``LocalSpawner`` starts them here, in this process's own container or
+machine — a developer's machine, the tests, a deployment of one
+container. ``Spawner`` is what both are, and ``Spawner.current`` is the
+one this process uses.
 ``RemoteSpawner`` asks the spawner in the agents' container to, and the
 worker's lines travel over that connection instead of a pipe; the
 worker protocol is the same either way.
@@ -22,36 +24,9 @@ The two containers share one volume, mounted at one path: the store,
 the environments, and the workers' homes and spools. So a path means
 the same thing on both sides, and only starting a process crosses.
 
-Each connection is one process:
-
-    → {"key", "op": "run", "argv", "environment", "cwd", "timeout",
-       "feed", "errors", "stop", "whose"}
-    ← {"code", "said"}
-
-    → {"key", "op": "start", "argv", "environment", "cwd", "stop", "whose"}
-    ← {"started": true, "pid"}        or {"error"}
-    → the worker's input, as it is written
-    ← o<a line the worker wrote>   e<a line of its log>
-      w<why the spawner ended it>  x<its exit code>
-
-    → {"key", "op": "usage"}
-    ← what the agents' container is given, and what each agent uses
-
-``stop`` is how the process is ended when it has to be — the spawn
-helper's own ``stop`` for a confined worker, which is another user's
-and takes everything that user runs with it. Without one the process
-itself is killed. The runtime hanging up is an order to end.
-
-``whose`` says whose process it is — ``{"agent", "user", "name"}``,
-the approval's ref, the agent's user and the name a person knows it by
-— so that what the agents use can be added up by agent, and an agent
-ended for using more than the container is given can be named
-(usage.py). For a worker it may carry ``measure``: the line that says
-how much that user keeps on disk, which the spawner runs now and then.
-
-``key`` is what the spawner made at its first start and left on the
-volume, readable by the platform's user and no agent's: only the
-runtime commands the spawner.
+What crosses is in ``ai_runtime/agents_container/wire.py``: the
+messages, the marks on a worker's lines, and the key every request
+carries. What answers is ``ai_runtime/agents_container/service.py``.
 """
 
 from __future__ import annotations
@@ -67,19 +42,23 @@ import time
 from pathlib import Path
 from typing import Any, ClassVar, Dict, Optional, Sequence, Tuple
 
+from ai_runtime.agents_container import wire
 from ai_runtime.runtime_logging import RuntimeLoggerFactory
 
 
 class Spawner:
-    """Processes started here, by this process."""
+    """Whoever starts processes for this runtime: ``LocalSpawner`` or
+    ``RemoteSpawner``. Both offer ``run``, ``start``, ``spool``,
+    ``has``, ``usage`` and ``a_port_no_worker_may_reach``, so nothing
+    that asks knows which it has."""
 
     #: How a program that never started is told of.
     COULD_NOT_RUN = "it could not run"
     #: What becomes of what a program writes to its log: said with the
     #: rest, or left out.
-    MERGE, DROP = "merge", "drop"
+    MERGE, DROP = wire.MERGE, wire.DROP
     #: The key the agents' container made, on the volume both hold.
-    KEY_FILENAME = "spawner.key"
+    KEY_FILENAME = wire.KEY_FILENAME
     #: Spools of workers nothing confines, where the two containers
     #: both find them.
     SPOOLS_FOLDER = "spools"
@@ -103,8 +82,14 @@ class Spawner:
         if address:
             Spawner.current = RemoteSpawner(address, install_dir)
         else:
-            Spawner.current = Spawner()
+            Spawner.current = LocalSpawner()
         return Spawner.current
+
+    outlasted = staticmethod(wire.outlasted)
+
+
+class LocalSpawner(Spawner):
+    """Processes started here, by this process."""
 
     # ------------------------------------------------------------------
     # One program, to its end
@@ -113,7 +98,7 @@ class Spawner:
     def run(self, argv: Sequence[str],
             environment: Optional[Dict[str, str]] = None,
             cwd: Optional[str] = None, timeout: Optional[float] = None,
-            feed: Optional[str] = None, errors: str = MERGE,
+            feed: Optional[str] = None, errors: str = Spawner.MERGE,
             stop: Optional[Sequence[str]] = None,
             whose: Optional[Dict[str, Any]] = None) -> Tuple[int, str]:
         """Run one program to its end. Returns (return code, what it
@@ -140,10 +125,6 @@ class Spawner:
             self._end(process, stop)
             said, _ = process.communicate()
             return 1, self.outlasted(timeout, said)
-
-    @staticmethod
-    def outlasted(timeout: Optional[float], said: Any) -> str:
-        return f"it did not finish in {int(timeout or 0)} seconds\n{said or ''}"
 
     def _end(self, process: subprocess.Popen,
              stop: Optional[Sequence[str]]) -> None:
@@ -351,8 +332,8 @@ class RemoteProcess:
     to whoever holds it: the same streams, the same death."""
 
     #: One byte in front of each line says whose it is.
-    MARK = 1
-    OUT, LOG, WHY, EXIT = b"o", b"e", b"w", b"x"
+    MARK = wire.MARK
+    OUT, LOG, WHY, EXIT = wire.OUT, wire.LOG, wire.WHY, wire.EXIT
 
     def __init__(self, reader: asyncio.StreamReader,
                  writer: asyncio.StreamWriter, limit: int, pid: Any = None):
@@ -413,4 +394,4 @@ class RemoteProcess:
             transport.abort()
 
 
-Spawner.current = Spawner()
+Spawner.current = LocalSpawner()

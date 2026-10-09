@@ -56,7 +56,7 @@ from typing import Callable, ClassVar, Dict, List, Optional, Sequence
 from urllib.parse import urlsplit
 
 from ai_runtime.agents.egress import EgressProxy
-from ai_runtime.agents.events import Events
+from ai_runtime.events import Events
 from ai_runtime.agents.spawner import Spawner
 from ai_runtime.runtime_logging import RuntimeLoggerFactory
 
@@ -117,7 +117,7 @@ class WorkerPlace:
         """The line that says how much this place's user keeps on
         disk, in its home and its spool: run as that user, the only
         one who may read them, by whoever adds up what agents use
-        (spawner_service.py). It measures and ends. The helper takes
+        (agents_container/service.py). It measures and ends. The helper takes
         a program by its whole path."""
         return self.argv([self.MEASURER, "-sb", str(self.home), str(self.spool)])
 

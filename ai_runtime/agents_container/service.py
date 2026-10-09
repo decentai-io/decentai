@@ -1,8 +1,8 @@
 """The spawner: what runs in the agents' container (docs/system/sandbox.md).
 
-    python -m ai_runtime.agents.spawner_service
+    python -m ai_runtime.agents_container.service
 
-It starts the processes the runtime asks for (spawner.py has the
+It starts the processes the runtime asks for (wire.py has the
 messages) and carries a worker's lines to the runtime and back. It
 decides nothing: which code, which user, which environment and when a
 worker ends are the runtime's to say, and what a worker is entitled to
@@ -42,9 +42,9 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Set
 
-from ai_runtime.agents.events import Events
-from ai_runtime.agents.spawner import RemoteProcess, Spawner
-from ai_runtime.agents.usage import AgentsUsage, Sample
+from ai_runtime.agents_container import wire
+from ai_runtime.agents_container.usage import AgentsUsage, Sample
+from ai_runtime.events import Events
 from ai_runtime.runtime_logging import RuntimeLoggerFactory
 
 
@@ -124,7 +124,7 @@ class SpawnerService:
     def make_key(self) -> str:
         """The key the runtime commands with: made once, kept on the
         volume, the platform's user's alone to read."""
-        path = self.install_dir / Spawner.KEY_FILENAME
+        path = self.install_dir / wire.KEY_FILENAME
         try:
             kept = path.read_text(encoding="utf-8").strip()
         except OSError:
@@ -288,7 +288,7 @@ class SpawnerService:
                        else asyncio.subprocess.DEVNULL),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=(asyncio.subprocess.STDOUT
-                        if request.get("errors") != Spawner.DROP
+                        if request.get("errors") != wire.DROP
                         else asyncio.subprocess.DEVNULL),
                 cwd=request.get("cwd") or None,
                 env=self._environment(request))
@@ -322,7 +322,7 @@ class SpawnerService:
                 return
             gone.cancel()
             await self._say(writer, {
-                "code": 1, "said": Spawner.outlasted(timeout, self._text(said))})
+                "code": 1, "said": wire.outlasted(timeout, self._text(said))})
         finally:
             self._let_go(held, process)
 
@@ -382,9 +382,9 @@ class SpawnerService:
 
         feeding = asyncio.ensure_future(self._feed(reader, process))
         said = asyncio.ensure_future(
-            self._carry(process.stdout, RemoteProcess.OUT, writer))
+            self._carry(process.stdout, wire.OUT, writer))
         logged = asyncio.ensure_future(
-            self._carry(process.stderr, RemoteProcess.LOG, writer))
+            self._carry(process.stderr, wire.LOG, writer))
         exited = asyncio.ensure_future(process.wait())
         try:
             # The worker ends by itself; or the runtime hangs up; or
@@ -407,9 +407,9 @@ class SpawnerService:
             why = self._why(held, code)
             try:
                 if why:
-                    writer.write(RemoteProcess.WHY
+                    writer.write(wire.WHY
                                  + " ".join(why.split()).encode("utf-8") + b"\n")
-                writer.write(RemoteProcess.EXIT + str(code).encode("ascii") + b"\n")
+                writer.write(wire.EXIT + str(code).encode("ascii") + b"\n")
                 await writer.drain()
             except (ConnectionError, OSError):
                 pass

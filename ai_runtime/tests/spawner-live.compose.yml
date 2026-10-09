@@ -32,7 +32,7 @@ services:
     # What the agents are given, small enough for a test to use up.
     mem_limit: 400m
     cpus: 1.5
-    command: ["python", "-m", "ai_runtime.agents.spawner_service"]
+    command: ["python", "-m", "ai_runtime.agents_container.service"]
     environment:
       AI_AGENTS_PROXY: runtime:8002
     volumes:

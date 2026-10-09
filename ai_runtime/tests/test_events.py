@@ -14,9 +14,9 @@ import jwt
 import pytest
 
 from ai_runtime.agents.confinement import Confinement
-from ai_runtime.agents.events import Events
-from ai_runtime.agents.spawner_service import SpawnerService
-from ai_runtime.agents.usage import Sample
+from ai_runtime.events import Events
+from ai_runtime.agents_container.service import SpawnerService
+from ai_runtime.agents_container.usage import Sample
 from ai_runtime.agents.worker_handle import WorkerHandle
 from ai_runtime.tests.test_agent_worker_handle import (  # noqa: F401
     FIXTURE, manifest_document, venv,

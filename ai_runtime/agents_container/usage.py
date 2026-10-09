@@ -13,7 +13,7 @@ what its user's processes hold:
     found.agents            user -> {"memory", "cpu", "processes"}
     usage.over(found, users)   the user to end, or None
 
-Nothing here ends anything. The spawner does (spawner_service.py),
+Nothing here ends anything. The spawner does (agents_container/service.py),
 when the container nears what it was given: the agent using most is
 ended before the kernel ends a process of its own choosing, and is
 told of by name.

@@ -33,7 +33,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from ai_runtime.agents.confinement import WorkerPlace
-from ai_runtime.agents.events import Events
+from ai_runtime.events import Events
 from ai_runtime.agents.spawner import Spawner
 from ai_runtime.runtime_logging import RuntimeLoggerFactory
 from decentai_sdk.manifest import Manifest

@@ -223,12 +223,12 @@ Where a word is used for more than one thing, each is said.
 | **event** | two things. *Inbound*: what the assistant is told — a message, a finished job, a wakeup — kept in the inbox before it is heard. *Outbound*: what the runtime tells the page | `ai_chat_events`, direction `in` and `out` |
 | **executor** | what stands between the assistant and an agent's function: the gates a call passes | `FunctionExecutor`, `ai_runtime/execution/executor.py` |
 | **the chat's doors** | what the mind and a running call may ask of the chat — to say, to ask, to approve, to keep, to write on the trail — as one object the session builds and hands to both. Also *sinks* | `ChatSinks`, `ai_runtime/sinks.py` |
-| **the fence** | two things. What a delegation may call: a fixed list of actions. And what a worker may open: its own files | `RUNTIME_ENDPOINTS`; Landlock, `ai_runtime/agents/spawn_helper.c` |
+| **the fence** | two things. What a delegation may call: a fixed list of actions. And what a worker may open: its own files | `RUNTIME_ENDPOINTS`; Landlock, `ai_runtime/agents_container/spawn_helper.c` |
 | **fold** | the assistant shortening its own transcript when it grows | [the assistant](assistant.md) |
 | **frame** | one message on a socket. (In [the assistant](assistant.md) also the assistant's standing instructions) | `contracts/chat.py` |
 | **gateway** | `POST /app`: the one route every action goes through, and where permission is checked | `APIRouter.route`, `backend/api/api_router.py` |
 | **grant** | five things. A *policy* allowing an action. An *agent grant*: who may use an installed agent. A *secret grant*: a credential lent to an agent. The chat contract's `grants`: which functions this chat may call, and narrowed how. A *code grant*: what a person allowed one program | `policies`; `agent_grants`; `agent_secret_grants`; `FunctionGrants`; `ai_runtime/execution/code_grant.py` |
-| **the helper** | the one program that may start a process as another user | `decentai-spawn`, `ai_runtime/agents/spawn_helper.c` |
+| **the helper** | the one program that may start a process as another user | `decentai-spawn`, `ai_runtime/agents_container/spawn_helper.c` |
 | **host** | three things. The runtime, as an agent's worker sees it. The object that holds the runtime's sessions. And a machine on the network an agent connects to | —; `SessionHost`; `network.hosts` |
 | **inbox** | a chat's inbound events, each with a sequence number, kept until heard | `ai_chat_events`, direction `in` |
 | **job** | a function running in the background, begun with `start` | `ai_runtime/reasoning/state.py` |
@@ -251,7 +251,7 @@ Where a word is used for more than one thing, each is said.
 | **session** | two things. A person's sign-in. And one chat as the runtime holds it | `sessions`; `Session`, `ai_runtime/chat/session.py` |
 | **slot** | one resource of one installed agent — its notes, its documents, its connection — and the name its things are kept under: `agt_<ref>__<resource id>`. Also *category* | `resource_id`; `keys.category` for a file |
 | **source** | a repository agents are installed from | `ai_agent_sources` |
-| **spawner** | the platform's one process in the agents' container: it starts what the runtime orders | `ai_runtime/agents/spawner_service.py`, port 8003 |
+| **spawner** | the platform's one process in the agents' container: it starts what the runtime orders | `ai_runtime/agents_container/service.py`, port 8003 |
 | **spool** | a folder a worker and the runtime both reach, for bytes too large for a line | `<install_dir>/workers/<agent>/spool` |
 | **steward** | the one person who may change a stored thing: its creator, until it is handed over | `created_by` |
 | **the stand-in**, **the sim** | the backend's services in memory, which the runtime is tested on | `sim/` |
