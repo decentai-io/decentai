@@ -301,7 +301,7 @@ class RemoteSpawner(Spawner):
             writer.close()
             raise OSError(str((answer or {}).get("error")
                               or "the agents' container refused"))
-        return RemoteProcess(reader, writer, limit, answer.get("pid"))
+        return RemoteProcess(reader, writer, limit)
 
     def usage(self) -> Optional[Dict[str, Any]]:
         try:
@@ -336,7 +336,7 @@ class RemoteProcess:
     OUT, LOG, WHY, EXIT = wire.OUT, wire.LOG, wire.WHY, wire.EXIT
 
     def __init__(self, reader: asyncio.StreamReader,
-                 writer: asyncio.StreamWriter, limit: int, pid: Any = None):
+                 writer: asyncio.StreamWriter, limit: int):
         #: None, and not its process id where it runs: that container's
         #: numbers mean other processes here, and nothing in this one
         #: may be signalled by them.
