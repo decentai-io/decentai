@@ -12,9 +12,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from ai_runtime.agents import worker_pool
-from ai_runtime.agents.worker_handle import WorkerError
-from ai_runtime.agents.worker_pool import CallContext, WorkerPool
+import ai_runtime.agents.pool as pool_module
+from ai_runtime.agents.workers import WorkerError
+from ai_runtime.agents.pool import CallContext, WorkerPool
 from ai_runtime.chat.current import CURRENT_CHAT
 
 DIGEST = "sha256:" + "0" * 64
@@ -76,7 +76,7 @@ class FakeHandle:
 
 @pytest.fixture
 def pool(monkeypatch):
-    monkeypatch.setattr(worker_pool, "WorkerHandle", FakeHandle)
+    monkeypatch.setattr(pool_module, "WorkerHandle", FakeHandle)
     return WorkerPool()
 
 
@@ -112,7 +112,7 @@ class TestAHostACredentialNames:
 
     def test_it_closes_when_the_call_ends(self, pool, monkeypatch):
         place = Place()
-        monkeypatch.setattr(worker_pool.Confinement, "place_for",
+        monkeypatch.setattr(pool_module.Confinement, "place_for",
                             classmethod(lambda cls, key: place))
 
         async def use_secret(resource_id, ref):
@@ -132,7 +132,7 @@ class TestAHostACredentialNames:
 
     def test_it_closes_when_the_call_fails(self, pool, monkeypatch):
         place = Place()
-        monkeypatch.setattr(worker_pool.Confinement, "place_for",
+        monkeypatch.setattr(pool_module.Confinement, "place_for",
                             classmethod(lambda cls, key: place))
         context = CallContext(None)
         context.learned = [("mail.sara.example", None)]

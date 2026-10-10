@@ -1,4 +1,4 @@
-"""Reasoning: the assistant — the platform's one thinking entity.
+"""The mind: the assistant — the platform's one thinking entity.
 
 The contract is docs/system/assistant.md. This package is the mind and
 nothing else: model in, actions out. Every side effect crosses one
@@ -12,13 +12,13 @@ never chat, the embodiment that hosts it.
     state.py         the durable mind: transcript, plan, opened, trace, jobs
     evidence.py      what the trace can prove about a message
     plan.py          the todo list the user sees
-    agent_router.py  finding the right agent among many, by meaning
+    router.py        finding the right agent among many, by meaning
     documents.py     a file's bytes as text the assistant can read
 """
 
-from ai_runtime.reasoning.assistant import Assistant
-from ai_runtime.reasoning.evidence import Evidence
-from ai_runtime.reasoning.plan import Plan
-from ai_runtime.reasoning.state import AssistantState, Job
+from ai_runtime.mind.assistant import Assistant
+from ai_runtime.mind.evidence import Evidence
+from ai_runtime.mind.plan import Plan
+from ai_runtime.mind.state import AssistantState, Job
 
 __all__ = ["Assistant", "AssistantState", "Evidence", "Job", "Plan"]

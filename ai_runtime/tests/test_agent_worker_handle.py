@@ -15,7 +15,7 @@ import yaml
 
 from ai_runtime.agents.environments import AgentEnvironment
 from ai_runtime.agents.library import AgentLibrary, AgentRefused
-from ai_runtime.agents.worker_handle import WorkerError, WorkerHandle
+from ai_runtime.agents.workers import WorkerError, WorkerHandle
 from contracts.agent_manifest import manifest_hash
 from contracts.agent_package import AgentPackage
 

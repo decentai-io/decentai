@@ -114,8 +114,8 @@ the recordings it was trained on ([operating](../run/operating.md#speech-on-this
 |---|---|---|---|
 | browser → backend | `POST /app`, body `{"endpoint": "Domain:Controller:action", …}` (`backend/server/routes/app.py`) | the session cookie, or `Authorization: Bearer dk_…` (an API key) | who the person is; every call is resolved again from the session row |
 | browser → backend | `WS /chats/{chat_id}` (`backend/server/routes/ws.py`) | the session cookie, and an `Origin` the deployment names | the same person, speaking in one chat |
-| backend → runtime | `WS /chats/{chat_id}` on the runtime (`ai_runtime/server/routes/chat.py`) | the **service token** and the chat's **delegation** | "this is the backend", and "act for this person in this chat" |
-| backend → runtime | `GET /internal/monitor/…` (`ai_runtime/server/routes/monitor.py`) | the service token | "this is the backend" |
+| backend → runtime | `WS /chats/{chat_id}` on the runtime (`ai_runtime/door/socket.py`) | the **service token** and the chat's **delegation** | "this is the backend", and "act for this person in this chat" |
+| backend → runtime | `GET /internal/monitor/…` (`ai_runtime/door/monitor.py`) | the service token | "this is the backend" |
 | backend → speech | `POST /v1/audio/…`, `GET /status`, `POST /prepare` (`speech/service.py`) | nothing: the private network is the only way to it | a recording to write down, or words to say |
 | runtime → backend | `POST /app` (`Gateway`, `ai_runtime/services/backend.py`) | the delegation, as `Bearer` | the person's own permissions, fenced (below) |
 | runtime → agents | TCP, port 8003 (`ai_runtime/agents/spawner.py`) | the spawner's key, from `<install_dir>/spawner.key` | "start this, as this user"; one connection per worker carries its lines |
@@ -139,7 +139,7 @@ the pages. These are the two:
 | Made | per request, by the backend (`chat_session/identity/service.py`) | per chat, by the backend (`chat_session/identity/delegation.py`); a row in `runtime_sessions` names the chat |
 | Signed | RS256, with `BACKEND_SERVICE_PRIVATE_KEY`, which only the backend holds | HS256, with `TOKEN_SECRET_KEY`, as a browser's session token is |
 | Lives | 60 seconds | an hour, renewed by the relay while the chat is open |
-| Checked by | the runtime, with `BACKEND_SERVICE_PUBLIC_KEY`, before the socket is accepted (`ai_runtime/server/routes/auth.py`); a dialer without one is closed with 4401 | the backend, when the runtime presents it back on `/app`. The runtime cannot read or check it: it has no key to |
+| Checked by | the runtime, with `BACKEND_SERVICE_PUBLIC_KEY`, before the socket is accepted (`ai_runtime/door/auth.py`); a dialer without one is closed with 4401 | the backend, when the runtime presents it back on `/app`. The runtime cannot read or check it: it has no key to |
 | Travels | `Authorization` on the dial | `X-DecentAI-Runtime-Access` on the dial, then `Bearer` on every call back |
 
 The pair is asymmetric on purpose. The runtime runs agents' code, so
@@ -175,7 +175,7 @@ message can be refused.
    **Decision 2:** the runtime checks the service token before it
    accepts.
 3. **The runtime finds or builds the chat's session**
-   (`SessionHost.session`, `ai_runtime/server/host.py`). Building asks
+   (`SessionHost.session`, `ai_runtime/door/host.py`). Building asks
    the backend what this chat may do: `AI:Chat:Contract`, a call back
    on `/app` under the delegation.
    **Decision 3**, made on this and *every* call the runtime makes
@@ -193,7 +193,7 @@ message can be refused.
    is stored (`AI:Message:Create`), its inbox event recorded
    (`AI:Event:Record`), and only then is the assistant given it.
 5. **The assistant thinks one beat** (`Assistant._beat`,
-   `ai_runtime/reasoning/assistant.py`): one call to the model, one
+   `ai_runtime/mind/assistant.py`): one call to the model, one
    action back. The model's key is asked of the backend with the
    contract, as the turn begins (`Settings:Llm:Use`), and is in the
    runtime's memory, in plain, while it is used. Here the action is
@@ -345,7 +345,7 @@ what they are for:
 1. `FunctionCall` in `decentai_sdk/base.py`: the method an agent's
    code calls.
 2. `decentai_sdk/worker.py`: the line it sends to the host.
-3. `ai_runtime/agents/worker_pool.py`: a field on `CallContext`, and a
+3. `ai_runtime/agents/pool.py`: a field on `CallContext`, and a
    branch in `WorkerPool._answer` for the new method.
 4. `ai_runtime/execution/executor.py`: what the call is given, built
    in `_execute`, and held behind a flag of the manifest if it is a

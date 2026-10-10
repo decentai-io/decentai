@@ -28,6 +28,7 @@ slow site, a question waiting on the person — holds up no other row.
 
 from __future__ import annotations
 
+import logging
 import asyncio
 import json
 import time
@@ -38,7 +39,6 @@ from typing import Any, Callable, Dict, List, Optional
 from contracts.cron import Cron, CronError, zone
 from ai_runtime.chat.current import CURRENT_CHAT
 from ai_runtime.execution.executor import FunctionExecutor
-from ai_runtime.runtime_logging import RuntimeLoggerFactory
 
 
 class Schedule:
@@ -176,7 +176,7 @@ class ScheduleRunner:
         self.roster = roster
         self.executor = executor
         self.wake = wake
-        self.logger = RuntimeLoggerFactory.get_logger(self.__class__.__name__)
+        self.logger = logging.getLogger(self.__class__.__name__)
 
     async def fire(self, schedule: Schedule) -> Dict[str, Any]:
         # A fire acts for the schedule's chat — the credential a
@@ -282,7 +282,7 @@ class Scheduler:
         #: schedule_id -> the chat that fire is for: the row may be
         #: unscheduled while it fires, and the fire is still the chat's.
         self._firing_for: Dict[str, str] = {}
-        self.logger = RuntimeLoggerFactory.get_logger(self.__class__.__name__)
+        self.logger = logging.getLogger(self.__class__.__name__)
 
     # ------------------------------------------------------------------
     async def start(self) -> "Scheduler":

@@ -19,7 +19,7 @@ import yaml
 from ai_runtime.agents.environments import AgentEnvironment
 from ai_runtime.agents.spawner import RemoteSpawner, Spawner
 from ai_runtime.agents_container.service import SpawnerService
-from ai_runtime.agents.worker_handle import WorkerError, WorkerHandle
+from ai_runtime.agents.workers import WorkerError, WorkerHandle
 
 FIXTURE = Path(__file__).resolve().parent / "fixtures" / "agents" / "notebook"
 PYTHON = sys.executable

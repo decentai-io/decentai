@@ -14,7 +14,7 @@ ai_runtime/agents/. This module is the judgment wrapped around them:
     code_grant.py what a person allowed for one call that runs code
 
 Reasoning about WHICH function to call is the chat's
-(ai_runtime/reasoning/assistant.py); this module only ever judges and runs
+(ai_runtime/mind/assistant.py); this module only ever judges and runs
 one proposed invocation at a time.
 """
 

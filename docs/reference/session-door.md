@@ -29,7 +29,7 @@ Three principles:
 ## The host
 
 One object owns every live session in the process: the **SessionHost**
-(`ai_runtime/server/host.py`). It is the only thing that builds, finds,
+(`ai_runtime/door/host.py`). It is the only thing that builds, finds,
 or forgets a chat's Session; a helper's is built by its parent
 ([sub-assistants](../system/sub-assistants.md)).
 

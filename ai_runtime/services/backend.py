@@ -17,6 +17,7 @@ Two things the sim does in memory that a network makes explicit:
 
 from __future__ import annotations
 
+import logging
 import asyncio
 import secrets
 from typing import Any, Dict, List, Optional, Tuple
@@ -24,7 +25,6 @@ from typing import Any, Dict, List, Optional, Tuple
 import httpx
 
 from ai_runtime.chat.current import CURRENT_CHAT
-from ai_runtime.runtime_logging import RuntimeLoggerFactory
 from ai_runtime.services.provider import BackendProvider
 
 #: how much of a chat's conversation frames a fresh mind
@@ -97,7 +97,7 @@ class BackendServices:
         self._waiters: Dict[str, asyncio.Future] = {}
         self.provider = BackendProvider(self)
         self.schedules = BackendSchedules(self)
-        self.logger = RuntimeLoggerFactory.get_logger(self.__class__.__name__)
+        self.logger = logging.getLogger(self.__class__.__name__)
 
     # -- credentials -----------------------------------------------------
     def grant(self, chat_id: str, credential: str) -> None:

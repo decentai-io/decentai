@@ -9,7 +9,7 @@ the spanning suite exercises for real.
 import asyncio
 
 from ai_runtime.chat.current import CURRENT_CHAT
-from ai_runtime.chat.scheduler import Scheduler
+from ai_runtime.chat.clock import Scheduler
 from ai_runtime.services import BackendServices
 from ai_runtime.services.backend import GatewayError
 

@@ -12,11 +12,11 @@ import pytest
 from ai_runtime.chat.summarizer import SECTIONS, Summarizer
 from ai_runtime.llms import FakeConnector
 from ai_runtime.prompts import Prompts
-from ai_runtime.reasoning import observations
-from ai_runtime.reasoning.assistant import Assistant
-from ai_runtime.reasoning.evidence import Evidence
-from ai_runtime.reasoning.plan import Plan
-from ai_runtime.reasoning.state import AssistantState
+from ai_runtime.mind import observations
+from ai_runtime.mind.assistant import Assistant
+from ai_runtime.mind.evidence import Evidence
+from ai_runtime.mind.plan import Plan
+from ai_runtime.mind.state import AssistantState
 
 
 def size(value) -> int:

@@ -778,7 +778,7 @@ class TestOpenAIEmbeddings:
     def test_a_scripted_model_embeds_by_words(self):
         fake = FakeConnector([])
         a, b, c = asyncio.run(fake.embed(["send mail to dana", "send mail now", "book a room"]))
-        from ai_runtime.reasoning.agent_router import AgentRouter
+        from ai_runtime.mind.router import AgentRouter
         assert AgentRouter.cosine(a, b) > AgentRouter.cosine(a, c)
 
 

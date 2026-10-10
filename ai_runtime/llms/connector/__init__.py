@@ -34,7 +34,7 @@ Gemini and Bedrock naming the model in the address. A reasoning loop
 knows none of it.
 
 TOOLS, THE SAME WAY. Offered ``tools`` (the assistant's actions as
-schemas, reasoning/actions.py), a connector asks the model to call one
+schemas, mind/actions.py), a connector asks the model to call one
 and hands the call back as the action's JSON text — the shape the cycle
 always read — so native tool calling changes how the model is asked,
 not what the runtime does with the answer (tools.py). Anthropic takes

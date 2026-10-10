@@ -80,7 +80,7 @@ is one line less.
 ## How it is read
 
 By the backend, through a door of the runtime that answers nobody else
-(`ai_runtime/server/routes/monitor.py`): the same service token the
+(`ai_runtime/door/monitor.py`): the same service token the
 chat door asks for. Who among the platform's people is shown the
 answers is the backend's to decide.
 

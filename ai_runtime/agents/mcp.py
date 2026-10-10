@@ -22,13 +22,13 @@ as data about what a tool does, never as instructions.
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Callable, Dict, Tuple
 
 import jsonschema
 
 from ai_runtime.agents.library import InstalledAgent
-from ai_runtime.agents.worker_handle import WorkerError
-from ai_runtime.runtime_logging import RuntimeLoggerFactory
+from ai_runtime.agents.workers import WorkerError
 from contracts.mcp import McpClient, McpError
 from decentai_sdk.manifest import Manifest
 
@@ -220,7 +220,7 @@ class McpServer(InstalledAgent):
             # Whatever else went wrong on the way to the server or in
             # reading it: the call failed, and is said to have, in the
             # one kind of failure the executor words and records.
-            RuntimeLoggerFactory.get_logger("McpServer").warning(
+            logging.getLogger("McpServer").warning(
                 f"MCP call failed: {type(exc).__name__}: {exc}")
             raise WorkerError(
                 f"the server could not be called ({type(exc).__name__})")

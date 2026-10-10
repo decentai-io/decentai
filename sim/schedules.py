@@ -1,6 +1,6 @@
 """Where the clock's rows live when no platform keeps them: in memory,
 for tests and for a runtime run alone. The contract is the Scheduler's
-(ai_runtime/chat/scheduler.py): rows are read whole and written one at
+(ai_runtime/chat/clock.py): rows are read whole and written one at
 a time.
 """
 

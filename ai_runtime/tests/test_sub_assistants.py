@@ -7,7 +7,7 @@ so a script reads in the order the minds take turns.
 
 import asyncio
 
-from ai_runtime.server.host import MissingModel
+from ai_runtime.door.host import MissingModel
 from ai_runtime.tests.test_session import (
     SYNC_SECRET,
     action,

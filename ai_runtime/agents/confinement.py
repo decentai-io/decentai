@@ -45,6 +45,7 @@ no more the runtime's than the agent's is.
 
 from __future__ import annotations
 
+import logging
 import hashlib
 import json
 import os
@@ -58,7 +59,6 @@ from urllib.parse import urlsplit
 from ai_runtime.agents.egress import EgressProxy
 from ai_runtime.events import Events
 from ai_runtime.agents.spawner import Spawner
-from ai_runtime.runtime_logging import RuntimeLoggerFactory
 
 PLAIN_NAME_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
@@ -522,7 +522,7 @@ class Confinement:
         #: Where packages come from: what the builder may reach.
         self.package_hosts: Sequence[str] = self.PACKAGE_HOSTS
         self._table_lock = threading.Lock()
-        self.logger = RuntimeLoggerFactory.get_logger(self.__class__.__name__)
+        self.logger = logging.getLogger(self.__class__.__name__)
 
     # ------------------------------------------------------------------
     # At start

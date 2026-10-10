@@ -57,8 +57,8 @@ def full_stack(app, tmp_path, monkeypatch):
     (docs/system/agent-code.md). Its environments are the fixtures' shared
     venv — the fixture agents declare no dependencies."""
     from ai_runtime.agents import AgentLibrary
-    from ai_runtime.server import create_app as create_runtime_app
-    from ai_runtime.server.settings import RuntimeSettings
+    from ai_runtime.door import create_app as create_runtime_app
+    from ai_runtime.settings import RuntimeSettings
     from ai_runtime.services import BackendServices, Gateway
     from ai_runtime.tests.fixture_agents import worker_environment
     from server.setup.app_state import get_state

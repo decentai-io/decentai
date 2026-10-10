@@ -19,7 +19,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from ai_runtime.agents.library import InstalledAgent
 from ai_runtime.prompts import Prompts
-from ai_runtime.reasoning.state import AssistantState
+from ai_runtime.mind.state import AssistantState
 
 #: An installed agent's line in the frame: id, name and description,
 #: cut so a roster of many stays a list and not a catalog.
@@ -70,7 +70,7 @@ def roster_block(agents: Dict[str, InstalledAgent],
     """One line per agent. Details are paid for only when opened.
     More installed than the organization's threshold: the open
     ones and the closest to the latest message by meaning, with the
-    rest counted (agent_router.py)."""
+    rest counted (router.py)."""
     if shortlist is not None:
         listed, omitted = shortlist
         listed = [agent_id for agent_id in listed if agent_id in agents]

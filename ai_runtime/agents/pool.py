@@ -40,6 +40,7 @@ honestly rather than guessing.
 
 from __future__ import annotations
 
+import logging
 import asyncio
 import contextvars
 import os
@@ -48,8 +49,7 @@ from typing import Any, Callable, ClassVar, Dict, List, Optional, Tuple
 
 from ai_runtime.agents.confinement import Confinement
 from ai_runtime.agents.library import InstalledAgent
-from ai_runtime.agents.worker_handle import WorkerError, WorkerHandle
-from ai_runtime.runtime_logging import RuntimeLoggerFactory
+from ai_runtime.agents.workers import WorkerError, WorkerHandle
 
 #: The one refusal call.llm() can meet — same wording as the SDK's own,
 #: so the function's author reads one message wherever it runs.
@@ -156,7 +156,7 @@ class WorkerPool:
         self._locks: Dict[str, asyncio.Lock] = {}
         self._calls: Dict[str, CallContext] = {}
         self._loop: Optional[asyncio.AbstractEventLoop] = None
-        self.logger = RuntimeLoggerFactory.get_logger(self.__class__.__name__)
+        self.logger = logging.getLogger(self.__class__.__name__)
         WorkerPool._live.append(self)
 
     def _bind_loop(self) -> None:

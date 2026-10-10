@@ -15,7 +15,7 @@ from database.stores import ApprovalStore, ChatStore, ScheduleStore, UserStore
 
 from .base import AIController
 
-#: A job still in motion: the runtime's own words (reasoning/state.py).
+#: A job still in motion: the runtime's own words (mind/state.py).
 ACTIVE_JOB_STATUSES = ("running", "waiting_approval")
 
 

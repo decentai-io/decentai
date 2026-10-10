@@ -16,6 +16,6 @@ def _reap_worker_pools():
     test's event loop; production holds one long-lived pool and never
     goes through this."""
     yield
-    from ai_runtime.agents.worker_pool import WorkerPool
+    from ai_runtime.agents.pool import WorkerPool
 
     WorkerPool.terminate_all()

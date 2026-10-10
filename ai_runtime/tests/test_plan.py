@@ -3,7 +3,7 @@ that keep what is already true, evidence only the trace holds, and
 the states an item may move between.
 """
 
-from ai_runtime.reasoning.plan import Plan
+from ai_runtime.mind.plan import Plan
 
 
 class TestIds:

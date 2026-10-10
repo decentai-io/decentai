@@ -33,14 +33,14 @@ about the work that just ran.
 
 from __future__ import annotations
 
+import logging
 import json
 import re
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 from ai_runtime.prompts import Prompts
-from ai_runtime.reasoning.assistant import Assistant
-from ai_runtime.runtime_logging import RuntimeLoggerFactory
+from ai_runtime.mind.assistant import Assistant
 
 SECTIONS = ("STANDING INSTRUCTIONS", "DECISIONS AND FACTS", "DONE",
             "DECLINED OR FAILED", "OPEN THREADS")
@@ -73,7 +73,7 @@ class Summarizer:
 
     def __init__(self, connector):
         self.connector = connector
-        self.logger = RuntimeLoggerFactory.get_logger(self.__class__.__name__)
+        self.logger = logging.getLogger(self.__class__.__name__)
 
     # -- measuring ----------------------------------------------------------
     @staticmethod

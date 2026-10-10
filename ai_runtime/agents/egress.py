@@ -35,6 +35,7 @@ passes through here, and the runtime's own loop has chats to serve.
 
 from __future__ import annotations
 
+import logging
 import asyncio
 import base64
 import ipaddress
@@ -46,7 +47,6 @@ from typing import Callable, ClassVar, Dict, List, Optional, Tuple
 from urllib.parse import urlsplit
 
 from ai_runtime.events import Events
-from ai_runtime.runtime_logging import RuntimeLoggerFactory
 
 
 class Admission:
@@ -214,7 +214,7 @@ class EgressProxy:
         self._thread: Optional[threading.Thread] = None
         self._problem = ""
         self.refusals = 0
-        self.logger = RuntimeLoggerFactory.get_logger(self.__class__.__name__)
+        self.logger = logging.getLogger(self.__class__.__name__)
 
     # ------------------------------------------------------------------
     # Its life

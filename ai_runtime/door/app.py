@@ -2,12 +2,18 @@ import asyncio
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
 
-from fastapi import FastAPI
+from fastapi import APIRouter, FastAPI
 
-from ai_runtime.chat.scheduler import ScheduleRunner, Scheduler
-from ai_runtime.server.host import ServingRoster, SessionHost
-from ai_runtime.server.routes import router
-from ai_runtime.server.settings import RuntimeSettings
+from ai_runtime.chat.clock import ScheduleRunner, Scheduler
+from ai_runtime.door import monitor, socket
+from ai_runtime.door.host import ServingRoster, SessionHost
+from ai_runtime.settings import RuntimeSettings
+
+#: The runtime's doors: the chat socket, and the monitoring and health
+#: endpoints the backend reads.
+router = APIRouter()
+router.include_router(socket.router)
+router.include_router(monitor.router)
 
 
 #: How long shutdown waits for the workers to leave before ending them.

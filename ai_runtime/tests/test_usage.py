@@ -16,7 +16,7 @@ import pytest
 from ai_runtime.agents.spawner import LocalSpawner, RemoteSpawner, Spawner
 from ai_runtime.agents_container.service import SpawnerService
 from ai_runtime.agents_container.usage import AgentsUsage, Sample
-from ai_runtime.agents.worker_handle import WorkerError, WorkerHandle
+from ai_runtime.agents.workers import WorkerError, WorkerHandle
 from ai_runtime.tests.test_spawner import FIXTURE, manifest_document
 from contracts.container import ContainerUsage
 

@@ -10,6 +10,7 @@ what the chat may do.
 
 from __future__ import annotations
 
+import logging
 import asyncio
 from pathlib import Path
 import tempfile
@@ -17,15 +18,14 @@ from types import SimpleNamespace
 from typing import Any, Dict, Optional
 
 from ai_runtime.chat.current import CURRENT_CHAT
-from ai_runtime.reasoning.agent_router import AgentRouter
-from ai_runtime.agents.worker_pool import WorkerPool
+from ai_runtime.mind.router import AgentRouter
+from ai_runtime.agents.pool import WorkerPool
 from ai_runtime.chat import Session
 from ai_runtime.execution.executor import FunctionExecutor
 from ai_runtime.execution.grants import FunctionGrants
 from ai_runtime.llms import LLMConnectorFactory
 from ai_runtime.llms.connector.tools import NoModel
-from ai_runtime.runtime_logging import RuntimeLoggerFactory
-from ai_runtime.server.roster import AgentRoster
+from ai_runtime.door.roster import AgentRoster
 from ai_runtime.sinks import ChatSinks
 from contracts.chat import CHAT_PROTOCOL_VERSION
 
@@ -129,10 +129,10 @@ class SessionHost:
         #: chat -> how many deliveries are on their way in to its session
         self._busy: Dict[str, int] = {}
         #: which agents a turn is shown when there are more than fit,
-        #: by meaning (reasoning/agent_router.py); its vectors live
+        #: by meaning (mind/router.py); its vectors live
         #: beside the packages
         self.router = AgentRouter(self._embeddings_dir(library))
-        self.logger = RuntimeLoggerFactory.get_logger(self.__class__.__name__)
+        self.logger = logging.getLogger(self.__class__.__name__)
         #: the agents a chat is served — materialized by digest from
         #: the library, narrated to the socket, reclaimed when nobody
         #: approves them (roster.py)

@@ -17,16 +17,16 @@ right now, so that an audience arriving late and a session being
 killed can see it.
 """
 
+import logging
 import asyncio
 from typing import Any, Callable, Dict, Optional
 
 from contracts.chat import QUESTION_MAX_CHARS, QUESTION_WAIT_SECONDS, agent_source
-from ai_runtime.agents.worker_handle import WorkerError
+from ai_runtime.agents.workers import WorkerError
 from ai_runtime.chat.files import FileFinder
 from ai_runtime.execution.executor import ParkedInvocation
-from ai_runtime.reasoning.assistant import CURRENT_JOB_ID
-from ai_runtime.reasoning.state import RUNNING, WAITING_APPROVAL
-from ai_runtime.runtime_logging import RuntimeLoggerFactory
+from ai_runtime.mind.assistant import CURRENT_JOB_ID
+from ai_runtime.mind.state import RUNNING, WAITING_APPROVAL
 
 
 class Settled(str):
@@ -73,7 +73,7 @@ class Cards:
         self.screens: Dict[str, Dict[str, Any]] = {}
         #: approval ids a call of THIS incarnation is waiting on
         self.awaited: set = set()
-        self.logger = logger or RuntimeLoggerFactory.get_logger(
+        self.logger = logger or logging.getLogger(
             self.__class__.__name__)
 
     # ------------------------------------------------------------------
@@ -179,7 +179,7 @@ class Cards:
         """An agent asking the person something mid-call (call.ask): a
         card in the chat, answered by a choice or in the person's words,
         waited on for at most a day — the function's own clock stopped
-        meanwhile (worker_pool). A question lives only as long as the
+        meanwhile (agents/pool.py). A question lives only as long as the
         call asking it: it is not parked on the state, because a process
         that dies cannot resume the function that asked."""
         request = {

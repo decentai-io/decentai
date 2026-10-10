@@ -39,6 +39,7 @@ goes when the environment goes.
 
 from __future__ import annotations
 
+import logging
 import hashlib
 import os
 import re
@@ -50,7 +51,6 @@ import threading
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
-from ai_runtime.runtime_logging import RuntimeLoggerFactory
 
 READY_MARKER = ".ready"
 #: What a wheel is called (its name says what it holds and what it runs
@@ -94,7 +94,7 @@ class AgentEnvironment:
 
     def __init__(self, root: str | Path):
         self.root = Path(root)
-        self.logger = RuntimeLoggerFactory.get_logger(self.__class__.__name__)
+        self.logger = logging.getLogger(self.__class__.__name__)
 
     # ------------------------------------------------------------------
     @property

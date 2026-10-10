@@ -11,7 +11,7 @@ import pytest
 
 from ai_runtime.agents.environments import AgentEnvironment
 from ai_runtime.agents.mcp import McpServer
-from ai_runtime.agents.worker_handle import WorkerError, WorkerHandle
+from ai_runtime.agents.workers import WorkerError, WorkerHandle
 from ai_runtime.execution.code_grant import CodeGrant
 from ai_runtime.execution.executor import FunctionExecutor
 from ai_runtime.sinks import ChatSinks

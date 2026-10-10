@@ -31,6 +31,7 @@ carries. What answers is ``ai_runtime/agents_container/service.py``.
 
 from __future__ import annotations
 
+import logging
 import asyncio
 import contextlib
 import json
@@ -43,7 +44,6 @@ from pathlib import Path
 from typing import Any, ClassVar, Dict, Optional, Sequence, Tuple
 
 from ai_runtime.agents_container import wire
-from ai_runtime.runtime_logging import RuntimeLoggerFactory
 
 
 class Spawner:
@@ -71,7 +71,7 @@ class Spawner:
     current: ClassVar["Spawner"]
 
     def __init__(self) -> None:
-        self.logger = RuntimeLoggerFactory.get_logger(self.__class__.__name__)
+        self.logger = logging.getLogger(self.__class__.__name__)
 
     @classmethod
     def configure(cls, address: str = "",

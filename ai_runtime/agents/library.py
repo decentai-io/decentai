@@ -32,7 +32,7 @@ WHERE IT LIVES.
                                       a prefix, for Windows path budget)
 
 THE HOST NEVER IMPORTS AGENT CODE. Installation verifies a package by
-spawning a worker from its own venv and handshaking (worker_handle.py);
+spawning a worker from its own venv and handshaking (workers.py);
 what the library registers afterwards is a description — manifest,
 folder, environment — that an execution layer turns into a running
 worker when something actually calls the agent.
@@ -55,6 +55,7 @@ package serves.
 
 from __future__ import annotations
 
+import logging
 import re
 import hashlib
 import shutil
@@ -65,8 +66,7 @@ from typing import Dict, List, Optional
 
 from ai_runtime.agents.confinement import Confinement
 from ai_runtime.agents.environments import AgentEnvironment
-from ai_runtime.agents.worker_handle import WorkerHandle
-from ai_runtime.runtime_logging import RuntimeLoggerFactory
+from ai_runtime.agents.workers import WorkerHandle
 from contracts.agent_manifest import Manifest, load_manifest, manifest_hash
 from contracts.agent_package import AgentPackage, PackagingError
 
@@ -172,7 +172,7 @@ class AgentLibrary:
         #: The digests an install is at work on, between its folder
         #: arriving and its code being proven.
         self._installing: set = set()
-        self.logger = RuntimeLoggerFactory.get_logger(self.__class__.__name__)
+        self.logger = logging.getLogger(self.__class__.__name__)
 
     def _lock_for(self, environment: AgentEnvironment) -> threading.Lock:
         with self._locks_guard:

@@ -16,6 +16,7 @@ run; nothing here decides whether a call may run, only what it may
 ask while it does.
 """
 
+import logging
 import asyncio
 import mimetypes
 from typing import Any, Callable, Dict, Optional
@@ -27,11 +28,10 @@ from contracts.chat import (
 )
 from ai_runtime.agents.confinement import Confinement
 from ai_runtime.agents.library import InstalledAgent
-from ai_runtime.agents.worker_handle import WorkerError
+from ai_runtime.agents.workers import WorkerError
 from ai_runtime.execution.code_grant import CodeGrant
 from ai_runtime.execution.pictures import Pictures
 from ai_runtime.execution.resources import ResourceAccess
-from ai_runtime.runtime_logging import RuntimeLoggerFactory
 from ai_runtime.sinks import ChatSinks
 
 #: What a frame of a screen carries (contracts/chat.py ScreenFrame).
@@ -57,7 +57,7 @@ class CallSurface:
         #: a frame and not said it closed. A screen is a call's: when
         #: the call ends, however it ends, whoever is watching is told.
         self._screens: Dict[str, Dict[str, Any]] = {}
-        self.logger = logger or RuntimeLoggerFactory.get_logger(
+        self.logger = logger or logging.getLogger(
             self.__class__.__name__)
 
     def for_call(self, agent: InstalledAgent, function_spec: Dict[str, Any],

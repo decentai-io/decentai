@@ -33,6 +33,7 @@ whose child an orphan becomes.
 
 from __future__ import annotations
 
+import logging
 import asyncio
 import hmac
 import json
@@ -45,7 +46,6 @@ from typing import Any, Dict, List, Optional, Sequence, Set
 from ai_runtime.agents_container import wire
 from ai_runtime.agents_container.usage import AgentsUsage, Sample
 from ai_runtime.events import Events
-from ai_runtime.runtime_logging import RuntimeLoggerFactory
 
 
 class SpawnerService:
@@ -115,7 +115,7 @@ class SpawnerService:
         #: The requests being served, for a stop to wait out.
         self._serving: Set[asyncio.Task] = set()
         self._servers: List[asyncio.AbstractServer] = []
-        self.logger = RuntimeLoggerFactory.get_logger(self.__class__.__name__)
+        self.logger = logging.getLogger(self.__class__.__name__)
 
     # ------------------------------------------------------------------
     # Its life
@@ -663,6 +663,9 @@ class SpawnerService:
 
 
 def main() -> None:
+    logging.basicConfig(
+        level=os.getenv("LOG_LEVEL", "INFO").upper(),
+        format="%(asctime)s %(levelname)s %(name)s %(message)s")
     install_dir = os.getenv("AI_RUNTIME_AGENTS_INSTALL_DIR", "") or "/data/agents"
     # What this container sees of agents is written down beside what
     # the runtime sees (docs/system/monitoring.md).

@@ -1,10 +1,10 @@
-"""Bytes into text for the assistant's read_file (reasoning/documents.py)."""
+"""Bytes into text for the assistant's read_file (mind/documents.py)."""
 
 import io
 
 import pytest
 
-from ai_runtime.reasoning.documents import DocumentPage, DocumentText, Unreadable
+from ai_runtime.mind.documents import DocumentPage, DocumentText, Unreadable
 
 
 class TestDocumentText:

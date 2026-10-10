@@ -12,13 +12,13 @@ whatever the verdict, and a review that could not be made says so.
 
 from __future__ import annotations
 
+import logging
 import asyncio
 import json
 import re
 from typing import Any, Dict
 
 from ai_runtime.prompts import Prompts
-from ai_runtime.runtime_logging import RuntimeLoggerFactory
 from contracts.chat import CODE_REVIEW_MAX_CHARS
 
 
@@ -29,7 +29,7 @@ class CodeReviewer:
 
     def __init__(self, connector):
         self.connector = connector
-        self.logger = RuntimeLoggerFactory.get_logger(self.__class__.__name__)
+        self.logger = logging.getLogger(self.__class__.__name__)
 
     async def review(self, code: Dict[str, Any]) -> Dict[str, str]:
         """``{verdict, note}`` for one proposal: what the model made of

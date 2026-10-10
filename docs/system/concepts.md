@@ -214,11 +214,11 @@ Where a word is used for more than one thing, each is said.
 | **card** | something in the chat that waits for a person: an approval, a question, code to allow, a login | `ai_approvals` |
 | **catalog** | two things. The list of every action. And the file in a repository that lists its agents | `ACTION_CATALOG`; `decentai-agents.yaml` |
 | **category** | see *slot* | |
-| **the clock** | what fires schedules and ends sleeps | `Scheduler`, `ai_runtime/chat/scheduler.py` |
+| **the clock** | what fires schedules and ends sleeps | `Scheduler`, `ai_runtime/chat/clock.py` |
 | **contract** | four things. *The manifest*, an agent's contract with the platform. *The chat's contract*, what this chat may do, answered by the backend each turn. *The services contract*, the methods the runtime asks of the backend. And the package `contracts/`, the shapes both sides share | `AI:Chat:Contract`; `BackendServices`; `contracts/` |
 | **delegation** | the credential the backend makes per chat, under which the runtime calls back as the person. Also *runtime access token*, *the chat's credential* | `chat_session/identity/delegation.py`; `runtime_sessions` |
 | **definition** | the shape of a credential: its fields. An agent's is derived from its manifest at install | `secret_definitions` |
-| **door** | a way in. *The session door* is the runtime's socket for one chat; a *gateway door* is an action | `ai_runtime/server/routes/chat.py` |
+| **door** | a way in. *The session door* is the runtime's socket for one chat; a *gateway door* is an action | `ai_runtime/door/socket.py` |
 | **escape grant** | an action that lets its holder reach past the usual rule. `…:set_owner_any` lifts whom a thing may be shared to and who may edit it; `…:manage_any` reaches every source or connection, and does not lift whom one may be shared to | [sharing](sharing.md) |
 | **event** | two things. *Inbound*: what the assistant is told — a message, a finished job, a wakeup — kept in the inbox before it is heard. *Outbound*: what the runtime tells the page | `ai_chat_events`, direction `in` and `out` |
 | **executor** | what stands between the assistant and an agent's function: the gates a call passes | `FunctionExecutor`, `ai_runtime/execution/executor.py` |
@@ -231,11 +231,11 @@ Where a word is used for more than one thing, each is said.
 | **the helper** | the one program that may start a process as another user | `decentai-spawn`, `ai_runtime/agents_container/spawn_helper.c` |
 | **host** | three things. The runtime, as an agent's worker sees it. The object that holds the runtime's sessions. And a machine on the network an agent connects to | —; `SessionHost`; `network.hosts` |
 | **inbox** | a chat's inbound events, each with a sequence number, kept until heard | `ai_chat_events`, direction `in` |
-| **job** | a function running in the background, begun with `start` | `ai_runtime/reasoning/state.py` |
+| **job** | a function running in the background, begun with `start` | `ai_runtime/mind/state.py` |
 | **key** | five things. The plain half of a stored document (`keys`). An encryption key. An API key (`dk_…`). The spawner's key. And, loosely, a delegation | |
 | **level** | 0 to 3, on a function (what it costs) and on a chat (its trust): a function above the chat's level asks first | `permission_level`; `chat_level` |
 | **manifest** | an agent's declaration: what it can do, keep and reach | `manifest.yaml`; `contracts/agent_manifest.py` |
-| **the mind** | the assistant of one chat | `Assistant`, `ai_runtime/reasoning/assistant.py` |
+| **the mind** | the assistant of one chat | `Assistant`, `ai_runtime/mind/assistant.py` |
 | **parked** | waiting for a person's answer, with the state saved | `waiting_approval` |
 | **pass** | the token that tells the proxy whose worker is connecting | `EgressProxy.admit`, `ai_runtime/agents/egress.py` |
 | **place** | one agent's user, home and spool where workers run | `WorkerPlace`, `ai_runtime/agents/confinement.py` |

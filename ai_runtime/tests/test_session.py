@@ -12,7 +12,7 @@ from pathlib import Path
 
 from ai_runtime.chat import Session
 from ai_runtime.llms import FakeConnector
-from ai_runtime.reasoning.state import RUNNING, AssistantState, Job
+from ai_runtime.mind.state import RUNNING, AssistantState, Job
 from ai_runtime.tests.fixture_agents import load_agents
 from contracts.chat import event_error
 from sim.session_services import SimSessionServices
@@ -1301,7 +1301,7 @@ class TestTheClockAction:
     """The assistant's hand on the clock: schedule and unschedule."""
 
     def clocked(self, script, services=None, now=1000.0):
-        from ai_runtime.chat.scheduler import ScheduleRunner, Scheduler
+        from ai_runtime.chat.clock import ScheduleRunner, Scheduler
         from ai_runtime.execution.executor import FunctionExecutor
         from sim.schedules import MemoryScheduleStore
 
@@ -1402,7 +1402,7 @@ class TestTheClockAction:
         assert scheduler.schedules == []
 
     def test_a_sleep_is_bounded_single_and_ended_by_a_stop(self):
-        from ai_runtime.chat.scheduler import ChatClock
+        from ai_runtime.chat.clock import ChatClock
 
         session, scheduler, _ = self.clocked([])
 
@@ -1510,7 +1510,7 @@ class TestTheClockAction:
         assert [s.note for s in scheduler.schedules] == ["at"]
 
     def test_a_chat_removes_only_its_own_schedules(self):
-        from ai_runtime.chat.scheduler import Schedule
+        from ai_runtime.chat.clock import Schedule
 
         session, scheduler, services = self.clocked([
             action(action="unschedule", schedule_id="sch_theirs"),
@@ -1586,7 +1586,7 @@ class TestTheClockPersists:
 
     @staticmethod
     def scheduler(store):
-        from ai_runtime.chat.scheduler import Scheduler
+        from ai_runtime.chat.clock import Scheduler
 
         fired = []
 
@@ -1665,7 +1665,7 @@ class TestTheClockPersists:
         """The person paused it as it ran, and the clock re-read the
         chat's rows. The run is the new row's: it is not switched back
         on, and it does not fire again for the same moment."""
-        from ai_runtime.chat.scheduler import Scheduler
+        from ai_runtime.chat.clock import Scheduler
         from sim.schedules import MemoryScheduleStore
 
         store = MemoryScheduleStore()
@@ -1720,7 +1720,7 @@ class TestTheClockPersists:
         site, a question waiting on the person — does not keep the next
         row, or the next tick, waiting; and it is not fired again while
         it is still under way."""
-        from ai_runtime.chat.scheduler import Scheduler
+        from ai_runtime.chat.clock import Scheduler
         from sim.schedules import MemoryScheduleStore
 
         store = MemoryScheduleStore()
@@ -1758,7 +1758,7 @@ class TestTheClockPersists:
         assert store.rows[0]["next_run_at"] > 1000.0
 
     def test_a_kill_ends_the_chats_fires_and_their_rows_move_on(self):
-        from ai_runtime.chat.scheduler import Scheduler
+        from ai_runtime.chat.clock import Scheduler
         from sim.schedules import MemoryScheduleStore
 
         store = MemoryScheduleStore()
@@ -1790,7 +1790,7 @@ class TestTheClockPersists:
         assert theirs["next_run_at"] == 1.0 and not theirs.get("runs")
 
     def test_a_schedule_the_store_refuses_is_not_on_the_clock(self):
-        from ai_runtime.chat.scheduler import ChatClock
+        from ai_runtime.chat.clock import ChatClock
         from sim.schedules import MemoryScheduleStore
 
         class Full(MemoryScheduleStore):
@@ -1824,7 +1824,7 @@ class TestTheSocketKeepsHearing:
                 raise AssertionError("the socket's loop waited for the stop")
 
         async def scenario():
-            from ai_runtime.server.host import SessionHost
+            from ai_runtime.door.host import SessionHost
 
             host = SessionHost(SimSessionServices(), {})
             host.sessions["chat_1"] = Busy()
@@ -2217,7 +2217,7 @@ class TestTheKillSwitch:
     def test_a_forced_stop_frame_kills_and_forgets_the_session(self):
         from types import SimpleNamespace
 
-        from ai_runtime.server.host import SessionHost
+        from ai_runtime.door.host import SessionHost
         from ai_runtime.tests.fixture_agents import load_agents
 
         agents, errors = load_agents(AGENTS_DIR)

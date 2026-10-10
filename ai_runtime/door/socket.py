@@ -5,13 +5,13 @@ The service token proves the dialer before accept; the SessionHost
 does everything else.
 """
 
+import logging
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from ai_runtime.runtime_logging import RuntimeLoggerFactory
-from ai_runtime.server.routes.auth import verify_backend_service
+from ai_runtime.door.auth import verify_backend_service
 
 router = APIRouter()
-logger = RuntimeLoggerFactory.get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 @router.websocket("/chats/{chat_id}")

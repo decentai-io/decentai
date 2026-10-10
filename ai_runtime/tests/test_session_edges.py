@@ -10,7 +10,7 @@ from pathlib import Path
 
 from ai_runtime.chat import Session
 from ai_runtime.llms import FakeConnector
-from ai_runtime.reasoning.state import RUNNING, Job
+from ai_runtime.mind.state import RUNNING, Job
 from ai_runtime.tests.fixture_agents import load_agents
 from sim.session_services import SimSessionServices
 

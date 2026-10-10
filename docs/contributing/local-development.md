@@ -121,10 +121,10 @@ find out.
 | the action catalog and baseline | `backend/server/authentication/catalog.py` |
 | stores over Mongo | `backend/database/stores/` |
 | the schema | `backend/database/schema.json` |
-| the assistant's cycle | `ai_runtime/reasoning/assistant.py`, prompt in `ai_runtime/prompts/assistant.md` |
+| the assistant's cycle | `ai_runtime/mind/assistant.py`, prompt in `ai_runtime/prompts/assistant.md` |
 | the executor and its gates | `ai_runtime/execution/executor.py` |
 | agent workers | `ai_runtime/agents/` |
-| the chat session and door | `ai_runtime/chat/`, `ai_runtime/server/` |
+| the chat session and door | `ai_runtime/chat/`, `ai_runtime/door/` |
 | the manifest contract | `contracts/`, `decentai_sdk/manifest.py` |
 | pages | `frontend/src/app/pages/`, services in `frontend/src/app/services/` |
 | setting it up on a computer | `bootstrap/setup.py`, `docker-compose.yml`, `deploy.env.example` |

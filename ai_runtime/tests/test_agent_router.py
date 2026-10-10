@@ -1,10 +1,10 @@
-"""Routing among many agents by meaning (reasoning/agent_router.py):
+"""Routing among many agents by meaning (mind/router.py):
 the index on disk, the shortlist, the rerank, and the fallbacks."""
 import asyncio
 import json
 
 from ai_runtime.llms import FakeConnector
-from ai_runtime.reasoning.agent_router import AgentRouter
+from ai_runtime.mind.router import AgentRouter
 from ai_runtime.tests.test_assistant import EMBEDDING, fake_agent
 
 

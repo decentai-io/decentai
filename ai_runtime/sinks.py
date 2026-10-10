@@ -1,12 +1,12 @@
 """Every door from the mind, and from a running call, back to the chat.
 
-The mind (reasoning/assistant.py) and the executor (execution/
+The mind (mind/assistant.py) and the executor (execution/
 executor.py) never import the chat. What they may ask of it — to say
 something to the person, to put a card before them, to keep a result,
 to write a line on the trail — they are handed at construction, as
 async callables, in this one object. The session (chat/session.py,
 ``open``) builds it once from its own methods and hands the same one
-to both; a fire from the clock (server/host.py, ``fire_context``)
+to both; a fire from the clock (door/host.py, ``fire_context``)
 builds a thinner one; a test builds whatever it wants to watch.
 
 One name per door, the same wherever it is met: the field here, the
@@ -63,7 +63,7 @@ class ChatSinks:
     #: handed only to functions whose manifest declares ``llm: true``.
     llm: Optional[Callable] = None
 
-    # ---- for the mind (reasoning/assistant.py) ------------------------
+    # ---- for the mind (mind/assistant.py) ------------------------
     #: async (text, parts) -> None — a message reaching the person NOW.
     say: Optional[Callable] = None
     #: async (state) -> None — persist the mind, every beat.

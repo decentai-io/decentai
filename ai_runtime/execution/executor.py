@@ -17,6 +17,7 @@ on the trail.
 
 from __future__ import annotations
 
+import logging
 import asyncio
 import hashlib
 import json
@@ -31,12 +32,11 @@ from contracts.record_fields import RecordFields
 from ai_runtime.agents.library import InstalledAgent
 from ai_runtime.agents.mcp import McpServer
 from ai_runtime.sinks import ChatSinks
-from ai_runtime.agents.worker_handle import WorkerError
-from ai_runtime.agents.worker_pool import CallContext, WorkerPool
+from ai_runtime.agents.workers import WorkerError
+from ai_runtime.agents.pool import CallContext, WorkerPool
 from ai_runtime.execution.call_surface import CallSurface
 from ai_runtime.execution.code_grant import CodeGrant
 from ai_runtime.execution.resources import ResourceAccess
-from ai_runtime.runtime_logging import RuntimeLoggerFactory
 
 # ----------------------------------------------------------------------
 # The approval binding: sha256 over sorted, compact JSON of (agent,
@@ -104,7 +104,7 @@ class FunctionExecutor:
         # pool so workers stay warm across chats; absent, the executor
         # lazily owns a private one — the test-and-standalone path.
         self.workers = workers
-        self.logger = RuntimeLoggerFactory.get_logger(self.__class__.__name__)
+        self.logger = logging.getLogger(self.__class__.__name__)
         #: What a running call may ask of the chat, checked and handed
         #: on in the agent's name (call_surface.py). It keeps the
         #: deployment's Safety settings too — the sites no agent may
@@ -117,7 +117,7 @@ class FunctionExecutor:
         # FunctionGrants. None is unrestricted and is a test's: a
         # session's executor and a fire's carry the delegation's
         # grants, so denied by default applies. (The clock's own
-        # executor in server/app.py has none; a fire runs with the
+        # executor in door/app.py has none; a fire runs with the
         # host's, fire_context, and not with that one.)
         self.grants = grants
 
@@ -400,7 +400,7 @@ class FunctionExecutor:
         resources built from the function's declared operations, and
         the model only when the manifest declares ``llm: true``. The
         worker holds none of it; every ask resolves back here, per
-        call_id, against this context (worker_pool.py)."""
+        call_id, against this context (pool.py)."""
         call_id = call_id or f"c_{uuid.uuid4().hex[:12]}"
         # Before anything runs: a function whose declared outputs are
         # not a schema would do its work, and its writes, and then fail.

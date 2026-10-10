@@ -11,7 +11,7 @@ at a time too, and then tell the chat's runtime session
 ``schedules_changed`` through the relay, so the clock catches up with
 the store. Neither hand writes a row it did not mean to: a pause on the
 page is not undone by a fire that was already under way. The row a person writes
-is shaped exactly as the runtime writes one (ai_runtime/chat/scheduler.py),
+is shaped exactly as the runtime writes one (ai_runtime/chat/clock.py),
 and its first run is worked out here with the same cron the runtime
 counts by (contracts/cron.py), in the chat's own zone.
 """
@@ -291,7 +291,7 @@ class ScheduleController(AIController):
     def _when(self, payload, timezone):
         """({next_run_at, every_seconds, cron}, "") or (None, problem) —
         the four ways of saying when, exactly as the runtime reads them
-        from the assistant (ai_runtime/chat/scheduler.py)."""
+        from the assistant (ai_runtime/chat/clock.py)."""
         now = utc_now().timestamp()
         tz = zone(timezone)
         every = payload.get("every_seconds")

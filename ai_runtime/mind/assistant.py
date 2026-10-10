@@ -22,6 +22,7 @@ that hosts it: all side effects cross the injected seams.
 
 from __future__ import annotations
 
+import logging
 import asyncio
 import base64
 import contextvars
@@ -40,15 +41,15 @@ from contracts.cron import zone
 from ai_runtime.execution.executor import FunctionExecutor
 from ai_runtime.llms.connector.tools import (
     NoModel, is_context_overflow, is_image_refusal, text_block)
-from ai_runtime.reasoning.actions import (
+from ai_runtime.mind.actions import (
     ACTION_TOOLS, FINISH_REASONS, OUT_OF_BEATS, FunctionTools,
 )
-from ai_runtime.reasoning.documents import (
+from ai_runtime.mind.documents import (
     DocumentPage, DocumentText, Unreadable,
 )
-from ai_runtime.reasoning import frame, observations
-from ai_runtime.reasoning.evidence import Evidence
-from ai_runtime.reasoning.state import (
+from ai_runtime.mind import frame, observations
+from ai_runtime.mind.evidence import Evidence
+from ai_runtime.mind.state import (
     ASSISTANT_JOB,
     CANCELLED,
     DONE,
@@ -56,7 +57,6 @@ from ai_runtime.reasoning.state import (
     AssistantState,
     Job,
 )
-from ai_runtime.runtime_logging import RuntimeLoggerFactory
 from ai_runtime.sinks import ChatSinks
 
 #: Which job the current task is running, if any — how an approver
@@ -172,7 +172,7 @@ class Assistant:
         #: the functions the last beat could not offer as tools, so the
         #: model is told once per change rather than every beat
         self._last_omitted: List[str] = []
-        #: the agent router (reasoning/agent_router.py) and the
+        #: the agent router (mind/router.py) and the
         #: organization's routing settings from the contract — the
         #: threshold, the shortlist, the candidates, whether to rerank,
         #: how many agents stay open, and the embedding model. None
@@ -218,7 +218,7 @@ class Assistant:
         #: yet to be absorbed
         self._spoke = asyncio.Event()
         self._unheard = False
-        self.logger = RuntimeLoggerFactory.get_logger(self.__class__.__name__)
+        self.logger = logging.getLogger(self.__class__.__name__)
 
     # ------------------------------------------------------------------
     # Events in
@@ -1748,7 +1748,7 @@ class Assistant:
 
     async def _read_file(self, action: Dict[str, Any]) -> Dict[str, Any]:
         """A document the user attached or chose, read as text a page at
-        a time (reasoning/documents.py). The download runs under the
+        a time (mind/documents.py). The download runs under the
         person's own delegation, so the backend's visibility rules —
         not this method — decide what a ref may reach; a ref the model
         made up finds nothing."""

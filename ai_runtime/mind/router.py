@@ -23,6 +23,7 @@ connector waits.
 
 from __future__ import annotations
 
+import logging
 import asyncio
 import hashlib
 import json
@@ -33,7 +34,6 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from ai_runtime.llms.factory import LLMConnectorFactory
 from ai_runtime.prompts import Prompts
-from ai_runtime.runtime_logging import RuntimeLoggerFactory
 
 
 class AgentRouter:
@@ -57,7 +57,7 @@ class AgentRouter:
         #: one indexing at a time per model, so two chats opening at
         #: once do not embed the same thousand agents twice
         self._locks: Dict[str, asyncio.Lock] = {}
-        self.logger = RuntimeLoggerFactory.get_logger(self.__class__.__name__)
+        self.logger = logging.getLogger(self.__class__.__name__)
 
     # -- the model ----------------------------------------------------------
     @staticmethod

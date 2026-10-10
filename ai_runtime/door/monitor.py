@@ -1,5 +1,5 @@
 """What agents did and what they use, for the backend to ask
-(docs/system/monitoring.md).
+(docs/system/monitoring.md) — and the liveness probe.
 
 Read-only, and the backend's alone to open: the same service token the
 chat door asks for. Who among the platform's people may be shown the
@@ -8,6 +8,8 @@ answers is the backend's to decide; this door does not know them.
     GET /internal/monitor/events?limit=&kinds=&agent=&before=
     GET /internal/monitor/usage
     GET /internal/monitor/files?agent=
+    GET /internal/health/live      the one unauthenticated door, for the
+                                   deployment's health check
 """
 
 import asyncio
@@ -18,7 +20,7 @@ from fastapi import APIRouter, HTTPException, Request
 from ai_runtime.agents.confinement import Confinement
 from ai_runtime.events import Events
 from ai_runtime.agents.spawner import Spawner
-from ai_runtime.server.routes.auth import verify_backend_service
+from ai_runtime.door.auth import verify_backend_service
 from contracts.container import ContainerUsage
 
 router = APIRouter()
@@ -27,6 +29,11 @@ router = APIRouter()
 #: read another's. One for the process, since its share of the
 #: processor is what it used since the last asking.
 own = ContainerUsage()
+
+
+@router.get("/internal/health/live")
+async def live():
+    return {"status": "ok"}
 
 
 def the_backend(request: Request) -> None:

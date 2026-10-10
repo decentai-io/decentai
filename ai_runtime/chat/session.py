@@ -11,7 +11,7 @@ The services object is the platform surface, duck-typed so the sim and
 the backend's client implement one contract. What a session lives
 against is below; what the host alone calls (a chat's credential, a
 package fetched, the digests still pinned, an MCP server, an agent's
-code reported ready or failed) is in server/host.py:
+code reported ready or failed) is in door/host.py:
 
     load_state(chat_id) / save_state(chat_id, state_dict)
     persist_message(chat_id, actor, text, parts, client_message_id="",
@@ -62,23 +62,24 @@ closed.
 
 from __future__ import annotations
 
+import logging
 import asyncio
 import json
 import time
 from typing import Any, Dict, List, Optional
 
 from ai_runtime.agents.library import InstalledAgent
-from ai_runtime.agents.worker_handle import WorkerError
-from ai_runtime.agents.worker_pool import WorkerPool
+from ai_runtime.agents.workers import WorkerError
+from ai_runtime.agents.pool import WorkerPool
 from ai_runtime.llms.connector.tools import text_block
 from ai_runtime.chat.cards import Cards
 from ai_runtime.chat.code_review import CodeReviewer
 from ai_runtime.chat.current import CURRENT_CHAT
-from ai_runtime.chat.scheduler import ChatClock, Scheduler
+from ai_runtime.chat.clock import ChatClock, Scheduler
 from ai_runtime.chat.summarizer import Summarizer
 from ai_runtime.execution.executor import FunctionExecutor, ParkedInvocation
-from ai_runtime.reasoning.assistant import Assistant
-from ai_runtime.reasoning.state import (
+from ai_runtime.mind.assistant import Assistant
+from ai_runtime.mind.state import (
     ASSISTANT_JOB,
     CANCELLED,
     RUNNING,
@@ -86,7 +87,6 @@ from ai_runtime.reasoning.state import (
     AssistantState,
     Job,
 )
-from ai_runtime.runtime_logging import RuntimeLoggerFactory
 from ai_runtime.sinks import ChatSinks
 from decentai_sdk.base import Completion
 
@@ -215,7 +215,7 @@ class Session:
         #: while a cycle was running: settled when it comes to rest
         self._decisions_owed: list = []
         self._running: Optional[asyncio.Task] = None
-        self.logger = RuntimeLoggerFactory.get_logger(self.__class__.__name__)
+        self.logger = logging.getLogger(self.__class__.__name__)
         #: The cards this chat puts before the person — approvals,
         #: questions, code, logins, files — and the screens its calls
         #: show (cards.py). The doors a running call reaches the person
@@ -779,7 +779,7 @@ class Session:
 
         The cycle and every job task are cancelled where they stand — a
         worker call is overruled, and a worker that ignores that is
-        killed (worker_pool.py) — a helper is killed the same way as its
+        killed (pool.py) — a helper is killed the same way as its
         job is cancelled (``_spawn_child``), and any still listed after
         that is killed here, the browser the chat kept is closed, every
         card nobody will now answer is expired, and the mind is

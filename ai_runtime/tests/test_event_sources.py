@@ -10,7 +10,7 @@ import json
 from pathlib import Path
 
 from ai_runtime.chat import Session
-from ai_runtime.chat.scheduler import (
+from ai_runtime.chat.clock import (
     ChatClock, Schedule, ScheduleRunner, Scheduler,
 )
 from ai_runtime.execution.executor import FunctionExecutor
@@ -278,7 +278,7 @@ class TestTheCalendar:
             self, monkeypatch):
         """Schedulable by its manifest is not enough: the assistant
         schedules for a person, within what that person may ask."""
-        from ai_runtime.chat.scheduler import ScheduleRunner
+        from ai_runtime.chat.clock import ScheduleRunner
         from ai_runtime.execution.grants import FunctionGrants
 
         async def scenario():
@@ -386,7 +386,7 @@ class TestTheCalendar:
 
     def test_the_mind_stamps_in_the_chats_zone(self):
         """The same instant, two chats, two clocks on the wall."""
-        from ai_runtime.reasoning import Assistant, AssistantState
+        from ai_runtime.mind import Assistant, AssistantState
 
         instant = self._at("2026-09-03T12:00")
         for tz, expected in ((self.DUBAI, "Thu 2026-09-03 12:00"),

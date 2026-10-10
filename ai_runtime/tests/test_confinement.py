@@ -10,7 +10,7 @@ import os
 import pytest
 
 from ai_runtime.agents.confinement import Confinement, WorkerPlace
-from ai_runtime.agents.worker_handle import WorkerHandle
+from ai_runtime.agents.workers import WorkerHandle
 
 
 class Helper:

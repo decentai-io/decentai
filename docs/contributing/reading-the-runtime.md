@@ -30,8 +30,8 @@ Three pages, in this order. The code keeps their words.
 | Read | For |
 |---|---|
 | `main.py` | what is built at start, in this order: `Events.configure` and `Spawner.configure` (where agents run, and the wait for their container when it is another one), `Confinement.configure`, the `AgentLibrary`, the services (the backend's, or `sim/`) |
-| `server/app.py` `create_app` | the `SessionHost`, the `Scheduler`, and what stops at shutdown |
-| `server/routes/auth.py`, `server/routes/chat.py` | who may dial, and the loop that hands every frame to the host |
+| `door/app.py` `create_app` | the `SessionHost`, the `Scheduler`, and what stops at shutdown |
+| `door/auth.py`, `door/socket.py` | who may dial, and the loop that hands every frame to the host |
 
 Check:
 
@@ -54,9 +54,9 @@ the `detach` on the way out — are dialled only by
 
 ## 2. The host: one session per chat
 
-`server/host.py`, class `SessionHost`. Read `attach` → `session` →
+`door/host.py`, class `SessionHost`. Read `attach` → `session` →
 `_build`, then `handle`, then `_hello`, then `_reap` and `_kill`. The
-agents a chat is served are `server/roster.py`, class `AgentRoster`
+agents a chat is served are `door/roster.py`, class `AgentRoster`
 (`for_chat` → `roster` → `materialize`, and `reclaim`): one per host,
 asked for a chat's roster when a session is built or refreshed and
 when the clock fires.
@@ -162,12 +162,12 @@ Tests: `ai_runtime/tests/test_session.py`,
 
 ## 4. The assistant: the cycle
 
-`reasoning/assistant.py`, class `Assistant`. The largest file; most of
+`mind/assistant.py`, class `Assistant`. The largest file; most of
 it is the actions, one method each. Read the cycle first and the
 actions as they come up. Two things the mind does are functions of
 their arguments alone and live beside it: what of a result the model
-is shown (`reasoning/observations.py`) and what the model is told
-(`reasoning/frame.py`).
+is shown (`mind/observations.py`) and what the model is told
+(`mind/frame.py`).
 
 1. `run`, `_drain`, `_absorb` — advance until idle.
 2. `_beat` — one model call, one action. The valve (`max_beats`,
@@ -184,19 +184,19 @@ is shown (`reasoning/observations.py`) and what the model is told
    `blocked` with nothing marked blocked are all refused.
 5. `_gate`, `_invoke`, `_start`, `_run_job`, `resolve_job` — calling a
    function now, or in the background.
-6. `_record`, with `reasoning/observations.py` (`previewed`,
+6. `_record`, with `mind/observations.py` (`previewed`,
    `bounded`, `preview`) — what of a result the model sees, and what
    the trace keeps.
-7. `_say`, `_already_said`, with `reasoning/evidence.py` `Evidence` —
+7. `_say`, `_already_said`, with `mind/evidence.py` `Evidence` —
    what may be shown under an answer.
-8. `reasoning/frame.py` (`system_prompt`, `roster_block`,
+8. `mind/frame.py` (`system_prompt`, `roster_block`,
    `render_catalog`, `parse_actions`), with `prompts/assistant.md` and
-   `reasoning/actions.py` — everything the model is told, and how its
+   `mind/actions.py` — everything the model is told, and how its
    reply is read.
 
-Then the smaller files as they are met: `reasoning/state.py` (what is
-saved every beat), `reasoning/plan.py`, `reasoning/agent_router.py`
-(which agents are listed, by meaning), `reasoning/documents.py` (the
+Then the smaller files as they are met: `mind/state.py` (what is
+saved every beat), `mind/plan.py`, `mind/router.py`
+(which agents are listed, by meaning), `mind/documents.py` (the
 text of a file the assistant reads itself, `read_file`),
 `chat/summarizer.py` (folding a long transcript).
 
@@ -257,8 +257,8 @@ side: it ends as an error result (`_broke`). `_record` writes the audit
 line whichever way the call ended, a cancelled one included
 (`_witness_cancelled`, before the cancellation goes on).
 
-Then the worker side: `agents/worker_pool.py` (`invoke`, `_handle`,
-`_answer`) and `agents/worker_handle.py` (`start`, `_serve`, `_route`,
+Then the worker side: `agents/pool.py` (`invoke`, `_handle`,
+`_answer`) and `agents/workers.py` (`start`, `_serve`, `_route`,
 `_request`), with [the worker protocol](../reference/worker-protocol.md)
 and the other end of the wire in `decentai_sdk/worker.py`.
 
@@ -333,9 +333,9 @@ With [the sandbox](../system/sandbox.md) open beside it.
 - `events.py` — what agents did, written down as it happens
   (`Events.record`), by the places that see it: the helper's jobs and
   programs run as an agent (`confinement.py`), a worker's life and log
-  (`worker_handle.py`), each connection (`egress.py`), the processes
+  (`workers.py`), each connection (`egress.py`), the processes
   an agent starts (`agents_container/service.py`). Read by the backend through
-  `server/routes/monitor.py`. With
+  `door/monitor.py`. With
   [what is written down](../system/monitoring.md) open beside it.
 
 Check:
@@ -362,7 +362,7 @@ two). Both are skipped elsewhere, and each file says how it is run.
 
 ## 7. The clock
 
-`chat/scheduler.py`, four classes: `Schedule` (a row), `ScheduleRunner`
+`chat/clock.py`, four classes: `Schedule` (a row), `ScheduleRunner`
 (what a fire does), `Scheduler` (the loop and the rows), `ChatClock`
 (the assistant's own hand on it).
 

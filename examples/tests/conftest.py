@@ -78,6 +78,6 @@ def _reap_worker_pools():
     own private WorkerPools whose processes would otherwise outlive the
     test's event loop."""
     yield
-    from ai_runtime.agents.worker_pool import WorkerPool
+    from ai_runtime.agents.pool import WorkerPool
 
     WorkerPool.terminate_all()

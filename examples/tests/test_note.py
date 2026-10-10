@@ -40,7 +40,7 @@ class TestThePackage:
         """Verified the way installation verifies: a worker spawned from
         the agent's own environment imports the code and checks every
         declared function has a method."""
-        from ai_runtime.agents.worker_handle import WorkerHandle
+        from ai_runtime.agents.workers import WorkerHandle
 
         agent = agents["note"]
         assert WorkerHandle.probe(

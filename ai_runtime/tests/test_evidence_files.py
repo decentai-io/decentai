@@ -8,7 +8,7 @@ FILE" — the right number of rows, none of them saying which file.
 
 from types import SimpleNamespace
 
-from ai_runtime.reasoning.evidence import Evidence
+from ai_runtime.mind.evidence import Evidence
 
 EXPORT = {
     "id": "export", "name": "Download File", "permission_level": 2,

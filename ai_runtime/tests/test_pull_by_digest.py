@@ -13,10 +13,10 @@ import json
 import pytest
 
 from ai_runtime.agents import AgentLibrary, ApprovedAgent
-from ai_runtime.chat.scheduler import Schedule, ScheduleRunner
+from ai_runtime.chat.clock import Schedule, ScheduleRunner
 from ai_runtime.execution.executor import FunctionExecutor
 from ai_runtime.execution.grants import FunctionGrants
-from ai_runtime.server.host import ServingRoster, SessionHost
+from ai_runtime.door.host import ServingRoster, SessionHost
 from ai_runtime.tests.fixture_agents import (
     AGENTS_DIR, load_agents, worker_environment,
 )

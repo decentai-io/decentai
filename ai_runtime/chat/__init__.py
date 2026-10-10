@@ -2,7 +2,7 @@
 
     session.py            the Session — hydrate the mind, pump events,
                           persist every beat (docs/system/assistant.md)
-    scheduler.py          the clock as an event source: deterministic
+    clock.py              the clock as an event source: deterministic
                           scheduled functions, wake-the-assistant
                           moments, and the rows that survive restarts
     summarizer.py         the rolling summary — session maintenance
@@ -14,8 +14,8 @@
                           before the person is shown it
     current.py            which chat the running code acts for
 
-The reasoning itself is ai_runtime/reasoning; the socket door is
-ai_runtime/server. This package is what stands between them.
+The reasoning itself is ai_runtime/mind; the socket door is
+ai_runtime/door. This package is what stands between them.
 """
 
 from ai_runtime.chat.session import Session

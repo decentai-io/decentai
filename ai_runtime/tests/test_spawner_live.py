@@ -39,7 +39,7 @@ from ai_runtime.agents.confinement import Confinement
 from ai_runtime.agents.egress import EgressProxy
 from ai_runtime.events import Events
 from ai_runtime.agents.spawner import LocalSpawner, Spawner
-from ai_runtime.agents.worker_handle import WorkerError, WorkerHandle
+from ai_runtime.agents.workers import WorkerError, WorkerHandle
 # The hostile agent, the stand-in for a host on the internet, and how
 # one attempt is made, are that file's.
 from ai_runtime.tests.test_confinement_live import (  # noqa: F401

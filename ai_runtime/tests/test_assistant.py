@@ -13,7 +13,7 @@ from pathlib import Path
 from ai_runtime.execution.executor import FunctionExecutor
 from ai_runtime.sinks import ChatSinks
 from ai_runtime.llms import FakeConnector
-from ai_runtime.reasoning import Assistant, AssistantState
+from ai_runtime.mind import Assistant, AssistantState
 from ai_runtime.tests.fixture_agents import load_agents
 from sim.resources import InMemoryResourceProvider
 
@@ -445,7 +445,7 @@ class TestTheCycle:
         assert (observation["filename"], observation["complete"]) == ("report.csv", True)
 
     def test_a_long_document_is_read_a_page_at_a_time(self):
-        from ai_runtime.reasoning.documents import DocumentPage
+        from ai_runtime.mind.documents import DocumentPage
 
         # Two pages exactly: 18,000 characters against a 12,000 window.
         words = ("lorem ipsum " * 1500).encode("utf-8")
@@ -862,7 +862,7 @@ class TestCompaction:
                 for i in range(count)]
 
     def test_presented_entries_beyond_the_keep_are_dropped(self):
-        from ai_runtime.reasoning.state import DONE, RUNNING, Job
+        from ai_runtime.mind.state import DONE, RUNNING, Job
 
         state = AssistantState(trace=self.entries(150, "job_"),
                                evidence_cursor=140)
@@ -962,7 +962,7 @@ class TestEvidence:
         """The trace keeps a cut copy of a large result. What a message
         says about it — how many rows a read found, which displays the
         call offered — is taken from the whole one."""
-        from ai_runtime.reasoning.evidence import Evidence
+        from ai_runtime.mind.evidence import Evidence
 
         harness = Harness([])
         rows = [{"note_ref": f"n{i}", "title": f"note {i}", "notebook": "work",
@@ -991,7 +991,7 @@ class TestEvidence:
         assert silent["text"] == "Found 100 results."
 
     def test_a_display_a_call_offered_is_shown_as_the_model_names_it(self):
-        from ai_runtime.reasoning.evidence import Evidence
+        from ai_runtime.mind.evidence import Evidence
 
         found = self.offered("stg_r", [
             {"display_id": "stg_t", "kind": "table", "title": "Notes"},
@@ -1013,7 +1013,7 @@ class TestEvidence:
         assert "stg_nope" in composed["refused"][0]
 
     def test_a_failed_calls_display_is_never_shown(self):
-        from ai_runtime.reasoning.evidence import Evidence
+        from ai_runtime.mind.evidence import Evidence
 
         failed = self.offered("stg_r", [
             {"display_id": "stg_t", "kind": "table", "title": "Notes"}],
@@ -1024,7 +1024,7 @@ class TestEvidence:
         assert composed["refused"]
 
     def test_a_shown_result_is_attached_as_the_model_presents_it(self):
-        from ai_runtime.reasoning.evidence import Evidence
+        from ai_runtime.mind.evidence import Evidence
 
         probe = self.read("stg_probe", [{"title": "a"}])
         answer = self.read("stg_answer", [{"title": "b"}, {"title": "c"}])
@@ -1043,14 +1043,14 @@ class TestEvidence:
         assert composed["refused"] == []
 
     def test_nothing_is_attached_unless_shown(self):
-        from ai_runtime.reasoning.evidence import Evidence
+        from ai_runtime.mind.evidence import Evidence
 
         answer = self.read("stg_answer", [{"title": "b"}, {"title": "c"}])
         composed = Evidence.compose("Two notes.", self.agents(), [answer])
         assert composed == {"text": "Two notes.", "parts": [], "refused": []}
 
     def test_a_show_the_trace_cannot_vouch_for_is_refused_and_said_back(self):
-        from ai_runtime.reasoning.evidence import Evidence
+        from ai_runtime.mind.evidence import Evidence
 
         empty = self.read("stg_empty", [])
         answer = self.read("stg_answer", [{"title": "b"}])
@@ -1067,7 +1067,7 @@ class TestEvidence:
         assert "not a list field" in composed["refused"][2]
 
     def test_a_shown_result_may_come_from_before_the_last_say(self):
-        from ai_runtime.reasoning.evidence import Evidence
+        from ai_runtime.mind.evidence import Evidence
 
         earlier = self.read("stg_earlier", [{"title": "a"}])
         composed = Evidence.compose(
@@ -1081,7 +1081,7 @@ class TestEvidence:
                        "function": "notebook.note.find"}}]
 
     def test_a_write_is_recorded_not_spoken(self):
-        from ai_runtime.reasoning.evidence import Evidence
+        from ai_runtime.mind.evidence import Evidence
 
         composed = Evidence.compose(
             "Saved it.", self.agents(), [self.write("stg_w")])
@@ -1095,7 +1095,7 @@ class TestEvidence:
         assert part["source"]["kind"] == "agent"
 
     def test_the_runtime_speaks_only_for_a_silent_model(self):
-        from ai_runtime.reasoning.evidence import Evidence
+        from ai_runtime.mind.evidence import Evidence
 
         agents = self.agents()
         assert Evidence.compose("", agents, [self.write("stg_w")])["text"] == \
@@ -1108,7 +1108,7 @@ class TestEvidence:
 
 class TestToolsOffered:
     def test_every_beat_offers_the_actions_as_tools(self):
-        from ai_runtime.reasoning.actions import ACTION_TOOLS
+        from ai_runtime.mind.actions import ACTION_TOOLS
 
         harness = Harness([action(action="finish")])
         run(harness.user("hi").assistant.run())
@@ -1125,7 +1125,7 @@ class TestToolsOffered:
             assert set(parameters["required"]) <= set(parameters["properties"])
 
     def test_an_opened_agents_functions_are_tools_of_their_own(self):
-        from ai_runtime.reasoning.actions import ACTION_TOOLS
+        from ai_runtime.mind.actions import ACTION_TOOLS
 
         harness = Harness([
             action(action="open_agent", agent="notebook"),
@@ -1151,7 +1151,7 @@ class TestToolsOffered:
     def test_the_cap_is_as_many_tools_as_a_provider_accepts(self):
         """OpenAI-compatible providers refuse more than 128 tools in one
         request; the actions and the functions together must fit."""
-        from ai_runtime.reasoning.actions import ACTION_TOOLS, FunctionTools
+        from ai_runtime.mind.actions import ACTION_TOOLS, FunctionTools
         assert len(ACTION_TOOLS) + FunctionTools.MAX_FUNCTIONS == 128
 
     def test_past_the_cap_the_newest_agent_is_offered_and_the_rest_named(self):
@@ -1160,7 +1160,7 @@ class TestToolsOffered:
         model concluded a mail agent had no send function. Now the newest
         agent's functions are the tools, and the ones that did not fit
         are named once, as callable by name."""
-        from ai_runtime.reasoning.actions import ACTION_TOOLS, FunctionTools
+        from ai_runtime.mind.actions import ACTION_TOOLS, FunctionTools
 
         kept = FunctionTools.MAX_FUNCTIONS
         FunctionTools.MAX_FUNCTIONS = 3       # llm has 3 functions, notebook 7
@@ -1208,7 +1208,7 @@ class TestToolsOffered:
 
     def test_a_tool_name_fits_the_provider_and_finds_its_way_back(self):
         import re
-        from ai_runtime.reasoning.actions import TOOL_NAME_MAX, FunctionTools
+        from ai_runtime.mind.actions import TOOL_NAME_MAX, FunctionTools
 
         assert FunctionTools.encode("agt_x.note.save") == "agt_x__note__save"
         long = ("agt_0ba09c35d8324040b6bd.a_very_long_tool_identifier"
@@ -1230,7 +1230,7 @@ class TestToolsOffered:
         meanwhile went unheard. A function the platform calls when the
         person opens a screen is neither offered as a tool nor listed,
         and called by name it is refused with what to do instead."""
-        from ai_runtime.reasoning.actions import ACTION_TOOLS
+        from ai_runtime.mind.actions import ACTION_TOOLS
 
         harness = Harness([
             action(action="open_agent", agent="screen"),
@@ -1262,7 +1262,7 @@ class TestToolsOffered:
         is an action nobody knows. The name stays the action, and the
         input arrives under its own name."""
         from ai_runtime.llms.connector.tools import ModelReply
-        from ai_runtime.reasoning.actions import FunctionTools
+        from ai_runtime.mind.actions import FunctionTools
 
         tools = FunctionTools({}, [], 1)
         tools.names["agt_x__browse__watch"] = "agt_x.browse.watch"
@@ -1291,7 +1291,7 @@ class TestObservationBudget:
         # One read of 600 long rows is over the platform's whole-state
         # cap by itself. The trace keeps the shape and the reference —
         # rows still a list, storage_ref still there — never the payload.
-        from ai_runtime.reasoning.evidence import Evidence
+        from ai_runtime.mind.evidence import Evidence
 
         mind = Harness([action(action="finish")]).assistant
         big = {"notes": self.rows(600, 1000), "total": 600,
@@ -1551,7 +1551,7 @@ class TestManyAgents:
         return harness
 
     def _routed(self, tmp_path, text, **overrides):
-        from ai_runtime.reasoning.agent_router import AgentRouter
+        from ai_runtime.mind.router import AgentRouter
 
         harness = self._crowd(Harness([], router=AgentRouter(tmp_path / "emb"),
                                       routing=routing(**overrides)))
@@ -1575,7 +1575,7 @@ class TestManyAgents:
         assert "by meaning" in frame
 
     def test_an_open_agent_stays_listed_whatever_the_words(self, tmp_path):
-        from ai_runtime.reasoning.agent_router import AgentRouter
+        from ai_runtime.mind.router import AgentRouter
 
         harness = self._crowd(Harness([], router=AgentRouter(tmp_path / "emb"),
                                       routing=routing()))

@@ -12,10 +12,10 @@ in full.
                       what is installed
     environments.py   one private venv per dependency list — where an
                       agent's declared dependencies live, and nowhere else
-    worker_handle.py  the host side of the worker protocol: spawn from
+    workers.py  the host side of the worker protocol: spawn from
                       the venv, handshake, invoke, kill — and the probe
                       installation verifies with
-    worker_pool.py    the running workers, and the router that answers
+    pool.py    the running workers, and the router that answers
                       what each asks, by the call it asks for
     mcp.py            a remote MCP server in a chat's roster, called
                       through the same gates as an agent
@@ -44,7 +44,7 @@ from ai_runtime.agents.confinement import Confinement
 from ai_runtime.agents.environments import AgentEnvironment
 from ai_runtime.agents.library import AgentLibrary, AgentRefused, InstalledAgent
 from ai_runtime.agents.spawner import Spawner
-from ai_runtime.agents.worker_handle import WorkerError, WorkerHandle
+from ai_runtime.agents.workers import WorkerError, WorkerHandle
 
 __all__ = [
     "AgentEnvironment",

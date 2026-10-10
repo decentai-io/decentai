@@ -4,6 +4,7 @@ the host, around it: a message stored is a message that reaches the
 mind, and frames arrive in the order they were recorded.
 """
 
+import logging
 import asyncio
 from types import SimpleNamespace
 import json
@@ -11,7 +12,7 @@ from pathlib import Path
 
 from ai_runtime.chat import Session
 from ai_runtime.llms import FakeConnector
-from ai_runtime.server.host import RelayingServices, SessionHost
+from ai_runtime.door.host import RelayingServices, SessionHost
 from ai_runtime.tests.fixture_agents import load_agents
 from ai_runtime.tests.test_assistant import Harness
 from sim.session_services import SimSessionServices
@@ -210,7 +211,7 @@ class TestTheHostAroundIt:
 
 class TestAPortSetting:
     def settings(self, monkeypatch, **said):
-        from ai_runtime.server.settings import RuntimeSettings
+        from ai_runtime.settings import RuntimeSettings
         monkeypatch.setenv("BACKEND_SERVICE_PUBLIC_KEY", "a key")
         for name, value in said.items():
             monkeypatch.setenv(name, value)
@@ -319,7 +320,7 @@ class TestAKillEndsASleepWithNoSessionToDoIt:
         """A sleeping chat is an idle one, which is the session the
         host forgets. Killed then, it must not wake later."""
         import logging
-        from ai_runtime.chat.scheduler import Schedule, Scheduler
+        from ai_runtime.chat.clock import Schedule, Scheduler
         from sim.schedules import MemoryScheduleStore
 
         relayed = []

@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 from typing import Any, Dict, List, Optional
 
-from ai_runtime.reasoning.plan import Plan
+from ai_runtime.mind.plan import Plan
 
 RUNNING = "running"
 WAITING_APPROVAL = "waiting_approval"

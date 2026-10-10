@@ -7,7 +7,7 @@ import asyncio
 import datetime
 from zoneinfo import ZoneInfo
 
-from ai_runtime.chat.scheduler import Schedule, Scheduler
+from ai_runtime.chat.clock import Schedule, Scheduler
 from sim.schedules import MemoryScheduleStore
 
 LONDON = ZoneInfo("Europe/London")

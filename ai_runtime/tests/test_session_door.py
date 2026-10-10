@@ -11,10 +11,10 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
-from ai_runtime.chat.scheduler import Schedule
-from ai_runtime.server.app import create_app
-from ai_runtime.server.host import PROTOCOL_VERSION, REPLACED, SessionHost
-from ai_runtime.server.settings import RuntimeSettings
+from ai_runtime.chat.clock import Schedule
+from ai_runtime.door.app import create_app
+from ai_runtime.door.host import PROTOCOL_VERSION, REPLACED, SessionHost
+from ai_runtime.settings import RuntimeSettings
 from ai_runtime.tests.fixture_agents import load_agents
 from ai_runtime.tests.test_session import SYNC_SECRET, approval_open
 from sim.session_services import SimSessionServices
@@ -504,7 +504,7 @@ class TestThePersonsHandOnTheClock:
     rows — no mind built, nothing saved back."""
 
     def test_schedules_changed_makes_the_clock_re_read_the_store(self):
-        from ai_runtime.chat.scheduler import ScheduleRunner, Scheduler
+        from ai_runtime.chat.clock import ScheduleRunner, Scheduler
 
         host, services = build()
         clock = Scheduler(services.schedules, ScheduleRunner({}, None, None))
@@ -538,7 +538,7 @@ class TestThePersonsHandOnTheClock:
 
     def test_a_forged_frame_can_only_repeat_the_store(self):
         """Idempotent by construction: saying it twice changes nothing."""
-        from ai_runtime.chat.scheduler import ScheduleRunner, Scheduler
+        from ai_runtime.chat.clock import ScheduleRunner, Scheduler
 
         host, services = build()
         clock = Scheduler(services.schedules, ScheduleRunner({}, None, None))
@@ -562,7 +562,7 @@ class TestCredentialFrame:
         the relay renews it over the socket. The host hands the new key
         to the services and lets the clock adopt rows the key unlocks —
         no mind is built, nothing is recorded, an empty key is nothing."""
-        from ai_runtime.chat.scheduler import ScheduleRunner, Scheduler
+        from ai_runtime.chat.clock import ScheduleRunner, Scheduler
 
         class Keyed(SimSessionServices):
             def __init__(self):
@@ -916,7 +916,7 @@ class TestAFireTakesTheChatsTrust:
 
     @staticmethod
     def runner(roster):
-        from ai_runtime.chat.scheduler import ScheduleRunner
+        from ai_runtime.chat.clock import ScheduleRunner
 
         levels = []
 

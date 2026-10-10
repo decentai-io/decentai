@@ -223,7 +223,7 @@ first.
 `{query?}`
 
 Search the installed agents by meaning, in any language
-(`reasoning/agent_router.py`): the words are embedded with the
+(`mind/router.py`): the words are embedded with the
 organization's embedding model and every agent's vectors — name and
 description, example prompts, function descriptions, computed once per
 package and kept on disk — are scored by cosine; best first (at most
@@ -242,7 +242,7 @@ permission prices) into context.
 
 From the next beat on, each of its functions is also offered as a tool
 of its own carrying the manifest's input schema whole
-(reasoning/actions.py, `FunctionTools`), so the model fills inputs
+(mind/actions.py, `FunctionTools`), so the model fills inputs
 against the real contract instead of a shape summary.
 
 Enforced: invoking an unopened agent is refused with "open it first".
@@ -296,7 +296,7 @@ too.
 `{file_ref, from?}`
 
 A document the user attached or chose, as text, a page at a time
-(`reasoning/documents.py`): text, Markdown, CSV, JSON and a PDF's text
+(`mind/documents.py`): text, Markdown, CSV, JSON and a PDF's text
 layer (pypdf), decoded and windowed to 12,000 characters, `from`
 continuing where the last page stopped.
 
@@ -321,7 +321,7 @@ the platform.
 
 `{steps}` / `{item or step, status?, evidence?, blocker?, depends_on?}`
 
-Set or update the work items the user sees (reasoning/plan.py): at most
+Set or update the work items the user sees (mind/plan.py): at most
 12, of 200 characters each. Ids are the runtime's (`w1`, `w2`…); `step`
 names an item by its place instead.
 
@@ -507,7 +507,7 @@ the next one from exactly where it was.
 ## How the model is asked, and how much it is shown
 
 The actions are one vocabulary in two forms. The prompt describes them;
-`reasoning/actions.py` carries the same list as tool schemas, and every
+`mind/actions.py` carries the same list as tool schemas, and every
 beat offers those to the connector. A provider that speaks tool
 calling (OpenAI-compatible, OpenAI's Responses, Anthropic, Bedrock,
 Gemini) is asked for exactly one
@@ -538,7 +538,7 @@ the chat it acts for, so the event shows the preview, the
 
 Below the organization's threshold (`Settings:Routing`, 15 by default)
 the frame lists every enabled agent and the model chooses; that is the
-whole of it for a few dozen. Past the threshold `reasoning/agent_router.py`
+whole of it for a few dozen. Past the threshold `mind/router.py`
 runs before each beat that follows a message: the person's words are
 embedded with the organization's embedding model (an LLM connection
 shared with everyone and one of its provider's embedding models, resolved through the

@@ -165,9 +165,9 @@ together: one present tense per conversation.
 
 | Piece | File |
 |---|---|
-| the `spawn` action and its refusal in a child, `kind`/`child` on a job | `ai_runtime/reasoning/assistant.py`, `ai_runtime/reasoning/state.py` |
+| the `spawn` action and its refusal in a child, `kind`/`child` on a job | `ai_runtime/mind/assistant.py`, `ai_runtime/mind/state.py` |
 | the child view of services, the child's build, `remember` refused in a child, finish → `job_done`, the trace fold, cancel, relay to the parent's audience, approval routing, re-opening children when the parent opens | `ai_runtime/chat/session.py` |
-| `hello` listing the cards of a parent and its children together | `ai_runtime/server/host.py` |
+| `hello` listing the cards of a parent and its children together | `ai_runtime/door/host.py` |
 | a child's thread as its own record (`<chat>/<thread>`) | `ai_runtime/services/backend.py` |
 | the action in the prompt | `ai_runtime/prompts/assistant.md` |
 

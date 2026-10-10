@@ -8,21 +8,21 @@ pulling and installing what is not, narrating the wait to whoever is
 watching the chat, telling the platform when the code is ready, and
 sweeping the disk of what nobody approves any more.
 
-One per host (server/host.py), shared by every chat, because one
+One per host (door/host.py), shared by every chat, because one
 folder of packages serves every organization that approved those
 bytes. The host asks it for a chat's roster when a session is built
 or refreshed and when the clock fires for a chat; everything about
 how a package gets here is this file's.
 """
 
+import logging
 import asyncio
 import base64
 from typing import Any, Callable, Dict, Optional
 
 from ai_runtime.agents import ApprovedAgent, Confinement, InstalledAgent
 from ai_runtime.agents.mcp import McpServer
-from ai_runtime.agents.worker_pool import WorkerPool
-from ai_runtime.runtime_logging import RuntimeLoggerFactory
+from ai_runtime.agents.pool import WorkerPool
 
 
 class AgentRoster:
@@ -48,7 +48,7 @@ class AgentRoster:
         #: process: the platform keeps the word, and a restart says it
         #: again, which costs one idempotent call per agent.
         self._reported: set = set()
-        self.logger = logger or RuntimeLoggerFactory.get_logger(
+        self.logger = logger or logging.getLogger(
             self.__class__.__name__)
 
     async def for_chat(self, chat_id: str,

@@ -5,7 +5,7 @@ One class, two ways in:
 - a ``WorkerHandle`` instance — the long-lived client an execution
   layer holds: spawns the worker from its private venv, handshakes,
   keeps any number of invocations in flight, routes the worker's asks
-  (worker_pool.py names them) to whoever may answer them, and owns the
+  (pool.py names them) to whoever may answer them, and owns the
   process's death.
 - ``WorkerHandle.probe`` — installation's verification station: spawn,
   hello, shutdown, synchronously. What the handshake refuses is a
@@ -35,7 +35,6 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 from ai_runtime.agents.confinement import WorkerPlace
 from ai_runtime.events import Events
 from ai_runtime.agents.spawner import Spawner
-from ai_runtime.runtime_logging import RuntimeLoggerFactory
 from decentai_sdk.manifest import Manifest
 
 
@@ -172,7 +171,7 @@ class WorkerHandle:
         #: line: a file read goes to the worker as a path in it, a file
         #: created comes back as one. Made at spawn, gone at death.
         self.spool: Optional[Path] = None
-        self.logger = RuntimeLoggerFactory.get_logger(self.__class__.__name__)
+        self.logger = logging.getLogger(self.__class__.__name__)
 
     #: Base64 this long or shorter travels inline on the line; longer
     #: goes through the spool. A line is capped at LINE_LIMIT, and a
