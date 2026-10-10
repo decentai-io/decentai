@@ -116,9 +116,11 @@ class SessionHost:
     #: hydrates it back.
     REAP_GRACE_SECONDS = 60.0
 
-    def __init__(self, services, library, workers: Optional[WorkerPool] = None):
+    def __init__(self, services, library, workers: WorkerPool):
         self.services = services
-        self.workers = workers or WorkerPool()
+        #: The process's one pool: an agent has one worker here,
+        #: whoever calls it.
+        self.workers = workers
         #: the scheduler, once create_app has built it beside the host
         #: (it needs the host's inside door first). Sessions built
         #: before it is set have no clock to offer their assistant.

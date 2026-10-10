@@ -25,15 +25,14 @@ class RuntimeSettings:
     backend_token_issuer: str = "decentai-backend"
     backend_service_audience: str = "decentai-ai-runtime"
     #: where the platform answers the services contract over /app
-    #: (docs/system/chat-session.md). Empty means standalone: the sim serves.
+    #: (docs/system/chat-session.md).
     backend_url: str = ""
     host: str = "0.0.0.0"
     port: int = 8001
     agents_install_dir: str = field(default_factory=_default_install_dir)
-    #: Where agents' processes are started, when that is a container of
-    #: their own (``agents:8003``, docs/system/sandbox.md). Empty starts
-    #: them here, beside the runtime.
-    agents_spawner: str = ""
+    #: Where every process of an agent's is started: the agents'
+    #: container, as host:port (``agents:8003``, docs/system/sandbox.md).
+    agents_container: str = ""
     #: Where the proxy confined workers are held to listens
     #: (docs/system/sandbox.md). The container's firewall rule is written
     #: for this port before the runtime starts, so it is a setting and
@@ -54,18 +53,29 @@ class RuntimeSettings:
                 "BACKEND_SERVICE_PUBLIC_KEY is required — the runtime cannot "
                 "verify that connections come from the backend without it."
             )
+        backend_url = os.getenv("BACKEND_INTERNAL_URL", "").strip()
+        if not backend_url:
+            raise ValueError(
+                "BACKEND_INTERNAL_URL is required — the runtime keeps nothing "
+                "itself, and asks the backend for everything a chat is.")
+        agents_container = os.getenv("AI_RUNTIME_AGENTS_SPAWNER", "").strip()
+        if not agents_container:
+            raise ValueError(
+                "AI_RUNTIME_AGENTS_SPAWNER is required — the runtime starts "
+                "no process of an agent's itself; the agents' container "
+                "does, and this names it (host:port).")
         return cls(
             backend_service_public_key=public_key,
             backend_token_issuer=os.getenv("BACKEND_TOKEN_ISSUER", "decentai-backend"),
             backend_service_audience=os.getenv("AI_RUNTIME_TOKEN_AUDIENCE", "decentai-ai-runtime"),
-            backend_url=os.getenv("BACKEND_INTERNAL_URL", "").strip(),
+            backend_url=backend_url,
             host=os.getenv("AI_RUNTIME_HOST", "0.0.0.0"),
             port=cls._port("AI_RUNTIME_PORT", 8001),
             agents_install_dir=(
                 os.getenv("AI_RUNTIME_AGENTS_INSTALL_DIR", "")
                 or _default_install_dir()
             ),
-            agents_spawner=os.getenv("AI_RUNTIME_AGENTS_SPAWNER", "").strip(),
+            agents_container=agents_container,
             # As start.sh reads it, which wrote the firewall rule with
             # it: a value that is not a number is the default.
             egress_port=cls._port("AI_RUNTIME_EGRESS_PORT", 8002,

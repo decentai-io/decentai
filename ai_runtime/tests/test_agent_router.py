@@ -6,10 +6,11 @@ import json
 from ai_runtime.llms import FakeConnector
 from ai_runtime.mind.router import AgentRouter
 from ai_runtime.tests.test_assistant import EMBEDDING, fake_agent
+from ai_runtime.tests import fake_container
 
 
 def run(awaitable):
-    return asyncio.run(awaitable)
+    return fake_container.run(awaitable)
 
 
 ROSTER = {

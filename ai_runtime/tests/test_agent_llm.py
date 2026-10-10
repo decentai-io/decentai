@@ -21,12 +21,14 @@ from ai_runtime.llms import FakeConnector
 
 from ai_runtime.tests.fixture_agents import MINIMAL_MANIFEST, write_agent
 from decentai_sdk.base import Completion
+from ai_runtime.tests.fake_container import workers
+from ai_runtime.tests import fake_container
 
 AGENTS_DIR = Path(__file__).resolve().parent / "fixtures" / "agents"
 
 
 def run(coro):
-    return asyncio.run(coro)
+    return fake_container.run(coro)
 
 
 @pytest.fixture()
@@ -46,7 +48,7 @@ def make_executor(responses, **kwargs):
         reply = await connector.chat(messages, max_tokens)
         return Completion(reply.content, reply.stop_reason)
 
-    executor = FunctionExecutor(sinks=ChatSinks(llm=llm), **kwargs)
+    executor = FunctionExecutor(workers(), sinks=ChatSinks(llm=llm), **kwargs)
     return executor, connector
 
 
@@ -159,7 +161,7 @@ class TestPictures:
             shown.append((messages[-1]["content"], images))
             return "12 March 2031"
 
-        executor = FunctionExecutor(provider=provider, sinks=ChatSinks(llm=llm))
+        executor = FunctionExecutor(workers(), provider=provider, sinks=ChatSinks(llm=llm))
         result, status = run(executor.invoke(
             agents["peeker"], "peeker.main.read", {"ref": "fil_scan"}))
         assert status == "success", result
@@ -194,7 +196,7 @@ class TestAScreensFrame:
         async def sink(kind, frame, source):
             sent.append(kind)
 
-        executor = FunctionExecutor(sinks=ChatSinks(screen=sink))
+        executor = FunctionExecutor(workers(), sinks=ChatSinks(screen=sink))
         agent = SimpleNamespace(
             agent_id="agt_probe", manifest=SimpleNamespace(name="Probe"))
         screen = executor.surface.screen_for(agent, "probe.main.watch", "c_1")
@@ -249,7 +251,7 @@ class TestAScreenEndsWithItsCall:
         agents, errors = load_agents(tmp_path)
         assert errors == {}, errors
         agent = agents["demo"]
-        result, status = run(FunctionExecutor(sinks=ChatSinks(screen=sink)).invoke(
+        result, status = run(FunctionExecutor(workers(), sinks=ChatSinks(screen=sink)).invoke(
             agent, "demo.main.run", {"what": what}, chat_level=2))
         return sent, status
 
@@ -368,7 +370,7 @@ class TestTheBoundary:
     def test_without_a_model_the_reason_travels(self, llm_agent):
         # The scheduled-action path constructs the executor with no model;
         # the refusal must say what is missing, not just "failed".
-        executor = FunctionExecutor()
+        executor = FunctionExecutor(workers())
         result, status = run(executor.invoke(
             llm_agent, "llm.text.summarize", {"content": "text"},
         ))
@@ -430,7 +432,7 @@ class TestACutReply:
         async def llm(messages, max_tokens=None):
             return Completion('{"action": {"do": "rem', "length")
 
-        executor = FunctionExecutor(sinks=ChatSinks(llm=llm))
+        executor = FunctionExecutor(workers(), sinks=ChatSinks(llm=llm))
         result, status = run(executor.invoke(agents["demo"], "demo.main.run", {}))
         assert status == "success", result
         assert result == {"text": '{"action": {"do": "rem', "cut": True, "stop_reason": "length"}

@@ -24,13 +24,15 @@ from contracts.agent_manifest import load_manifest, manifest_hash
 from contracts.agent_package import AgentPackage
 from sim.resources import InMemoryResourceProvider
 from sim.session_services import SimSessionServices
+from ai_runtime.tests.fake_container import workers, confinement
+from ai_runtime.tests import fake_container
 
 NOTEBOOK = AGENTS_DIR / "notebook"
 REF = "agt_0ba09c35d8324040b6bd"
 
 
 def run(awaitable):
-    return asyncio.run(awaitable)
+    return fake_container.run(awaitable)
 
 
 def action(**kwargs):
@@ -81,7 +83,7 @@ def library(tmp_path, monkeypatch):
                         lambda self, digest: shared)
     monkeypatch.setattr(AgentLibrary, "environment_for",
                         lambda self, dependencies: shared)
-    return AgentLibrary(tmp_path / "runtime")
+    return AgentLibrary(tmp_path / "runtime", confinement())
 
 
 @pytest.fixture()
@@ -106,7 +108,7 @@ class TestTwoNames:
 
     def test_grants_and_resources_speak_the_ref_the_worker_the_package(self):
         provider = InMemoryResourceProvider()
-        executor = FunctionExecutor(provider=provider, grants=FunctionGrants([
+        executor = FunctionExecutor(workers(), provider=provider, grants=FunctionGrants([
             {"effect": "allow", "functions": [f"{REF}.*.*"]}]))
         result, status = run(executor.invoke(
             approved_notebook(), f"{REF}.note.save",
@@ -118,7 +120,7 @@ class TestTwoNames:
     def test_a_grant_in_the_packages_own_name_reaches_nothing(self):
         """Grants are written in the platform's vocabulary. The other
         direction denies everything — and must, loudly."""
-        executor = FunctionExecutor(
+        executor = FunctionExecutor(workers(), 
             provider=InMemoryResourceProvider(),
             grants=FunctionGrants([
                 {"effect": "allow", "functions": ["notebook.*.*"]}]))
@@ -133,7 +135,7 @@ class TestThePull:
     def test_a_build_pulls_what_the_contract_names_once(self, library, package):
         archive, digest, expected = package
         services = PullingServices(archive, digest, expected)
-        host = SessionHost(services, library)
+        host = SessionHost(services, library, workers())
 
         async def scenario():
             first = await host.session("chat_1")
@@ -160,7 +162,7 @@ class TestThePull:
             action(action="say", text="Saved."),
             action(action="finish"),
         ]}}
-        host = SessionHost(services, library)
+        host = SessionHost(services, library, workers())
 
         async def scenario():
             await host.handle("chat_1", {"event": "user_message",
@@ -185,7 +187,7 @@ class TestThePull:
         archive, digest, expected = package
         tampered = archive[:-1] + bytes([archive[-1] ^ 0xFF])
         services = PullingServices(tampered, digest, expected)
-        host = SessionHost(services, library)
+        host = SessionHost(services, library, workers())
 
         async def scenario():
             return await host.session("chat_1"), await host.session("chat_2")
@@ -203,10 +205,10 @@ class TestThePull:
         the host for that chat's roster — materialized, no mind built."""
         archive, digest, expected = package
         services = PullingServices(archive, digest, expected)
-        host = SessionHost(services, library)
+        host = SessionHost(services, library, workers())
         runner = ScheduleRunner(
             ServingRoster(host),
-            FunctionExecutor(provider=services.provider), host.deliver_event)
+            FunctionExecutor(workers(), provider=services.provider), host.deliver_event)
         due = Schedule("chat_1", "invoke", function=f"{REF}.note.find",
                        inputs={})
 
@@ -225,10 +227,10 @@ class TestThePull:
         archive, digest, expected = package
         services = PullingServices(archive, digest, expected, grants=[
             {"effect": "allow", "functions": [f"{REF}.note.save"]}])
-        host = SessionHost(services, library)
+        host = SessionHost(services, library, workers())
         runner = ScheduleRunner(
             ServingRoster(host),
-            FunctionExecutor(provider=services.provider), host.deliver_event)
+            FunctionExecutor(workers(), provider=services.provider), host.deliver_event)
 
         outcome = run(runner.fire(Schedule(
             "chat_1", "invoke", function=f"{REF}.note.find", inputs={})))
@@ -245,7 +247,7 @@ class TestTheAudienceHearsTheWait:
 
         archive, digest, expected = package
         services = PullingServices(archive, digest, expected)
-        host = SessionHost(services, library)
+        host = SessionHost(services, library, workers())
         first, second = FakeSocket(), FakeSocket()
 
         async def scenario():
@@ -272,7 +274,7 @@ class TestTheAudienceHearsTheWait:
         archive, digest, expected = package
         tampered = archive[:-1] + bytes([archive[-1] ^ 0xFF])
         services = PullingServices(tampered, digest, expected)
-        host = SessionHost(services, library)
+        host = SessionHost(services, library, workers())
         socket = FakeSocket()
 
         run(host.attach(socket, "chat_1"))
@@ -303,7 +305,7 @@ class TestReclaimingTheDisk:
         so a session opened later finds it serving and pulls nothing."""
         archive, digest, expected = package
         services = PullingServices(archive, digest, expected)
-        host = SessionHost(services, library)
+        host = SessionHost(services, library, workers())
 
         async def scenario():
             await host.handle("chat_1", {"event": "agents_changed", "agents": [{
@@ -322,17 +324,18 @@ class TestReclaimingTheDisk:
         assert services.pulls == [("chat_1", REF)]
         # The platform was told once, by the chat that built it — the
         # second chat found it serving and said nothing new.
-        # With it, what this process holds the agent to: nothing, where
-        # nothing confines — a test, a developer's machine.
+        # With it, what this process holds the agent to: a user and a
+        # fence, as the fake kernel has them; nothing holds a worker to
+        # the proxy here.
         assert services.prepared[REF] == {
             "digest": digest, "state": "ready", "error": "",
-            "confined": {"user": False, "files": False, "network": False}}
+            "confined": {"user": True, "files": True, "network": False}}
         assert services.prepared_reports == [("chat_1", REF, digest, "ready")]
 
     def test_code_nobody_approves_is_forgotten(self, library, package):
         archive, digest, expected = package
         services = PullingServices(archive, digest, expected)
-        host = SessionHost(services, library)
+        host = SessionHost(services, library, workers())
 
         async def scenario():
             await host.session("chat_1")            # installs the notebook
@@ -354,7 +357,7 @@ class TestReclaimingTheDisk:
         code must outlive the sweep whether or not a call is in flight."""
         archive, digest, expected = package
         services = PullingServices(archive, digest, expected)
-        host = SessionHost(services, library)
+        host = SessionHost(services, library, workers())
 
         async def scenario():
             await host.session("chat_1")
@@ -370,7 +373,7 @@ class TestReclaimingTheDisk:
             self, library, package):
         archive, digest, expected = package
         services = PullingServices(archive, digest, expected)
-        host = SessionHost(services, library)
+        host = SessionHost(services, library, workers())
 
         async def refuse(chat_id):
             raise RuntimeError("the platform is unreachable")
@@ -391,7 +394,7 @@ class TestReclaimingTheDisk:
         distrust: an empty set must not empty the disk."""
         archive, digest, expected = package
         services = PullingServices(archive, digest, expected)
-        host = SessionHost(services, library)
+        host = SessionHost(services, library, workers())
 
         async def scenario():
             await host.session("chat_1")
@@ -419,7 +422,7 @@ class TestReclaimingTheDisk:
                 "Agents:Agent:Fetch_package failed (401): unauthorized")
 
         services.fetch_package = refuse
-        host = SessionHost(services, library)
+        host = SessionHost(services, library, workers())
 
         async def scenario():
             first = await host.session("chat_1")
@@ -442,7 +445,7 @@ class TestReclaimingTheDisk:
         archive, digest, expected = package
         tampered = archive[:-1] + bytes([archive[-1] ^ 0xFF])
         services = PullingServices(tampered, digest, expected)
-        host = SessionHost(services, library)
+        host = SessionHost(services, library, workers())
 
         async def scenario():
             await host.session("chat_1")            # refuses the tampered bytes

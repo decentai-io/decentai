@@ -17,8 +17,7 @@ one volume.
     wire.py           what the two sides agree on: the messages, the
                       marks on a worker's lines, the key's file
 
-Where no container is kept for agents — a developer's machine, the
-tests — none of ``service.py`` runs: the runtime starts workers itself
-(``agents/spawner.py``, ``LocalSpawner``), and the helper, where there
-is one, runs beside it.
+The runtime's side of the socket is ``agents/container.py``. The tests
+have no container: ``ai_runtime/tests/fake_container.py`` answers the
+same verbs by starting programs in the test's own process.
 """

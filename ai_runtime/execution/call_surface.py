@@ -46,9 +46,12 @@ class CallSurface:
     Safety settings too (the sites no agent may open, the packages a
     program may install), because they bound what a call may ask."""
 
-    def __init__(self, sinks: ChatSinks, safety: Optional[Dict[str, Any]] = None,
-                 logger=None):
+    def __init__(self, sinks: ChatSinks, confinement: Confinement,
+                 safety: Optional[Dict[str, Any]] = None, logger=None):
         self.sinks = sinks
+        #: Where the packages a code card names are built: the
+        #: builder's place (confinement.py).
+        self.confinement = confinement
         #: What the deployment lets agents do (Settings:Safety), as the
         #: chat's contract carries it. The session writes it again at
         #: each refresh (executor.safety).
@@ -232,7 +235,7 @@ class CallSurface:
             if extras is None:
                 raise WorkerError("Packages cannot be installed here.")
             folder, errors = await asyncio.get_running_loop().run_in_executor(
-                None, extras, names, Confinement.place_for_building())
+                None, extras, names, self.confinement.builder_place())
             if errors:
                 raise WorkerError("; ".join(errors))
             return str(folder)

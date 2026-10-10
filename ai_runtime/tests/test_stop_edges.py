@@ -16,12 +16,14 @@ from ai_runtime.door.host import RelayingServices, SessionHost
 from ai_runtime.tests.fixture_agents import load_agents
 from ai_runtime.tests.test_assistant import Harness
 from sim.session_services import SimSessionServices
+from ai_runtime.tests import fake_container
+from ai_runtime.tests.fake_container import workers
 
 AGENTS_DIR = Path(__file__).resolve().parent / "fixtures" / "agents"
 
 
 def run(awaitable):
-    return asyncio.run(awaitable)
+    return fake_container.run(awaitable)
 
 
 def action(**kwargs):
@@ -33,7 +35,7 @@ def build(script, services=None, **kwargs):
     assert errors == {}
     services = services or SimSessionServices()
     return Session("chat_1", agents, FakeConnector(script), services,
-                   **kwargs), services
+                   workers=workers(), **kwargs), services
 
 
 def said(services):
@@ -213,6 +215,8 @@ class TestAPortSetting:
     def settings(self, monkeypatch, **said):
         from ai_runtime.settings import RuntimeSettings
         monkeypatch.setenv("BACKEND_SERVICE_PUBLIC_KEY", "a key")
+        monkeypatch.setenv("BACKEND_INTERNAL_URL", "http://backend:8000")
+        monkeypatch.setenv("AI_RUNTIME_AGENTS_SPAWNER", "agents:8003")
         for name, value in said.items():
             monkeypatch.setenv(name, value)
         return RuntimeSettings.from_env()
@@ -385,7 +389,7 @@ class DemoAgent(AgentBase):
             action(action="invoke", function="demo.main.run", inputs={}),
             # Never reached: what it would have said, or tried again.
             action(action="invoke", function="demo.main.run", inputs={}),
-        ]), services)
+        ]), services, workers=workers())
 
         async def scenario():
             await session.open()
@@ -592,7 +596,7 @@ class DemoAgent(AgentBase):
             # Heard while the call runs: it is let finish.
             action(action="finish", reason="awaiting_events"),
             action(action="say", text="Done, and I saw your note.", final=True),
-        ]), services)
+        ]), services, workers=workers())
         heard_at = {}
 
         async def scenario():

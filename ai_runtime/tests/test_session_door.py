@@ -18,6 +18,8 @@ from ai_runtime.settings import RuntimeSettings
 from ai_runtime.tests.fixture_agents import load_agents
 from ai_runtime.tests.test_session import SYNC_SECRET, approval_open
 from sim.session_services import SimSessionServices
+from ai_runtime.tests.fake_container import confinement, container, workers
+from ai_runtime.tests import fake_container
 
 AGENTS_DIR = Path(__file__).resolve().parent / "fixtures" / "agents"
 
@@ -27,7 +29,7 @@ SYNC_SECRET = {"notebook__connection": {
 
 
 def run(awaitable):
-    return asyncio.run(awaitable)
+    return fake_container.run(awaitable)
 
 
 def action(**kwargs):
@@ -56,7 +58,7 @@ def build(script=None, services=None):
     if script is not None:
         services.contracts.setdefault("chat_1", {})["llm"] = {
             "provider": "fake", "responses": list(script)}
-    host = SessionHost(services, SimpleNamespace(loaded=lambda: agents))
+    host = SessionHost(services, SimpleNamespace(loaded=lambda: agents), workers())
     return host, services
 
 
@@ -406,11 +408,13 @@ class TestResidency:
         if script is not None:
             services.contracts.setdefault("chat_1", {})["llm"] = {
                 "provider": "fake", "responses": list(script)}
-        return create_app(RuntimeSettings(), services=services,
+        return create_app(RuntimeSettings(), services=services, library=None,
+                          container=container(), confinement=confinement(),
                           agents=agents), services
 
     def test_without_services_there_are_no_voices(self):
-        app = create_app(RuntimeSettings())
+        app = create_app(RuntimeSettings(), services=None, library=None,
+                         container=container(), confinement=confinement())
         assert app.state.host is None
         assert app.state.scheduler is None
 
@@ -454,7 +458,8 @@ class TestResidency:
         assert errors == {}
         serving = {}
         app = create_app(RuntimeSettings(), services=SimSessionServices(),
-                         agents=serving)
+                         library=None, container=container(),
+                         confinement=confinement(), agents=serving)
         runner = app.state.scheduler.runner
         due = Schedule("chat_1", "invoke",
                        function="notebook.note.find", inputs={})

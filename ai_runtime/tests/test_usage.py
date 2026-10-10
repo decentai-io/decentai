@@ -7,17 +7,19 @@ test_spawner_live.py.
 """
 
 import asyncio
+import os
 import sys
 import threading
 import time
 
 import pytest
 
-from ai_runtime.agents.spawner import LocalSpawner, RemoteSpawner, Spawner
+from ai_runtime.agents.container import AgentsContainer
 from ai_runtime.agents_container.service import SpawnerService
 from ai_runtime.agents_container.usage import AgentsUsage, Sample
 from ai_runtime.agents.workers import WorkerError, WorkerHandle
-from ai_runtime.tests.test_spawner import FIXTURE, manifest_document
+from ai_runtime.tests.fake_container import MACHINE_VARIABLES
+from ai_runtime.tests.test_agent_worker_handle import FIXTURE, manifest_document
 from contracts.container import ContainerUsage
 
 PYTHON = sys.executable
@@ -297,10 +299,10 @@ def kernel_of_a_test(tmp_path):
     usage = Scripted()
     served = Serving(tmp_path, usage)
     usage.watched_by = served.service
-    spawner = RemoteSpawner(f"127.0.0.1:{served.service.port}", tmp_path)
-    before, Spawner.current = Spawner.current, spawner
-    yield usage, spawner
-    Spawner.current = before
+    container = AgentsContainer(f"127.0.0.1:{served.service.port}", tmp_path)
+    Placed.container = container
+    yield usage, container
+    Placed.container = None
     served.stop()
 
 
@@ -328,6 +330,9 @@ class Placed:
 
     token = ""
     spool = None
+    #: Where its worker is started: the test's container, set by the
+    #: fixture that serves one.
+    container = None
 
     def __init__(self, user, name, spool):
         self.user, self.label, self.spool = user, name, spool
@@ -365,7 +370,10 @@ class Placed:
         return list(argv)
 
     def environment(self, environment):
-        return dict(environment)
+        # With what a Python process needs from this machine, which the
+        # runtime never passes: the service runs the worker here.
+        return {**{name: os.environ[name] for name in MACHINE_VARIABLES
+                   if name in os.environ}, **environment}
 
 
 async def end(handle):
@@ -512,6 +520,3 @@ class TestTheSpawnerHoldsThemToIt:
             [PYTHON, "-c", "import time; time.sleep(0.5); print('done')"],
             whose={"user": 999, "name": "the platform"})
         assert (code, said.strip()) == (0, "done")
-
-    def test_where_processes_start_here_nobody_adds_it_up(self):
-        assert LocalSpawner().usage() is None

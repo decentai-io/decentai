@@ -12,10 +12,11 @@ from ai_runtime.chat.current import CURRENT_CHAT
 from ai_runtime.chat.clock import Scheduler
 from ai_runtime.services import BackendServices
 from ai_runtime.services.backend import GatewayError
+from ai_runtime.tests import fake_container
 
 
 def run(awaitable):
-    return asyncio.run(awaitable)
+    return fake_container.run(awaitable)
 
 
 class StubGateway:

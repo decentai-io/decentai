@@ -43,12 +43,12 @@ admin = _harness.admin
 
 
 @pytest.fixture(autouse=True)
-def _reap_worker_pools():
-    """Workers spawned during a test die with it. A test's runtime owns
-    private WorkerPools whose processes would otherwise outlive the
-    test's event loop; production holds one long-lived pool and never
-    goes through this."""
-    yield
-    from ai_runtime.agents.pool import WorkerPool
+def _agents_container(tmp_path):
+    """Every test has an agents' container of its own, stood in for
+    by the runtime's test double (ai_runtime/tests/fake_container.py):
+    whatever it started dies with the test."""
+    from ai_runtime.tests import fake_container
 
-    WorkerPool.terminate_all()
+    fake_container.begin(tmp_path / "agents")
+    yield
+    fake_container.end()

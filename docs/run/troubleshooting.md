@@ -127,7 +127,7 @@ and updating. Where to look is at the end.
 
   | The log says | Why | What to do |
   |---|---|---|
-  | *Workers are NOT confined here* | the stack was not started as `docker-compose.yml` starts it, or the helper is not in the image | start it from the repository's Compose file |
+  | *Workers cannot be confined in the agents' container* (and the runtime does not start) | the stack was not started as `docker-compose.yml` starts it, or the helper is not in the image | start it from the repository's Compose file |
   | *Workers' connections are NOT fenced here* | the agents' container was not given `NET_ADMIN` | the Compose file gives it; a stack started by hand must |
   | *Workers' files are NOT fenced here* | the kernel has no Landlock | a kernel from 5.13 on, with Landlock among its security modules |
   | *Agents are NOT kept from each other's sockets here* | the kernel's Landlock is before its sixth version | a kernel from 6.12 on. Until then two agents that both mean to can pass bytes to each other |

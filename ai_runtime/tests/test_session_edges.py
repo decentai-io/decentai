@@ -13,6 +13,8 @@ from ai_runtime.llms import FakeConnector
 from ai_runtime.mind.state import RUNNING, Job
 from ai_runtime.tests.fixture_agents import load_agents
 from sim.session_services import SimSessionServices
+from ai_runtime.tests.fake_container import workers
+from ai_runtime.tests import fake_container
 
 AGENTS_DIR = Path(__file__).resolve().parent / "fixtures" / "agents"
 SYNC_SECRET = {"notebook__connection": {
@@ -20,7 +22,7 @@ SYNC_SECRET = {"notebook__connection": {
 
 
 def run(awaitable):
-    return asyncio.run(awaitable)
+    return fake_container.run(awaitable)
 
 
 def action(**kwargs):
@@ -33,7 +35,7 @@ def build(script, services=None, connector=None, **kwargs):
     services = services or SimSessionServices()
     services.provider.secrets.update(SYNC_SECRET)
     return Session("chat_1", agents, connector or FakeConnector(script),
-                   services, **kwargs), services
+                   services, workers=workers(), **kwargs), services
 
 
 async def card_open(services, timeout=5.0):

@@ -14,11 +14,12 @@ from ai_runtime.events import Events
 from ai_runtime.agents.library import AgentLibrary, AgentRefused
 from contracts.agent_package import AgentPackage
 from ai_runtime.tests.fixture_agents import write_agent
+from ai_runtime.tests.fake_container import confinement
 
 
 @pytest.fixture()
 def library(tmp_path):
-    return AgentLibrary(tmp_path / "runtime")
+    return AgentLibrary(tmp_path / "runtime", confinement())
 
 
 def packaged(tmp_path):

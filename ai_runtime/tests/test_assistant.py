@@ -16,12 +16,14 @@ from ai_runtime.llms import FakeConnector
 from ai_runtime.mind import Assistant, AssistantState
 from ai_runtime.tests.fixture_agents import load_agents
 from sim.resources import InMemoryResourceProvider
+from ai_runtime.tests.fake_container import workers
+from ai_runtime.tests import fake_container
 
 AGENTS_DIR = Path(__file__).resolve().parent / "fixtures" / "agents"
 
 
 def run(awaitable):
-    return asyncio.run(awaitable)
+    return fake_container.run(awaitable)
 
 
 def action(**kwargs):
@@ -53,7 +55,7 @@ class Harness:
         self.sinks = ChatSinks(say=say_sink, save_state=state_sink, **doors)
         self.assistant = Assistant(
             self.state, self.agents, self.connector,
-            FunctionExecutor(provider=self.provider, sinks=self.sinks),
+            FunctionExecutor(workers(), provider=self.provider, sinks=self.sinks),
             self.sinks, **kwargs,
         )
 

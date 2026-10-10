@@ -145,10 +145,13 @@ class AgentLibrary:
     ENVS_FOLDER = "envs"
     MANIFEST_FILENAME = "manifest.yaml"
 
-    def __init__(self, install_dir: str | Path):
+    def __init__(self, install_dir: str | Path, confinement: Confinement):
         self.install_dir = Path(install_dir)
         self.store_dir = self.install_dir / self.STORE_FOLDER
         self.envs_dir = self.install_dir / self.ENVS_FOLDER
+        #: Where a package is verified and its packages are built: in
+        #: installation's and the builder's own places (confinement.py).
+        self.confinement = confinement
         #: digest -> the installed agent answering for it.
         self._agents: Dict[str, InstalledAgent] = {}
         #: digest -> why it would not register. A negative cache: a
@@ -335,10 +338,10 @@ class AgentLibrary:
             lock = self._lock_for(environment)
             lock.acquire()
             fresh_environment = not environment.exists()
-            # Where workers are confined, so is the build: a package
-            # may run code of its own while it is built.
+            # The build is confined as a worker is: a package may run
+            # code of its own while it is built.
             env_errors = environment.build(
-                manifest.dependencies, place=Confinement.place_for_building())
+                manifest.dependencies, self.confinement.builder_place())
             if env_errors:
                 raise AgentRefused("; ".join(env_errors))
             # Verification happens where the agent will really run: a
@@ -450,7 +453,7 @@ class AgentLibrary:
         """The handshake as installation's gate (docs/reference/worker-protocol.md)."""
         return WorkerHandle.probe(
             environment.python, self._folder(digest), manifest.document,
-            place=Confinement.place_for_verification(),
+            self.confinement.verification_place(),
         )
 
     def forget(self, digest: str) -> None:

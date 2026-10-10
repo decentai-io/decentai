@@ -61,7 +61,10 @@ def agents():
     environment = AgentEnvironment(WORKERENV_DIR)
     if not environment.exists():
         dependencies = [d for _, m in entries for d in m.dependencies]
-        errors = environment.build(dependencies)
+        from ai_runtime.tests.fake_container import standalone
+
+        with standalone(WORKERENV_DIR.parent / ".workerenv-build") as own:
+            errors = environment.build(dependencies, own.builder_place())
         assert errors == [], errors
 
     return {
@@ -73,11 +76,12 @@ def agents():
 
 
 @pytest.fixture(autouse=True)
-def _reap_worker_pools():
-    """Workers spawned during a test die with it — each test's executors
-    own private WorkerPools whose processes would otherwise outlive the
-    test's event loop."""
-    yield
-    from ai_runtime.agents.pool import WorkerPool
+def _agents_container(tmp_path):
+    """Every test has an agents' container of its own, stood in for
+    by the runtime's test double (ai_runtime/tests/fake_container.py):
+    whatever it started dies with the test."""
+    from ai_runtime.tests import fake_container
 
-    WorkerPool.terminate_all()
+    fake_container.begin(tmp_path / "agents")
+    yield
+    fake_container.end()

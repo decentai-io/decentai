@@ -9,12 +9,13 @@ from zoneinfo import ZoneInfo
 
 from ai_runtime.chat.clock import Schedule, Scheduler
 from sim.schedules import MemoryScheduleStore
+from ai_runtime.tests import fake_container
 
 LONDON = ZoneInfo("Europe/London")
 
 
 def run(coro):
-    return asyncio.run(coro)
+    return fake_container.run(coro)
 
 
 def row(schedule_id="a", **over):

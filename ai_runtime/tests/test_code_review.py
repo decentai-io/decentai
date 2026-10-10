@@ -11,6 +11,7 @@ import json
 from ai_runtime.chat.code_review import CodeReviewer
 from ai_runtime.llms import FakeConnector
 from contracts.chat import CODE_REVIEW_MAX_CHARS
+from ai_runtime.tests import fake_container
 
 CODE = {"language": "python", "code": "print(open('notes.txt').read())",
         "purpose": "Prints the notes.", "where": "",
@@ -19,7 +20,7 @@ CODE = {"language": "python", "code": "print(open('notes.txt').read())",
 
 
 def run(awaitable):
-    return asyncio.run(awaitable)
+    return fake_container.run(awaitable)
 
 
 class TestAReview:

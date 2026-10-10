@@ -38,7 +38,8 @@ import pytest
 from ai_runtime.agents.confinement import Confinement
 from ai_runtime.agents.egress import EgressProxy
 from ai_runtime.events import Events
-from ai_runtime.agents.spawner import LocalSpawner, Spawner
+from ai_runtime.agents.container import AgentsContainer
+from ai_runtime.agents_container import wire
 from ai_runtime.agents.workers import WorkerError, WorkerHandle
 # The hostile agent, the stand-in for a host on the internet, and how
 # one attempt is made, are that file's.
@@ -59,32 +60,28 @@ def confinement(site):
     """As a runtime whose agents run elsewhere configures itself at
     start: the agents' container waited for, the helper checked there,
     the proxy listening for what that container passes on."""
-    spawner = Spawner.configure(ADDRESS, INSTALL_DIR)
-    assert spawner.wait(60)
+    container = AgentsContainer(ADDRESS, INSTALL_DIR)
+    assert container.wait(60)
     Events.configure(INSTALL_DIR, "runtime")
-    found = Confinement(INSTALL_DIR)
-    assert found.check() == []
+    found = Confinement(INSTALL_DIR, container)
+    found.check()
     EgressProxy.resolver = lambda host, port: ["127.0.0.1"]
     ports = EgressProxy.PORTS_OF_A_NAMED_HOST
     EgressProxy.PORTS_OF_A_NAMED_HOST = (*ports, site)
     found.open_the_way_out(
         int(os.environ.get("AI_RUNTIME_EGRESS_PORT") or 8002),
         allow_loopback=True)
-    Confinement.current = found
     yield found
-    Confinement.current = None
-    if found.egress is not None:
-        found.egress.stop()
+    found.proxy.stop()
     EgressProxy.resolver = None
     EgressProxy.PORTS_OF_A_NAMED_HOST = ports
-    Spawner.current = LocalSpawner()
     Events.current = None
 
 
-def running_there(process_id: int) -> bool:
+def running_there(confinement, process_id: int) -> bool:
     """Whether a process of the agents' container is still doing
     anything — asked there: its processes are not this container's."""
-    code, said = Spawner.current.run([
+    code, said = confinement.container.run([
         sys.executable, "-c",
         "import sys\n"
         "try:\n"
@@ -99,8 +96,7 @@ def running_there(process_id: int) -> bool:
 
 class TestWhereItRuns:
     def test_the_runtime_starts_nothing_itself(self, confinement):
-        assert Spawner.current.remote
-        assert confinement.egress.listen == "0.0.0.0"
+        assert confinement.proxy.LISTEN == "0.0.0.0"
 
     def test_a_worker_is_its_own_user_in_the_other_container(
             self, ground, place):
@@ -119,7 +115,7 @@ class TestWhereItRuns:
     def test_stopping_it_ends_what_it_started_there(self, ground, place):
         child = ask(ground, place, "leave_child")["child"]
         # ask() stopped the worker on its way out
-        assert not running_there(child)
+        assert not running_there(confinement, child)
 
     def test_a_runtime_that_hangs_up_leaves_nothing_running(
             self, ground, place):
@@ -134,23 +130,23 @@ class TestWhereItRuns:
             assert await handle.start() == []
             result, _ = await handle.invoke(
                 "c_1", "intruder.main.run", {"what": "leave_child"})
-            assert running_there(result["child"])
+            assert running_there(confinement, result["child"])
             handle.process.kill()
             await handle.process.wait()
             return result["child"]
 
         child = run(scenario())
         for _ in range(50):
-            if not running_there(child):
+            if not running_there(confinement, child):
                 break
             time.sleep(0.1)
-        assert not running_there(child)
+        assert not running_there(confinement, child)
 
 
 class TestWhatItCannotTake:
     def test_it_cannot_read_the_key_the_runtime_commands_with(
             self, ground, place):
-        key = INSTALL_DIR / Spawner.KEY_FILENAME
+        key = INSTALL_DIR / wire.KEY_FILENAME
         assert key.is_file()
         assert ask(ground, place, "read_file", str(key))["happened"] is False
 
@@ -175,7 +171,7 @@ class TestTheWayOut:
 
     def test_it_cannot_reach_the_spawner(self, ground, place, net):
         assert ask(ground, place, "connect",
-                   f"127.0.0.1:{Spawner.current.port}",
+                   f"127.0.0.1:{confinement.container.port}",
                    hosts="any")["happened"] is False
 
     def test_it_cannot_reach_the_runtime_or_look_it_up(self, ground, place, net):
@@ -256,7 +252,7 @@ class TestWhatTheAgentsAreGiven:
     400 MB and a processor and a half."""
 
     def test_what_they_are_given_is_read_from_the_kernel(self, confinement):
-        said = Spawner.current.usage()
+        said = confinement.container.usage()
         assert said["limits"] == {"memory": 400 * MB, "cpus": 1.5}
         assert 0 < said["memory"] < 400 * MB
 
@@ -271,7 +267,7 @@ class TestWhatTheAgentsAreGiven:
             found = None
             try:
                 for _ in range(50):
-                    said = Spawner.current.usage()
+                    said = confinement.container.usage()
                     mine = [agent for agent in said["agents"]
                             if agent["user"] == place.user]
                     # A worker answers its greeting before it has
@@ -305,7 +301,7 @@ class TestWhatTheAgentsAreGiven:
                 await handle.invoke("c_1", "intruder.main.run",
                                     {"what": "fill", "target": "2048"})
                 for _ in range(120):
-                    mine = [agent for agent in Spawner.current.usage()["agents"]
+                    mine = [agent for agent in confinement.container.usage()["agents"]
                             if agent["user"] == place.user]
                     if mine and (mine[0].get("disk") or 0) >= 2 * MB:
                         return mine[0]
@@ -340,10 +336,10 @@ class TestWhatTheAgentsAreGiven:
         assert "400.0 MB" in said
         # ... and the container is left with room again.
         for _ in range(50):
-            if Spawner.current.usage()["memory"] < 200 * MB:
+            if confinement.container.usage()["memory"] < 200 * MB:
                 break
             time.sleep(0.2)
-        assert Spawner.current.usage()["memory"] < 200 * MB
+        assert confinement.container.usage()["memory"] < 200 * MB
 
     def test_what_an_agent_left_behind_is_collected(self, ground, place):
         """A process whose parent is gone becomes the spawner's child
@@ -361,7 +357,7 @@ class TestWhatTheAgentsAreGiven:
             "            pass\n"
             "print(over)\n")
         for _ in range(40):
-            code, said = Spawner.current.run([sys.executable, "-c", counting])
+            code, said = confinement.container.run([sys.executable, "-c", counting])
             assert code == 0, said
             if said.strip() == "0":
                 break

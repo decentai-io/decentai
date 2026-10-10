@@ -19,6 +19,8 @@ from ai_runtime.execution.grants import FunctionGrants
 from ai_runtime.tests.fixture_agents import (
     MINIMAL_MANIFEST, load_agents, write_agent)
 from sim.resources import InMemoryResourceProvider
+from ai_runtime.tests.fake_container import workers
+from ai_runtime.tests import fake_container
 
 AGENTS_DIR = Path(__file__).resolve().parent / "fixtures" / "agents"
 
@@ -38,7 +40,7 @@ DEMO = textwrap.dedent("""\
 
 
 def run(coro):
-    return asyncio.run(coro)
+    return fake_container.run(coro)
 
 
 @pytest.fixture()
@@ -60,7 +62,7 @@ def executor(**kwargs):
     kwargs.setdefault("provider", InMemoryResourceProvider(
         secrets={"notebook__connection": {"api_token": "t"}}))
     doors = {k: kwargs.pop(k) for k in list(kwargs) if k in ChatSinks.names()}
-    return FunctionExecutor(sinks=ChatSinks(**doors), **kwargs)
+    return FunctionExecutor(workers(), sinks=ChatSinks(**doors), **kwargs)
 
 
 def trailed(**kwargs):
@@ -144,12 +146,14 @@ class TestSchemasThatAreNotSchemas:
         ran = []
 
         runner = executor()
-        real = runner._pool
 
-        def pool():
-            ran.append(True)
-            return real()
-        runner._pool = pool
+        class NeverAsked:
+            confinement = runner.workers.confinement
+
+            async def invoke(self, *args, **kwargs):
+                ran.append(True)
+                return {}, "success"
+        runner.workers = NeverAsked()
         result, status = run(runner.invoke(agent, "demo.main.run", {}))
         assert status == "error" and "not a schema" in result["error"]
         assert not ran

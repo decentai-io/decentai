@@ -23,8 +23,8 @@ DecentAI is a **backend**, a private **AI runtime**, a place where
   per approved agent per organization. In the stack this repository
   starts they run in a container of the agents' own, which the runtime
   commands and which reaches the runtime and nothing else
-  ([the sandbox](sandbox.md)). Started by hand for development, the
-  runtime starts the workers itself and confines nothing.
+  ([the sandbox](sandbox.md)). There is no other place a worker runs:
+  the runtime's tests stand a double in for that container.
 - The web app is a static Angular application served by Caddy, which
   also proxies the backend's paths so the browser sees one origin.
 

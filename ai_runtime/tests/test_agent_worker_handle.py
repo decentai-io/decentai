@@ -18,12 +18,14 @@ from ai_runtime.agents.library import AgentLibrary, AgentRefused
 from ai_runtime.agents.workers import WorkerError, WorkerHandle
 from contracts.agent_manifest import manifest_hash
 from contracts.agent_package import AgentPackage
+from ai_runtime.tests.fake_container import confinement, standalone
+from ai_runtime.tests import fake_container
 
 FIXTURE = Path(__file__).resolve().parent / "fixtures" / "agents" / "notebook"
 
 
 def run(awaitable):
-    return asyncio.run(awaitable)
+    return fake_container.run(awaitable)
 
 
 def manifest_document():
@@ -35,15 +37,17 @@ def manifest_document():
 def venv(tmp_path_factory):
     """One real environment for the whole run — the notebook fixture
     declares no dependencies, so this is venv + SDK copy only."""
-    env = AgentEnvironment(tmp_path_factory.mktemp("envs") / "notebook")
-    assert env.build([]) == []
+    envs = tmp_path_factory.mktemp("envs")
+    env = AgentEnvironment(envs / "notebook")
+    with standalone(envs / "agents") as own:
+        assert env.build([], own.builder_place()) == []
     return env
 
 
 class TestWorkerHandle:
     def test_start_handshakes_and_stop_shuts_down(self, venv):
         async def scenario():
-            handle = WorkerHandle(venv.python, FIXTURE, manifest_document())
+            handle = WorkerHandle(venv.python, FIXTURE, manifest_document(), confinement().place("agt_test"))
             assert await handle.start() == []
             assert handle.alive
             await handle.stop()
@@ -54,7 +58,7 @@ class TestWorkerHandle:
         async def scenario():
             document = manifest_document()
             document["implementation"]["entrypoint"] = "agent:Nope"
-            handle = WorkerHandle(venv.python, FIXTURE, document)
+            handle = WorkerHandle(venv.python, FIXTURE, document, confinement().place("agt_test"))
             errors = await handle.start()
             assert errors and "'Nope' not found" in errors[0]
             assert not handle.alive          # a refused worker is not kept
@@ -65,7 +69,7 @@ class TestWorkerHandle:
         ask reaches the router, its progress reaches the callback, and
         its result comes back typed."""
         async def scenario():
-            handle = WorkerHandle(venv.python, FIXTURE, manifest_document())
+            handle = WorkerHandle(venv.python, FIXTURE, manifest_document(), confinement().place("agt_test"))
             seen = {"asks": [], "progress": []}
 
             async def router(method, params):
@@ -131,7 +135,7 @@ class TestWorkerHandle:
         seen = {}
 
         async def scenario():
-            handle = WorkerHandle(venv.python, tmp_path / "spooler", document)
+            handle = WorkerHandle(venv.python, tmp_path / "spooler", document, confinement().place("agt_test"))
 
             async def router(method, params):
                 if method == "resources.read_file":
@@ -158,7 +162,8 @@ class TestWorkerHandle:
                 assert list(spool.iterdir()) == []       # both files consumed
             finally:
                 await handle.stop()
-            assert not spool.exists()
+            # The spool is the place's, emptied with it at the worker's end.
+            assert spool.is_dir() and list(spool.iterdir()) == []
 
         run(scenario())
 
@@ -194,7 +199,7 @@ class TestWorkerHandle:
             (tmp_path / "sneak" / "manifest.yaml").read_text(encoding="utf-8"))
 
         async def scenario():
-            handle = WorkerHandle(venv.python, tmp_path / "sneak", document)
+            handle = WorkerHandle(venv.python, tmp_path / "sneak", document, confinement().place("agt_test"))
 
             async def router(method, params):
                 raise AssertionError("the ask must never reach the router")
@@ -212,7 +217,7 @@ class TestWorkerHandle:
 
     def test_a_router_refusal_fails_the_function_with_the_reason(self, venv):
         async def scenario():
-            handle = WorkerHandle(venv.python, FIXTURE, manifest_document())
+            handle = WorkerHandle(venv.python, FIXTURE, manifest_document(), confinement().place("agt_test"))
 
             async def router(method, params):
                 raise PermissionError("does not declare data.note:create")
@@ -234,7 +239,7 @@ class TestWorkerHandle:
         """Two invocations in flight; the second finishes while the
         first is still waiting on its resource ask."""
         async def scenario():
-            handle = WorkerHandle(venv.python, FIXTURE, manifest_document())
+            handle = WorkerHandle(venv.python, FIXTURE, manifest_document(), confinement().place("agt_test"))
             release = asyncio.Event()
 
             async def router(method, params):
@@ -261,7 +266,7 @@ class TestWorkerHandle:
 
     def test_a_dead_worker_fails_in_flight_calls_honestly(self, venv):
         async def scenario():
-            handle = WorkerHandle(venv.python, FIXTURE, manifest_document())
+            handle = WorkerHandle(venv.python, FIXTURE, manifest_document(), confinement().place("agt_test"))
 
             async def router(method, params):
                 await asyncio.sleep(3600)          # never answers
@@ -298,7 +303,8 @@ class TestWorkerHandle:
                 return [str(python), "-c", script]
 
         async def scenario():
-            handle = Garbling(venv.python, FIXTURE, manifest_document())
+            handle = Garbling(venv.python, FIXTURE, manifest_document(),
+                              confinement().place("agt_test"))
             assert await handle.start() == []
             with pytest.raises(WorkerError, match="not JSON"):
                 await handle.invoke("c_x", "notebook.note.find", {})
@@ -308,17 +314,18 @@ class TestWorkerHandle:
 
 class TestProbe:
     def test_a_whole_package_verifies(self, venv):
-        assert WorkerHandle.probe(venv.python, FIXTURE, manifest_document()) == []
+        assert WorkerHandle.probe(venv.python, FIXTURE, manifest_document(), confinement().verification_place()) == []
 
     def test_a_broken_package_is_named(self, venv):
         document = manifest_document()
         document["implementation"]["entrypoint"] = "agent:Nope"
-        errors = WorkerHandle.probe(venv.python, FIXTURE, document)
+        errors = WorkerHandle.probe(venv.python, FIXTURE, document, confinement().verification_place())
         assert errors and "'Nope' not found" in errors[0]
 
     def test_a_missing_interpreter_is_a_spawn_error(self, tmp_path):
         errors = WorkerHandle.probe(
-            tmp_path / "nope" / "python.exe", FIXTURE, manifest_document())
+            tmp_path / "nope" / "python.exe", FIXTURE, manifest_document(),
+            confinement().verification_place())
         assert errors and "could not be spawned" in errors[0]
 
 
@@ -327,7 +334,7 @@ class TestInstallVerifiesInTheRealEnvironment:
         """The full station, no stubs: venv built, worker spawned from
         it with -I, contract verified — then the same install refused
         when the manifest declares a function the code lacks."""
-        library = AgentLibrary(tmp_path / "agents")
+        library = AgentLibrary(tmp_path / "agents", confinement())
         archive, digest = AgentPackage.build(FIXTURE)
         document = manifest_document()
 

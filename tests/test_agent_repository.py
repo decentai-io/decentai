@@ -22,6 +22,7 @@ from pathlib import Path
 
 import pytest
 import yaml
+from ai_runtime.tests.fake_container import confinement
 
 MANIFEST = textwrap.dedent("""
     schema_version: "1.0"
@@ -124,7 +125,7 @@ def repository(tmp_path):
 def library(tmp_path):
     from ai_runtime.agents import AgentLibrary
 
-    library = AgentLibrary(tmp_path / "installed")
+    library = AgentLibrary(tmp_path / "installed", confinement())
     library.load_all()
     return library
 

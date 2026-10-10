@@ -36,6 +36,7 @@ import pytest
 import yaml
 
 from ai_runtime.agents.confinement import Confinement
+from ai_runtime.agents.container import AgentsContainer
 from ai_runtime.agents.egress import EgressProxy
 from ai_runtime.agents.environments import AgentEnvironment
 from ai_runtime.agents.library import InstalledAgent
@@ -49,10 +50,13 @@ from contracts.agent_manifest import load_manifest
 INSTALL_DIR = Path("/data/agents")
 
 
+#: Where the agents' container answers; the live tests run in the
+#: stack of the two containers (spawner-live.compose.yml).
+ADDRESS = (os.environ.get("AI_RUNTIME_AGENTS_SPAWNER") or "").strip()
+
+
 def helper_works() -> bool:
-    if not Confinement.SUPPORTED or not os.access(Confinement.HELPER, os.X_OK):
-        return False
-    return Confinement(INSTALL_DIR).check() == []
+    return bool(ADDRESS)
 
 
 pytestmark = pytest.mark.skipif(
@@ -395,19 +399,18 @@ def confinement(site):
     """As the runtime configures it at start: the helper checked, the
     proxy on the port the firewall rule was written for. Every name
     resolves to this machine, where the site stands."""
-    found = Confinement(INSTALL_DIR)
-    assert found.check() == []
+    container = AgentsContainer(ADDRESS, INSTALL_DIR)
+    assert container.wait(60)
+    found = Confinement(INSTALL_DIR, container)
+    found.check()
     EgressProxy.resolver = lambda host, port: ["127.0.0.1"]
     ports = EgressProxy.PORTS_OF_A_NAMED_HOST
     EgressProxy.PORTS_OF_A_NAMED_HOST = (*ports, site)
     found.open_the_way_out(
         int(os.environ.get("AI_RUNTIME_EGRESS_PORT") or 8002),
         allow_loopback=True)
-    Confinement.current = found
     yield found
-    Confinement.current = None
-    if found.egress is not None:
-        found.egress.stop()
+    found.proxy.stop()
     EgressProxy.resolver = None
     EgressProxy.PORTS_OF_A_NAMED_HOST = ports
 
@@ -437,7 +440,7 @@ def keeps_sockets(confinement):
 
 @pytest.fixture
 def held(confinement):
-    if confinement.egress is None or not confinement.fence_holds_connections:
+    if not confinement.fence_holds_connections:
         pytest.skip("this kernel's Landlock does not hold a fenced "
                     "program to a port")
     return confinement
@@ -466,7 +469,7 @@ def ground():
     folder.mkdir(mode=0o755)
     try:
         environment = AgentEnvironment(folder / "env")
-        assert environment.build([]) == []
+        assert environment.build([], live.builder_place()) == []
         package = write_agent(
             folder, "intruder", manifest=MINIMAL_MANIFEST.format(
                 agent_id="intruder", entrypoint="agent:DemoAgent"),
@@ -1143,10 +1146,9 @@ class TestAProgramAnAgentRuns:
             return allows
 
         async def scenario():
-            pool = WorkerPool()
             executor = FunctionExecutor(
+                WorkerPool(confinement),
                 provider=InMemoryResourceProvider(),
-                workers=pool,
                 sinks=ChatSinks(propose=proposer))
             try:
                 answers = []
@@ -1240,10 +1242,9 @@ class TestWhatTheDeploymentSets:
             trail.append(event)
 
         async def scenario():
-            pool = WorkerPool()
             executor = FunctionExecutor(
+                WorkerPool(confinement),
                 provider=InMemoryResourceProvider(),
-                workers=pool,
                 safety=safety,
                 sinks=ChatSinks(audit=audit))
             try:

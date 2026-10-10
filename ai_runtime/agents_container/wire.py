@@ -1,7 +1,7 @@
 """What the runtime and the agents' container agree on.
 
-The runtime's side is ``ai_runtime/agents/spawner.py``
-(``RemoteSpawner``, ``RemoteProcess``); the container's is
+The runtime's side is ``ai_runtime/agents/container.py``
+(``AgentsContainer``, ``ContainerProcess``); the container's is
 ``service.py``. Each connection is one process:
 
     → {"key", "op": "run", "argv", "environment", "cwd", "timeout",

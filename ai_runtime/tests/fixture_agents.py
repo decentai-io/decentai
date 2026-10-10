@@ -16,6 +16,7 @@ from typing import Dict, List, Optional, Tuple
 
 from ai_runtime.agents import AgentEnvironment, InstalledAgent
 from contracts.agent_manifest import load_manifest
+from ai_runtime.tests.fake_container import standalone
 
 AGENTS_DIR = Path(__file__).resolve().parent / "fixtures" / "agents"
 WORKERENV_DIR = Path(__file__).resolve().parent / ".workerenv"
@@ -26,7 +27,8 @@ def worker_environment() -> AgentEnvironment:
     (the `.ready` marker short-circuits every later call)."""
     environment = AgentEnvironment(WORKERENV_DIR)
     if not environment.exists():
-        errors = environment.build([])
+        with standalone(WORKERENV_DIR.parent / ".workerenv-build") as own:
+            errors = environment.build([], own.builder_place())
         assert errors == [], errors
     else:
         _refresh_sdk(environment)

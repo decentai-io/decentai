@@ -15,10 +15,11 @@ from ai_runtime.llms.connector.tools import (
 from ai_runtime.services.backend import BackendSchedules, Gateway, GatewayError
 from sim.schedules import MemoryScheduleStore
 from sim.session_services import SimSessionServices
+from ai_runtime.tests import fake_container
 
 
 def run(awaitable):
-    return asyncio.run(awaitable)
+    return fake_container.run(awaitable)
 
 
 class TestTheServicesClient:

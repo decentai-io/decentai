@@ -19,6 +19,7 @@ import uvicorn
 
 from agent_fixtures import control, manifest_doc  # noqa: F401
 from conftest import app_call, service_keys
+from ai_runtime.tests.fake_container import confinement
 
 
 def action(**kwargs):
@@ -60,6 +61,7 @@ def full_stack(app, tmp_path, monkeypatch):
     from ai_runtime.door import create_app as create_runtime_app
     from ai_runtime.settings import RuntimeSettings
     from ai_runtime.services import BackendServices, Gateway
+    from ai_runtime.tests.fake_container import confinement, container
     from ai_runtime.tests.fixture_agents import worker_environment
     from server.setup.app_state import get_state
 
@@ -77,7 +79,8 @@ def full_stack(app, tmp_path, monkeypatch):
         RuntimeSettings(backend_service_public_key=public_pem,
                         backend_url=backend_url),
         services=BackendServices(Gateway(backend_url)),
-        library=AgentLibrary(tmp_path / "runtime"),
+        library=AgentLibrary(tmp_path / "runtime", confinement()),
+        container=container(), confinement=confinement(),
     )
     runtime_server, runtime_thread = serve(runtime_app, runtime_port)
 

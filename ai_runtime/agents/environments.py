@@ -110,14 +110,14 @@ class AgentEnvironment:
         return (self.root / READY_MARKER).is_file()
 
     # ------------------------------------------------------------------
-    def build(self, dependencies: List[str], place=None) -> List[str]:
+    def build(self, dependencies: List[str], place) -> List[str]:
         """Create the venv, copy the SDK in, install the declared list.
         Returns errors, empty on success; any failure removes the
         folder — an environment is whole or absent, never partial. One
         that exists is kept, with its SDK brought up to the platform's.
 
         ``place`` is the builder's (confinement.py), where the list is
-        downloaded and built; None where nothing confines."""
+        downloaded and built as wheels; they are unpacked here."""
         if self.exists():
             return self.refresh_sdk()
         self.remove()
@@ -244,7 +244,7 @@ class AgentEnvironment:
                 return candidate
         return None
 
-    def _install(self, dependencies: List[str], place=None) -> List[str]:
+    def _install(self, dependencies: List[str], place) -> List[str]:
         dependencies = sorted({str(d).strip() for d in dependencies or []
                                if str(d).strip()})
         if not dependencies:
@@ -255,15 +255,7 @@ class AgentEnvironment:
         if options:
             return [f"dependency installation failed: '{options[0]}' is "
                     f"not a requirement"]
-        if place is not None:
-            return self._install_built(dependencies, place)
-        code, output = self._run(
-            [str(self.python), "-m", "pip", "install",
-             "--no-input", "--disable-pip-version-check",
-             *dependencies],
-            self.PIP_TIMEOUT_SECONDS,
-        )
-        return self._said(code, output)
+        return self._install_built(dependencies, place)
 
     @staticmethod
     def _said(code: int, output: str) -> List[str]:
@@ -342,7 +334,7 @@ class AgentEnvironment:
         return written if REQUIREMENT_RE.match(written) else ""
 
     def extras(self, requirements: List[str],
-               place=None) -> Tuple[Optional[Path], List[str]]:
+               place) -> Tuple[Optional[Path], List[str]]:
         """A folder holding the list and everything it depends on, for
         a program to put on its path. Returns (the folder, errors): one
         built before is handed back as it is, and a build that fails
@@ -378,9 +370,6 @@ class AgentEnvironment:
             folder.mkdir(parents=True)
         except OSError as exc:
             return [f"dependency installation failed: {exc}"]
-        if place is None:
-            return self._said(*self._run([*install, *wanted],
-                                         self.PIP_TIMEOUT_SECONDS))
         wheels = folder / self.WHEELS_FOLDER
         errors = self._build_wheels(wanted, place, wheels)
         if not errors:

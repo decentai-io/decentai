@@ -12,10 +12,12 @@ from ai_runtime.execution.grants import FunctionGrants
 from contracts.mcp import McpClient, McpError, McpTools
 from sim.mcp_server import FakeMcpServer
 from sim.resources import InMemoryResourceProvider
+from ai_runtime.tests.fake_container import workers
+from ai_runtime.tests import fake_container
 
 
 def run(awaitable):
-    return asyncio.run(awaitable)
+    return fake_container.run(awaitable)
 
 
 @pytest.fixture
@@ -160,7 +162,7 @@ class TestThroughTheGates:
 
     def executor(self, **more):
         doors = {k: more.pop(k) for k in list(more) if k in ChatSinks.names()}
-        return FunctionExecutor(provider=InMemoryResourceProvider(),
+        return FunctionExecutor(workers(), provider=InMemoryResourceProvider(),
                                 grants=FunctionGrants(self.GRANTS),
                                 sinks=ChatSinks(**doors), **more)
 
@@ -200,7 +202,7 @@ class TestThroughTheGates:
                     if m.get("method") == "tools/call"]
 
     def test_a_server_nobody_granted_is_not_called(self, server):
-        executor = FunctionExecutor(provider=InMemoryResourceProvider(),
+        executor = FunctionExecutor(workers(), provider=InMemoryResourceProvider(),
                                     grants=FunctionGrants([]))
         result, status = run(executor.invoke(
             served(server), "mcp_1.tools.echo", {"text": "hi"}, chat_level=3))

@@ -1,11 +1,11 @@
 """Running workers, and the answers to what they ask.
 
-One pool per process is the intent: approved agent -> one live
-WorkerHandle, spawned on first invocation, kept warm, replaced after
-death. The pool is also the ROUTER — the single place a worker's asks
-(resources.*, llm.complete, show, post, ask, propose, install,
-credential) are answered, by resolving the ask's call_id to the
-invocation that is entitled to answer it:
+One pool per process: approved agent -> one live WorkerHandle, started
+on first invocation in that agent's own place (confinement.py), kept
+warm, replaced after death. The pool is also the ROUTER — the single
+place a worker's asks (resources.*, llm.complete, show, post, ask,
+propose, install, credential) are answered, by resolving the ask's
+call_id to the invocation that is entitled to answer it:
 
     context = CallContext(resources, llm, progress)   built per invocation
     pool.invoke(agent, call_id, function, inputs, context, timeout)
@@ -40,12 +40,11 @@ honestly rather than guessing.
 
 from __future__ import annotations
 
-import logging
 import asyncio
 import contextvars
-import os
+import logging
 from functools import partial
-from typing import Any, Callable, ClassVar, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from ai_runtime.agents.confinement import Confinement
 from ai_runtime.agents.library import InstalledAgent
@@ -142,11 +141,9 @@ class CallContext:
 
 
 class WorkerPool:
-    #: Every live pool, for test teardown (terminate_all). Production
-    #: holds one pool for the process's lifetime and never calls it.
-    _live: ClassVar[List["WorkerPool"]] = []
-
-    def __init__(self) -> None:
+    def __init__(self, confinement: Confinement) -> None:
+        #: Where each agent's worker runs, and what confines it there.
+        self.confinement = confinement
         self._handles: Dict[str, WorkerHandle] = {}
         #: agent ref -> the digest its worker is running. Handles are
         #: keyed by approval and a handle never sees a digest, so this
@@ -155,21 +152,7 @@ class WorkerPool:
         self._running: Dict[str, str] = {}
         self._locks: Dict[str, asyncio.Lock] = {}
         self._calls: Dict[str, CallContext] = {}
-        self._loop: Optional[asyncio.AbstractEventLoop] = None
         self.logger = logging.getLogger(self.__class__.__name__)
-        WorkerPool._live.append(self)
-
-    def _bind_loop(self) -> None:
-        """A handle's tasks, futures and pipes belong to the loop that
-        started it; handing one to a different loop writes into a dead
-        transport. Production runs one loop forever, so this never
-        fires there — but a pool that outlives its loop (test runners
-        do this) starts over rather than lying."""
-        loop = asyncio.get_running_loop()
-        if self._loop is not loop:
-            self.terminate()
-            self._locks.clear()
-            self._loop = loop
 
     # ------------------------------------------------------------------
     # One invocation, end to end
@@ -182,17 +165,15 @@ class WorkerPool:
         function's ``(result, status)``. Raises TimeoutError past the
         host's clock and WorkerError when the worker itself is broken —
         the caller words both for the proposing loop."""
-        self._bind_loop()
         context.scope = contextvars.copy_context()
         self._calls[call_id] = context
-        place, before = None, {}
+        handle = None
+        before: Dict[str, int] = {}
         try:
             handle = await self._handle(agent)
             context.handle = handle
-            place = getattr(handle, "place", None)
-            if place is not None:
-                place.block(context.blocked)
-                before = place.reached()
+            handle.place.block(context.blocked)
+            before = handle.place.reached()
             try:
                 return await self._within(
                     handle.invoke(call_id, function, inputs, conversation),
@@ -211,14 +192,14 @@ class WorkerPool:
                 raise
         finally:
             self._calls.pop(call_id, None)
-            if place is not None:
+            if handle is not None:
                 # What this call's credential opened closes with it: the
                 # worker goes on to serve somebody else's call.
-                place.take_back(context.learned)
+                handle.place.take_back(context.learned)
                 context.learned = []
                 context.reached = {
                     host: count - before.get(host, 0)
-                    for host, count in place.reached().items()
+                    for host, count in handle.place.reached().items()
                     if count > before.get(host, 0)}
 
     @staticmethod
@@ -261,7 +242,7 @@ class WorkerPool:
     # ------------------------------------------------------------------
 
     async def _handle(self, agent: InstalledAgent) -> WorkerHandle:
-        """The approved agent's live worker, spawned if it is not
+        """The approved agent's live worker, started if it is not
         running. Keyed by the agent id, not the digest: one process per
         approval of a package, never one shared between organizations.
         A handshake failure raises WorkerError — installation verified
@@ -290,17 +271,15 @@ class WorkerPool:
                 await self.discard(key)
             # The worker speaks the platform's SDK, not the one copied
             # in the day the environment was built.
-            refresh = getattr(agent.environment, "refresh_sdk", None)
-            for problem in (refresh() if refresh is not None else []):
+            for problem in agent.environment.refresh_sdk():
                 self.logger.warning(
                     f"SDK not refreshed for {agent.agent_id}: {problem}")
             handle = WorkerHandle(
                 agent.environment.python, agent.folder, agent.manifest.document,
-                # Its own user, where workers are confined — per
-                # approval, as the worker itself is.
-                place=Confinement.place_for(key),
+                # Its own user and place, per approval, as the worker
+                # itself is.
+                self.confinement.place(key),
             )
-            handle.agent_ref = key
             # Each callback knows which worker is speaking: the router
             # answers an ask only for an invocation sent to that worker.
             handle.router = partial(self._route, handle)
@@ -338,37 +317,17 @@ class WorkerPool:
             await self.discard(agent_id)
 
     def terminate(self) -> None:
-        """Kill every worker process, synchronously, best-effort — for
-        teardown paths that have no event loop left to be polite on."""
+        """End every worker's user through the helper, synchronously —
+        for a shutdown that could not ask politely in time. Another
+        user's processes cannot be signalled from here; the helper ends
+        them, and takes away what they left."""
         for handle in self._handles.values():
-            process = handle.process
-            if process is not None and process.returncode is None:
-                if handle.place is not None:
-                    # Another user's process: the helper ends it, and
-                    # takes away what it left.
-                    handle.place.stop()
-                    handle.place.clear()
-                    continue
-                try:
-                    process.kill()
-                except Exception:
-                    # The transport may belong to a closed loop; the OS
-                    # does not care which loop a pid came from.
-                    # A worker in the agents' container has no pid here.
-                    try:
-                        if isinstance(process.pid, int):
-                            os.kill(process.pid, 15)
-                    except OSError:
-                        pass
+            if handle.alive:
+                handle.place.stop()
+                handle.place.clear()
         self._handles.clear()
         self._running.clear()
         self._calls.clear()
-
-    @classmethod
-    def terminate_all(cls) -> None:
-        for pool in cls._live:
-            pool.terminate()
-        cls._live.clear()
 
     # ------------------------------------------------------------------
     # The router — every ask a worker can make, answered per call_id
@@ -510,10 +469,8 @@ class WorkerPool:
             # site — and the manifest said which field does. Handed
             # over, it is a host the worker may reach until this call
             # ends.
-            place = getattr(context.handle, "place", None)
-            if place is not None:
-                context.learned.extend(place.learn(
-                    str(params.get("resource_id") or ""), answer) or [])
+            context.learned.extend(context.handle.place.learn(
+                str(params.get("resource_id") or ""), answer) or [])
         if operation in ("delete_data", "delete_file"):
             return {"deleted": bool(answer)}
         return answer

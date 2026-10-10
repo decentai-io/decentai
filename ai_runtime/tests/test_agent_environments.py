@@ -18,6 +18,7 @@ from ai_runtime.agents.environments import AgentEnvironment
 from ai_runtime.agents.library import AgentLibrary, AgentRefused
 from contracts.agent_manifest import load_manifest, manifest_hash
 from contracts.agent_package import AgentPackage
+from ai_runtime.tests.fake_container import FakeContainer, confinement, container
 
 FIXTURE = Path(__file__).resolve().parent / "fixtures" / "agents" / "notebook"
 
@@ -41,7 +42,7 @@ def output_of(env: AgentEnvironment, code: str) -> str:
 class TestAgentEnvironment:
     def test_builds_isolation_with_sdk_and_dependencies(self, tmp_path):
         env = AgentEnvironment(tmp_path / "env")
-        assert env.build(["humanize>=4.9,<5"]) == []
+        assert env.build(["humanize>=4.9,<5"], confinement().builder_place()) == []
         assert env.exists()
 
         # The dependency resolves inside the venv...
@@ -58,7 +59,7 @@ class TestAgentEnvironment:
 
     def test_no_dependencies_still_receives_the_sdk(self, tmp_path):
         env = AgentEnvironment(tmp_path / "env")
-        assert env.build([]) == []
+        assert env.build([], confinement().builder_place()) == []
         output_of(env, "import decentai_sdk.worker")
         # Nothing beyond the SDK: the host's packages did not leak in.
         assert run_in(env, "import yaml").returncode != 0
@@ -69,7 +70,7 @@ class TestAgentEnvironment:
         refreshed to it before a worker is spawned, and one that is
         current is left alone."""
         env = AgentEnvironment(tmp_path / "env")
-        assert env.build([]) == []
+        assert env.build([], confinement().builder_place()) == []
         copied = env._site_packages() / "decentai_sdk" / "worker.py"
         marker = env.root / AgentEnvironment.SDK_MARKER
         assert marker.read_text(encoding="utf-8") == AgentEnvironment.sdk_digest()
@@ -88,12 +89,12 @@ class TestAgentEnvironment:
         assert marker.read_text(encoding="utf-8") == AgentEnvironment.sdk_digest()
         # build() on an existing environment is the same refresh.
         marker.write_text("older-still", encoding="utf-8")
-        assert env.build([]) == []
+        assert env.build([], confinement().builder_place()) == []
         assert marker.read_text(encoding="utf-8") == AgentEnvironment.sdk_digest()
 
     def test_a_failing_install_leaves_no_half_environment(self, tmp_path):
         env = AgentEnvironment(tmp_path / "env")
-        errors = env.build(["decentai-no-such-package-xyzzy==9.9"])
+        errors = env.build(["decentai-no-such-package-xyzzy==9.9"], confinement().builder_place())
         assert errors and "dependency installation failed" in errors[0]
         assert not env.exists()
         assert not env.root.exists()
@@ -106,7 +107,8 @@ class TestWhatIsNotARequirement:
         try:
             env = AgentEnvironment(tmp_path / "env")
             errors = env._install(
-                ["humanize>=4.9,<5", "--index-url=https://elsewhere.example"])
+                ["humanize>=4.9,<5", "--index-url=https://elsewhere.example"],
+                confinement().builder_place())
         finally:
             AgentEnvironment.runner = None
         assert errors and "is not a requirement" in errors[0]
@@ -131,24 +133,27 @@ class TestPackagesForOneRun:
             return 0, ""
 
         AgentEnvironment.runner = runner
+        container().leaves = {"humanize-4.9.0-py3-none-any.whl": b"a wheel"}
         yield ran
         AgentEnvironment.runner = None
 
     def test_a_list_is_installed_once_and_handed_back_after(self, tmp_path, ran):
         env = AgentEnvironment(tmp_path / "envs" / "abc")
-        folder, errors = env.extras(["humanize >= 4.9", "titlecase"])
+        folder, errors = env.extras(["humanize >= 4.9", "titlecase"], confinement().builder_place())
         assert errors == []
         assert folder.parent == env.root / "extras"
         assert (folder / "humanize.py").is_file() and (folder / ".ready").is_file()
         [install] = ran
         assert install[install.index("--target") + 1] == str(folder)
-        assert install[-2:] == ["humanize>=4.9", "titlecase"]
+        # The list went to the builder; the runtime's pip was handed files.
+        assert install[-1].endswith("humanize-4.9.0-py3-none-any.whl")
+        assert "titlecase" not in install
 
         # The same list, in another order and spaced otherwise: the same folder.
-        again, errors = env.extras(["titlecase", "humanize>=4.9"])
+        again, errors = env.extras(["titlecase", "humanize>=4.9"], confinement().builder_place())
         assert (again, errors) == (folder, []) and len(ran) == 1
         # Another list is another folder.
-        other, errors = env.extras(["titlecase"])
+        other, errors = env.extras(["titlecase"], confinement().builder_place())
         assert errors == [] and other != folder and len(ran) == 2
 
     def test_what_is_not_a_package_never_reaches_pip(self, tmp_path, ran):
@@ -157,46 +162,18 @@ class TestPackagesForOneRun:
                       ["git+https://example.com/x.git"],
                       ["humanize @ https://example.com/humanize.whl"],
                       ["../somewhere"], ["humanize", ""], []):
-            folder, errors = env.extras(asked)
+            folder, errors = env.extras(asked, confinement().builder_place())
             assert folder is None and "asked for by its name" in errors[0], asked
-        folder, errors = env.extras([f"package{n}" for n in range(31)])
+        folder, errors = env.extras([f"package{n}" for n in range(31)], confinement().builder_place())
         assert folder is None and "at most 30" in errors[0]
         assert ran == []
 
     def test_an_install_that_fails_leaves_nothing(self, tmp_path):
-        AgentEnvironment.runner = lambda argv: (1, "No matching distribution")
-        try:
-            env = AgentEnvironment(tmp_path / "envs" / "abc")
-            folder, errors = env.extras(["decentai-no-such-package"])
-        finally:
-            AgentEnvironment.runner = None
+        container().build_fails = "No matching distribution"
+        env = AgentEnvironment(tmp_path / "envs" / "abc")
+        folder, errors = env.extras(["decentai-no-such-package"], confinement().builder_place())
         assert folder is None and "No matching distribution" in errors[0]
         assert list((env.root / "extras").iterdir()) == []
-
-
-class Builder:
-    """Stands where the spawn helper would: remembers what it was
-    asked, and leaves in the builder's spool what a test says the
-    build left there."""
-
-    def __init__(self):
-        self.asked = []
-        self.leaves = {"humanize-4.9.0-py3-none-any.whl": b"a wheel"}
-        self.fails = ""
-
-    def __call__(self, argv):
-        self.asked.append(list(argv[1:]))
-        if argv[1] != "run":
-            return 0, ""
-        if self.fails:
-            return 1, self.fails
-        spool = Path(argv[argv.index("--wheel-dir") + 1])
-        for name, content in self.leaves.items():
-            if content is None:
-                os.symlink(spool.parent / "elsewhere", spool / name)
-            else:
-                (spool / name).write_bytes(content)
-        return 0, ""
 
 
 class TestABuildWhereWorkersAreConfined:
@@ -207,14 +184,18 @@ class TestABuildWhereWorkersAreConfined:
     LIST = ["titlecase>=2.4,<3", "humanize>=4.9,<5"]
 
     @pytest.fixture
-    def builder(self):
-        stand_in = Builder()
-        Confinement.runner = stand_in
-        Confinement.SUPPORTED = True
+    def builder(self, tmp_path):
+        """The container with the builder in it, and the confinement
+        over it with its proxy serving: what a build is admitted to."""
+        stand_in = FakeContainer(tmp_path / "agents")
+        FakeContainer.live.remove(stand_in)
+        stand_in.leaves = {"humanize-4.9.0-py3-none-any.whl": b"a wheel"}
+        stand_in.confinement = Confinement(stand_in.install_dir, stand_in)
+        stand_in.confinement.open_the_way_out(0)
+        stand_in.asked.clear()
         yield stand_in
-        Confinement.runner = None
-        Confinement.current = None
-        Confinement.SUPPORTED = os.name == "posix"
+        stand_in.confinement.proxy.stop()
+        stand_in.stop_all_mine()
 
     @pytest.fixture
     def runtime(self):
@@ -234,14 +215,14 @@ class TestABuildWhereWorkersAreConfined:
         yield ran
         AgentEnvironment.runner = None
 
-    def build(self, tmp_path):
-        place = Confinement(tmp_path / "agents").builder_place()
+    def build(self, builder, tmp_path):
+        place = builder.confinement.builder_place()
         env = AgentEnvironment(tmp_path / "agents" / "envs" / "abc")
         return env, place, env.build(self.LIST, place=place)
 
     def test_the_builder_is_handed_the_list_and_the_runtime_the_files(
             self, builder, runtime, tmp_path):
-        env, place, errors = self.build(tmp_path)
+        env, place, errors = self.build(builder, tmp_path)
         assert errors == [] and env.exists()
 
         assert [asked[0] for asked in builder.asked] == [
@@ -270,7 +251,7 @@ class TestABuildWhereWorkersAreConfined:
 
     def test_the_builder_reads_the_environment_it_builds_for(
             self, builder, runtime, tmp_path):
-        place = Confinement(tmp_path / "agents").builder_place()
+        place = builder.confinement.builder_place()
         place.confinement.fences = True
         place.confinement.fence_lets_files_move = True
         env = AgentEnvironment(tmp_path / "agents" / "envs" / "abc")
@@ -287,7 +268,7 @@ class TestABuildWhereWorkersAreConfined:
         """The list is read by the builder's pip; the runtime unpacks
         the wheels it left, into the list's own folder, and keeps none
         of them."""
-        place = Confinement(tmp_path / "agents").builder_place()
+        place = builder.confinement.builder_place()
         env = AgentEnvironment(tmp_path / "agents" / "envs" / "abc")
         folder, errors = env.extras(["humanize>=4.9,<5"], place=place)
         assert errors == [], errors
@@ -302,8 +283,8 @@ class TestABuildWhereWorkersAreConfined:
 
     def test_a_build_that_fails_says_why_and_nothing_is_unpacked(
             self, builder, runtime, tmp_path):
-        builder.fails = "ERROR: No matching distribution found for titlecase"
-        env, _, errors = self.build(tmp_path)
+        builder.build_fails = "ERROR: No matching distribution found for titlecase"
+        env, _, errors = self.build(builder, tmp_path)
         assert errors and "No matching distribution" in errors[0]
         assert not env.root.exists()
         assert len(runtime) == 1, "the runtime's pip never ran"
@@ -314,7 +295,7 @@ class TestABuildWhereWorkersAreConfined:
             self, builder, runtime, tmp_path):
         builder.leaves["notes.txt"] = b"left by a build"
         builder.leaves["..whl"] = b"a name no wheel has"
-        env, _, errors = self.build(tmp_path)
+        env, _, errors = self.build(builder, tmp_path)
         assert errors == []
         assert [Path(argument).name for argument in runtime[1]
                 if argument.endswith(".whl")] == [
@@ -323,7 +304,7 @@ class TestABuildWhereWorkersAreConfined:
     def test_a_build_that_left_nothing_is_a_failure(
             self, builder, runtime, tmp_path):
         builder.leaves = {"notes.txt": b"left by a build"}
-        env, _, errors = self.build(tmp_path)
+        env, _, errors = self.build(builder, tmp_path)
         assert errors and "left nothing to install" in errors[0]
         assert not env.root.exists() and len(runtime) == 1
 
@@ -331,13 +312,13 @@ class TestABuildWhereWorkersAreConfined:
     def test_a_link_among_the_wheels_is_not_followed(
             self, builder, runtime, tmp_path):
         builder.leaves["settings-1.0-py3-none-any.whl"] = None
-        env, _, errors = self.build(tmp_path)
+        env, _, errors = self.build(builder, tmp_path)
         assert errors and "is not a file" in errors[0]
         assert not env.root.exists() and len(runtime) == 1
 
     def test_an_option_never_reaches_the_builder_either(
             self, builder, runtime, tmp_path):
-        place = Confinement(tmp_path / "agents").builder_place()
+        place = builder.confinement.builder_place()
         env = AgentEnvironment(tmp_path / "agents" / "envs" / "abc")
         errors = env.build(["-r/etc/passwd"], place=place)
         assert errors and "is not a requirement" in errors[0]
@@ -347,9 +328,7 @@ class TestABuildWhereWorkersAreConfined:
             self, builder, runtime, tmp_path, monkeypatch):
         monkeypatch.setattr(AgentLibrary, "_verify",
                             lambda self, env, digest, manifest: [])
-        Confinement.configure(tmp_path / "agents")
-        builder.asked.clear()
-        library = AgentLibrary(tmp_path / "agents")
+        library = AgentLibrary(tmp_path / "agents", builder.confinement)
         # The fixture declares no packages; this one declares one.
         package = tmp_path / "notebook"
         shutil.copytree(FIXTURE, package,
@@ -397,7 +376,7 @@ class TestLibraryEnvironmentStation:
     def install(self, tmp_path):
         from contracts.agent_manifest import load_manifest
 
-        library = AgentLibrary(tmp_path / "agents")
+        library = AgentLibrary(tmp_path / "agents", confinement())
         archive, digest = AgentPackage.build(FIXTURE)
         manifest, _ = load_manifest(FIXTURE / "manifest.yaml")
         loaded = library.install(digest, archive, manifest_hash(manifest.document))
@@ -461,7 +440,7 @@ class TestLibraryEnvironmentStation:
         library, digest, _ = self.install(tmp_path)
         library.environment(digest).remove()
 
-        restarted = AgentLibrary(tmp_path / "agents")
+        restarted = AgentLibrary(tmp_path / "agents", confinement())
         restarted.load_all()
         assert restarted.agent(digest) is None
         assert restarted.waiting() == [digest]
@@ -479,7 +458,7 @@ class TestLibraryEnvironmentStation:
 
         library, digest, _ = self.install(tmp_path)
         library.environment(digest).remove()
-        restarted = AgentLibrary(tmp_path / "agents")
+        restarted = AgentLibrary(tmp_path / "agents", confinement())
         restarted.load_all()
 
         building = threading.Event()

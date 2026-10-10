@@ -16,6 +16,8 @@ from ai_runtime.mind.state import RUNNING, AssistantState, Job
 from ai_runtime.tests.fixture_agents import load_agents
 from contracts.chat import event_error
 from sim.session_services import SimSessionServices
+from ai_runtime.tests.fake_container import workers
+from ai_runtime.tests import fake_container
 
 AGENTS_DIR = Path(__file__).resolve().parent / "fixtures" / "agents"
 
@@ -25,7 +27,7 @@ SYNC_SECRET = {"notebook__connection": {
 
 
 def run(awaitable):
-    return asyncio.run(awaitable)
+    return fake_container.run(awaitable)
 
 
 def verified(message):
@@ -44,7 +46,7 @@ def build(script, services=None, **kwargs):
     assert errors == {}
     services = services or SimSessionServices()
     return Session("chat_1", agents, FakeConnector(script), services,
-                   **kwargs), services
+                   workers=workers(), **kwargs), services
 
 
 async def approval_open(services, timeout=5.0):
@@ -171,7 +173,8 @@ class TestPicturesReachTheModel:
             action(action="say", text="I cannot see the image."),
             action(action="finish"),
         ])
-        session = Session("chat_1", agents, connector, services)
+        session = Session("chat_1", agents, connector, services,
+                          workers=workers())
         run(self._attach(session, services))
 
         assert connector.refusals == 1, "refused once, then never retried"
@@ -1013,7 +1016,7 @@ class TestDurableEvents:
         first = Session("chat_1", {}, FakeConnector([
             action(action="say", text="Hello!"),
             action(action="finish"),
-        ]), services)
+        ]), services, workers=workers())
 
         async def yesterday():
             await first.open()
@@ -1315,12 +1318,12 @@ class TestTheClockAction:
         assert errors == {}
         scheduler = Scheduler(
             MemoryScheduleStore(),
-            ScheduleRunner(agents, FunctionExecutor(
+            ScheduleRunner(agents, FunctionExecutor(workers(), 
                 provider=services.provider), wake),
             clock=lambda: now,
         )
         session = Session("chat_1", agents, FakeConnector(script), services,
-                          clock=scheduler)
+                          workers=workers(), clock=scheduler)
         holder["session"] = session
         return session, scheduler, services
 
@@ -1826,7 +1829,7 @@ class TestTheSocketKeepsHearing:
         async def scenario():
             from ai_runtime.door.host import SessionHost
 
-            host = SessionHost(SimSessionServices(), {})
+            host = SessionHost(SimSessionServices(), {}, workers())
             host.sessions["chat_1"] = Busy()
             await host.handle("chat_1", {"event": "stop"})
 
@@ -2227,7 +2230,7 @@ class TestTheKillSwitch:
             action(action="open_agent", agent="notebook"),
             action(action="start", function="notebook.note.find", inputs={}),
         ]}}
-        host = SessionHost(services, SimpleNamespace(loaded=lambda: agents))
+        host = SessionHost(services, SimpleNamespace(loaded=lambda: agents), workers())
 
         async def scenario():
             await host.handle("chat_1", {"event": "user_message", "text": "search"})

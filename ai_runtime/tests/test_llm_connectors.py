@@ -17,10 +17,11 @@ from ai_runtime.llms import (
 )
 from contracts.generate_llm_providers import ProviderCatalogWriter
 from contracts.llm_providers import LlmProviders
+from ai_runtime.tests import fake_container
 
 
 def run(coro):
-    return asyncio.run(coro)
+    return fake_container.run(coro)
 
 
 class TestFactory:

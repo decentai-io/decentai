@@ -17,9 +17,7 @@ from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Request
 
-from ai_runtime.agents.confinement import Confinement
 from ai_runtime.events import Events
-from ai_runtime.agents.spawner import Spawner
 from ai_runtime.door.auth import verify_backend_service
 from contracts.container import ContainerUsage
 
@@ -63,20 +61,20 @@ async def events(request: Request, limit: int = 200, kinds: str = "",
 @router.get("/internal/monitor/usage")
 async def usage(request: Request):
     """What the agents are given and what each uses now, and what
-    the runtime's own container holds. ``usage`` is null where nobody
-    adds it up: agents with no container of their own."""
+    the runtime's own container holds. ``usage`` is null when the
+    agents' container did not answer."""
     the_backend(request)
-    return {"usage": await asyncio.to_thread(Spawner.current.usage),
+    state = request.app.state
+    return {"usage": await asyncio.to_thread(state.container.usage),
             "runtime": own.now(),
-            "confined": Confinement.report()}
+            "confined": state.confinement.report()}
 
 
 @router.get("/internal/monitor/files")
 async def files(request: Request, agent: str = ""):
     """What one agent keeps in its home and its spool now."""
     the_backend(request)
-    place = Confinement.place_of(agent)
+    place = request.app.state.confinement.existing_place(agent)
     if place is None:
-        return {"error": "That agent has no place here: it has not run, "
-                         "or nothing confines agents."}
+        return {"error": "That agent has no place here: it has not run."}
     return await asyncio.to_thread(place.files)

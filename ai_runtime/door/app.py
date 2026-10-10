@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 from fastapi import APIRouter, FastAPI
 
+from ai_runtime.agents.pool import WorkerPool
 from ai_runtime.chat.clock import ScheduleRunner, Scheduler
 from ai_runtime.door import monitor, socket
 from ai_runtime.door.host import ServingRoster, SessionHost
@@ -20,18 +21,16 @@ router.include_router(monitor.router)
 WORKERS_STOP_SECONDS = 20.0
 
 
-def create_app(settings: RuntimeSettings | None = None, services=None,
-               library=None, agents=None) -> FastAPI:
-    """``services`` is the platform surface the sessions live against
-    (docs/reference/session-door.md) — the backend's client, or the sim.
-    Without one the chat door refuses politely and every other door
-    serves as always.
-
-    ``library`` is the live AgentLibrary — what code this host has, and
-    the only thing that may change it. A test that only needs certain
-    agents present may pass a plain ``agents`` mapping instead; the
-    library keys by package digest, so a stub's keys are its addresses."""
-    settings = settings or RuntimeSettings.from_env()
+def create_app(settings: RuntimeSettings, services, library, container,
+               confinement, agents=None) -> FastAPI:
+    """The application, from the parts main.py built: ``services`` is
+    the backend's client, the platform surface the sessions live
+    against (docs/reference/session-door.md); ``library`` the live
+    AgentLibrary, what code this host has and the only thing that may
+    change it; ``container`` the agents' container, where every worker
+    runs; ``confinement`` what holds a worker there. A test that only
+    needs certain agents present may pass a plain ``agents`` mapping
+    in place of a library."""
     if library is None:
         # A mapping is enough for the doors that only read what is
         # serving; without a library nothing can be installed, which is
@@ -42,7 +41,7 @@ def create_app(settings: RuntimeSettings | None = None, services=None,
 
     host = scheduler = None
     if services is not None:
-        host = SessionHost(services, library)
+        host = SessionHost(services, library, WorkerPool(confinement))
         # The platform's own voice, beside the host: the clock. Its
         # fires are deterministic — gated by the manifest's word
         # (schedulable), never by a model. A schedule fires as its
@@ -94,6 +93,8 @@ def create_app(settings: RuntimeSettings | None = None, services=None,
     app.state.host = host
     app.state.scheduler = scheduler
     app.state.library = library
+    app.state.container = container
+    app.state.confinement = confinement
 
     app.include_router(router)
 

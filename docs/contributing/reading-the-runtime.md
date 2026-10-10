@@ -29,7 +29,7 @@ Three pages, in this order. The code keeps their words.
 
 | Read | For |
 |---|---|
-| `main.py` | what is built at start, in this order: `Events.configure` and `Spawner.configure` (where agents run, and the wait for their container when it is another one), `Confinement.configure`, the `AgentLibrary`, the services (the backend's, or `sim/`) |
+| `main.py` | what is built at start, in this order: `Events.configure`, the `AgentsContainer` (waited for), `Confinement` (`check`, then `open_the_way_out`), the `AgentLibrary`, the backend's services |
 | `door/app.py` `create_app` | the `SessionHost`, the `Scheduler`, and what stops at shutdown |
 | `door/auth.py`, `door/socket.py` | who may dial, and the loop that hands every frame to the host |
 
@@ -320,12 +320,11 @@ With [the sandbox](../system/sandbox.md) open beside it.
   the code store by digest, the per-agent environment and its build,
   and the two names of an agent (the platform's ref outside, the
   package's id inside).
-- `agents/spawner.py`, `agents_container/service.py` — where a worker's
-  process is started: beside the runtime (`Spawner`), or in the agents'
-  own container, asked over a socket (`RemoteSpawner`) and started
-  there by `SpawnerService`, which also carries the worker's lines
-  (`_start`, `_carry`) and passes workers' connections on to the
-  runtime's proxy (`_pass_on`).
+- `agents/container.py`, `agents_container/service.py` — where every
+  process of an agent's is started: the agents' container, asked over
+  a socket (`AgentsContainer`) and started there by `SpawnerService`,
+  which also carries a worker's lines (`_start`, `_carry`) and passes
+  workers' connections on to the runtime's proxy (`_pass_on`).
 - `agents_container/usage.py` — what the agents' container is given and what
   each agent uses, read from the kernel (`AgentsUsage.sample`), and who
   is ended when they use nearly all of it (`over`). The spawner's
@@ -340,8 +339,8 @@ With [the sandbox](../system/sandbox.md) open beside it.
 
 Check:
 
-- What a worker gets when confinement is not supported on the host,
-  and that the runtime says so at start.
+- That a runtime whose agents' container cannot confine does not
+  start, and says what to mend (`Confinement.check`).
 - The address the proxy checked is the one it connects to; a name that
   resolves differently a moment later gains nothing.
 - The limits: connections per worker and in total, and the idle
@@ -354,7 +353,7 @@ Check:
 Tests: `ai_runtime/tests/test_confinement.py`,
 `ai_runtime/tests/test_egress.py`,
 `ai_runtime/tests/test_agent_environments.py`,
-`ai_runtime/tests/test_spawner.py`, `ai_runtime/tests/test_usage.py`,
+`ai_runtime/tests/test_container.py`, `ai_runtime/tests/test_usage.py`,
 `ai_runtime/tests/test_events.py`, and the two that need the image:
 `ai_runtime/tests/test_confinement_live.py` (one container) and
 `ai_runtime/tests/test_spawner_live.py` (the runtime and the agents in

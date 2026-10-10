@@ -81,10 +81,10 @@ class FunctionExecutor:
 
     def __init__(
         self,
+        workers: WorkerPool,
         provider=None,
         sinks: Optional[ChatSinks] = None,
         grants=None,
-        workers: Optional[WorkerPool] = None,
         conversation: str = "",
         safety: Optional[Dict[str, Any]] = None,
     ):
@@ -100,9 +100,8 @@ class FunctionExecutor:
         #: every call (call.conversation): what lets a function keep a
         #: browser open between calls for one chat and no other.
         self.conversation = str(conversation or "")
-        # The pool the invocations run in. Pass the process's shared
-        # pool so workers stay warm across chats; absent, the executor
-        # lazily owns a private one — the test-and-standalone path.
+        #: The process's one pool of workers: an agent has one worker
+        #: here, whoever calls it, so workers stay warm across chats.
         self.workers = workers
         self.logger = logging.getLogger(self.__class__.__name__)
         #: What a running call may ask of the chat, checked and handed
@@ -110,7 +109,8 @@ class FunctionExecutor:
         #: deployment's Safety settings too — the sites no agent may
         #: open, the packages a program may install — reached here as
         #: ``safety``, which the session writes again at each refresh.
-        self.surface = CallSurface(self.sinks, safety, self.logger)
+        self.surface = CallSurface(self.sinks, workers.confinement, safety,
+                                   self.logger)
         #: call_id -> the hosts that call's worker connected to, from
         #: the call's end until its line on the trail is written.
         self._reached: Dict[str, Dict[str, int]] = {}
@@ -383,7 +383,7 @@ class FunctionExecutor:
 
     async def screen_input(self, call_id: str, events: list) -> bool:
         """The person acting on a screen a running call shows."""
-        return await self._pool().screen_input(call_id, events)
+        return await self.workers.screen_input(call_id, events)
 
     async def _execute(
         self,
@@ -454,7 +454,7 @@ class FunctionExecutor:
                 result, status = await asyncio.wait_for(
                     agent.run(agent.declared(canonical_name), inputs), timeout)
             else:
-                result, status = await self._pool().invoke(
+                result, status = await self.workers.invoke(
                     agent, call_id,
                     agent.declared(canonical_name), inputs, context, timeout,
                     conversation=self.conversation,
@@ -524,11 +524,6 @@ class FunctionExecutor:
                 return (f"{host} is on the list of sites nothing may open "
                         f"here.")
         return ""
-
-    def _pool(self) -> WorkerPool:
-        if self.workers is None:
-            self.workers = WorkerPool()
-        return self.workers
 
     # ------------------------------------------------------------------
     # The trail

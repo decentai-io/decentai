@@ -21,11 +21,12 @@ from ai_runtime.agents.workers import WorkerHandle
 from ai_runtime.tests.test_agent_worker_handle import (  # noqa: F401
     FIXTURE, manifest_document, venv,
 )
-from ai_runtime.tests.test_confinement import helper  # noqa: F401
+from ai_runtime.tests.test_confinement import fake  # noqa: F401
 from ai_runtime.tests.test_egress import (  # noqa: F401
     echo, get, names, network, proxy, site,
 )
 from ai_runtime.tests.test_usage import Scripted
+from ai_runtime.tests.fake_container import confinement, container
 
 
 @pytest.fixture
@@ -142,8 +143,8 @@ class TestTheLog:
 
 class TestTheHelper:
     def test_each_job_asked_of_it_is_written_down_for_its_place(
-            self, events, helper, tmp_path):
-        place = Confinement(tmp_path).place("agt_aaaa")
+            self, events, fake, tmp_path):
+        place = Confinement(tmp_path, fake).place("agt_aaaa")
         place.label = "Notes"
         assert place.prepare() == []
         found = kinds(tmp_path, "helper")
@@ -154,78 +155,66 @@ class TestTheHelper:
                    for event in found)
         assert found[3]["asked"] == [str(place.user), str(place.home)]
 
-    def test_a_job_it_refused_says_so(self, events, helper, tmp_path):
-        helper.refuses.add("stop")
-        place = Confinement(tmp_path).place("agt_aaaa")
+    def test_a_job_it_refused_says_so(self, events, fake, tmp_path):
+        fake.refuses.add("stop")
+        place = Confinement(tmp_path, fake).place("agt_aaaa")
         assert place.stop()
         found = kinds(tmp_path, "helper")[-1]
         assert found["job"] == "stop" and found["code"] == 126
         assert "no stop today" in found["refused"]
 
     def test_a_program_run_as_an_agent_is_written_down(
-            self, events, helper, tmp_path):
-        place = Confinement(tmp_path).builder_place()
+            self, events, fake, tmp_path):
+        place = Confinement(tmp_path, fake).builder_place()
         place.label = "the builder"
-        place.run(["python", "-m", "pip", "wheel", "humanize"])
+        place.run([sys.executable, "-c", "pass"])
         found = kinds(tmp_path, "program")[-1]
-        assert found["program"] == "python -m pip wheel humanize"
+        assert found["program"] == f"{sys.executable} -c pass"
         assert found["name"] == "the builder" and found["code"] == 0
         assert found["agent"] == Confinement.BUILDER_NAME
 
     def test_what_an_agent_keeps_is_listed_by_its_own_user(
-            self, events, helper, tmp_path):
-        confinement = Confinement(tmp_path)
+            self, events, fake, tmp_path):
+        confinement = Confinement(tmp_path, fake)
         place = confinement.place("agt_aaaa")
-        listed = {"files": [{"path": str(place.home / "kept"), "bytes": 4,
-                             "modified": 1}], "count": 1, "bytes": 4}
-        asked = []
-
-        def runner(argv):
-            asked.append(list(argv))
-            return 0, json.dumps(listed)
-
-        Confinement.runner = runner
-        assert place.files() == listed
-        line = asked[-1]
+        place.home.mkdir(parents=True)
+        (place.home / "kept").write_text("four", encoding="utf-8")
+        place.spool.mkdir(parents=True)
+        listed = place.files()
+        assert listed["count"] == 1 and listed["bytes"] == 4
+        assert listed["files"][0]["path"] == str(place.home / "kept")
+        [line] = fake.asked
         # Through the helper, as the agent's user, and nothing is
         # stopped after: a worker may be running beside it.
-        assert line[1:3] == ["run", str(place.user)]
+        assert line[:2] == ["run", str(place.user)]
         assert str(place.home) in line and str(place.spool) in line
-        assert len(asked) == 1
 
     def test_what_it_keeps_on_disk_is_measured_as_its_own_user(
-            self, helper, tmp_path):
-        place = Confinement(tmp_path).place("agt_aaaa")
+            self, fake, tmp_path):
+        place = Confinement(tmp_path, fake).place("agt_aaaa")
         line = place.measure_line()
         assert line[1:3] == ["run", str(place.user)]
         # Named by its whole path: the helper becomes no other.
         assert line[-4:] == ["/usr/bin/du", "-sb", str(place.home), str(place.spool)]
 
-    def test_a_listing_that_fails_says_so(self, events, tmp_path):
-        Confinement.SUPPORTED = True
-        Confinement.runner = lambda argv: (1, "no")
-        try:
-            place = Confinement(tmp_path).place("agt_aaaa")
-            assert "error" in place.files()
-        finally:
-            Confinement.runner = None
-            Confinement.SUPPORTED = os.name == "posix"
+    def test_a_listing_that_fails_says_so(self, events, fake, tmp_path):
+        fake.refuses.add("run")
+        place = Confinement(tmp_path, fake).place("agt_aaaa")
+        assert "error" in place.files()
 
-    def test_asking_for_a_place_gives_nobody_one(self, helper, tmp_path):
-        Confinement.current = Confinement(tmp_path)
-        assert Confinement.place_of("agt_never_ran") is None
-        assert Confinement.current._read_table() == {}
-        given = Confinement.place_for("agt_aaaa")
-        assert Confinement.place_of("agt_aaaa").user == given.user
-        Confinement.current = None
-        assert Confinement.place_of("agt_aaaa") is None
+    def test_asking_for_a_place_gives_nobody_one(self, fake, tmp_path):
+        confinement = Confinement(tmp_path, fake)
+        assert confinement.existing_place("agt_never_ran") is None
+        assert confinement._read_table() == {}
+        given = confinement.place("agt_aaaa")
+        assert confinement.existing_place("agt_aaaa").user == given.user
 
 
 class TestAWorker:
     def test_its_life_and_its_log_are_written_down(self, events, venv, tmp_path):
         async def scenario():
-            handle = WorkerHandle(venv.python, FIXTURE, manifest_document())
-            handle.agent_ref = "agt_notes"
+            handle = WorkerHandle(venv.python, FIXTURE, manifest_document(),
+                                  confinement().place("agt_notes"))
             assert await handle.start() == []
             await handle.stop()
         asyncio.run(scenario())
@@ -234,7 +223,6 @@ class TestAWorker:
         assert [event["kind"] for event in found] == [
             "worker.started", "worker.ended"]
         assert found[0]["agent"] == "agt_notes" and found[0]["name"] == name
-        assert found[0]["confined"] is False and found[0]["where"] == "here"
         assert found[1]["why"] == "it was asked to leave"
         assert "code" in found[1]
 
@@ -242,7 +230,7 @@ class TestAWorker:
         async def scenario():
             document = manifest_document()
             document["implementation"]["entrypoint"] = "agent:Nope"
-            handle = WorkerHandle(venv.python, FIXTURE, document)
+            handle = WorkerHandle(venv.python, FIXTURE, document, confinement().place("agt_test"))
             assert await handle.start()
         asyncio.run(scenario())
         found = kinds(tmp_path, "worker.started", "worker.ended")
@@ -269,8 +257,8 @@ class TestAWorker:
                 return [str(python), "-c", script]
 
         async def scenario():
-            handle = Talking(sys.executable, FIXTURE, manifest_document())
-            handle.agent_ref = "agt_notes"
+            handle = Talking(sys.executable, FIXTURE, manifest_document(),
+                             confinement().place("agt_notes"))
             assert await handle.start() == []
             await asyncio.sleep(0.3)
             await handle.kill()
@@ -423,7 +411,9 @@ class TestTheDoor:
             "aud": settings.backend_service_audience,
             "iat": now, "nbf": now, "exp": now + 60,
         }, private, algorithm="RS256")
-        client = TestClient(create_app(settings, agents={}))
+        client = TestClient(create_app(
+            settings, services=None, library=None, container=container(),
+            confinement=confinement(), agents={}))
         return client, {"Authorization": f"Bearer {token}"}
 
     def test_nobody_else_is_answered(self, door):
@@ -451,7 +441,9 @@ class TestTheDoor:
         # Its own container, as it read of itself: nothing here, where
         # there is no kernel ledger to read.
         assert set(said["runtime"]) == {"memory", "memory_limit", "cpu", "cpus"}
-        assert said["confined"] == {"user": False, "files": False, "network": False}
+        # The fake kernel has every fence; nothing holds a worker to the
+        # proxy here.
+        assert said["confined"] == {"user": True, "files": True, "network": False}
 
     def test_an_agent_with_no_place_has_nothing_to_list(self, door):
         client, backend = door

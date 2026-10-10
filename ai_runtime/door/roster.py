@@ -20,7 +20,7 @@ import asyncio
 import base64
 from typing import Any, Callable, Dict, Optional
 
-from ai_runtime.agents import ApprovedAgent, Confinement, InstalledAgent
+from ai_runtime.agents import ApprovedAgent, InstalledAgent
 from ai_runtime.agents.mcp import McpServer
 from ai_runtime.agents.pool import WorkerPool
 
@@ -292,7 +292,7 @@ class AgentRoster:
                 # With it, what this process holds the agent to: the
                 # agent's page says which part of that is not enforced.
                 await report(chat_id, ref, digest, state, error,
-                             confined=Confinement.report())
+                             confined=self.workers.confinement.report())
             except Exception as exc:
                 self._reported.discard(key)
                 self.logger.warning(f"Readiness of {ref} not reported: {exc}")

@@ -19,12 +19,14 @@ from ai_runtime.llms import FakeConnector
 from ai_runtime.tests.fixture_agents import load_agents
 from sim.schedules import MemoryScheduleStore
 from sim.session_services import SimSessionServices
+from ai_runtime.tests.fake_container import workers
+from ai_runtime.tests import fake_container
 
 AGENTS_DIR = Path(__file__).resolve().parent / "fixtures" / "agents"
 
 
 def run(awaitable):
-    return asyncio.run(awaitable)
+    return fake_container.run(awaitable)
 
 
 def action(**kwargs):
@@ -125,7 +127,7 @@ class TestScheduledFunctions:
         async def scenario():
             services = SimSessionServices()
             runner = ScheduleRunner(
-                roster(), FunctionExecutor(provider=services.provider), wake)
+                roster(), FunctionExecutor(workers(), provider=services.provider), wake)
             outcome = await runner.fire(Schedule(
                 "chat_1", "invoke", function="notebook.note.find",
                 inputs={}, wake_field="notes"))
@@ -146,7 +148,7 @@ class TestScheduledFunctions:
                 "notebook__note", {"title": "Pay rent",
                                    "notebook": "personal"}, {})
             runner = ScheduleRunner(
-                roster(), FunctionExecutor(provider=services.provider), wake)
+                roster(), FunctionExecutor(workers(), provider=services.provider), wake)
             outcome = await runner.fire(Schedule(
                 "chat_1", "invoke", function="notebook.note.find",
                 inputs={}, wake_field="notes"))
@@ -163,7 +165,7 @@ class TestScheduledFunctions:
         async def scenario():
             services = SimSessionServices()
             runner = ScheduleRunner(
-                roster(), FunctionExecutor(provider=services.provider), wake)
+                roster(), FunctionExecutor(workers(), provider=services.provider), wake)
             outcome = await runner.fire(Schedule(
                 "chat_1", "invoke", function="notebook.note.save",
                 inputs={"notebook": "x", "title": "sneak"}))
@@ -185,7 +187,7 @@ class TestScheduledFunctions:
                        text="Reminder: you have 1 note due — Pay rent."),
                 action(action="finish"),
             ]),
-            services,
+            services, workers=workers(),
         )
 
         async def scenario():
@@ -395,7 +397,7 @@ class TestTheCalendar:
                 pass
 
             assistant = Assistant(AssistantState(), {}, FakeConnector([]),
-                                  FunctionExecutor(provider=None),
+                                  FunctionExecutor(workers(), provider=None),
                                   ChatSinks(say=say), now=lambda: instant,
                                   timezone=tz)
             assert assistant._stamp() == expected

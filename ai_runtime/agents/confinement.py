@@ -5,8 +5,12 @@ about what an agent can TAKE: a worker started as the runtime's user
 reads the runtime's settings and may signal every other worker, and one
 started as its own user can do neither.
 
-    Confinement.configure(install_dir)      once, at start
-    place = Confinement.place_for(agent_id) None where nothing confines
+    confinement = Confinement(install_dir, container)   once, at start
+    confinement.check()                     the helper and the kernel, proved;
+                                            raises where workers cannot be confined
+    confinement.open_the_way_out(port)      the proxy, and the proof that nothing
+                                            goes around it
+    place = confinement.place(agent_id)     where one approved agent's worker runs
 
     place.prepare()                         its folders, emptied and its own
     place.argv(worker_argv)                 the spawn line, through the helper
@@ -15,17 +19,12 @@ started as its own user can do neither.
     place.run(argv, reads, environment)     one program, to its end
 
 The runtime is an ordinary user and cannot start a child as somebody
-else; the spawn helper (spawn_helper.c) can, and does nothing else. It
-is in the runtime's image and nowhere else — a developer's machine has
-none, ``place_for`` answers None there, and workers run as they always
-have. The runtime says which it is when it starts.
-
-WHERE THE HELPER RUNS. Wherever workers do (spawner.py): in this
-container, or — where a deployment keeps agents in a container of
-their own — in that one, asked over a socket. The folders below are on
-a volume both containers hold at one path, so everything here that
-makes, reads or removes a folder does it directly, and only running a
-program crosses.
+else; the spawn helper (agents_container/spawn_helper.c) can, and does
+nothing else. It runs where workers run — in the agents' container, on
+this module's order, through ``container`` (agents/container.py). The
+folders below are on a volume both containers hold at one path, so
+everything here that makes, reads or removes a folder does it
+directly, and only running a program crosses.
 
 WHERE IT LIVES.
 
@@ -45,26 +44,32 @@ no more the runtime's than the agent's is.
 
 from __future__ import annotations
 
-import logging
 import hashlib
 import json
+import logging
 import os
 import re
+import sys
 import threading
 import time
 from pathlib import Path
-from typing import Callable, ClassVar, Dict, List, Optional, Sequence
+from typing import Dict, List, Optional, Sequence
 from urllib.parse import urlsplit
 
+from ai_runtime.agents.container import AgentsContainer
 from ai_runtime.agents.egress import EgressProxy
 from ai_runtime.events import Events
-from ai_runtime.agents.spawner import Spawner
 
 PLAIN_NAME_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
 
+class ConfinementFailed(RuntimeError):
+    """Workers cannot be confined here, and the runtime does not start."""
+
+
 class WorkerPlace:
-    """Where one agent's worker runs: its user, its home, its spool."""
+    """Where one agent's worker runs: its user, its home, its spool,
+    and its pass at the proxy."""
 
     def __init__(self, confinement: "Confinement", name: str, user: int):
         self.confinement = confinement
@@ -87,21 +92,26 @@ class WorkerPlace:
         #: where the kernel's Landlock lets files move and not before.
         self.moves_files = False
 
+    @property
+    def proxy(self) -> EgressProxy:
+        return self.confinement.proxy
+
+    @property
+    def container(self) -> AgentsContainer:
+        return self.confinement.container
+
     # ------------------------------------------------------------------
     # The network
     # ------------------------------------------------------------------
 
     def admit(self, agent_name: str, network: dict) -> None:
         """A pass at the proxy for this worker, opening what its
-        manifest declared. Nothing, where no proxy runs."""
+        manifest declared."""
         self.label = str(agent_name or self.name)
-        proxy = self.confinement.egress
-        if proxy is None:
-            return
         self.dismiss()
         self.from_secrets = [str(f) for f in (network or {}).get("from_secrets") or []]
-        self.token = proxy.admit(f"{agent_name} ({self.name})", network,
-                                 whose=self.whose())
+        self.token = self.proxy.admit(f"{agent_name} ({self.name})", network,
+                                      whose=self.whose())
 
     def whose(self) -> Dict[str, object]:
         """Whose what runs here is, for where what agents use is
@@ -116,19 +126,13 @@ class WorkerPlace:
     def measure_line(self) -> List[str]:
         """The line that says how much this place's user keeps on
         disk, in its home and its spool: run as that user, the only
-        one who may read them, by whoever adds up what agents use
-        (agents_container/service.py). It measures and ends. The helper takes
-        a program by its whole path."""
+        one who may read them, by the spawner (agents_container/service.py),
+        now and then while the worker runs. It measures and ends."""
         return self.argv([self.MEASURER, "-sb", str(self.home), str(self.spool)])
 
-    def _ask(self, arguments: Sequence[str]) -> List[str]:
-        """The helper, asked for one of its jobs for this place."""
-        return self.confinement.ask(arguments, whose=self.whose())
-
     def dismiss(self) -> None:
-        proxy = self.confinement.egress
-        if proxy is not None and self.token:
-            proxy.dismiss(self.token)
+        if self.token:
+            self.proxy.dismiss(self.token)
         self.token = ""
 
     def learn(self, secret_id: str, credential: dict) -> list:
@@ -137,10 +141,8 @@ class WorkerPlace:
         agent's to reach until it is taken back — when the call that
         was handed the credential ends. A worker serves every person of
         an organization, and a host one person's credential named is
-        not the next person's call's to reach. Returns what was lent;
-        nothing, where no proxy runs."""
-        proxy = self.confinement.egress
-        if proxy is None or not self.token or not isinstance(credential, dict):
+        not the next person's call's to reach. Returns what was lent."""
+        if not self.token or not isinstance(credential, dict):
             return []
         named = []
         for declared in self.from_secrets:
@@ -148,41 +150,36 @@ class WorkerPlace:
             field, _, port = field.partition(":")
             if secret != str(secret_id or ""):
                 continue
-            host, typed = self.where(credential.get(field))
+            host, written_port = self.where(credential.get(field))
             if host:
                 # The port the manifest declared; else the one the
                 # person wrote into the address; else the web's.
-                on = int(port) if port else typed
+                on = int(port) if port else written_port
                 named.append(f"{host}:{on}" if on else host)
-        return proxy.lend(self.token, named) if named else []
+        return self.proxy.lend(self.token, named) if named else []
 
     def lend(self, hosts: List[str]) -> list:
         """Hosts opened for one call — a person allowed them on a code
         card: open on this worker's way out until they are taken back.
-        Returns what was lent; nothing, where no proxy runs."""
-        proxy = self.confinement.egress
-        if proxy is None or not self.token:
+        Returns what was lent."""
+        if not self.token:
             return []
-        return proxy.lend(self.token, hosts)
+        return self.proxy.lend(self.token, hosts)
 
     def take_back(self, lent: list) -> None:
-        proxy = self.confinement.egress
-        if proxy is not None and self.token and lent:
-            proxy.take_back(self.token, lent)
+        if self.token and lent:
+            self.proxy.take_back(self.token, lent)
 
     def block(self, names: List[str]) -> None:
         """The sites no agent may open here (Settings:Safety)."""
-        proxy = self.confinement.egress
-        if proxy is not None and self.token:
-            proxy.block(self.token, names)
+        if self.token:
+            self.proxy.block(self.token, names)
 
     def reached(self) -> Dict[str, int]:
-        """The hosts this worker connected to, counted; nothing, where
-        no proxy runs."""
-        proxy = self.confinement.egress
-        if proxy is None or not self.token:
+        """The hosts this worker connected to, counted."""
+        if not self.token:
             return {}
-        return proxy.reached(self.token)
+        return self.proxy.reached(self.token)
 
     @staticmethod
     def where(value) -> tuple:
@@ -240,16 +237,21 @@ class WorkerPlace:
 
     def stop_line(self) -> List[str]:
         """The line that ends everything this place's user runs — for
-        whoever has to end a program here and may not signal it."""
+        the spawner, which has to end a program here and may not
+        signal it."""
         return [str(self.confinement.helper), "stop", str(self.user)]
+
+    def _ask(self, job: Sequence[str]) -> List[str]:
+        """The helper, asked for one of its jobs for this place."""
+        return self.confinement.ask(job, whose=self.whose())
 
     def run(self, argv: Sequence[str], reads: Sequence[str | Path] = (),
             environment: Optional[Dict[str, str]] = None,
             timeout: Optional[float] = None,
-            feed: Optional[str] = None, errors: str = Spawner.MERGE,
+            feed: Optional[str] = None, errors: str = AgentsContainer.MERGE,
             cwd: str = "/", held: bool = True) -> tuple:
         """One program, run here to its end as this place's user.
-        Returns (return code, what it said). Whatever it started ends
+        Returns (return code, what it wrote). Whatever it started ends
         with it, and one that outlasts ``timeout`` is ended the only
         way another user's program can be: through the helper.
         ``held`` is ``argv``'s."""
@@ -257,14 +259,11 @@ class WorkerPlace:
         began = time.monotonic()
         code = None
         try:
-            if Confinement.runner is not None:
-                code, said = Confinement.runner(line)
-            else:
-                code, said = Spawner.current.run(
-                    line, environment=self.environment(dict(environment or {})),
-                    cwd=cwd, timeout=timeout, feed=feed, errors=errors,
-                    stop=self.stop_line(), whose=self.whose())
-            return code, said
+            code, output = self.container.run(
+                line, environment=self.environment(dict(environment or {})),
+                cwd=cwd, timeout=timeout, feed=feed, errors=errors,
+                stop=self.stop_line(), whose=self.whose())
+            return code, output
         finally:
             Events.record(
                 "program", **self.whose(), code=code,
@@ -277,7 +276,8 @@ class WorkerPlace:
     #: may end it without ending the worker beside it.
     LISTING = (
         "import json, os, signal, sys\n"
-        "signal.alarm(10)\n"
+        "if hasattr(signal, 'alarm'):\n"
+        "    signal.alarm(10)\n"
         "found, total, count = [], 0, 0\n"
         "for root in sys.argv[2:]:\n"
         "    for folder, _, names in os.walk(root):\n"
@@ -303,22 +303,16 @@ class WorkerPlace:
         "bytes"}``, the first ``LISTED_MAX`` of them listed and all of
         them counted — or ``{"error"}``. Asked of the agent's own user,
         beside a worker that may be running, which is left running."""
-        import json
-        import sys
-
         line = self.argv(
             [sys.executable, "-I", "-c", self.LISTING, str(self.LISTED_MAX),
              str(self.home), str(self.spool)])
-        if Confinement.runner is not None:
-            code, said = Confinement.runner(line)
-        else:
-            code, said = Spawner.current.run(
-                line, environment=self.environment(
-                    {"PATH": os.environ.get("PATH", "")}),
-                cwd="/", timeout=self.LISTING_SECONDS, errors=Spawner.DROP,
-                stop=self.stop_line())
+        code, output = self.container.run(
+            line, environment=self.environment(
+                {"PATH": os.environ.get("PATH", "")}),
+            cwd="/", timeout=self.LISTING_SECONDS, errors=AgentsContainer.DROP,
+            stop=self.stop_line())
         try:
-            found = json.loads(said) if code == 0 else None
+            found = json.loads(output) if code == 0 else None
         except ValueError:
             found = None
         if not isinstance(found, dict):
@@ -340,7 +334,7 @@ class WorkerPlace:
             str(Confinement.MAX_PROCESSES), str(Confinement.MAX_OPEN_FILES),
             str(Confinement.MAX_FILE_BYTES), *self.fence(reads, held),
             *self.filter(),
-            "--", *[str(a) for a in worker_argv],
+            "--", *[str(word) for word in worker_argv],
         ]
 
     def filter(self) -> List[str]:
@@ -356,17 +350,15 @@ class WorkerPlace:
         """What the worker is fenced into, as the helper takes it:
         ``r:`` a path to read and run, ``w:`` a path for everything,
         and ``c:`` the one port it may connect to — the proxy's, where
-        there is a proxy and the kernel's Landlock holds connections.
-        Empty where the kernel cannot fence."""
+        the kernel's Landlock holds connections. Empty where the kernel
+        cannot fence."""
         if not self.fenced:
             return []
         readable = [*Confinement.SYSTEM_READS, *Confinement.browsers(), *reads]
         writable = [self.home, self.spool, *Confinement.SYSTEM_WRITES]
-        proxy = self.confinement.egress
         way_out = (
-            [f"c:{proxy.port}"]
-            if held and proxy is not None
-            and self.confinement.fence_holds_connections
+            [f"c:{self.proxy.port}"]
+            if held and self.confinement.fence_holds_connections
             else [])
         return (
             [f"r:{Path(path).as_posix()}" for path in readable]
@@ -384,28 +376,23 @@ class WorkerPlace:
 
     def environment(self, environment: Dict[str, str]) -> Dict[str, str]:
         """The worker's environment, with its home as the one place it
-        writes: what a library keeps, and what it keeps for a moment."""
+        writes, and the way out under every name a program looks for
+        one — and under the platform's own, for an agent that ignores
+        the others on purpose. Nothing is excepted from it."""
         home = str(self.home)
         environment = {
             **environment,
             "HOME": home, "TMPDIR": home, "TMP": home, "TEMP": home,
             "DECENTAI_SPOOL_DIR": str(self.spool),
         }
-        if self.token and self.confinement.egress is not None:
-            # The way out, under every name a program looks for one —
-            # and under the platform's own, for an agent that ignores
-            # the others on purpose. Nothing is excepted from it.
-            address = self.confinement.egress.address(self.token)
+        if self.token:
+            address = self.proxy.address(self.token)
             for name in ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy",
                          "https_proxy", "DECENTAI_PROXY"):
                 environment[name] = address
             for name in ("NO_PROXY", "no_proxy", "ALL_PROXY", "all_proxy"):
                 environment.pop(name, None)
         return environment
-
-
-class ConfinementFailed(RuntimeError):
-    """Workers were meant to be confined here and cannot be."""
 
 
 class Confinement:
@@ -461,38 +448,26 @@ class Confinement:
     #: and the agent is given a place again the day it is called.
     PLACE_KEPT_DAYS = 30
 
+    #: The setting that turns the system-call filter off (``0``): for
+    #: an agent whose package needs a call the filter refuses, until
+    #: the package or the filter is mended. On unless it says so.
+    FILTER_SETTING = "AI_RUNTIME_SYSCALL_FILTER"
+
     @staticmethod
     def browsers() -> List[str]:
         """Where the image keeps the browsers an agent may drive."""
         path = (os.environ.get("PLAYWRIGHT_BROWSERS_PATH") or "").strip()
         return [path] if path else []
 
-    #: Whether this is a system the helper is built for. A test says
-    #: otherwise by setting it, and puts back what it found.
-    SUPPORTED: ClassVar[bool] = os.name == "posix"
-
-    #: What confines workers in this process, or None.
-    current: ClassVar[Optional["Confinement"]] = None
-    #: One verification at a time: they share a user, and stopping one
-    #: stops everything that user runs.
-    verification_lock: ClassVar[threading.Lock] = threading.Lock()
-    #: One build at a time, for the same reason.
-    building_lock: ClassVar[threading.Lock] = threading.Lock()
-    #: Test seam — a callable taking the argv list and returning
-    #: (return_code, output). Set it and no helper runs.
-    runner: ClassVar[Optional[Callable[[Sequence[str]], tuple]]] = None
-
-    #: The setting that turns the system-call filter off (``0``): for
-    #: an agent whose package needs a call the filter refuses, until
-    #: the package or the filter is mended. On unless it says so.
-    FILTER_SETTING: ClassVar[str] = "AI_RUNTIME_SYSCALL_FILTER"
-    #: Set to 1 to start although workers were meant to be confined and
-    #: cannot be. Without it such a runtime does not start.
-    UNCONFINED_SETTING: ClassVar[str] = "AI_RUNTIME_ALLOW_UNCONFINED"
-
-    def __init__(self, install_dir: str | Path, helper: Optional[Path] = None):
+    def __init__(self, install_dir: str | Path, container: AgentsContainer,
+                 helper: Optional[Path] = None,
+                 package_hosts: Optional[Sequence[str]] = None):
         self.workers_dir = Path(install_dir) / self.WORKERS_FOLDER
+        #: Where every process of an agent's is started.
+        self.container = container
         self.helper = Path(helper) if helper is not None else self.HELPER
+        #: Where packages come from: what the builder may reach.
+        self.package_hosts: Sequence[str] = tuple(package_hosts or self.PACKAGE_HOSTS)
         #: Whether a worker's files are fenced (Landlock): the kernel's
         #: to offer, found out by ``check``. Without it a worker is
         #: still its own user, and reads what any user may read.
@@ -514,13 +489,17 @@ class Confinement:
         self.filters_calls = False
         #: Whether the helper could put that filter on, asked or not.
         self.can_filter_calls = False
-        #: The proxy workers are pointed at, once it is serving.
-        self.egress: Optional[EgressProxy] = None
+        #: The proxy workers are pointed at, once ``open_the_way_out``
+        #: has started it: their one way out.
+        self.proxy: Optional[EgressProxy] = None
         #: Whether the proxy is the only way out: the container's
         #: firewall rule, proved by ``prove_the_network_is_fenced``.
         self.network_fenced = False
-        #: Where packages come from: what the builder may reach.
-        self.package_hosts: Sequence[str] = self.PACKAGE_HOSTS
+        #: One verification at a time, and one build at a time: each
+        #: kind shares a user, and stopping one stops everything that
+        #: user runs.
+        self.verification_lock = threading.Lock()
+        self.building_lock = threading.Lock()
         self._table_lock = threading.Lock()
         self.logger = logging.getLogger(self.__class__.__name__)
 
@@ -528,60 +507,113 @@ class Confinement:
     # At start
     # ------------------------------------------------------------------
 
-    @classmethod
-    def configure(cls, install_dir: str | Path,
-                  egress_port: Optional[int] = None,
-                  allow_loopback: bool = False,
-                  package_hosts: Optional[Sequence[str]] = None,
-                  ) -> Optional["Confinement"]:
-        """Find out whether workers can be confined here, say so, and
-        remember the answer for the life of the process.
+    def check(self) -> None:
+        """Prove that workers can be confined where they run, and
+        learn what the kernel there offers: the helper switches users
+        once, says which Landlock and whether seccomp it has, and a
+        place is prepared from end to end. Raises ``ConfinementFailed``
+        naming what to mend; a runtime that cannot confine does not
+        start."""
+        code, output = self.run(["check"])
+        if code != 0:
+            raise ConfinementFailed(self._what_to_mend(
+                self._refusal("check", code, output)))
+        version = self._landlock(output)
+        self.fences = version >= 1
+        self.fence_lets_files_move = version >= 2
+        self.fence_holds_connections = version >= 4
+        self.fence_keeps_sockets = version >= 6
+        self.can_filter_calls = bool(
+            re.search(r"^seccomp=1$", str(output or ""), re.MULTILINE))
+        self.filters_calls = (
+            self.can_filter_calls
+            and os.environ.get(self.FILTER_SETTING, "1").strip() != "0")
+        errors = self.verification_place().prepare()
+        if errors:
+            raise ConfinementFailed(self._what_to_mend("; ".join(errors)))
+        self.sweep()
+        self._say_what_holds()
 
-        ``egress_port`` is where the proxy listens — the port the
-        container's firewall rule was written for. None runs no proxy,
-        and a worker connects as it always has. ``package_hosts`` is
-        where packages come from, for a deployment with an index of
-        its own."""
-        confinement = cls._configure(install_dir)
-        if confinement is not None and package_hosts:
-            confinement.package_hosts = tuple(package_hosts)
-        if confinement is not None and egress_port is not None:
-            confinement.open_the_way_out(egress_port, allow_loopback)
-        return confinement
+    @staticmethod
+    def _what_to_mend(reasons: str) -> str:
+        return (f"Workers cannot be confined in the agents' container: "
+                f"{reasons}. Mend what it names — the container's rights, "
+                f"the install directory — and start again.")
+
+    @staticmethod
+    def _landlock(output: str) -> int:
+        """The version of Landlock the helper found, 0 for none."""
+        found = re.search(r"^landlock=(\d+)$", str(output or ""), re.MULTILINE)
+        return int(found.group(1)) if found else 0
+
+    def _say_what_holds(self) -> None:
+        """What this runtime holds an agent to, in its log, every start."""
+        say, warn = self.logger.info, self.logger.warning
+        say("Workers are confined: each agent runs as its own user, with "
+            "limits on processes, open files and file size. The packages "
+            "an agent declared are built by a user of their own.")
+        if self.fences:
+            say("Workers' files are fenced: an agent opens the system, its "
+                "own package and environment, its home and its spool, and "
+                "nothing else.")
+        else:
+            warn("Workers' files are NOT fenced here: this kernel has no "
+                 "Landlock. An agent reads what any user may read.")
+        if self.filters_calls:
+            say("Workers' system calls are filtered: an agent is refused "
+                "the calls a way out of a container is most often made of "
+                "— a namespace or a mount of its own, another process's "
+                "memory, the kernel's own machinery, and sockets of a "
+                "family it has no use for.")
+        elif self.can_filter_calls:
+            warn(f"Workers' system calls are NOT filtered here: "
+                 f"{self.FILTER_SETTING}=0 turned the filter off. An agent "
+                 f"is held to what the container's own filter refuses.")
+        else:
+            warn("Workers' system calls are NOT filtered here: this machine "
+                 "has no seccomp filter the helper can use. An agent is held "
+                 "to what the container's own filter refuses.")
+        if self.fences and not self.fence_keeps_sockets:
+            warn("Agents are NOT kept from each other's sockets here: this "
+                 "kernel's Landlock is before its sixth version. Two agents "
+                 "that both mean to can pass bytes to each other over a "
+                 "socket that has a name and no file.")
+        if self.fences and not self.fence_lets_files_move:
+            warn("Builds are NOT fenced here: this kernel's Landlock is its "
+                 "first version, which refuses a fenced program moving a "
+                 "file between folders, and building a package does. The "
+                 "builder is a user of its own and reaches where packages "
+                 "come from; it reads what any user may read.")
 
     def open_the_way_out(self, port: int, allow_loopback: bool = False) -> None:
-        """Start the proxy, find out whether anything holds a worker to
-        it, and say which."""
-        # Where agents have a container of their own, the proxy is
-        # reached from it: workers there are pointed at their own
-        # container's address, and what arrives is passed on to here.
-        proxy = EgressProxy(
-            port, allow_loopback=allow_loopback,
-            listen="0.0.0.0" if Spawner.current.remote else EgressProxy.HOST)
+        """Start the proxy every worker is pointed at, and find out
+        whether anything holds a worker to it. Raises
+        ``ConfinementFailed`` where the proxy cannot listen: without it
+        an agent reaches nothing at all."""
+        proxy = EgressProxy(port, allow_loopback=allow_loopback)
         problems = proxy.start()
         if problems:
-            self.logger.warning(
-                "Workers' connections are NOT held to what their agents "
-                "declared: " + "; ".join(problems) + ".")
-            return
-        self.egress = proxy
+            raise ConfinementFailed(
+                "The proxy workers are pointed at could not start: "
+                + "; ".join(problems))
+        self.proxy = proxy
         self.network_fenced = self.prove_the_network_is_fenced()
         if self.network_fenced:
             self.logger.info(
                 "Workers' connections are fenced: an agent reaches the "
                 "hosts its manifest declared, through the runtime's "
                 "proxy, and nothing else.")
-        else:
+            return
+        self.logger.warning(
+            "Workers' connections are NOT fenced here: the proxy is "
+            "offered, and nothing stops an agent going around it. The "
+            "agents' container was not given the right to set a "
+            "firewall rule.")
+        if self.fence_holds_connections:
             self.logger.warning(
-                "Workers' connections are NOT fenced here: the proxy is "
-                "offered, and nothing stops an agent going around it. "
-                "The container was not given the right to set a "
-                "firewall rule.")
-            if self.fence_holds_connections:
-                self.logger.warning(
-                    "Workers' own fence holds them to the proxy's port "
-                    "over TCP all the same. It does not stop a name "
-                    "being looked up, nor anything that is not TCP.")
+                "Workers' own fence holds them to the proxy's port over "
+                "TCP all the same. It does not stop a name being looked "
+                "up, nor anything that is not TCP.")
 
     #: What the verification user tries: the port it must not reach,
     #: then the proxy's. One word each.
@@ -597,45 +629,32 @@ class Confinement:
 
     def prove_the_network_is_fenced(self) -> bool:
         """Whether a worker can reach anything but the proxy — tried,
-        as a worker: a port where workers run that something listens
-        on, which nothing but a firewall rule stands in front of, and
-        then the proxy's."""
-        if Confinement.runner is not None or self.egress is None:
-            return False
-        import sys
+        as a worker: the spawner's own port, which something listens on
+        and only the firewall rule keeps a worker from, and then the
+        proxy's."""
+        place = self.verification_place()
+        with self.verification_lock:
+            if place.prepare():
+                return False
+            try:
+                # Not held by its own fence: what is asked is whether
+                # the firewall rule holds without it.
+                _, output = place.run(
+                    [sys.executable, "-I", "-c", self.REACH,
+                     str(self.container.port), str(self.proxy.port)],
+                    environment={"PATH": os.environ.get("PATH", "")},
+                    timeout=self.HELPER_TIMEOUT_SECONDS, held=False)
+            finally:
+                place.clear()
+        return output.split() == ["refused", "reached"]
 
-        with Spawner.current.a_port_no_worker_may_reach() as closed:
-            place = self.verification_place()
-            with Confinement.verification_lock:
-                if place.prepare():
-                    return False
-                try:
-                    # Through the place's own run: the program is
-                    # another user's, and only that ends it when it
-                    # outlasts its time.
-                    # Not held by its own fence: what is asked is
-                    # whether the firewall rule holds without it.
-                    _, said = place.run(
-                        [sys.executable, "-I", "-c", self.REACH,
-                         str(closed), str(self.egress.port)],
-                        environment={"PATH": os.environ.get("PATH", "")},
-                        timeout=self.HELPER_TIMEOUT_SECONDS, held=False)
-                finally:
-                    place.clear()
-        return said.split() == ["refused", "reached"]
-
-    @classmethod
-    def report(cls) -> Dict[str, bool]:
-        """What this process holds an agent to, in the three parts a
+    def report(self) -> Dict[str, bool]:
+        """What this runtime holds an agent to, in the three parts a
         person is told of: a user of its own, its files fenced, its
         connections fenced. Said to the platform with an agent's
         readiness, so that an agent's page can say what is not."""
-        found = cls.current
-        return {
-            "user": found is not None,
-            "files": found is not None and found.fences,
-            "network": found is not None and found.network_fenced,
-        }
+        return {"user": True, "files": self.fences,
+                "network": self.network_fenced}
 
     def sweep(self, now: Optional[float] = None) -> int:
         """Give up the places nobody has used for a while: what their
@@ -643,8 +662,6 @@ class Confinement:
         went. By age and not by asking who is approved: this process
         is told of approvals one organization at a time, and a place
         in use by another process on the same disk is recent."""
-        import time
-
         limit = (time.time() if now is None else now) - self.PLACE_KEPT_DAYS * 86400
         if not self.workers_dir.is_dir():
             return 0
@@ -675,156 +692,33 @@ class Confinement:
                              f"for {self.PLACE_KEPT_DAYS} days")
         return len(gone)
 
-    @classmethod
-    def _configure(cls, install_dir: str | Path) -> Optional["Confinement"]:
-        confinement = cls(install_dir)
-        # Where the helper is, workers are meant to be confined: that
-        # is the runtime's image. Asked before the check, which is what
-        # may fail.
-        meant = cls.SUPPORTED and (
-            cls.runner is not None or Spawner.current.has(confinement.helper))
-        reasons = confinement.check()
-        if reasons:
-            cls.current = None
-            if meant and os.environ.get(
-                    cls.UNCONFINED_SETTING, "").strip() != "1":
-                # Not started as though nothing were wrong: a runtime
-                # that meant to confine and cannot would run every
-                # agent as its own user, able to read what the runtime
-                # reads, with one line in a log to say so.
-                raise ConfinementFailed(
-                    "Workers cannot be confined here, and this is a "
-                    "system where they are meant to be: "
-                    + "; ".join(reasons) + ". Mend what it names — "
-                    "the container's rights, the install directory — "
-                    f"or set {cls.UNCONFINED_SETTING}=1 to run agents "
-                    "as the runtime's own user, knowingly.")
-            confinement.logger.warning(
-                "Workers are NOT confined here: " + "; ".join(reasons)
-                + ". An agent runs as the runtime's own user.")
-            return None
-        cls.current = confinement
-        confinement.sweep()
-        confinement.logger.info(
-            "Workers are confined: each agent runs as its own user, "
-            "with limits on processes, open files and file size. The "
-            "packages an agent declared are built by a user of their "
-            "own.")
-        if confinement.fences:
-            confinement.logger.info(
-                "Workers' files are fenced: an agent opens the system, "
-                "its own package and environment, its home and its "
-                "spool, and nothing else.")
-        else:
-            confinement.logger.warning(
-                "Workers' files are NOT fenced here: this kernel has no "
-                "Landlock. An agent reads what any user may read.")
-        if confinement.filters_calls:
-            confinement.logger.info(
-                "Workers' system calls are filtered: an agent is refused "
-                "the calls a way out of a container is most often made "
-                "of — a namespace or a mount of its own, another "
-                "process's memory, the kernel's own machinery, and "
-                "sockets of a family it has no use for.")
-        elif confinement.can_filter_calls:
-            confinement.logger.warning(
-                "Workers' system calls are NOT filtered here: "
-                f"{cls.FILTER_SETTING}=0 turned the filter off. An agent "
-                "is held to what the container's own filter refuses.")
-        else:
-            confinement.logger.warning(
-                "Workers' system calls are NOT filtered here: this "
-                "machine has no seccomp filter the helper can use. An "
-                "agent is held to what the container's own filter "
-                "refuses.")
-        if confinement.fences and not confinement.fence_keeps_sockets:
-            confinement.logger.warning(
-                "Agents are NOT kept from each other's sockets here: "
-                "this kernel's Landlock is before its sixth version. "
-                "Two agents that both mean to can pass bytes to each "
-                "other over a socket that has a name and no file.")
-        if confinement.fences and not confinement.fence_lets_files_move:
-            confinement.logger.warning(
-                "Builds are NOT fenced here: this kernel's Landlock is "
-                "its first version, which refuses a fenced program "
-                "moving a file between folders, and building a package "
-                "does. The builder is a user of its own and reaches "
-                "where packages come from; it reads what any user may "
-                "read.")
-        return confinement
-
-    def check(self) -> List[str]:
-        """Why workers cannot be confined here, empty when they can.
-        Proved, not assumed: the helper switches users once, and a
-        place is prepared from end to end."""
-        if not Confinement.SUPPORTED:
-            return ["this is not a system the spawn helper runs on"]
-        if Confinement.runner is None and not Spawner.current.has(self.helper):
-            return [f"the spawn helper is not at {self.helper}"]
-        code, said = self.run(["check"])
-        if code != 0:
-            return [self._refusal("check", code, said)]
-        self.fences = self._landlock(said) >= 1
-        self.fence_lets_files_move = self._landlock(said) >= 2
-        self.fence_holds_connections = self._landlock(said) >= 4
-        self.fence_keeps_sockets = self._landlock(said) >= 6
-        self.can_filter_calls = bool(
-            re.search(r"^seccomp=1$", str(said or ""), re.MULTILINE))
-        self.filters_calls = (
-            self.can_filter_calls
-            and os.environ.get(self.FILTER_SETTING, "1").strip() != "0")
-        return self.verification_place().prepare()
-
-    @staticmethod
-    def _landlock(said: str) -> int:
-        """The version of Landlock the helper found, 0 for none."""
-        found = re.search(r"^landlock=(\d+)$", str(said or ""), re.MULTILINE)
-        return int(found.group(1)) if found else 0
-
     # ------------------------------------------------------------------
     # Places
     # ------------------------------------------------------------------
 
-    @classmethod
-    def place_for(cls, agent_id: str) -> Optional[WorkerPlace]:
-        """Where this approved agent's worker runs, or None where
-        nothing confines."""
-        if cls.current is None:
-            return None
-        return cls.current.place(agent_id)
+    def place(self, agent_id: str) -> WorkerPlace:
+        """Where this approved agent's worker runs: its place, given
+        one the first time it is asked for."""
+        name = self._name(agent_id)
+        return WorkerPlace(self, name, self._user(name))
 
-    @classmethod
-    def place_of(cls, agent_id: str) -> Optional[WorkerPlace]:
-        """The place this approved agent already has, or None: where
-        nothing confines, and for an agent that never ran here. Asking
-        gives nobody a place — ``place_for`` does that, when a worker
-        is started."""
-        found = cls.current
-        if found is None or not agent_id:
+    def existing_place(self, agent_id: str) -> Optional[WorkerPlace]:
+        """The place this approved agent already has, or None for an
+        agent that never ran here. Asking gives nobody a place —
+        ``place`` does that, when a worker is started."""
+        if not agent_id:
             return None
-        name = found._name(agent_id)
-        with found._table_lock:
-            user = found._read_table().get(name)
-        return WorkerPlace(found, name, user) if user else None
-
-    @classmethod
-    def place_for_verification(cls) -> Optional[WorkerPlace]:
-        if cls.current is None:
-            return None
-        return cls.current.verification_place()
+        name = self._name(agent_id)
+        with self._table_lock:
+            user = self._read_table().get(name)
+        return WorkerPlace(self, name, user) if user else None
 
     def verification_place(self) -> WorkerPlace:
+        """Where a package is verified before anybody approved it."""
         return WorkerPlace(self, self.VERIFICATION_NAME, self.VERIFICATION_USER)
 
-    @classmethod
-    def place_for_building(cls) -> Optional[WorkerPlace]:
-        """Where declared packages are downloaded and built, or None
-        where nothing confines."""
-        if cls.current is None:
-            return None
-        return cls.current.builder_place()
-
     def builder_place(self) -> WorkerPlace:
+        """Where declared packages are downloaded and built."""
         place = WorkerPlace(self, self.BUILDER_NAME, self.BUILDER_USER)
         place.moves_files = True
         return place
@@ -835,10 +729,6 @@ class Confinement:
         return {"declared": True, "any": False,
                 "hosts": [str(host) for host in self.package_hosts],
                 "from_secrets": []}
-
-    def place(self, agent_id: str) -> WorkerPlace:
-        name = self._name(agent_id)
-        return WorkerPlace(self, name, self._user(name))
 
     @staticmethod
     def _name(agent_id: str) -> str:
@@ -890,33 +780,29 @@ class Confinement:
     # The helper
     # ------------------------------------------------------------------
 
-    def ask(self, arguments: Sequence[str],
+    def ask(self, job: Sequence[str],
             whose: Optional[Dict[str, object]] = None) -> List[str]:
         """Run the helper for one of its jobs. Returns errors, empty
         when it was done. ``whose`` says for which place, where it is
         for one."""
-        code, said = self.run(arguments, whose)
-        return [] if code == 0 else [self._refusal(arguments[0], code, said)]
+        code, output = self.run(job, whose)
+        return [] if code == 0 else [self._refusal(job[0], code, output)]
 
-    def run(self, arguments: Sequence[str],
+    def run(self, job: Sequence[str],
             whose: Optional[Dict[str, object]] = None) -> tuple:
-        """The helper's own answer: (return code, what it said). Each
+        """The helper's own answer: (return code, what it wrote). Each
         job it is asked to do is written down, with how it ended."""
-        argv = [str(self.helper), *arguments]
+        argv = [str(self.helper), *job]
         began = time.monotonic()
-        if Confinement.runner is not None:
-            code, said = Confinement.runner(argv)
-        else:
-            code, said = Spawner.current.run(
-                argv, timeout=self.HELPER_TIMEOUT_SECONDS)
+        code, output = self.container.run(argv, timeout=self.HELPER_TIMEOUT_SECONDS)
         Events.record(
-            "helper", **(whose or {}), job=str(arguments[0]),
-            asked=[str(word) for word in arguments[1:]], code=code,
-            refused=str(said).strip()[-300:] if code != 0 else None,
+            "helper", **(whose or {}), job=str(job[0]),
+            asked=[str(word) for word in job[1:]], code=code,
+            refused=str(output).strip()[-300:] if code != 0 else None,
             seconds=round(time.monotonic() - began, 2))
-        return code, said
+        return code, output
 
     @staticmethod
-    def _refusal(job: str, code: int, said: str) -> str:
-        said = str(said or "").strip()[-400:] or f"exit {code}"
-        return f"the spawn helper refused '{job}': {said}"
+    def _refusal(job: str, code: int, output: str) -> str:
+        output = str(output or "").strip()[-400:] or f"exit {code}"
+        return f"the spawn helper refused '{job}': {output}"

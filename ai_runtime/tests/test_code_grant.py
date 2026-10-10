@@ -90,10 +90,3 @@ class TestACardThePersonAllowed:
         # As the card wrote it: another version is another package.
         assert grant.allowed(["pandas", "requests"]) == "requests"
         assert grant.allowed(["numpy"]) == "numpy"
-
-    def test_where_nothing_confines_a_card_still_allows_its_packages(self):
-        grant = CodeGrant()
-        grant.context = SimpleNamespace(handle=SimpleNamespace(place=None))
-        grant.allow({"hosts": ["api.example.com"], "packages": ["pandas"]})
-        assert grant.allowed(["pandas"]) is None
-        grant.close()

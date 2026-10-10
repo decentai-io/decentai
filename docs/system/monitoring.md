@@ -18,7 +18,7 @@ it by (`name`) and, where the line is about a process, its user
 
 | Kind | Written when | By | Says |
 |---|---|---|---|
-| `worker.started` | a worker answered its greeting | the runtime | whether it is confined, and where it runs |
+| `worker.started` | a worker answered its greeting | the runtime | whose it is |
 | `worker.ended` | a worker is gone | the runtime | why, in words, and its exit code |
 | `worker.failed` | the process could not be started | the runtime | why. A worker whose place could not be prepared has no line of this kind: the `helper` lines say what was refused |
 | `helper` | the spawn helper was asked to do one of its jobs | the runtime | the job (`check`, `own`, `clear`, `stop`, `sweep`), what it was asked with, how long it took, and what it said if it refused |

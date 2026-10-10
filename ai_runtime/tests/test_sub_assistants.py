@@ -18,6 +18,7 @@ from ai_runtime.tests.test_session import (
 from ai_runtime.tests.test_session_door import FakeSocket
 from ai_runtime.tests.test_session_door import build as build_host
 from sim.session_services import SimSessionServices
+from ai_runtime.tests.fake_container import workers
 
 
 async def until(predicate, timeout=20.0):
@@ -466,7 +467,8 @@ class TestAChildsScreen:
         agents, errors = load_agents(AGENTS_DIR)
         assert errors == {}
         child_session = Session("sub_x", agents, FakeConnector([action(action="finish")]),
-                                SimSessionServices(), parent="chat_1")
+                                SimSessionServices(), workers=workers(),
+                                parent="chat_1")
         run(child_session.open())
         assert child_session.assistant.executor.conversation == "chat_1"
         parent_session, _ = build([action(action="finish")])

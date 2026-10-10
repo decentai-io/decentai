@@ -20,6 +20,8 @@ from sim.resources import InMemoryResourceProvider
 AGENTS_DIR = Path(__file__).resolve().parent / "fixtures" / "agents"
 
 from ai_runtime.tests.fixture_agents import MINIMAL_MANIFEST, write_agent
+from ai_runtime.tests.fake_container import container, workers
+from ai_runtime.tests import fake_container
 
 
 @pytest.fixture()
@@ -30,7 +32,7 @@ def notebook():
 
 
 def run(coro):
-    return asyncio.run(coro)
+    return fake_container.run(coro)
 
 
 def make_executor(**kwargs):
@@ -40,7 +42,7 @@ def make_executor(**kwargs):
         secrets={"notebook__connection": {"api_token": "t"}}
     ))
     doors = {k: kwargs.pop(k) for k in list(kwargs) if k in ChatSinks.names()}
-    return FunctionExecutor(sinks=ChatSinks(**doors), **kwargs)
+    return FunctionExecutor(workers(), sinks=ChatSinks(**doors), **kwargs)
 
 
 class TestHappyPath:
@@ -127,14 +129,14 @@ class TestDisplays:
 
 class TestValidation:
     def test_unknown_function(self, notebook):
-        result, status = run(FunctionExecutor().invoke(
+        result, status = run(FunctionExecutor(workers()).invoke(
             notebook, "notebook.note.nope", {},
         ))
         assert status == "error"
         assert "Unknown function" in result["error"]
 
     def test_missing_required_input(self, notebook):
-        result, status = run(FunctionExecutor().invoke(
+        result, status = run(FunctionExecutor(workers()).invoke(
             notebook, "notebook.note.save", {"notebook": "personal"},
         ))
         assert status == "error"
@@ -142,14 +144,14 @@ class TestValidation:
         assert "title" in result["error"]
 
     def test_wrong_input_type(self, notebook):
-        result, status = run(FunctionExecutor().invoke(
+        result, status = run(FunctionExecutor(workers()).invoke(
             notebook, "notebook.note.find", {"limit": "many"},
         ))
         assert status == "error"
         assert "limit" in result["error"]
 
     def test_undeclared_input_rejected(self, notebook):
-        result, status = run(FunctionExecutor().invoke(
+        result, status = run(FunctionExecutor(workers()).invoke(
             notebook, "notebook.note.save",
             {"notebook": "p", "title": "t", "sneaky": True},
         ))
@@ -160,7 +162,7 @@ class TestValidation:
 class TestPermissionLevels:
     def test_higher_level_without_approver_is_denied(self, notebook):
         # sync.push is level 3; chat level defaults to 1.
-        result, status = run(FunctionExecutor().invoke(
+        result, status = run(FunctionExecutor(workers()).invoke(
             notebook, "notebook.sync.push", {"notebook": "personal"},
         ))
         assert status == "error"
@@ -323,7 +325,7 @@ class TestFailureContainment:
                 def tools(self):
                     return [MainTool(self)]
         """))
-        result, status = run(FunctionExecutor().invoke(agent, "demo.main.run", {}))
+        result, status = run(FunctionExecutor(workers()).invoke(agent, "demo.main.run", {}))
         assert status == "error"
         assert "failed" in result["error"]
         # The reason travels. "failed." with the cause amputated turns a
@@ -354,7 +356,7 @@ class TestFailureContainment:
                 def tools(self):
                     return [MainTool(self)]
         """), manifest=manifest)
-        result, status = run(FunctionExecutor().invoke(agent, "demo.main.run", {}))
+        result, status = run(FunctionExecutor(workers()).invoke(agent, "demo.main.run", {}))
         assert status == "error"
         assert "timed out after 1s" in result["error"]
 
@@ -372,7 +374,7 @@ class TestFailureContainment:
                 def tools(self):
                     return [MainTool(self)]
         """))
-        result, status = run(FunctionExecutor().invoke(agent, "demo.main.run", {}))
+        result, status = run(FunctionExecutor(workers()).invoke(agent, "demo.main.run", {}))
         assert status == "error"
         assert "invalid result" in result["error"]
 
@@ -397,7 +399,7 @@ class TestFailureContainment:
                 def tools(self):
                     return [MainTool(self)]
         """), manifest=manifest)
-        result, status = run(FunctionExecutor().invoke(agent, "demo.main.run", {}))
+        result, status = run(FunctionExecutor(workers()).invoke(agent, "demo.main.run", {}))
         assert status == "error"
         assert "not matching its manifest" in result["error"]
 
@@ -422,7 +424,7 @@ class TestFailureContainment:
                 def tools(self):
                     return [MainTool(self)]
         """), manifest=manifest)
-        result, status = run(FunctionExecutor().invoke(agent, "demo.main.run", {}))
+        result, status = run(FunctionExecutor(workers()).invoke(agent, "demo.main.run", {}))
         assert status == "error"
         assert result["error"] == "domain problem"
 
@@ -497,7 +499,7 @@ class TestMediatedResources:
                 def tools(self):
                     return [MainTool(self)]
         """), manifest=FILE_MANIFEST)
-        result, status = run(FunctionExecutor(
+        result, status = run(FunctionExecutor(workers(), 
             provider=InMemoryResourceProvider()).invoke(
                 agent, "demo.main.run", {}, chat_level=2))
         assert status == "success", result
@@ -523,7 +525,7 @@ class TestMediatedResources:
         """))
         provider = InMemoryResourceProvider()
         result, status = run(
-            FunctionExecutor(provider=provider).invoke(agent, "demo.main.run", {})
+            FunctionExecutor(workers(), provider=provider).invoke(agent, "demo.main.run", {})
         )
         assert status == "error"          # ResourceDenied surfaced as failure
         assert provider.data == {}        # nothing was written
@@ -636,7 +638,7 @@ class TestLoginsAskedForAsItWorks:
                 def tools(self):
                     return [MainTool(self)]
         """))
-        executor = FunctionExecutor(provider=InMemoryResourceProvider(),
+        executor = FunctionExecutor(workers(), provider=InMemoryResourceProvider(),
                                     sinks=ChatSinks(credential=credentialer))
         # Not declared: the worker's ask is refused as a resource would be.
         result, status = run(executor.invoke(agent, "demo.main.run", {}))
@@ -663,6 +665,10 @@ class TestLoginsAskedForAsItWorks:
                 def tools(self):
                     return [MainTool(self)]
         """))
+        # The same id as the agent above, so a pool of its own: a worker
+        # is kept per agent id, and the one up runs the other code.
+        executor = FunctionExecutor(workers(), provider=InMemoryResourceProvider(),
+                                    sinks=ChatSinks(credential=credentialer))
         result, status = run(executor.invoke(declared, "demo.main.run", {}))
         assert status == "success", result
         assert result["login"] == {"email": "a", "password": "b"}
@@ -1233,6 +1239,7 @@ class TestAFunctionThatRunsCode:
 
         def stand_in():
             AgentEnvironment.runner = runner
+            container().leaves = {"humanize-4.9.0-py3-none-any.whl": b"a wheel"}
             return ran
 
         yield stand_in
@@ -1266,7 +1273,7 @@ class TestAFunctionThatRunsCode:
         assert "'titlecase' is not on a card" in said["unnamed"]
         assert [code["packages"] for code in proposed] == [["humanize"]]
         [install] = [argv for argv in ran if "--target" in argv]
-        assert install[-1] == "humanize"
+        assert install[-1].endswith("humanize-4.9.0-py3-none-any.whl")
 
     def test_a_package_off_the_deployments_list_never_reaches_a_card(
         self, tmp_path, pip

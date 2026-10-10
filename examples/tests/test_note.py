@@ -12,6 +12,8 @@ import yaml
 from ai_runtime.execution.executor import FunctionExecutor
 from ai_runtime.sinks import ChatSinks
 from sim.resources import InMemoryResourceProvider
+from ai_runtime.tests import fake_container
+from ai_runtime.tests.fake_container import confinement, workers
 
 #: The folder the agent's own folder is in.
 ROOT = Path(__file__).resolve().parents[1]
@@ -22,7 +24,7 @@ REPOSITORY = next(folder for folder in Path(__file__).resolve().parents
 
 
 def run(awaitable):
-    return asyncio.run(awaitable)
+    return fake_container.run(awaitable)
 
 
 def manifest():
@@ -44,7 +46,7 @@ class TestThePackage:
 
         agent = agents["note"]
         assert WorkerHandle.probe(
-            agent.environment.python, agent.folder, agent.manifest.document) == []
+            agent.environment.python, agent.folder, agent.manifest.document, confinement().verification_place()) == []
 
     def test_the_catalog_and_the_manifest_agree(self):
         catalog = yaml.safe_load(
@@ -106,7 +108,7 @@ class TestTheStorageSplit:
         assert storage["base_url"] == "keys"
 
     def test_a_saved_note_can_be_read_back_whole(self, agents):
-        executor = FunctionExecutor(provider=InMemoryResourceProvider())
+        executor = FunctionExecutor(workers(), provider=InMemoryResourceProvider())
 
         async def scenario():
             saved, status = await executor.invoke(agents["note"], "note.notes.save", {
@@ -125,7 +127,7 @@ class TestTheDependencies:
     def test_they_live_in_the_agents_own_environment(self, agents):
         """titlecase and humanize are installed into the agent's venv and
         used by the code — a lowercase title comes back cased."""
-        executor = FunctionExecutor(provider=InMemoryResourceProvider())
+        executor = FunctionExecutor(workers(), provider=InMemoryResourceProvider())
 
         async def scenario():
             saved, status = await executor.invoke(
@@ -143,7 +145,7 @@ class TestTheDependencies:
 class TestFiles:
     def test_a_json_round_trip_keeps_priority_and_content(self, agents):
         provider = InMemoryResourceProvider()
-        executor = FunctionExecutor(provider=provider)
+        executor = FunctionExecutor(workers(), provider=provider)
 
         async def scenario():
             saved, status = await executor.invoke(agents["note"], "note.notes.save", {
@@ -176,7 +178,7 @@ class TestFiles:
         exactly what happens if the writer encodes the content a second
         time on top of csv's own escaping."""
         provider = InMemoryResourceProvider()
-        executor = FunctionExecutor(provider=provider)
+        executor = FunctionExecutor(workers(), provider=provider)
         body = ("Call the customer before Thursday.\n"
                 "Ask about the chairs, the desks, and \"the carpet\".")
 
@@ -216,7 +218,7 @@ class TestFiles:
         assert document.suffix == ".csv"
 
         provider = InMemoryResourceProvider()
-        executor = FunctionExecutor(provider=provider)
+        executor = FunctionExecutor(workers(), provider=provider)
 
         async def scenario():
             uploaded = await provider.create_file(
@@ -236,7 +238,7 @@ class TestFiles:
 
     def test_a_bad_import_creates_no_notes(self, agents):
         provider = InMemoryResourceProvider()
-        executor = FunctionExecutor(provider=provider)
+        executor = FunctionExecutor(workers(), provider=provider)
 
         async def scenario():
             uploaded = await provider.create_file(
@@ -259,7 +261,7 @@ class TestSecretsAndLevels:
         provider = InMemoryResourceProvider(secrets={
             "note__connection": {"base_url": "https://demo.invalid",
                                  "api_token": "test-token"}})
-        executor = FunctionExecutor(provider=provider)
+        executor = FunctionExecutor(workers(), provider=provider)
 
         async def scenario():
             connected, status = await executor.invoke(
@@ -281,7 +283,7 @@ class TestSecretsAndLevels:
         refuses — the approval card is the chat's, never the agent's."""
         provider = InMemoryResourceProvider(secrets={
             "note__connection": {"base_url": "u", "api_token": "t"}})
-        executor = FunctionExecutor(provider=provider)
+        executor = FunctionExecutor(workers(), provider=provider)
         result, status = run(executor.invoke(
             agents["note"], "note.sync.push", {"notebook": "work"}, chat_level=1))
         assert status == "error"
@@ -299,7 +301,7 @@ class TestTheModel:
             asked.append((messages, max_tokens))
             return "Two notes about the handoff, one urgent."
 
-        executor = FunctionExecutor(provider=InMemoryResourceProvider(),
+        executor = FunctionExecutor(workers(), provider=InMemoryResourceProvider(),
                                     sinks=ChatSinks(llm=model))
 
         async def scenario():
@@ -327,7 +329,7 @@ class TestTheModel:
             seen.extend(m.get("content", "") for m in messages)
             return "A summary."
 
-        executor = FunctionExecutor(provider=InMemoryResourceProvider(),
+        executor = FunctionExecutor(workers(), provider=InMemoryResourceProvider(),
                                     sinks=ChatSinks(llm=model))
 
         async def scenario():
@@ -343,7 +345,7 @@ class TestTheModel:
     def test_a_function_without_llm_cannot_ask_for_the_model(self, agents):
         """find never declared llm, so even with a model wired in the
         executor gives it none — and it does not need one."""
-        executor = FunctionExecutor(
+        executor = FunctionExecutor(workers(), 
             provider=InMemoryResourceProvider(),
             sinks=ChatSinks(llm=lambda *a, **k: (_ for _ in ()).throw(
                 AssertionError("must not be called"))))
@@ -357,7 +359,7 @@ class TestScheduling:
     def test_find_runs_unattended(self, agents):
         """Schedulable: level 0, no model, callable at chat level 0, and
         a `notes` field a schedule can wake the assistant on."""
-        executor = FunctionExecutor(provider=InMemoryResourceProvider())
+        executor = FunctionExecutor(workers(), provider=InMemoryResourceProvider())
 
         async def scenario():
             await executor.invoke(agents["note"], "note.notes.save", {
@@ -377,7 +379,7 @@ class TestTalkingToThePerson:
     @staticmethod
     def saved_twice(agents, asker):
         provider = InMemoryResourceProvider()
-        executor = FunctionExecutor(provider=provider, sinks=ChatSinks(ask=asker))
+        executor = FunctionExecutor(workers(), provider=provider, sinks=ChatSinks(ask=asker))
 
         async def scenario():
             first, _ = await executor.invoke(agents["note"], "note.notes.save", {
@@ -418,7 +420,7 @@ class TestTalkingToThePerson:
         """The one row of `settings` is the person's own, written on the
         records page; find reads it and orders what it lists."""
         provider = InMemoryResourceProvider()
-        executor = FunctionExecutor(provider=provider)
+        executor = FunctionExecutor(workers(), provider=provider)
 
         async def titles(sort_order=None):
             provider.data.pop("note__settings", None)
@@ -455,7 +457,7 @@ class TestTalkingToThePerson:
             kept.append((function, stored))
             return f"stg_{len(kept)}"
 
-        executor = FunctionExecutor(provider=InMemoryResourceProvider(),
+        executor = FunctionExecutor(workers(), provider=InMemoryResourceProvider(),
                                     sinks=ChatSinks(store=storage))
 
         async def scenario():
@@ -482,7 +484,7 @@ class TestTalkingToThePerson:
             return True
 
         provider = InMemoryResourceProvider()
-        executor = FunctionExecutor(provider=provider, sinks=ChatSinks(store=storage,
+        executor = FunctionExecutor(workers(), provider=provider, sinks=ChatSinks(store=storage,
                                                                        post=post_sink))
 
         async def scenario():

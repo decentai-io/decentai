@@ -118,7 +118,7 @@ the recordings it was trained on ([operating](../run/operating.md#speech-on-this
 | backend → runtime | `GET /internal/monitor/…` (`ai_runtime/door/monitor.py`) | the service token | "this is the backend" |
 | backend → speech | `POST /v1/audio/…`, `GET /status`, `POST /prepare` (`speech/service.py`) | nothing: the private network is the only way to it | a recording to write down, or words to say |
 | runtime → backend | `POST /app` (`Gateway`, `ai_runtime/services/backend.py`) | the delegation, as `Bearer` | the person's own permissions, fenced (below) |
-| runtime → agents | TCP, port 8003 (`ai_runtime/agents/spawner.py`) | the spawner's key, from `<install_dir>/spawner.key` | "start this, as this user"; one connection per worker carries its lines |
+| runtime → agents | TCP, port 8003 (`ai_runtime/agents/container.py`) | the spawner's key, from `<install_dir>/spawner.key` | "start this, as this user"; one connection per worker carries its lines |
 | worker → proxy | the proxy's port on the worker's own container, passed on to `ai-runtime:8002` | the worker's pass, a token in the proxy's address | which agent's worker this is, and so which hosts it may reach |
 
 The same path, `/chats/{chat_id}`, exists on the backend and on the

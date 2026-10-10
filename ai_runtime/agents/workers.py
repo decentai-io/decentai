@@ -3,14 +3,14 @@
 One class, two ways in:
 
 - a ``WorkerHandle`` instance — the long-lived client an execution
-  layer holds: spawns the worker from its private venv, handshakes,
-  keeps any number of invocations in flight, routes the worker's asks
-  (pool.py names them) to whoever may answer them, and owns the
-  process's death.
-- ``WorkerHandle.probe`` — installation's verification station: spawn,
-  hello, shutdown, synchronously. What the handshake refuses is a
-  broken package, named at install time in the exact environment the
-  agent will really run in.
+  layer holds: starts the worker from its private venv in its own
+  place (confinement.py), handshakes, keeps any number of invocations
+  in flight, routes the worker's asks (pool.py names them) to whoever
+  may answer them, and owns the process's death.
+- ``WorkerHandle.probe`` — installation's verification station: start,
+  hello, shutdown, as one program run to its end. What the handshake
+  refuses is a broken package, named at install time in the exact
+  environment the agent will really run in.
 
 The spawn line is the same for both, and ``-I`` is not decoration:
 isolated mode ignores PYTHONPATH and never prepends the working
@@ -26,15 +26,14 @@ import base64
 import json
 import logging
 import os
-import shutil
 import stat
 import uuid
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from ai_runtime.agents.confinement import WorkerPlace
+from ai_runtime.agents.container import AgentsContainer
 from ai_runtime.events import Events
-from ai_runtime.agents.spawner import Spawner
 from decentai_sdk.manifest import Manifest
 
 
@@ -44,15 +43,81 @@ class WorkerError(RuntimeError):
 
 
 class WorkerHandle:
-    """One agent's worker process, from spawn to death."""
+    """One agent's worker process, from start to death."""
 
     PROTOCOL_VERSION = 1
     LINE_LIMIT = 2 * 1024 * 1024
     HANDSHAKE_TIMEOUT_SECONDS = 60
     GRACE_SECONDS = 5
 
+    #: What a package being verified may reach: nothing. Verification
+    #: imports the code, and code that connects as it is imported is
+    #: not waiting to be asked.
+    NOTHING_DECLARED = {"declared": True, "any": False,
+                        "hosts": [], "from_secrets": []}
+
+    #: What a worker is given of this process's environment, by name:
+    #: what a Python subprocess needs to run at all, and what an
+    #: administrator set for every process on the machine. Nothing else —
+    #: this process's own variables hold the model key and the
+    #: backend's trust, and agent code is not this process. A variable
+    #: not named here does not reach a worker, whatever else is set.
+    PASSED_VARIABLES = frozenset((
+        # the operating system's own: paths, temp, home, locale
+        "PATH", "TEMP", "TMP", "TMPDIR", "HOME", "LANG", "LANGUAGE", "TZ",
+        "TERM",
+        # trust and egress configured machine-wide
+        "SSL_CERT_FILE", "SSL_CERT_DIR", "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE",
+        "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY",
+        "http_proxy", "https_proxy", "no_proxy",
+        # the platform's own name for the way out; the place sets it
+        # at spawn
+        "DECENTAI_PROXY",
+        # the browsers Playwright installs, for agents that drive one
+        "PLAYWRIGHT_BROWSERS_PATH",
+    ))
+    #: Families passed whole: locale settings, and the platform's knobs
+    #: for agents — DECENTAI_BROWSER_*, DECENTAI_CODE_*, DECENTAI_WEB_*,
+    #: and DECENTAI_AGENT_* for whatever a deployment wants its agents
+    #: to read. Named family by family: other DECENTAI_ names are the
+    #: platform's own (the runtime's user ids, an installer's password),
+    #: and nothing of those is an agent's to see. The spool and the
+    #: proxy address are set at spawn.
+    PASSED_PREFIXES = ("LC_", "DECENTAI_BROWSER_", "DECENTAI_CODE_",
+                       "DECENTAI_WEB_", "DECENTAI_AGENT_")
+
+    def __init__(self, python: str | Path, folder: str | Path,
+                 manifest_document: dict, place: WorkerPlace):
+        self.python = Path(python)
+        self.folder = Path(folder)
+        self.manifest_document = manifest_document
+        #: Where the worker is confined (confinement.py): a user, a home
+        #: and a spool of its own, and its pass at the proxy.
+        self.place = place
+        #: async (method, params) -> result — answers the worker's asks
+        #: (the pool's router). An exception becomes the error
+        #: response the SDK surfaces as ResourceDenied.
+        self.router: Optional[Callable] = None
+        #: async (call_id, description) -> None — progress notifications.
+        self.progress: Optional[Callable] = None
+        #: async (call_id, kind, params) -> None — a screen the function
+        #: shows: kind is "frame" or "closed".
+        self.screen: Optional[Callable] = None
+
+        self.process: Optional[Any] = None
+        self._pending: Dict[int, asyncio.Future] = {}
+        self._next_id = 0
+        self._serve_task: Optional[asyncio.Task] = None
+        #: The worker's one death, once somebody has asked for it.
+        self._death: Optional[asyncio.Future] = None
+        #: The place's spool: a folder both sides can reach, for bytes
+        #: too large for one line — a file read goes to the worker as a
+        #: path in it, a file created comes back as one.
+        self.spool: Optional[Path] = None
+        self.logger = logging.getLogger(self.__class__.__name__)
+
     # ------------------------------------------------------------------
-    # How a worker is spawned — one answer, both entry points
+    # The spawn line — one answer, both entry points
     # ------------------------------------------------------------------
 
     @staticmethod
@@ -67,49 +132,12 @@ class WorkerHandle:
         agent = (manifest_document or {}).get("agent") or {}
         return str(agent.get("name") or agent.get("id") or "an agent"), manifest.network
 
-    #: What a package being verified may reach: nothing. Verification
-    #: imports the code, and code that connects as it is imported is
-    #: not waiting to be asked.
-    NOTHING_DECLARED = {"declared": True, "any": False,
-                        "hosts": [], "from_secrets": []}
-
     @staticmethod
     def _runs_from(python: str | Path, folder: str | Path) -> List[Path]:
         """What a worker runs from, and so must be able to read: its
         package, and the environment its interpreter lives in (the
         folder above the one the interpreter is in)."""
         return [Path(folder), Path(python).parent.parent]
-
-    #: What a worker is given of this process's environment, by name:
-    #: what a Python subprocess needs to run at all, and what an
-    #: administrator set for every process on the machine. Nothing else —
-    #: this process's own variables hold the model key and the
-    #: backend's trust, and agent code is not this process. A variable
-    #: not named here does not reach a worker, whatever else is set.
-    PASSED_VARIABLES = frozenset((
-        # the operating system's own: paths, temp, home, locale
-        "PATH", "SYSTEMROOT", "SYSTEMDRIVE", "WINDIR", "COMSPEC", "PATHEXT",
-        "TEMP", "TMP", "TMPDIR", "HOME", "USERPROFILE", "LOCALAPPDATA",
-        "APPDATA", "PROGRAMDATA", "LANG", "LANGUAGE", "TZ", "TERM",
-        # trust and egress configured machine-wide
-        "SSL_CERT_FILE", "SSL_CERT_DIR", "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE",
-        "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY",
-        "http_proxy", "https_proxy", "no_proxy",
-        # the platform's own name for the way out, which confinement sets
-        # at spawn; where nothing confines, whatever the deployment set
-        "DECENTAI_PROXY",
-        # the browsers Playwright installs, for agents that drive one
-        "PLAYWRIGHT_BROWSERS_PATH",
-    ))
-    #: Families passed whole: locale settings, and the platform's knobs
-    #: for agents — DECENTAI_BROWSER_*, DECENTAI_CODE_*, DECENTAI_WEB_*,
-    #: and DECENTAI_AGENT_* for whatever a deployment wants its agents
-    #: to read. Named family by family: other DECENTAI_ names are the
-    #: platform's own (the runtime's user ids, an installer's password),
-    #: and nothing of those is an agent's to see. The spool and the
-    #: proxy address are set at spawn.
-    PASSED_PREFIXES = ("LC_", "DECENTAI_BROWSER_", "DECENTAI_CODE_",
-                       "DECENTAI_WEB_", "DECENTAI_AGENT_")
 
     @classmethod
     def _clean_environment(cls) -> Dict[str, str]:
@@ -138,40 +166,9 @@ class WorkerHandle:
             "manifest": manifest_document,
         }
 
-    def __init__(self, python: str | Path, folder: str | Path,
-                 manifest_document: dict,
-                 place: Optional[WorkerPlace] = None):
-        self.python = Path(python)
-        self.folder = Path(folder)
-        self.manifest_document = manifest_document
-        #: Where the worker is confined (confinement.py): a user, a home
-        #: and a spool of its own. None where nothing confines, and the
-        #: worker runs as this process's user.
-        self.place = place
-        #: The approved agent's ref, for what this worker does to be
-        #: written down under; its place's name where it has one.
-        self.agent_ref = ""
-        #: async (method, params) -> result — answers the worker's asks
-        #: (the pool's router). An exception becomes the error
-        #: response the SDK surfaces as ResourceDenied.
-        self.router: Optional[Callable] = None
-        #: async (call_id, description) -> None — progress notifications.
-        self.progress: Optional[Callable] = None
-        #: async (call_id, kind, params) -> None — a screen the function
-        #: shows: kind is "frame" or "closed".
-        self.screen: Optional[Callable] = None
-
-        self.process: Optional[asyncio.subprocess.Process] = None
-        self._pending: Dict[int, asyncio.Future] = {}
-        self._next_id = 0
-        self._serve_task: Optional[asyncio.Task] = None
-        #: The worker's one death, once somebody has asked for it.
-        self._death: Optional[asyncio.Future] = None
-        #: A folder both sides can reach, for bytes too large for one
-        #: line: a file read goes to the worker as a path in it, a file
-        #: created comes back as one. Made at spawn, gone at death.
-        self.spool: Optional[Path] = None
-        self.logger = logging.getLogger(self.__class__.__name__)
+    # ------------------------------------------------------------------
+    # The spool
+    # ------------------------------------------------------------------
 
     #: Base64 this long or shorter travels inline on the line; longer
     #: goes through the spool. A line is capped at LINE_LIMIT, and a
@@ -242,44 +239,37 @@ class WorkerHandle:
 
     def whose(self) -> Dict[str, Any]:
         """Whose worker this is, as what it does is written down."""
-        if self.place is not None:
-            return self.place.whose()
-        name, _ = self._declared(self.manifest_document)
-        return {"agent": self.agent_ref, "name": name}
+        return self.place.whose()
 
     # ------------------------------------------------------------------
+    # Its life
+    # ------------------------------------------------------------------
+
     @property
     def alive(self) -> bool:
         return self.process is not None and self.process.returncode is None
 
     async def start(self) -> List[str]:
-        """Spawn and handshake. Returns errors, empty when the worker is
-        serving: whether the package loads is the worker's to say, from
-        the environment it runs in."""
-        argv = self._spawn_argv(self.python)
-        environment = self._clean_environment()
-        stop = whose = None
-        if self.place is not None:
-            errors = await asyncio.get_running_loop().run_in_executor(
-                None, self.place.prepare)
-            if errors:
-                return errors
-            self.spool = self.place.spool
-            self.place.admit(*self._declared(self.manifest_document))
-            argv = self.place.argv(argv, self._runs_from(self.python, self.folder))
-            environment = self.place.environment(environment)
-            # With whose it is, how what it keeps on disk is measured.
-            stop = self.place.stop_line()
-            whose = {**self.place.whose(), "measure": self.place.measure_line()}
-        else:
-            self.spool = Spawner.current.spool()
-            environment["DECENTAI_SPOOL_DIR"] = str(self.spool)
-        # Started where workers run (spawner.py): here, or in the
-        # agents' own container, with its lines carried over.
+        """Prepare the place, start the worker there, and handshake.
+        Returns errors, empty when the worker is serving: whether the
+        package loads is the worker's to say, from the environment it
+        runs in."""
+        errors = await asyncio.get_running_loop().run_in_executor(
+            None, self.place.prepare)
+        if errors:
+            return errors
+        self.spool = self.place.spool
+        self.place.admit(*self._declared(self.manifest_document))
+        argv = self.place.argv(
+            self._spawn_argv(self.python),
+            self._runs_from(self.python, self.folder))
+        environment = self.place.environment(self._clean_environment())
         try:
-            self.process = await Spawner.current.start(
+            self.process = await self.place.container.start(
                 argv, environment, str(self.folder), self.LINE_LIMIT,
-                stop=stop, whose=whose)
+                stop=self.place.stop_line(),
+                # With whose it is, how what it keeps on disk is measured.
+                whose={**self.place.whose(), "measure": self.place.measure_line()})
         except (OSError, asyncio.TimeoutError) as exc:
             Events.record("worker.failed", **self.whose(), why=str(exc))
             # Nothing runs, so nothing will die and clear up after
@@ -309,10 +299,7 @@ class WorkerHandle:
         except asyncio.TimeoutError:
             await self.kill("it did not answer its greeting")
             return ["the worker did not answer the handshake"]
-        Events.record(
-            "worker.started", **self.whose(),
-            confined=self.place is not None,
-            where="the agents' container" if Spawner.current.remote else "here")
+        Events.record("worker.started", **self.whose())
         return []
 
     async def invoke(self, call_id: str, function: str,
@@ -355,20 +342,18 @@ class WorkerHandle:
     async def kill(self, reason: str = "the worker is gone") -> None:
         """End the worker. It dies once: whoever asks again — the reader
         that saw the pipe close, beside the caller that closed it —
-        waits for that one death. A confined worker's end reaches
-        everything its user runs, so a second one arriving late would
-        land on the worker started after it."""
+        waits for that one death. The worker's end reaches everything
+        its user runs, so a second one arriving late would land on the
+        worker started after it."""
         if self._death is None:
             self._death = asyncio.ensure_future(self._die(reason))
         await asyncio.shield(self._death)
 
     async def _die(self, reason: str) -> None:
-        # A confined worker's user is ended whether or not the worker
-        # itself already went: what it started — a browser and its
-        # driver — runs as that user and would outlive it.
-        if self.place is not None or (
-                self.process is not None and self.process.returncode is None):
-            await self._end()
+        # The worker's user is ended whether or not the worker itself
+        # already went: what it started — a browser and its driver —
+        # runs as that user and would outlive it.
+        await self._end()
         if self.process is not None:
             await self.process.wait()
         await self._release()
@@ -380,34 +365,26 @@ class WorkerHandle:
         self._fail_pending(reason)
 
     async def _release(self) -> None:
-        """Take back what a worker was given to run with: its pass at
-        the proxy and its place, or its spool folder."""
-        spool, self.spool = self.spool, None
-        if self.place is not None:
-            self.place.dismiss()
-            await asyncio.get_running_loop().run_in_executor(
-                None, self.place.clear)
-        elif spool is not None:
-            shutil.rmtree(spool, ignore_errors=True)
+        """Take back what the worker was given to run with: its pass at
+        the proxy, and its place, emptied."""
+        self.spool = None
+        self.place.dismiss()
+        await asyncio.get_running_loop().run_in_executor(
+            None, self.place.clear)
 
     async def _end(self) -> None:
-        """End the process. A confined worker is another user's, which
-        this process may not signal: the helper ends it, and everything
+        """End the process: the worker is another user's, which this
+        process may not signal, so the helper ends it, and everything
         else that user runs with it."""
-        if self.place is not None:
-            errors = await asyncio.get_running_loop().run_in_executor(
-                None, self.place.stop)
-            if errors:
-                self.logger.error("; ".join(errors))
-            return
-        if self.process is None or self.process.returncode is not None:
-            return
-        try:
-            self.process.kill()
-        except ProcessLookupError:
-            pass
+        errors = await asyncio.get_running_loop().run_in_executor(
+            None, self.place.stop)
+        if errors:
+            self.logger.error("; ".join(errors))
 
     # ------------------------------------------------------------------
+    # The wire
+    # ------------------------------------------------------------------
+
     async def _request(self, method: str, params: dict) -> Any:
         if not self.alive:
             raise WorkerError("the worker is not running")
@@ -439,7 +416,6 @@ class WorkerHandle:
             # internals.
             raise WorkerError(f"the worker's pipe is closed: {exc}")
 
-    # ------------------------------------------------------------------
     async def _serve(self) -> None:
         """Everything the worker says, until it says nothing more — or
         breaks framing. Either way the process is dead when this
@@ -547,7 +523,7 @@ class WorkerHandle:
                 return
             text = line.decode("utf-8", "replace").rstrip()
             if text:
-                self.logger.log(logging.DEBUG, f"[worker] {text}")
+                self.logger.debug(f"[worker] {text}")
                 Events.record("log", **self.whose(), line=text)
 
     def _fail_pending(self, reason: str) -> None:
@@ -562,20 +538,16 @@ class WorkerHandle:
 
     @classmethod
     def probe(cls, python: str | Path, folder: str | Path,
-              manifest_document: dict, timeout: int = 120,
-              place: Optional[WorkerPlace] = None) -> List[str]:
-        """Spawn from the env, hello, shutdown. Returns errors, empty
-        when the package verified.
+              manifest_document: dict, place: WorkerPlace,
+              timeout: int = 120) -> List[str]:
+        """Start a worker from the environment, hello, shutdown — one
+        program run to its end in installation's own place, which every
+        verification shares and one holds at a time. Returns errors,
+        empty when the package verified.
 
         Synchronous on purpose — install() is synchronous, and a
         one-shot exchange needs no event loop. A worker that outlasts
-        ``timeout`` is ended, so a refusal can never become a hang.
-
-        Verification imports the package, so it is confined like any
-        other run of it: ``place`` is installation's own, shared by
-        every verification and held by one at a time."""
-        if place is None:
-            return cls._probe(python, folder, manifest_document, timeout, None)
+        ``timeout`` is ended, so a refusal can never become a hang."""
         with place.confinement.verification_lock:
             errors = place.prepare()
             if errors:
@@ -583,8 +555,7 @@ class WorkerHandle:
             agent_name, _ = cls._declared(manifest_document)
             place.admit(agent_name, cls.NOTHING_DECLARED)
             try:
-                return cls._probe(
-                    python, folder, manifest_document, timeout, place)
+                return cls._probe(python, folder, manifest_document, timeout, place)
             finally:
                 place.dismiss()
                 place.stop()
@@ -593,44 +564,32 @@ class WorkerHandle:
     @classmethod
     def _probe(cls, python: str | Path, folder: str | Path,
                manifest_document: dict, timeout: int,
-               place: Optional[WorkerPlace]) -> List[str]:
-        argv = cls._spawn_argv(python)
-        environment = cls._clean_environment()
+               place: WorkerPlace) -> List[str]:
         # The whole exchange, written ahead: a worker answers its
-        # greeting, then the order to leave, and is gone. One program
-        # run to its end, wherever workers run (spawner.py).
+        # greeting, then the order to leave, and is gone.
         greeting = "".join(json.dumps(request) + "\n" for request in (
             {"id": 1, "method": "hello",
              "params": cls._hello_params(Path(folder), manifest_document)},
             {"id": 2, "method": "shutdown", "params": {}},
         ))
-        if place is not None:
-            # A confined worker is another user's: its place runs it,
-            # and ends it when it outlasts its time.
-            code, said = place.run(
-                argv, reads=cls._runs_from(python, folder),
-                environment=environment, timeout=timeout, feed=greeting,
-                errors=Spawner.DROP, cwd=str(folder))
-        else:
-            code, said = Spawner.current.run(
-                argv, environment=environment, cwd=str(folder),
-                timeout=timeout, feed=greeting, errors=Spawner.DROP)
-        if said.startswith(Spawner.COULD_NOT_RUN):
-            return [f"worker could not be spawned: {said}"]
-        answers = said.splitlines()
+        code, output = place.run(
+            cls._spawn_argv(python), reads=cls._runs_from(python, folder),
+            environment=cls._clean_environment(), timeout=timeout,
+            feed=greeting, errors=AgentsContainer.DROP, cwd=str(folder))
+        if output.startswith(AgentsContainer.COULD_NOT_RUN):
+            return [f"worker could not be spawned: {output}"]
+        answers = output.splitlines()
         try:
             reply = json.loads(answers[0])
         except (IndexError, ValueError):
             reply = None
         if not isinstance(reply, dict):
             return ["worker verification failed: "
-                    + (said.strip()[-300:] or "the worker died during verification")]
+                    + (output.strip()[-300:] or "the worker died during verification")]
         if "error" in reply:
             return [str((reply.get("error") or {}).get("message") or "refused")]
         if code != 0 or len(answers) < 2:
             return ["worker verification failed: "
-                    + (said.strip()[-300:] if code != 0
+                    + (output.strip()[-300:] if code != 0
                        else "the worker died during verification")]
         return []
-
-

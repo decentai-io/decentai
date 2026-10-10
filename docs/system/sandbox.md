@@ -54,7 +54,7 @@ them.
 - **One volume, at one path, in both**: the store, the environments,
   and the workers' homes and spools. A path means the same thing on
   both sides, and only starting a process crosses
-  (`ai_runtime/agents/spawner.py`).
+  (`ai_runtime/agents/container.py`).
 - **Only the runtime commands the spawner.** Every request carries a
   key the spawner made at its first start and left on the volume
   (`spawner.key`), which the platform's user reads and no agent's
@@ -77,10 +77,12 @@ the runtime's processes at all, a runaway agent is the agents'
 container's to bear and not the runtime's, and the runtime's container
 is given no right beyond an ordinary container's.
 
-**One container still works.** A runtime not told where the agents'
-container is (`AI_RUNTIME_AGENTS_SPAWNER`) starts workers beside
-itself, as a developer's machine does, and everything below holds in
-that one container.
+**There is no other way to run an agent.** A runtime not told where
+the agents' container is (`AI_RUNTIME_AGENTS_SPAWNER`), or one whose
+container does not answer or cannot confine, does not start. The
+tests have no container: a stand-in in the test suite answers the
+same orders by starting programs in the test's own process
+(`ai_runtime/tests/fake_container.py`).
 
 ## A user of its own — the spawn helper
 
@@ -92,8 +94,7 @@ as somebody else. A small program does it, and does nothing else
     spawner ──spawns──▶ helper ──becomes──▶ worker   (the agent's user)
 
 The helper is started in place of the worker, with the same pipes, by
-whoever starts workers: the spawner, on the runtime's order, or the
-runtime itself where there is one container. It:
+the spawner, on the runtime's order. It:
 
 1. refuses a caller that is not the platform's user, and a user
    outside the range kept for workers;
@@ -412,9 +413,6 @@ ended becomes the spawner's child, and once over stays in the kernel's
 table, counted against its user's limit on processes, until it is
 waited for. The spawner waits for each.
 
-In one container, where the runtime starts workers itself, none of
-this runs: the container's limits are the runtime's too.
-
 ## The network
 
 ### The manifest names the hosts
@@ -569,9 +567,8 @@ therefore root's.
 
 **Where the right was not given** the stack starts all the same. The
 runtime tries, as a worker would, to reach a port where workers run
-that nothing but the rule stands in front of — the spawner's own, or in
-one container a port the runtime opens for the purpose — and says what
-it found.
+that nothing but the rule stands in front of — the spawner's own — and
+says what it found.
 
 ### An agent that looks names up itself
 
@@ -598,23 +595,20 @@ fills in one file.
 
 ## What the runtime says at start
 
-At start the runtime has the helper switch users once, asks it which
-Landlock the kernel has, prepares a place from end to end, and tries
-the network as a worker would. It writes what it found — *Workers are
-confined*, or *Workers are NOT confined here* and why; *Workers' files
-are fenced*, or that they are not; *Workers' connections are fenced*,
-or that they are not; *Workers' system calls are filtered*, or that
-they are not and why. On a kernel that has Landlock, before its sixth
-version, it says that agents are not kept from each other's sockets;
-where there is no firewall rule and the fence holds workers to the
-proxy's port, it says that, and what that does not stop. Where the
-spawn helper is not there at all — a developer's machine, a system it
-does not run on — agents run unconfined, and the line says so. Where
-the helper is there and workers still cannot be confined (the
-container was not given its rights, the install directory is not the
-one the helper was built for), the runtime does not start, and says
-what to mend; `AI_RUNTIME_ALLOW_UNCONFINED=1` starts it anyway, with
-every agent running as the runtime's own user.
+At start the runtime waits for the agents' container, has the helper
+there switch users once, asks it which Landlock the kernel has,
+prepares a place from end to end, and tries the network as a worker
+would. It writes what it found — *Workers are confined*; *Workers'
+files are fenced*, or that they are not; *Workers' connections are
+fenced*, or that they are not; *Workers' system calls are filtered*,
+or that they are not and why. On a kernel that has Landlock, before
+its sixth version, it says that agents are not kept from each other's
+sockets; where there is no firewall rule and the fence holds workers
+to the proxy's port, it says that, and what that does not stop. Where
+workers cannot be confined there (the container was not given its
+rights, the install directory is not the one the helper was built
+for), or the proxy cannot listen, the runtime does not start, and
+says what to mend.
 
 When a runtime tells the platform an agent's code is ready on it, it
 says with that word what it holds the agent to: a user of its own, its
@@ -689,8 +683,9 @@ enforced in this install; and nothing to configure.
   environment, reaches the index and no other host, and is ended when
   it does not end. It runs where the helper is — inside the runtime's
   image — and is skipped everywhere else; the file says how to run it.
-- `ai_runtime/tests/test_spawner.py` — the spawner itself, with a real
-  worker started through it; runs anywhere.
+- `ai_runtime/tests/test_container.py` — the spawner itself and the
+  runtime's client of it, with a real worker started through them;
+  runs anywhere.
 - `ai_runtime/tests/test_spawner_live.py` — the same hostile agent,
   with the runtime in one container and the agent in the other: it is
   its own user there, cannot read the spawner's key or reach the

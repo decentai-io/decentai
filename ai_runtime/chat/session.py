@@ -143,7 +143,7 @@ class Session:
         connector,
         services,
         *,
-        workers: Optional[WorkerPool] = None,
+        workers: WorkerPool,
         grants=None,
         chat_level: int = 1,
         max_beats: Optional[int] = None,

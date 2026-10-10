@@ -14,13 +14,14 @@ import sys
 from pathlib import Path
 
 import yaml
+from ai_runtime.tests import fake_container
 
 REPO = Path(__file__).resolve().parents[2]
 FIXTURE = Path(__file__).resolve().parent / "fixtures" / "agents" / "notebook"
 
 
 def run(awaitable):
-    return asyncio.run(awaitable)
+    return fake_container.run(awaitable)
 
 
 def manifest_document():

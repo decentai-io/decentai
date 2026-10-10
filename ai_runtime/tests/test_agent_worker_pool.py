@@ -16,19 +16,21 @@ import ai_runtime.agents.pool as pool_module
 from ai_runtime.agents.workers import WorkerError
 from ai_runtime.agents.pool import CallContext, WorkerPool
 from ai_runtime.chat.current import CURRENT_CHAT
+from ai_runtime.tests.fake_container import confinement
+from ai_runtime.tests import fake_container
 
 DIGEST = "sha256:" + "0" * 64
 
 
 def run(awaitable):
-    return asyncio.run(awaitable)
+    return fake_container.run(awaitable)
 
 
 def approved(ref: str):
     """An approved agent as the pool sees it: two refs, one package."""
     return SimpleNamespace(
         agent_id=ref, digest=DIGEST, folder=".",
-        environment=SimpleNamespace(python="python"),
+        environment=SimpleNamespace(python="python", refresh_sdk=lambda: []),
         manifest=SimpleNamespace(document={}),
     )
 
@@ -77,7 +79,7 @@ class FakeHandle:
 @pytest.fixture
 def pool(monkeypatch):
     monkeypatch.setattr(pool_module, "WorkerHandle", FakeHandle)
-    return WorkerPool()
+    return WorkerPool(confinement())
 
 
 class Place:
@@ -112,8 +114,7 @@ class TestAHostACredentialNames:
 
     def test_it_closes_when_the_call_ends(self, pool, monkeypatch):
         place = Place()
-        monkeypatch.setattr(pool_module.Confinement, "place_for",
-                            classmethod(lambda cls, key: place))
+        monkeypatch.setattr(pool.confinement, "place", lambda key: place)
 
         async def use_secret(resource_id, ref):
             return {"host": "mail.sara.example"}
@@ -132,8 +133,7 @@ class TestAHostACredentialNames:
 
     def test_it_closes_when_the_call_fails(self, pool, monkeypatch):
         place = Place()
-        monkeypatch.setattr(pool_module.Confinement, "place_for",
-                            classmethod(lambda cls, key: place))
+        monkeypatch.setattr(pool.confinement, "place", lambda key: place)
         context = CallContext(None)
         context.learned = [("mail.sara.example", None)]
         place.open = list(context.learned)

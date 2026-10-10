@@ -187,14 +187,14 @@ class EgressProxy:
     #: no name is looked up.
     resolver: ClassVar[Optional[Callable[[str, int], List[str]]]] = None
 
-    def __init__(self, port: int, allow_loopback: bool = False,
-                 listen: str = ""):
+    #: Where the proxy listens: every address of this container. A
+    #: worker is pointed at the proxy's port on its own container's
+    #: address (HOST), and that container passes what arrives there on
+    #: to here (agents_container/service.py).
+    LISTEN = "0.0.0.0"
+
+    def __init__(self, port: int, allow_loopback: bool = False):
         self.port = int(port)
-        #: Where the proxy listens. A worker is always pointed at its
-        #: own container's address (HOST): where agents run in a
-        #: container of their own, that container passes what arrives
-        #: there on to this one, and the proxy listens for it.
-        self.listen = str(listen or self.HOST)
         #: The tests' escape, as the web agents have it: a loopback
         #: address and nothing else. Never in a deployment.
         self.allow_loopback = bool(allow_loopback)
@@ -235,7 +235,7 @@ class EgressProxy:
         asyncio.set_event_loop(loop)
         try:
             server = loop.run_until_complete(asyncio.start_server(
-                self._serve, self.listen, self.port, limit=self.HEAD_LIMIT))
+                self._serve, self.LISTEN, self.port, limit=self.HEAD_LIMIT))
         except OSError as exc:
             self._problem = f"the proxy could not listen on {self.port}: {exc}"
             ready.set()

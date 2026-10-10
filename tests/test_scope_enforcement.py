@@ -18,6 +18,7 @@ from ai_runtime.tests.fixture_agents import AGENTS_DIR, load_agents
 
 from conftest import app_call
 from test_runtime_secret_use import runtime_headers, signing_key  # noqa: F401
+from ai_runtime.tests.fake_container import workers
 
 
 class TestRuntimeEndpointFence:
@@ -171,7 +172,7 @@ class TestOneName:
         packages, errors = load_agents(AGENTS_DIR)
         assert errors == {}
 
-        executor = FunctionExecutor(
+        executor = FunctionExecutor(workers(), 
             provider=InMemoryResourceProvider(),
             grants=FunctionGrants([
                 {"effect": "allow", "functions": ["notebook.*.*"]},
@@ -190,7 +191,7 @@ class TestExecutorGate:
 
         from sim.resources import InMemoryResourceProvider
 
-        executor = FunctionExecutor(
+        executor = FunctionExecutor(workers(), 
             provider=InMemoryResourceProvider(),
             grants=FunctionGrants([
                 {"effect": "allow", "functions": ["notebook.note.*"]},
@@ -221,7 +222,7 @@ class TestExecutorGate:
 
         from sim.resources import InMemoryResourceProvider
 
-        executor = FunctionExecutor(
+        executor = FunctionExecutor(workers(), 
             provider=InMemoryResourceProvider(),
             grants=FunctionGrants([
                 {"effect": "allow", "functions": ["notebook.note.save"],

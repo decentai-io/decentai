@@ -12,23 +12,22 @@ in full.
                       what is installed
     environments.py   one private venv per dependency list — where an
                       agent's declared dependencies live, and nowhere else
-    workers.py  the host side of the worker protocol: spawn from
+    workers.py        the host side of the worker protocol: start from
                       the venv, handshake, invoke, kill — and the probe
                       installation verifies with
-    pool.py    the running workers, and the router that answers
+    pool.py           the running workers, and the router that answers
                       what each asks, by the call it asks for
     mcp.py            a remote MCP server in a chat's roster, called
                       through the same gates as an agent
-    egress.py         the proxy a confined worker is pointed at: the
-                      hosts its manifest declared, and nothing else
+    egress.py         the proxy every worker is pointed at: the hosts
+                      its manifest declared, and nothing else
     approved.py       one approval's view of a shared package: the same
                       code, addressed by the approval's ref
     confinement.py    a user, a home and a spool per approved agent, and
                       the spawn helper (agents_container/) that starts a
                       worker as that user — docs/system/sandbox.md
-    spawner.py        where an agent's processes are started: here
-                      (LocalSpawner), or in a container of their own,
-                      asked over a socket (RemoteSpawner)
+    container.py      the agents' container, where every process of an
+                      agent's is started, asked over a socket
 
 All of this runs in the runtime. What runs in the agents' container —
 the spawner's service, what agents use, the spawn helper — is
@@ -41,19 +40,19 @@ platform boundary, shipped into every environment.
 
 from ai_runtime.agents.approved import ApprovedAgent
 from ai_runtime.agents.confinement import Confinement
+from ai_runtime.agents.container import AgentsContainer
 from ai_runtime.agents.environments import AgentEnvironment
 from ai_runtime.agents.library import AgentLibrary, AgentRefused, InstalledAgent
-from ai_runtime.agents.spawner import Spawner
 from ai_runtime.agents.workers import WorkerError, WorkerHandle
 
 __all__ = [
     "AgentEnvironment",
     "AgentLibrary",
     "AgentRefused",
+    "AgentsContainer",
     "ApprovedAgent",
     "Confinement",
     "InstalledAgent",
-    "Spawner",
     "WorkerError",
     "WorkerHandle",
 ]

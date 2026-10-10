@@ -17,6 +17,7 @@ from ai_runtime.execution.resources import ResourceAccess, ResourceDenied
 from contracts.file_types import FileTypes
 from contracts.record_fields import RecordFields
 from sim.resources import InMemoryResourceProvider
+from ai_runtime.tests import fake_container
 
 TASK = {"id": "task", "fields": [
     {"name": "title", "label": "Title", "type": "string", "storage": "keys",
@@ -30,7 +31,7 @@ TASK = {"id": "task", "fields": [
 
 
 def run(awaitable):
-    return asyncio.run(awaitable)
+    return fake_container.run(awaitable)
 
 
 def access(**more):

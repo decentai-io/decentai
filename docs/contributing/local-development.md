@@ -1,15 +1,17 @@
 # Local development
 
-Three processes and a database, each started by hand: the backend and
-the runtime each read a `config.env` beside them, and the web app reads
+The backend and the web app are started by hand: the backend reads a
+`config.env` beside it, and the web app reads
 `frontend/src/environments/environment.ts`. This is the everyday path
-for changing the platform; Compose is for running the finished thing.
+for changing those two; Compose is for running the finished thing.
 
-Started this way the runtime starts agents' workers itself, as your own
-user, and confines nothing: no separate user per agent, no fence around
-its files, no proxy in front of its connections. It says so at start.
-What the sandbox does is seen in the Compose stack
-([the sandbox](../system/sandbox.md)).
+The runtime is not started by hand. Every process of an agent's runs
+in the agents' container, and a runtime not told where that container
+is does not start ([the sandbox](../system/sandbox.md)); so the
+runtime runs in the Compose stack, and its code is worked on through
+its own test suite, which stands a double in for the container
+(`ai_runtime/tests/fake_container.py`) and starts real workers in the
+test's own process.
 
 ## What you need
 
@@ -43,7 +45,6 @@ long directory overflows the path limit.
 ```bash
 python bootstrap/init_db.py                    # once, and again after pulling a schema change
 cd backend && python main.py                   # :8000
-python ai_runtime/main.py                      # :8001, from the repository root
 cd frontend && npm start                       # :4200
 ```
 
@@ -104,14 +105,12 @@ repository, are tested that way.
 
 ## The simulator
 
-`sim/` is the backend the runtime does not have when it runs alone:
-in-memory services answering the same contract — state, messages,
-events, approvals, storage, schedules, the audit trail, the resource
-provider. The runtime's tests are written against it, and it is what
-`ai_runtime/main.py` serves when `BACKEND_INTERNAL_URL` is empty. It is
-not a mock in the sense of a stand-in that lies; where it and the
-backend disagree, one of them has a bug, and a test is the place to
-find out.
+`sim/` is the backend the runtime's tests do not have: in-memory
+services answering the same contract — state, messages, events,
+approvals, storage, schedules, the audit trail, the resource provider.
+The runtime's tests are written against it. It is not a mock in the
+sense of a stand-in that lies; where it and the backend disagree, one
+of them has a bug, and a test is the place to find out.
 
 ## Where things are
 
