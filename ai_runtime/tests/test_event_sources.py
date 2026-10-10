@@ -124,10 +124,12 @@ class TestScheduledFunctions:
         async def wake(chat_id, event):
             woken.append(event)
 
+        pool = workers()
+
         async def scenario():
             services = SimSessionServices()
             runner = ScheduleRunner(
-                roster(), FunctionExecutor(workers(), provider=services.provider), wake)
+                roster(), FunctionExecutor(pool, provider=services.provider), wake)
             outcome = await runner.fire(Schedule(
                 "chat_1", "invoke", function="notebook.note.find",
                 inputs={}, wake_field="notes"))
@@ -142,13 +144,15 @@ class TestScheduledFunctions:
         async def wake(chat_id, event):
             woken.append((chat_id, event))
 
+        pool = workers()
+
         async def scenario():
             services = SimSessionServices()
             await services.provider.create_data(
                 "notebook__note", {"title": "Pay rent",
                                    "notebook": "personal"}, {})
             runner = ScheduleRunner(
-                roster(), FunctionExecutor(workers(), provider=services.provider), wake)
+                roster(), FunctionExecutor(pool, provider=services.provider), wake)
             outcome = await runner.fire(Schedule(
                 "chat_1", "invoke", function="notebook.note.find",
                 inputs={}, wake_field="notes"))
@@ -162,10 +166,12 @@ class TestScheduledFunctions:
         async def wake(chat_id, event):
             raise AssertionError("nothing should wake")
 
+        pool = workers()
+
         async def scenario():
             services = SimSessionServices()
             runner = ScheduleRunner(
-                roster(), FunctionExecutor(workers(), provider=services.provider), wake)
+                roster(), FunctionExecutor(pool, provider=services.provider), wake)
             outcome = await runner.fire(Schedule(
                 "chat_1", "invoke", function="notebook.note.save",
                 inputs={"notebook": "x", "title": "sneak"}))

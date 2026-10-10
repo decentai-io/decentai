@@ -137,8 +137,9 @@ does not hold is pulled through the backend's fenced door
   the build on first open.
 - **Warm after a restart.** The store outlives the container; an
   environment built for another interpreter is rebuilt in the
-  background (`warm_up_in_background`) while the process serves, from
-  code already verified on disk.
+  background (`AgentLibrary.warm_up`, a task started at the
+  application's start) while the process serves, from code already
+  verified on disk.
 - **Ready is reported.** Once per process per version the runtime tells
   the platform the agent is ready, or failed and why
   (`Agents:Agent:Prepared`), which turns *Preparing* into *Ready* on the

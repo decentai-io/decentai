@@ -26,11 +26,16 @@ def run(awaitable):
     return fake_container.run(awaitable)
 
 
+async def current_sdk():
+    """An environment whose SDK needs no refreshing."""
+    return []
+
+
 def approved(ref: str):
     """An approved agent as the pool sees it: two refs, one package."""
     return SimpleNamespace(
         agent_id=ref, digest=DIGEST, folder=".",
-        environment=SimpleNamespace(python="python", refresh_sdk=lambda: []),
+        environment=SimpleNamespace(python="python", refresh_sdk=current_sdk),
         manifest=SimpleNamespace(document={}),
     )
 

@@ -234,8 +234,7 @@ class CallSurface:
             extras = getattr(agent.environment, "extras", None)
             if extras is None:
                 raise WorkerError("Packages cannot be installed here.")
-            folder, errors = await asyncio.get_running_loop().run_in_executor(
-                None, extras, names, self.confinement.builder_place())
+            folder, errors = await extras(names, self.confinement.builder_place())
             if errors:
                 raise WorkerError("; ".join(errors))
             return str(folder)

@@ -12,7 +12,7 @@ import time
 import pytest
 
 from ai_runtime.agents.confinement import Confinement, ConfinementFailed, WorkerPlace
-from ai_runtime.tests.fake_container import FakeContainer
+from ai_runtime.tests.fake_container import FakeContainer, run
 
 #: What a helper on an old kernel says of it: nothing.
 NO_KERNEL = ""
@@ -119,7 +119,7 @@ class TestPlace:
 
     def test_prepare_empties_and_then_hands_over(self, fake):
         place = confined(fake).place("agt_aaaa")
-        assert place.prepare() == []
+        assert run(place.prepare()) == []
         assert place.home.is_dir() and place.spool.is_dir()
         assert fake.asked == [
             ["clear", str(place.home)], ["clear", str(place.spool)],
@@ -131,19 +131,19 @@ class TestPlace:
     def test_prepare_stops_at_the_first_refusal(self, fake):
         fake.refuses.add("own")
         place = confined(fake).place("agt_aaaa")
-        errors = place.prepare()
+        errors = run(place.prepare())
         assert errors and "no own today" in errors[0]
         assert [asked[0] for asked in fake.asked] == [
             "clear", "clear", "sweep", "own"]
 
     def test_stop_names_the_user(self, fake):
         place = confined(fake).place("agt_aaaa")
-        assert place.stop() == []
+        assert run(place.stop()) == []
         assert fake.asked == [["stop", str(place.user)]]
 
     def test_a_program_run_to_its_end_goes_through_the_helper(self, fake):
         place = confined(fake).builder_place()
-        code, output = place.run(["/no/such/python", "-m", "pip", "--version"])
+        code, output = run(place.run(["/no/such/python", "-m", "pip", "--version"]))
         assert code == 1 and output.startswith(FakeContainer.COULD_NOT_RUN)
         assert fake.asked[0][:3] == ["run", str(place.user), str(place.home)]
         assert fake.asked[0][-4:] == [
@@ -156,7 +156,7 @@ class TestPlacesNobodyUses:
     DAY = 86400
 
     def used(self, place, days_ago, now):
-        assert place.prepare() == []
+        assert run(place.prepare()) == []
         (place.home / "left").write_text("x", encoding="utf-8")
         os.utime(place.folder, (now - days_ago * self.DAY,) * 2)
 
@@ -169,7 +169,7 @@ class TestPlacesNobodyUses:
         self.used(recent, 3, now)
         fake.asked.clear()
 
-        assert confinement.sweep(now) == 1
+        assert run(confinement.sweep(now)) == 1
         assert not old.folder.exists()
         assert recent.folder.is_dir() and (recent.home / "left").is_file()
         # What its user left was taken away as that user.
@@ -187,7 +187,7 @@ class TestPlacesNobodyUses:
         self.used(old, 45, now)
         fake.refuses.add("clear")         # the helper empties nothing
 
-        assert confinement.sweep(now) == 0
+        assert run(confinement.sweep(now)) == 0
         assert old.folder.is_dir()
         assert confinement.place("agt_uninstalled").user == old.user
 
@@ -195,34 +195,34 @@ class TestPlacesNobodyUses:
         now = time.time()
         confinement = confined(fake)
         place = confinement.verification_place()
-        assert place.prepare() == []
+        assert run(place.prepare()) == []
         os.utime(place.folder, (now - 400 * self.DAY,) * 2)
-        assert confinement.sweep(now) == 0
+        assert run(confinement.sweep(now)) == 0
         assert place.folder.is_dir()
 
     def test_the_builders_place_is_never_given_up(self, fake):
         now = time.time()
         confinement = confined(fake)
         place = confinement.builder_place()
-        assert place.prepare() == []
+        assert run(place.prepare()) == []
         os.utime(place.folder, (now - 400 * self.DAY,) * 2)
-        assert confinement.sweep(now) == 0
+        assert run(confinement.sweep(now)) == 0
         assert place.folder.is_dir()
 
     def test_an_agent_given_up_is_given_a_place_again(self, fake):
         now = time.time()
         confinement = confined(fake)
         self.used(confinement.place("agt_back"), 45, now)
-        assert confinement.sweep(now) == 1
+        assert run(confinement.sweep(now)) == 1
         again = confinement.place("agt_back")
-        assert again.prepare() == [] and again.home.is_dir()
+        assert run(again.prepare()) == [] and again.home.is_dir()
 
 
 class TestFence:
     def checked(self, fake, kernel=NO_KERNEL):
         fake.kernel = kernel
         confinement = confined(fake)
-        confinement.check()
+        run(confinement.check())
         return confinement
 
     def test_a_kernel_without_landlock_fences_nothing(self, fake):
@@ -294,7 +294,7 @@ class TestFence:
         place = confinement.verification_place()
         rules = place.fence(held=False)
         assert rules and not any(rule.startswith("c:") for rule in rules)
-        place.run(["/usr/bin/true"], held=False)
+        run(place.run(["/usr/bin/true"], held=False))
         asked = next(line for line in fake.asked if "/usr/bin/true" in line)
         assert not any(word.startswith("c:") for word in asked)
 
@@ -350,7 +350,7 @@ class TestTheStart:
     def test_the_helper_is_checked_and_a_place_proved_before_anything_runs(
             self, fake):
         confinement = confined(fake)
-        confinement.check()
+        run(confinement.check())
         assert fake.asked[0] == ["check"]
         # Installation's place, prepared from end to end.
         assert [asked[0] for asked in fake.asked[1:6]] == [
@@ -363,7 +363,7 @@ class TestTheStart:
         nothing were wrong: it says what to mend, and stops."""
         fake.refuses.add("check")
         with pytest.raises(ConfinementFailed, match="Mend"):
-            confined(fake).check()
+            run(confined(fake).check())
 
     def test_a_place_that_cannot_be_prepared_stops_the_start(self, fake):
         """The helper switches users, and refuses this install
@@ -371,7 +371,7 @@ class TestTheStart:
         the first agent somebody calls — and not run past."""
         fake.refuses.add("own")
         with pytest.raises(ConfinementFailed, match="own"):
-            confined(fake).check()
+            run(confined(fake).check())
 
     def test_the_builder_reaches_where_packages_come_from(self, fake):
         confinement = confined(fake)
@@ -386,7 +386,7 @@ class TestTheStart:
 
     def test_what_is_held_is_reported_in_three_parts(self, fake):
         confinement = self_checked = confined(fake)
-        self_checked.check()
+        run(self_checked.check())
         assert confinement.report() == {
             "user": True, "files": False, "network": False}
 

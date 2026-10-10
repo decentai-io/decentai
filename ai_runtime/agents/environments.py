@@ -3,12 +3,12 @@
     <install_dir>/envs/<hex>/     the venv its worker runs in
 
 Built at the install station, after the manifest is proven approved:
-a real venv, the SDK copied in, and the venv's own pip installing
-exactly the declared dependency list. An environment is named by that
-list (AgentLibrary.environment_key), so two packages that declare the
-same one share it — an update that changes code only needs no pip —
-and two agents pinning incompatible versions of one package are two
-folders, not a conflict.
+a real venv, the SDK copied in, and the declared dependency list
+installed. An environment is named by that list
+(AgentLibrary.environment_key), so two packages that declare the same
+one share it — an update that changes code only needs no pip — and two
+agents pinning incompatible versions of one package are two folders,
+not a conflict.
 
 The SDK is COPIED, not pip-installed: it is dependency-free pure Python
 by contract, so copying it into site-packages is the whole of
@@ -19,12 +19,13 @@ the marker, and ``exists()`` stays false — the same never-half-here
 rule the package store follows.
 
 WHO BUILDS. A package may run code of its own while it is built, and
-that code is nobody's the runtime trusts. Where workers are confined
-(confinement.py) the declared list is handed to the builder: a user of
-its own, which reaches where packages come from and nothing else, and
-leaves what it downloaded and built as wheels. The runtime takes the
-wheels and unpacks them, which runs nothing of theirs. Where nothing
-confines, the venv's pip installs the list as it always has.
+that code is nobody's the runtime trusts. The declared list is handed
+to the builder (confinement.py): a user of its own, in the agents'
+container, which reaches where packages come from and nothing else,
+and leaves what it downloaded and built as wheels. The runtime takes
+the wheels and unpacks them, which runs nothing of theirs. The venv
+itself and the unpacking are the runtime's own subprocesses, on this
+machine.
 
 PACKAGES FOR ONE RUN. A function that runs code a person allowed may
 need packages no manifest named (``extras``):
@@ -39,18 +40,17 @@ goes when the environment goes.
 
 from __future__ import annotations
 
-import logging
+import asyncio
 import hashlib
+import logging
 import os
 import re
 import shutil
 import stat
-import subprocess
 import sys
-import threading
+import uuid
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Sequence, Tuple
-
+from typing import Awaitable, Callable, Dict, List, Optional, Sequence, Tuple
 
 READY_MARKER = ".ready"
 #: What a wheel is called (its name says what it holds and what it runs
@@ -84,13 +84,20 @@ class AgentEnvironment:
     #: environment, and how many names one list may hold.
     EXTRAS_FOLDER = "extras"
     EXTRAS_MAX = 30
-    #: One list is installed at a time: two calls naming the same list
-    #: would otherwise build one folder twice, over each other.
-    extras_lock = threading.Lock()
 
-    #: Test seam — a callable taking the argv list and returning
-    #: (return_code, output). Set it and no subprocess runs.
-    runner: Optional[Callable[[Sequence[str]], tuple]] = None
+    #: One copy of the SDK, and one build of a list, at a time per
+    #: environment folder: a worker about to start and an install both
+    #: bring the SDK up to date, and two calls naming one list would
+    #: build its folder twice, over each other. Keyed by the folder,
+    #: since an environment is a path and many objects may name it.
+    _sdk_locks: Dict[str, asyncio.Lock] = {}
+    _extras_locks: Dict[str, asyncio.Lock] = {}
+
+    #: Test seam — a coroutine function taking the argv list and
+    #: answering (return code, output). Set it and no subprocess of the
+    #: runtime's own runs (the venv, the unpacking); the builder's are
+    #: the container's.
+    runner: Optional[Callable[[Sequence[str]], Awaitable[tuple]]] = None
 
     def __init__(self, root: str | Path):
         self.root = Path(root)
@@ -110,7 +117,7 @@ class AgentEnvironment:
         return (self.root / READY_MARKER).is_file()
 
     # ------------------------------------------------------------------
-    def build(self, dependencies: List[str], place) -> List[str]:
+    async def build(self, dependencies: List[str], place) -> List[str]:
         """Create the venv, copy the SDK in, install the declared list.
         Returns errors, empty on success; any failure removes the
         folder — an environment is whole or absent, never partial. One
@@ -119,13 +126,13 @@ class AgentEnvironment:
         ``place`` is the builder's (confinement.py), where the list is
         downloaded and built as wheels; they are unpacked here."""
         if self.exists():
-            return self.refresh_sdk()
+            return await self.refresh_sdk()
         self.remove()
 
         errors = (
-            self._create_venv()
+            await self._create_venv()
             or self._copy_sdk()
-            or self._install(dependencies, place)
+            or await self._install(dependencies, place)
         )
         if errors:
             self.remove()
@@ -140,8 +147,8 @@ class AgentEnvironment:
             shutil.rmtree(self.root, ignore_errors=True)
 
     # ------------------------------------------------------------------
-    def _create_venv(self) -> List[str]:
-        code, output = self._run(
+    async def _create_venv(self) -> List[str]:
+        code, output = await self._run(
             [sys.executable, "-m", "venv", str(self.root)],
             self.CREATE_TIMEOUT_SECONDS,
         )
@@ -174,7 +181,7 @@ class AgentEnvironment:
         # Copied beside, then put in place: a worker starting from this
         # environment meanwhile finds the SDK there, the old or the
         # new, and not a folder half gone.
-        tag = f"{os.getpid()}-{threading.get_ident()}"
+        tag = f"{os.getpid()}-{uuid.uuid4().hex[:8]}"
         staging = target / f".decentai_sdk-new-{tag}"
         aside = target / f".decentai_sdk-old-{tag}"
         placed = target / "decentai_sdk"
@@ -201,18 +208,7 @@ class AgentEnvironment:
             self.sdk_digest(), encoding="utf-8")
         return []
 
-    #: One lock per environment folder, for the SDK's copy: a worker
-    #: about to start and an install both bring it up to date, from
-    #: two threads.
-    _sdk_locks: Dict[str, threading.Lock] = {}
-    _sdk_locks_guard = threading.Lock()
-
-    def _sdk_lock(self) -> threading.Lock:
-        with AgentEnvironment._sdk_locks_guard:
-            return AgentEnvironment._sdk_locks.setdefault(
-                str(self.root), threading.Lock())
-
-    def refresh_sdk(self) -> List[str]:
+    async def refresh_sdk(self) -> List[str]:
         """The SDK copied in at build is the SDK of that day, and the
         platform's moves on — a feature on the wire, a fix. An
         environment carries the platform's current SDK before a worker
@@ -224,7 +220,7 @@ class AgentEnvironment:
         current = self.sdk_digest()
         # Looked at again under the lock: whoever waited for another's
         # copy finds it made, and makes none.
-        with self._sdk_lock():
+        async with self._sdk_locks.setdefault(str(self.root), asyncio.Lock()):
             try:
                 if marker.read_text(encoding="utf-8").strip() == current:
                     return []
@@ -244,7 +240,7 @@ class AgentEnvironment:
                 return candidate
         return None
 
-    def _install(self, dependencies: List[str], place) -> List[str]:
+    async def _install(self, dependencies: List[str], place) -> List[str]:
         dependencies = sorted({str(d).strip() for d in dependencies or []
                                if str(d).strip()})
         if not dependencies:
@@ -255,7 +251,7 @@ class AgentEnvironment:
         if options:
             return [f"dependency installation failed: '{options[0]}' is "
                     f"not a requirement"]
-        return self._install_built(dependencies, place)
+        return await self._install_built(dependencies, place)
 
     @staticmethod
     def _said(code: int, output: str) -> List[str]:
@@ -269,15 +265,15 @@ class AgentEnvironment:
     # Built by the builder, unpacked by the runtime
     # ------------------------------------------------------------------
 
-    def _install_built(self, dependencies: List[str], place) -> List[str]:
+    async def _install_built(self, dependencies: List[str], place) -> List[str]:
         """The declared list, downloaded and built where that is
         confined, and then unpacked here. The list itself is read by
         the builder's pip and never by the runtime's, which is handed
         files: a wheel is unpacked, and nothing of it is run."""
         wheels = self.root / self.WHEELS_FOLDER
-        errors = self._build_wheels(dependencies, place, wheels)
+        errors = await self._build_wheels(dependencies, place, wheels)
         if not errors:
-            code, output = self._run(
+            code, output = await self._run(
                 [str(self.python), "-m", "pip", "install",
                  "--no-input", "--disable-pip-version-check",
                  "--no-index", "--no-deps", "--no-cache-dir",
@@ -288,20 +284,20 @@ class AgentEnvironment:
         shutil.rmtree(wheels, ignore_errors=True)
         return errors
 
-    def _build_wheels(self, dependencies: List[str], place,
-                      wheels: Path) -> List[str]:
+    async def _build_wheels(self, dependencies: List[str], place,
+                            wheels: Path) -> List[str]:
         """Every package the list needs, as wheels in ``wheels``. One
         build at a time: builds share a user, and ending one ends
         everything that user runs."""
-        with place.confinement.building_lock:
-            errors = place.prepare()
+        async with place.confinement.building_lock:
+            errors = await place.prepare()
             if errors:
                 return errors
             place.admit("the builder", place.confinement.package_network())
             try:
                 # Nothing is kept between builds: what one build left
                 # would be what the next one installs.
-                code, output = place.run(
+                code, output = await place.run(
                     [str(self.python), "-m", "pip", "wheel",
                      "--no-input", "--disable-pip-version-check",
                      "--no-cache-dir", "--wheel-dir", str(place.spool),
@@ -313,8 +309,8 @@ class AgentEnvironment:
                 return self._said(code, output) or self._take(place.spool, wheels)
             finally:
                 place.dismiss()
-                place.stop()
-                place.clear()
+                await place.stop()
+                await place.clear()
 
     # ------------------------------------------------------------------
     # Packages for one run
@@ -333,8 +329,8 @@ class AgentEnvironment:
         written = "".join(asked.split())
         return written if REQUIREMENT_RE.match(written) else ""
 
-    def extras(self, requirements: List[str],
-               place) -> Tuple[Optional[Path], List[str]]:
+    async def extras(self, requirements: List[str],
+                     place) -> Tuple[Optional[Path], List[str]]:
         """A folder holding the list and everything it depends on, for
         a program to put on its path. Returns (the folder, errors): one
         built before is handed back as it is, and a build that fails
@@ -350,11 +346,11 @@ class AgentEnvironment:
             return None, [f"one run may ask for at most {self.EXTRAS_MAX} packages"]
         digest = hashlib.sha256("\n".join(wanted).encode("utf-8")).hexdigest()
         folder = self.root / self.EXTRAS_FOLDER / digest[:32]
-        with AgentEnvironment.extras_lock:
+        async with self._extras_locks.setdefault(str(self.root), asyncio.Lock()):
             if (folder / READY_MARKER).is_file():
                 return folder, []
             shutil.rmtree(folder, ignore_errors=True)
-            errors = self._install_extras(wanted, folder, place)
+            errors = await self._install_extras(wanted, folder, place)
             if errors:
                 shutil.rmtree(folder, ignore_errors=True)
                 return None, errors
@@ -362,8 +358,8 @@ class AgentEnvironment:
         self.logger.info(f"Packages ready: {', '.join(wanted)[:120]}")
         return folder, []
 
-    def _install_extras(self, wanted: List[str], folder: Path,
-                        place) -> List[str]:
+    async def _install_extras(self, wanted: List[str], folder: Path,
+                              place) -> List[str]:
         install = [str(self.python), "-m", "pip", "install", "--no-input",
                    "--disable-pip-version-check", "--target", str(folder)]
         try:
@@ -371,13 +367,13 @@ class AgentEnvironment:
         except OSError as exc:
             return [f"dependency installation failed: {exc}"]
         wheels = folder / self.WHEELS_FOLDER
-        errors = self._build_wheels(wanted, place, wheels)
+        errors = await self._build_wheels(wanted, place, wheels)
         if not errors:
             # Unpacked by the runtime's own interpreter, isolated, never
             # by the environment's: that one already holds the agent's
             # declared packages, and starting it would run whatever
             # their .pth files say — here, as the runtime.
-            errors = self._said(*self._run(
+            errors = self._said(*await self._run(
                 [sys.executable, "-I", *install[1:],
                  "--no-index", "--no-deps", "--no-cache-dir",
                  *[str(wheel) for wheel in sorted(wheels.iterdir())]],
@@ -387,13 +383,13 @@ class AgentEnvironment:
 
     @classmethod
     def _builder_environment(cls) -> Dict[str, str]:
-        said = {name: os.environ[name] for name in cls.BUILDER_VARIABLES
-                if os.environ.get(name)}
+        given = {name: os.environ[name] for name in cls.BUILDER_VARIABLES
+                 if os.environ.get(name)}
         # Builds share a user and a home. Where packages come from is
         # what the deployment said, above — never a configuration file
         # an earlier build left in that home for the next one to read.
-        said["PIP_CONFIG_FILE"] = os.devnull
-        return said
+        given["PIP_CONFIG_FILE"] = os.devnull
+        return given
 
     @staticmethod
     def _take(source: Path, target: Path) -> List[str]:
@@ -427,21 +423,30 @@ class AgentEnvironment:
         return []
 
     # ------------------------------------------------------------------
-    def _run(self, argv: Sequence[str], timeout: int) -> tuple:
+    async def _run(self, argv: Sequence[str], timeout: int) -> tuple:
+        """One subprocess of the runtime's own, to its end: (return
+        code, what it wrote). The venv must answer for itself: the
+        host's import path leaking in would make a broken environment
+        look whole here and fail in the worker, far from the cause."""
         if AgentEnvironment.runner is not None:
-            return AgentEnvironment.runner(argv)
-        # The venv must answer for itself: the host's import path leaking
-        # in would make a broken environment look whole here and fail in
-        # the worker, far from the cause.
+            return await AgentEnvironment.runner(argv)
         environment = {
             key: value for key, value in os.environ.items()
             if key not in ("PYTHONPATH", "PYTHONHOME")
         }
         try:
-            completed = subprocess.run(
-                list(argv), capture_output=True, text=True,
-                timeout=timeout, env=environment,
-            )
-        except (OSError, subprocess.SubprocessError) as exc:
+            process = await asyncio.create_subprocess_exec(
+                *[str(word) for word in argv],
+                stdin=asyncio.subprocess.DEVNULL,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+                env=environment)
+        except OSError as exc:
             return 1, str(exc)
-        return completed.returncode, (completed.stdout or "") + (completed.stderr or "")
+        try:
+            output, _ = await asyncio.wait_for(process.communicate(), timeout)
+        except asyncio.TimeoutError:
+            process.kill()
+            await process.wait()
+            return 1, f"it did not finish in {int(timeout)} seconds"
+        return process.returncode, output.decode("utf-8", "replace")

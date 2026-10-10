@@ -338,7 +338,7 @@ class Placed:
         self.user, self.label, self.spool = user, name, spool
         self.agent = "agt_" + name.lower()
 
-    def prepare(self):
+    async def prepare(self):
         self.spool.mkdir(exist_ok=True)
         return []
 
@@ -348,10 +348,10 @@ class Placed:
     def dismiss(self):
         pass
 
-    def clear(self):
+    async def clear(self):
         return []
 
-    def stop(self):
+    async def stop(self):
         return []
 
     def stop_line(self):
@@ -475,7 +475,7 @@ class TestTheSpawnerHoldsThemToIt:
             # What it keeps on disk is measured beside the watch, by a
             # process of its own: there a moment after the rest.
             for _ in range(100):
-                said = await asyncio.to_thread(spawner.usage)
+                said = await spawner.usage()
                 if said["agents"] and said["agents"][0].get("disk") is not None:
                     break
                 await asyncio.sleep(0.1)
@@ -505,9 +505,9 @@ class TestTheSpawnerHoldsThemToIt:
             usage.held = 960 * MB
 
         threading.Timer(0.3, fill).start()
-        code, said = spawner.run(
+        code, said = asyncio.run(spawner.run(
             [PYTHON, "-c", "import time; time.sleep(60)"],
-            whose={"user": 29999, "name": "the builder"})
+            whose={"user": 29999, "name": "the builder"}))
         assert code == 1
         assert "the builder was ended because the agents ran out of memory" in said
 
@@ -516,7 +516,7 @@ class TestTheSpawnerHoldsThemToIt:
         usage, spawner = kernel_of_a_test
         usage.holding = {999: 900 * MB}
         usage.held = 960 * MB
-        code, said = spawner.run(
+        code, said = asyncio.run(spawner.run(
             [PYTHON, "-c", "import time; time.sleep(0.5); print('done')"],
-            whose={"user": 999, "name": "the platform"})
+            whose={"user": 999, "name": "the platform"}))
         assert (code, said.strip()) == (0, "done")

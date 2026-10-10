@@ -155,11 +155,8 @@ class AgentRoster:
                                    f"Preparing {name}: building its "
                                    f"environment — the first time takes "
                                    f"a minute…")
-                # The venv build (pip) and the probe worker run in a
-                # thread: the loop's other chats and the clock stay
-                # awake while one package installs.
-                installed = await asyncio.to_thread(
-                    self.library.install, digest, archive, manifest_hash)
+                installed = await self.library.install(
+                    digest, archive, manifest_hash)
             except Exception as exc:
                 # A refusal remembers BYTES THAT WOULD NOT INSTALL,
                 # because those fail the same way every time and each
@@ -233,9 +230,7 @@ class AgentRoster:
             if digest in keep:
                 continue
             try:
-                # Deleting a package and its environment is the disk's
-                # time, and not the loop's.
-                await asyncio.to_thread(self.library.forget, digest)
+                self.library.forget(digest)
             except Exception as exc:
                 self.logger.warning(
                     f"{digest[:19]}… not reclaimed: {exc}")

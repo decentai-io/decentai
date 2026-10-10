@@ -6,10 +6,10 @@ spawner (agents_container/service.py), on this class's order. The
 runtime decides everything about a process and starts none itself.
 
     container = AgentsContainer("agents:8003", install_dir)
-    container.wait()                                at start, until it answers
-    code, output = container.run(argv, ...)         one program, to its end
+    await container.wait()                          at start, until it answers
+    code, output = await container.run(argv, ...)   one program, to its end
     process = await container.start(argv, ...)      a worker, kept, with its pipes
-    container.usage()                               what the agents are given and use
+    await container.usage()                         what the agents are given and use
 
 The two containers hold one volume at one path — the store, the
 environments, the workers' homes and spools — so a path means the same
@@ -23,9 +23,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import socket
 import tempfile
-import time
 from pathlib import Path
 from typing import Any, Dict, Optional, Sequence, Tuple
 
@@ -70,33 +68,36 @@ class AgentsContainer:
         except OSError:
             return ""
 
-    def wait(self, seconds: Optional[float] = None) -> bool:
+    async def wait(self, seconds: Optional[float] = None) -> bool:
         """Whether the container answers, waited for: the two
         containers start together, and the runtime asks first."""
-        until = time.monotonic() + (self.WAIT_SECONDS if seconds is None else seconds)
+        loop = asyncio.get_running_loop()
+        until = loop.time() + (self.WAIT_SECONDS if seconds is None else seconds)
         while True:
             try:
-                answer = self._ask({"op": "ping"})
+                answer = await self._ask({"op": "ping"})
                 problem = "" if answer.get("here") else str(answer.get("error") or "")
-            except (OSError, ValueError) as exc:
-                problem = str(exc)
+            except (OSError, ValueError, asyncio.TimeoutError) as exc:
+                problem = str(exc) or type(exc).__name__
             if not problem:
                 return True
-            if time.monotonic() >= until:
+            if loop.time() >= until:
                 self.logger.error(f"The agents' container does not answer: {problem}")
                 return False
-            time.sleep(1)
+            await asyncio.sleep(1)
 
-    def _ask(self, request: dict) -> dict:
+    async def _ask(self, request: dict) -> dict:
         """One request, one answer, and the connection is over. The
         answer comes when the program has ended, however long that is:
         its time is the spawner's to keep."""
-        with socket.create_connection(
-                (self.host, self.port), self.CONNECT_SECONDS) as connection:
-            connection.settimeout(None)
-            connection.sendall(self._line({**request, "key": self.key()}))
-            with connection.makefile("rb") as answers:
-                answered = answers.readline()
+        reader, writer = await asyncio.wait_for(
+            asyncio.open_connection(self.host, self.port), self.CONNECT_SECONDS)
+        try:
+            writer.write(self._line({**request, "key": self.key()}))
+            await writer.drain()
+            answered = await reader.readline()
+        finally:
+            writer.close()
         if not answered:
             raise OSError("it hung up")
         answer = json.loads(answered)
@@ -112,12 +113,12 @@ class AgentsContainer:
     # One program, to its end
     # ------------------------------------------------------------------
 
-    def run(self, argv: Sequence[str],
-            environment: Optional[Dict[str, str]] = None,
-            cwd: Optional[str] = None, timeout: Optional[float] = None,
-            feed: Optional[str] = None, errors: str = MERGE,
-            stop: Optional[Sequence[str]] = None,
-            whose: Optional[Dict[str, Any]] = None) -> Tuple[int, str]:
+    async def run(self, argv: Sequence[str],
+                  environment: Optional[Dict[str, str]] = None,
+                  cwd: Optional[str] = None, timeout: Optional[float] = None,
+                  feed: Optional[str] = None, errors: str = MERGE,
+                  stop: Optional[Sequence[str]] = None,
+                  whose: Optional[Dict[str, Any]] = None) -> Tuple[int, str]:
         """Run one program there to its end. Returns (return code, what
         it wrote). ``environment`` is the whole of what it is given;
         ``feed`` is written to its input; one that outlasts ``timeout``
@@ -125,16 +126,16 @@ class AgentsContainer:
         user's processes — and told of. ``whose`` says whose program it
         is, for what agents use to be added up by agent."""
         try:
-            answer = self._ask({
+            answer = await self._ask({
                 "op": "run", "argv": [str(word) for word in argv],
                 "environment": environment, "cwd": cwd, "timeout": timeout,
                 "feed": feed, "errors": errors,
                 "stop": [str(word) for word in stop] if stop else None,
                 "whose": whose,
             })
-        except (OSError, ValueError) as exc:
+        except (OSError, ValueError, asyncio.TimeoutError) as exc:
             return 1, (f"{self.COULD_NOT_RUN}: the agents' container did "
-                       f"not answer ({exc})")
+                       f"not answer ({exc or type(exc).__name__})")
         if "error" in answer:
             return 1, f"{self.COULD_NOT_RUN}: {answer['error']}"
         return int(answer.get("code", 1)), str(answer.get("said") or "")
@@ -176,12 +177,12 @@ class AgentsContainer:
     # What it holds
     # ------------------------------------------------------------------
 
-    def usage(self) -> Optional[Dict[str, Any]]:
+    async def usage(self) -> Optional[Dict[str, Any]]:
         """What the agents are given and what each uses now, or None
         when the container did not answer."""
         try:
-            answer = self._ask({"op": "usage"})
-        except (OSError, ValueError):
+            answer = await self._ask({"op": "usage"})
+        except (OSError, ValueError, asyncio.TimeoutError):
             return None
         return answer if "error" not in answer else None
 

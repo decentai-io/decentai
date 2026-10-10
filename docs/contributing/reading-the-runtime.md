@@ -29,8 +29,8 @@ Three pages, in this order. The code keeps their words.
 
 | Read | For |
 |---|---|
-| `main.py` | what is built at start, in this order: `Events.configure`, the `AgentsContainer` (waited for), `Confinement` (`check`, then `open_the_way_out`), the `AgentLibrary`, the backend's services |
-| `door/app.py` `create_app` | the `SessionHost`, the `Scheduler`, and what stops at shutdown |
+| `main.py` | the parts, built once: `Events.configure`, the `AgentsContainer`, the `Confinement`, the `AgentLibrary`, the backend's services |
+| `door/app.py` `create_app` | the `SessionHost` and the `Scheduler`; the lifespan, which starts the parts on the loop in order (the container waited for, `Confinement.start`, `load_all`, the warm-up task, the clock) and stops them in reverse |
 | `door/auth.py`, `door/socket.py` | who may dial, and the loop that hands every frame to the host |
 
 Check:

@@ -1826,10 +1826,12 @@ class TestTheSocketKeepsHearing:
             async def stop(self):
                 raise AssertionError("the socket's loop waited for the stop")
 
+        pool = workers()
+
         async def scenario():
             from ai_runtime.door.host import SessionHost
 
-            host = SessionHost(SimSessionServices(), {}, workers())
+            host = SessionHost(SimSessionServices(), {}, pool)
             host.sessions["chat_1"] = Busy()
             await host.handle("chat_1", {"event": "stop"})
 

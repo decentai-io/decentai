@@ -59,6 +59,10 @@ class Serving:
         self.thread.join(10)
 
 
+def run(awaitable):
+    return asyncio.run(awaitable)
+
+
 @pytest.fixture
 def serving(tmp_path):
     served = Serving(tmp_path)
@@ -74,47 +78,47 @@ def container(serving, tmp_path):
 
 class TestOneProgram:
     def test_it_runs_there_and_says_what_it_wrote(self, container):
-        code, output = container.run([PYTHON, "-c", "print('here')"])
+        code, output = run(container.run([PYTHON, "-c", "print('here')"]))
         assert (code, output.strip()) == (0, "here")
 
     def test_its_return_code_is_its_own(self, container):
-        code, _ = container.run([PYTHON, "-c", "import sys; sys.exit(7)"])
+        code, _ = run(container.run([PYTHON, "-c", "import sys; sys.exit(7)"]))
         assert code == 7
 
     def test_it_is_given_the_environment_it_is_sent_and_no_other(self, container):
-        code, output = container.run(
+        code, output = run(container.run(
             [PYTHON, "-c",
              "import os; print(os.environ.get('GIVEN'), "
              "os.environ.get('PYTEST_CURRENT_TEST'))"],
-            environment={**MACHINE, "GIVEN": "yes"})
+            environment={**MACHINE, "GIVEN": "yes"}))
         assert (code, output.split()) == (0, ["yes", "None"])
 
     def test_what_it_is_fed_is_its_input(self, container):
-        code, output = container.run(
+        code, output = run(container.run(
             [PYTHON, "-c", "import sys; print(sys.stdin.read().upper())"],
-            feed="spoken")
+            feed="spoken"))
         assert (code, output.strip()) == (0, "SPOKEN")
 
     def test_its_log_is_said_with_the_rest_or_left_out(self, container):
         program = [PYTHON, "-c",
                    "import sys; print('out'); print('log', file=sys.stderr)"]
-        assert "log" in container.run(program)[1]
-        assert "log" not in container.run(program, errors=AgentsContainer.DROP)[1]
+        assert "log" in run(container.run(program))[1]
+        assert "log" not in run(container.run(program, errors=AgentsContainer.DROP))[1]
 
     def test_one_that_outlasts_its_time_is_ended(self, container):
-        code, output = container.run(
-            [PYTHON, "-c", "import time; time.sleep(60)"], timeout=1)
+        code, output = run(container.run(
+            [PYTHON, "-c", "import time; time.sleep(60)"], timeout=1))
         assert code == 1 and "did not finish in 1 seconds" in output
 
     def test_a_program_that_is_not_there_could_not_run(self, container):
-        code, output = container.run(["no-such-program-anywhere"])
+        code, output = run(container.run(["no-such-program-anywhere"]))
         assert code == 1 and output.startswith(AgentsContainer.COULD_NOT_RUN)
 
     def test_nobody_answering_is_told_of_not_raised(self, tmp_path):
         with socket.socket() as taken:
             taken.bind(("127.0.0.1", 0))
             port = taken.getsockname()[1]
-        code, output = AgentsContainer(f"127.0.0.1:{port}", tmp_path).run(["x"])
+        code, output = run(AgentsContainer(f"127.0.0.1:{port}", tmp_path).run(["x"]))
         assert code == 1 and "did not answer" in output
 
     def test_an_address_is_host_and_port(self, tmp_path):
@@ -132,8 +136,8 @@ class TestTheKey:
         stranger = AgentsContainer(
             f"127.0.0.1:{serving.service.port}", tmp_path / "elsewhere")
         marker = tmp_path / "ran"
-        code, output = stranger.run(
-            [PYTHON, "-c", f"open({str(marker)!r}, 'w').close()"])
+        code, output = run(stranger.run(
+            [PYTHON, "-c", f"open({str(marker)!r}, 'w').close()"]))
         assert code == 1 and "key" in output
         assert not marker.exists()
 
@@ -147,7 +151,7 @@ class TestTheKey:
         asyncio.run(scenario())
 
     def test_a_runtime_waits_for_the_container_and_finds_it(self, container):
-        assert container.wait(5)
+        assert run(container.wait(5))
 
 
 #: A worker as the spawner sees one: a program that answers one line

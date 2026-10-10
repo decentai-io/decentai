@@ -22,7 +22,7 @@ from pathlib import Path
 
 import pytest
 import yaml
-from ai_runtime.tests.fake_container import confinement
+from ai_runtime.tests.fake_container import confinement, run
 
 MANIFEST = textwrap.dedent("""
     schema_version: "1.0"
@@ -355,7 +355,7 @@ class TestActivation:
         archive, digest = package(repository)
         assert not library.has(digest)
 
-        loaded = library.install(digest, archive)
+        loaded = run(library.install(digest, archive))
 
         assert library.agent(digest) is loaded
         assert loaded.manifest.version == "1.0.0"
@@ -375,7 +375,7 @@ class TestActivation:
         other = "sha256:" + "0" * 64
 
         with pytest.raises(AgentRefused):
-            library.install(other, archive)
+            run(library.install(other, archive))
         assert not library.has(other)
         assert library.loaded() == {}
 
@@ -383,7 +383,7 @@ class TestActivation:
         self, repository, library
     ):
         archive, digest = package(repository)
-        library.install(digest, archive)
+        run(library.install(digest, archive))
         assert library.has(digest)
 
         library.forget(digest)
@@ -415,8 +415,8 @@ class TestActivation:
         second_archive, second = package(repository)
         assert first != second
 
-        library.install(first, first_archive)
-        library.install(second, second_archive)
+        run(library.install(first, first_archive))
+        run(library.install(second, second_archive))
 
         assert set(library.loaded()) == {first, second}
         assert library.agent(first).manifest.version == "1.0.0"
@@ -431,9 +431,9 @@ class TestActivation:
         the digest says the code cannot differ, so there is nothing to
         send and nothing to write."""
         archive, digest = package(repository)
-        library.install(digest, archive)
+        run(library.install(digest, archive))
 
-        assert library.install(digest, None) is library.agent(digest)
+        assert run(library.install(digest, None)) is library.agent(digest)
 
 
 

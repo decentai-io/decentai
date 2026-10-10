@@ -1,6 +1,20 @@
+"""The application: the parts main.py built, started on the loop in
+the order each needs the one before, and stopped in the reverse order
+(docs/system/architecture.md).
+
+    app = create_app(settings, services, library, container, confinement)
+
+At start: the agents' container answers; confinement is proved there
+and the proxy, the agents' one way out, serves; the library registers
+what is on disk and rebuilds, in the background, what waits for an
+environment; the clock starts. At shutdown: the warm-up is cancelled,
+the clock stops, the workers are asked to leave and then ended, the
+proxy stops, and the backend's client closes. Everything runs on the
+one loop the server gives the application.
+"""
+
 import asyncio
 from contextlib import asynccontextmanager
-from types import SimpleNamespace
 
 from fastapi import APIRouter, FastAPI
 
@@ -21,6 +35,24 @@ router.include_router(monitor.router)
 WORKERS_STOP_SECONDS = 20.0
 
 
+class AgentsOnly:
+    """What a test that only needs certain agents present hands in
+    place of a library: the mapping serves, and nothing is installed,
+    registered or built."""
+
+    def __init__(self, agents):
+        self._agents = agents if agents is not None else {}
+
+    def loaded(self):
+        return self._agents
+
+    def load_all(self) -> None:
+        pass
+
+    async def warm_up(self) -> int:
+        return 0
+
+
 def create_app(settings: RuntimeSettings, services, library, container,
                confinement, agents=None) -> FastAPI:
     """The application, from the parts main.py built: ``services`` is
@@ -32,12 +64,7 @@ def create_app(settings: RuntimeSettings, services, library, container,
     needs certain agents present may pass a plain ``agents`` mapping
     in place of a library."""
     if library is None:
-        # A mapping is enough for the doors that only read what is
-        # serving; without a library nothing can be installed, which is
-        # what a test that passes a plain dict is asking for.
-        library = SimpleNamespace(
-            loaded=lambda: agents if agents is not None else {},
-        )
+        library = AgentsOnly(agents)
 
     host = scheduler = None
     if services is not None:
@@ -58,9 +85,30 @@ def create_app(settings: RuntimeSettings, services, library, container,
 
     @asynccontextmanager
     async def lifespan(app):
+        if not await container.wait():
+            raise RuntimeError(
+                f"The agents' container at {container.host}:{container.port} "
+                f"does not answer. The runtime starts nothing of an agent's "
+                f"itself.")
+        # Proved before anything is started: the warm-up below verifies
+        # packages, and verification runs their code. Only what this
+        # application started is stopped at the end: a test hands in a
+        # confinement it started itself, on a loop of its own.
+        started_the_confinement = confinement.proxy is None
+        await confinement.start(
+            settings.egress_port, allow_loopback=settings.egress_allows_loopback)
+        # The library owns the install directory: the code under it
+        # and the environments beside it. The environments a deploy
+        # left behind are rebuilt now, in the background, not by the
+        # first person to name each agent.
+        library.load_all()
+        warming = asyncio.ensure_future(library.warm_up())
         if scheduler is not None:
             await scheduler.start()
         yield
+        if not warming.done():
+            warming.cancel()
+            await asyncio.gather(warming, return_exceptions=True)
         if scheduler is not None:
             await scheduler.stop()
         # Abandonment, by design: every mind is durable to its last
@@ -76,7 +124,9 @@ def create_app(settings: RuntimeSettings, services, library, container,
                 await asyncio.wait_for(
                     host.workers.stop(), WORKERS_STOP_SECONDS)
             except Exception:
-                host.workers.terminate()
+                await host.workers.terminate()
+        if started_the_confinement:
+            await confinement.stop()
         close = getattr(getattr(services, "gateway", None), "close", None)
         if close is not None:
             try:

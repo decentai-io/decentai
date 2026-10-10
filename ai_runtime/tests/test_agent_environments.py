@@ -6,6 +6,7 @@ The one seam (`AgentEnvironment.runner`) is for the library-station
 tests, where the venv itself is not the point.
 """
 
+import asyncio
 import os
 import shutil
 import subprocess
@@ -18,7 +19,7 @@ from ai_runtime.agents.environments import AgentEnvironment
 from ai_runtime.agents.library import AgentLibrary, AgentRefused
 from contracts.agent_manifest import load_manifest, manifest_hash
 from contracts.agent_package import AgentPackage
-from ai_runtime.tests.fake_container import FakeContainer, confinement, container
+from ai_runtime.tests.fake_container import FakeContainer, confinement, container, run
 
 FIXTURE = Path(__file__).resolve().parent / "fixtures" / "agents" / "notebook"
 
@@ -33,6 +34,12 @@ def run_in(env: AgentEnvironment, code: str) -> subprocess.CompletedProcess:
     )
 
 
+async def verified(self, environment, digest, manifest):
+    """Verification stood in for: a stubbed venv cannot answer a real
+    handshake, and verification has its own tests."""
+    return []
+
+
 def output_of(env: AgentEnvironment, code: str) -> str:
     completed = run_in(env, code)
     assert completed.returncode == 0, completed.stderr
@@ -42,7 +49,7 @@ def output_of(env: AgentEnvironment, code: str) -> str:
 class TestAgentEnvironment:
     def test_builds_isolation_with_sdk_and_dependencies(self, tmp_path):
         env = AgentEnvironment(tmp_path / "env")
-        assert env.build(["humanize>=4.9,<5"], confinement().builder_place()) == []
+        assert run(env.build(["humanize>=4.9,<5"], confinement().builder_place())) == []
         assert env.exists()
 
         # The dependency resolves inside the venv...
@@ -59,7 +66,7 @@ class TestAgentEnvironment:
 
     def test_no_dependencies_still_receives_the_sdk(self, tmp_path):
         env = AgentEnvironment(tmp_path / "env")
-        assert env.build([], confinement().builder_place()) == []
+        assert run(env.build([], confinement().builder_place())) == []
         output_of(env, "import decentai_sdk.worker")
         # Nothing beyond the SDK: the host's packages did not leak in.
         assert run_in(env, "import yaml").returncode != 0
@@ -70,31 +77,31 @@ class TestAgentEnvironment:
         refreshed to it before a worker is spawned, and one that is
         current is left alone."""
         env = AgentEnvironment(tmp_path / "env")
-        assert env.build([], confinement().builder_place()) == []
+        assert run(env.build([], confinement().builder_place())) == []
         copied = env._site_packages() / "decentai_sdk" / "worker.py"
         marker = env.root / AgentEnvironment.SDK_MARKER
         assert marker.read_text(encoding="utf-8") == AgentEnvironment.sdk_digest()
 
         # Current: nothing is copied.
         stamp = copied.stat().st_mtime_ns
-        assert env.refresh_sdk() == []
+        assert run(env.refresh_sdk()) == []
         assert copied.stat().st_mtime_ns == stamp
 
         # The environment carries an older SDK (the marker says so):
         # the platform's replaces it, whole.
         copied.write_text("# stale", encoding="utf-8")
         marker.write_text("an-older-digest", encoding="utf-8")
-        assert env.refresh_sdk() == []
+        assert run(env.refresh_sdk()) == []
         assert copied.read_text(encoding="utf-8") != "# stale"
         assert marker.read_text(encoding="utf-8") == AgentEnvironment.sdk_digest()
         # build() on an existing environment is the same refresh.
         marker.write_text("older-still", encoding="utf-8")
-        assert env.build([], confinement().builder_place()) == []
+        assert run(env.build([], confinement().builder_place())) == []
         assert marker.read_text(encoding="utf-8") == AgentEnvironment.sdk_digest()
 
     def test_a_failing_install_leaves_no_half_environment(self, tmp_path):
         env = AgentEnvironment(tmp_path / "env")
-        errors = env.build(["decentai-no-such-package-xyzzy==9.9"], confinement().builder_place())
+        errors = run(env.build(["decentai-no-such-package-xyzzy==9.9"], confinement().builder_place()))
         assert errors and "dependency installation failed" in errors[0]
         assert not env.exists()
         assert not env.root.exists()
@@ -103,12 +110,16 @@ class TestAgentEnvironment:
 class TestWhatIsNotARequirement:
     def test_an_option_among_the_requirements_is_refused(self, tmp_path):
         ran = []
-        AgentEnvironment.runner = lambda argv: (ran.append(list(argv)), (0, ""))[1]
+        async def runner(argv):
+            ran.append(list(argv))
+            return 0, ""
+
+        AgentEnvironment.runner = runner
         try:
             env = AgentEnvironment(tmp_path / "env")
-            errors = env._install(
+            errors = run(env._install(
                 ["humanize>=4.9,<5", "--index-url=https://elsewhere.example"],
-                confinement().builder_place())
+                confinement().builder_place()))
         finally:
             AgentEnvironment.runner = None
         assert errors and "is not a requirement" in errors[0]
@@ -125,7 +136,7 @@ class TestPackagesForOneRun:
         """Stands in for pip: leaves a module where it was told to."""
         ran = []
 
-        def runner(argv):
+        async def runner(argv):
             ran.append(list(argv))
             if "--target" in argv:
                 target = Path(argv[argv.index("--target") + 1])
@@ -139,7 +150,7 @@ class TestPackagesForOneRun:
 
     def test_a_list_is_installed_once_and_handed_back_after(self, tmp_path, ran):
         env = AgentEnvironment(tmp_path / "envs" / "abc")
-        folder, errors = env.extras(["humanize >= 4.9", "titlecase"], confinement().builder_place())
+        folder, errors = run(env.extras(["humanize >= 4.9", "titlecase"], confinement().builder_place()))
         assert errors == []
         assert folder.parent == env.root / "extras"
         assert (folder / "humanize.py").is_file() and (folder / ".ready").is_file()
@@ -150,10 +161,10 @@ class TestPackagesForOneRun:
         assert "titlecase" not in install
 
         # The same list, in another order and spaced otherwise: the same folder.
-        again, errors = env.extras(["titlecase", "humanize>=4.9"], confinement().builder_place())
+        again, errors = run(env.extras(["titlecase", "humanize>=4.9"], confinement().builder_place()))
         assert (again, errors) == (folder, []) and len(ran) == 1
         # Another list is another folder.
-        other, errors = env.extras(["titlecase"], confinement().builder_place())
+        other, errors = run(env.extras(["titlecase"], confinement().builder_place()))
         assert errors == [] and other != folder and len(ran) == 2
 
     def test_what_is_not_a_package_never_reaches_pip(self, tmp_path, ran):
@@ -162,16 +173,16 @@ class TestPackagesForOneRun:
                       ["git+https://example.com/x.git"],
                       ["humanize @ https://example.com/humanize.whl"],
                       ["../somewhere"], ["humanize", ""], []):
-            folder, errors = env.extras(asked, confinement().builder_place())
+            folder, errors = run(env.extras(asked, confinement().builder_place()))
             assert folder is None and "asked for by its name" in errors[0], asked
-        folder, errors = env.extras([f"package{n}" for n in range(31)], confinement().builder_place())
+        folder, errors = run(env.extras([f"package{n}" for n in range(31)], confinement().builder_place()))
         assert folder is None and "at most 30" in errors[0]
         assert ran == []
 
     def test_an_install_that_fails_leaves_nothing(self, tmp_path):
         container().build_fails = "No matching distribution"
         env = AgentEnvironment(tmp_path / "envs" / "abc")
-        folder, errors = env.extras(["decentai-no-such-package"], confinement().builder_place())
+        folder, errors = run(env.extras(["decentai-no-such-package"], confinement().builder_place()))
         assert folder is None and "No matching distribution" in errors[0]
         assert list((env.root / "extras").iterdir()) == []
 
@@ -191,10 +202,10 @@ class TestABuildWhereWorkersAreConfined:
         FakeContainer.live.remove(stand_in)
         stand_in.leaves = {"humanize-4.9.0-py3-none-any.whl": b"a wheel"}
         stand_in.confinement = Confinement(stand_in.install_dir, stand_in)
-        stand_in.confinement.open_the_way_out(0)
+        run(stand_in.confinement.open_the_way_out(0))
         stand_in.asked.clear()
         yield stand_in
-        stand_in.confinement.proxy.stop()
+        run(stand_in.confinement.stop())
         stand_in.stop_all_mine()
 
     @pytest.fixture
@@ -202,7 +213,7 @@ class TestABuildWhereWorkersAreConfined:
         """What the runtime itself ran, as its own user."""
         ran = []
 
-        def runner(argv):
+        async def runner(argv):
             ran.append(list(argv))
             if "venv" in argv:
                 root = Path(argv[-1])
@@ -218,7 +229,7 @@ class TestABuildWhereWorkersAreConfined:
     def build(self, builder, tmp_path):
         place = builder.confinement.builder_place()
         env = AgentEnvironment(tmp_path / "agents" / "envs" / "abc")
-        return env, place, env.build(self.LIST, place=place)
+        return env, place, run(env.build(self.LIST, place=place))
 
     def test_the_builder_is_handed_the_list_and_the_runtime_the_files(
             self, builder, runtime, tmp_path):
@@ -255,7 +266,7 @@ class TestABuildWhereWorkersAreConfined:
         place.confinement.fences = True
         place.confinement.fence_lets_files_move = True
         env = AgentEnvironment(tmp_path / "agents" / "envs" / "abc")
-        assert env.build(self.LIST, place=place) == []
+        assert run(env.build(self.LIST, place=place)) == []
         build = builder.asked[5]
         rules = build[6:build.index("--")]
         assert f"r:{env.root.as_posix()}" in rules
@@ -270,7 +281,7 @@ class TestABuildWhereWorkersAreConfined:
         of them."""
         place = builder.confinement.builder_place()
         env = AgentEnvironment(tmp_path / "agents" / "envs" / "abc")
-        folder, errors = env.extras(["humanize>=4.9,<5"], place=place)
+        folder, errors = run(env.extras(["humanize>=4.9,<5"], place=place))
         assert errors == [], errors
         [build] = [asked for asked in builder.asked if asked[0] == "run"]
         assert build[-1] == "humanize>=4.9,<5" and "wheel" in build
@@ -320,14 +331,13 @@ class TestABuildWhereWorkersAreConfined:
             self, builder, runtime, tmp_path):
         place = builder.confinement.builder_place()
         env = AgentEnvironment(tmp_path / "agents" / "envs" / "abc")
-        errors = env.build(["-r/etc/passwd"], place=place)
+        errors = run(env.build(["-r/etc/passwd"], place=place))
         assert errors and "is not a requirement" in errors[0]
         assert builder.asked == []
 
     def test_the_library_builds_where_the_builder_is(
             self, builder, runtime, tmp_path, monkeypatch):
-        monkeypatch.setattr(AgentLibrary, "_verify",
-                            lambda self, env, digest, manifest: [])
+        monkeypatch.setattr(AgentLibrary, "_verify", verified)
         library = AgentLibrary(tmp_path / "agents", builder.confinement)
         # The fixture declares no packages; this one declares one.
         package = tmp_path / "notebook"
@@ -341,7 +351,7 @@ class TestABuildWhereWorkersAreConfined:
             encoding="utf-8")
         archive, digest = AgentPackage.build(package)
         manifest, _ = load_manifest(written)
-        library.install(digest, archive, manifest_hash(manifest.document))
+        run(library.install(digest, archive, manifest_hash(manifest.document)))
         built = [asked for asked in builder.asked if asked[0] == "run"]
         assert len(built) == 1
         assert built[0][1] == str(Confinement.LAST_USER)
@@ -357,7 +367,7 @@ class TestLibraryEnvironmentStation:
     def stub_builds(self, monkeypatch):
         calls = {"argv": []}
 
-        def runner(argv):
+        async def runner(argv):
             calls["argv"].append(list(argv))
             if "venv" in argv:
                 root = Path(argv[-1])
@@ -369,8 +379,7 @@ class TestLibraryEnvironmentStation:
         monkeypatch.setattr(AgentEnvironment, "runner", staticmethod(runner))
         # The stubbed venv cannot answer a real handshake; verification
         # has its own tests against a real environment.
-        monkeypatch.setattr(AgentLibrary, "_verify",
-                            lambda self, env, digest, manifest: [])
+        monkeypatch.setattr(AgentLibrary, "_verify", verified)
         self.calls = calls
 
     def install(self, tmp_path):
@@ -379,7 +388,7 @@ class TestLibraryEnvironmentStation:
         library = AgentLibrary(tmp_path / "agents", confinement())
         archive, digest = AgentPackage.build(FIXTURE)
         manifest, _ = load_manifest(FIXTURE / "manifest.yaml")
-        loaded = library.install(digest, archive, manifest_hash(manifest.document))
+        loaded = run(library.install(digest, archive, manifest_hash(manifest.document)))
         return library, digest, loaded
 
     def test_install_builds_and_forget_removes_the_environment(self, tmp_path):
@@ -415,7 +424,7 @@ class TestLibraryEnvironmentStation:
             if hasattr(AgentEnvironment, "READY_MARKER") else library.environment(digest).root / ".ready"
         built_at = marker.stat().st_mtime
 
-        library.install(next_digest, archive, manifest_hash(manifest.document))
+        run(library.install(next_digest, archive, manifest_hash(manifest.document)))
         assert library.environment(next_digest).root == library.environment(digest).root
         assert marker.stat().st_mtime == built_at, "nothing was rebuilt"
 
@@ -428,7 +437,7 @@ class TestLibraryEnvironmentStation:
     def test_a_refused_reinstall_spares_the_serving_environment(self, tmp_path):
         library, digest, _ = self.install(tmp_path)
         with pytest.raises(AgentRefused):
-            library.install(digest, None, "0" * 64)
+            run(library.install(digest, None, "0" * 64))
         assert library.environment(digest).exists()
         assert library.agent(digest) is not None
 
@@ -445,7 +454,7 @@ class TestLibraryEnvironmentStation:
         assert restarted.agent(digest) is None
         assert restarted.waiting() == [digest]
 
-        assert restarted.warm_up() == 1
+        assert run(restarted.warm_up()) == 1
         assert restarted.waiting() == []
         assert restarted.agent(digest) is not None
         assert restarted.environment(digest).exists()
@@ -454,40 +463,37 @@ class TestLibraryEnvironmentStation:
         """The warm-up and a chat that names the same agent must not
         both build one venv. The second holds until the first is done,
         then finds it built: one pip run, and both callers serve."""
-        import threading
-
         library, digest, _ = self.install(tmp_path)
         library.environment(digest).remove()
         restarted = AgentLibrary(tmp_path / "agents", confinement())
         restarted.load_all()
 
-        building = threading.Event()
-        release = threading.Event()
+        building = asyncio.Event()
+        release = asyncio.Event()
         venv_runs = []
         real_runner = AgentEnvironment.runner
 
-        def slow_runner(argv):
+        async def slow_runner(argv):
             if "venv" in argv:
                 venv_runs.append(list(argv))
                 building.set()
-                assert release.wait(10), "the test never let the build finish"
-            return real_runner(argv)
+                await asyncio.wait_for(release.wait(), 10)
+            return await real_runner(argv)
 
-        AgentEnvironment.runner = staticmethod(slow_runner)
-        try:
-            first = threading.Thread(target=restarted.warm_up)
-            first.start()
-            assert building.wait(10), "the warm-up never started building"
-            # The chat arrives while the venv is half made.
-            second = threading.Thread(target=lambda: restarted.install(digest, None))
-            second.start()
-            second.join(0.3)
-            assert second.is_alive(), "the chat's install did not wait for the build"
-            release.set()
-            first.join(10)
-            second.join(10)
-        finally:
-            AgentEnvironment.runner = real_runner
-        assert not first.is_alive() and not second.is_alive()
+        async def scenario():
+            AgentEnvironment.runner = staticmethod(slow_runner)
+            try:
+                first = asyncio.ensure_future(restarted.warm_up())
+                await asyncio.wait_for(building.wait(), 10)
+                # The chat arrives while the venv is half made.
+                second = asyncio.ensure_future(restarted.install(digest, None))
+                await asyncio.sleep(0.3)
+                assert not second.done(), "the chat's install did not wait for the build"
+                release.set()
+                await asyncio.wait_for(asyncio.gather(first, second), 10)
+            finally:
+                AgentEnvironment.runner = real_runner
+
+        run(scenario())
         assert len(venv_runs) == 1, "the venv was created exactly once"
         assert restarted.agent(digest) is not None

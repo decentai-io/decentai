@@ -268,9 +268,10 @@ class TestAWorkerThatBreaksTheWire:
             'sys.stdout.write(\'{"id": [], "error": "x"}\' + chr(10)); '
             'sys.stdout.flush(); await asyncio.sleep(30); '
             'return {}, "success"'))
+        ready = executor()
 
         async def scenario():
             return await asyncio.wait_for(
-                executor().invoke(agent, "demo.main.run", {}), 20)
+                ready.invoke(agent, "demo.main.run", {}), 20)
         result, status = run(scenario())
         assert status == "error" and "wrong shape" in result["error"]

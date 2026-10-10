@@ -108,6 +108,12 @@ class WorkerHandle:
         self._pending: Dict[int, asyncio.Future] = {}
         self._next_id = 0
         self._serve_task: Optional[asyncio.Task] = None
+        #: The tasks started for this worker — an ask being answered,
+        #: a progress line, a screen's frame, its log drained — held
+        #: until each is done. A loop keeps a task only weakly, and
+        #: one nobody holds can be collected mid-ask: its answer never
+        #: sent, and the call waiting out its whole clock.
+        self._tasks: set = set()
         #: The worker's one death, once somebody has asked for it.
         self._death: Optional[asyncio.Future] = None
         #: The place's spool: a folder both sides can reach, for bytes
@@ -196,7 +202,8 @@ class WorkerHandle:
     async def _spool_in(self, method: str, params: dict) -> dict:
         """A create whose bytes the worker left in the spool: read them
         back into the shape the router takes, and remove the file. Read
-        on a thread — this loop serves every chat."""
+        on a thread, the one place the runtime uses one: a file of up
+        to SPOOL_MAX_BYTES, and this loop serves every chat."""
         if method != "resources.create_file" or not params.get("content_path"):
             return params
         if self.spool is None:
@@ -254,8 +261,7 @@ class WorkerHandle:
         Returns errors, empty when the worker is serving: whether the
         package loads is the worker's to say, from the environment it
         runs in."""
-        errors = await asyncio.get_running_loop().run_in_executor(
-            None, self.place.prepare)
+        errors = await self.place.prepare()
         if errors:
             return errors
         self.spool = self.place.spool
@@ -277,7 +283,7 @@ class WorkerHandle:
             await self._release()
             return [f"the worker could not be started: {exc}"]
         self._serve_task = asyncio.get_running_loop().create_task(self._serve())
-        asyncio.get_running_loop().create_task(self._drain_stderr())
+        self._start(self._drain_stderr())
 
         try:
             await asyncio.wait_for(
@@ -369,15 +375,13 @@ class WorkerHandle:
         the proxy, and its place, emptied."""
         self.spool = None
         self.place.dismiss()
-        await asyncio.get_running_loop().run_in_executor(
-            None, self.place.clear)
+        await self.place.clear()
 
     async def _end(self) -> None:
         """End the process: the worker is another user's, which this
         process may not signal, so the helper ends it, and everything
         else that user runs with it."""
-        errors = await asyncio.get_running_loop().run_in_executor(
-            None, self.place.stop)
+        errors = await self.place.stop()
         if errors:
             self.logger.error("; ".join(errors))
 
@@ -455,9 +459,15 @@ class WorkerHandle:
             self.logger.error(reason)
         await self.kill(reason)
 
+    def _start(self, work) -> None:
+        """One task of this worker's, held until it is done."""
+        task = asyncio.get_running_loop().create_task(work)
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
+
     def _route(self, message: dict) -> None:
         if "method" in message and "id" in message:
-            asyncio.get_running_loop().create_task(self._serve_ask(message))
+            self._start(self._serve_ask(message))
         elif "id" in message:
             future = self._pending.get(message.get("id"))
             if future is None or future.done():
@@ -469,17 +479,14 @@ class WorkerHandle:
                 future.set_result(message.get("result"))
         elif message.get("method") == "progress" and self.progress is not None:
             params = message.get("params") or {}
-            asyncio.get_running_loop().create_task(
-                self.progress(str(params.get("call_id") or ""),
-                              str(params.get("description") or ""))
-            )
+            self._start(self.progress(str(params.get("call_id") or ""),
+                                      str(params.get("description") or "")))
         elif message.get("method") in ("screen.frame", "screen.closed") \
                 and self.screen is not None:
             params = dict(message.get("params") or {})
             call_id = str(params.pop("call_id", "") or "")
             kind = "frame" if message["method"] == "screen.frame" else "closed"
-            asyncio.get_running_loop().create_task(
-                self.screen(call_id, kind, params))
+            self._start(self.screen(call_id, kind, params))
 
     async def _serve_ask(self, message: dict) -> None:
         """One worker ask, answered by the router. No router, or a router
@@ -533,38 +540,35 @@ class WorkerHandle:
         self._pending.clear()
 
     # ------------------------------------------------------------------
-    # Installation's verification — no instance, no event loop
+    # Installation's verification — no instance
     # ------------------------------------------------------------------
 
     @classmethod
-    def probe(cls, python: str | Path, folder: str | Path,
-              manifest_document: dict, place: WorkerPlace,
-              timeout: int = 120) -> List[str]:
+    async def probe(cls, python: str | Path, folder: str | Path,
+                    manifest_document: dict, place: WorkerPlace,
+                    timeout: int = 120) -> List[str]:
         """Start a worker from the environment, hello, shutdown — one
         program run to its end in installation's own place, which every
         verification shares and one holds at a time. Returns errors,
-        empty when the package verified.
-
-        Synchronous on purpose — install() is synchronous, and a
-        one-shot exchange needs no event loop. A worker that outlasts
+        empty when the package verified. A worker that outlasts
         ``timeout`` is ended, so a refusal can never become a hang."""
-        with place.confinement.verification_lock:
-            errors = place.prepare()
+        async with place.confinement.verification_lock:
+            errors = await place.prepare()
             if errors:
                 return errors
             agent_name, _ = cls._declared(manifest_document)
             place.admit(agent_name, cls.NOTHING_DECLARED)
             try:
-                return cls._probe(python, folder, manifest_document, timeout, place)
+                return await cls._probe(python, folder, manifest_document, timeout, place)
             finally:
                 place.dismiss()
-                place.stop()
-                place.clear()
+                await place.stop()
+                await place.clear()
 
     @classmethod
-    def _probe(cls, python: str | Path, folder: str | Path,
-               manifest_document: dict, timeout: int,
-               place: WorkerPlace) -> List[str]:
+    async def _probe(cls, python: str | Path, folder: str | Path,
+                     manifest_document: dict, timeout: int,
+                     place: WorkerPlace) -> List[str]:
         # The whole exchange, written ahead: a worker answers its
         # greeting, then the order to leave, and is gone.
         greeting = "".join(json.dumps(request) + "\n" for request in (
@@ -572,7 +576,7 @@ class WorkerHandle:
              "params": cls._hello_params(Path(folder), manifest_document)},
             {"id": 2, "method": "shutdown", "params": {}},
         ))
-        code, output = place.run(
+        code, output = await place.run(
             cls._spawn_argv(python), reads=cls._runs_from(python, folder),
             environment=cls._clean_environment(), timeout=timeout,
             feed=greeting, errors=AgentsContainer.DROP, cwd=str(folder))

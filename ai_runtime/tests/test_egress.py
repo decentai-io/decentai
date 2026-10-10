@@ -7,6 +7,7 @@ is replaced by a table — so a name is public or private because a test
 says so.
 """
 
+import asyncio
 import base64
 import http.server
 import socket
@@ -83,12 +84,31 @@ def names():
 
 
 @pytest.fixture
-def proxy(names, site, echo, monkeypatch):
+def loop():
+    """A loop on a thread of its own for the proxy to serve on. In the
+    runtime it serves on the one loop; these tests block in urllib and
+    on a socket while it answers them."""
+    loop = asyncio.new_event_loop()
+    thread = threading.Thread(target=loop.run_forever, daemon=True)
+    thread.start()
+    yield loop
+    loop.call_soon_threadsafe(loop.stop)
+    thread.join(5)
+    loop.close()
+
+
+def on(loop, coroutine, timeout=10):
+    """One coroutine run to its end on the proxy's loop."""
+    return asyncio.run_coroutine_threadsafe(coroutine, loop).result(timeout)
+
+
+@pytest.fixture
+def proxy(names, site, echo, monkeypatch, loop):
     monkeypatch.setattr(EgressProxy, "PORTS_OF_A_NAMED_HOST", (443, 80, site, echo))
     found = EgressProxy(0, allow_loopback=True)
-    assert found.start() == []
+    assert on(loop, found.start()) == []
     yield found
-    found.stop()
+    on(loop, found.stop())
 
 
 def network(hosts=None, any_host=False, from_secrets=()):
@@ -362,15 +382,15 @@ class TestAddressesNobodyReaches:
         token = proxy.admit("agt_a", network(["api.example.com"]))
         assert get(proxy, token, "http://api.example.com/")[0] == 403
 
-    def test_this_machine_is_refused_outside_a_test(self, names, site):
+    def test_this_machine_is_refused_outside_a_test(self, names, site, loop):
         strict = EgressProxy(0)
-        assert strict.start() == []
+        assert on(loop, strict.start()) == []
         try:
             token = strict.admit("agt_web", network(any_host=True))
             status, body = get(strict, token, f"http://here.example.com:{site}/")
             assert status == 403 and "this machine's own address" in body
         finally:
-            strict.stop()
+            on(loop, strict.stop())
 
     def test_a_name_that_does_not_resolve(self, proxy, names):
         names["nowhere.example.com"] = []
@@ -472,9 +492,9 @@ class TestItsLimits:
 
 
 class TestItsLife:
-    def test_a_port_somebody_holds_is_said_not_raised(self, proxy):
+    def test_a_port_somebody_holds_is_said_not_raised(self, proxy, loop):
         second = EgressProxy(proxy.port)
-        errors = second.start()
+        errors = on(loop, second.start())
         assert errors and "could not listen" in errors[0]
         assert not second.serving
 

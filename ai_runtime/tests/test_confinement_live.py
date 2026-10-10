@@ -25,6 +25,7 @@ import io
 import json
 import os
 import shutil
+import sys
 import tarfile
 import textwrap
 import threading
@@ -350,8 +351,13 @@ INTRUDER = textwrap.dedent("""\
 """)
 
 
+#: One loop for every scenario of these tests, as the runtime has one
+#: for everything: the proxy the fixture starts serves on it.
+LOOP = asyncio.new_event_loop()
+
+
 def run(awaitable):
-    return asyncio.run(awaitable)
+    return LOOP.run_until_complete(awaitable)
 
 
 def running(process_id: int) -> bool:
@@ -400,17 +406,15 @@ def confinement(site):
     proxy on the port the firewall rule was written for. Every name
     resolves to this machine, where the site stands."""
     container = AgentsContainer(ADDRESS, INSTALL_DIR)
-    assert container.wait(60)
+    assert run(container.wait(60))
     found = Confinement(INSTALL_DIR, container)
-    found.check()
     EgressProxy.resolver = lambda host, port: ["127.0.0.1"]
     ports = EgressProxy.PORTS_OF_A_NAMED_HOST
     EgressProxy.PORTS_OF_A_NAMED_HOST = (*ports, site)
-    found.open_the_way_out(
-        int(os.environ.get("AI_RUNTIME_EGRESS_PORT") or 8002),
-        allow_loopback=True)
+    run(found.start(int(os.environ.get("AI_RUNTIME_EGRESS_PORT") or 8002),
+                    allow_loopback=True))
     yield found
-    found.proxy.stop()
+    run(found.stop())
     EgressProxy.resolver = None
     EgressProxy.PORTS_OF_A_NAMED_HOST = ports
 
@@ -462,14 +466,14 @@ def fenced_builds(confinement):
 
 
 @pytest.fixture(scope="module")
-def ground():
+def ground(confinement):
     """A package and its environment where a worker's user can reach
     them — pytest's own temporary folders are closed to everyone else."""
     folder = INSTALL_DIR / f"live-{uuid.uuid4().hex[:12]}"
     folder.mkdir(mode=0o755)
     try:
         environment = AgentEnvironment(folder / "env")
-        assert environment.build([], live.builder_place()) == []
+        assert run(environment.build([], confinement.builder_place())) == []
         package = write_agent(
             folder, "intruder", manifest=MINIMAL_MANIFEST.format(
                 agent_id="intruder", entrypoint="agent:DemoAgent"),
@@ -485,8 +489,8 @@ def ground():
 def place(confinement):
     found = confinement.place("agt_live_intruder")
     yield found
-    found.stop()
-    found.clear()
+    run(found.stop())
+    run(found.clear())
 
 
 def ask(ground, place, what, target="", hosts=None):
@@ -541,14 +545,14 @@ class TestAConfinedWorker:
     def test_it_cannot_read_or_write_another_agents_home(
             self, ground, place, confinement):
         other = confinement.place("agt_live_other")
-        assert other.prepare() == []
+        assert run(other.prepare()) == []
         assert other.user != place.user
         try:
             assert ask(ground, place, "read", str(other.home))["happened"] is False
             assert ask(ground, place, "write", str(other.home))["happened"] is False
             assert ask(ground, place, "write", str(other.spool))["happened"] is False
         finally:
-            other.clear()
+            run(other.clear())
 
     def test_it_cannot_use_the_helper(self, ground, place, confinement):
         other = confinement.place("agt_live_other")
@@ -645,14 +649,23 @@ class TestAFencedWorker:
             self, ground, place, keeps_sockets):
         """A socket with a name and no file belongs to nobody: without
         the fence any user connects to it, another agent's worker
-        among them."""
-        import socket
-
+        among them. The door is opened where the worker is — the
+        agents' container — by a process of nobody's agent."""
         name = f"decentai-live-{uuid.uuid4().hex[:12]}"
-        with socket.socket(socket.AF_UNIX) as door:
-            door.bind("\0" + name)
-            door.listen(1)
+        door = run(keeps_sockets.container.start(
+            [sys.executable, "-c", textwrap.dedent(f"""\
+                import socket, sys, time
+                door = socket.socket(socket.AF_UNIX)
+                door.bind("\\0{name}")
+                door.listen(1)
+                print("open", flush=True)
+                time.sleep(60)
+                """)], {}, "/", 65536))
+        try:
+            assert run(door.stdout.readline()).strip() == b"open"
             found = ask(ground, place, "socket_by_name", name)
+        finally:
+            door.kill()
         assert found == {"happened": False, "detail": "PermissionError"}, found
 
     def test_it_reaches_a_socket_of_its_own(self, ground, place, keeps_sockets):
@@ -820,7 +833,7 @@ class TestAFencedNetwork:
                         "api_token": "not shown"}
 
         async def scenario():
-            pool = WorkerPool()
+            pool = WorkerPool(confinement)
             try:
                 before, _ = await pool.invoke(
                     agent, "c_1", "intruder.main.run",
@@ -1036,7 +1049,7 @@ def built(ground, confinement, index):
     and what its build said of itself."""
     environment, _, _ = ground
     found = AgentEnvironment(environment.root.parent / "env-built")
-    errors = found.build(["hostile"], place=confinement.builder_place())
+    errors = run(found.build(["hostile"], place=confinement.builder_place()))
     assert errors == [], errors
     report = (found._site_packages() / "hostile_report.py").read_text(
         encoding="utf-8")
@@ -1103,10 +1116,10 @@ class TestABuild:
             self, ground, confinement, index):
         environment, _, _ = ground
         found = AgentEnvironment(environment.root.parent / "env-elsewhere")
-        errors = found.build(
+        errors = run(found.build(
             [f"plain @ http://elsewhere.test:{index}"
              f"/files/plain-1.0-py3-none-any.whl"],
-            place=confinement.builder_place())
+            place=confinement.builder_place()))
         assert errors and "dependency installation failed" in errors[0]
         assert not found.root.exists()
 
@@ -1115,7 +1128,7 @@ class TestABuild:
         environment, _, _ = ground
         monkeypatch.setattr(AgentEnvironment, "PIP_TIMEOUT_SECONDS", 15)
         found = AgentEnvironment(environment.root.parent / "env-sleeper")
-        errors = found.build(["sleeper"], place=confinement.builder_place())
+        errors = run(found.build(["sleeper"], place=confinement.builder_place()))
         assert errors and "did not finish in 15 seconds" in errors[0]
         assert not found.root.exists()
         assert of_the_builder() == []
@@ -1137,7 +1150,7 @@ class TestAProgramAnAgentRuns:
         return InstalledAgent("fixture:intruder", manifest, package, environment)
 
     @staticmethod
-    def asked(agent, *calls, allows=True):
+    def asked(confinement, agent, *calls, allows=True):
         """Each call in turn, through the executor, in one worker."""
         from ai_runtime.execution.executor import FunctionExecutor
         from sim.resources import InMemoryResourceProvider
@@ -1146,8 +1159,9 @@ class TestAProgramAnAgentRuns:
             return allows
 
         async def scenario():
+            pool = WorkerPool(confinement)
             executor = FunctionExecutor(
-                WorkerPool(confinement),
+                pool,
                 provider=InMemoryResourceProvider(),
                 sinks=ChatSinks(propose=proposer))
             try:
@@ -1167,7 +1181,7 @@ class TestAProgramAnAgentRuns:
             self, ground, confinement, net, site):
         url = f"http://api.example.com:{site}/v1/items"
         during, after = self.asked(
-            self.coder(ground),
+            confinement, self.coder(ground),
             {"what": "program_reaches", "target": url},
             {"what": "fetch", "target": url})
         assert during == {"before": "403", "allowed": True,
@@ -1179,8 +1193,8 @@ class TestAProgramAnAgentRuns:
             self, ground, confinement, net, site):
         url = f"http://api.example.com:{site}/v1/items"
         [during] = self.asked(
-            self.coder(ground), {"what": "program_reaches", "target": url},
-            allows=False)
+            confinement, self.coder(ground),
+            {"what": "program_reaches", "target": url}, allows=False)
         assert during == {"before": "403", "allowed": False,
                           "named": "403", "unnamed": "403"}, during
 
@@ -1189,7 +1203,8 @@ class TestAProgramAnAgentRuns:
         environment, _, _ = ground
         try:
             [answer] = self.asked(
-                self.coder(ground), {"what": "program_imports", "target": "plain"})
+                confinement, self.coder(ground),
+                {"what": "program_imports", "target": "plain"})
             assert answer["allowed"] is True and answer["said"] == "True", answer
             folder = Path(answer["folder"])
             assert folder.parent == environment.root / "extras"
@@ -1203,8 +1218,8 @@ class TestAProgramAnAgentRuns:
             self, ground, confinement, index):
         environment, _, _ = ground
         try:
-            folder, errors = environment.extras(
-                ["hostile"], place=confinement.builder_place())
+            folder, errors = run(environment.extras(
+                ["hostile"], place=confinement.builder_place()))
             assert errors == [], errors
             report = json.loads(ast.literal_eval(
                 (folder / "hostile_report.py").read_text(encoding="utf-8")
@@ -1225,7 +1240,7 @@ class TestWhatTheDeploymentSets:
     line on the trail names where its worker connected."""
 
     @staticmethod
-    def called(ground, safety, *calls):
+    def called(ground, confinement, safety, *calls):
         """Each call in turn through the executor, with the
         deployment's setting, and what the trail was told."""
         from ai_runtime.execution.executor import FunctionExecutor
@@ -1242,8 +1257,9 @@ class TestWhatTheDeploymentSets:
             trail.append(event)
 
         async def scenario():
+            pool = WorkerPool(confinement)
             executor = FunctionExecutor(
-                WorkerPool(confinement),
+                pool,
                 provider=InMemoryResourceProvider(),
                 safety=safety,
                 sinks=ChatSinks(audit=audit))
@@ -1263,7 +1279,7 @@ class TestWhatTheDeploymentSets:
     def test_a_blocked_site_is_refused_to_an_agent_that_reaches_anywhere(
             self, ground, confinement, net, site):
         [blocked, open_], _ = self.called(
-            ground, {"blocked_sites": ["example.org"]},
+            ground, confinement, {"blocked_sites": ["example.org"]},
             {"what": "fetch", "target": f"http://news.example.org:{site}/"},
             {"what": "fetch", "target": f"http://news.example.net:{site}/"})
         assert blocked["status"] == 403, blocked
@@ -1273,7 +1289,7 @@ class TestWhatTheDeploymentSets:
     def test_a_calls_line_names_where_it_connected(
             self, ground, confinement, net, site):
         _, trail = self.called(
-            ground, {},
+            ground, confinement, {},
             {"what": "fetch", "target": f"http://api.example.com:{site}/one"},
             {"what": "whoami"},
             {"what": "fetch", "target": f"http://files.example.com:{site}/two"})
@@ -1289,17 +1305,17 @@ class TestVerification:
     def test_a_package_is_verified_in_installations_own_place(
             self, ground, confinement):
         environment, package, document = ground
-        assert WorkerHandle.probe(
+        assert run(WorkerHandle.probe(
             environment.python, package, document,
-            place=confinement.verification_place()) == []
+            place=confinement.verification_place())) == []
 
     def test_a_broken_package_is_still_told_why(self, ground, confinement):
         environment, package, document = ground
         broken = {**document, "implementation": {
             **document["implementation"], "entrypoint": "agent:Nope"}}
-        errors = WorkerHandle.probe(
+        errors = run(WorkerHandle.probe(
             environment.python, package, broken,
-            place=confinement.verification_place())
+            place=confinement.verification_place()))
         assert errors and "'Nope' not found" in errors[0]
 
 
@@ -1311,7 +1327,7 @@ class TestThePool:
         agent = InstalledAgent("fixture:intruder", manifest, package, environment)
 
         async def scenario():
-            pool = WorkerPool()
+            pool = WorkerPool(confinement)
             result, status = await pool.invoke(
                 agent, "c_1", "intruder.main.run", {"what": "whoami"},
                 CallContext(resources=None), timeout=30)

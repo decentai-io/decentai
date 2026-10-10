@@ -6,17 +6,16 @@ reads the runtime's settings and may signal every other worker, and one
 started as its own user can do neither.
 
     confinement = Confinement(install_dir, container)   once, at start
-    confinement.check()                     the helper and the kernel, proved;
+    await confinement.start(port)           the helper and the kernel proved,
+                                            the proxy started, the fence proved;
                                             raises where workers cannot be confined
-    confinement.open_the_way_out(port)      the proxy, and the proof that nothing
-                                            goes around it
     place = confinement.place(agent_id)     where one approved agent's worker runs
 
-    place.prepare()                         its folders, emptied and its own
+    await place.prepare()                   its folders, emptied and its own
     place.argv(worker_argv)                 the spawn line, through the helper
     place.environment(environment)          with its home and its spool
-    place.stop()                            every process of its user
-    place.run(argv, reads, environment)     one program, to its end
+    await place.stop()                      every process of its user
+    await place.run(argv, reads, environment)   one program, to its end
 
 The runtime is an ordinary user and cannot start a child as somebody
 else; the spawn helper (agents_container/spawn_helper.c) can, and does
@@ -44,13 +43,13 @@ no more the runtime's than the agent's is.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import logging
 import os
 import re
 import sys
-import threading
 import time
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence
@@ -199,7 +198,7 @@ class WorkerPlace:
     # The folders
     # ------------------------------------------------------------------
 
-    def prepare(self) -> List[str]:
+    async def prepare(self) -> List[str]:
         """The worker's folders, emptied and handed to its user.
         Returns errors, empty when the place is ready."""
         try:
@@ -215,25 +214,25 @@ class WorkerPlace:
         except OSError as exc:
             return [f"the worker's folders could not be made: {exc}"]
         return (
-            self.clear()
-            or self._ask(["own", str(self.user), str(self.home)])
-            or self._ask(["own", str(self.user), str(self.spool)])
+            await self.clear()
+            or await self._ask(["own", str(self.user), str(self.home)])
+            or await self._ask(["own", str(self.user), str(self.spool)])
         )
 
-    def clear(self) -> List[str]:
+    async def clear(self) -> List[str]:
         """Empty the home and the spool, and take away what the worker
         left in the folders every user may write to — as the worker's
         own user, so nothing but the worker's is ever deleted."""
         return (
-            self._ask(["clear", str(self.home)])
-            or self._ask(["clear", str(self.spool)])
-            or self._ask(["sweep", str(self.user)])
+            await self._ask(["clear", str(self.home)])
+            or await self._ask(["clear", str(self.spool)])
+            or await self._ask(["sweep", str(self.user)])
         )
 
-    def stop(self) -> List[str]:
+    async def stop(self) -> List[str]:
         """End every process of this worker's user: the worker, and
         whatever it started — a browser does not outlive it."""
-        return self._ask(["stop", str(self.user)])
+        return await self._ask(["stop", str(self.user)])
 
     def stop_line(self) -> List[str]:
         """The line that ends everything this place's user runs — for
@@ -241,15 +240,15 @@ class WorkerPlace:
         signal it."""
         return [str(self.confinement.helper), "stop", str(self.user)]
 
-    def _ask(self, job: Sequence[str]) -> List[str]:
+    async def _ask(self, job: Sequence[str]) -> List[str]:
         """The helper, asked for one of its jobs for this place."""
-        return self.confinement.ask(job, whose=self.whose())
+        return await self.confinement.ask(job, whose=self.whose())
 
-    def run(self, argv: Sequence[str], reads: Sequence[str | Path] = (),
-            environment: Optional[Dict[str, str]] = None,
-            timeout: Optional[float] = None,
-            feed: Optional[str] = None, errors: str = AgentsContainer.MERGE,
-            cwd: str = "/", held: bool = True) -> tuple:
+    async def run(self, argv: Sequence[str], reads: Sequence[str | Path] = (),
+                  environment: Optional[Dict[str, str]] = None,
+                  timeout: Optional[float] = None,
+                  feed: Optional[str] = None, errors: str = AgentsContainer.MERGE,
+                  cwd: str = "/", held: bool = True) -> tuple:
         """One program, run here to its end as this place's user.
         Returns (return code, what it wrote). Whatever it started ends
         with it, and one that outlasts ``timeout`` is ended the only
@@ -259,7 +258,7 @@ class WorkerPlace:
         began = time.monotonic()
         code = None
         try:
-            code, output = self.container.run(
+            code, output = await self.container.run(
                 line, environment=self.environment(dict(environment or {})),
                 cwd=cwd, timeout=timeout, feed=feed, errors=errors,
                 stop=self.stop_line(), whose=self.whose())
@@ -269,7 +268,7 @@ class WorkerPlace:
                 "program", **self.whose(), code=code,
                 program=" ".join(str(word) for word in argv)[:300],
                 seconds=round(time.monotonic() - began, 2))
-            self.stop()
+            await self.stop()
 
     #: What lists a place's folders, run as the place's own user: the
     #: only one who may read them. It ends itself, since nothing else
@@ -297,7 +296,7 @@ class WorkerPlace:
     LISTING_SECONDS = 20
     LISTED_MAX = 500
 
-    def files(self) -> Dict[str, object]:
+    async def files(self) -> Dict[str, object]:
         """What this place's user keeps in its home and its spool
         now: ``{"files": [{"path", "bytes", "modified"}], "count",
         "bytes"}``, the first ``LISTED_MAX`` of them listed and all of
@@ -306,7 +305,7 @@ class WorkerPlace:
         line = self.argv(
             [sys.executable, "-I", "-c", self.LISTING, str(self.LISTED_MAX),
              str(self.home), str(self.spool)])
-        code, output = self.container.run(
+        code, output = await self.container.run(
             line, environment=self.environment(
                 {"PATH": os.environ.get("PATH", "")}),
             cwd="/", timeout=self.LISTING_SECONDS, errors=AgentsContainer.DROP,
@@ -489,8 +488,8 @@ class Confinement:
         self.filters_calls = False
         #: Whether the helper could put that filter on, asked or not.
         self.can_filter_calls = False
-        #: The proxy workers are pointed at, once ``open_the_way_out``
-        #: has started it: their one way out.
+        #: The proxy workers are pointed at, once ``start`` has started
+        #: it: their one way out.
         self.proxy: Optional[EgressProxy] = None
         #: Whether the proxy is the only way out: the container's
         #: firewall rule, proved by ``prove_the_network_is_fenced``.
@@ -498,23 +497,37 @@ class Confinement:
         #: One verification at a time, and one build at a time: each
         #: kind shares a user, and stopping one stops everything that
         #: user runs.
-        self.verification_lock = threading.Lock()
-        self.building_lock = threading.Lock()
-        self._table_lock = threading.Lock()
+        self.verification_lock = asyncio.Lock()
+        self.building_lock = asyncio.Lock()
         self.logger = logging.getLogger(self.__class__.__name__)
 
     # ------------------------------------------------------------------
     # At start
     # ------------------------------------------------------------------
 
-    def check(self) -> None:
+    async def start(self, egress_port: int, allow_loopback: bool = False) -> None:
+        """Everything that is proved and started before a worker runs:
+        the helper and the kernel (``check``), then the proxy and the
+        proof that nothing goes around it (``open_the_way_out``). Once;
+        a second start is the first's."""
+        if self.proxy is not None:
+            return
+        await self.check()
+        await self.open_the_way_out(egress_port, allow_loopback)
+
+    async def stop(self) -> None:
+        """The runtime is ending: the proxy stops serving."""
+        if self.proxy is not None:
+            await self.proxy.stop()
+
+    async def check(self) -> None:
         """Prove that workers can be confined where they run, and
         learn what the kernel there offers: the helper switches users
         once, says which Landlock and whether seccomp it has, and a
         place is prepared from end to end. Raises ``ConfinementFailed``
         naming what to mend; a runtime that cannot confine does not
         start."""
-        code, output = self.run(["check"])
+        code, output = await self.run(["check"])
         if code != 0:
             raise ConfinementFailed(self._what_to_mend(
                 self._refusal("check", code, output)))
@@ -528,10 +541,10 @@ class Confinement:
         self.filters_calls = (
             self.can_filter_calls
             and os.environ.get(self.FILTER_SETTING, "1").strip() != "0")
-        errors = self.verification_place().prepare()
+        errors = await self.verification_place().prepare()
         if errors:
             raise ConfinementFailed(self._what_to_mend("; ".join(errors)))
-        self.sweep()
+        await self.sweep()
         self._say_what_holds()
 
     @staticmethod
@@ -585,19 +598,19 @@ class Confinement:
                  "builder is a user of its own and reaches where packages "
                  "come from; it reads what any user may read.")
 
-    def open_the_way_out(self, port: int, allow_loopback: bool = False) -> None:
+    async def open_the_way_out(self, port: int, allow_loopback: bool = False) -> None:
         """Start the proxy every worker is pointed at, and find out
         whether anything holds a worker to it. Raises
         ``ConfinementFailed`` where the proxy cannot listen: without it
         an agent reaches nothing at all."""
         proxy = EgressProxy(port, allow_loopback=allow_loopback)
-        problems = proxy.start()
+        problems = await proxy.start()
         if problems:
             raise ConfinementFailed(
                 "The proxy workers are pointed at could not start: "
                 + "; ".join(problems))
         self.proxy = proxy
-        self.network_fenced = self.prove_the_network_is_fenced()
+        self.network_fenced = await self.prove_the_network_is_fenced()
         if self.network_fenced:
             self.logger.info(
                 "Workers' connections are fenced: an agent reaches the "
@@ -627,25 +640,25 @@ class Confinement:
         "        print('refused')\n"
     )
 
-    def prove_the_network_is_fenced(self) -> bool:
+    async def prove_the_network_is_fenced(self) -> bool:
         """Whether a worker can reach anything but the proxy — tried,
         as a worker: the spawner's own port, which something listens on
         and only the firewall rule keeps a worker from, and then the
         proxy's."""
         place = self.verification_place()
-        with self.verification_lock:
-            if place.prepare():
+        async with self.verification_lock:
+            if await place.prepare():
                 return False
             try:
                 # Not held by its own fence: what is asked is whether
                 # the firewall rule holds without it.
-                _, output = place.run(
+                _, output = await place.run(
                     [sys.executable, "-I", "-c", self.REACH,
                      str(self.container.port), str(self.proxy.port)],
                     environment={"PATH": os.environ.get("PATH", "")},
                     timeout=self.HELPER_TIMEOUT_SECONDS, held=False)
             finally:
-                place.clear()
+                await place.clear()
         return output.split() == ["refused", "reached"]
 
     def report(self) -> Dict[str, bool]:
@@ -656,7 +669,7 @@ class Confinement:
         return {"user": True, "files": self.fences,
                 "network": self.network_fenced}
 
-    def sweep(self, now: Optional[float] = None) -> int:
+    async def sweep(self, now: Optional[float] = None) -> int:
         """Give up the places nobody has used for a while: what their
         users left, their folders, and their users. Returns how many
         went. By age and not by asking who is approved: this process
@@ -666,28 +679,26 @@ class Confinement:
         if not self.workers_dir.is_dir():
             return 0
         gone = []
-        with self._table_lock:
-            table = self._read_table()
-            for folder in sorted(self.workers_dir.iterdir()):
-                if (not folder.is_dir() or folder.name in self.NOBODYS_AGENT
-                        or folder.stat().st_mtime > limit):
-                    continue
-                place = WorkerPlace(self, folder.name, table.get(folder.name, 0))
-                if place.user:
-                    place.clear()
-                try:
-                    for inside in (place.home, place.spool):
-                        if inside.is_dir():
-                            inside.rmdir()
-                    folder.rmdir()
-                except OSError as exc:
-                    self.logger.warning(f"Place {folder.name} was not given up: {exc}")
-                    continue
-                gone.append(folder.name)
-            if gone:
-                self._write_table({name: user for name, user in table.items()
-                                   if name not in gone})
+        table = self._read_table()
+        for folder in sorted(self.workers_dir.iterdir()):
+            if (not folder.is_dir() or folder.name in self.NOBODYS_AGENT
+                    or folder.stat().st_mtime > limit):
+                continue
+            place = WorkerPlace(self, folder.name, table.get(folder.name, 0))
+            if place.user:
+                await place.clear()
+            try:
+                for inside in (place.home, place.spool):
+                    if inside.is_dir():
+                        inside.rmdir()
+                folder.rmdir()
+            except OSError as exc:
+                self.logger.warning(f"Place {folder.name} was not given up: {exc}")
+                continue
+            gone.append(folder.name)
         if gone:
+            self._write_table({name: user for name, user in table.items()
+                               if name not in gone})
             self.logger.info(f"Gave up {len(gone)} place(s) nobody used "
                              f"for {self.PLACE_KEPT_DAYS} days")
         return len(gone)
@@ -709,8 +720,7 @@ class Confinement:
         if not agent_id:
             return None
         name = self._name(agent_id)
-        with self._table_lock:
-            user = self._read_table().get(name)
+        user = self._read_table().get(name)
         return WorkerPlace(self, name, user) if user else None
 
     def verification_place(self) -> WorkerPlace:
@@ -741,17 +751,16 @@ class Confinement:
 
     def _user(self, name: str) -> int:
         """The agent's user: the one it was given, or the next free."""
-        with self._table_lock:
-            table = self._read_table()
-            if name in table:
-                return table[name]
-            taken = set(table.values()) | {self.VERIFICATION_USER,
-                                           self.BUILDER_USER}
-            for user in range(self.FIRST_USER, self.LAST_USER + 1):
-                if user not in taken:
-                    table[name] = user
-                    self._write_table(table)
-                    return user
+        table = self._read_table()
+        if name in table:
+            return table[name]
+        taken = set(table.values()) | {self.VERIFICATION_USER,
+                                       self.BUILDER_USER}
+        for user in range(self.FIRST_USER, self.LAST_USER + 1):
+            if user not in taken:
+                table[name] = user
+                self._write_table(table)
+                return user
         raise RuntimeError("every user kept for workers is taken")
 
     def _read_table(self) -> Dict[str, int]:
@@ -780,21 +789,21 @@ class Confinement:
     # The helper
     # ------------------------------------------------------------------
 
-    def ask(self, job: Sequence[str],
-            whose: Optional[Dict[str, object]] = None) -> List[str]:
+    async def ask(self, job: Sequence[str],
+                  whose: Optional[Dict[str, object]] = None) -> List[str]:
         """Run the helper for one of its jobs. Returns errors, empty
         when it was done. ``whose`` says for which place, where it is
         for one."""
-        code, output = self.run(job, whose)
+        code, output = await self.run(job, whose)
         return [] if code == 0 else [self._refusal(job[0], code, output)]
 
-    def run(self, job: Sequence[str],
-            whose: Optional[Dict[str, object]] = None) -> tuple:
+    async def run(self, job: Sequence[str],
+                  whose: Optional[Dict[str, object]] = None) -> tuple:
         """The helper's own answer: (return code, what it wrote). Each
         job it is asked to do is written down, with how it ended."""
         argv = [str(self.helper), *job]
         began = time.monotonic()
-        code, output = self.container.run(argv, timeout=self.HELPER_TIMEOUT_SECONDS)
+        code, output = await self.container.run(argv, timeout=self.HELPER_TIMEOUT_SECONDS)
         Events.record(
             "helper", **(whose or {}), job=str(job[0]),
             asked=[str(word) for word in job[1:]], code=code,

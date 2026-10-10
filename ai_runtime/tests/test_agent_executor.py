@@ -1230,7 +1230,7 @@ class TestAFunctionThatRunsCode:
 
         ran = []
 
-        def runner(argv):
+        async def runner(argv):
             ran.append(list(argv))
             if "--target" in argv:
                 target = Path(argv[argv.index("--target") + 1])

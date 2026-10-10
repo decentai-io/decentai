@@ -37,7 +37,6 @@ from __future__ import annotations
 
 import json
 import os
-import threading
 import time
 from pathlib import Path
 from typing import Any, ClassVar, Dict, Iterable, List, Optional
@@ -60,7 +59,6 @@ class Events:
     def __init__(self, install_dir: str | Path, writer: str):
         self.folder = Path(install_dir) / self.FOLDER
         self.writer = "".join(c for c in str(writer) if c.isalnum()) or "events"
-        self._guard = threading.Lock()
 
     @classmethod
     def configure(cls, install_dir: str | Path, writer: str) -> "Events":
@@ -88,19 +86,17 @@ class Events:
 
     #: The time the last event of this process was given.
     _last: ClassVar[float] = 0.0
-    _clock: ClassVar[threading.Lock] = threading.Lock()
 
     @classmethod
     def _moment(cls) -> float:
         """Now, and never the moment an earlier event was given: a page
         of events ends at a time and the next begins before it, so two
         events at one time would have one of them fall between pages."""
-        with cls._clock:
-            moment = round(time.time(), 6)
-            if moment <= cls._last:
-                moment = round(cls._last + 0.000001, 6)
-            cls._last = moment
-            return moment
+        moment = round(time.time(), 6)
+        if moment <= cls._last:
+            moment = round(cls._last + 0.000001, 6)
+        cls._last = moment
+        return moment
 
     @classmethod
     def _plain(cls, value: Any) -> Any:
@@ -124,19 +120,18 @@ class Events:
     def write(self, event: Dict[str, Any]) -> None:
         line = (json.dumps(event, separators=(",", ":"), ensure_ascii=False)
                 + "\n").encode("utf-8")
-        with self._guard:
-            self.folder.mkdir(mode=0o700, parents=True, exist_ok=True)
-            current = self._file()
-            try:
-                full = current.stat().st_size + len(line) > self.MAX_BYTES
-            except OSError:
-                full = False
-            if full:
-                self._put_aside()
-            descriptor = os.open(
-                current, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
-            with os.fdopen(descriptor, "ab") as written:
-                written.write(line)
+        self.folder.mkdir(mode=0o700, parents=True, exist_ok=True)
+        current = self._file()
+        try:
+            full = current.stat().st_size + len(line) > self.MAX_BYTES
+        except OSError:
+            full = False
+        if full:
+            self._put_aside()
+        descriptor = os.open(
+            current, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
+        with os.fdopen(descriptor, "ab") as written:
+            written.write(line)
 
     def _put_aside(self) -> None:
         """The full file becomes the newest put aside, each put aside

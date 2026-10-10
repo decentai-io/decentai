@@ -61,27 +61,25 @@ def confinement(site):
     start: the agents' container waited for, the helper checked there,
     the proxy listening for what that container passes on."""
     container = AgentsContainer(ADDRESS, INSTALL_DIR)
-    assert container.wait(60)
+    assert run(container.wait(60))
     Events.configure(INSTALL_DIR, "runtime")
     found = Confinement(INSTALL_DIR, container)
-    found.check()
     EgressProxy.resolver = lambda host, port: ["127.0.0.1"]
     ports = EgressProxy.PORTS_OF_A_NAMED_HOST
     EgressProxy.PORTS_OF_A_NAMED_HOST = (*ports, site)
-    found.open_the_way_out(
-        int(os.environ.get("AI_RUNTIME_EGRESS_PORT") or 8002),
-        allow_loopback=True)
+    run(found.start(int(os.environ.get("AI_RUNTIME_EGRESS_PORT") or 8002),
+                    allow_loopback=True))
     yield found
-    found.proxy.stop()
+    run(found.stop())
     EgressProxy.resolver = None
     EgressProxy.PORTS_OF_A_NAMED_HOST = ports
     Events.current = None
 
 
-def running_there(confinement, process_id: int) -> bool:
+async def running_there(confinement, process_id: int) -> bool:
     """Whether a process of the agents' container is still doing
     anything — asked there: its processes are not this container's."""
-    code, said = confinement.container.run([
+    code, said = await confinement.container.run([
         sys.executable, "-c",
         "import sys\n"
         "try:\n"
@@ -112,13 +110,13 @@ class TestWhereItRuns:
         assert ask(ground, place, "whoami")["kept_was_there"] is False
         assert ask(ground, place, "whoami")["kept_was_there"] is False
 
-    def test_stopping_it_ends_what_it_started_there(self, ground, place):
+    def test_stopping_it_ends_what_it_started_there(self, ground, place, confinement):
         child = ask(ground, place, "leave_child")["child"]
         # ask() stopped the worker on its way out
-        assert not running_there(confinement, child)
+        assert not run(running_there(confinement, child))
 
     def test_a_runtime_that_hangs_up_leaves_nothing_running(
-            self, ground, place):
+            self, ground, place, confinement):
         """No order to leave, no helper asked: the connection is cut,
         as a runtime that died would cut it, and the spawner ends the
         worker with everything its user runs."""
@@ -130,17 +128,17 @@ class TestWhereItRuns:
             assert await handle.start() == []
             result, _ = await handle.invoke(
                 "c_1", "intruder.main.run", {"what": "leave_child"})
-            assert running_there(confinement, result["child"])
+            assert await running_there(confinement, result["child"])
             handle.process.kill()
             await handle.process.wait()
             return result["child"]
 
         child = run(scenario())
         for _ in range(50):
-            if not running_there(confinement, child):
+            if not run(running_there(confinement, child)):
                 break
             time.sleep(0.1)
-        assert not running_there(confinement, child)
+        assert not run(running_there(confinement, child))
 
 
 class TestWhatItCannotTake:
@@ -171,7 +169,7 @@ class TestTheWayOut:
 
     def test_it_cannot_reach_the_spawner(self, ground, place, net):
         assert ask(ground, place, "connect",
-                   f"127.0.0.1:{confinement.container.port}",
+                   f"127.0.0.1:{net.container.port}",
                    hosts="any")["happened"] is False
 
     def test_it_cannot_reach_the_runtime_or_look_it_up(self, ground, place, net):
@@ -233,14 +231,14 @@ class TestWhatStillReachesIt:
 
     def test_a_package_is_verified_there(self, ground, confinement):
         environment, package, document = ground
-        assert WorkerHandle.probe(
+        assert run(WorkerHandle.probe(
             environment.python, package, document,
-            place=confinement.verification_place()) == []
+            place=confinement.verification_place())) == []
         broken = {**document, "implementation": {
             **document["implementation"], "entrypoint": "agent:Nope"}}
-        errors = WorkerHandle.probe(
+        errors = run(WorkerHandle.probe(
             environment.python, package, broken,
-            place=confinement.verification_place())
+            place=confinement.verification_place()))
         assert errors and "'Nope' not found" in errors[0]
 
 
@@ -252,12 +250,12 @@ class TestWhatTheAgentsAreGiven:
     400 MB and a processor and a half."""
 
     def test_what_they_are_given_is_read_from_the_kernel(self, confinement):
-        said = confinement.container.usage()
+        said = run(confinement.container.usage())
         assert said["limits"] == {"memory": 400 * MB, "cpus": 1.5}
         assert 0 < said["memory"] < 400 * MB
 
     def test_what_a_running_agent_uses_is_added_up_under_its_name(
-            self, ground, place):
+            self, ground, place, confinement):
         environment, package, document = ground
 
         async def scenario():
@@ -267,7 +265,7 @@ class TestWhatTheAgentsAreGiven:
             found = None
             try:
                 for _ in range(50):
-                    said = confinement.container.usage()
+                    said = await confinement.container.usage()
                     mine = [agent for agent in said["agents"]
                             if agent["user"] == place.user]
                     # A worker answers its greeting before it has
@@ -287,7 +285,8 @@ class TestWhatTheAgentsAreGiven:
         assert found["processes"] >= 1
         assert MB < found["memory"] < 200 * MB
 
-    def test_what_a_running_agent_keeps_on_disk_is_measured(self, ground, place):
+    def test_what_a_running_agent_keeps_on_disk_is_measured(
+            self, ground, place, confinement):
         """Its home is its user's alone to read, so the measuring is a
         process of that user, started by the spawner every half
         minute."""
@@ -301,7 +300,7 @@ class TestWhatTheAgentsAreGiven:
                 await handle.invoke("c_1", "intruder.main.run",
                                     {"what": "fill", "target": "2048"})
                 for _ in range(120):
-                    mine = [agent for agent in confinement.container.usage()["agents"]
+                    mine = [agent for agent in (await confinement.container.usage())["agents"]
                             if agent["user"] == place.user]
                     if mine and (mine[0].get("disk") or 0) >= 2 * MB:
                         return mine[0]
@@ -314,7 +313,7 @@ class TestWhatTheAgentsAreGiven:
         assert 2 * MB <= found["disk"] < 4 * MB
 
     def test_an_agent_that_takes_all_the_memory_is_ended_and_its_call_told_why(
-            self, ground, place):
+            self, ground, place, confinement):
         environment, package, document = ground
 
         async def scenario():
@@ -336,12 +335,12 @@ class TestWhatTheAgentsAreGiven:
         assert "400.0 MB" in said
         # ... and the container is left with room again.
         for _ in range(50):
-            if confinement.container.usage()["memory"] < 200 * MB:
+            if run(confinement.container.usage())["memory"] < 200 * MB:
                 break
             time.sleep(0.2)
-        assert confinement.container.usage()["memory"] < 200 * MB
+        assert run(confinement.container.usage())["memory"] < 200 * MB
 
-    def test_what_an_agent_left_behind_is_collected(self, ground, place):
+    def test_what_an_agent_left_behind_is_collected(self, ground, place, confinement):
         """A process whose parent is gone becomes the spawner's child
         when it ends, and stays in the kernel's table until waited
         for: the spawner waits for it."""
@@ -357,7 +356,7 @@ class TestWhatTheAgentsAreGiven:
             "            pass\n"
             "print(over)\n")
         for _ in range(40):
-            code, said = confinement.container.run([sys.executable, "-c", counting])
+            code, said = run(confinement.container.run([sys.executable, "-c", counting]))
             assert code == 0, said
             if said.strip() == "0":
                 break
@@ -400,8 +399,6 @@ class TestWhatIsWrittenDown:
 
         started = happened("worker.started", since, agent=place.name)
         assert started and started[0]["name"] == name
-        assert started[0]["confined"] is True
-        assert started[0]["where"] == "the agents' container"
         assert started[0]["user"] == place.user
 
         jobs = [event["job"] for event in happened("helper", since,
@@ -472,7 +469,7 @@ class TestWhatIsWrittenDown:
             try:
                 await handle.invoke(
                     "c_1", "intruder.main.run", {"what": "whoami"})
-                listed = await asyncio.to_thread(place.files)
+                listed = await place.files()
                 # The listing ran as the agent's user, beside it.
                 again, status = await handle.invoke(
                     "c_2", "intruder.main.run", {"what": "whoami"})

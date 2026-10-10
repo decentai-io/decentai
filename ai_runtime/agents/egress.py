@@ -6,7 +6,7 @@ runs, which every worker is pointed at and — where the container has a
 firewall rule — cannot go around.
 
     proxy = EgressProxy(port)
-    proxy.start()
+    await proxy.start()
     token = proxy.admit(agent_id, manifest.network)   one worker's pass
     proxy.address(token)                              what the worker is given
     proxy.lend(token, hosts)                          hosts opened for a call: ones a
@@ -29,8 +29,9 @@ For every connection a worker asks for, the proxy:
 It sees a host and a port. Encrypted traffic passes through it closed:
 it opens nothing and installs no certificate.
 
-It runs on a thread and a loop of its own. What a browser downloads
-passes through here, and the runtime's own loop has chats to serve.
+It serves on the runtime's one loop, beside the chats: a connection
+is bytes copied between two sockets, a chunk at a time, and no chat
+waits on it.
 """
 
 from __future__ import annotations
@@ -41,7 +42,6 @@ import base64
 import ipaddress
 import secrets
 import socket
-import threading
 import time
 from typing import Callable, ClassVar, Dict, List, Optional, Tuple
 from urllib.parse import urlsplit
@@ -199,7 +199,6 @@ class EgressProxy:
         #: address and nothing else. Never in a deployment.
         self.allow_loopback = bool(allow_loopback)
         self._admissions: Dict[str, Admission] = {}
-        self._guard = threading.Lock()
         #: The connections being served. Held here because nothing else
         #: holds them: a loop keeps a task only weakly, and a connection
         #: whose worker hung up while the host was still answering would
@@ -210,9 +209,7 @@ class EgressProxy:
         #: connections that have not yet said whose they are, the
         #: longest silent first
         self._unread: Dict[object, asyncio.StreamWriter] = {}
-        self._loop: Optional[asyncio.AbstractEventLoop] = None
-        self._thread: Optional[threading.Thread] = None
-        self._problem = ""
+        self._server: Optional[asyncio.AbstractServer] = None
         self.refusals = 0
         self.logger = logging.getLogger(self.__class__.__name__)
 
@@ -220,55 +217,32 @@ class EgressProxy:
     # Its life
     # ------------------------------------------------------------------
 
-    def start(self) -> List[str]:
-        """Listen. Returns errors, empty when the proxy is serving."""
-        ready = threading.Event()
-        self._thread = threading.Thread(
-            target=self._run, args=(ready,), name="egress-proxy", daemon=True)
-        self._thread.start()
-        if not ready.wait(10):
-            return ["the proxy did not start in time"]
-        return [self._problem] if self._problem else []
-
-    def _run(self, ready: threading.Event) -> None:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
+    async def start(self) -> List[str]:
+        """Listen, on the loop this is awaited on. Returns errors,
+        empty when the proxy is serving."""
         try:
-            server = loop.run_until_complete(asyncio.start_server(
-                self._serve, self.LISTEN, self.port, limit=self.HEAD_LIMIT))
+            self._server = await asyncio.start_server(
+                self._serve, self.LISTEN, self.port, limit=self.HEAD_LIMIT)
         except OSError as exc:
-            self._problem = f"the proxy could not listen on {self.port}: {exc}"
-            ready.set()
-            loop.close()
-            return
-        self.port = server.sockets[0].getsockname()[1]
-        self._loop = loop
-        ready.set()
-        try:
-            loop.run_forever()
-        finally:
-            # Whatever is still passing ends here, on the loop it began
-            # on: a connection closed after its loop is one nobody can
-            # close.
-            server.close()
-            passing = asyncio.all_tasks(loop)
-            for task in passing:
-                task.cancel()
-            loop.run_until_complete(
-                asyncio.gather(*passing, return_exceptions=True))
-            loop.run_until_complete(loop.shutdown_asyncgens())
-            loop.close()
+            return [f"the proxy could not listen on {self.port}: {exc}"]
+        self.port = self._server.sockets[0].getsockname()[1]
+        return []
 
-    def stop(self) -> None:
-        loop, self._loop = self._loop, None
-        if loop is not None:
-            loop.call_soon_threadsafe(loop.stop)
-        if self._thread is not None:
-            self._thread.join(5)
+    async def stop(self) -> None:
+        """Stop listening, and end whatever is still passing."""
+        server, self._server = self._server, None
+        if server is None:
+            return
+        server.close()
+        passing = list(self._serving)
+        for connection in passing:
+            connection.cancel()
+        await asyncio.gather(*passing, return_exceptions=True)
+        await server.wait_closed()
 
     @property
     def serving(self) -> bool:
-        return self._loop is not None
+        return self._server is not None
 
     # ------------------------------------------------------------------
     # Who may pass
@@ -279,13 +253,11 @@ class EgressProxy:
         """A pass for one worker. What it opens is what ``network`` —
         the manifest's own answer — declared."""
         token = secrets.token_urlsafe(24)
-        with self._guard:
-            self._admissions[token] = Admission(agent_id, network, whose)
+        self._admissions[token] = Admission(agent_id, network, whose)
         return token
 
     def dismiss(self, token: str) -> None:
-        with self._guard:
-            self._admissions.pop(str(token or ""), None)
+        self._admissions.pop(str(token or ""), None)
 
     def lend(self, token: str, hosts: List[str]) -> List[Tuple[str, Optional[int]]]:
         """Hosts opened until the call they were opened for ends: ones
@@ -293,19 +265,17 @@ class EgressProxy:
         to the call named (``from_secret``). Each is a name, with
         ``:<port>`` where that is not the web's. Returns what was
         lent."""
-        with self._guard:
-            admission = self._admissions.get(str(token or ""))
-            if admission is None:
-                return []
-            return [admission.lend(*Admission.named(host)) for host in hosts or []]
+        admission = self._admissions.get(str(token or ""))
+        if admission is None:
+            return []
+        return [admission.lend(*Admission.named(host)) for host in hosts or []]
 
     def take_back(self, token: str,
                   lent: List[Tuple[str, Optional[int]]]) -> None:
-        with self._guard:
-            admission = self._admissions.get(str(token or ""))
-            if admission is not None:
-                for host, port in lent or []:
-                    admission.take_back(host, port)
+        admission = self._admissions.get(str(token or ""))
+        if admission is not None:
+            for host, port in lent or []:
+                admission.take_back(host, port)
 
     def block(self, token: str, names: List[str]) -> None:
         """The sites no agent may open, as the deployment's setting has
@@ -313,24 +283,21 @@ class EgressProxy:
         at the next one."""
         cleaned = [str(name or "").strip().lower().strip(".")
                    for name in names or []]
-        with self._guard:
-            admission = self._admissions.get(str(token or ""))
-            if admission is not None:
-                admission.blocked = [name for name in cleaned if name]
+        admission = self._admissions.get(str(token or ""))
+        if admission is not None:
+            admission.blocked = [name for name in cleaned if name]
 
     def reached(self, token: str) -> Dict[str, int]:
         """host -> how many connections this worker has made to it."""
-        with self._guard:
-            admission = self._admissions.get(str(token or ""))
-            return dict(admission.reached) if admission is not None else {}
+        admission = self._admissions.get(str(token or ""))
+        return dict(admission.reached) if admission is not None else {}
 
     def address(self, token: str) -> str:
         """What a worker is given as its proxy."""
         return f"http://worker:{token}@{self.HOST}:{self.port}"
 
     def _admission(self, token: str) -> Optional[Admission]:
-        with self._guard:
-            return self._admissions.get(token)
+        return self._admissions.get(token)
 
     # ------------------------------------------------------------------
     # One connection
@@ -349,24 +316,22 @@ class EgressProxy:
         """One more connection for this worker, counted — or Refused,
         when it or the proxy already has as many as it may. Returns
         what ``_release`` is given when the connection ends."""
-        with self._guard:
-            mine = self._open.get(token, 0)
-            if mine >= self.MAX_PER_WORKER:
-                raise Refused(503, f"this agent already has "
-                                   f"{self.MAX_PER_WORKER} connections open")
-            if sum(self._open.values()) >= self.MAX_CONNECTIONS:
-                raise Refused(503, "too many connections are open through "
-                                   "the platform's proxy; try again shortly")
-            self._open[token] = mine + 1
+        mine = self._open.get(token, 0)
+        if mine >= self.MAX_PER_WORKER:
+            raise Refused(503, f"this agent already has "
+                               f"{self.MAX_PER_WORKER} connections open")
+        if sum(self._open.values()) >= self.MAX_CONNECTIONS:
+            raise Refused(503, "too many connections are open through "
+                               "the platform's proxy; try again shortly")
+        self._open[token] = mine + 1
         return token
 
     def _release(self, token: str) -> None:
-        with self._guard:
-            left = self._open.get(token, 0) - 1
-            if left > 0:
-                self._open[token] = left
-            else:
-                self._open.pop(token, None)
+        left = self._open.get(token, 0) - 1
+        if left > 0:
+            self._open[token] = left
+        else:
+            self._open.pop(token, None)
 
     async def _connection(self, reader: asyncio.StreamReader,
                           writer: asyncio.StreamWriter) -> None:
@@ -431,8 +396,7 @@ class EgressProxy:
                 return
 
             seen["reached"] = True
-            with self._guard:
-                admission.reached[host] = admission.reached.get(host, 0) + 1
+            admission.reached[host] = admission.reached.get(host, 0) + 1
             if tunnel:
                 writer.write(b"HTTP/1.1 200 Connection established\r\n\r\n")
                 await writer.drain()
@@ -460,7 +424,7 @@ class EgressProxy:
                     try:
                         stream.close()
                     except RuntimeError:
-                        pass        # its loop closed under it
+                        pass        # the loop closed under it
 
     # -- reading what was asked ------------------------------------------
 

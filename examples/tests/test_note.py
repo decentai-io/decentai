@@ -45,8 +45,8 @@ class TestThePackage:
         from ai_runtime.agents.workers import WorkerHandle
 
         agent = agents["note"]
-        assert WorkerHandle.probe(
-            agent.environment.python, agent.folder, agent.manifest.document, confinement().verification_place()) == []
+        assert run(WorkerHandle.probe(
+            agent.environment.python, agent.folder, agent.manifest.document, confinement().verification_place())) == []
 
     def test_the_catalog_and_the_manifest_agree(self):
         catalog = yaml.safe_load(

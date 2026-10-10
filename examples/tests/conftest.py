@@ -64,7 +64,7 @@ def agents():
         from ai_runtime.tests.fake_container import standalone
 
         with standalone(WORKERENV_DIR.parent / ".workerenv-build") as own:
-            errors = environment.build(dependencies, own.builder_place())
+            errors = own.run(environment.build(dependencies, own.confinement.builder_place()))
         assert errors == [], errors
 
     return {

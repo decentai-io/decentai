@@ -6,7 +6,7 @@ disk, one loaded agent.
 
     library = AgentLibrary(install_dir)
 
-    library.install(digest, archive, manifest_hash)   # verify and keep
+    await library.install(digest, archive, manifest_hash)   # verify and keep
     library.has(digest)                               # do I hold it?
     library.agent(digest)                             # the loaded agent
     library.forget(digest)                            # stop serving it
@@ -58,9 +58,9 @@ from __future__ import annotations
 import logging
 import re
 import hashlib
+import asyncio
 import shutil
 import sys
-import threading
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -167,19 +167,17 @@ class AgentLibrary:
         #: one dependency set — the warm-up and a chat naming the same
         #: agent, say — must not both build it: pip twice into one venv
         #: is a broken venv.
-        self._locks: Dict[Path, threading.Lock] = {}
-        self._locks_guard = threading.Lock()
+        self._locks: Dict[Path, asyncio.Lock] = {}
         #: One lock per digest, held through an install: the second
         #: chat to name an agent waits for the first to finish with it.
-        self._digest_locks: Dict[str, threading.Lock] = {}
+        self._digest_locks: Dict[str, asyncio.Lock] = {}
         #: The digests an install is at work on, between its folder
         #: arriving and its code being proven.
         self._installing: set = set()
         self.logger = logging.getLogger(self.__class__.__name__)
 
-    def _lock_for(self, environment: AgentEnvironment) -> threading.Lock:
-        with self._locks_guard:
-            return self._locks.setdefault(environment.root, threading.Lock())
+    def _lock_for(self, environment: AgentEnvironment) -> asyncio.Lock:
+        return self._locks.setdefault(environment.root, asyncio.Lock())
 
     # ------------------------------------------------------------------
     # What is here
@@ -250,9 +248,11 @@ class AgentLibrary:
         built yet — what `warm_up` builds."""
         return sorted(self._waiting)
 
-    def warm_up(self) -> int:
+    async def warm_up(self) -> int:
         """Build every waiting environment, one after another, and serve
         the agents that stand on it. Returns how many were made ready.
+        Started as a task of its own at start, so the process serves
+        while it builds (door/app.py).
 
         For the start after a deploy: the install directory outlives the
         container but an environment keyed the old way, or built for
@@ -266,7 +266,7 @@ class AgentLibrary:
         ready = 0
         for digest in self.waiting():
             try:
-                self.install(digest, None)
+                await self.install(digest, None)
                 ready += 1
             except Exception as exc:
                 self.logger.error(
@@ -275,19 +275,12 @@ class AgentLibrary:
             self.logger.info(f"Warm-up prepared {ready} agent(s)")
         return ready
 
-    def warm_up_in_background(self) -> threading.Thread:
-        """`warm_up` on a daemon thread, so the process serves while it
-        builds. The thread is returned for whoever wants to wait on it."""
-        thread = threading.Thread(
-            target=self.warm_up, name="agent-warm-up", daemon=True)
-        thread.start()
-        return thread
-
     # ------------------------------------------------------------------
     # Putting code here
     # ------------------------------------------------------------------
 
-    def install(self, digest: str, archive: Optional[bytes], expected_manifest_hash: str = "") -> InstalledAgent:
+    async def install(self, digest: str, archive: Optional[bytes],
+                      expected_manifest_hash: str = "") -> InstalledAgent:
         """Serve the code named by ``digest``, or raise AgentRefused.
 
         ``archive`` may be None when the code is already here — which is
@@ -302,17 +295,16 @@ class AgentLibrary:
         if not DIGEST_RE.match(str(digest or "")):
             raise AgentRefused(
                 f"'{digest}' is not a package digest.")
-        with self._locks_guard:
-            turn = self._digest_locks.setdefault(digest, threading.Lock())
-        with turn:
+        turn = self._digest_locks.setdefault(digest, asyncio.Lock())
+        async with turn:
             self._installing.add(digest)
             try:
-                return self._install(digest, archive, expected_manifest_hash)
+                return await self._install(digest, archive, expected_manifest_hash)
             finally:
                 self._installing.discard(digest)
 
-    def _install(self, digest: str, archive: Optional[bytes],
-                 expected_manifest_hash: str = "") -> InstalledAgent:
+    async def _install(self, digest: str, archive: Optional[bytes],
+                       expected_manifest_hash: str = "") -> InstalledAgent:
         fresh = not self.has(digest)
         if fresh:
             if archive is None:
@@ -336,19 +328,19 @@ class AgentLibrary:
             # one agent — waits, then finds the venv built and pays
             # nothing.
             lock = self._lock_for(environment)
-            lock.acquire()
+            await lock.acquire()
             fresh_environment = not environment.exists()
             # The build is confined as a worker is: a package may run
             # code of its own while it is built.
-            env_errors = environment.build(
+            env_errors = await environment.build(
                 manifest.dependencies, self.confinement.builder_place())
             if env_errors:
                 raise AgentRefused("; ".join(env_errors))
             # Verification happens where the agent will really run: a
-            # worker spawned from the digest's own venv imports the code
+            # worker started from the digest's own venv imports the code
             # and checks it against the contract — the host itself never
             # imports agent code.
-            probe_errors = self._verify(environment, digest, manifest)
+            probe_errors = await self._verify(environment, digest, manifest)
             if probe_errors:
                 raise AgentRefused("; ".join(probe_errors))
             errors = self._register(digest, manifest)
@@ -448,10 +440,10 @@ class AgentLibrary:
             roots.add(self.environment(other).root)
         return roots
 
-    def _verify(self, environment: AgentEnvironment, digest: str,
-                manifest: Manifest) -> List[str]:
+    async def _verify(self, environment: AgentEnvironment, digest: str,
+                      manifest: Manifest) -> List[str]:
         """The handshake as installation's gate (docs/reference/worker-protocol.md)."""
-        return WorkerHandle.probe(
+        return await WorkerHandle.probe(
             environment.python, self._folder(digest), manifest.document,
             self.confinement.verification_place(),
         )

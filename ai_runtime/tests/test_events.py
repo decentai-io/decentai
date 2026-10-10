@@ -23,10 +23,10 @@ from ai_runtime.tests.test_agent_worker_handle import (  # noqa: F401
 )
 from ai_runtime.tests.test_confinement import fake  # noqa: F401
 from ai_runtime.tests.test_egress import (  # noqa: F401
-    echo, get, names, network, proxy, site,
+    echo, get, loop, names, network, proxy, site,
 )
 from ai_runtime.tests.test_usage import Scripted
-from ai_runtime.tests.fake_container import confinement, container
+from ai_runtime.tests.fake_container import confinement, container, run
 
 
 @pytest.fixture
@@ -146,7 +146,7 @@ class TestTheHelper:
             self, events, fake, tmp_path):
         place = Confinement(tmp_path, fake).place("agt_aaaa")
         place.label = "Notes"
-        assert place.prepare() == []
+        assert run(place.prepare()) == []
         found = kinds(tmp_path, "helper")
         assert [event["job"] for event in found] == [
             "clear", "clear", "sweep", "own", "own"]
@@ -158,7 +158,7 @@ class TestTheHelper:
     def test_a_job_it_refused_says_so(self, events, fake, tmp_path):
         fake.refuses.add("stop")
         place = Confinement(tmp_path, fake).place("agt_aaaa")
-        assert place.stop()
+        assert run(place.stop())
         found = kinds(tmp_path, "helper")[-1]
         assert found["job"] == "stop" and found["code"] == 126
         assert "no stop today" in found["refused"]
@@ -167,7 +167,7 @@ class TestTheHelper:
             self, events, fake, tmp_path):
         place = Confinement(tmp_path, fake).builder_place()
         place.label = "the builder"
-        place.run([sys.executable, "-c", "pass"])
+        run(place.run([sys.executable, "-c", "pass"]))
         found = kinds(tmp_path, "program")[-1]
         assert found["program"] == f"{sys.executable} -c pass"
         assert found["name"] == "the builder" and found["code"] == 0
@@ -180,7 +180,7 @@ class TestTheHelper:
         place.home.mkdir(parents=True)
         (place.home / "kept").write_text("four", encoding="utf-8")
         place.spool.mkdir(parents=True)
-        listed = place.files()
+        listed = run(place.files())
         assert listed["count"] == 1 and listed["bytes"] == 4
         assert listed["files"][0]["path"] == str(place.home / "kept")
         [line] = fake.asked
@@ -200,7 +200,7 @@ class TestTheHelper:
     def test_a_listing_that_fails_says_so(self, events, fake, tmp_path):
         fake.refuses.add("run")
         place = Confinement(tmp_path, fake).place("agt_aaaa")
-        assert "error" in place.files()
+        assert "error" in run(place.files())
 
     def test_asking_for_a_place_gives_nobody_one(self, fake, tmp_path):
         confinement = Confinement(tmp_path, fake)
@@ -212,12 +212,13 @@ class TestTheHelper:
 
 class TestAWorker:
     def test_its_life_and_its_log_are_written_down(self, events, venv, tmp_path):
+        place = confinement().place("agt_notes")
         async def scenario():
             handle = WorkerHandle(venv.python, FIXTURE, manifest_document(),
-                                  confinement().place("agt_notes"))
+                                  place)
             assert await handle.start() == []
             await handle.stop()
-        asyncio.run(scenario())
+        run(scenario())
         found = kinds(tmp_path, "worker.started", "worker.ended")
         name = manifest_document()["agent"]["name"]
         assert [event["kind"] for event in found] == [
@@ -227,12 +228,13 @@ class TestAWorker:
         assert "code" in found[1]
 
     def test_one_that_was_refused_says_why_it_ended(self, events, venv, tmp_path):
+        place = confinement().place("agt_test")
         async def scenario():
             document = manifest_document()
             document["implementation"]["entrypoint"] = "agent:Nope"
-            handle = WorkerHandle(venv.python, FIXTURE, document, confinement().place("agt_test"))
+            handle = WorkerHandle(venv.python, FIXTURE, document, place)
             assert await handle.start()
-        asyncio.run(scenario())
+        run(scenario())
         found = kinds(tmp_path, "worker.started", "worker.ended")
         assert [event["kind"] for event in found] == ["worker.ended"]
         assert "refused at its greeting" in found[0]["why"]
@@ -256,13 +258,14 @@ class TestAWorker:
             def _spawn_argv(python):
                 return [str(python), "-c", script]
 
+        place = confinement().place("agt_notes")
         async def scenario():
             handle = Talking(sys.executable, FIXTURE, manifest_document(),
-                             confinement().place("agt_notes"))
+                             place)
             assert await handle.start() == []
             await asyncio.sleep(0.3)
             await handle.kill()
-        asyncio.run(scenario())
+        run(scenario())
         found = kinds(tmp_path, "log")
         assert [event["line"] for event in found] == ["first line", "second line"]
         assert found[0]["agent"] == "agt_notes"

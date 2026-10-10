@@ -28,7 +28,7 @@ def worker_environment() -> AgentEnvironment:
     environment = AgentEnvironment(WORKERENV_DIR)
     if not environment.exists():
         with standalone(WORKERENV_DIR.parent / ".workerenv-build") as own:
-            errors = environment.build([], own.builder_place())
+            errors = own.run(environment.build([], own.confinement.builder_place()))
         assert errors == [], errors
     else:
         _refresh_sdk(environment)

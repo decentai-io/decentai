@@ -538,9 +538,9 @@ web's — mail, a database — the SDK's `decentai_sdk.net.Tunnel` opens
 the connection through the proxy. The proxy passes the bytes and reads
 none of them; what is encrypted is encrypted by the agent, end to end.
 
-The proxy runs on a thread and an event loop of its own: what a
-browser downloads passes through it, and the runtime's own loop has
-chats to serve.
+The proxy serves on the runtime's one loop, beside the chats: a
+connection is bytes copied between two sockets, a chunk at a time, and
+no chat waits on it.
 
 ### A firewall rule leaves the proxy as the only way out
 

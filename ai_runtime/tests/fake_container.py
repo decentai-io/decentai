@@ -23,7 +23,6 @@ import asyncio
 import os
 import shutil
 import socket
-import subprocess
 import tempfile
 from pathlib import Path
 from typing import Any, ClassVar, Dict, List, Optional, Sequence, Set, Tuple
@@ -81,13 +80,13 @@ class FakeContainer:
 
     # -- the container's verbs -------------------------------------------
 
-    def wait(self, seconds: Optional[float] = None) -> bool:
+    async def wait(self, seconds: Optional[float] = None) -> bool:
         return True
 
     def key(self) -> str:
         return "a-fake-key"
 
-    def usage(self) -> Optional[Dict[str, Any]]:
+    async def usage(self) -> Optional[Dict[str, Any]]:
         return None
 
     def spool(self) -> Path:
@@ -95,12 +94,12 @@ class FakeContainer:
         folder.mkdir(parents=True, exist_ok=True)
         return Path(tempfile.mkdtemp(prefix="spool-", dir=folder))
 
-    def run(self, argv: Sequence[str],
-            environment: Optional[Dict[str, str]] = None,
-            cwd: Optional[str] = None, timeout: Optional[float] = None,
-            feed: Optional[str] = None, errors: str = MERGE,
-            stop: Optional[Sequence[str]] = None,
-            whose: Optional[Dict[str, Any]] = None) -> Tuple[int, str]:
+    async def run(self, argv: Sequence[str],
+                  environment: Optional[Dict[str, str]] = None,
+                  cwd: Optional[str] = None, timeout: Optional[float] = None,
+                  feed: Optional[str] = None, errors: str = MERGE,
+                  stop: Optional[Sequence[str]] = None,
+                  whose: Optional[Dict[str, Any]] = None) -> Tuple[int, str]:
         argv = [str(word) for word in argv]
         user = None
         if self._is_helper(argv[0]):
@@ -112,24 +111,30 @@ class FakeContainer:
                 return self._build(job)
             user, argv = self._behind_the_helper(job)
         try:
-            process = subprocess.Popen(
-                argv,
-                stdin=subprocess.PIPE if feed is not None else subprocess.DEVNULL,
-                stdout=subprocess.PIPE,
-                stderr=(subprocess.STDOUT if errors == self.MERGE
-                        else subprocess.DEVNULL),
-                text=True, encoding="utf-8", errors="replace",
+            process = await asyncio.create_subprocess_exec(
+                *argv,
+                stdin=(asyncio.subprocess.PIPE if feed is not None
+                       else asyncio.subprocess.DEVNULL),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=(asyncio.subprocess.STDOUT if errors == self.MERGE
+                        else asyncio.subprocess.DEVNULL),
                 cwd=cwd, env=_with_the_machines(environment))
         except OSError as exc:
             return 1, f"{self.COULD_NOT_RUN}: {exc}"
         self._started.setdefault(user, []).append(process)
+        fed = feed.encode("utf-8") if feed is not None else None
         try:
-            output, _ = process.communicate(feed, timeout=timeout)
-            return process.returncode, output or ""
-        except subprocess.TimeoutExpired:
+            output, _ = await asyncio.wait_for(process.communicate(fed), timeout)
+        except asyncio.TimeoutError:
             process.kill()
-            output, _ = process.communicate()
-            return 1, f"it did not finish in {int(timeout or 0)} seconds\n{output or ''}"
+            output, _ = await process.communicate()
+            return 1, (f"it did not finish in {int(timeout or 0)} seconds\n"
+                       f"{self._said(output)}")
+        return process.returncode, self._said(output)
+
+    @staticmethod
+    def _said(output: Optional[bytes]) -> str:
+        return (output or b"").decode("utf-8", "replace")
 
     async def start(self, argv: Sequence[str], environment: Dict[str, str],
                     cwd: str, limit: int,
@@ -235,15 +240,15 @@ class FakeContainer:
 # The test's own container, confinement and workers
 # ----------------------------------------------------------------------
 
-#: What the running test stands on: its fake container, the
-#: confinement over it, and the pools it was handed. Set by the
-#: autouse fixture in conftest.py for every test, and emptied after.
+#: What the running test stands on: its fake container, the loop it
+#: runs on, and the confinement over it. Set by the autouse fixture in
+#: conftest.py for every test, and emptied after.
 _current: Dict[str, Any] = {}
 
 
 def begin(install_dir: str | Path) -> FakeContainer:
     """A fresh container for one test, with every fence the kernel
-    could offer and a proxy of its own. Called by the conftest."""
+    could offer. Called by the conftest."""
     container = FakeContainer(install_dir)
     _current.clear()
     _current["container"] = container
@@ -254,8 +259,8 @@ def end() -> None:
     """The test is over: its proxy is stopped, every process any fake
     started is ended, and its loop is closed."""
     confinement = _current.get("confinement")
-    if confinement is not None and confinement.proxy is not None:
-        confinement.proxy.stop()
+    if confinement is not None:
+        run(confinement.stop())
     FakeContainer.stop_all()
     loop = _current.get("loop")
     if loop is not None:
@@ -269,8 +274,9 @@ def end() -> None:
 
 def run(awaitable):
     """Run one coroutine on the test's own loop — the same loop for
-    every run of the test, as the runtime has one loop for everything,
-    so a worker started by one run is still there for the next."""
+    every run of the test, as the runtime has one loop for everything:
+    the proxy serves on it, and a worker started by one run is still
+    there for the next."""
     loop = _current.get("loop")
     if loop is None:
         loop = _current["loop"] = asyncio.new_event_loop()
@@ -283,14 +289,16 @@ def container() -> FakeContainer:
 
 
 def confinement():
-    """The test's confinement: checked, and with its proxy serving."""
+    """The test's confinement: proved, with its proxy serving on the
+    test's loop. Made on first asking, so ask for it (or for a place
+    of its) outside a coroutine: a coroutine on the test's loop cannot
+    wait for it to start."""
     found = _current.get("confinement")
     if found is None:
         from ai_runtime.agents.confinement import Confinement
 
         found = Confinement(container().install_dir, container())
-        found.check()
-        found.open_the_way_out(0, allow_loopback=True)
+        run(found.start(0, allow_loopback=True))
         _current["confinement"] = found
     return found
 
@@ -304,10 +312,11 @@ def workers():
 
 
 class standalone:
-    """A confinement of its own over a fake of its own, for a fixture
-    that outlives one test (a venv built once for a session): used as
-    a context, its proxy is stopped and what its fake started is
-    ended on the way out."""
+    """A confinement of its own over a fake of its own, on a loop of
+    its own, for a fixture that outlives one test (a venv built once
+    for a session). Used as a context: ``run`` runs one coroutine on
+    its loop, and on the way out its proxy is stopped, what its fake
+    started is ended, and the loop is closed."""
 
     def __init__(self, install_dir: str | Path):
         self.install_dir = Path(install_dir)
@@ -315,13 +324,17 @@ class standalone:
     def __enter__(self):
         from ai_runtime.agents.confinement import Confinement
 
+        self.loop = asyncio.new_event_loop()
         self.container_ = FakeContainer(self.install_dir)
         FakeContainer.live.remove(self.container_)
         self.confinement = Confinement(self.install_dir, self.container_)
-        self.confinement.check()
-        self.confinement.open_the_way_out(0, allow_loopback=True)
-        return self.confinement
+        self.run(self.confinement.start(0, allow_loopback=True))
+        return self
+
+    def run(self, awaitable):
+        return self.loop.run_until_complete(awaitable)
 
     def __exit__(self, *_exc):
-        self.confinement.proxy.stop()
+        self.run(self.confinement.stop())
         self.container_.stop_all_mine()
+        self.loop.close()

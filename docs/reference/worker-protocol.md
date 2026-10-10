@@ -53,7 +53,7 @@ runtime's than the agent is. Forgetting a
 digest leaves the venv to any other digest still standing on it; the
 last one out takes it along, and a sweep at startup removes venvs no
 digest uses. A digest on disk whose venv is missing — the layout
-changed, or the interpreter did — waits, and a warm-up thread started
+changed, or the interpreter did — waits, and a warm-up task started
 at boot builds each such venv in turn so that no chat has to. One lock
 per venv folder keeps two installs of one dependency set from building
 it twice.

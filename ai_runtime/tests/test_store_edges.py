@@ -4,7 +4,6 @@ at once does not undo what each of them does.
 """
 
 import asyncio
-import threading
 
 import pytest
 
@@ -14,7 +13,7 @@ from ai_runtime.events import Events
 from ai_runtime.agents.library import AgentLibrary, AgentRefused
 from contracts.agent_package import AgentPackage
 from ai_runtime.tests.fixture_agents import write_agent
-from ai_runtime.tests.fake_container import confinement
+from ai_runtime.tests.fake_container import confinement, run
 
 
 @pytest.fixture()
@@ -30,7 +29,7 @@ def packaged(tmp_path):
 class TestAnInstallIsAllOrNothing:
     def test_a_digest_that_is_not_one_is_refused_in_words(self, library):
         with pytest.raises(AgentRefused):
-            library.install("sha256:not-a-digest", b"")
+            run(library.install("sha256:not-a-digest", b""))
 
     def test_an_agent_being_installed_is_not_handed_out(
             self, library, tmp_path):
@@ -43,10 +42,16 @@ class TestAnInstallIsAllOrNothing:
             seen.append((library.has(digest), library.agent(digest)))
             return proving(*args, **kwargs)
         library._approved = while_it_is_proved
-        library._verify = lambda *args, **kwargs: []
-        AgentEnvironment.runner = staticmethod(lambda argv: (0, ""))
+        async def verified(*args, **kwargs):
+            return []
+
+        async def nothing_ran(argv):
+            return 0, ""
+
+        library._verify = verified
+        AgentEnvironment.runner = staticmethod(nothing_ran)
         try:
-            library.install(digest, archive)
+            run(library.install(digest, archive))
         except AgentRefused:
             pass
         finally:
@@ -61,7 +66,7 @@ class TestAnInstallIsAllOrNothing:
             raise RuntimeError("a disk path that should not be shown")
         library._approved = breaks
         with pytest.raises(AgentRefused) as refused:
-            library.install(digest, archive)
+            run(library.install(digest, archive))
         assert "disk path" not in str(refused.value)
         assert not library.has(digest) and library.agent(digest) is None
 
@@ -84,17 +89,16 @@ class TestTheSdkIsRefreshedOnce:
         (root / READY_MARKER).write_text("", encoding="utf-8")
         problems = []
 
-        def refresh():
+        async def refresh():
             (root / AgentEnvironment.SDK_MARKER).write_text(
                 "stale", encoding="utf-8")
-            problems.extend(AgentEnvironment(root).refresh_sdk())
+            problems.extend(await AgentEnvironment(root).refresh_sdk())
 
-        for _ in range(5):
-            threads = [threading.Thread(target=refresh) for _ in range(4)]
-            for thread in threads:
-                thread.start()
-            for thread in threads:
-                thread.join()
+        async def scenario():
+            for _ in range(5):
+                await asyncio.gather(*[refresh() for _ in range(4)])
+
+        run(scenario())
         assert problems == []
         placed = root / "Lib" / "site-packages" / "decentai_sdk"
         assert (placed / "worker.py").is_file()

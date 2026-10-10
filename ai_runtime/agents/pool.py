@@ -271,7 +271,7 @@ class WorkerPool:
                 await self.discard(key)
             # The worker speaks the platform's SDK, not the one copied
             # in the day the environment was built.
-            for problem in agent.environment.refresh_sdk():
+            for problem in await agent.environment.refresh_sdk():
                 self.logger.warning(
                     f"SDK not refreshed for {agent.agent_id}: {problem}")
             handle = WorkerHandle(
@@ -316,15 +316,15 @@ class WorkerPool:
         for agent_id in list(self._handles):
             await self.discard(agent_id)
 
-    def terminate(self) -> None:
-        """End every worker's user through the helper, synchronously —
-        for a shutdown that could not ask politely in time. Another
+    async def terminate(self) -> None:
+        """End every worker's user through the helper, without asking
+        — for a shutdown that could not ask politely in time. Another
         user's processes cannot be signalled from here; the helper ends
         them, and takes away what they left."""
         for handle in self._handles.values():
             if handle.alive:
-                handle.place.stop()
-                handle.place.clear()
+                await handle.place.stop()
+                await handle.place.clear()
         self._handles.clear()
         self._running.clear()
         self._calls.clear()

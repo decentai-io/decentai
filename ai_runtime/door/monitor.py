@@ -12,7 +12,6 @@ answers is the backend's to decide; this door does not know them.
                                    deployment's health check
 """
 
-import asyncio
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Request
@@ -51,8 +50,8 @@ async def events(request: Request, limit: int = 200, kinds: str = "",
     by commas; ``before`` is the time of the last event of the page
     before, for the next."""
     the_backend(request)
-    found = await asyncio.to_thread(
-        Events.read, request.app.state.settings.agents_install_dir, limit,
+    found = Events.read(
+        request.app.state.settings.agents_install_dir, limit,
         [kind.strip() for kind in kinds.split(",") if kind.strip()],
         agent, before)
     return {"events": found}
@@ -65,7 +64,7 @@ async def usage(request: Request):
     agents' container did not answer."""
     the_backend(request)
     state = request.app.state
-    return {"usage": await asyncio.to_thread(state.container.usage),
+    return {"usage": await state.container.usage(),
             "runtime": own.now(),
             "confined": state.confinement.report()}
 
@@ -77,4 +76,4 @@ async def files(request: Request, agent: str = ""):
     place = request.app.state.confinement.existing_place(agent)
     if place is None:
         return {"error": "That agent has no place here: it has not run."}
-    return await asyncio.to_thread(place.files)
+    return await place.files()
