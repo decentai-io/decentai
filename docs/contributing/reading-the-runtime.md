@@ -165,7 +165,7 @@ Check:
 - `SessionHost._emit`: one emission at a time per chat, from its
   record to its delivery, so the socket hears frames in the order they
   were recorded. A session is handed it as its `emit`; a helper's
-  emissions go through its parent, tagged (`Session._emit_for`).
+  emissions go through its parent, tagged (`Session.emit_for`).
 
 Tests: `ai_runtime/tests/test_session_door.py`,
 `ai_runtime/tests/test_pull_by_digest.py`,
@@ -175,9 +175,11 @@ Tests: `ai_runtime/tests/test_session_door.py`,
 
 `chat/session.py`, class `Session`. It owns everything the assistant
 is not allowed to: the services, the cards, the helpers, the audience.
-Two parts of it are files of their own and mixed in: the helpers
-(`chat/helpers.py`, class `Helpers`) and the live screen
-(`chat/screen.py`, class `Screen`). Read in this order:
+Two parts of it are objects of their own that hold the session as
+`self.session`: its side as a helper and as a parent (`session.helper`,
+`chat/helpers.py`, class `Helpers`) and the live screen
+(`session.screen`, `chat/screen.py`, class `Screen`). Read in this
+order:
 
 1. `open` — rehydration: the saved state, the transcript, the event
    cursor, parked calls and jobs that were running when the process
@@ -193,11 +195,11 @@ Two parts of it are files of their own and mixed in: the helpers
    shows (`screen`) are the same file: what is open right now, held
    where a late audience and a kill can see it. The person's hand on
    a screen, and the browser opened before anything is asked of it,
-   are `chat/screen.py` (`open_screen`, `deliver_screen_input`,
-   `_quit_browser`).
+   are `chat/screen.py` (`Screen.open`, `deliver_input`,
+   `quit_browser`).
 5. `ask_to_stop`, `stop`, `kill` — the cooperative stop and the one
    that does not ask.
-6. `chat/helpers.py`: `_spawn_child`, `report`, `_inherit` — helpers
+6. `chat/helpers.py`: `Helpers.spawn`, `report`, `inherit` — helpers
    ([sub-assistants](../system/sub-assistants.md)).
 
 Before `open`, read `ai_runtime/sinks.py`: `ChatSinks` is every door
@@ -238,7 +240,7 @@ Check:
   storage, its memories, its agents' records and its audience. Its
   cards and screen surface in the parent's audience under its own id.
   That it cannot save memory is not there: it is the `remember` door
-  `Session.open` hands a child (`Helpers._refuse_memory`).
+  `Session.open` hands a child (`Helpers.refuse_memory`).
 
 Tests: `ai_runtime/tests/test_session.py`,
 `ai_runtime/tests/test_sub_assistants.py`,
@@ -249,11 +251,14 @@ Tests: `ai_runtime/tests/test_session.py`,
 ## 4. The assistant: the cycle
 
 `mind/assistant.py`, class `Assistant`: the cycle. What a beat may do
-beside talking is in three files mixed into it — the observed actions
-(`mind/acts.py`, class `Acts`), the helpers it spawns
-(`mind/children.py`, class `Children`) and the pictures in its
-transcript (`mind/pictures.py`, class `TranscriptPictures`). Read the
-cycle first and the actions as they come up. Two things the mind does
+beside talking is three parts the mind holds, each holding the mind
+back as `self.mind` — the observed actions (`mind.acts`,
+`mind/acts.py`, class `Acts`), the helpers it spawns (`mind.children`,
+`mind/children.py`, class `Children`) and the pictures in its
+transcript (`mind.pictures`, `mind/pictures.py`, class
+`TranscriptPictures`). A name a part reads that it does not define is
+the mind's, and says so. Read the cycle first and the actions as they
+come up. Two things the mind does
 are functions of their arguments alone and live beside it: what of a
 result the model is shown (`mind/observations.py`) and what the model
 is told (`mind/frame.py`).
@@ -264,7 +269,8 @@ is told (`mind/frame.py`).
    not an action (`_bounces`, `_prose`), more than one action.
 3. `_act` — the dispatch. Which actions end the cycle (`finish`, a
    `say` marked final, `sleep`) and which are observed and go on
-   (`OBSERVED_ACTIONS`, each by the method it names in `acts.py`). Two
+   (`OBSERVED_ACTIONS`, each by the dotted name it gives, on the mind
+   or on a part). Two
    more ends: in the chat's own assistant, a `say` made after the turn
    has acted when nothing is owed (`_owes_more`), and an `invoke` whose
    result says `outcome: "stopped_by_person"`.
@@ -283,11 +289,11 @@ is told (`mind/frame.py`).
    `render_catalog`, `parse_actions`), with `prompts/assistant.md` and
    `mind/actions.py` — everything the model is told, and how its
    reply is read.
-9. `mind/children.py`: `_spawn`, `_run_child`, `_settle_owned` — a
+9. `mind/children.py`: `Children.spawn`, `_run`, `_settle_owned` — a
    helper's job, its report, and the plan items it was given.
-10. `mind/pictures.py`: `_for_model`, `_picture` — the transcript as
-    the provider takes it, the pictures read at the call and never
-    kept.
+10. `mind/pictures.py`: `TranscriptPictures.for_model`, `_picture` —
+    the transcript as the provider takes it, the pictures read at the
+    call and never kept.
 
 Then the smaller files as they are met: `mind/state.py` (what is
 saved every beat), `mind/plan.py`, `mind/router.py`

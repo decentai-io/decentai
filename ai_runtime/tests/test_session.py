@@ -181,7 +181,7 @@ class TestPicturesReachTheModel:
         run(self._attach(session, services))
 
         assert connector.refusals == 1, "refused once, then never retried"
-        assert session.assistant._images_allowed is False
+        assert session.assistant.images_allowed is False
         # The turn finished and the answer was persisted: a model that
         # cannot see the picture still answers from the words.
         reply = services.messages["chat_1"][1]
@@ -2007,7 +2007,7 @@ class TestForegroundParks:
 
         async def scenario():
             await session.open()
-            assert await session.open_screen()
+            assert await session.screen.open()
             deadline = asyncio.get_running_loop().time() + 20
             while not any(e["event"] == "screen_frame" for e in services.relayed):
                 assert asyncio.get_running_loop().time() < deadline, "no frame"
@@ -2016,16 +2016,16 @@ class TestForegroundParks:
             assert frame["source"]["function"] == "screen.show.watch"
             # Asked again while it shows: the same watch, not a second.
             watching = session.watching
-            assert await session.open_screen() and session.watching is watching
-            await session.deliver_screen_input(frame["call_id"], [
+            assert await session.screen.open() and session.watching is watching
+            await session.screen.deliver_input(frame["call_id"], [
                 {"type": "control", "action": "close"}])
             await asyncio.wait_for(session.watching, 10)
             # Closing the browser itself: the same function, told quit.
-            assert await session.open_screen("quit")
+            assert await session.screen.open("quit")
             await asyncio.sleep(0.5)
             # A chat whose roster cannot show a screen is told so.
             session.roster.pop("screen")
-            return await session.open_screen()
+            return await session.screen.open()
 
         opened_again = run(scenario())
         assert opened_again is False
@@ -2122,14 +2122,14 @@ class TestScreens:
                 {"index": 2, "title": "T" * 200, "address": "", "active": False}]
             assert event_error({k: v for k, v in frame.items()}) is None
             assert session.cards.screens, "the session knows a screen is showing"
-            delivered = await session.deliver_screen_input(frame["call_id"], [
+            delivered = await session.screen.deliver_input(frame["call_id"], [
                 {"type": "control", "action": "take"},
                 {"type": "mouse", "action": "down", "x": 1, "y": 1, "button": "left"},
                 {"type": "key", "action": "down", "key": "a", "text": "a"},
                 {"type": "tab", "action": "close", "index": 2},
             ])
             assert delivered
-            assert not await session.deliver_screen_input("c_nowhere", [
+            assert not await session.screen.deliver_input("c_nowhere", [
                 {"type": "control", "action": "take"}])
             await session.wait_idle()
 

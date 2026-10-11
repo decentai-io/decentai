@@ -303,7 +303,7 @@ class TestWhileItWorks:
         async def never(job, resuming=False):
             await asyncio.get_running_loop().create_future()
 
-        session._spawn_child = never
+        session.helper.spawn = never
 
         async def scenario():
             await session.open()
@@ -454,7 +454,7 @@ class TestAChildsScreen:
         from sim.session_services import SimSessionServices
 
         parent, services = build([action(action="finish")])
-        run(parent._relay_for("sub_x", {"event": "screen_frame", "call_id": "c1"}))
+        run(parent.relay_for("sub_x", {"event": "screen_frame", "call_id": "c1"}))
         assert services.relayed_to == ["chat_1"]
         assert services.relayed == [{"event": "screen_frame", "call_id": "c1", "child": "sub_x"}]
 

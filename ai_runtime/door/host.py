@@ -465,13 +465,13 @@ class SessionHost:
             # showing it. Bounded, and dropped when no such call runs.
             events = frame.get("events")
             if isinstance(events, list) and events:
-                await session.deliver_screen_input(
+                await session.screen.deliver_input(
                     str(frame.get("call_id") or ""), events[:64])
         elif kind == "screen_open":
             # The person asks to see an agent's browser before asking
             # it anything — or to close that browser — the roster's
             # watch function, called directly.
-            await session.open_screen(
+            await session.screen.open(
                 "quit" if str(frame.get("action") or "") == "quit" else "open")
         elif kind == "stop":
             # Asked, not awaited: this is the socket's loop, and a stop

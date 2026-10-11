@@ -88,7 +88,7 @@ from ai_runtime.sinks import ChatSinks
 from decentai_sdk.base import Completion
 
 
-class Session(Helpers, Screen):
+class Session:
     #: How long an agent's question waits for a person (contracts/chat.py).
 
     def __init__(
@@ -166,7 +166,7 @@ class Session(Helpers, Screen):
         #: how many of the person's messages the chat had when it was
         #: last named — the name follows the content, every few turns
         self.named_at = 0
-        #: the watch call showing a browser on request (open_screen)
+        #: the watch call showing a browser on request (Screen.open)
         self.watching: Optional[asyncio.Task] = None
         #: the model children think with — the parent's unless set.
         self.child_connector = None
@@ -185,7 +185,7 @@ class Session(Helpers, Screen):
         self.dead = False
         #: left as a crash leaves it (``abandon``): its cards stay open
         #: on the record, for the process that comes next
-        self._abandoned = False
+        self.abandoned = False
         #: decisions for a call a dead process parked, that arrived
         #: while a cycle was running: settled when it comes to rest
         self._decisions_owed: list = []
@@ -198,12 +198,17 @@ class Session(Helpers, Screen):
         self.cards = Cards(
             services, chat_id, parent=parent,
             reviewer=CodeReviewer(connector),
-            emit=self._emit, relay=self._relay, activity=self._activity,
+            emit=self._emit, relay=self.relay, activity=self._activity,
             save_state=self._save_state,
             state=lambda: self.assistant.state,
-            abandoned=lambda: self._abandoned,
+            abandoned=lambda: self.abandoned,
             logger=self.logger,
         )
+        #: Two parts of this session, each holding it as ``session``:
+        #: its side as a helper and as a parent (helpers.py), and the
+        #: live screen (screen.py).
+        self.helper = Helpers(self)
+        self.screen = Screen(self)
 
     # ------------------------------------------------------------------
     # Opening: hydrate the mind
@@ -249,15 +254,15 @@ class Session(Helpers, Screen):
             say=self._say,
             save_state=self._save_state,
             plan=self._plan,
-            finish=self._finish if child else None,
+            finish=self.helper.finish if child else None,
             activity=self._activity,
-            spawn=None if child else self._spawn_child,
+            spawn=None if child else self.helper.spawn,
             fold=self._fold,
             read_skill=self._read_skill,
             read_image=self._read_image,
             read_file=self._read_image,
             find_files=self.cards.find_files,
-            remember=self._refuse_memory if child else self._remember,
+            remember=self.helper.refuse_memory if child else self._remember,
         )
         executor = FunctionExecutor(
             # An agent's records are the conversation's: a helper's
@@ -314,7 +319,7 @@ class Session(Helpers, Screen):
             if job.kind == ASSISTANT_JOB and not child:
                 # A child has durable state of its own: the waiter is
                 # re-attached, and its report wakes this cycle.
-                self.assistant.resume_child(job).add_done_callback(
+                self.assistant.children.resume(job).add_done_callback(
                     lambda _: self._pump())
                 continue
             orphaned.append(job)
@@ -408,7 +413,7 @@ class Session(Helpers, Screen):
             # Authority is inherited, never widened — and never kept
             # after it was withdrawn: a helper still running is held to
             # the same new word.
-            child._inherit(grants, chat_level, self.safety)
+            child.helper.inherit(grants, chat_level, self.safety)
         if max_beats is not None:
             # Raised in the middle of a long piece of work — usually by
             # somebody who just watched it stop and say so. It takes
@@ -465,7 +470,7 @@ class Session(Helpers, Screen):
             assistant.connector = connector
             # Whether a model takes pictures was learned of the model
             # before: this one is asked afresh.
-            assistant._images_allowed = True
+            assistant.images_allowed = True
             assistant.model_changed(before)
         if assistant.clock is not None:
             assistant.clock.roster = roster
@@ -750,7 +755,7 @@ class Session(Helpers, Screen):
         The cycle and every job task are cancelled where they stand — a
         worker call is overruled, and a worker that ignores that is
         killed (pool.py) — a helper is killed the same way as its
-        job is cancelled (``_spawn_child``), and any still listed after
+        job is cancelled (``Helpers.spawn``), and any still listed after
         that is killed here, the browser the chat kept is closed, every
         card nobody will now answer is expired, and the mind is
         persisted with its jobs marked cancelled and the stop written
@@ -770,10 +775,10 @@ class Session(Helpers, Screen):
                 await self._running
             except (asyncio.CancelledError, Exception):
                 pass
-        tasks = [task for task in self.assistant._job_tasks.values() if not task.done()]
+        tasks = [task for task in self.assistant.job_tasks.values() if not task.done()]
         # Counted before their jobs are cancelled: a helper leaves the
         # list as its job ends, and is stopped on its way out
-        # (``_spawn_child``).
+        # (``Helpers.spawn``).
         counts["children"] = len(self.children)
         for task in tasks:
             task.cancel()
@@ -794,7 +799,7 @@ class Session(Helpers, Screen):
                 pass
         self.watching = None
         if browser:
-            await self._quit_browser()
+            await self.screen.quit_browser()
 
         state = self.assistant.state
         for job in state.active_jobs():
@@ -842,12 +847,12 @@ class Session(Helpers, Screen):
         parent was abandoned, and tests. Tasks die where they stand; the
         state is whatever the last beat persisted, which is exactly the
         situation hydration exists for."""
-        self._abandoned = True
+        self.abandoned = True
         if self._running is not None and not self._running.done():
             self._running.cancel()
         if self.assistant is None:
             return
-        for task in list(self.assistant._job_tasks.values()):
+        for task in list(self.assistant.job_tasks.values()):
             task.cancel()
 
     @property
@@ -1059,20 +1064,20 @@ class Session(Helpers, Screen):
             return await self.emit_out(event)
         return await self.services.emit(self.chat_id, event)
 
-    async def _relay(self, event: Dict[str, Any]) -> None:
+    async def relay(self, event: Dict[str, Any]) -> None:
         """A frame delivered alone and never recorded — a screen, a
         title — to whoever is watching, if anybody is."""
         if self.relay_out is not None:
             await self.relay_out(event)
 
-    async def _emit_for(self, child_id: str, event: Dict[str, Any]):
+    async def emit_for(self, child_id: str, event: Dict[str, Any]):
         """A helper's emission: this chat's, tagged with whose it is."""
         return await self._emit({**event, "child": child_id})
 
-    async def _relay_for(self, child_id: str, event: Dict[str, Any]) -> None:
+    async def relay_for(self, child_id: str, event: Dict[str, Any]) -> None:
         # A screen a helper's agent shows is watched by this chat's
         # audience: the helper's own id has no socket.
-        await self._relay({**event, "child": child_id})
+        await self.relay({**event, "child": child_id})
 
     async def _store_result(self, source: str, result: Dict[str, Any]):
         return await self.services.store_result(self.conversation_id, source, result)
@@ -1169,7 +1174,7 @@ class Session(Helpers, Screen):
             self.logger.warning(f"Chat {self.chat_id} title not saved: {exc}")
             return
         if kept:
-            await self._relay({"event": "chat_titled", "title": title})
+            await self.relay({"event": "chat_titled", "title": title})
 
     async def _resume_parked(self, parked: Dict[str, Any], approved: bool,
                              action_hash: str = "") -> None:

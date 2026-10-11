@@ -9,6 +9,10 @@ base64, and costs nothing when there are no pictures. A picture that
 cannot be shown — too many, too large, unreadable, a model that takes
 none — is said in words, so the assistant never answers as though it
 had seen it.
+
+The Assistant holds one as ``mind.pictures``, and it holds the
+assistant as ``self.mind``: a name read here that is not defined here is
+the assistant's.
 """
 
 from __future__ import annotations
@@ -19,6 +23,10 @@ from ai_runtime.llms.connector.tools import text_block
 
 
 class TranscriptPictures:
+    def __init__(self, mind):
+        #: The assistant this is a part of; what is not here is its.
+        self.mind = mind
+
     #: The largest picture a model is shown, as bytes on disk. Base64
     #: costs a third on top, and providers cap what they accept —
     #: Anthropic at five megabytes an image. Three sits under every
@@ -31,7 +39,7 @@ class TranscriptPictures:
     MAX_IMAGES_PER_MESSAGE = 4
 
     @staticmethod
-    def _attached(items: List[Dict[str, Any]]):
+    def attached(items: List[Dict[str, Any]]):
         """Attachments as the transcript carries them: one line each, by
         the ref a function reads it by — the model passes that ref as a
         file input — and the pictures among them, NAMED to be fetched at
@@ -55,7 +63,7 @@ class TranscriptPictures:
                 })
         return lines, images
 
-    async def _for_model(self, messages: List[Dict[str, Any]]
+    async def for_model(self, messages: List[Dict[str, Any]]
                          ) -> List[Dict[str, Any]]:
         """The transcript as the provider takes it.
 
@@ -64,9 +72,9 @@ class TranscriptPictures:
         message that named them goes out carrying content blocks. That
         keeps the mind small enough to persist, keeps the summary free
         of base64, and costs nothing when there are no pictures."""
-        maker = getattr(self.connector, "image_block", None)
-        ready = bool(maker) and self.sinks.read_image is not None \
-            and self._images_allowed
+        maker = getattr(self.mind.connector, "image_block", None)
+        ready = bool(maker) and self.mind.sinks.read_image is not None \
+            and self.mind.images_allowed
         out: List[Dict[str, Any]] = []
         for message in messages:
             named = message.get("images")
@@ -123,9 +131,9 @@ class TranscriptPictures:
         if not ref:
             return None
         try:
-            record = await self.sinks.read_image(ref) or {}
+            record = await self.mind.sinks.read_image(ref) or {}
         except Exception as exc:
-            self.logger.warning(f"Image {ref} not read: {exc}")
+            self.mind.logger.warning(f"Image {ref} not read: {exc}")
             return None
         encoded = str(record.get("content_base64") or "")
         mime = str(record.get("file_type") or item.get("file_type") or "")
@@ -134,7 +142,7 @@ class TranscriptPictures:
         # The stored size where there is one; else what the base64 says.
         size = int(record.get("file_size") or 0) or (len(encoded) * 3) // 4
         if size > self.MAX_IMAGE_BYTES:
-            self.logger.info(
+            self.mind.logger.info(
                 f"Image {ref} is {size} bytes — over the "
                 f"{self.MAX_IMAGE_BYTES} a model is shown")
             return None

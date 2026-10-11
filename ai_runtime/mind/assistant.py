@@ -31,6 +31,7 @@ import re
 import time
 import uuid
 from datetime import datetime
+from operator import attrgetter
 from typing import Tuple, Any, Callable, Dict, List, Optional
 
 from ai_runtime.agents.library import InstalledAgent
@@ -51,7 +52,7 @@ from ai_runtime.mind.state import CANCELLED, DONE, FAILED, AssistantState, Job
 from ai_runtime.sinks import ChatSinks
 
 
-class Assistant(Acts, Children, TranscriptPictures):
+class Assistant:
     #: The runaway valve — beats since the user last spoke. Generous by
     #: design: exhaustion reports and remains continuable, never
     #: discards (docs/system/assistant.md, "Pacing and limits").
@@ -124,7 +125,7 @@ class Assistant(Acts, Children, TranscriptPictures):
         self.sinks = sinks
         #: Whether this model has shown it will look at pictures. It
         #: starts hopeful and is only ever set false, by a refusal.
-        self._images_allowed = True
+        self.images_allowed = True
         #: A plan cleared on absorption, owed to the page at the next beat.
         self._plan_cleared = False
         #: the chat's hand on the clock: async schedule(spec) -> dict,
@@ -169,7 +170,7 @@ class Assistant(Acts, Children, TranscriptPictures):
         self.zone = zone(timezone)
 
         self.inbox: asyncio.Queue = asyncio.Queue()
-        self._job_tasks: Dict[str, asyncio.Task] = {}
+        self.job_tasks: Dict[str, asyncio.Task] = {}
         self._stopping = False
         #: whether the person spoke after the stop being honoured
         self._asked_since_stop = False
@@ -194,6 +195,13 @@ class Assistant(Acts, Children, TranscriptPictures):
         self._spoke = asyncio.Event()
         self._unheard = False
         self.logger = logging.getLogger(self.__class__.__name__)
+        #: What a beat may do beside talking, each a part of this mind
+        #: that holds it as ``mind``: the observed actions (acts.py), the
+        #: helpers it spawns (children.py), the pictures in its
+        #: transcript (pictures.py).
+        self.acts = Acts(self)
+        self.children = Children(self)
+        self.pictures = TranscriptPictures(self)
 
     # ------------------------------------------------------------------
     # Events in
@@ -305,7 +313,7 @@ class Assistant(Acts, Children, TranscriptPictures):
         stamp = self._stamp()
         if kind == "user_message":
             content = f"[{stamp}] {str(event.get('text') or '')}"
-            lines, images = self._attached(event.get("attachments") or [])
+            lines, images = self.pictures.attached(event.get("attachments") or [])
             said: Dict[str, Any] = {"role": "user",
                                     "content": content + "".join(
                                         f"\n{line}" for line in lines)}
@@ -351,7 +359,7 @@ class Assistant(Acts, Children, TranscriptPictures):
         self.state.beats += 1
         if self._plan_cleared:
             self._plan_cleared = False
-            await self._show_plan()
+            await self.acts.show_plan()
         overdue = self.state.beats - self.max_beats if self.max_beats > 0 else -1
         if overdue == 0:
             self.state.messages.append({
@@ -563,17 +571,19 @@ class Assistant(Acts, Children, TranscriptPictures):
     # ------------------------------------------------------------------
 
     #: The actions that are observed and the cycle goes on: the one the
-    #: beat chose is done by the method named, and its outcome is put
-    #: before the model as the next beat's observation. The four that
-    #: can end a turn — say, finish, invoke, sleep — are read in _act.
+    #: beat chose is done by the method named — on the mind, or on one
+    #: of its parts — and its outcome is put before the model as the
+    #: next beat's observation. The four that can end a turn — say,
+    #: finish, invoke, sleep — are read in _act.
     OBSERVED_ACTIONS = {
-        "open_agent": "_open_agent", "close_agent": "_close_agent",
-        "find_agents": "_find_agents", "spawn": "_spawn",
+        "open_agent": "acts.open_agent", "close_agent": "acts.close_agent",
+        "find_agents": "acts.find_agents", "spawn": "children.spawn",
         "start": "_start", "cancel_job": "_cancel_job",
-        "read": "_read", "find_files": "_find_files",
-        "read_file": "_read_file", "use_skill": "_use_skill",
-        "recall": "_recall", "remember": "_remember", "plan": "_plan",
-        "schedule": "_schedule", "unschedule": "_unschedule",
+        "read": "acts.read", "find_files": "acts.find_files",
+        "read_file": "acts.read_file", "use_skill": "acts.use_skill",
+        "recall": "acts.recall", "remember": "acts.remember",
+        "plan": "acts.plan", "schedule": "acts.schedule",
+        "unschedule": "acts.unschedule",
     }
 
     async def _act(self, action: Dict[str, Any], implicit: bool = False) -> bool:
@@ -661,7 +671,7 @@ class Assistant(Acts, Children, TranscriptPictures):
             return False
         handler = self.OBSERVED_ACTIONS.get(kind)
         if handler is not None:
-            outcome = getattr(self, handler)(action)
+            outcome = attrgetter(handler)(self)(action)
             if inspect.isawaitable(outcome):
                 outcome = await outcome
             self._observe(outcome)
@@ -686,7 +696,7 @@ class Assistant(Acts, Children, TranscriptPictures):
             self._observe(observation)
             return False
         if kind == "sleep":
-            slept = await self._sleep(action)
+            slept = await self.acts.sleep(action)
             self._observe(slept)
             if "error" in slept:
                 return False
@@ -762,7 +772,7 @@ class Assistant(Acts, Children, TranscriptPictures):
         started = time.monotonic()
         try:
             reply = await self.connector.chat(
-                await self._for_model(self.state.messages), tools=tools)
+                await self.pictures.for_model(self.state.messages), tools=tools)
             # What a beat costs in wall time, and how much the model was
             # handed — the line to read when a chat feels slow.
             self.logger.info(
@@ -772,13 +782,13 @@ class Assistant(Acts, Children, TranscriptPictures):
                 f"{len(tools)} tools)")
             return reply
         except Exception as exc:
-            if self._images_allowed and is_image_refusal(exc):
-                self._images_allowed = False
+            if self.images_allowed and is_image_refusal(exc):
+                self.images_allowed = False
                 self.logger.warning(
                     f"This model will not be shown pictures; continuing on "
                     f"the words alone: {exc}")
                 return await self.connector.chat(
-                    await self._for_model(self.state.messages), tools=tools)
+                    await self.pictures.for_model(self.state.messages), tools=tools)
             if self.sinks.fold is not None and is_context_overflow(exc):
                 # The transcript outgrew the window between folds: fold
                 # now, keeping less, and ask once more. A beat that dies
@@ -788,7 +798,7 @@ class Assistant(Acts, Children, TranscriptPictures):
                     f"and asking again: {exc}")
                 if await self.sinks.fold(force=True):
                     return await self.connector.chat(
-                        await self._for_model(self.state.messages), tools=tools)
+                        await self.pictures.for_model(self.state.messages), tools=tools)
             raise
 
     # -- say ------------------------------------------------------------
@@ -922,7 +932,7 @@ class Assistant(Acts, Children, TranscriptPictures):
     #: and the tool menu has a cap (FunctionTools).
     OPENED_MAX = 8
 
-    def _open_max(self) -> int:
+    def open_max(self) -> int:
         try:
             return max(1, int(self.routing.get("open_max") or self.OPENED_MAX))
         except (TypeError, ValueError):
@@ -959,7 +969,7 @@ class Assistant(Acts, Children, TranscriptPictures):
             self._shortlist = result
             self.reframe()
 
-    def _available(self) -> str:
+    def available(self) -> str:
         """The agents the model may open, said briefly: all of them
         when few, else how to search."""
         if self._routing_on():
@@ -1006,7 +1016,7 @@ class Assistant(Acts, Children, TranscriptPictures):
         agent = self.agents.get(agent_id)
         if agent is None:
             return None, {"error": f"No agent '{agent_id}' is available. "
-                                   f"{self._available()}"}
+                                   f"{self.available()}"}
         if agent_id not in self.state.opened:
             return None, {"error": f"Agent '{agent_id}' is not open — "
                                    f"open_agent first to see its functions "
@@ -1044,7 +1054,7 @@ class Assistant(Acts, Children, TranscriptPictures):
         return False
 
     # -- narration -------------------------------------------------------
-    async def _narrate(self, kind: str, text: str, source: Dict[str, Any],
+    async def narrate(self, kind: str, text: str, source: Dict[str, Any],
                        **detail: Any) -> None:
         """One line of the work for whoever watches — what started, what
         finished and how long it took, and who did it — as the chat's
@@ -1114,7 +1124,7 @@ class Assistant(Acts, Children, TranscriptPictures):
         source = agent_source(agent.agent_id, agent.manifest.name, function,
                               call_id=call_id)
         spoken = observations.spoken(agent, function)
-        await self._narrate("call_started",
+        await self.narrate("call_started",
                             f"{spoken}{observations.inputs_summary(inputs)}", source)
         started = time.monotonic()
         # The call runs as a task of its own, so that a stop can reach
@@ -1160,7 +1170,7 @@ class Assistant(Acts, Children, TranscriptPictures):
             }, "error"
         finally:
             self._interrupted = False
-        await self._narrate("call_finished", spoken, source, status=status,
+        await self.narrate("call_finished", spoken, source, status=status,
                             duration_ms=self._elapsed_ms(started))
         return self._record(agent.agent_id, function, inputs,
                             result, status)
@@ -1176,10 +1186,10 @@ class Assistant(Acts, Children, TranscriptPictures):
         self.state.jobs[job.job_id] = job
         task = asyncio.get_running_loop().create_task(
             self._run_job(job, agent, call_id, running=running))
-        self._job_tasks[job.job_id] = task
+        self.job_tasks[job.job_id] = task
         task.add_done_callback(
-            lambda _: self._job_tasks.pop(job.job_id, None))
-        await self._narrate(
+            lambda _: self.job_tasks.pop(job.job_id, None))
+        await self.narrate(
             "job_started", f"Still running, in the background: {spoken}",
             agent_source(agent.agent_id, agent.manifest.name, function,
                          call_id=call_id, job_id=job.job_id))
@@ -1220,11 +1230,11 @@ class Assistant(Acts, Children, TranscriptPictures):
         call_id = self._call_id()
         task = asyncio.get_running_loop().create_task(
             self._run_job(job, agent, call_id))
-        self._job_tasks[job.job_id] = task
+        self.job_tasks[job.job_id] = task
         task.add_done_callback(
-            lambda _: self._job_tasks.pop(job.job_id, None))
+            lambda _: self.job_tasks.pop(job.job_id, None))
 
-        await self._narrate(
+        await self.narrate(
             "job_started",
             f"Started in the background: {observations.spoken(agent, function)}"
             f"{observations.inputs_summary(inputs)}",
@@ -1256,7 +1266,7 @@ class Assistant(Acts, Children, TranscriptPictures):
             result, status = {"error": str(exc)[:300]}, "error"
 
         observation = self._settle(job, result, status)
-        await self._narrate(
+        await self.narrate(
             "job_finished", observations.spoken(agent, job.function),
             agent_source(agent.agent_id, agent.manifest.name, job.function,
                          call_id=call_id, job_id=job.job_id),
@@ -1278,13 +1288,13 @@ class Assistant(Acts, Children, TranscriptPictures):
     def working(self) -> bool:
         """Whether THIS incarnation holds any live job task. Tasks
         remove themselves as they settle, so an empty table is rest."""
-        return any(not task.done() for task in self._job_tasks.values())
+        return any(not task.done() for task in self.job_tasks.values())
 
     def job_running(self, job_id: str) -> bool:
         """Whether THIS incarnation holds the job's live task. False for
         a job hydrated from state — its process died with the task, and
         resolving it goes through ``resolve_job``."""
-        task = self._job_tasks.get(job_id)
+        task = self.job_tasks.get(job_id)
         return task is not None and not task.done()
 
     def resolve_parked(self, result: Dict[str, Any], status: str) -> None:
@@ -1317,7 +1327,7 @@ class Assistant(Acts, Children, TranscriptPictures):
 
     async def _cancel_job(self, action: Dict[str, Any]) -> Dict[str, Any]:
         job_id = str(action.get("job_id") or "")
-        task = self._job_tasks.get(job_id)
+        task = self.job_tasks.get(job_id)
         if task is not None and not task.done():
             task.cancel()
             return {"job_id": job_id, "cancelling": True}
@@ -1331,7 +1341,7 @@ class Assistant(Acts, Children, TranscriptPictures):
     STOP_WAIT_SECONDS = 15.0
 
     async def _cancel_all_jobs(self) -> None:
-        tasks = [task for task in self._job_tasks.values() if not task.done()]
+        tasks = [task for task in self.job_tasks.values() if not task.done()]
         for task in tasks:
             task.cancel()
         if tasks:
@@ -1444,7 +1454,7 @@ class Assistant(Acts, Children, TranscriptPictures):
     def _skills_block(self) -> str:
         return frame.skills_block(self.skills, self.max_skills)
 
-    def _render_catalog(self, agent: InstalledAgent) -> str:
+    def render_catalog(self, agent: InstalledAgent) -> str:
         return frame.render_catalog(agent, self.chat_level)
 
     parse_actions = staticmethod(frame.parse_actions)

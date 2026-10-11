@@ -1147,7 +1147,7 @@ class TestToolsOffered:
         assert "Create a note" in save["description"]
         assert "Returns {" in save["description"]
         # And the catalog text no longer carries what the tools do.
-        catalog = harness.assistant._render_catalog(harness.agents["notebook"])
+        catalog = harness.assistant.render_catalog(harness.agents["notebook"])
         assert "notebook.note.save" in catalog
         assert "inputs:" not in catalog
 
@@ -1394,12 +1394,12 @@ class TestObservationBudget:
             return rows
 
         harness.assistant.executor.sinks.read_result = resolver
-        first = run(harness.assistant._read({"storage_ref": "stg_1", "path": "notes"}))
+        first = run(harness.assistant.acts.read({"storage_ref": "stg_1", "path": "notes"}))
         shown = first["result"]["value"]["items_shown"]
         assert first["result"]["value"]["items"] == rows[:shown]
         assert f'"from": {shown}' in first["result"]["note"]
 
-        second = run(harness.assistant._read({
+        second = run(harness.assistant.acts.read({
             "storage_ref": "stg_1", "path": "notes", "from": shown}))
         assert second["result"]["from"] == shown
         assert second["result"]["value"]["items"][0] == rows[shown]
@@ -1489,14 +1489,14 @@ class TestRecall:
 
     def test_recall_answers_with_matching_entries_newest_first(self):
         harness = self._archived(Harness([]))
-        answer = harness.assistant._recall({"action": "recall", "query": "northlight"})
+        answer = harness.assistant.acts.recall({"action": "recall", "query": "northlight"})
         assert answer["archived"] == 3 and answer["matched"] == 2
         assert [e["at"] for e in answer["entries"]] == ["2026-09-10 14:00", "2026-09-01 09:00"]
-        everything = harness.assistant._recall({"action": "recall"})
+        everything = harness.assistant.acts.recall({"action": "recall"})
         assert len(everything["entries"]) == 3
 
     def test_an_empty_archive_says_so(self):
-        answer = Harness([]).assistant._recall({"action": "recall", "query": "venue"})
+        answer = Harness([]).assistant.acts.recall({"action": "recall", "query": "venue"})
         assert answer["archived"] == 0 and "complete" in answer["note"]
 
     def test_the_frame_counts_what_fell_out_and_never_lists_it(self):
@@ -1593,7 +1593,7 @@ class TestManyAgents:
         frame = harness.assistant._roster_block()
         assert "more agent(s)" not in frame
         assert frame.count("\n") == 31
-        answer = run(harness.assistant._find_agents({"action": "find_agents", "query": "mail"}))
+        answer = run(harness.assistant.acts.find_agents({"action": "find_agents", "query": "mail"}))
         assert "No embedding model" in answer["note"]
 
     def test_the_organizations_threshold_decides(self, tmp_path):
@@ -1602,7 +1602,7 @@ class TestManyAgents:
 
     def test_find_agents_searches_the_whole_roster_by_meaning(self, tmp_path):
         harness = self._routed(tmp_path, "hello")
-        answer = run(harness.assistant._find_agents({"action": "find_agents", "query": "issue an invoice"}))
+        answer = run(harness.assistant.acts.find_agents({"action": "find_agents", "query": "issue an invoice"}))
         assert answer["installed"] == 32
         assert answer["agents"][0]["id"] == "agt_inv"
         assert answer["agents"][0]["closeness"] > 0
@@ -1615,11 +1615,11 @@ class TestTheOpenSet:
         harness = Harness([], routing={"open_max": 2})
         ids = sorted(harness.assistant.agents)[:3]
         assert len(ids) == 3, "the fixtures hold three agents"
-        run(harness.assistant._open_agent({"agent": ids[0]}))
-        run(harness.assistant._open_agent({"agent": ids[1]}))
+        run(harness.assistant.acts.open_agent({"agent": ids[0]}))
+        run(harness.assistant.acts.open_agent({"agent": ids[1]}))
         # ids[0] is used again, so ids[1] is the one to go.
         harness.assistant.state.touch_agent(ids[0])
-        answer = run(harness.assistant._open_agent({"agent": ids[2]}))
+        answer = run(harness.assistant.acts.open_agent({"agent": ids[2]}))
         assert answer["closed"] == ids[1]
         assert harness.assistant.state.opened == [ids[0], ids[2]]
         assert "catalog" in answer
@@ -1627,6 +1627,6 @@ class TestTheOpenSet:
     def test_close_agent_frees_its_place(self):
         harness = Harness([])
         first = sorted(harness.assistant.agents)[0]
-        run(harness.assistant._open_agent({"agent": first}))
-        assert harness.assistant._close_agent({"agent": first}) == {"closed": first, "open": []}
-        assert "not open" in harness.assistant._close_agent({"agent": first})["error"]
+        run(harness.assistant.acts.open_agent({"agent": first}))
+        assert harness.assistant.acts.close_agent({"agent": first}) == {"closed": first, "open": []}
+        assert "not open" in harness.assistant.acts.close_agent({"agent": first})["error"]
