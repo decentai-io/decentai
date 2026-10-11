@@ -6,15 +6,13 @@ from types import SimpleNamespace
 
 import pytest
 
-from ai_runtime.llms import (
-    AnthropicConnector,
-    BedrockConnector,
-    FakeConnector,
-    GeminiConnector,
-    LLMConnectorFactory,
-    OpenAIConnector,
-    OpenAIResponsesConnector,
-)
+from ai_runtime.llms.connector.anthropic import AnthropicConnector
+from ai_runtime.llms.connector.bedrock import BedrockConnector
+from ai_runtime.llms.connector.fake import FakeConnector
+from ai_runtime.llms.connector.gemini import GeminiConnector
+from ai_runtime.llms.connector.openai import OpenAIConnector
+from ai_runtime.llms.connector.responses import OpenAIResponsesConnector
+from ai_runtime.llms.factory import LLMConnectorFactory
 from contracts.generate_llm_providers import ProviderCatalogWriter
 from contracts.llm_providers import LlmProviders
 from ai_runtime.tests import fake_container

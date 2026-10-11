@@ -12,8 +12,9 @@ from pathlib import Path
 
 from ai_runtime.execution.executor import FunctionExecutor
 from ai_runtime.sinks import ChatSinks
-from ai_runtime.llms import FakeConnector
-from ai_runtime.mind import Assistant, AssistantState
+from ai_runtime.llms.connector.fake import FakeConnector
+from ai_runtime.mind.assistant import Assistant
+from ai_runtime.mind.state import AssistantState
 from ai_runtime.tests.fixture_agents import load_agents
 from sim.resources import InMemoryResourceProvider
 from ai_runtime.tests.fake_container import workers

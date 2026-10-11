@@ -174,7 +174,8 @@ browser) is kept under this key and handed to no other conversation.
 `function` is `agent.tool.function` as the package declares it: the
 agent segment is the manifest's own id, the name its code was written
 against. The rest of the platform speaks the approval's ref in that
-place, and the host translates on the way in (`agents/approved.py`), so
+place, and the host translates on the way in (`ApprovedAgent`,
+`agents/library.py`), so
 a worker never sees a ref. `inputs` were validated by the host; the
 worker trusts them.
 

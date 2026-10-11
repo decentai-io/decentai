@@ -12,7 +12,7 @@ import json
 
 import pytest
 
-from ai_runtime.agents import AgentLibrary, ApprovedAgent
+from ai_runtime.agents.library import AgentLibrary, ApprovedAgent
 from ai_runtime.chat.clock import Schedule, Scheduler
 from ai_runtime.execution.executor import FunctionExecutor
 from ai_runtime.execution.grants import FunctionGrants

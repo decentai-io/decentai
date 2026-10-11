@@ -11,8 +11,8 @@ from types import SimpleNamespace
 import json
 from pathlib import Path
 
-from ai_runtime.chat import Session
-from ai_runtime.llms import FakeConnector
+from ai_runtime.chat.session import Session
+from ai_runtime.llms.connector.fake import FakeConnector
 from ai_runtime.door.host import SessionHost
 from ai_runtime.tests.fixture_agents import load_agents
 from ai_runtime.tests.test_assistant import Harness

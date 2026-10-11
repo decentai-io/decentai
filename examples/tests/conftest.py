@@ -22,7 +22,8 @@ from pathlib import Path
 import pytest
 import yaml
 
-from ai_runtime.agents import AgentEnvironment, InstalledAgent
+from ai_runtime.agents.environments import AgentEnvironment
+from ai_runtime.agents.library import InstalledAgent
 from contracts.agent_manifest import load_manifest
 
 

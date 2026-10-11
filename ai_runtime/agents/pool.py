@@ -24,7 +24,7 @@ Two rules keep one invocation's authority from another's:
   see both organizations' call ids in plain view, and agent code both
   of them trusted could use one's id during the other's invocation.
   The key is the agent id everything outside the package speaks — the
-  approval's ref (agents/approved.py) — so the isolation follows the
+  approval's ref (library.py, ApprovedAgent) — so the isolation follows the
   trust decision, at the cost of one process per organization per
   agent.
 - **An ask is answered only from the worker its invocation was sent

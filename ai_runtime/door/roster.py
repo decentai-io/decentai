@@ -20,7 +20,7 @@ import asyncio
 import base64
 from typing import Any, Callable, Dict, Optional
 
-from ai_runtime.agents import ApprovedAgent, InstalledAgent
+from ai_runtime.agents.library import ApprovedAgent, InstalledAgent
 from ai_runtime.agents.mcp import McpServer
 from ai_runtime.agents.pool import WorkerPool
 

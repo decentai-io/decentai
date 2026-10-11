@@ -9,7 +9,7 @@ import asyncio
 import json
 
 from ai_runtime.chat.code_review import CodeReviewer
-from ai_runtime.llms import FakeConnector
+from ai_runtime.llms.connector.fake import FakeConnector
 from contracts.chat import CODE_REVIEW_MAX_CHARS
 from ai_runtime.tests import fake_container
 

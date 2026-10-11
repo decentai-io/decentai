@@ -18,7 +18,7 @@ from ai_runtime.execution.call import Call
 from ai_runtime.execution.executor import FunctionExecutor
 from ai_runtime.sinks import ChatSinks
 from ai_runtime.tests.fixture_agents import load_agents
-from ai_runtime.llms import FakeConnector
+from ai_runtime.llms.connector.fake import FakeConnector
 
 from ai_runtime.tests.fixture_agents import MINIMAL_MANIFEST, write_agent
 from decentai_sdk.base import Completion

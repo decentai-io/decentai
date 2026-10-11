@@ -57,8 +57,8 @@ def full_stack(app, tmp_path, monkeypatch):
     the code it serves is whatever a chat's contract makes it pull
     (docs/system/agent-code.md). Its environments are the fixtures' shared
     venv — the fixture agents declare no dependencies."""
-    from ai_runtime.agents import AgentLibrary
-    from ai_runtime.door import create_app as create_runtime_app
+    from ai_runtime.agents.library import AgentLibrary
+    from ai_runtime.door.app import create_app as create_runtime_app
     from ai_runtime.settings import RuntimeSettings
     from ai_runtime.platform import Backend, Gateway
     from ai_runtime.tests.fake_container import confinement, container

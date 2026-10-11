@@ -123,7 +123,7 @@ def repository(tmp_path):
 
 @pytest.fixture()
 def library(tmp_path):
-    from ai_runtime.agents import AgentLibrary
+    from ai_runtime.agents.library import AgentLibrary
 
     library = AgentLibrary(tmp_path / "installed", confinement())
     library.load_all()
@@ -369,7 +369,7 @@ class TestActivation:
         """The digest is the whole of trust here: one folder of code may
         serve every organization that approved it, so bytes that are not
         what was approved must not be written at all."""
-        from ai_runtime.agents import AgentRefused
+        from ai_runtime.agents.library import AgentRefused
 
         archive, digest = package(repository)
         other = "sha256:" + "0" * 64

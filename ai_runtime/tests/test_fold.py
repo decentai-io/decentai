@@ -5,8 +5,8 @@ import asyncio
 from types import SimpleNamespace
 
 from ai_runtime.chat.summarizer import SECTIONS, Summarizer
-from ai_runtime.llms import FakeConnector
-from ai_runtime.mind import AssistantState
+from ai_runtime.llms.connector.fake import FakeConnector
+from ai_runtime.mind.state import AssistantState
 from ai_runtime.tests.test_assistant import Harness, action
 from ai_runtime.tests import fake_container
 

@@ -24,7 +24,6 @@ from __future__ import annotations
 
 import logging
 import asyncio
-import base64
 import difflib
 import inspect
 import json
@@ -39,26 +38,20 @@ from contracts.chat import agent_source
 from contracts.cron import zone
 from ai_runtime.execution.executor import FunctionExecutor
 from ai_runtime.llms.connector.tools import (
-    NoModel, is_context_overflow, is_image_refusal, text_block)
+    NoModel, is_context_overflow, is_image_refusal)
 from ai_runtime.mind.actions import (
     ACTION_TOOLS, FINISH_REASONS, OUT_OF_BEATS, FunctionTools,
 )
-from ai_runtime.mind.documents import (
-    DocumentPage, DocumentText, Unreadable,
-)
 from ai_runtime.mind import frame, observations
+from ai_runtime.mind.acts import Acts
+from ai_runtime.mind.children import Children
 from ai_runtime.mind.evidence import Evidence
-from ai_runtime.mind.state import (
-    ASSISTANT_JOB,
-    CANCELLED,
-    DONE,
-    FAILED,
-    AssistantState,
-    Job,
-)
+from ai_runtime.mind.pictures import TranscriptPictures
+from ai_runtime.mind.state import CANCELLED, DONE, FAILED, AssistantState, Job
 from ai_runtime.sinks import ChatSinks
 
-class Assistant:
+
+class Assistant(Acts, Children, TranscriptPictures):
     #: The runaway valve — beats since the user last spoke. Generous by
     #: design: exhaustion reports and remains continuable, never
     #: discards (docs/system/assistant.md, "Pacing and limits").
@@ -87,16 +80,6 @@ class Assistant:
     #: the cycle's own uses.
     OBSERVATION_MAX_CHARS = observations.OBSERVATION_MAX_CHARS
     TRACE_RESULT_MAX_CHARS = observations.TRACE_RESULT_MAX_CHARS
-
-    #: The largest picture a model is shown, as bytes on disk. Base64
-    #: costs a third on top, and providers cap what they accept —
-    #: Anthropic at five megabytes an image. Three sits under every
-    #: ceiling and is far above any screenshot.
-    MAX_IMAGE_BYTES = 3 * 1024 * 1024
-    #: And how many one message may carry. A per-image cap alone is a
-    #: cap in name only: ten pasted screenshots under it is thirty
-    #: megabytes, re-sent on every beat of a turn that may run forty.
-    MAX_IMAGES_PER_MESSAGE = 4
 
     #: What a permission level means, in the words the model and the
     #: person share (frame.py).
@@ -361,31 +344,6 @@ class Assistant:
     def _stamp(self) -> str:
         return datetime.fromtimestamp(self.now(), self.zone).strftime(
             "%a %Y-%m-%d %H:%M")
-
-    @staticmethod
-    def _attached(items: List[Dict[str, Any]]):
-        """Attachments as the transcript carries them: one line each, by
-        the ref a function reads it by — the model passes that ref as a
-        file input — and the pictures among them, NAMED to be fetched at
-        the model call. The transcript is persisted every beat under a
-        size cap, so the bytes must not live in it — one screenshot
-        inlined would stop the whole mind from saving, and a failed save
-        only warns."""
-        lines: List[str] = []
-        images: List[Dict[str, Any]] = []
-        for item in items:
-            if not isinstance(item, dict) or not item.get("resource_ref"):
-                continue
-            kind_note = f" ({item['file_type']})" if item.get("file_type") else ""
-            lines.append(f"[attached: {item.get('filename') or 'file'}"
-                         f"{kind_note} → file_ref {item['resource_ref']}]")
-            if str(item.get("file_type") or "").startswith("image/"):
-                images.append({
-                    "resource_ref": str(item["resource_ref"]),
-                    "filename": str(item.get("filename") or ""),
-                    "file_type": str(item.get("file_type") or ""),
-                })
-        return lines, images
 
     async def _beat(self) -> bool:
         """One beat: think once, act once. True when the action was
@@ -754,54 +712,6 @@ class Assistant:
                        f"{json.dumps(observation, default=str)}",
         })
 
-    # -- pictures ---------------------------------------------------------
-    async def _for_model(self, messages: List[Dict[str, Any]]
-                         ) -> List[Dict[str, Any]]:
-        """The transcript as the provider takes it.
-
-        A picture is not kept in the transcript — only the ref to it.
-        The bytes are fetched HERE, for this one request, and the
-        message that named them goes out carrying content blocks. That
-        keeps the mind small enough to persist, keeps the summary free
-        of base64, and costs nothing when there are no pictures."""
-        maker = getattr(self.connector, "image_block", None)
-        ready = bool(maker) and self.sinks.read_image is not None \
-            and self._images_allowed
-        out: List[Dict[str, Any]] = []
-        for message in messages:
-            named = message.get("images")
-            if not named:
-                out.append(self._words_only(message))
-                continue
-            blocks = []
-            if ready:
-                for item in named[: self.MAX_IMAGES_PER_MESSAGE]:
-                    block = await self._picture(maker, item)
-                    if block is not None:
-                        blocks.append(block)
-            if not blocks:
-                out.append(self._words_only(message, unseen=len(named)))
-                continue
-            words = message.get("content")
-            unseen = len(named) - len(blocks)
-            if unseen:
-                # Some are in front of it and some are not: said, or it
-                # answers as though it had seen them all.
-                words = (f"{words or ''}\n[{unseen} of the {len(named)} "
-                         f"image(s) attached here could not be shown to "
-                         f"you — too many at once, too large, or "
-                         f"unreadable. Say so if it matters.]")
-            out.append({
-                **{key: value for key, value in message.items()
-                   if key not in self.KEPT_NOT_SENT},
-                "content": [text_block(words), *blocks],
-            })
-        return out
-
-    #: What a transcript entry keeps for the record and a provider is
-    #: never sent: the pictures by name, and which model wrote it.
-    KEPT_NOT_SENT = ("images", "model")
-
     @property
     def model_id(self) -> str:
         """The model this mind thinks with now, as its connection
@@ -837,44 +747,6 @@ class Assistant:
                          "model, and do not claim the user asked for "
                          "anything their own messages do not show.",
         })
-
-    def _words_only(self, message: Dict[str, Any],
-                    unseen: int = 0) -> Dict[str, Any]:
-        """The message with no picture in it. When one was attached and
-        could not be sent, the words say so — an assistant that cannot
-        see a screenshot must not answer as though it had."""
-        plain = {key: value for key, value in message.items()
-                 if key not in self.KEPT_NOT_SENT}
-        if unseen:
-            plain["content"] = (
-                f"{plain.get('content') or ''}\n[{unseen} image(s) attached "
-                f"here could not be shown to this model. Answer from the "
-                f"words, and say plainly that you could not see them.]")
-        return plain
-
-    async def _picture(self, maker: Callable, item: Dict[str, Any]):
-        """One attachment, fetched and shaped for this provider — or
-        None, which always means the words travel alone."""
-        ref = str(item.get("resource_ref") or "")
-        if not ref:
-            return None
-        try:
-            record = await self.sinks.read_image(ref) or {}
-        except Exception as exc:
-            self.logger.warning(f"Image {ref} not read: {exc}")
-            return None
-        encoded = str(record.get("content_base64") or "")
-        mime = str(record.get("file_type") or item.get("file_type") or "")
-        if not encoded or not mime.startswith("image/"):
-            return None
-        # The stored size where there is one; else what the base64 says.
-        size = int(record.get("file_size") or 0) or (len(encoded) * 3) // 4
-        if size > self.MAX_IMAGE_BYTES:
-            self.logger.info(
-                f"Image {ref} is {size} bytes — over the "
-                f"{self.MAX_IMAGE_BYTES} a model is shown")
-            return None
-        return maker(mime, encoded)
 
     async def _ask_model(self, offered: FunctionTools):
         """One model call, with the pictures if this model takes them.
@@ -1094,58 +966,6 @@ class Assistant:
             return (f"{len(self.agents)} agents are installed; find_agents "
                     f"searches them by meaning.")
         return f"Available: {', '.join(sorted(self.agents)) or 'none'}."
-
-    async def _open_agent(self, action: Dict[str, Any]) -> Dict[str, Any]:
-        agent_id = str(action.get("agent") or "")
-        agent = self.agents.get(agent_id)
-        if agent is None:
-            return {"error": f"No agent '{agent_id}' is available. "
-                             f"{self._available()}"}
-        answer: Dict[str, Any] = {"agent": agent_id}
-        if agent_id in self.state.opened:
-            self.state.touch_agent(agent_id)
-        else:
-            if len(self.state.opened) >= self._open_max():
-                evicted = self.state.opened.pop(0)
-                answer["closed"] = evicted
-                answer["note"] = (f"'{evicted}' was closed to make room — the "
-                                  f"least recently used of {self._open_max()} "
-                                  f"open agents. Open it again if needed.")
-            self.state.open_agent(agent_id)
-        answer["instructions"] = agent.manifest.instructions or "(none)"
-        answer["catalog"] = self._render_catalog(agent)
-        return answer
-
-    def _close_agent(self, action: Dict[str, Any]) -> Dict[str, Any]:
-        agent_id = str(action.get("agent") or "")
-        if not self.state.close_agent(agent_id):
-            return {"error": f"Agent '{agent_id}' is not open."}
-        return {"closed": agent_id, "open": list(self.state.opened)}
-
-    async def _find_agents(self, action: Dict[str, Any]) -> Dict[str, Any]:
-        """The installed agents closest in meaning to a few words, in
-        any language, best first — the router's search. Without an
-        embedding model there is nothing to search by, and every agent
-        is under AGENTS already."""
-        query = str(action.get("query") or "")
-        embedding = self.routing.get("embedding")
-        if self.router is None or not isinstance(embedding, dict):
-            return {"installed": len(self.agents),
-                    "agents": [{"id": agent_id, "name": agent.manifest.name}
-                               for agent_id, agent in sorted(self.agents.items())],
-                    "note": "No embedding model is configured for agent routing, "
-                            "so every agent is listed under AGENTS."}
-        try:
-            found = await self.router.find(self.agents, query, embedding)
-        except Exception as exc:
-            found = None
-            self.logger.warning(f"find_agents failed: {exc}")
-        if found is None:
-            return {"error": "The embedding model did not answer; every agent "
-                             "is listed under AGENTS for now."}
-        return {"installed": len(self.agents), "matched": len(found),
-                "agents": found,
-                "note": "open_agent takes any id, listed here or not."}
 
     #: A web address, or a bare host, as an input may write one.
     _ADDRESS = re.compile(
@@ -1414,132 +1234,6 @@ class Assistant:
                 "note": "Runs in the background; its result arrives as a "
                         "job_done event. finish when you are only waiting."}
 
-    # ------------------------------------------------------------------
-    # Children: a job whose worker is a session (docs/system/sub-assistants.md)
-    # ------------------------------------------------------------------
-
-    MAX_CHILDREN = 3
-
-    async def _spawn(self, action: Dict[str, Any]) -> Dict[str, Any]:
-        if self.sinks.spawn is None:
-            return {"error": "Spawning is not available here — a child "
-                             "does the work it was given and reports."}
-        goal = str(action.get("goal") or "").strip()
-        if not goal:
-            return {"error": "spawn needs a goal — the whole brief, since "
-                             "the child sees nothing else."}
-        live = [job for job in self.state.jobs.values()
-                if job.kind == ASSISTANT_JOB and job.active]
-        if len(live) >= self.MAX_CHILDREN:
-            return {"error": f"At most {self.MAX_CHILDREN} children may "
-                             f"run at once; wait for one to report or "
-                             f"cancel one."}
-        agents = action.get("agents")
-        if agents is not None:
-            agents = [str(a) for a in (agents or [])]
-            unknown = [a for a in agents if a not in self.agents]
-            if unknown:
-                return {"error": f"Not yours to give: {', '.join(unknown)}. "
-                                 f"A child may only be given agents you "
-                                 f"may call yourself."}
-        # The plan items the child is given take its outcome when it
-        # reports: done with its evidence, or blocked with its reason.
-        items = action.get("items")
-        items = [str(i) for i in items] if isinstance(items, list) else []
-        missing = [i for i in items if self.state.plan.get(i) is None]
-        if missing:
-            return {"error": f"No such plan item: {', '.join(missing)}."}
-
-        job = Job(f"job_{uuid.uuid4().hex[:8]}", "", "",
-                  {"goal": goal, "agents": agents, "items": items},
-                  kind=ASSISTANT_JOB, child=f"sub_{uuid.uuid4().hex[:8]}")
-        self.state.jobs[job.job_id] = job
-        self._attach_child(job)
-        await self._narrate(
-            "helper_spawned", f"Started a helper: {observations.preview(goal, 80)}",
-            {"kind": "helper", "job_id": job.job_id, "child": job.child})
-        return {"job_id": job.job_id, "status": job.status,
-                "note": "Works in the background; its report arrives as a "
-                        "job_done event. finish when you are only waiting."}
-
-    def resume_child(self, job: Job) -> asyncio.Task:
-        """A hydrated assistant job: its child has durable state of its
-        own, so the waiter is re-attached rather than the job failed.
-        Returns the waiter, for the session to wake its cycle on."""
-        return self._attach_child(job, resuming=True)
-
-    def _attach_child(self, job: Job, resuming: bool = False) -> asyncio.Task:
-        task = asyncio.get_running_loop().create_task(
-            self._run_child(job, resuming))
-        self._job_tasks[job.job_id] = task
-        task.add_done_callback(
-            lambda _: self._job_tasks.pop(job.job_id, None))
-        return task
-
-    async def _run_child(self, job: Job, resuming: bool) -> None:
-        try:
-            result, status, entries = await self.sinks.spawn(job, resuming)
-        except asyncio.CancelledError:
-            job.status = CANCELLED
-            job.result = {"error": "The sub-assistant was cancelled."}
-            self.post({"event": "job_done", "job_id": job.job_id,
-                       "kind": ASSISTANT_JOB, "status": CANCELLED})
-            return
-        except Exception as exc:
-            self.logger.error(f"Child {job.job_id} failed: {exc}")
-            result, status, entries = {"error": str(exc)[:300]}, "error", []
-
-        job.result = observations.bounded(result)
-        job.status = DONE if status == "success" else FAILED
-        await self._narrate(
-            "job_finished",
-            "The helper reported back." if job.status == DONE
-            else "The helper stopped without finishing.",
-            {"kind": "helper", "job_id": job.job_id, "child": job.child},
-            status=job.status)
-        # Evidence flows up: the child's every invocation joins the
-        # parent's trace under this job, so the parent presents what
-        # the child PROVED — never only what it said.
-        for entry in entries:
-            self.state.trace.append({**entry, "job_id": job.job_id})
-        owned = [str(i) for i in (job.inputs or {}).get("items") or []]
-        if owned:
-            self._settle_owned(job, owned)
-            await self._show_plan()
-        self.post({"event": "job_done", "job_id": job.job_id,
-                   "kind": ASSISTANT_JOB, "status": job.status, **result})
-
-    def _settle_owned(self, job: Job, owned: List[str]) -> None:
-        """The items a child was given take its outcome. Completed: done,
-        with the job and every storage ref the child's calls produced
-        as evidence — all of it now in this trace. Anything else:
-        blocked, with the child's reason and its last words, for the
-        parent to read and decide."""
-        result = job.result or {}
-        reason = str(result.get("reason") or "incomplete")
-        worked = [entry for entry in self.state.trace
-                  if entry.get("job_id") == job.job_id
-                  and entry.get("status") == "success"]
-        if job.status == DONE and reason == "completed" and worked:
-            refs = [job.job_id] + [
-                entry["result"]["storage_ref"] for entry in worked
-                if isinstance(entry.get("result"), dict)
-                and isinstance(entry["result"].get("storage_ref"), str)
-            ]
-            for item_id in owned:
-                self.state.plan.update(item_id, "done", evidence=refs,
-                                       proven=self._proven())
-            return
-        if job.status == DONE and reason == "completed":
-            # It said it finished and nothing it ran succeeded: its
-            # word alone settles nothing. The parent reads what it said
-            # and decides — the job is still evidence it may cite.
-            reason = "reported completed, and ran nothing that succeeded"
-        blocker = (f"sub-assistant {job.job_id} {reason}: "
-                   f"{str(result.get('summary') or '')[:120]}").strip(": ")
-        for item_id in owned:
-            self.state.plan.update(item_id, "blocked", blocker=blocker)
-
     async def _run_job(self, job: Job, agent: InstalledAgent,
                        call_id: str = "",
                        running: Optional[asyncio.Future] = None) -> None:
@@ -1561,10 +1255,7 @@ class Assistant:
             self.logger.error(f"Job {job.job_id} failed: {exc}")
             result, status = {"error": str(exc)[:300]}, "error"
 
-        job.result = observations.bounded(result)
-        job.status = DONE if status == "success" else FAILED
-        observation = self._record(job.agent_id, job.function, job.inputs,
-                                   result, status, job_id=job.job_id)
+        observation = self._settle(job, result, status)
         await self._narrate(
             "job_finished", observations.spoken(agent, job.function),
             agent_source(agent.agent_id, agent.manifest.name, job.function,
@@ -1573,6 +1264,15 @@ class Assistant:
         self.post({"event": "job_done", "job_id": job.job_id,
                    "function": job.function, "status": job.status,
                    **observation})
+
+    def _settle(self, job: Job, result: Dict[str, Any],
+                status: str) -> Dict[str, Any]:
+        """A job's end, on the job and on the trace: its result bounded,
+        its status, and the observation the mind reads of it."""
+        job.result = observations.bounded(result)
+        job.status = DONE if status == "success" else FAILED
+        return self._record(job.agent_id, job.function, job.inputs,
+                            result, status, job_id=job.job_id)
 
     @property
     def working(self) -> bool:
@@ -1610,10 +1310,7 @@ class Assistant:
         job = self.state.jobs.get(job_id)
         if job is None:
             return
-        job.result = observations.bounded(result)
-        job.status = DONE if status == "success" else FAILED
-        observation = self._record(job.agent_id, job.function, job.inputs,
-                                   result, status, job_id=job_id)
+        observation = self._settle(job, result, status)
         self.post({"event": "job_done", "job_id": job_id,
                    "function": job.function, "status": job.status,
                    **observation})
@@ -1639,310 +1336,6 @@ class Assistant:
             task.cancel()
         if tasks:
             await asyncio.wait(tasks, timeout=self.STOP_WAIT_SECONDS)
-
-    # -- read ------------------------------------------------------------
-    async def _read(self, action: Dict[str, Any]) -> Dict[str, Any]:
-        ref = str(action.get("storage_ref") or "").strip()
-        path = str(action.get("path") or "").strip()
-        if not ref:
-            return {"status": "error",
-                    "result": {"error": "read needs a storage_ref."}}
-        # The same door the executor resolves a reference input by.
-        read = self.sinks.read_result
-        if read is None:
-            return {"status": "error", "result": {
-                "error": "Stored results cannot be read back here."}}
-        try:
-            value = await read(ref, path)
-        except Exception as exc:
-            return {"status": "error", "result": {
-                "error": f"The stored result could not be read: {exc}"}}
-
-        # A long list is read in pages: `from` skips what an earlier read
-        # showed, so the model never has to walk it one index at a time.
-        start = action.get("from")
-        start = int(start) if isinstance(start, int) and start > 0 else 0
-        if start and isinstance(value, list):
-            value = value[start:]
-
-        payload = {"storage_ref": ref, "path": path, "value": value}
-        if start:
-            payload["from"] = start
-        observation = {"status": "success", "result": payload}
-        if len(json.dumps(observation, default=str)) > self.OBSERVATION_MAX_CHARS:
-            payload["value"] = observations.preview(value)
-            payload["truncated"] = True
-            if isinstance(value, list):
-                shown = int(payload["value"].get("items_shown") or 0)
-                payload["note"] = (
-                    f"Showing {shown} of {len(value)} items"
-                    f"{' from ' + str(start) if start else ''}. Read the same "
-                    f"path again with \"from\": {start + shown} for the rest.")
-            else:
-                payload["note"] = ("Still too large to show whole — narrow "
-                                   "the path further.")
-        return observation
-
-    # -- skills / memory / plan ------------------------------------------
-    SKILL_BODY_MAX_CHARS = 6000
-
-    async def _find_files(self, action: Dict[str, Any]) -> Dict[str, Any]:
-        """The file the user means, when nothing is attached: the
-        session looks among what they can see and puts the best few on
-        a card; the user decides. What they chose is attached to the
-        chat and enters the transcript exactly as an attachment does,
-        so a picture among them is shown at the next call."""
-        query = str(action.get("query") or "").strip()
-        if not query:
-            return {"error": "find_files needs a query: the file as the "
-                             "user described it."}
-        if self.sinks.find_files is None:
-            return {"error": "Files cannot be looked up in this chat."}
-        try:
-            outcome = await self.sinks.find_files(
-                query, action.get("names"),
-                str(action.get("kind") or "")) or {}
-        except Exception as exc:
-            return {"error": f"Files could not be looked up: {exc}"}
-        status = str(outcome.get("status") or "")
-        files = [f for f in (outcome.get("files") or []) if isinstance(f, dict)]
-        if status == "chosen" and files:
-            lines, images = self._attached(files)
-            said: Dict[str, Any] = {
-                "role": "user",
-                "content": "The user chose these files:\n" + "\n".join(lines),
-            }
-            if images:
-                said["images"] = images
-            self.state.messages.append(said)
-            return {
-                "files": [{"filename": f.get("filename") or "",
-                           "file_type": f.get("file_type") or "",
-                           "file_ref": f["resource_ref"]} for f in files],
-                "note": "Attached to this chat. Pass a file_ref to a "
-                        "function whose input takes a file; a picture "
-                        "among them is shown to you.",
-            }
-        if status in ("chosen", "declined"):
-            return {"files": [], "note": "The user chose no files. Ask "
-                                         "what they meant, or carry on "
-                                         "without."}
-        if status == "expired":
-            return {"files": [], "note": "Nobody answered the files card."}
-        return {"error": str(outcome.get("error")
-                             or "Files could not be looked up.")}
-
-    #: A document larger than this is not read here: the bytes have to
-    #: cross the gateway whole, base64, and a report is not that big.
-    FILE_READ_MAX_BYTES = 8 * 1024 * 1024
-
-    async def _read_file(self, action: Dict[str, Any]) -> Dict[str, Any]:
-        """A document the user attached or chose, read as text a page at
-        a time (mind/documents.py). The download runs under the
-        person's own delegation, so the backend's visibility rules —
-        not this method — decide what a ref may reach; a ref the model
-        made up finds nothing."""
-        ref = str(action.get("file_ref") or "").strip()
-        if not ref:
-            return {"error": "read_file needs a file_ref, from an "
-                             "[attached: …] line."}
-        reader = self.sinks.read_file or self.sinks.read_image
-        if reader is None:
-            return {"error": "Files cannot be read in this chat."}
-        try:
-            record = await reader(ref) or {}
-        except Exception as exc:
-            return {"error": f"The file could not be read: {exc}"}
-        encoded = str(record.get("content_base64") or "")
-        if not encoded:
-            return {"error": f"No file '{ref}' is visible to this user. "
-                             f"Use a file_ref from an [attached: …] line, "
-                             f"or find_files."}
-        size = int(record.get("file_size") or 0) or (len(encoded) * 3) // 4
-        filename = str(record.get("filename") or "")
-        file_type = str(record.get("file_type") or "")
-        if size > self.FILE_READ_MAX_BYTES:
-            return {"file_ref": ref, "filename": filename,
-                    "error": f"This file is {size} bytes — too large to "
-                             f"read here. Hand its file_ref to an agent "
-                             f"that reads it."}
-        try:
-            # Off the loop: a long PDF takes seconds to read, and this
-            # loop serves every chat on the host.
-            text = await asyncio.to_thread(
-                DocumentText.extract,
-                base64.b64decode(encoded), file_type, filename)
-        except Unreadable as exc:
-            return {"file_ref": ref, "filename": filename,
-                    "file_type": file_type, "error": str(exc)}
-        except Exception as exc:
-            return {"file_ref": ref, "filename": filename,
-                    "error": f"The file could not be read: {exc}"}
-        start = action.get("from")
-        start = int(start) if isinstance(start, int) and start > 0 else 0
-        return {"file_ref": ref, "filename": filename,
-                "file_type": file_type, **DocumentPage.of(text, start)}
-
-    #: entries one recall answers with, newest first
-    RECALL_MAX_ENTRIES = 20
-
-    def _recall(self, action: Dict[str, Any]) -> Dict[str, Any]:
-        """What fell out of the summary, searched by words: every entry
-        carrying all of them, newest first; with no words, the newest.
-        The archive is the mind's own state, so this reads nothing
-        from anywhere and costs no call."""
-        archive = list(self.state.archive)
-        if not archive:
-            return {"archived": 0, "entries": [],
-                    "note": "Nothing has fallen out of this conversation's "
-                            "summary yet; the summary above is complete."}
-        words = [w for w in str(action.get("query") or "").lower().split() if w]
-        found = [entry for entry in archive
-                 if all(w in str(entry.get("line") or "").lower()
-                        or w in str(entry.get("section") or "").lower()
-                        for w in words)]
-        newest = list(reversed(found))[: self.RECALL_MAX_ENTRIES]
-        return {"archived": len(archive), "matched": len(found),
-                "entries": newest,
-                "note": ("Each entry says when it was last in the summary "
-                         "and which section held it; it may since have been "
-                         "superseded by what the summary says now.")}
-
-    async def _use_skill(self, action: Dict[str, Any]) -> Dict[str, Any]:
-        ref = str(action.get("skill") or "").strip()
-        if not ref:
-            return {"error": "use_skill needs a skill ref."}
-        if self.sinks.read_skill is None:
-            return {"error": "No skills are available in this chat."}
-        try:
-            skill = await self.sinks.read_skill(ref)
-        except Exception as exc:
-            return {"error": f"The skill could not be read: {exc}"}
-        if not skill:
-            return {"error": f"No skill '{ref}' is visible to this user."}
-
-        body = str(skill.get("body") or "")
-        if len(body) > self.SKILL_BODY_MAX_CHARS:
-            body = (body[: self.SKILL_BODY_MAX_CHARS]
-                    + "\n…(truncated — the skill is longer than fits here)")
-        return {"skill": ref, "title": str(skill.get("title") or ""),
-                "text": body}
-
-    #: What a helper is told when it asks for the clock. A schedule is
-    #: the chat's: a row of a helper's own would be nobody's, and the
-    #: backend refuses it — said here, in words the helper can act on,
-    #: and not as the refusal of a write.
-    NOT_A_HELPERS = ("A schedule is the chat's, and not a helper's to "
-                     "set or remove. Say in your report what should be "
-                     "scheduled; the assistant you work for can.")
-
-    async def _schedule(self, action: Dict[str, Any]) -> Dict[str, Any]:
-        if self.sinks.finish is not None:
-            return {"error": self.NOT_A_HELPERS}
-        if self.clock is None:
-            return {"error": "No clock serves this chat."}
-        spec = {k: v for k, v in action.items() if k != "action"}
-        try:
-            return await self.clock.schedule(spec)
-        except Exception as exc:
-            return {"error": f"The schedule could not be set: {exc}"}
-
-    async def _sleep(self, action: Dict[str, Any]) -> Dict[str, Any]:
-        """Pause until a moment from now, and be woken then with the
-        reason. Not a helper's to do: a helper works to its end and
-        reports."""
-        if self.clock is None or self.sinks.finish is not None:
-            return {"error": "Nothing can wake you here. Finish for the "
-                             "reason that is true."}
-        return await self.clock.sleep(
-            action.get("seconds"), str(action.get("why") or ""))
-
-    async def _unschedule(self, action: Dict[str, Any]) -> Dict[str, Any]:
-        schedule_id = str(action.get("schedule_id") or "").strip()
-        if not schedule_id:
-            return {"error": "unschedule needs a schedule_id."}
-        if self.sinks.finish is not None:
-            return {"error": self.NOT_A_HELPERS}
-        if self.clock is None:
-            return {"error": "No clock serves this chat."}
-        try:
-            return await self.clock.unschedule(schedule_id)
-        except Exception as exc:
-            return {"error": f"The schedule could not be removed: {exc}"}
-
-    async def _remember(self, action: Dict[str, Any]) -> Dict[str, Any]:
-        text = str(action.get("text") or "").strip()
-        if not text:
-            return {"error": "remember needs text."}
-        if self.sinks.remember is None:
-            return {"error": "Memory is not available in this chat."}
-        if any(text == existing for existing in self.memories):
-            return {"text": "That is already remembered — carry on."}
-        try:
-            await self.sinks.remember(text)
-        except Exception as exc:
-            return {"error": f"The memory could not be saved: {exc}"}
-        self.memories.append(text)
-        return {"text": f"Remembered, and the user can see it: {text}"}
-
-    async def _plan(self, action: Dict[str, Any]) -> Dict[str, Any]:
-        """Set the work items, or update one of them."""
-        if "steps" in action:
-            steps = action.get("steps")
-            if not isinstance(steps, list):
-                return {"error": "plan needs a steps list."}
-            texts = [str(s).strip() for s in steps if str(s).strip()]
-            if not texts:
-                return {"error": "A plan needs at least one item."}
-            most = self.state.plan.MAX_STEPS
-            if len(texts) > most:
-                return {"error": f"A plan holds at most {most} items "
-                                 f"— group the work into fewer."}
-            self.state.plan.replace(texts)
-        else:
-            ref = action.get("item") or action.get("step")
-            ok, why = self.state.plan.update(
-                ref, str(action.get("status") or ""),
-                evidence=action.get("evidence"),
-                blocker=str(action.get("blocker") or ""),
-                depends_on=action.get("depends_on"),
-                proven=self._proven(),
-            )
-            if not ok:
-                return {"error": why}
-
-        why = await self._show_plan()
-        if why:
-            return {"error": why}
-        return {"text": "Plan recorded — the user sees it.",
-                "plan": self.state.plan.to_steps()}
-
-    async def _show_plan(self) -> Optional[str]:
-        """The plan as it now stands, to the frame and the audience.
-        The frame carries it under PLAN: rewritten now, or the next
-        beat reads a list that contradicts the observation beneath it
-        until something else happens to reframe."""
-        self.reframe()
-        if self.sinks.plan is not None:
-            try:
-                await self.sinks.plan(self.state.plan.to_steps())
-            except Exception as exc:
-                return f"The plan could not be shown: {exc}"
-        return None
-
-    def _proven(self) -> set:
-        """What the trace can vouch for: storage refs of successful
-        invocations, ids of finished jobs. The only evidence a plan
-        item may name."""
-        proven = {
-            entry["result"]["storage_ref"] for entry in self.state.trace
-            if entry.get("status") == "success"
-            and isinstance(entry.get("result"), dict)
-            and isinstance(entry["result"].get("storage_ref"), str)
-        }
-        proven.update(job_id for job_id, job in self.state.jobs.items()
-                      if job.status == DONE)
-        return proven
 
     def _finish_refusal(self, reason: str) -> Optional[str]:
         """Why this finish may not stand, or None. The reasons are the

@@ -12,8 +12,8 @@ from functools import partial
 from pathlib import Path
 
 from ai_runtime.execution.call import Call
-from ai_runtime.chat import Session
-from ai_runtime.llms import FakeConnector
+from ai_runtime.chat.session import Session
+from ai_runtime.llms.connector.fake import FakeConnector
 from ai_runtime.mind.state import RUNNING, AssistantState, Job
 from ai_runtime.tests.fixture_agents import load_agents
 from contracts.chat import event_error

@@ -10,9 +10,9 @@ Each stop names the file, the functions to read in order, what to
 check while reading, and the tests that hold the behaviour — run one
 after a stop to see the claims fail when the code is changed.
 
-About 17,000 lines without the tests. Stops 1 to 5 are the path of a
-message and are most of what matters; a first pass through them is a
-day's reading.
+About eighteen thousand lines without the tests. Stops 1 to 5 are the
+path of a message and are most of what matters; a first pass through
+them is a day's reading.
 
 ## Before the code
 
@@ -24,6 +24,81 @@ Three pages, in this order. The code keeps their words.
    and out of the socket.
 3. [Chat sessions](../system/chat-session.md) — what the backend keeps
    for the runtime, and the services the runtime calls it by.
+
+## The tree
+
+Read top to bottom, it is the path of one message, then what stands
+beside it. Each package's `__init__.py` is one line and points here.
+
+```
+ai_runtime/
+  main.py              settings, build the parts, serve
+  settings.py          every setting, from the environment
+  platform.py          Backend, ChatResources, Gateway: every call to the backend
+  sinks.py             ChatSinks: the doors from the mind and a running call to the chat
+  events.py            what agents did, written down as it happens
+  door/                how the backend reaches the runtime
+    app.py             the FastAPI application; the lifespan is the start order
+    auth.py            what "the backend" means: the service token
+    socket.py          /chats/{chat_id}: frames in, frames out
+    monitor.py         /internal/monitor/*, /internal/health/live
+    host.py            SessionHost: one session per chat, emit, reap, kill
+    roster.py          AgentRoster: the contract's agents, pulled and installed
+  chat/                a chat's body
+    session.py         Session: open, deliver, advance, stop, kill
+    cards.py           Cards: approve, ask, propose, credential, find_files; the waiters
+    helpers.py         Helpers: a child session and its report
+    screen.py          Screen: the live screen
+    clock.py           Schedule, Scheduler, ChatClock
+    summarizer.py      the rolling summary, folded once the cycle is idle
+    files.py           finding the file the person meant
+    code_review.py     the chat's model reading an agent's code
+  mind/                the assistant
+    assistant.py       Assistant: the cycle — absorb, beat, act, say, invoke, jobs
+    acts.py            Acts: the observed actions
+    children.py        Children: spawn a helper, run it, settle its items
+    pictures.py        TranscriptPictures: the transcript as a provider takes it
+    actions.py         the action vocabulary as tool schemas
+    frame.py           what the model is told
+    state.py           the durable mind: transcript, plan, opened, trace, jobs
+    plan.py            the todo list the user sees
+    evidence.py        what the trace can prove about a message
+    observations.py    what of a result the model sees, and what the trace keeps
+    documents.py       a file's bytes as text the assistant can read
+    router.py          finding the right agent among many, by meaning
+  execution/           what one organization may do with a package, per invocation
+    executor.py        FunctionExecutor: the gates, execute, the trail
+    call.py            Call: what one running call may ask, and was allowed
+    resources.py       ResourceAccess: bindings, not credentials
+    grants.py          FunctionGrants: the delegation's function grants, deny by default
+    pictures.py        a picture an agent hands over, checked
+  agents/              what an agent is, how code becomes one, which this process holds
+    library.py         AgentLibrary, InstalledAgent, ApprovedAgent: the store by digest
+    environments.py    AgentEnvironment: one private venv per dependency list
+    workers.py         WorkerHandle: the host side of the worker protocol
+    pool.py            WorkerPool: the running workers, and the router to each Call
+    container.py       AgentsContainer: the client of the agents' container
+    confinement.py     Confinement, WorkerPlace: the proxy and each worker's pass
+    egress.py          EgressProxy: the hosts a manifest declared, and nothing else
+    mcp.py             McpServer: a remote MCP server in a chat's roster
+  agents_container/    what runs in the agents' container (docs/system/sandbox.md)
+    service.py         SpawnerService: starts what the runtime asks for, by name
+    places.py          Places, Place: the users, the spawn lines, the fences
+    usage.py           AgentsUsage: what the container is given and each agent uses
+    wire.py            what the two sides agree on
+    spawn_helper.c     the one program that starts a process as another user
+  llms/                how the runtime reaches a model
+    factory.py         LLMConnectorFactory: provider name -> the connector
+    connector/         one per provider — anthropic, bedrock, gemini, openai,
+                       responses, fake — behind one interface (tools.py)
+  prompts/             every prompt the runtime speaks, as .md files a person can edit
+```
+
+Two rules of the tree. `mind/` imports `execution/` and `agents/` —
+the law it operates under — and never `chat/`, the embodiment that
+hosts it: every side effect crosses `ChatSinks`. And
+`agents_container/` imports nothing of `agents/`: the two meet on a
+socket and on one volume.
 
 ## 1. Start-up and the door
 
@@ -71,7 +146,10 @@ Check:
 - `AgentRoster.materialize`: an agent the runtime does not hold is fetched by its
   ref, checked against the digest the contract named, and built before
   the hello; a digest that was refused is logged and not retried on
-  every frame.
+  every frame. The agent is served as an `ApprovedAgent`
+  (`agents/library.py`): the package by its digest, answering to the
+  approval's ref — the two names of an agent, and where they are
+  translated (`declared`).
 - `handle`: the list of events a dialer may send is closed. Read each
   branch for what a forged frame could cause — the comment on
   `schedules_changed` is the model: it can only make the clock re-read
@@ -97,7 +175,9 @@ Tests: `ai_runtime/tests/test_session_door.py`,
 
 `chat/session.py`, class `Session`. It owns everything the assistant
 is not allowed to: the services, the cards, the helpers, the audience.
-Read in this order:
+Two parts of it are files of their own and mixed in: the helpers
+(`chat/helpers.py`, class `Helpers`) and the live screen
+(`chat/screen.py`, class `Screen`). Read in this order:
 
 1. `open` — rehydration: the saved state, the transcript, the event
    cursor, parked calls and jobs that were running when the process
@@ -111,10 +191,13 @@ Read in this order:
    agent asking the person in the middle of a call. The other cards —
    `propose`, `credential`, `find_files` — and the screens a call
    shows (`screen`) are the same file: what is open right now, held
-   where a late audience and a kill can see it.
+   where a late audience and a kill can see it. The person's hand on
+   a screen, and the browser opened before anything is asked of it,
+   are `chat/screen.py` (`open_screen`, `deliver_screen_input`,
+   `_quit_browser`).
 5. `ask_to_stop`, `stop`, `kill` — the cooperative stop and the one
    that does not ask.
-6. `_spawn_child`, `report`, `conversation_id` — helpers
+6. `chat/helpers.py`: `_spawn_child`, `report`, `_inherit` — helpers
    ([sub-assistants](../system/sub-assistants.md)).
 
 Before `open`, read `ai_runtime/sinks.py`: `ChatSinks` is every door
@@ -155,7 +238,7 @@ Check:
   storage, its memories, its agents' records and its audience. Its
   cards and screen surface in the parent's audience under its own id.
   That it cannot save memory is not there: it is the `remember` door
-  `Session.open` hands a child (`Session._refuse_memory`).
+  `Session.open` hands a child (`Helpers._refuse_memory`).
 
 Tests: `ai_runtime/tests/test_session.py`,
 `ai_runtime/tests/test_sub_assistants.py`,
@@ -165,12 +248,15 @@ Tests: `ai_runtime/tests/test_session.py`,
 
 ## 4. The assistant: the cycle
 
-`mind/assistant.py`, class `Assistant`. The largest file; most of
-it is the actions, one method each. Read the cycle first and the
-actions as they come up. Two things the mind does are functions of
-their arguments alone and live beside it: what of a result the model
-is shown (`mind/observations.py`) and what the model is told
-(`mind/frame.py`).
+`mind/assistant.py`, class `Assistant`: the cycle. What a beat may do
+beside talking is in three files mixed into it — the observed actions
+(`mind/acts.py`, class `Acts`), the helpers it spawns
+(`mind/children.py`, class `Children`) and the pictures in its
+transcript (`mind/pictures.py`, class `TranscriptPictures`). Read the
+cycle first and the actions as they come up. Two things the mind does
+are functions of their arguments alone and live beside it: what of a
+result the model is shown (`mind/observations.py`) and what the model
+is told (`mind/frame.py`).
 
 1. `run`, `_drain`, `_absorb` — advance until idle.
 2. `_beat` — one model call, one action. The valve (`max_beats`,
@@ -178,15 +264,16 @@ is shown (`mind/observations.py`) and what the model is told
    not an action (`_bounces`, `_prose`), more than one action.
 3. `_act` — the dispatch. Which actions end the cycle (`finish`, a
    `say` marked final, `sleep`) and which are observed and go on
-   (`OBSERVED_ACTIONS`, each by the method it names). Two
+   (`OBSERVED_ACTIONS`, each by the method it names in `acts.py`). Two
    more ends: in the chat's own assistant, a `say` made after the turn
    has acted when nothing is owed (`_owes_more`), and an `invoke` whose
    result says `outcome: "stopped_by_person"`.
 4. `_finish_refusal` — a finish is held to the state: `completed` with
    plan items still owed, `awaiting_events` with nothing to await and
    `blocked` with nothing marked blocked are all refused.
-5. `_gate`, `_invoke`, `_start`, `_run_job`, `resolve_job` — calling a
-   function now, or in the background.
+5. `_gate`, `_invoke`, `_start`, `_run_job`, `_settle`, `resolve_job` —
+   calling a function now, or in the background; `_to_background`,
+   where a call the person wrote during is carried on as a job.
 6. `_record`, with `mind/observations.py` (`previewed`,
    `bounded`, `preview`) — what of a result the model sees, and what
    the trace keeps.
@@ -196,6 +283,11 @@ is shown (`mind/observations.py`) and what the model is told
    `render_catalog`, `parse_actions`), with `prompts/assistant.md` and
    `mind/actions.py` — everything the model is told, and how its
    reply is read.
+9. `mind/children.py`: `_spawn`, `_run_child`, `_settle_owned` — a
+   helper's job, its report, and the plan items it was given.
+10. `mind/pictures.py`: `_for_model`, `_picture` — the transcript as
+    the provider takes it, the pictures read at the call and never
+    kept.
 
 Then the smaller files as they are met: `mind/state.py` (what is
 saved every beat), `mind/plan.py`, `mind/router.py`
@@ -212,6 +304,8 @@ Check:
   before the next beat, never in the middle of one.
 - `_gate`: a function of an agent that is not open is refused, so the
   model never calls with inputs it guessed.
+- `Acts._no_clock`: a helper has no clock to set, sleep on or clear —
+  a schedule is the chat's — and it is told so in words it can act on.
 - `Evidence`: a table or a count under an answer comes from the trace
   of calls that succeeded, never from the model's words. This is the
   claim to test hardest: try to find a path where `say` shows something
@@ -332,10 +426,12 @@ With [the sandbox](../system/sandbox.md) open beside it.
   (`_check_name`, `Admission.opens`), and it must resolve to a public
   address (`_public_address`, `_not_public`), which is the address
   then dialled.
-- `agents/library.py`, `agents/environments.py`, `agents/approved.py` —
-  the code store by digest, the per-agent environment and its build,
-  and the two names of an agent (the platform's ref outside, the
-  package's id inside).
+- `agents/library.py`, `agents/environments.py` — the code store by
+  digest (`AgentLibrary`, the only thing that writes to it: one folder
+  per digest, verified before it is written), the per-agent
+  environment and its build, and the two names of an agent
+  (`ApprovedAgent`: the platform's ref outside, the package's id
+  inside).
 - `agents/container.py`, `agents_container/wire.py`,
   `agents_container/service.py` — where every process of an agent's
   is started: the agents' container, asked by name over a socket
@@ -343,6 +439,8 @@ With [the sandbox](../system/sandbox.md) open beside it.
   answered by `SpawnerService` (`_start`, `_build`, `_files`,
   `_stop`), which also carries a worker's lines (`_carry_worker`) and
   passes workers' connections on to the runtime's proxy (`_pass_on`).
+  The tests have no container: `ai_runtime/tests/fake_container.py`
+  answers the same requests in the test's own process.
 - `agents_container/usage.py` — what the agents' container is given and what
   each agent uses, read from the kernel (`AgentsUsage.sample`), and who
   is ended when they use nearly all of it (`over`). The spawner's
@@ -421,10 +519,32 @@ Tests: the schedule classes in `ai_runtime/tests/test_session.py`,
   one chat; `Gateway` is the request itself. `sim/session_services.py`
   is the same surface in memory: reading the two side by side is the
   quickest way to see what the runtime depends on.
-- `llms/` — the connectors. A reply carries the provider's
-  `stop_reason` (`llms/connector/tools.py`), which is how one stopped
-  at the length cap is told apart from a finished one
-  (`Assistant._cut_off`).
+- `llms/` — the factory decides WHICH connector (`llms/factory.py`,
+  by the provider's name, with the catalog both sides read in
+  `contracts/llm_providers.py`), a connector decides HOW
+  (`llms/connector/`, one file per protocol: Anthropic's system
+  prompt as a top-level parameter, Bedrock's Converse, Gemini's
+  generateContent, OpenAI's chat completions and every server that
+  speaks them, OpenAI's Responses; `fake.py` is scripted, for tests).
+  Nothing here reads configuration: a connector is built from the
+  dict the host assembled — the chat's own llm block, plus the key of
+  the connection it names, served by the backend as that person — so
+  which model a chat thinks with is stored per chat, and revoking a
+  key is removing a connection. One interface, `async chat(messages,
+  max_tokens, tools) -> ModelReply` (`llms/connector/tools.py`): the
+  reply as the cycle reads it, the calls, the prose and the provider's
+  `stop_reason`, which is how a reply cut at the length cap is told
+  apart from a finished one (`Assistant._cut_off`). The assistant's
+  actions are offered as tools (`mind/actions.py`) and a call comes
+  back as the action's JSON text, so native tool calling changes how
+  the model is asked, not what the runtime does with the answer.
+  Agents never touch these: the mind holds connectors, agent code
+  holds functions, and a model is handed to a function only through
+  its `Call` (`llm`), where the manifest declared it.
+- `prompts/` — every prompt as a `.md` file beside the code
+  (`Prompts.render`): single-brace placeholders, and every other brace
+  left alone, so the JSON examples inside a prompt are written the
+  way the model must emit them.
 - `contracts/chat.py` — the frames and message parts, typed. The page's
   copy is `frontend/src/app/models/chat-protocol.ts`, and
   `tests/test_chat_contract.py` — in the spanning suite, the

@@ -10,7 +10,7 @@ from types import SimpleNamespace
 import pytest
 
 from ai_runtime.chat.summarizer import SECTIONS, Summarizer
-from ai_runtime.llms import FakeConnector
+from ai_runtime.llms.connector.fake import FakeConnector
 from ai_runtime.prompts import Prompts
 from ai_runtime.mind import observations
 from ai_runtime.mind.assistant import Assistant

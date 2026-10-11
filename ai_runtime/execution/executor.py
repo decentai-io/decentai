@@ -243,7 +243,7 @@ class FunctionExecutor:
         saw; and its approval is the card's decision, not a new card."""
         # The name arrives as the platform writes it (the approval's
         # ref); the manifest and the worker know the package's own
-        # (agents/approved.py). Grants, the trace and every message
+        # (agents/library.py, ApprovedAgent). Grants, the trace and every message
         # keep the platform's.
         declared = agent.manifest.function(agent.declared(canonical_name))
         if declared is None:

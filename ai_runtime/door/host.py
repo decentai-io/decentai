@@ -20,10 +20,10 @@ from typing import Any, Dict, Optional
 
 from ai_runtime.mind.router import AgentRouter
 from ai_runtime.agents.pool import WorkerPool
-from ai_runtime.chat import Session
+from ai_runtime.chat.session import Session
 from ai_runtime.execution.executor import FunctionExecutor
 from ai_runtime.execution.grants import FunctionGrants
-from ai_runtime.llms import LLMConnectorFactory
+from ai_runtime.llms.factory import LLMConnectorFactory
 from ai_runtime.llms.connector.tools import NoModel
 from ai_runtime.door.roster import AgentRoster
 from ai_runtime.sinks import ChatSinks

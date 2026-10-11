@@ -1,13 +1,11 @@
 from __future__ import annotations
 
-from ai_runtime.llms.connector import (
-    AnthropicConnector,
-    BedrockConnector,
-    FakeConnector,
-    GeminiConnector,
-    OpenAIConnector,
-    OpenAIResponsesConnector,
-)
+from ai_runtime.llms.connector.anthropic import AnthropicConnector
+from ai_runtime.llms.connector.bedrock import BedrockConnector
+from ai_runtime.llms.connector.fake import FakeConnector
+from ai_runtime.llms.connector.gemini import GeminiConnector
+from ai_runtime.llms.connector.openai import OpenAIConnector
+from ai_runtime.llms.connector.responses import OpenAIResponsesConnector
 from contracts.llm_providers import LlmProviders
 
 

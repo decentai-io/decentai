@@ -9,13 +9,13 @@ import asyncio
 import json
 from pathlib import Path
 
-from ai_runtime.chat import Session
+from ai_runtime.chat.session import Session
 from ai_runtime.chat.clock import (
     ChatClock, Schedule, Scheduler,
 )
 from ai_runtime.execution.executor import FunctionExecutor
 from ai_runtime.sinks import ChatSinks
-from ai_runtime.llms import FakeConnector
+from ai_runtime.llms.connector.fake import FakeConnector
 from ai_runtime.tests.fixture_agents import load_agents
 from sim.schedules import MemoryScheduleStore
 from ai_runtime.tests.fires import Fires
@@ -393,7 +393,8 @@ class TestTheCalendar:
 
     def test_the_mind_stamps_in_the_chats_zone(self):
         """The same instant, two chats, two clocks on the wall."""
-        from ai_runtime.mind import Assistant, AssistantState
+        from ai_runtime.mind.assistant import Assistant
+        from ai_runtime.mind.state import AssistantState
 
         instant = self._at("2026-09-03T12:00")
         for tz, expected in ((self.DUBAI, "Thu 2026-09-03 12:00"),

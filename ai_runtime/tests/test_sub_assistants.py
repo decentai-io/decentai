@@ -459,7 +459,7 @@ class TestAChildsScreen:
         assert services.relayed == [{"event": "screen_frame", "call_id": "c1", "child": "sub_x"}]
 
         from ai_runtime.chat.session import Session
-        from ai_runtime.llms import FakeConnector
+        from ai_runtime.llms.connector.fake import FakeConnector
         from ai_runtime.tests.fixture_agents import load_agents
         from ai_runtime.tests.test_session import AGENTS_DIR
         agents, errors = load_agents(AGENTS_DIR)

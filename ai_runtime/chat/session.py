@@ -62,9 +62,7 @@ from __future__ import annotations
 
 import logging
 import asyncio
-import json
 import time
-from functools import partial
 from typing import Any, Callable, Dict, List, Optional
 
 from ai_runtime.agents.library import InstalledAgent
@@ -72,8 +70,10 @@ from ai_runtime.agents.workers import WorkerError
 from ai_runtime.agents.pool import WorkerPool
 from ai_runtime.llms.connector.tools import text_block
 from ai_runtime.chat.cards import Cards
-from ai_runtime.chat.code_review import CodeReviewer
 from ai_runtime.chat.clock import ChatClock, Scheduler
+from ai_runtime.chat.code_review import CodeReviewer
+from ai_runtime.chat.helpers import Helpers
+from ai_runtime.chat.screen import Screen
 from ai_runtime.chat.summarizer import Summarizer
 from ai_runtime.execution.executor import FunctionExecutor, ParkedInvocation
 from ai_runtime.mind.assistant import Assistant
@@ -83,13 +83,12 @@ from ai_runtime.mind.state import (
     RUNNING,
     WAITING_APPROVAL,
     AssistantState,
-    Job,
 )
 from ai_runtime.sinks import ChatSinks
 from decentai_sdk.base import Completion
 
 
-class Session:
+class Session(Helpers, Screen):
     #: How long an agent's question waits for a person (contracts/chat.py).
 
     def __init__(
@@ -745,10 +744,6 @@ class Session:
             return None
         return {"until": row.next_run_at, "why": row.note}
 
-    #: how long closing the chat's browser may take before the kill
-    #: goes on without it
-    QUIT_BROWSER_SECONDS = 20.0
-
     async def kill(self, browser: bool = True) -> Dict[str, int]:
         """The kill switch: nothing waits for a beat to finish.
 
@@ -841,23 +836,6 @@ class Session:
         self.assistant._stopping = False
         self.logger.info(f"Killed {self.chat_id}: {counts}")
         return counts
-
-    async def _quit_browser(self) -> None:
-        """The browser this chat kept, closed through the roster's watch
-        function — bounded, and skipped when no agent can show one."""
-        for agent in self.roster.values():
-            manifest = getattr(agent, "manifest", None)
-            if manifest is None:
-                continue
-            for name, _tool, function in manifest.functions():
-                if function.get("watch") is True:
-                    try:
-                        await asyncio.wait_for(
-                            self._watch(agent, agent.granted(name), "quit"),
-                            self.QUIT_BROWSER_SECONDS)
-                    except (asyncio.TimeoutError, Exception) as exc:
-                        self.logger.warning(f"Browser of {self.chat_id} not closed: {exc}")
-                    return
 
     def abandon(self) -> None:
         """A crash, on demand — the host's shutdown, a helper whose
@@ -1034,129 +1012,6 @@ class Session:
         self.assistant.post(event)
         return True
 
-    # ------------------------------------------------------------------
-    # Children (docs/system/sub-assistants.md)
-    # ------------------------------------------------------------------
-
-    def _inherit(self, grants, chat_level: int, safety: Dict[str, Any]) -> None:
-        """A helper taking its parent's authority as it now stands."""
-        self.grants = grants
-        self.chat_level = chat_level
-        self.safety = dict(safety)
-        if self.assistant is not None:
-            self.assistant.chat_level = chat_level
-            self.assistant.executor.grants = grants
-            self.assistant.executor.safety = dict(safety)
-
-    async def _spawn_child(self, job: Job, resuming: bool = False):
-        """Run one child to its report: ``(result, status, trace)``.
-        Fresh, the goal is delivered as its first message; resuming, the
-        child hydrates its own state and continues from where it was."""
-        spec = job.inputs or {}
-        child_id = f"{self.chat_id}/{job.child}"
-        agents = spec.get("agents")
-        roster = (self.roster if agents is None else
-                  {a: self.roster[a] for a in agents if a in self.roster})
-        child = Session(
-            child_id, roster, self.child_connector or self.connector,
-            self.services,
-            workers=self.workers, grants=self.grants,
-            chat_level=self.chat_level, max_beats=self.max_beats,
-            max_skills=self.max_skills, skills=self.enabled_skills,
-            router=self.router, routing=self.routing,
-            clock=self.clock, parent=self.chat_id,
-            timezone=self.timezone, safety=self.safety,
-            # Its emissions are this chat's, tagged as the helper's; its
-            # cards park this chat's job.
-            emit=partial(self._emit_for, child_id),
-            relay=partial(self._relay_for, child_id),
-            job_id=job.job_id,
-        )
-        self.children[job.job_id] = child
-        try:
-            await child.open()
-            if resuming and child.fresh:
-                return ({
-                    "error": "The sub-assistant's state is gone with the "
-                             "process that ran it; whether its work "
-                             "happened is unknown. Spawn it again if it "
-                             "should run.",
-                }, "error", [])
-            if not resuming:
-                await child.deliver_user(
-                    str(spec.get("goal") or ""), actor="parent")
-            await child.wait_done()
-            return await child.report()
-        except asyncio.CancelledError:
-            if self._abandoned or child.assistant is None:
-                child.abandon()
-            else:
-                # Stopped, not crashed: what the helper was doing ends,
-                # and the cards it had out are closed with it.
-                try:
-                    await asyncio.shield(child.kill(browser=False))
-                except asyncio.CancelledError:
-                    pass
-                except Exception as exc:
-                    self.logger.warning(
-                        f"Helper {child_id} not stopped cleanly: {exc}")
-            raise
-        finally:
-            self.children.pop(job.job_id, None)
-
-    async def report(self):
-        """A child's report: why it finished, its summary — else its
-        last say, read back from its thread when this incarnation never
-        heard one — its plan with the evidence on it, and every
-        invocation it made, for the parent's evidence.
-
-        The status is the reason's: ``completed`` is success, anything
-        else — a question nobody answered, a blocked plan, a model that
-        went away before any finish — is not. Finishing the job is not
-        finishing the work."""
-        summary = self.report_summary or self.last_say
-        if not summary:
-            for message in reversed(
-                    await self.services.history(self.chat_id)):
-                if message.get("actor") == "ai":
-                    parts = message.get("parts") or [{}]
-                    summary = str(parts[0].get("content") or "")
-                    break
-        reason = self.report_reason or self._finish_on_record() or "incomplete"
-        return ({"summary": summary, "reason": reason,
-                 "items": self.assistant.state.plan.to_steps()},
-                "success" if reason == "completed" else "error",
-                list(self.assistant.state.trace))
-
-    def _finish_on_record(self) -> str:
-        """The reason the child's own transcript ends on, for a report
-        read after the incarnation that heard the finish is gone. The
-        last action being anything but a finish means it did not."""
-        for message in reversed(self.assistant.state.messages):
-            if message.get("role") != "assistant":
-                continue
-            try:
-                action = json.loads(str(message.get("content") or ""))
-            except ValueError:
-                continue
-            if not isinstance(action, dict):
-                continue
-            if action.get("action") == "finish":
-                return str(action.get("reason") or "completed")
-            if action.get("action") == "say" and action.get("final") is True:
-                return "completed"
-            return ""
-        return ""
-
-    async def _finish(self, summary: str, reason: str = "completed") -> None:
-        if summary:
-            self.report_summary = summary
-        self.report_reason = reason
-
-    async def _refuse_memory(self, text: str) -> None:
-        raise RuntimeError("Durable facts are the parent's to save, "
-                           "visibly — put it in your report.")
-
     async def _save_state(self, state: AssistantState) -> None:
         await self.services.save_state(self.chat_id, state.to_dict())
 
@@ -1315,53 +1170,6 @@ class Session:
             return
         if kept:
             await self._relay({"event": "chat_titled", "title": title})
-
-    async def open_screen(self, action: str = "open") -> bool:
-        """The person asked to see a browser before asking anything of
-        it. The roster's agent that declares a watch function is called
-        directly — no model, no turn, level 0 by contract — and streams
-        its screen until the person closes the panel or a run takes the
-        browser. One at a time; asked again while one shows, nothing
-        changes. Without such an agent the page is told."""
-        if action == "open" and self.watching is not None and not self.watching.done():
-            return True
-        for agent in self.roster.values():
-            manifest = getattr(agent, "manifest", None)
-            if manifest is None:
-                continue
-            for name, _tool, function in manifest.functions():
-                if function.get("watch") is True:
-                    canonical = agent.granted(name)
-                    task = asyncio.get_running_loop().create_task(
-                        self._watch(agent, canonical, action))
-                    if action == "open":
-                        self.watching = task
-                    return True
-        await self._relay({
-            "event": "screen_unavailable",
-            "detail": "No agent in this chat can show a browser."})
-        return False
-
-    async def _watch(self, agent, canonical: str, action: str = "open") -> None:
-        try:
-            result, status = await self.assistant.executor.invoke(
-                agent, canonical, {"action": action} if action != "open" else {},
-                chat_level=self.chat_level)
-            self.logger.info(f"Watch {canonical} ended: {status} "
-                             f"{str(result)[:120]}")
-        except Exception as exc:
-            self.logger.warning(f"Watch {canonical} failed: {exc}")
-
-    async def deliver_screen_input(self, call_id: str, events: list) -> bool:
-        """The person acting on a screen — mouse, keys, wheel, taking or
-        releasing control — to the call showing it, here or in a live
-        child."""
-        if call_id in self.cards.screens:
-            return await self.assistant.executor.screen_input(call_id, events)
-        for child in self.helpers():
-            if await child.deliver_screen_input(call_id, events):
-                return True
-        return False
 
     async def _resume_parked(self, parked: Dict[str, Any], approved: bool,
                              action_hash: str = "") -> None:

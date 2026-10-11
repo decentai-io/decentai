@@ -81,7 +81,7 @@ runtime, where copies cost something.
 
 Everything outside the package speaks the ref; only the manifest
 lookup and the worker call translate it to the package id
-(`ai_runtime/agents/approved.py`). The page maps a ref to the agent's
+(`ApprovedAgent`, `ai_runtime/agents/library.py`). The page maps a ref to the agent's
 display name.
 
 ## The runtime's store
