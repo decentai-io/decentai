@@ -6,9 +6,9 @@ grants whether this chat may reach the function → resolve reference
 inputs, apply defaults, validate inputs against the manifest schema →
 read the scopes the call names and hold them to the grants → enforce the
 permission level against the chat level (pausing for approval when
-required) → build the call's context (the mediated resources, and what
-else the manifest allows it) → execute in the agent's worker under the
-function's timeout → validate the output. Denials, failures, timeouts
+required) → build the Call (the mediated resources, and what else the
+manifest allows it; execution/call.py) → execute in the agent's worker
+under the function's timeout → validate the output. Denials, failures, timeouts
 and a fault on the platform's own side come back as ``(result,
 "error")`` — observations for the proposing loop, never exceptions. A
 call cancelled from outside is the one thing raised, after its line is
@@ -33,9 +33,8 @@ from ai_runtime.agents.library import InstalledAgent
 from ai_runtime.agents.mcp import McpServer
 from ai_runtime.sinks import ChatSinks
 from ai_runtime.agents.workers import WorkerError
-from ai_runtime.agents.pool import CallContext, WorkerPool
-from ai_runtime.execution.call_surface import CallSurface
-from ai_runtime.execution.code_grant import CodeGrant
+from ai_runtime.agents.pool import WorkerPool
+from ai_runtime.execution.call import Call
 from ai_runtime.execution.resources import ResourceAccess
 
 # ----------------------------------------------------------------------
@@ -108,13 +107,11 @@ class FunctionExecutor:
         #: here, whoever calls it, so workers stay warm across chats.
         self.workers = workers
         self.logger = logging.getLogger(self.__class__.__name__)
-        #: What a running call may ask of the chat, checked and handed
-        #: on in the agent's name (call_surface.py). It keeps the
-        #: deployment's Safety settings too — the sites no agent may
-        #: open, the packages a program may install — reached here as
-        #: ``safety``, which the session writes again at each refresh.
-        self.surface = CallSurface(self.sinks, workers.confinement, safety,
-                                   self.logger)
+        #: What the deployment lets agents do (Settings:Safety) — the
+        #: sites no agent may open, the packages a program may install
+        #: — handed to every call. The session writes it again at each
+        #: refresh.
+        self.safety: Dict[str, Any] = dict(safety or {})
         #: call_id -> the hosts that call's worker connected to, from
         #: the call's end until its line on the trail is written.
         self._reached: Dict[str, Dict[str, int]] = {}
@@ -124,14 +121,6 @@ class FunctionExecutor:
         # executor in door/app.py has none; a fire runs with the
         # host's, fire_context, and not with that one.)
         self.grants = grants
-
-    @property
-    def safety(self) -> Dict[str, Any]:
-        return self.surface.safety
-
-    @safety.setter
-    def safety(self, value: Optional[Dict[str, Any]]) -> None:
-        self.surface.safety = dict(value or {})
 
     # ------------------------------------------------------------------
     async def invoke(
@@ -406,11 +395,11 @@ class FunctionExecutor:
         """Everything past the gates: the invocation in the agent's
         worker, output validation, and result storage.
 
-        The context IS the invocation's authority — the mediated
-        resources built from the function's declared operations, and
-        the model only when the manifest declares ``llm: true``. The
-        worker holds none of it; every ask resolves back here, per
-        call_id, against this context (pool.py)."""
+        The Call IS the invocation's authority — the mediated resources
+        built from the function's declared operations, and the model
+        only when the manifest declares ``llm: true``. The worker holds
+        none of it; every ask resolves back to the Call, per call_id
+        (execution/call.py, pool.py)."""
         call_id = call_id or f"c_{uuid.uuid4().hex[:12]}"
         # Before anything runs: a function whose declared outputs are
         # not a schema would do its work, and its writes, and then fail.
@@ -421,10 +410,6 @@ class FunctionExecutor:
                     f"'{canonical_name}' cannot run: its manifest's {part} "
                     f"are not a schema ({unreadable})."
                 )}, "error"
-        displays: list = []
-        # Declared or nothing: only a function that said it runs code
-        # is opened what a card names.
-        grant = CodeGrant() if function_spec.get("code") is True else None
         access = ResourceAccess(
             self._grants(function_spec),
             self.provider,
@@ -441,14 +426,10 @@ class FunctionExecutor:
                 if isinstance(resource.get("constraints"), dict)
             },
         )
-        context = CallContext(
-            resources=access,
-            **self.surface.for_call(agent, function_spec, canonical_name,
-                                    call_id, access, grant, displays,
-                                    job_id or self.job_id),
-        )
-        if grant is not None:
-            grant.context = context
+        call = Call(call_id, agent, function_spec, canonical_name,
+                    job_id or self.job_id, resources=access, sinks=self.sinks,
+                    safety=self.safety, confinement=self.workers.confinement,
+                    logger=self.logger)
 
         timeout = int(
             function_spec.get("timeout_seconds") or self.DEFAULT_TIMEOUT_SECONDS
@@ -461,14 +442,13 @@ class FunctionExecutor:
                 blocked = self._blocked(agent.host)
                 if blocked:
                     return {"error": blocked}, "error"
-                context.reached[agent.host] = 1
+                call.reached[agent.host] = 1
                 result, status = await asyncio.wait_for(
                     agent.run(agent.declared(canonical_name), inputs), timeout)
             else:
                 result, status = await self.workers.invoke(
-                    agent, call_id,
-                    agent.declared(canonical_name), inputs, context, timeout,
-                    conversation=self.conversation,
+                    agent, agent.declared(canonical_name), inputs, call,
+                    timeout, conversation=self.conversation,
                 )
         except asyncio.TimeoutError:
             return {
@@ -483,12 +463,9 @@ class FunctionExecutor:
                 "error": f"'{canonical_name}' failed: {str(exc).strip()[:300]}"
             }, "error"
         finally:
-            # What the person opened, they opened for this call.
-            if grant is not None:
-                grant.close()
-            if context.reached:
-                self._reached[call_id] = dict(context.reached)
-            await self.surface.end_screen(call_id)
+            if call.reached:
+                self._reached[call_id] = dict(call.reached)
+            await call.end_screen()
 
         # The keys the platform writes on a result are read as its own
         # word by everything after this — the trail, the evidence, the
@@ -519,8 +496,8 @@ class FunctionExecutor:
                     result = {**result, "storage_ref": storage_ref}
             # What the call offered to show rides its result — added, like
             # the storage ref, after the output was proved.
-            if displays:
-                result = {**result, "displays": list(displays)}
+            if call.displays:
+                result = {**result, "displays": list(call.displays)}
 
         return result, status
 

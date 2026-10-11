@@ -14,7 +14,9 @@ import pytest
 
 import ai_runtime.agents.pool as pool_module
 from ai_runtime.agents.workers import WorkerError
-from ai_runtime.agents.pool import CallContext, WorkerPool
+from ai_runtime.agents.pool import WorkerPool
+from ai_runtime.execution.call import Call
+from ai_runtime.sinks import ChatSinks
 from ai_runtime.tests.fake_container import confinement
 from ai_runtime.tests import fake_container
 
@@ -124,28 +126,25 @@ class TestAHostACredentialNames:
             return {"host": "mail.sara.example"}
 
         async def scenario():
-            saras = CallContext(SimpleNamespace(use_secret=use_secret))
-            await pool.invoke(approved("agt_a"), "c_1", "use_secret", {},
-                              saras, 5)
+            saras = Call("c_1", resources=SimpleNamespace(use_secret=use_secret))
+            await pool.invoke(approved("agt_a"), "use_secret", {}, saras, 5)
             assert place.seen_open == [[("mail.sara.example", None)]]
             assert place.open == [] and saras.learned == []
             # The same worker, the next person's call: nothing is open.
-            await pool.invoke(approved("agt_a"), "c_2", "notebook.note.find",
-                              {}, CallContext(None), 5)
+            await pool.invoke(approved("agt_a"), "notebook.note.find", {}, Call("c_2"), 5)
             assert place.open == []
         run(scenario())
 
     def test_it_closes_when_the_call_fails(self, pool, monkeypatch):
         place = Place()
         monkeypatch.setattr(pool.confinement, "place", lambda key: place)
-        context = CallContext(None)
+        context = Call("c_1")
         context.learned = [("mail.sara.example", None)]
         place.open = list(context.learned)
 
         async def scenario():
             with pytest.raises(asyncio.TimeoutError):
-                await pool.invoke(approved("agt_a"), "c_1", "hang", {},
-                                  context, 0.05)
+                await pool.invoke(approved("agt_a"), "hang", {}, context, 0.05)
             assert place.open == []
         run(scenario())
 
@@ -156,12 +155,9 @@ class TestIsolation:
         assert a.digest == b.digest
 
         async def scenario():
-            await pool.invoke(a, "c_1", "notebook.note.find", {},
-                              CallContext(None), 5)
-            await pool.invoke(b, "c_2", "notebook.note.find", {},
-                              CallContext(None), 5)
-            await pool.invoke(a, "c_3", "notebook.note.find", {},
-                              CallContext(None), 5, conversation="chat_9")
+            await pool.invoke(a, "notebook.note.find", {}, Call("c_1"), 5)
+            await pool.invoke(b, "notebook.note.find", {}, Call("c_2"), 5)
+            await pool.invoke(a, "notebook.note.find", {}, Call("c_3"), 5, conversation="chat_9")
             assert set(pool._handles) == {"agt_a", "agt_b"}
             assert pool._handles["agt_a"] is not pool._handles["agt_b"]
             # The chat's key rides along to the worker, absent outside a chat.
@@ -174,17 +170,14 @@ class TestIsolation:
         after.digest = "sha256:" + "1" * 64
 
         async def scenario():
-            await pool.invoke(before, "c_1", "expenses.claims.get", {},
-                              CallContext(None), 5)
+            await pool.invoke(before, "expenses.claims.get", {}, Call("c_1"), 5)
             old = pool._handles["agt_a"]
-            await pool.invoke(after, "c_2", "expenses.claims.list", {},
-                              CallContext(None), 5)
+            await pool.invoke(after, "expenses.claims.list", {}, Call("c_2"), 5)
             new = pool._handles["agt_a"]
             assert new is not old and not old.alive and new.alive
             assert pool.live_digests() == {after.digest}
             # The same version again keeps its worker.
-            await pool.invoke(after, "c_3", "expenses.claims.list", {},
-                              CallContext(None), 5)
+            await pool.invoke(after, "expenses.claims.list", {}, Call("c_3"), 5)
             assert pool._handles["agt_a"] is new
         run(scenario())
 
@@ -196,14 +189,12 @@ class TestIsolation:
             return rows
 
         async def scenario():
-            await pool.invoke(a, "c_0", "notebook.note.find", {},
-                              CallContext(None), 5)
-            await pool.invoke(b, "c_0", "notebook.note.find", {},
-                              CallContext(None), 5)
+            await pool.invoke(a, "notebook.note.find", {}, Call("c_0"), 5)
+            await pool.invoke(b, "notebook.note.find", {}, Call("c_0"), 5)
             worker_a, worker_b = pool._handles["agt_a"], pool._handles["agt_b"]
 
             # One live invocation, sent to worker A.
-            context = CallContext(SimpleNamespace(list_data=list_data))
+            context = Call("c_live", resources=SimpleNamespace(list_data=list_data))
             context.handle = worker_a
             pool._calls["c_live"] = context
             ask = {"call_id": "c_live", "resource_id": "note", "filters": None}
@@ -227,7 +218,7 @@ class TestIsolation:
 
         async def scenario():
             invocation = asyncio.create_task(pool.invoke(
-                a, "c_hang", "hang", {}, CallContext(None), 60))
+                a, "hang", {}, Call("c_hang"), 60))
             await asyncio.sleep(0.05)              # let it reach the worker
             invocation.cancel()
             with pytest.raises(asyncio.CancelledError):
@@ -240,13 +231,13 @@ class TestIsolation:
         a, b = approved("agt_a"), approved("agt_b")
         heard = []
 
-        async def sink(description):
+        async def sink(description, source):
             heard.append(description)
 
         async def scenario():
-            await pool.invoke(a, "c_0", "f", {}, CallContext(None), 5)
-            await pool.invoke(b, "c_0", "f", {}, CallContext(None), 5)
-            context = CallContext(None, progress=sink)
+            await pool.invoke(a, "f", {}, Call("c_0"), 5)
+            await pool.invoke(b, "f", {}, Call("c_0"), 5)
+            context = Call("c_live", sinks=ChatSinks(progress=sink))
             context.handle = pool._handles["agt_a"]
             pool._calls["c_live"] = context
 
@@ -270,8 +261,8 @@ class TestAskContext:
             return SimpleNamespace(use_secret=use_secret)
 
         async def in_chat(chat_id, call_id):
-            context = CallContext(resources_of(chat_id))
-            return await pool.invoke(a, call_id, "use_secret", {}, context, 5)
+            context = Call(call_id, resources=resources_of(chat_id))
+            return await pool.invoke(a, "use_secret", {}, context, 5)
 
         async def scenario():
             first = await in_chat("chat_a", "c_1")

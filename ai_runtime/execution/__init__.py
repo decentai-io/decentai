@@ -8,10 +8,12 @@ ai_runtime/agents/. This module is the judgment wrapped around them:
     executor.py   the one chokepoint every invocation passes through:
                   validate, authorize, pause for a human, then run it
                   in the agent's worker and believe nothing unchecked
+    call.py       one running call: what it may ask of the chat, each
+                  ask checked and handed on in the agent's name, and
+                  what a person allowed it on its cards
     resources.py  the mediated resource API — bindings, not credentials
     pictures.py   a picture an agent hands over, checked before a model
                   or a person is shown it
-    code_grant.py what a person allowed for one call that runs code
 
 Reasoning about WHICH function to call is the chat's
 (ai_runtime/mind/assistant.py); this module only ever judges and runs

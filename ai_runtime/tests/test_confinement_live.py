@@ -44,7 +44,8 @@ from ai_runtime.agents.egress import EgressProxy
 from ai_runtime.agents.environments import AgentEnvironment
 from ai_runtime.agents.library import InstalledAgent
 from ai_runtime.agents.workers import WorkerHandle
-from ai_runtime.agents.pool import CallContext, WorkerPool
+from ai_runtime.agents.pool import WorkerPool
+from ai_runtime.execution.call import Call
 from ai_runtime.tests.fixture_agents import MINIMAL_MANIFEST, write_agent
 from ai_runtime.sinks import ChatSinks
 from contracts.agent_manifest import load_manifest
@@ -884,20 +885,17 @@ class TestAFencedNetwork:
             pool = WorkerPool(confinement)
             try:
                 before, _ = await pool.invoke(
-                    agent, "c_1", "intruder.main.run",
-                    {"what": "fetch", "target": url},
-                    CallContext(resources=Credentials()), timeout=30)
+                    agent, "intruder.main.run", {"what": "fetch", "target": url},
+                    Call("c_1", resources=Credentials()), timeout=30)
                 after, _ = await pool.invoke(
-                    agent, "c_2", "intruder.main.run",
-                    {"what": "fetch_with_its_credential", "target": url},
-                    CallContext(resources=Credentials()), timeout=30)
+                    agent, "intruder.main.run", {"what": "fetch_with_its_credential", "target": url},
+                    Call("c_2", resources=Credentials()), timeout=30)
                 # The same worker, somebody else's call: it was handed
                 # no credential, and the host closed with the call that
                 # was.
                 later, _ = await pool.invoke(
-                    agent, "c_3", "intruder.main.run",
-                    {"what": "fetch", "target": url},
-                    CallContext(resources=Credentials()), timeout=30)
+                    agent, "intruder.main.run", {"what": "fetch", "target": url},
+                    Call("c_3", resources=Credentials()), timeout=30)
                 return before, after, later
             finally:
                 await pool.stop()
@@ -1381,9 +1379,7 @@ class TestThePool:
 
         async def scenario():
             pool = WorkerPool(confinement)
-            result, status = await pool.invoke(
-                agent, "c_1", "intruder.main.run", {"what": "whoami"},
-                CallContext(resources=None), timeout=30)
+            result, status = await pool.invoke( agent, "intruder.main.run", {"what": "whoami"}, Call("c_1", resources=None), timeout=30)
             assert status == "success", result
             assert result["user"] == user_of("intruder")
             await pool.stop()

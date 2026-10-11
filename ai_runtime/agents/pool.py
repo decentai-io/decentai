@@ -5,17 +5,17 @@ on first invocation in that agent's own place (confinement.py), kept
 warm, replaced after death. The pool is also the ROUTER — the single
 place a worker's asks (resources.*, llm.complete, show, post, ask,
 propose, install, credential) are answered, by resolving the ask's
-call_id to the invocation that is entitled to answer it:
+call_id to the Call that is entitled to answer it:
 
-    context = CallContext(resources, llm, progress)   built per invocation
-    pool.invoke(agent, call_id, function, inputs, context, timeout)
+    call = Call(...)                     built per invocation by the executor
+    pool.invoke(agent, function, inputs, call, timeout)
 
-The context carries authority the worker never holds: the mediated
-ResourceAccess built from the function's declared operations, the
-chat's model when — and only when — the function declared ``llm: true``,
-and the chat's progress sink. An ask with an unknown call_id, an
-undeclared operation, or no model behind it is refused here, and the
-refusal surfaces in the agent's function as ResourceDenied.
+The Call (execution/call.py) carries authority the worker never holds:
+the mediated resources built from the function's declared operations,
+the chat's model when — and only when — the function declared ``llm:
+true``, the chat's doors. An ask with an unknown call_id, an undeclared
+operation, or no model behind it is refused there, and the refusal
+surfaces in the agent's function as ResourceDenied.
 
 Two rules keep one invocation's authority from another's:
 
@@ -28,7 +28,7 @@ Two rules keep one invocation's authority from another's:
   trust decision, at the cost of one process per organization per
   agent.
 - **An ask is answered only from the worker its invocation was sent
-  to.** The context is bound to the handle before the invoke goes out,
+  to.** The call is bound to the handle before the invoke goes out,
   and the router checks the asking handle against it. A call id alone,
   however it was learned, opens nothing.
 
@@ -43,94 +43,11 @@ from __future__ import annotations
 import asyncio
 import logging
 from functools import partial
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 from ai_runtime.agents.confinement import Confinement
 from ai_runtime.agents.library import InstalledAgent
 from ai_runtime.agents.workers import WorkerError, WorkerHandle
-
-#: The one refusal call.llm() can meet — same wording as the SDK's own,
-#: so the function's author reads one message wherever it runs.
-LLM_UNAVAILABLE = (
-    "The platform model is not available here — the function must "
-    "declare `llm: true` in its manifest, and the invocation must run "
-    "inside a chat with a model."
-)
-
-#: method suffix -> the parameters it takes, in call order.
-RESOURCE_METHODS = {
-    "use_secret": ("resource_id", "ref"),
-    "list_secrets": ("resource_id",),
-    "list_data": ("resource_id", "filters"),
-    "read_data": ("resource_id", "ref"),
-    "create_data": ("resource_id", "fields"),
-    "update_data": ("resource_id", "ref", "fields"),
-    "delete_data": ("resource_id", "ref"),
-    "list_files": ("resource_id",),
-    "read_file": ("resource_id", "ref"),
-    "create_file": ("resource_id", "filename", "content", "content_base64"),
-    "delete_file": ("resource_id", "ref"),
-}
-
-
-class CallContext:
-    """What one invocation is entitled to — built by the executor from
-    the function's manifest declarations, resolved per ask."""
-
-    def __init__(self, resources: Any, llm: Optional[Callable] = None,
-                 progress: Optional[Callable] = None,
-                 show: Optional[Callable] = None,
-                 post: Optional[Callable] = None,
-                 ask: Optional[Callable] = None,
-                 credential: Optional[Callable] = None,
-                 screen: Optional[Callable] = None,
-                 propose: Optional[Callable] = None,
-                 install: Optional[Callable] = None,
-                 blocked: Optional[List[str]] = None):
-        self.resources = resources
-        #: Sites no agent may open in this deployment, told to the
-        #: worker's proxy pass as the call begins.
-        self.blocked = list(blocked or [])
-        #: host -> connections this call's worker made while it ran:
-        #: filled in when the call ends, for the audit trail. A worker
-        #: serving two calls at once counts for both.
-        self.reached: Dict[str, int] = {}
-        #: Hosts a credential handed to this call named (``from_secret``),
-        #: open on the worker's way out until the call ends.
-        self.learned: list = []
-        #: async (kind, params) -> None: a screen the function shows —
-        #: "frame" with the picture, "closed" when it stops. None where
-        #: nobody could watch (a test).
-        self.screen = screen
-        self.llm = llm
-        self.progress = progress
-        #: async (host, fields, account, site, refresh) -> values | None:
-        #: a login the function asks for as it works. None where the
-        #: manifest did not declare credentials, or nobody could answer.
-        self.credential = credential
-        #: async (display spec) -> display id: what the call offers to
-        #: show, checked and kept. None where nobody could see it.
-        self.show = show
-        #: async (text, display ids) -> bool: the agent speaking for
-        #: itself. None where there is no chat to speak in.
-        self.post = post
-        #: async (question, choices) -> answer | None: the agent asking
-        #: the person. None where there is no one to ask.
-        self.ask = ask
-        #: async (code) -> allowed | None: code the function wants to
-        #: run, put before the person. None where there is no one to ask.
-        self.propose = propose
-        #: async (packages) -> folder: packages a card the person
-        #: allowed named, installed for this call. None unless the
-        #: function declared ``code: true``.
-        self.install = install
-        #: The function's clock stops while a person decides: how many
-        #: questions are open, and how long answered ones waited.
-        self.waiting = 0
-        self.waited = 0.0
-        #: The worker the invocation was sent to, bound by the pool
-        #: before the invoke goes out. An ask is answered only from it.
-        self.handle: Optional[WorkerHandle] = None
 
 
 class WorkerPool:
@@ -144,35 +61,36 @@ class WorkerPool:
         #: deletes the folder a live process is running from.
         self._running: Dict[str, str] = {}
         self._locks: Dict[str, asyncio.Lock] = {}
-        self._calls: Dict[str, CallContext] = {}
+        #: call_id -> the live Call (execution/call.py) that answers it.
+        self._calls: Dict[str, Any] = {}
         self.logger = logging.getLogger(self.__class__.__name__)
 
     # ------------------------------------------------------------------
     # One invocation, end to end
     # ------------------------------------------------------------------
 
-    async def invoke(self, agent: InstalledAgent, call_id: str,
-                     function: str, inputs: dict, context: CallContext,
-                     timeout: int, conversation: str = "") -> Tuple[dict, str]:
-        """Run one function in the agent's worker. Returns the
-        function's ``(result, status)``. Raises TimeoutError past the
+    async def invoke(self, agent: InstalledAgent, function: str, inputs: dict,
+                     call: Any, timeout: float,
+                     conversation: str = "") -> Tuple[dict, str]:
+        """Run one function in the agent's worker, as ``call``. Returns
+        the function's ``(result, status)``. Raises TimeoutError past the
         host's clock and WorkerError when the worker itself is broken —
         the caller words both for the proposing loop."""
-        self._calls[call_id] = context
+        self._calls[call.call_id] = call
         handle = None
         before: Dict[str, int] = {}
         try:
             handle = await self._handle(agent)
-            context.handle = handle
-            handle.place.block(context.blocked)
+            call.handle = handle
+            handle.place.block(call.blocked)
             before = handle.place.reached()
             try:
                 return await self._within(
-                    handle.invoke(call_id, function, inputs, conversation),
-                    context, timeout,
+                    handle.invoke(call.call_id, function, inputs, conversation),
+                    call, timeout,
                 )
             except asyncio.TimeoutError:
-                await self._overrule(handle, call_id)
+                await self._overrule(handle, call.call_id)
                 raise
             except asyncio.CancelledError:
                 # The platform cancelled the job. Dropping our side of
@@ -180,22 +98,24 @@ class WorkerPool:
                 # runs on unless told, and the job would read cancelled
                 # while the write it was making lands. Shielded, so a
                 # second cancel cannot cut the order short.
-                await asyncio.shield(self._overrule(handle, call_id))
+                await asyncio.shield(self._overrule(handle, call.call_id))
                 raise
         finally:
-            self._calls.pop(call_id, None)
+            self._calls.pop(call.call_id, None)
             if handle is not None:
-                # What this call's credential opened closes with it: the
-                # worker goes on to serve somebody else's call.
-                handle.place.take_back(context.learned)
-                context.learned = []
-                context.reached = {
+                # What was opened for this call closes with it: the
+                # worker goes on to serve somebody else's call. And what
+                # the worker reached meanwhile is the call's, for the
+                # trail — a worker serving two calls at once counts for
+                # both.
+                call.close()
+                call.reached = {
                     host: count - before.get(host, 0)
                     for host, count in handle.place.reached().items()
                     if count > before.get(host, 0)}
 
     @staticmethod
-    async def _within(work, context: CallContext, timeout: float):
+    async def _within(work, call: Any, timeout: float):
         """The function's own clock: ``timeout`` seconds of its work,
         stopped while it waits on a person (call.ask) — a question can
         take hours, and that wait is bounded where it is kept (the
@@ -205,10 +125,10 @@ class WorkerPool:
         started = loop.time()
         try:
             while True:
-                if context.waiting:
+                if call.waiting:
                     budget = 1.0        # paused: look again in a moment
                 else:
-                    budget = timeout - (loop.time() - started - context.waited)
+                    budget = timeout - (loop.time() - started - call.waited)
                     if budget <= 0:
                         raise asyncio.TimeoutError()
                 done, _ = await asyncio.wait({task}, timeout=budget)
@@ -321,163 +241,43 @@ class WorkerPool:
         self._calls.clear()
 
     # ------------------------------------------------------------------
-    # The router — every ask a worker can make, answered per call_id
+    # The router — every ask a worker can make, answered by its call
     # ------------------------------------------------------------------
+
+    def _call_of(self, handle: WorkerHandle, call_id: str) -> Any:
+        """The live call this worker may speak for under this id, or
+        None: a call id alone, however it was learned, opens nothing."""
+        call = self._calls.get(str(call_id or ""))
+        return call if call is not None and call.handle is handle else None
 
     async def _route(self, handle: WorkerHandle, method: str,
                      params: dict) -> Any:
-        context = self._calls.get(str(params.get("call_id") or ""))
-        if context is None or context.handle is not handle:
+        call = self._call_of(handle, params.get("call_id"))
+        if call is None:
             raise WorkerError("no invocation of this worker is entitled "
                               "to this ask")
-        return await self._answer(context, method, params)
+        return await call.answer(method, params)
 
-    async def _answer(self, context: CallContext, method: str,
-                      params: dict) -> Any:
-        if method == "llm.complete":
-            if context.llm is None:
-                raise WorkerError(LLM_UNAVAILABLE)
-            images = [i for i in params.get("images") or []
-                      if isinstance(i, dict)]
-            if images:
-                # Named, never carried: the executor's llm resolves each
-                # under this call's own file grant (call_surface.py, llm_for).
-                text = await context.llm(
-                    params.get("messages") or [], params.get("max_tokens"),
-                    images)
-            else:
-                text = await context.llm(
-                    params.get("messages") or [], params.get("max_tokens")
-                )
-            return {"text": str(text),
-                    "stop_reason": str(getattr(text, "stop_reason", "") or "")}
-
-        if method == "ask":
-            if context.ask is None:
-                return {"answer": None}
-            loop = asyncio.get_running_loop()
-            started = loop.time()
-            context.waiting += 1
-            try:
-                expects = str(params.get("expects") or "")
-                answer = await context.ask(
-                    str(params.get("question") or ""),
-                    [str(c) for c in params.get("choices") or []],
-                    **({"expects": expects} if expects else {}))
-            finally:
-                context.waiting -= 1
-                context.waited += loop.time() - started
-            return {"answer": answer}
-
-        if method == "propose":
-            if context.propose is None:
-                return {"allowed": None}
-            loop = asyncio.get_running_loop()
-            started = loop.time()
-            context.waiting += 1
-            try:
-                allowed = await context.propose(params.get("code"))
-            finally:
-                context.waiting -= 1
-                context.waited += loop.time() - started
-            return {"allowed": allowed}
-
-        if method == "install":
-            if context.install is None:
-                raise WorkerError(
-                    "Packages are installed only for a function that "
-                    "declares `code: true` in its manifest.")
-            # The platform's work, not the function's: a download is
-            # not counted against the function's own clock.
-            loop = asyncio.get_running_loop()
-            started = loop.time()
-            context.waiting += 1
-            try:
-                folder = await context.install(params.get("packages"))
-            finally:
-                context.waiting -= 1
-                context.waited += loop.time() - started
-            return {"folder": folder}
-
-        if method == "credential":
-            if context.credential is None:
-                raise WorkerError(
-                    "Logins are not available here — the function must "
-                    "declare `credentials: true` in its manifest, and the "
-                    "invocation must run inside a chat.")
-            loop = asyncio.get_running_loop()
-            started = loop.time()
-            context.waiting += 1
-            try:
-                values = await context.credential(
-                    str(params.get("host") or ""),
-                    list(params.get("fields") or []),
-                    str(params.get("account") or "") or None,
-                    str(params.get("site") or "") or None,
-                    bool(params.get("refresh")))
-            finally:
-                context.waiting -= 1
-                context.waited += loop.time() - started
-            return {"values": values}
-
-        if method == "post":
-            if context.post is None:
-                return {"posted": False}
-            return {"posted": bool(await context.post(
-                str(params.get("text") or ""),
-                [str(d) for d in params.get("displays") or []]))}
-
-        if method == "show":
-            if context.show is None:
-                # Nobody could see it here: the
-                # offer is not kept, and the function runs on.
-                return {"display_id": None}
-            spec = {key: value for key, value in params.items()
-                    if key != "call_id"}
-            return {"display_id": await context.show(spec)}
-
-        kind, _, operation = method.partition(".")
-        argument_names = RESOURCE_METHODS.get(operation)
-        if kind != "resources" or argument_names is None:
-            raise WorkerError(f"unknown ask '{method}'")
-
-        answer = await getattr(context.resources, operation)(
-            *(params.get(name) for name in argument_names)
-        )
-        if operation == "use_secret":
-            # A credential may name the host it is for — a person's own
-            # site — and the manifest said which field does. Handed
-            # over, it is a host the worker may reach until this call
-            # ends.
-            context.learned.extend(context.handle.place.learn(
-                str(params.get("resource_id") or ""), answer) or [])
-        if operation in ("delete_data", "delete_file"):
-            return {"deleted": bool(answer)}
-        return answer
+    async def _progress(self, handle: WorkerHandle, call_id: str,
+                        description: str) -> None:
+        call = self._call_of(handle, call_id)
+        if call is not None:
+            await call.progress(description)
 
     async def _screen(self, handle: WorkerHandle, call_id: str, kind: str,
                       params: Dict[str, Any]) -> None:
-        """A frame, or the end, of the screen one call shows — passed to
-        the call's own sink, from the worker it was sent to and no
-        other."""
-        context = self._calls.get(call_id)
-        if context is not None and context.handle is handle \
-                and context.screen is not None:
-            await context.screen(kind, params)
+        """A frame, or the end, of the screen one call shows — from the
+        worker it was sent to and no other."""
+        call = self._call_of(handle, call_id)
+        if call is not None:
+            await call.screen(kind, params)
 
     async def screen_input(self, call_id: str, events: list) -> bool:
         """The person acting on a screen: to the worker running the
         call, as a notification. False when no such call runs."""
-        context = self._calls.get(call_id)
-        if context is None or context.handle is None:
+        call = self._calls.get(call_id)
+        if call is None or call.handle is None:
             return False
-        await context.handle.notify("screen.input", {
+        await call.handle.notify("screen.input", {
             "call_id": call_id, "events": list(events)})
         return True
-
-    async def _progress(self, handle: WorkerHandle, call_id: str,
-                        description: str) -> None:
-        context = self._calls.get(call_id)
-        if context is not None and context.handle is handle \
-                and context.progress is not None:
-            await context.progress(description)

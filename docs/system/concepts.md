@@ -227,7 +227,7 @@ Where a word is used for more than one thing, each is said.
 | **fold** | the assistant shortening its own transcript when it grows | [the assistant](assistant.md) |
 | **frame** | one message on a socket. (In [the assistant](assistant.md) also the assistant's standing instructions) | `contracts/chat.py` |
 | **gateway** | `POST /app`: the one route every action goes through, and where permission is checked | `APIRouter.route`, `backend/api/api_router.py` |
-| **grant** | five things. A *policy* allowing an action. An *agent grant*: who may use an installed agent. A *secret grant*: a credential lent to an agent. The chat contract's `grants`: which functions this chat may call, and narrowed how. A *code grant*: what a person allowed one program | `policies`; `agent_grants`; `agent_secret_grants`; `FunctionGrants`; `ai_runtime/execution/code_grant.py` |
+| **grant** | five things. A *policy* allowing an action. An *agent grant*: who may use an installed agent. A *secret grant*: a credential lent to an agent. The chat contract's `grants`: which functions this chat may call, and narrowed how. A *code grant*: what a person allowed one program | `policies`; `agent_grants`; `agent_secret_grants`; `FunctionGrants`; `Call.allow`, `ai_runtime/execution/call.py` |
 | **the helper** | the one program that may start a process as another user | `decentai-spawn`, `ai_runtime/agents_container/spawn_helper.c` |
 | **host** | three things. The runtime, as an agent's worker sees it. The object that holds the runtime's sessions. And a machine on the network an agent connects to | —; `SessionHost`; `network.hosts` |
 | **inbox** | a chat's inbound events, each with a sequence number, kept until heard | `ai_chat_events`, direction `in` |

@@ -12,7 +12,7 @@ import pytest
 from ai_runtime.agents.environments import AgentEnvironment
 from ai_runtime.agents.mcp import McpServer
 from ai_runtime.agents.workers import WorkerError, WorkerHandle
-from ai_runtime.execution.code_grant import CodeGrant
+from ai_runtime.execution.call import Call
 from ai_runtime.execution.executor import FunctionExecutor
 from ai_runtime.sinks import ChatSinks
 from ai_runtime.execution.grants import FunctionGrants
@@ -226,9 +226,9 @@ class TestAPackageNameIsReadOnce:
         assert AgentEnvironment.requirement("requests >= 2.32") == "requests>=2.32"
 
     def test_the_list_is_asked_about_the_name_that_is_installed(self):
-        assert CodeGrant.problem({"packages": ["requests evil"]}, ["requests"])
-        assert CodeGrant.problem({"packages": ["requestsevil"]}, ["requests"])
-        assert CodeGrant.problem({"packages": ["requests==2.32.3"]},
+        assert Call.code_problem({"packages": ["requests evil"]}, ["requests"])
+        assert Call.code_problem({"packages": ["requestsevil"]}, ["requests"])
+        assert Call.code_problem({"packages": ["requests==2.32.3"]},
                                  ["requests"]) == ""
 
 

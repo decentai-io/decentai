@@ -519,7 +519,7 @@ work is to run code a person asked for — the Code agent — cannot say
 beforehand where that code connects. Its function says `code: true`,
 its program goes to the person on a code card that names the hosts it
 reaches, and their yes lends those hosts to the worker's pass until the
-call ends (`ai_runtime/execution/code_grant.py`). A host is counted by
+call ends (`ai_runtime/execution/call.py`, `allow` and `close`). A host is counted by
 the calls that hold it, so one call ending does not close what another
 still runs on. A card names one host by its name, with a port where
 that is not the web's: not an address, not every host under a name.

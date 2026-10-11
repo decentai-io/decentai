@@ -247,21 +247,26 @@ runs passes through it, in this order:
    (`_request_approval`), and a no is a denial;
 6. `_execute`.
 
-Then `_execute`: the `CallContext` is the call's whole authority.
-`ResourceAccess` (`execution/resources.py`) is built from the
-operations the function declared, and everything else the context
-carries comes from `execution/call_surface.py`, class `CallSurface`
-(`for_call`): what a running call may ask of the chat — `ask`, `post`,
-`propose`, `credential`, `screen`, `show`, `progress`, `llm`,
-`install` — each checked for shape there and passed through the chat's
-door of the same name (`ChatSinks`) in the agent's name. Each is given
-only when the manifest declared it — `llm`, `credentials`, `code`. `invoke` does not raise for a fault on the platform's own
-side: it ends as an error result (`_broke`). `_record` writes the audit
+Then `_execute`: the `Call` (`execution/call.py`) is the call's whole
+authority. `ResourceAccess` (`execution/resources.py`) is built from
+the operations the function declared; everything else is a method on
+the `Call`, named as the wire names it — `ask`, `post`, `propose`,
+`credential`, `screen`, `show`, `progress`, `llm`, `install`,
+`resource` — each checking shape and passing through the chat's door
+of the same name (`ChatSinks`) in the agent's name. `answer` is the
+one entry from the wire (`Call.ASKS`). The model, a login and an
+install are refused unless the manifest declared them — `llm`,
+`credentials`, `code`. For a function that runs code the `Call` also
+holds what the person allowed on its cards: `code_problem` checks the
+names before the card is shown, `allow` opens the hosts and remembers
+the packages, `close` takes them back when the call ends. `invoke`
+does not raise for a fault on the platform's own side: it ends as an
+error result (`_broke`). `_record` writes the audit
 line whichever way the call ended, a cancelled one included
 (`_witness_cancelled`, before the cancellation goes on).
 
 Then the worker side: `agents/pool.py` (`invoke`, `_handle`,
-`_answer`) and `agents/workers.py` (`start`, `_serve`, `_route`,
+`_route`) and `agents/workers.py` (`start`, `_serve`, `_route`,
 `_request`), with [the worker protocol](../reference/worker-protocol.md)
 and the other end of the wire in `decentai_sdk/worker.py`.
 
@@ -279,10 +284,10 @@ Check:
   the decision.
 - `ResourceAccess._require`: an operation the function did not declare
   is refused here, in the runtime, whatever the worker asks for.
-- `WorkerPool._route`, then `_answer`: every ask from a worker is
-  answered against the context of the call it named — `_route` finds
-  it, and refuses a call id that is not live on that worker — so a
-  call cannot use the authority of a call on another worker. Two calls
+- `WorkerPool._route`, then `Call.answer`: every ask from a worker is
+  answered by the call it named — `_route` finds it, and refuses a
+  call id that is not live on that worker — so a call cannot use the
+  authority of a call on another worker. Two calls
   in flight on one worker can name each other's id. A timeout or a cancel tells the worker to stop
   (`_overrule`) instead of only abandoning the wait.
 - `WorkerHandle.invoke`: a worker's answer is a result only when it is
@@ -299,7 +304,7 @@ Tests: `ai_runtime/tests/test_agent_executor.py`,
 `ai_runtime/tests/test_agent_worker_handle.py`,
 `ai_runtime/tests/test_agent_worker.py`,
 `ai_runtime/tests/test_executor_edges.py`,
-`ai_runtime/tests/test_code_grant.py`, `ai_runtime/tests/test_mcp.py`,
+`ai_runtime/tests/test_call.py`, `ai_runtime/tests/test_mcp.py`,
 `ai_runtime/tests/test_agent_llm.py` (pictures) and
 `ai_runtime/tests/test_agent_writes.py` (what a write must be).
 

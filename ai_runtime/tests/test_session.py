@@ -11,6 +11,7 @@ import json
 from functools import partial
 from pathlib import Path
 
+from ai_runtime.execution.call import Call
 from ai_runtime.chat import Session
 from ai_runtime.llms import FakeConnector
 from ai_runtime.mind.state import RUNNING, AssistantState, Job
@@ -650,7 +651,7 @@ class TestConversation:
         session.adopt(session.roster, 1, safety={
             "blocked_sites": [], "packages": "listed", "allowed_packages": ["pandas"]})
         assert executor.safety["allowed_packages"] == ["pandas"]
-        assert executor.surface.listed_packages() == ["pandas"]
+        assert Call("c_1", safety=executor.safety).listed_packages() == ["pandas"]
 
     def test_a_question_nobody_answers_expires(self):
         session, services = build([action(action="finish")])

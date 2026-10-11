@@ -345,11 +345,9 @@ what they are for:
 1. `FunctionCall` in `decentai_sdk/base.py`: the method an agent's
    code calls.
 2. `decentai_sdk/worker.py`: the line it sends to the host.
-3. `ai_runtime/agents/pool.py`: a field on `CallContext`, and a
-   branch in `WorkerPool._answer` for the new method.
-4. `ai_runtime/execution/executor.py`: what the call is given, built
-   in `_execute`, and held behind a flag of the manifest if it is a
-   privilege.
+3. `ai_runtime/execution/call.py`: a method on `Call` named as the
+   wire names it, and its row in `Call.ASKS`; refused there unless the
+   manifest declared it, if it is a privilege.
 5. A new flag is validated in `contracts/agent_manifest.py`.
 6. If it reaches a person: `ai_runtime/chat/session.py`, the services
    (step 6 above), a gateway action, and the frame in

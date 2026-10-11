@@ -14,8 +14,8 @@ from pathlib import Path
 import pytest
 
 from contracts.agent_manifest import ManifestValidator
+from ai_runtime.execution.call import Call
 from ai_runtime.execution.executor import FunctionExecutor
-from contracts.chat import agent_source
 from ai_runtime.sinks import ChatSinks
 from ai_runtime.tests.fixture_agents import load_agents
 from ai_runtime.llms import FakeConnector
@@ -197,12 +197,11 @@ class TestAScreensFrame:
         async def sink(kind, frame, source):
             sent.append(kind)
 
-        executor = FunctionExecutor(workers(), sinks=ChatSinks(screen=sink))
         agent = SimpleNamespace(
             agent_id="agt_probe", manifest=SimpleNamespace(name="Probe"))
-        screen = executor.surface.screen_for(agent_source(
-            agent.agent_id, agent.manifest.name, "probe.main.watch", call_id="c_1"))
-        run(screen("frame", {
+        call = Call("c_1", agent, {}, "probe.main.watch",
+                    sinks=ChatSinks(screen=sink))
+        run(call.screen("frame", {
             "image_base64": base64.b64encode(PNG + b"x" * frame_bytes).decode(),
             "mime": "image/png", "width": 800, "height": 600, "frame": 1}))
         return sent

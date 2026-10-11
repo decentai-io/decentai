@@ -336,7 +336,7 @@ the fields of an event or a part.
   {answer}`, and the function hears `True`, `False`, or `None` when
   nobody answered in a day. For a function that declared `code: true`
   an allowed card is also a grant for that call
-  (`ai_runtime/execution/code_grant.py`): the hosts it named are opened
+  (`ai_runtime/execution/call.py`, `allow`): the hosts it named are opened
   on the worker's way out until the call ends, and the packages it
   named may be installed (`call.install`). A code card may be answered
   by the organization's Safety setting and not by a person
