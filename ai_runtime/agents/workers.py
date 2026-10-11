@@ -3,20 +3,17 @@
 One class, two ways in:
 
 - a ``WorkerHandle`` instance — the long-lived client an execution
-  layer holds: starts the worker from its private venv in its own
-  place (confinement.py), handshakes, keeps any number of invocations
-  in flight, routes the worker's asks (pool.py names them) to whoever
-  may answer them, and owns the process's death.
+  layer holds: has the agents' container start the worker from its
+  private venv (agents/container.py), handshakes, keeps any number of
+  invocations in flight, routes the worker's asks (pool.py names them)
+  to whoever may answer them, and owns the process's death.
 - ``WorkerHandle.probe`` — installation's verification station: start,
-  hello, shutdown, as one program run to its end. What the handshake
-  refuses is a broken package, named at install time in the exact
-  environment the agent will really run in.
+  hello, shutdown, in the place that is nobody's agent. What the
+  handshake refuses is a broken package, named at install time in the
+  exact environment the agent will really run in.
 
-The spawn line is the same for both, and ``-I`` is not decoration:
-isolated mode ignores PYTHONPATH and never prepends the working
-directory, so the venv answers for itself — without it, a runtime
-started from its own source tree would quietly hand every worker the
-host's packages and the isolation would be theatre.
+The container starts the worker as the SDK's worker program, from the
+environment's own interpreter, isolated: the venv answers for itself.
 """
 
 from __future__ import annotations
@@ -32,7 +29,6 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from ai_runtime.agents.confinement import WorkerPlace
-from ai_runtime.agents.container import AgentsContainer
 from ai_runtime.events import Events
 from decentai_sdk.manifest import Manifest
 
@@ -123,12 +119,8 @@ class WorkerHandle:
         self.logger = logging.getLogger(self.__class__.__name__)
 
     # ------------------------------------------------------------------
-    # The spawn line — one answer, both entry points
+    # What a worker is started with — both entry points
     # ------------------------------------------------------------------
-
-    @staticmethod
-    def _spawn_argv(python: str | Path) -> List[str]:
-        return [str(python), "-I", "-m", "decentai_sdk.worker"]
 
     @staticmethod
     def _declared(manifest_document: dict) -> Tuple[str, dict]:
@@ -137,13 +129,6 @@ class WorkerHandle:
         manifest = Manifest(manifest_document or {})
         agent = (manifest_document or {}).get("agent") or {}
         return str(agent.get("name") or agent.get("id") or "an agent"), manifest.network
-
-    @staticmethod
-    def _runs_from(python: str | Path, folder: str | Path) -> List[Path]:
-        """What a worker runs from, and so must be able to read: its
-        package, and the environment its interpreter lives in (the
-        folder above the one the interpreter is in)."""
-        return [Path(folder), Path(python).parent.parent]
 
     @classmethod
     def _clean_environment(cls) -> Dict[str, str]:
@@ -257,31 +242,19 @@ class WorkerHandle:
         return self.process is not None and self.process.returncode is None
 
     async def start(self) -> List[str]:
-        """Prepare the place, start the worker there, and handshake.
-        Returns errors, empty when the worker is serving: whether the
-        package loads is the worker's to say, from the environment it
-        runs in."""
-        errors = await self.place.prepare()
-        if errors:
-            return errors
-        self.spool = self.place.spool
+        """Have the container start the worker in the agent's place,
+        and handshake. Returns errors, empty when the worker is
+        serving: whether the package loads is the worker's to say, from
+        the environment it runs in."""
         self.place.admit(*self._declared(self.manifest_document))
-        argv = self.place.argv(
-            self._spawn_argv(self.python),
-            self._runs_from(self.python, self.folder))
-        environment = self.place.environment(self._clean_environment())
         try:
-            self.process = await self.place.container.start(
-                argv, environment, str(self.folder), self.LINE_LIMIT,
-                stop=self.place.stop_line(),
-                # With whose it is, how what it keeps on disk is measured.
-                whose={**self.place.whose(), "measure": self.place.measure_line()})
+            self.process = await self._started()
         except (OSError, asyncio.TimeoutError) as exc:
             Events.record("worker.failed", **self.whose(), why=str(exc))
-            # Nothing runs, so nothing will die and clear up after
-            # itself: what was laid out for it is taken back here.
-            await self._release()
+            # Nothing runs, so nothing will die and take its pass back.
+            self._release()
             return [f"the worker could not be started: {exc}"]
+        self.spool = self.process.spool
         self._serve_task = asyncio.get_running_loop().create_task(self._serve())
         self._start(self._drain_stderr())
 
@@ -362,7 +335,7 @@ class WorkerHandle:
         await self._end()
         if self.process is not None:
             await self.process.wait()
-        await self._release()
+        self._release()
         Events.record(
             "worker.ended", **self.whose(), why=reason,
             code=self.process.returncode if self.process is not None else None)
@@ -370,18 +343,27 @@ class WorkerHandle:
         # same place at once, and the clearing above must be behind it.
         self._fail_pending(reason)
 
-    async def _release(self) -> None:
-        """Take back what the worker was given to run with: its pass at
-        the proxy, and its place, emptied."""
+    async def _started(self):
+        """The worker's process, started where it runs: the agent's own
+        place in the agents' container, from its environment, in its
+        package, pointed at the proxy with its pass."""
+        return await self.place.container.start_worker(
+            agent=self.place.name, name=self.place.label,
+            python=self.python, package=self.folder,
+            environment=self._clean_environment(),
+            proxy=self.place.proxy_address(), limit=self.LINE_LIMIT)
+
+    def _release(self) -> None:
+        """Take back the worker's pass at the proxy. Its place is the
+        container's to empty, which it does when the worker has gone."""
         self.spool = None
         self.place.dismiss()
-        await self.place.clear()
 
     async def _end(self) -> None:
-        """End the process: the worker is another user's, which this
-        process may not signal, so the helper ends it, and everything
-        else that user runs with it."""
-        errors = await self.place.stop()
+        """End the process, where it runs: the container ends every
+        process of the agent's user — the worker, and whatever it
+        started with it."""
+        errors = await self.place.container.stop(self.place.name)
         if errors:
             self.logger.error("; ".join(errors))
 
@@ -547,53 +529,40 @@ class WorkerHandle:
     async def probe(cls, python: str | Path, folder: str | Path,
                     manifest_document: dict, place: WorkerPlace,
                     timeout: int = 120) -> List[str]:
-        """Start a worker from the environment, hello, shutdown — one
-        program run to its end in installation's own place, which every
-        verification shares and one holds at a time. Returns errors,
+        """Start a worker from the environment, hello, shutdown — in
+        installation's own place, which is nobody's agent and which the
+        container lends to one verification at a time. Returns errors,
         empty when the package verified. A worker that outlasts
         ``timeout`` is ended, so a refusal can never become a hang."""
-        async with place.confinement.verification_lock:
-            errors = await place.prepare()
-            if errors:
-                return errors
-            agent_name, _ = cls._declared(manifest_document)
-            place.admit(agent_name, cls.NOTHING_DECLARED)
-            try:
-                return await cls._probe(python, folder, manifest_document, timeout, place)
-            finally:
-                place.dismiss()
-                await place.stop()
-                await place.clear()
-
-    @classmethod
-    async def _probe(cls, python: str | Path, folder: str | Path,
-                     manifest_document: dict, timeout: int,
-                     place: WorkerPlace) -> List[str]:
-        # The whole exchange, written ahead: a worker answers its
-        # greeting, then the order to leave, and is gone.
-        greeting = "".join(json.dumps(request) + "\n" for request in (
-            {"id": 1, "method": "hello",
-             "params": cls._hello_params(Path(folder), manifest_document)},
-            {"id": 2, "method": "shutdown", "params": {}},
-        ))
-        code, output = await place.run(
-            cls._spawn_argv(python), reads=cls._runs_from(python, folder),
-            environment=cls._clean_environment(), timeout=timeout,
-            feed=greeting, errors=AgentsContainer.DROP, cwd=str(folder))
-        if output.startswith(AgentsContainer.COULD_NOT_RUN):
-            return [f"worker could not be spawned: {output}"]
-        answers = output.splitlines()
+        agent_name, _ = cls._declared(manifest_document)
+        place.admit(agent_name, cls.NOTHING_DECLARED)
+        handle = cls(python, folder, manifest_document, place)
         try:
-            reply = json.loads(answers[0])
-        except (IndexError, ValueError):
-            reply = None
-        if not isinstance(reply, dict):
-            return ["worker verification failed: "
-                    + (output.strip()[-300:] or "the worker died during verification")]
-        if "error" in reply:
-            return [str((reply.get("error") or {}).get("message") or "refused")]
-        if code != 0 or len(answers) < 2:
-            return ["worker verification failed: "
-                    + (output.strip()[-300:] if code != 0
-                       else "the worker died during verification")]
+            return await asyncio.wait_for(handle._probe(), timeout)
+        except asyncio.TimeoutError:
+            return [f"worker verification failed: the worker did not "
+                    f"answer within {timeout} seconds"]
+        finally:
+            if handle.process is not None:
+                await handle.kill("verification is over")
+            else:
+                handle._release()
+
+    async def _probe(self) -> List[str]:
+        """The whole exchange: the worker answers its greeting, then
+        the order to leave, and is gone."""
+        try:
+            self.process = await self._started()
+        except (OSError, asyncio.TimeoutError) as exc:
+            return [f"worker could not be spawned: {exc}"]
+        self._serve_task = asyncio.get_running_loop().create_task(self._serve())
+        self._start(self._drain_stderr())
+        Events.record("worker.started", **self.whose())
+        try:
+            await self._request(
+                "hello", self._hello_params(self.folder, self.manifest_document))
+            await self._request("shutdown", {})
+        except WorkerError as exc:
+            return [str(exc) or "refused"]
         return []
+

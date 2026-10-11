@@ -48,10 +48,9 @@ Events.configure(settings.agents_install_dir, "runtime")
 # agent's itself.
 container = AgentsContainer(settings.agents_container, settings.agents_install_dir)
 
-# What holds a worker there: a user of its own, and the proxy as its
-# one way out.
-confinement = Confinement(
-    settings.agents_install_dir, container, package_hosts=settings.package_hosts)
+# What holds a worker there, as this side sees it: the proxy as its
+# one way out, and the container's own proof at start.
+confinement = Confinement(container, package_hosts=settings.package_hosts)
 
 # The library owns the install directory: the code under it, the
 # environments beside it, and the import path they need.

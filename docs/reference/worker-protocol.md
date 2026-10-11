@@ -72,10 +72,10 @@ The worker process is:
 
 `-I` keeps the interpreter to its own environment: nothing of the
 machine's site packages or the caller's working directory is imported.
-Where agents are confined the line is wrapped by the spawn helper,
-which becomes the agent's own user before it becomes the worker, and
-in the stack this repository starts it is the agents' container that
-runs it ([the sandbox](../system/sandbox.md)).
+The line is the agents' container's to write: the runtime names the
+agent, the interpreter and the package, and the spawner wraps the line
+in the spawn helper, which becomes the agent's own user before it
+becomes the worker ([the sandbox](../system/sandbox.md)).
 
 with the agent folder and everything else delivered over the handshake —
 argv carries nothing, and the environment is an allow-list, not an

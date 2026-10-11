@@ -1,7 +1,8 @@
 """What agents did, written down (events.py), and each place that
-writes: the helper, a program run as an agent, a worker's life and its
-log, the proxy's connections, the processes an agent starts — and the
-door the backend reads it all through.
+writes: a worker's life and its log, the proxy's connections, the
+processes an agent starts — and the door the backend reads it all
+through. What the agents' container writes of the helper and of a
+program run as an agent is in test_places.py.
 """
 
 import asyncio
@@ -13,7 +14,6 @@ import time
 import jwt
 import pytest
 
-from ai_runtime.agents.confinement import Confinement
 from ai_runtime.events import Events
 from ai_runtime.agents_container.service import SpawnerService
 from ai_runtime.agents_container.usage import Sample
@@ -21,7 +21,6 @@ from ai_runtime.agents.workers import WorkerHandle
 from ai_runtime.tests.test_agent_worker_handle import (  # noqa: F401
     FIXTURE, manifest_document, venv,
 )
-from ai_runtime.tests.test_confinement import fake  # noqa: F401
 from ai_runtime.tests.test_egress import (  # noqa: F401
     echo, get, loop, names, network, proxy, site,
 )
@@ -141,75 +140,6 @@ class TestTheLog:
         assert (folder / "runtime.jsonl").stat().st_mode & 0o777 == 0o600
 
 
-class TestTheHelper:
-    def test_each_job_asked_of_it_is_written_down_for_its_place(
-            self, events, fake, tmp_path):
-        place = Confinement(tmp_path, fake).place("agt_aaaa")
-        place.label = "Notes"
-        assert run(place.prepare()) == []
-        found = kinds(tmp_path, "helper")
-        assert [event["job"] for event in found] == [
-            "clear", "clear", "sweep", "own", "own"]
-        assert all(event["agent"] == "agt_aaaa" and event["name"] == "Notes"
-                   and event["user"] == place.user and event["code"] == 0
-                   for event in found)
-        assert found[3]["asked"] == [str(place.user), str(place.home)]
-
-    def test_a_job_it_refused_says_so(self, events, fake, tmp_path):
-        fake.refuses.add("stop")
-        place = Confinement(tmp_path, fake).place("agt_aaaa")
-        assert run(place.stop())
-        found = kinds(tmp_path, "helper")[-1]
-        assert found["job"] == "stop" and found["code"] == 126
-        assert "no stop today" in found["refused"]
-
-    def test_a_program_run_as_an_agent_is_written_down(
-            self, events, fake, tmp_path):
-        place = Confinement(tmp_path, fake).builder_place()
-        place.label = "the builder"
-        run(place.run([sys.executable, "-c", "pass"]))
-        found = kinds(tmp_path, "program")[-1]
-        assert found["program"] == f"{sys.executable} -c pass"
-        assert found["name"] == "the builder" and found["code"] == 0
-        assert found["agent"] == Confinement.BUILDER_NAME
-
-    def test_what_an_agent_keeps_is_listed_by_its_own_user(
-            self, events, fake, tmp_path):
-        confinement = Confinement(tmp_path, fake)
-        place = confinement.place("agt_aaaa")
-        place.home.mkdir(parents=True)
-        (place.home / "kept").write_text("four", encoding="utf-8")
-        place.spool.mkdir(parents=True)
-        listed = run(place.files())
-        assert listed["count"] == 1 and listed["bytes"] == 4
-        assert listed["files"][0]["path"] == str(place.home / "kept")
-        [line] = fake.asked
-        # Through the helper, as the agent's user, and nothing is
-        # stopped after: a worker may be running beside it.
-        assert line[:2] == ["run", str(place.user)]
-        assert str(place.home) in line and str(place.spool) in line
-
-    def test_what_it_keeps_on_disk_is_measured_as_its_own_user(
-            self, fake, tmp_path):
-        place = Confinement(tmp_path, fake).place("agt_aaaa")
-        line = place.measure_line()
-        assert line[1:3] == ["run", str(place.user)]
-        # Named by its whole path: the helper becomes no other.
-        assert line[-4:] == ["/usr/bin/du", "-sb", str(place.home), str(place.spool)]
-
-    def test_a_listing_that_fails_says_so(self, events, fake, tmp_path):
-        fake.refuses.add("run")
-        place = Confinement(tmp_path, fake).place("agt_aaaa")
-        assert "error" in run(place.files())
-
-    def test_asking_for_a_place_gives_nobody_one(self, fake, tmp_path):
-        confinement = Confinement(tmp_path, fake)
-        assert confinement.existing_place("agt_never_ran") is None
-        assert confinement._read_table() == {}
-        given = confinement.place("agt_aaaa")
-        assert confinement.existing_place("agt_aaaa").user == given.user
-
-
 class TestAWorker:
     def test_its_life_and_its_log_are_written_down(self, events, venv, tmp_path):
         place = confinement().place("agt_notes")
@@ -253,15 +183,12 @@ class TestAWorker:
             "sys.stdin.readline()\n"
         )
 
-        class Talking(WorkerHandle):
-            @staticmethod
-            def _spawn_argv(python):
-                return [str(python), "-c", script]
-
+        container().program = ("-c", script)
         place = confinement().place("agt_notes")
+
         async def scenario():
-            handle = Talking(sys.executable, FIXTURE, manifest_document(),
-                             place)
+            handle = WorkerHandle(sys.executable, FIXTURE, manifest_document(),
+                                  place)
             assert await handle.start() == []
             await asyncio.sleep(0.3)
             await handle.kill()
@@ -444,9 +371,9 @@ class TestTheDoor:
         # Its own container, as it read of itself: nothing here, where
         # there is no kernel ledger to read.
         assert set(said["runtime"]) == {"memory", "memory_limit", "cpu", "cpus"}
-        # The fake kernel has every fence; nothing holds a worker to the
-        # proxy here.
-        assert said["confined"] == {"user": True, "files": True, "network": False}
+        # The fake kernel has every fence, and says the proxy is the
+        # only way out.
+        assert said["confined"] == {"user": True, "files": True, "network": True}
 
     def test_an_agent_with_no_place_has_nothing_to_list(self, door):
         client, backend = door

@@ -64,6 +64,7 @@ class Sample:
         return {
             "at": self.at, "limits": self.limits, "memory": self.memory,
             "cpu": self.cpu, "kernel_ended": self.kernel_ended,
+            "left_behind": len(self.ended),
             "agents": [{"user": user, **numbers}
                        for user, numbers in sorted(self.agents.items())],
         }

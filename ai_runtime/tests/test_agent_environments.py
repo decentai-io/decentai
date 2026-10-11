@@ -188,9 +188,10 @@ class TestPackagesForOneRun:
 
 
 class TestABuildWhereWorkersAreConfined:
-    """The declared list is downloaded and built by the builder, and
-    the runtime unpacks what was built. The helper and both pips are
-    stood in for; against the real ones, test_confinement_live.py."""
+    """The declared list is downloaded and built by the builder in the
+    agents' container, and the runtime unpacks what was built. The
+    container and both pips are stood in for; against the real ones,
+    test_confinement_live.py."""
 
     LIST = ["titlecase>=2.4,<3", "humanize>=4.9,<5"]
 
@@ -201,8 +202,8 @@ class TestABuildWhereWorkersAreConfined:
         stand_in = FakeContainer(tmp_path / "agents")
         FakeContainer.live.remove(stand_in)
         stand_in.leaves = {"humanize-4.9.0-py3-none-any.whl": b"a wheel"}
-        stand_in.confinement = Confinement(stand_in.install_dir, stand_in)
-        run(stand_in.confinement.open_the_way_out(0))
+        stand_in.confinement = Confinement(stand_in)
+        run(stand_in.confinement.start(0, allow_loopback=True))
         stand_in.asked.clear()
         yield stand_in
         run(stand_in.confinement.stop())
@@ -236,18 +237,9 @@ class TestABuildWhereWorkersAreConfined:
         env, place, errors = self.build(builder, tmp_path)
         assert errors == [] and env.exists()
 
-        assert [asked[0] for asked in builder.asked] == [
-            "clear", "clear", "sweep", "own", "own",    # its place, made ready
-            "run", "stop",                              # the build, and its end
-            "stop", "clear", "clear", "sweep",          # nothing of it is kept
-        ]
-        build = builder.asked[5]
-        assert build[1] == str(Confinement.LAST_USER)
-        program = build[build.index("--") + 1:]
-        assert program[:4] == [str(env.python), "-m", "pip", "wheel"]
-        assert "--no-cache-dir" in program
-        assert program[program.index("--wheel-dir") + 1] == str(place.spool)
-        assert program[-2:] == sorted(self.LIST)
+        # The container was asked for one build, of the list and
+        # nothing else: no line, no user, no place crossed.
+        assert builder.asked == [["build", sorted(self.LIST)]]
 
         # The runtime made the venv, and unpacked files: the list
         # itself never reached its pip.
@@ -260,19 +252,6 @@ class TestABuildWhereWorkersAreConfined:
         assert not any(requirement in unpack for requirement in self.LIST)
         assert not (env.root / ".wheels").exists()
 
-    def test_the_builder_reads_the_environment_it_builds_for(
-            self, builder, runtime, tmp_path):
-        place = builder.confinement.builder_place()
-        place.confinement.fences = True
-        place.confinement.fence_lets_files_move = True
-        env = AgentEnvironment(tmp_path / "agents" / "envs" / "abc")
-        assert run(env.build(self.LIST, place=place)) == []
-        build = builder.asked[5]
-        rules = build[6:build.index("--")]
-        assert f"r:{env.root.as_posix()}" in rules
-        assert f"w:{place.spool.as_posix()}" in rules
-        assert not any(rule.startswith("w:") and "envs" in rule for rule in rules)
-
     def test_packages_for_one_run_are_built_by_the_builder_too(
         self, tmp_path, builder, runtime
     ):
@@ -283,8 +262,8 @@ class TestABuildWhereWorkersAreConfined:
         env = AgentEnvironment(tmp_path / "agents" / "envs" / "abc")
         folder, errors = run(env.extras(["humanize>=4.9,<5"], place=place))
         assert errors == [], errors
-        [build] = [asked for asked in builder.asked if asked[0] == "run"]
-        assert build[-1] == "humanize>=4.9,<5" and "wheel" in build
+        [build] = [asked for asked in builder.asked if asked[0] == "build"]
+        assert build[1] == ["humanize>=4.9,<5"]
         [install] = [ran for ran in runtime if "--target" in ran]
         assert install[install.index("--target") + 1] == str(folder)
         assert "--no-index" in install and "--no-deps" in install
@@ -299,8 +278,7 @@ class TestABuildWhereWorkersAreConfined:
         assert errors and "No matching distribution" in errors[0]
         assert not env.root.exists()
         assert len(runtime) == 1, "the runtime's pip never ran"
-        assert [asked[0] for asked in builder.asked][-4:] == [
-            "stop", "clear", "clear", "sweep"]
+        assert [asked[0] for asked in builder.asked] == ["build"]
 
     def test_what_is_not_a_wheel_is_left_where_it_lies(
             self, builder, runtime, tmp_path):
@@ -352,10 +330,8 @@ class TestABuildWhereWorkersAreConfined:
         archive, digest = AgentPackage.build(package)
         manifest, _ = load_manifest(written)
         run(library.install(digest, archive, manifest_hash(manifest.document)))
-        built = [asked for asked in builder.asked if asked[0] == "run"]
-        assert len(built) == 1
-        assert built[0][1] == str(Confinement.LAST_USER)
-        assert built[0][-1] == "humanize>=4.9,<5"
+        built = [asked for asked in builder.asked if asked[0] == "build"]
+        assert built == [["build", ["humanize>=4.9,<5"]]]
 
 
 class TestLibraryEnvironmentStation:

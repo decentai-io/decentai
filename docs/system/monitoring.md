@@ -20,9 +20,9 @@ it by (`name`) and, where the line is about a process, its user
 |---|---|---|---|
 | `worker.started` | a worker answered its greeting | the runtime | whose it is |
 | `worker.ended` | a worker is gone | the runtime | why, in words, and its exit code |
-| `worker.failed` | the process could not be started | the runtime | why. A worker whose place could not be prepared has no line of this kind: the `helper` lines say what was refused |
-| `helper` | the spawn helper was asked to do one of its jobs | the runtime | the job (`check`, `own`, `clear`, `stop`, `sweep`), what it was asked with, how long it took, and what it said if it refused |
-| `program` | one program was run to its end as an agent's user: a build, a verification | the runtime | the program, its exit code, how long |
+| `worker.failed` | the process could not be started | the runtime | why: what the agents' container answered |
+| `helper` | the spawn helper was asked to do one of its jobs | the spawner | the job (`check`, `own`, `clear`, `stop`, `sweep`), what it was asked with, how long it took, and what it said if it refused |
+| `program` | one program was run to its end as an agent's user: a build, the proof at start | the spawner | the program, its exit code, how long |
 | `log` | a worker wrote a line to its log | the runtime | the line |
 | `connection` | a connection a worker asked the proxy for is over, or was refused | the runtime | the host, the port, how it was asked (`tunnel`, or the method), the address it resolved to, whether it was allowed and reached, how many bytes went each way, how long it lasted; refused, why |
 | `process` | a process of an agent's user is seen for the first time | the spawner | its id and how it was started |
@@ -90,9 +90,10 @@ answers is the backend's to decide.
 | `GET /internal/monitor/usage` | what the agents are given and what each running agent uses now ([the sandbox](sandbox.md)), and what agents are held to here |
 | `GET /internal/monitor/files?agent=` | what one agent keeps in its home and its spool now: each file's path, size and when it changed, the first 500 listed and all of them counted |
 
-**The listing is made by the agent's own user**, started through the
-spawn helper beside whatever worker is running, because nobody else may
-read an agent's home. It lists and ends; the worker is left running.
+**The listing is made by the agent's own user**, in the agents'
+container, started through the spawn helper beside whatever worker is
+running, because nobody else may read an agent's home. It lists and
+ends; the worker is left running.
 
 ## Who is shown it
 

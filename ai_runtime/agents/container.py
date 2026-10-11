@@ -1,15 +1,21 @@
-"""The agents' container, as the runtime commands it (docs/system/sandbox.md).
+"""The agents' container, as the runtime asks it (docs/system/sandbox.md).
 
-Every process of an agent's — a worker, a verification, a build, a job
-of the spawn helper's, a measure of a home — is started there, by the
-spawner (agents_container/service.py), on this class's order. The
-runtime decides everything about a process and starts none itself.
+Every process of an agent's — a worker, a verification, a build, a
+listing of what an agent keeps — runs there, started by the spawner
+(agents_container/service.py) on this class's request. A request says
+what is wanted and never how: which agent's worker, from which
+environment, in which package; which requirements to build. The user
+it runs as, its folders, its fences, its spawn line and its ending are
+the container's own business, and no process id ever crosses.
 
     container = AgentsContainer("agents:8003", install_dir)
-    await container.wait()                          at start, until it answers
-    code, output = await container.run(argv, ...)   one program, to its end
-    process = await container.start(argv, ...)      a worker, kept, with its pipes
-    await container.usage()                         what the agents are given and use
+    await container.wait()                      at start, until it answers
+    await container.check()                     what it holds a worker to, proved
+    process = await container.start_worker(...) a worker, kept, with its pipes
+    await container.build(...)                  requirements, built as wheels
+    await container.files(agent)                what an agent keeps
+    await container.stop(agent)                 every process of an agent's ended
+    await container.usage()                     what the agents are given and use
 
 The two containers hold one volume at one path — the store, the
 environments, the workers' homes and spools — so a path means the same
@@ -23,9 +29,8 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import tempfile
 from pathlib import Path
-from typing import Any, Dict, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from ai_runtime.agents_container import wire
 
@@ -33,11 +38,6 @@ from ai_runtime.agents_container import wire
 class AgentsContainer:
     #: How a program that never started is told of.
     COULD_NOT_RUN = "it could not run"
-    #: What becomes of what a program writes to its log: said with the
-    #: rest, or left out.
-    MERGE, DROP = wire.MERGE, wire.DROP
-    #: Where spools are made, on the volume both containers hold.
-    SPOOLS_FOLDER = "spools"
     CONNECT_SECONDS = 10
     #: How long the runtime waits, at its start, for the container.
     WAIT_SECONDS = 120
@@ -48,9 +48,7 @@ class AgentsContainer:
             raise ValueError(
                 f"the agents' container is named as host:port, not '{address}'")
         self.host = host
-        #: The spawner's own port: where the runtime asks, and the one
-        #: port where workers run that something listens on and no
-        #: worker may reach (Confinement.prove_the_network_is_fenced).
+        #: The spawner's own port: where the runtime asks.
         self.port = int(port)
         self.install_dir = Path(install_dir)
         self.logger = logging.getLogger(self.__class__.__name__)
@@ -88,8 +86,7 @@ class AgentsContainer:
 
     async def _ask(self, request: dict) -> dict:
         """One request, one answer, and the connection is over. The
-        answer comes when the program has ended, however long that is:
-        its time is the spawner's to keep."""
+        answer comes when the work is done, however long that is."""
         reader, writer = await asyncio.wait_for(
             asyncio.open_connection(self.host, self.port), self.CONNECT_SECONDS)
         try:
@@ -105,62 +102,50 @@ class AgentsContainer:
             raise ValueError("it did not answer with a message")
         return answer
 
+    async def _answered(self, request: dict) -> dict:
+        """An answer, or ``{"error"}`` where the container did not
+        answer at all: nothing here raises for the wire's sake."""
+        try:
+            return await self._ask(request)
+        except (OSError, ValueError, asyncio.TimeoutError) as exc:
+            return {"error": f"the agents' container did not answer "
+                             f"({exc or type(exc).__name__})"}
+
     @staticmethod
     def _line(message: dict) -> bytes:
         return (json.dumps(message, separators=(",", ":")) + "\n").encode("utf-8")
 
     # ------------------------------------------------------------------
-    # One program, to its end
+    # What it holds a worker to
     # ------------------------------------------------------------------
 
-    async def run(self, argv: Sequence[str],
-                  environment: Optional[Dict[str, str]] = None,
-                  cwd: Optional[str] = None, timeout: Optional[float] = None,
-                  feed: Optional[str] = None, errors: str = MERGE,
-                  stop: Optional[Sequence[str]] = None,
-                  whose: Optional[Dict[str, Any]] = None) -> Tuple[int, str]:
-        """Run one program there to its end. Returns (return code, what
-        it wrote). ``environment`` is the whole of what it is given;
-        ``feed`` is written to its input; one that outlasts ``timeout``
-        is ended with ``stop`` — the helper's line that ends another
-        user's processes — and told of. ``whose`` says whose program it
-        is, for what agents use to be added up by agent."""
-        try:
-            answer = await self._ask({
-                "op": "run", "argv": [str(word) for word in argv],
-                "environment": environment, "cwd": cwd, "timeout": timeout,
-                "feed": feed, "errors": errors,
-                "stop": [str(word) for word in stop] if stop else None,
-                "whose": whose,
-            })
-        except (OSError, ValueError, asyncio.TimeoutError) as exc:
-            return 1, (f"{self.COULD_NOT_RUN}: the agents' container did "
-                       f"not answer ({exc or type(exc).__name__})")
-        if "error" in answer:
-            return 1, f"{self.COULD_NOT_RUN}: {answer['error']}"
-        return int(answer.get("code", 1)), str(answer.get("said") or "")
+    async def check(self) -> Dict[str, Any]:
+        """What the kernel there holds a worker to, proved (wire.py):
+        the fences, the filter, and whether anything but the proxy can
+        be reached. ``{"error"}`` names what to mend."""
+        return await self._answered({"op": "check"})
 
     # ------------------------------------------------------------------
     # A worker, kept
     # ------------------------------------------------------------------
 
-    async def start(self, argv: Sequence[str], environment: Dict[str, str],
-                    cwd: str, limit: int,
-                    stop: Optional[Sequence[str]] = None,
-                    whose: Optional[Dict[str, Any]] = None) -> "ContainerProcess":
-        """Start a worker there and hand back its process: the same
-        streams and the same death as one started here would have.
-        Raises OSError when it could not be started."""
+    async def start_worker(self, agent: str, name: str, python: str | Path,
+                           package: str | Path, environment: Dict[str, str],
+                           proxy: str = "",
+                           limit: int = 2 * 1024 * 1024) -> "ContainerProcess":
+        """Start the agent's worker there — from ``python``, the
+        interpreter of its own environment, in its ``package`` — and
+        hand back its process: the same streams and the same death as
+        one started here would have. ``proxy`` is the worker's way out,
+        with its pass. Raises OSError when it could not be started."""
         reader, writer = await asyncio.wait_for(
-            asyncio.open_connection(self.host, self.port,
-                                    limit=limit + wire.MARK),
+            asyncio.open_connection(self.host, self.port, limit=limit + wire.MARK),
             self.CONNECT_SECONDS)
         try:
             writer.write(self._line({
-                "op": "start", "key": self.key(),
-                "argv": [str(word) for word in argv], "environment": environment,
-                "cwd": cwd, "stop": [str(word) for word in stop] if stop else None,
-                "whose": whose,
+                "op": "start", "key": self.key(), "agent": agent, "name": name,
+                "python": str(python), "package": str(package),
+                "environment": environment, "proxy": proxy,
             }))
             await writer.drain()
             answer = json.loads(await reader.readline() or b"{}")
@@ -171,40 +156,60 @@ class AgentsContainer:
             writer.close()
             raise OSError(str((answer or {}).get("error")
                               or "the agents' container refused"))
-        return ContainerProcess(reader, writer, limit)
+        return ContainerProcess(reader, writer, limit, Path(str(answer.get("spool"))))
 
     # ------------------------------------------------------------------
-    # What it holds
+    # One agent's processes, by name
     # ------------------------------------------------------------------
+
+    async def build(self, python: str | Path, environment_root: str | Path,
+                    requirements: Sequence[str], proxy: str,
+                    environment: Dict[str, str],
+                    timeout: float) -> Tuple[int, str, Optional[Path]]:
+        """The requirements downloaded and built as wheels by the
+        builder there. Returns (return code, what it wrote, the folder
+        the wheels were left in — on the volume both containers hold,
+        None where it never ran)."""
+        answer = await self._answered({
+            "op": "build", "python": str(python),
+            "environment_root": str(environment_root),
+            "requirements": [str(word) for word in requirements],
+            "proxy": proxy, "environment": environment, "timeout": timeout,
+        })
+        if "error" in answer:
+            return 1, f"{self.COULD_NOT_RUN}: {answer['error']}", None
+        wheels = str(answer.get("wheels") or "")
+        return (int(answer.get("code", 1)), str(answer.get("said") or ""),
+                Path(wheels) if wheels else None)
+
+    async def files(self, agent: str) -> Dict[str, Any]:
+        """What the agent keeps in its home and its spool now, or
+        ``{"error"}``."""
+        return await self._answered({"op": "files", "agent": agent})
+
+    async def stop(self, agent: str) -> List[str]:
+        """End every process of the agent's there. Returns errors,
+        empty when they were ended."""
+        answer = await self._answered({"op": "stop", "agent": agent})
+        return [str(answer["error"])] if "error" in answer else []
 
     async def usage(self) -> Optional[Dict[str, Any]]:
         """What the agents are given and what each uses now, or None
         when the container did not answer."""
-        try:
-            answer = await self._ask({"op": "usage"})
-        except (OSError, ValueError, asyncio.TimeoutError):
-            return None
+        answer = await self._answered({"op": "usage"})
         return answer if "error" not in answer else None
-
-    def spool(self) -> Path:
-        """A fresh folder on the volume for a worker to exchange large
-        files through, where both sides find it."""
-        folder = self.install_dir / self.SPOOLS_FOLDER
-        folder.mkdir(parents=True, exist_ok=True)
-        return Path(tempfile.mkdtemp(prefix="spool-", dir=folder))
 
 
 class ContainerProcess:
     """A worker running in the agents' container, as the process it is
     to whoever holds it: ``stdin``, ``stdout``, ``stderr``,
-    ``returncode``, ``wait`` and ``kill``."""
+    ``returncode``, ``wait`` and ``kill`` — and ``spool``, the folder
+    on the volume both containers hold where it exchanges large
+    files with the runtime."""
 
     def __init__(self, reader: asyncio.StreamReader,
-                 writer: asyncio.StreamWriter, limit: int):
-        #: None, and not its process id where it runs: that container's
-        #: numbers mean other processes here, and nothing in this one
-        #: may be signalled by them.
-        self.pid = None
+                 writer: asyncio.StreamWriter, limit: int, spool: Path):
+        self.spool = spool
         self.returncode: Optional[int] = None
         #: Why the spawner ended it, in words for the person, when it
         #: did: it was using more than the agents are given.

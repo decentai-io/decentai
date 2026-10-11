@@ -118,7 +118,7 @@ the recordings it was trained on ([operating](../run/operating.md#speech-on-this
 | backend → runtime | `GET /internal/monitor/…` (`ai_runtime/door/monitor.py`) | the service token | "this is the backend" |
 | backend → speech | `POST /v1/audio/…`, `GET /status`, `POST /prepare` (`speech/service.py`) | nothing: the private network is the only way to it | a recording to write down, or words to say |
 | runtime → backend | `POST /app` (`Gateway`, `ai_runtime/services/backend.py`) | the delegation, as `Bearer` | the person's own permissions, fenced (below) |
-| runtime → agents | TCP, port 8003 (`ai_runtime/agents/container.py`) | the spawner's key, from `<install_dir>/spawner.key` | "start this, as this user"; one connection per worker carries its lines |
+| runtime → agents | TCP, port 8003 (`ai_runtime/agents/container.py`, `agents_container/wire.py`) | the spawner's key, from `<install_dir>/spawner.key` | "start this agent's worker from this environment", "build these requirements", "what does this agent keep", "end this agent's processes"; one connection per worker carries its lines |
 | worker → proxy | the proxy's port on the worker's own container, passed on to `ai-runtime:8002` | the worker's pass, a token in the proxy's address | which agent's worker this is, and so which hosts it may reach |
 
 The same path, `/chats/{chat_id}`, exists on the backend and on the
@@ -209,11 +209,11 @@ message can be refused.
    (`AI:Approval:Decide`), and the exact call checked again by its
    hash before it runs.
 7. **The worker is started, or found** (`WorkerPool`,
-   `WorkerHandle`, `Spawner`): in the agents' container, through the
-   spawn helper, as the agent's own user, fenced into its own files,
-   with the proxy as its only way out ([the sandbox](sandbox.md)). The
-   call goes to it as one line of JSON
-   ([the worker protocol](../reference/worker-protocol.md)).
+   `WorkerHandle`, `AgentsContainer`): asked for by name of the
+   agents' container, which starts it through the spawn helper as the
+   agent's own user, fenced into its own files, with the proxy as its
+   only way out ([the sandbox](sandbox.md)). The call goes to it as
+   one line of JSON ([the worker protocol](../reference/worker-protocol.md)).
 8. **The function asks for what it needs.** `call.resources.create_data`
    is a line back to the runtime.
    **Decision 5** (`WorkerPool._route`, `ResourceAccess`,

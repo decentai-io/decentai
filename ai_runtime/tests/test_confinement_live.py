@@ -38,6 +38,8 @@ import yaml
 
 from ai_runtime.agents.confinement import Confinement
 from ai_runtime.agents.container import AgentsContainer
+from ai_runtime.agents_container import wire
+from ai_runtime.agents_container.places import Places
 from ai_runtime.agents.egress import EgressProxy
 from ai_runtime.agents.environments import AgentEnvironment
 from ai_runtime.agents.library import InstalledAgent
@@ -49,6 +51,25 @@ from contracts.agent_manifest import load_manifest
 
 #: The install directory the image's helper was built for.
 INSTALL_DIR = Path("/data/agents")
+
+
+def user_of(name: str) -> int:
+    """The user the agents' container gave an agent: read from the
+    table it keeps on the volume, since the runtime is not told."""
+    if name == wire.VERIFICATION:
+        return Places.VERIFICATION_USER
+    if name == wire.BUILDER:
+        return Places.BUILDER_USER
+    return json.loads((INSTALL_DIR / "workers" / "users.json")
+                      .read_text(encoding="utf-8"))[name]
+
+
+def home_of(name: str) -> Path:
+    return INSTALL_DIR / "workers" / name / "home"
+
+
+def spool_of(name: str) -> Path:
+    return INSTALL_DIR / "workers" / name / "spool"
 
 
 #: Where the agents' container answers; the live tests run in the
@@ -279,6 +300,32 @@ INTRUDER = textwrap.dedent("""\
         def leave_child(self, target):
             return {"child": subprocess.Popen(["sleep", "300"]).pid}
 
+        def limits(self, target):
+            # What the helper set for this user's processes.
+            import resource
+            return {"processes": resource.getrlimit(resource.RLIMIT_NPROC)[0],
+                    "open_files": resource.getrlimit(resource.RLIMIT_NOFILE)[0],
+                    "file_bytes": resource.getrlimit(resource.RLIMIT_FSIZE)[0]}
+
+        def open_door(self, target):
+            # A socket with a name and no file, held open by a process
+            # of this user's, for another agent to try.
+            subprocess.Popen([sys.executable, "-c", (
+                "import socket, sys, time\\n"
+                "door = socket.socket(socket.AF_UNIX)\\n"
+                "door.bind(chr(0) + sys.argv[1])\\n"
+                "door.listen(1)\\n"
+                "time.sleep(120)\\n"), target])
+            for _ in range(50):
+                try:
+                    with socket.socket(socket.AF_UNIX) as knock:
+                        knock.settimeout(1)
+                        knock.connect("\\0" + target)
+                    return {"opened": True}
+                except OSError:
+                    time.sleep(0.1)
+            return {"opened": False}
+
         def leave_orphan(self, target):
             # A shell that starts something and is gone before it: what
             # it started is nobody's child any more.
@@ -407,7 +454,7 @@ def confinement(site):
     resolves to this machine, where the site stands."""
     container = AgentsContainer(ADDRESS, INSTALL_DIR)
     assert run(container.wait(60))
-    found = Confinement(INSTALL_DIR, container)
+    found = Confinement(container)
     EgressProxy.resolver = lambda host, port: ["127.0.0.1"]
     ports = EgressProxy.PORTS_OF_A_NAMED_HOST
     EgressProxy.PORTS_OF_A_NAMED_HOST = (*ports, site)
@@ -459,7 +506,7 @@ def filtered(confinement):
 
 @pytest.fixture
 def fenced_builds(confinement):
-    if not confinement.builder_place().fenced:
+    if not confinement.fence_lets_files_move:
         pytest.skip("this kernel's Landlock does not let a fenced "
                     "program move a file between folders")
     return confinement
@@ -489,8 +536,7 @@ def ground(confinement):
 def place(confinement):
     found = confinement.place("agt_live_intruder")
     yield found
-    run(found.stop())
-    run(found.clear())
+    run(confinement.container.stop(found.name))
 
 
 def ask(ground, place, what, target="", hosts=None):
@@ -518,11 +564,11 @@ def ask(ground, place, what, target="", hosts=None):
 class TestAConfinedWorker:
     def test_it_runs_as_its_own_user_in_its_own_home(self, ground, place):
         found = ask(ground, place, "whoami")
-        assert found["user"] == place.user != os.getuid()
-        assert found["group"] == place.user
-        assert found["groups"] in ([], [place.user])
-        assert found["home"] == str(place.home)
-        assert found["temporary"].startswith(str(place.home))
+        assert found["user"] == user_of(place.name) != os.getuid()
+        assert found["group"] == user_of(place.name)
+        assert found["groups"] in ([], [user_of(place.name)])
+        assert found["home"] == str(home_of(place.name))
+        assert found["temporary"].startswith(str(home_of(place.name)))
 
     def test_its_home_is_emptied_before_every_start(self, ground, place):
         assert ask(ground, place, "whoami")["kept_was_there"] is False
@@ -545,24 +591,24 @@ class TestAConfinedWorker:
     def test_it_cannot_read_or_write_another_agents_home(
             self, ground, place, confinement):
         other = confinement.place("agt_live_other")
-        assert run(other.prepare()) == []
-        assert other.user != place.user
-        try:
-            assert ask(ground, place, "read", str(other.home))["happened"] is False
-            assert ask(ground, place, "write", str(other.home))["happened"] is False
-            assert ask(ground, place, "write", str(other.spool))["happened"] is False
-        finally:
-            run(other.clear())
+        ask(ground, other, "whoami")          # its place, made and left behind
+        assert user_of(other.name) != user_of(place.name)
+        assert ask(ground, place, "read", str(home_of(other.name)))["happened"] is False
+        assert ask(ground, place, "write", str(home_of(other.name)))["happened"] is False
+        assert ask(ground, place, "write", str(spool_of(other.name)))["happened"] is False
 
     def test_it_cannot_use_the_helper(self, ground, place, confinement):
-        other = confinement.place("agt_live_other")
-        assert ask(ground, place, "helper", str(other.user))["happened"] is False
+        assert ask(ground, place, "helper",
+                   str(Places.FIRST_USER + 5))["happened"] is False
 
-    def test_it_starts_no_more_processes_than_allowed(
-            self, ground, place, monkeypatch):
-        monkeypatch.setattr(Confinement, "MAX_PROCESSES", 40)
-        found = ask(ground, place, "processes", "80")
-        assert 0 < found["started"] < 40
+    def test_it_is_held_to_the_limits_the_platform_set(self, ground, place):
+        """What one agent may use is the agents' container's to set
+        (places.py), never a manifest's: the helper sets it on the
+        worker's user, and the worker finds it on itself."""
+        found = ask(ground, place, "limits")
+        assert found == {"processes": Places.MAX_PROCESSES,
+                         "open_files": Places.MAX_OPEN_FILES,
+                         "file_bytes": Places.MAX_FILE_BYTES}
 
     def test_stopping_it_ends_what_it_started(self, ground, place):
         child = ask(ground, place, "leave_child")["child"]
@@ -589,14 +635,14 @@ class TestAConfinedWorker:
 
             handle.router = router
             assert await handle.start() == []
-            assert handle.spool == place.spool
+            assert handle.spool == spool_of(place.name)
             try:
                 result, status = await handle.invoke(
                     "c_1", "intruder.main.run", {"what": "spool"})
                 assert status == "success", result
                 assert result["size"] == len(payload)
                 assert seen["create"]["content_base64"] == encoded
-                assert list(place.spool.iterdir()) == []
+                assert list(spool_of(place.name).iterdir()) == []
             finally:
                 await handle.stop()
 
@@ -627,7 +673,7 @@ class TestAFencedWorker:
             shutil.rmtree(other, ignore_errors=True)
 
     def test_it_cannot_read_the_table_of_users(self, ground, place, fenced):
-        table = fenced.workers_dir / Confinement.TABLE_FILENAME
+        table = INSTALL_DIR / Places.WORKERS_FOLDER / Places.TABLE_FILENAME
         assert table.is_file()
         assert ask(ground, place, "read_file", str(table))["happened"] is False
 
@@ -650,22 +696,24 @@ class TestAFencedWorker:
         """A socket with a name and no file belongs to nobody: without
         the fence any user connects to it, another agent's worker
         among them. The door is opened where the worker is — the
-        agents' container — by a process of nobody's agent."""
+        agents' container — by another agent's worker, kept running
+        while this one tries."""
+        environment, package, document = ground
         name = f"decentai-live-{uuid.uuid4().hex[:12]}"
-        door = run(keeps_sockets.container.start(
-            [sys.executable, "-c", textwrap.dedent(f"""\
-                import socket, sys, time
-                door = socket.socket(socket.AF_UNIX)
-                door.bind("\\0{name}")
-                door.listen(1)
-                print("open", flush=True)
-                time.sleep(60)
-                """)], {}, "/", 65536))
+        other = WorkerHandle(environment.python, package, document,
+                             place=keeps_sockets.place("agt_live_other"))
+
+        async def opened():
+            assert await other.start() == []
+            result, status = await other.invoke(
+                "c_door", "intruder.main.run", {"what": "open_door", "target": name})
+            assert status == "success" and result["opened"], result
+
+        run(opened())
         try:
-            assert run(door.stdout.readline()).strip() == b"open"
             found = ask(ground, place, "socket_by_name", name)
         finally:
-            door.kill()
+            run(other.stop())
         assert found == {"happened": False, "detail": "PermissionError"}, found
 
     def test_it_reaches_a_socket_of_its_own(self, ground, place, keeps_sockets):
@@ -732,13 +780,13 @@ class TestAWorkerThatSpoilsItsOwnPlace:
     def test_a_folder_its_owner_cannot_list_is_emptied_too(
             self, ground, place):
         assert ask(ground, place, "leave_unlistable")["left"] is True
-        found = ask(ground, place, "read", str(place.home))
+        found = ask(ground, place, "read", str(home_of(place.name)))
         assert found["happened"] is True and "hidden" not in found["detail"]
 
     def test_folders_nested_deeper_than_is_walked_at_once_are_emptied(
             self, ground, place):
         assert ask(ground, place, "nest_deep")["depth"] == 200
-        found = ask(ground, place, "read", str(place.home))
+        found = ask(ground, place, "read", str(home_of(place.name)))
         assert found["happened"] is True and "deep" not in found["detail"]
 
 
@@ -1005,7 +1053,7 @@ def built_package(name: str) -> bytes:
 
 
 @pytest.fixture(scope="class")
-def index(confinement, site):
+def index(confinement, site, ground):
     """Where packages come from, standing on this machine: two that
     are built where they are installed, and one that is not."""
     listed = {
@@ -1023,8 +1071,9 @@ def index(confinement, site):
     patch.setenv("PIP_INDEX_URL", f"http://index.test:{site}/simple")
     patch.setenv("PIP_TRUSTED_HOST", "index.test")
     patch.setattr(confinement, "package_hosts", ("index.test",))
-    # The table of users is there for a build to try to read.
-    confinement.place("agt_live_intruder")
+    # The table of users is there for a build to try to read: an
+    # agent has had a worker started.
+    ask(ground, confinement.place("agt_live_intruder"), "whoami")
     yield site
     patch.undo()
     Site.pages.clear()
@@ -1036,7 +1085,7 @@ def of_the_builder() -> list:
     for name in os.listdir("/proc"):
         try:
             if (name.isdigit() and os.stat(f"/proc/{name}").st_uid
-                    == Confinement.BUILDER_USER and running(int(name))):
+                    == Places.BUILDER_USER and running(int(name))):
                 found.append(name)
         except OSError:
             pass
@@ -1074,8 +1123,8 @@ class TestABuild:
 
     def test_a_build_runs_as_the_builder(self, built, confinement):
         _, report = built
-        assert report["user"] == Confinement.BUILDER_USER
-        assert report["home"] == str(confinement.builder_place().home)
+        assert report["user"] == Places.BUILDER_USER
+        assert report["home"] == str(home_of(wire.BUILDER))
 
     def test_a_build_cannot_read_the_runtimes_settings(self, built):
         _, report = built
@@ -1108,9 +1157,13 @@ class TestABuild:
         _, report = built
         assert report["past_the_proxy"]["happened"] is False
 
-    def test_nothing_of_a_build_is_kept(self, built, confinement):
+    def test_nothing_of_a_build_runs_on_and_only_wheels_are_left(self, built):
+        """The builder's user runs nothing once the build is over, and
+        its spool holds what it built and nothing else — the wheels,
+        left for the runtime to take until the next build empties it."""
         assert of_the_builder() == []
-        assert os.listdir(confinement.builder_place().spool) == []
+        left = os.listdir(spool_of(wire.BUILDER))
+        assert left and all(name.endswith(".whl") for name in left)
 
     def test_a_package_from_somewhere_else_is_not_fetched(
             self, ground, confinement, index):
@@ -1224,7 +1277,7 @@ class TestAProgramAnAgentRuns:
             report = json.loads(ast.literal_eval(
                 (folder / "hostile_report.py").read_text(encoding="utf-8")
                 .split("=", 1)[1].strip()))
-            assert report["user"] == Confinement.BUILDER_USER
+            assert report["user"] == Places.BUILDER_USER
             assert report["settings"]["happened"] is False
             assert report["elsewhere"]["happened"] is False
             # What it depends on came with it.
@@ -1332,7 +1385,7 @@ class TestThePool:
                 agent, "c_1", "intruder.main.run", {"what": "whoami"},
                 CallContext(resources=None), timeout=30)
             assert status == "success", result
-            assert result["user"] == confinement.place("intruder").user
+            assert result["user"] == user_of("intruder")
             await pool.stop()
 
         run(scenario())

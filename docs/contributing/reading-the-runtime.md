@@ -304,12 +304,18 @@ Tests: `ai_runtime/tests/test_agent_executor.py`,
 
 With [the sandbox](../system/sandbox.md) open beside it.
 
-- `agents/confinement.py` — `Confinement` decides at start whether
-  workers can be confined here and proves it
-  (`prove_the_network_is_fenced`); `WorkerPlace` is one agent's user,
-  file fence and admission to the proxy (`prepare`, `argv`, `fence`,
-  `environment`). `spawn_helper.c` is the small program that drops to
-  that user.
+- `agents/confinement.py` — the runtime's side: `Confinement.start`
+  starts the proxy and asks the agents' container to prove it
+  confines a worker; `WorkerPlace` is one agent's worker as the
+  runtime knows it — its name and its pass at the proxy (`admit`,
+  `proxy_address`, `lend`, `learn`).
+- `agents_container/places.py` — the container's side: `Places` gives
+  each agent a user and a place (`place`, the table of users), proves
+  the helper and the kernel at start (`check`,
+  `prove_the_network_is_fenced`) and asks the helper for its jobs
+  (`prepare`, `clear`, `stop`); `Place` writes the spawn line, the
+  fence and the environment (`spawn_line`, `fence`, `environment`).
+  `spawn_helper.c` is the small program that drops to that user.
 - `agents/egress.py` — `EgressProxy._connection` is the whole policy
   for a connection: the token names the worker (`_token`,
   `_admission`), the name must be one the manifest declared
@@ -320,27 +326,30 @@ With [the sandbox](../system/sandbox.md) open beside it.
   the code store by digest, the per-agent environment and its build,
   and the two names of an agent (the platform's ref outside, the
   package's id inside).
-- `agents/container.py`, `agents_container/service.py` — where every
-  process of an agent's is started: the agents' container, asked over
-  a socket (`AgentsContainer`) and started there by `SpawnerService`,
-  which also carries a worker's lines (`_start`, `_carry`) and passes
-  workers' connections on to the runtime's proxy (`_pass_on`).
+- `agents/container.py`, `agents_container/wire.py`,
+  `agents_container/service.py` — where every process of an agent's
+  is started: the agents' container, asked by name over a socket
+  (`AgentsContainer.start_worker`, `build`, `files`, `stop`) and
+  answered by `SpawnerService` (`_start`, `_build`, `_files`,
+  `_stop`), which also carries a worker's lines (`_carry_worker`) and
+  passes workers' connections on to the runtime's proxy (`_pass_on`).
 - `agents_container/usage.py` — what the agents' container is given and what
   each agent uses, read from the kernel (`AgentsUsage.sample`), and who
   is ended when they use nearly all of it (`over`). The spawner's
   `_watch` looks every second and does the ending.
 - `events.py` — what agents did, written down as it happens
-  (`Events.record`), by the places that see it: the helper's jobs and
-  programs run as an agent (`confinement.py`), a worker's life and log
-  (`workers.py`), each connection (`egress.py`), the processes
-  an agent starts (`agents_container/service.py`). Read by the backend through
+  (`Events.record`), by the places that see it: a worker's life and
+  log (`workers.py`), each connection (`egress.py`), and — in the
+  agents' container — the helper's jobs and programs run as an agent
+  (`agents_container/places.py`, `service.py`) and the processes an
+  agent starts (`service.py`). Read by the backend through
   `door/monitor.py`. With
   [what is written down](../system/monitoring.md) open beside it.
 
 Check:
 
 - That a runtime whose agents' container cannot confine does not
-  start, and says what to mend (`Confinement.check`).
+  start, and says what to mend (`Confinement.start`, `Places.check`).
 - The address the proxy checked is the one it connects to; a name that
   resolves differently a moment later gains nothing.
 - The limits: connections per worker and in total, and the idle
@@ -351,7 +360,7 @@ Check:
   worker whose runtime hung up (`SpawnerService._serve`, `_start`).
 
 Tests: `ai_runtime/tests/test_confinement.py`,
-`ai_runtime/tests/test_egress.py`,
+`ai_runtime/tests/test_places.py`, `ai_runtime/tests/test_egress.py`,
 `ai_runtime/tests/test_agent_environments.py`,
 `ai_runtime/tests/test_container.py`, `ai_runtime/tests/test_usage.py`,
 `ai_runtime/tests/test_events.py`, and the two that need the image:

@@ -11,6 +11,7 @@ import os
 import sys
 import threading
 import time
+from pathlib import Path
 
 import pytest
 
@@ -18,7 +19,8 @@ from ai_runtime.agents.container import AgentsContainer
 from ai_runtime.agents_container.service import SpawnerService
 from ai_runtime.agents_container.usage import AgentsUsage, Sample
 from ai_runtime.agents.workers import WorkerError, WorkerHandle
-from ai_runtime.tests.fake_container import MACHINE_VARIABLES
+from ai_runtime.agents_container.places import Place
+from ai_runtime.tests.fake_container import MACHINE_VARIABLES, FakeHelper
 from ai_runtime.tests.test_agent_worker_handle import FIXTURE, manifest_document
 from contracts.container import ContainerUsage
 
@@ -271,10 +273,16 @@ class Scripted(AgentsUsage):
 
 
 class Serving:
-    def __init__(self, install_dir, usage):
+    """The service on a loop and a thread of its own, with the helper
+    stood in for, and a worker that is whatever a test says."""
+
+    def __init__(self, install_dir, usage, program=None):
         self.service = SpawnerService(
-            install_dir, port=0, host="127.0.0.1", usage=usage)
+            install_dir, port=0, host="127.0.0.1", usage=usage,
+            helper_line=FakeHelper(Path(install_dir) / "control").line)
         self.service.WATCH_SECONDS = 0.05
+        if program is not None:
+            self.service.WORKER_PROGRAM = program
         self.loop = asyncio.new_event_loop()
         ready = threading.Event()
 
@@ -295,10 +303,18 @@ class Serving:
 
 
 @pytest.fixture
-def kernel_of_a_test(tmp_path):
+def kernel_of_a_test(tmp_path, monkeypatch):
+    """The service over a kernel a test scripts, whose workers answer
+    their greeting and then hold a call for ever, as one that has
+    taken all the memory would — and whose measuring of an agent's
+    disk stands for ``du -sb home spool``: a number in front of each
+    folder."""
+    monkeypatch.setattr(Place, "measure_line", lambda self: [
+        PYTHON, "-c", "print('1024\\t/home'); print('2048\\t/spool')"])
     usage = Scripted()
-    served = Serving(tmp_path, usage)
+    served = Serving(tmp_path, usage, program=("-c", STAYING))
     usage.watched_by = served.service
+    usage.served = served
     container = AgentsContainer(f"127.0.0.1:{served.service.port}", tmp_path)
     Placed.container = container
     yield usage, container
@@ -316,31 +332,27 @@ STAYING = (
 
 
 class Staying(WorkerHandle):
-    """A worker that answers its greeting and then holds a call for
-    ever, as one that has taken all the memory would."""
+    """A worker of a test: started here with what a Python process
+    needs from this machine, which the runtime never passes."""
 
-    @staticmethod
-    def _spawn_argv(python):
-        return [str(python), "-c", STAYING]
+    @classmethod
+    def _clean_environment(cls):
+        return {**{name: os.environ[name] for name in MACHINE_VARIABLES
+                   if name in os.environ}, **super()._clean_environment()}
 
 
 class Placed:
-    """As much of a place as a handle asks of one, where there is no
-    helper: whose the worker is, and nothing to prepare."""
+    """As much of a place as a handle asks of one: whose the worker
+    is, and a pass at no proxy."""
 
     token = ""
-    spool = None
     #: Where its worker is started: the test's container, set by the
     #: fixture that serves one.
     container = None
 
-    def __init__(self, user, name, spool):
-        self.user, self.label, self.spool = user, name, spool
-        self.agent = "agt_" + name.lower()
-
-    async def prepare(self):
-        self.spool.mkdir(exist_ok=True)
-        return []
+    def __init__(self, name):
+        self.name = "agt_" + name.lower()
+        self.label = name
 
     def admit(self, *said):
         pass
@@ -348,37 +360,21 @@ class Placed:
     def dismiss(self):
         pass
 
-    async def clear(self):
-        return []
-
-    async def stop(self):
-        return []
-
-    def stop_line(self):
-        return None
+    def proxy_address(self):
+        return ""
 
     def whose(self):
-        return {"agent": self.agent, "user": self.user, "name": self.label}
+        return {"agent": self.name, "name": self.label}
 
-    def measure_line(self):
-        # Stands for `du -sb home spool` run as the agent's user: a
-        # number in front of each folder.
-        return [PYTHON, "-c",
-                "print('1024\\t/home'); print('2048\\t/spool')"]
 
-    def argv(self, argv, reads):
-        return list(argv)
-
-    def environment(self, environment):
-        # With what a Python process needs from this machine, which the
-        # runtime never passes: the service runs the worker here.
-        return {**{name: os.environ[name] for name in MACHINE_VARIABLES
-                   if name in os.environ}, **environment}
+def user_of(usage, name):
+    """The user the service gave the agent: the container's to know."""
+    return usage.watched_by.places.existing("agt_" + name.lower()).user
 
 
 async def end(handle):
     """End a worker of a test: hung up on, as a runtime that died
-    hangs up — a stand-in place has no helper to end it with."""
+    hangs up."""
     handle.process.kill()
     await handle.process.wait()
     await handle.kill()
@@ -391,16 +387,17 @@ class TestTheSpawnerHoldsThemToIt:
 
         async def scenario():
             browser = Staying(PYTHON, FIXTURE, manifest_document(),
-                              place=Placed(20002, "Browser", tmp_path / "b"))
+                              place=Placed("Browser"))
             notes = Staying(PYTHON, FIXTURE, manifest_document(),
-                            place=Placed(20001, "Notes", tmp_path / "n"))
+                            place=Placed("Notes"))
             assert await browser.start() == []
             assert await notes.start() == []
             calling = asyncio.ensure_future(
                 browser.invoke("c_1", "notebook.note.find", {}))
             await asyncio.sleep(0.2)
             assert browser.alive and notes.alive       # there is room
-            usage.holding = {20001: 100 * MB, 20002: 820 * MB}
+            usage.holding = {user_of(usage, "Notes"): 100 * MB,
+                             user_of(usage, "Browser"): 820 * MB}
             usage.held = 950 * MB
             with pytest.raises(WorkerError) as refused:
                 await asyncio.wait_for(calling, 15)
@@ -418,17 +415,18 @@ class TestTheSpawnerHoldsThemToIt:
 
         async def scenario():
             first = Staying(PYTHON, FIXTURE, manifest_document(),
-                            place=Placed(20002, "Browser", tmp_path / "b"))
+                            place=Placed("Browser"))
             second = Staying(PYTHON, FIXTURE, manifest_document(),
-                             place=Placed(20001, "Notes", tmp_path / "n"))
+                             place=Placed("Notes"))
             assert await first.start() == []
             assert await second.start() == []
             # The ledger goes on saying full, as it does for a moment
             # after the one holding most is gone.
-            usage.holding = {20001: 100 * MB, 20002: 820 * MB}
+            usage.holding = {user_of(usage, "Notes"): 100 * MB,
+                             user_of(usage, "Browser"): 820 * MB}
             usage.held = 950 * MB
             await asyncio.wait_for(first.process.wait(), 15)
-            usage.holding = {20001: 100 * MB}
+            usage.holding = {user_of(usage, "Notes"): 100 * MB}
             await asyncio.sleep(0.5)
             assert second.alive
             await end(second)
@@ -468,9 +466,9 @@ class TestTheSpawnerHoldsThemToIt:
 
         async def scenario():
             notes = Staying(PYTHON, FIXTURE, manifest_document(),
-                            place=Placed(20001, "Notes", tmp_path / "n"))
+                            place=Placed("Notes"))
             assert await notes.start() == []
-            usage.holding = {20001: 100 * MB, 20007: 5 * MB}
+            usage.holding = {user_of(usage, "Notes"): 100 * MB, 20007: 5 * MB}
             usage.held = 200 * MB
             # What it keeps on disk is measured beside the watch, by a
             # process of its own: there a moment after the rest.
@@ -486,8 +484,8 @@ class TestTheSpawnerHoldsThemToIt:
         assert said["limits"] == {"memory": 1000 * MB, "cpus": 2.0}
         assert said["memory"] == 200 * MB
         assert said["agents"] == [
-            {"user": 20001, "memory": 100 * MB, "cpu": 0.5, "processes": 3,
-             "agent": "agt_notes", "name": "Notes", "disk": 3072},
+            {"user": user_of(usage, "Notes"), "memory": 100 * MB, "cpu": 0.5,
+             "processes": 3, "agent": "agt_notes", "name": "Notes", "disk": 3072},
             {"user": 20007, "memory": 5 * MB, "cpu": 0.5, "processes": 3,
              "agent": "", "name": "", "disk": None}]
 
@@ -498,25 +496,22 @@ class TestTheSpawnerHoldsThemToIt:
 
     def test_a_program_run_to_its_end_is_ended_and_says_why(
             self, kernel_of_a_test):
-        usage, spawner = kernel_of_a_test
+        """A build is held as a worker is: the builder holding most
+        when the agents run out of memory is ended, and the build is
+        told so in place of what pip had got as far as saying."""
+        usage, _ = kernel_of_a_test
+        service = usage.watched_by
+        builder = service.places.builder()
 
         def fill():
-            usage.holding = {29999: 900 * MB}
+            usage.holding = {builder.user: 900 * MB}
             usage.held = 960 * MB
 
         threading.Timer(0.3, fill).start()
-        code, said = asyncio.run(spawner.run(
-            [PYTHON, "-c", "import time; time.sleep(60)"],
-            whose={"user": 29999, "name": "the builder"}))
+        code, said = asyncio.run_coroutine_threadsafe(service._program(
+            builder, [PYTHON, "-c", "import time; time.sleep(60)"], reads=[],
+            environment={name: os.environ[name] for name in
+                         ("PATH", *MACHINE_VARIABLES) if name in os.environ},
+            proxy="", timeout=120), usage.served.loop).result(30)
         assert code == 1
         assert "the builder was ended because the agents ran out of memory" in said
-
-    def test_a_process_that_says_it_is_nobodys_agent_is_not_held(
-            self, kernel_of_a_test):
-        usage, spawner = kernel_of_a_test
-        usage.holding = {999: 900 * MB}
-        usage.held = 960 * MB
-        code, said = asyncio.run(spawner.run(
-            [PYTHON, "-c", "import time; time.sleep(0.5); print('done')"],
-            whose={"user": 999, "name": "the platform"}))
-        assert (code, said.strip()) == (0, "done")

@@ -1,41 +1,60 @@
 """The agents' container and the runtime's client of it
 (agents/container.py, agents_container/service.py).
 
-The service is the real one, listening on this machine, and what it
-starts is a real program: what is tested is that a runtime which
-starts nothing itself runs a program there, keeps a worker there and
-hears its lines, ends it by hanging up, and is refused without the
-key. The helper is not here, so no worker of an agent's is started
-through this pair; that is the fake container's part in every other
-test, and the live stack's in test_spawner_live.py.
+The service is the real one, listening on this machine with the spawn
+helper stood in for (fake_spawn.py): what is tested is that a runtime
+which starts nothing itself has a worker started there by name and
+hears its lines, has requirements built there, is told what an agent
+keeps, ends an agent's processes, and is refused without the key.
+Against the real helper, in the two containers: test_spawner_live.py.
 """
 
 import asyncio
-import json
 import os
 import socket
 import sys
 import threading
+import zipfile
 
 import pytest
 
+from ai_runtime.agents.confinement import Confinement
 from ai_runtime.agents.container import AgentsContainer
+from ai_runtime.agents.workers import WorkerHandle
 from ai_runtime.agents_container import wire
+from ai_runtime.agents_container.places import Places
 from ai_runtime.agents_container.service import SpawnerService
+from ai_runtime.tests.fake_container import MACHINE_VARIABLES, FakeHelper
+from ai_runtime.tests.test_agent_worker_handle import FIXTURE, manifest_document, venv  # noqa: F401
 
 PYTHON = sys.executable
 #: What a Python process needs from this machine to start at all.
 MACHINE = {name: os.environ[name]
-           for name in ("PATH", "SYSTEMROOT", "SYSTEMDRIVE") if name in os.environ}
+           for name in ("PATH", *MACHINE_VARIABLES) if name in os.environ}
+
+
+def run(awaitable):
+    return asyncio.run(awaitable)
+
+
+class Here(WorkerHandle):
+    """A worker of a test: started here with what a Python process
+    needs from this machine, which the runtime never passes."""
+
+    @classmethod
+    def _clean_environment(cls):
+        return {**{name: os.environ[name] for name in MACHINE_VARIABLES
+                   if name in os.environ}, **super()._clean_environment()}
 
 
 class Serving:
     """The service on a loop and a thread of its own, as it has a
-    container of its own."""
+    container of its own, with the helper stood in for."""
 
-    def __init__(self, install_dir, proxy=""):
+    def __init__(self, install_dir, helper: FakeHelper, proxy=""):
         self.service = SpawnerService(install_dir, port=0, proxy=proxy,
-                                      proxy_port=0, host="127.0.0.1")
+                                      proxy_port=0, host="127.0.0.1",
+                                      helper_line=helper.line)
         self.loop = asyncio.new_event_loop()
         ready = threading.Event()
 
@@ -59,13 +78,14 @@ class Serving:
         self.thread.join(10)
 
 
-def run(awaitable):
-    return asyncio.run(awaitable)
+@pytest.fixture
+def helper(tmp_path):
+    return FakeHelper(tmp_path / "control", "landlock=4\nseccomp=1\n")
 
 
 @pytest.fixture
-def serving(tmp_path):
-    served = Serving(tmp_path)
+def serving(tmp_path, helper):
+    served = Serving(tmp_path, helper)
     yield served
     served.stop()
 
@@ -76,50 +96,17 @@ def container(serving, tmp_path):
     return AgentsContainer(f"127.0.0.1:{serving.service.port}", tmp_path)
 
 
-class TestOneProgram:
-    def test_it_runs_there_and_says_what_it_wrote(self, container):
-        code, output = run(container.run([PYTHON, "-c", "print('here')"]))
-        assert (code, output.strip()) == (0, "here")
-
-    def test_its_return_code_is_its_own(self, container):
-        code, _ = run(container.run([PYTHON, "-c", "import sys; sys.exit(7)"]))
-        assert code == 7
-
-    def test_it_is_given_the_environment_it_is_sent_and_no_other(self, container):
-        code, output = run(container.run(
-            [PYTHON, "-c",
-             "import os; print(os.environ.get('GIVEN'), "
-             "os.environ.get('PYTEST_CURRENT_TEST'))"],
-            environment={**MACHINE, "GIVEN": "yes"}))
-        assert (code, output.split()) == (0, ["yes", "None"])
-
-    def test_what_it_is_fed_is_its_input(self, container):
-        code, output = run(container.run(
-            [PYTHON, "-c", "import sys; print(sys.stdin.read().upper())"],
-            feed="spoken"))
-        assert (code, output.strip()) == (0, "SPOKEN")
-
-    def test_its_log_is_said_with_the_rest_or_left_out(self, container):
-        program = [PYTHON, "-c",
-                   "import sys; print('out'); print('log', file=sys.stderr)"]
-        assert "log" in run(container.run(program))[1]
-        assert "log" not in run(container.run(program, errors=AgentsContainer.DROP))[1]
-
-    def test_one_that_outlasts_its_time_is_ended(self, container):
-        code, output = run(container.run(
-            [PYTHON, "-c", "import time; time.sleep(60)"], timeout=1))
-        assert code == 1 and "did not finish in 1 seconds" in output
-
-    def test_a_program_that_is_not_there_could_not_run(self, container):
-        code, output = run(container.run(["no-such-program-anywhere"]))
-        assert code == 1 and output.startswith(AgentsContainer.COULD_NOT_RUN)
+class TestReachingIt:
+    def test_a_runtime_waits_for_the_container_and_finds_it(self, container):
+        assert run(container.wait(5))
 
     def test_nobody_answering_is_told_of_not_raised(self, tmp_path):
         with socket.socket() as taken:
             taken.bind(("127.0.0.1", 0))
             port = taken.getsockname()[1]
-        code, output = run(AgentsContainer(f"127.0.0.1:{port}", tmp_path).run(["x"]))
-        assert code == 1 and "did not answer" in output
+        answer = run(AgentsContainer(f"127.0.0.1:{port}", tmp_path).check())
+        assert "did not answer" in answer["error"]
+        assert run(AgentsContainer(f"127.0.0.1:{port}", tmp_path).usage()) is None
 
     def test_an_address_is_host_and_port(self, tmp_path):
         with pytest.raises(ValueError, match="host:port"):
@@ -132,14 +119,12 @@ class TestTheKey:
         assert len(key) >= 32
         assert SpawnerService(tmp_path).make_key() == key
 
-    def test_a_request_without_it_starts_nothing(self, serving, tmp_path):
+    def test_a_request_without_it_is_refused(self, serving, tmp_path):
         stranger = AgentsContainer(
             f"127.0.0.1:{serving.service.port}", tmp_path / "elsewhere")
-        marker = tmp_path / "ran"
-        code, output = run(stranger.run(
-            [PYTHON, "-c", f"open({str(marker)!r}, 'w').close()"]))
-        assert code == 1 and "key" in output
-        assert not marker.exists()
+        assert "key" in run(stranger.check())["error"]
+        code, said, wheels = run(stranger.build(PYTHON, tmp_path, ["x"], "", {}, 10))
+        assert code == 1 and "key" in said and wheels is None
 
     def test_a_worker_is_not_started_without_it(self, serving, tmp_path):
         stranger = AgentsContainer(
@@ -147,81 +132,147 @@ class TestTheKey:
 
         async def scenario():
             with pytest.raises(OSError, match="key"):
-                await stranger.start([PYTHON, "-c", "pass"], {}, str(tmp_path), 65536)
-        asyncio.run(scenario())
-
-    def test_a_runtime_waits_for_the_container_and_finds_it(self, container):
-        assert run(container.wait(5))
+                await stranger.start_worker("agt_a", "A", PYTHON, tmp_path, {})
+        run(scenario())
 
 
-#: A worker as the spawner sees one: a program that answers one line
-#: with one line, then does as the script says.
-ANSWERING = (
-    "import sys, time\n"
-    "sys.stdin.readline()\n"
-    "sys.stdout.write('{\"id\": 1, \"result\": {}}\\n')\n"
-    "sys.stdout.flush()\n"
-)
+class TestWhatItProves:
+    def test_the_check_says_what_the_kernel_offers(self, container, helper):
+        report = run(container.check())
+        assert report["fences"] == {"files": True, "moves": True,
+                                    "ports": True, "sockets": False}
+        assert report["filters_calls"] is True and report["can_filter_calls"] is True
+        # Nothing here holds a worker to the proxy: the spawner's own
+        # port was reached from installation's place.
+        assert report["network_fenced"] is False
+        assert helper.asked[0] == ["check"]
+
+    def test_a_helper_that_refuses_is_said_as_what_to_mend(self, container, helper):
+        helper.refuse("check")
+        assert "Mend" in run(container.check())["error"]
 
 
 class TestAWorkerThere:
-    async def started(self, container, script, cwd):
-        process = await container.start(
-            [PYTHON, "-c", script], MACHINE, str(cwd), 65536)
-        process.stdin.write(b'{"id": 1, "method": "hello", "params": {}}\n')
-        await process.stdin.drain()
-        return process
-
-    def test_its_lines_come_back_and_its_log_beside_them(self, container, tmp_path):
-        script = ANSWERING + "sys.stderr.write('a log line\\n')\nsys.stderr.flush()\n"
+    def test_it_is_started_by_name_and_answers_its_greeting(
+            self, container, venv, tmp_path, helper):
+        """The runtime names the agent, the interpreter and the
+        package; the container gives the worker its place, and the
+        lines travel both ways."""
+        confinement = Confinement(container)
 
         async def scenario():
-            process = await self.started(container, script, tmp_path)
-            assert process.pid is None            # another container's number
-            assert json.loads(await process.stdout.readline()) == {"id": 1, "result": {}}
-            assert (await process.stderr.readline()).strip() == b"a log line"
-            assert await process.wait() == 0
-        asyncio.run(scenario())
+            await confinement.start(0, allow_loopback=True)
+            handle = Here(venv.python, FIXTURE, manifest_document(),
+                          confinement.place("agt_test"))
+            assert await handle.start() == []
+            try:
+                assert handle.alive
+                assert handle.spool == tmp_path / "workers" / "agt_test" / "spool"
+                assert handle.spool.is_dir()
+            finally:
+                await handle.stop()
+            assert not handle.alive
+            await confinement.stop()
+        run(scenario())
+        asked = helper.asked
+        started = next(line for line in asked
+                       if line[0] == "run" and line[-1] == "decentai_sdk.worker")
+        # As the agent's own user, from the venv the runtime named.
+        assert started[1] == str(Places.FIRST_USER + 1)
+        assert started[-3:] == ["-I", "-m", "decentai_sdk.worker"]
+        assert started[started.index("--") + 1] == str(venv.python)
+        assert ["stop", started[1]] in asked
 
-    def test_its_spool_is_where_both_sides_find_it(self, container, tmp_path):
-        spool = container.spool()
-        assert spool.parent == tmp_path / AgentsContainer.SPOOLS_FOLDER
-        assert spool.is_dir()
-
-    def test_killing_it_ends_the_process_there(self, container, tmp_path):
-        """A worker that will not leave is ended by hanging up: the
-        spawner ends what it started for a runtime no longer
-        listening."""
-        beat = tmp_path / "beat"
-        script = ANSWERING + (
-            "while True:\n"
-            f"    open({str(beat)!r}, 'a').write('.')\n"
-            "    time.sleep(0.1)\n")
+    def test_ending_it_ends_every_process_of_its_user(
+            self, container, venv, tmp_path):
+        confinement = Confinement(container)
 
         async def scenario():
-            process = await self.started(container, script, tmp_path)
-            await process.stdout.readline()
-            await asyncio.sleep(0.5)
-            process.kill()
-            await process.wait()
-            await asyncio.sleep(0.5)
-            size = beat.stat().st_size
-            await asyncio.sleep(0.5)
-            assert beat.stat().st_size == size       # nothing is writing
-        asyncio.run(scenario())
+            await confinement.start(0, allow_loopback=True)
+            handle = Here(venv.python, FIXTURE, manifest_document(),
+                          confinement.place("agt_test"))
+            assert await handle.start() == []
+            assert await container.stop("agt_test") == []
+            assert await asyncio.wait_for(handle.process.wait(), 15) != 0
+            await handle.kill()
+            await confinement.stop()
+        run(scenario())
 
-    def test_its_exit_is_the_connections_end(self, container, tmp_path):
+    def test_an_agent_that_never_ran_has_nothing_to_list(self, container):
+        assert "has not run" in run(container.files("agt_nobody"))["error"]
+        assert run(container.stop("agt_nobody")) == []
+
+    def test_what_a_worker_keeps_is_listed(self, container, venv, tmp_path):
+        confinement = Confinement(container)
+
         async def scenario():
-            process = await self.started(
-                container, ANSWERING + "sys.exit(3)\n", tmp_path)
-            await process.stdout.readline()
-            assert await process.wait() == 3
-            assert await process.stdout.readline() == b""
-        asyncio.run(scenario())
+            await confinement.start(0, allow_loopback=True)
+            handle = Here(venv.python, FIXTURE, manifest_document(),
+                          confinement.place("agt_test"))
+            assert await handle.start() == []
+            try:
+                (handle.spool / "kept").write_text("four", encoding="utf-8")
+                listed = await container.files("agt_test")
+            finally:
+                await handle.stop()
+            await confinement.stop()
+            return listed
+        listed = run(scenario())
+        assert listed["count"] == 1 and listed["bytes"] == 4
+
+
+def a_wheel(folder, name="plain"):
+    """A package already built, for a build that fetches nothing."""
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / f"{name}-1.0-py3-none-any.whl"
+    inside = f"{name}-1.0.dist-info/"
+    with zipfile.ZipFile(path, "w") as wheel:
+        wheel.writestr(f"{name}.py", "PLAIN = True\n")
+        wheel.writestr(inside + "METADATA",
+                       f"Metadata-Version: 2.1\nName: {name}\nVersion: 1.0\n")
+        wheel.writestr(inside + "WHEEL",
+                       "Wheel-Version: 1.0\nGenerator: plain\n"
+                       "Root-Is-Purelib: true\nTag: py3-none-any\n")
+        wheel.writestr(inside + "RECORD", "")
+    return path
+
+
+class TestABuildThere:
+    def test_requirements_are_built_by_the_builder_and_left_for_the_runtime(
+            self, container, tmp_path, helper):
+        a_wheel(tmp_path / "index")
+        code, said, wheels = run(container.build(
+            PYTHON, tmp_path / "env", ["plain"], proxy="",
+            environment={**MACHINE, "PIP_NO_INDEX": "1",
+                         "PIP_FIND_LINKS": str(tmp_path / "index")},
+            timeout=120))
+        assert code == 0, said
+        assert wheels == tmp_path / "workers" / wire.BUILDER / "spool"
+        assert [path.name for path in wheels.iterdir()] == ["plain-1.0-py3-none-any.whl"]
+        build = next(line for line in helper.asked if line[0] == "run")
+        assert build[1] == str(Places.LAST_USER)
+        program = build[build.index("--") + 1:]
+        assert program[:4] == [PYTHON, "-m", "pip", "wheel"]
+        assert program[-1] == "plain"
+
+    def test_a_build_that_fails_says_why(self, container, tmp_path):
+        code, said, wheels = run(container.build(
+            PYTHON, tmp_path / "env", ["decentai-no-such-package-xyzzy"],
+            proxy="", environment={**MACHINE, "PIP_NO_INDEX": "1"}, timeout=120))
+        assert code != 0 and "decentai-no-such-package-xyzzy" in said
+
+    def test_a_build_that_does_not_end_is_ended(self, container, tmp_path):
+        code, said, _ = run(container.build(
+            PYTHON, tmp_path / "env", ["plain"], proxy="",
+            # pip asked to keep trying an index that never answers
+            environment={**MACHINE, "PIP_INDEX_URL": "http://127.0.0.1:9/simple",
+                         "PIP_RETRIES": "40", "PIP_TIMEOUT": "60"},
+            timeout=2))
+        assert code == 1 and "did not finish in 2 seconds" in said
 
 
 class TestTheWayOut:
-    def test_what_a_worker_sends_its_proxy_is_passed_on_unread(self, tmp_path):
+    def test_what_a_worker_sends_its_proxy_is_passed_on_unread(self, tmp_path, helper):
         """Workers are pointed at their own container's address; what
         arrives there reaches the runtime's proxy and its answer comes
         back."""
@@ -233,7 +284,7 @@ class TestTheWayOut:
         async def scenario():
             upstream = await asyncio.start_server(proxy, "127.0.0.1", 0)
             port = upstream.sockets[0].getsockname()[1]
-            served = Serving(tmp_path, proxy=f"127.0.0.1:{port}")
+            served = Serving(tmp_path, helper, proxy=f"127.0.0.1:{port}")
             try:
                 reader, writer = await asyncio.open_connection(
                     "127.0.0.1", served.forwarding_port)
@@ -246,7 +297,4 @@ class TestTheWayOut:
                 # the service waits for what is passing to end.
                 await asyncio.to_thread(served.stop)
                 upstream.close()
-        asyncio.run(scenario())
-
-    def test_the_port_no_worker_may_reach_is_the_spawners_own(self, container, serving):
-        assert container.port == serving.service.port
+        run(scenario())

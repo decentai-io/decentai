@@ -73,7 +73,4 @@ async def usage(request: Request):
 async def files(request: Request, agent: str = ""):
     """What one agent keeps in its home and its spool now."""
     the_backend(request)
-    place = request.app.state.confinement.existing_place(agent)
-    if place is None:
-        return {"error": "That agent has no place here: it has not run."}
-    return await place.files()
+    return await request.app.state.container.files(agent)

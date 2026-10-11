@@ -324,12 +324,12 @@ class TestReclaimingTheDisk:
         assert services.pulls == [("chat_1", REF)]
         # The platform was told once, by the chat that built it — the
         # second chat found it serving and said nothing new.
-        # With it, what this process holds the agent to: a user and a
-        # fence, as the fake kernel has them; nothing holds a worker to
-        # the proxy here.
+        # With it, what this process holds the agent to: a user, a
+        # fence and the proxy as the one way out, as the fake container
+        # proves them.
         assert services.prepared[REF] == {
             "digest": digest, "state": "ready", "error": "",
-            "confined": {"user": True, "files": True, "network": False}}
+            "confined": {"user": True, "files": True, "network": True}}
         assert services.prepared_reports == [("chat_1", REF, digest, "ready")]
 
     def test_code_nobody_approves_is_forgotten(self, library, package):

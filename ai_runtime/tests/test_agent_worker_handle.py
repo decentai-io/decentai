@@ -18,7 +18,7 @@ from ai_runtime.agents.library import AgentLibrary, AgentRefused
 from ai_runtime.agents.workers import WorkerError, WorkerHandle
 from contracts.agent_manifest import manifest_hash
 from contracts.agent_package import AgentPackage
-from ai_runtime.tests.fake_container import confinement, standalone
+from ai_runtime.tests.fake_container import confinement, standalone, container
 from ai_runtime.tests import fake_container
 
 FIXTURE = Path(__file__).resolve().parent / "fixtures" / "agents" / "notebook"
@@ -305,15 +305,12 @@ class TestWorkerHandle:
             "time.sleep(3600)\n"
         )
 
-        class Garbling(WorkerHandle):
-            @staticmethod
-            def _spawn_argv(python):
-                return [str(python), "-c", script]
-
+        container().program = ("-c", script)
         place = confinement().place("agt_test")
+
         async def scenario():
-            handle = Garbling(venv.python, FIXTURE, manifest_document(),
-                              place)
+            handle = WorkerHandle(venv.python, FIXTURE, manifest_document(),
+                                  place)
             assert await handle.start() == []
             with pytest.raises(WorkerError, match="not JSON"):
                 await handle.invoke("c_x", "notebook.note.find", {})

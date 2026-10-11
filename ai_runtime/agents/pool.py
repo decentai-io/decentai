@@ -317,14 +317,13 @@ class WorkerPool:
             await self.discard(agent_id)
 
     async def terminate(self) -> None:
-        """End every worker's user through the helper, without asking
-        — for a shutdown that could not ask politely in time. Another
-        user's processes cannot be signalled from here; the helper ends
-        them, and takes away what they left."""
+        """End every worker where it runs, without asking — for a
+        shutdown that could not ask politely in time. The container
+        ends every process of each agent's, and takes away what they
+        left."""
         for handle in self._handles.values():
             if handle.alive:
-                await handle.place.stop()
-                await handle.place.clear()
+                await self.confinement.container.stop(handle.place.name)
         self._handles.clear()
         self._running.clear()
         self._calls.clear()

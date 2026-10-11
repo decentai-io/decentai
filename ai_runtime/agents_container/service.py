@@ -2,11 +2,12 @@
 
     python -m ai_runtime.agents_container.service
 
-It starts the processes the runtime asks for (wire.py has the
-messages) and carries a worker's lines to the runtime and back. It
-decides nothing: which code, which user, which environment and when a
-worker ends are the runtime's to say, and what a worker is entitled to
-is never said here at all — a worker's asks pass through as lines.
+It answers the runtime's requests (wire.py): start a worker of an
+agent's, build the packages one declared, list what one keeps, end
+one, say what the agents use. Everything about a process is decided
+here — its user and its place (places.py), its fences, its spawn line,
+its ending — and nothing about what an agent is entitled to: a
+worker's asks pass through to the runtime as lines, unread.
 
 Two things listen:
 
@@ -33,17 +34,19 @@ whose child an orphan becomes.
 
 from __future__ import annotations
 
-import logging
 import asyncio
 import hmac
 import json
+import logging
 import os
 import secrets
 import sys
+import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Set
+from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 
 from ai_runtime.agents_container import wire
+from ai_runtime.agents_container.places import ConfinementFailed, Place, Places
 from ai_runtime.agents_container.usage import AgentsUsage, Sample
 from ai_runtime.events import Events
 
@@ -73,21 +76,30 @@ class SpawnerService:
     #: How the spawn helper is called, in a process's own line: what a
     #: worker's process is for the instant before it is the worker.
     HELPER_NAME = "decentai-spawn"
+    #: What a worker is: the SDK's worker program, from the agent's own
+    #: environment, isolated so that the environment answers for itself.
+    WORKER_PROGRAM = ("-I", "-m", "decentai_sdk.worker")
+    #: How long a build may take.
+    BUILD_SECONDS = 300
 
     def __init__(self, install_dir: str | Path, port: int = 8003,
                  proxy: str = "", proxy_port: int = 8002,
                  host: str = "0.0.0.0",
-                 usage: Optional[AgentsUsage] = None):
+                 usage: Optional[AgentsUsage] = None,
+                 helper_line: Optional[Sequence[str]] = None):
         self.install_dir = Path(install_dir)
         #: What the agents are given and what each uses.
         self.usage = usage if usage is not None else AgentsUsage()
+        #: The processes this one started itself, which it waits for
+        #: by itself: everything else that ends here is an orphan's.
+        self._children: Set[int] = set()
+        #: Each agent's place, and the helper that confines it.
+        self.places = Places(install_dir, proxy_port=proxy_port,
+                             helper_line=helper_line, children=self._children)
         #: user -> the one process started for it that is running now:
         #: {"name", "process", "stop", "because"}. What may be ended
         #: for using more than the agents are given, and named.
         self._held: Dict[int, Dict[str, Any]] = {}
-        #: The processes this one started itself, which it waits for
-        #: by itself: everything else that ends here is an orphan's.
-        self._children: Set[int] = set()
         self._found: Optional[Sample] = None
         #: user -> the processes of its that were written down already.
         self._seen: Dict[int, Set[int]] = {}
@@ -108,10 +120,10 @@ class SpawnerService:
         self.proxy = str(proxy or "").strip()
         self.proxy_port = int(proxy_port)
         self.key = ""
-        #: Endings under way: a worker whose runtime hung up is being
-        #: ended, and what is asked next waits for that to be over — a
-        #: late ending would land on the worker started after it.
-        self._ending: Set[asyncio.Task] = set()
+        #: One thing at a time in each place: a worker holds its place
+        #: for its life, a build holds the builder's, and whoever asks
+        #: next waits for it to be over and the place emptied.
+        self._place_locks: Dict[str, asyncio.Lock] = {}
         #: The requests being served, for a stop to wait out.
         self._serving: Set[asyncio.Task] = set()
         self._servers: List[asyncio.AbstractServer] = []
@@ -201,17 +213,19 @@ class SpawnerService:
             if not hmac.compare_digest(str(request.get("key") or ""), self.key):
                 await self._say(writer, {"error": "that is not the runtime's key"})
                 return
-            # A worker being ended for a runtime that hung up is ended
-            # before anything else is started.
-            while self._ending:
-                await asyncio.wait(set(self._ending))
             operation = request.get("op")
             if operation == "ping":
                 await self._say(writer, {"here": True})
-            elif operation == "run":
-                await self._run(request, reader, writer)
+            elif operation == "check":
+                await self._say(writer, await self._check())
             elif operation == "start":
                 await self._start(request, reader, writer)
+            elif operation == "build":
+                await self._say(writer, await self._build(request))
+            elif operation == "files":
+                await self._say(writer, await self._files(request))
+            elif operation == "stop":
+                await self._say(writer, await self._stop(request))
             elif operation == "usage":
                 await self._say(writer, self._usage())
             else:
@@ -229,132 +243,49 @@ class SpawnerService:
         await writer.drain()
 
     @staticmethod
-    def _line(request: dict, name: str) -> Optional[List[str]]:
-        said = request.get(name)
-        if not isinstance(said, list) or not said:
-            return None
-        return [str(part) for part in said]
+    def _word(request: dict, name: str) -> str:
+        return str(request.get(name) or "").strip()
 
     @staticmethod
-    def _environment(request: dict) -> Optional[Dict[str, str]]:
-        said = request.get("environment")
-        if not isinstance(said, dict):
-            return None
-        return {str(name): str(value) for name, value in said.items()}
-
-    def _hold(self, request: dict, process: asyncio.subprocess.Process,
-              stop: Optional[List[str]]) -> Optional[Dict[str, Any]]:
-        """Remember whose process this is, while it runs. None where
-        the request does not say, or says a user that is no agent's."""
-        self._children.add(process.pid)
-        whose = request.get("whose")
-        user = whose.get("user") if isinstance(whose, dict) else None
-        if (isinstance(user, bool) or not isinstance(user, int)
-                or not AgentsUsage.FIRST_USER <= user <= AgentsUsage.LAST_USER):
-            return None
-        held = {"user": user, "process": process, "stop": stop, "because": "",
-                "agent": str(whose.get("agent") or "")[:100],
-                "name": str(whose.get("name") or "An agent")[:100],
-                # How what it keeps on disk is measured, and what the
-                # last measuring found; None until the first.
-                "measure": self._line(whose, "measure"), "disk": None}
-        self._held[user] = held
-        if held["measure"]:
-            self._measure_at = 0.0          # at the next look
-        return held
-
-    def _let_go(self, held: Optional[Dict[str, Any]],
-                process: asyncio.subprocess.Process) -> None:
-        self._children.discard(process.pid)
-        if held is not None and self._held.get(held["user"]) is held:
-            del self._held[held["user"]]
-
-    # ------------------------------------------------------------------
-    # One program, to its end
-    # ------------------------------------------------------------------
-
-    async def _run(self, request: dict, reader: asyncio.StreamReader,
-                   writer: asyncio.StreamWriter) -> None:
-        argv = self._line(request, "argv")
-        if argv is None:
-            return await self._say(writer, {"error": "nothing to run"})
-        stop = self._line(request, "stop")
-        feed = request.get("feed")
-        timeout = request.get("timeout")
-        try:
-            process = await asyncio.create_subprocess_exec(
-                *argv,
-                stdin=(asyncio.subprocess.PIPE if feed is not None
-                       else asyncio.subprocess.DEVNULL),
-                stdout=asyncio.subprocess.PIPE,
-                stderr=(asyncio.subprocess.STDOUT
-                        if request.get("errors") != wire.DROP
-                        else asyncio.subprocess.DEVNULL),
-                cwd=request.get("cwd") or None,
-                env=self._environment(request))
-        except OSError as exc:
-            return await self._say(writer, {"error": str(exc)})
-        held = self._hold(request, process, stop)
-        try:
-            work = asyncio.ensure_future(process.communicate(
-                str(feed).encode("utf-8") if feed is not None else None))
-            # Nothing more is sent on this connection: reading it ends
-            # when the runtime hangs up.
-            gone = asyncio.ensure_future(reader.read(1))
-            done, _ = await asyncio.wait(
-                {work, gone},
-                timeout=(float(timeout) if isinstance(timeout, (int, float))
-                         else None),
-                return_when=asyncio.FIRST_COMPLETED)
-            if work in done:
-                gone.cancel()
-                said, _ = work.result()
-                if held is not None and held["because"]:
-                    # Ended here, for what it was using: said in place
-                    # of whatever it had got as far as saying.
-                    return await self._say(writer, {
-                        "code": 1, "said": held["because"]})
-                return await self._say(writer, {
-                    "code": process.returncode, "said": self._text(said)})
-            await self._end(process, stop)
-            said, _ = await work
-            if gone in done:
-                return
-            gone.cancel()
-            await self._say(writer, {
-                "code": 1, "said": wire.outlasted(timeout, self._text(said))})
-        finally:
-            self._let_go(held, process)
+    def _words(request: dict, name: str) -> List[str]:
+        found = request.get(name)
+        if not isinstance(found, list):
+            return []
+        return [str(word) for word in found if str(word).strip()]
 
     @staticmethod
-    def _text(said: Any) -> str:
-        return bytes(said or b"").decode("utf-8", "replace")
+    def _environment(request: dict) -> Dict[str, str]:
+        found = request.get("environment")
+        if not isinstance(found, dict):
+            return {}
+        return {str(name): str(value) for name, value in found.items()}
 
-    async def _end(self, process: asyncio.subprocess.Process,
-                   stop: Optional[Sequence[str]]) -> None:
-        """End a program that will not end, or whose runtime is gone.
-        A confined one is another user's, which this process may not
-        signal: ``stop`` is the helper's line that ends it, and
-        everything else that user runs."""
-        if not stop:
-            if process.returncode is None:
-                try:
-                    process.kill()
-                except ProcessLookupError:
-                    pass
-            return
+    def _lock(self, place: Place) -> asyncio.Lock:
+        return self._place_locks.setdefault(place.name, asyncio.Lock())
+
+    # ------------------------------------------------------------------
+    # What is proved at start
+    # ------------------------------------------------------------------
+
+    async def _check(self) -> Dict[str, Any]:
+        """What this container holds a worker to, proved: the helper
+        and the kernel, and whether anything but the proxy can be
+        reached from a worker's place."""
         try:
-            ending = await asyncio.create_subprocess_exec(
-                *stop, stdin=asyncio.subprocess.DEVNULL,
-                stdout=asyncio.subprocess.DEVNULL,
-                stderr=asyncio.subprocess.DEVNULL)
-            self._children.add(ending.pid)
-            try:
-                await asyncio.wait_for(ending.wait(), self.STOP_SECONDS)
-            finally:
-                self._children.discard(ending.pid)
-        except (OSError, asyncio.TimeoutError) as exc:
-            self.logger.error(f"a worker could not be ended: {exc}")
+            await self.places.check()
+        except ConfinementFailed as exc:
+            return {"error": str(exc)}
+        fenced = await self.places.prove_the_network_is_fenced(self.port)
+        if fenced:
+            self.logger.info(
+                "Workers' connections are fenced: an agent reaches the "
+                "runtime's proxy, and nothing else.")
+        else:
+            self.logger.warning(
+                "Workers' connections are NOT fenced here: nothing stops an "
+                "agent going around the proxy. This container was not given "
+                "the right to set a firewall rule.")
+        return {**self.places.report(), "network_fenced": fenced}
 
     # ------------------------------------------------------------------
     # A worker, kept
@@ -362,24 +293,46 @@ class SpawnerService:
 
     async def _start(self, request: dict, reader: asyncio.StreamReader,
                      writer: asyncio.StreamWriter) -> None:
-        argv = self._line(request, "argv")
-        if argv is None:
-            return await self._say(writer, {"error": "nothing to start"})
-        stop = self._line(request, "stop")
-        try:
-            process = await asyncio.create_subprocess_exec(
-                *argv,
-                stdin=asyncio.subprocess.PIPE,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                cwd=request.get("cwd") or None,
-                env=self._environment(request),
-                limit=self.LINE_LIMIT)
-        except OSError as exc:
-            return await self._say(writer, {"error": str(exc)})
-        held = self._hold(request, process, stop)
-        await self._say(writer, {"started": True, "pid": process.pid})
+        agent, python, package = (self._word(request, name)
+                                  for name in ("agent", "python", "package"))
+        if not agent or not python or not package:
+            return await self._say(writer, {
+                "error": "a worker is started for an agent, from an "
+                         "interpreter, in a package"})
+        place = self.places.place(agent)
+        place.label = self._word(request, "name") or agent
+        async with self._lock(place):
+            errors = await self.places.prepare(place)
+            if errors:
+                return await self._say(writer, {"error": "; ".join(errors)})
+            try:
+                process = await asyncio.create_subprocess_exec(
+                    *place.spawn_line(
+                        [python, *self.WORKER_PROGRAM],
+                        reads=[package, Path(python).parent.parent]),
+                    stdin=asyncio.subprocess.PIPE,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                    cwd=package,
+                    env=place.environment(self._environment(request),
+                                          self._word(request, "proxy")),
+                    limit=self.LINE_LIMIT)
+            except OSError as exc:
+                return await self._say(writer, {"error": str(exc)})
+            held = self._hold(place, process, measured=True)
+            await self._say(writer, {"started": True, "spool": str(place.spool)})
+            try:
+                await self._carry_worker(place, process, held, reader, writer)
+            finally:
+                self._let_go(held, process)
+                await self.places.clear(place)
 
+    async def _carry_worker(self, place: Place, process, held: Optional[dict],
+                            reader: asyncio.StreamReader,
+                            writer: asyncio.StreamWriter) -> None:
+        """The worker's lines to the runtime and its input back, until
+        the worker ends by itself or the runtime hangs up — then it is
+        ended, with everything its user runs, and its exit is said."""
         feeding = asyncio.ensure_future(self._feed(reader, process))
         said = asyncio.ensure_future(
             self._carry(process.stdout, wire.OUT, writer))
@@ -398,10 +351,7 @@ class SpawnerService:
                 await asyncio.wait({exited, feeding}, timeout=1,
                                    return_when=asyncio.FIRST_COMPLETED)
             if not exited.done():
-                ending = asyncio.ensure_future(self._end(process, stop))
-                self._ending.add(ending)
-                ending.add_done_callback(self._ending.discard)
-                await ending
+                await self.places.end(process, place.stop_line())
             code = await exited
             await asyncio.wait({said, logged}, timeout=5)
             why = self._why(held, code)
@@ -414,9 +364,119 @@ class SpawnerService:
             except (ConnectionError, OSError):
                 pass
         finally:
-            self._let_go(held, process)
             for task in (feeding, said, logged):
                 task.cancel()
+
+    def _hold(self, place: Place, process: asyncio.subprocess.Process,
+              measured: bool = False) -> Dict[str, Any]:
+        """Remember whose process this is, while it runs: what may be
+        ended for using more than the agents are given, and named."""
+        self._children.add(process.pid)
+        held = {"user": place.user, "process": process, "stop": place.stop_line(),
+                "because": "", "agent": place.name, "name": place.label,
+                # How what it keeps on disk is measured, and what the
+                # last measuring found; None until the first.
+                "measure": place.measure_line() if measured else None,
+                "disk": None}
+        self._held[place.user] = held
+        if measured:
+            self._measure_at = 0.0          # at the next look
+        return held
+
+    def _let_go(self, held: Optional[Dict[str, Any]],
+                process: asyncio.subprocess.Process) -> None:
+        self._children.discard(process.pid)
+        if held is not None and self._held.get(held["user"]) is held:
+            del self._held[held["user"]]
+
+    # ------------------------------------------------------------------
+    # A build, by the builder
+    # ------------------------------------------------------------------
+
+    async def _build(self, request: dict) -> Dict[str, Any]:
+        """The requirements downloaded and built as wheels, by the
+        builder's user in the builder's place, through the proxy
+        the request names. The wheels are left in the builder's spool
+        for the runtime to take; the next build empties it."""
+        python, root = self._word(request, "python"), self._word(request, "environment_root")
+        requirements = self._words(request, "requirements")
+        if not python or not root or not requirements:
+            return {"error": "a build is of requirements, with an interpreter, "
+                             "for an environment"}
+        timeout = request.get("timeout")
+        timeout = float(timeout) if isinstance(timeout, (int, float)) else self.BUILD_SECONDS
+        place = self.places.builder()
+        async with self._lock(place):
+            errors = await self.places.prepare(place)
+            if errors:
+                return {"error": "; ".join(errors)}
+            code, output = await self._program(
+                place,
+                [python, "-m", "pip", "wheel", "--no-input",
+                 "--disable-pip-version-check", "--no-cache-dir",
+                 "--wheel-dir", str(place.spool), *requirements],
+                reads=[root], environment=self._environment(request),
+                proxy=self._word(request, "proxy"), timeout=timeout)
+            return {"code": code, "said": output, "wheels": str(place.spool)}
+
+    async def _program(self, place: Place, program: Sequence[str],
+                       reads: Sequence[str], environment: Dict[str, str],
+                       proxy: str, timeout: float) -> Tuple[int, str]:
+        """One program run to its end as the place's user, held while
+        it runs as a worker is: what it uses is the agent's. Whatever
+        it started ends with it."""
+        began = time.monotonic()
+        code = None
+        held = None
+        try:
+            process = await asyncio.create_subprocess_exec(
+                *place.spawn_line(program, reads=reads),
+                stdin=asyncio.subprocess.DEVNULL,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+                cwd="/", env=place.environment(environment, proxy))
+        except OSError as exc:
+            return 1, f"it could not run: {exc}"
+        held = self._hold(place, process)
+        try:
+            try:
+                output, _ = await asyncio.wait_for(process.communicate(), timeout)
+                code, said = process.returncode, self.places._text(output)
+                if held["because"]:
+                    # Ended here, for what it was using: said in place
+                    # of whatever it had got as far as saying.
+                    code, said = 1, held["because"]
+            except asyncio.TimeoutError:
+                await self.places.end(process, place.stop_line())
+                output, _ = await process.communicate()
+                code, said = 1, wire.outlasted(timeout, self.places._text(output))
+            return code, said
+        finally:
+            self._let_go(held, process)
+            Events.record(
+                "program", **place.whose(), code=code,
+                program=" ".join(str(word) for word in program)[:300],
+                seconds=round(time.monotonic() - began, 2))
+            await self.places.stop(place)
+
+    # ------------------------------------------------------------------
+    # What an agent keeps, and ending one
+    # ------------------------------------------------------------------
+
+    async def _files(self, request: dict) -> Dict[str, Any]:
+        place = self.places.existing(self._word(request, "agent"))
+        if place is None:
+            return {"error": "That agent has no place here: it has not run."}
+        return await self.places.listing(place)
+
+    async def _stop(self, request: dict) -> Dict[str, Any]:
+        """Every process of the agent's user ended. Its place is
+        emptied by whoever started the worker in it, when it has gone."""
+        place = self.places.existing(self._word(request, "agent"))
+        if place is None:
+            return {"stopped": True}
+        errors = await self.places.stop(place)
+        return {"error": "; ".join(errors)} if errors else {"stopped": True}
 
     def _why(self, held: Optional[Dict[str, Any]], code: int) -> str:
         """Why a worker ended, when it was for memory: this process
@@ -468,7 +528,7 @@ class SpawnerService:
             self._collect(found)
             self._note_processes(found)
             if now >= self._settled_at:
-                await self._hold_to_what_is_given(found, now)
+                await self._end_largest_agent(found, now)
             if now >= self._measure_at and (
                     self._measuring is None or self._measuring.done()):
                 self._measure_at = now + self.DISK_SECONDS
@@ -477,9 +537,8 @@ class SpawnerService:
     async def _measure(self) -> None:
         """How much each running agent keeps on disk, one agent after
         another. Its home is its user's alone to read, so the
-        measuring is a process of that user, started with the line the
-        runtime gave for it. Beside the watch, never in it: a folder
-        of many files takes a while to walk."""
+        measuring is a process of that user. Beside the watch, never in
+        it: a folder of many files takes a while to walk."""
         for held in list(self._held.values()):
             line = held.get("measure")
             if not line:
@@ -494,9 +553,9 @@ class SpawnerService:
             self._children.add(measurer.pid)
             self._measurers.add(measurer.pid)
             try:
-                said, _ = await asyncio.wait_for(
+                output, _ = await asyncio.wait_for(
                     measurer.communicate(), self.MEASURE_SECONDS)
-                held["disk"] = self._measured(said)
+                held["disk"] = self._measured(output)
             except asyncio.TimeoutError:
                 pass                # it ends by itself; the last number stays
             finally:
@@ -504,15 +563,15 @@ class SpawnerService:
                 self._measurers.discard(measurer.pid)
 
     @staticmethod
-    def _measured(said: bytes) -> Optional[int]:
+    def _measured(output: bytes) -> Optional[int]:
         """The bytes ``du`` counted: a number in front of each folder
         it was asked about, added up. None where it said none."""
-        counted = [int(line.split()[0]) for line in said.decode(
+        counted = [int(line.split()[0]) for line in output.decode(
             "utf-8", "replace").splitlines()
             if line.split() and line.split()[0].isdigit()]
         return sum(counted) if counted else None
 
-    async def _hold_to_what_is_given(self, found: Sample, now: float) -> None:
+    async def _end_largest_agent(self, found: Sample, now: float) -> None:
         user = self.usage.over(found, list(self._held))
         held = self._held.get(user) if user is not None else None
         if held is None:
@@ -529,7 +588,7 @@ class SpawnerService:
             "memory", by="the spawner", agent=held["agent"], name=held["name"],
             user=user, held=found.agents[user]["memory"],
             given=found.limits["memory"], why=held["because"])
-        await self._end(held["process"], held["stop"])
+        await self.places.end(held["process"], held["stop"])
 
     def _note_processes(self, found: Sample) -> None:
         """Write down each process an agent's user runs, the first

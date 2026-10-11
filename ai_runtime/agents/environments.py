@@ -286,31 +286,20 @@ class AgentEnvironment:
 
     async def _build_wheels(self, dependencies: List[str], place,
                             wheels: Path) -> List[str]:
-        """Every package the list needs, as wheels in ``wheels``. One
-        build at a time: builds share a user, and ending one ends
-        everything that user runs."""
-        async with place.confinement.building_lock:
-            errors = await place.prepare()
-            if errors:
-                return errors
-            place.admit("the builder", place.confinement.package_network())
-            try:
-                # Nothing is kept between builds: what one build left
-                # would be what the next one installs.
-                code, output = await place.run(
-                    [str(self.python), "-m", "pip", "wheel",
-                     "--no-input", "--disable-pip-version-check",
-                     "--no-cache-dir", "--wheel-dir", str(place.spool),
-                     *dependencies],
-                    reads=[self.root],
-                    environment=self._builder_environment(),
-                    timeout=self.PIP_TIMEOUT_SECONDS,
-                )
-                return self._said(code, output) or self._take(place.spool, wheels)
-            finally:
-                place.dismiss()
-                await place.stop()
-                await place.clear()
+        """Every package the list needs, as wheels in ``wheels``: built
+        by the builder in the agents' container, with a pass at the
+        proxy that reaches where packages come from, and taken from
+        where it left them."""
+        place.admit("the builder", place.confinement.package_network())
+        try:
+            code, output, built = await place.container.build(
+                self.python, self.root, dependencies,
+                proxy=place.proxy_address(),
+                environment=self._builder_environment(),
+                timeout=self.PIP_TIMEOUT_SECONDS)
+            return self._said(code, output) or self._take(built, wheels)
+        finally:
+            place.dismiss()
 
     # ------------------------------------------------------------------
     # Packages for one run

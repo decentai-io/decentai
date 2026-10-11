@@ -34,21 +34,30 @@ and the runtime says so.
 ## A container of their own
 
 Agent code runs in a container that holds nothing else: the **agents'
-container**. The runtime decides everything about a worker — which
-code, which user, which environment, when it ends — and starts none of
-them.
+container**. The runtime decides what an agent may do — which code,
+which environment, which hosts, which calls — and asks for a worker
+by name; everything about the process is the agents' container's:
+its user, its folders, its fences, its spawn line, its ending.
 
     runtime's container                      agents' container
     ───────────────────                      ─────────────────
-    the assistant, the executor,   ──────▶   the spawner, the spawn helper,
-    the proxy, every decision       socket   every worker, the builder
+    the assistant, the executor,   ──────▶   the spawner, the places, the
+    the proxy, what an agent may    socket   spawn helper, every worker,
+                                             the builder
 
 - **The spawner** (`ai_runtime/agents_container/service.py`) is the one
-  process of the platform's in that container. It starts what the
-  runtime asks for and carries a worker's lines to the runtime and
-  back. It decides nothing, and what a worker is entitled to is never
-  said to it: a worker's asks pass through it as lines, and are
-  answered by the runtime.
+  process of the platform's in that container. The runtime asks it,
+  in structured requests (`agents_container/wire.py`), to start an
+  agent's worker from an environment in a package, to build a list of
+  requirements, to list what an agent keeps, to end an agent's
+  processes, to say what the agents use. It gives each agent a user
+  and a place of its own (`agents_container/places.py`), writes the
+  spawn line and the fences, starts the process and carries a
+  worker's lines to the runtime and back. What a worker is entitled
+  to is never said to it: a worker's asks pass through it as lines,
+  and are answered by the runtime. The runtime never sees a process
+  id, a user or a command line, so what stands behind the spawner's
+  port — one container, or someday many — is the spawner's business.
 - **It is the runtime's image**, started with another command, so the
   interpreter and the browsers are the same files on both sides.
 - **One volume, at one path, in both**: the store, the environments,
@@ -89,12 +98,12 @@ same orders by starting programs in the test's own process
 The platform's own user is an ordinary one and cannot start a child
 as somebody else. A small program does it, and does nothing else
 (`ai_runtime/agents_container/spawn_helper.c`, driven by
-`ai_runtime/agents/confinement.py`).
+`ai_runtime/agents_container/places.py`).
 
     spawner ──spawns──▶ helper ──becomes──▶ worker   (the agent's user)
 
 The helper is started in place of the worker, with the same pipes, by
-the spawner, on the runtime's order. It:
+the spawner, when the runtime asks for the agent's worker. It:
 
 1. refuses a caller that is not the platform's user, and a user
    outside the range kept for workers;
@@ -158,18 +167,20 @@ agent yet. The last is the builder's (below).
 **A home is emptied before every start.** A worker holds no state, and
 a folder that outlived it would be one. A worker cannot keep one by
 closing a folder or nesting it deep (`clear`, above), and where a home
-could not be emptied the worker is not started. At start the runtime also
-gives up the places nobody has started a worker in for thirty days —
-what their users left, their folders, and their users. An agent given
-up is given a place again the day it is called.
+could not be emptied the worker is not started. At start the spawner
+also gives up the places nobody has started a worker in for thirty
+days — what their users left, their folders, and their users. An agent
+given up is given a place again the day it is called.
 
 ## Files — Landlock
 
 Being another user does not stop a worker reading what every user may
 read — another agent's code in the store among it — or writing where
-every user may write. On a kernel that has Landlock the runtime names
-the paths a worker may open, the helper hands them to the kernel after
-it has become the agent's user, and the kernel refuses the rest,
+every user may write. On a kernel that has Landlock the spawner names
+the paths a worker may open — its package and its environment, which
+the runtime's request named, and the rest below — the helper hands
+them to the kernel after it has become the agent's user, and the
+kernel refuses the rest,
 whatever the permissions on a file say. The fence holds for everything
 the worker starts, a browser included, and cannot be taken off.
 
@@ -180,7 +191,7 @@ the worker starts, a browser included, and cannot be taken off.
 | write, where whose-it-is still decides | `/dev`, `/proc`, `/tmp` |
 | nothing | the platform's own code, the store and the environments of other agents, the table of users, and every other folder |
 
-Which paths is the runtime's to say, and the helper checks none of
+Which paths is the spawner's to say, and the helper checks none of
 them: a fence can only take away, so whoever asks for one ends with
 less than they had.
 
@@ -595,16 +606,16 @@ fills in one file.
 
 ## What the runtime says at start
 
-At start the runtime waits for the agents' container, has the helper
-there switch users once, asks it which Landlock the kernel has,
-prepares a place from end to end, and tries the network as a worker
-would. It writes what it found — *Workers are confined*; *Workers'
-files are fenced*, or that they are not; *Workers' connections are
-fenced*, or that they are not; *Workers' system calls are filtered*,
-or that they are not and why. On a kernel that has Landlock, before
-its sixth version, it says that agents are not kept from each other's
-sockets; where there is no firewall rule and the fence holds workers
-to the proxy's port, it says that, and what that does not stop. Where
+At start the runtime starts its proxy, waits for the agents'
+container and asks it to prove itself. The spawner has the helper
+switch users once, asks it which Landlock the kernel has, prepares a
+place from end to end, and tries the network as a worker would; it
+writes what it found in its own log — *Workers are confined*;
+*Workers' files are fenced*, or that they are not; *Workers' system
+calls are filtered*, or that they are not and why; on a kernel that
+has Landlock before its sixth version, that agents are not kept from
+each other's sockets — and answers the runtime with the three facts.
+The runtime writes whether *Workers' connections are fenced*. Where
 workers cannot be confined there (the container was not given its
 rights, the install directory is not the one the helper was built
 for), or the proxy cannot listen, the runtime does not start, and
@@ -666,8 +677,11 @@ enforced in this install; and nothing to configure.
 
 ## Tests
 
-- `ai_runtime/tests/test_confinement.py` — the table of users and what
-  is asked of the helper; runs anywhere.
+- `ai_runtime/tests/test_places.py` — the table of users, the spawn
+  line and the fences, what is asked of the helper and in which order,
+  with the helper stood in for by a program of the tests'
+  (`fake_spawn.py`); runs anywhere. `test_confinement.py` is the
+  runtime's side: the proxy, the proof asked for, each worker's pass.
 - `ai_runtime/tests/test_confinement_live.py` — a fixture agent that is
   hostile on purpose. Each of its functions tries one thing, and the
   test passes when the attempt is refused: read the runtime's settings,
@@ -684,8 +698,9 @@ enforced in this install; and nothing to configure.
   it does not end. It runs where the helper is — inside the runtime's
   image — and is skipped everywhere else; the file says how to run it.
 - `ai_runtime/tests/test_container.py` — the spawner itself and the
-  runtime's client of it, with a real worker started through them;
-  runs anywhere.
+  runtime's client of it, with the helper stood in for: a real worker
+  started through them by name, a build, a listing, an ending; runs
+  anywhere.
 - `ai_runtime/tests/test_spawner_live.py` — the same hostile agent,
   with the runtime in one container and the agent in the other: it is
   its own user there, cannot read the spawner's key or reach the

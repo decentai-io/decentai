@@ -44,7 +44,7 @@ from ai_runtime.agents.workers import WorkerError, WorkerHandle
 # The hostile agent, the stand-in for a host on the internet, and how
 # one attempt is made, are that file's.
 from ai_runtime.tests.test_confinement_live import (  # noqa: F401
-    INSTALL_DIR, ask, fenced, ground, net, place, run, site,
+    INSTALL_DIR, ask, fenced, ground, home_of, net, place, run, site, user_of,
 )
 
 ADDRESS = (os.environ.get("AI_RUNTIME_AGENTS_SPAWNER") or "").strip()
@@ -63,7 +63,7 @@ def confinement(site):
     container = AgentsContainer(ADDRESS, INSTALL_DIR)
     assert run(container.wait(60))
     Events.configure(INSTALL_DIR, "runtime")
-    found = Confinement(INSTALL_DIR, container)
+    found = Confinement(container)
     EgressProxy.resolver = lambda host, port: ["127.0.0.1"]
     ports = EgressProxy.PORTS_OF_A_NAMED_HOST
     EgressProxy.PORTS_OF_A_NAMED_HOST = (*ports, site)
@@ -76,20 +76,23 @@ def confinement(site):
     Events.current = None
 
 
-async def running_there(confinement, process_id: int) -> bool:
-    """Whether a process of the agents' container is still doing
-    anything — asked there: its processes are not this container's."""
-    code, said = await confinement.container.run([
-        sys.executable, "-c",
-        "import sys\n"
-        "try:\n"
-        "    state = open(f'/proc/{sys.argv[1]}/stat').read()"
-        ".rsplit(')', 1)[1].split()[0]\n"
-        "except OSError:\n"
-        "    state = 'gone'\n"
-        "print(state)\n", str(process_id)])
-    assert code == 0, said
-    return said.strip() not in ("gone", "Z")
+async def processes_of(confinement, name: str) -> int:
+    """How many processes the agent's user runs in the agents'
+    container, as the spawner adds them up — it looks once a second,
+    so what just happened shows a moment later."""
+    said = await confinement.container.usage()
+    user = user_of(name)
+    return next((agent["processes"] for agent in said["agents"]
+                 if agent["user"] == user), 0)
+
+
+async def settled(confinement, name: str, running: bool, seconds: float = 8) -> bool:
+    """Whether the agent's user runs something (or nothing), waited for."""
+    for _ in range(int(seconds / 0.2)):
+        if (await processes_of(confinement, name) > 0) is running:
+            return True
+        await asyncio.sleep(0.2)
+    return False
 
 
 class TestWhereItRuns:
@@ -99,11 +102,11 @@ class TestWhereItRuns:
     def test_a_worker_is_its_own_user_in_the_other_container(
             self, ground, place):
         found = ask(ground, place, "whoami")
-        assert found["user"] == place.user != os.getuid()
-        assert found["home"] == str(place.home)
+        assert found["user"] == user_of(place.name) != os.getuid()
+        assert found["home"] == str(home_of(place.name))
         # Not a process of this container: nothing here has its user.
         assert not any(
-            name.isdigit() and os.stat(f"/proc/{name}").st_uid == place.user
+            name.isdigit() and os.stat(f"/proc/{name}").st_uid == user_of(place.name)
             for name in os.listdir("/proc"))
 
     def test_its_home_is_emptied_before_every_start(self, ground, place):
@@ -111,9 +114,9 @@ class TestWhereItRuns:
         assert ask(ground, place, "whoami")["kept_was_there"] is False
 
     def test_stopping_it_ends_what_it_started_there(self, ground, place, confinement):
-        child = ask(ground, place, "leave_child")["child"]
-        # ask() stopped the worker on its way out
-        assert not run(running_there(confinement, child))
+        assert ask(ground, place, "leave_child")["child"]
+        # ask() stopped the worker on its way out, and its child with it
+        assert run(settled(confinement, place.name, running=False))
 
     def test_a_runtime_that_hangs_up_leaves_nothing_running(
             self, ground, place, confinement):
@@ -128,17 +131,13 @@ class TestWhereItRuns:
             assert await handle.start() == []
             result, _ = await handle.invoke(
                 "c_1", "intruder.main.run", {"what": "leave_child"})
-            assert await running_there(confinement, result["child"])
+            assert result["child"]
+            assert await settled(confinement, place.name, running=True)
             handle.process.kill()
             await handle.process.wait()
-            return result["child"]
 
-        child = run(scenario())
-        for _ in range(50):
-            if not run(running_there(confinement, child)):
-                break
-            time.sleep(0.1)
-        assert not run(running_there(confinement, child))
+        run(scenario())
+        assert run(settled(confinement, place.name, running=False))
 
 
 class TestWhatItCannotTake:
@@ -154,9 +153,8 @@ class TestWhatItCannotTake:
         assert ask(ground, place, "runtime_settings")["happened"] is False
         assert ask(ground, place, "signal_runtime")["happened"] is False
 
-    def test_it_cannot_use_the_helper(self, ground, place, confinement):
-        other = confinement.place("agt_live_other")
-        assert ask(ground, place, "helper", str(other.user))["happened"] is False
+    def test_it_cannot_use_the_helper(self, ground, place):
+        assert ask(ground, place, "helper", "20005")["happened"] is False
 
     def test_it_cannot_read_the_platforms_own_code(self, ground, place, fenced):
         assert ask(ground, place, "read",
@@ -223,7 +221,7 @@ class TestWhatStillReachesIt:
                 assert status == "success", result
                 assert result["size"] == len(payload)
                 assert seen["create"]["content_base64"] == encoded
-                assert list(place.spool.iterdir()) == []
+                assert list(handle.spool.iterdir()) == []
             finally:
                 await handle.stop()
 
@@ -267,7 +265,7 @@ class TestWhatTheAgentsAreGiven:
                 for _ in range(50):
                     said = await confinement.container.usage()
                     mine = [agent for agent in said["agents"]
-                            if agent["user"] == place.user]
+                            if agent["user"] == user_of(place.name)]
                     # A worker answers its greeting before it has
                     # grown: caught in its first moment it holds a few
                     # hundred kilobytes, and a megabyte soon after.
@@ -301,7 +299,7 @@ class TestWhatTheAgentsAreGiven:
                                     {"what": "fill", "target": "2048"})
                 for _ in range(120):
                     mine = [agent for agent in (await confinement.container.usage())["agents"]
-                            if agent["user"] == place.user]
+                            if agent["user"] == user_of(place.name)]
                     if mine and (mine[0].get("disk") or 0) >= 2 * MB:
                         return mine[0]
                     await asyncio.sleep(0.5)
@@ -345,23 +343,13 @@ class TestWhatTheAgentsAreGiven:
         when it ends, and stays in the kernel's table until waited
         for: the spawner waits for it."""
         assert ask(ground, place, "leave_orphan")["left"] is True
-        counting = (
-            "import os\n"
-            "over = 0\n"
-            "for name in os.listdir('/proc'):\n"
-            "    if name.isdigit():\n"
-            "        try:\n"
-            "            over += 'State:\\tZ' in open(f'/proc/{name}/status').read()\n"
-            "        except OSError:\n"
-            "            pass\n"
-            "print(over)\n")
+        # The spawner says how many it has still to collect.
         for _ in range(40):
-            code, said = run(confinement.container.run([sys.executable, "-c", counting]))
-            assert code == 0, said
-            if said.strip() == "0":
+            left = run(confinement.container.usage())["left_behind"]
+            if left == 0:
                 break
             time.sleep(0.25)
-        assert said.strip() == "0"
+        assert left == 0
 
 
 def happened(kind, since, **matching):
@@ -399,7 +387,6 @@ class TestWhatIsWrittenDown:
 
         started = happened("worker.started", since, agent=place.name)
         assert started and started[0]["name"] == name
-        assert started[0]["user"] == place.user
 
         jobs = [event["job"] for event in happened("helper", since,
                                                    agent=place.name)]
@@ -426,7 +413,7 @@ class TestWhatIsWrittenDown:
             await handle.stop()
 
         run(kept_a_while())
-        ran = happened("process", since, user=place.user)
+        ran = happened("process", since, user=user_of(place.name))
         assert any("decentai_sdk.worker" in event["command"] for event in ran)
         # Never as the spawn helper it was for an instant.
         assert not any("decentai-spawn" in event["command"] for event in ran)
@@ -469,7 +456,7 @@ class TestWhatIsWrittenDown:
             try:
                 await handle.invoke(
                     "c_1", "intruder.main.run", {"what": "whoami"})
-                listed = await place.files()
+                listed = await place.container.files(place.name)
                 # The listing ran as the agent's user, beside it.
                 again, status = await handle.invoke(
                     "c_2", "intruder.main.run", {"what": "whoami"})
@@ -480,7 +467,7 @@ class TestWhatIsWrittenDown:
         listed, again, status = run(scenario())
         assert status == "success" and again["kept_was_there"] is True
         kept = [entry for entry in listed["files"]
-                if entry["path"] == str(place.home / "kept")]
+                if entry["path"] == str(home_of(place.name) / "kept")]
         assert kept and kept[0]["bytes"] == 4
         assert listed["count"] >= 1 and listed["bytes"] >= 4
 
