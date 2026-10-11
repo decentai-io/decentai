@@ -108,11 +108,15 @@ agent holds in memory is never shared between organizations
 
 ## Pull by digest
 
-**A runtime fetches code when it learns it needs it.** The chat's
-contract lists each approved agent with its ref, package id, digest
-and manifest hash. When a session is built, every agent the runtime
-does not hold is pulled through the backend's fenced door
-(`Agents:Agent:Fetch_package`), as that chat's delegation:
+**A runtime fetches code by its digest, and verifies it on arrival.**
+A runtime with an identity of its own keeps itself stocked with every
+approved package ([the package door](#the-package-door)); one without
+is stocked by its chats. Either way the chat's contract lists each
+approved agent with its ref, package id, digest and manifest hash, and
+when a session is built every agent the runtime does not hold is
+pulled — as the runtime itself where it can, else through the
+backend's chat-bound door (`Agents:Agent:Fetch_package`) as that
+chat's delegation:
 
     ask for the archive by the agent's ref → check it against the
     digest → unpack into store/<hex>/ → build the environment
@@ -171,10 +175,15 @@ what it may dispatch is the package door and nothing else
 
 Nothing of who approved what travels: digests, hashes, bytes whose
 name is their hash. An install marks its row *preparing* and sends
-nothing anywhere; a runtime that lists, pulls and reports is what turns
-it to *Ready* on the Agents page. A deployment without the keys has no
-such principal, and its agents are prepared when a chat first names
-them, as before.
+nothing anywhere. The runtime keeps its stock on its own clock
+(`AgentRoster.keep_stocked`, `ai_runtime/door/roster.py`, started by the
+application): every ten seconds it lists, installs what it does not
+hold and says of each whether it is ready; when the list changed it
+first reclaims what nobody approves any more. That is what turns *Preparing* into *Ready* on the Agents
+page, within seconds of the click and with no chat in the picture;
+several runtimes each keep their own stock. A deployment without the
+keys has no such principal, and its agents are prepared when a chat
+first names them, as before.
 
 ## Reclaiming
 

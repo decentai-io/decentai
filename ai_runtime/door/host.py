@@ -42,7 +42,7 @@ REPLACED = 4408
 #: is the dialer's own key for the chat, renewed while the socket lives.
 INBOUND_EVENTS = {"user_message", "approval_decided", "question_answered",
                   "stop", "schedules_changed", "credential", "screen_input",
-                  "screen_open", "agents_changed"}
+                  "screen_open"}
 
 
 class MissingModel:
@@ -349,7 +349,7 @@ class SessionHost:
                 "detail": f"Unknown event '{kind}'. A socket may say "
                           f"user_message, approval_decided, "
                           f"question_answered, stop, schedules_changed, "
-                          f"agents_changed, screen_input, screen_open or credential.",
+                          f"screen_input, screen_open or credential.",
             })
             return
         if kind == "credential":
@@ -375,24 +375,6 @@ class SessionHost:
             # on cancellations and on a browser closing, and the loop
             # must stay free to read what comes next.
             asyncio.get_running_loop().create_task(self._kill(chat_id))
-            return
-        if kind == "agents_changed":
-            # An agent was installed or updated: its code is pulled and
-            # its environment built NOW, in the background, so the first
-            # chat to name it finds it ready instead of waiting on pip.
-            # Nothing is served that the contract will not name — this
-            # only does early what a session open would do anyway, with
-            # this chat's own delegation.
-            for entry in frame.get("agents") or []:
-                if not isinstance(entry, dict):
-                    continue
-                ref = str(entry.get("agent_id") or "")
-                digest = str(entry.get("package_digest") or "")
-                if ref and digest:
-                    asyncio.get_running_loop().create_task(self.agents.materialize(
-                        chat_id, ref, digest,
-                        str(entry.get("manifest_hash") or ""),
-                        name=str(entry.get("name") or ref)))
             return
         with self._arriving(chat_id):
             session = await self.session(chat_id)

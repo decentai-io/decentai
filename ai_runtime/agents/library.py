@@ -542,7 +542,7 @@ class AgentLibrary:
         if not errors and not self.environment_for(manifest.dependencies).exists():
             # The code is here and its venv is not — a wiped volume, or
             # environments re-keyed since. Not served yet: the first
-            # chat to name it, or an agents_changed poke, installs it
+            # chat to name it, or the runtime's own stocking, installs it
             # again from the code on disk, which builds the venv.
             errors = ["its environment is not built yet — built on first use"]
             self._errors[digest] = errors

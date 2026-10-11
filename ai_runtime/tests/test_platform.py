@@ -10,7 +10,7 @@ exercises for real.
 import pytest
 
 from ai_runtime.chat.clock import Scheduler
-from ai_runtime.platform import Backend, GatewayError
+from ai_runtime.platform import Backend, GatewayError, RuntimeIdentity
 from ai_runtime.tests import fake_container
 from ai_runtime.tests.fires import Fires
 
@@ -231,6 +231,83 @@ class TestShapes:
         assert skill["body"] == "Step 1…"
         assert memories == ["Prefers brevity."]
         assert (ref, value) == ("stg_1", 5)
+
+
+class TestThePackageDoor:
+    """What a runtime asks as itself (docs/system/agent-code.md)."""
+
+    @staticmethod
+    def keys():
+        from cryptography.hazmat.primitives import serialization
+        from cryptography.hazmat.primitives.asymmetric import rsa
+
+        private = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        return (
+            private.private_bytes(
+                serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8,
+                serialization.NoEncryption()).decode(),
+            private.public_key().public_bytes(
+                serialization.Encoding.PEM,
+                serialization.PublicFormat.SubjectPublicKeyInfo).decode(),
+        )
+
+    def test_the_identity_is_a_short_signed_statement_that_this_is_a_runtime(self):
+        import jwt
+
+        private_pem, public_pem = self.keys()
+        token = RuntimeIdentity(private_pem).token()
+        claims = jwt.decode(token, public_pem, algorithms=["RS256"],
+                            audience="decentai-backend", issuer="decentai-ai-runtime")
+        assert claims["typ"] == "runtime_service"
+        assert claims["exp"] - claims["iat"] == RuntimeIdentity.TTL_SECONDS
+        assert jwt.get_unverified_header(token)["kid"] == "ai-runtime-service-v1"
+        # Signed with this key and no other: the backend's own key
+        # cannot read it.
+        with pytest.raises(jwt.PyJWTError):
+            jwt.decode(token, self.keys()[1], algorithms=["RS256"],
+                       audience="decentai-backend")
+
+    def test_the_door_is_asked_as_the_runtime_and_as_no_chat(self):
+        private_pem, _ = self.keys()
+        gateway = StubGateway({
+            "Agents:Package:List": {"packages": [
+                {"package_digest": "sha256:" + "a" * 64, "manifest_hash": "b" * 64,
+                 "name": "Notebook"}, "not a row"]},
+            "Agents:Package:Fetch": {"package": "aGk="},
+            "Agents:Package:Prepared": {"recorded": True, "approvals": 2},
+        })
+        backend = Backend(gateway, RuntimeIdentity(private_pem))
+        assert backend.stocks_itself
+
+        async def scenario():
+            return (await backend.approved_packages(),
+                    await backend.fetch_by_digest("sha256:" + "a" * 64),
+                    await backend.package_prepared(
+                        "sha256:" + "a" * 64, "ready",
+                        confined={"user": True, "files": True, "network": True}))
+
+        packages, archive, recorded = run(scenario())
+        assert packages == [{"package_digest": "sha256:" + "a" * 64,
+                             "manifest_hash": "b" * 64, "name": "Notebook"}]
+        assert archive == b"hi" and recorded is True
+        for endpoint, data, token in gateway.calls:
+            assert endpoint.startswith("Agents:Package:")
+            assert "chat_id" not in data and token.count(".") == 2
+        assert gateway.last("Agents:Package:Prepared")[1]["confined"]["network"] is True
+
+    def test_a_runtime_without_a_key_has_no_identity_and_asks_nothing(self):
+        backend, gateway = build()
+        assert not backend.stocks_itself
+        with pytest.raises(GatewayError) as refused:
+            run(backend.approved_packages())
+        assert refused.value.status == 401 and gateway.calls == []
+
+    def test_a_door_that_answers_no_package_is_a_refusal(self):
+        private_pem, _ = self.keys()
+        backend = Backend(StubGateway({"Agents:Package:Fetch": {}}),
+                          RuntimeIdentity(private_pem))
+        with pytest.raises(GatewayError, match="no package"):
+            run(backend.fetch_by_digest("sha256:" + "a" * 64))
 
 
 class TestThePullDoor:

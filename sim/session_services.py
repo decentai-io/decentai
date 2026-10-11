@@ -66,6 +66,13 @@ class SimSessionServices:
         #: every word in order (host._report is once per process)
         self.prepared: Dict[str, dict] = {}
         self.prepared_reports: List[tuple] = []
+        #: The package door (agent-code.md): what is approved anywhere
+        #: (``{package_digest, manifest_hash, name}`` rows), the bytes
+        #: by digest, what a runtime said of each, and what it pulled.
+        self.packages: list = []
+        self.archives: Dict[str, bytes] = {}
+        self.prepared_packages: Dict[str, dict] = {}
+        self.pulls_by_digest: list = []
         self.skills_rows: List[dict] = []
         self.skill_bodies: Dict[str, dict] = {}
         #: per-chat contract overrides — a test (or a dev config) sets
@@ -123,6 +130,31 @@ class SimSessionServices:
         """The pull door. Nothing is approved here to pull: the agents
         this stand-in serves are the ones its host was started with."""
         raise RuntimeError("these services have no pull door")
+
+    # -- the package door: what a runtime asks as itself -----------------
+    @property
+    def stocks_itself(self) -> bool:
+        """A test that gives this stand-in packages and archives is a
+        deployment whose runtime has a key of its own; one that does
+        not is a deployment without, where code is pulled as the chat
+        that names it."""
+        return bool(self.packages or self.archives)
+
+    async def approved_packages(self) -> list:
+        return [dict(row) for row in self.packages]
+
+    async def fetch_by_digest(self, digest: str) -> bytes:
+        self.pulls_by_digest.append(digest)
+        archive = self.archives.get(digest)
+        if archive is None:
+            raise RuntimeError(f"no package {digest[:19]}… is stored here")
+        return archive
+
+    async def package_prepared(self, digest: str, state: str, error: str = "",
+                               confined: Optional[dict] = None) -> bool:
+        self.prepared_packages[digest] = {"state": state, "error": error,
+                                          "confined": confined}
+        return any(row.get("package_digest") == digest for row in self.packages)
 
     async def mcp_use(self, chat_id: str, ref: str) -> dict:
         raise RuntimeError("these services keep no MCP servers")

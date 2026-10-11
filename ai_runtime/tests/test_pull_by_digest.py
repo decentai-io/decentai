@@ -73,6 +73,17 @@ class PullingServices(SimSessionServices):
         }
 
 
+class StockingServices(PullingServices):
+    """The same, for a runtime with an identity of its own: the package
+    door lists the notebook as approved and serves its bytes by digest."""
+
+    def __init__(self, archive, digest, expected_hash, grants=None):
+        super().__init__(archive, digest, expected_hash, grants)
+        self.packages = [{"package_digest": digest, "manifest_hash": expected_hash,
+                          "name": "Notebook"}]
+        self.archives = {digest: archive}
+
+
 @pytest.fixture()
 def library(tmp_path, monkeypatch):
     """A real library in an empty directory. Its environments are the
@@ -295,38 +306,112 @@ class TestReclaimingTheDisk:
         (other / "manifest.yaml").write_text("agent: {}", encoding="utf-8")
         return f"sha256:{'b' * 64}"
 
-    def test_an_install_is_prepared_before_any_chat_asks(self, library, package):
-        """The platform says an agent was installed; the code is pulled
-        and its environment built at once, with the chat's delegation,
-        so a session opened later finds it serving and pulls nothing."""
+    def test_a_runtime_with_an_identity_stocks_itself_before_any_chat_asks(
+            self, library, package):
+        """The package door lists the notebook as approved; one stocking
+        pass pulls it by digest as the runtime itself, builds it, and
+        says it is ready — so a session opened later finds it serving
+        and pulls nothing, and no chat was involved."""
         archive, digest, expected = package
-        services = PullingServices(archive, digest, expected)
+        services = StockingServices(archive, digest, expected)
         host = SessionHost(services, library, workers())
 
         async def scenario():
-            await host.handle("chat_1", {"event": "agents_changed", "agents": [{
-                "agent_id": REF, "name": "Notebook", "package_digest": digest,
-                "manifest_hash": expected}]})
-            deadline = asyncio.get_running_loop().time() + 30
-            while library.agent(digest) is None or REF not in services.prepared:
-                assert asyncio.get_running_loop().time() < deadline, "not prepared"
-                await asyncio.sleep(0.05)
+            assert host.agents.stocks_itself
+            arrived = await host.agents.stock()
+            await asyncio.sleep(0.05)       # the report is a task of its own
+            again = await host.agents.stock()
             session = await host.session("chat_2")
+            await asyncio.sleep(0.05)
+            return arrived, again, session
+
+        arrived, again, session = run(scenario())
+        assert (arrived, again) == (1, 0)
+        assert session.roster[REF].digest == digest
+        assert services.pulls == [] and services.pulls_by_digest == [digest]
+        # Said once, by digest, with what this process holds the agent
+        # to: a user, a fence and the proxy as the one way out, as the
+        # fake container proves them. No chat said anything.
+        assert services.prepared_packages == {digest: {
+            "state": "ready", "error": "",
+            "confined": {"user": True, "files": True, "network": True}}}
+        assert services.prepared == {} and services.prepared_reports == []
+
+    def test_a_stocked_runtime_pulls_a_late_approval_as_itself(
+            self, library, package):
+        """An agent approved after the last pass: the session's open
+        pulls it, by digest and as the runtime, not as the chat."""
+        archive, digest, expected = package
+        services = StockingServices(archive, digest, expected)
+        host = SessionHost(services, library, workers())
+
+        async def scenario():
+            session = await host.session("chat_1")
             await asyncio.sleep(0.05)
             return session
 
         session = run(scenario())
         assert session.roster[REF].digest == digest
-        assert services.pulls == [("chat_1", REF)]
-        # The platform was told once, by the chat that built it — the
-        # second chat found it serving and said nothing new.
-        # With it, what this process holds the agent to: a user, a
-        # fence and the proxy as the one way out, as the fake container
-        # proves them.
-        assert services.prepared[REF] == {
-            "digest": digest, "state": "ready", "error": "",
-            "confined": {"user": True, "files": True, "network": True}}
-        assert services.prepared_reports == [("chat_1", REF, digest, "ready")]
+        assert services.pulls == [] and services.pulls_by_digest == [digest]
+        assert services.prepared_packages[digest]["state"] == "ready"
+
+    def test_bytes_that_will_not_install_are_refused_once_and_said(
+            self, library, package):
+        """Tampered bytes: the pass says the package failed, remembers
+        it, and the next pass does not fetch it again."""
+        archive, digest, expected = package
+        services = StockingServices(archive + b"tampered", digest, expected)
+        host = SessionHost(services, library, workers())
+
+        async def scenario():
+            first = await host.agents.stock()
+            await asyncio.sleep(0.05)
+            second = await host.agents.stock()
+            return first, second
+
+        assert run(scenario()) == (0, 0)
+        assert services.pulls_by_digest == [digest]
+        assert services.prepared_packages[digest]["state"] == "failed"
+        assert library.agent(digest) is None
+
+    def test_a_door_that_will_not_answer_leaves_the_next_pass_to_try(
+            self, library, package):
+        archive, digest, expected = package
+        services = StockingServices(archive, digest, expected)
+        host = SessionHost(services, library, workers())
+        asked = []
+
+        async def refuse():
+            asked.append(1)
+            raise RuntimeError("the platform is away")
+
+        async def scenario():
+            services.approved_packages = refuse
+            with pytest.raises(RuntimeError):
+                await host.agents.stock()
+            del services.approved_packages
+            return await host.agents.stock()
+
+        assert run(scenario()) == 1 and asked == [1]
+
+    def test_an_unknown_frame_is_refused_on_the_socket(self, library, package):
+        """What an install used to send is no frame a socket may say."""
+        archive, digest, expected = package
+        services = PullingServices(archive, digest, expected)
+        host = SessionHost(services, library, workers())
+        heard = []
+
+        async def relay(chat_id, event):
+            heard.append(event)
+
+        async def scenario():
+            host._relay = relay
+            await host.handle("chat_1", {"event": "agents_changed", "agents": []})
+
+        run(scenario())
+        assert heard and heard[0]["event"] == "error"
+        assert "agents_changed" in heard[0]["detail"]
+        assert "chat_1" not in host.sessions
 
     def test_code_nobody_approves_is_forgotten(self, library, package):
         archive, digest, expected = package

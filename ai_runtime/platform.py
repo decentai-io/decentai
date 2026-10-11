@@ -8,13 +8,22 @@ carries that chat's credential. What a chat may do is still only what
 ``contract`` answers. The sim (sim/session_services.py) is the same
 contract in memory; nothing that reasons can tell them apart.
 
-    backend = Backend(Gateway(url))
+    backend = Backend(Gateway(url), RuntimeIdentity(private_key))
     backend.grant(chat_id, credential)          at the dial
     await backend.contract(chat_id)             what the chat may do
     await backend.persist_message(chat_id, …)   the record
     backend.resources(chat_id)                  an agent's data, files and
                                                 secrets, as the chat (resources.py)
     await backend.open_card(chat_id, request)   a card on the record
+    await backend.approved_packages()           as the runtime itself: the
+                                                package door (agent-code.md)
+
+One thing the runtime asks as itself and not as any chat: which
+packages are approved anywhere, their bytes, and where to say one is
+ready — the package door, with a token only a runtime can sign
+(``RuntimeIdentity``, the mirror of the backend's own service token).
+A runtime given no key has no identity of its own, and the door is
+shut: it is then stocked by the chats that name each agent.
 
 Two things the sim does in memory that a network makes explicit:
 
@@ -33,9 +42,12 @@ from __future__ import annotations
 import base64
 import logging
 import secrets
+import uuid
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
+import jwt
 
 #: how much of a chat's conversation frames a fresh mind
 HISTORY_LIMIT = 100
@@ -99,12 +111,91 @@ class Gateway:
         await self._client.aclose()
 
 
+class RuntimeIdentity:
+    """The runtime's own identity toward the backend: a short-lived
+    statement that *this is a runtime*, signed with a key only runtimes
+    hold (AI_RUNTIME_SERVICE_PRIVATE_KEY; the backend verifies with the
+    public half). It names no person and no organization, and the
+    backend lets it through the package door and nowhere else
+    (backend/server/authentication/access.py). The mirror of the token
+    the backend proves itself with on a dial."""
+
+    ALGORITHM = "RS256"
+    ISSUER = "decentai-ai-runtime"
+    AUDIENCE = "decentai-backend"
+    TTL_SECONDS = 60
+    KEY_ID = "ai-runtime-service-v1"
+
+    def __init__(self, private_key: str):
+        self.private_key = private_key
+
+    def token(self) -> str:
+        now = datetime.now(timezone.utc)
+        return jwt.encode({
+            "typ": "runtime_service",
+            "iss": self.ISSUER, "sub": self.ISSUER, "aud": self.AUDIENCE,
+            "jti": f"rst_{uuid.uuid4().hex}",
+            "iat": now, "nbf": now,
+            "exp": now + timedelta(seconds=self.TTL_SECONDS),
+        }, self.private_key, algorithm=self.ALGORITHM,
+            headers={"kid": self.KEY_ID})
+
+
 class Backend:
-    def __init__(self, gateway):
+    def __init__(self, gateway, identity: Optional[RuntimeIdentity] = None):
         self.gateway = gateway
         #: chat_id -> the delegation to call as, granted by the dial
         self.credentials: Dict[str, str] = {}
+        #: What this runtime is as itself, or None: a runtime given no
+        #: key asks nothing of the package door.
+        self.identity = identity
         self.logger = logging.getLogger(self.__class__.__name__)
+
+    # -- as itself: the package door ------------------------------------
+    @property
+    def stocks_itself(self) -> bool:
+        """Whether this runtime can ask for approved code as itself.
+        Without it, code is pulled as the chat that names it."""
+        return self.identity is not None
+
+    async def _as_runtime(self, endpoint: str, data: dict) -> dict:
+        if self.identity is None:
+            raise GatewayError(
+                f"{endpoint}: this runtime has no identity of its own "
+                f"(AI_RUNTIME_SERVICE_PRIVATE_KEY is not set)", 401)
+        return await self.gateway.call(endpoint, data, self.identity.token())
+
+    async def approved_packages(self) -> List[dict]:
+        """Every package some standing approval of any organization
+        points at: ``{package_digest, manifest_hash, name}`` each — what
+        this runtime stocks itself with, and keeps when it reclaims."""
+        answer = await self._as_runtime("Agents:Package:List", {})
+        return [dict(row) for row in (answer.get("packages") or [])
+                if isinstance(row, dict)]
+
+    async def fetch_by_digest(self, digest: str) -> bytes:
+        """The bytes a digest names, whichever organization stored them.
+        The library hashes them before writing: the name is the proof."""
+        answer = await self._as_runtime(
+            "Agents:Package:Fetch", {"package_digest": digest})
+        encoded = str((answer or {}).get("package") or "")
+        if not encoded:
+            raise GatewayError(f"the package door answered with no package for "
+                               f"{str(digest)[:19]}…")
+        return base64.b64decode(encoded)
+
+    async def package_prepared(self, digest: str, state: str, error: str = "",
+                               confined: Optional[dict] = None) -> bool:
+        """This runtime's word that a package is ready here — or would
+        not build — heard by every approval that pins the digest, and
+        with it what this runtime holds the agent to. False when nobody
+        pins that digest any more."""
+        payload: Dict[str, Any] = {"package_digest": digest, "state": state,
+                                   "error": error}
+        if confined is not None:
+            payload["confined"] = dict(confined)
+        answer = await self._as_runtime("Agents:Package:Prepared", payload)
+        return bool((answer or {}).get("recorded"))
 
     # -- credentials -----------------------------------------------------
     def grant(self, chat_id: str, credential: str) -> None:

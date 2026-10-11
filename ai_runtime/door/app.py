@@ -7,9 +7,11 @@ the order each needs the one before, and stopped in the reverse order
 At start: the agents' container answers; confinement is proved there
 and the proxy, the agents' one way out, serves; the library registers
 what is on disk and rebuilds, in the background, what waits for an
-environment; the clock starts. At shutdown: the warm-up is cancelled,
-the clock stops, the workers are asked to leave and then ended, the
-proxy stops, and the backend's client closes. Everything runs on the
+environment; a runtime with an identity of its own starts keeping
+its stock of every approved package; the clock starts. At shutdown:
+the warm-up and the stocking are cancelled, the clock stops, the
+workers are asked to leave and then ended, the proxy stops, and the
+backend's client closes. Everything runs on the
 one loop the server gives the application.
 """
 
@@ -100,12 +102,19 @@ def create_app(settings: RuntimeSettings, services, library, container,
         # first person to name each agent.
         library.load_all()
         warming = asyncio.ensure_future(library.warm_up())
+        # A runtime that may ask for approved code as itself keeps its
+        # stock from here on (door/roster.py, keep_stocked); one that
+        # may not is stocked by the chats that name each agent.
+        stocking = None
+        if host is not None and host.agents.stocks_itself:
+            stocking = asyncio.ensure_future(host.agents.keep_stocked())
         if scheduler is not None:
             await scheduler.start()
         yield
-        if not warming.done():
-            warming.cancel()
-            await asyncio.gather(warming, return_exceptions=True)
+        for task in (warming, stocking):
+            if task is not None and not task.done():
+                task.cancel()
+                await asyncio.gather(task, return_exceptions=True)
         if scheduler is not None:
             await scheduler.stop()
         # Abandonment, by design: every mind is durable to its last

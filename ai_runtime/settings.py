@@ -22,6 +22,12 @@ def _default_install_dir() -> str:
 @dataclass(frozen=True)
 class RuntimeSettings:
     backend_service_public_key: str = ""
+    #: The runtime's own identity toward the backend (RS256 private
+    #: key, PEM): what it asks as itself — the approved packages, to
+    #: stock itself with (docs/system/agent-code.md). Empty, the
+    #: runtime has no identity of its own, and agents are prepared
+    #: when a chat first names them.
+    runtime_service_private_key: str = ""
     backend_token_issuer: str = "decentai-backend"
     backend_service_audience: str = "decentai-ai-runtime"
     #: where the platform answers the services contract over /app
@@ -66,6 +72,7 @@ class RuntimeSettings:
                 "does, and this names it (host:port).")
         return cls(
             backend_service_public_key=public_key,
+            runtime_service_private_key=_env_pem("AI_RUNTIME_SERVICE_PRIVATE_KEY"),
             backend_token_issuer=os.getenv("BACKEND_TOKEN_ISSUER", "decentai-backend"),
             backend_service_audience=os.getenv("AI_RUNTIME_TOKEN_AUDIENCE", "decentai-ai-runtime"),
             backend_url=backend_url,
