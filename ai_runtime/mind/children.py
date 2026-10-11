@@ -102,6 +102,26 @@ class Children:
 
         job.result = observations.bounded(result)
         job.status = DONE if status == "success" else FAILED
+        try:
+            await self._take_in(job, entries)
+        except Exception as exc:
+            # The report arrived and could not be taken in. The job is
+            # failed, not forgotten: a parent waiting on it must hear
+            # it end, or it waits for a job_done that never comes.
+            self.mind.logger.error(
+                f"Child {job.job_id} reported, and the report could not "
+                f"be taken in: {exc}", exc_info=True)
+            job.status = FAILED
+            job.result = result = {"error": (
+                f"The helper reported, and its report could not be taken "
+                f"in: {str(exc)[:200]}")}
+        self.mind.post({"event": "job_done", "job_id": job.job_id,
+                   "kind": ASSISTANT_JOB, "status": job.status, **result})
+
+    async def _take_in(self, job: Job, entries: list) -> None:
+        """The report, told and kept: the line for whoever watches, the
+        child's trace joined to this one, the items it owned settled
+        and the plan shown as it now stands."""
         await self.mind.narrate(
             "job_finished",
             "The helper reported back." if job.status == DONE
@@ -117,8 +137,6 @@ class Children:
         if owned:
             self._settle_owned(job, owned)
             await self.mind.acts.show_plan()
-        self.mind.post({"event": "job_done", "job_id": job.job_id,
-                   "kind": ASSISTANT_JOB, "status": job.status, **result})
 
     def _settle_owned(self, job: Job, owned: List[str]) -> None:
         """The items a child was given take its outcome. Completed: done,

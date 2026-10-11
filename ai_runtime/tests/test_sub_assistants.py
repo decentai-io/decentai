@@ -165,6 +165,39 @@ class TestTheReport:
                    and e["steps"][0]["status"] == "done"]
         assert settled
 
+    def test_a_report_that_cannot_be_taken_in_fails_the_job_and_is_heard(self):
+        """What settles a report can fault — a plan item gone, a trace
+        entry of the wrong shape. The job fails and says why; it is not
+        left running with the parent waiting for a job_done forever."""
+        session, services = build([
+            action(action="plan", steps=["Get Ship saved"]),
+            action(action="spawn", goal="Save Ship.", items=["w1"]),
+            action(action="finish", reason="awaiting_events"),
+            # child
+            action(action="finish", reason="completed", summary="Saved."),
+            # parent, on the report: the item is still its to settle
+            action(action="plan", item="w1", status="blocked",
+                   blocker="the helper's report was lost"),
+            action(action="say", text="The helper's report was lost.",
+                   final=True),
+        ])
+
+        async def scenario():
+            await session.open()
+
+            def broken(job, owned):
+                raise RuntimeError("no plan to settle")
+
+            session.assistant.children._settle_owned = broken
+            await session.deliver_user("get Ship saved")
+            await session.wait_idle()
+
+        run(scenario())
+        job = child_of(session)
+        assert job.status == "failed"
+        assert "no plan to settle" in job.result["error"]
+        assert ai_texts(services)[-1] == "The helper's report was lost."
+
     def test_a_child_that_only_says_it_finished_settles_nothing(self):
         """A helper's word is not its work. One that reports completed
         having run nothing leaves its items for the parent to judge."""
