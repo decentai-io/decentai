@@ -154,9 +154,9 @@ class AgentManifestStore(OrgScopedStore):
         the installer verifies against, and a name for the log. What
         a runtime stocks itself from (docs/system/agent-code.md).
 
-        Deployment-wide for the reason `pinned_digests_everywhere` is:
-        a runtime holds one folder per digest for every organization
-        that approved those bytes. Nothing of who approved what
+        Deployment-wide, and the one query in this store that crosses
+        the tenant line on purpose: a runtime holds one folder per
+        digest for every organization that approved those bytes. Nothing of who approved what
         travels, and the hash is a function of the bytes, so two
         approvals of one digest agree on it."""
         found: Dict[str, Dict[str, Any]] = {}
@@ -190,28 +190,6 @@ class AgentManifestStore(OrgScopedStore):
         result = self.col.update_many(
             {"package_digest": str(digest or "")}, {"$set": {"prepared": record}})
         return int(result.matched_count)
-
-    def pinned_digests_everywhere(self) -> set:
-        """Every package digest ANY organization still points at.
-
-        The one query in this store that deliberately crosses the tenant
-        line, because the thing it protects is shared: a runtime holds
-        one folder and one virtual environment per digest, serving every
-        organization that approved those bytes. Asked per organization
-        the answer could never authorise a deletion — one tenant's "I no
-        longer pin this" says nothing about the others — so the sweep
-        needs the union or it needs to keep everything.
-
-        Digests and nothing else: no organization, no agent, no name.
-        A runtime that has this learns only what it could already learn
-        by listing its own store directory."""
-        return {
-            str(doc["package_digest"])
-            for doc in self.col.find(
-                {"package_digest": {"$exists": True, "$ne": ""}},
-                {"package_digest": 1},
-            )
-        }
 
     @staticmethod
     def new_ref() -> str:

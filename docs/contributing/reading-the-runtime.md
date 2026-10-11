@@ -143,16 +143,15 @@ Check:
 - `_build` reads the contract from the services — the chat's level,
   its grants, its agents by digest, the person's zone and safety
   settings. Nothing in a frame decides any of these.
-- `AgentRoster.stock`: a runtime with an identity of its own asks, as
-  itself, which packages are approved anywhere, installs what it does
-  not hold, says of each whether it is ready, and reclaims the rest —
-  every ten seconds (`keep_stocked`, started by the lifespan). So a
-  session's open normally finds every agent built.
-- `AgentRoster.materialize`: an agent the runtime does not hold is
-  fetched by its digest (or, for a runtime without an identity, by its
-  ref as the chat), checked against the digest the contract named, and
-  built before the hello; a digest that was refused is logged and not
-  retried on every frame. The agent is served as an `ApprovedAgent`
+- `AgentRoster.stock`: the runtime asks, as itself, which packages are
+  approved anywhere, sweeps the disk when that changed, installs what
+  it does not hold and says of each whether it is ready — every ten
+  seconds (`keep_stocked`, started by the lifespan). So a session's
+  open normally finds every agent built.
+- `AgentRoster.materialize`: an agent the runtime does not hold yet is
+  fetched by its digest, as the runtime, checked against the digest
+  the contract named, and built before the hello; a digest that was
+  refused is logged and not retried on every frame. The agent is served as an `ApprovedAgent`
   (`agents/library.py`): the package by its digest, answering to the
   approval's ref — the two names of an agent, and where they are
   translated (`declared`).

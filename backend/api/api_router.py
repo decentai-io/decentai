@@ -30,7 +30,6 @@ class APIRouter:
         "list", "get", "peers", "available", "leaving", "shapes",
         "grants", "secretgrants", "secretlendable", "sources", "samples",
         "instances", "resolve", "download",
-        "fetch_package", "pinned_digests",
     }
 
     # These successful operations already append a richer, domain-specific

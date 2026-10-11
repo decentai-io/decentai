@@ -22,8 +22,8 @@ One thing the runtime asks as itself and not as any chat: which
 packages are approved anywhere, their bytes, and where to say one is
 ready — the package door, with a token only a runtime can sign
 (``RuntimeIdentity``, the mirror of the backend's own service token).
-A runtime given no key has no identity of its own, and the door is
-shut: it is then stocked by the chats that name each agent.
+The key is required at start (settings.py): a runtime has no other way
+to code.
 
 Two things the sim does in memory that a network makes explicit:
 
@@ -146,18 +146,12 @@ class Backend:
         self.gateway = gateway
         #: chat_id -> the delegation to call as, granted by the dial
         self.credentials: Dict[str, str] = {}
-        #: What this runtime is as itself, or None: a runtime given no
-        #: key asks nothing of the package door.
+        #: What this runtime is as itself. None only in a test that
+        #: asks nothing of the package door.
         self.identity = identity
         self.logger = logging.getLogger(self.__class__.__name__)
 
     # -- as itself: the package door ------------------------------------
-    @property
-    def stocks_itself(self) -> bool:
-        """Whether this runtime can ask for approved code as itself.
-        Without it, code is pulled as the chat that names it."""
-        return self.identity is not None
-
     async def _as_runtime(self, endpoint: str, data: dict) -> dict:
         if self.identity is None:
             raise GatewayError(
@@ -277,44 +271,11 @@ class Backend:
                 **(resolved.get("values") or {})}
 
     # -- the pull door (docs/system/agent-code.md) --------------------------
-    async def fetch_package(self, chat_id: str, agent_id: str) -> dict:
-        """The approved bytes for one of the organization's agents, as
-        this chat's delegation. The approval row decides what bytes the
-        name means; the answer carries the package (base64), its digest
-        and the manifest hash the installer verifies against."""
-        return await self.call(chat_id, "Agents:Agent:Fetch_package",
-                               {"agent_id": agent_id})
-
     async def mcp_use(self, chat_id: str, ref: str) -> dict:
         """Where one of the person's MCP servers is and what it is
         reached with, as this chat's delegation: ``{url, headers}``.
         Asked when a tool is called, never kept."""
         return await self.call(chat_id, "Mcp:Server:Use", {"resource_ref": ref})
-
-    async def pinned_digests(self, chat_id: str) -> set:
-        """Every package digest any organization still approves.
-
-        Asked as this chat's delegation because that is the only
-        identity a runtime has, and answered deployment-wide because
-        this process holds one copy of each package for all of them.
-        What comes back is hashes; what it is for is deleting the code
-        and environments nobody points at any more."""
-        answer = await self.call(chat_id, "Agents:Agent:Pinned_digests")
-        return {str(digest) for digest in (answer.get("digests") or [])}
-
-    async def agent_prepared(self, chat_id: str, agent_id: str, digest: str,
-                             state: str, error: str = "",
-                             confined: Optional[dict] = None) -> bool:
-        """This process's word that the agent's code is ready here —
-        or would not build — as this chat's delegation, and with it
-        what this process holds the agent to. False when the platform
-        pins another version by now and kept nothing."""
-        payload = {"agent_id": agent_id, "package_digest": digest,
-                   "state": state, "error": error}
-        if confined is not None:
-            payload["confined"] = dict(confined)
-        answer = await self.call(chat_id, "Agents:Agent:Prepared", payload)
-        return bool((answer or {}).get("recorded"))
 
     # -- state -----------------------------------------------------------
     async def load_state(self, chat_id: str) -> Optional[dict]:

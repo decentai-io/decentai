@@ -24,9 +24,8 @@ class RuntimeSettings:
     backend_service_public_key: str = ""
     #: The runtime's own identity toward the backend (RS256 private
     #: key, PEM): what it asks as itself — the approved packages, to
-    #: stock itself with (docs/system/agent-code.md). Empty, the
-    #: runtime has no identity of its own, and agents are prepared
-    #: when a chat first names them.
+    #: stock itself with (docs/system/agent-code.md). Required: a
+    #: runtime has no other way to code.
     runtime_service_private_key: str = ""
     backend_token_issuer: str = "decentai-backend"
     backend_service_audience: str = "decentai-ai-runtime"
@@ -59,6 +58,12 @@ class RuntimeSettings:
                 "BACKEND_SERVICE_PUBLIC_KEY is required — the runtime cannot "
                 "verify that connections come from the backend without it."
             )
+        identity_key = _env_pem("AI_RUNTIME_SERVICE_PRIVATE_KEY")
+        if not identity_key:
+            raise ValueError(
+                "AI_RUNTIME_SERVICE_PRIVATE_KEY is required — the runtime asks "
+                "the backend for approved agent code as itself, and has no "
+                "other way to it (bootstrap/generate_service_keys.py).")
         backend_url = os.getenv("BACKEND_INTERNAL_URL", "").strip()
         if not backend_url:
             raise ValueError(
@@ -72,7 +77,7 @@ class RuntimeSettings:
                 "does, and this names it (host:port).")
         return cls(
             backend_service_public_key=public_key,
-            runtime_service_private_key=_env_pem("AI_RUNTIME_SERVICE_PRIVATE_KEY"),
+            runtime_service_private_key=identity_key,
             backend_token_issuer=os.getenv("BACKEND_TOKEN_ISSUER", "decentai-backend"),
             backend_service_audience=os.getenv("AI_RUNTIME_TOKEN_AUDIENCE", "decentai-ai-runtime"),
             backend_url=backend_url,

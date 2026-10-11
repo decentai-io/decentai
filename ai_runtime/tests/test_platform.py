@@ -2,8 +2,8 @@
 docs/system/chat-session.md). A stub gateway records every call and
 answers by script, so what is pinned here is the translation:
 credentials by chat, threads split, an agent's resources as the chat,
-a card's answer where the platform gave one, the clock's rows loaded
-per credential — never the backend itself, which the spanning suite
+a card's answer where the platform gave one, the package door asked
+as the runtime itself, the clock's rows loaded per credential — never the backend itself, which the spanning suite
 exercises for real.
 """
 
@@ -277,7 +277,6 @@ class TestThePackageDoor:
             "Agents:Package:Prepared": {"recorded": True, "approvals": 2},
         })
         backend = Backend(gateway, RuntimeIdentity(private_pem))
-        assert backend.stocks_itself
 
         async def scenario():
             return (await backend.approved_packages(),
@@ -297,7 +296,6 @@ class TestThePackageDoor:
 
     def test_a_runtime_without_a_key_has_no_identity_and_asks_nothing(self):
         backend, gateway = build()
-        assert not backend.stocks_itself
         with pytest.raises(GatewayError) as refused:
             run(backend.approved_packages())
         assert refused.value.status == 401 and gateway.calls == []
@@ -308,28 +306,3 @@ class TestThePackageDoor:
                           RuntimeIdentity(private_pem))
         with pytest.raises(GatewayError, match="no package"):
             run(backend.fetch_by_digest("sha256:" + "a" * 64))
-
-
-class TestThePullDoor:
-    def test_the_package_is_asked_for_as_the_chat(self):
-        backend, gateway = build({"Agents:Agent:Fetch_package": {
-            "package": "aGk=", "package_digest": "sha256:" + "a" * 64,
-            "manifest_hash": "b" * 64, "local_agent_id": "notebook",
-        }})
-        answer = run(backend.fetch_package("chat_1", "agt_x"))
-        assert answer["package"] == "aGk="
-        _, data, token = gateway.last("Agents:Agent:Fetch_package")
-        assert (data["agent_id"], data["chat_id"], token) == (
-            "agt_x", "chat_1", "tok-1")
-
-    def test_what_is_pinned_is_a_set_of_digests(self):
-        backend, _ = build({"Agents:Agent:Pinned_digests": {
-            "digests": ["sha256:" + "a" * 64]}})
-        assert run(backend.pinned_digests("chat_1")) == {"sha256:" + "a" * 64}
-
-    def test_an_agents_readiness_is_recorded_with_what_holds_it(self):
-        backend, gateway = build({"Agents:Agent:Prepared": {"recorded": True}})
-        assert run(backend.agent_prepared(
-            "chat_1", "agt_x", "sha256:" + "a" * 64, "ready",
-            confined={"user": True, "files": True, "network": True})) is True
-        assert gateway.last("Agents:Agent:Prepared")[1]["confined"]["network"] is True

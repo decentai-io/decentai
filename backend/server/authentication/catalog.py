@@ -102,22 +102,6 @@ BASELINE_ACTIONS = (
     "mcp:server:refresh",
     "mcp:server:delete",
     "mcp:server:use",
-    # The runtime's pull door (docs/system/agent-code.md): the exact
-    # bytes this organization approved for an agent, so a runtime that
-    # lacks them can materialize approved code under the connected
-    # chat's own delegation. Baseline for the same reason the skills
-    # catalog is — the runtime carries the USER's permissions, and a
-    # chat whose person needed a grant to fetch code would serve agents
-    # for administrators and nobody else.
-    "agents:agent:fetch_package",
-    # Its cleanup read: which digests anybody still pins, so the runtime
-    # can delete code nobody approves. Baseline for the same reason —
-    # whichever person's chat is up is the one the sweep runs under.
-    "agents:agent:pinned_digests",
-    # The runtime's word that an agent's code is ready on it. Baseline
-    # for the same reason as the pull door: whichever person's chat
-    # happened to build it is the one whose delegation reports it.
-    "agents:agent:prepared",
     # Trying an agent on the data it ships: the rows become the person's
     # own records and files, which they may already create and delete.
     "agents:agent:samples",
@@ -682,23 +666,6 @@ ACTION_CATALOG: Dict[str, Dict[str, Any]] = {
         "label": "Agents",
         "actions": {
             "agents:agent:list": "See which agents are installed",
-            # In the catalog because the BASELINE grants it (a policy
-            # naming an action outside the catalog is refused at
-            # validation); only a delegated runtime can actually call it.
-            "agents:agent:fetch_package": (
-                "Let your chat's engine fetch the code of an agent your "
-                "organization approved"
-            ),
-            # The same shape as the pull door: the baseline grants it,
-            # and only a delegated runtime can call it.
-            "agents:agent:pinned_digests": (
-                "Let your chat's engine find out which agent code is "
-                "still approved anywhere, so it can delete the rest"
-            ),
-            "agents:agent:prepared": (
-                "Let your chat's engine report that an agent's code is "
-                "ready to run, so the Agents page can say so"
-            ),
             "agents:agent:available": (
                 "See the agents this deployment could install"
             ),
@@ -843,20 +810,6 @@ RUNTIME_ENDPOINTS = (
     # An MCP server's address and credential, for a call to one of its
     # tools; adding and changing servers stays browser-only.
     "mcp:server:use",
-    # The pull door: approved package bytes for this organization's own
-    # agents, so a runtime can materialize code the scope announced.
-    "agents:agent:fetch_package",
-    # The reclaim read: which digests anybody still pins, so a runtime
-    # can delete code and environments nobody approves any more. The one
-    # entry here that answers beyond the caller's own organization, and
-    # it is deliberate — a runtime's disk is shared by digest, so a
-    # per-organization answer could never authorise a deletion. Hashes
-    # only, to a process already holding the code they name, and the
-    # controller refuses anyone but a runtime principal.
-    "agents:agent:pinned_digests",
-    # The readiness report: a runtime that built an agent's environment
-    # says so, and the Agents page turns Preparing into Ready.
-    "agents:agent:prepared",
     # Memory: the runtime reads what it was told to remember and adds
     # to it through the remember action. Forgetting is the person's
     # own act — a model that could delete its own memories could

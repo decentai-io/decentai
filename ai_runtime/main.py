@@ -57,13 +57,11 @@ confinement = Confinement(container, package_hosts=settings.package_hosts)
 library = AgentLibrary(settings.agents_install_dir, confinement)
 
 # The platform the sessions live against: the backend, over its /app
-# gateway (docs/system/chat-session.md) — and, given a key of its own,
-# what this runtime asks as itself: the approved packages, to stock
-# itself with (docs/system/agent-code.md).
-services = Backend(
-    Gateway(settings.backend_url),
-    RuntimeIdentity(settings.runtime_service_private_key)
-    if settings.runtime_service_private_key else None)
+# gateway (docs/system/chat-session.md) — and what this runtime asks
+# as itself: the approved packages, to stock itself with
+# (docs/system/agent-code.md).
+services = Backend(Gateway(settings.backend_url),
+                   RuntimeIdentity(settings.runtime_service_private_key))
 
 app = create_app(settings, services=services, library=library,
                  container=container, confinement=confinement)

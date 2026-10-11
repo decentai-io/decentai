@@ -33,7 +33,6 @@ from api.endpoints.app.ai.base import AIController
 from api.endpoints.app.agents.catalog_controller import AgentCatalogMixin
 from api.endpoints.app.agents.grants_controller import AgentGrantsMixin
 from api.endpoints.app.agents.install_controller import AgentInstallMixin
-from api.endpoints.app.agents.packages_controller import AgentPackagesMixin
 from api.endpoints.app.agents.samples_controller import AgentSamplesMixin
 from api.endpoints.app.agents.secret_grants_controller import (
     AgentSecretGrantsMixin,
@@ -42,8 +41,8 @@ from api.endpoints.app.agents.sources_controller import AgentSourcesMixin
 
 
 class AgentController(AgentSourcesMixin, AgentCatalogMixin, AgentInstallMixin,
-                      AgentPackagesMixin, AgentGrantsMixin,
-                      AgentSecretGrantsMixin, AgentSamplesMixin, AIController):
+                      AgentGrantsMixin, AgentSecretGrantsMixin,
+                      AgentSamplesMixin, AIController):
     def __init__(self):
         self.store = AgentManifestStore()
         self.source_store = AgentSourceStore()

@@ -103,12 +103,12 @@ turns that into an honest reply on the first event that needs a model
 - **The disk is reclaimed after an install.** A package installs once
   and serves every organization that approved those bytes, so nothing
   that uninstalls it anywhere can safely delete it. Instead the host
-  sweeps its own disk (`host.agents.reclaim`): it asks the platform which
-  digests are still approved *anywhere*
-  (`Agents:Agent:Pinned_digests` — the one read answered beyond the
-  caller's organization, because the folder is shared), adds what this
-  process is using (every live session's roster, every running worker),
-  and forgets the rest — code and virtual environment together. An
+  sweeps its own disk (`host.agents.reclaim`): it asks the platform, as
+  itself, which digests are still approved *anywhere*
+  (`Agents:Package:List` — answered beyond any organization, because
+  the folder is shared), adds what this process is using (every live
+  session's roster, every running worker), and forgets the rest — code
+  and virtual environment together. An
   unanswered read deletes nothing; so does an empty answer. It runs
   after an install, the one moment the disk grew with a chat connected
   to ask as, which means a process that only ever reuses packages it

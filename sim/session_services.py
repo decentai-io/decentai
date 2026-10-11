@@ -64,8 +64,6 @@ class SimSessionServices:
         self.titles_by_person: Dict[str, bool] = {}
         #: agent ref -> the runtime's last word on its readiness, and
         #: every word in order (host._report is once per process)
-        self.prepared: Dict[str, dict] = {}
-        self.prepared_reports: List[tuple] = []
         #: The package door (agent-code.md): what is approved anywhere
         #: (``{package_digest, manifest_hash, name}`` rows), the bytes
         #: by digest, what a runtime said of each, and what it pulled.
@@ -78,12 +76,6 @@ class SimSessionServices:
         #: per-chat contract overrides — a test (or a dev config) sets
         #: only what it means to change.
         self.contracts: Dict[str, dict] = {}
-        #: What the platform still approves, deployment-wide, for the
-        #: runtime's disk reclaim. None means "everything you hold" —
-        #: a standalone runtime has no approvals to lose, and a sim that
-        #: answered an empty set would invite it to delete its own
-        #: agents. A test sets it to name what should survive.
-        self.pinned: Optional[set] = None
         self._ids = itertools.count(1)
 
     # -- the contract ----------------------------------------------------
@@ -126,20 +118,10 @@ class SimSessionServices:
     async def remove_schedule(self, chat_id: str, schedule_id: str) -> None:
         await self.schedules.remove_schedule(chat_id, schedule_id)
 
-    async def fetch_package(self, chat_id: str, agent_id: str) -> dict:
-        """The pull door. Nothing is approved here to pull: the agents
-        this stand-in serves are the ones its host was started with."""
-        raise RuntimeError("these services have no pull door")
+    async def mcp_use(self, chat_id: str, ref: str) -> dict:
+        raise RuntimeError("these services keep no MCP servers")
 
     # -- the package door: what a runtime asks as itself -----------------
-    @property
-    def stocks_itself(self) -> bool:
-        """A test that gives this stand-in packages and archives is a
-        deployment whose runtime has a key of its own; one that does
-        not is a deployment without, where code is pulled as the chat
-        that names it."""
-        return bool(self.packages or self.archives)
-
     async def approved_packages(self) -> list:
         return [dict(row) for row in self.packages]
 
@@ -155,18 +137,6 @@ class SimSessionServices:
         self.prepared_packages[digest] = {"state": state, "error": error,
                                           "confined": confined}
         return any(row.get("package_digest") == digest for row in self.packages)
-
-    async def mcp_use(self, chat_id: str, ref: str) -> dict:
-        raise RuntimeError("these services keep no MCP servers")
-
-    async def pinned_digests(self, chat_id: str) -> Optional[set]:
-        """Which packages are still approved anywhere (host.reclaim).
-
-        None until a test says otherwise, and the host cannot read
-        that as a set of digests: it deletes nothing, as it does for an
-        empty answer — so the sim's default is to keep every package,
-        which is what a runtime with no platform behind it should do."""
-        return self.pinned
 
     # -- state -----------------------------------------------------------
     async def load_state(self, chat_id: str) -> Optional[dict]:
@@ -437,14 +407,6 @@ class SimSessionServices:
 
     async def save_plan(self, chat_id: str, steps: list) -> None:
         self.plans[chat_id] = list(steps)
-
-    async def agent_prepared(self, chat_id: str, agent_id: str, digest: str,
-                             state: str, error: str = "",
-                             confined: Optional[dict] = None) -> bool:
-        self.prepared[agent_id] = {"digest": digest, "state": state, "error": error,
-                                   "confined": confined}
-        self.prepared_reports.append((chat_id, agent_id, digest, state))
-        return True
 
     async def title_chat(self, chat_id: str, title: str) -> bool:
         if self.titles_by_person.get(chat_id):

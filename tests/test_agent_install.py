@@ -17,7 +17,7 @@ import copy
 
 import pytest
 
-from conftest import app_call
+from conftest import app_call, runtime_service_token
 from test_runtime_secret_use import runtime_headers, signing_key  # noqa: F401
 
 from agent_fixtures import MANIFEST_PATH, control, manifest_doc  # noqa: F401
@@ -998,18 +998,10 @@ class TestLifecycle:
         ).status_code == 404
 
 
-class TestFetchPackage:
-    """The runtime's pull door (docs/system/agent-code.md): approved
-    bytes, by the approval's own record, to a delegated runtime only."""
-
-    def _headers(self, seed, chat_id="chat_pull"):
-        from api.services.chat_session.identity import Delegation
-
-        token = Delegation().for_chat({
-            "user_id": seed.admin["_id"], "org_id": seed.org["_id"],
-            "email": seed.admin["email"], "session_id": "",
-        }, chat_id)
-        return {"Authorization": f"Bearer {token}"}
+class TestThePackageDoor:
+    """The runtime's pull door across the two halves (docs/system/agent-code.md):
+    approved bytes by digest, to a runtime speaking as itself and to
+    nobody else."""
 
     def _install(self, admin, control, manifest_doc):
         control["manifest"] = manifest_doc
@@ -1022,55 +1014,49 @@ class TestFetchPackage:
     def test_a_browser_may_not_pull_code(
         self, admin, seed, control, manifest_doc
     ):
-        agent = self._install(admin, control, manifest_doc)
-        refused = app_call(admin, "Agents:Agent:Fetch_package", {
-            "agent_id": agent["agent_id"],
-        })
+        self._install(admin, control, manifest_doc)
+        refused = app_call(admin, "Agents:Package:List", {})
         assert refused.status_code == 403
         assert "Only the AI runtime" in refused.text
 
-    def test_the_pull_returns_exactly_the_approved_bytes(
+    def test_a_chats_delegation_may_not_either(
         self, anon, admin, seed, control, manifest_doc
     ):
-        """The digest and hash come from the approval row, and the bytes
+        from api.services.chat_session.identity import Delegation
+
+        agent = self._install(admin, control, manifest_doc)
+        token = Delegation().for_chat({
+            "user_id": seed.admin["_id"], "org_id": seed.org["_id"],
+            "email": seed.admin["email"], "session_id": "",
+        }, "chat_pull")
+        refused = anon.post("/app", json={
+            "endpoint": "Agents:Package:Fetch",
+            "data": {"package_digest": agent["package_digest"]},
+        }, headers={"Authorization": f"Bearer {token}"})
+        assert refused.status_code == 403
+
+    def test_the_runtime_lists_and_pulls_exactly_the_approved_bytes(
+        self, anon, admin, seed, runtime_identity, control, manifest_doc
+    ):
+        """The digest and hash come from the approvals, and the bytes
         hash to the digest — the whole contract the installer verifies."""
         import base64
         import hashlib
 
         agent = self._install(admin, control, manifest_doc)
+        headers = {"Authorization": f"Bearer {runtime_service_token(runtime_identity)}"}
+        listed = anon.post("/app", json={
+            "endpoint": "Agents:Package:List", "data": {}}, headers=headers)
+        assert listed.status_code == 200, listed.text
+        [row] = listed.json()["data"]["packages"]
+        assert row["package_digest"] == agent["package_digest"]
+        assert len(row["manifest_hash"]) == 64
 
         answer = anon.post("/app", json={
-            "endpoint": "Agents:Agent:Fetch_package",
-            "data": {"agent_id": agent["agent_id"]},
-        }, headers=self._headers(seed))
+            "endpoint": "Agents:Package:Fetch",
+            "data": {"package_digest": row["package_digest"]},
+        }, headers=headers)
         assert answer.status_code == 200, answer.text
-        body = answer.json()["data"]
-
-        archive = base64.b64decode(body["package"])
-        assert body["package_digest"] == \
+        archive = base64.b64decode(answer.json()["data"]["package"])
+        assert row["package_digest"] == \
             f"sha256:{hashlib.sha256(archive).hexdigest()}"
-        assert body["package_digest"] == agent["package_digest"]
-        assert body["local_agent_id"] == "notebook"
-        assert body["manifest_hash"]
-
-    def test_another_organizations_agent_is_not_pullable(
-        self, anon, admin, app, seed, control, manifest_doc
-    ):
-        """The delegation carries the organization, so a runtime can only
-        pull code approved by an org whose user is connected to it."""
-        agent = self._install(admin, control, manifest_doc)
-
-        from test_multi_tenancy import Tenant
-
-        other = Tenant(app, "Elsewhere Ltd", "else@test.org", ["*"])
-        from api.services.chat_session.identity import Delegation
-
-        token = Delegation().for_chat({
-            "user_id": other.user["_id"], "org_id": other.org_id,
-            "email": other.user["email"], "session_id": "",
-        }, "chat_elsewhere")
-        refused = anon.post("/app", json={
-            "endpoint": "Agents:Agent:Fetch_package",
-            "data": {"agent_id": agent["agent_id"]},
-        }, headers={"Authorization": f"Bearer {token}"})
-        assert refused.status_code == 404

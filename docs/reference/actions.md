@@ -9,7 +9,7 @@ the actions a chat's delegation may call, and nothing else.
 Generated from `backend/server/authentication/catalog.py` by
 `docs/reference/generate.py`; do not edit by hand.
 
-191 actions in 36 services; 53 baseline.
+188 actions in 36 services; 50 baseline.
 
 ## Own account
 
@@ -339,9 +339,6 @@ Generated from `backend/server/authentication/catalog.py` by
 | Action | Grants | Baseline | Runtime |
 |---|---|---|---|
 | `agents:agent:list` | See which agents are installed |  |  |
-| `agents:agent:fetch_package` | Let your chat's engine fetch the code of an agent your organization approved | yes | yes |
-| `agents:agent:pinned_digests` | Let your chat's engine find out which agent code is still approved anywhere, so it can delete the rest | yes | yes |
-| `agents:agent:prepared` | Let your chat's engine report that an agent's code is ready to run, so the Agents page can say so | yes | yes |
 | `agents:agent:available` | See the agents this deployment could install |  |  |
 | `agents:agent:get` | Read an agent's manifest |  |  |
 | `agents:agent:install` | Install an agent |  |  |

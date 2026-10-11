@@ -218,6 +218,7 @@ class TestAPortSetting:
     def settings(self, monkeypatch, **said):
         from ai_runtime.settings import RuntimeSettings
         monkeypatch.setenv("BACKEND_SERVICE_PUBLIC_KEY", "a key")
+        monkeypatch.setenv("AI_RUNTIME_SERVICE_PRIVATE_KEY", "a key of its own")
         monkeypatch.setenv("BACKEND_INTERNAL_URL", "http://backend:8000")
         monkeypatch.setenv("AI_RUNTIME_AGENTS_SPAWNER", "agents:8003")
         for name, value in said.items():

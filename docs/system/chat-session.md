@@ -49,7 +49,7 @@ delegation was minted for the chat it names.
 | notifications | `Settings:Notifications:*` (baseline) + `server/notifications.py` | a push, or an email, when a card opens or the assistant answers and nobody has the chat open — [below](#notifications) |
 | attention | `AI:Chat:List` rows carry `attention {working, cards, unseen}` | what the chats list and the sidebar flag: working, cards, news — [below](#attention) |
 | kill | `AI:Chat:Stop {force: true}` (person, `ai:chat:stop`) | the kill switch: cards expired on the record, then the runtime told to stop where it stands — [below](#the-kill) |
-| readiness | `Agents:Package:Prepared` (the runtime as itself), or `Agents:Agent:Prepared` from a chat that built the code on first open | the runtime's word that an agent's code is ready on it, or would not build and why — [below](#readiness) |
+| readiness | `Agents:Package:Prepared` (the runtime as itself) | the runtime's word that a package is ready on it, or would not build and why — [below](#readiness) |
 | `pending_cards(kind)` / `expire_card` | `AI:Approval:List` / `AI:Approval:Expire` | every open card on the chat, or those of one kind (the questions a session opening finds left by a dead process; everything a kill expires), and closing one: a question nobody answered in a day, or a card whose call was stopped |
 | `store_result` / `read_result` | `AI:Storage:Create` / `AI:Storage:Get` | `ai_chat_storage` |
 | `record_audit` | `AI:Audit:Record` | `ai_audit`: one `execution` event per call the executor was asked for, whatever its outcome — one the gates refused, one the person denied, one that was cancelled and one the platform failed on included — agent, function, level, the inputs in outline, outcome, duration, the stored result's ref, and the model the chat was thinking with. The person reads their trail with `AI:Audit:List`; the organization's whole trail is `AI:Audit:List_all`, a grant of its own |
@@ -62,8 +62,8 @@ delegation was minted for the chat it names.
 | (a site's login an agent asked for) | `Secrets:Credential:Resolve` | the person's saved login for that site, once they consented ([the live screen](live-screen.md)) |
 | (an MCP server's address and credential, at a call) | `Mcp:Server:Use` | [MCP servers](mcp.md) |
 | `schedules` (`load` / `add` / `ran` / `remove`) | `AI:Schedule:Load` / `Add` / `Ran` / `Remove` | `ai_schedules`: the clock's rows, read per chat and written one row at a time; at most 50 a chat — [below](#the-clocks-rows) |
-| (pull) | `Agents:Agent:Fetch_package` | code asked for by the agent's ref, checked against the approved digest on arrival ([agent code](agent-code.md)) |
-| (reclaim) | `Agents:Agent:Pinned_digests` | every digest any organization still approves, so the runtime deletes only what nobody does |
+| (pull) | `Agents:Package:Fetch` (the runtime as itself) | code asked for by its digest, checked against it on arrival ([agent code](agent-code.md)) |
+| (reclaim) | `Agents:Package:List` (the runtime as itself) | every digest any organization still approves, so the runtime deletes only what nobody does |
 
 Seven rows have more to say than a row holds:
 
@@ -155,13 +155,11 @@ so.
 
 ### Readiness
 
-`Agents:Agent:Prepared` (runtime-only, `agents:agent:prepared`)
+`Agents:Package:Prepared` (the runtime as itself, `agents:package:prepared`)
 
-The runtime's word that an agent's code is ready on it, or would not
-build and why. A runtime stocking itself says it as itself, by digest,
-and every approval that pins the digest hears it
-(`Agents:Package:Prepared`); a chat that built the code on its first
-open says it as that chat's delegation. Once per process per version.
+The runtime's word that a package is ready on it, or would not build
+and why: said as itself, by digest, and every approval that pins the
+digest hears it. Once per process per version.
 
 The install marks the row `preparing`; the Agents page shows Preparing
 → Ready / Could not prepare, and a word about a digest the row no

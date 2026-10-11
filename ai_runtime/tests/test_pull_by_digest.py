@@ -47,7 +47,8 @@ def approved_notebook():
 
 class PullingServices(SimSessionServices):
     """The sim with a governing contract — the notebook named by its
-    approval — and a pull door serving one archive."""
+    approval — and the package door listing the notebook as approved
+    and serving its bytes by digest."""
 
     def __init__(self, archive, digest, expected_hash, grants=None):
         super().__init__()
@@ -55,7 +56,9 @@ class PullingServices(SimSessionServices):
         self.digest = digest
         self.expected_hash = expected_hash
         self.grants = self.GRANTS if grants is None else grants
-        self.pulls = []
+        self.packages = [{"package_digest": digest, "manifest_hash": expected_hash,
+                          "name": "Notebook"}]
+        self.archives = {digest: archive}
 
     async def contract(self, chat_id):
         base = await super().contract(chat_id)
@@ -63,26 +66,6 @@ class PullingServices(SimSessionServices):
             "agent_id": REF, "name": "Notebook", "local_agent_id": "notebook",
             "package_digest": self.digest, "manifest_hash": self.expected_hash,
         }]}
-
-    async def fetch_package(self, chat_id, agent_id):
-        self.pulls.append((chat_id, agent_id))
-        return {
-            "agent_id": agent_id, "package_digest": self.digest,
-            "manifest_hash": self.expected_hash, "local_agent_id": "notebook",
-            "package": base64.b64encode(self.archive).decode("ascii"),
-        }
-
-
-class StockingServices(PullingServices):
-    """The same, for a runtime with an identity of its own: the package
-    door lists the notebook as approved and serves its bytes by digest."""
-
-    def __init__(self, archive, digest, expected_hash, grants=None):
-        super().__init__(archive, digest, expected_hash, grants)
-        self.packages = [{"package_digest": digest, "manifest_hash": expected_hash,
-                          "name": "Notebook"}]
-        self.archives = {digest: archive}
-
 
 @pytest.fixture()
 def library(tmp_path, monkeypatch):
@@ -160,7 +143,7 @@ class TestThePull:
         assert library.has(digest)
         assert library.agent(digest).local_agent_id == "notebook"
         # Two chats, one pull: the digest is the whole of "must I fetch?".
-        assert services.pulls == [("chat_1", REF)]
+        assert services.pulls_by_digest == [digest]
 
     def test_the_pulled_code_runs_under_the_ref(self, library, package):
         archive, digest, expected = package
@@ -208,7 +191,7 @@ class TestThePull:
         assert not library.has(digest)
         assert "digest" in host.agents._refused[digest]
         # The same bytes fail the same way: refused once, not per chat.
-        assert len(services.pulls) == 1
+        assert len(services.pulls_by_digest) == 1
 
     def test_the_clock_resolves_a_row_through_the_chats_roster(
             self, library, package):
@@ -225,7 +208,7 @@ class TestThePull:
         assert outcome["status"] == "success", outcome
         assert outcome["result"]["notes"] == [] and outcome["result"]["total"] == 0
         assert host.sessions == {}
-        assert services.pulls == [("chat_1", REF)]
+        assert services.pulls_by_digest == [digest]
         # The fire left its line on the chat's trail.
         assert [(e["chat_id"], e["function"]) for e in services.audit] == [
             ("chat_1", f"{REF}.note.find")]
@@ -306,18 +289,17 @@ class TestReclaimingTheDisk:
         (other / "manifest.yaml").write_text("agent: {}", encoding="utf-8")
         return f"sha256:{'b' * 64}"
 
-    def test_a_runtime_with_an_identity_stocks_itself_before_any_chat_asks(
+    def test_the_runtime_stocks_itself_before_any_chat_asks(
             self, library, package):
         """The package door lists the notebook as approved; one stocking
         pass pulls it by digest as the runtime itself, builds it, and
         says it is ready — so a session opened later finds it serving
         and pulls nothing, and no chat was involved."""
         archive, digest, expected = package
-        services = StockingServices(archive, digest, expected)
+        services = PullingServices(archive, digest, expected)
         host = SessionHost(services, library, workers())
 
         async def scenario():
-            assert host.agents.stocks_itself
             arrived = await host.agents.stock()
             await asyncio.sleep(0.05)       # the report is a task of its own
             again = await host.agents.stock()
@@ -328,21 +310,20 @@ class TestReclaimingTheDisk:
         arrived, again, session = run(scenario())
         assert (arrived, again) == (1, 0)
         assert session.roster[REF].digest == digest
-        assert services.pulls == [] and services.pulls_by_digest == [digest]
+        assert services.pulls_by_digest == [digest]
         # Said once, by digest, with what this process holds the agent
         # to: a user, a fence and the proxy as the one way out, as the
         # fake container proves them. No chat said anything.
         assert services.prepared_packages == {digest: {
             "state": "ready", "error": "",
             "confined": {"user": True, "files": True, "network": True}}}
-        assert services.prepared == {} and services.prepared_reports == []
 
     def test_a_stocked_runtime_pulls_a_late_approval_as_itself(
             self, library, package):
         """An agent approved after the last pass: the session's open
         pulls it, by digest and as the runtime, not as the chat."""
         archive, digest, expected = package
-        services = StockingServices(archive, digest, expected)
+        services = PullingServices(archive, digest, expected)
         host = SessionHost(services, library, workers())
 
         async def scenario():
@@ -352,7 +333,7 @@ class TestReclaimingTheDisk:
 
         session = run(scenario())
         assert session.roster[REF].digest == digest
-        assert services.pulls == [] and services.pulls_by_digest == [digest]
+        assert services.pulls_by_digest == [digest]
         assert services.prepared_packages[digest]["state"] == "ready"
 
     def test_bytes_that_will_not_install_are_refused_once_and_said(
@@ -360,7 +341,7 @@ class TestReclaimingTheDisk:
         """Tampered bytes: the pass says the package failed, remembers
         it, and the next pass does not fetch it again."""
         archive, digest, expected = package
-        services = StockingServices(archive + b"tampered", digest, expected)
+        services = PullingServices(archive + b"tampered", digest, expected)
         host = SessionHost(services, library, workers())
 
         async def scenario():
@@ -377,7 +358,7 @@ class TestReclaimingTheDisk:
     def test_a_door_that_will_not_answer_leaves_the_next_pass_to_try(
             self, library, package):
         archive, digest, expected = package
-        services = StockingServices(archive, digest, expected)
+        services = PullingServices(archive, digest, expected)
         host = SessionHost(services, library, workers())
         asked = []
 
@@ -423,9 +404,8 @@ class TestReclaimingTheDisk:
             stranded = self._stranded(library, digest)
             # The platform approves the notebook and nothing else, and
             # the session that holds it has been forgotten.
-            services.pinned = {digest}
             host.sessions.clear()
-            removed = await host.agents.reclaim("chat_1")
+            removed = await host.agents.reclaim()
             return stranded, removed
 
         stranded, removed = run(scenario())
@@ -444,8 +424,9 @@ class TestReclaimingTheDisk:
             await host.session("chat_1")
             # The platform has forgotten it — uninstalled everywhere —
             # but this process is still serving it.
-            services.pinned = {"sha256:" + "c" * 64}
-            return await host.agents.reclaim("chat_1")
+            services.packages = [{"package_digest": "sha256:" + "c" * 64,
+                                  "manifest_hash": "", "name": ""}]
+            return await host.agents.reclaim()
 
         assert run(scenario()) == 0
         assert library.has(digest)
@@ -456,15 +437,15 @@ class TestReclaimingTheDisk:
         services = PullingServices(archive, digest, expected)
         host = SessionHost(services, library, workers())
 
-        async def refuse(chat_id):
+        async def refuse():
             raise RuntimeError("the platform is unreachable")
 
         async def scenario():
             await host.session("chat_1")
             stranded = self._stranded(library, digest)
             host.sessions.clear()
-            services.pinned_digests = refuse
-            return stranded, await host.agents.reclaim("chat_1")
+            services.approved_packages = refuse
+            return stranded, await host.agents.reclaim()
 
         stranded, removed = run(scenario())
         assert removed == 0
@@ -481,8 +462,8 @@ class TestReclaimingTheDisk:
             await host.session("chat_1")
             stranded = self._stranded(library, digest)
             host.sessions.clear()
-            services.pinned = set()
-            return stranded, await host.agents.reclaim("chat_1")
+            services.packages = []
+            return stranded, await host.agents.reclaim()
 
         stranded, removed = run(scenario())
         assert removed == 0
@@ -497,12 +478,12 @@ class TestReclaimingTheDisk:
         services = PullingServices(archive, digest, expected)
         refusals = []
 
-        async def refuse(chat_id, agent_id):
-            refusals.append(chat_id)
+        async def refuse(digest):
+            refusals.append(digest)
             raise RuntimeError(
-                "Agents:Agent:Fetch_package failed (401): unauthorized")
+                "Agents:Package:Fetch failed (401): unauthorized")
 
-        services.fetch_package = refuse
+        services.fetch_by_digest = refuse
         host = SessionHost(services, library, workers())
 
         async def scenario():
@@ -510,12 +491,11 @@ class TestReclaimingTheDisk:
             assert first.roster == {} and digest not in host.agents._refused
             # The moment passes: the door answers, and the agent is there
             # without anyone restarting anything.
-            services.fetch_package = PullingServices.fetch_package.__get__(
-                services, PullingServices)
+            del services.fetch_by_digest
             return await host.session("chat_2")
 
         second = run(scenario())
-        assert refusals == ["chat_1"]
+        assert refusals == [digest]
         assert list(second.roster) == [REF]
         assert library.has(digest)
 
@@ -531,9 +511,10 @@ class TestReclaimingTheDisk:
         async def scenario():
             await host.session("chat_1")            # refuses the tampered bytes
             assert digest in host.agents._refused
-            services.pinned = {"sha256:" + "d" * 64}
+            services.packages = [{"package_digest": "sha256:" + "d" * 64,
+                                  "manifest_hash": "", "name": ""}]
             host.sessions.clear()
-            await host.agents.reclaim("chat_1")
+            await host.agents.reclaim()
 
         run(scenario())
         assert digest not in host.agents._refused

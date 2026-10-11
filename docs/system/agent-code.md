@@ -108,25 +108,23 @@ agent holds in memory is never shared between organizations
 
 ## Pull by digest
 
-**A runtime fetches code by its digest, and verifies it on arrival.**
-A runtime with an identity of its own keeps itself stocked with every
-approved package ([the package door](#the-package-door)); one without
-is stocked by its chats. Either way the chat's contract lists each
-approved agent with its ref, package id, digest and manifest hash, and
-when a session is built every agent the runtime does not hold is
-pulled — as the runtime itself where it can, else through the
-backend's chat-bound door (`Agents:Agent:Fetch_package`) as that
-chat's delegation:
+**A runtime fetches code by its digest, as itself, and verifies it on
+arrival.** It keeps itself stocked with every approved package ([the
+package door](#the-package-door)), so a chat's open normally finds its
+agents built. The chat's contract lists each approved agent with its
+ref, package id, digest and manifest hash, and when a session is built
+an agent the runtime does not hold yet — approved a moment ago — is
+pulled the same way, by digest and as the runtime; no chat ever pulls
+code as itself:
 
-    ask for the archive by the agent's ref → check it against the
-    digest → unpack into store/<hex>/ → build the environment
-    → verify it loads → serve
+    ask for the archive by its digest → check it against the digest
+    → unpack into store/<hex>/ → build the environment → verify it
+    loads → serve
 
-- **No new trust.** The door answers a delegated runtime only, for the
-  organization's own approved agents only, with the digest taken from
-  the approval row and never from the request. A runtime can only ever
-  pull code approved by an organization whose person is connected to
-  it.
+- **No new trust.** The door answers a runtime only, by a digest some
+  standing approval names; the bytes are checked against that digest
+  before anything is written, so the door can serve the same bytes to
+  every runtime whichever organization stored them.
 - **Once per digest.** A per-digest lock means two chats never install
   the same package twice. A package that arrived and would not verify
   or load is remembered and not tried again until the next sweep, which
@@ -136,10 +134,9 @@ chat's delegation:
 - **Failure is per agent.** An agent that fails is logged and left out
   of that chat's roster; the rest serve and the chat opens.
 - **Prepared ahead.** An install or update marks the agent
-  *preparing*, and a runtime stocks itself with it on its own clock,
-  as itself ([the package door](#the-package-door)), so the first chat
-  to name it finds it built. The pull at a session's open is what
-  remains for a runtime that has not stocked itself yet.
+  *preparing*, and the runtime stocks itself with it on its own clock
+  ([the package door](#the-package-door)), so the first chat to name
+  it finds it built.
 - **Warm after a restart.** The store outlives the container; an
   environment built for another interpreter is rebuilt in the
   background (`AgentLibrary.warm_up`, a task started at the
@@ -147,8 +144,8 @@ chat's delegation:
   verified on disk.
 - **Ready is reported.** Once per process per version the runtime tells
   the platform the agent is ready, or failed and why
-  (`Agents:Agent:Prepared`), which turns *Preparing* into *Ready* on the
-  Agents page.
+  (`Agents:Package:Prepared`), which turns *Preparing* into *Ready* on
+  the Agents page.
 
 The clock resolves an agent through the chat's own roster, since a
 schedule belongs to a chat.
@@ -181,9 +178,9 @@ application): every ten seconds it lists, installs what it does not
 hold and says of each whether it is ready; when the list changed it
 first reclaims what nobody approves any more. That is what turns *Preparing* into *Ready* on the Agents
 page, within seconds of the click and with no chat in the picture;
-several runtimes each keep their own stock. A deployment without the
-keys has no such principal, and its agents are prepared when a chat
-first names them, as before.
+several runtimes each keep their own stock. The key is required: a
+runtime without one does not start, since it would have no way to
+code.
 
 ## Reclaiming
 
@@ -191,14 +188,15 @@ The backend reclaims its half per organization on every install,
 update and uninstall: an archive no approval names is deleted, which is
 what removes the version an update left behind.
 
-The runtime's half is a sweep it runs itself (`host.agents.reclaim`), because
-its disk is shared by digest. After an install it reads
-`Agents:Agent:Pinned_digests` — every digest **any** organization still
-approves. That read is the one place the platform answers a runtime
-beyond the caller's own organization, and it is deliberate: one folder
-serves every organization that approved those bytes, so a
-per-organization answer could never authorise a deletion. Hashes
-travel, nothing else, to a process already holding the code they name.
+The runtime's half is a sweep it runs itself (`host.agents.reclaim`),
+because its disk is shared by digest. When the list of approved
+packages changes (`Agents:Package:List`, every digest **any**
+organization still approves) it keeps that set, and what this process
+is using, and forgets the rest. The answer is deployment-wide on
+purpose: one folder serves every organization that approved those
+bytes, so a per-organization answer could never authorise a deletion.
+Hashes travel, nothing else, to a process already holding the code they
+name.
 
 The sweep keeps that set plus what this process is using — every live
 session's roster, every running worker — and removes the rest: the

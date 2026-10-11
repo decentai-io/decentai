@@ -8,16 +8,14 @@ pulling and installing what is not, narrating the wait to whoever is
 watching the chat, telling the platform when the code is ready, and
 sweeping the disk of what nobody approves any more.
 
-How a package gets here is this file's, and there are two ways. A
-runtime with an identity of its own stocks itself: every few seconds
-it asks, as itself, which packages are approved anywhere, installs
-what it does not hold, says when each is ready, and reclaims what
-nobody approves (``keep_stocked``, started by the application; the
-package door, docs/system/agent-code.md). A runtime without one is
-stocked by the chats that name each agent, as that chat's delegation,
-at the session's open (``materialize``) — which is also what a stocked
-runtime does for an agent approved a moment ago that its last pass
-did not see.
+How a package gets here is this file's. The runtime stocks itself:
+every few seconds it asks, as itself, which packages are approved
+anywhere, installs what it does not hold, says when each is ready, and
+reclaims what nobody approves (``keep_stocked``, started by the
+application; the package door, docs/system/agent-code.md). A session's
+open does the same for an agent approved a moment ago that the last
+pass did not see (``materialize``), by digest and as the runtime too:
+no chat ever pulls code as itself.
 
 One per host (door/host.py), shared by every chat, because one
 folder of packages serves every organization that approved those
@@ -27,7 +25,6 @@ or refreshed and when the clock fires for a chat.
 
 import logging
 import asyncio
-import base64
 from typing import Any, Callable, Dict, Optional
 
 from ai_runtime.agents.library import ApprovedAgent, InstalledAgent
@@ -76,15 +73,11 @@ class AgentRoster:
     # The stock: every approved package, kept here by the runtime itself
     # ------------------------------------------------------------------
 
-    @property
-    def stocks_itself(self) -> bool:
-        return bool(getattr(self.services, "stocks_itself", False))
-
     async def keep_stocked(self, every: Optional[float] = None) -> None:
         """Stock, then stock again every few seconds, until cancelled:
-        the task the application starts for a runtime with an identity
-        of its own (door/app.py). A pass that fails is logged and the
-        next one tries again; nothing here stops the runtime."""
+        the task the application starts (door/app.py). A pass that
+        fails is logged and the next one tries again; nothing here
+        stops the runtime."""
         while True:
             try:
                 await self.stock()
@@ -107,7 +100,7 @@ class AgentRoster:
         if digests != self._stocked_from:
             self._stocked_from = digests
             try:
-                await self.reclaim("", pinned=digests)
+                await self.reclaim(pinned=digests)
             except Exception as exc:
                 self.logger.warning(f"Nothing reclaimed while stocking: {exc}")
         arrived = 0
@@ -131,13 +124,13 @@ class AgentRoster:
                     # that never arrived are not (materialize says why).
                     if landed:
                         self._refused[digest] = str(exc)
-                        self._report("", "", digest, "failed", str(exc))
+                        self._report(digest, "failed", str(exc))
                     self.logger.error(
                         f"{name} not stocked ({digest[:19]}…): {exc}")
                     continue
                 arrived += 1
                 self.logger.info(f"{name} stocked as {digest[:19]}…")
-                self._report("", "", digest, "ready")
+                self._report(digest, "ready")
         return arrived
 
     async def for_chat(self, chat_id: str,
@@ -214,7 +207,7 @@ class AgentRoster:
         if installed is not None:
             # Already serving — built by an earlier chat, or by the
             # warm-up, which had no delegation to say so with.
-            self._report(chat_id, ref, digest, "ready")
+            self._report(digest, "ready")
             return installed
         if digest in self._refused:
             # Logged every time rather than once: an agent the chat cannot
@@ -238,7 +231,7 @@ class AgentRoster:
                     await self._status(chat_id, ref, name, "pulling",
                                        f"Preparing {name}: fetching the "
                                        f"approved package…")
-                    archive = await self._pull(chat_id, ref, digest)
+                    archive = await self._pull(digest)
                 arrived = True
                 await self._status(chat_id, ref, name, "installing",
                                    f"Preparing {name}: building its "
@@ -249,41 +242,39 @@ class AgentRoster:
             except Exception as exc:
                 # A refusal remembers BYTES THAT WOULD NOT INSTALL,
                 # because those fail the same way every time and each
-                # retry costs a pip build. Bytes that never arrived say
-                # nothing about the package: a delegation the platform
-                # would not accept, a gateway that timed out, a pull
-                # door that was briefly unreachable. Remembering one of
-                # those would hide the agent from every chat for as long
-                # as the refusal is kept — a blip, promoted to an outage,
-                # in silence. The next chat asks again; a fetch that
-                # fails again costs one request.
+                # retry costs a pip build; the platform is told so.
+                # Bytes that never arrived say nothing about the
+                # package: a gateway that timed out, a door that was
+                # briefly unreachable. Remembering one of those would
+                # hide the agent from every chat for as long as the
+                # refusal is kept — a blip, promoted to an outage, in
+                # silence. The next pass, or the next chat, asks again;
+                # a fetch that fails again costs one request.
                 if arrived:
                     self._refused[digest] = str(exc)
+                    self._report(digest, "failed", str(exc))
                 self.logger.error(
                     f"Agent {ref} not materialized ({digest[:19]}…): {exc}"
                     + ("" if arrived else " — the package never arrived, "
-                                          "so the next chat asks again"))
+                                          "so it is asked for again"))
                 await self._status(chat_id, ref, name, "failed",
                                    f"{name} could not be prepared: {exc}")
-                if arrived:
-                    self._report(chat_id, ref, digest, "failed", str(exc))
                 return None
             self.logger.info(
                 f"Agent {ref} serving as {digest[:19]}… (pulled for {chat_id})")
             await self._status(chat_id, ref, name, "ready",
                                f"{name} is ready.")
-            self._report(chat_id, ref, digest, "ready")
-        # An install is the one moment this process knows the disk grew,
-        # and a chat is connected, so there is a delegation to ask with.
+            self._report(digest, "ready")
+        # An install is one moment this process knows the disk changed.
         # Outside the lock: reclaiming is housekeeping, and nothing else
         # should wait behind it.
         try:
-            await self.reclaim(chat_id)
+            await self.reclaim()
         except Exception as exc:
             self.logger.warning(f"Nothing reclaimed after an install: {exc}")
         return installed
 
-    async def reclaim(self, chat_id: str, pinned: Optional[set] = None) -> int:
+    async def reclaim(self, pinned: Optional[set] = None) -> int:
         """Delete the code and environments nobody approves any more.
 
         The platform says which digests are still pinned — anywhere, by
@@ -303,7 +294,9 @@ class AgentRoster:
         if stored is None:
             return 0
         try:
-            keep = set(pinned if pinned is not None else await self._pinned(chat_id))
+            keep = set(pinned if pinned is not None else {
+                str(row.get("package_digest") or "")
+                for row in await self.services.approved_packages()})
         except Exception as exc:
             self.logger.warning(f"Pinned digests not read ({exc}); "
                                 f"nothing reclaimed")
@@ -342,14 +335,6 @@ class AgentRoster:
             self.logger.info(f"Reclaimed {removed} unapproved package(s)")
         return removed
 
-    async def _pinned(self, chat_id: str) -> set:
-        """Every digest anybody still approves: asked as the runtime
-        where it has an identity, else as the chat that is up."""
-        if self.stocks_itself:
-            return {str(row.get("package_digest") or "")
-                    for row in await self.services.approved_packages()}
-        return set(await self.services.pinned_digests(chat_id) or ())
-
     def _in_use(self) -> set:
         """Digests this process is serving from: what every live session
         may call, and what every worker is running. A session holds its
@@ -363,18 +348,16 @@ class AgentRoster:
         digests |= self.workers.live_digests()
         return {digest for digest in digests if digest}
 
-    def _report(self, chat_id: str, ref: str, digest: str, state: str,
-                error: str = "") -> None:
+    def _report(self, digest: str, state: str, error: str = "") -> None:
         """Tell the platform, once per process per digest, that this
         code is ready here — or would not build — which is what the
         Agents page shows as Preparing turning into Ready. As the
-        runtime itself where it has an identity, by digest, so every
-        approval of the code hears it; else as this chat's delegation,
-        for its agent. On a background task: no session waits on it,
-        and a platform that keeps nothing loses only the word. The
-        socket narration (`_status`) is for whoever is watching THIS
-        chat; this is for the person who clicked Install and is still
-        on the Agents page."""
+        runtime itself, by digest, so every approval of the code hears
+        it. On a background task: no session waits on it, and a
+        platform that keeps nothing loses only the word. The socket
+        narration (`_status`) is for whoever is watching a chat; this
+        is for the person who clicked Install and is still on the
+        Agents page."""
         key = (digest, state)
         if key in self._reported:
             return
@@ -384,17 +367,13 @@ class AgentRoster:
             try:
                 # With it, what this process holds the agent to: the
                 # agent's page says which part of that is not enforced.
-                confined = self.workers.confinement.report()
-                if self.stocks_itself:
-                    await self.services.package_prepared(
-                        digest, state, error, confined=confined)
-                else:
-                    await self.services.agent_prepared(
-                        chat_id, ref, digest, state, error, confined=confined)
+                await self.services.package_prepared(
+                    digest, state, error,
+                    confined=self.workers.confinement.report())
             except Exception as exc:
                 self._reported.discard(key)
                 self.logger.warning(
-                    f"Readiness of {ref or digest[:19]} not reported: {exc}")
+                    f"Readiness of {digest[:19]}… not reported: {exc}")
 
         asyncio.get_running_loop().create_task(send())
 
@@ -408,15 +387,8 @@ class AgentRoster:
             "name": name, "phase": phase, "text": text,
         })
 
-    async def _pull(self, chat_id: str, ref: str, digest: str = "") -> bytes:
-        """The approved bytes: by digest as the runtime itself where it
-        has an identity, else through the chat-bound pull door as this
-        chat's delegation. The digest they must hash to came with the
-        contract; the library verifies before it writes."""
-        if self.stocks_itself and digest:
-            return await self.services.fetch_by_digest(digest)
-        answer = await self.services.fetch_package(chat_id, ref)
-        encoded = str((answer or {}).get("package") or "")
-        if not encoded:
-            raise RuntimeError("the pull door answered with no package")
-        return base64.b64decode(encoded)
+    async def _pull(self, digest: str) -> bytes:
+        """The approved bytes, by digest, as the runtime itself. The
+        digest they must hash to came with the contract; the library
+        verifies before it writes."""
+        return await self.services.fetch_by_digest(digest)
