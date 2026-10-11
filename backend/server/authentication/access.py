@@ -16,7 +16,12 @@ from urllib.parse import urlsplit
 
 from fastapi import Request, WebSocket
 
-from server.authentication.catalog import RUNTIME_ENDPOINTS as DELEGATION_SURFACE
+import jwt
+
+from server.authentication.catalog import (
+    RUNTIME_ENDPOINTS as DELEGATION_SURFACE,
+    RUNTIME_SERVICE_ENDPOINTS,
+)
 from server.authentication.credentials import TokenController
 from server.authentication.policy import PolicyEngine
 from database.stores import (
@@ -37,6 +42,13 @@ class AccessController:
     # at all, before its user's own policy is consulted. The list is
     # data (see catalog.py); this names it where the fence reads it.
     RUNTIME_ENDPOINTS = DELEGATION_SURFACE
+
+    # What a runtime may dispatch as itself (the runtime service
+    # principal, below): no person stands behind it, so no policy is
+    # consulted — the list is the whole answer.
+    RUNTIME_SERVICE_ENDPOINTS = RUNTIME_SERVICE_ENDPOINTS
+    RUNTIME_SERVICE_ISSUER = "decentai-ai-runtime"
+    RUNTIME_SERVICE_AUDIENCE = "decentai-backend"
 
     def __init__(self, settings: Settings):
         # One process signs and verifies (HS256). The secret is the only key.
@@ -255,7 +267,53 @@ class AccessController:
             return None
         if ApiKeyStore.looks_like_key(access_token):
             return self._api_key_user(access_token)
+        if self._signed_by_a_runtime(access_token):
+            return self._runtime_service_user(access_token)
         return self.verify_token(access_token)
+
+    # ------------------------------------------------------------------
+    # The runtime, as itself
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _signed_by_a_runtime(token: str) -> bool:
+        """A session token is signed with this process's own secret
+        (HS256); a runtime signs with a key of its own (RS256). The
+        header says which, before anything is verified."""
+        try:
+            return jwt.get_unverified_header(token).get("alg") == "RS256"
+        except jwt.PyJWTError:
+            return False
+
+    def _runtime_service_user(self, token: str) -> Optional[Dict[str, Any]]:
+        """A runtime speaking as itself: a bearer token only a runtime
+        can sign (RS256; this process holds just the public key, set by
+        AI_RUNTIME_SERVICE_PUBLIC_KEY), with issuer, audience and expiry
+        required. The principal names no person and no organization:
+        what it may do is the package door and nothing else
+        (``is_allowed``). No key configured means no such principal."""
+        from server.setup.app_state import get_settings
+
+        public_key = getattr(get_settings(), "ai_runtime_service_public_key", "")
+        if not public_key:
+            return None
+        try:
+            claims = jwt.decode(
+                token, public_key, algorithms=["RS256"],
+                audience=self.RUNTIME_SERVICE_AUDIENCE,
+                issuer=self.RUNTIME_SERVICE_ISSUER,
+                options={"require": ["exp", "iat", "nbf", "jti", "sub"]},
+            )
+        except jwt.PyJWTError:
+            return None
+        if claims.get("typ") != "runtime_service":
+            return None
+        return {
+            "user_id": "", "org_id": "", "email": "ai-runtime",
+            "user_name": "AI runtime", "status": UserStore.STATUS_ACTIVE,
+            "assigned_groups": [], "session_id": "",
+            "token_type": "RUNTIME_SERVICE", "principal_type": "runtime_service",
+        }
 
     @staticmethod
     def _origins(settings: Settings) -> set:
@@ -316,6 +374,16 @@ class AccessController:
         surface before the policy is even consulted."""
         if not user:
             return False
+
+        # A runtime as itself: the package door, and no policy — there
+        # is no person whose policy it could be.
+        if user.get("principal_type") == "runtime_service":
+            allowed = normalized_endpoint in self.RUNTIME_SERVICE_ENDPOINTS
+            if not allowed:
+                self.logger.info(
+                    f"Denied the runtime → {normalized_endpoint} "
+                    f"(outside the package door)")
+            return allowed
 
         # fnmatchcase, not fnmatch: the latter runs both sides through
         # os.path.normcase, which lowercases on Windows and does nothing

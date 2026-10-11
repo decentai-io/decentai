@@ -121,6 +121,10 @@ def _load_settings() -> Dict[str, Any]:
         # backend -> runtime service identity (RS256; runtime holds the
         # public key)
         "backend_service_private_key": _env_pem("BACKEND_SERVICE_PRIVATE_KEY"),
+        # runtime -> backend service identity (RS256; the runtime holds
+        # the private key): what a runtime asks as itself, for the whole
+        # deployment — the package door (docs/system/agent-code.md)
+        "ai_runtime_service_public_key": _env_pem("AI_RUNTIME_SERVICE_PUBLIC_KEY"),
 
         # where the AI runtime is reachable
         "ai_runtime_url": os.getenv("AI_RUNTIME_URL", "http://127.0.0.1:8001"),
@@ -186,6 +190,8 @@ class Settings:
 
     # backend -> runtime service identity (RS256 private key, PEM)
     backend_service_private_key: Optional[str] = None
+    # runtime -> backend service identity (RS256 public key, PEM)
+    ai_runtime_service_public_key: Optional[str] = None
 
     # where the AI runtime is reachable
     ai_runtime_url: str = "http://127.0.0.1:8001"

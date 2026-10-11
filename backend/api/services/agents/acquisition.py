@@ -97,6 +97,19 @@ class AgentAcquisition:
         except PackagingError as exc:
             raise AcquisitionError(str(exc)) from exc
 
+    def package_anywhere(self, digest: str) -> bytes:
+        """The bytes a digest names, from whichever organization stored
+        them — for a runtime stocking itself (docs/system/agent-code.md).
+        A digest nobody holds is a plain error: the runtime asked for
+        what the approvals list said, and the list and the store
+        disagree."""
+        found = self.store.find(digest)
+        if found is None:
+            raise AcquisitionError(
+                f"The package {str(digest)[:19]}… is not in this "
+                f"deployment's store.")
+        return found
+
     def reclaim(self, org_id: str, pinned) -> int:
         """Delete this organization's stored packages that no approval
         points at any more. `pinned` is the reachable set — every

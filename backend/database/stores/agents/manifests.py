@@ -148,6 +148,49 @@ class AgentManifestStore(OrgScopedStore):
             )
         }
 
+    def approved_packages(self) -> list:
+        """Every package some standing approval of ANY organization
+        points at — one row per digest: the digest, the manifest hash
+        the installer verifies against, and a name for the log. What
+        a runtime stocks itself from (docs/system/agent-code.md).
+
+        Deployment-wide for the reason `pinned_digests_everywhere` is:
+        a runtime holds one folder per digest for every organization
+        that approved those bytes. Nothing of who approved what
+        travels, and the hash is a function of the bytes, so two
+        approvals of one digest agree on it."""
+        found: Dict[str, Dict[str, Any]] = {}
+        for doc in self.col.find(
+                {"status": self.STATUS_INSTALLED,
+                 "package_digest": {"$exists": True, "$ne": ""}},
+                {"package_digest": 1, "manifest_hash": 1, "manifest": 1}):
+            digest = str(doc["package_digest"])
+            if digest not in found:
+                agent = (doc.get("manifest") or {}).get("agent") or {}
+                found[digest] = {
+                    "package_digest": digest,
+                    "manifest_hash": str(doc.get("manifest_hash") or ""),
+                    "name": str(agent.get("name") or ""),
+                }
+        return [found[digest] for digest in sorted(found)]
+
+    def set_prepared_everywhere(self, digest: str, state: str,
+                                error: str = "",
+                                confined: Optional[Dict[str, bool]] = None) -> int:
+        """A runtime's word about one digest, recorded on every approval
+        that pins it, whichever organization's: the code is the same
+        code wherever it was approved. Returns how many approvals heard
+        it — none, when nobody pins that digest any more."""
+        record = {
+            "digest": str(digest or ""), "state": str(state or ""),
+            "error": str(error or "")[:400], "at": utc_now(),
+        }
+        if confined is not None:
+            record["confined"] = dict(confined)
+        result = self.col.update_many(
+            {"package_digest": str(digest or "")}, {"$set": {"prepared": record}})
+        return int(result.matched_count)
+
     def pinned_digests_everywhere(self) -> set:
         """Every package digest ANY organization still points at.
 

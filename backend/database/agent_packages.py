@@ -124,6 +124,18 @@ class PackageStore:
         return [f"sha256:{name}"
                 for name in sorted(self.backend.list(_clean_org(org_id)))]
 
+    def find(self, digest: str) -> Optional[bytes]:
+        """The bytes of a digest, whichever organization stored them:
+        the same bytes wherever they are, since the name is their hash.
+        For a runtime, which keeps one copy for everyone. None when no
+        organization holds them."""
+        name = _clean_digest(digest)
+        for org in self.backend.orgs():
+            found = self.backend.get(org, name)
+            if found is not None:
+                return found
+        return None
+
 
 class LocalPackageBackend:
     """A directory."""
@@ -138,6 +150,12 @@ class LocalPackageBackend:
         # packages the other cannot find is a failure that only shows up
         # after a restart.
         self.root = root if root.is_absolute() else self.BACKEND_ROOT / root
+
+    def orgs(self) -> List[str]:
+        """Every organization with a folder here."""
+        if not self.root.is_dir():
+            return []
+        return sorted(p.name for p in self.root.iterdir() if p.is_dir())
 
     def _path(self, org: str, name: str) -> Path:
         return self.root / org / f"{name}{ARCHIVE_SUFFIX}"

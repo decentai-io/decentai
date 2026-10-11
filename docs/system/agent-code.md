@@ -131,10 +131,11 @@ does not hold is pulled through the backend's fenced door
   again.
 - **Failure is per agent.** An agent that fails is logged and left out
   of that chat's roster; the rest serve and the chat opens.
-- **Prepared ahead.** An install or update sends `agents_changed`
-  through the installer's most recent chat, and the runtime pulls and
-  builds at once, in the background. A person with no chat yet meets
-  the build on first open.
+- **Prepared ahead.** An install or update marks the agent
+  *preparing*, and a runtime stocks itself with it on its own clock,
+  as itself ([the package door](#the-package-door)), so the first chat
+  to name it finds it built. The pull at a session's open is what
+  remains for a runtime that has not stocked itself yet.
 - **Warm after a restart.** The store outlives the container; an
   environment built for another interpreter is rebuilt in the
   background (`AgentLibrary.warm_up`, a task started at the
@@ -147,6 +148,33 @@ does not hold is pulled through the backend's fenced door
 
 The clock resolves an agent through the chat's own roster, since a
 schedule belongs to a chat.
+
+## The package door
+
+A runtime keeps one copy of every approved package for every
+organization that approved it, so what it needs to know is nobody's in
+particular: which packages are approved anywhere, the bytes of one, and
+where to say that one is ready. It asks these **as itself** — with a
+service token only a runtime can sign (`AI_RUNTIME_SERVICE_PRIVATE_KEY`
+on the runtime, the public half on the backend as
+`AI_RUNTIME_SERVICE_PUBLIC_KEY`), the mirror of the token the backend
+uses to prove itself to the runtime. The backend reads it as a runtime
+service principal: no person, no organization, no chat, and no policy;
+what it may dispatch is the package door and nothing else
+(`backend/server/authentication/access.py`, `RUNTIME_SERVICE_ENDPOINTS`).
+
+| verb | answers |
+|---|---|
+| `Agents:Package:List` | every package some standing approval of any organization points at: digest, manifest hash, a name for the log |
+| `Agents:Package:Fetch` `{package_digest}` | the bytes, whichever organization stored them: the digest is their name and their proof, and the installer hashes them before writing |
+| `Agents:Package:Prepared` `{package_digest, state, error?, confined?}` | recorded on every approval that pins the digest; `recorded: false` when nobody does any more |
+
+Nothing of who approved what travels: digests, hashes, bytes whose
+name is their hash. An install marks its row *preparing* and sends
+nothing anywhere; a runtime that lists, pulls and reports is what turns
+it to *Ready* on the Agents page. A deployment without the keys has no
+such principal, and its agents are prepared when a chat first names
+them, as before.
 
 ## Reclaiming
 

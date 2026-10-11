@@ -266,6 +266,40 @@ def service_keys():
     )
 
 
+def runtime_service_token(private_pem: str) -> str:
+    """What a runtime signs to speak as itself (the mirror of
+    ServiceToken, minted on the runtime's side in production)."""
+    import uuid
+    from datetime import datetime, timedelta, timezone
+
+    import jwt
+
+    now = datetime.now(timezone.utc)
+    return jwt.encode({
+        "typ": "runtime_service", "iss": "decentai-ai-runtime",
+        "sub": "decentai-ai-runtime", "aud": "decentai-backend",
+        "jti": f"rst_{uuid.uuid4().hex}", "iat": now, "nbf": now,
+        "exp": now + timedelta(seconds=60),
+    }, private_pem, algorithm="RS256", headers={"kid": "ai-runtime-service-v1"})
+
+
+@pytest.fixture()
+def runtime_identity(app):
+    """A runtime's own key pair: the backend holds the public half, and
+    the test gets the private half to sign with."""
+    import dataclasses
+
+    from server.setup.app_state import get_state
+
+    private_pem, public_pem = service_keys()
+    state = get_state()
+    original = state.settings
+    state.settings = dataclasses.replace(
+        original, ai_runtime_service_public_key=public_pem)
+    yield private_pem
+    state.settings = original
+
+
 @pytest.fixture()
 def signing_key(app):
     """ServiceToken needs the RS256 key configured; give it one."""

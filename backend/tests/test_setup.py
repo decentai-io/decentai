@@ -39,8 +39,10 @@ class FakeDocker:
         if "build -q" in words:
             return 0, "sha256:the-backend-image\n"
         if "generate_service_keys.py" in words:
-            return 0, (f"# backend/config.env\nBACKEND_SERVICE_PRIVATE_KEY={PRIVATE}\n\n"
-                       f"# ai_runtime/config.env\nBACKEND_SERVICE_PUBLIC_KEY={PUBLIC}\n")
+            return 0, (f"# backend/config.env\nBACKEND_SERVICE_PRIVATE_KEY={PRIVATE}\n"
+                       f"AI_RUNTIME_SERVICE_PUBLIC_KEY={PUBLIC}-of-the-runtime\n\n"
+                       f"# ai_runtime/config.env\nBACKEND_SERVICE_PUBLIC_KEY={PUBLIC}\n"
+                       f"AI_RUNTIME_SERVICE_PRIVATE_KEY={PRIVATE}-of-the-runtime\n")
         if "generate_secret_keys.py" in words:
             return 0, "SECRET_ENCRYPTION_KEYS=01:the-key\nSECRET_ENCRYPTION_ACTIVE=01\n"
         return 0, ""
@@ -95,6 +97,8 @@ class TestTheFirstTime:
         assert not [name for name, value in said.items() if "change-me" in value]
         assert said["BACKEND_SERVICE_PRIVATE_KEY"] == PRIVATE
         assert said["BACKEND_SERVICE_PUBLIC_KEY"] == PUBLIC
+        assert said["AI_RUNTIME_SERVICE_PRIVATE_KEY"] == PRIVATE + "-of-the-runtime"
+        assert said["AI_RUNTIME_SERVICE_PUBLIC_KEY"] == PUBLIC + "-of-the-runtime"
         assert said["SECRET_ENCRYPTION_KEYS"] == "01:the-key"
         assert len(said["TOKEN_SECRET_KEY"]) >= 48
 

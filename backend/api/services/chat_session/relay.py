@@ -43,7 +43,7 @@ from server.setup.app_state import get_settings, get_ws_manager
 
 #: what a frontend may say through the relay, and the frame it becomes
 FRAMES = {"user_message", "approval_decided", "question_answered", "stop",
-          "schedules_changed", "screen_input", "screen_open", "agents_changed"}
+          "schedules_changed", "screen_input", "screen_open"}
 
 
 class RuntimeClient:

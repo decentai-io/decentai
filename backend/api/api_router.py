@@ -55,8 +55,12 @@ class APIRouter:
     def _should_audit(cls, endpoint, action):
         # AI has its own execution, approval, schedule, and credential
         # witnesses at the actual transaction boundaries. This gateway
-        # fills the former gap for the rest of the platform.
-        return not endpoint.startswith("ai:") and action not in cls.READ_ONLY_ACTIONS
+        # fills the former gap for the rest of the platform. The package
+        # door is a runtime's own housekeeping, as itself: nobody's act,
+        # and no organization to file it under.
+        if endpoint.startswith("ai:") or endpoint.startswith("agents:package:"):
+            return False
+        return action not in cls.READ_ONLY_ACTIONS
 
     def _audit_action(self, endpoint, action, user, status_code, msg=None):
         if not self._should_audit(endpoint, action):

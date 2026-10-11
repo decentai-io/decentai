@@ -197,9 +197,9 @@ class AgentInstallMixin:
         # own honest report, at the moment it matters.
         #
         # Nothing is sent to a runtime to KEEP. Code reaches a
-        # runtime when a chat of this organization connects and it
-        # pulls what the approval names — which is the only thing
-        # that works when there is more than one of them.
+        # runtime when it asks, as itself, what is approved and pulls
+        # what it does not hold (the package door) — which is the only
+        # thing that works when there is more than one of them.
         try:
             archive, package_digest, _ = self.acquisition.acquire(
                 self._org(user),
@@ -253,57 +253,15 @@ class AgentInstallMixin:
             details={"version": manifest.version, "source": source["type"],
                      "package_digest": stored.get("package_digest", "")},
         )
-        if self._prepare(user, stored):
-            # A runtime is building it now; the page says so until the
-            # runtime reports back (Agents:Agent:Prepared).
-            stored["prepared"] = self.store.set_prepared(
-                stored["_id"], stored.get("package_digest"), "preparing")
+        # Preparing, from this moment: a runtime stocks itself with every
+        # approved package on its own clock (docs/system/agent-code.md,
+        # the package door), and the page says so until one reports the
+        # code ready — or that it would not build.
+        stored["prepared"] = self.store.set_prepared(
+            stored["_id"], stored.get("package_digest"), "preparing")
         return self._respond(data, {
             "agent": self._summary(stored), "installed": True,
         })
-
-    #: Prepare frames on their way, held so a task is not collected
-    #: before it runs.
-    _preparing: set = set()
-
-    def _prepare(self, user, stored):
-        """The runtime pulls the package and builds its environment
-        now, not when the first chat names it: the person who clicked
-        Install or Update should not meet a minute of pip in their next
-        chat. The runtime is reached the way everything reaches it,
-        through a chat's dial with that chat's delegation — the
-        person's most recent chat, dialed if it is not up. Nobody
-        without a chat is left waiting for anything: their first chat
-        prepares it as before. Never a failure of the install: the
-        store is what answers for the approval either way. True when a
-        runtime was sent to build it."""
-        try:
-            import asyncio
-
-            from database.stores import ChatStore
-            from server.setup.app_state import get_runtime_clients
-
-            chats = ChatStore().list_for(
-                str(user.get("org_id") or ""), str(user.get("user_id") or ""))
-            chat = next((c for c in chats if c.get("status") != "archived"), None)
-            if chat is None or not stored.get("package_digest"):
-                return False
-            manifest = stored.get("manifest") or {}
-            frame = {"event": "agents_changed", "agents": [{
-                "agent_id": str(stored.get("_id") or ""),
-                "name": str((manifest.get("agent") or {}).get("name") or ""),
-                "package_digest": str(stored.get("package_digest") or ""),
-                "manifest_hash": str(stored.get("manifest_hash") or ""),
-            }]}
-            task = asyncio.get_running_loop().create_task(
-                get_runtime_clients().send(str(chat["chat_id"]), user, frame))
-            self._preparing.add(task)
-            task.add_done_callback(self._preparing.discard)
-            return True
-        except Exception as exc:  # noqa: BLE001 — never a failed install
-            self.logger.warning(
-                f"Could not ask a runtime to prepare {stored.get('_id')}: {exc}")
-            return False
 
     def _derive_secret_definitions(self, manifest, user, namespace=None):
         """Secret declarations → versioned data-layer definitions. Returns

@@ -9,7 +9,7 @@ the actions a chat's delegation may call, and nothing else.
 Generated from `backend/server/authentication/catalog.py` by
 `docs/reference/generate.py`; do not edit by hand.
 
-188 actions in 35 services; 53 baseline.
+191 actions in 36 services; 53 baseline.
 
 ## Own account
 
@@ -325,6 +325,14 @@ Generated from `backend/server/authentication/catalog.py` by
 |---|---|---|---|
 | `ai:storage:get` | Read a stored result behind a table or chart |  | yes |
 | `ai:storage:create` | Your engine stores a verified result |  | yes |
+
+## Agent packages
+
+| Action | Grants | Baseline | Runtime |
+|---|---|---|---|
+| `agents:package:list` | Let a runtime learn which agent packages are approved anywhere, so it can stock itself |  |  |
+| `agents:package:fetch` | Let a runtime fetch an approved package by its digest |  |  |
+| `agents:package:prepared` | Let a runtime report that a package is ready to run on it, so the Agents page can say so |  |  |
 
 ## Agents
 

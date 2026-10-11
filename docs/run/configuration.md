@@ -10,7 +10,7 @@ Three values are generated, never chosen:
 
 | Generator | Produces |
 |---|---|
-| `python bootstrap/generate_service_keys.py` | `BACKEND_SERVICE_PRIVATE_KEY` for the backend, `BACKEND_SERVICE_PUBLIC_KEY` for the runtime — one RS256 pair, each half on one line with `\n` escapes |
+| `python bootstrap/generate_service_keys.py` | two RS256 pairs, each half on one line with `\n` escapes: `BACKEND_SERVICE_PRIVATE_KEY` for the backend and `BACKEND_SERVICE_PUBLIC_KEY` for the runtime (the backend's identity), `AI_RUNTIME_SERVICE_PRIVATE_KEY` for the runtime and `AI_RUNTIME_SERVICE_PUBLIC_KEY` for the backend (the runtime's) |
 | `python bootstrap/generate_secret_keys.py` | `SECRET_ENCRYPTION_KEYS` and `SECRET_ENCRYPTION_ACTIVE` — versioned AES-256-GCM keys; `--rotate` appends a version |
 | `python -c "import secrets; print(secrets.token_urlsafe(48))"` | `TOKEN_SECRET_KEY` |
 
@@ -59,6 +59,7 @@ Three values are generated, never chosen:
 | `AI_RUNTIME_URL` | `http://127.0.0.1:8001` | Where the backend dials a chat's session. |
 | `SPEECH_URL` | `http://speech:8004` | Where the backend asks the platform's own speech models ([the speech container](#the-speech-container)). Nothing answering there is not an error: an organization that keeps speech local is told it is not running, and one that chose a provider never asks. |
 | `BACKEND_SERVICE_PRIVATE_KEY` | required for chats | Signs the backend's identity toward the runtime; the runtime holds the public half. |
+| `AI_RUNTIME_SERVICE_PUBLIC_KEY` | unset | Verifies a runtime speaking as itself at the package door ([agent code](../system/agent-code.md#the-package-door)); the runtime holds the private half. Unset, no runtime can stock itself, and agents are prepared when a chat first names them. |
 | `REFERENCE_CATALOG_URL` | unset | A repository the marketplace offers as a source with one click. Unset, it offers none. |
 | `AGENT_SOURCE_FOLDER` | unset | A folder on the backend's own disk whose git repositories may be agent sources, added by their path (`/develop/my-agents`). For somebody writing agents on their own computer ([a DecentAI of your own](../agents/developing.md#a-decentai-of-your-own)). Unset — every server — a source is fetched from a repository's address only. |
 
@@ -116,6 +117,7 @@ gone. Back them up with it.
 | `AI_RUNTIME_PORT` | `8001` | Bind port. Left blank it is the default; a value that is not a port is refused at start, by name. |
 | `BACKEND_INTERNAL_URL` | empty | Where the runtime reaches the backend's gateway for its services. Empty runs the runtime standalone on the in-memory simulator, which is for development only. In Compose it is the service name; where the containers share one network, `http://127.0.0.1:8000`. |
 | `BACKEND_SERVICE_PUBLIC_KEY` | required | Verifies that a dial really came from the backend. |
+| `AI_RUNTIME_SERVICE_PRIVATE_KEY` | unset | Signs the runtime's own identity toward the backend, for what it asks as itself: the approved packages, to stock itself with ([agent code](../system/agent-code.md#the-package-door)). The backend holds the public half. |
 | `AI_RUNTIME_AGENTS_INSTALL_DIR` | `ai_runtime/installed_agents` | Where installed agent code and its environments live. A volume in a deployment; a short path outside the tree locally. |
 | `BACKEND_TOKEN_ISSUER` | `decentai-backend` | The issuer claim the runtime expects. |
 | `AI_RUNTIME_TOKEN_AUDIENCE` | `decentai-ai-runtime` | The audience claim the runtime expects. |

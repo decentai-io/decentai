@@ -659,6 +659,25 @@ ACTION_CATALOG: Dict[str, Dict[str, Any]] = {
             "ai:storage:create": "Your engine stores a verified result",
         },
     },
+    "agents:package": {
+        "label": "Agent packages",
+        "actions": {
+            # The package door (docs/system/agent-code.md): in the
+            # catalog so the actions are known; no policy grants them,
+            # since only a runtime speaking as itself may call them.
+            "agents:package:list": (
+                "Let a runtime learn which agent packages are approved "
+                "anywhere, so it can stock itself"
+            ),
+            "agents:package:fetch": (
+                "Let a runtime fetch an approved package by its digest"
+            ),
+            "agents:package:prepared": (
+                "Let a runtime report that a package is ready to run on "
+                "it, so the Agents page can say so"
+            ),
+        },
+    },
     "agents:agent": {
         "label": "Agents",
         "actions": {
@@ -777,6 +796,16 @@ ACTION_CATALOG: Dict[str, Dict[str, Any]] = {
 # This is a FENCE, not a grant: passing it only means the endpoint is not
 # forbidden to a delegation, and the user's own policy is still consulted
 # afterwards. Patterns are matched with fnmatchcase.
+#: What a runtime may dispatch AS ITSELF — the runtime service
+#: principal (access.py), which no person's policy governs: the package
+#: door, and nothing else. A runtime stocks itself with every approved
+#: package and says when one is ready (docs/system/agent-code.md).
+RUNTIME_SERVICE_ENDPOINTS = (
+    "agents:package:list",
+    "agents:package:fetch",
+    "agents:package:prepared",
+)
+
 RUNTIME_ENDPOINTS = (
     # The services contract (docs/system/chat-session.md): the assistant's
     # authority, its mind, its inbox, its cards, its clock.
