@@ -7,11 +7,13 @@ It may serve a live socket or nobody at all — a session with no
 connection is simply an assistant working unwatched, which is what a
 "background task" is.
 
-The services object is the platform surface, duck-typed so the sim and
-the backend's client implement one contract. What a session lives
+The services object is the platform (ai_runtime/platform.py), with the
+sim (sim/session_services.py) implementing the same contract in
+memory. Every call names the chat it acts for. What a session lives
 against is below; what the host alone calls (a chat's credential, a
 package fetched, the digests still pinned, an MCP server, an agent's
-code reported ready or failed) is in door/host.py:
+code reported ready or failed, the clock's rows) is in door/host.py
+and chat/clock.py:
 
     load_state(chat_id) / save_state(chat_id, state_dict)
     persist_message(chat_id, actor, text, parts, client_message_id="",
@@ -20,36 +22,32 @@ code reported ready or failed) is in door/host.py:
     history(chat_id) -> persisted messages, oldest first
     record_event(chat_id, event_dict) -> seq     the inbox: durable
     events_since(chat_id, cursor) -> [events]    before absorbed
-    emit(chat_id, event_dict)                    events to the user
-    relay(chat_id, event_dict)                   to the socket alone
-    open_approval(chat_id, request) -> approval_id
-    wait_approval(approval_id) -> bool           blocks until decided
-    resolve_approval(approval_id, decision)      settle a waiter
-    open_card(chat_id, request) -> {approval_id, settled}
-                                                 a question card, and the
-                                                 platform's own answer
-                                                 if it gave one
-    wait_answer(approval_id) -> answer           blocks until answered
-    resolve_answer(approval_id, answer) -> bool  settle a waiter
-    pending_questions(chat_id) -> [cards]        questions still open
-    pending_cards(chat_id) -> [cards]            every card still open
-    expire_approval(chat_id, approval_id)        close one unanswered
+    emit(chat_id, event_dict) -> seq             an event recorded; the
+                                                 host delivers it
+    open_card(chat_id, request) -> {approval_id, answer, by}
+                                                 a card on the record, and
+                                                 the platform's own answer
+                                                 where it gave one
+    pending_cards(chat_id, kind="") -> [cards]   cards still open
+    expire_card(chat_id, approval_id)            close one unanswered
     resolve_credential(chat_id, payload) -> dict a login an agent asks for
     store_result(chat_id, source, result) -> storage_ref
     read_result(chat_id, storage_ref, path) -> value
     read_image(chat_id, ref) -> dict             a stored file, encoded
     list_files(chat_id) -> [rows]                the files the person sees
     record_audit(chat_id, event)                 the trail: what ran
-    list_skills() / read_skill(ref)
+    list_skills(chat_id) / read_skill(chat_id, ref)
     list_memories(chat_id) / add_memory(chat_id, text)
     save_plan(chat_id, steps)
     title_chat(chat_id, title) -> bool          the name, unless the person's
     contract(chat_id) -> dict                    what the chat may do
                                                  (docs/reference/session-door.md)
-    provider                                     the resource provider
-    schedules                                    the clock's rows: a
-                                                 store read whole and
-                                                 written a row at a time
+    resources(chat_id)                           an agent's data, files and
+                                                 secrets, as the chat
+
+A card's answer arrives at the door (``deliver_approval``,
+``deliver_answer``) and settles the waiter the chat's cards hold
+(cards.py); nothing is held open at the platform.
 
 Approvals follow the model's rule — **a park holds one job, never the
 assistant**. A foreground `invoke` that needs approval blocks only its
@@ -66,7 +64,8 @@ import logging
 import asyncio
 import json
 import time
-from typing import Any, Dict, List, Optional
+from functools import partial
+from typing import Any, Callable, Dict, List, Optional
 
 from ai_runtime.agents.library import InstalledAgent
 from ai_runtime.agents.workers import WorkerError
@@ -74,7 +73,6 @@ from ai_runtime.agents.pool import WorkerPool
 from ai_runtime.llms.connector.tools import text_block
 from ai_runtime.chat.cards import Cards
 from ai_runtime.chat.code_review import CodeReviewer
-from ai_runtime.chat.current import CURRENT_CHAT
 from ai_runtime.chat.clock import ChatClock, Scheduler
 from ai_runtime.chat.summarizer import Summarizer
 from ai_runtime.execution.executor import FunctionExecutor, ParkedInvocation
@@ -89,48 +87,6 @@ from ai_runtime.mind.state import (
 )
 from ai_runtime.sinks import ChatSinks
 from decentai_sdk.base import Completion
-
-
-class ChildServices:
-    """A child's view of its parent's services (docs/system/sub-assistants.md).
-
-    Its own thread, state, inbox and plan live under its own id — every
-    call that names a chat lands there untouched — while the
-    conversation's storage and memories stay the parent's, and every
-    emission reaches the parent's audience tagged with the child."""
-
-    def __init__(self, services, parent_id: str, child_id: str):
-        self._services = services
-        self.parent_id = parent_id
-        self.child_id = child_id
-
-    def __getattr__(self, name):
-        return getattr(self._services, name)
-
-    async def store_result(self, chat_id, source, result):
-        return await self._services.store_result(
-            self.parent_id, source, result)
-
-    async def read_result(self, chat_id, storage_ref, path):
-        return await self._services.read_result(
-            self.parent_id, storage_ref, path)
-
-    async def list_memories(self, chat_id):
-        return await self._services.list_memories(self.parent_id)
-
-    async def emit(self, chat_id, event):
-        return await self._services.emit(
-            self.parent_id, {**event, "child": self.child_id})
-
-    async def relay(self, chat_id, event):
-        # A screen a child's agent shows is watched by the parent's
-        # audience: the child's own id has no socket, and a frame sent
-        # there was a frame nobody saw.
-        relay = getattr(self._services, "relay", None)
-        if relay is None:
-            return None
-        return await relay(self.parent_id, {**event, "child": self.child_id})
-
 
 
 class Session:
@@ -155,8 +111,28 @@ class Session:
         parent: Optional[str] = None,
         timezone: str = "",
         safety: Optional[dict] = None,
+        emit: Optional[Callable] = None,
+        relay: Optional[Callable] = None,
+        job_id: str = "",
     ):
+        #: This session's own record: its thread of messages, its
+        #: state, its inbox, its plan and its cards.
         self.chat_id = chat_id
+        #: The conversation its agents work in — the parent's for a
+        #: helper: its storage, its memories and its audience are the
+        #: parent's, and its agents' records are the parent's agents'.
+        self.conversation_id = parent or chat_id
+        #: async (event) -> seq | None: how an emission reaches this
+        #: chat's audience, recorded first — the host's (door/host.py),
+        #: or the parent's for a helper, which tags it. None: recorded,
+        #: and heard by nobody (a test, a chat nobody watches).
+        self.emit_out = emit
+        #: async (event) -> None: a frame delivered alone, never
+        #: recorded (a screen). None: nobody is watching.
+        self.relay_out = relay
+        #: The job this session runs for, where it is a helper's: the
+        #: parent's job, which its cards park.
+        self.job_id = str(job_id or "")
         #: What the deployment lets agents do (Settings:Safety), from
         #: the contract: handed to the executor, and re-read each turn.
         self.safety = dict(safety or {})
@@ -223,7 +199,7 @@ class Session:
         self.cards = Cards(
             services, chat_id, parent=parent,
             reviewer=CodeReviewer(connector),
-            emit=self._emit, activity=self._activity,
+            emit=self._emit, relay=self._relay, activity=self._activity,
             save_state=self._save_state,
             state=lambda: self.assistant.state,
             abandoned=lambda: self._abandoned,
@@ -235,9 +211,6 @@ class Session:
     # ------------------------------------------------------------------
 
     async def open(self) -> "Session":
-        # Hydration acts for this chat too — the skills and memories it
-        # reads are fetched as the chat (chat/current.py).
-        CURRENT_CHAT.set(self.chat_id)
         # Where the time went between a chat opening and its first
         # thought, one line per open — what a slow start is made of.
         clock = time.monotonic()
@@ -281,14 +254,16 @@ class Session:
             activity=self._activity,
             spawn=None if child else self._spawn_child,
             fold=self._fold,
-            read_skill=self.services.read_skill,
+            read_skill=self._read_skill,
             read_image=self._read_image,
             read_file=self._read_image,
             find_files=self.cards.find_files,
             remember=self._refuse_memory if child else self._remember,
         )
         executor = FunctionExecutor(
-            provider=self.services.provider,
+            # An agent's records are the conversation's: a helper's
+            # agents read and write what the chat's do.
+            provider=self.services.resources(self.conversation_id),
             sinks=sinks,
             grants=self.grants,
             safety=self.safety,
@@ -296,7 +271,8 @@ class Session:
             # One conversation, one browser: a child's runs keep it under
             # the parent's id, so the person's watch opens the browser
             # the helper is driving, not an empty one of the child's.
-            conversation=self.parent or self.chat_id,
+            conversation=self.conversation_id,
+            job_id=self.job_id,
         )
         self.assistant = Assistant(
             state, self.roster, self.connector, executor, sinks,
@@ -305,9 +281,9 @@ class Session:
                              self._emit, timezone=self.timezone,
                              grants=lambda: self.grants)
                    if self.clock is not None else None),
-            skills=(self._narrowed(await self.services.list_skills()),
+            skills=(self._narrowed(await self.services.list_skills(self.chat_id)),
                     lap("skills"))[0],
-            memories=(await self.services.list_memories(self.chat_id),
+            memories=(await self.services.list_memories(self.conversation_id),
                       lap("memories"))[0],
             history=self._as_transcript(history),
             max_beats=self.max_beats,
@@ -530,8 +506,7 @@ class Session:
         )
         if not created:
             return
-        await self.services.emit(
-            self.chat_id, {"event": "message_created", "message": message})
+        await self._emit({"event": "message_created", "message": message})
         if before_thinking is not None:
             await before_thinking()
         event: Dict[str, Any] = {"event": "user_message", "text": text,
@@ -667,7 +642,7 @@ class Session:
                 f"A decision for '{approval_id}' reached {self.chat_id}, "
                 f"which holds no such card; ignored")
             return
-        await self.services.resolve_approval(approval_id, approved)
+        self.cards.settle(approval_id, approved)
 
     async def deliver_answer(self, approval_id: str, answer: Any) -> None:
         """The person answered a question. The asking call is waiting
@@ -682,8 +657,8 @@ class Session:
         # Only a question this chat asked is answered here — the same
         # second lock as a decision's — and one nobody is waiting on
         # any more is said to have expired.
-        if approval_id not in self.cards.questions or not await \
-                self.services.resolve_answer(approval_id, answer):
+        if approval_id not in self.cards.questions or not \
+                self.cards.settle(approval_id, answer):
             await self._emit({"event": "question_closed",
                               "approval_id": approval_id,
                               "status": "expired"})
@@ -849,7 +824,7 @@ class Session:
             self.logger.warning(f"Cards of {self.chat_id} unread at kill: {exc}")
         for approval_id in sorted(card for card in cards if card):
             try:
-                await self.services.expire_approval(self.chat_id, approval_id)
+                await self.services.expire_card(self.chat_id, approval_id)
             except Exception as exc:
                 self.logger.warning(f"Card {approval_id} not expired: {exc}")
             await self._emit({"event": "question_closed",
@@ -949,7 +924,6 @@ class Session:
         another — it is this task's to run, and it runs it before
         returning. The check is the last thing before the return, with
         no suspension between, so nothing can slip in behind it."""
-        CURRENT_CHAT.set(self.chat_id)
         while True:
             # The audience's honest spinner: the mind is advancing, then
             # it is not. A reply is not the end of anything (a say does
@@ -1085,13 +1059,18 @@ class Session:
                   {a: self.roster[a] for a in agents if a in self.roster})
         child = Session(
             child_id, roster, self.child_connector or self.connector,
-            ChildServices(self.services, self.chat_id, child_id),
+            self.services,
             workers=self.workers, grants=self.grants,
             chat_level=self.chat_level, max_beats=self.max_beats,
             max_skills=self.max_skills, skills=self.enabled_skills,
             router=self.router, routing=self.routing,
             clock=self.clock, parent=self.chat_id,
             timezone=self.timezone, safety=self.safety,
+            # Its emissions are this chat's, tagged as the helper's; its
+            # cards park this chat's job.
+            emit=partial(self._emit_for, child_id),
+            relay=partial(self._relay_for, child_id),
+            job_id=job.job_id,
         )
         self.children[job.job_id] = child
         try:
@@ -1183,15 +1162,15 @@ class Session:
 
     async def _plan(self, steps: list) -> None:
         await self.services.save_plan(self.chat_id, steps)
-        await self.services.emit(
-            self.chat_id, {"event": "plan_updated", "steps": steps})
+        await self._emit({"event": "plan_updated", "steps": steps})
 
     async def _remember(self, text: str) -> None:
         memory = await self.services.add_memory(self.chat_id, text)
-        await self.services.emit(self.chat_id, {
-            "event": "memory_saved",
-            "text": (memory or {}).get("text", text),
-        })
+        await self._emit({"event": "memory_saved",
+                          "text": (memory or {}).get("text", text)})
+
+    async def _read_skill(self, ref: str):
+        return await self.services.read_skill(self.chat_id, ref)
 
     async def _activity(self, kind: str, text: str,
                         source: Optional[Dict[str, Any]] = None,
@@ -1213,15 +1192,39 @@ class Session:
         """An agent's own line, on the call it was made on."""
         await self._activity("agent_progress", text, source)
 
-    async def _emit(self, event: Dict[str, Any]) -> None:
-        await self.services.emit(self.chat_id, event)
+    # ------------------------------------------------------------------
+    # Emissions out: recorded, then heard
+    # ------------------------------------------------------------------
+
+    async def _emit(self, event: Dict[str, Any]):
+        """One event for this chat's audience: recorded and delivered
+        by whoever stands behind ``emit`` — or recorded alone, for a
+        chat nobody watches."""
+        if self.emit_out is not None:
+            return await self.emit_out(event)
+        return await self.services.emit(self.chat_id, event)
+
+    async def _relay(self, event: Dict[str, Any]) -> None:
+        """A frame delivered alone and never recorded — a screen, a
+        title — to whoever is watching, if anybody is."""
+        if self.relay_out is not None:
+            await self.relay_out(event)
+
+    async def _emit_for(self, child_id: str, event: Dict[str, Any]):
+        """A helper's emission: this chat's, tagged with whose it is."""
+        return await self._emit({**event, "child": child_id})
+
+    async def _relay_for(self, child_id: str, event: Dict[str, Any]) -> None:
+        # A screen a helper's agent shows is watched by this chat's
+        # audience: the helper's own id has no socket.
+        await self._relay({**event, "child": child_id})
 
     async def _store_result(self, source: str, result: Dict[str, Any]):
-        return await self.services.store_result(self.chat_id, source, result)
+        return await self.services.store_result(self.conversation_id, source, result)
 
     async def _read_result(self, storage_ref: str, path: str):
         return await self.services.read_result(
-            self.chat_id, storage_ref, path)
+            self.conversation_id, storage_ref, path)
 
     async def _record_audit(self, event: Dict[str, Any]) -> None:
         # With the model that asked for the call: a chat's model can be
@@ -1311,8 +1314,7 @@ class Session:
             self.logger.warning(f"Chat {self.chat_id} title not saved: {exc}")
             return
         if kept:
-            await self.services.relay(
-                self.chat_id, {"event": "chat_titled", "title": title})
+            await self._relay({"event": "chat_titled", "title": title})
 
     async def open_screen(self, action: str = "open") -> bool:
         """The person asked to see a browser before asking anything of
@@ -1335,7 +1337,7 @@ class Session:
                     if action == "open":
                         self.watching = task
                     return True
-        await self.services.relay(self.chat_id, {
+        await self._relay({
             "event": "screen_unavailable",
             "detail": "No agent in this chat can show a browser."})
         return False

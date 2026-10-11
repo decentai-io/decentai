@@ -215,7 +215,7 @@ Where a word is used for more than one thing, each is said.
 | **catalog** | two things. The list of every action. And the file in a repository that lists its agents | `ACTION_CATALOG`; `decentai-agents.yaml` |
 | **category** | see *slot* | |
 | **the clock** | what fires schedules and ends sleeps | `Scheduler`, `ai_runtime/chat/clock.py` |
-| **contract** | four things. *The manifest*, an agent's contract with the platform. *The chat's contract*, what this chat may do, answered by the backend each turn. *The services contract*, the methods the runtime asks of the backend. And the package `contracts/`, the shapes both sides share | `AI:Chat:Contract`; `BackendServices`; `contracts/` |
+| **contract** | four things. *The manifest*, an agent's contract with the platform. *The chat's contract*, what this chat may do, answered by the backend each turn. *The services contract*, the methods the runtime asks of the backend. And the package `contracts/`, the shapes both sides share | `AI:Chat:Contract`; `Backend`; `contracts/` |
 | **delegation** | the credential the backend makes per chat, under which the runtime calls back as the person. Also *runtime access token*, *the chat's credential* | `chat_session/identity/delegation.py`; `runtime_sessions` |
 | **definition** | the shape of a credential: its fields. An agent's is derived from its manifest at install | `secret_definitions` |
 | **door** | a way in. *The session door* is the runtime's socket for one chat; a *gateway door* is an action | `ai_runtime/door/socket.py` |
@@ -246,7 +246,7 @@ Where a word is used for more than one thing, each is said.
 | **relay** | the backend's side of a chat's two sockets: it dials the runtime and passes frames each way | `backend/api/services/chat_session/relay.py` |
 | **roster** | the agents one chat may use, as the runtime holds them | `Session.roster` |
 | **the runtime's fence** | see *the fence* | |
-| **services** | what the runtime asks of the backend, as one object | `BackendServices`; `SimSessionServices` in tests |
+| **services** | what the runtime asks of the backend, as one object, every call naming its chat | `Backend`, `ai_runtime/platform.py`; `SimSessionServices` in tests |
 | **service token** | the backend proving to the runtime that it is the backend, for sixty seconds | `chat_session/identity/service.py` |
 | **session** | two things. A person's sign-in. And one chat as the runtime holds it | `sessions`; `Session`, `ai_runtime/chat/session.py` |
 | **slot** | one resource of one installed agent — its notes, its documents, its connection — and the name its things are kept under: `agt_<ref>__<resource id>`. Also *category* | `resource_id`; `keys.category` for a file |

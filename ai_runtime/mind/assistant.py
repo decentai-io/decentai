@@ -25,7 +25,6 @@ from __future__ import annotations
 import logging
 import asyncio
 import base64
-import contextvars
 import difflib
 import inspect
 import json
@@ -58,13 +57,6 @@ from ai_runtime.mind.state import (
     Job,
 )
 from ai_runtime.sinks import ChatSinks
-
-#: Which job the current task is running, if any — how an approver
-#: called deep inside the executor knows it is parking a JOB rather
-#: than the assistant itself (docs/system/assistant.md, "Jobs").
-CURRENT_JOB_ID: contextvars.ContextVar = contextvars.ContextVar(
-    "decentai_current_job", default="")
-
 
 class Assistant:
     #: The runaway valve — beats since the user last spoke. Generous by
@@ -1485,7 +1477,6 @@ class Assistant:
         return task
 
     async def _run_child(self, job: Job, resuming: bool) -> None:
-        CURRENT_JOB_ID.set(job.job_id)
         try:
             result, status, entries = await self.sinks.spawn(job, resuming)
         except asyncio.CancelledError:
@@ -1554,13 +1545,12 @@ class Assistant:
                        running: Optional[asyncio.Future] = None) -> None:
         """One job to its end. ``running`` is a call already under way
         (``_to_background``), awaited here in place of a new one."""
-        CURRENT_JOB_ID.set(job.job_id)
         started = time.monotonic()
         try:
             result, status = await (
                 running if running is not None else self.executor.invoke(
                     agent, job.function, job.inputs, self.chat_level,
-                    call_id=call_id))
+                    call_id=call_id, job_id=job.job_id))
         except asyncio.CancelledError:
             job.status = CANCELLED
             job.result = {"error": "The job was cancelled."}

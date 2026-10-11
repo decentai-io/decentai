@@ -6,13 +6,14 @@ mind, and frames arrive in the order they were recorded.
 
 import logging
 import asyncio
+from functools import partial
 from types import SimpleNamespace
 import json
 from pathlib import Path
 
 from ai_runtime.chat import Session
 from ai_runtime.llms import FakeConnector
-from ai_runtime.door.host import RelayingServices, SessionHost
+from ai_runtime.door.host import SessionHost
 from ai_runtime.tests.fixture_agents import load_agents
 from ai_runtime.tests.test_assistant import Harness
 from sim.session_services import SimSessionServices
@@ -35,7 +36,8 @@ def build(script, services=None, **kwargs):
     assert errors == {}
     services = services or SimSessionServices()
     return Session("chat_1", agents, FakeConnector(script), services,
-                   workers=workers(), **kwargs), services
+                   workers=workers(), relay=partial(services.relay, "chat_1"),
+                   **kwargs), services
 
 
 def said(services):
@@ -169,9 +171,10 @@ class TestTheHostAroundIt:
             delivered.append(event["seq"])
 
         async def scenario():
-            relaying = RelayingServices(Recording(), deliver)
-            await asyncio.gather(relaying.emit("chat_1", {"event": "a"}),
-                                 relaying.emit("chat_1", {"event": "b"}))
+            host = SessionHost.__new__(SessionHost)
+            host.services, host._emitting, host._relay = Recording(), {}, deliver
+            await asyncio.gather(host._emit("chat_1", {"event": "a"}),
+                                 host._emit("chat_1", {"event": "b"}))
         run(scenario())
         assert delivered == [1, 2]
 
@@ -331,7 +334,7 @@ class TestAKillEndsASleepWithNoSessionToDoIt:
 
         async def scenario():
             store = MemoryScheduleStore()
-            clock = Scheduler(store, runner=None, clock=lambda: 1000.0)
+            clock = Scheduler(store, None, clock=lambda: 1000.0)
             for row in (
                     Schedule("chat_1", "wake", note="resting", sleep=True,
                              next_run_at=5000.0, schedule_id="nap"),

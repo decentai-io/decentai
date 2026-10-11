@@ -25,7 +25,6 @@ from contracts.chat import QUESTION_MAX_CHARS, QUESTION_WAIT_SECONDS, agent_sour
 from ai_runtime.agents.workers import WorkerError
 from ai_runtime.chat.files import FileFinder
 from ai_runtime.execution.executor import ParkedInvocation
-from ai_runtime.mind.assistant import CURRENT_JOB_ID
 from ai_runtime.mind.state import RUNNING, WAITING_APPROVAL
 
 
@@ -38,7 +37,7 @@ class Cards:
     QUESTION_WAIT_SECONDS = QUESTION_WAIT_SECONDS
 
     def __init__(self, services, chat_id: str, *, parent: Optional[str],
-                 reviewer, emit: Callable, activity: Callable,
+                 reviewer, emit: Callable, relay: Callable, activity: Callable,
                  save_state: Callable, state: Callable, abandoned: Callable,
                  logger=None):
         self.services = services
@@ -49,8 +48,10 @@ class Cards:
         #: the chat's model reading code before the person sees it
         #: (code_review.py); the session swaps its connector on adopt
         self.reviewer = reviewer
-        #: async (event) -> None — a frame to this chat's audience
+        #: async (event) -> None — a frame to this chat's audience,
+        #: recorded first; and one delivered alone, never recorded
         self.emit = emit
+        self.relay = relay
         #: async (kind, text, source, **detail) -> None — the work told
         #: as it happens
         self.activity = activity
@@ -73,6 +74,10 @@ class Cards:
         self.screens: Dict[str, Dict[str, Any]] = {}
         #: approval ids a call of THIS incarnation is waiting on
         self.awaited: set = set()
+        #: card id -> the future its answer settles: the person's
+        #: decision or words arrive at the door (session.py,
+        #: ``deliver_approval``, ``deliver_answer``) and land here
+        self.waiters: Dict[str, asyncio.Future] = {}
         self.logger = logger or logging.getLogger(
             self.__class__.__name__)
 
@@ -88,12 +93,13 @@ class Cards:
             permission_level=int(request.get("permission_level") or 0),
             chat_level=int(request.get("chat_level") or 0),
         )
-        job_id = CURRENT_JOB_ID.get("")
+        job_id = str(request.get("job_id") or "")
         job = self.state().jobs.get(job_id) if job_id else None
 
-        approval_id = await self.services.open_approval(self.chat_id, {
+        opened = await self.services.open_card(self.chat_id, {
             **request, "action_hash": parked.hash(), "job_id": job_id,
         })
+        approval_id = str(opened.get("approval_id") or "")
         if job is not None:
             job.status = WAITING_APPROVAL
             job.approval_id = str(approval_id)
@@ -125,7 +131,7 @@ class Cards:
             await self.close_card(str(approval_id))
             raise
         agent_name = str(request.get("agent_name") or "")
-        await self.services.emit(self.chat_id, {
+        await self.emit({
             "event": "approval_requested", "approval_id": approval_id,
             "job_id": job_id, "function": parked.function,
             "permission_level": parked.permission_level,
@@ -139,7 +145,8 @@ class Cards:
 
         self.awaited.add(str(approval_id))
         try:
-            decision = bool(await self.services.wait_approval(approval_id))
+            decision = bool(opened["answer"] if opened.get("answer") is not None
+                            else await self.wait(approval_id))
         except asyncio.CancelledError:
             # The call was stopped while its card waited. Nobody will
             # hear the answer: the card is closed, on the record and on
@@ -155,13 +162,38 @@ class Cards:
             self.state().parked = None
         return decision
 
+    # ------------------------------------------------------------------
+    # The waiters: a card's answer arrives at the door, and lands here
+    # ------------------------------------------------------------------
+
+    async def wait(self, approval_id: str) -> Any:
+        """The answer to one card, when the person gives it: a decision
+        for an approval, words or chosen files for a question."""
+        waiter = self.waiters.get(approval_id)
+        if waiter is None:
+            waiter = self.waiters[approval_id] = asyncio.get_running_loop().create_future()
+        try:
+            return await waiter
+        finally:
+            self.waiters.pop(approval_id, None)
+
+    def settle(self, approval_id: str, answer: Any) -> bool:
+        """The person's answer to a card somebody here is waiting on.
+        False when nobody is: the card was closed, or asked by a
+        process that died."""
+        waiter = self.waiters.get(approval_id)
+        if waiter is None or waiter.done():
+            return False
+        waiter.set_result(answer)
+        return True
+
     async def close_card(self, approval_id: str) -> None:
         """A card nobody will hear the answer to: expired on the
         record, closed on the page. Carried through a cancellation,
         since that is when it is called."""
         async def close():
             try:
-                await self.services.expire_approval(self.chat_id, approval_id)
+                await self.services.expire_card(self.chat_id, approval_id)
             except Exception as exc:
                 self.logger.warning(f"Card {approval_id} not expired: {exc}")
             await self.emit({"event": "question_closed",
@@ -250,15 +282,16 @@ class Cards:
         to the audience, waited on for at most a day, closed either way.
         The answer as the frame brought it, or None when nobody
         answered in time."""
-        job_id = CURRENT_JOB_ID.get("")
+        job_id = str(source.get("job_id") or "")
         request = {"kind": "question", "job_id": job_id, **request}
         # The platform may answer a card itself, where the person's own
         # setting says it need not be shown (code, and only code): it is
-        # on the record as settled, and nobody is asked.
+        # on the record as settled, and nobody is asked. A stand-in
+        # platform may answer for the person at once (the sim's decider).
         opened = await self.services.open_card(self.chat_id, request)
         approval_id = str(opened.get("approval_id") or "")
-        if opened.get("settled"):
-            return Settled(opened["settled"])
+        if opened.get("answer") is not None and opened.get("by") == "platform":
+            return Settled(opened["answer"])
         card = {
             "approval_id": approval_id, "kind": "question", "job_id": job_id,
             "function": request["function"], "agent": request["agent_id"],
@@ -271,11 +304,12 @@ class Cards:
         await self.emit({"event": "question_asked", "source": source,
                           **{k: v for k, v in card.items() if k != "kind"}})
         try:
-            answer = await asyncio.wait_for(
-                self.services.wait_answer(approval_id),
-                self.QUESTION_WAIT_SECONDS)
+            # The person's answer: given with the card where a stand-in
+            # platform answers for them at once, else waited for.
+            answer = opened["answer"] if opened.get("answer") is not None else \
+                await asyncio.wait_for(self.wait(approval_id), self.QUESTION_WAIT_SECONDS)
         except asyncio.TimeoutError:
-            await self.services.expire_approval(self.chat_id, approval_id)
+            await self.services.expire_card(self.chat_id, approval_id)
             await self.emit({"event": "question_closed",
                               "approval_id": approval_id, "status": "expired"})
             return None
@@ -300,12 +334,11 @@ class Cards:
         call_id = str(params.get("call_id") or "")
         if kind == "closed":
             self.screens.pop(call_id, None)
-            await self.services.relay(self.chat_id, {
+            await self.relay({
                 "event": "screen_closed", "call_id": call_id, "source": source})
             return
         self.screens[call_id] = source
-        await self.services.relay(self.chat_id, {
-            **params, "event": "screen_frame", "source": source})
+        await self.relay({**params, "event": "screen_frame", "source": source})
 
     #: How many cards one ask may go through before it gives up: an
     #: entry, a consent, a choice and a code is the longest honest road.
@@ -447,8 +480,7 @@ class Cards:
             self.chat_id, "user", "",
             [{"type": "file", **item} for item in chosen])
         if created:
-            await self.services.emit(
-                self.chat_id, {"event": "message_created", "message": message})
+            await self.emit({"event": "message_created", "message": message})
         return {"status": "chosen", "files": chosen}
 
     async def close_orphaned(self) -> None:
@@ -457,10 +489,10 @@ class Cards:
         process that died — nothing waits for its answer — so it is
         closed as expired, and the page stops showing a card that
         nobody would hear."""
-        for card in await self.services.pending_questions(self.chat_id):
+        for card in await self.services.pending_cards(self.chat_id, kind="question"):
             approval_id = str(card.get("approval_id") or "")
             if not approval_id or approval_id in self.questions:
                 continue
-            await self.services.expire_approval(self.chat_id, approval_id)
+            await self.services.expire_card(self.chat_id, approval_id)
             await self.emit({"event": "question_closed",
                               "approval_id": approval_id, "status": "expired"})

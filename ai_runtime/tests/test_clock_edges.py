@@ -25,16 +25,18 @@ def row(schedule_id="a", **over):
 
 
 def clock_with(store, now=1000.0, fire=None):
+    """A clock over ``store`` that remembers what it fired and runs
+    ``fire`` in place of a schedule's work."""
     fired = []
 
-    class Runner:
+    class Clock(Scheduler):
         async def fire(self, schedule):
             fired.append(schedule.schedule_id)
             if fire is not None:
                 await fire()
             return {"status": "ok"}
 
-    return Scheduler(store, Runner(), clock=lambda: now), fired
+    return Clock(store, None, clock=lambda: now), fired
 
 
 class TestARowNeverFiresAgainAtOnce:
@@ -132,9 +134,9 @@ class TestStoppingAChat:
 
     def test_a_stop_during_the_write_does_not_lose_the_write(self):
         class SlowStore(MemoryScheduleStore):
-            async def ran(self, written):
+            async def schedule_ran(self, written):
                 await asyncio.sleep(0.05)
-                return await super().ran(written)
+                return await super().schedule_ran(written)
 
         store = SlowStore()
         store.rows = [row()]

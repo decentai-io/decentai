@@ -27,12 +27,15 @@ class SimSessionServices:
     GRANTS = [{"effect": "allow", "functions": ["*.*.*"]}]
 
     def __init__(self, decider: Optional[Callable] = None):
+        #: every chat's agents work on one set of records here
         self.provider = InMemoryResourceProvider()
         #: the clock's rows — a schedule is user state, so the services
         #: own where it lives.
         self.schedules = MemoryScheduleStore()
-        #: async (request) -> bool | None — an immediate decision, or
-        #: None to hold the approval open for resolve_approval.
+        #: async (request) -> an answer | None — the person's answer to
+        #: a card, given at once as the card opens (a decision for an
+        #: approval, words or files for a question), or None to hold
+        #: the card open for the door's frame.
         self.decider = decider
         #: (request) -> the answer the platform gives a code card by
         #: itself, as the organization's Safety setting would, or '' to
@@ -94,6 +97,27 @@ class SimSessionServices:
     def grant(self, chat_id: str, credential: str) -> None:
         """A key to the platform for one chat. This platform is in the
         same process, and needs none."""
+
+    def resources(self, chat_id: str) -> InMemoryResourceProvider:
+        """An agent's data, files and secrets, as the chat: one store
+        here, whichever chat asks."""
+        return self.provider
+
+    # -- the clock's rows -------------------------------------------------
+    async def load_schedules(self) -> List[Dict[str, Any]]:
+        return await self.schedules.load_schedules()
+
+    async def load_schedules_for(self, chat_id: str) -> List[Dict[str, Any]]:
+        return await self.schedules.load_schedules_for(chat_id)
+
+    async def add_schedule(self, row: Dict[str, Any]) -> None:
+        await self.schedules.add_schedule(row)
+
+    async def schedule_ran(self, row: Dict[str, Any]) -> bool:
+        return await self.schedules.schedule_ran(row)
+
+    async def remove_schedule(self, chat_id: str, schedule_id: str) -> None:
+        await self.schedules.remove_schedule(chat_id, schedule_id)
 
     async def fetch_package(self, chat_id: str, agent_id: str) -> dict:
         """The pull door. Nothing is approved here to pull: the agents
@@ -200,91 +224,54 @@ class SimSessionServices:
         self.events.append({**event, "chat_id": chat_id})
         return sum(1 for row in self.events if row.get("chat_id") == chat_id)
 
-    # -- approvals -------------------------------------------------------
+    # -- cards -----------------------------------------------------------
     async def relay(self, chat_id: str, event: dict) -> None:
+        """A frame delivered to the chat's audience and never recorded:
+        the host's in production, remembered here for a test to read."""
         self.relayed.append(dict(event))
         self.relayed_to.append(chat_id)
 
-    async def open_approval(self, chat_id: str, request: dict) -> str:
-        approval_id = f"apr_{next(self._ids)}"
-        self.approvals[approval_id] = {
-            "chat_id": chat_id, "request": dict(request),
-            "future": asyncio.get_running_loop().create_future(),
-            "decision": None,
-        }
-        return approval_id
-
     async def open_card(self, chat_id: str, request: dict) -> dict:
-        """A question card opened, and whether the platform settled it
-        by itself (the backend's AI:Approval:Open, for code)."""
-        approval_id = await self.open_approval(chat_id, request)
-        settled = ""
+        """A card on the record: ``{approval_id, answer, by}``. The
+        platform answers a code card itself where a test's ``settler``
+        says the Safety setting would (``by`` is ``platform``); a
+        test's ``decider`` answers any card as the person would, at
+        once (``by`` is ``person``); else ``answer`` is None and the
+        card waits for the door."""
+        approval_id = f"apr_{next(self._ids)}"
+        record = {"chat_id": chat_id, "request": dict(request),
+                  "status": "pending", "answer": None}
+        self.approvals[approval_id] = record
+        answer, by = None, ""
         if self.settler is not None and request.get("expects") == "code":
             settled = str(self.settler(request) or "")
-        if settled:
-            self.approvals[approval_id]["answer"] = settled
-            self.approvals[approval_id]["settled"] = True
-        return {"approval_id": approval_id, "settled": settled}
+            if settled:
+                answer, by = settled, "platform"
+        if answer is None and self.decider is not None:
+            decided = await self.decider(request)
+            if decided is not None:
+                answer, by = decided, "person"
+        if answer is not None:
+            record["answer"] = answer
+            record["status"] = "answered"
+        return {"approval_id": approval_id, "answer": answer, "by": by}
 
-    async def wait_approval(self, approval_id: str) -> bool:
-        record = self.approvals[approval_id]
-        if self.decider is not None:
-            decision = await self.decider(record["request"])
-            if decision is not None:
-                record["decision"] = bool(decision)
-                return bool(decision)
-        decision = await record["future"]
-        record["decision"] = bool(decision)
-        return bool(decision)
-
-    async def resolve_approval(self, approval_id: str,
-                               decision: bool) -> bool:
+    def answered(self, approval_id: str, answer: Any) -> None:
+        """What the door delivered for a card, written on its record —
+        as the backend writes the person's decision."""
         record = self.approvals.get(approval_id)
-        if record is None or record["future"].done() \
-                or record.get("status") == "expired":
-            return False
-        record["future"].set_result(bool(decision))
-        return True
+        if record is not None and record["status"] == "pending":
+            record["answer"] = answer
+            record["status"] = "answered"
 
-    async def wait_answer(self, approval_id: str):
-        """A question's answer — the decider's, when one is set and
-        answers, else whatever resolve_answer delivers."""
-        record = self.approvals[approval_id]
-        if self.decider is not None:
-            answer = await self.decider(record["request"])
-            if answer is not None:
-                record["answer"] = answer
-                return answer
-        answer = await record["future"]
-        record["answer"] = answer
-        return answer
-
-    async def resolve_answer(self, approval_id: str, answer: str) -> bool:
-        record = self.approvals.get(approval_id)
-        if record is None or record["future"].done() \
-                or record.get("status") == "expired":
-            return False
-        record["future"].set_result(answer)
-        return True
-
-    async def pending_questions(self, chat_id: str) -> list:
-        return [
-            {"approval_id": approval_id, "kind": "question",
-             "request": dict(record["request"])}
-            for approval_id, record in self.approvals.items()
-            if record["chat_id"] == chat_id
-            and record["request"].get("kind") == "question"
-            and record.get("status") != "expired"
-            and not record["future"].done()
-        ]
-
-    async def pending_cards(self, chat_id: str) -> list:
+    async def pending_cards(self, chat_id: str, kind: str = "") -> list:
         return [{"approval_id": approval_id, **record}
                 for approval_id, record in self.approvals.items()
                 if record.get("chat_id") == chat_id
-                and record.get("status", "pending") == "pending"]
+                and record.get("status") == "pending"
+                and (not kind or record["request"].get("kind") == kind)]
 
-    async def expire_approval(self, chat_id: str, approval_id: str) -> None:
+    async def expire_card(self, chat_id: str, approval_id: str) -> None:
         record = self.approvals.get(approval_id)
         if record is not None:
             record["status"] = "expired"
@@ -317,10 +304,10 @@ class SimSessionServices:
         return value
 
     # -- skills / memory / plan ------------------------------------------
-    async def list_skills(self) -> List[dict]:
+    async def list_skills(self, chat_id: str) -> List[dict]:
         return list(self.skills_rows)
 
-    async def read_skill(self, ref: str) -> Optional[dict]:
+    async def read_skill(self, chat_id: str, ref: str) -> Optional[dict]:
         return self.skill_bodies.get(ref)
 
     async def read_image(self, chat_id: str, ref: str) -> dict:

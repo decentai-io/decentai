@@ -60,7 +60,7 @@ def full_stack(app, tmp_path, monkeypatch):
     from ai_runtime.agents import AgentLibrary
     from ai_runtime.door import create_app as create_runtime_app
     from ai_runtime.settings import RuntimeSettings
-    from ai_runtime.services import BackendServices, Gateway
+    from ai_runtime.platform import Backend, Gateway
     from ai_runtime.tests.fake_container import confinement, container
     from ai_runtime.tests.fixture_agents import worker_environment
     from server.setup.app_state import get_state
@@ -78,7 +78,7 @@ def full_stack(app, tmp_path, monkeypatch):
     runtime_app = create_runtime_app(
         RuntimeSettings(backend_service_public_key=public_pem,
                         backend_url=backend_url),
-        services=BackendServices(Gateway(backend_url)),
+        services=Backend(Gateway(backend_url)),
         library=AgentLibrary(tmp_path / "runtime", confinement()),
         container=container(), confinement=confinement(),
     )

@@ -5,6 +5,7 @@ refused.
 """
 
 import asyncio
+from functools import partial
 import json
 from pathlib import Path
 
@@ -35,7 +36,8 @@ def build(script, services=None, connector=None, **kwargs):
     services = services or SimSessionServices()
     services.provider.secrets.update(SYNC_SECRET)
     return Session("chat_1", agents, connector or FakeConnector(script),
-                   services, workers=workers(), **kwargs), services
+                   services, workers=workers(),
+                   relay=partial(services.relay, "chat_1"), **kwargs), services
 
 
 async def card_open(services, timeout=5.0):

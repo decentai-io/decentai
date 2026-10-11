@@ -11,13 +11,14 @@ from pathlib import Path
 
 from ai_runtime.chat import Session
 from ai_runtime.chat.clock import (
-    ChatClock, Schedule, ScheduleRunner, Scheduler,
+    ChatClock, Schedule, Scheduler,
 )
 from ai_runtime.execution.executor import FunctionExecutor
 from ai_runtime.sinks import ChatSinks
 from ai_runtime.llms import FakeConnector
 from ai_runtime.tests.fixture_agents import load_agents
 from sim.schedules import MemoryScheduleStore
+from ai_runtime.tests.fires import Fires
 from sim.session_services import SimSessionServices
 from ai_runtime.tests.fake_container import workers
 from ai_runtime.tests import fake_container
@@ -39,8 +40,11 @@ def roster():
     return agents
 
 
-class RecordingRunner:
-    def __init__(self):
+class Recording(Scheduler):
+    """A clock that fires nothing and remembers what was due."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.fired = []
 
     async def fire(self, schedule):
@@ -51,65 +55,62 @@ class RecordingRunner:
 class TestTheClock:
     def test_due_fires_and_advances_from_now(self):
         async def scenario():
-            runner = RecordingRunner()
             clock = {"now": 1000.0}
-            scheduler = Scheduler(MemoryScheduleStore(), runner,
+            scheduler = Recording(MemoryScheduleStore(), None,
                                   clock=lambda: clock["now"])
             await scheduler.add(Schedule(
                 "chat_1", "wake", note="tick",
                 every_seconds=60, next_run_at=1000.0))
 
             await scheduler.tick()
-            assert runner.fired == [scheduler.schedules[0].schedule_id]
+            assert scheduler.fired == [scheduler.schedules[0].schedule_id]
             # Advanced from NOW, not from the overdue mark.
             assert scheduler.schedules[0].next_run_at == 1060.0
 
             # Not due again yet.
             clock["now"] = 1030.0
             await scheduler.tick()
-            assert len(runner.fired) == 1
+            assert len(scheduler.fired) == 1
 
             clock["now"] = 1061.0
             await scheduler.tick()
-            assert len(runner.fired) == 2
+            assert len(scheduler.fired) == 2
         run(scenario())
 
     def test_a_long_overdue_schedule_fires_once_never_a_backlog(self):
         async def scenario():
-            runner = RecordingRunner()
             clock = {"now": 10_000.0}      # hours past due
-            scheduler = Scheduler(MemoryScheduleStore(), runner,
+            scheduler = Recording(MemoryScheduleStore(), None,
                                   clock=lambda: clock["now"])
             await scheduler.add(Schedule(
                 "chat_1", "wake", every_seconds=60, next_run_at=1000.0))
             await scheduler.tick()
-            assert len(runner.fired) == 1
+            assert len(scheduler.fired) == 1
             assert scheduler.schedules[0].next_run_at == 10_060.0
         run(scenario())
 
     def test_a_one_shot_schedule_disables_after_firing(self):
         async def scenario():
-            runner = RecordingRunner()
-            scheduler = Scheduler(MemoryScheduleStore(), runner,
+            scheduler = Recording(MemoryScheduleStore(), None,
                                   clock=lambda: 1000.0)
             await scheduler.add(Schedule(
                 "chat_1", "wake", note="once", next_run_at=999.0))
             await scheduler.tick()
             await scheduler.tick()
-            assert len(runner.fired) == 1
+            assert len(scheduler.fired) == 1
             assert scheduler.schedules[0].enabled is False
         run(scenario())
 
     def test_the_rows_survive_a_restart(self):
         async def scenario():
             store = MemoryScheduleStore()
-            first = Scheduler(store, RecordingRunner(), clock=lambda: 1.0)
+            first = Recording(store, None, clock=lambda: 1.0)
             await first.start()
             await first.add(Schedule("chat_1", "wake", note="daily",
                                      every_seconds=86400))
             await first.stop()
 
-            second = Scheduler(store, RecordingRunner(), clock=lambda: 2.0)
+            second = Recording(store, None, clock=lambda: 2.0)
             await second.start()
             await second.stop()
             assert [s.note for s in second.schedules] == ["daily"]
@@ -128,9 +129,9 @@ class TestScheduledFunctions:
 
         async def scenario():
             services = SimSessionServices()
-            runner = ScheduleRunner(
-                roster(), FunctionExecutor(pool, provider=services.provider), wake)
-            outcome = await runner.fire(Schedule(
+            clock = Scheduler(services, Fires(
+                roster(), FunctionExecutor(pool, provider=services.provider), wake))
+            outcome = await clock.fire(Schedule(
                 "chat_1", "invoke", function="notebook.note.find",
                 inputs={}, wake_field="notes"))
             assert outcome["status"] == "success"
@@ -151,9 +152,9 @@ class TestScheduledFunctions:
             await services.provider.create_data(
                 "notebook__note", {"title": "Pay rent",
                                    "notebook": "personal"}, {})
-            runner = ScheduleRunner(
-                roster(), FunctionExecutor(pool, provider=services.provider), wake)
-            outcome = await runner.fire(Schedule(
+            clock = Scheduler(services, Fires(
+                roster(), FunctionExecutor(pool, provider=services.provider), wake))
+            outcome = await clock.fire(Schedule(
                 "chat_1", "invoke", function="notebook.note.find",
                 inputs={}, wake_field="notes"))
             assert outcome["woke"] is True
@@ -170,9 +171,9 @@ class TestScheduledFunctions:
 
         async def scenario():
             services = SimSessionServices()
-            runner = ScheduleRunner(
-                roster(), FunctionExecutor(pool, provider=services.provider), wake)
-            outcome = await runner.fire(Schedule(
+            clock = Scheduler(services, Fires(
+                roster(), FunctionExecutor(pool, provider=services.provider), wake))
+            outcome = await clock.fire(Schedule(
                 "chat_1", "invoke", function="notebook.note.save",
                 inputs={"notebook": "x", "title": "sneak"}))
             assert outcome["status"] == "error"
@@ -202,10 +203,9 @@ class TestScheduledFunctions:
             async def wake(chat_id, event):
                 await session.deliver_event(event)
 
-            runner = ScheduleRunner(
-                roster(), session.assistant.executor, wake)
-            scheduler = Scheduler(MemoryScheduleStore(), runner,
-                                  clock=lambda: 1000.0)
+            scheduler = Scheduler(
+                services, Fires(roster(), session.assistant.executor, wake),
+                clock=lambda: 1000.0)
             await scheduler.add(Schedule(
                 "chat_1", "invoke", function="notebook.note.find",
                 inputs={}, wake_field="notes", every_seconds=300,
@@ -251,9 +251,8 @@ class TestTheCalendar:
 
     def test_a_cron_schedule_fires_on_the_calendar_and_looks_forward(self):
         async def scenario():
-            runner = RecordingRunner()
             clock = {"now": self._at("2026-09-03T12:00")}   # Thursday
-            scheduler = Scheduler(MemoryScheduleStore(), runner,
+            scheduler = Recording(MemoryScheduleStore(), None,
                                   clock=lambda: clock["now"])
             events = []
 
@@ -272,12 +271,12 @@ class TestTheCalendar:
             # Not yet.
             clock["now"] = self._at("2026-09-07T10:43")
             await scheduler.tick()
-            assert runner.fired == []
+            assert scheduler.fired == []
             # Due — and the next run is next Monday, not now + a week
             # from whenever the tick happened to land.
             clock["now"] = self._at("2026-09-07T10:44:30")
             await scheduler.tick()
-            assert runner.fired == [row.schedule_id]
+            assert scheduler.fired == [row.schedule_id]
             assert self._local(row.next_run_at) == "Mon 2026-09-14 10:44"
             assert row.enabled
         run(scenario())
@@ -286,11 +285,10 @@ class TestTheCalendar:
             self, monkeypatch):
         """Schedulable by its manifest is not enough: the assistant
         schedules for a person, within what that person may ask."""
-        from ai_runtime.chat.clock import ScheduleRunner
         from ai_runtime.execution.grants import FunctionGrants
 
         async def scenario():
-            scheduler = Scheduler(MemoryScheduleStore(), RecordingRunner())
+            scheduler = Recording(MemoryScheduleStore(), None)
             grants = FunctionGrants([
                 {"effect": "allow", "functions": ["agt_n.note.digest"]}])
             hand = ChatClock(scheduler, "chat_1", {}, lambda e: None,
@@ -302,13 +300,13 @@ class TestTheCalendar:
 
         # Whether the manifest calls it schedulable is not this test's
         # question: every function is, here.
-        monkeypatch.setattr(ScheduleRunner, "schedulable",
+        monkeypatch.setattr(Scheduler, "schedulable",
                             staticmethod(lambda roster, function: (None, "")))
         run(scenario())
 
     def test_a_bad_cron_is_refused_with_the_reason(self):
         async def scenario():
-            scheduler = Scheduler(MemoryScheduleStore(), RecordingRunner())
+            scheduler = Recording(MemoryScheduleStore(), None)
             hand = ChatClock(scheduler, "chat_1", {}, lambda e: None,
                              timezone=self.DUBAI)
             answer = await hand.schedule({"note": "x", "cron": "44 10 * *"})
@@ -325,7 +323,7 @@ class TestTheCalendar:
             async def emit(event):
                 events.append(event)
 
-            scheduler = Scheduler(MemoryScheduleStore(), RecordingRunner(),
+            scheduler = Recording(MemoryScheduleStore(), None,
                                   clock=lambda: self._at("2026-09-03T12:00"))
             hand = ChatClock(scheduler, "chat_1", {}, emit,
                              timezone=self.DUBAI)
@@ -339,8 +337,9 @@ class TestTheCalendar:
         run(scenario())
 
     def test_every_fire_is_remembered_on_the_row_bounded(self):
-        class Outcomes:
-            def __init__(self):
+        class Outcomes(Scheduler):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
                 self.calls = 0
 
             async def fire(self, schedule):
@@ -352,8 +351,8 @@ class TestTheCalendar:
 
         async def scenario():
             clock = {"now": 1000.0}
-            scheduler = Scheduler(MemoryScheduleStore(), Outcomes(),
-                                  clock=lambda: clock["now"])
+            scheduler = Outcomes(MemoryScheduleStore(), None,
+                                 clock=lambda: clock["now"])
             await scheduler.add(Schedule("chat_1", "invoke",
                                          function="agt_1.note.find",
                                          every_seconds=60, next_run_at=1000.0))
@@ -376,13 +375,13 @@ class TestTheCalendar:
         run(scenario())
 
     def test_a_failing_fire_is_a_record_not_a_silence(self):
-        class Explodes:
+        class Explodes(Scheduler):
             async def fire(self, schedule):
                 raise RuntimeError("boom")
 
         async def scenario():
-            scheduler = Scheduler(MemoryScheduleStore(), Explodes(),
-                                  clock=lambda: 1000.0)
+            scheduler = Explodes(MemoryScheduleStore(), None,
+                                 clock=lambda: 1000.0)
             await scheduler.add(Schedule("chat_1", "wake", note="x",
                                          next_run_at=1000.0))
             await scheduler.tick()

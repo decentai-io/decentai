@@ -41,16 +41,16 @@ delegation was minted for the chat it names.
 | `persist_message` / `history` | `AI:Message:Create` / `AI:Message:List` | `ai_messages`; the actor may carry `parent` for a child's goal |
 | `record_event` / `events_since` | `AI:Event:Record` / `AI:Event:Since` | `ai_chat_events` with `direction: "in"` — the inbox: per-chat sequence, durable before absorbed |
 | `emit` | `AI:Event:Append` | `ai_chat_events` with `direction: "out"` — the audience's replayable log |
-| `open_approval` / `open_card` | `AI:Approval:Open` | `ai_approvals`: chat, the request (function, inputs, level, action hash, job id or none), `pending`. `open_card` is the same door for a question card, and is told `settled` when the Safety setting answered it and no person is asked |
-| `wait_approval` / `wait_answer` | — (no request; the decision or the answer arrives as a frame) | the runtime parks on the frame, not on a long poll |
-| `resolve_approval` / `resolve_answer` | `AI:Approval:Decide` (person verb) | records the decision or the answer, then the relay sends `approval_decided` or `question_answered`, and the runtime hands it to whatever waits |
+| `open_card` | `AI:Approval:Open` | `ai_approvals`: chat, the request (kind, function, inputs, level, action hash, job id or none), `pending`. One door for an approval and for a question card; the answer comes back `settled` when the Safety setting answered a code card and no person is asked |
+| (the wait) | — (no request; the decision or the answer arrives as a frame) | the chat's cards hold the waiter (`Cards.wait`), and the runtime parks on the frame, not on a long poll |
+| (the answer) | `AI:Approval:Decide` (person verb) | records the decision or the answer, then the relay sends `approval_decided` or `question_answered`, and the session settles the waiter (`Cards.settle`) |
 | (prepare) | — (`agents_changed` frame, backend → runtime, after `Agents:Agent:Install`) | the runtime pulls the package and builds its environment at once, through the installer's most recent chat, so the first chat to name the agent finds it ready |
 | schedules page | `AI:Activity:List` (person, `ai:activity:list`) | what the person sees of every chat of theirs: schedules, cards waiting, jobs running, and whether their work is stopped — [below](#the-schedules-page) |
 | notifications | `Settings:Notifications:*` (baseline) + `server/notifications.py` | a push, or an email, when a card opens or the assistant answers and nobody has the chat open — [below](#notifications) |
 | attention | `AI:Chat:List` rows carry `attention {working, cards, unseen}` | what the chats list and the sidebar flag: working, cards, news — [below](#attention) |
 | kill | `AI:Chat:Stop {force: true}` (person, `ai:chat:stop`) | the kill switch: cards expired on the record, then the runtime told to stop where it stands — [below](#the-kill) |
 | readiness | `Agents:Agent:Prepared` (runtime-only, `agents:agent:prepared`) | the runtime's word that an agent's code is ready on it, or would not build and why — [below](#readiness) |
-| `pending_questions` / `pending_cards` / `expire_approval` | `AI:Approval:List` / `AI:Approval:Expire` | the question cards still open on the chat, every open card whatever its kind (what a kill expires), and closing one: a question nobody answered in a day, one a session opening finds left by a dead process, or a card whose call was stopped |
+| `pending_cards(kind)` / `expire_card` | `AI:Approval:List` / `AI:Approval:Expire` | every open card on the chat, or those of one kind (the questions a session opening finds left by a dead process; everything a kill expires), and closing one: a question nobody answered in a day, or a card whose call was stopped |
 | `store_result` / `read_result` | `AI:Storage:Create` / `AI:Storage:Get` | `ai_chat_storage` |
 | `record_audit` | `AI:Audit:Record` | `ai_audit`: one `execution` event per call the executor was asked for, whatever its outcome — one the gates refused, one the person denied, one that was cancelled and one the platform failed on included — agent, function, level, the inputs in outline, outcome, duration, the stored result's ref, and the model the chat was thinking with. The person reads their trail with `AI:Audit:List`; the organization's whole trail is `AI:Audit:List_all`, a grant of its own |
 | `list_skills` / `read_skill` | `Skills:Skill:List` / `Skills:Skill:Get` | the data layer's skills |
@@ -201,9 +201,10 @@ Three things follow from the table:
 
 - **The summary is the mind's.** The state carries it, and nothing
   else does.
-- **`wait_approval` is not an HTTP call.** The runtime's services
-  implementation resolves the wait when the `approval_decided` frame
-  arrives on the socket — the backend never holds a request open.
+- **The wait is not an HTTP call.** The chat's cards hold the
+  waiter, and the session settles it when the `approval_decided` or
+  `question_answered` frame arrives on the socket — the backend never
+  holds a request open.
 - **One writer per record, with one exception.** The runtime writes
   state, events, plan and approvals-as-opened; the person writes
   decisions and messages. Schedule rows have both: the runtime writes
@@ -417,8 +418,7 @@ the same way, so a malformed event fails the runtime's own tests first.
 | the inbox and outbox on `ai_chat_events`; `ai_chats.state`; `ai_approvals`; `ai_schedules` | `backend/database/stores/chats.py` |
 | the fence, `RUNTIME_ENDPOINTS` | `backend/server/authentication/catalog.py` |
 | the relay speaking frames; the browser socket translating the frontend | `backend/api/services/chat_session/relay.py`, `backend/server/routes/ws.py` |
-| `BackendServices` — the contract over HTTP, one class, per-chat credential | `ai_runtime/services/backend.py` |
-| the data-layer `provider` over `/app` | `ai_runtime/services/provider.py` |
+| `Backend` — the contract over HTTP, one class, every call naming its chat and carrying that chat's credential; `ChatResources`, an agent's data, files and secrets as one chat | `ai_runtime/platform.py` |
 
 ## What it does not do
 

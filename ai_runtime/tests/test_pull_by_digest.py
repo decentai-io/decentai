@@ -13,10 +13,10 @@ import json
 import pytest
 
 from ai_runtime.agents import AgentLibrary, ApprovedAgent
-from ai_runtime.chat.clock import Schedule, ScheduleRunner
+from ai_runtime.chat.clock import Schedule, Scheduler
 from ai_runtime.execution.executor import FunctionExecutor
 from ai_runtime.execution.grants import FunctionGrants
-from ai_runtime.door.host import ServingRoster, SessionHost
+from ai_runtime.door.host import SessionHost
 from ai_runtime.tests.fixture_agents import (
     AGENTS_DIR, load_agents, worker_environment,
 )
@@ -206,13 +206,11 @@ class TestThePull:
         archive, digest, expected = package
         services = PullingServices(archive, digest, expected)
         host = SessionHost(services, library, workers())
-        runner = ScheduleRunner(
-            ServingRoster(host),
-            FunctionExecutor(workers(), provider=services.provider), host.deliver_event)
+        clock = Scheduler(services, host)
         due = Schedule("chat_1", "invoke", function=f"{REF}.note.find",
                        inputs={})
 
-        outcome = run(runner.fire(due))
+        outcome = run(clock.fire(due))
         assert outcome["status"] == "success", outcome
         assert outcome["result"]["notes"] == [] and outcome["result"]["total"] == 0
         assert host.sessions == {}
@@ -228,11 +226,9 @@ class TestThePull:
         services = PullingServices(archive, digest, expected, grants=[
             {"effect": "allow", "functions": [f"{REF}.note.save"]}])
         host = SessionHost(services, library, workers())
-        runner = ScheduleRunner(
-            ServingRoster(host),
-            FunctionExecutor(workers(), provider=services.provider), host.deliver_event)
+        clock = Scheduler(services, host)
 
-        outcome = run(runner.fire(Schedule(
+        outcome = run(clock.fire(Schedule(
             "chat_1", "invoke", function=f"{REF}.note.find", inputs={})))
         assert outcome["status"] == "error", outcome
         assert outcome["result"]["not_permitted"] is True

@@ -41,7 +41,6 @@ honestly rather than guessing.
 from __future__ import annotations
 
 import asyncio
-import contextvars
 import logging
 from functools import partial
 from typing import Any, Callable, Dict, List, Optional, Tuple
@@ -132,12 +131,6 @@ class CallContext:
         #: The worker the invocation was sent to, bound by the pool
         #: before the invoke goes out. An ask is answered only from it.
         self.handle: Optional[WorkerHandle] = None
-        #: The invocation's own context (CURRENT_CHAT, CURRENT_JOB_ID),
-        #: taken by the pool when the invoke goes out. A worker outlives
-        #: the chat that spawned it, and its reader task carries THAT
-        #: chat's context — so an ask answered there would reach the
-        #: platform as the first chat, on a delegation long expired.
-        self.scope: Optional[contextvars.Context] = None
 
 
 class WorkerPool:
@@ -165,7 +158,6 @@ class WorkerPool:
         function's ``(result, status)``. Raises TimeoutError past the
         host's clock and WorkerError when the worker itself is broken —
         the caller words both for the proposing loop."""
-        context.scope = contextvars.copy_context()
         self._calls[call_id] = context
         handle = None
         before: Dict[str, int] = {}
@@ -338,18 +330,7 @@ class WorkerPool:
         if context is None or context.handle is not handle:
             raise WorkerError("no invocation of this worker is entitled "
                               "to this ask")
-        return await self._as_invocation(
-            context, self._answer(context, method, params))
-
-    @staticmethod
-    async def _as_invocation(context: CallContext, work) -> Any:
-        """Run an ask's answer in the context of the invocation entitled
-        to it, not the one the worker was spawned in. A copy per ask, so
-        one ask's settings never leak into another."""
-        if context.scope is None:
-            return await work
-        return await asyncio.get_running_loop().create_task(
-            work, context=context.scope.copy())
+        return await self._answer(context, method, params)
 
     async def _answer(self, context: CallContext, method: str,
                       params: dict) -> Any:
@@ -482,7 +463,7 @@ class WorkerPool:
         context = self._calls.get(call_id)
         if context is not None and context.handle is handle \
                 and context.screen is not None:
-            await self._as_invocation(context, context.screen(kind, params))
+            await context.screen(kind, params)
 
     async def screen_input(self, call_id: str, events: list) -> bool:
         """The person acting on a screen: to the worker running the
@@ -499,4 +480,4 @@ class WorkerPool:
         context = self._calls.get(call_id)
         if context is not None and context.handle is handle \
                 and context.progress is not None:
-            await self._as_invocation(context, context.progress(description))
+            await context.progress(description)

@@ -84,9 +84,10 @@ Check:
   it, no question is open and nothing is on its way in to it
   (`_arriving`). `_kill` holds the build lock, so a chat cannot be
   rebuilt in the middle of being stopped.
-- `RelayingServices.emit`: one emission at a time per chat, from its
+- `SessionHost._emit`: one emission at a time per chat, from its
   record to its delivery, so the socket hears frames in the order they
-  were recorded.
+  were recorded. A session is handed it as its `emit`; a helper's
+  emissions go through its parent, tagged (`Session._emit_for`).
 
 Tests: `ai_runtime/tests/test_session_door.py`,
 `ai_runtime/tests/test_pull_by_digest.py`,
@@ -113,7 +114,7 @@ Read in this order:
    where a late audience and a kill can see it.
 5. `ask_to_stop`, `stop`, `kill` — the cooperative stop and the one
    that does not ask.
-6. `_spawn_child`, `report`, `ChildServices` — helpers
+6. `_spawn_child`, `report`, `conversation_id` — helpers
    ([sub-assistants](../system/sub-assistants.md)).
 
 Before `open`, read `ai_runtime/sinks.py`: `ChatSinks` is every door
@@ -149,10 +150,12 @@ Check:
   `_unfinished` reads it, so a session rebuilt afterwards rests. A
   message that reaches a killed session is recorded and not thought
   about (`_post`, `dead`): the session built next absorbs it.
-- A helper's `ChildServices`: its storage and memories are the
-  parent's, and its cards and screen surface in the parent's audience
-  under its own id. That it cannot save memory is not there: it is the
-  `remember` door `Session.open` hands a child (`Session._refuse_memory`).
+- A helper's two ids: `chat_id` is its own record (its thread, state,
+  inbox, plan and cards) and `conversation_id` is its parent's — its
+  storage, its memories, its agents' records and its audience. Its
+  cards and screen surface in the parent's audience under its own id.
+  That it cannot save memory is not there: it is the `remember` door
+  `Session.open` hands a child (`Session._refuse_memory`).
 
 Tests: `ai_runtime/tests/test_session.py`,
 `ai_runtime/tests/test_sub_assistants.py`,
@@ -370,9 +373,9 @@ two). Both are skipped elsewhere, and each file says how it is run.
 
 ## 7. The clock
 
-`chat/clock.py`, four classes: `Schedule` (a row), `ScheduleRunner`
-(what a fire does), `Scheduler` (the loop and the rows), `ChatClock`
-(the assistant's own hand on it).
+`chat/clock.py`, three classes: `Schedule` (a row), `Scheduler` (the
+loop, the rows, and what a fire does — through the host, as the
+schedule's chat), `ChatClock` (the assistant's own hand on it).
 
 Check:
 
@@ -386,7 +389,7 @@ Check:
   dial that carries a credential and at `schedules_changed`
   (`SessionHost._credentialed`, `_reload_schedules`), and what a fire
   just did to a row is kept.
-- `ScheduleRunner._fire_invoke`: a scheduled function runs with no
+- `Scheduler._fire_invoke`: a scheduled function runs with no
   model call, and wakes the assistant only when the result's
   `wake_field` says so. The call goes through the same
   executor and the same gates as stop 5, with the chat's current
@@ -405,11 +408,12 @@ Tests: the schedule classes in `ai_runtime/tests/test_session.py`,
 
 ## 8. The edges
 
-- `services/backend.py` — `BackendServices`, every call the runtime
-  makes to the platform, each for the chat its credential is bound to;
-  `Gateway` is the request itself, carrying that credential. `sim/session_services.py` is the
-  same surface in memory: reading the two side by side is the quickest
-  way to see what the runtime depends on.
+- `platform.py` — `Backend`, every call the runtime makes to the
+  platform, each naming the chat it acts for and carrying that chat's
+  credential; `ChatResources`, an agent's data, files and secrets as
+  one chat; `Gateway` is the request itself. `sim/session_services.py`
+  is the same surface in memory: reading the two side by side is the
+  quickest way to see what the runtime depends on.
 - `llms/` — the connectors. A reply carries the provider's
   `stop_reason` (`llms/connector/tools.py`), which is how one stopped
   at the length cap is told apart from a finished one

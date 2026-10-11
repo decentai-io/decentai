@@ -15,7 +15,6 @@ import pytest
 import ai_runtime.agents.pool as pool_module
 from ai_runtime.agents.workers import WorkerError
 from ai_runtime.agents.pool import CallContext, WorkerPool
-from ai_runtime.chat.current import CURRENT_CHAT
 from ai_runtime.tests.fake_container import confinement
 from ai_runtime.tests import fake_container
 
@@ -260,23 +259,23 @@ class TestIsolation:
 class TestAskContext:
     def test_an_ask_acts_for_the_chat_that_invoked_not_the_one_that_spawned(self, pool):
         # A worker outlives the chat that started it. Its asks must reach
-        # the platform as the chat calling now: answered as the first
-        # chat, they went out on that chat's delegation, expired an hour
-        # later, and every connected agent read "not connected".
+        # the platform as the chat calling now: each call carries the
+        # resources of its own chat, and the pool answers an ask from
+        # the call's context and nothing else.
         a = approved("agt_a")
 
-        async def use_secret(resource_id, ref=None):
-            return {"chat": CURRENT_CHAT.get("")}
+        def resources_of(chat_id):
+            async def use_secret(resource_id, ref=None):
+                return {"chat": chat_id}
+            return SimpleNamespace(use_secret=use_secret)
 
         async def in_chat(chat_id, call_id):
-            CURRENT_CHAT.set(chat_id)
-            context = CallContext(SimpleNamespace(use_secret=use_secret))
+            context = CallContext(resources_of(chat_id))
             return await pool.invoke(a, call_id, "use_secret", {}, context, 5)
 
         async def scenario():
-            first = await asyncio.create_task(in_chat("chat_a", "c_1"))
-            second = await asyncio.create_task(in_chat("chat_b", "c_2"))
-            assert pool._handles["agt_a"].spawned_in[CURRENT_CHAT] == "chat_a"
+            first = await in_chat("chat_a", "c_1")
+            second = await in_chat("chat_b", "c_2")
             assert first == ({"chat": "chat_a"}, "success")
             assert second == ({"chat": "chat_b"}, "success")
         run(scenario())

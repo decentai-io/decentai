@@ -8,6 +8,7 @@ a mind whose process dies is hydrated whole by the next one.
 
 import asyncio
 import json
+from functools import partial
 from pathlib import Path
 
 from ai_runtime.chat import Session
@@ -46,7 +47,8 @@ def build(script, services=None, **kwargs):
     assert errors == {}
     services = services or SimSessionServices()
     return Session("chat_1", agents, FakeConnector(script), services,
-                   workers=workers(), **kwargs), services
+                   workers=workers(), relay=partial(services.relay, "chat_1"),
+                   **kwargs), services
 
 
 async def approval_open(services, timeout=5.0):
@@ -607,7 +609,7 @@ class TestConversation:
                        for e in services.events)
         # The card is on the record, with the call that asked for it.
         [card] = services.approvals.values()
-        assert card["request"]["call_id"] == "c_7" and card["settled"] is True
+        assert card["request"]["call_id"] == "c_7" and card["status"] == "answered"
         [message] = services.messages["chat_1"]
         said = message["parts"][0]
         assert said["content"].startswith(
@@ -674,13 +676,13 @@ class TestConversation:
 
         async def scenario():
             await first.open()
-            orphan = await services.open_approval("chat_1", {
+            orphan = (await services.open_card("chat_1", {
                 "kind": "question", "function": "agt_x.browse.run",
                 "agent_id": "agt_x", "agent_name": "Browser",
-                "question": "Take over?", "choices": ["Done", "Stop"]})
-            elsewhere = await services.open_approval("chat_2", {
+                "question": "Take over?", "choices": ["Done", "Stop"]}))["approval_id"]
+            elsewhere = (await services.open_card("chat_2", {
                 "kind": "question", "function": "f", "agent_id": "a",
-                "agent_name": "A", "question": "Other chat?", "choices": []})
+                "agent_name": "A", "question": "Other chat?", "choices": []}))["approval_id"]
             # The next process for this chat: the first is gone.
             second, _ = build([action(action="finish")], services)
             await second.open()
@@ -1304,9 +1306,9 @@ class TestTheClockAction:
     """The assistant's hand on the clock: schedule and unschedule."""
 
     def clocked(self, script, services=None, now=1000.0):
-        from ai_runtime.chat.clock import ScheduleRunner, Scheduler
+        from ai_runtime.chat.clock import Scheduler
         from ai_runtime.execution.executor import FunctionExecutor
-        from sim.schedules import MemoryScheduleStore
+        from ai_runtime.tests.fires import Fires
 
         services = services or SimSessionServices()
         holder = {}
@@ -1317,9 +1319,8 @@ class TestTheClockAction:
         agents, errors = load_agents(AGENTS_DIR)
         assert errors == {}
         scheduler = Scheduler(
-            MemoryScheduleStore(),
-            ScheduleRunner(agents, FunctionExecutor(workers(), 
-                provider=services.provider), wake),
+            services,
+            Fires(agents, FunctionExecutor(workers(), provider=services.provider), wake),
             clock=lambda: now,
         )
         session = Session("chat_1", agents, FakeConnector(script), services,
@@ -1593,12 +1594,12 @@ class TestTheClockPersists:
 
         fired = []
 
-        class Runner:
+        class Clock(Scheduler):
             async def fire(self, schedule):
                 fired.append(schedule.schedule_id)
                 return {"status": "ok"}
 
-        return Scheduler(store, Runner(), clock=lambda: 1000.0), fired
+        return Clock(store, None, clock=lambda: 1000.0), fired
 
     def test_each_firing_is_written_before_the_next_fires(self):
         from sim.schedules import MemoryScheduleStore
@@ -1608,9 +1609,9 @@ class TestTheClockPersists:
                 super().__init__()
                 self.written = []
 
-            async def ran(self, row):
+            async def schedule_ran(self, row):
                 self.written.append(row["schedule_id"])
-                return await super().ran(row)
+                return await super().schedule_ran(row)
 
         store = CountingStore()
         store.rows = [self.row("a"), self.row("b")]
@@ -1632,12 +1633,12 @@ class TestTheClockPersists:
                 self.failures_left = 1
                 self.written = 0
 
-            async def ran(self, row):
+            async def schedule_ran(self, row):
                 if self.failures_left:
                     self.failures_left -= 1
                     raise RuntimeError("disk full")
                 self.written += 1
-                return await super().ran(row)
+                return await super().schedule_ran(row)
 
         store = FlakyStore()
         store.rows = [self.row("a")]
@@ -1675,14 +1676,14 @@ class TestTheClockPersists:
         store.rows = [self.row("a")]
         fired = []
 
-        class Runner:
-            async def fire(runner, schedule):
+        class Clock(Scheduler):
+            async def fire(clock, schedule):
                 fired.append(schedule.schedule_id)
-                scheduler.replace_for(
+                clock.replace_for(
                     "chat_1", [{**self.row("a"), "enabled": False}])
                 return {"status": "ok"}
 
-        scheduler = Scheduler(store, Runner(), clock=lambda: 1000.0)
+        scheduler = Clock(store, None, clock=lambda: 1000.0)
         for chat in sorted({row["chat_id"] for row in store.rows}):
             scheduler.replace_for(chat, store.rows)
         run(scheduler.tick())
@@ -1701,10 +1702,10 @@ class TestTheClockPersists:
             status = 404
 
         class Store(MemoryScheduleStore):
-            async def ran(self, row):
+            async def schedule_ran(self, row):
                 if row["chat_id"] == "chat_1":
                     raise Gone("chat not found")
-                return await super().ran(row)
+                return await super().schedule_ran(row)
 
         store = Store()
         other = {**self.row("z"), "chat_id": "chat_2"}
@@ -1733,14 +1734,14 @@ class TestTheClockPersists:
         async def scenario():
             release = asyncio.Event()
 
-            class Runner:
+            class Clock(Scheduler):
                 async def fire(self, schedule):
                     fired.append(schedule.schedule_id)
                     if schedule.schedule_id == "slow":
                         await release.wait()
                     return {"status": "ok"}
 
-            scheduler = Scheduler(store, Runner(), clock=lambda: 1000.0)
+            scheduler = Clock(store, None, clock=lambda: 1000.0)
             for chat in sorted({row["chat_id"] for row in store.rows}):
                 scheduler.replace_for(chat, store.rows)
             await scheduler.tick(wait=False)
@@ -1768,11 +1769,11 @@ class TestTheClockPersists:
         store.rows = [self.row("mine"), {**self.row("theirs"), "chat_id": "chat_2"}]
 
         async def scenario():
-            class Runner:
+            class Clock(Scheduler):
                 async def fire(self, schedule):
                     await asyncio.Event().wait()   # never, by itself
 
-            scheduler = Scheduler(store, Runner(), clock=lambda: 1000.0)
+            scheduler = Clock(store, None, clock=lambda: 1000.0)
             for chat in sorted({row["chat_id"] for row in store.rows}):
                 scheduler.replace_for(chat, store.rows)
             await scheduler.tick(wait=False)
@@ -1797,7 +1798,7 @@ class TestTheClockPersists:
         from sim.schedules import MemoryScheduleStore
 
         class Full(MemoryScheduleStore):
-            async def add(self, row):
+            async def add_schedule(self, row):
                 raise RuntimeError("A chat may hold at most 50 schedules.")
 
         scheduler, _ = self.scheduler(Full())
@@ -2202,8 +2203,8 @@ class TestTheKillSwitch:
             await session.open()
             await session.deliver_user("search")
             # A card the person will never answer now.
-            approval_id = await services.open_approval("chat_1", {
-                "function": "notebook.note.find", "kind": "approval"})
+            approval_id = (await services.open_card("chat_1", {
+                "function": "notebook.note.find", "kind": "approval"}))["approval_id"]
             counts = await session.kill()
             return approval_id, counts
 

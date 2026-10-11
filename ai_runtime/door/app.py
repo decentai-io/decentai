@@ -19,9 +19,9 @@ from contextlib import asynccontextmanager
 from fastapi import APIRouter, FastAPI
 
 from ai_runtime.agents.pool import WorkerPool
-from ai_runtime.chat.clock import ScheduleRunner, Scheduler
+from ai_runtime.chat.clock import Scheduler
 from ai_runtime.door import monitor, socket
-from ai_runtime.door.host import ServingRoster, SessionHost
+from ai_runtime.door.host import SessionHost
 from ai_runtime.settings import RuntimeSettings
 
 #: The runtime's doors: the chat socket, and the monitoring and health
@@ -77,10 +77,7 @@ def create_app(settings: RuntimeSettings, services, library, container,
         # the inside door a socket cannot reach.
         # No executor of the clock's own: the host builds one for each
         # fire, held to that chat's grants, on the process's one pool.
-        scheduler = Scheduler(
-            services.schedules,
-            ScheduleRunner(ServingRoster(host), None, host.deliver_event),
-        )
+        scheduler = Scheduler(services, host)
         host.clock = scheduler
 
     @asynccontextmanager

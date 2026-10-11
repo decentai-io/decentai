@@ -65,24 +65,28 @@ class CallSurface:
 
     def for_call(self, agent: InstalledAgent, function_spec: Dict[str, Any],
                  canonical_name: str, call_id: str, access: ResourceAccess,
-                 grant: Optional[CodeGrant], displays: list) -> Dict[str, Any]:
+                 grant: Optional[CodeGrant], displays: list,
+                 job_id: str = "") -> Dict[str, Any]:
         """What one CallContext carries beside its resources, by the
         context's own field names. Declared or nothing: the model only
         where the manifest says ``llm: true``, a login only where it
         says ``credentials: true``, an install only where it said it
-        runs code (``grant``)."""
+        runs code (``grant``). ``job_id`` is the job the call runs for,
+        named in everything the call says to the chat."""
+        source = agent_source(agent.agent_id, agent.manifest.name,
+                              canonical_name, call_id=call_id, job_id=job_id)
         return {
             "llm": self.llm_for(access) if function_spec.get("llm") is True else None,
-            "progress": self.progress_for(agent, canonical_name, call_id),
+            "progress": self.progress_for(source),
             "show": self.show_for(canonical_name, displays),
-            "post": self.post_for(agent, canonical_name, call_id, displays),
-            "ask": self.ask_for(agent, canonical_name, call_id, access),
-            "propose": self.propose_for(agent, canonical_name, call_id, grant),
+            "post": self.post_for(source, displays),
+            "ask": self.ask_for(source, access),
+            "propose": self.propose_for(source, grant),
             "install": self.install_for(agent, grant) if grant is not None else None,
             "blocked": self.safety.get("blocked_sites"),
-            "credential": (self.credential_for(agent, canonical_name, call_id)
+            "credential": (self.credential_for(source)
                            if function_spec.get("credentials") is True else None),
-            "screen": self.screen_for(agent, canonical_name, call_id),
+            "screen": self.screen_for(source),
         }
 
     def llm_for(self, access: ResourceAccess) -> Optional[Callable]:
@@ -132,16 +136,12 @@ class CallSurface:
             raise WorkerError(
                 f"{name} is not an image the model can be shown: {why}.")
 
-    def ask_for(self, agent: InstalledAgent, canonical_name: str,
-                 call_id: str,
-                 access: Optional[ResourceAccess] = None) -> Optional[Callable]:
+    def ask_for(self, source: Dict[str, Any], access: Optional[ResourceAccess] = None) -> Optional[Callable]:
         """The agent asking the person, checked here (words, length,
         choices), then handed to the chat as a card in the agent's name.
         None where there is no one to ask."""
         if self.sinks.ask is None:
             return None
-        source = agent_source(agent.agent_id, agent.manifest.name,
-                              canonical_name, call_id=call_id)
 
         async def ask(question: str, choices: list,
                       expects: str = "") -> Optional[str]:
@@ -172,9 +172,7 @@ class CallSurface:
             return await self.sinks.ask(question, offered, source)
         return ask
 
-    def propose_for(self, agent: InstalledAgent, canonical_name: str,
-                     call_id: str,
-                     grant: Optional[CodeGrant] = None) -> Optional[Callable]:
+    def propose_for(self, source: Dict[str, Any], grant: Optional[CodeGrant]) -> Optional[Callable]:
         """Code the agent wants to run, checked here against the card's
         own shape (contracts/chat.py CodeAsk), then handed to the chat
         to be read and put before the person. None where there is no
@@ -186,8 +184,6 @@ class CallSurface:
         the card is shown."""
         if self.sinks.propose is None:
             return None
-        source = agent_source(agent.agent_id, agent.manifest.name,
-                              canonical_name, call_id=call_id)
 
         async def propose(code: Any) -> Optional[bool]:
             if not isinstance(code, dict):
@@ -244,15 +240,12 @@ class CallSurface:
     #: same bounds on the card).
     CREDENTIAL_FIELDS_MAX = 20
 
-    def credential_for(self, agent: InstalledAgent, canonical_name: str,
-                        call_id: str) -> Optional[Callable]:
+    def credential_for(self, source: Dict[str, Any]) -> Optional[Callable]:
         """A login the agent asks for as it works, checked here for
         shape, then handed to the chat to resolve through the person's
         cards in the agent's name. None where there is no one to ask."""
         if self.sinks.credential is None:
             return None
-        source = agent_source(agent.agent_id, agent.manifest.name,
-                              canonical_name, call_id=call_id)
 
         async def credential(host: str, fields: list, account, site, refresh):
             host = str(host or "").strip()
@@ -281,14 +274,12 @@ class CallSurface:
                 str(site or "")[:200] or None, bool(refresh), source)
         return credential
 
-    def screen_for(self, agent: InstalledAgent, canonical_name: str,
-                    call_id: str) -> Optional[Callable]:
+    def screen_for(self, source: Dict[str, Any]) -> Optional[Callable]:
         """A screen the function shows, in the agent's name, to whoever
         is watching the chat. None where nobody is."""
         if self.sinks.screen is None:
             return None
-        source = agent_source(agent.agent_id, agent.manifest.name,
-                              canonical_name, call_id=call_id)
+        call_id = str(source.get("call_id") or "")
 
         async def screen(kind: str, params: Dict[str, Any]) -> None:
             if kind != "frame":
@@ -327,16 +318,13 @@ class CallSurface:
         except Exception as exc:
             self.logger.warning(f"A screen could not be told closed: {exc}")
 
-    def post_for(self, agent: InstalledAgent, canonical_name: str,
-                  call_id: str, displays: list) -> Optional[Callable]:
+    def post_for(self, source: Dict[str, Any], displays: list) -> Optional[Callable]:
         """The agent speaking for itself: checked here (words, length,
         how many, displays this call offered and no other), then handed
         to the chat as a message in the agent's name. None where there
         is no chat to speak in."""
         if self.sinks.post is None:
             return None
-        source = agent_source(agent.agent_id, agent.manifest.name,
-                              canonical_name, call_id=call_id)
         posted: list = []
 
         async def post(text: str, display_ids: list) -> bool:
@@ -407,15 +395,12 @@ class CallSurface:
             return storage_ref
         return show
 
-    def progress_for(self, agent: InstalledAgent, canonical_name: str,
-                      call_id: str) -> Optional[Callable]:
+    def progress_for(self, source: Dict[str, Any]) -> Optional[Callable]:
         """The agent's own narration, told with who is speaking: the
         worker says a line, the chat hears it as this agent's, on this
         call. None when nobody listens (the clock, tests)."""
         if self.sinks.progress is None:
             return None
-        source = agent_source(agent.agent_id, agent.manifest.name,
-                              canonical_name, call_id=call_id)
 
         async def progress(description: str) -> None:
             text = str(description or "").strip()

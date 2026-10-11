@@ -12,7 +12,7 @@ from ai_runtime.execution.resources import ResourceAccess
 from ai_runtime.llms.connector.http import ProviderError
 from ai_runtime.llms.connector.tools import (
     is_context_overflow, is_image_refusal, setting)
-from ai_runtime.services.backend import BackendSchedules, Gateway, GatewayError
+from ai_runtime.platform import Backend, Gateway, GatewayError
 from sim.schedules import MemoryScheduleStore
 from sim.session_services import SimSessionServices
 from ai_runtime.tests import fake_container
@@ -45,8 +45,9 @@ class TestTheServicesClient:
             run(self.gateway(answers).call("AI:State:Save", {}, "key"))
 
     def test_a_refused_write_drops_only_the_key_it_was_sent_with(self):
-        class Services:
+        class Renewing(Backend):
             def __init__(self):
+                super().__init__(gateway=None)
                 self.credentials = {"chat_1": "old"}
                 self.revoked = []
 
@@ -59,12 +60,10 @@ class TestTheServicesClient:
                 self.revoked.append(chat_id)
                 self.credentials.pop(chat_id, None)
 
-        services = Services()
+        backend = Renewing()
         with pytest.raises(GatewayError):
-            run(BackendSchedules(services).ran(
-                {"chat_id": "chat_1", "schedule_id": "a"}))
-        assert services.revoked == [] and services.credentials == {
-            "chat_1": "new"}
+            run(backend.schedule_ran({"chat_id": "chat_1", "schedule_id": "a"}))
+        assert backend.revoked == [] and backend.credentials == {"chat_1": "new"}
 
 
 class TestAConnectionsNumbers:
@@ -155,24 +154,30 @@ class TestTheSimulationRefusesWhatThePlatformRefuses:
             return await services.history("chat_1")
         assert len(run(scenario())) == 100
 
-    def test_an_answer_after_a_card_expired(self):
+    def test_an_answer_nobody_waits_for_settles_nothing(self):
+        """A card's waiter is the chat's (cards.py): an answer for a
+        card that expired, or that nobody here asked, finds no waiter."""
+        from ai_runtime.chat.cards import Cards
+
         async def scenario():
             services = SimSessionServices()
-            card = await services.open_approval("chat_1", {"kind": "question"})
-            await services.expire_approval("chat_1", card)
-            return (await services.resolve_answer(card, "late"),
-                    await services.resolve_approval(card, True))
-        assert run(scenario()) == (False, False)
+            opened = await services.open_card("chat_1", {"kind": "question"})
+            await services.expire_card("chat_1", opened["approval_id"])
+            cards = Cards.__new__(Cards)
+            cards.waiters = {}
+            return (cards.settle(opened["approval_id"], "late"),
+                    services.approvals[opened["approval_id"]]["status"])
+        assert run(scenario()) == (False, "expired")
 
     def test_a_fifty_first_schedule_and_another_chats_row(self):
         async def scenario():
             store = MemoryScheduleStore()
             for number in range(50):
-                await store.add({"chat_id": "chat_1",
-                                 "schedule_id": f"s{number}"})
+                await store.add_schedule({"chat_id": "chat_1",
+                                          "schedule_id": f"s{number}"})
             with pytest.raises(ValueError):
-                await store.add({"chat_id": "chat_1", "schedule_id": "s50"})
-            await store.remove("chat_2", "s1")
+                await store.add_schedule({"chat_id": "chat_1", "schedule_id": "s50"})
+            await store.remove_schedule("chat_2", "s1")
             return len(store.rows)
         assert run(scenario()) == 50
 

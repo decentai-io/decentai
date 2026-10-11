@@ -460,15 +460,15 @@ class TestResidency:
         app = create_app(RuntimeSettings(), services=SimSessionServices(),
                          library=None, container=container(),
                          confinement=confinement(), agents=serving)
-        runner = app.state.scheduler.runner
+        scheduler = app.state.scheduler
         due = Schedule("chat_1", "invoke",
                        function="notebook.note.find", inputs={})
 
         async def scenario():
-            before = await runner.fire(due)
+            before = await scheduler.fire(due)
             assert "not a served function" in before["error"]
             serving.update(agents)  # the install, mid-flight
-            return await runner.fire(due)
+            return await scheduler.fire(due)
 
         outcome = run(scenario())
         assert outcome["status"] == "success"
@@ -509,10 +509,10 @@ class TestThePersonsHandOnTheClock:
     rows — no mind built, nothing saved back."""
 
     def test_schedules_changed_makes_the_clock_re_read_the_store(self):
-        from ai_runtime.chat.clock import ScheduleRunner, Scheduler
+        from ai_runtime.chat.clock import Scheduler
 
         host, services = build()
-        clock = Scheduler(services.schedules, ScheduleRunner({}, None, None))
+        clock = Scheduler(services, host)
         host.clock = clock
         # The page wrote a row straight into the store (the backend's
         # door), and paused another the clock already held.
@@ -543,10 +543,10 @@ class TestThePersonsHandOnTheClock:
 
     def test_a_forged_frame_can_only_repeat_the_store(self):
         """Idempotent by construction: saying it twice changes nothing."""
-        from ai_runtime.chat.clock import ScheduleRunner, Scheduler
+        from ai_runtime.chat.clock import Scheduler
 
         host, services = build()
-        clock = Scheduler(services.schedules, ScheduleRunner({}, None, None))
+        clock = Scheduler(services, host)
         host.clock = clock
         services.schedules.rows = [
             {"schedule_id": "sch_a", "chat_id": "chat_1", "mode": "wake",
@@ -567,7 +567,7 @@ class TestCredentialFrame:
         the relay renews it over the socket. The host hands the new key
         to the services and lets the clock adopt rows the key unlocks —
         no mind is built, nothing is recorded, an empty key is nothing."""
-        from ai_runtime.chat.clock import ScheduleRunner, Scheduler
+        from ai_runtime.chat.clock import Scheduler
 
         class Keyed(SimSessionServices):
             def __init__(self):
@@ -579,7 +579,7 @@ class TestCredentialFrame:
 
         services = Keyed()
         host, _ = build(services=services)
-        clock = Scheduler(services.schedules, ScheduleRunner({}, None, None))
+        clock = Scheduler(services, host)
         host.clock = clock
         clock.schedules = []
         services.schedules.rows = [
@@ -606,25 +606,16 @@ class TestCredentialFrame:
 
 class TestAgentPosts:
     def test_a_fire_posts_into_the_chat_it_acts_for(self):
-        from ai_runtime.chat.current import CURRENT_CHAT
-
         host, services = build([action(action="finish")])
         source = {"kind": "agent", "agent": "notebook",
                   "function": "notebook.sync.status"}
 
         async def scenario():
-            nowhere = await host.agent_post("hello", source, [])
-            token = CURRENT_CHAT.set("chat_1")
-            try:
-                posted = await host.agent_post("Sync found nothing new.",
-                                               source, [])
-            finally:
-                CURRENT_CHAT.reset(token)
-            return nowhere, posted
+            return await host.agent_post("chat_1", "Sync found nothing new.",
+                                         source, [])
 
-        nowhere, posted = run(scenario())
-        # With no chat there is nowhere to speak; a scheduled fire has its own.
-        assert (nowhere, posted) == (False, True)
+        # A scheduled fire speaks in the chat it acts for.
+        assert run(scenario()) is True
         texts = [m["parts"][0]["content"]
                  for m in services.messages["chat_1"]]
         assert texts == ["Sync found nothing new."]
@@ -637,21 +628,12 @@ class TestAScheduledRunAsks:
     def test_a_fire_asks_in_the_chat_it_acts_for(self):
         """A scheduled run has nobody watching, and may still ask: the
         card waits in its chat, and the answer reaches the run."""
-        from ai_runtime.chat.current import CURRENT_CHAT
-
         host, services = build([action(action="finish")])
 
         async def scenario():
-            # With no chat there is nobody to ask.
-            nobody = await host.agent_ask("Which?", ["a", "b"], self.SOURCE)
-
             async def fire():
-                token = CURRENT_CHAT.set("chat_1")
-                try:
-                    return await host.agent_ask(
-                        "Which?", ["a", "b"], self.SOURCE)
-                finally:
-                    CURRENT_CHAT.reset(token)
+                return await host.agent_ask(
+                    "chat_1", "Which?", ["a", "b"], self.SOURCE)
 
             asking = asyncio.get_running_loop().create_task(fire())
             await until(lambda: services.approvals)
@@ -662,9 +644,9 @@ class TestAScheduledRunAsks:
             await host.handle("chat_1", {
                 "event": "question_answered",
                 "approval_id": next(iter(services.approvals)), "answer": "b"})
-            return nobody, held, await asking
+            return held, await asking
 
-        assert run(scenario()) == (None, True, "b")
+        assert run(scenario()) == (True, "b")
 
     def test_the_fires_executor_can_ask(self):
         host, _ = build([action(action="finish")])
@@ -673,7 +655,9 @@ class TestAScheduledRunAsks:
             context = await host.fire_context("chat_1")
             return context.executor.sinks.ask
 
-        assert run(scenario()) == host.agent_ask
+        # The host's own door, bound to the chat the fire acts for.
+        asking = run(scenario())
+        assert asking.func == host.agent_ask and asking.args == ("chat_1",)
 
 
 class TestQuestions:
@@ -920,9 +904,7 @@ class TestAFireTakesTheChatsTrust:
     by the trust that chat was given — not by a fixed level."""
 
     @staticmethod
-    def runner(roster):
-        from ai_runtime.chat.clock import ScheduleRunner
-
+    def executor():
         levels = []
 
         class Executor:
@@ -931,15 +913,18 @@ class TestAFireTakesTheChatsTrust:
                 levels.append(chat_level)
                 return {}, "success"
 
-        class Runner(ScheduleRunner):
+        return Executor(), levels
+
+    @staticmethod
+    def clock(host):
+        from ai_runtime.chat.clock import Scheduler
+
+        class Clock(Scheduler):
             @staticmethod
             def schedulable(roster, function):
                 return SimpleNamespace(), ""
 
-        async def wake(chat_id, event):
-            return None
-
-        return Runner(roster, Executor(), wake), levels
+        return Clock(SimSessionServices(), host)
 
     def test_the_level_the_chat_was_given_is_the_one_that_fires(self):
         class Roster:
@@ -950,16 +935,19 @@ class TestAFireTakesTheChatsTrust:
                 return SimpleNamespace(
                     roster={}, chat_level=3, executor=self.executor)
 
-        runner, levels = self.runner({})
-        runner.roster = Roster(runner.executor)
+        executor, levels = self.executor()
+        clock = self.clock(Roster(executor))
 
-        run(runner.fire(Schedule("chat_1", "invoke", function="a.b.c")))
+        run(clock.fire(Schedule("chat_1", "invoke", function="a.b.c")))
 
         assert levels == [3]
 
-    def test_a_plain_mapping_fires_at_the_standard_level(self):
-        runner, levels = self.runner({})
+    def test_a_host_that_says_nothing_of_trust_fires_at_the_standard_level(self):
+        from ai_runtime.tests.fires import Fires
 
-        run(runner.fire(Schedule("chat_1", "invoke", function="a.b.c")))
+        executor, levels = self.executor()
+        clock = self.clock(Fires({}, executor))
+
+        run(clock.fire(Schedule("chat_1", "invoke", function="a.b.c")))
 
         assert levels == [1]

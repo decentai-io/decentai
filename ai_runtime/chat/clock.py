@@ -19,11 +19,11 @@ work — "look again in ten minutes" — and not a standing instruction of
 the person's: one per chat, at most a day long, gone once it has
 fired, and never on the Schedules page.
 
-The Scheduler is the clock; the ScheduleRunner is the policy. Fires
-that error are logged and never kill the clock; an overdue schedule
-found at startup fires ONCE and advances from now — never a backlog
-replay. Each fire is a task of its own: one that takes its time — a
-slow site, a question waiting on the person — holds up no other row.
+The Scheduler is the clock, and what a fire does. Fires that error
+are logged and never kill the clock; an overdue schedule found at
+startup fires ONCE and advances from now — never a backlog replay.
+Each fire is a task of its own: one that takes its time — a slow site,
+a question waiting on the person — holds up no other row.
 """
 
 from __future__ import annotations
@@ -37,8 +37,6 @@ from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional
 
 from contracts.cron import Cron, CronError, zone
-from ai_runtime.chat.current import CURRENT_CHAT
-from ai_runtime.execution.executor import FunctionExecutor
 
 
 class Schedule:
@@ -157,117 +155,31 @@ class Schedule:
             self.next_run_at = now + self.SOONEST_AGAIN_SECONDS
 
 
-class ScheduleRunner:
-    """What a firing schedule DOES — the policy half of the clock.
-
-    ``wake`` is async (chat_id, event_dict) -> None: how a wakeup
-    reaches the chat's session. The host maps it to
-    Session.deliver_event.
-
-    ``roster`` is the host's, answering ``fire_context(chat_id)``: the
-    agents of the chat a row belongs to (a row names an agent by the
-    approval's ref, docs/system/agent-code.md), its trust level, and an
-    executor held to that chat's grants, Safety settings and audit
-    trail. A plain mapping — a test's — fires with ``executor`` at the
-    standard level instead."""
-
-    def __init__(self, roster: Any,
-                 executor: FunctionExecutor, wake: Callable):
-        self.roster = roster
-        self.executor = executor
-        self.wake = wake
-        self.logger = logging.getLogger(self.__class__.__name__)
-
-    async def fire(self, schedule: Schedule) -> Dict[str, Any]:
-        # A fire acts for the schedule's chat — the credential a
-        # networked platform picks by (chat/current.py).
-        token = CURRENT_CHAT.set(schedule.chat_id)
-        try:
-            return await self._fire(schedule)
-        finally:
-            CURRENT_CHAT.reset(token)
-
-    async def _fire(self, schedule: Schedule) -> Dict[str, Any]:
-        if schedule.mode == "wake":
-            await self.wake(schedule.chat_id, {
-                "event": "wakeup", "schedule_id": schedule.schedule_id,
-                "note": schedule.note,
-                **({"slept": True} if schedule.sleep else {}),
-            })
-            return {"status": "woke"}
-        return await self._fire_invoke(schedule)
-
-    @staticmethod
-    def schedulable(roster, function: str):
-        """(agent, error) — the manifest's word is the gate: a schedule
-        may only run what the author declared fit to run unattended,
-        and approval reviewed under that flag."""
-        agent = roster.get(function.split(".", 1)[0] if function else "")
-        declared = (agent.manifest.function(agent.declared(function))
-                    if agent is not None else None)
-        if declared is None:
-            return None, f"'{function}' is not a served function."
-        if declared[1].get("schedulable") is not True:
-            return None, (f"'{function}' is not schedulable — the "
-                          f"manifest does not declare it.")
-        return agent, ""
-
-    async def _fire_invoke(self, schedule: Schedule) -> Dict[str, Any]:
-        function = schedule.function
-        roster, executor, level = self.roster, self.executor, 1
-        context_for = getattr(self.roster, "fire_context", None)
-        if context_for is not None:
-            context = await context_for(schedule.chat_id)
-            roster, executor, level = (
-                context.roster, context.executor, context.chat_level)
-        agent, why = self.schedulable(roster, function)
-        if why:
-            return {"status": "error", "error": why}
-
-        result, status = await executor.invoke(
-            agent, function, schedule.inputs, chat_level=level)
-        outcome = {"status": status, "result": result}
-
-        if (
-            status == "success"
-            and schedule.wake_field
-            and isinstance(result, dict)
-            and result.get(schedule.wake_field)
-        ):
-            # The result is worth a mind: wake the assistant with it.
-            await self.wake(schedule.chat_id, {
-                "event": "wakeup", "schedule_id": schedule.schedule_id,
-                "function": function, "result": result,
-            })
-            outcome["woke"] = True
-        return outcome
-
-
 class Scheduler:
-    """The clock. Ticks the schedule rows and hands due ones to the
-    runner.
+    """The clock. Ticks the schedule rows and fires the due ones.
 
-    The rows are kept by a store the clock is not the only writer of —
-    the person pauses and deletes on a page — so the clock writes one
-    row at a time and only what it did to it:
+    The rows are kept by the platform (``services``), which the clock
+    is not the only writer of — the person pauses and deletes on a
+    page — so the clock writes one row at a time and only what it did
+    to it: ``load_schedules``, ``add_schedule``, ``schedule_ran`` (False
+    when the row is no longer kept), ``remove_schedule``.
 
-        load() -> [dict]            every row it may read now
-        add(row)                    a row the assistant set; raises
-                                    when the store will not take it
-        ran(row) -> bool            what a fire did to a row; False
-                                    when the row is no longer kept
-        remove(chat_id, schedule_id)
+    A fire acts for the schedule's chat through the ``host``: a wake
+    goes in by its inside door (``deliver_event``), and an invoke runs
+    with what the chat's contract allows (``fire_context``: its agents
+    by approval ref, its trust level, and an executor held to its
+    grants, Safety settings and audit trail).
     """
 
     #: A store's answer that says the chat itself is gone or no longer
     #: this process's to act for — not that a write failed.
     CHAT_GONE = (401, 403, 404)
 
-    def __init__(self, store, runner: ScheduleRunner,
+    def __init__(self, services, host,
                  clock: Callable[[], float] = time.time,
                  tick_seconds: float = 30.0):
-        self.store = store
-        self.runner = runner
+        self.services = services
+        self.host = host
         self.clock = clock
         self.tick_seconds = tick_seconds
         self.schedules: List[Schedule] = []
@@ -287,7 +199,7 @@ class Scheduler:
     # ------------------------------------------------------------------
     async def start(self) -> "Scheduler":
         self.schedules = [
-            Schedule.from_dict(row) for row in await self.store.load()
+            Schedule.from_dict(row) for row in await self.services.load_schedules()
         ]
         self._task = asyncio.get_running_loop().create_task(self._run())
         return self
@@ -324,7 +236,7 @@ class Scheduler:
         if not schedule.next_run_at:
             schedule.next_run_at = self.clock() + (
                 schedule.every_seconds or 0.0)
-        await self.store.add(schedule.to_dict())
+        await self.services.add_schedule(schedule.to_dict())
         self.schedules.append(schedule)
         return schedule
 
@@ -338,7 +250,7 @@ class Scheduler:
         schedule = self.find(schedule_id)
         if schedule is None:
             return
-        await self.store.remove(schedule.chat_id, schedule_id)
+        await self.services.remove_schedule(schedule.chat_id, schedule_id)
         self._drop(schedule_id)
 
     def forget_chat(self, chat_id: str) -> None:
@@ -430,7 +342,7 @@ class Scheduler:
         began = time.monotonic()
         try:
             try:
-                outcome = await self.runner.fire(schedule)
+                outcome = await self.fire(schedule)
                 if outcome.get("status") == "error":
                     self.logger.warning(
                         f"Schedule {schedule.schedule_id} refused: "
@@ -483,10 +395,68 @@ class Scheduler:
             self._firing.pop(schedule.schedule_id, None)
             self._firing_for.pop(schedule.schedule_id, None)
 
+    # ------------------------------------------------------------------
+    # What a fire does
+    # ------------------------------------------------------------------
+
+    async def fire(self, schedule: Schedule) -> Dict[str, Any]:
+        """One row's fire, as its chat: a wake reaches the chat's mind
+        by the inside door; an invoke runs the function with what the
+        chat's contract allows, and wakes the mind only when the result
+        is worth one."""
+        if schedule.mode == "wake":
+            await self.host.deliver_event(schedule.chat_id, {
+                "event": "wakeup", "schedule_id": schedule.schedule_id,
+                "note": schedule.note,
+                **({"slept": True} if schedule.sleep else {}),
+            })
+            return {"status": "woke"}
+        return await self._fire_invoke(schedule)
+
+    @staticmethod
+    def schedulable(roster, function: str):
+        """(agent, error) — the manifest's word is the gate: a schedule
+        may only run what the author declared fit to run unattended,
+        and approval reviewed under that flag."""
+        agent = roster.get(function.split(".", 1)[0] if function else "")
+        declared = (agent.manifest.function(agent.declared(function))
+                    if agent is not None else None)
+        if declared is None:
+            return None, f"'{function}' is not a served function."
+        if declared[1].get("schedulable") is not True:
+            return None, (f"'{function}' is not schedulable — the "
+                          f"manifest does not declare it.")
+        return agent, ""
+
+    async def _fire_invoke(self, schedule: Schedule) -> Dict[str, Any]:
+        function = schedule.function
+        context = await self.host.fire_context(schedule.chat_id)
+        agent, why = self.schedulable(context.roster, function)
+        if why:
+            return {"status": "error", "error": why}
+
+        result, status = await context.executor.invoke(
+            agent, function, schedule.inputs, chat_level=context.chat_level)
+        outcome = {"status": status, "result": result}
+
+        if (
+            status == "success"
+            and schedule.wake_field
+            and isinstance(result, dict)
+            and result.get(schedule.wake_field)
+        ):
+            # The result is worth a mind: wake the assistant with it.
+            await self.host.deliver_event(schedule.chat_id, {
+                "event": "wakeup", "schedule_id": schedule.schedule_id,
+                "function": function, "result": result,
+            })
+            outcome["woke"] = True
+        return outcome
+
     async def _write(self, schedule: Schedule) -> None:
         """What a fire did to one row, to the store."""
         try:
-            kept = await self.store.ran(schedule.to_dict())
+            kept = await self.services.schedule_ran(schedule.to_dict())
         except Exception as exc:
             if getattr(exc, "status", None) in self.CHAT_GONE:
                 self.logger.warning(
@@ -541,7 +511,7 @@ class ChatClock:
         function = str(spec.get("function") or "").strip()
         note = str(spec.get("note") or "").strip()
         if function:
-            _, why = ScheduleRunner.schedulable(self.roster, function)
+            _, why = Scheduler.schedulable(self.roster, function)
             if why:
                 return {"error": why}
             grants = self.grants() if self.grants is not None else None

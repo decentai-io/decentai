@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 
 from ai_runtime.execution.executor import FunctionExecutor
+from contracts.chat import agent_source
 from ai_runtime.sinks import ChatSinks
 from ai_runtime.tests.fixture_agents import load_agents
 from ai_runtime.execution.resources import ResourceAccess, ResourceDenied
@@ -1158,7 +1159,9 @@ class TestCodeProposed:
             return True
 
         executor = make_executor(propose=proposer)
-        propose = executor.surface.propose_for(self.agent(tmp_path), "coder.main.run", "c1")
+        agent = self.agent(tmp_path)
+        propose = executor.surface.propose_for(agent_source(
+            agent.agent_id, agent.manifest.name, "coder.main.run", call_id="c1"), None)
         assert run(propose({"language": "python", "code": "x = 1",
                             "purpose": "Sets x.",
                             "review": {"verdict": "agrees", "note": "Fine."}}))
@@ -1291,8 +1294,10 @@ class TestAFunctionThatRunsCode:
         executor = make_executor(propose=proposer, safety={
             "packages": "listed", "allowed_packages": ["titlecase"]})
         propose = executor.surface.propose_for(
-            agent, "coder.main.run", "c1", grant=__import__(
-                "ai_runtime.execution.code_grant", fromlist=["CodeGrant"]).CodeGrant())
+            agent_source(agent.agent_id, agent.manifest.name, "coder.main.run",
+                         call_id="c1"),
+            __import__("ai_runtime.execution.code_grant",
+                       fromlist=["CodeGrant"]).CodeGrant())
         with pytest.raises(Exception) as refused:
             run(propose({"language": "python", "code": "import humanize",
                          "purpose": "Says a number.", "packages": ["humanize"]}))

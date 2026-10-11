@@ -284,7 +284,7 @@ class TestWhileItWorks:
             await session.deliver_user("cancel it")
             await until(lambda: job.status == "cancelled")
             await session.wait_idle()
-            assert services.approvals[approval_id]["decision"] is None
+            assert services.approvals[approval_id]["answer"] is None
 
         run(scenario())
         assert ai_texts(services) == ["Cancelled the helper."]
@@ -451,12 +451,10 @@ class TestAChildsScreen:
         relay to the parent's socket, tagged with the child, and its
         browser is kept under the parent's conversation so the header's
         watch opens the one it drives."""
-        from ai_runtime.chat.session import ChildServices
         from sim.session_services import SimSessionServices
 
-        services = SimSessionServices()
-        child = ChildServices(services, "chat_1", "sub_x")
-        run(child.relay("sub_x", {"event": "screen_frame", "call_id": "c1"}))
+        parent, services = build([action(action="finish")])
+        run(parent._relay_for("sub_x", {"event": "screen_frame", "call_id": "c1"}))
         assert services.relayed_to == ["chat_1"]
         assert services.relayed == [{"event": "screen_frame", "call_id": "c1", "child": "sub_x"}]
 

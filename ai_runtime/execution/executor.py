@@ -87,8 +87,12 @@ class FunctionExecutor:
         grants=None,
         conversation: str = "",
         safety: Optional[Dict[str, Any]] = None,
+        job_id: str = "",
     ):
         self.provider = provider
+        #: The job every call of this executor runs for, unless a call
+        #: names its own: a helper's calls are its parent's job's.
+        self.job_id = str(job_id or "")
         #: The chat's doors, by name (ai_runtime/sinks.py): what a call
         #: may ask of the chat, and what is written about it. A door
         #: that is None has nobody behind it — a test, or a fire from
@@ -137,16 +141,20 @@ class FunctionExecutor:
         inputs: Dict[str, Any],
         chat_level: int = 1,
         call_id: str = "",
+        job_id: str = "",
     ) -> Tuple[Dict[str, Any], str]:
         """The gates, then the execution — and either way, the trail.
         ``call_id`` names the call for everything said about it — the
         caller's narration and the agent's own progress; minted here
-        when the caller brings none."""
+        when the caller brings none. ``job_id`` is the background job
+        the call runs for, where it runs for one: a card the call opens
+        parks that job, and not the mind."""
         started = time.monotonic()
         call_id = call_id or f"c_{uuid.uuid4().hex[:12]}"
+        job_id = job_id or self.job_id
         try:
             result, status = await self._invoke(agent, canonical_name, inputs,
-                                                chat_level, call_id)
+                                                chat_level, call_id, job_id)
         except asyncio.CancelledError:
             # Stopped from outside. The call still happened, as far as
             # it got, and the trail says so before the stop goes on.
@@ -198,6 +206,7 @@ class FunctionExecutor:
         inputs: Dict[str, Any],
         chat_level: int = 1,
         call_id: str = "",
+        job_id: str = "",
     ) -> Tuple[Dict[str, Any], str]:
         # The name arrives as the platform writes it (the approval's
         # ref); the manifest and the worker know the package's own
@@ -259,7 +268,7 @@ class FunctionExecutor:
         level = int(function_spec["permission_level"])
         if level > chat_level:
             approved = await self._request_approval(
-                agent, canonical_name, level, chat_level, inputs
+                agent, canonical_name, level, chat_level, inputs, job_id
             )
             if approved is None:
                 return {"error": (
@@ -271,7 +280,7 @@ class FunctionExecutor:
                 return self._denial(canonical_name, level)
 
         return await self._execute(
-            agent, function_spec, canonical_name, inputs, call_id
+            agent, function_spec, canonical_name, inputs, call_id, job_id
         )
 
     @staticmethod
@@ -392,6 +401,7 @@ class FunctionExecutor:
         canonical_name: str,
         inputs: Dict[str, Any],
         call_id: str = "",
+        job_id: str = "",
     ) -> Tuple[Dict[str, Any], str]:
         """Everything past the gates: the invocation in the agent's
         worker, output validation, and result storage.
@@ -434,7 +444,8 @@ class FunctionExecutor:
         context = CallContext(
             resources=access,
             **self.surface.for_call(agent, function_spec, canonical_name,
-                                    call_id, access, grant, displays),
+                                    call_id, access, grant, displays,
+                                    job_id or self.job_id),
         )
         if grant is not None:
             grant.context = context
@@ -856,14 +867,17 @@ class FunctionExecutor:
         level: int,
         chat_level: int,
         inputs: Dict[str, Any],
+        job_id: str = "",
     ) -> Optional[bool]:
         """Whether the person allowed it — or None when they could not
-        be asked at all, which is not their answer."""
+        be asked at all, which is not their answer. ``job_id`` names
+        the job the call runs for: that job is parked on the card."""
         if self.sinks.approve is None:
             return False
         try:
             return bool(await self.sinks.approve({
                 "agent_id": agent.agent_id,
+                "job_id": job_id,
                 # The id is what the platform routes by; the name is what
                 # the person deciding will recognise. An approval is one
                 # of the few places that wants both.

@@ -1,31 +1,41 @@
-"""The services contract over the backend's /app gateway.
+"""The platform, reached over the backend's /app gateway
+(docs/system/chat-session.md, docs/reference/session-door.md).
 
 One object for the host, holding one credential per chat: the dial
-hands it over (a key, never authority — docs/reference/session-door.md), and
-every call for that chat — or for a sub-assistant thread under it —
-carries it. What a chat may do is still only what ``contract`` answers.
+hands it over (a key, never authority), and every call names the chat
+it acts for — a chat, or a sub-assistant's thread under it — and
+carries that chat's credential. What a chat may do is still only what
+``contract`` answers. The sim (sim/session_services.py) is the same
+contract in memory; nothing that reasons can tell them apart.
+
+    backend = Backend(Gateway(url))
+    backend.grant(chat_id, credential)          at the dial
+    await backend.contract(chat_id)             what the chat may do
+    await backend.persist_message(chat_id, …)   the record
+    backend.resources(chat_id)                  an agent's data, files and
+                                                secrets, as the chat (resources.py)
+    await backend.open_card(chat_id, request)   a card on the record
 
 Two things the sim does in memory that a network makes explicit:
 
 - **A child's records** are addressed as ``<chat>/<thread>`` by the
-  runtime and as ``chat_id`` + ``thread`` by the backend
-  (docs/system/chat-session.md, child threads); the split happens here.
-- **Waiting on an approval** is not a request the backend holds open:
-  the decision arrives as the door's ``approval_decided`` frame, and
-  the session's ``resolve_approval`` settles the waiter here.
+  runtime and as ``chat_id`` + ``thread`` by the backend (child
+  threads); the split happens here. An agent's resources are the
+  conversation's, never a thread's.
+- **Waiting on a card** is not a request the backend holds open: the
+  answer arrives as the door's ``approval_decided`` or
+  ``question_answered`` frame, and the chat's cards (chat/cards.py)
+  settle their own waiter.
 """
 
 from __future__ import annotations
 
+import base64
 import logging
-import asyncio
 import secrets
 from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
-
-from ai_runtime.chat.current import CURRENT_CHAT
-from ai_runtime.services.provider import BackendProvider
 
 #: how much of a chat's conversation frames a fresh mind
 HISTORY_LIMIT = 100
@@ -89,14 +99,11 @@ class Gateway:
         await self._client.aclose()
 
 
-class BackendServices:
+class Backend:
     def __init__(self, gateway):
         self.gateway = gateway
         #: chat_id -> the delegation to call as, granted by the dial
         self.credentials: Dict[str, str] = {}
-        self._waiters: Dict[str, asyncio.Future] = {}
-        self.provider = BackendProvider(self)
-        self.schedules = BackendSchedules(self)
         self.logger = logging.getLogger(self.__class__.__name__)
 
     # -- credentials -----------------------------------------------------
@@ -122,15 +129,6 @@ class BackendServices:
         if thread:
             payload["thread"] = thread
         return await self.gateway.call(endpoint, payload, token)
-
-    async def call_current(self, endpoint: str, data: dict) -> dict:
-        """As whichever chat the running code acts for — the executor's
-        provider and the clock's fires never pass one."""
-        chat_id = CURRENT_CHAT.get("")
-        if not chat_id:
-            raise GatewayError("No chat is current for this call.")
-        # Resources are the conversation's, never a thread's.
-        return await self.call(self._split(chat_id)[0], endpoint, data)
 
     # -- the contract ----------------------------------------------------
     async def contract(self, chat_id: str) -> dict:
@@ -319,96 +317,45 @@ class BackendServices:
         seq = (answer or {}).get("seq")
         return seq if isinstance(seq, int) else None
 
-    # -- approvals -------------------------------------------------------
-    async def open_approval(self, chat_id: str, request: dict) -> str:
-        answer = await self.call(chat_id, "AI:Approval:Open",
-                                 {"request": request})
-        approval_id = str(answer.get("approval_id") or "")
-        self._waiters[approval_id] = asyncio.get_running_loop().create_future()
-        return approval_id
-
+    # -- cards -----------------------------------------------------------
     async def open_card(self, chat_id: str, request: dict) -> dict:
-        """A question card opened — and, for code the person's Safety
-        setting lets through, already settled by the platform:
-        ``{approval_id, settled}``, where ``settled`` is the answer it
-        gave, or '' when a person is to be asked."""
+        """A card opened on the record — an approval, a question, code,
+        a login, files: ``{approval_id, answer, by}``. ``answer`` is
+        None where a person is to be asked, and the platform's own
+        answer where the person's Safety setting let the card through
+        without showing it (code, and only code); ``by`` then says
+        ``platform``. The person's answer arrives at the door later,
+        and the chat's cards settle their own waiter."""
         answer = await self.call(chat_id, "AI:Approval:Open",
                                  {"request": request})
-        approval_id = str(answer.get("approval_id") or "")
         settled = str(answer.get("settled") or "")
-        if not settled:
-            self._waiters[approval_id] = asyncio.get_running_loop().create_future()
-        return {"approval_id": approval_id, "settled": settled}
+        return {"approval_id": str(answer.get("approval_id") or ""),
+                "answer": settled or None,
+                "by": "platform" if settled else ""}
 
-    async def wait_approval(self, approval_id: str) -> bool:
-        waiter = self._waiters.get(approval_id)
-        if waiter is None:
-            waiter = asyncio.get_running_loop().create_future()
-            self._waiters[approval_id] = waiter
-        try:
-            return bool(await waiter)
-        finally:
-            self._waiters.pop(approval_id, None)
-
-    async def resolve_approval(self, approval_id: str,
-                               decision: bool) -> bool:
-        waiter = self._waiters.get(approval_id)
-        if waiter is None or waiter.done():
-            return False
-        waiter.set_result(bool(decision))
-        return True
-
-    async def wait_answer(self, approval_id: str):
-        """A question's answer, as the question_answered frame brings it
-        — the same waiter a decision uses, carrying words, not a yes."""
-        waiter = self._waiters.get(approval_id)
-        if waiter is None:
-            waiter = asyncio.get_running_loop().create_future()
-            self._waiters[approval_id] = waiter
-        try:
-            return await waiter
-        finally:
-            self._waiters.pop(approval_id, None)
-
-    async def resolve_answer(self, approval_id: str, answer: Any) -> bool:
-        """Words, or — a files question — the chosen files as a list."""
-        waiter = self._waiters.get(approval_id)
-        if waiter is None or waiter.done():
-            return False
-        waiter.set_result(answer if isinstance(answer, (list, dict)) else str(answer))
-        return True
-
-    async def pending_questions(self, chat_id: str) -> list:
-        """The question cards still open on this chat's record."""
+    async def pending_cards(self, chat_id: str, kind: str = "") -> list:
+        """Every card still open on this chat's record — of one kind,
+        where ``kind`` names it. What a kill expires; what a session
+        opening closes as a dead process's."""
         try:
             answer = await self.call(chat_id, "AI:Approval:List", {})
         except Exception as exc:
             self.logger.warning(f"Pending cards of {chat_id} unread: {exc}")
             return []
         return [card for card in (answer or {}).get("approvals") or []
-                if isinstance(card, dict) and card.get("kind") == "question"]
+                if isinstance(card, dict) and (not kind or card.get("kind") == kind)]
 
-    async def pending_cards(self, chat_id: str) -> list:
-        """Every card still open on this chat's record, whatever its
-        kind — what a kill expires."""
-        try:
-            answer = await self.call(chat_id, "AI:Approval:List", {})
-        except Exception as exc:
-            self.logger.warning(f"Pending cards of {chat_id} unread: {exc}")
-            return []
-        return [card for card in (answer or {}).get("approvals") or []
-                if isinstance(card, dict)]
-
-    async def expire_approval(self, chat_id: str, approval_id: str) -> None:
-        """A question nobody answered in time: closed on the record, so
-        a late answer is refused rather than lost."""
+    async def expire_card(self, chat_id: str, approval_id: str) -> None:
+        """A card nobody answered in time, or nobody will hear the
+        answer to: closed on the record, so a late answer is refused
+        rather than lost."""
         try:
             await self.call(chat_id, "AI:Approval:Expire",
                             {"approval_id": approval_id})
         except Exception as exc:
-            self.logger.warning(f"Question {approval_id} not expired: {exc}")
+            self.logger.warning(f"Card {approval_id} not expired: {exc}")
 
-    # -- storage ---------------------------------------------------------
+    # -- storage and the trail ---------------------------------------------
     async def record_audit(self, chat_id: str, event: dict) -> None:
         """One execution on the trail. A witness, never a gate: a
         record that will not write is logged and the work stands."""
@@ -432,17 +379,16 @@ class BackendServices:
         return (answer.get("storage") or {}).get("data")
 
     # -- skills, memories, plan ------------------------------------------
-    async def list_skills(self) -> List[dict]:
-        answer = await self.call_current("Skills:Skill:List", {})
+    async def list_skills(self, chat_id: str) -> List[dict]:
+        answer = await self.call(chat_id, "Skills:Skill:List", {})
         return [{
             "ref": row.get("resource_ref"),
             "title": (row.get("keys") or {}).get("title"),
             "summary": (row.get("keys") or {}).get("summary"),
         } for row in answer.get("resources") or []]
 
-    async def read_skill(self, ref: str) -> Optional[dict]:
-        answer = await self.call_current("Skills:Skill:Get",
-                                         {"resource_ref": ref})
+    async def read_skill(self, chat_id: str, ref: str) -> Optional[dict]:
+        answer = await self.call(chat_id, "Skills:Skill:Get", {"resource_ref": ref})
         resource = answer.get("resource")
         if not isinstance(resource, dict):
             return None
@@ -467,58 +413,173 @@ class BackendServices:
         answer = await self.call(chat_id, "AI:Chat:Title", {"title": title})
         return bool((answer or {}).get("kept"))
 
+    # -- an agent's resources, as the chat ----------------------------------
+    def resources(self, chat_id: str) -> "ChatResources":
+        """What an agent's functions read and write (execution/resources.py),
+        as this chat's delegation. The conversation's, never a thread's:
+        a helper's agents work on the same records as the chat's."""
+        return ChatResources(self, self._split(chat_id)[0])
 
-class BackendSchedules:
-    """The clock's rows, kept by the platform per chat. The clock reads
-    every chat this process holds a credential for, and writes one row
-    at a time as the chat the row belongs to. Rows for a chat become
-    loadable when its credential arrives (``load_for``, which the host
-    feeds to the clock's ``adopt``)."""
+    # -- the clock's rows -------------------------------------------------
+    # Kept by the platform per chat. The clock reads every chat this
+    # process holds a credential for, and writes one row at a time as
+    # the chat the row belongs to; a chat's rows become loadable when
+    # its credential arrives (``load_schedules_for``, which the host
+    # feeds to the clock).
 
-    def __init__(self, services: BackendServices):
-        self.services = services
-
-    async def load_for(self, chat_id: str) -> List[Dict[str, Any]]:
-        answer = await self.services.call(chat_id, "AI:Schedule:Load")
+    async def load_schedules_for(self, chat_id: str) -> List[Dict[str, Any]]:
+        answer = await self.call(chat_id, "AI:Schedule:Load")
         return list(answer.get("rows") or [])
 
-    async def load(self) -> List[Dict[str, Any]]:
+    async def load_schedules(self) -> List[Dict[str, Any]]:
         rows: List[Dict[str, Any]] = []
-        for chat_id in list(self.services.credentials):
+        for chat_id in list(self.credentials):
             try:
-                rows.extend(await self.load_for(chat_id))
+                rows.extend(await self.load_schedules_for(chat_id))
             except Exception as exc:
-                self.services.logger.warning(
-                    f"Schedules for {chat_id} not loaded: {exc}")
+                self.logger.warning(f"Schedules for {chat_id} not loaded: {exc}")
         return rows
 
-    async def add(self, row: Dict[str, Any]) -> None:
-        await self._as(row.get("chat_id"), "AI:Schedule:Add", {"row": row})
+    async def add_schedule(self, row: Dict[str, Any]) -> None:
+        await self._write_row(row.get("chat_id"), "AI:Schedule:Add", {"row": row})
 
-    async def ran(self, row: Dict[str, Any]) -> bool:
+    async def schedule_ran(self, row: Dict[str, Any]) -> bool:
         """False when the platform no longer keeps the row — the person
         deleted it."""
-        answer = await self._as(
+        answer = await self._write_row(
             row.get("chat_id"), "AI:Schedule:Ran", {"row": row})
         return not answer.get("gone")
 
-    async def remove(self, chat_id: str, schedule_id: str) -> None:
-        await self._as(
+    async def remove_schedule(self, chat_id: str, schedule_id: str) -> None:
+        await self._write_row(
             chat_id, "AI:Schedule:Remove", {"schedule_id": schedule_id})
 
-    async def _as(self, chat_id, endpoint: str, data: dict) -> dict:
+    async def _write_row(self, chat_id, endpoint: str, data: dict) -> dict:
         """One write, as the chat the row belongs to. A key the
         platform no longer accepts is dropped: nothing can be written
         as that chat until its next dial brings a new one."""
         chat_id = str(chat_id or "")
-        sent_with = self.services.credentials.get(chat_id)
+        sent_with = self.credentials.get(chat_id)
         try:
-            return await self.services.call(chat_id, endpoint, data)
+            return await self.call(chat_id, endpoint, data)
         except GatewayError as exc:
             # Only the key this write was sent with. One renewed while
             # the write was on its way is a different key, which nothing
             # has refused.
-            if exc.status == 401 and \
-                    self.services.credentials.get(chat_id) == sent_with:
-                self.services.revoke(chat_id)
+            if exc.status == 401 and self.credentials.get(chat_id) == sent_with:
+                self.revoke(chat_id)
             raise
+
+
+class ChatResources:
+    """An agent's data, files and secrets, as one chat's delegation
+    over the gateway. Every operation is made as the person — the
+    backend enforces visibility, ownership and encryption; this only
+    puts the provider protocol (sim/resources.py is the in-process
+    reference) onto the gateway's endpoints."""
+
+    def __init__(self, backend: Backend, chat_id: str):
+        self.backend = backend
+        self.chat_id = chat_id
+
+    async def _call(self, endpoint: str, data: dict) -> dict:
+        return await self.backend.call(self.chat_id, endpoint, data)
+
+    # -- secrets ---------------------------------------------------------
+    async def use_secret(self, resource_id: str,
+                         ref: Optional[str] = None) -> Dict[str, Any]:
+        """By canonical category — the backend resolves the bound
+        instance — or by a ref among the category's instances, which the
+        backend checks belongs to this slot. Keys and values arrive
+        merged into one flat map: the definition decides which fields
+        are encrypted, and the function needs the whole credential
+        either way."""
+        payload: Dict[str, Any] = {"resource_id": resource_id}
+        if ref:
+            payload["resource_ref"] = ref
+        result = await self._call("Secrets:Secret:Use", payload)
+        return {**(result.get("keys") or {}), **(result.get("values") or {})}
+
+    async def list_secrets(self, resource_id: str) -> List[Dict[str, Any]]:
+        """The category's instances this slot may use, plain half only."""
+        result = await self._call("Secrets:Secret:Instances",
+                                  {"resource_id": resource_id})
+        return list(result.get("instances") or [])
+
+    # -- data ------------------------------------------------------------
+    async def list_data(self, resource_id, filters) -> List[Dict[str, Any]]:
+        payload: Dict[str, Any] = {"resource_id": resource_id}
+        if filters:
+            payload["keys"] = dict(filters)
+        result = await self._call("Data:Record:List", payload)
+        return result.get("resources") or []
+
+    # A call by reference names the slot it is for: the backend answers
+    # only a document kept under that slot, so an agent never reaches
+    # another agent's records, or the person's own, by guessing a ref.
+    # A read with no slot (None) is of a ref the call was handed, and is
+    # answered as the person would be (execution/resources.py).
+
+    @staticmethod
+    def _by_ref(ref, slot) -> Dict[str, Any]:
+        return {"resource_ref": ref, **({"slot": slot} if slot else {})}
+
+    async def read_data(self, resource_id, ref) -> Dict[str, Any]:
+        result = await self._call("Data:Record:Get", self._by_ref(ref, resource_id))
+        return result.get("resource") or {}
+
+    async def create_data(self, resource_id, keys, values) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {
+            "resource_id": resource_id, "keys": dict(keys or {}),
+        }
+        if values:
+            payload["values"] = dict(values)
+        result = await self._call("Data:Record:Create", payload)
+        return result.get("resource") or {}
+
+    async def update_data(self, resource_id, ref, keys, values) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {"resource_ref": ref, "slot": resource_id}
+        if keys:
+            payload["keys"] = dict(keys)
+        if values:
+            payload["values"] = dict(values)
+        result = await self._call("Data:Record:Update", payload)
+        return result.get("resource") or {}
+
+    async def delete_data(self, resource_id, ref) -> bool:
+        result = await self._call("Data:Record:Delete",
+                                  {"resource_ref": ref, "slot": resource_id})
+        return bool(result.get("deleted"))
+
+    # -- files -----------------------------------------------------------
+    async def list_files(self, resource_id) -> List[Dict[str, Any]]:
+        result = await self._call("Files:File:List",
+                                  {"keys": {"category": resource_id}})
+        return result.get("resources") or []
+
+    async def read_file(self, resource_id, ref) -> Dict[str, Any]:
+        result = await self._call(
+            "Files:File:Download",
+            {**self._by_ref(ref, resource_id), "encoding": "base64"})
+        # The bytes, as bytes: the mediated access decides what a
+        # function sees (text when they decode, base64 always). Decoding
+        # here with replacement is how a workbook once became holes.
+        record = {k: v for k, v in result.items() if k != "content_base64"}
+        if result.get("content_base64") is not None:
+            record["content"] = base64.b64decode(result["content_base64"])
+        return record
+
+    async def create_file(self, resource_id, filename, content) -> Dict[str, Any]:
+        raw = content.encode("utf-8") if isinstance(content, str) else content
+        result = await self._call("Files:File:Upload", {
+            "filename": filename,
+            "content_base64": base64.b64encode(raw).decode("ascii"),
+            "folder": "agents",
+            "meta": {"category": resource_id},
+        })
+        return result.get("resource") or {}
+
+    async def delete_file(self, resource_id, ref) -> bool:
+        result = await self._call("Files:File:Delete",
+                                  {"resource_ref": ref, "slot": resource_id})
+        return bool(result.get("deleted"))

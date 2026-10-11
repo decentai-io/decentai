@@ -12,12 +12,12 @@ from __future__ import annotations
 
 import logging
 import asyncio
+from functools import partial
 from pathlib import Path
 import tempfile
 from types import SimpleNamespace
 from typing import Any, Dict, Optional
 
-from ai_runtime.chat.current import CURRENT_CHAT
 from ai_runtime.mind.router import AgentRouter
 from ai_runtime.agents.pool import WorkerPool
 from ai_runtime.chat import Session
@@ -45,19 +45,6 @@ INBOUND_EVENTS = {"user_message", "approval_decided", "question_answered",
                   "screen_open", "agents_changed"}
 
 
-class ServingRoster:
-    """What the clock reaches the host through. ``fire_context`` is
-    what a fire of one chat runs with — its contract's agents, by
-    approval ref, materialized, and an executor held to that chat's
-    grants."""
-
-    def __init__(self, host):
-        self.host = host
-
-    async def fire_context(self, chat_id: str):
-        return await self.host.fire_context(chat_id)
-
-
 class MissingModel:
     """The connector a chat without a model thinks with: it refuses in
     the contract's own words, and the beat's existing catch turns that
@@ -69,44 +56,6 @@ class MissingModel:
 
     async def chat(self, messages, max_tokens=None, tools=None) -> str:
         raise NoModel(self.sentence)
-
-
-class RelayingServices:
-    """The services with one method decorated: an emission writes
-    through to the durable record first, then reaches the attached
-    socket, if any. Delivery is a courtesy; the record is the
-    services'. Every other attribute passes through untouched."""
-
-    def __init__(self, services, deliver):
-        self._services = services
-        self._deliver = deliver
-        #: One emission at a time per chat, from its record to its
-        #: delivery: two that overlap would otherwise reach the page in
-        #: the order their records answered, and the page drops a frame
-        #: whose sequence is below one it has seen.
-        self._turns: Dict[str, asyncio.Lock] = {}
-
-    def __getattr__(self, name):
-        return getattr(self._services, name)
-
-    async def relay(self, chat_id: str, event: dict) -> None:
-        """Delivery alone, no record: the present tense of a screen an
-        agent shows. Nothing to replay, so nothing to reconcile."""
-        await self._deliver(chat_id, event)
-
-    async def emit(self, chat_id: str, event: dict) -> Optional[int]:
-        async with self._turns.setdefault(chat_id, asyncio.Lock()):
-            seq = await self._services.emit(chat_id, event)
-            # The frame the audience hears carries the sequence its
-            # record got, so replay and live delivery name one event
-            # the same way and a client can tell a repeat from news. A
-            # frame that was not recorded travels without one — it
-            # cannot be replayed, so there is nothing to reconcile it
-            # against.
-            await self._deliver(
-                chat_id,
-                {**event, "seq": seq} if isinstance(seq, int) else event)
-        return seq
 
 
 class SessionHost:
@@ -128,6 +77,11 @@ class SessionHost:
         self.sessions: Dict[str, Session] = {}
         self.sockets: Dict[str, Any] = {}
         self._builds: Dict[str, asyncio.Lock] = {}
+        #: One emission at a time per chat, from its record to its
+        #: delivery: two that overlap would otherwise reach the page in
+        #: the order their records answered, and the page drops a frame
+        #: whose sequence is below one it has seen.
+        self._emitting: Dict[str, asyncio.Lock] = {}
         #: chat -> how many deliveries are on their way in to its session
         self._busy: Dict[str, int] = {}
         #: which agents a turn is shown when there are more than fit,
@@ -208,7 +162,9 @@ class SessionHost:
             chat_id,
             roster,
             self._connector(contract.get("llm"), contract.get("llm_missing")),
-            RelayingServices(self.services, self._relay),
+            self.services,
+            emit=partial(self._emit, chat_id),
+            relay=partial(self._relay, chat_id),
             workers=self.workers,
             grants=FunctionGrants(contract.get("grants")),
             chat_level=self._chat_level(contract),
@@ -249,20 +205,20 @@ class SessionHost:
             roster=await self.agents.for_chat(chat_id, contract),
             chat_level=self._chat_level(contract),
             executor=FunctionExecutor(
-                provider=self.services.provider,
+                provider=self.services.resources(chat_id),
                 grants=FunctionGrants(contract.get("grants")),
                 safety=contract.get("safety"),
-                # A fire acts for its schedule's chat (chat/current.py):
-                # what it offers to show is kept there, what its agent
-                # says is posted there, and what it asks is asked there
-                # — a card in the chat, waited on as one asked in a live
-                # call is. The chat's other doors stay shut: a fire has
-                # no mind, and nobody stands behind an approval for it.
+                # A fire acts for its schedule's chat: what it offers to
+                # show is kept there, what its agent says is posted
+                # there, and what it asks is asked there — a card in the
+                # chat, waited on as one asked in a live call is. The
+                # chat's other doors stay shut: a fire has no mind, and
+                # nobody stands behind an approval for it.
                 sinks=ChatSinks(
                     audit=audit,
-                    store=self.store_current,
-                    post=self.agent_post,
-                    ask=self.agent_ask,
+                    store=partial(self.services.store_result, chat_id),
+                    post=partial(self.agent_post, chat_id),
+                    ask=partial(self.agent_ask, chat_id),
                 ),
                 # The process's one pool: an agent has one worker here,
                 # whoever calls it.
@@ -373,7 +329,7 @@ class SessionHost:
                 # that are new: a pause or a delete whose word never
                 # reached this process is caught up with here.
                 self.clock.replace_for(
-                    chat_id, await self.services.schedules.load_for(chat_id))
+                    chat_id, await self.services.load_schedules_for(chat_id))
             except Exception as exc:
                 self.logger.warning(
                     f"Schedules for {chat_id} not loaded: {exc}")
@@ -581,7 +537,7 @@ class SessionHost:
             return
         try:
             count = self.clock.replace_for(
-                chat_id, await self.services.schedules.load_for(chat_id))
+                chat_id, await self.services.load_schedules_for(chat_id))
         except Exception as exc:
             self.logger.warning(f"Schedules for {chat_id} not reloaded: {exc}")
             return
@@ -600,45 +556,46 @@ class SessionHost:
                 await self.session(chat_id)
         self._schedule_reap(chat_id)
 
-    async def agent_post(self, text: str, source: Dict[str, Any],
+    async def agent_post(self, chat_id: str, text: str, source: Dict[str, Any],
                          parts: list) -> bool:
         """An agent speaking from an unattended fire — the clock running
-        a schedulable function. It belongs to the chat the fire acts for
-        (chat/current.py); with none, it has nowhere to go."""
-        chat_id = CURRENT_CHAT.get()
-        if not chat_id:
-            return False
+        a schedulable function — in the chat the fire acts for."""
         session = await self.session(chat_id)
         await session.agent_post(text, source, parts)
         self._schedule_reap(chat_id)
         return True
 
-    async def agent_ask(self, question: str, choices: list,
+    async def agent_ask(self, chat_id: str, question: str, choices: list,
                         source: Dict[str, Any], expects: str = ""):
         """An agent asking the person from an unattended fire: a card
         in the chat the fire acts for, answered whenever the person
-        next looks — or None after a day, or with no chat to ask in.
-        The session is held while the card waits (``_reap``)."""
-        chat_id = CURRENT_CHAT.get()
-        if not chat_id:
-            return None
+        next looks — or None after a day. The session is held while the
+        card waits (``_reap``)."""
         session = await self.session(chat_id)
         try:
             return await session.agent_ask(question, choices, source, expects)
         finally:
             self._schedule_reap(chat_id)
 
-    async def store_current(self, source: str, result: dict):
-        """A fire's result, kept in the chat it acts for — so what it
-        offers to show can be shown there. None with no chat."""
-        chat_id = CURRENT_CHAT.get()
-        if not chat_id:
-            return None
-        return await self.services.store_result(chat_id, source, result)
-
     # ------------------------------------------------------------------
     # Emissions out
     # ------------------------------------------------------------------
+
+    async def _emit(self, chat_id: str, event: dict) -> Optional[int]:
+        """A chat's emission: written through to the durable record
+        first, then delivered to the attached socket, if any. Delivery
+        is a courtesy; the record is the platform's."""
+        async with self._emitting.setdefault(chat_id, asyncio.Lock()):
+            seq = await self.services.emit(chat_id, event)
+            # The frame the audience hears carries the sequence its
+            # record got, so replay and live delivery name one event
+            # the same way and a client can tell a repeat from news. A
+            # frame that was not recorded travels without one — it
+            # cannot be replayed, so there is nothing to reconcile it
+            # against.
+            await self._relay(
+                chat_id, {**event, "seq": seq} if isinstance(seq, int) else event)
+        return seq
 
     async def _relay(self, chat_id: str, event: dict) -> None:
         websocket = self.sockets.get(chat_id)
