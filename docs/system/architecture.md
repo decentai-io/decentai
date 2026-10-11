@@ -198,7 +198,7 @@ message can be refused.
    contract, as the turn begins (`Settings:Llm:Use`), and is in the
    runtime's memory, in plain, while it is used. Here the action is
    `invoke note.note.save`.
-6. **The executor's gates** (`FunctionExecutor._invoke`,
+6. **The executor's gates** (`FunctionExecutor._gates`,
    `ai_runtime/execution/executor.py`), in order.
    **Decision 4:** the function is one the approved manifest declares;
    the chat's grants reach it; references in the inputs resolve; the

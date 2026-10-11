@@ -138,23 +138,60 @@ class FunctionExecutor:
         when the caller brings none. ``job_id`` is the background job
         the call runs for, where it runs for one: a card the call opens
         parks that job, and not the mind."""
-        started = time.monotonic()
         call_id = call_id or f"c_{uuid.uuid4().hex[:12]}"
-        job_id = job_id or self.job_id
+        return await self._witnessed(
+            agent, canonical_name, inputs, chat_level, call_id,
+            self._gates(agent, canonical_name, inputs, chat_level, call_id,
+                        job_id or self.job_id))
+
+    async def resume_invoke(
+        self,
+        agent: InstalledAgent,
+        parked: ParkedInvocation,
+        expected_hash: str,
+        decision: str,
+        repark: Optional[Callable] = None,
+    ) -> Tuple[Dict[str, Any], str]:
+        """A parked invocation completed on a fresh connection — the
+        gates again, then the trail.
+
+        Every gate re-runs against CURRENT state: the grants of this
+        connection's scope, the recomputed action hash binding the
+        approved inputs to what executes, and the current manifest's
+        input schema. References were resolved and defaults applied
+        before the original park, so neither runs again — the hash
+        pins those exact values.
+
+        ``decision`` is the backend's verdict: approve, deny, expired,
+        or pending — pending re-parks via ``repark`` (an async () ->
+        bool for the remaining window)."""
+        call_id = f"c_{uuid.uuid4().hex[:12]}"
+        return await self._witnessed(
+            agent, parked.function, parked.inputs, parked.chat_level, call_id,
+            self._gates(agent, parked.function, parked.inputs,
+                        parked.chat_level, call_id, "",
+                        resumed=(parked, expected_hash, decision, repark)),
+            resumed=True)
+
+    async def _witnessed(self, agent: InstalledAgent, canonical_name: str,
+                         inputs: Dict[str, Any], chat_level: int, call_id: str,
+                         work, resumed: bool = False) -> Tuple[Dict[str, Any], str]:
+        """The call, and its line on the trail however it ends: a
+        result, a fault on the platform's own side (``_broke``), or a
+        stop from outside — which is the one thing raised, after the
+        trail says the call happened as far as it got."""
+        started = time.monotonic()
         try:
-            result, status = await self._invoke(agent, canonical_name, inputs,
-                                                chat_level, call_id, job_id)
+            result, status = await work
         except asyncio.CancelledError:
-            # Stopped from outside. The call still happened, as far as
-            # it got, and the trail says so before the stop goes on.
             await self._witness_cancelled(
                 agent, canonical_name, inputs, chat_level, started,
-                reached=self._reached.pop(call_id, None))
+                resumed=resumed, reached=self._reached.pop(call_id, None))
             raise
         except Exception as exc:
             result, status = self._broke(canonical_name, exc)
         await self._record(agent, canonical_name, inputs, chat_level,
-                           result, status, started,
+                           result, status, started, resumed=resumed,
                            reached=self._reached.pop(call_id, None))
         return result, status
 
@@ -188,15 +225,22 @@ class FunctionExecutor:
         except Exception as exc:
             self.logger.warning(f"Cancelled call not recorded: {exc}")
 
-    async def _invoke(
+    async def _gates(
         self,
         agent: InstalledAgent,
         canonical_name: str,
         inputs: Dict[str, Any],
-        chat_level: int = 1,
-        call_id: str = "",
-        job_id: str = "",
+        chat_level: int,
+        call_id: str,
+        job_id: str,
+        resumed: Optional[tuple] = None,
     ) -> Tuple[Dict[str, Any], str]:
+        """The gates in order, then ``_execute``. ``resumed`` is a
+        parked call coming back — ``(parked, expected_hash, decision,
+        repark)`` — which differs in two places: references and
+        defaults were settled before the card and are not touched
+        again, and the hash binds the inputs to the ones the person
+        saw; and its approval is the card's decision, not a new card."""
         # The name arrives as the platform writes it (the approval's
         # ref); the manifest and the worker know the package's own
         # (agents/approved.py). Grants, the trace and every message
@@ -215,17 +259,18 @@ class FunctionExecutor:
                 "not_permitted": True,
             }, "error"
 
-        # Reference inputs resolve to their stored values BEFORE schema
-        # validation — the function sees real data, verified end to end.
-        if self.sinks.read_result is not None:
-            inputs, reference_error = await self._resolve_references(inputs)
-            if reference_error:
-                return {
-                    "error": "Reference input could not be resolved: "
-                             + reference_error,
-                }, "error"
-
-        inputs = self._apply_defaults(function_spec.get("inputs") or {}, inputs)
+        if resumed is None:
+            # Reference inputs resolve to their stored values BEFORE
+            # schema validation — the function sees real data, verified
+            # end to end.
+            if self.sinks.read_result is not None:
+                inputs, reference_error = await self._resolve_references(inputs)
+                if reference_error:
+                    return {
+                        "error": "Reference input could not be resolved: "
+                                 + reference_error,
+                    }, "error"
+            inputs = self._apply_defaults(function_spec.get("inputs") or {}, inputs)
         if not self._sayable(inputs):
             # NaN and Infinity are numbers to Python and to no schema,
             # store or trail: a model's reply may hold one, and a call
@@ -249,13 +294,25 @@ class FunctionExecutor:
                 f"'{canonical_name}' must be told its {unnamed}: what a "
                 f"call acts on has to be named for it to be permitted."
             )}, "error"
+        # A resumed call is judged against THIS connection's grants: an
+        # approval given while a person could act on one notebook must
+        # not execute after that entitlement was narrowed.
         if self.grants is not None and not self.grants.allows(
             canonical_name, scopes
         ):
             return self._out_of_scope(canonical_name, scopes)
 
         level = int(function_spec["permission_level"])
-        if level > chat_level:
+        if resumed is not None:
+            parked, expected_hash, decision, repark = resumed
+            if parked.hash() != expected_hash:
+                return {"error": ("Stored action does not match its "
+                                  "approval; execution blocked.")}, "error"
+            if decision == "pending":
+                decision = "approve" if await self._reparked(repark) else "deny"
+            if decision != "approve":
+                return self._denial(canonical_name, level)
+        elif level > chat_level:
             approved = await self._request_approval(
                 agent, canonical_name, level, chat_level, inputs, job_id
             )
@@ -271,6 +328,20 @@ class FunctionExecutor:
         return await self._execute(
             agent, function_spec, canonical_name, inputs, call_id, job_id
         )
+
+    async def _reparked(self, repark: Optional[Callable]) -> bool:
+        """A card still pending when its chat came back: parked again
+        for the rest of its window, and its answer. No way to re-park
+        is a no."""
+        if repark is None:
+            return False
+        try:
+            return bool(await repark())
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            self.logger.error(f"Re-park failed: {exc}")
+            return False
 
     @staticmethod
     def _scope_values(
@@ -616,124 +687,6 @@ class FunctionExecutor:
         if isinstance(value, (int, float, bool)) or value is None:
             return value
         return str(value)[: cls.OUTLINE_STRING_MAX]
-
-    async def resume_invoke(
-        self,
-        agent: InstalledAgent,
-        parked: ParkedInvocation,
-        expected_hash: str,
-        decision: str,
-        repark: Optional[Callable] = None,
-    ) -> Tuple[Dict[str, Any], str]:
-        """A parked invocation completed on a fresh connection — the
-        gates again, then the trail."""
-        started = time.monotonic()
-        call_id = f"c_{uuid.uuid4().hex[:12]}"
-        try:
-            result, status = await self._resume_invoke(
-                agent, parked, expected_hash, decision, repark, call_id)
-        except asyncio.CancelledError:
-            await self._witness_cancelled(
-                agent, parked.function, parked.inputs, parked.chat_level,
-                started, resumed=True,
-                reached=self._reached.pop(call_id, None))
-            raise
-        except Exception as exc:
-            result, status = self._broke(parked.function, exc)
-        await self._record(agent, parked.function, parked.inputs,
-                           parked.chat_level, result, status, started,
-                           resumed=True,
-                           reached=self._reached.pop(call_id, None))
-        return result, status
-
-    async def _resume_invoke(
-        self,
-        agent: InstalledAgent,
-        parked: ParkedInvocation,
-        expected_hash: str,
-        decision: str,
-        repark: Optional[Callable] = None,
-        call_id: str = "",
-    ) -> Tuple[Dict[str, Any], str]:
-        """A parked invocation completed on a fresh connection.
-
-        Every gate re-runs against CURRENT state: the grants of this
-        connection's scope, the recomputed action hash binding the
-        approved inputs to what executes, and the current manifest's
-        input schema. References were resolved and defaults applied
-        before the original park, so neither runs again — the hash
-        pins those exact values.
-
-        ``decision`` is the backend's verdict: approve, deny, expired,
-        or pending — pending re-parks via ``repark`` (an async () ->
-        bool for the remaining window)."""
-        canonical_name = parked.function
-        declared = agent.manifest.function(agent.declared(canonical_name))
-        if declared is None:
-            return {"error": f"Unknown function '{canonical_name}'"}, "error"
-        _, function_spec = declared
-
-        if self.grants is not None and not self.grants.may_reach(canonical_name):
-            return {
-                "error": (
-                    f"'{canonical_name}' is not permitted for this chat — "
-                    f"the delegation does not grant it."
-                ),
-                "not_permitted": True,
-            }, "error"
-
-        # Re-judged against THIS connection's grants: an approval given
-        # while a person could act on one notebook must not execute after
-        # that entitlement was narrowed.
-        resumed_scopes = self._scope_values(
-            agent, function_spec, parked.inputs
-        )
-        if self._scope_unjudged(resumed_scopes) or self._scope_unnamed(
-                function_spec, resumed_scopes):
-            return {"error": (
-                f"'{canonical_name}' must be told what it acts on: the "
-                f"stored call names no value for it."
-            )}, "error"
-        if self.grants is not None and not self.grants.allows(
-            canonical_name, resumed_scopes
-        ):
-            return self._out_of_scope(canonical_name, resumed_scopes)
-
-        if action_hash(
-            parked.agent_id, parked.function, parked.inputs
-        ) != expected_hash:
-            return {
-                "error": (
-                    "Stored action does not match its approval; "
-                    "execution blocked."
-                ),
-            }, "error"
-
-        schema_error = self._validate(
-            function_spec.get("inputs"), parked.inputs
-        )
-        if schema_error:
-            return {"error": f"Invalid inputs: {schema_error}"}, "error"
-
-        if decision == "pending":
-            approved = False
-            if repark is not None:
-                try:
-                    approved = bool(await repark())
-                except asyncio.CancelledError:
-                    raise
-                except Exception as exc:
-                    self.logger.error(f"Re-park failed: {exc}")
-            decision = "approve" if approved else "deny"
-
-        if decision != "approve":
-            return self._denial(
-                canonical_name, int(function_spec["permission_level"])
-            )
-
-        return await self._execute(
-            agent, function_spec, canonical_name, parked.inputs, call_id
-        )
 
     @staticmethod
     def _denial(canonical_name: str, level: int) -> Tuple[Dict[str, Any], str]:

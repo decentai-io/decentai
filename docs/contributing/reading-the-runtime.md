@@ -233,7 +233,7 @@ Tests: `ai_runtime/tests/test_assistant.py`,
 ## 5. Execution: the gates, then the worker
 
 `execution/executor.py`, class `FunctionExecutor`. It is built from
-the provider, the grants and the chat's `ChatSinks`. `_invoke` is the
+the provider, the grants and the chat's `ChatSinks`. `_gates` is the
 most important sixty lines in the runtime — every call an agent ever
 runs passes through it, in this order:
 
@@ -273,11 +273,13 @@ and the other end of the wire in `decentai_sdk/worker.py`.
 Check:
 
 - No path reaches `_execute` around the gates: `resume_invoke` (an
-  approved card) checks again that the agent may be reached, that the
-  grant allows the call, that the inputs are the ones the card showed
-  (by their hash) and that they fit the schema. It does not resolve
-  references or apply defaults again: those were settled before the
-  card.
+  approved card) runs the same `_gates`, with `resumed` set, which
+  differs in two places: it does not resolve references or apply
+  defaults again, since those were settled before the card, and it
+  checks that the inputs are the ones the card showed (by their hash)
+  and takes the card's decision in place of a new card. `invoke` and
+  `resume_invoke` share `_witnessed`: the trail whichever way the
+  call ends.
 - `grants.py` `_satisfies`: when a call gives no value for a scope a
   statement constrains, a deny applies and an allow does not — read the
   `unknown` argument. `may_reach` is only the early gate; `allows` is
@@ -437,6 +439,6 @@ python -m pytest tests/test_assistant.py -q
 ```
 
 A useful habit at each stop: break the claim, run its test, and see it
-fail — remove a gate in `_invoke`, let `_finish_refusal` return `None`,
+fail — remove a gate in `_gates`, let `_finish_refusal` return `None`,
 skip the store write in `Scheduler.add`. A claim whose removal no test
 notices is worth reporting.
