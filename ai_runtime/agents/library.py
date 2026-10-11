@@ -61,6 +61,7 @@ import hashlib
 import asyncio
 import shutil
 import sys
+import time
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -509,10 +510,26 @@ class AgentLibrary:
                 return [f"The package could not be unpacked "
                         f"({type(exc).__name__})."]
             self.store_dir.mkdir(parents=True, exist_ok=True)
-            staging.replace(self._folder(digest))
+            self._move_into_place(staging, self._folder(digest))
         finally:
             self._discard(staging)
         return []
+
+    @staticmethod
+    def _move_into_place(staging: Path, target: Path) -> None:
+        """One rename, from the staging folder to the store. On Windows
+        a folder just written is briefly held by whatever indexes or
+        scans new files, and the rename is refused as "access denied"
+        while it is: asked again a few times over two seconds, which is
+        longer than any such hold, before the refusal stands."""
+        for attempt in range(10):
+            try:
+                staging.replace(target)
+                return
+            except PermissionError:
+                if attempt == 9:
+                    raise
+                time.sleep(0.2)
 
     @staticmethod
     def _discard(folder: Path) -> None:
