@@ -24,7 +24,7 @@ cryptography~=47.0.0
 pydantic~=2.12
 
 # The text layer of a PDF the person attached, for the assistant's own
-# read_file (reasoning/documents.py). Imported lazily: a runtime without
+# read_file (mind/documents.py). Imported lazily: a runtime without
 # it still serves, and says a PDF must go to an agent.
 pypdf~=6.0
 

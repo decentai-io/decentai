@@ -74,7 +74,9 @@ EVENT job_done at …: {"job_id": "job_9f2c", "kind": "assistant",
 A child is a `Session`, hosted like any other, with chat id
 `<parent>/sub_<8 hex>`. It has its own durable state, transcript,
 inbox and plan under that id — persisted every beat, hydratable,
-reapable — through a **child view** of the parent's services:
+reapable. It carries two ids: `chat_id`, its own record, and
+`conversation_id`, the parent's, and each call names the one it is
+for:
 
 | the child's… | goes to |
 |---|---|

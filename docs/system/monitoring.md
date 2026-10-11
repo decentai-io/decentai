@@ -29,9 +29,8 @@ it by (`name`) and, where the line is about a process, its user
 | `memory` | an agent was ended for memory, or the kernel ended a process | the spawner | by whom, what the agent held and what the agents are given |
 
 The runtime orders everything that is done to a worker, so it writes
-nearly all of it, whether agents have a container of their own or not.
-The spawner writes what only the agents' container sees: the processes
-there.
+nearly all of it. The spawner writes what only the agents' container
+sees: the processes there, and the programs it runs as an agent.
 
 ## What is not
 

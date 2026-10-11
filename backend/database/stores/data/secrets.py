@@ -210,16 +210,6 @@ class SecretStore(ResourceStore):
                     f"Secret {doc['_id']} stays on its version of {slug}: {exc}")
         return moved, left
 
-    def count_for_definition(self, org_id: str, definition_id: str) -> int:
-        """Instances across ALL versions of a family — what blocks deletion.
-
-        This organization's own: a count is small, but it is still a fact
-        about somebody else's deployment when it is not."""
-        return self.col.count_documents({
-            "type": self.TYPE, "org_id": str(org_id or ""),
-            "resource_id": str(definition_id or ""),
-        })
-
     def count_by_version(self, org_id: str, definition_id: str) -> Dict[int, int]:
         """The same instances, split by the version each was created under.
         A family is published forward while its secrets stay where they were

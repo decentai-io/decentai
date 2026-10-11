@@ -32,7 +32,11 @@ principal — the delegation — may call; the fence
 (`RUNTIME_ENDPOINTS` in `backend/server/authentication/catalog.py`) is
 these verbs and nothing else, and that list is the authority where
 this table and it differ. Every chat-bound verb also checks that the
-delegation was minted for the chat it names.
+delegation was minted for the chat it names. Three verbs the runtime
+calls as itself and not as any chat — the package door,
+`Agents:Package:*` — are fenced on their own (`RUNTIME_SERVICE_ENDPOINTS`)
+and answered to the runtime's own service token
+([agent code](agent-code.md#the-package-door)).
 
 | services method | runtime verb | record |
 |---|---|---|
@@ -226,7 +230,7 @@ are. What a child tells the audience travels as the parent's events,
 each carrying `child`; storage, the audit record, schedules and the
 contract are the chat's and take no thread — a sub-assistant cannot
 schedule or remove a schedule, and is told so when it asks
-(`Assistant.NOT_A_HELPERS`): a row of its own would not be the chat's.
+(`Acts.NOT_A_HELPERS`, `ai_runtime/mind/acts.py`): a row of its own would not be the chat's.
 What
 the person reads as the chat never includes a thread's messages; a
 client that wants to show a child's thread asks for it by name.

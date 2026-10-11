@@ -115,7 +115,7 @@ gone. Back them up with it.
 |---|---|---|
 | `AI_RUNTIME_HOST` | `0.0.0.0` | Bind address; `127.0.0.1` locally. |
 | `AI_RUNTIME_PORT` | `8001` | Bind port. Left blank it is the default; a value that is not a port is refused at start, by name. |
-| `BACKEND_INTERNAL_URL` | empty | Where the runtime reaches the backend's gateway for its services. Empty runs the runtime standalone on the in-memory simulator, which is for development only. In Compose it is the service name; where the containers share one network, `http://127.0.0.1:8000`. |
+| `BACKEND_INTERNAL_URL` | required | Where the runtime reaches the backend's gateway for its services; a runtime not told does not start. In Compose it is the service name; where the containers share one network, `http://127.0.0.1:8000`. |
 | `BACKEND_SERVICE_PUBLIC_KEY` | required | Verifies that a dial really came from the backend. |
 | `AI_RUNTIME_SERVICE_PRIVATE_KEY` | required | Signs the runtime's own identity toward the backend, for what it asks as itself: the approved packages, to stock itself with ([agent code](../system/agent-code.md#the-package-door)). The backend holds the public half; a runtime without it does not start. |
 | `AI_RUNTIME_AGENTS_INSTALL_DIR` | `ai_runtime/installed_agents` | Where installed agent code and its environments live. A volume in a deployment; a short path outside the tree locally. |

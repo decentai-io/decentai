@@ -7,7 +7,6 @@ another's if it leaked anywhere.
 """
 
 import asyncio
-import contextvars
 from types import SimpleNamespace
 
 import pytest
@@ -57,9 +56,6 @@ class FakeHandle:
         self.cancelled = []
 
     async def start(self):
-        # The real handle's reader task is created here, so every ask it
-        # serves inherits the context of whoever spawned the worker.
-        self.spawned_in = contextvars.copy_context()
         return []
 
     async def invoke(self, call_id, function, inputs, conversation=""):
@@ -67,10 +63,9 @@ class FakeHandle:
         if function == "hang":
             await asyncio.Event().wait()
         if function == "use_secret":
-            ask = self.router("resources.use_secret",
-                              {"call_id": call_id, "resource_id": "microsoft"})
-            answer = await asyncio.get_running_loop().create_task(
-                ask, context=self.spawned_in)
+            answer = await self.router(
+                "resources.use_secret",
+                {"call_id": call_id, "resource_id": "microsoft"})
             return answer, "success"
         return {"ok": True}, "success"
 

@@ -25,11 +25,15 @@ use for: what a way out of all of the above is most often made of.
 In a stack started from `docker-compose.yml`, all four parts are
 enforced: the containers' options are the Compose file's to set.
 
-A stack started by hand without those options still runs. The runtime
-finds out at start what it can enforce, writes it to its log, and an
-agent's page says plainly what is not enforced where it runs. Started
-outside a container — a developer's own machine — no part is enforced,
-and the runtime says so.
+A stack started without those options does not serve: at start the
+runtime asks the agents' container to prove it can confine a worker,
+and refuses to start when it cannot, saying what to mend
+(`Confinement.start`, `Places.check`). What the kernel cannot enforce
+— the fences below, on an older kernel — is found out at start,
+written to the log, and said on an agent's page, so a person reads
+plainly what is not enforced where it runs. There is no way to run
+the runtime outside the stack: its tests stand a double in for the
+container instead.
 
 ## A container of their own
 
@@ -301,8 +305,7 @@ The runtime says so at start, every start.
 
 **Where it does not hold.** The filter is written for the two kinds of
 machine the image is built for, x86-64 and arm64. On another there is
-none, and the runtime says so. Nothing is filtered where nothing
-confines: a developer's machine, started by hand.
+none, and the runtime says so.
 
 ## Packages — the builder
 
@@ -393,7 +396,7 @@ for.
   it is given — the kernel's own number, the spawner and what is shared
   among it — it ends the agent holding most, with everything its
   user runs (`ai_runtime/agents_container/usage.py`,
-  `SpawnerService._hold_to_what_is_given`).
+  `SpawnerService._end_largest_agent`).
 
 Every agent is a user of its own, so an agent's share is what its
 user's processes hold that is theirs alone. What they share with every

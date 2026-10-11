@@ -191,10 +191,10 @@ function without `delete` cannot delete even though a sibling function
 can.
 
 The network is held to the hosts your manifest declares wherever the
-platform confines agents ([the sandbox](../system/sandbox.md)), which is
-every stack started from `docker-compose.yml`. A
-runtime started by hand on a developer's machine confines nothing, and
-says so; write the agent for the confined case.
+platform runs agents ([the sandbox](../system/sandbox.md)): every
+stack is started from `docker-compose.yml`, and a runtime that cannot
+confine does not start. Your own tests run the agent with no network
+at all; write the agent for the confined case.
 
 ## `samples.yaml`
 

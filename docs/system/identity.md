@@ -458,3 +458,10 @@ delegation never expands authority. It can only ever be the user, or less
 than the user. Everything else about how a delegation is created, scoped,
 carried and revoked — and what the runtime does with it — belongs to the
 runtime's own documentation.
+
+The runtime also speaks **as itself**, for the one thing that is
+nobody's in particular: the approved agent code it keeps one copy of
+for every organization. That is a principal of its own — a service
+token only a runtime can sign, no person, no organization, no policy —
+fenced to the three actions of the package door and refused everything
+else ([agent code](agent-code.md#the-package-door)).

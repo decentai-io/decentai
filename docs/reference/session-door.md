@@ -100,19 +100,17 @@ turns that into an honest reply on the first event that needs a model
   cycle, or an attached socket stays. Detach changes nothing about
   the work — emissions keep flowing to the durable log; only the live
   relay goes quiet.
-- **The disk is reclaimed after an install.** A package installs once
-  and serves every organization that approved those bytes, so nothing
-  that uninstalls it anywhere can safely delete it. Instead the host
-  sweeps its own disk (`host.agents.reclaim`): it asks the platform, as
-  itself, which digests are still approved *anywhere*
-  (`Agents:Package:List` — answered beyond any organization, because
-  the folder is shared), adds what this process is using (every live
-  session's roster, every running worker), and forgets the rest — code
-  and virtual environment together. An
-  unanswered read deletes nothing; so does an empty answer. It runs
-  after an install, the one moment the disk grew with a chat connected
-  to ask as, which means a process that only ever reuses packages it
-  already holds never sweeps until it installs something.
+- **The disk is stocked and reclaimed by the runtime itself.** A
+  package installs once and serves every organization that approved
+  those bytes, so nothing that uninstalls it anywhere can safely
+  delete it. Instead the roster keeps the stock (`host.agents.stock`,
+  every ten seconds): it asks the platform, as itself, which packages
+  are approved *anywhere* (`Agents:Package:List` — answered beyond any
+  organization, because the folder is shared), installs what it does
+  not hold, and, when that list changed, sweeps: it adds what this
+  process is using (every live session's roster, every running worker)
+  and forgets the rest — code and virtual environment together. An
+  unanswered read deletes nothing; so does an empty answer.
 - **The contract is re-read as a turn begins.** A session outlives
   decisions made elsewhere: an agent installed, a trust level moved, a
   grant withdrawn. Rather than have each of those notify the runtime,
@@ -221,8 +219,9 @@ present tense only.
 ```
 
 sent whenever an agent has to be materialized that the host does not
-yet hold (`docs/system/agent-code.md`): at build, before the hello; at
-a turn's refresh; and after an install. A first open waits on a package
+yet hold (`docs/system/agent-code.md`): at build, before the hello,
+and at a turn's refresh — an agent approved since the runtime's last
+stocking pass. A first open waits on a package
 fetch and a pip install, and a wait with no words reads as a fault. Socket-only, never recorded — the durable story of
 an install is the platform's audit. A `failed` phase carries the
 reason, so an agent absent from the roster is not a silent absence.
@@ -235,19 +234,17 @@ agent's own lines, its finish with status and duration, all under one
 
 ### How emissions reach both places
 
-The Session emits through `services.emit` and knows nothing about
-sockets. The host hands each session a **relaying services wrapper**:
-`emit` writes through to the real services (the durable log) and
-then offers the frame — stamped with the sequence the log answered —
-to the attached socket, if any — dropped silently if none, dropped
-silently if the send fails. One emission at a time per chat, from its
-record to its delivery, so frames reach the socket in the order they
-were recorded. Delivery is a
-courtesy; the record is the services'. Every other method passes
-through untouched, so the wrapper is one class with two methods of
-its own — `emit`, decorated, and `relay`, for what is delivered and
-never recorded (a screen's frames) — not a second services
-implementation.
+The Session knows nothing about sockets: it is handed two callables
+at its build. `emit` is the host's `_emit`, bound to the chat: it
+writes through to the services (the durable log) and then offers the
+frame — stamped with the sequence the log answered — to the attached
+socket, if any — dropped silently if none, dropped silently if the
+send fails. One emission at a time per chat, from its record to its
+delivery, so frames reach the socket in the order they were recorded.
+Delivery is a courtesy; the record is the services'. `relay` is the
+host's `_relay`, for what is delivered and never recorded (a screen's
+frames). A helper is handed its parent's two, which tag every frame
+with the helper's id.
 
 ## The clock beside the host
 
@@ -264,8 +261,9 @@ materializes the agents that contract names, so a fresh install serves
 without a restart, and what wakes a mind goes through
 `host.deliver_event(chat_id, event)` — the inside door, unreachable
 from any socket. The schedule rows are user state, so the services own
-their store (`services.schedules`, read whole and written a row at a
-time); the clock starts and stops with the app's lifespan.
+their store (`load_schedules`, `add_schedule`, `schedule_ran`,
+`remove_schedule`: read whole and written a row at a time); the clock
+starts and stops with the app's lifespan.
 
 Each fire is a task of its own, and a row is not fired again while its
 last fire is still under way: a slow one — a site that takes its time,

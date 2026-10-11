@@ -61,9 +61,9 @@ python bootstrap/setup.py
 The first time, it:
 
 1. builds the backend's image and has the platform's own generators
-   make this install's keys inside it: the pair the backend and the
-   runtime know each other by, and the key that encrypts every stored
-   credential and record value;
+   make this install's keys inside it: the two pairs the backend and
+   the runtime know each other by, and the key that encrypts every
+   stored credential and record value;
 2. writes `deploy.env` from `deploy.env.example`, with those keys, a
    password for the database, the session secret, and a first person
    nobody had to sign up as: an address that is nobody's

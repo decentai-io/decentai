@@ -13,7 +13,7 @@ side.
 
 ## What runs
 
-Six containers, as `docker-compose.yml` starts them. Five stay up; the
+Seven containers, as `docker-compose.yml` starts them. Six stay up; the
 seeder runs once at every start and exits.
 
 ```
@@ -156,6 +156,12 @@ action is in `RUNTIME_ENDPOINTS`
 (`backend/server/authentication/catalog.py`), the fixed list of what a
 runtime has any business asking ([identity](identity.md)).
 
+A third token is the mirror of the first: the runtime's **own service
+token**, signed with `AI_RUNTIME_SERVICE_PRIVATE_KEY` and checked by
+the backend with the public half. It says *this is a runtime* and
+nothing about a person, and it opens the package door and nothing
+else (`RUNTIME_SERVICE_ENDPOINTS`; [agent code](agent-code.md#the-package-door)).
+
 ## One message, from the page to an agent and back
 
 A person types *save a note* in a chat with the Note agent enabled.
@@ -248,7 +254,7 @@ From most to least.
 | Part | Holds | Is trusted to | Is not trusted to |
 |---|---|---|---|
 | **backend** | the database's password, the encryption keys (`SECRET_ENCRYPTION_KEYS`), `TOKEN_SECRET_KEY`, the service token's private key | decide every permission; decrypt; be the only writer of the database | — |
-| **runtime** | the service token's *public* key, the spawner's key, and — while a chat is open — that chat's delegation | act for a person with a live chat, within `RUNTIME_ENDPOINTS`; keep each agent to its own slots; hold a secret or a model key in memory for one call | reach the database; decrypt; forge the backend; do anything for a person with no live chat; reach identity and access at all |
+| **runtime** | the service token's *public* key, its own identity's *private* key, the spawner's key, and — while a chat is open — that chat's delegation | act for a person with a live chat, within `RUNTIME_ENDPOINTS`; as itself, ask the package door and nothing else; keep each agent to its own slots; hold a secret or a model key in memory for one call | reach the database; decrypt; forge the backend; do anything for a person with no live chat; reach identity and access at all |
 | **spawner** (agents' container) | its own key; no setting of the platform's but where the proxy is | start what the runtime orders, and carry lines | decide anything: a worker's asks pass through it unread |
 | **worker** (an agent's code) | what one call was handed | nothing | everything: it is assumed hostile ([worker protocol](../reference/worker-protocol.md)) |
 | **browser** | a session cookie | nothing beyond the person it names | — |
@@ -293,7 +299,7 @@ what they are for:
 | agents | `ai_agent_sources`, `agent_manifests` (approvals), `agent_grants`, `agent_secret_grants`, `agent_samples` | [agent code](agent-code.md) |
 | settings | `llm_connections`, `oauth_apps`, `oauth_states`, `push_subscriptions` | [data layer](data-layer.md) |
 
-**Four volumes.**
+**Five volumes.**
 
 | Volume | In | Holds |
 |---|---|---|
@@ -349,11 +355,11 @@ what they are for:
 3. `ai_runtime/execution/call.py`: a method on `Call` named as the
    wire names it, and its row in `Call.ASKS`; refused there unless the
    manifest declared it, if it is a privilege.
-5. A new flag is validated in `contracts/agent_manifest.py`.
-6. If it reaches a person: `ai_runtime/chat/session.py`, the services
+4. A new flag is validated in `contracts/agent_manifest.py`.
+5. If it reaches a person: `ai_runtime/chat/session.py`, the services
    (step 6 above), a gateway action, and the frame in
    `contracts/chat.py` with its twin in
    `frontend/src/app/models/chat-protocol.ts` —
    `tests/test_chat_contract.py` holds the two to each other.
-7. [The worker protocol](../reference/worker-protocol.md) and
+6. [The worker protocol](../reference/worker-protocol.md) and
    [What your code is given](../agents/sdk.md).

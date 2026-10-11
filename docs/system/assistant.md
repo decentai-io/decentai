@@ -438,7 +438,7 @@ start → running ──────────────→ done / failed / 
   freshly hydrated — arrives as the `approval_decided` frame,
   re-verified by the executor's existing action-hash and grant gates
   before anything runs. The same call made with `invoke` holds its beat
-  until the card is answered (`Session._approve`).
+  until the card is answered (`Cards.approve`).
 - **A card nobody will answer is closed.** A call stopped while its
   card waits — a stop, a kill, a cancelled job — has the card expired
   on the record and closed on the page. A process that dies leaves the

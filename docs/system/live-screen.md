@@ -10,9 +10,8 @@ README in the agents repository.
 
 ## The road a frame travels
 
-The browser runs inside the agent's worker: in the agents' container,
-or beside the runtime where it was started by hand. "The host" below is
-the runtime, which carries the worker's lines either way.
+The browser runs inside the agent's worker, in the agents' container.
+"The host" below is the runtime, which carries the worker's lines.
 
     browser ─JPEG─▶ agent ─screen.frame─▶ host ─screen_frame─▶ backend ─▶ page
     browser ◀────── agent ◀─screen.input── host ◀─screen_input── backend ◀─ page

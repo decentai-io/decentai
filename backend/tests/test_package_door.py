@@ -66,7 +66,7 @@ class TestWhoMayAsk:
     def test_the_runtime_may_use_nothing_but_the_door(
             self, anon, admin, seed, runtime_identity):
         for endpoint in ("Agents:Agent:List", "AI:Chat:Contract",
-                         "IAM:User:List", "Agents:Agent:Fetch_package"):
+                         "IAM:User:List", "Agents:Agent:Install"):
             refused = as_runtime(anon, runtime_identity, endpoint)
             assert refused.status_code == 403, (endpoint, refused.text)
 

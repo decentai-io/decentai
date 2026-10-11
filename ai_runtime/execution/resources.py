@@ -20,10 +20,10 @@ The provider behind it is duck-typed — async methods (use_secret,
 list/read/create/update/delete_data, list/read/create/delete_file, and
 their kin), all speaking the data layer's record shape: ``{resource_ref, resource_id,
 keys: {...}, values: {...}}``, values decrypted for the agent that owns
-the record. Production's one implementation
-is BackendProvider (ai_runtime/services/provider.py), persisting through
-the backend's /app gateway as the user; sim/resources.py holds the
-in-memory stand-in tests run on.
+the record. Production's one implementation is ChatResources
+(ai_runtime/platform.py), persisting through the backend's /app
+gateway as the chat; sim/resources.py holds the in-memory stand-in
+tests run on.
 """
 
 from __future__ import annotations

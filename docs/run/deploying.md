@@ -16,7 +16,7 @@ administrator is, where its mail goes — is yours to say.
 packages (`pip install -r backend/requirements.txt`):
 
 ```bash
-python bootstrap/generate_service_keys.py     # the backend↔runtime signing pair
+python bootstrap/generate_service_keys.py     # the two backend↔runtime signing pairs
 python bootstrap/generate_secret_keys.py      # the keys that encrypt stored values
 python -c "import secrets; print(secrets.token_urlsafe(48))"   # TOKEN_SECRET_KEY
 ```

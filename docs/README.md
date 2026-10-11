@@ -108,8 +108,9 @@ describe is [`examples/note/`](../examples/note/).
 
 - [CONTRIBUTING.md](../CONTRIBUTING.md) — rules, style, and the four
   test suites.
-- [Local development](contributing/local-development.md) — three
-  processes and a MongoDB started by hand, the tests, the simulator.
+- [Local development](contributing/local-development.md) — the
+  backend and the web app started by hand, the runtime through its
+  tests, the simulator.
 - [Reading the runtime](contributing/reading-the-runtime.md) — a route
   through `ai_runtime/` along the path of one message, with what to
   check at each stop and the tests that hold it.

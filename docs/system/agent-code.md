@@ -62,9 +62,9 @@ twenty random characters, that no other organization can name.
   changed; a catalog holds many agents in one repository.
 - **Installing asks no runtime anything.** The manifest is validated
   and the package stored at approval; whether the code loads is the
-  runtime's own report when it first builds it — at once, through the
-  installer's most recent chat, or when a chat first names the agent —
-  and the Agents page shows that report beside the version.
+  runtime's own report when it builds it — on its next stocking pass,
+  within seconds ([the package door](#the-package-door)) — and the
+  Agents page shows that report beside the version.
 
 **The package store is per organization on purpose.** A thousand
 organizations approving the same agent keep a thousand small archives:
@@ -125,11 +125,12 @@ code as itself:
   standing approval names; the bytes are checked against that digest
   before anything is written, so the door can serve the same bytes to
   every runtime whichever organization stored them.
-- **Once per digest.** A per-digest lock means two chats never install
-  the same package twice. A package that arrived and would not verify
-  or load is remembered and not tried again until the next sweep, which
-  forgets refusals whose bytes are no longer on disk. A package that
-  never arrived is not remembered at all: the next chat asks for it
+- **Once per digest.** A per-digest lock means a stocking pass and a
+  chat never install the same package twice. A package that arrived
+  and would not verify or load is remembered and not tried again until
+  the approvals change: the sweep that follows forgets refusals whose
+  bytes are no longer on disk. A package that never arrived is not
+  remembered at all: the next pass, or the next chat, asks for it
   again.
 - **Failure is per agent.** An agent that fails is logged and left out
   of that chat's roster; the rest serve and the chat opens.
