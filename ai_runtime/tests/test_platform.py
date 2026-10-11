@@ -1,4 +1,4 @@
-"""Backend — the platform over a gateway (ai_runtime/platform.py,
+"""Backend — the platform over a gateway (ai_runtime/door/platform.py,
 docs/system/chat-session.md). A stub gateway records every call and
 answers by script, so what is pinned here is the translation:
 credentials by chat, threads split, an agent's resources as the chat,
@@ -10,7 +10,7 @@ exercises for real.
 import pytest
 
 from ai_runtime.chat.clock import Scheduler
-from ai_runtime.platform import Backend, GatewayError, RuntimeIdentity
+from ai_runtime.door.platform import Backend, GatewayError, RuntimeIdentity
 from ai_runtime.tests import fake_container
 from ai_runtime.tests.fires import Fires
 

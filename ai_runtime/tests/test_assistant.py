@@ -11,7 +11,7 @@ import json
 from pathlib import Path
 
 from ai_runtime.execution.executor import FunctionExecutor
-from ai_runtime.sinks import ChatSinks
+from ai_runtime.execution.sinks import ChatSinks
 from ai_runtime.llms.connector.fake import FakeConnector
 from ai_runtime.mind.assistant import Assistant
 from ai_runtime.mind.state import AssistantState
@@ -49,7 +49,7 @@ class Harness:
         async def state_sink(state):
             self.saved_states.append(state.to_dict())
 
-        # The chat's doors (ai_runtime/sinks.py), one object for the
+        # The chat's doors (ai_runtime/execution/sinks.py), one object for the
         # mind and the executor as the session hands them; a test's
         # own go in by name.
         doors = {k: kwargs.pop(k) for k in list(kwargs) if k in ChatSinks.names()}

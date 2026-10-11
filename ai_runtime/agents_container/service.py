@@ -48,7 +48,7 @@ from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 from ai_runtime.agents_container import wire
 from ai_runtime.agents_container.places import ConfinementFailed, Place, Places
 from ai_runtime.agents_container.usage import AgentsUsage, Sample
-from ai_runtime.events import Events
+from ai_runtime.agents_container.events import Events
 
 
 class SpawnerService:

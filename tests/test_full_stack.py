@@ -59,8 +59,8 @@ def full_stack(app, tmp_path, monkeypatch):
     venv — the fixture agents declare no dependencies."""
     from ai_runtime.agents.library import AgentLibrary
     from ai_runtime.door.app import create_app as create_runtime_app
-    from ai_runtime.settings import RuntimeSettings
-    from ai_runtime.platform import Backend, Gateway, RuntimeIdentity
+    from ai_runtime.door.settings import RuntimeSettings
+    from ai_runtime.door.platform import Backend, Gateway, RuntimeIdentity
     from ai_runtime.tests.fake_container import confinement, container
     from ai_runtime.tests.fixture_agents import worker_environment
     from server.setup.app_state import get_state

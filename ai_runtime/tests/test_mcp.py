@@ -7,7 +7,7 @@ import pytest
 
 from ai_runtime.agents.mcp import McpServer
 from ai_runtime.execution.executor import FunctionExecutor
-from ai_runtime.sinks import ChatSinks
+from ai_runtime.execution.sinks import ChatSinks
 from ai_runtime.execution.grants import FunctionGrants
 from contracts.mcp import McpClient, McpError, McpTools
 from sim.mcp_server import FakeMcpServer

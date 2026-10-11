@@ -24,7 +24,7 @@ from ai_runtime.agents.pool import WorkerPool
 from ai_runtime.chat.clock import Scheduler
 from ai_runtime.door import monitor, socket
 from ai_runtime.door.host import SessionHost
-from ai_runtime.settings import RuntimeSettings
+from ai_runtime.door.settings import RuntimeSettings
 
 #: The runtime's doors: the chat socket, and the monitoring and health
 #: endpoints the backend reads.

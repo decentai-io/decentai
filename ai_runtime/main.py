@@ -31,10 +31,10 @@ logging.basicConfig(
 from ai_runtime.agents.confinement import Confinement
 from ai_runtime.agents.container import AgentsContainer
 from ai_runtime.agents.library import AgentLibrary
+from ai_runtime.agents_container.events import Events
 from ai_runtime.door.app import create_app
-from ai_runtime.events import Events
-from ai_runtime.platform import Backend, Gateway, RuntimeIdentity
-from ai_runtime.settings import RuntimeSettings
+from ai_runtime.door.platform import Backend, Gateway, RuntimeIdentity
+from ai_runtime.door.settings import RuntimeSettings
 
 
 settings = RuntimeSettings.from_env()

@@ -12,7 +12,7 @@ import pytest
 
 from ai_runtime.agents.workers import WorkerError
 from ai_runtime.execution.call import Call
-from ai_runtime.sinks import ChatSinks
+from ai_runtime.execution.sinks import ChatSinks
 from ai_runtime.tests import fake_container
 
 

@@ -1,5 +1,5 @@
 """Where the clock's rows live when no platform keeps them: in memory,
-for tests. The methods are the platform's (ai_runtime/platform.py,
+for tests. The methods are the platform's (ai_runtime/door/platform.py,
 ``load_schedules`` and the rest), so a bare store serves a clock in a
 test as the platform serves it in the runtime: rows are read whole and
 written one at a time.

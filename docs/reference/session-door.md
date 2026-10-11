@@ -144,7 +144,7 @@ connection is refused before `accept` without it: the dialer sees the
 handshake fail with HTTP 403, and no close code. Beside it the dialer may hand over
 a **credential** for the chat (`X-DecentAI-Runtime-Access`) — the key a
 platform reached over a network needs to answer this chat's calls
-(`ai_runtime/platform.py`). A credential is not authority: the
+(`ai_runtime/door/platform.py`). A credential is not authority: the
 door passes it to the services opaque, and what the chat may do is
 still only what `contract` answers. A dial that carries one also has
 the host re-read the chat's schedule rows from the services, and the

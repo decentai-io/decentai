@@ -14,7 +14,7 @@ from types import SimpleNamespace
 from ai_runtime.chat.clock import Schedule
 from ai_runtime.door.app import create_app
 from ai_runtime.door.host import PROTOCOL_VERSION, REPLACED, SessionHost
-from ai_runtime.settings import RuntimeSettings
+from ai_runtime.door.settings import RuntimeSettings
 from ai_runtime.tests.fixture_agents import load_agents
 from ai_runtime.tests.test_session import SYNC_SECRET, approval_open
 from sim.session_services import SimSessionServices

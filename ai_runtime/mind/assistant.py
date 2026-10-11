@@ -49,7 +49,7 @@ from ai_runtime.mind.children import Children
 from ai_runtime.mind.evidence import Evidence
 from ai_runtime.mind.pictures import TranscriptPictures
 from ai_runtime.mind.state import CANCELLED, DONE, FAILED, AssistantState, Job
-from ai_runtime.sinks import ChatSinks
+from ai_runtime.execution.sinks import ChatSinks
 
 
 class Assistant:
@@ -111,7 +111,7 @@ class Assistant:
         self.connector = connector
         self.executor = executor
         self.chat_level = chat_level
-        #: The chat's doors, by name (ai_runtime/sinks.py): how a
+        #: The chat's doors, by name (ai_runtime/execution/sinks.py): how a
         #: message reaches the person, how a file or a skill reaches
         #: the model, where the plan, the state and a memory are kept,
         #: and — in a helper — the report its finish is. Built by the

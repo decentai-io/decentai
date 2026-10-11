@@ -16,7 +16,7 @@ from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Request
 
-from ai_runtime.events import Events
+from ai_runtime.agents_container.events import Events
 from ai_runtime.door.auth import verify_backend_service
 from contracts.container import ContainerUsage
 

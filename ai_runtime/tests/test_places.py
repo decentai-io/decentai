@@ -14,7 +14,7 @@ import pytest
 
 from ai_runtime.agents_container import wire
 from ai_runtime.agents_container.places import ConfinementFailed, Place, Places
-from ai_runtime.events import Events
+from ai_runtime.agents_container.events import Events
 from ai_runtime.tests.fake_container import FakeHelper, run
 
 #: What a helper on an old kernel says of it: nothing.

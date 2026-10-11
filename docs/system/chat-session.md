@@ -422,7 +422,7 @@ the same way, so a malformed event fails the runtime's own tests first.
 | the inbox and outbox on `ai_chat_events`; `ai_chats.state`; `ai_approvals`; `ai_schedules` | `backend/database/stores/chats.py` |
 | the fence, `RUNTIME_ENDPOINTS` | `backend/server/authentication/catalog.py` |
 | the relay speaking frames; the browser socket translating the frontend | `backend/api/services/chat_session/relay.py`, `backend/server/routes/ws.py` |
-| `Backend` — the contract over HTTP, one class, every call naming its chat and carrying that chat's credential; `ChatResources`, an agent's data, files and secrets as one chat | `ai_runtime/platform.py` |
+| `Backend` — the contract over HTTP, one class, every call naming its chat and carrying that chat's credential; `ChatResources`, an agent's data, files and secrets as one chat | `ai_runtime/door/platform.py` |
 
 ## What it does not do
 

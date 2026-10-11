@@ -51,7 +51,7 @@ gives your tests `agents` — every agent the catalog offers, by id. Then:
 
 ```python
 from ai_runtime.execution.executor import FunctionExecutor
-from ai_runtime.sinks import ChatSinks
+from ai_runtime.execution.sinks import ChatSinks
 from ai_runtime.tests.fake_container import run, workers
 from sim.resources import InMemoryResourceProvider
 
@@ -77,7 +77,7 @@ raises: a refusal is `(dict, "error")`.
 |---|---|
 | `workers()` | The worker processes your functions run in, started in the test's own process by the harness's stand-in for the agents' container. |
 | `provider=InMemoryResourceProvider(secrets={"note__connection": {...}})` | Your records, files and secrets. A secret is bound under `<agent_id>__<resource_id>`. What your agent wrote is in `provider.data["<agent_id>__<resource_id>"]` and `provider.files[...]`. |
-| `sinks=ChatSinks(...)` | The chat's doors, by the names your code knows them by (`ai_runtime/sinks.py`). Each one is optional; one that is missing has nobody behind it. |
+| `sinks=ChatSinks(...)` | The chat's doors, by the names your code knows them by (`ai_runtime/execution/sinks.py`). Each one is optional; one that is missing has nobody behind it. |
 
 And on `ChatSinks`:
 

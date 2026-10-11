@@ -13,7 +13,7 @@ import pytest
 
 from ai_runtime.execution.call import Call
 from ai_runtime.execution.executor import FunctionExecutor
-from ai_runtime.sinks import ChatSinks
+from ai_runtime.execution.sinks import ChatSinks
 from ai_runtime.tests.fixture_agents import load_agents
 from ai_runtime.execution.resources import ResourceAccess, ResourceDenied
 from sim.resources import InMemoryResourceProvider
@@ -38,7 +38,7 @@ def run(coro):
 
 def make_executor(**kwargs):
     """An executor with a stocked in-memory provider (canonical ids).
-    A door of the chat's goes in by its name (ai_runtime/sinks.py)."""
+    A door of the chat's goes in by its name (ai_runtime/execution/sinks.py)."""
     kwargs.setdefault("provider", InMemoryResourceProvider(
         secrets={"notebook__connection": {"api_token": "t"}}
     ))

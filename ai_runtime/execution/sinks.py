@@ -1,5 +1,9 @@
 """Every door from the mind, and from a running call, back to the chat.
 
+Here, in execution, because the mind and the executor both import it
+and the mind never imports the chat: a dataclass with no behaviour,
+the one shape the three agree on.
+
 The mind (mind/assistant.py) and the executor (execution/
 executor.py) never import the chat. What they may ask of it — to say
 something to the person, to put a card before them, to keep a result,

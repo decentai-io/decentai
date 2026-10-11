@@ -31,7 +31,7 @@ import referencing
 from contracts.record_fields import RecordFields
 from ai_runtime.agents.library import InstalledAgent
 from ai_runtime.agents.mcp import McpServer
-from ai_runtime.sinks import ChatSinks
+from ai_runtime.execution.sinks import ChatSinks
 from ai_runtime.agents.workers import WorkerError
 from ai_runtime.agents.pool import WorkerPool
 from ai_runtime.execution.call import Call
@@ -71,7 +71,7 @@ class ParkedInvocation:
 
 class FunctionExecutor:
     """One executor per chat: it carries the chat's resource provider,
-    its grants, and the chat's doors (ai_runtime/sinks.py) — the
+    its grants, and the chat's doors (ai_runtime/execution/sinks.py) — the
     approval card, the asks, the trail. The chat level rides on each
     invocation because the user can change it mid-conversation.
     """
@@ -92,7 +92,7 @@ class FunctionExecutor:
         #: The job every call of this executor runs for, unless a call
         #: names its own: a helper's calls are its parent's job's.
         self.job_id = str(job_id or "")
-        #: The chat's doors, by name (ai_runtime/sinks.py): what a call
+        #: The chat's doors, by name (ai_runtime/execution/sinks.py): what a call
         #: may ask of the chat, and what is written about it. A door
         #: that is None has nobody behind it — a test, or a fire from
         #: the clock — and each use says what that means for it: no

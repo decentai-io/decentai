@@ -12,7 +12,7 @@ from ai_runtime.execution.resources import ResourceAccess
 from ai_runtime.llms.connector.http import ProviderError
 from ai_runtime.llms.connector.tools import (
     is_context_overflow, is_image_refusal, setting)
-from ai_runtime.platform import Backend, Gateway, GatewayError
+from ai_runtime.door.platform import Backend, Gateway, GatewayError
 from sim.schedules import MemoryScheduleStore
 from sim.session_services import SimSessionServices
 from ai_runtime.tests import fake_container

@@ -1,1 +1,1 @@
-"""The door: how the backend reaches the runtime (docs/reference/session-door.md)."""
+"""The door: the runtime's boundary with the backend, both ways (docs/reference/session-door.md)."""

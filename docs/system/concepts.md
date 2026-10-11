@@ -222,7 +222,7 @@ Where a word is used for more than one thing, each is said.
 | **escape grant** | an action that lets its holder reach past the usual rule. `…:set_owner_any` lifts whom a thing may be shared to and who may edit it; `…:manage_any` reaches every source or connection, and does not lift whom one may be shared to | [sharing](sharing.md) |
 | **event** | two things. *Inbound*: what the assistant is told — a message, a finished job, a wakeup — kept in the inbox before it is heard. *Outbound*: what the runtime tells the page | `ai_chat_events`, direction `in` and `out` |
 | **executor** | what stands between the assistant and an agent's function: the gates a call passes | `FunctionExecutor`, `ai_runtime/execution/executor.py` |
-| **the chat's doors** | what the mind and a running call may ask of the chat — to say, to ask, to approve, to keep, to write on the trail — as one object the session builds and hands to both. Also *sinks* | `ChatSinks`, `ai_runtime/sinks.py` |
+| **the chat's doors** | what the mind and a running call may ask of the chat — to say, to ask, to approve, to keep, to write on the trail — as one object the session builds and hands to both. Also *sinks* | `ChatSinks`, `ai_runtime/execution/sinks.py` |
 | **the fence** | two things. What a delegation may call: a fixed list of actions. And what a worker may open: its own files | `RUNTIME_ENDPOINTS`; Landlock, `ai_runtime/agents_container/spawn_helper.c` |
 | **fold** | the assistant shortening its own transcript when it grows | [the assistant](assistant.md) |
 | **frame** | one message on a socket. (In [the assistant](assistant.md) also the assistant's standing instructions) | `contracts/chat.py` |
@@ -246,7 +246,7 @@ Where a word is used for more than one thing, each is said.
 | **relay** | the backend's side of a chat's two sockets: it dials the runtime and passes frames each way | `backend/api/services/chat_session/relay.py` |
 | **roster** | the agents one chat may use, as the runtime holds them | `Session.roster` |
 | **the runtime's fence** | see *the fence* | |
-| **services** | what the runtime asks of the backend, as one object, every call naming its chat | `Backend`, `ai_runtime/platform.py`; `SimSessionServices` in tests |
+| **services** | what the runtime asks of the backend, as one object, every call naming its chat | `Backend`, `ai_runtime/door/platform.py`; `SimSessionServices` in tests |
 | **service token** | the backend proving to the runtime that it is the backend, for sixty seconds | `chat_session/identity/service.py` |
 | **session** | two things. A person's sign-in. And one chat as the runtime holds it | `sessions`; `Session`, `ai_runtime/chat/session.py` |
 | **slot** | one resource of one installed agent — its notes, its documents, its connection — and the name its things are kept under: `agt_<ref>__<resource id>`. Also *category* | `resource_id`; `keys.category` for a file |

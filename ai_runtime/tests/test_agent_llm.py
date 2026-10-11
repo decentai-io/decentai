@@ -16,7 +16,7 @@ import pytest
 from contracts.agent_manifest import ManifestValidator
 from ai_runtime.execution.call import Call
 from ai_runtime.execution.executor import FunctionExecutor
-from ai_runtime.sinks import ChatSinks
+from ai_runtime.execution.sinks import ChatSinks
 from ai_runtime.tests.fixture_agents import load_agents
 from ai_runtime.llms.connector.fake import FakeConnector
 

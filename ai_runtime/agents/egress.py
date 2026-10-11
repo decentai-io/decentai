@@ -46,7 +46,7 @@ import time
 from typing import Callable, ClassVar, Dict, List, Optional, Tuple
 from urllib.parse import urlsplit
 
-from ai_runtime.events import Events
+from ai_runtime.agents_container.events import Events
 
 
 class Admission:

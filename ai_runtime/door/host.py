@@ -26,7 +26,7 @@ from ai_runtime.execution.grants import FunctionGrants
 from ai_runtime.llms.factory import LLMConnectorFactory
 from ai_runtime.llms.connector.tools import NoModel
 from ai_runtime.door.roster import AgentRoster
-from ai_runtime.sinks import ChatSinks
+from ai_runtime.execution.sinks import ChatSinks
 from contracts.chat import CHAT_PROTOCOL_VERSION
 
 #: The chat contract's own version (contracts/chat.py): one number for

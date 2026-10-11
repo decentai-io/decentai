@@ -33,15 +33,13 @@ beside it. Each package's `__init__.py` is one line and points here.
 ```
 ai_runtime/
   main.py              settings, build the parts, serve
-  settings.py          every setting, from the environment
-  platform.py          Backend, ChatResources, Gateway: every call to the backend
-  sinks.py             ChatSinks: the doors from the mind and a running call to the chat
-  events.py            what agents did, written down as it happens
-  door/                how the backend reaches the runtime
+  door/                the runtime's boundary with the backend, both ways
+    settings.py        every setting, from the environment
     app.py             the FastAPI application; the lifespan is the start order
     auth.py            what "the backend" means: the service token
     socket.py          /chats/{chat_id}: frames in, frames out
     monitor.py         /internal/monitor/*, /internal/health/live
+    platform.py        Backend, ChatResources, Gateway: every call out to the backend
     host.py            SessionHost: one session per chat, emit, reap, kill
     roster.py          AgentRoster: the contract's agents, and the stock of every approved package
   chat/                a chat's body
@@ -69,6 +67,7 @@ ai_runtime/
   execution/           what one organization may do with a package, per invocation
     executor.py        FunctionExecutor: the gates, execute, the trail
     call.py            Call: what one running call may ask, and was allowed
+    sinks.py           ChatSinks: the doors from the mind and a running call to the chat
     resources.py       ResourceAccess: bindings, not credentials
     grants.py          FunctionGrants: the delegation's function grants, deny by default
     pictures.py        a picture an agent hands over, checked
@@ -86,6 +85,7 @@ ai_runtime/
     places.py          Places, Place: the users, the spawn lines, the fences
     usage.py           AgentsUsage: what the container is given and each agent uses
     wire.py            what the two sides agree on
+    events.py          what agents did, written down as it happens, by both sides
     spawn_helper.c     the one program that starts a process as another user
   llms/                how the runtime reaches a model
     factory.py         LLMConnectorFactory: provider name -> the connector
@@ -96,15 +96,16 @@ ai_runtime/
 
 Two rules of the tree. `mind/` imports `execution/` and `agents/` —
 the law it operates under — and never `chat/`, the embodiment that
-hosts it: every side effect crosses `ChatSinks`. And
-`agents_container/` imports nothing of `agents/`: the two meet on a
-socket and on one volume.
+hosts it: every side effect crosses `ChatSinks`, which lives in
+`execution/` for that reason. And `agents_container/` imports nothing
+of `agents/`: the two meet on a socket, on one volume, and in the two
+files they share, `wire.py` and `events.py`.
 
 ## 1. Start-up and the door
 
 | Read | For |
 |---|---|
-| `main.py` | the parts, built once: `Events.configure`, the `AgentsContainer`, the `Confinement`, the `AgentLibrary`, the backend's services |
+| `main.py` | the parts, built once: `Events.configure`, the `AgentsContainer`, the `Confinement`, the `AgentLibrary`, the backend's services. The only file at the root: everything else is in a package |
 | `door/app.py` `create_app` | the `SessionHost` and the `Scheduler`; the lifespan, which starts the parts on the loop in order (the container waited for, `Confinement.start`, `load_all`, the warm-up task, the clock) and stops them in reverse |
 | `door/auth.py`, `door/socket.py` | who may dial, and the loop that hands every frame to the host |
 
@@ -207,7 +208,7 @@ order:
 6. `chat/helpers.py`: `Helpers.spawn`, `report`, `inherit` — helpers
    ([sub-assistants](../system/sub-assistants.md)).
 
-Before `open`, read `ai_runtime/sinks.py`: `ChatSinks` is every door
+Before `open`, read `ai_runtime/execution/sinks.py`: `ChatSinks` is every door
 from the mind and from a running call back to the chat — say, ask,
 approve, store, audit, and the rest — as one object the session builds
 from its own methods and hands to both. One name per door, the same
@@ -456,7 +457,7 @@ With [the sandbox](../system/sandbox.md) open beside it.
   each agent uses, read from the kernel (`AgentsUsage.sample`), and who
   is ended when they use nearly all of it (`over`). The spawner's
   `_watch` looks every second and does the ending.
-- `events.py` — what agents did, written down as it happens
+- `agents_container/events.py` — what agents did, written down as it happens
   (`Events.record`), by the places that see it: a worker's life and
   log (`workers.py`), each connection (`egress.py`), and — in the
   agents' container — the helper's jobs and programs run as an agent
@@ -524,7 +525,7 @@ Tests: the schedule classes in `ai_runtime/tests/test_session.py`,
 
 ## 8. The edges
 
-- `platform.py` — `Backend`, every call the runtime makes to the
+- `door/platform.py` — `Backend`, every call the runtime makes to the
   platform, each naming the chat it acts for and carrying that chat's
   credential; `ChatResources`, an agent's data, files and secrets as
   one chat; `Gateway` is the request itself. `sim/session_services.py`

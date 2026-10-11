@@ -9,7 +9,7 @@ processes, for somebody looking.
 
 ## What is written
 
-`ai_runtime/events.py`. One line of JSON for each thing that
+`ai_runtime/agents_container/events.py`. One line of JSON for each thing that
 happened, with when (`at`: a time in seconds, to the microsecond, and
 never the same for two events one process wrote), what (`kind`), and —
 where it is an agent's — whose: the approval's ref (`agent`), the name a person knows

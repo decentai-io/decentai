@@ -7,7 +7,7 @@ A function's code reaches the chat through its call — ``call.ask``,
 lands here, on a method of the same name: checked for shape — words,
 length, how many, what this call offered and no other, what its
 manifest declared — then passed through the chat's door of the same
-name (ai_runtime/sinks.py), in the agent's name, bound to this call.
+name (ai_runtime/execution/sinks.py), in the agent's name, bound to this call.
 
 The executor (executor.py) builds one Call per invocation, past the
 gates, and hands it to the pool (agents/pool.py), which binds it to
@@ -48,7 +48,7 @@ from contracts.chat import (
 from ai_runtime.agents.environments import AgentEnvironment
 from ai_runtime.agents.workers import WorkerError
 from ai_runtime.execution.pictures import Pictures
-from ai_runtime.sinks import ChatSinks
+from ai_runtime.execution.sinks import ChatSinks
 
 #: The one refusal call.llm() can meet — same wording as the SDK's own,
 #: so the function's author reads one message wherever it runs.

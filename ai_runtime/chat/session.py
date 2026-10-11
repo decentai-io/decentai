@@ -7,7 +7,7 @@ It may serve a live socket or nobody at all — a session with no
 connection is simply an assistant working unwatched, which is what a
 "background task" is.
 
-The services object is the platform (ai_runtime/platform.py), with the
+The services object is the platform (ai_runtime/door/platform.py), with the
 sim (sim/session_services.py) implementing the same contract in
 memory. Every call names the chat it acts for. What a session lives
 against is below; what the host alone calls (a chat's credential, a
@@ -84,7 +84,7 @@ from ai_runtime.mind.state import (
     WAITING_APPROVAL,
     AssistantState,
 )
-from ai_runtime.sinks import ChatSinks
+from ai_runtime.execution.sinks import ChatSinks
 from decentai_sdk.base import Completion
 
 
@@ -236,7 +236,7 @@ class Session:
         child = self.parent is not None
 
         # Every door from the mind, and from a running call, back to
-        # this chat (ai_runtime/sinks.py): built once, handed to both.
+        # this chat (ai_runtime/execution/sinks.py): built once, handed to both.
         # A child's differ in three: its finish is its report, it
         # spawns nothing, and a memory it tries to keep is refused.
         sinks = ChatSinks(

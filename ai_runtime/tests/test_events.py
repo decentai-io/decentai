@@ -14,7 +14,7 @@ import time
 import jwt
 import pytest
 
-from ai_runtime.events import Events
+from ai_runtime.agents_container.events import Events
 from ai_runtime.agents_container.service import SpawnerService
 from ai_runtime.agents_container.usage import Sample
 from ai_runtime.agents.workers import WorkerHandle
@@ -326,7 +326,7 @@ class TestTheDoor:
         from fastapi.testclient import TestClient
 
         from ai_runtime.door.app import create_app
-        from ai_runtime.settings import RuntimeSettings
+        from ai_runtime.door.settings import RuntimeSettings
 
         private = rsa.generate_private_key(public_exponent=65537, key_size=2048)
         public = private.public_key().public_bytes(

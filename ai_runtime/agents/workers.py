@@ -29,7 +29,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from ai_runtime.agents.confinement import WorkerPlace
-from ai_runtime.events import Events
+from ai_runtime.agents_container.events import Events
 from decentai_sdk.manifest import Manifest
 
 

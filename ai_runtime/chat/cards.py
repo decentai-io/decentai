@@ -9,7 +9,7 @@ asked was stopped. A screen is a running call's picture, relayed to
 whoever watches and never recorded.
 
 These are the chat's doors as a running call reaches the person
-through them (ai_runtime/sinks.py): ``approve``, ``ask``, ``propose``,
+through them (ai_runtime/execution/sinks.py): ``approve``, ``ask``, ``propose``,
 ``credential``, ``screen``, and the assistant's ``find_files``. The
 session (session.py) owns the mind, the turn and the inbound answers
 (``deliver_approval``, ``deliver_answer``); this holds what is open

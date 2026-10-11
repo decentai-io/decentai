@@ -10,7 +10,7 @@ from pathlib import Path
 import yaml
 
 from ai_runtime.execution.executor import FunctionExecutor
-from ai_runtime.sinks import ChatSinks
+from ai_runtime.execution.sinks import ChatSinks
 from sim.resources import InMemoryResourceProvider
 from ai_runtime.tests import fake_container
 from ai_runtime.tests.fake_container import confinement, workers

@@ -15,7 +15,7 @@ import ai_runtime.agents.pool as pool_module
 from ai_runtime.agents.workers import WorkerError
 from ai_runtime.agents.pool import WorkerPool
 from ai_runtime.execution.call import Call
-from ai_runtime.sinks import ChatSinks
+from ai_runtime.execution.sinks import ChatSinks
 from ai_runtime.tests.fake_container import confinement
 from ai_runtime.tests import fake_container
 

@@ -14,7 +14,7 @@ from ai_runtime.agents.mcp import McpServer
 from ai_runtime.agents.workers import WorkerError, WorkerHandle
 from ai_runtime.execution.call import Call
 from ai_runtime.execution.executor import FunctionExecutor
-from ai_runtime.sinks import ChatSinks
+from ai_runtime.execution.sinks import ChatSinks
 from ai_runtime.execution.grants import FunctionGrants
 from ai_runtime.tests.fixture_agents import (
     MINIMAL_MANIFEST, load_agents, write_agent)

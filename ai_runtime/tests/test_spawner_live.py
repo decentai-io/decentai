@@ -37,7 +37,7 @@ import pytest
 
 from ai_runtime.agents.confinement import Confinement
 from ai_runtime.agents.egress import EgressProxy
-from ai_runtime.events import Events
+from ai_runtime.agents_container.events import Events
 from ai_runtime.agents.container import AgentsContainer
 from ai_runtime.agents_container import wire
 from ai_runtime.agents.workers import WorkerError, WorkerHandle

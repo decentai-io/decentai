@@ -1,7 +1,7 @@
 """The backend's data layer, simulated in memory.
 
 The one production resource provider is the chat's ChatResources
-(ai_runtime/platform.py), persisting through the backend's /app
+(ai_runtime/door/platform.py), persisting through the backend's /app
 gateway as the chat. This is its stand-in for tests and hermetic runs — the
 harness an agent's own tests use too: dicts mirroring the data layer's
 record shape, gone when the process is.

@@ -9,7 +9,7 @@ import pytest
 
 from ai_runtime.agents.egress import EgressProxy, Refused
 from ai_runtime.agents.environments import READY_MARKER, AgentEnvironment
-from ai_runtime.events import Events
+from ai_runtime.agents_container.events import Events
 from ai_runtime.agents.library import AgentLibrary, AgentRefused
 from contracts.agent_package import AgentPackage
 from ai_runtime.tests.fixture_agents import write_agent

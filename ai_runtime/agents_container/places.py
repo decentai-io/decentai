@@ -48,7 +48,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 
 from ai_runtime.agents_container import wire
-from ai_runtime.events import Events
+from ai_runtime.agents_container.events import Events
 
 PLAIN_NAME_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
