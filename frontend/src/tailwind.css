@@ -41,7 +41,7 @@
   --ink-2: var(--n-600);          /* secondary text */
   --ink-3: var(--n-500);          /* timestamps, counts; never under 13px */
 
-  --accent: #059669;              /* emerald fills */
+  --accent: #047857;              /* emerald fills; white on it is 5.5:1 */
   --accent-fg: #ffffff;           /* text on an emerald fill */
   --accent-ink: #047857;          /* emerald text and icons */
   --accent-soft: color-mix(in srgb, var(--accent) 10%, transparent);
