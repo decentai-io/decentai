@@ -27,6 +27,12 @@ interface ReviewedFunction {
   params: Param[];
   touches: string[];
   scopes: FunctionScope[];
+  /** What it gives back, read from its `outputs` schema. */
+  returns: Param[];
+  /** A schedule may run it with nobody there. */
+  schedulable: boolean;
+  /** It asks the model of the chat that calls it. */
+  llm: boolean;
 }
 
 interface ToolGroup {
@@ -40,10 +46,10 @@ interface ToolGroup {
  * Everything this agent can be asked to do.
  *
  * A flat list of dotted names is a list of strings. What an administrator
- * actually needs to know about a function is four things: how much of it
- * runs without asking, what it takes, what it touches, and which
- * authorization scopes gate it — so each one is read out of the approved
- * manifest and shown together.
+ * needs to know about a function is how much of it runs without asking,
+ * what it takes and returns, what it touches, which authorization scopes
+ * gate it, and whether it runs on a schedule or asks a model — so each is
+ * read out of the approved manifest and shown together.
  *
  * The manifest is the source. `available()` carries only names, levels
  * and descriptions, so the full document is fetched for the approval and
@@ -53,7 +59,7 @@ interface ToolGroup {
   selector: 'app-agent-functions',
   standalone: false,
   templateUrl: './agent-functions.component.html',
-  styleUrls: ['../data-shared.css', './agent-shared.css', './agents.component.css'],
+  styleUrls: ['./agent-shared.css', './agent-functions.component.css'],
 })
 export class AgentFunctionsComponent implements OnChanges {
   @Input() agent!: AgentOffer;
@@ -71,7 +77,14 @@ export class AgentFunctionsComponent implements OnChanges {
 
   constructor(private service: AgentsService) {}
 
+  /** The approval last read: the same agent at the same version, handed
+   *  in again as its row is refreshed, is not read again. */
+  private read = '';
+
   async ngOnChanges(): Promise<void> {
+    const approval = `${this.agent?.agent_id}@${this.agent?.installed_version}`;
+    if (approval === this.read) return;
+    this.read = approval;
     this.tools = this.fromNames();
     this.detailed = false;
     if (!this.agent?.agent_id) return;
@@ -134,6 +147,9 @@ export class AgentFunctionsComponent implements OnChanges {
         params: this.paramsOf(fn.inputs),
         touches: this.touchesOf(fn.resources),
         scopes: this.scopesOf(fn.authorization),
+        returns: this.paramsOf(fn.outputs),
+        schedulable: fn.schedulable === true,
+        llm: fn.llm === true,
       })),
     }));
   }
@@ -193,7 +209,8 @@ export class AgentFunctionsComponent implements OnChanges {
         description: fn.description || '',
         level: fn.permission_level,
         timeout: fn.timeout_seconds,
-        params: [], touches: [], scopes: [],
+        params: [], touches: [], scopes: [], returns: [],
+        schedulable: false, llm: fn.llm === true,
       }]);
     }
     return [...grouped.entries()].map(([id, functions]) => ({

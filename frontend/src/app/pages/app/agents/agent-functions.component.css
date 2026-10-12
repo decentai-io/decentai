@@ -1,0 +1,174 @@
+/* An agent's functions: the levels it reaches and what each means,
+   then each tool as a section and each function as a row. The level
+   chips are the agents' own (agent-shared.css); the rest is shared. */
+:host {
+  display: block;
+  max-width: 880px;
+}
+
+.fn-intro {
+  max-width: 72ch;
+  margin-bottom: 16px;
+}
+
+/* A level's chip, then what the level means. */
+.fn-legend {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  align-items: baseline;
+  gap: 8px 16px;
+  margin-bottom: 24px;
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.fn-tool {
+  margin-top: 24px;
+  padding-top: 24px;
+  border-top: 1px solid var(--line);
+}
+
+.fn-tool-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 12px;
+  margin-bottom: 8px;
+}
+
+.fn-tool-head h3 {
+  color: var(--ink);
+  font-size: var(--t-md);
+  font-weight: 600;
+  line-height: var(--lh-md);
+}
+
+.fn-tool-count {
+  color: var(--ink-3);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.fn-tool-head p {
+  flex: 1 1 100%;
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.fn-rows {
+  list-style: none;
+}
+
+.fn-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 0;
+}
+
+.fn-row + .fn-row {
+  border-top: 1px solid var(--line);
+}
+
+.fn-row-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+}
+
+.fn-name {
+  margin-right: 4px;
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: var(--t-sm);
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.fn-timeout {
+  margin-left: auto;
+  color: var(--ink-3);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+  white-space: nowrap;
+}
+
+.fn-about {
+  max-width: 80ch;
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.fn-more summary {
+  display: inline-block;
+  padding: 4px 0;
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+  text-decoration: underline;
+  text-decoration-color: var(--line-strong);
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.fn-facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 6px 16px;
+  margin-top: 4px;
+  padding: 12px;
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.fn-facts dt {
+  color: var(--ink-3);
+}
+
+.fn-facts dd {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  color: var(--ink-2);
+}
+
+.fn-facts code {
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+  overflow-wrap: anywhere;
+}
+
+/* An input's type, after its name; a required input reads stronger. */
+.fn-facts code em {
+  margin-left: 4px;
+  color: var(--ink-3);
+  font-style: normal;
+}
+
+.fn-facts code.is-required {
+  font-weight: 600;
+}
+
+@media (max-width: 700px) {
+  .fn-legend,
+  .fn-facts {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+  }
+
+  .fn-legend dd,
+  .fn-facts dd {
+    margin-bottom: 8px;
+  }
+
+  .fn-timeout {
+    margin-left: 0;
+  }
+}
