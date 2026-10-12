@@ -257,6 +257,8 @@ export class MainComponent implements OnInit, OnDestroy {
       width: 'auto',
       data: {
         type: 'confirm',
+        confirm: 'Stop everything',
+        danger: true,
         title: 'Stop everything?',
         messages: [{
           description:

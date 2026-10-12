@@ -1,6 +1,13 @@
 import { Component, Inject } from '@angular/core';
 import { MAT_DIALOG_DATA, MatDialogRef } from '@angular/material/dialog';
 
+/**
+ * A message in a dialog: a title, sentences, and tables of what they
+ * are about. With `type: 'confirm'` it asks, and closes with
+ * `{ confirmed: true }` when the person goes ahead; `confirm` names
+ * that button and `danger` makes it the red one. A plain question
+ * with no table is asked through ConfirmService instead.
+ */
 @Component({
   selector: 'app-alert',
   templateUrl: './alert.component.html',
@@ -48,41 +55,6 @@ export class AlertComponent {
     }
 
     return String(value);
-  }
-
-  /* Theme-token colors so alerts follow the active (light/dark) M3 theme. */
-  getAccentColor(): string {
-    const map: Record<string, string> = {
-      success: 'var(--accent)',
-      error: 'var(--danger)',
-      confirm: 'var(--warn)',
-      info: 'var(--accent)',
-    };
-    return map[this.data?.type] ?? 'var(--ink-2)';
-  }
-
-  getIconBg(): string {
-    const map: Record<string, string> = {
-      success: 'var(--accent-soft)',
-      error: 'var(--danger-soft)',
-      confirm: 'var(--warn-soft)',
-      info: 'var(--accent-soft)',
-    };
-    return map[this.data?.type] ?? 'var(--surface-2)';
-  }
-
-  getHeroBg(): string {
-    return 'transparent';
-  }
-
-  getTypeIcon(): string {
-    const map: Record<string, string> = {
-      success: 'circle-check',
-      error: 'circle-alert',
-      confirm: 'triangle-alert',
-      info: 'info',
-    };
-    return map[this.data?.type] ?? 'bell';
   }
 
   closeDialogWithData(): void {

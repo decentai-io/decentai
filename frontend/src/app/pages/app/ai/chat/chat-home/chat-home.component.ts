@@ -312,6 +312,8 @@ export class ChatHomeComponent implements OnInit {
       width: 'auto',
       data: {
         type: 'confirm',
+        confirm: 'Delete',
+        danger: true,
         title: `Delete Chat "${chat.title || 'Untitled'}"`,
         messages: [
           {
