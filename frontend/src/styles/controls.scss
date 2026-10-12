@@ -232,6 +232,71 @@ textarea.input {
   gap: 20px;
 }
 
+/* A form has sections when its page has more than one concern: a
+   heading, an optional line under it, a hairline above every section
+   but the first. */
+.form-section {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.form-section + .form-section {
+  margin-top: 12px;
+  padding-top: 32px;
+  border-top: 1px solid var(--line);
+}
+
+.form-section-title {
+  color: var(--ink);
+  font-size: var(--t-md);
+  font-weight: 600;
+  line-height: var(--lh-md);
+}
+
+.form-section-note {
+  margin-top: -16px;
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+/* A pair of fields that reads as one (two dates, a grid of numbers). */
+.form-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px 16px;
+}
+
+/* A number with its unit after it: class="number-field" around an
+   <input class="input" type="number"> and a <span>. */
+.number-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+}
+
+.number-field .input {
+  width: 96px;
+}
+
+/* One line at the top of a page a person may read but not change. */
+.form-notice {
+  padding: 8px 12px;
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+/* A form while it loads: blocks the height of a field. */
+.sk-field {
+  height: 58px;
+}
+
 /* ── Chip ────────────────────────────────────────────────────────────
    A small label for a state or a count. `accent` for chosen or new,
    `live` for something running now (it carries the pulsing dot),

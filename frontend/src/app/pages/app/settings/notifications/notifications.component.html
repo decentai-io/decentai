@@ -1,0 +1,44 @@
+<div class="form" *ngIf="loading" aria-busy="true" aria-label="Loading notifications">
+  <span class="sk sk-field"></span>
+  <span class="sk sk-field"></span>
+</div>
+
+<app-empty *ngIf="loadError" icon="cloud-off" title="Notifications could not be loaded" [line]="loadError">
+  <button class="btn" type="button" (click)="load()">Try again</button>
+</app-empty>
+
+<div class="form" *ngIf="!loading && settings as known">
+  <!-- This device: where it stands, and the one thing to do about it. -->
+  <div class="notify-device">
+    <div class="notify-words">
+      <p class="notify-label">This device</p>
+      <p class="notify-status" [class.is-on]="!!thisDevice">{{ deviceStatus }}</p>
+      <p class="notify-help" [class.is-error]="deviceError" role="status">
+        {{ deviceError || deviceHelp }}
+        <a *ngIf="!known.push.configured" routerLink="/guide/admin">Learn more</a>
+      </p>
+    </div>
+    <ng-container *ngIf="known.push.configured && pushSupported">
+      <button class="btn" type="button" *ngIf="!thisDevice" [disabled]="busy || pushDenied" (click)="turnOnHere()">
+        Turn on here
+      </button>
+      <button class="btn" type="button" *ngIf="thisDevice" [disabled]="busy" (click)="turnOffHere()">
+        Turn off here
+      </button>
+    </ng-container>
+  </div>
+
+  <app-switch
+    label="Email me when no device can be reached"
+    [help]="emailHelp"
+    [note]="emailNote"
+    [disabled]="!known.email.available"
+    [ngModel]="known.email.enabled"
+    (ngModelChange)="setEmail($event)"
+  ></app-switch>
+
+  <div class="notify-test">
+    <button class="btn sm" type="button" [disabled]="busy" (click)="sendTest()">Send me a test</button>
+    <span class="notify-result" role="status">{{ testResult }}</span>
+  </div>
+</div>

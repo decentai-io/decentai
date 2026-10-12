@@ -249,6 +249,10 @@ import { FilesComponent } from './pages/app/data/files/files.component';
 import { RecordsComponent } from './pages/app/data/records/records.component';
 import { SecretsComponent } from './pages/app/secrets/secrets.component';
 import { SettingsComponent } from './pages/app/settings/settings.component';
+import { ChatDefaultsComponent } from './pages/app/settings/chat-defaults/chat-defaults.component';
+import { NotificationsComponent } from './pages/app/settings/notifications/notifications.component';
+import { SpeechComponent } from './pages/app/settings/speech/speech.component';
+import { RoutingComponent } from './pages/app/settings/routing/routing.component';
 import { GuideComponent } from './pages/app/guide/guide.component';
 import { OrganizationsComponent } from './pages/admin/organizations/organizations.component';
 import { ServiceWorkerModule } from '@angular/service-worker';
@@ -301,6 +305,10 @@ import { ServiceWorkerModule } from '@angular/service-worker';
     RecordsComponent,
     SecretsComponent,
     SettingsComponent,
+    ChatDefaultsComponent,
+    NotificationsComponent,
+    SpeechComponent,
+    RoutingComponent,
     GuideComponent,
     OrganizationsComponent,
     ChatHomeComponent,

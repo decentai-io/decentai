@@ -5,9 +5,13 @@ import { CanActivateFn, Router, Routes } from '@angular/router';
 // pages, their names and the actions that open them are listed once,
 // in website/config/config.ts.
 import { ApiKeysComponent } from '../../pages/app/settings/api-keys/api-keys.component';
+import { ChatDefaultsComponent } from '../../pages/app/settings/chat-defaults/chat-defaults.component';
 import { ConnectedAppsComponent } from '../../pages/app/settings/connected-apps/connected-apps.component';
 import { MemoryComponent } from '../../pages/app/settings/memory/memory.component';
+import { NotificationsComponent } from '../../pages/app/settings/notifications/notifications.component';
+import { RoutingComponent } from '../../pages/app/settings/routing/routing.component';
 import { SafetyComponent } from '../../pages/app/settings/safety/safety.component';
+import { SpeechComponent } from '../../pages/app/settings/speech/speech.component';
 import { SettingsComponent } from '../../pages/app/settings/settings.component';
 import { SettingsShellComponent } from '../../pages/app/settings/settings-shell.component';
 import { permissionGuard } from '../../guards/permission.guard';
@@ -34,13 +38,13 @@ const settingsLandingGuard: CanActivateFn = async () => {
 
 /** The component of each page, by the page's path. */
 const pageComponents: Record<string, Type<unknown>> = {
-  chat: SettingsComponent,
-  notifications: SettingsComponent,
+  chat: ChatDefaultsComponent,
+  notifications: NotificationsComponent,
   memory: MemoryComponent,
   keys: ApiKeysComponent,
   providers: SettingsComponent,
-  speech: SettingsComponent,
-  routing: SettingsComponent,
+  speech: SpeechComponent,
+  routing: RoutingComponent,
   apps: ConnectedAppsComponent,
   safety: SafetyComponent,
 };

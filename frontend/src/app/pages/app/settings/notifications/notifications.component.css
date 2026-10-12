@@ -1,0 +1,57 @@
+/* Notifications: a device's standing with its button at the right, and
+   the test with its result beside it. The switch, the buttons and the
+   form's spacing are the shared ones. */
+.notify-device {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px 16px;
+}
+
+.notify-words {
+  flex: 1 1 280px;
+  min-width: 0;
+}
+
+.notify-label {
+  color: var(--ink);
+  font-size: var(--t-sm);
+  font-weight: 500;
+  line-height: var(--lh-sm);
+}
+
+.notify-status {
+  margin-top: 4px;
+  color: var(--ink);
+  font-size: var(--t-base);
+  line-height: var(--lh-base);
+}
+
+.notify-status.is-on {
+  color: var(--accent-ink);
+}
+
+.notify-help {
+  margin-top: 2px;
+  color: var(--ink-3);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.notify-help.is-error {
+  color: var(--danger-ink);
+}
+
+.notify-test {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.notify-result {
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}

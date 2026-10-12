@@ -43,7 +43,7 @@ import { Choice } from './radio-keys';
 
     <mat-menu #panel="matMenu" class="select-panel">
       <button
-        *ngFor="let choice of choices"
+        *ngFor="let choice of choices; trackBy: byValue"
         type="button"
         mat-menu-item
         [disabled]="choice.disabled"
@@ -83,6 +83,10 @@ export class SelectComponent<T = string> implements ControlValueAccessor {
 
   get chosen(): Choice<T> | undefined {
     return this.choices.find((choice) => choice.value === this.value);
+  }
+
+  byValue(_index: number, choice: Choice<T>): T {
+    return choice.value;
   }
 
   choose(value: T): void {

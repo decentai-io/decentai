@@ -29,8 +29,9 @@ const CONTROL = `${LABELABLE}, [role="radiogroup"]`;
     <label class="field-label" [id]="id + '-label'" [attr.for]="labelFor">{{ label }}</label>
     <ng-content></ng-content>
     <p class="field-error" *ngIf="error" [id]="id + '-error'" role="alert">{{ error }}</p>
-    <p class="field-help" *ngIf="!error && help" [id]="id + '-help'">
+    <p class="field-help" *ngIf="!error && (help || link)" [id]="id + '-help'">
       {{ help }}
+      <a *ngIf="link" [routerLink]="link.to">{{ link.text }}</a>
       <a *ngIf="learnMore" [routerLink]="learnMorePath" [fragment]="learnMoreFragment">Learn more</a>
     </p>
   `,
@@ -44,6 +45,9 @@ export class FieldComponent implements AfterContentChecked {
   /** The guide's page for the rest of the explanation, as
    *  `/guide/chapter#heading`. */
   @Input() learnMore = '';
+  /** A sentence at the end of the help that leads to another page:
+   *  "What no agent may do at all is under Safety." */
+  @Input() link: { text: string; to: string } | null = null;
 
   readonly id = `field-${++created}`;
   /** The control's id, when it is something a label can point at. */
@@ -76,7 +80,8 @@ export class FieldComponent implements AfterContentChecked {
         this.control.setAttribute('aria-labelledby', `${this.id}-label`);
       }
     }
-    const describedBy = this.error ? `${this.id}-error` : this.help ? `${this.id}-help` : null;
+    const describedBy = this.error ? `${this.id}-error`
+      : this.help || this.link ? `${this.id}-help` : null;
     this.setAttribute('aria-describedby', describedBy);
     this.setAttribute('aria-invalid', this.error ? 'true' : null);
   }

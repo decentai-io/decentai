@@ -1,0 +1,62 @@
+<div class="form" *ngIf="loading" aria-busy="true" aria-label="Loading agent routing">
+  <span class="sk sk-field"></span>
+  <span class="sk sk-field"></span>
+  <span class="sk sk-field"></span>
+</div>
+
+<app-empty *ngIf="loadError" icon="cloud-off" title="Agent routing could not be loaded" [line]="loadError">
+  <button class="btn" type="button" (click)="load()">Try again</button>
+</app-empty>
+
+<div class="form" *ngIf="!loading && !loadError">
+  <p class="form-notice" *ngIf="!canEdit">Only an administrator changes this.</p>
+
+  <app-field
+    label="Embedding model"
+    help="Above the threshold, the closest agents by meaning are listed; below it, every agent."
+    [error]="embeddingError"
+  >
+    <app-model-select
+      kind="embedding"
+      noneLabel="None"
+      [connections]="shared"
+      [connectionId]="draft.value.embedding_connection_id"
+      [model]="draft.value.embedding_model"
+      [disabled]="!canEdit"
+      (changed)="chooseEmbedding($event)"
+    ></app-model-select>
+  </app-field>
+
+  <!-- The four numbers read as one policy: two by two. -->
+  <div class="form-pair">
+    <app-field *ngFor="let field of numbers" [label]="field.label" [help]="field.help" [error]="numberError(field)">
+      <span class="number-field">
+        <input
+          class="input"
+          type="number"
+          [min]="field.min"
+          [max]="field.max"
+          [disabled]="!canEdit"
+          [(ngModel)]="draft.value[field.key]"
+        />
+        <span>{{ field.unit }}</span>
+      </span>
+    </app-field>
+  </div>
+
+  <app-switch
+    label="Rerank with the chat's model"
+    help="One small call for each message; off, the embedding's order stands."
+    [disabled]="!canEdit"
+    [(ngModel)]="draft.value.rerank"
+  ></app-switch>
+
+  <app-save-bar
+    *ngIf="canEdit"
+    [dirty]="draft.dirty"
+    [saving]="saving"
+    [error]="saveError"
+    (save)="save()"
+    (discard)="discard()"
+  ></app-save-bar>
+</div>
