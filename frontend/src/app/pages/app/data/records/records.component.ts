@@ -1,6 +1,14 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnDestroy, OnInit } from '@angular/core';
+import { ActivatedRoute, NavigationEnd, Router } from '@angular/router';
+import { Subscription } from 'rxjs';
+import { filter } from 'rxjs/operators';
 
+import { fullDate, relativeDate } from 'src/app/components/ui/dates';
+import { FilterGroup } from 'src/app/components/ui/filter-column.component';
+import { Choice } from 'src/app/components/ui/radio-keys';
+import { Sort } from 'src/app/components/ui/sort-header.component';
 import { AuthService } from 'src/app/services/auth.service';
+import { ConfirmService } from 'src/app/services/confirm.service';
 import { Profile, ProfileService } from 'src/app/services/profile.service';
 import {
   AgentRecord, RecordField, RecordShape, RecordsService,
@@ -8,14 +16,14 @@ import {
 import { DataPageBase } from '../../data-page-base';
 import { ShareEditor } from '../../share-editor';
 
-/** One kind an agent keeps, as the rail shows it. */
+/** One kind an agent keeps, as the filter column shows it. */
 interface KindNode {
   resourceId: string;
   label: string;
   count: number;
 }
 
-/** One agent in the rail, with the kinds it keeps beneath it. */
+/** One agent in the filter column, with the kinds it keeps beneath it. */
 interface AgentNode {
   id: string;
   name: string;
@@ -30,61 +38,72 @@ interface Column {
   type: RecordField['type'];
 }
 
-type SortKey = 'updated' | 'created' | 'name' | string;
+/** Whose records are listed. */
+type Show = 'mine' | 'shared';
+
+/** The column a kind with no declared shape is shown by: its name. */
+const NAME_COLUMN = '__name';
+
+/** Newest change first: how a kind opens. */
+const BY_CHANGE: Sort = { key: 'updated', direction: 'desc' };
 
 /**
- * Agent records: what agents have stored on the user's behalf. Records are
- * grouped by `resource_id` (`agent__resource`): the page opens on a card
- * per agent with the kinds it keeps and their counts, and an agent opens
- * to one kind at a time, chosen from a selector.
+ * Saved data: what agents have stored on the user's behalf. Records are
+ * grouped by `resource_id` (`agent__kind`), and the page shows one kind
+ * at a time: the column at the list's left holds the agents, each
+ * opening to the kinds it keeps, and the address names the one open
+ * (/data/records/<agent>/<kind>), with the search, the sort and the
+ * page in its query.
  *
  * One kind is a table: every record of a kind shares the shape its agent
  * declared, so the columns are that shape's fields, labelled as the
  * manifest labels them, sortable, and a row opens to the whole record. A
- * kind no installed agent declares any more is a plain list. Either way,
- * nothing here is invented: the shape comes from the manifest, and a
- * hand-written record follows it exactly so the agent can read back what
- * was written.
+ * kind no installed agent declares any more is listed by name. Either
+ * way, nothing here is invented: the shape comes from the manifest, and
+ * a hand-written record follows it exactly so the agent can read back
+ * what was written.
  */
 @Component({
   selector: 'app-records',
   standalone: false,
   templateUrl: './records.component.html',
+  // iam-shared.css styles the fields of the form dialog, until that
+  // dialog is on the form system.
   styleUrls: [
     '../../data-shared.css',
     '../../../admin/iam-shared.css',
     './records.component.css',
   ],
 })
-export class RecordsComponent extends DataPageBase implements OnInit {
+export class RecordsComponent extends DataPageBase implements OnInit, OnDestroy {
   loading = true;
   records: AgentRecord[] = [];
   profile: Profile | null = null;
 
-  /** '' = every agent; else an `agt_…` prefix. */
+  // ── What the address says ───────────────────────────────────────────
+  show: Show = 'mine';
+  /** The agent whose kind is open: an `agt_…` ref; '' before one is. */
   activeAgent = '';
-  /** '' = every kind the selected agent keeps; else one resource id. */
-  activeGroup = '';
+  /** The kind half of the address. */
+  private kindParam = '';
   query = '';
-  agentQuery = '';
-  agentPage = 1;
-  recordPage = 1;
-  readonly agentPageSize = 12;
-  readonly recordPageSize = 20;
-  sortKey: SortKey = 'updated';
-  sortDesc = true;
+  sort: Sort = BY_CHANGE;
+  page = 1;
+
+  readonly pageSize = 20;
+  readonly sortChoices: Choice[] = [
+    { value: 'updated', name: 'Changed' },
+    { value: 'created', name: 'Created' },
+    { value: 'name', name: 'Name' },
+  ];
   busyRef = '';
 
-  /** What the confirmation is about: one record, or every one ticked.
-   *  A single dialog serves both, so there is one place that says what
-   *  is about to go. */
-  deleting: AgentRecord[] = [];
   /** Records ticked to go together, by resource_ref. */
   selected = new Set<string>();
   bulkBusy = false;
 
-  /** The record types installed agents declare — the rail's labels,
-   *  the table's columns, and New record's menu. */
+  /** The record types installed agents declare — the filter column's
+   *  labels, the table's columns, and what Add a record offers. */
   shapes: RecordShape[] = [];
   pickerOpen = false;
   formShape: RecordShape | null = null;
@@ -102,15 +121,38 @@ export class RecordsComponent extends DataPageBase implements OnInit {
   /** Columns a kind's table shows at once; the rest are in the record. */
   private static readonly MAX_COLUMNS = 7;
 
+  private readonly address = new Subscription();
+
   constructor(
     private service: RecordsService,
     private profiles: ProfileService,
     public auth: AuthService,
+    private router: Router,
+    private route: ActivatedRoute,
+    private confirm: ConfirmService,
   ) {
     super();
   }
 
   async ngOnInit(): Promise<void> {
+    // The kind is a child route's (routes/app/data.routes.ts), so that
+    // moving between kinds keeps this page; it is read after each
+    // navigation, and the page then makes sure it names something.
+    this.readKind();
+    this.address.add(this.router.events
+      .pipe(filter((event) => event instanceof NavigationEnd))
+      .subscribe(() => {
+        this.readKind();
+        if (!this.loading) this.settleSelection();
+      }));
+    this.address.add(this.route.queryParamMap.subscribe((params) => {
+      this.show = params.get('show') === 'shared' ? 'shared' : 'mine';
+      this.query = params.get('q') ?? '';
+      const key = params.get('sort') ?? BY_CHANGE.key;
+      this.sort = { key, direction: params.get('dir') === 'asc' ? 'asc' : params.get('dir') === 'desc' ? 'desc' : this.firstDirection(key) };
+      this.page = Math.max(1, Number(params.get('page')) || 1);
+    }));
+
     const [records, profile] = await Promise.all([
       this.service.list(),
       this.profiles.get(),
@@ -118,8 +160,55 @@ export class RecordsComponent extends DataPageBase implements OnInit {
     this.records = records;
     this.profile = profile;
     this.loading = false;
+    this.settleSelection();
     this.shapes = await this.service.shapes().catch(() => []);
     this.share.peers = await this.profiles.peers().catch(() => []);
+  }
+
+  ngOnDestroy(): void {
+    this.address.unsubscribe();
+  }
+
+  private readKind(): void {
+    const params = this.route.snapshot.firstChild?.paramMap;
+    const agent = params?.get('agent') ?? '';
+    const kind = params?.get('kind') ?? '';
+    if (agent === this.activeAgent && kind === this.kindParam) return;
+    this.activeAgent = agent;
+    this.kindParam = kind;
+    this.selected.clear();
+    this.share.close();
+  }
+
+  /** The kind that is open: its resource id, `agent__kind`. A kind from
+   *  before agents had refs has no agent half, and its address says its
+   *  whole id twice. */
+  get activeGroup(): string {
+    if (!this.activeAgent || !this.kindParam) return '';
+    return this.activeAgent === this.kindParam
+      ? this.activeAgent
+      : `${this.activeAgent}__${this.kindParam}`;
+  }
+
+  /** Opens a kind: its address. */
+  private openKind(resourceId: string, replaceUrl = false): void {
+    const agent = this.agentOf(resourceId) || resourceId;
+    void this.router.navigate(['/data/records', agent, this.kindOf(resourceId)], {
+      queryParams: { show: this.show === 'shared' ? 'shared' : null },
+      replaceUrl,
+    });
+  }
+
+  /** Changes the query of the address, and so what is listed. */
+  private go(changes: Record<string, string | number | null>): void {
+    const queryParams: Record<string, string | number | null> = {};
+    for (const [key, value] of Object.entries(changes)) queryParams[key] = value || null;
+    void this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams,
+      queryParamsHandling: 'merge',
+      replaceUrl: true,
+    });
   }
 
   private async reload(): Promise<void> {
@@ -134,28 +223,21 @@ export class RecordsComponent extends DataPageBase implements OnInit {
 
   /** Point at something that still exists.
    *
-   *  The rail is derived from the records themselves, so deleting the
-   *  last of a kind — or of an agent — leaves this page describing a
-   *  selection that is no longer there: the workspace renders nothing
-   *  at all, while its header still counts the items that were. And
-   *  because the sidebar link is the route this page is already on,
-   *  Angular never rebuilds the component, so nothing recovers until
-   *  the person navigates away and back.
-   *
-   *  So the page settles itself: to the agent's next remaining kind,
-   *  else back to the agents it still has. */
+   *  The filter column is derived from the records themselves, so with
+   *  no kind in the address, or after the last record of the open kind
+   *  is deleted, the address names nothing that is there. The page
+   *  settles itself: to the same agent's next kind, else to the first
+   *  kind of the first agent; with no record at all it stays where it
+   *  is and says so. A kind that holds nothing yet but that its agent
+   *  lets a person write is somewhere to be: its first record is made
+   *  from there. */
   private settleSelection(): void {
-    if (!this.activeAgent) return;
-    const agent = this.agentNodes.find((node) => node.id === this.activeAgent);
-    if (!agent) {
-      this.selectAll();
-      return;
-    }
-    if (this.activeGroup
-        && !agent.kinds.some((kind) => kind.resourceId === this.activeGroup)) {
-      this.activeGroup = agent.kinds[0]?.resourceId ?? '';
-      this.recordPage = 1;
-    }
+    const open = this.activeGroup;
+    if (open && (this.selectionRecords.length || this.creatable(this.shapeFor(open)))) return;
+    const agents = this.agentNodes;
+    const next = agents.find((node) => node.id === this.activeAgent)?.kinds[0]
+      ?? agents[0]?.kinds[0];
+    if (next && next.resourceId !== open) this.openKind(next.resourceId, true);
   }
 
   // ── Choosing several at once ────────────────────────────────────────
@@ -179,8 +261,8 @@ export class RecordsComponent extends DataPageBase implements OnInit {
     }
   }
 
-  /** "All" means all of what is on screen under the current search and
-   *  data type — never records the person cannot see from here. */
+  /** "All" means all of what the search shows of the open kind —
+   *  never records the person cannot see from here. */
   get selectableShown(): AgentRecord[] {
     return this.shownRecords.filter((record) => this.deletable(record));
   }
@@ -196,10 +278,6 @@ export class RecordsComponent extends DataPageBase implements OnInit {
 
   clearSelection(): void {
     this.selected.clear();
-  }
-
-  get selectedRecords(): AgentRecord[] {
-    return this.records.filter((record) => this.isSelected(record));
   }
 
   // ── Access ──────────────────────────────────────────────────────────
@@ -269,11 +347,20 @@ export class RecordsComponent extends DataPageBase implements OnInit {
     return record.resource_ref;
   }
 
-  // ── The rail ────────────────────────────────────────────────────────
+  // ── The filter column ───────────────────────────────────────────────
+
+  private isMine(record: AgentRecord): boolean {
+    return record.created_by === this.myUserId;
+  }
+
+  /** The records of the chosen "whose". */
+  private get pool(): AgentRecord[] {
+    return this.records.filter((record) => this.isMine(record) === (this.show === 'mine'));
+  }
 
   get agentNodes(): AgentNode[] {
     const byAgent = new Map<string, Map<string, number>>();
-    for (const record of this.records) {
+    for (const record of this.pool) {
       const agent = this.agentOf(record.resource_id) || record.resource_id;
       const kinds = byAgent.get(agent) ?? new Map<string, number>();
       kinds.set(record.resource_id, (kinds.get(record.resource_id) ?? 0) + 1);
@@ -293,32 +380,57 @@ export class RecordsComponent extends DataPageBase implements OnInit {
       .sort((a, b) => a.name.localeCompare(b.name));
   }
 
-  get activeAgentNode(): AgentNode | null {
-    return this.agentNodes.find((agent) => agent.id === this.activeAgent) ?? null;
+  get chosen(): Record<string, string> {
+    return { show: this.show, kind: this.activeGroup };
   }
 
-  get filteredAgentNodes(): AgentNode[] {
-    const query = this.agentQuery.trim().toLowerCase();
-    if (!query) return this.agentNodes;
-    return this.agentNodes.filter((agent) =>
-      `${agent.name} ${agent.kinds.map((kind) => kind.label).join(' ')}`.toLowerCase().includes(query),
-    );
+  /** Whose records, then the agents, each opening to its kinds. */
+  get filters(): FilterGroup[] {
+    const mine = this.records.filter((record) => this.isMine(record)).length;
+    return [
+      {
+        key: 'show',
+        required: true,
+        items: [
+          { value: 'mine', name: 'Mine', count: mine },
+          { value: 'shared', name: 'Shared with me', count: this.records.length - mine },
+        ],
+      },
+      {
+        key: 'kind',
+        label: 'Agents',
+        required: true,
+        items: this.agentNodes.map((agent) => ({
+          value: agent.id,
+          name: agent.name,
+          count: agent.count,
+          agent: { name: agent.name },
+          children: agent.kinds.map((kind) => ({
+            value: kind.resourceId, name: kind.label, count: kind.count,
+          })),
+        })),
+      },
+    ].filter((group) => group.items.length > 0);
   }
 
-  get pagedAgentNodes(): AgentNode[] {
-    const start = (this.agentPage - 1) * this.agentPageSize;
-    return this.filteredAgentNodes.slice(start, start + this.agentPageSize);
+  /** A filter was chosen: whose records, or an agent (its first kind)
+   *  or one of its kinds. */
+  filter(key: string, value: string): void {
+    if (key === 'show') {
+      this.show = value as Show;
+      const stillThere = this.agentNodes.some((agent) =>
+        agent.kinds.some((kind) => kind.resourceId === this.activeGroup));
+      const first = this.agentNodes[0]?.kinds[0];
+      if (!stillThere && first) return this.openKind(first.resourceId);
+      return this.go({ show: value === 'shared' ? 'shared' : null, page: null });
+    }
+    const agent = this.agentNodes.find((node) => node.id === value);
+    this.openKind(agent ? agent.kinds[0].resourceId : value);
   }
 
-  get agentPageCount(): number {
-    return Math.max(1, Math.ceil(this.filteredAgentNodes.length / this.agentPageSize));
-  }
-
-  /** The kinds a person may create here: those whose agent says so. */
+  /** The kinds a person may create: those whose agent says so. */
   get pickerShapes(): RecordShape[] {
-    return this.shapes.filter((shape) =>
-      (shape.user_access ?? []).includes('create')
-      && (!this.activeAgent || shape.agent_ref === this.activeAgent));
+    return this.shapes.filter((shape) => (shape.user_access ?? []).includes('create'));
   }
 
   /** Whether the record's agent lets a person edit its kind. */
@@ -326,49 +438,16 @@ export class RecordsComponent extends DataPageBase implements OnInit {
     return (this.shapeOf(record)?.user_access ?? []).includes('update');
   }
 
-  kindDescription(resourceId: string): string {
-    const description = this.shapeFor(resourceId)?.description?.trim();
-    return description || `It stores ${this.kindLabelOf(resourceId).toLowerCase()} items the agent may need again.`;
-  }
-
-  selectAll(): void {
-    this.activeAgent = '';
-    this.activeGroup = '';
-    this.resetSort();
-    this.recordPage = 1;
-  }
-
-  selectAgent(id: string): void {
-    this.activeAgent = id;
-    this.activeGroup = this.agentNodes.find((agent) => agent.id === id)?.kinds[0]?.resourceId ?? '';
-    this.resetSort();
-    this.recordPage = 1;
-  }
-
-  selectKind(agentId: string, resourceId: string): void {
-    this.activeAgent = agentId;
-    this.activeGroup = resourceId;
-    this.resetSort();
-    this.recordPage = 1;
-  }
-
-  private resetSort(): void {
-    this.sortKey = 'updated';
-    this.sortDesc = true;
+  /** What the manifest says the open kind is, when it says. */
+  get kindDescription(): string {
+    return this.shapeFor(this.activeGroup)?.description?.trim() ?? '';
   }
 
   // ── Filtering and sorting ───────────────────────────────────────────
 
+  /** The open kind's records, before the search. */
   get selectionRecords(): AgentRecord[] {
-    return this.records
-      .filter((record) => !this.activeAgent
-        || this.agentOf(record.resource_id) === this.activeAgent
-        || record.resource_id === this.activeAgent)
-      .filter((record) => !this.activeGroup || record.resource_id === this.activeGroup);
-  }
-
-  get selectionRecordCount(): number {
-    return this.selectionRecords.length;
+    return this.pool.filter((record) => record.resource_id === this.activeGroup);
   }
 
   get shownRecords(): AgentRecord[] {
@@ -383,48 +462,54 @@ export class RecordsComponent extends DataPageBase implements OnInit {
         ].join(' ').toLowerCase();
         return haystack.includes(query);
       });
-    return rows.sort((a, b) => this.compare(a, b) * (this.sortDesc ? -1 : 1));
+    return rows.sort((a, b) => this.compare(a, b) * (this.sort.direction === 'desc' ? -1 : 1));
   }
 
   get pagedRecords(): AgentRecord[] {
-    const start = (this.recordPage - 1) * this.recordPageSize;
-    return this.shownRecords.slice(start, start + this.recordPageSize);
+    const start = (this.page - 1) * this.pageSize;
+    return this.shownRecords.slice(start, start + this.pageSize);
   }
 
-  get recordPageCount(): number {
-    return Math.max(1, Math.ceil(this.shownRecords.length / this.recordPageSize));
+  toPage(page: number): void {
+    this.go({ page: page === 1 ? null : page });
   }
 
-  searchRecords(value: string): void {
-    this.query = value;
-    this.recordPage = 1;
-  }
-
-  searchAgents(value: string): void {
-    this.agentQuery = value;
-    this.agentPage = 1;
+  search(value: string): void {
+    this.go({ q: value, page: null });
   }
 
   private compare(a: AgentRecord, b: AgentRecord): number {
-    const key = this.sortKey;
+    const key = this.sort.key;
     if (key === 'updated' || key === 'created') {
       const field = key === 'updated' ? 'updated_at' : 'created_at';
       return String((a as any)[field] || a.created_at || '')
         .localeCompare(String((b as any)[field] || b.created_at || ''));
     }
-    if (key === 'name') return this.recordName(a).localeCompare(this.recordName(b));
+    if (key === 'name' || key === NAME_COLUMN) return this.recordName(a).localeCompare(this.recordName(b));
     const av = a.keys?.[key];
     const bv = b.keys?.[key];
     if (typeof av === 'number' && typeof bv === 'number') return av - bv;
     return String(av ?? '').localeCompare(String(bv ?? ''), undefined, { numeric: true });
   }
 
-  sortBy(key: SortKey): void {
-    if (this.sortKey === key) this.sortDesc = !this.sortDesc;
-    else {
-      this.sortKey = key;
-      this.sortDesc = key === 'updated' || key === 'created';
-    }
+  /** Dates open newest first; everything else A to Z. */
+  private firstDirection(key: string): Sort['direction'] {
+    return key === 'updated' || key === 'created' ? 'desc' : 'asc';
+  }
+
+  /** A column heading was clicked, or the toolbar's sort chosen. */
+  sortBy(sort: Sort): void {
+    const first = sort.key !== this.sort.key;
+    const direction = first ? this.firstDirection(sort.key) : sort.direction;
+    this.go({
+      sort: sort.key === BY_CHANGE.key ? null : sort.key,
+      dir: direction === this.firstDirection(sort.key) ? null : direction,
+      page: null,
+    });
+  }
+
+  sortByChoice(key: string): void {
+    this.sortBy({ key, direction: this.firstDirection(key) });
   }
 
   // ── The table one kind is shown as ──────────────────────────────────
@@ -434,10 +519,11 @@ export class RecordsComponent extends DataPageBase implements OnInit {
   }
 
   /** The kind's key fields, in manifest order, the name first, objects
-   *  and secrets left to the record itself. */
+   *  and secrets left to the record itself. A kind with no declared
+   *  shape has one column: the record's name. */
   get columns(): Column[] {
     const shape = this.tableShape;
-    if (!shape) return [];
+    if (!shape) return [{ name: NAME_COLUMN, label: 'Name', type: 'string' }];
     const usable = shape.fields.filter((f) =>
       f.storage === 'keys' && f.type !== 'object' && f.type !== 'secret');
     const nameFirst = [...usable].sort((a, b) => {
@@ -449,6 +535,7 @@ export class RecordsComponent extends DataPageBase implements OnInit {
   }
 
   cell(record: AgentRecord, column: Column): string {
+    if (column.name === NAME_COLUMN) return this.recordName(record);
     const value = record.keys?.[column.name];
     if (value === null || value === undefined || value === '') return '';
     if (column.type === 'boolean') return value ? 'yes' : 'no';
@@ -457,6 +544,7 @@ export class RecordsComponent extends DataPageBase implements OnInit {
   }
 
   cellKind(record: AgentRecord, column: Column): string {
+    if (column.name === NAME_COLUMN) return 'text';
     const value = record.keys?.[column.name];
     if (value === null || value === undefined || value === '') return 'empty';
     if (column.type === 'select') return 'chip';
@@ -497,25 +585,22 @@ export class RecordsComponent extends DataPageBase implements OnInit {
     return this.share.summary(record.owner, record.created_by);
   }
 
-  dateLabel(value?: string | null): string {
-    if (!value) return '';
-    const date = new Date(value);
-    return isNaN(date.getTime()) ? '' : date.toLocaleString();
+  /** When the record last changed. */
+  private changedAt(record: AgentRecord): string {
+    return record.updated_at || record.created_at || '';
   }
 
-  /** "2 hours ago" for the list; the dialog says the whole date. */
-  ageLabel(value?: string | null): string {
-    if (!value) return '';
-    const then = new Date(value).getTime();
-    if (isNaN(then)) return '';
-    const minutes = Math.round((Date.now() - then) / 60000);
-    if (minutes < 1) return 'just now';
-    if (minutes < 60) return `${minutes} min ago`;
-    const hours = Math.round(minutes / 60);
-    if (hours < 24) return `${hours} h ago`;
-    const days = Math.round(hours / 24);
-    if (days < 30) return `${days} d ago`;
-    return new Date(value).toLocaleDateString();
+  changed(record: AgentRecord): string {
+    return relativeDate(this.changedAt(record));
+  }
+
+  changedInFull(record: AgentRecord): string {
+    return fullDate(this.changedAt(record));
+  }
+
+  /** The whole date and time, for the record's own view. */
+  dateLabel(value?: string | null): string {
+    return fullDate(value);
   }
 
   // ── Authoring ───────────────────────────────────────────────────────
@@ -632,8 +717,8 @@ export class RecordsComponent extends DataPageBase implements OnInit {
       if (result.error) return this.fail(result.error);
       this.cancelForm();
       await this.reload();
-      // A first record of a kind made from the overview: show it.
-      if (!editing) this.selectKind(shape.agent_ref, shape.resource_id);
+      // A first record of a kind that held none: show it.
+      if (!editing && shape.resource_id !== this.activeGroup) this.openKind(shape.resource_id);
       this.flash(editing ? 'Record updated.' : 'Record created.');
     } finally {
       this.saving = false;
@@ -675,33 +760,38 @@ export class RecordsComponent extends DataPageBase implements OnInit {
     return !!this.busyRef || this.bulkBusy;
   }
 
-  /** What is about to go, as a person reads a list. */
-  get deletingNames(): string {
-    const names = this.deleting.map((record) => this.recordName(record));
-    if (names.length <= 3) return names.join(', ');
-    return `${names.slice(0, 3).join(', ')} and ${names.length - 3} more`;
+  /** Whether the row's menu would hold anything. */
+  hasActions(record: AgentRecord): boolean {
+    return this.canTouch(record)
+      && ((this.canUpdate && this.mayEdit(record)) || this.canShare || this.canTransfer || this.canDelete);
   }
 
-  requestDelete(record: AgentRecord): void {
-    this.deleting = [record];
-    this.error = '';
+  deleteOne(record: AgentRecord): Promise<void> {
+    return this.delete([record]);
   }
 
-  requestDeleteSelected(): void {
-    this.deleting = this.selectedRecords;
-    this.error = '';
+  deleteSelected(): Promise<void> {
+    return this.delete(this.records.filter((record) => this.isSelected(record)));
   }
 
-  closeDelete(): void {
-    if (!this.deleteBusy) this.deleting = [];
-  }
-
-  /** One record or many, the same way: through the door that already
-   *  checks who may delete what. A record that refuses does not stop the
-   *  rest, and stays ticked so it is clear what did not go. */
-  async confirmDelete(): Promise<void> {
-    const going = this.deleting.slice();
+  /** One record or many, the same way: asked first, then through the
+   *  door that already checks who may delete what. A record that refuses
+   *  does not stop the rest, and stays ticked so it is clear what did
+   *  not go. */
+  private async delete(going: AgentRecord[]): Promise<void> {
     if (!going.length) return;
+    const names = going.map((record) => this.recordName(record));
+    const listed = names.length <= 3
+      ? names.join(', ')
+      : `${names.slice(0, 3).join(', ')} and ${names.length - 3} more`;
+    const sure = await this.confirm.ask({
+      title: going.length === 1 ? 'Delete this record?' : `Delete ${going.length} records?`,
+      body: `${listed}. Deleted records cannot be recovered, and the agent will no longer be able to read ${going.length === 1 ? 'it' : 'them'}.`,
+      confirm: going.length === 1 ? 'Delete record' : `Delete ${going.length} records`,
+      danger: true,
+    });
+    if (!sure) return;
+
     const gone: string[] = [];
     const refused: string[] = [];
     this.bulkBusy = true;
@@ -721,7 +811,6 @@ export class RecordsComponent extends DataPageBase implements OnInit {
       this.busyRef = '';
       this.bulkBusy = false;
     }
-    this.deleting = [];
     await this.reload();
     if (refused.length) {
       this.fail(`Deleted ${gone.length}. Still here — ${refused.join(', ')}.`);
@@ -731,7 +820,6 @@ export class RecordsComponent extends DataPageBase implements OnInit {
       this.flash(`${gone.length} records deleted.`);
     }
   }
-
 
   // ── Handing over ────────────────────────────────────────────────────
 

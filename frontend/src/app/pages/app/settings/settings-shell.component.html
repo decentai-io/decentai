@@ -1,11 +1,11 @@
-<div class="settings">
+<div class="side-layout">
   <!-- Wide screens: the pages, always in view. -->
   <nav class="settings-nav" aria-label="Settings">
     <ng-container *ngFor="let group of groups">
-      <p class="settings-nav-label">{{ group.name }}</p>
+      <p class="side-label">{{ group.name }}</p>
       <a
         *ngFor="let page of group.pages"
-        class="settings-nav-item"
+        class="side-item"
         [routerLink]="page.path"
         routerLinkActive="is-current"
         ariaCurrentWhenActive="page"

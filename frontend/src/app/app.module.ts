@@ -198,14 +198,19 @@ import { ChatApprovalCardComponent } from './pages/app/ai/chat/chat-approval-car
 import { FilePickerComponent } from './pages/app/ai/chat/file-picker/file-picker.component';
 import { ChatFilePickerDialogComponent } from './pages/app/ai/chat/chat-file-picker-dialog/chat-file-picker-dialog.component';
 import { ChatScreenComponent } from './pages/app/ai/chat/chat-screen/chat-screen.component';
+import { AgentMarkComponent } from './components/ui/agent-mark.component';
 import { ChoiceCardsComponent } from './components/ui/choice-cards.component';
 import { EmptyComponent } from './components/ui/empty.component';
 import { FieldComponent } from './components/ui/field.component';
+import { FilterColumnComponent } from './components/ui/filter-column.component';
 import { ListComponent } from './components/ui/list.component';
 import { PageComponent } from './components/ui/page.component';
+import { PagerComponent } from './components/ui/pager.component';
 import { RowComponent } from './components/ui/row.component';
 import { SaveBarComponent } from './components/ui/save-bar.component';
 import { SegmentedComponent } from './components/ui/segmented.component';
+import { SelectionBarComponent } from './components/ui/selection-bar.component';
+import { SortHeaderComponent } from './components/ui/sort-header.component';
 import { SelectComponent } from './components/ui/select.component';
 import { SwitchComponent } from './components/ui/switch.component';
 import { TokenListComponent } from './components/ui/token-list.component';
@@ -353,6 +358,11 @@ import { ServiceWorkerModule } from '@angular/service-worker';
     RowComponent,
     EmptyComponent,
     SaveBarComponent,
+    AgentMarkComponent,
+    FilterColumnComponent,
+    SortHeaderComponent,
+    SelectionBarComponent,
+    PagerComponent,
 
     // The icon set (Lucide): only the icons named here are bundled.
     LucideAngularModule.pick({

@@ -27,7 +27,7 @@ import { Component, Input } from '@angular/core';
         <span class="sk-words"><span class="sk sk-name"></span><span class="sk sk-meta"></span></span>
       </div>
     </div>
-    <div class="list-rows" *ngIf="!loading" role="list" [attr.aria-label]="label">
+    <div class="list-rows" *ngIf="!loading" [attr.role]="rows === 'list' ? 'list' : null" [attr.aria-label]="rows === 'list' ? label : null">
       <ng-content></ng-content>
     </div>
     <p class="list-foot" *ngIf="foot && !loading">{{ foot }}</p>
@@ -37,6 +37,9 @@ export class ListComponent {
   /** What the rows are, for a screen reader: "Model providers". */
   @Input({ required: true }) label = '';
   @Input() loading = false;
+  /** What is inside: <app-row>s, or a <table class="table"> with the
+   *  pager under it. */
+  @Input() rows: 'list' | 'table' = 'list';
   /** The counts under the rows: "3 active · 7 available". */
   @Input() foot = '';
 

@@ -17,12 +17,19 @@ export const DataRoutes: Routes = [
     canActivate: [permissionGuard],
     data: { requiredAction: 'files:file:list' },
   },
+  // Saved data shows one kind of record at a time, and the address
+  // names it. The kind is a child route with no component of its own,
+  // so moving between kinds keeps the page and what it has read.
   {
     path: 'records',
     title: 'Saved data',
     component: RecordsComponent,
     canActivate: [permissionGuard],
     data: { requiredAction: 'data:record:list' },
+    children: [
+      { path: '', pathMatch: 'full', children: [] },
+      { path: ':agent/:kind', children: [] },
+    ],
   },
   {
     path: 'skills',

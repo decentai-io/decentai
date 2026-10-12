@@ -35,8 +35,10 @@ export class NavigatorService {
 
   /** The address the person arrived at, kept until the app opens. The
    *  router rewrites the address bar before then: the root redirects to
-   *  the chats, and a guard sends someone not yet signed in elsewhere. */
-  private arrival: string | null = window.location.pathname;
+   *  the chats, and a guard sends someone not yet signed in elsewhere.
+   *  Its query is kept, since a page's filters and search are in it; its
+   *  fragment is not, since a sign-in link carries its token there. */
+  private arrival: string | null = window.location.pathname + window.location.search;
 
   /** Whether the app has opened on its first page. The last-visited page
    *  is only recorded from then on, so nothing the router did before

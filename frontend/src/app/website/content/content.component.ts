@@ -98,11 +98,13 @@ export class ContentComponent implements OnInit, OnDestroy {
   }
 
   private onArrived(event: NavigationEnd): void {
-    const top = this.returningTo === null ? 0 : (this.scrolledTo.get(this.returningTo) ?? 0);
+    const returning = this.returningTo !== null;
+    const top = returning ? (this.scrolledTo.get(this.returningTo!) ?? 0) : 0;
     const path = pathOf(event.urlAfterRedirects);
     // The first page is not a change, and a new query on the same page
-    // (a filter, an open row) is not a new page.
+    // (a filter, a search) is not a new page.
     const pageChanged = this.shownId !== 0 && path !== this.shownPath;
+    const firstPage = this.shownId === 0;
     this.shownId = event.id;
     this.shownPath = path;
 
@@ -111,7 +113,7 @@ export class ContentComponent implements OnInit, OnDestroy {
     afterNextRender(
       () => {
         const container = this.pageContainer.nativeElement;
-        this.scrollTo(top);
+        if (pageChanged || returning || firstPage) this.scrollTo(top);
         if (!pageChanged) return;
         this.announcer.nativeElement.textContent = this.title.getTitle().replace(TITLE_SUFFIX, '');
         const heading = container.querySelector<HTMLElement>('h1') ?? container;

@@ -1,0 +1,26 @@
+/* The selection bar: the height of the toolbar it stands in for, tinted
+   so that it is seen to have replaced it. */
+:host {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  min-height: 36px;
+  padding: 2px 4px 2px 12px;
+  border-radius: var(--r-md);
+  background: var(--accent-soft);
+}
+
+.selection-count {
+  margin-right: 4px;
+  color: var(--ink);
+  font-size: var(--t-base);
+  font-weight: 500;
+  line-height: var(--lh-base);
+}
+
+.selection-actions {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+}

@@ -401,7 +401,7 @@ export class MainComponent implements OnInit, OnDestroy {
   /** The pages that show their own title (the page frame,
    *  components/ui/page.component.ts). The bar above them would say it
    *  twice; it goes for good when every page has the frame. */
-  private readonly framedPages = /^\/(settings|monitoring|audit)(\/|$|\?)/;
+  private readonly framedPages = /^\/(settings|monitoring|audit|data\/files|data\/records)(\/|$|\?)/;
 
   /** A chat on a phone has its own header with the way back: the
    *  breadcrumb above it would be a third bar saying the same thing. */

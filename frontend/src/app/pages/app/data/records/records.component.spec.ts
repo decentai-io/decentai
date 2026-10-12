@@ -1,4 +1,35 @@
+import { convertToParamMap, NavigationEnd } from '@angular/router';
+import { BehaviorSubject, Subject } from 'rxjs';
 import { RecordsComponent } from './records.component';
+
+/**
+ * The address, as the page meets it: a router that can be navigated and
+ * tells of each navigation, and a route whose child names the open kind.
+ * Navigating to a kind's address makes it the open one, as the real
+ * router would.
+ */
+function address(agent = '', kind = '') {
+  const events = new Subject<unknown>();
+  const child = { paramMap: convertToParamMap(agent ? { agent, kind } : {}) };
+  const route = {
+    snapshot: { firstChild: child },
+    queryParamMap: new BehaviorSubject(convertToParamMap({})),
+  };
+  const router = {
+    events,
+    navigate: jasmine.createSpy('navigate').and.callFake(async (commands: string[]) => {
+      if (commands.length === 3) {
+        child.paramMap = convertToParamMap({ agent: commands[1], kind: commands[2] });
+        events.next(new NavigationEnd(1, '', ''));
+      }
+      return true;
+    }),
+  };
+  return { router, route };
+}
+
+/** The confirmation, answered yes. */
+const confirm = { ask: async () => true };
 
 describe('RecordsComponent deleting several records at once', () => {
   const ME = 'usr_me';
@@ -31,10 +62,14 @@ describe('RecordsComponent deleting several records at once', () => {
       peers: jasmine.createSpy('peers').and.resolveTo([]),
     };
     const auth = { can: () => true };
+    const { router, route } = address();
     const component = new RecordsComponent(
       service as any,
       profiles as any,
       auth as any,
+      router as any,
+      route as any,
+      confirm as any,
     );
     await component.ngOnInit();
     /** A record going away behind our back — somebody else deleted it. */
@@ -49,17 +84,22 @@ describe('RecordsComponent deleting several records at once', () => {
 
     component.toggleSelected(component.records[0]);
     component.toggleSelected(component.records[2]);
-    component.requestDeleteSelected();
-
-    expect(component.deleting.length).toBe(2);
-
-    await component.confirmDelete();
+    await component.deleteSelected();
 
     expect(service.remove).toHaveBeenCalledTimes(2);
     expect(component.records.length).toBe(1);
     expect(component.records[0].resource_ref).toBe('rec_2');
     expect(component.selected.size).toBe(0);
-    expect(component.deleting.length).toBe(0);
+  });
+
+  it('deletes nothing when the confirmation is refused', async () => {
+    const { component, service } = await componentWith([record('rec_1')]);
+    (component as any).confirm = { ask: async () => false };
+
+    await component.deleteOne(component.records[0]);
+
+    expect(service.remove).not.toHaveBeenCalled();
+    expect(component.records.length).toBe(1);
   });
 
   it('names what would not go, and leaves it ticked', async () => {
@@ -69,8 +109,7 @@ describe('RecordsComponent deleting several records at once', () => {
     const { component } = await componentWith([record('rec_1'), record('rec_2')], remove);
 
     component.selectAllShown();
-    component.requestDeleteSelected();
-    await component.confirmDelete();
+    await component.deleteSelected();
 
     expect(component.error).toContain('Still here');
     // The one that refused is still ticked; the one that went is not.
@@ -96,52 +135,60 @@ describe('RecordsComponent deleting several records at once', () => {
   it('still deletes one record on its own, through the same door', async () => {
     const { component, service } = await componentWith([record('rec_1'), record('rec_2')]);
 
-    component.requestDelete(component.records[1]);
-    expect(component.deleting.length).toBe(1);
-
-    await component.confirmDelete();
+    await component.deleteOne(component.records[1]);
 
     expect(service.remove).toHaveBeenCalledOnceWith('rec_2');
     expect(component.records.length).toBe(1);
     expect(component.notice).toBe('Record deleted.');
   });
 
-  it('moves to the next data type when the last of one is deleted', async () => {
-    /** The rail is derived from the records, so emptying a kind removes
-     *  it. Left pointing at it, the page shows "no records" beside a
-     *  header still counting what used to be there. */
+  it('opens on the first kind of the first agent', async () => {
+    const { component } = await componentWith([record('rec_1')]);
+
+    expect(component.activeAgent).toBe('agt_abc123');
+    expect(component.activeGroup).toBe('agt_abc123__note');
+  });
+
+  it('moves to the next kind when the last of one is deleted', async () => {
+    /** The filter column is derived from the records, so emptying a
+     *  kind removes it. Left pointing at it, the page would list nothing
+     *  under an address that names nothing. */
     const note = record('rec_note');
     note.resource_id = 'agt_abc123__note';
     const task = record('rec_task');
     task.resource_id = 'agt_abc123__task';
     const { component } = await componentWith([note, task]);
 
-    component.selectKind('agt_abc123', 'agt_abc123__note');
+    component.filter('kind', 'agt_abc123__note');
     expect(component.activeGroup).toBe('agt_abc123__note');
 
-    component.requestDelete(component.records[0]);
-    await component.confirmDelete();
+    await component.deleteOne(component.records[0]);
 
     expect(component.activeAgent).toBe('agt_abc123');
     expect(component.activeGroup).toBe('agt_abc123__task');
     expect(component.selectionRecords.length).toBe(1);
   });
 
-  it('goes back to the agents when the last of an agent is deleted', async () => {
-    /** This was the blank page: the workspace renders only while its
-     *  agent still exists, and nothing rebuilt the component, because
-     *  the sidebar link is the route it is already on. */
+  it('lists nothing when the last record of all is deleted', async () => {
     const { component } = await componentWith([record('rec_only')]);
 
-    component.selectAgent('agt_abc123');
-    expect(component.activeAgent).toBe('agt_abc123');
-
-    component.requestDelete(component.records[0]);
-    await component.confirmDelete();
+    await component.deleteOne(component.records[0]);
 
     expect(component.records).toEqual([]);
-    expect(component.activeAgent).toBe('');
-    expect(component.activeGroup).toBe('');
+    expect(component.shownRecords).toEqual([]);
+    expect(component.filters.find((group) => group.key === 'kind')).toBeUndefined();
+  });
+
+  it('keeps what is shared with the person apart from what is theirs', async () => {
+    const { component } = await componentWith([
+      record('rec_mine'), record('rec_theirs', 'usr_someone_else'),
+    ]);
+
+    expect(component.shownRecords.map((row) => row.resource_ref)).toEqual(['rec_mine']);
+
+    component.show = 'shared';
+
+    expect(component.shownRecords.map((row) => row.resource_ref)).toEqual(['rec_theirs']);
   });
 
   it('drops a tick when the record behind it is gone', async () => {
@@ -172,6 +219,7 @@ describe('RecordsComponent writing a record by hand', () => {
   }
 
   async function componentWith(rows: any[], shapes: any[], calls: any = {}) {
+    const { router, route } = address();
     const component = new RecordsComponent(
       {
         list: async () => rows,
@@ -187,6 +235,9 @@ describe('RecordsComponent writing a record by hand', () => {
       } as any,
       { get: async () => ({ user_id: ME }), peers: async () => [] } as any,
       { can: () => true } as any,
+      router as any,
+      route as any,
+      confirm as any,
     );
     await component.ngOnInit();
     return component;
@@ -203,9 +254,9 @@ describe('RecordsComponent writing a record by hand', () => {
   const TAG = { name: 'tag', label: 'Tag', type: 'string', storage: 'keys', required: false, options: [] };
   const COUNT = { name: 'count', label: 'Count', type: 'number', storage: 'keys', required: false, options: [] };
 
-  it('offers a kind that holds no record yet, from the overview', async () => {
+  it('offers a kind that holds no record yet', async () => {
     // Kinds on screen come from the records there are, so the first
-    // record of a kind has no card to be made from.
+    // record of a kind has nowhere on the page to be made from.
     const component = await componentWith([], [shape('note', ['create'], [TITLE])]);
 
     component.openPicker();
@@ -218,7 +269,6 @@ describe('RecordsComponent writing a record by hand', () => {
       [note({ title: 'a' })],
       [shape('note', []), shape('task', ['create']), shape('list', ['create'])],
     );
-    component.selectAgent('agt_abc123');
 
     component.openPicker();
 

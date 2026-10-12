@@ -1,35 +1,51 @@
-import { Component, OnInit } from '@angular/core';
-import { Router } from '@angular/router';
+import { Component, OnDestroy, OnInit } from '@angular/core';
+import { ActivatedRoute, Router } from '@angular/router';
+import { Subscription } from 'rxjs';
 
+import { fullDate, relativeDate } from 'src/app/components/ui/dates';
+import { FilterGroup, FilterItem } from 'src/app/components/ui/filter-column.component';
+import { Choice } from 'src/app/components/ui/radio-keys';
+import { Sort } from 'src/app/components/ui/sort-header.component';
+import { FilePickerComponent } from 'src/app/pages/app/ai/chat/file-picker/file-picker.component';
 import { AiSessionService } from 'src/app/services/ai-session.service';
 import { AuthService } from 'src/app/services/auth.service';
+import { ConfirmService } from 'src/app/services/confirm.service';
 import { FileResource, FilesService } from 'src/app/services/files.service';
 import { Profile, ProfileService } from 'src/app/services/profile.service';
 import { DataPageBase } from '../../data-page-base';
 import { ShareEditor } from '../../share-editor';
-import { FilePickerComponent } from 'src/app/pages/app/ai/chat/file-picker/file-picker.component';
+import { FILE_GROUPS, fileKindOf, sizeLabel } from './file-types';
 
-/** One source of files: uploads, chats, or one agent — a card on the
- *  overview, and the workspace once chosen. */
-export interface FileSource {
-  /** 'uploaded', 'chats', or an agent's ref. */
-  id: string;
-  name: string;
-  kind: 'uploaded' | 'chats' | 'agent';
-  count: number;
-  /** What it holds, by file type, most common first. */
-  types: { label: string; count: number }[];
+/** Whose files are listed. */
+type Show = 'all' | 'mine' | 'shared';
+
+/** The sorts the address can name, each a column and a direction. The
+ *  toolbar offers the first four; a column's heading reaches them all. */
+const SORTS: Record<string, Sort> = {
+  newest: { key: 'changed', direction: 'desc' },
+  oldest: { key: 'changed', direction: 'asc' },
+  name: { key: 'name', direction: 'asc' },
+  size: { key: 'size', direction: 'desc' },
+  'name-desc': { key: 'name', direction: 'desc' },
+  'size-asc': { key: 'size', direction: 'asc' },
+};
+
+/** The address's name for a sort. */
+function nameOfSort(sort: Sort): string {
+  return Object.keys(SORTS).find((name) =>
+    SORTS[name].key === sort.key && SORTS[name].direction === sort.direction) ?? 'newest';
 }
 
 /**
  * Files: everything stored on the user's behalf, whatever created it — a
- * chat attachment, an agent's output, a direct upload. Read, download and
- * delete only; the platform owns a file's metadata, so there is nothing
- * here to edit.
+ * chat attachment, an agent's output, a direct upload. Read, download,
+ * share and delete; the platform owns a file's metadata, so there is
+ * nothing here to edit.
  *
- * The same two levels as Saved data: an overview of where files come
- * from — uploads, chats, and one card per agent, named — and then one
- * source's files, flat, with a tick per file so several can go together.
+ * One list. The column at its left narrows it: whose files, where they
+ * came from (uploads, chats, each agent), and what type they are. What
+ * is chosen there, the search, the sort and the page are in the
+ * address, so a view of the list can be linked to and returned to.
  *
  * Chat titles are fetched to name the conversation an attachment came
  * from, and skipped without complaint when the user cannot list chats.
@@ -38,44 +54,44 @@ export interface FileSource {
   selector: 'app-files',
   standalone: false,
   templateUrl: './files.component.html',
-  styleUrls: [
-    '../../data-shared.css',
-    '../../../admin/iam-shared.css',
-    './files.component.css',
-  ],
+  styleUrls: ['../../data-shared.css', './files.component.css'],
 })
-export class FilesComponent extends DataPageBase implements OnInit {
+export class FilesComponent extends DataPageBase implements OnInit, OnDestroy {
   loading = true;
   files: FileResource[] = [];
   profile: Profile | null = null;
 
-  activeTab: 'mine' | 'shared' = 'mine';
-  /** '' = the overview; else one source's id. */
-  activeSource = '';
+  // ── What the address says ───────────────────────────────────────────
+  show: Show = 'all';
+  /** '', 'uploaded', 'chats', or an agent's ref. */
+  source = '';
+  /** '' or one of FILE_GROUPS. */
+  type = '';
   query = '';
-  sourceQuery = '';
-  sourcePage = 1;
+  sort: Sort = SORTS['newest'];
   page = 1;
-  readonly sourcePageSize = 12;
+
   readonly pageSize = 20;
+  readonly sortChoices: Choice[] = [
+    { value: 'newest', name: 'Newest' },
+    { value: 'oldest', name: 'Oldest' },
+    { value: 'name', name: 'Name' },
+    { value: 'size', name: 'Size' },
+  ];
+
   busyRef = '';
   uploading = false;
-
-  /** What the confirmation is about: one file, or every one ticked. */
-  deleting: FileResource[] = [];
   /** Files ticked to go together, by resource_ref. */
   selected = new Set<string>();
   bulkBusy = false;
 
   /** chat_id → title, for naming where an attachment came from. */
   private chatTitles = new Map<string, string>();
+  private address?: Subscription;
 
   /** Who can see a file. The platform owns everything else about it —
    *  this is the one thing about a file that is the person's to decide. */
   readonly share = new ShareEditor(() => this.profile);
-
-  /** File types a card names before saying "and more". */
-  private static readonly MAX_TYPES = 4;
 
   constructor(
     private service: FilesService,
@@ -83,11 +99,23 @@ export class FilesComponent extends DataPageBase implements OnInit {
     private profiles: ProfileService,
     public auth: AuthService,
     private router: Router,
+    private route: ActivatedRoute,
+    private confirm: ConfirmService,
   ) {
     super();
   }
 
   async ngOnInit(): Promise<void> {
+    this.address = this.route.queryParamMap.subscribe((params) => {
+      const show = params.get('show');
+      this.show = show === 'mine' || show === 'shared' ? show : 'all';
+      this.source = params.get('source') ?? '';
+      this.type = params.get('type') ?? '';
+      this.query = params.get('q') ?? '';
+      this.sort = SORTS[params.get('sort') ?? ''] ?? SORTS['newest'];
+      this.page = Math.max(1, Number(params.get('page')) || 1);
+    });
+
     const [files, profile] = await Promise.all([
       this.service.list(),
       this.profiles.get(),
@@ -109,15 +137,28 @@ export class FilesComponent extends DataPageBase implements OnInit {
     }
   }
 
+  ngOnDestroy(): void {
+    this.address?.unsubscribe();
+  }
+
   private async reload(): Promise<void> {
     this.files = await this.service.list();
     // A tick on a file that is no longer there means nothing.
     this.selected = new Set([...this.selected].filter((ref) =>
       this.files.some((file) => file.resource_ref === ref)));
-    // The overview is derived from the files, so deleting the last of
-    // a source leaves the workspace describing nothing: back to the
-    // sources that remain.
-    if (this.activeSource && !this.activeSourceNode) this.selectAll();
+  }
+
+  /** Changes what the address says, and so what is listed. A value of
+   *  '' (or the default) leaves the address without it. */
+  private go(changes: Record<string, string | number | null>): void {
+    const queryParams: Record<string, string | number | null> = {};
+    for (const [key, value] of Object.entries(changes)) queryParams[key] = value || null;
+    void this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams,
+      queryParamsHandling: 'merge',
+      replaceUrl: true,
+    });
   }
 
   // ── Access ──────────────────────────────────────────────────────────
@@ -172,118 +213,163 @@ export class FilesComponent extends DataPageBase implements OnInit {
     return ref.startsWith('agt_') ? ref : '';
   }
 
-  agentName(file: FileResource): string {
-    return file.agent?.name || this.agentRefOf(file);
+  chatIdOf(file: FileResource): string {
+    return String(file.keys?.['chat_id'] || '');
   }
 
+  /** 'uploaded', 'chats', or the agent's ref. */
   sourceOf(file: FileResource): string {
     return this.agentRefOf(file) || (this.chatIdOf(file) ? 'chats' : 'uploaded');
   }
 
-  /** The overview: uploads, chats, and one card per agent that stored
-   *  something — in that order, agents by name. */
-  get sourceNodes(): FileSource[] {
-    const nodes = new Map<string, FileSource>();
-    const typeCounts = new Map<string, Map<string, number>>();
-    for (const file of this.activeFiles) {
-      const id = this.sourceOf(file);
-      const node = nodes.get(id) ?? {
-        id,
-        name: id === 'uploaded' ? 'Uploaded' : id === 'chats' ? 'From chats' : this.agentName(file),
-        kind: id === 'uploaded' ? 'uploaded' as const : id === 'chats' ? 'chats' as const : 'agent' as const,
-        count: 0,
-        types: [],
-      };
-      node.count += 1;
-      nodes.set(id, node);
-      const types = typeCounts.get(id) ?? new Map<string, number>();
-      const label = this.extensionLabel(file);
-      types.set(label, (types.get(label) ?? 0) + 1);
-      typeCounts.set(id, types);
+  /** Where the file came from, named as specifically as the metadata allows. */
+  sourceLabel(file: FileResource): string {
+    const ref = this.agentRefOf(file);
+    if (ref) {
+      const name = file.agent?.name;
+      return name ? `From ${name}` : `From a former agent (${ref})`;
     }
-    const order = (node: FileSource) => node.kind === 'uploaded' ? 0 : node.kind === 'chats' ? 1 : 2;
-    return [...nodes.values()]
-      .map((node) => ({
-        ...node,
-        types: [...(typeCounts.get(node.id) ?? new Map<string, number>()).entries()]
-          .map(([label, count]) => ({ label, count }))
-          .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label))
-          .slice(0, FilesComponent.MAX_TYPES),
-      }))
-      .sort((a, b) => order(a) - order(b) || a.name.localeCompare(b.name));
+    const chatId = this.chatIdOf(file);
+    if (chatId) {
+      const title = this.chatTitles.get(chatId);
+      return title ? `From chat “${title}”` : 'From a chat';
+    }
+    const kind = String(file.keys?.['file_kind'] || '');
+    return kind ? kind.replace(/_/g, ' ') : 'Uploaded';
   }
 
-  get activeSourceNode(): FileSource | null {
-    return this.sourceNodes.find((node) => node.id === this.activeSource) ?? null;
+  // ── The filters ─────────────────────────────────────────────────────
+
+  private isMine(file: FileResource): boolean {
+    return file.created_by === this.myUserId;
   }
 
-  get filteredSourceNodes(): FileSource[] {
-    const query = this.sourceQuery.trim().toLowerCase();
-    if (!query) return this.sourceNodes;
-    return this.sourceNodes.filter((node) =>
-      `${node.name} ${node.types.map((type) => type.label).join(' ')}`.toLowerCase().includes(query));
+  /** The files of the chosen "whose": what the sources and the types
+   *  are counted in. */
+  private get pool(): FileResource[] {
+    if (this.show === 'mine') return this.files.filter((file) => this.isMine(file));
+    if (this.show === 'shared') return this.files.filter((file) => !this.isMine(file));
+    return this.files;
   }
 
-  get pagedSourceNodes(): FileSource[] {
-    const start = (this.sourcePage - 1) * this.sourcePageSize;
-    return this.filteredSourceNodes.slice(start, start + this.sourcePageSize);
+  private typeOf(file: FileResource): string {
+    const kind = fileKindOf(this.filename(file), file.values?.file_type);
+    return FILE_GROUPS.find((group) => group.kinds.includes(kind))!.value;
   }
 
-  get sourcePageCount(): number {
-    return Math.max(1, Math.ceil(this.filteredSourceNodes.length / this.sourcePageSize));
+  get chosen(): Record<string, string> {
+    return { show: this.show, source: this.source, type: this.type };
   }
 
-  sourceIcon(node: FileSource): string {
-    return node.kind === 'agent' ? 'bot' : node.kind === 'chats' ? 'message-square' : 'upload';
+  /** The column at the list's left: whose, then the sources and the
+   *  types that hold something, each with its count. */
+  get filters(): FilterGroup[] {
+    const mine = this.files.filter((file) => this.isMine(file)).length;
+    const pool = this.pool;
+
+    const sources = new Map<string, FilterItem>();
+    for (const file of pool) {
+      const id = this.sourceOf(file);
+      const item = sources.get(id) ?? this.sourceItem(id, file);
+      item.count = (item.count ?? 0) + 1;
+      sources.set(id, item);
+    }
+    // Uploads, then chats, then the agents by name.
+    const rank = (item: FilterItem) => item.value === 'uploaded' ? 0 : item.value === 'chats' ? 1 : 2;
+
+    return [
+      {
+        key: 'show',
+        required: true,
+        items: [
+          { value: 'all', name: 'All', count: this.files.length },
+          { value: 'mine', name: 'Mine', count: mine },
+          { value: 'shared', name: 'Shared with me', count: this.files.length - mine },
+        ],
+      },
+      {
+        key: 'source',
+        label: 'Sources',
+        items: [...sources.values()].sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name)),
+      },
+      {
+        key: 'type',
+        label: 'Types',
+        items: FILE_GROUPS
+          .map((group) => ({
+            value: group.value,
+            name: group.name,
+            icon: group.icon,
+            count: pool.filter((file) => this.typeOf(file) === group.value).length,
+          }))
+          .filter((item) => item.count > 0),
+      },
+    ].filter((group) => group.items.length > 0);
   }
 
-  selectAll(): void {
-    this.activeSource = '';
-    this.query = '';
-    this.page = 1;
+  private sourceItem(id: string, file: FileResource): FilterItem {
+    if (id === 'uploaded') return { value: id, name: 'Uploaded', icon: 'upload' };
+    if (id === 'chats') return { value: id, name: 'From chats', icon: 'message-square' };
+    const name = file.agent?.name || 'A former agent';
+    return { value: id, name, agent: { name } };
+  }
+
+  filter(key: string, value: string): void {
     this.selected.clear();
     this.share.close();
+    this.go({ [key]: key === 'show' && value === 'all' ? '' : value, page: null });
   }
 
-  selectSource(id: string): void {
-    this.activeSource = id;
-    this.query = '';
-    this.page = 1;
-    this.selected.clear();
-    this.share.close();
+  get filtered(): boolean {
+    return !!(this.source || this.type || this.query || this.show !== 'all');
   }
 
-  searchSources(value: string): void {
-    this.sourceQuery = value;
-    this.sourcePage = 1;
+  clearFilters(): void {
+    this.go({ show: null, source: null, type: null, q: null, page: null });
   }
 
-  // ── Grouping ────────────────────────────────────────────────────────
-
-  get myFiles(): FileResource[] {
-    return this.files.filter((file) => file.created_by === this.myUserId);
+  search(value: string): void {
+    this.go({ q: value, page: null });
   }
 
-  get sharedFiles(): FileResource[] {
-    return this.files.filter((file) => file.created_by !== this.myUserId);
+  // ── Sorting ─────────────────────────────────────────────────────────
+
+  /** The toolbar's choice: the sort's name, which is none of its four
+   *  when a heading set another (name, Z to A). */
+  get sortChoice(): string {
+    return nameOfSort(this.sort);
   }
 
-  get activeFiles(): FileResource[] {
-    return this.activeTab === 'mine' ? this.myFiles : this.sharedFiles;
+  sortByChoice(name: string): void {
+    this.go({ sort: name === 'newest' ? null : name, page: null });
   }
 
-  /** The chosen source's files, before the search. */
-  get sourceFiles(): FileResource[] {
-    return this.activeFiles.filter((file) => this.sourceOf(file) === this.activeSource);
+  /** A column heading was clicked. */
+  sortBy(sort: Sort): void {
+    this.sortByChoice(nameOfSort(sort));
   }
+
+  private sorted(files: FileResource[]): FileResource[] {
+    const way = this.sort.direction === 'asc' ? 1 : -1;
+    const value = (file: FileResource): string | number =>
+      this.sort.key === 'name' ? this.filename(file).toLowerCase()
+        : this.sort.key === 'size' ? Number(file.values?.file_size ?? 0)
+        : this.changedAt(file);
+    return [...files].sort((a, b) => {
+      const [left, right] = [value(a), value(b)];
+      return (left < right ? -1 : left > right ? 1 : 0) * way;
+    });
+  }
+
+  // ── What is listed ──────────────────────────────────────────────────
 
   get shownFiles(): FileResource[] {
-    const pool = this.sourceFiles;
     const query = this.query.trim().toLowerCase();
-    if (!query) return pool;
-    return pool.filter((file) =>
-      [this.filename(file), this.sourceLabel(file), this.keysSummary(file)]
-        .join(' ').toLowerCase().includes(query));
+    return this.sorted(this.pool.filter((file) =>
+      (!this.source || this.sourceOf(file) === this.source)
+      && (!this.type || this.typeOf(file) === this.type)
+      && (!query || [this.filename(file), this.sourceLabel(file), this.keysSummary(file)]
+        .join(' ').toLowerCase().includes(query))));
   }
 
   get pagedFiles(): FileResource[] {
@@ -291,20 +377,8 @@ export class FilesComponent extends DataPageBase implements OnInit {
     return this.shownFiles.slice(start, start + this.pageSize);
   }
 
-  get pageCount(): number {
-    return Math.max(1, Math.ceil(this.shownFiles.length / this.pageSize));
-  }
-
-  selectTab(tab: 'mine' | 'shared'): void {
-    this.activeTab = tab;
-    this.sourceQuery = '';
-    this.sourcePage = 1;
-    this.selectAll();
-  }
-
-  searchFiles(value: string): void {
-    this.query = value;
-    this.page = 1;
+  toPage(page: number): void {
+    this.go({ page: page === 1 ? null : page });
   }
 
   // ── Choosing several at once ────────────────────────────────────────
@@ -327,8 +401,8 @@ export class FilesComponent extends DataPageBase implements OnInit {
     }
   }
 
-  /** "All" means all of what is on screen under the current source and
-   *  search — never files the person cannot see from here. */
+  /** "All" means all of what the filters and the search show — never
+   *  files the person cannot see from here. */
   get selectableShown(): FileResource[] {
     return this.shownFiles.filter((file) => this.deletable(file));
   }
@@ -346,14 +420,11 @@ export class FilesComponent extends DataPageBase implements OnInit {
     this.selected.clear();
   }
 
-  get selectedFiles(): FileResource[] {
-    return this.files.filter((file) => this.isSelected(file));
-  }
-
   // ── Upload ──────────────────────────────────────────────────────────
 
   /** Upload straight from the page — the same door a chat attachment
-   *  uses, minus the chat. What was uploaded is then on screen. */
+   *  uses, minus the chat. The list stays where it is; what was
+   *  uploaded is at its top when it is sorted by newest. */
   async onUpload(event: Event): Promise<void> {
     const input = event.target as HTMLInputElement;
     const chosen = Array.from(input.files ?? []);
@@ -368,15 +439,6 @@ export class FilesComponent extends DataPageBase implements OnInit {
         if (result.error) failed.push(`${file.name}: ${result.error}`);
       }
       await this.reload();
-      this.activeTab = 'mine';
-      // Open what was uploaded — when something was. With every upload
-      // refused there may be no such source, and a workspace for a
-      // source that is not there shows nothing at all.
-      if (this.sourceNodes.some((node) => node.id === 'uploaded')) {
-        this.selectSource('uploaded');
-      } else {
-        this.selectAll();
-      }
       if (failed.length) return this.fail(failed.join(' — '));
       this.flash(chosen.length === 1
         ? `"${chosen[0].name}" uploaded.`
@@ -392,42 +454,22 @@ export class FilesComponent extends DataPageBase implements OnInit {
     return file.values?.filename || 'Untitled file';
   }
 
-  /** The extension, which reads better in a list than a MIME type. */
-  extensionLabel(file: FileResource): string {
-    const name = this.filename(file);
-    const dot = name.lastIndexOf('.');
-    if (dot > 0 && dot < name.length - 1) {
-      return name.slice(dot + 1).toUpperCase();
-    }
-    return (file.values?.file_type || 'file').split('/').pop()!.toUpperCase();
+  sizeOf(file: FileResource): string {
+    return sizeLabel(Number(file.values?.file_size ?? 0));
   }
 
-  sizeLabel(file: FileResource): string {
-    const bytes = Number(file.values?.file_size ?? 0);
-    if (!bytes) return '';
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  /** When the file last changed: files are written once, so for most
+   *  this is when they were stored. */
+  private changedAt(file: FileResource): string {
+    return file.updated_at || file.created_at || '';
   }
 
-  chatIdOf(file: FileResource): string {
-    return String(file.keys?.['chat_id'] || '');
+  changed(file: FileResource): string {
+    return relativeDate(this.changedAt(file));
   }
 
-  /** Where the file came from, named as specifically as the metadata allows. */
-  sourceLabel(file: FileResource): string {
-    const ref = this.agentRefOf(file);
-    if (ref) {
-      const name = file.agent?.name;
-      return name ? `From ${name}` : `From a former agent (${ref})`;
-    }
-    const chatId = this.chatIdOf(file);
-    if (chatId) {
-      const title = this.chatTitles.get(chatId);
-      return title ? `From chat “${title}”` : 'From a chat';
-    }
-    const kind = String(file.keys?.['file_kind'] || '');
-    return kind ? kind.replace(/_/g, ' ') : 'Uploaded';
+  changedInFull(file: FileResource): string {
+    return fullDate(this.changedAt(file));
   }
 
   /** Any caller metadata beyond what the row already spells out. */
@@ -440,12 +482,6 @@ export class FilesComponent extends DataPageBase implements OnInit {
 
   shareSummary(file: FileResource): string {
     return this.share.summary(file.owner, file.created_by);
-  }
-
-  dateLabel(value?: string | null): string {
-    if (!value) return '';
-    const date = new Date(value);
-    return isNaN(date.getTime()) ? '' : date.toLocaleString();
   }
 
   // ── Actions ─────────────────────────────────────────────────────────
@@ -505,38 +541,36 @@ export class FilesComponent extends DataPageBase implements OnInit {
     return !!this.busyRef || this.bulkBusy;
   }
 
-  get deletingNames(): string {
-    const names = this.deleting.map((file) => this.filename(file));
-    if (names.length <= 3) return names.join(', ');
-    return `${names.slice(0, 3).join(', ')} and ${names.length - 3} more`;
+  deleteOne(file: FileResource): Promise<void> {
+    return this.delete([file]);
   }
 
-  /** Whether any of what is about to go is attached to a chat, whose
-   *  message will be left pointing at a file that no longer exists. */
-  get deletingFromChats(): boolean {
-    return this.deleting.some((file) => !!this.chatIdOf(file));
+  deleteSelected(): Promise<void> {
+    return this.delete(this.files.filter((file) => this.isSelected(file)));
   }
 
-  requestDelete(file: FileResource): void {
-    this.deleting = [file];
-    this.error = '';
-  }
-
-  requestDeleteSelected(): void {
-    this.deleting = this.selectedFiles;
-    this.error = '';
-  }
-
-  closeDelete(): void {
-    if (!this.deleteBusy) this.deleting = [];
-  }
-
-  /** One file or many, the same way: through the door that already
-   *  checks who may delete what. A file that refuses does not stop the
-   *  rest, and stays ticked so it is clear what did not go. */
-  async confirmDelete(): Promise<void> {
-    const going = this.deleting.slice();
+  /** One file or many, the same way: asked first, then through the door
+   *  that already checks who may delete what. A file that refuses does
+   *  not stop the rest, and stays ticked so it is clear what did not go. */
+  private async delete(going: FileResource[]): Promise<void> {
     if (!going.length) return;
+    const names = going.map((file) => this.filename(file));
+    const listed = names.length <= 3
+      ? names.join(', ')
+      : `${names.slice(0, 3).join(', ')} and ${names.length - 3} more`;
+    // A chat's message would be left pointing at a file that is gone.
+    const fromChats = going.some((file) => !!this.chatIdOf(file))
+      ? (going.length === 1 ? ' It is attached to a chat, whose message will point at nothing.'
+        : ' Some are attached to chats, whose messages will point at nothing.')
+      : '';
+    const sure = await this.confirm.ask({
+      title: going.length === 1 ? 'Delete this file?' : `Delete ${going.length} files?`,
+      body: `${listed}. Deleted files cannot be recovered.${fromChats}`,
+      confirm: going.length === 1 ? 'Delete file' : `Delete ${going.length} files`,
+      danger: true,
+    });
+    if (!sure) return;
+
     const gone: string[] = [];
     const refused: string[] = [];
     this.bulkBusy = true;
@@ -555,7 +589,6 @@ export class FilesComponent extends DataPageBase implements OnInit {
       this.busyRef = '';
       this.bulkBusy = false;
     }
-    this.deleting = [];
     await this.reload();
     if (refused.length) {
       return this.fail(`Could not delete ${refused.join(', ')}.`);

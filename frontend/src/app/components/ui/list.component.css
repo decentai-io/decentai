@@ -1,8 +1,12 @@
 /* The list frame: a toolbar that wraps, the rows, a foot line. The
    skeleton is three rows the shape of a real row (row.component.css);
    .sk is the shared shimmer (styles/controls.scss). */
+/* The frame is a container: the table inside drops its minor columns
+   by the frame's width, not the window's (styles/controls.scss). */
 :host {
   display: block;
+  min-width: 0;
+  container-type: inline-size;
 }
 
 .list-toolbar {
