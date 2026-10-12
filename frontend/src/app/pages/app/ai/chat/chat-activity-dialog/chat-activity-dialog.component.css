@@ -1,259 +1,85 @@
-/* The trail, as a timeline. Everything else — the dialog shell, sections,
-   notes — comes from the shared stylesheet this one is loaded alongside. */
+/* Activity and audit. The shell, the choice of view, the rows and the
+   block a row opens to are the shared ones (the dialog shell,
+   components/ui/segmented and record-row, styles/controls.scss); here
+   are the counts over a list and the facts inside an open row. */
+.act-views {
+  margin-bottom: 16px;
+}
 
 .act-counts {
   display: flex;
   flex-wrap: wrap;
-  gap: 14px;
-  margin: 0 0 10px;
-  font-size: 12.5px;
-  color: var(--muted-foreground);
+  gap: 4px 16px;
+  margin-bottom: 8px;
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
 }
 
-.act-count strong {
-  color: var(--foreground);
+.act-counts strong {
+  color: var(--ink);
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 
-.act-count--bad strong {
-  color: var(--destructive);
+.is-bad,
+.act-counts .is-bad strong {
+  color: var(--danger-ink);
 }
 
-.act-status {
-  flex-shrink: 0;
-  padding: 1px 9px;
-  border-radius: var(--ui-radius-pill);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-  border: 1px solid transparent;
+.act-fold {
+  margin-bottom: 8px;
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
 }
 
-.act-ok {
-  background: color-mix(in srgb, var(--primary) 12%, transparent);
-  border-color: color-mix(in srgb, var(--primary) 28%, transparent);
-  color: var(--accent-ink);
-}
-
-.act-bad {
-  background: color-mix(in srgb, var(--destructive) 12%, transparent);
-  border-color: color-mix(in srgb, var(--destructive) 30%, transparent);
-  color: var(--destructive);
-}
-
-.act-muted {
-  background: var(--secondary);
-  border-color: var(--border);
-  color: var(--muted-foreground);
-}
-
-.act-live {
-  background: color-mix(in srgb, var(--primary) 16%, transparent);
-  border-color: color-mix(in srgb, var(--primary) 34%, transparent);
-  color: var(--accent-ink);
-  font-weight: 600;
-}
-
-/* ── The trail ─────────────────────────────────────────────────────── */
-.act-events {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.act-event {
-  border-bottom: 1px solid var(--border);
-}
-
-.act-event:last-child {
-  border-bottom: none;
-}
-
-.act-event-head {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  padding: 8px 0;
-  border: none;
-  background: transparent;
-  font: inherit;
-  text-align: left;
-  color: var(--foreground);
+.act-fold summary {
+  padding: 4px 0;
   cursor: pointer;
 }
 
-.act-event-head:disabled {
-  cursor: default;
+.act-foot {
+  margin: 16px 0 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
 }
 
-.act-event-time {
-  flex-shrink: 0;
-  min-width: 76px;
-  font-size: 12px;
-  color: var(--muted-foreground);
-  font-variant-numeric: tabular-nums;
-}
-
-.act-event-main {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
-
-.act-event-name {
-  font-size: 13px;
-  color: var(--foreground);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.act-event-summary {
-  font-size: 12px;
-  color: var(--muted-foreground);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.act-duration {
-  flex-shrink: 0;
-  font-size: 12px;
-  color: var(--muted-foreground);
-  font-variant-numeric: tabular-nums;
-}
-
-.act-caret {
-  flex-shrink: 0;
-  font-size: 18px;
-  width: 18px;
-  height: 18px;
-  line-height: 18px;
-  color: var(--muted-foreground);
-}
-
-.act-event-body {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 2px 0 12px 86px;
-}
-
-.act-kv {
+/* What an open row says in pairs: the name of a fact, then the fact. */
+.act-facts {
   display: grid;
-  grid-template-columns: 82px 1fr;
-  gap: 4px 10px;
-  font-size: 12.5px;
-  line-height: 1.5;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 4px 16px;
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
 }
 
-.act-k {
-  color: var(--muted-foreground);
+.act-facts dt {
+  color: var(--ink-3);
 }
 
-.act-v {
-  color: var(--foreground);
-  word-break: break-word;
+.act-facts dd {
+  color: var(--ink);
+  overflow-wrap: anywhere;
 }
 
-.act-v--bad {
-  color: var(--destructive);
+.act-facts code {
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
 }
 
-.act-v code, .act-result-btn code {
-  font-size: 11.5px;
-}
-
-.act-json {
-  margin: 0;
-  padding: 8px 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--ui-radius-card);
-  background: var(--secondary);
-  font-size: 11.5px;
-  line-height: 1.5;
-  white-space: pre-wrap;
-  word-break: break-word;
-  max-height: 260px;
-  overflow: auto;
-}
-
-.act-result-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  align-self: flex-start;
-  padding: 4px 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--ui-radius-pill);
-  background: transparent;
-  font: inherit;
-  font-size: 12px;
-  color: var(--foreground);
-  cursor: pointer;
-}
-
-.act-result-btn lucide-icon {
-  width: 15px;
-  height: 15px;
-}
-
-.act-result-btn:hover {
-  background: color-mix(in srgb, var(--primary) 8%, transparent);
+.act-small {
+  color: var(--ink-3);
+  font-size: var(--t-xs);
+  line-height: var(--lh-xs);
+  overflow-wrap: anywhere;
 }
 
 .act-result {
-  margin-top: 4px;
+  align-self: flex-start;
 }
 
-.act-id {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--muted-foreground);
+.act-table {
+  max-width: 100%;
+  overflow-x: auto;
 }
-
-@media (max-width: 560px) {
-  .act-event-time {
-    min-width: 0;
-  }
-
-  .act-event-body {
-    padding-left: 0;
-  }
-
-  .act-kv {
-    grid-template-columns: 1fr;
-  }
-}
-
-/* ── Which of the two is read: the record, or the assistant ─────────── */
-.act-views {
-  display: flex;
-  gap: 4px;
-  padding: 8px 18px 0;
-  border-bottom: 1px solid var(--border);
-}
-.act-views button {
-  padding: 7px 11px 8px;
-  margin-bottom: -1px;
-  border: 0;
-  border-bottom: 2px solid transparent;
-  background: none;
-  color: var(--muted-foreground);
-  font: inherit;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-}
-.act-views button:hover { color: var(--foreground); }
-.act-views button.on {
-  color: var(--accent-ink);
-  border-bottom-color: var(--primary);
-}
-
-.act-fold { margin: 0 0 12px; font-size: 12.5px; color: var(--muted-foreground); }
-.act-fold summary { cursor: pointer; padding: 4px 0; }
