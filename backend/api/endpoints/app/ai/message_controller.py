@@ -1,7 +1,7 @@
 from pymongo.errors import DuplicateKeyError
 
 from contracts.chat import ACTORS, COLUMNS_MAX, PART_TYPES, part_error
-from database.stores import ChatMessageStore, ChatStorageStore
+from database.stores import ChatMessageStore, ChatStorageStore, ChatStore
 from util import new_id, utc_now
 
 from .base import AIController
@@ -154,6 +154,12 @@ class MessageController(AIController):
                     "message": self._public(existing), "created": False,
                 })
             raise
+        if not thread and actor in ("user", "ai"):
+            # The chat's own conversation: its list row says the last
+            # words of it. A helper's thread is not what the person reads.
+            preview = ChatStore.preview_of(parts)
+            if preview:
+                ChatStore().set_preview(chat["chat_id"], preview)
         if actor == "ai" and not thread:
             # The assistant answered; a person who is not looking is told.
             from server.notifications import Notifier

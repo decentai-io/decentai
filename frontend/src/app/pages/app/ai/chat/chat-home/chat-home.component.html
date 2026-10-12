@@ -1,10 +1,17 @@
-<main class="chat-home">
+<div class="chat-home">
   <section class="start" aria-labelledby="start-chat-title">
-    <div class="start-copy">
-      <span class="start-mark"><lucide-icon name="sparkles" [size]="22"></lucide-icon></span>
-      <div><h2 id="start-chat-title">How can I help?</h2><p>Ask a question, plan work, or use an installed agent.</p></div>
-    </div>
-    <div class="composer-section"><app-chat-composer (promptSent)="onPrompt($event)" [disabled]="isLoading" [draft]="draft" [modelPicker]="true" [llm]="llm" (modelChosen)="onModelChosen($event)"></app-chat-composer></div>
+    <lucide-icon class="start-mark" name="sparkles" [size]="24" aria-hidden="true"></lucide-icon>
+    <h1 id="start-chat-title" class="start-title">How can I help?</h1>
+    <p class="start-line">Ask a question, plan work, or use an installed agent.</p>
+    <app-chat-composer
+      class="start-composer"
+      (promptSent)="onPrompt($event)"
+      [disabled]="isLoading"
+      [draft]="draft"
+      [modelPicker]="true"
+      [llm]="llm"
+      (modelChosen)="onModelChosen($event)"
+    ></app-chat-composer>
   </section>
 
   <!-- Every conversation, under the composer: the latest first, a few
@@ -12,59 +19,98 @@
        Only the list scrolls; the composer stays where it is. -->
   <section class="chats" aria-labelledby="chats-title">
     <div class="chats-head">
-      <h3 id="chats-title">
+      <h2 id="chats-title" class="chats-title">
         {{ showArchived ? 'Archived' : 'Chats' }}
-        @if (chatsLoaded) { <span class="chats-count">{{ showArchived ? archivedCount : activeCount }}</span> }
-      </h3>
-      <label class="chats-search"><lucide-icon name="search" [size]="14"></lucide-icon>
-        <input type="text" [(ngModel)]="searchQuery" (input)="applyFilters()" (keydown.enter)="openFirstMatch()"
-               placeholder="Search chats" aria-label="Search chats" />
-        @if (searchQuery) { <button type="button" (click)="clearSearch()" aria-label="Clear search"><lucide-icon name="x" [size]="13"></lucide-icon></button> }
-      </label>
-      <select class="chats-filter" [ngModel]="showArchived" (ngModelChange)="toggleArchived()" aria-label="Which conversations">
-        <option [ngValue]="false">Chats</option><option [ngValue]="true">Archived</option>
-      </select>
+        @if (chatsLoaded) { <span class="chip">{{ showArchived ? archivedCount : activeCount }}</span> }
+      </h2>
+      <span class="search-field chats-search">
+        <lucide-icon name="search" [size]="16" aria-hidden="true"></lucide-icon>
+        <input
+          #search
+          class="input"
+          type="search"
+          placeholder="Search chats"
+          aria-label="Search chats"
+          aria-keyshortcuts="/"
+          [(ngModel)]="searchQuery"
+          (input)="applyFilters()"
+          (keydown.enter)="openFirstMatch()"
+        />
+      </span>
+      <button class="btn sm" type="button" [matMenuTriggerFor]="shelfMenu" aria-label="Which conversations">
+        {{ showArchived ? 'Archived' : 'All' }}
+        <lucide-icon name="chevron-down" [size]="16" aria-hidden="true"></lucide-icon>
+      </button>
+      <mat-menu #shelfMenu="matMenu" xPosition="before">
+        <button mat-menu-item [attr.aria-current]="!showArchived ? 'true' : null" (click)="showShelf(false)">
+          <span>All</span>
+          @if (!showArchived) { <lucide-icon class="menu-check" name="check" [size]="16" aria-hidden="true"></lucide-icon> }
+        </button>
+        <button mat-menu-item [attr.aria-current]="showArchived ? 'true' : null" (click)="showShelf(true)">
+          <span>Archived</span>
+          @if (showArchived) { <lucide-icon class="menu-check" name="check" [size]="16" aria-hidden="true"></lucide-icon> }
+        </button>
+      </mat-menu>
     </div>
 
-    <div class="chats-list" aria-label="Conversations">
+    <div class="chats-list" (keydown)="moveThroughRows($event)">
       @if (loadError && !chatsLoaded) {
-        <p class="chats-empty">Chats could not be loaded. <button type="button" class="chats-retry" (click)="loadChats()">Retry</button></p>
+        <app-empty icon="cloud-off" title="Chats could not be loaded" line="Check your connection.">
+          <button class="btn" type="button" (click)="loadChats()">Try again</button>
+        </app-empty>
       } @else if (!chatsLoaded) {
-        <div class="chats-loading" aria-hidden="true"><div class="sk-line w-50"></div><div class="sk-line w-30"></div><div class="sk-line w-50"></div></div>
+        <div aria-busy="true" aria-label="Loading chats">
+          @for (row of [0, 1, 2]; track row) {
+            <div class="chat-row-skeleton">
+              <span class="sk sk-title"></span>
+              <span class="sk sk-preview"></span>
+            </div>
+          }
+        </div>
       } @else if (!filteredChats.length) {
-        <p class="chats-empty">
-          {{ searchQuery ? 'No chats match “' + searchQuery + '”.'
-             : showArchived ? 'Nothing archived. Archived chats stay here until you restore them.'
-             : 'Your conversations will appear here.' }}
-        </p>
+        <app-empty
+          icon="sparkles"
+          [title]="searchQuery ? 'No chats match “' + searchQuery + '”'
+            : showArchived ? 'Nothing archived'
+            : 'Your conversations will appear here'"
+          [line]="!searchQuery && showArchived ? 'Archived chats stay here until you restore them.' : ''"
+        ></app-empty>
       } @else {
         @for (group of chatGroups; track group.label) {
           <section class="chat-group">
-            <h4>{{ group.label }}</h4>
+            <h3 class="chat-group-label">{{ group.label }}</h3>
             <ul>
               @for (chat of group.chats; track chat.chat_id) {
                 <li class="chat-row">
                   <a class="chat-open" [routerLink]="['/ai/chats', chat.chat_id]">
-                    <lucide-icon name="message-square-text" [size]="15"></lucide-icon>
-                    <span class="chat-title">{{ chat.title }}</span>
+                    <span class="chat-words">
+                      <span class="chat-title">{{ chat.title }}</span>
+                      <span class="chat-preview">{{ chat.preview || chat.messageLabel }}</span>
+                    </span>
                     @if (chat.attention?.working) {
-                      <span class="chat-flag is-working" matTooltip="Working in the background"><span class="chat-flag-dot"></span>Working</span>
+                      <span class="chip live" matTooltip="Working in the background">Working</span>
                     }
                     @if (chat.attention?.cards) {
-                      <span class="chat-flag is-cards" [matTooltip]="chat.attention.cards + ' waiting for you'">{{ chat.attention.cards }} waiting</span>
+                      <span class="chip warn" [matTooltip]="chat.attention.cards + ' waiting for you'">{{ chat.attention.cards }} waiting</span>
                     }
                     @if (chat.attention?.unseen && !chat.attention?.cards) {
-                      <span class="chat-flag is-unseen" matTooltip="New since you last looked"><span class="chat-flag-dot"></span>New</span>
+                      <span class="chip accent" matTooltip="New since you last looked">New</span>
                     }
-                    <span class="chat-meta"><span class="chat-count">{{ chat.messageLabel }} · </span><time>{{ chat.displayDate }}</time></span>
+                    <time class="chat-time" [attr.datetime]="chat.updated_at" [title]="chat.fullDate">{{ chat.displayDate }}</time>
                   </a>
                   <div class="chat-actions">
                     @if (showArchived) {
-                      <button type="button" matTooltip="Restore" aria-label="Restore conversation" (click)="restore(chat, $event)"><lucide-icon name="archive-restore" [size]="15"></lucide-icon></button>
+                      <button class="icon-btn sm" type="button" matTooltip="Restore" [attr.aria-label]="'Restore ' + chat.title" (click)="restore(chat)">
+                        <lucide-icon name="archive-restore" [size]="16" aria-hidden="true"></lucide-icon>
+                      </button>
                     } @else {
-                      <button type="button" matTooltip="Archive" aria-label="Archive conversation" (click)="archive(chat, $event)"><lucide-icon name="archive" [size]="15"></lucide-icon></button>
+                      <button class="icon-btn sm" type="button" matTooltip="Archive" [attr.aria-label]="'Archive ' + chat.title" (click)="archive(chat)">
+                        <lucide-icon name="archive" [size]="16" aria-hidden="true"></lucide-icon>
+                      </button>
                     }
-                    <button class="danger" type="button" matTooltip="Delete" aria-label="Delete conversation" (click)="confirmDelete(chat, $event)"><lucide-icon name="trash-2" [size]="15"></lucide-icon></button>
+                    <button class="icon-btn sm danger" type="button" matTooltip="Delete" [attr.aria-label]="'Delete ' + chat.title" (click)="askDelete(chat)">
+                      <lucide-icon name="trash-2" [size]="16" aria-hidden="true"></lucide-icon>
+                    </button>
                   </div>
                 </li>
               }
@@ -74,4 +120,4 @@
       }
     </div>
   </section>
-</main>
+</div>

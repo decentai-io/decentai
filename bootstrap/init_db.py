@@ -63,6 +63,7 @@ def main() -> int:
     print(f"organization: {org['org_name']} ({org['_id']})")
 
     drop_stale_actions()
+    unescape_chat_titles()
 
     # The access chain, from the one implementation of it: this
     # deployment's first organization is laid out exactly like its tenth,
@@ -125,6 +126,30 @@ def main() -> int:
 
 def _truthy(value: str) -> bool:
     return str(value or "").strip().lower() in ("1", "true", "yes", "y", "on")
+
+
+def unescape_chat_titles() -> None:
+    """Give the chats named with a spelled-out escape their character.
+
+    A small model once wrote a dash as the six characters ``\\u2014``
+    and the runtime kept them as the chat's name. The runtime no longer
+    does; this mends the names written before, and finds none after.
+    """
+    import re
+
+    from server.setup.app_state import get_db
+
+    chats = get_db().collection("ai_chats")
+    spelled = re.compile(r"\\u([0-9a-fA-F]{4})")
+    mended = 0
+    for chat in chats.find({"title": {"$regex": r"\\u[0-9a-fA-F]{4}"}},
+                           {"chat_id": 1, "title": 1}):
+        title = spelled.sub(lambda found: chr(int(found.group(1), 16)),
+                            str(chat.get("title") or ""))
+        chats.update_one({"_id": chat["_id"]}, {"$set": {"title": title}})
+        mended += 1
+    if mended:
+        print(f"chats: {mended} title(s) unescaped")
 
 
 def drop_stale_actions() -> None:

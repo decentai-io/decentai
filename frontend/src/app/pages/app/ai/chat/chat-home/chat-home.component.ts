@@ -1,10 +1,12 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, ElementRef, HostListener, OnInit, ViewChild } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { MatDialog } from '@angular/material/dialog';
 import { AiSessionService } from 'src/app/services/ai-session.service';
 import { AttentionService } from 'src/app/services/attention.service';
 import { ProfileService } from 'src/app/services/profile.service';
 import { AlertComponent } from 'src/app/components/alert/alert.component';
+import { fullDate, relativeDate } from 'src/app/components/ui/dates';
+import { ConfirmService } from 'src/app/services/confirm.service';
 import { ChatModel } from '../chat-model-picker/chat-model-picker.component';
 
 /** The chats page: a new conversation starts at the composer, and every
@@ -17,6 +19,8 @@ import { ChatModel } from '../chat-model-picker/chat-model-picker.component';
   standalone: false,
 })
 export class ChatHomeComponent implements OnInit {
+  @ViewChild('search') private search?: ElementRef<HTMLInputElement>;
+
   chats: any[] = [];
   filteredChats: any[] = [];
   chatGroups: Array<{ label: string; chats: any[] }> = [];
@@ -41,6 +45,7 @@ export class ChatHomeComponent implements OnInit {
     private profileService: ProfileService,
     public dialog: MatDialog,
     private attention: AttentionService,
+    private confirm: ConfirmService,
   ) {}
 
   async ngOnInit() {
@@ -78,7 +83,8 @@ export class ChatHomeComponent implements OnInit {
     this.chats = chats.map((chat: any) => ({
       ...chat,
       title: chat.title || 'Untitled chat',
-      displayDate: this.formatDate(chat.updated_at),
+      displayDate: relativeDate(chat.updated_at),
+      fullDate: fullDate(chat.updated_at),
       dateGroup: this.dateGroup(chat.updated_at),
       messageLabel: `${chat.message_sequence || 0} ${chat.message_sequence === 1 ? 'message' : 'messages'}`,
     }));
@@ -86,13 +92,10 @@ export class ChatHomeComponent implements OnInit {
     this.applyFilters();
   }
 
-  clearSearch() {
-    this.searchQuery = '';
-    this.applyFilters();
-  }
-
-  toggleArchived() {
-    this.showArchived = !this.showArchived;
+  /** Stand at the shelf of chats in use, or at the archive. */
+  showShelf(archived: boolean) {
+    if (archived === this.showArchived) return;
+    this.showArchived = archived;
     this.searchQuery = '';
     this.applyFilters();
   }
@@ -128,6 +131,7 @@ export class ChatHomeComponent implements OnInit {
     return this.chats.filter((chat) => (chat.status || 'active') === 'active').length;
   }
 
+  /** Which of the four groups a chat is listed under. */
   private dateGroup(dateStr: string): string {
     const date = new Date(dateStr);
     if (isNaN(date.getTime())) return 'Earlier';
@@ -137,32 +141,13 @@ export class ChatHomeComponent implements OnInit {
     const days = Math.floor((startToday - startDate) / 86400000);
     if (days <= 0) return 'Today';
     if (days === 1) return 'Yesterday';
-    if (days < 7) return 'Previous 7 days';
-    if (date.getFullYear() === today.getFullYear()) {
-      return date.toLocaleString(undefined, { month: 'long' });
-    }
-    return String(date.getFullYear());
+    return days < 7 ? 'Previous 7 days' : 'Earlier';
   }
 
   openChat(chat_id: string, initialMessage: any = null) {
     this.router.navigate([`ai/chats/${chat_id}`], {
       state: initialMessage ? { initialMessage } : {},
     });
-  }
-
-  formatDate(dateStr: string): string {
-    if (!dateStr) return 'Just now';
-    const date = new Date(dateStr);
-    const now = new Date();
-    const diff = (now.getTime() - date.getTime()) / 1000;
-
-    if (diff < 60) return 'Just now';
-    if (diff < 3600) return `${Math.floor(diff / 60)} min ago`;
-    if (diff < 86400) return `${Math.floor(diff / 3600)} hr ago`;
-    if (date.getFullYear() === now.getFullYear()) {
-      return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-    }
-    return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
   }
 
   async onPrompt(message: any) {
@@ -277,101 +262,69 @@ export class ChatHomeComponent implements OnInit {
   /** Archiving needs no confirmation — it is reversible, and asking
    *  about a reversible thing teaches people to click through the
    *  dialogs that matter. */
-  async archive(chat: any, event: MouseEvent) {
-    event.stopPropagation();
+  async archive(chat: any) {
     const res = await this.aiSession.archiveChat(chat.chat_id);
     if (res.error) {
-      this.alert({
-        title: 'Archive failed',
-        type: 'error',
-        messages: [{ description: res.error }],
-      });
+      this.alert({ title: 'Archive failed', type: 'error', messages: [{ description: res.error }] });
       return;
     }
     await this.loadChats();
   }
 
-  async restore(chat: any, event: MouseEvent) {
-    event.stopPropagation();
+  async restore(chat: any) {
     const res = await this.aiSession.restoreChat(chat.chat_id);
     if (res.error) {
+      this.alert({ title: 'Restore failed', type: 'error', messages: [{ description: res.error }] });
+      return;
+    }
+    await this.loadChats();
+  }
+
+  /** Deleting is the one act here that cannot be taken back, so it is
+   *  asked; once done, the row is simply gone. */
+  async askDelete(chat: any) {
+    const sure = await this.confirm.ask({
+      title: `Delete “${chat.title}”?`,
+      body: 'Its messages and the files uploaded to it are deleted for good. To put it out of the way instead, archive it.',
+      confirm: 'Delete',
+      danger: true,
+    });
+    if (!sure) return;
+    const res = await this.aiSession.deleteChat(chat.chat_id);
+    if (res.error) {
       this.alert({
-        title: 'Restore failed',
+        title: 'Delete failed',
         type: 'error',
-        messages: [{ description: res.error }],
+        messages: [{ description: `“${chat.title}” could not be deleted. ${res.error}` }],
       });
       return;
     }
     await this.loadChats();
   }
 
-  confirmDelete(chat: any, event: MouseEvent) {
-    event.stopPropagation();
+  // ── Keys ────────────────────────────────────────────────────────────
 
-    const dialogRef = this.dialog.open(AlertComponent, {
-      width: 'auto',
-      data: {
-        type: 'confirm',
-        confirm: 'Delete',
-        danger: true,
-        title: `Delete Chat "${chat.title || 'Untitled'}"`,
-        messages: [
-          {
-            description: `Are you sure you want to delete this chat?`,
-            table: {
-              rows: [
-                {
-                  'Chat ID': chat.chat_id,
-                  'Chat Title': chat.title || 'N/A',
-                  'Updated At': this.formatDate(chat.updated_at),
-                },
-              ],
-              cols: ['Chat ID', 'Chat Title', 'Updated At'],
-            },
-          },
-        ],
-      },
-    });
-
-    dialogRef.afterClosed().subscribe(async (result) => {
-      if (result?.confirmed) await this.deleteChat(chat);
-    });
+  /** "/" anywhere on the page, outside a box being typed in, goes to
+   *  the search. */
+  @HostListener('document:keydown', ['$event'])
+  onKey(event: KeyboardEvent): void {
+    if (event.key !== '/' || event.ctrlKey || event.metaKey || event.altKey) return;
+    const typing = event.target instanceof Element
+      && event.target.closest('input, textarea, [contenteditable="true"]');
+    if (typing) return;
+    event.preventDefault();
+    this.search?.nativeElement.focus();
   }
 
-  async deleteChat(chat: any) {
-    const res = await this.aiSession.deleteChat(chat.chat_id);
-
-    if (!res.error) {
-      await this.loadChats();
-      this.alert({
-        title: 'Chat Deleted',
-        type: 'success',
-        messages: [
-          {
-            description: `"${chat.title || 'Untitled Chat'}" has been permanently deleted.`,
-            table: {
-              cols: ['Chat ID', 'Chat Title', 'Updated At'],
-              rows: [
-                {
-                  'Chat ID': chat.chat_id,
-                  'Chat Title': chat.title || 'N/A',
-                  'Updated At': this.formatDate(chat.updated_at),
-                },
-              ],
-            },
-          },
-        ],
-      });
-    } else {
-      this.alert({
-        title: 'Delete Failed',
-        type: 'error',
-        messages: [
-          {
-            description: `Could not delete "${chat.title || 'Untitled Chat'}". The AI service may be unavailable — please try again.`,
-          },
-        ],
-      });
-    }
+  /** The arrows move through the rows, from one conversation's link to
+   *  the next. */
+  moveThroughRows(event: KeyboardEvent): void {
+    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+    const list = event.currentTarget as HTMLElement;
+    const rows = Array.from(list.querySelectorAll<HTMLElement>('.chat-open'));
+    const at = rows.indexOf(document.activeElement as HTMLElement);
+    if (at < 0) return;
+    event.preventDefault();
+    rows[at + (event.key === 'ArrowDown' ? 1 : -1)]?.focus();
   }
 }
