@@ -33,15 +33,7 @@
    pressing Edit to see it invites changing it by accident. */
 .preview-dialog { width:min(720px,100%); }
 .preview-note { margin:0 0 10px; color:var(--ink-2); font-size:12px; }
-.preview-body { display:block; margin:0; padding:16px 18px; max-height:52vh; overflow:auto; border:1px solid var(--line); border-radius:var(--radius-lg); background:var(--surface-2); font-size:13px; line-height:1.65; }
-:host ::ng-deep .preview-body > :first-child { margin-top:0; }
-:host ::ng-deep .preview-body > :last-child { margin-bottom:0; }
-:host ::ng-deep .preview-body h1 { margin:0 0 14px; font-size:20px; }
-:host ::ng-deep .preview-body h2 { margin:20px 0 8px; font-size:15px; }
-:host ::ng-deep .preview-body p { margin:8px 0; }
-:host ::ng-deep .preview-body ul { margin:8px 0; padding-left:21px; }
-:host ::ng-deep .preview-body li { margin:4px 0; }
-:host ::ng-deep .preview-body code { padding:1px 5px; border:1px solid var(--line); border-radius:var(--radius-sm); background:var(--surface); font-size:12px; }
+.preview-body { display:block; margin:0; padding:16px 18px; max-height:52vh; overflow:auto; border:1px solid var(--line); border-radius:var(--radius-lg); background:var(--surface-2); }
 .preview-loading { display:flex; align-items:center; gap:9px; color:var(--ink-2); font-size:12.5px; }
 .delete-dialog { width:min(520px,100%); }
 .delete-warning { margin:0; color:var(--ink-2); font-size:13px; line-height:1.6; }

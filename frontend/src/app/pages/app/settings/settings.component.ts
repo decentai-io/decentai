@@ -15,6 +15,7 @@ import {
 } from 'src/app/services/settings-llm.service';
 import { HasUnsavedChanges } from 'src/app/guards/unsaved-changes.guard';
 import { DataPageBase } from '../data-page-base';
+import { SKILLS_LISTED_OPTIONS, STANDARD_SKILLS_LISTED } from '../ai/chat/chat-defaults';
 
 /** The pages of Settings this component still holds, by their path. */
 type SettingsSection = 'chat' | 'notifications' | 'providers' | 'speech' | 'routing';
@@ -366,7 +367,7 @@ export class SettingsComponent extends DataPageBase implements OnInit, OnDestroy
 
   get canSeeChat(): boolean { return this.auth.can('ai:chat:create'); }
 
-  chatDefaults = { llm_secret_ref: '', llm_model: '', trust_level: 1, max_turns: 20, max_skills: 40 };
+  chatDefaults = { llm_secret_ref: '', llm_model: '', trust_level: 1, max_turns: 20, max_skills: STANDARD_SKILLS_LISTED };
   private chatDefaultsSaved = JSON.stringify(this.chatDefaults);
   chatDefaultsSaving = false;
 
@@ -385,12 +386,7 @@ export class SettingsComponent extends DataPageBase implements OnInit, OnDestroy
     { turns: 100, label: 'Longest', hint: '100 steps' },
     { turns: 0, label: 'Unlimited', hint: 'Runs until done, or until you stop it' },
   ];
-  readonly skillsCapOptions = [
-    { rows: 40, label: 'Standard', hint: '40 skills listed' },
-    { rows: 80, label: 'More', hint: '80 skills listed' },
-    { rows: 160, label: 'Many', hint: '160 skills listed' },
-    { rows: 0, label: 'All', hint: 'Every skill you can see' },
-  ];
+  readonly skillsCapOptions = SKILLS_LISTED_OPTIONS;
 
   /** The model a new chat starts with: a provider and one of its
    *  models, or neither for the organization's default. */
@@ -410,7 +406,7 @@ export class SettingsComponent extends DataPageBase implements OnInit, OnDestroy
       llm_model: chat.llm_secret_ref ? chat.llm_model || '' : '',
       trust_level: Number.isInteger(chat.trust_level) ? (chat.trust_level as number) : 1,
       max_turns: Number.isInteger(chat.max_turns) ? (chat.max_turns as number) : 20,
-      max_skills: Number.isInteger(chat.max_skills) ? (chat.max_skills as number) : 40,
+      max_skills: Number.isInteger(chat.max_skills) ? (chat.max_skills as number) : STANDARD_SKILLS_LISTED,
     };
     this.chatDefaultsSaved = JSON.stringify(this.chatDefaults);
   }

@@ -4,6 +4,7 @@ import { Profile, ProfileService } from 'src/app/services/profile.service';
 import { Skill, SkillsService } from 'src/app/services/skills.service';
 import { AuthService } from 'src/app/services/auth.service';
 import { DataPageBase } from '../../data-page-base';
+import { STANDARD_SKILLS_LISTED } from '../../ai/chat/chat-defaults';
 
 type ShareMode = 'private' | 'groups' | 'people' | 'org';
 
@@ -47,9 +48,6 @@ export class SkillsComponent extends DataPageBase implements OnInit {
   previewLoading = false;
   previewUnreadable = false;
 
-  /** How many skills a chat lists, where the person never chose. */
-  private static readonly STANDARD_LIMIT = 40;
-
   /** How many skills a new chat of this person lists: their own
    *  "Skills listed" default (Settings → Chat configuration), where 0
    *  is every one. Past it the catalog is cut and the assistant is
@@ -57,7 +55,7 @@ export class SkillsComponent extends DataPageBase implements OnInit {
   get catalogLimit(): number {
     const chosen = this.profile?.preferences?.chat?.max_skills;
     return typeof chosen === 'number' && Number.isInteger(chosen) && chosen >= 0
-      ? chosen : SkillsComponent.STANDARD_LIMIT;
+      ? chosen : STANDARD_SKILLS_LISTED;
   }
 
   constructor(

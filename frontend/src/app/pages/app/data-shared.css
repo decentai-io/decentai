@@ -115,21 +115,15 @@
 
 .catalog { display: flex; flex-direction: column; gap: 3px; max-height: 52vh; overflow-y: auto; }
 
-.chip {
-  display: inline-flex; align-items: center; gap: 6px;
-  background: var(--surface); border: 1px solid var(--border);
-  color: var(--ink); border-radius: var(--ui-radius-pill); padding: 4px 12px;
-  font: inherit; font-size: var(--ui-text-xs); font-weight: 600; cursor: pointer;
-}
-.chip:hover { border-color: var(--accent); color: var(--accent-ink); }
-
 /* ── Shared ──────────────────────────────────────────────────────── */
 .empty-state {
   display: flex; flex-direction: column; align-items: center; gap: 8px;
   color: var(--ink-2); text-align: center;
   padding: 24px 12px; font-size: var(--ui-text-base);
 }
-.empty-state lucide-icon { color: var(--ink-2); opacity: 0.7; }
+/* The mark, not the icon of a button that follows it. */
+.empty-state > lucide-icon,
+.empty-mark lucide-icon { color: var(--ink-3); }
 
 /* Simple CSS ring spinner (no icon dependency) */
 .ui-spinner {

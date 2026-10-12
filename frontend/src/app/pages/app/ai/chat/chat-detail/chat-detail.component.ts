@@ -28,6 +28,7 @@ import { ChatActivityDialogComponent } from '../chat-activity-dialog/chat-activi
 import { ChatAgentsDialogComponent } from '../chat-agents-dialog/chat-agents-dialog.component';
 import { ChatSkillsDialogComponent } from '../chat-skills-dialog/chat-skills-dialog.component';
 import { ChatModel } from '../chat-model-picker/chat-model-picker.component';
+import { SKILLS_LISTED_OPTIONS, STANDARD_SKILLS_LISTED } from '../chat-defaults';
 
 @Component({
   selector: 'app-chat-detail',
@@ -150,15 +151,10 @@ export class ChatDetailComponent implements OnInit, OnDestroy {
   ];
 
   /** How many skills the assistant is shown each turn. It lives in the
-   *  chat's config as `max_skills`; the platform's standard is 40, and
-   *  0 lists every skill the person can see. */
-  skillsCap = 40;
-  readonly skillsCapOptions = [
-    { rows: 40, label: 'Standard', hint: '40 skills listed' },
-    { rows: 80, label: 'More', hint: '80 skills listed' },
-    { rows: 160, label: 'Many', hint: '160 skills listed' },
-    { rows: 0, label: 'All', hint: 'Every skill you can see' },
-  ];
+   *  chat's config as `max_skills`; 0 lists every skill the person
+   *  can see. */
+  skillsCap = STANDARD_SKILLS_LISTED;
+  readonly skillsCapOptions = SKILLS_LISTED_OPTIONS;
 
   isSocketReady = false;
   /** The work in hand, as the runtime records it moving. */
@@ -399,7 +395,7 @@ export class ChatDetailComponent implements OnInit, OnDestroy {
         : 20;
       this.skillsCap = Number.isInteger(config.max_skills)
         ? config.max_skills
-        : 40;
+        : STANDARD_SKILLS_LISTED;
       this.messageLookup.clear();
 
       // The cards still waiting survive disconnects: rebuilt from the
