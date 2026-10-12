@@ -116,15 +116,18 @@ describe('MarketplaceComponent', () => {
       .toBe('broken');
   });
 
-  it('leaves "installed" to the row and keeps the label to versions', () => {
-    // The row's other half already says it is installed; saying it twice
-    // reads as two different facts.
+  it('says the version on offer once, and only what is unusual on the chip', () => {
+    // That an agent is installed is the card's foot's to say; saying it
+    // on the chip too reads as two different facts.
     const component = createComponent();
+    const installed = entry('b', { installed_version: '1.0.0' }) as any;
+    const behind = entry('c', { installed_version: '0.9.0' }) as any;
 
-    expect(component.entryLabel(entry('b', { installed_version: '1.0.0' }) as any))
-      .toBe('v1.0.0');
-    expect(component.entryLabel(entry('c', { installed_version: '0.9.0' }) as any))
-      .toContain('v0.9.0 installed');
+    expect(component.entryVersion(installed)).toBe('v1.0.0');
+    expect(component.entryChip(installed)).toBeNull();
+    expect(component.entryChip(behind)?.word).toBe('Update available');
+    expect(component.entryFacts(behind)).toContain('v0.9.0 installed');
+    expect(component.entryChip(entry('d', { errors: ['bad manifest'] }) as any)?.tone).toBe('danger');
   });
 
   it('says how stale a source is, and when it has never been read', () => {

@@ -1,124 +1,9 @@
-/* The agents section.
-
-   Everything here speaks the platform's own language: emerald as the one
-   identity colour, a NEUTRAL attention state (--warning carries no hue on
-   purpose), 6/8/999px radii, and the --ui-text-* scale. This file used to
-   carry hardcoded amber and violet hexes, which read as a second and
-   third brand colour and did not follow the theme into dark mode.
-
-   Status pills, function lines and load errors live in agent-shared.css —
-   the marketplace describes the same object. */
-
-.header-actions,
-.catalog-actions { display: flex; gap: 8px; align-items: center; }
-
-/* ── The agent grid ──────────────────────────────────────────────────
-   Cards rather than full-width rows: an agent is a thing with a handful
-   of facts and one switch, and a row stretched across a wide screen puts
-   its name and its controls a hand's width apart. */
-.defaults-count {
-  flex: none; padding: 5px 12px; border-radius: var(--ui-radius-pill);
-  border: 1px solid var(--border); background: var(--surface-2);
-  color: var(--ink-2); font-size: var(--ui-text-xs); white-space: nowrap;
-}
-.defaults-count strong { color: var(--accent-ink); font-variant-numeric: tabular-nums; }
-
-.agent-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
-  gap: 12px;
-  align-items: start;
-}
-
-.agent-card {
-  display: flex; flex-direction: column;
-  padding: 16px 18px;
-  border: 1px solid var(--border); border-radius: var(--ui-radius-card);
-  background: var(--surface);
-}
-/* The footer supplies the bottom padding when it is there; a card
-   without one (an agent that did not load) keeps its own. */
-.agent-card:has(.agent-card-foot) { padding-bottom: 0; }
-.agent-card.clickable { cursor: pointer; transition: border-color .12s ease, box-shadow .12s ease; }
-.agent-card.clickable:hover {
-  border-color: var(--accent);
-}
-/* Switched on for new chats: a left edge, so the set a chat starts with
-   is legible by scanning rather than by reading every switch. */
-.agent-card.is-on { border-left: 3px solid var(--accent); padding-left: 16px; }
-
-.agent-card-head { display: flex; align-items: flex-start; gap: 11px; }
-.agent-card .agent-title { display: grid; gap: 5px; flex: 1; min-width: 0; }
-.agent-card .agent-title strong { font-size: var(--ui-text-base); line-height: 1.35; }
-.agent-card .agent-status { margin-left: 0; justify-self: start; }
-.card-chevron { flex: none; margin-top: 6px; color: var(--ink-2); }
-
-.agent-card-description {
-  margin: 10px 0 0; color: var(--ink-2);
-  font-size: var(--ui-text-xs); line-height: 1.6;
-  /* Two lines, so every card in a row is the same height until its own
-     content says otherwise. */
-  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-.agent-card .agent-facts { margin-top: 12px; }
-.agent-card .agent-errors { margin-top: 10px; }
-
-/* ── The card's footer: the one decision it carries ──────────────────── */
-.agent-card-foot {
-  display: flex; align-items: center; gap: 10px;
-  margin: 14px -18px 0; padding: 11px 18px;
-  border-top: 1px solid var(--border);
-  cursor: default;
-}
-.agent-card.is-on .agent-card-foot { margin-left: -16px; padding-left: 16px; }
-.agent-card-foot .btn { margin-left: auto; }
-
-/* A switch, not a checkbox: it is a setting that takes effect when moved,
-   and there is no Save button anywhere to imply otherwise. */
-.switch {
-  display: inline-flex; align-items: center; gap: 9px;
-  padding: 0; border: 0; background: none; cursor: pointer;
-  color: var(--ink-2); font: inherit; font-size: var(--ui-text-xs); font-weight: 600;
-}
-.switch:disabled { opacity: .55; cursor: default; }
-
-.switch-track {
-  position: relative; display: block; width: 34px; height: 19px; flex: none;
-  border-radius: var(--ui-radius-pill);
-  background: var(--secondary);
-  border: 1px solid var(--line-strong);
-  transition: background .14s ease, border-color .14s ease;
-}
-.switch-knob {
-  position: absolute; top: 2px; left: 2px;
-  width: 13px; height: 13px; border-radius: 50%;
-  background: var(--muted-foreground);
-  transition: transform .14s ease, background .14s ease;
-}
-.switch:hover:not(:disabled) .switch-track { border-color: var(--accent); }
-.switch.on { color: var(--accent-ink); }
-.switch.on .switch-track { background: var(--primary-fill); border-color: var(--primary-fill); }
-.switch.on .switch-knob { transform: translateX(15px); background: var(--primary-foreground); }
-.switch:focus-visible .switch-track { outline: none; box-shadow: var(--focus); }
-.fact.warn {
-  display: inline-flex; align-items: center; gap: 5px;
-  color: var(--warning); background: var(--warning-bg);
-  border-color: color-mix(in srgb, var(--warning) 26%, transparent);
-}
-.fact.ok {
-  display: inline-flex; align-items: center; gap: 5px;
-  color: var(--accent-ink); background: var(--accent-soft);
-}
-
 .empty-state strong { color: var(--foreground); font-size: var(--ui-text-base); }
 .empty-state p { margin: 0; max-width: 54ch; font-size: var(--ui-text-xs); line-height: 1.6; }
 .empty-mark {
   display: grid; place-items: center; width: 44px; height: 44px;
   color: var(--accent-ink); background: var(--accent-soft); border-radius: 50%;
 }
-.empty-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 6px; }
 
 /* ── One agent, opened ───────────────────────────────────────────────── */
 
@@ -712,14 +597,11 @@
 .installed-search .txt:focus { box-shadow:none; }
 .installed-search button { display:grid; place-items:center; width:26px; height:26px; padding:0; border:0; border-radius:var(--radius-md); color:var(--ink-2); background:transparent; cursor:pointer; }
 .installed-search button:hover { color:var(--ink); background:var(--surface-2); }
-/* Choosing several agents to uninstall at once. The tick sits with the
-   card's identity, and the actions stay in the toolbar row. */
-.select-box { display:inline-flex; align-items:center; flex:none; margin-top:4px; cursor:pointer; }
-.select-box input { width:15px; height:15px; margin:0; accent-color:var(--primary-fill); cursor:pointer; }
 .installed-selection { display:flex; align-items:center; gap:12px; color:var(--ink-2); font-size:12.5px; white-space:nowrap; }
 .installed-selection .link-btn { padding:0; border:0; background:none; color:var(--accent-ink); font:inherit; font-size:12.5px; cursor:pointer; }
 .installed-selection .link-btn:hover { text-decoration:underline; }
-@media (max-width:800px) { .installed-selection { flex-wrap:wrap; white-space:normal; } }
+@media (max-width:800px) { .installed-selection { flex-wrap:wrap; white-space:normal; }
+}
 
 .installed-empty { display:grid; place-items:center; gap:7px; min-height:210px; color:var(--ink-2); }
 .installed-empty strong { color:var(--ink); font-size:14px; }
@@ -731,15 +613,6 @@
 .installed-pagination button:disabled { opacity:.4; cursor:default; }
 
 /* More confident cards: readable descriptions and a clearer operating state. */
-.agent-grid { grid-template-columns:repeat(auto-fill,minmax(390px,1fr)); gap:14px; }
-.agent-card { min-height:245px; padding:19px 20px; border-radius:var(--radius-xl); }
-.agent-card:has(.agent-card-foot) { padding-bottom:0; }
-.agent-card.is-on { padding-left:18px; }
-.agent-card .agent-title strong { font-size:16px; letter-spacing:-.01em; }
-.agent-card-description { margin-top:13px; color:color-mix(in srgb,var(--ink) 82%,var(--ink-2)); font-size:14px; line-height:1.65; -webkit-line-clamp:4; }
-.agent-card .agent-facts { margin-top:14px; }
-.agent-card-foot { margin:16px -20px 0; padding:12px 20px; margin-top:auto; }
-.agent-card.is-on .agent-card-foot { margin-left:-18px; padding-left:18px; }
 
 @media (max-width:800px) {
   .installed-summary { grid-template-columns:repeat(2,minmax(0,1fr)); }
@@ -751,7 +624,6 @@
 
 @media (max-width:520px) {
   .installed-summary { grid-template-columns:1fr 1fr; }
-  .agent-grid { grid-template-columns:1fr; }
   .installed-pagination { align-items:flex-start; flex-direction:column; }
 }
 
@@ -768,9 +640,4 @@
   color: var(--ink-3);
   font-size: var(--t-sm);
   font-weight: 400;
-}
-
-/* The standing chip is as wide as its word, in a title that stacks. */
-.agent-title .chip {
-  align-self: flex-start;
 }

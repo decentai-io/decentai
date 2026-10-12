@@ -96,76 +96,59 @@
         </div>
 
         <div class="agent-grid" *ngIf="pagedAgents.length">
-        <article class="agent-card clickable" *ngFor="let agent of pagedAgents"
-                 [class.is-on]="isDefault(agent)"
-                 (click)="openDetail(agent)">
-          <header class="agent-card-head">
-            <!-- Ticking is not opening: the card is a link into the
-                 agent, and this is a decision about the set. -->
-            <label class="select-box" *ngIf="selectable(agent)"
-                   (click)="$event.stopPropagation()">
-              <input type="checkbox" [checked]="isSelected(agent)"
-                     (change)="toggleSelected(agent)"
-                     [attr.aria-label]="'Select ' + (agent.name || agent.agent_id)
-                                        + ' to uninstall'" />
-            </label>
-            <span class="agent-avatar"><lucide-icon name="bot" [size]="18"></lucide-icon></span>
-            <div class="agent-title">
-              <strong>{{ agent.name || agent.agent_id }}</strong>
-              <span class="chip" [ngClass]="standing(agent).tone">{{ standing(agent).word }}</span>
-            </div>
-            <lucide-icon class="card-chevron" name="chevron-right" [size]="17"></lucide-icon>
-          </header>
-
-          <p class="agent-card-description">{{ agent.description }}</p>
-
-          <div class="agent-facts">
-            <span class="fact">
-              <strong>{{ agent.functions.length }}</strong>
-              function{{ agent.functions.length === 1 ? "" : "s" }}
-            </span>
-            <span class="fact" *ngIf="agent.installed_version">v{{ agent.installed_version }}</span>
-            <span class="fact warn" *ngIf="missingCredentials(agent).length">
-              <lucide-icon name="key-round" [size]="12"></lucide-icon>
-              needs {{ missingCredentials(agent).length }}
-              credential{{ missingCredentials(agent).length === 1 ? "" : "s" }}
-            </span>
-            <span class="fact ok"
-                  *ngIf="credentials(agent).length && !missingCredentials(agent).length">
-              <lucide-icon name="check" [size]="12"></lucide-icon>
-              credentials ready
-            </span>
-          </div>
-
-          <!-- Why the runtime could not build it — the next step is
-               usually a dependency line in the manifest. -->
-          <div class="agent-errors" *ngIf="agent.prepared?.state === 'failed' && agent.prepared?.error">
-            <div class="agent-error">{{ agent.prepared?.error }}</div>
-          </div>
-
-          <!-- The card's own decisions. Not a link into the agent, so the
-               click must not open it. -->
-          <footer class="agent-card-foot" (click)="$event.stopPropagation()">
-            <button class="switch" type="button" role="switch"
-                    [attr.aria-checked]="isDefault(agent)"
-                    [class.on]="isDefault(agent)"
-                    [disabled]="!!savingDefaultFor"
-                    (click)="toggleDefault(agent)"
-                    [title]="isDefault(agent)
-                      ? 'New chats start with this agent — switch off to leave it out'
-                      : 'New chats do not start with this agent — switch on to include it'">
-              <span class="switch-track"><span class="switch-knob"></span></span>
-              <span class="switch-label">In new chats</span>
+          <app-agent-card
+            *ngFor="let agent of pagedAgents"
+            [name]="agent.name || agent.agent_id"
+            [icon]="agent.icon"
+            [version]="version(agent)"
+            [chip]="standing(agent)"
+            [description]="agent.description"
+            [facts]="facts(agent)"
+            [problems]="agent.prepared?.state === 'failed' && agent.prepared?.error ? [agent.prepared!.error!] : []"
+            [link]="['/agents', agent.agent_id]"
+            [selectable]="selectable(agent)"
+            [selected]="isSelected(agent)"
+            [selecting]="selected.size > 0"
+            (selectedChange)="toggleSelected(agent)"
+          >
+            <!-- The card's own decisions: whether new chats start with
+                 it, and what else can be done to it. -->
+            <app-switch
+              cardFoot
+              label="In new chats"
+              [disabled]="!!savingDefaultFor"
+              [ngModel]="isDefault(agent)"
+              (ngModelChange)="toggleDefault(agent)"
+            ></app-switch>
+            <button
+              cardFoot
+              class="icon-btn sm"
+              type="button"
+              [attr.aria-label]="'More for ' + (agent.name || agent.agent_id)"
+              [matMenuTriggerFor]="cardMenu"
+              [matMenuTriggerData]="{ agent: agent }"
+            >
+              <lucide-icon name="ellipsis-vertical" [size]="16" aria-hidden="true"></lucide-icon>
             </button>
-
-            <button class="btn primary sm" type="button"
-                    *ngIf="canInstall && agent.status === 'update_available'"
-                    (click)="update(agent)" [disabled]="busyId === agent.agent_id">
-              Review update
-            </button>
-          </footer>
-        </article>
+          </app-agent-card>
         </div>
+
+        <mat-menu #cardMenu="matMenu" xPosition="before">
+          <ng-template matMenuContent let-agent="agent">
+            <a mat-menu-item [routerLink]="['/agents', agent.agent_id]">
+              <lucide-icon name="arrow-right" [size]="16" aria-hidden="true"></lucide-icon>
+              <span>Open</span>
+            </a>
+            <button mat-menu-item *ngIf="canInstall && agent.status === 'update_available'" (click)="update(agent)">
+              <lucide-icon name="refresh-cw" [size]="16" aria-hidden="true"></lucide-icon>
+              <span>Review update</span>
+            </button>
+            <button mat-menu-item *ngIf="canUninstall" (click)="requestUninstall(agent)">
+              <lucide-icon name="trash-2" [size]="16" aria-hidden="true"></lucide-icon>
+              <span>Uninstall</span>
+            </button>
+          </ng-template>
+        </mat-menu>
 
         <div class="installed-empty" *ngIf="!shownAgents.length">
           <lucide-icon name="search" [size]="20"></lucide-icon>

@@ -10,7 +10,9 @@ import { SecretsService } from 'src/app/services/secrets.service';
 import { AuthService } from 'src/app/services/auth.service';
 import { DataPageBase } from '../data-page-base';
 import { DetailTab } from './agent-detail.component';
-import { AgentCredential, Standing, familyOf, standingOf } from './agent-shared';
+import {
+  AgentCredential, Standing, agentFacts, familyOf, standingOf, versionLabel,
+} from './agent-shared';
 
 /** The tabs an address may name. */
 const TABS: DetailTab[] = ['overview', 'credentials', 'functions', 'access'];
@@ -400,6 +402,15 @@ export class AgentsComponent extends DataPageBase implements OnInit, OnDestroy {
    *  read from the same standing the cards show. */
   needsAttention(agent: AgentOffer): boolean {
     return this.standing(agent).kind !== 'ready';
+  }
+
+  version(agent: AgentOffer): string { return versionLabel(agent); }
+
+  /** A card's line of facts: its functions, the credentials it
+   *  declares, where it connects. */
+  facts(agent: AgentOffer): string[] {
+    return agentFacts(agent.functions.length, this.credentials(agent).length,
+      agent.network as any);
   }
 
   /** Where an agent stands (agent-shared.ts), with the credentials it

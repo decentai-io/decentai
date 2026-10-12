@@ -111,6 +111,8 @@ class AgentController(AgentSourcesMixin, AgentCatalogMixin, AgentInstallMixin,
             "status": doc.get("status"),
             "name": (manifest.get("agent") or {}).get("name", ""),
             "description": (manifest.get("agent") or {}).get("description", ""),
+            # The icon its manifest names for its mark, if it names one.
+            "icon": (manifest.get("agent") or {}).get("icon", ""),
             "functions": [
                 f"{doc['_id']}.{tool['id']}.{function['id']}"
                 for tool in manifest.get("tools") or []

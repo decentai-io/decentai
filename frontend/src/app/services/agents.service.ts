@@ -45,6 +45,8 @@ export interface AgentOffer {
   agent_id: string;
   name: string;
   description: string;
+  /** The icon its manifest names for its mark, when it names one. */
+  icon?: string;
   status: 'installed' | 'update_available' | 'removed';
   /** Absent or null until a runtime has spoken about this version. */
   prepared?: AgentReadiness | null;

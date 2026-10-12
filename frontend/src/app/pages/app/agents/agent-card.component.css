@@ -1,0 +1,169 @@
+/* The agent card: a surface with a hairline; the mark and the words
+   are one link, the foot holds the card's own controls. Cards sit in
+   `.agent-grid` (agent-shared.css). */
+:host {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  transition:
+    background var(--dur-1) var(--ease),
+    border-color var(--dur-1) var(--ease);
+}
+
+:host(:hover) {
+  background: var(--surface-2);
+}
+
+:host(.is-selected) {
+  border-color: var(--accent);
+}
+
+.card-main {
+  display: flex;
+  flex: 1;
+  align-items: flex-start;
+  gap: 12px;
+  min-width: 0;
+  padding: 16px;
+  border-radius: var(--r-md);
+  color: inherit;
+  text-decoration: none;
+}
+
+.card-main:hover {
+  text-decoration: none;
+}
+
+.card-words {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.card-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  min-height: 24px;
+}
+
+/* The name keeps room to be read: a chip that does not fit beside it
+   goes under it. */
+.card-name {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--ink);
+  font-size: var(--t-base);
+  font-weight: 600;
+  line-height: var(--lh-base);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.card-version {
+  flex: none;
+  color: var(--ink-3);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.card-chip {
+  margin-left: auto;
+}
+
+/* Two lines of what it is for, and no more. */
+.card-description {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+.card-facts {
+  color: var(--ink-3);
+  font-size: var(--t-xs);
+  line-height: var(--lh-xs);
+  overflow-wrap: anywhere;
+}
+
+.card-error {
+  margin: 0 16px 12px;
+  padding: 8px 12px;
+  border-radius: var(--r-sm);
+  background: var(--danger-soft);
+  color: var(--danger-ink);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+  overflow-wrap: anywhere;
+}
+
+.card-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 52px;
+  margin: 0 16px;
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+}
+
+.card-foot:empty {
+  display: none;
+}
+
+/* The tick box takes the mark's place: seen when the card is pointed
+   at or holds the focus, and once something is ticked. */
+.card-check {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--r-md);
+  background: var(--surface);
+  opacity: 0;
+  transition: opacity var(--dur-1) var(--ease);
+}
+
+:host(:hover) .card-check {
+  background: var(--surface-2);
+}
+
+:host(:hover) .card-check,
+:host(:focus-within) .card-check,
+:host(.is-selected) .card-check,
+:host(.is-selecting) .card-check {
+  opacity: 1;
+}
+
+/* Where nothing can point, the box is always there, in a column of
+   its own before the mark. */
+@media (hover: none) {
+  .card-check {
+    top: 14px;
+    left: 2px;
+    background: none;
+    opacity: 1;
+  }
+
+  :host(.is-selectable) .card-main {
+    padding-left: 44px;
+  }
+}

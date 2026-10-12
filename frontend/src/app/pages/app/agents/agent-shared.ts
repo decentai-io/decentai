@@ -182,3 +182,19 @@ export function notEnforced(agent: AgentOffer): string[] {
   }
   return lines;
 }
+
+/** The line of a card that a person compares agents by: how many
+ *  functions, what it needs, and where it connects (the first host,
+ *  and how many more). */
+export function agentFacts(functions: number, credentials: number,
+                           network?: AgentNetwork | null): string[] {
+  const facts = [`${functions} ${functions === 1 ? 'function' : 'functions'}`];
+  if (credentials) facts.push(`${credentials} ${credentials === 1 ? 'credential' : 'credentials'}`);
+  if (network?.any) {
+    facts.push('the open web');
+  } else if (network?.hosts.length) {
+    const more = network.hosts.length - 1;
+    facts.push(network.hosts[0] + (more ? ` +${more}` : ''));
+  }
+  return facts;
+}

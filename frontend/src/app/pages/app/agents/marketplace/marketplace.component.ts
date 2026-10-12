@@ -6,6 +6,8 @@ import {
   AgentSource, AgentsService, CatalogEntry,
 } from 'src/app/services/agents.service';
 import { DataPageBase } from '../../data-page-base';
+import { CardChip } from '../agent-card.component';
+import { agentFacts, networkOf } from '../agent-shared';
 import { SourceDraft } from './source-form.component';
 import { AuthService } from 'src/app/services/auth.service';
 import { Profile, ProfileService } from 'src/app/services/profile.service';
@@ -288,18 +290,50 @@ export class MarketplaceComponent extends DataPageBase implements OnInit, OnDest
       ? 'installed' : 'update_available';
   }
 
-  /** The version story, and only that: the row's right-hand side already
-   *  says whether it is installed, and saying it twice reads as two
-   *  different facts. */
-  entryLabel(entry: CatalogEntry): string {
+  /** The version on offer, said once beside the name. */
+  entryVersion(entry: CatalogEntry): string {
+    const offered = entry.manifest?.agent?.version;
+    return offered ? `v${offered}` : '';
+  }
+
+  /** What the card's chip says: only what is not the ordinary case.
+   *  That it is installed is the card's foot's to say. */
+  entryChip(entry: CatalogEntry): CardChip | null {
     switch (this.entryStatus(entry)) {
-      case 'installed': return `v${entry.installed_version}`;
-      case 'update_available':
-        return `v${entry.installed_version} installed · `
-          + `v${entry.manifest?.agent?.version} offered`;
-      case 'broken': return 'Cannot be read';
-      default: return `v${entry.manifest?.agent?.version || '?'}`;
+      case 'update_available': return { word: 'Update available', tone: '' };
+      case 'broken': return { word: 'Cannot be read', tone: 'danger' };
+      default: return null;
     }
+  }
+
+  /** The card's line of facts, from the manifest on offer: its
+   *  functions, the credentials it declares, where it connects; then
+   *  the version installed where a newer one is offered, and what it
+   *  ships to try it on. */
+  entryFacts(entry: CatalogEntry): string[] {
+    const manifest = entry.manifest || {};
+    const functions = (manifest.tools || []).reduce(
+      (count: number, tool: any) => count + (tool?.functions || []).length, 0);
+    const facts = agentFacts(functions, (manifest.resources?.secrets || []).length,
+      networkOf(manifest));
+    if (this.entryStatus(entry) === 'update_available') {
+      facts.push(`v${entry.installed_version} installed`);
+    }
+    if (entry.samples?.errors?.length) {
+      facts.push('its sample sheet has errors');
+    } else if (entry.samples?.records) {
+      const records = entry.samples.records;
+      facts.push(`${records} sample ${records === 1 ? 'record' : 'records'}`);
+    }
+    return facts;
+  }
+
+  /** Where an entry's card goes: its review, or nowhere new for one
+   *  that cannot be read. */
+  entryLink(source: AgentSource, entry: CatalogEntry): string[] {
+    return this.entryStatus(entry) === 'broken'
+      ? ['/agents/marketplace', source.source_id]
+      : ['/agents/marketplace', source.source_id, entry.id];
   }
 
   /** A key for an offered agent that exists before it is installed: its

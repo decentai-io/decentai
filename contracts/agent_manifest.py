@@ -22,6 +22,10 @@ SCHEMA_VERSION = "1.0"
 
 ID_PATTERN = re.compile(r"^[a-z][a-z0-9_]*$")
 AGENT_ID_PATTERN = re.compile(r"^[a-z][a-z0-9_]{1,31}$")
+# An icon is named, never drawn: the name of one of the icons the app
+# carries (Lucide's names, "calendar-clock"). The app shows the agent's
+# initials for a name it does not carry, so no name can break a page.
+ICON_PATTERN = re.compile(r"^[a-z][a-z0-9]*(-[a-z0-9]+)*$")
 VERSION_PATTERN = re.compile(r"^\d+\.\d+\.\d+$")
 ENTRYPOINT_PATTERN = re.compile(r"^[A-Za-z0-9_.]+:[A-Za-z_][A-Za-z0-9_]*$")
 
@@ -240,6 +244,11 @@ class ManifestValidator:
         instructions = agent.get("instructions", "")
         if instructions is not None and not isinstance(instructions, str):
             self._fail("agent.instructions", "must be a string")
+
+        icon = agent.get("icon")
+        if icon is not None and not (
+                isinstance(icon, str) and len(icon) <= 40 and ICON_PATTERN.match(icon)):
+            self._fail("agent.icon", "must be an icon's name, like \"calendar-clock\"")
 
         # What to try first: a few prompts a person can send as they
         # are, each with a title. Shown on the agent's page and offered

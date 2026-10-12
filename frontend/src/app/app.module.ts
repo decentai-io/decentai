@@ -257,6 +257,7 @@ import { RoutingComponent } from './pages/app/settings/routing/routing.component
 import { GuideComponent } from './pages/app/guide/guide.component';
 import { OrganizationsComponent } from './pages/admin/organizations/organizations.component';
 import { ServiceWorkerModule } from '@angular/service-worker';
+import { AgentCardComponent } from './pages/app/agents/agent-card.component';
 
 @NgModule({
   declarations: [
@@ -366,6 +367,7 @@ import { ServiceWorkerModule } from '@angular/service-worker';
     ListComponent,
     RowComponent,
     RecordRowComponent,
+    AgentCardComponent,
     EmptyComponent,
     SaveBarComponent,
     AgentMarkComponent,

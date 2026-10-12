@@ -187,60 +187,35 @@
         </div>
 
         <div class="agent-grid" *ngIf="shownEntries.length">
-          <article class="agent-card" *ngFor="let entry of pagedEntries"
-                   [class.is-broken]="entryStatus(entry) === 'broken'"
-                   [class.is-installed]="entryStatus(entry) === 'installed'"
-                   [class.is-selected]="isSelected(source, entry)">
-            <header class="agent-card-head">
-              <label class="entry-tick" *ngIf="installable(entry) && selectableEntries(source).length > 1"
-                     title="Select for bulk install">
-                <input type="checkbox" [checked]="isSelected(source, entry)"
-                       (change)="toggleSelect(source, entry)" />
-              </label>
-              <strong>{{ entryName(entry) }}</strong>
-              <span class="agent-status" [ngClass]="'is-' + entryStatus(entry)">
-                {{ entryLabel(entry) }}
-              </span>
-            </header>
-            <p class="agent-card-desc" *ngIf="entryDescription(entry)">{{ entryDescription(entry) }}</p>
-            <span class="agent-card-samples" *ngIf="entry.samples && !entry.samples.errors.length"
-                  title="Ships records to try it on; load them from the agent's page once installed">
-              <lucide-icon name="database" [size]="12"></lucide-icon>
-              {{ entry.samples.records }} sample record{{ entry.samples.records === 1 ? "" : "s" }}<ng-container *ngIf="entry.samples.files">, {{ entry.samples.files }} file{{ entry.samples.files === 1 ? "" : "s" }}</ng-container>
+          <app-agent-card
+            *ngFor="let entry of pagedEntries"
+            [name]="entryName(entry)"
+            [icon]="entry.manifest?.agent?.icon"
+            [version]="entryVersion(entry)"
+            [chip]="entryChip(entry)"
+            [description]="entryDescription(entry)"
+            [facts]="entryFacts(entry)"
+            [problems]="entry.errors || []"
+            [link]="entryLink(source, entry)"
+            [selectable]="installable(entry) && selectableEntries(source).length > 1"
+            [selected]="isSelected(source, entry)"
+            [selecting]="selectedCount(source) > 0"
+            (selectedChange)="toggleSelect(source, entry)"
+          >
+            <!-- Already installed is a state, not a dead button. -->
+            <span cardFoot class="entry-installed" *ngIf="entryStatus(entry) === 'installed'">
+              <lucide-icon name="circle-check" [size]="16" aria-hidden="true"></lucide-icon>
+              Installed
             </span>
-            <span class="agent-card-samples warn" *ngIf="entry.samples?.errors?.length"
-                  [title]="entry.samples?.errors?.join('; ') || ''">
-              Sample sheet has errors
-            </span>
-            <div class="agent-errors" *ngIf="entry.errors?.length">
-              <span class="agent-error" *ngFor="let message of entry.errors">{{ message }}</span>
-            </div>
-            <footer class="agent-card-foot">
-              <!-- Already installed is a STATE, not a dead button. -->
-              <span class="catalog-done" *ngIf="entryStatus(entry) === 'installed'">
-                <lucide-icon name="circle-check" [size]="14"></lucide-icon>
-                Installed
-              </span>
-              <span class="spacer"></span>
-              <!-- Installing is agreeing to what the agent declares,
-                   so the way to install is through the page that says
-                   it: approving is on that page, and nowhere else. -->
-              <button class="btn sm" type="button"
-                      *ngIf="entryStatus(entry) !== 'broken' && !installable(entry)"
-                      [disabled]="!!busyId"
-                      (click)="openReview(source, entry)">
-                <lucide-icon name="info" [size]="14"></lucide-icon>
-                Details
-              </button>
-              <button class="btn primary sm" type="button"
-                      *ngIf="installable(entry)"
-                      [disabled]="!!busyId"
-                      (click)="openReview(source, entry)">
-                {{ entryStatus(entry) === "update_available"
-                    ? "Review update" : "Review and install" }}
-              </button>
-            </footer>
-          </article>
+            <!-- Installing is agreeing to what the agent declares, so
+                 the way to install is through the page that says it. -->
+            <a cardFoot class="btn sm entry-action" *ngIf="entryStatus(entry) === 'installed'"
+               [routerLink]="entryLink(source, entry)">Details</a>
+            <a cardFoot class="btn sm primary entry-action" *ngIf="installable(entry)"
+               [routerLink]="entryLink(source, entry)">
+              {{ entryStatus(entry) === "update_available" ? "Review update" : "Review and install" }}
+            </a>
+          </app-agent-card>
         </div>
         <footer class="market-pagination" *ngIf="shownEntries.length">
           <span>
