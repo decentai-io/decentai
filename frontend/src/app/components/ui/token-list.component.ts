@@ -6,7 +6,7 @@ import { LucideAngularModule } from 'lucide-angular';
 /**
  * A list of short values a person types one at a time (blocked sites,
  * allowed packages): an input with Add, and the values as chips under
- * it, each with a remove. Enter adds.
+ * it, in order, each with a remove. Enter adds.
  *
  *   <app-field label="Sites no agent may open">
  *     <app-token-list placeholder="example.com" [(ngModel)]="policy.blocked"></app-token-list>
@@ -33,7 +33,7 @@ import { LucideAngularModule } from 'lucide-angular';
         (blur)="touched()"
       />
       <button type="button" class="btn" [disabled]="disabled || !draft.trim()" (click)="add()">
-        Add
+        {{ addLabel }}
       </button>
     </div>
     <ul class="tokens" [attr.aria-label]="listLabel || null">
@@ -57,6 +57,11 @@ export class TokenListComponent implements ControlValueAccessor {
   /** What the list of chips is, for a screen reader. */
   @Input() listLabel = '';
   @Input() disabled = false;
+  /** Turns what was typed into the value that is kept (a pasted address
+   *  into its site's name), or '' to keep nothing. */
+  @Input() normalize: (typed: string) => string = (typed) => typed;
+  /** The button's word: "Add", or the page's own ("Block", "Allow"). */
+  @Input() addLabel = 'Add';
 
   tokens: string[] = [];
   draft = '';
@@ -67,11 +72,10 @@ export class TokenListComponent implements ControlValueAccessor {
   /** Adds what is typed; a value already in the list is not added twice. */
   add(event?: Event): void {
     event?.preventDefault();
-    const token = this.draft.trim();
-    if (!token) return;
+    const token = this.normalize(this.draft.trim());
     this.draft = '';
-    if (this.tokens.includes(token)) return;
-    this.tokens = [...this.tokens, token];
+    if (!token || this.tokens.includes(token)) return;
+    this.tokens = [...this.tokens, token].sort();
     this.changed(this.tokens);
   }
 

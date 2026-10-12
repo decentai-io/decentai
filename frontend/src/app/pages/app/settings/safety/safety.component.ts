@@ -1,16 +1,21 @@
 import { Component, OnInit } from '@angular/core';
 
+import { Draft } from 'src/app/components/ui/draft';
+import { Choice } from 'src/app/components/ui/radio-keys';
+import { HasUnsavedChanges } from 'src/app/guards/unsaved-changes.guard';
 import { AuthService } from 'src/app/services/auth.service';
 import { SafetySettings, SettingsSafetyService } from 'src/app/services/settings-safety.service';
-import { DataPageBase } from '../../data-page-base';
 
-/** One choice of a row: the value the platform keeps, and the words a
- *  person chooses by. */
-interface Choice { value: string; label: string; help: string; }
+/** Where the platform stood before this page existed: every script and
+ *  program asked about, any package a card names, MCP servers allowed. */
+const STANDARD: SafetySettings = {
+  mcp: 'allowed', blocked_sites: [], scripts: 'always', programs: 'always',
+  packages: 'any', allowed_packages: [],
+};
 
 /**
- * Safety: what agents may do without asking. A tab of the Settings
- * page.
+ * Settings › Safety: what no agent may do, and what is always shown to
+ * a person before it runs.
  *
  * Two agents do things nobody can list beforehand — the Browser opens
  * any site and runs scripts in its pages, the Code agent writes
@@ -18,145 +23,124 @@ interface Choice { value: string; label: string; help: string; }
  * to be asked is set here, with the sites no agent may open at all and
  * the packages a program may install.
  *
- * Every row starts where the platform stood before this page existed:
- * every script and program asked about, any package a card names, MCP
- * servers allowed. A looser choice about asking applies only to code
- * the assistant read and found to do what it says, and the chat is
- * still told what ran.
+ * A looser choice about asking applies only to code the assistant read
+ * and found to do what it says, and the chat is still told what ran.
+ * One form, saved with the save bar.
  */
 @Component({
   selector: 'app-safety',
   standalone: false,
   templateUrl: './safety.component.html',
-  styleUrls: ['../../data-shared.css', './safety.component.css'],
 })
-export class SafetyComponent extends DataPageBase implements OnInit {
+export class SafetyComponent implements OnInit, HasUnsavedChanges {
   loading = true;
+  loadError = '';
   saving = false;
-  saved: SafetySettings | null = null;
-  draft: SafetySettings | null = null;
-  /** What is being typed into each list, before it is added. */
-  newSite = '';
-  newPackage = '';
+  saveError = '';
 
-  readonly scripts: Choice[] = [
-    { value: 'always', label: 'Ask every time',
-      help: 'Every script an agent wants to run in a page is shown to you first.' },
-    { value: 'once_per_site', label: 'Ask once for a site in a chat',
-      help: 'After you allow a script on a site, later scripts on that site in the same chat run without a card.' },
+  readonly draft = new Draft<SafetySettings>(STANDARD);
+
+  readonly scripts: Choice<SafetySettings['scripts']>[] = [
+    { value: 'always', name: 'Ask every time',
+      hint: 'Every script an agent wants to run in a page is shown to you first.' },
+    { value: 'once_per_site', name: 'Ask once for a site in a chat',
+      hint: 'After you allow one on a site, later scripts on that site in the same chat run without a card.' },
   ];
 
-  readonly programs: Choice[] = [
-    { value: 'always', label: 'Ask every time',
-      help: 'Every program is shown to you first, a corrected one included.' },
-    { value: 'corrections', label: 'Do not ask again for a correction',
-      help: 'When a program you allowed fails and is corrected, the correction runs without a card, unless it needs a site, a package, a credential or a file you had not allowed.' },
-    { value: 'quiet', label: 'Ask only when it reaches a site or uses a credential',
-      help: 'A program that works only on the files it was given runs without a card. Corrections are not asked again either.' },
+  readonly programs: Choice<SafetySettings['programs']>[] = [
+    { value: 'always', name: 'Ask every time',
+      hint: 'Every program is shown to you first, a corrected one included.' },
+    { value: 'corrections', name: 'Do not ask again for a correction',
+      hint: 'A corrected program runs without a card unless it needs something you had not allowed.' },
+    { value: 'quiet', name: 'Ask only when it reaches a site or uses a credential',
+      hint: 'A program that works only on the files it was given runs without a card.' },
   ];
 
-  readonly mcp: Choice[] = [
-    { value: 'allowed', label: 'People may add MCP servers',
-      help: 'Each person adds remote servers for their own chats, and decides which tools are on and what each costs to call.' },
-    { value: 'blocked', label: 'No MCP servers',
-      help: 'Nobody can add one, and no chat can call a tool of one already added. What was added stays, switched off, until this is allowed again.' },
+  readonly packages: Choice<SafetySettings['packages']>[] = [
+    { value: 'any', name: 'Any package the card names',
+      hint: 'You see the packages on the card and decide there.' },
+    { value: 'listed', name: 'Only packages on my list',
+      hint: 'A program that needs a package off the list is refused before you are asked.' },
   ];
 
-  readonly packages: Choice[] = [
-    { value: 'any', label: 'Any package the card names',
-      help: 'You see the packages on the card and decide there.' },
-    { value: 'listed', label: 'Only packages on my list',
-      help: 'A program that needs a package off the list is refused before you are asked. What a listed package itself depends on is installed with it.' },
+  readonly mcp: Choice<SafetySettings['mcp']>[] = [
+    { value: 'allowed', name: 'People may add' },
+    { value: 'blocked', name: 'Nobody may' },
   ];
 
   constructor(
     private service: SettingsSafetyService,
     public auth: AuthService,
-  ) {
-    super();
-  }
+  ) {}
 
   get canEdit(): boolean { return this.auth.can('settings:safety:update'); }
 
-  get dirty(): boolean {
-    return JSON.stringify(this.saved) !== JSON.stringify(this.draft);
-  }
-
-  /** The page's name while it has changes not yet saved, for the
-   *  guard that asks before leaving (guards/unsaved-changes.guard.ts). */
-  unsavedChangesTo(): string {
-    return this.dirty ? 'Safety' : '';
-  }
-
   /** Whether anything is looser than the platform's own start. */
   get loosened(): boolean {
-    return !!this.draft && (this.draft.scripts !== 'always' || this.draft.programs !== 'always');
+    const chosen = this.draft.value;
+    return chosen.scripts !== 'always' || chosen.programs !== 'always';
   }
 
-  async ngOnInit(): Promise<void> {
+  /** What the MCP choice means, in one line. */
+  get mcpMeaning(): string {
+    return this.draft.value.mcp === 'allowed'
+      ? 'Each person adds remote servers for their own chats, and decides which tools are on.'
+      : 'Nobody can add one, and no chat can call a tool of one already added; those stay, switched off.';
+  }
+
+  ngOnInit(): Promise<void> {
+    return this.load();
+  }
+
+  async load(): Promise<void> {
+    this.loading = true;
+    this.loadError = '';
     try {
-      this.saved = await this.service.get();
-      this.draft = this.saved ? this.copy(this.saved) : null;
+      const saved = await this.service.get();
+      if (!saved) throw new Error('no settings');
+      this.draft.take(saved);
+    } catch {
+      this.loadError = 'Could not reach the server. Check your connection.';
     } finally {
       this.loading = false;
     }
   }
 
-  private copy(settings: SafetySettings): SafetySettings {
-    return { ...settings, blocked_sites: [...settings.blocked_sites],
-             allowed_packages: [...settings.allowed_packages] };
-  }
-
   /** A site as a person types it: a whole address is read for its
    *  name, since that is what they will have copied. */
-  addSite(): void {
-    if (!this.draft) return;
-    let name = this.newSite.trim().toLowerCase();
+  readonly siteName = (typed: string): string => {
+    let name = typed.toLowerCase();
     name = name.replace(/^[a-z]+:\/\//, '').split(/[/?#]/)[0].split('@').pop() || '';
-    name = name.replace(/:\d+$/, '').replace(/^\*\./, '').replace(/\.$/, '');
-    if (name && !this.draft.blocked_sites.includes(name)) {
-      this.draft.blocked_sites = [...this.draft.blocked_sites, name].sort();
-    }
-    this.newSite = '';
-  }
+    return name.replace(/:\d+$/, '').replace(/^\*\./, '').replace(/\.$/, '');
+  };
 
-  removeSite(name: string): void {
-    if (!this.draft) return;
-    this.draft.blocked_sites = this.draft.blocked_sites.filter((site) => site !== name);
-  }
-
-  addPackage(): void {
-    if (!this.draft) return;
-    const name = this.newPackage.trim().toLowerCase().split(/[=<>!~\[\s]/)[0];
-    if (name && !this.draft.allowed_packages.includes(name)) {
-      this.draft.allowed_packages = [...this.draft.allowed_packages, name].sort();
-    }
-    this.newPackage = '';
-  }
-
-  removePackage(name: string): void {
-    if (!this.draft) return;
-    this.draft.allowed_packages = this.draft.allowed_packages.filter((one) => one !== name);
-  }
-
-  discard(): void {
-    if (this.saved) this.draft = this.copy(this.saved);
-  }
+  /** A package by its name alone: a version or an extra typed after it
+   *  is dropped. */
+  readonly packageName = (typed: string): string =>
+    typed.toLowerCase().split(/[=<>!~\[\s]/)[0];
 
   async save(): Promise<void> {
-    if (!this.draft || this.saving) return;
+    if (this.saving) return;
     this.saving = true;
+    this.saveError = '';
     try {
-      const result = await this.service.update(this.draft);
+      const result = await this.service.update(this.draft.value);
       if (result.error || !result.safety) {
-        this.fail(result.error || 'The setting could not be saved.');
+        this.saveError = result.error || 'The setting could not be saved.';
         return;
       }
-      this.saved = result.safety;
-      this.draft = this.copy(result.safety);
-      this.flash('Safety saved. It applies from the next thing an agent does.');
+      this.draft.take(result.safety);
     } finally {
       this.saving = false;
     }
+  }
+
+  discard(): void {
+    this.draft.discard();
+    this.saveError = '';
+  }
+
+  unsavedChangesTo(): string {
+    return this.draft.dirty ? 'Safety' : '';
   }
 }
