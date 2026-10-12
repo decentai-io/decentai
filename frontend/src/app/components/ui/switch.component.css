@@ -5,13 +5,22 @@
   gap: 12px;
 }
 
+/* The button is the size of its track; what takes a finger reaches
+   12px above and below it. */
 .switch {
+  position: relative;
   flex: none;
   padding: 0;
   border: 0;
   border-radius: var(--r-full);
   background: none;
   cursor: pointer;
+}
+
+.switch::after {
+  content: '';
+  position: absolute;
+  inset: -12px -4px;
 }
 
 .switch:focus-visible {

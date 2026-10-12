@@ -790,6 +790,11 @@ div.mat-mdc-select-panel {
   font-weight: 500;
 }
 
+/* A count at the right of its entry. */
+.side-count {
+  margin-left: auto;
+}
+
 .side-item.is-current::before {
   content: '';
   position: absolute;

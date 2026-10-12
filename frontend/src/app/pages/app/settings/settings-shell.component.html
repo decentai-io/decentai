@@ -11,6 +11,10 @@
         ariaCurrentWhenActive="page"
       >
         {{ page.name }}
+        <ng-container *ngIf="page.path === 'providers' && (llm.count$ | async) as count">
+          <span class="chip side-count" aria-hidden="true">{{ count }}</span>
+          <span class="visually-hidden">, {{ count }} connected</span>
+        </ng-container>
       </a>
     </ng-container>
   </nav>

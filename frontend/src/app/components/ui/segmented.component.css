@@ -51,3 +51,10 @@
   opacity: 0.5;
   cursor: default;
 }
+
+/* Under a finger the choices are 44px high. */
+@media (pointer: coarse) {
+  .segmented {
+    height: 44px;
+  }
+}

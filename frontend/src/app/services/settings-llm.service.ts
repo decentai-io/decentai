@@ -1,4 +1,5 @@
 import { Injectable } from '@angular/core';
+import { BehaviorSubject } from 'rxjs';
 
 import { RequestService } from './request.service';
 
@@ -94,6 +95,10 @@ export interface LlmSaved {
  *  providers, exactly one of them the default. */
 @Injectable({ providedIn: 'root' })
 export class SettingsLlmService {
+  /** How many connections this person can see, as last listed; null
+   *  until the first listing. The Settings nav shows it. */
+  readonly count$ = new BehaviorSubject<number | null>(null);
+
   constructor(private request: RequestService) {}
 
   /** The connections this person can see. With `manage`, asked by the
@@ -102,7 +107,9 @@ export class SettingsLlmService {
   async list(manage = false): Promise<LlmConnection[]> {
     const r = await this.request.gateway(
       'Settings:Llm:list', manage ? { manage: true } : {});
-    return Array.isArray(r?.connections) ? r.connections : [];
+    const connections = Array.isArray(r?.connections) ? r.connections : [];
+    if (!manage) this.count$.next(connections.length);
+    return connections;
   }
 
   async providers(): Promise<LlmProvider[]> {
