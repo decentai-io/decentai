@@ -42,8 +42,14 @@ describe('AgentsComponent', () => {
       } as any,
       { list: async (family: string) => secretsByFamily[family] || [] } as any,
       { list: async () => [] } as any,
+      { ask: async (asked: any) => { questions.push(asked); return answer; } } as any,
     );
   }
+
+  /** What the page asked before uninstalling, and what it is told. */
+  let questions: any[] = [];
+  let answer = true;
+  beforeEach(() => { questions = []; answer = true; });
 
   it('says where an approved agent stands in one word, the first that holds', () => {
     const component = createComponent();
@@ -314,6 +320,7 @@ describe('AgentsComponent', () => {
       { get: async () => ({}) } as any,
       { list: async () => [] } as any,
       { list: async () => [] } as any,
+      { ask: async () => true } as any,
     );
     await component.ngOnInit();
 
@@ -338,17 +345,15 @@ describe('AgentsComponent', () => {
     });
     await component.ngOnInit();
 
-    component.requestUninstall(agent);
-    expect(component.uninstalling).toEqual([agent]);
+    answer = false;
+    await component.requestUninstall(agent);
+    expect(questions[0].title).toBe('Uninstall jira?');
+    expect(questions[0].danger).toBeTrue();
     expect(removed).toBe('');
 
-    component.closeUninstall();
-    expect(component.uninstalling).toEqual([]);
-
-    component.requestUninstall(agent);
-    await component.confirmUninstall();
+    answer = true;
+    await component.requestUninstall(agent);
     expect(removed).toBe('jira');
-    expect(component.uninstalling).toEqual([]);
   });
 
   it('uninstalls everything ticked, behind one confirmation', async () => {
@@ -365,11 +370,11 @@ describe('AgentsComponent', () => {
 
     component.toggleSelected(one);
     component.toggleSelected(two);
-    component.requestUninstallSelected();
-    expect(component.uninstalling.length).toBe(2);
+    await component.requestUninstallSelected();
 
-    await component.confirmUninstall();
-
+    expect(questions.length).toBe(1);
+    expect(questions[0].title).toBe('Uninstall 2 agents?');
+    expect(questions[0].body).toContain('one, two');
     expect(removed).toEqual(['one', 'two']);
     expect(component.selected.size).toBe(0);
     expect(component.notice).toContain('2 agents uninstalled');
@@ -388,13 +393,21 @@ describe('AgentsComponent', () => {
 
     component.toggleSelected(one);
     component.toggleSelected(two);
-    component.requestUninstallSelected();
-    await component.confirmUninstall();
+    await component.requestUninstallSelected();
 
     expect(component.error).toContain('two');
     expect(component.error).toContain('It is in use.');
     expect(component.selected.has('one')).toBe(false);
     expect(component.selected.has('two')).toBe(true);
+  });
+
+  it('says how many each view of the list holds, and sums them under the grid', async () => {
+    const component = createComponent([offer('a'), offer('b', { status: 'update_available' })]);
+    await component.ngOnInit();
+
+    expect(component.filters.map((choice) => choice.name))
+      .toEqual(['All 2', 'Needs attention 1', 'Updates 1']);
+    expect(component.foot).toBe('2 installed · 1 ready · 2 in new chats');
   });
 
   // ── Every view has an address ───────────────────────────────────────
@@ -407,6 +420,7 @@ describe('AgentsComponent', () => {
       { get: async () => ({}) } as any,
       { list: async (family: string) => secretsByFamily[family] || [] } as any,
       { list: async () => [] } as any,
+      { ask: async () => true } as any,
       { events: EMPTY, navigate: async (to: any[]) => { went.push(to); return true; } } as any,
       { snapshot: { firstChild: { paramMap: convertToParamMap(params) } } } as any,
     );

@@ -8,6 +8,8 @@ import { Group, GroupService } from 'src/app/services/group.service';
 import { ProfileService } from 'src/app/services/profile.service';
 import { SecretsService } from 'src/app/services/secrets.service';
 import { AuthService } from 'src/app/services/auth.service';
+import { Choice } from 'src/app/components/ui/radio-keys';
+import { ConfirmService } from 'src/app/services/confirm.service';
 import { DataPageBase } from '../data-page-base';
 import { DetailTab } from './agent-detail.component';
 import {
@@ -38,12 +40,7 @@ const TABS: DetailTab[] = ['overview', 'credentials', 'functions', 'access'];
   selector: 'app-agents',
   standalone: false,
   templateUrl: './agents.component.html',
-  styleUrls: [
-    '../data-shared.css',
-    '../../admin/iam-shared.css',
-    './agent-shared.css',
-    './agents.component.css',
-  ],
+  styleUrl: './agent-shared.css',
 })
 export class AgentsComponent extends DataPageBase implements OnInit, OnDestroy {
   loading = true;
@@ -64,9 +61,6 @@ export class AgentsComponent extends DataPageBase implements OnInit, OnDestroy {
   defaultAgents = new Set<string>();
   /** The agent whose switch is mid-write, so only that one is frozen. */
   savingDefaultFor = '';
-  /** The agents a confirmation is open for: one opened from its own
-   *  page, or everything ticked on the list. One dialog, one path. */
-  uninstalling: AgentOffer[] = [];
   /** Ticked for a bulk uninstall, by id — pruned on every reload, so a
    *  row that has gone cannot stay selected. */
   selected = new Set<string>();
@@ -97,6 +91,7 @@ export class AgentsComponent extends DataPageBase implements OnInit, OnDestroy {
     private profile: ProfileService,
     private secrets: SecretsService,
     private groupService: GroupService,
+    private confirm: ConfirmService,
     private router?: Router,
     private route?: ActivatedRoute,
   ) {
@@ -398,6 +393,31 @@ export class AgentsComponent extends DataPageBase implements OnInit, OnDestroy {
     return this.agents.filter((agent) => this.standing(agent).kind === 'ready').length;
   }
 
+  /** The three views of the list, each saying how many it holds. The
+   *  same array until a count changes: the control draws its choices
+   *  again for a new one. */
+  get filters(): Choice<'all' | 'attention' | 'updates'>[] {
+    const counts = [this.agents.length, this.attentionCount, this.updateCount];
+    if (counts.join() !== this.filterCounts.join()) {
+      this.filterCounts = counts;
+      this.filterChoices = [
+        { value: 'all', name: `All ${counts[0]}` },
+        { value: 'attention', name: `Needs attention ${counts[1]}` },
+        { value: 'updates', name: `Updates ${counts[2]}` },
+      ];
+    }
+    return this.filterChoices;
+  }
+  private filterCounts: number[] = [];
+  private filterChoices: Choice<'all' | 'attention' | 'updates'>[] = [];
+
+  /** The line under the grid: what the four tiles used to say. */
+  get foot(): string {
+    if (!this.agents.length) return '';
+    return `${this.agents.length} installed · ${this.readyCount} ready · `
+      + `${this.defaultCount} in new chats`;
+  }
+
   /** Everything but Ready needs somebody: the counts and the filter are
    *  read from the same standing the cards show. */
   needsAttention(agent: AgentOffer): boolean {
@@ -500,38 +520,41 @@ export class AgentsComponent extends DataPageBase implements OnInit, OnDestroy {
     return this.agents.filter((agent) => this.isSelected(agent));
   }
 
-  // ── Uninstalling: one dialog, whether it is one agent or twelve ─────
+  // ── Uninstalling: one question, whether it is one agent or twelve ───
 
   get uninstallBusy(): boolean {
     return !!this.busyId || this.bulkBusy;
   }
 
-  get uninstallingNames(): string {
-    return this.uninstalling
-      .map((agent) => agent.name || agent.agent_id).join(', ');
+  requestUninstall(agent: AgentOffer): Promise<void> {
+    return this.askUninstall([agent]);
   }
 
-  requestUninstall(agent: AgentOffer): void {
-    this.uninstalling = [agent];
-    this.error = '';
+  requestUninstallSelected(): Promise<void> {
+    return this.askUninstall(this.selectedAgents);
   }
 
-  requestUninstallSelected(): void {
-    this.uninstalling = this.selectedAgents;
-    this.error = '';
-  }
-
-  closeUninstall(): void {
-    if (!this.uninstallBusy) this.uninstalling = [];
+  /** Asked once, by name, saying what goes and what stays. */
+  private async askUninstall(going: AgentOffer[]): Promise<void> {
+    if (!going.length || this.uninstallBusy) return;
+    const one = going.length === 1;
+    const names = going.map((agent) => agent.name || agent.agent_id).join(', ');
+    const sure = await this.confirm.ask({
+      title: one ? `Uninstall ${names}?` : `Uninstall ${going.length} agents?`,
+      body: (one ? '' : `${names}. `)
+        + `Chats stop being served by ${one ? 'it' : 'them'} on their next connection. `
+        + `Credentials saved for ${one ? 'it' : 'them'} and the records ${one ? 'it' : 'they'} kept `
+        + 'stay yours: uninstalling takes away the code, not your data.',
+      confirm: one ? 'Uninstall' : `Uninstall ${going.length}`,
+      danger: true,
+    });
+    if (sure) await this.uninstall(going);
   }
 
   /** Withdraw each in turn, and say what actually happened. One refusal
    *  neither stops the rest nor hides them: what went is gone, what did
    *  not is named and stays ticked. */
-  async confirmUninstall(): Promise<void> {
-    const going = this.uninstalling;
-    if (!going.length) return;
-
+  private async uninstall(going: AgentOffer[]): Promise<void> {
     const gone: string[] = [];
     const refused: string[] = [];
     this.bulkBusy = true;
@@ -552,7 +575,6 @@ export class AgentsComponent extends DataPageBase implements OnInit, OnDestroy {
       this.bulkBusy = false;
     }
 
-    this.uninstalling = [];
     const open = this.openAgent?.agent_id;
     if (open && gone.length && going.some((agent) => agent.agent_id === open)) {
       this.closeDetail();
