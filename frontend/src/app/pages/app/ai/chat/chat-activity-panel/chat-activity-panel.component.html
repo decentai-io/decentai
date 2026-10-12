@@ -2,7 +2,7 @@
   <div class="panel-body">
     <!-- ── This turn: the plan as it stands, and the steps as they land.
          The whole record of the chat is not here: it is the audit trail,
-         opened from Activity & audit in the header. ── -->
+         opened from Activity and audit in the chat's menu. ── -->
     @if (livePlan.length) {
       <ol class="work-items" aria-label="Plan">
         @for (group of taskGroups; track group.item.id ?? $index) {
@@ -73,7 +73,7 @@
     @if (!hasLive) {
       <p class="panel-note">
         Nothing is happening in this turn. Everything this chat has ever
-        run is under <strong>Activity &amp; audit</strong> in the header.
+        run is under <strong>Activity and audit</strong> in the chat's menu.
       </p>
     }
   </div>

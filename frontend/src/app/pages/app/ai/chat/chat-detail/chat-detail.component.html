@@ -270,6 +270,10 @@
        rode up with the answer and was missed. -->
   @if (waitingApprovals.length) {
     <div class="chat-approvals" role="region" aria-label="Waiting for your decision">
+      <!-- Two cards fit; with more, the strip says how many and scrolls. -->
+      @if (waitingApprovals.length > 2) {
+        <p class="chat-approvals-count">{{ waitingApprovals.length }} waiting for you</p>
+      }
       @for (approval of waitingApprovals; track approval.approval_id) {
         <app-chat-approval-card [approval]="approval" (decided)="onApprovalDecision($event)"></app-chat-approval-card>
       }

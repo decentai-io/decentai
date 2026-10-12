@@ -226,11 +226,25 @@
   flex-shrink: 0;
   gap: 8px;
   width: min(var(--chat-column), calc(100% - 32px));
-  max-height: 40vh;
+  max-height: 40dvh;
   margin: 0 auto;
   padding: 4px 0 10px;
   overflow-y: auto;
   overscroll-behavior: contain;
+}
+
+.chat-approvals-count {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  align-self: center;
+  padding: 2px 10px;
+  border-radius: var(--r-full);
+  background: var(--warn-soft);
+  color: var(--warn-ink);
+  font-size: var(--t-xs);
+  font-weight: 500;
+  line-height: var(--lh-xs);
 }
 
 /* The composer sits on the page's own surface, like the messages, and

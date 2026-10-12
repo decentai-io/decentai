@@ -143,6 +143,15 @@
   color: var(--accent-fg);
 }
 
+.icon-btn.danger.primary {
+  background: var(--danger);
+  color: var(--danger-fg);
+}
+
+.icon-btn.danger.primary:hover {
+  background: color-mix(in srgb, var(--danger) 88%, var(--ink));
+}
+
 .icon-btn.round {
   border-radius: var(--r-full);
 }
