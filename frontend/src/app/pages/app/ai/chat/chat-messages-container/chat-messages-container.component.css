@@ -170,8 +170,8 @@
   border-radius: 50%;
   /* Emerald, like everything else, and a tint rather than a gradient —
      the icon two rules down already says that is the rule. */
-  background: var(--chat-accent-soft);
-  border: 1.5px solid color-mix(in srgb, var(--chat-accent) 22%, transparent);
+  background: var(--accent-soft);
+  border: 1.5px solid color-mix(in srgb, var(--accent) 22%, transparent);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -181,10 +181,11 @@
 .empty-icon {
   width: 1.8rem;
   height: 1.8rem;
-  color: var(--chat-accent-strong);   /* emerald — no gradients (brand rule) */
+  color: var(--accent-ink);   /* emerald — no gradients (brand rule) */
 }
 
 .empty-title {
+  font-family: var(--font-serif);
   font-size: 1.25rem;
   font-weight: 600;
   color: var(--foreground);
@@ -227,8 +228,8 @@
 }
 
 .opener:hover {
-  border-color: color-mix(in srgb, var(--chat-accent) 45%, transparent);
-  background: var(--chat-accent-soft);
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  background: var(--accent-soft);
 }
 
 .opener lucide-icon {
@@ -371,7 +372,7 @@
 .activity-line:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 .activity-line lucide-icon { display: inline-flex; flex: none; }
 .activity-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.activity-done { color: var(--chat-accent-strong); }
+.activity-done { color: var(--accent-ink); }
 .activity-waiting { color: var(--foreground); }
 .activity-chevron { transition: transform 0.2s ease; }
 .activity-line[aria-expanded="true"] .activity-chevron { transform: rotate(90deg); }

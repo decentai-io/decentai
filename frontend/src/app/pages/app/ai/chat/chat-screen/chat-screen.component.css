@@ -8,7 +8,7 @@
   background: var(--card);
   overflow: hidden;
 }
-.screen.is-taken { border-left-color: var(--chat-accent-strong); }
+.screen.is-taken { border-left-color: var(--accent-ink); }
 .screen.is-minimized .screen-head { border-bottom: none; }
 .screen-head {
   display: flex; align-items: center; gap: 8px;
@@ -16,7 +16,7 @@
   border-bottom: 1px solid var(--border);
   font-size: 0.82rem;
 }
-.screen-head lucide-icon { color: var(--chat-accent-strong); flex-shrink: 0; }
+.screen-head lucide-icon { color: var(--accent-ink); flex-shrink: 0; }
 /* In a narrow column the head stays one row: the status gives way
    first, cut short, and the buttons keep their size. */
 .screen-title { font-weight: 600; color: var(--foreground); white-space: nowrap; }

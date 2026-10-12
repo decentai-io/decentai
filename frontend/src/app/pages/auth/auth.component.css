@@ -114,7 +114,7 @@
 
 .field__input:focus-visible {
   border-color: var(--ring);
-  box-shadow: var(--chat-focus-ring);
+  box-shadow: var(--focus);
 }
 
 .field__input:disabled {

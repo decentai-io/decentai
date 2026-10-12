@@ -58,7 +58,7 @@
 .work-items li[data-status="done"] .work-text { color: var(--muted-foreground); text-decoration: line-through; }
 .work-item--unverified .work-text { text-decoration-style: dotted; }
 .work-status { font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted-foreground); white-space: nowrap; }
-.work-items li[data-status="active"] .work-status { color: var(--accent-foreground); }
+.work-items li[data-status="active"] .work-status { color: var(--accent-ink); }
 .work-items li[data-status="blocked"] .work-status,
 .work-item--unverified .work-status { color: var(--destructive-strong); }
 .work-blocker { margin: 2px 0 0 34px; font-size: 12.5px; color: var(--destructive-strong); }
@@ -74,8 +74,8 @@
 .step-text { font-size: 13px; line-height: 20px; color: var(--foreground); }
 .step-detail, .step-meta { font-size: 12px; color: var(--muted-foreground); }
 .step-meta { line-height: 20px; white-space: nowrap; font-variant-numeric: tabular-nums; }
-.step-meta--live { color: var(--chat-accent-strong); }
-.step--active .step-text { color: var(--chat-accent-strong); }
-.step--active .step-index { color: var(--chat-accent-strong); }
+.step-meta--live { color: var(--accent-ink); }
+.step--active .step-text { color: var(--accent-ink); }
+.step--active .step-index { color: var(--accent-ink); }
 .step--failed .step-text, .step--failed .step-meta { color: var(--destructive-strong); }
 .step--failed .step-index { color: var(--destructive-strong); }

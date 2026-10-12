@@ -3,26 +3,6 @@
    components references this file, so panels, buttons, inputs, dialogs
    and empty states stay identical across them. */
 :host {
-  /* Theme-aware: use the app's shadcn tokens (flip in dark mode) rather than
-     the chat-* tokens, which are pinned to a light surface. */
-  --accent: var(--primary);                                          /* emerald */
-  --accent-strong: var(--accent-foreground);                         /* readable emerald text */
-  --accent-soft: color-mix(in srgb, var(--primary) 12%, transparent);/* pale emerald, both modes */
-  --ink: var(--foreground);
-  --muted: var(--muted-foreground);
-  --border-strong: var(--input);
-  --surface: var(--card);                                            /* #fff light / #111 dark */
-  --surface-2: var(--secondary);
-
-  /* Aliases for the ported design-system names these pages were written
-     against. Undefined, every `var(--border-color)` fell through
-     to its slate hex fallback — a literal that cannot follow the theme,
-     so panel edges and subtle surfaces stayed light in dark mode. */
-  --border-color: var(--border);
-  --surface-subtle: var(--secondary);
-  --text-muted: var(--muted-foreground);
-  --text-color: var(--foreground);
-
   display: block;
   height: 100%;
   font-family: var(--font-sans);
@@ -58,7 +38,7 @@
 .data-header + * { margin-top: 12px; }
 
 .data-heading h1 { margin: 0; font-size: var(--ui-text-2xl); font-weight: 600; font-family: var(--font-serif); letter-spacing: -0.02em; }
-.data-heading p { margin: 4px 0 0; color: var(--muted); font-size: var(--ui-text-base); }
+.data-heading p { margin: 4px 0 0; color: var(--ink-2); font-size: var(--ui-text-base); }
 
 .data-alert {
   margin-top: 10px;
@@ -67,12 +47,12 @@
   font-size: var(--ui-text-base);
   font-weight: 600;
 }
-.data-alert.error { background: var(--chat-danger-soft); color: var(--chat-danger-strong); border: 1px solid color-mix(in srgb, var(--destructive) 30%, transparent); }
-.data-alert.ok { background: var(--accent-soft); color: var(--accent-strong); border: 1px solid var(--border); }
+.data-alert.error { background: var(--danger-soft); color: var(--danger-ink); border: 1px solid color-mix(in srgb, var(--destructive) 30%, transparent); }
+.data-alert.ok { background: var(--accent-soft); color: var(--accent-ink); border: 1px solid var(--border); }
 
 .data-loading {
   display: flex; align-items: center; gap: 12px;
-  color: var(--muted); padding: 32px 6px;
+  color: var(--ink-2); padding: 32px 6px;
 }
 
 .panel {
@@ -89,7 +69,7 @@
 }
 .panel-head.sub { margin-top: 22px; }
 .panel-head h2 { margin: 0; font-size: var(--ui-text-md); font-weight: 600; }
-.panel-head p { margin: 3px 0 0; color: var(--muted); font-size: var(--ui-text-sm); }
+.panel-head p { margin: 3px 0 0; color: var(--ink-2); font-size: var(--ui-text-sm); }
 
 .btn {
   display: inline-flex; align-items: center; gap: 6px;
@@ -103,8 +83,8 @@
 .btn.danger { color:var(--destructive-foreground); border-color:var(--destructive); background:var(--destructive); }
 .btn.danger:hover:not(:disabled) { border-color:color-mix(in srgb,var(--destructive) 86%,#000); background:color-mix(in srgb,var(--destructive) 86%,#000); }
 .btn.danger:disabled { opacity:.45; cursor:not-allowed; }
-.btn.ghost { background: var(--surface-2); color: var(--muted); }
-.btn.ghost:hover:not(:disabled) { color: var(--accent-strong); background: var(--accent-soft); border-color: var(--accent); }
+.btn.ghost { background: var(--surface-2); color: var(--ink-2); }
+.btn.ghost:hover:not(:disabled) { color: var(--accent-ink); background: var(--accent-soft); border-color: var(--accent); }
 .btn.sm { padding: 6px 12px; font-size: var(--ui-text-sm); }
 .btn.add-icon-button {
   width: 40px; height: 40px; padding: 0;
@@ -114,10 +94,10 @@
 .icon-btn {
   display: inline-flex; align-items: center; justify-content: center;
   width: 30px; height: 30px; border-radius: var(--ui-radius-sm);
-  background: transparent; border: none; color: var(--muted);
+  background: transparent; border: none; color: var(--ink-2);
   font-size: var(--ui-text-md); cursor: pointer;
 }
-.icon-btn:hover { color: var(--destructive-strong); background: var(--chat-danger-soft); }
+.icon-btn:hover { color: var(--destructive-strong); background: var(--danger-soft); }
 
 /* ── Inputs ──────────────────────────────────────────────────────── */
 /* An input reads as a place to type: the page's own surface with a
@@ -131,13 +111,13 @@
   border-radius: var(--ui-radius-card);
   padding: 6px 11px;
 }
-.txt:focus { outline: none; border-color: var(--accent); box-shadow: var(--chat-focus-ring); }
-.txt:disabled { background: var(--surface-2); color: var(--muted); cursor: default; }
+.txt:focus { outline: none; border-color: var(--accent); box-shadow: var(--focus); }
+.txt:disabled { background: var(--surface-2); color: var(--ink-2); cursor: default; }
 
 /* There was no placeholder rule at all, so every hint rendered at the
    browser's near-black default — indistinguishable from a value somebody
    had already typed. */
-.txt::placeholder { color: var(--muted); opacity: .62; }
+.txt::placeholder { color: var(--ink-2); opacity: .62; }
 .txt.filter { width: 100%; max-width: 380px; margin-bottom: 10px; }
 .txt.sel { padding-right: 24px; }
 .txt.notes { width: 100%; resize: vertical; line-height: 1.55; }
@@ -151,7 +131,7 @@
   border: 0; background: transparent; cursor: pointer;
   padding: 5px 14px; border-radius: var(--ui-radius-pill);
   font: inherit; font-size: var(--ui-text-sm); font-weight: 600;
-  color: var(--muted);
+  color: var(--ink-2);
 }
 .seg-btn:hover:not(.on) { color: var(--ink); }
 .seg-btn.on { background: var(--primary-fill); color: var(--primary-foreground); }
@@ -164,20 +144,20 @@
   color: var(--ink); border-radius: var(--ui-radius-pill); padding: 4px 12px;
   font: inherit; font-size: var(--ui-text-xs); font-weight: 600; cursor: pointer;
 }
-.chip:hover { border-color: var(--accent); color: var(--accent-strong); }
+.chip:hover { border-color: var(--accent); color: var(--accent-ink); }
 
 /* ── Shared ──────────────────────────────────────────────────────── */
 .empty-state {
   display: flex; flex-direction: column; align-items: center; gap: 8px;
-  color: var(--muted); text-align: center;
+  color: var(--ink-2); text-align: center;
   padding: 24px 12px; font-size: var(--ui-text-base);
 }
-.empty-state lucide-icon { color: var(--muted); opacity: 0.7; }
+.empty-state lucide-icon { color: var(--ink-2); opacity: 0.7; }
 
 /* Simple CSS ring spinner (no icon dependency) */
 .ui-spinner {
   width: 18px; height: 18px; flex-shrink: 0;
-  border: 2px solid var(--border-strong);
+  border: 2px solid var(--line-strong);
   border-top-color: var(--accent);
   border-radius: 50%;
   animation: ui-spin 0.7s linear infinite;
@@ -204,7 +184,7 @@
 .share-editor .check { white-space: nowrap; }
 .share-note {
   margin: 0; font-size: var(--ui-text-xs); line-height: 1.55;
-  color: var(--muted);
+  color: var(--ink-2);
 }
 /* A share option with nobody behind it stays visible — disabled, and
    saying why — rather than hiding and reading as a missing feature. */
@@ -212,7 +192,7 @@
 .check-hint {
   margin-left: 4px; padding: 1px 7px; border-radius: var(--ui-radius-pill);
   background: color-mix(in srgb, var(--foreground) 8%, transparent);
-  color: var(--muted); font-size: var(--ui-text-xs); font-weight: 500;
+  color: var(--ink-2); font-size: var(--ui-text-xs); font-weight: 500;
 }
 .share-editor .editor-actions { margin-top: 4px; }
 
@@ -245,10 +225,10 @@
   border-bottom: 1px solid var(--border);
 }
 .dialog-head h2 { margin: 0 0 4px; font-size: 18px; }
-.dialog-head p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.55; }
+.dialog-head p { margin: 0; color: var(--ink-2); font-size: 12px; line-height: 1.55; }
 .dialog-icon {
   display: grid; place-items: center; width: 40px; height: 40px;
-  color: var(--accent-strong); border-radius: var(--ui-radius-card); background: var(--accent-soft);
+  color: var(--accent-ink); border-radius: var(--ui-radius-card); background: var(--accent-soft);
 }
 .danger-dialog-icon {
   color: var(--destructive);
@@ -264,15 +244,15 @@
 .action-icon-button {
   display: grid; place-items: center; flex: 0 0 34px; width: 34px; height: 34px;
   padding: 0; border: 1px solid transparent; border-radius: var(--radius-lg);
-  background: transparent; color: var(--muted); cursor: pointer;
+  background: transparent; color: var(--ink-2); cursor: pointer;
 }
 .action-icon-button:hover:not(:disabled) {
-  color: var(--foreground); border-color: var(--border-color); background: var(--surface-2);
+  color: var(--foreground); border-color: var(--line); background: var(--surface-2);
 }
 .action-icon-button.danger { color: var(--destructive-strong); }
 .action-icon-button.danger:hover:not(:disabled) {
   border-color: color-mix(in srgb, var(--destructive) 28%, transparent);
-  background: var(--chat-danger-soft);
+  background: var(--danger-soft);
 }
 .action-icon-button:disabled { opacity: .4; cursor: not-allowed; }
 .dialog-body { min-height:0; padding:20px 22px; overflow-y:auto; }
@@ -299,5 +279,5 @@
 /* ── Editor panels ──────────────────────────────────────────────────
    The title of a section inside an editor. */
 .section-title { color: var(--ink); font-size: var(--ui-text-sm); font-weight: 600; }
-.section-title strong { color: var(--accent-strong); font-weight: 600; }
+.section-title strong { color: var(--accent-ink); font-weight: 600; }
 .full-width { margin-top: 10px; }

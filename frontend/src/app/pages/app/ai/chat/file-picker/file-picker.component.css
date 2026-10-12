@@ -33,6 +33,6 @@
 .files-search__input:focus {
   outline: none;
   border-color: color-mix(in srgb, var(--primary) 55%, var(--border));
-  box-shadow: var(--chat-focus-ring);
+  box-shadow: var(--focus);
 }
 .files-empty { font-size: 0.8rem; color: var(--muted-foreground); padding: 2px 4px; }

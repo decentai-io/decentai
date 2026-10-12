@@ -17,12 +17,12 @@
   display: inline-flex; align-items: center; gap: 7px;
   padding: 8px 13px 9px; margin-bottom: -1px;
   border: 0; border-bottom: 2px solid transparent; background: none;
-  color: var(--muted); font-size: var(--ui-text-sm); font-weight: 600;
+  color: var(--ink-2); font-size: var(--ui-text-sm); font-weight: 600;
   cursor: pointer;
 }
 .settings-tab:hover { color: var(--ink); }
 .settings-tab.on {
-  color: var(--accent-strong); border-bottom-color: var(--accent);
+  color: var(--accent-ink); border-bottom-color: var(--accent);
 }
 .tab-count {
   padding: 0 7px; border-radius: var(--ui-radius-pill);
@@ -30,7 +30,7 @@
   font-size: 12px; font-variant-numeric: tabular-nums;
 }
 .settings-tab.on .tab-count {
-  background: var(--accent-soft); color: var(--accent-strong);
+  background: var(--accent-soft); color: var(--accent-ink);
 }
 
 /* ── Toolbar ─────────────────────────────────────────────────────────── */
@@ -42,18 +42,18 @@
   position: relative; display: flex; align-items: center;
   flex: 0 1 380px; min-width: 0; width: 100%;
 }
-.llm-search lucide-icon { position: absolute; left: 11px; color: var(--muted); pointer-events: none; }
+.llm-search lucide-icon { position: absolute; left: 11px; color: var(--ink-2); pointer-events: none; }
 .llm-search .txt { width: 100%; padding-left: 34px; padding-right: 32px; }
 .search-clear {
   position: absolute; right: 6px;
   display: grid; place-items: center; width: 22px; height: 22px;
   border: 0; border-radius: var(--ui-radius-sm); background: none;
-  color: var(--muted); cursor: pointer;
+  color: var(--ink-2); cursor: pointer;
 }
 .search-clear:hover { color: var(--ink); background: var(--surface-2); }
 /* Section identity and creation action sit above the list controls. */
 /* Agent routing: one card under the connections, a form of numbers. */
-.routing-section { margin: 22px 0 18px; padding: 16px 18px; border: 1px solid var(--border-color); border-radius: var(--radius-xl); background: var(--surface); }
+.routing-section { margin: 22px 0 18px; padding: 16px 18px; border: 1px solid var(--line); border-radius: var(--radius-xl); background: var(--surface); }
 .routing-section .llm-section-header { margin-bottom: 12px; }
 .routing-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px; }
 .routing-form .field.full { grid-column: 1 / -1; }
@@ -72,12 +72,12 @@
   letter-spacing: -.02em;
 }
 .llm-section-header p {
-  margin: 5px 0 0; color: var(--muted); font-size: var(--ui-text-sm);
+  margin: 5px 0 0; color: var(--ink-2); font-size: var(--ui-text-sm);
   line-height: 1.6;
 }
 .llm-section-header > .btn { flex-shrink: 0; }
 .default-help {
-  margin: 3px 0 0; color: var(--muted); font-size: 13px; line-height: 1.5;
+  margin: 3px 0 0; color: var(--ink-2); font-size: 13px; line-height: 1.5;
 }
 
 /* ── The rows ────────────────────────────────────────────────────────── */
@@ -95,11 +95,11 @@
 .star {
   display: grid; place-items: center; width: 30px; height: 30px; flex: none;
   border: 0; border-radius: var(--ui-radius-sm); background: none;
-  color: var(--muted); cursor: pointer;
+  color: var(--ink-2); cursor: pointer;
 }
-.star:hover:not(:disabled) { color: var(--accent-strong); background: var(--accent-soft); }
+.star:hover:not(:disabled) { color: var(--accent-ink); background: var(--accent-soft); }
 .star:disabled { cursor: default; }
-.llm-row.is-default .star { color: var(--accent-strong); }
+.llm-row.is-default .star { color: var(--accent-ink); }
 
 .llm-identity { flex: 1; min-width: 0; display: grid; gap: 3px; }
 .llm-identity strong {
@@ -108,19 +108,19 @@
 }
 .llm-identity code {
   font-family: var(--font-mono);
-  font-size: 13px; color: var(--muted); overflow-wrap: anywhere;
+  font-size: 13px; color: var(--ink-2); overflow-wrap: anywhere;
 }
 .default-tag {
   padding: 1px 8px; border-radius: var(--ui-radius-pill);
   background: color-mix(in srgb, var(--primary) 16%, transparent);
-  color: var(--accent-strong); font-size: 12px; font-weight: 700;
+  color: var(--accent-ink); font-size: 12px; font-weight: 700;
   letter-spacing: .04em; text-transform: uppercase;
 }
 
 .llm-actions { display: flex; gap: 7px; flex: none; }
 .btn.sm.danger { color: var(--destructive-strong); }
 .btn.sm.danger:hover:not(:disabled) {
-  color: var(--destructive-strong); background: var(--chat-danger-soft);
+  color: var(--destructive-strong); background: var(--danger-soft);
   border-color: color-mix(in srgb, var(--destructive) 30%, transparent);
 }
 
@@ -137,21 +137,21 @@
 }
 .field-label em {
   margin-left: 6px; font-style: normal; font-weight: 400;
-  color: var(--muted);
+  color: var(--ink-2);
 }
 .field-flag {
   margin-left: 8px; font-size: var(--ui-text-xs);
-  color: var(--muted); text-transform: uppercase; letter-spacing: .04em;
+  color: var(--ink-2); text-transform: uppercase; letter-spacing: .04em;
 }
 .field-flag.lock {
   display: inline-flex; align-items: center; gap: 3px;
   color: var(--accent);
 }
-.field-help { color: var(--muted); font-size: 13px; line-height: 1.5; }
+.field-help { color: var(--ink-2); font-size: 13px; line-height: 1.5; }
 
 .form-blocker {
   margin-right: auto; align-self: center;
-  color: var(--muted); font-size: 13px;
+  color: var(--ink-2); font-size: 13px;
 }
 
 @media (max-width: 680px) {
@@ -167,7 +167,7 @@
   display: inline-flex; align-items: center; gap: 4px;
   padding: 1px 8px; border-radius: var(--ui-radius-pill);
   border: 1px solid var(--border); background: var(--surface-2);
-  color: var(--muted); font-size: 12px; font-weight: 500;
+  color: var(--ink-2); font-size: 12px; font-weight: 500;
 }
 .share-options { display:grid; grid-template-columns:repeat(2,minmax(180px,1fr)); gap:8px; }
 .share-options > .check {
@@ -175,9 +175,9 @@
   border-radius:var(--ui-radius-card); background:var(--surface);
   transition:border-color .15s ease,background .15s ease;
 }
-.share-options > .check:hover { border-color:var(--border-strong); background:var(--surface-2); }
+.share-options > .check:hover { border-color:var(--line-strong); background:var(--surface-2); }
 .share-options > .check:has(input:checked) {
-  color:var(--accent-strong); border-color:color-mix(in srgb,var(--primary) 42%,var(--border));
+  color:var(--accent-ink); border-color:color-mix(in srgb,var(--primary) 42%,var(--border));
   background:var(--accent-soft);
 }
 .share-options > .check.unavailable:hover { border-color:var(--border); background:var(--surface); }

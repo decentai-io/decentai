@@ -33,7 +33,7 @@
 .act-ok {
   background: color-mix(in srgb, var(--primary) 12%, transparent);
   border-color: color-mix(in srgb, var(--primary) 28%, transparent);
-  color: var(--chat-accent-strong);
+  color: var(--accent-ink);
 }
 
 .act-bad {
@@ -51,7 +51,7 @@
 .act-live {
   background: color-mix(in srgb, var(--primary) 16%, transparent);
   border-color: color-mix(in srgb, var(--primary) 34%, transparent);
-  color: var(--chat-accent-strong);
+  color: var(--accent-ink);
   font-weight: 600;
 }
 
@@ -251,7 +251,7 @@
 }
 .act-views button:hover { color: var(--foreground); }
 .act-views button.on {
-  color: var(--chat-accent-strong);
+  color: var(--accent-ink);
   border-bottom-color: var(--primary);
 }
 

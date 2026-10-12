@@ -71,8 +71,8 @@
   height: 46px;
   margin: 26px 0 16px;
   border-radius: 50%;
-  color: var(--accent-foreground);
-  background: var(--accent);
+  color: var(--accent-ink);
+  background: var(--accent-soft);
 }
 
 .logout-title {

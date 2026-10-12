@@ -22,7 +22,7 @@
 }
 
 .approval-icon {
-  color: var(--chat-accent-strong);
+  color: var(--accent-ink);
   flex-shrink: 0;
 }
 
@@ -56,7 +56,7 @@
 }
 
 .approval-status.is-approved {
-  color: var(--chat-accent-strong);
+  color: var(--accent-ink);
 }
 
 .approval-body {
@@ -188,7 +188,7 @@
 .question-input:focus {
   outline: none;
   border-color: color-mix(in srgb, var(--primary) 55%, var(--border));
-  box-shadow: var(--chat-focus-ring);
+  box-shadow: var(--focus);
 }
 
 /* A credential card (call.credential): a form whose values leave only
@@ -222,18 +222,18 @@
 .code-review {
   display: flex; gap: 8px; align-items: flex-start; margin-top: 4px; padding: 8px 10px;
   border: 1px solid color-mix(in srgb, var(--primary) 35%, var(--border));
-  border-radius: var(--ui-radius-card); background: var(--chat-accent-soft);
+  border-radius: var(--ui-radius-card); background: var(--accent-soft);
   font-size: 0.82rem;
 }
-.code-review lucide-icon { color: var(--chat-accent-strong); flex-shrink: 0; margin-top: 2px; }
+.code-review lucide-icon { color: var(--accent-ink); flex-shrink: 0; margin-top: 2px; }
 .code-review-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .code-review-title { font-weight: 600; color: var(--foreground); }
 .code-review-note { color: var(--foreground); line-height: 1.5; }
 .code-review.is-differs {
   border-color: color-mix(in srgb, var(--destructive) 45%, var(--border));
-  background: var(--chat-danger-soft);
+  background: var(--danger-soft);
 }
-.code-review.is-differs lucide-icon { color: var(--chat-danger-strong); }
+.code-review.is-differs lucide-icon { color: var(--danger-ink); }
 .code-review.is-unread { border-color: var(--border); background: var(--background); }
 .code-review.is-unread lucide-icon { color: var(--muted-foreground); }
 .code-need-item.is-words { font-family: inherit; font-size: 0.8rem; word-break: normal; }

@@ -15,8 +15,8 @@ button {
   height: 100%;
   display: flex;
   flex-direction: column;
-  background: var(--sidebar);
-  color: var(--sidebar-foreground);
+  background: var(--bg);
+  color: var(--ink);
 }
 
 /* ── Brand ───────────────────────────────────────────────────────── */
@@ -38,7 +38,7 @@ button {
   font-weight: 600;
   letter-spacing: -0.02em;
   line-height: 1.1;
-  color: var(--sidebar-foreground);
+  color: var(--ink);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -79,7 +79,7 @@ button {
 .nav-section + .nav-section {
   margin-top: 8px;
   padding-top: 8px;
-  border-top: 1px solid var(--sidebar-border);
+  border-top: 1px solid var(--line);
 }
 
 .section-heading {
@@ -143,8 +143,8 @@ button {
 }
 
 .nav-row:hover .nav-link {
-  background: color-mix(in srgb, var(--sidebar-accent) 50%, transparent);
-  color: var(--sidebar-foreground);
+  background: color-mix(in srgb, var(--accent-soft) 50%, transparent);
+  color: var(--ink);
 }
 
 .nav-link:focus-visible {
@@ -172,13 +172,13 @@ button {
 }
 
 .nav-row.is-active .nav-link {
-  background: var(--sidebar-accent);
-  color: var(--sidebar-accent-foreground);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
   font-weight: 500;
 }
 
 .nav-row.is-active .nav-icon {
-  color: var(--sidebar-primary);
+  color: var(--accent);
 }
 
 .nav-expander {
@@ -200,7 +200,7 @@ button {
 }
 
 .nav-row.is-active .nav-expander {
-  color: var(--sidebar-accent-foreground);
+  color: var(--accent-ink);
 }
 
 /* ── Tertiary destinations ───────────────────────────────────────── */
@@ -225,8 +225,8 @@ button {
 }
 
 .subnav-link:hover {
-  background: color-mix(in srgb, var(--sidebar-accent) 50%, transparent);
-  color: var(--sidebar-foreground);
+  background: color-mix(in srgb, var(--accent-soft) 50%, transparent);
+  color: var(--ink);
 }
 
 .subnav-link:focus-visible {
@@ -248,8 +248,8 @@ button {
 }
 
 .subnav-link.is-active {
-  background: var(--sidebar-accent);
-  color: var(--sidebar-accent-foreground);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
   font-weight: 500;
 }
 
@@ -257,7 +257,7 @@ button {
 .drawer__footer {
   flex-shrink: 0;
   padding: 8px 10px 10px;
-  border-top: 1px solid var(--sidebar-border);
+  border-top: 1px solid var(--line);
 }
 
 .signout-button {

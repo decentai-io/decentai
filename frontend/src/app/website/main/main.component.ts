@@ -21,7 +21,7 @@ import { filter } from 'rxjs/operators';
 import { NavigatorService } from '../../services/navigator.service';
 import { DataStoreService } from 'src/app/services/datastore.service';
 import { AuthService } from 'src/app/services/auth.service';
-import { ThemeService } from 'src/app/services/theme.service';
+import { ThemeChoice, ThemeService } from 'src/app/services/theme.service';
 import { MicrophoneService } from 'src/app/services/microphone.service';
 import { WorkSwitchService } from 'src/app/services/work-switch.service';
 import { AlertComponent } from 'src/app/components/alert/alert.component';
@@ -70,7 +70,13 @@ export class MainComponent implements OnInit, OnDestroy {
    *  policy action that unlocks at least one console page. */
   hasAdminConsoleAccess = false;
 
-  isDarkTheme = false;
+  themeChoice: ThemeChoice = 'system';
+  /** The toggle's icon and name for each choice. */
+  readonly themeFaces: Record<ThemeChoice, { icon: string; label: string }> = {
+    light: { icon: 'sun', label: 'Light' },
+    dark: { icon: 'moon', label: 'Dark' },
+    system: { icon: 'monitor', label: 'System' },
+  };
 
   /** Whether this person has stopped everything of theirs (AI:Switch). */
   workStopped = false;
@@ -130,7 +136,7 @@ export class MainComponent implements OnInit, OnDestroy {
     this.moduleName = this.computeModuleName();
 
     this.subscriptions.add(
-      this.theme.theme$.subscribe((t) => (this.isDarkTheme = t === 'dark')),
+      this.theme.choice$.subscribe((choice) => (this.themeChoice = choice)),
     );
     this.subscriptions.add(
       this.workSwitch.stopped$.subscribe((stopped) => (this.workStopped = stopped)),

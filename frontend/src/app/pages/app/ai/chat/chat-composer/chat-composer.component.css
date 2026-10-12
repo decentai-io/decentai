@@ -33,7 +33,7 @@
 
 .composer:focus-within {
   border-color: color-mix(in srgb, var(--primary) 55%, var(--border));
-  box-shadow: var(--chat-focus-ring);
+  box-shadow: var(--focus);
 }
 
 .composer.is-loading {
@@ -166,7 +166,7 @@
 .attachment-icon {
   display: inline-flex;
   flex: none;
-  color: var(--chat-accent-strong);
+  color: var(--accent-ink);
 }
 
 /* A pasted picture shows itself in the chip, at the size the clip it

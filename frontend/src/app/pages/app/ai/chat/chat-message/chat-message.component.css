@@ -65,8 +65,8 @@
   width: 22px;
   height: 22px;
   border-radius: 50%;
-  background: var(--accent);
-  color: var(--chat-accent-strong);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
   flex-shrink: 0;
 }
 
@@ -137,8 +137,8 @@
 
 .user-copy-btn.copied {
   opacity: 1;
-  background: var(--accent);
-  color: var(--chat-accent-strong);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
 }
 
 /* ===== USER CONTENT ===== */
@@ -188,7 +188,7 @@
 
 .ai-action-btn.copied,
 .ai-action-btn.speaking {
-  color: var(--chat-accent-strong);
+  color: var(--accent-ink);
 }
 
 /* The first piece of a reply being said is on its way. */
@@ -236,7 +236,7 @@
   height: 40px;
   border-radius: var(--ui-radius-card);
   background: color-mix(in srgb, var(--foreground) 6%, transparent);
-  color: var(--chat-muted);
+  color: var(--ink-2);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -333,18 +333,18 @@
 
 .long-content-toggle {
   display: inline-flex; align-items: center; gap: 5px;
-  border: 1px solid var(--chat-border); border-radius: var(--ui-radius-card);
+  border: 1px solid var(--line); border-radius: var(--ui-radius-card);
   background: transparent; padding: 6px 10px; cursor: pointer;
-  color: var(--chat-muted);
+  color: var(--ink-2);
 }
 
 .ai-markdown { overflow-wrap: anywhere; line-height: 1.65; }
 .ai-markdown ::ng-deep table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; }
-.ai-markdown ::ng-deep th, .ai-markdown ::ng-deep td { padding: 8px 10px; border: 1px solid var(--chat-border); }
+.ai-markdown ::ng-deep th, .ai-markdown ::ng-deep td { padding: 8px 10px; border: 1px solid var(--line); }
 .ai-markdown ::ng-deep pre { max-width: 100%; overflow-x: auto; padding: 14px; border-radius: var(--ui-radius-card); }
-.ai-markdown ::ng-deep pre .code-toolbar { display: flex; align-items: center; gap: 8px; margin: -8px -6px 10px; padding-bottom: 7px; border-bottom: 1px solid color-mix(in srgb, var(--chat-user-ink) 22%, transparent); font: 11px/1.2 var(--font-sans); text-transform: uppercase; color: color-mix(in srgb, var(--chat-user-ink) 62%, transparent); }
+.ai-markdown ::ng-deep pre .code-toolbar { display: flex; align-items: center; gap: 8px; margin: -8px -6px 10px; padding-bottom: 7px; border-bottom: 1px solid color-mix(in srgb, var(--bg) 22%, transparent); font: 11px/1.2 var(--font-sans); text-transform: uppercase; color: color-mix(in srgb, var(--bg) 62%, transparent); }
 .ai-markdown ::ng-deep pre .code-toolbar span { margin-right: auto; }
-.ai-markdown ::ng-deep pre .code-toolbar button { border: 0; border-radius: var(--radius-sm); padding: 4px 7px; background: color-mix(in srgb, var(--chat-user-ink) 14%, transparent); color: inherit; cursor: pointer; text-transform: none; }
+.ai-markdown ::ng-deep pre .code-toolbar button { border: 0; border-radius: var(--radius-sm); padding: 4px 7px; background: color-mix(in srgb, var(--bg) 14%, transparent); color: inherit; cursor: pointer; text-transform: none; }
 .ai-markdown ::ng-deep pre.code-wrap code { white-space: pre-wrap; overflow-wrap: anywhere; }
 .structured-table-wrap { max-width: 100%; overflow-x: auto; }
 .rich-part-state, .file-inline-error { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: var(--ui-radius-card); background: color-mix(in srgb, var(--foreground) 6%, transparent); color: #64748b; }
@@ -415,7 +415,7 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--primary); outli
   align-items: center;
   gap: 8px;
   padding: 6px 11px;
-  color: var(--chat-muted);
+  color: var(--ink-2);
 }
 
 .file-row + .file-row { border-top: 1px solid color-mix(in srgb, var(--border) 55%, transparent); }

@@ -19,7 +19,7 @@
    rebinds it), so text painted with --primary on it disappears. The pale
    pair is what the rest of the page uses for tinted surfaces. */
 .agent-status.is-installed {
-  color: var(--accent-strong);
+  color: var(--accent-ink);
   background: var(--accent-soft);
   border-color: color-mix(in srgb, var(--primary) 22%, transparent);
 }
@@ -147,7 +147,7 @@
 .lvl[data-level="change"],
 .lvl[data-level="0"],
 .lvl[data-level="1"] {
-  color: var(--accent-strong);
+  color: var(--accent-ink);
   background: var(--accent-soft);
   border-color: color-mix(in srgb, var(--primary) 22%, transparent);
 }
@@ -194,7 +194,7 @@
 }
 .host-chips code.is-none { color: var(--muted-foreground); }
 .host-chips code.is-credential {
-  color: var(--accent-strong); background: var(--accent-soft);
+  color: var(--accent-ink); background: var(--accent-soft);
   border-color: color-mix(in srgb, var(--primary) 22%, transparent);
 }
 
@@ -206,27 +206,27 @@
    vocabulary the marketplace's review shares. */
 .agent-avatar {
   display: grid; place-items: center; width: 34px; height: 34px; flex: none;
-  color: var(--accent-strong); background: var(--accent-soft);
+  color: var(--accent-ink); background: var(--accent-soft);
   border-radius: var(--ui-radius-sm);
 }
 
 .agent-facts { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 11px; }
 .fact {
   padding: 4px 10px; border-radius: var(--ui-radius-pill);
-  border: 1px solid var(--border-color); background: var(--surface-subtle);
-  color: var(--muted); font-size: 11.5px;
+  border: 1px solid var(--line); background: var(--surface-2);
+  color: var(--ink-2); font-size: 11.5px;
 }
 .fact strong { color: var(--ink); font-variant-numeric: tabular-nums; }
 
 .agent-origin {
   display: flex; align-items: center; flex-wrap: wrap; gap: 6px;
-  margin-top: 10px; color: var(--muted); font-size: 11.5px;
+  margin-top: 10px; color: var(--ink-2); font-size: 11.5px;
 }
 .agent-origin code { font-family: var(--font-mono); font-size: 11px; }
 
 .detail-block { display: flex; flex-direction: column; gap: 6px; }
 .detail-title {
-  color: var(--muted); font-size: 11px; font-weight: 700;
+  color: var(--ink-2); font-size: 11px; font-weight: 700;
   letter-spacing: .05em; text-transform: uppercase;
 }
 
@@ -234,7 +234,7 @@
 .fn {
   display: flex; align-items: baseline; flex-wrap: wrap; gap: 9px;
   padding: 8px 11px; border-radius: var(--ui-radius-card);
-  border: 1px solid var(--border-color); background: var(--surface-subtle);
+  border: 1px solid var(--line); background: var(--surface-2);
 }
 .fn code { font-family: var(--font-mono); font-size: 11.5px; }
-.fn-desc { flex: 1; min-width: 200px; color: var(--muted); font-size: 11.5px; line-height: 1.5; }
+.fn-desc { flex: 1; min-width: 200px; color: var(--ink-2); font-size: 11.5px; line-height: 1.5; }

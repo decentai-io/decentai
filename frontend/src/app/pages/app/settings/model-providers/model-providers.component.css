@@ -20,7 +20,7 @@
   border-color: color-mix(in srgb, var(--primary) 42%, var(--border));
   background: var(--accent-soft); outline: none;
 }
-.provider-choice small { color: var(--muted); font-size: 13px; line-height: 1.5; }
+.provider-choice small { color: var(--ink-2); font-size: 13px; line-height: 1.5; }
 .provider-note { margin: 10px 0 0; }
 .provider-custom { margin-top: 14px; }
 

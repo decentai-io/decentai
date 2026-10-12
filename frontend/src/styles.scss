@@ -1,106 +1,19 @@
 @use '@angular/material' as mat;
 
-/* ── DecentAI type system (IBM Plex family, from Google Fonts) ──────────
-   Serif = headlines & display numbers · Sans = UI/body · Sans Arabic =
-   all Arabic (RTL) · Mono = labels, data, SQL, eyebrows. */
-@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Serif:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap");
+/* ── The faces (IBM Plex, from Google Fonts) ────────────────────────────
+   Sans = everything · Serif = the greeting and a page's title only ·
+   Sans Arabic = all Arabic (RTL) · Mono = code. Three weights: 400,
+   500 (labels, buttons), 600 (titles). */
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Serif:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap");
 
 /* ════════════════════════════════════════════════════════════════════
-   DecentAI theme (shadcn tokens live in tailwind.css)
-
-   Legacy bridge: the previous Material-v3 token names used across the
-   component CSS are aliased to the new shadcn tokens here, so all
-   existing styles re-theme automatically while components are migrated
-   to spartan/Tailwind. New code should use the shadcn names directly
-   (--background/--card/--primary/--accent/--border/...).
+   The global stylesheet. The tokens it reads (--bg, --ink, --t-base,
+   --dur-2 …) are defined in tailwind.css, once.
    ════════════════════════════════════════════════════════════════════ */
 
-:root {
-  --p: var(--primary);
-  --op: var(--primary-foreground);
-  --pc: var(--accent);
-  --opc: var(--accent-foreground);
-  --secc: var(--accent);
-  --osecc: var(--accent-foreground);
-  --err: var(--destructive);
-  --errc: color-mix(in srgb, var(--destructive) 12%, var(--background));
-  --oerrc: var(--destructive);
-  --ok: var(--primary);
-  --okc: var(--accent);
-  --warn: var(--warning);
-  --warnc: var(--warning-bg);
-  --bg: var(--background);
-  --surf: var(--card);
-  --s1: var(--card);
-  --s2: var(--muted);
-  --s3: var(--secondary);
-  --s4: var(--secondary);
-  --s5: var(--secondary);
-  --os: var(--foreground);
-  --osv: var(--muted-foreground);
-  --out: var(--muted-foreground);
-  --outv: var(--border);
-  --el: var(--shadow-card);
-  --scrim: rgba(2, 6, 8, 0.5);
-}
-
-:root {
-  /* ── DecentAI chat theme — three-color system (emerald / black / white) ─
-     No indigo. Emerald is the single accent; neutrals are tints only.
-     Every value maps to the theme-aware shadcn tokens (tailwind.css), so
-     the chat flips with light/dark instead of staying pinned to light. */
-  --chat-ink: var(--foreground);                  /* strong text + primary actions */
-  --chat-ink-soft: color-mix(in srgb, var(--foreground) 72%, var(--muted-foreground));
-  --chat-muted: var(--muted-foreground);          /* muted text / placeholders */
-  --chat-accent: var(--primary);                  /* single accent — emerald */
-  --chat-accent-strong: var(--accent-foreground); /* readable emerald text per theme */
-  --chat-accent-soft: color-mix(in srgb, var(--primary) 12%, transparent);
-  --chat-surface: var(--card);
-  --chat-surface-2: var(--secondary);             /* subtle panels */
-  --chat-border: var(--border);
-  --chat-border-strong: var(--input);
-  --chat-shadow-sm: none;         /* borders define edges */
-  --chat-shadow-md: none;
-  --chat-radius: var(--radius-xl);      /* 12px */
-  --chat-radius-lg: var(--radius-2xl);  /* 16px */
-  --chat-col: min(1280px, 94%);   /* centered content column (messages + composer) */
-  --chat-font: var(--font-sans);
-  /* User bubble = ink on paper; inverts with the theme (black bubble/white
-     text in light mode, white bubble/black text in dark). Brand chat rule. */
-  --chat-user-bubble: var(--foreground);
-  --chat-user-border: var(--foreground);
-  --chat-user-ink: var(--background);
-  --chat-ai-ink: var(--foreground);               /* AI answer body text */
-  --chat-table-header: var(--secondary);          /* neutral header tint */
-
-  /* ── DecentAI ported-page scale (data pages, connect dialog, settings) ──
-     Typographic + radius scale + a few chat-family semantic extensions,
-     mapped to the DecentAI brand: emerald focus/success, red for errors. */
-  --ui-text-xs: 12px;
-  --ui-text-sm: 13px;
-  --ui-text-base: 14px;
-  --ui-text-md: 15px;
-  --ui-text-lg: 18px;
-  --ui-text-xl: 20px;
-  --ui-text-2xl: 24px;
-  --ui-text-3xl: 30px;
-  --ui-text-4xl: 40px;
-  /* Aliases of the one radius scale in tailwind.css. The scale is
-     --radius-sm 4 / -md 6 / -lg 8 / -xl 12 / -2xl 16 / -pill; these
-     names are what most component CSS already spells it as. */
-  --ui-radius-sm: var(--radius-md);     /* 6px */
-  --ui-radius-card: var(--radius-lg);   /* 8px — brand: cards/controls */
-  --ui-radius-pill: var(--radius-pill);
-  --chat-focus-ring: 0 0 0 3px color-mix(in srgb, var(--chat-accent) 25%, transparent);
-  --chat-success: var(--chat-accent);
-  --chat-success-soft: var(--chat-accent-soft);
-  --chat-danger-soft: color-mix(in srgb, var(--destructive) 12%, transparent);
-  --chat-danger-strong: var(--destructive-strong);  /* red that reads as text */
-}
-
-/* ── Angular Material M3 system theme ────────────────────────────────
-   light-dark() colors driven by color-scheme, then pinned to the exact
-   brand tokens above so Material components match the mockup 1:1. */
+/* ── Angular Material, on the tokens ─────────────────────────────────
+   Material stays as the engine of menus, dialogs and tooltips; its
+   system colours are pinned to the tokens so its surfaces are ours. */
 html {
   @include mat.theme((
     color: (
@@ -108,8 +21,6 @@ html {
       tertiary: mat.$blue-palette,
       theme-type: color-scheme,
     ),
-    // Drive Material's own typography with IBM Plex Sans so its buttons,
-    // inputs, tables and tabs match the rest of the app.
     typography: (
       brand-family: "IBM Plex Sans, IBM Plex Sans Arabic, ui-sans-serif, system-ui, sans-serif",
       plain-family: "IBM Plex Sans, IBM Plex Sans Arabic, ui-sans-serif, system-ui, sans-serif",
@@ -122,30 +33,30 @@ html {
 
   color-scheme: light;
 
-  --mat-sys-primary: var(--p);
-  --mat-sys-on-primary: var(--op);
-  --mat-sys-primary-container: var(--pc);
-  --mat-sys-on-primary-container: var(--opc);
-  --mat-sys-secondary-container: var(--secc);
-  --mat-sys-on-secondary-container: var(--osecc);
-  --mat-sys-error: var(--err);
-  --mat-sys-error-container: var(--errc);
-  --mat-sys-on-error-container: var(--oerrc);
+  --mat-sys-primary: var(--accent);
+  --mat-sys-on-primary: var(--accent-fg);
+  --mat-sys-primary-container: var(--accent-soft);
+  --mat-sys-on-primary-container: var(--accent-ink);
+  --mat-sys-secondary-container: var(--accent-soft);
+  --mat-sys-on-secondary-container: var(--accent-ink);
+  --mat-sys-error: var(--danger);
+  --mat-sys-error-container: var(--danger-soft);
+  --mat-sys-on-error-container: var(--danger-ink);
   --mat-sys-background: var(--bg);
-  --mat-sys-on-background: var(--os);
-  --mat-sys-surface: var(--surf);
-  --mat-sys-on-surface: var(--os);
-  --mat-sys-on-surface-variant: var(--osv);
-  --mat-sys-surface-container-lowest: var(--surf);
-  --mat-sys-surface-container-low: var(--s1);
-  --mat-sys-surface-container: var(--s2);
-  --mat-sys-surface-container-high: var(--s3);
-  --mat-sys-surface-container-highest: var(--s4);
-  --mat-sys-outline: var(--out);
-  --mat-sys-outline-variant: var(--outv);
+  --mat-sys-on-background: var(--ink);
+  --mat-sys-surface: var(--surface);
+  --mat-sys-on-surface: var(--ink);
+  --mat-sys-on-surface-variant: var(--ink-2);
+  --mat-sys-surface-container-lowest: var(--surface);
+  --mat-sys-surface-container-low: var(--surface);
+  --mat-sys-surface-container: var(--surface-2);
+  --mat-sys-surface-container-high: var(--surface-2);
+  --mat-sys-surface-container-highest: var(--surface-3);
+  --mat-sys-outline: var(--line-strong);
+  --mat-sys-outline-variant: var(--line);
 }
 
-html[data-md-theme="dark"] {
+html.dark {
   color-scheme: dark;
 }
 
@@ -165,25 +76,24 @@ body {
 body {
   margin: 0;
   background: var(--bg);
-  color: var(--os);
+  color: var(--ink);
   font-family: var(--font-sans);
-  font-size: 14px;
-  line-height: 1.55;
+  font-size: var(--t-base);
+  line-height: var(--lh-base);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
 }
 
-/* Headlines & display: IBM Plex Serif with gentle negative tracking
-   (brand: headlines & display numbers are serif). */
-h1, h2, h3, h4, h5, h6 {
+/* A page has one h1, its title, and that is where the serif is used.
+   Every other heading is sans. */
+h1 {
   font-family: var(--font-serif);
   letter-spacing: -0.017em;
-  line-height: 1.25;
 }
 
 a {
-  color: var(--p);
+  color: var(--accent-ink);
   text-decoration: none;
 }
 
@@ -201,25 +111,63 @@ a:hover {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--outv);
-  border-radius: var(--radius-lg);
+  background: var(--line-strong);
+  border-radius: var(--r-full);
   border: 2px solid transparent;
   background-clip: content-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background-color: var(--out);
+  background-color: var(--ink-3);
   background-clip: content-box;
 }
 
-@keyframes md-fade {
+/* ── Motion: the one set of keyframes ────────────────────────────────
+   Things arrive from 4px below. Durations and easings are the --dur-*
+   and --ease tokens. */
+@keyframes arrive {
   from {
     opacity: 0;
-    transform: translateY(6px);
+    transform: translateY(4px);
   }
   to {
     opacity: 1;
     transform: none;
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.4;
+  }
+}
+
+@keyframes shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+/* A person who asked for less motion gets none: every animation and
+   transition ends at once, the endless ones run once, and nothing
+   scrolls smoothly. (Scripts that scroll ask matchMedia themselves.) */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
   }
 }
 
@@ -272,15 +220,15 @@ app-chat-message .ai-markdown strong,
 app-chat-message .ai-markdown em,
 app-chat-message .ai-markdown a,
 app-chat-message .ai-markdown blockquote {
-  font-family: var(--chat-font);
+  font-family: var(--font-sans);
 }
 
 app-chat-message .ai-markdown {
-  color: var(--chat-ai-ink);
+  color: var(--ink);
 }
 
 app-chat-message .ai-markdown li::marker {
-  color: var(--chat-accent);
+  color: var(--accent);
 }
 
 app-chat-message .markdown-block h1,
@@ -294,7 +242,7 @@ app-chat-message .ai-markdown h3 {
   font-weight: 600;
   line-height: 1.3;
   letter-spacing: -0.01em;
-  color: var(--chat-ink);
+  color: var(--ink);
 }
 
 app-chat-message .ai-markdown h1 { font-size: 1.35em; }
@@ -309,9 +257,9 @@ app-chat-message .ai-markdown h3:first-child {
 
 /* ── AI markdown: code blocks ─────────────────────────────────────── */
 app-chat-message .ai-markdown pre {
-  background: var(--chat-user-bubble);  /* ink tile — inverts with theme */
-  color: var(--chat-user-ink);
-  border: 1px solid var(--chat-border);
+  background: var(--ink);  /* ink tile — inverts with theme */
+  color: var(--bg);
+  border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   padding: 16px 18px;
   overflow-x: auto;
@@ -358,7 +306,7 @@ app-chat-approval-card .code-text .token.string,
 app-chat-approval-card .code-text .token.template-string,
 app-chat-approval-card .code-text .token.number,
 app-chat-approval-card .code-text .token.regex {
-  color: var(--chat-accent-strong);
+  color: var(--accent-ink);
 }
 app-chat-approval-card .code-text .token.function,
 app-chat-approval-card .code-text .token.class-name,
@@ -370,8 +318,8 @@ app-chat-approval-card .code-text .token.decorator {
 
 /* ── AI markdown: inline code (the accent, not red) ───────────────── */
 app-chat-message .ai-markdown code {
-  background: var(--chat-accent-soft);
-  color: var(--chat-accent-strong);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
   padding: 2px 6px;
   border-radius: var(--radius-sm);
   font-family: var(--font-mono);
@@ -380,7 +328,7 @@ app-chat-message .ai-markdown code {
 
 /* ── User bubble: inline code ─────────────────────────────────────── */
 app-chat-message .markdown-block code {
-  background: color-mix(in srgb, var(--chat-user-ink) 14%, transparent);
+  background: color-mix(in srgb, var(--bg) 14%, transparent);
   padding: 1px 5px;
   border-radius: var(--radius-sm);
   font-family: var(--font-mono);
@@ -388,7 +336,7 @@ app-chat-message .markdown-block code {
 }
 
 app-chat-message .markdown-block pre {
-  background: color-mix(in srgb, var(--chat-user-ink) 12%, transparent);
+  background: color-mix(in srgb, var(--bg) 12%, transparent);
   border-radius: var(--radius-md);
   padding: 12px 14px;
   overflow-x: auto;
@@ -400,11 +348,11 @@ app-chat-message .markdown-block pre {
 
 /* ── AI markdown: blockquote ──────────────────────────────────────── */
 app-chat-message .ai-markdown blockquote {
-  border-left: 3px solid var(--chat-accent);
+  border-left: 3px solid var(--accent);
   padding: 8px 14px;
   margin: 0.6em 0;
-  color: var(--chat-ink-soft);
-  background: var(--chat-accent-soft);
+  color: var(--ink-2);
+  background: var(--accent-soft);
   border-radius: 0 6px 6px 0;
 }
 
@@ -415,12 +363,12 @@ app-chat-message .ai-markdown blockquote p {
 /* ── AI markdown: hr & links ──────────────────────────────────────── */
 app-chat-message .ai-markdown hr {
   border: none;
-  border-top: 1px solid var(--chat-border);
+  border-top: 1px solid var(--line);
   margin: 1em 0;
 }
 
 app-chat-message .ai-markdown a {
-  color: var(--chat-accent);
+  color: var(--accent);
   text-decoration: none;
 }
 
@@ -430,7 +378,7 @@ app-chat-message .ai-markdown a:hover {
 
 app-chat-message .ai-markdown strong {
   font-weight: 600;
-  color: var(--chat-ink);
+  color: var(--ink);
 }
 
 /* ════════════════════════════════════════════════════════════════════
@@ -515,20 +463,4 @@ div.mat-mdc-select-panel {
 /* Paginator (used inside informative-table) */
 .mat-mdc-paginator {
   font-size: 12.5px;
-}
-
-/* The signed-in app reads one step larger than the public pages; the
-   faces stay the three in docs/contributing/design-language.md. */
-body:has(app-main) {
-  --ui-text-xs: 13px;
-  --ui-text-sm: 14px;
-  --ui-text-base: 15px;
-  --ui-text-md: 16px;
-  --muted-foreground: #52525b;
-  --foreground: #18181b;
-  font-size: 15px;
-}
-html.dark body:has(app-main) {
-  --foreground: #f4f4f5;
-  --muted-foreground: #b4b4bd;
 }

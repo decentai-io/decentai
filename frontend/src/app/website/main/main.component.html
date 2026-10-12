@@ -67,13 +67,11 @@
         type="button"
         class="icon-button"
         (click)="toggleTheme()"
-        [attr.aria-label]="
-          isDarkTheme ? 'Switch to light theme' : 'Switch to dark theme'
-        "
-        [matTooltip]="isDarkTheme ? 'Light theme' : 'Dark theme'"
+        [attr.aria-label]="'Theme: ' + themeFaces[themeChoice].label + '. Change theme'"
+        [matTooltip]="'Theme: ' + themeFaces[themeChoice].label"
       >
         <lucide-icon
-          [name]="isDarkTheme ? 'sun' : 'moon'"
+          [name]="themeFaces[themeChoice].icon"
           [size]="16"
           [strokeWidth]="1.75"
         ></lucide-icon>

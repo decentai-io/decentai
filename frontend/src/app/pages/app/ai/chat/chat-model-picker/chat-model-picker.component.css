@@ -57,7 +57,7 @@
 .model-option:hover, .model-option:focus-visible {
   outline: none; background: color-mix(in srgb, var(--foreground) 6%, transparent);
 }
-.model-option[aria-selected="true"] { color: var(--accent-strong, var(--primary)); }
+.model-option[aria-selected="true"] { color: var(--accent-ink, var(--primary)); }
 .model-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .model-of { flex: none; color: var(--muted-foreground); font-size: 12px; }
 .model-note { margin: 0; padding: 14px 8px; color: var(--muted-foreground); font-size: 13px; line-height: 1.5; }

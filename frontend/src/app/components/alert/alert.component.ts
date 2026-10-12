@@ -53,22 +53,22 @@ export class AlertComponent {
   /* Theme-token colors so alerts follow the active (light/dark) M3 theme. */
   getAccentColor(): string {
     const map: Record<string, string> = {
-      success: 'var(--ok)',
-      error: 'var(--err)',
+      success: 'var(--accent)',
+      error: 'var(--danger)',
       confirm: 'var(--warn)',
-      info: 'var(--p)',
+      info: 'var(--accent)',
     };
-    return map[this.data?.type] ?? 'var(--osv)';
+    return map[this.data?.type] ?? 'var(--ink-2)';
   }
 
   getIconBg(): string {
     const map: Record<string, string> = {
-      success: 'var(--okc)',
-      error: 'var(--errc)',
-      confirm: 'var(--warnc)',
-      info: 'var(--pc)',
+      success: 'var(--accent-soft)',
+      error: 'var(--danger-soft)',
+      confirm: 'var(--warn-soft)',
+      info: 'var(--accent-soft)',
     };
-    return map[this.data?.type] ?? 'var(--s3)';
+    return map[this.data?.type] ?? 'var(--surface-2)';
   }
 
   getHeroBg(): string {

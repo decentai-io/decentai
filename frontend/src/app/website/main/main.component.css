@@ -21,8 +21,8 @@
   flex-shrink: 0;
   min-width: 0;
   overflow: hidden;
-  background: var(--sidebar);
-  border-right: 1px solid var(--sidebar-border);
+  background: var(--bg);
+  border-right: 1px solid var(--line);
   transition: width 0.2s cubic-bezier(0.2, 0, 0, 1);
   z-index: 20;
 }
@@ -397,6 +397,6 @@
 }
 
 .update-bar__reload:hover {
-  background: var(--accent);
-  color: var(--accent-foreground);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
 }
