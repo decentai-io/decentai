@@ -200,12 +200,17 @@ export class SidebarComponent implements OnInit, OnDestroy {
   }
 
   /** A page's item is lit on the page and on everything under its
-   *  address: /settings/speech lights Settings, /audit/org lights Audit. */
+   *  address: /settings/speech lights Settings, /audit/org lights Audit.
+   *  Where another page's address is under this one's, that page claims
+   *  what is under its own: /agents/marketplace is the Marketplace's,
+   *  and every other address under /agents is Installed's. */
   isSecondaryActive(secondaryRoute: string): boolean {
     const { primary, secondary, tertiary } = this.currentRoute;
-    return [primary, secondary, tertiary].some(
-      (path) => path === secondaryRoute || path.startsWith(`${secondaryRoute}/`),
-    );
+    const here = tertiary || secondary || primary;
+    const under = (address: string) => here === address || here.startsWith(`${address}/`);
+    if (!under(secondaryRoute)) return false;
+    return !this.routes.some((section) => (section.children ?? []).some(
+      (page) => page.url.length > secondaryRoute.length && under(page.url)));
   }
 
   isTertiaryActive(tertiaryRoute: string): boolean {

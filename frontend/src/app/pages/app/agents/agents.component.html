@@ -16,6 +16,8 @@
 
   <app-agent-detail *ngIf="openAgent as agent"
                     [agent]="agent"
+                    [tab]="openTab"
+                    (tabChange)="openTabOf($event)"
                     [credentials]="openCredentials"
                     [groups]="groups"
                     [myGroups]="myGroups"
@@ -110,11 +112,7 @@
             <span class="agent-avatar"><lucide-icon name="bot" [size]="18"></lucide-icon></span>
             <div class="agent-title">
               <strong>{{ agent.name || agent.agent_id }}</strong>
-              <span class="agent-status" [class]="'is-' + agent.status"
-                    [class.is-preparing]="agent.prepared?.state === 'preparing'"
-                    [class.is-failed]="agent.prepared?.state === 'failed'">
-                {{ statusLabel(agent) }}
-              </span>
+              <span class="chip" [ngClass]="standing(agent).tone">{{ standing(agent).word }}</span>
             </div>
             <lucide-icon class="card-chevron" name="chevron-right" [size]="17"></lucide-icon>
           </header>

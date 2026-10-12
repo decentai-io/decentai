@@ -33,46 +33,37 @@ describe('AgentDetailComponent', () => {
     return component;
   }
 
-  it('opens on Overview when there is nothing to fix', () => {
-    const component = create();
-    component.ngOnChanges(changed(['agent']));
-
-    expect(component.tab).toBe('overview');
-  });
-
-  it('opens on the tab that fixes an unusable agent', () => {
-    // An approved agent with no credential is installed and unable to do
-    // the thing it was installed for, so the page lands where the work is.
-    const component = create([
-      { id: 'connection', family: 'agt_1__connection', label: 'Jira', saved: 0 },
-    ]);
-    component.ngOnChanges(changed(['agent']));
-
-    expect(component.tab).toBe('credentials');
-  });
-
   it('counts a slot a credential was lent to as bound, not missing', () => {
     const component = create([
       { id: 'connection', family: 'agt_1__connection', label: 'Jira', saved: 0, granted: true },
     ]);
-    component.ngOnChanges(changed(['agent']));
 
     expect(component.missing).toEqual([]);
-    expect(component.tab).toBe('overview');
+    expect(component.standing.word).toBe('Ready');
   });
 
-  it('stays on the tab when the same agent is read again', () => {
-    // After an update, or as it becomes ready, the row is a new object
-    // for the same agent: not a reason to move somebody.
+  it('stands where the list says it stands, with the version said apart', () => {
+    const component = create([
+      { id: 'connection', family: 'agt_1__connection', label: 'Jira', saved: 0 },
+    ]);
+
+    expect(component.standing.word).toBe('Needs a credential');
+    expect(component.version).toBe('v1.0.0');
+    // No version to say is nothing said, never "vnull".
+    component.agent = agent({ installed_version: null });
+    expect(component.version).toBe('');
+  });
+
+  it('asks for a tab rather than changing it: the address is whoever shows it’s to write', () => {
     const component = create();
-    component.ngOnChanges(changed(['agent']));
-    component.tab = 'functions';
+    const asked: string[] = [];
+    component.tabChange.subscribe((tab) => asked.push(tab));
 
-    component.ngOnChanges({
-      agent: new SimpleChange(agent(), agent({ status: 'update_available' }), false),
-    });
+    component.tabChange.emit('access');
+    component.ngOnChanges(changed(['busyId']));
 
-    expect(component.tab).toBe('functions');
+    expect(asked).toEqual(['access']);
+    expect(component.tab).toBe('overview');
   });
 
   it('says the hosts are not shown, rather than none, on a row without them', () => {
@@ -84,18 +75,6 @@ describe('AgentDetailComponent', () => {
     });
     expect(component.networkKnown).toBeTrue();
     expect(component.network.hosts).toEqual(['api.example.test']);
-  });
-
-  it('does not throw you off a tab when an unrelated input changes', () => {
-    // Every @Input arrives in ngOnChanges, `busyId` included. Resetting on
-    // that would move somebody off Access the moment they saved a grant.
-    const component = create();
-    component.ngOnChanges(changed(['agent']));
-    component.tab = 'access';
-
-    component.ngOnChanges(changed(['busyId']));
-
-    expect(component.tab).toBe('access');
   });
 
   it('counts what approving it agreed to, by the level that matters', () => {
@@ -110,8 +89,8 @@ describe('AgentDetailComponent', () => {
     });
 
     expect(component.levelSummary).toEqual([
-      { name: 'read', count: 2 },
-      { name: 'external', count: 1 },
+      { name: 'Reads', count: 2 },
+      { name: 'Outside action', count: 1 },
     ]);
   });
 

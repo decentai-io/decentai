@@ -2,6 +2,7 @@ import { Component, EventEmitter, Input, Output } from '@angular/core';
 import * as Prism from 'prismjs';
 import 'prismjs/components/prism-python';
 import { CodeAsk, CredentialAsk, CredentialField, FileChoice } from 'src/app/models/chat-protocol';
+import { levelLabel } from 'src/app/pages/app/agents/agent-shared';
 
 /**
  * Human-in-the-loop approval card.
@@ -99,14 +100,9 @@ export class ChatApprovalCardComponent {
     return `The assistant wants to run “${readable || 'an action'}”.`;
   }
 
+  /** The level in the word every page uses for it. */
   get levelLabel(): string {
-    const labels: Record<number, string> = {
-      0: 'observe',
-      1: 'read / compute',
-      2: 'contained change',
-      3: 'external / irreversible',
-    };
-    return labels[this.approval?.level] ?? 'restricted';
+    return levelLabel(this.approval?.level) || 'Restricted';
   }
 
   get statusLabel(): string {

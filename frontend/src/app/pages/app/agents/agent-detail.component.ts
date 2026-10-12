@@ -7,8 +7,8 @@ import { AgentOffer, AgentsService, SampleSummary } from 'src/app/services/agent
 import { AuthService } from 'src/app/services/auth.service';
 import { Group } from 'src/app/services/group.service';
 import {
-  AgentCredential, AgentNetwork, credentialHost, levelLabel, installedLabel, networkNote,
-  notEnforced,
+  AgentCredential, AgentNetwork, Standing, credentialHost, levelLabel, networkNote,
+  notEnforced, standingOf, versionLabel,
 } from './agent-shared';
 
 export type DetailTab = 'overview' | 'credentials' | 'functions' | 'access';
@@ -51,7 +51,10 @@ export class AgentDetailComponent implements OnChanges {
   @Output() failed = new EventEmitter<string>();
   @Output() flashed = new EventEmitter<string>();
 
-  tab: DetailTab = 'overview';
+  /** Which tab is shown: the address's to say (the Installed page
+   *  reads it), and asked for here with `tabChange`. */
+  @Input() tab: DetailTab = 'overview';
+  @Output() tabChange = new EventEmitter<DetailTab>();
 
   levelLabel = levelLabel;
 
@@ -65,9 +68,6 @@ export class AgentDetailComponent implements OnChanges {
     if (!change) return;
     const before = change.previousValue?.agent_id;
     if (before && before === change.currentValue?.agent_id) return;
-    // Land where the work is: an agent still waiting for a credential
-    // opens on the tab that fixes it.
-    this.tab = this.missing.length ? 'credentials' : 'overview';
     void this.readSamples();
   }
 
@@ -203,16 +203,14 @@ export class AgentDetailComponent implements OnChanges {
     return !!this.agent.prepared?.confined && !this.notEnforced.length;
   }
 
-  statusLabel(agent: AgentOffer): string {
-    switch (agent.status) {
-      case 'installed': return installedLabel(agent);
-      case 'update_available':
-        return `v${agent.installed_version} installed · `
-          + `v${agent.loaded_version} available`;
-      case 'removed':
-        return `v${agent.installed_version} installed · no longer in the source's catalog`;
-      default: return installedLabel(agent);
-    }
+  /** Where the agent stands, in the one word the list uses too. */
+  get standing(): Standing {
+    return standingOf(this.agent, this.missing.length);
+  }
+
+  /** The installed version, said once beside the name. */
+  get version(): string {
+    return versionLabel(this.agent);
   }
 
   /** Where the code came from, short enough to sit in a header. */

@@ -1,5 +1,7 @@
-import { Component, OnInit } from '@angular/core';
-import { ActivatedRoute } from '@angular/router';
+import { Component, OnDestroy, OnInit } from '@angular/core';
+import { ActivatedRoute, NavigationEnd, Router } from '@angular/router';
+import { Subscription } from 'rxjs';
+import { filter } from 'rxjs/operators';
 import {
   AgentSource, AgentsService, CatalogEntry,
 } from 'src/app/services/agents.service';
@@ -21,6 +23,14 @@ type EntryStatus = 'broken' | 'installed' | 'update_available' | 'available';
  * an agent is approved by name, at which point it belongs to the
  * Installed Agents page instead. Keeping the two apart is the point:
  * shopping and operating are different jobs.
+ *
+ * Each view has an address under /agents/marketplace: a source's
+ * catalog is /<source>, the review of one of its agents
+ * /<source>/<agent>, the source form /sources/new and /<source>/edit.
+ * They are views of this one page (routes/app/agents.routes.ts): what
+ * a person presses changes the view and the address together, and the
+ * page reads the address after each navigation, so Back and a pasted
+ * link both work.
  */
 @Component({
   selector: 'app-agent-marketplace',
@@ -33,7 +43,8 @@ type EntryStatus = 'broken' | 'installed' | 'update_available' | 'available';
     './marketplace.component.css',
   ],
 })
-export class MarketplaceComponent extends DataPageBase implements OnInit {
+export class MarketplaceComponent extends DataPageBase implements OnInit, OnDestroy {
+  private address = new Subscription();
   loading = true;
   /** The one source or agent an action is in flight for. */
   busyId = '';
@@ -69,8 +80,61 @@ export class MarketplaceComponent extends DataPageBase implements OnInit {
     private profiles: ProfileService,
     public auth: AuthService,
     private route?: ActivatedRoute,
+    private router?: Router,
   ) {
     super();
+  }
+
+  ngOnDestroy(): void {
+    this.address.unsubscribe();
+  }
+
+  /** Say the view in the address: the segments after /agents/marketplace. */
+  private go(...segments: string[]): void {
+    void this.router?.navigate(['/agents/marketplace', ...segments]);
+  }
+
+  /** Show what the address names. Each part is left alone where the
+   *  page already shows it, so pressing something here, which changes
+   *  the view and then the address, does not do the work twice. */
+  private async readAddress(): Promise<void> {
+    const child = this.route?.snapshot.firstChild;
+    const path = child?.routeConfig?.path ?? '';
+    const named = child?.paramMap.get('source') || '';
+    const source = this.sources.find((candidate) => candidate.source_id === named) || null;
+
+    if (path === 'sources/new') {
+      if (!this.formOpen || this.editing) this.showForm(null);
+      return;
+    }
+    if (path === ':source/edit' && source) {
+      if (this.editing !== source) this.showForm(source);
+      return;
+    }
+    if (this.formOpen) this.hideForm();
+    if (!source) {
+      if (this.review) this.hideReview();
+      if (this.selectedId) this.showSources();
+      if (named) {
+        this.fail('That source is not one of this organization\'s any more.');
+        this.go();
+      }
+      return;
+    }
+    if (this.selectedId !== source.source_id) this.showSource(source);
+    const agent = child?.paramMap.get('agent') || '';
+    if (!agent) {
+      if (this.review) this.hideReview();
+      return;
+    }
+    const entry = this.entriesFor(source).find(
+      (candidate) => candidate.id === agent || candidate.agent_ref === agent);
+    if (!entry) {
+      this.fail('That agent is not in this source\'s catalog.');
+      this.go(source.source_id);
+      return;
+    }
+    if (this.review?.entry !== entry) await this.showReview(source, entry);
   }
 
   entryName(entry: CatalogEntry): string {
@@ -82,6 +146,12 @@ export class MarketplaceComponent extends DataPageBase implements OnInit {
     this.loading = false;
     const wanted = this.route?.snapshot.queryParamMap.get('review');
     if (wanted) await this.openReviewOf(wanted);
+    else await this.readAddress();
+    if (this.router) {
+      this.address.add(this.router.events
+        .pipe(filter((event) => event instanceof NavigationEnd))
+        .subscribe(() => void this.readAddress()));
+    }
   }
 
   /** An installed agent's own page asked for its update to be read
@@ -129,12 +199,22 @@ export class MarketplaceComponent extends DataPageBase implements OnInit {
   }
 
   select(source: AgentSource): void {
+    this.go(source.source_id);
+    this.showSource(source);
+  }
+
+  backToSources(): void {
+    this.go();
+    this.showSources();
+  }
+
+  private showSource(source: AgentSource): void {
     this.selectedId = source.source_id;
     this.query = '';
     this.page = 1;
   }
 
-  backToSources(): void {
+  private showSources(): void {
     this.selectedId = '';
     this.query = '';
     this.page = 1;
@@ -264,18 +344,30 @@ export class MarketplaceComponent extends DataPageBase implements OnInit {
   // ── Saving a source ─────────────────────────────────────────────────
 
   startCreate(): void {
-    this.editing = null;
-    this.formOpen = true;
-    this.error = '';
+    this.go('sources', 'new');
+    this.showForm(null);
   }
 
   startEdit(source: AgentSource): void {
-    this.editing = source;
+    this.go(source.source_id, 'edit');
+    this.showForm(source);
+  }
+
+  /** Back to where the form was opened from: the source being changed,
+   *  the one that was open, or the list. */
+  closeForm(): void {
+    const back = this.editing?.source_id || this.selectedId;
+    this.hideForm();
+    this.go(...(back ? [back] : []));
+  }
+
+  private showForm(editing: AgentSource | null): void {
+    this.editing = editing;
     this.formOpen = true;
     this.error = '';
   }
 
-  closeForm(): void {
+  private hideForm(): void {
     this.formOpen = false;
     this.editing = null;
   }
@@ -312,8 +404,13 @@ export class MarketplaceComponent extends DataPageBase implements OnInit {
         : await this.service.createSource(draft.name, draft.url, draft.ref,
             draft.credential ?? null, draft.owner);
       if (result.error) return this.fail(result.error);
-      this.closeForm();
+      this.hideForm();
       await this.load();
+      // A source just saved is the one to look at: its catalog opens.
+      const saved = this.sources.find(
+        (source) => source.source_id === result.data?.source?.source_id);
+      if (saved) this.select(saved);
+      else this.go(...(this.selectedId ? [this.selectedId] : []));
       this.sayHowTheReadWent(result.data?.source, 'Source saved and its catalog read.');
     } finally {
       this.saving = false;
@@ -421,6 +518,11 @@ export class MarketplaceComponent extends DataPageBase implements OnInit {
   }
 
   async openReview(source: AgentSource, entry: CatalogEntry): Promise<void> {
+    this.go(source.source_id, entry.id);
+    await this.showReview(source, entry);
+  }
+
+  private async showReview(source: AgentSource, entry: CatalogEntry): Promise<void> {
     this.catalogScrollY = window.scrollY;
     this.review = { source, entry };
     this.reviewApproved = null;
@@ -441,7 +543,12 @@ export class MarketplaceComponent extends DataPageBase implements OnInit {
   }
 
   closeReview(): void {
-    if (this.busyId) return;
+    if (this.busyId || !this.review) return;
+    this.go(this.review.source.source_id);
+    this.hideReview();
+  }
+
+  private hideReview(): void {
     this.review = null;
     this.reviewApproved = null;
     requestAnimationFrame(() => window.scrollTo({ top: this.catalogScrollY, behavior: 'auto' }));
@@ -456,8 +563,17 @@ export class MarketplaceComponent extends DataPageBase implements OnInit {
       if (result.error) return this.fail(result.error);
       this.busyId = '';
       this.selected.delete(this.selectionKey(source, entry));
-      this.closeReview();
       await this.load();
+      // Installed: the next thing to do is on the agent's own page,
+      // which opens on its credentials when one is missing.
+      const ref = this.sources.find((candidate) => candidate.source_id === source.source_id)
+        ?.catalog?.agents?.find((candidate) => candidate.id === entry.id
+          && candidate.path === entry.path)?.agent_ref;
+      if (ref && this.router) {
+        void this.router.navigate(['/agents', ref]);
+        return;
+      }
+      this.closeReview();
       this.flash(`${entry.manifest?.agent?.name || entry.id} installed — it is `
         + `on the Installed Agents page now.`);
     } finally {

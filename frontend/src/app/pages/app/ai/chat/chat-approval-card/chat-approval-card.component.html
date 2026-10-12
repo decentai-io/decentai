@@ -218,7 +218,7 @@
     </div>
     <div class="approval-row">
       <span class="approval-label">Risk level</span>
-      <span class="approval-level">level {{ approval?.level }} — {{ levelLabel }}</span>
+      <span class="approval-level" [matTooltip]="'Level ' + approval?.level">{{ levelLabel }}</span>
     </div>
 
     @if (approval?.action?.inputs_preview) {

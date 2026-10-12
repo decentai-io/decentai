@@ -47,8 +47,8 @@ describe('InstallReviewComponent', () => {
     });
 
     expect(component.tally).toEqual([
-      { name: 'read', count: 2 },
-      { name: 'external', count: 1 },
+      { name: 'Reads', count: 2 },
+      { name: 'Outside action', count: 1 },
     ]);
   });
 
@@ -89,7 +89,7 @@ describe('InstallReviewComponent', () => {
     expect(component.isUpdate).toBeTrue();
     const changes = component.changes;
     expect(changes.some((line) => line.includes('New function: main.delete'))).toBeTrue();
-    expect(changes.some((line) => line.includes('main.run: permission read → change'))).toBeTrue();
+    expect(changes.some((line) => line.includes('main.run: permission Reads → Changes'))).toBeTrue();
     expect(changes.some((line) => line.includes('New package: boto3'))).toBeTrue();
     expect(changes.some((line) => line.includes('New secret: connection'))).toBeTrue();
   });

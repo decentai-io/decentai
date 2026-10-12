@@ -9,9 +9,8 @@
     <div class="hero-title">
       <h2>
         {{ agent.name || agent.agent_id }}
-        <span class="agent-status" [class]="'is-' + agent.status"
-              [class.is-preparing]="agent.prepared?.state === 'preparing'"
-              [class.is-failed]="agent.prepared?.state === 'failed'">{{ statusLabel(agent) }}</span>
+        <span class="hero-version" *ngIf="version">{{ version }}</span>
+        <span class="chip" [ngClass]="standing.tone">{{ standing.word }}</span>
       </h2>
       <p class="hero-description">{{ agent.description }}</p>
       <!-- Where this code came from and what it is, as separate facts:
@@ -50,18 +49,18 @@
   </div>
 
   <nav class="detail-tabs" role="tablist">
-    <button type="button" role="tab" [class.on]="tab === 'overview'" (click)="tab = 'overview'">
+    <button type="button" role="tab" [class.on]="tab === 'overview'" (click)="tabChange.emit('overview')">
       Overview
     </button>
     <button type="button" role="tab" [class.on]="tab === 'credentials'"
-            (click)="tab = 'credentials'" *ngIf="credentials.length">
+            (click)="tabChange.emit('credentials')" *ngIf="credentials.length">
       Credentials
       <span class="tab-flag warn" *ngIf="missing.length">{{ missing.length }}</span>
     </button>
-    <button type="button" role="tab" [class.on]="tab === 'functions'" (click)="tab = 'functions'">
+    <button type="button" role="tab" [class.on]="tab === 'functions'" (click)="tabChange.emit('functions')">
       Functions <span class="tab-flag">{{ agent.functions.length }}</span>
     </button>
-    <button type="button" role="tab" [class.on]="tab === 'access'" (click)="tab = 'access'"
+    <button type="button" role="tab" [class.on]="tab === 'access'" (click)="tabChange.emit('access')"
             *ngIf="showAccess">
       Access
     </button>
@@ -158,11 +157,11 @@
       <ng-container *ngIf="agent.scopes?.length; else noScopes">
         <p class="block-hint">
           The dimensions a grant can be narrowed by. Under
-          <button class="linkish" type="button" (click)="tab = 'access'"
+          <button class="linkish" type="button" (click)="tabChange.emit('access')"
                   *ngIf="showAccess; else accessWord">Access</button><ng-template #accessWord>Access</ng-template>,
           each can be limited to particular values — a call outside them is
           refused, and the chat is told why. The
-          <button class="linkish" type="button" (click)="tab = 'functions'">Functions</button>
+          <button class="linkish" type="button" (click)="tabChange.emit('functions')">Functions</button>
           tab shows which input feeds each scope.
         </p>
         <div class="scope-chips">

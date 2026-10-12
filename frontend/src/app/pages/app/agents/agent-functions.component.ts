@@ -1,7 +1,7 @@
 import { Component, Input, OnChanges } from '@angular/core';
 
 import { AgentOffer, AgentsService } from 'src/app/services/agents.service';
-import { PERMISSION_LEVELS, levelLabel } from './agent-shared';
+import { LEVEL_MEANINGS, PERMISSION_LEVELS, levelLabel } from './agent-shared';
 
 /** One input a function accepts, read from its JSON schema. */
 interface Param {
@@ -67,15 +67,7 @@ export class AgentFunctionsComponent implements OnChanges {
   readonly levels = PERMISSION_LEVELS;
   levelLabel = levelLabel;
 
-  /** What each level means. Whether a function asks first is not the
-   *  level's to say alone: it asks when its level is above the trust
-   *  level of the chat that calls it. */
-  readonly meanings: Record<string, string> = {
-    read: 'Level 0. Reads only, and changes nothing. Runs in every chat without asking.',
-    change: 'Level 1. An ordinary change inside the platform. Asks first in a chat whose trust level is 0.',
-    sandboxed: 'Level 2. A change with wider reach, still inside the platform. Asks first in a chat whose trust level is below 2.',
-    external: 'Level 3. Acts outside the platform. Asks first in every chat whose trust level is below 3.',
-  };
+  readonly meanings = LEVEL_MEANINGS;
 
   constructor(private service: AgentsService) {}
 

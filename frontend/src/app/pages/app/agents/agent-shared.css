@@ -143,8 +143,8 @@
   margin-bottom: 10px;
 }
 
-.lvl[data-level="read"],
-.lvl[data-level="change"],
+.lvl[data-level="Reads"],
+.lvl[data-level="Changes"],
 .lvl[data-level="0"],
 .lvl[data-level="1"] {
   color: var(--accent-ink);
@@ -156,7 +156,7 @@
    With one identity colour and a deliberately hueless attention state,
    weight is the only axis left: full-contrast ink against emerald's
    softer tint. */
-.lvl[data-level="sandboxed"],
+.lvl[data-level="Wider change"],
 .lvl[data-level="2"] {
   color: var(--foreground);
   background: var(--secondary);
@@ -167,7 +167,7 @@
    most consequential thing on this page, so it is the single solid
    chip. Inverted rather than coloured: a third hue would say "brand",
    and this needs to say "look". */
-.lvl[data-level="external"],
+.lvl[data-level="Outside action"],
 .lvl[data-level="3"] {
   color: var(--background);
   background: var(--foreground);

@@ -335,14 +335,14 @@
 /* The rail carries the level, so a page of functions can be read for
    what it costs before any of it is read for what it does. It mirrors
    the .lvl groups in agent-shared.css. */
-.fn-card[data-level="read"], .fn-card[data-level="change"],
+.fn-card[data-level="Reads"], .fn-card[data-level="Changes"],
 .fn-card[data-level="0"], .fn-card[data-level="1"] {
   border-left-color: color-mix(in srgb, var(--primary) 55%, transparent);
 }
-.fn-card[data-level="sandboxed"], .fn-card[data-level="2"] {
+.fn-card[data-level="Wider change"], .fn-card[data-level="2"] {
   border-left-color: color-mix(in srgb, var(--foreground) 45%, transparent);
 }
-.fn-card[data-level="external"], .fn-card[data-level="3"] {
+.fn-card[data-level="Outside action"], .fn-card[data-level="3"] {
   border-left-color: var(--warning);
 }
 
@@ -760,4 +760,17 @@
   .glance-levels { margin-left: 0; }
   .samples-block, .try-item { flex-direction: column; align-items: flex-start; }
   .hero-actions { width: 100%; }
+}
+
+/* The version, said once beside the name. */
+.hero-version {
+  margin: 0 8px;
+  color: var(--ink-3);
+  font-size: var(--t-sm);
+  font-weight: 400;
+}
+
+/* The standing chip is as wide as its word, in a title that stacks. */
+.agent-title .chip {
+  align-self: flex-start;
 }

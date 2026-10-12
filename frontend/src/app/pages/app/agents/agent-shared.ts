@@ -1,13 +1,53 @@
 import { AgentFunction, AgentOffer } from 'src/app/services/agents.service';
 
-/** Permission levels 0–3, named rather than numbered. How much of an
- *  agent runs without asking is the thing an administrator is actually
- *  deciding, and "3" does not say it. */
-export const PERMISSION_LEVELS = ['read', 'change', 'sandboxed', 'external'];
+/** Permission levels 0 to 3, in the words every page uses: chips,
+ *  functions, the review, a card in a chat. How much of an agent runs
+ *  without asking is what an administrator decides, and "3" does not
+ *  say it. The number is a tooltip, never the name. */
+export const PERMISSION_LEVELS = ['Reads', 'Changes', 'Wider change', 'Outside action'];
 
 export function levelLabel(level: number | null | undefined): string {
   return level === null || level === undefined
-    ? '' : PERMISSION_LEVELS[level] || `level ${level}`;
+    ? '' : PERMISSION_LEVELS[level] || `Level ${level}`;
+}
+
+/** What each level means, by its word. Whether a function asks first
+ *  is not the level's to say alone: it asks when its level is above
+ *  the trust level of the chat that calls it. */
+export const LEVEL_MEANINGS: Record<string, string> = {
+  'Reads': 'Level 0. Reads only, and changes nothing. Runs in every chat without asking.',
+  'Changes': 'Level 1. An ordinary change inside the platform. Asks first in a chat whose trust level is 0.',
+  'Wider change': 'Level 2. A change with wider reach, still inside the platform. Asks first in a chat whose trust level is below 2.',
+  'Outside action': 'Level 3. Acts outside the platform. Asks first in every chat whose trust level is below 3.',
+};
+
+/** Where an installed agent stands: one word, the colour it deserves,
+ *  and which of the six it is. */
+export interface Standing {
+  kind: 'failed' | 'preparing' | 'credential' | 'update' | 'gone' | 'ready';
+  word: string;
+  /** The chip's variant (styles/controls.scss): '' is the plain one. */
+  tone: '' | 'danger' | 'live' | 'warn' | 'accent';
+}
+
+/** The standing of an installed agent, for the list, its own page and
+ *  the counts alike, so they cannot disagree. The first that holds:
+ *  it could not be prepared, it is being prepared, a credential it
+ *  declared has nothing usable (`missing` of them), its source offers
+ *  newer code, its source lists it no more, or it is ready. */
+export function standingOf(agent: AgentOffer, missing: number): Standing {
+  if (agent.prepared?.state === 'failed') return { kind: 'failed', word: 'Failed', tone: 'danger' };
+  if (agent.prepared?.state === 'preparing') return { kind: 'preparing', word: 'Preparing', tone: 'live' };
+  if (missing > 0) return { kind: 'credential', word: 'Needs a credential', tone: 'warn' };
+  if (agent.status === 'update_available') return { kind: 'update', word: 'Update available', tone: '' };
+  if (agent.status === 'removed') return { kind: 'gone', word: 'Not in its source any more', tone: '' };
+  return { kind: 'ready', word: 'Ready', tone: 'accent' };
+}
+
+/** The installed version as it is said, once, beside the name: "v2.0.9",
+ *  or nothing where there is none to say. */
+export function versionLabel(agent: AgentOffer): string {
+  return agent.installed_version ? `v${agent.installed_version}` : '';
 }
 
 /** `agt_x.note.save` → `note.save`. A grant already names the agent, so
@@ -141,17 +181,4 @@ export function notEnforced(agent: AgentOffer): string[] {
       + 'anywhere the runtime can.');
   }
   return lines;
-}
-
-/** The installed pill's words: what a runtime has said about this
- *  version's code being ready to run, or plain Installed when nothing
- *  has been said. */
-export function installedLabel(agent: AgentOffer): string {
-  const version = `v${agent.installed_version}`;
-  switch (agent.prepared?.state) {
-    case 'preparing': return `Preparing · ${version}`;
-    case 'ready': return `Ready · ${version}`;
-    case 'failed': return `Could not prepare · ${version}`;
-    default: return `Installed · ${version}`;
-  }
 }

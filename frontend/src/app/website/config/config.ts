@@ -104,12 +104,12 @@ export const mainRoutes: RouteNode[] = [
     children: [
       {
         name: 'Installed',
-        url: 'agents/installed',
+        url: 'agents',
         icon: 'bot',
         domain: 'Global',
         active: true,
         requiredAction: 'agents:agent:list',
-        title: 'Installed agents',
+        title: 'Agents',
         children: [],
       },
       {

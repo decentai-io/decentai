@@ -1,5 +1,7 @@
 import { Component, OnDestroy, OnInit } from '@angular/core';
-import { Router } from '@angular/router';
+import { ActivatedRoute, NavigationEnd, Router } from '@angular/router';
+import { Subscription } from 'rxjs';
+import { filter } from 'rxjs/operators';
 
 import { AgentOffer, AgentsService } from 'src/app/services/agents.service';
 import { Group, GroupService } from 'src/app/services/group.service';
@@ -7,7 +9,11 @@ import { ProfileService } from 'src/app/services/profile.service';
 import { SecretsService } from 'src/app/services/secrets.service';
 import { AuthService } from 'src/app/services/auth.service';
 import { DataPageBase } from '../data-page-base';
-import { AgentCredential, familyOf, installedLabel } from './agent-shared';
+import { DetailTab } from './agent-detail.component';
+import { AgentCredential, Standing, familyOf, standingOf } from './agent-shared';
+
+/** The tabs an address may name. */
+const TABS: DetailTab[] = ['overview', 'credentials', 'functions', 'access'];
 
 /**
  * Installed agents: what this organization has approved, and how it is
@@ -19,6 +25,12 @@ import { AgentCredential, familyOf, installedLabel } from './agent-shared';
  * agent happens on its own view (agent-detail.component).
  *
  * Finding new agents is the marketplace's job, not this page's.
+ *
+ * The list is /agents; an agent's page is /agents/<ref>, and its tabs
+ * /agents/<ref>/credentials, /functions and /access. They are views of
+ * this one page (routes/app/agents.routes.ts), which reads which one
+ * from the address after each navigation, so Back and a pasted link
+ * both work.
  */
 @Component({
   selector: 'app-agents',
@@ -41,6 +53,9 @@ export class AgentsComponent extends DataPageBase implements OnInit, OnDestroy {
   readonly pageSize = 12;
 
   openAgent: AgentOffer | null = null;
+  /** The open agent's tab, as the address names it. */
+  openTab: DetailTab = 'overview';
+  private address = new Subscription();
 
   /** Which agents a NEW chat starts with. No preference at all means
    *  every installed one. */
@@ -81,6 +96,7 @@ export class AgentsComponent extends DataPageBase implements OnInit, OnDestroy {
     private secrets: SecretsService,
     private groupService: GroupService,
     private router?: Router,
+    private route?: ActivatedRoute,
   ) {
     super();
   }
@@ -88,6 +104,12 @@ export class AgentsComponent extends DataPageBase implements OnInit, OnDestroy {
   async ngOnInit(): Promise<void> {
     await this.reload();
     this.loading = false;
+    await this.readAddress();
+    if (this.router) {
+      this.address.add(this.router.events
+        .pipe(filter((event) => event instanceof NavigationEnd))
+        .subscribe(() => void this.readAddress()));
+    }
 
     const profile = await this.profile.get();
     this.myUserId = profile?.user_id ?? '';
@@ -98,6 +120,35 @@ export class AgentsComponent extends DataPageBase implements OnInit, OnDestroy {
     this.defaultAgents = new Set(Array.isArray(configured)
       ? configured : this.agents.map((agent) => agent.agent_id));
     await this.countCredentials();
+    // The counts say whether a credential is missing: the open agent's
+    // slots, and the tab an address without one lands on, follow them.
+    if (this.openAgent) {
+      this.openCredentials = this.credentials(this.openAgent);
+      await this.readAddress();
+    }
+  }
+
+  /** Show what the address names: the list, or an agent and its tab.
+   *  An address with no tab opens where the work is: on Credentials
+   *  while one is missing, on the Overview otherwise. */
+  private async readAddress(): Promise<void> {
+    const params = this.route?.snapshot.firstChild?.paramMap;
+    const ref = params?.get('ref') || '';
+    if (!ref) {
+      if (this.openAgent) this.showList();
+      return;
+    }
+    const agent = this.agents.find((candidate) => candidate.agent_id === ref);
+    if (!agent) {
+      this.showList();
+      this.fail('That agent is not installed here.');
+      void this.router?.navigate(['/agents'], { replaceUrl: true });
+      return;
+    }
+    if (this.openAgent?.agent_id !== ref) await this.showAgent(agent);
+    const tab = params?.get('tab') as DetailTab | null;
+    this.openTab = tab && TABS.includes(tab) ? tab
+      : this.missingCredentials(agent).length ? 'credentials' : 'overview';
   }
 
   private async reload(): Promise<void> {
@@ -154,6 +205,7 @@ export class AgentsComponent extends DataPageBase implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.destroyed = true;
+    this.address.unsubscribe();
     this.stopWatching();
   }
 
@@ -234,7 +286,28 @@ export class AgentsComponent extends DataPageBase implements OnInit, OnDestroy {
 
   // ── One agent, opened in place ──────────────────────────────────────
 
+  /** Open an agent: its page is shown, and the address says so. */
   async openDetail(agent: AgentOffer): Promise<void> {
+    void this.router?.navigate(['/agents', agent.agent_id]);
+    await this.showAgent(agent);
+    this.openTab = this.missingCredentials(agent).length ? 'credentials' : 'overview';
+  }
+
+  closeDetail(): void {
+    void this.router?.navigate(['/agents']);
+    this.showList();
+  }
+
+  /** One of the open agent's tabs; the Overview is the agent's own
+   *  address. */
+  openTabOf(tab: DetailTab): void {
+    if (!this.openAgent) return;
+    this.openTab = tab;
+    void this.router?.navigate(tab === 'overview'
+      ? ['/agents', this.openAgent.agent_id] : ['/agents', this.openAgent.agent_id, tab]);
+  }
+
+  private async showAgent(agent: AgentOffer): Promise<void> {
     this.openAgent = agent;
     this.error = '';
     this.notice = '';
@@ -244,7 +317,7 @@ export class AgentsComponent extends DataPageBase implements OnInit, OnDestroy {
     }
   }
 
-  closeDetail(): void {
+  private showList(): void {
     this.openAgent = null;
     this.openCredentials = [];
     this.error = '';
@@ -320,12 +393,19 @@ export class AgentsComponent extends DataPageBase implements OnInit, OnDestroy {
   }
 
   get readyCount(): number {
-    return this.agents.filter((agent) => agent.status === 'installed'
-      && !this.missingCredentials(agent).length).length;
+    return this.agents.filter((agent) => this.standing(agent).kind === 'ready').length;
   }
 
+  /** Everything but Ready needs somebody: the counts and the filter are
+   *  read from the same standing the cards show. */
   needsAttention(agent: AgentOffer): boolean {
-    return agent.status !== 'installed' || this.missingCredentials(agent).length > 0;
+    return this.standing(agent).kind !== 'ready';
+  }
+
+  /** Where an agent stands (agent-shared.ts), with the credentials it
+   *  is still waiting for counted here. */
+  standing(agent: AgentOffer): Standing {
+    return standingOf(agent, this.missingCredentials(agent).length);
   }
 
   get shownAgents(): AgentOffer[] {
@@ -358,24 +438,6 @@ export class AgentsComponent extends DataPageBase implements OnInit, OnDestroy {
   }
 
   // ── Lifecycle ───────────────────────────────────────────────────────
-
-  statusLabel(agent: AgentOffer): string {
-    switch (agent.status) {
-      case 'installed': return installedLabel(agent);
-      case 'update_available': {
-        // The source may have moved without bumping this agent's
-        // version — the update is a new commit, not a new number.
-        const waiting = agent.loaded_version;
-        return `v${agent.installed_version} installed · `
-          + (waiting && waiting !== agent.installed_version
-            ? `v${waiting} available`
-            : 'newer code at the source');
-      }
-      case 'removed':
-        return `v${agent.installed_version} installed · no longer in the source's catalog`;
-      default: return installedLabel(agent);
-    }
-  }
 
   /** The version waiting at the agent's source, opened where it is
    *  read: an update is a new approval, and approving is on the page

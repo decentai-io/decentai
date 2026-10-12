@@ -55,23 +55,23 @@ export class InstallReviewComponent {
    *  the chat that calls it: it asks when its level is above that
    *  chat's trust level. */
   readonly permissionMeaning: Record<string, { label: string; title: string; description: string }> = {
-    read: {
-      label: 'Level 0 · reads',
+    'Reads': {
+      label: 'Reads',
       title: 'Reads information',
       description: 'Looks up data available to the agent and changes nothing. Runs in every chat without asking.',
     },
-    change: {
-      label: 'Level 1 · ordinary change',
+    'Changes': {
+      label: 'Changes',
       title: 'Changes data inside the platform',
       description: 'Creates or updates records this agent keeps. Asks first in a chat whose trust level is 0.',
     },
-    sandboxed: {
-      label: 'Level 2 · wider change',
+    'Wider change': {
+      label: 'Wider change',
       title: 'Makes a change with wider reach',
       description: 'Still inside the platform. Asks first in a chat whose trust level is below 2.',
     },
-    external: {
-      label: 'Level 3 · outside action',
+    'Outside action': {
+      label: 'Outside action',
       title: 'Acts outside DecentAI',
       description: 'Contacts or changes an outside service. Asks first in every chat whose trust level is below 3.',
     },

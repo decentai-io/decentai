@@ -7,7 +7,7 @@ import { permissionGuard } from '../../guards/permission.guard';
 export const AIRoutes: Routes = [
   { path: '', redirectTo: 'chats', pathMatch: 'full' },
   // Managing agents moved to its own section; bookmarks follow.
-  { path: 'agents', redirectTo: '/agents/installed', pathMatch: 'full' },
+  { path: 'agents', redirectTo: '/agents', pathMatch: 'full' },
   { path: 'marketplace', redirectTo: '/agents/marketplace', pathMatch: 'full' },
   {
     path: 'chats',
