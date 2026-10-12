@@ -64,6 +64,7 @@ BASELINE_ACTIONS = (
     # Connecting one of their own accounts: it ends in a credential
     # they create, so it grants nothing beyond secrets:secret:create.
     "secrets:oauth:start",
+    "secrets:oauth:complete",
     "files:file:transfer",
     "skills:skill:transfer",
     # What their own chats set in motion — schedules, cards, background
@@ -339,6 +340,9 @@ ACTION_CATALOG: Dict[str, Dict[str, Any]] = {
             "secrets:oauth:start": (
                 "Connect an account by signing in with the provider, "
                 "instead of typing a credential"
+            ),
+            "secrets:oauth:complete": (
+                "Finish connecting an account from the app on a phone"
             ),
         },
     },

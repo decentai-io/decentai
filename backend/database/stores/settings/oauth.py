@@ -212,12 +212,19 @@ class OauthStateStore(MongoStore):
     COLLECTION = "oauth_states"
 
     LIFETIME = timedelta(minutes=10)
+    #: A hand-off lives only as long as it takes the phone to come back
+    #: from the browser and ask.
+    HANDOFF_LIFETIME = timedelta(minutes=2)
 
     def issue(self, org_id: str, user_id: str, definition_ref: str,
               provider: str, code_verifier: str, resource_ref: str = "",
               name: str = "", owner: Optional[Dict[str, Any]] = None,
-              session_id: str = "") -> str:
-        """Returns the raw state token; only its hash is stored."""
+              session_id: str = "", native: bool = False,
+              return_to: str = "") -> str:
+        """Returns the raw state token; only its hash is stored. A flow
+        a native app started is marked: its callback cannot carry the
+        app's session, so it ends in a hand-off the app completes, and
+        the browser is sent back to the app at ``return_to``."""
         token = PasswordHasher.random_secret()
         now = utc_now()
         self.col.insert_one({
@@ -231,10 +238,53 @@ class OauthStateStore(MongoStore):
             "resource_ref": str(resource_ref or ""),
             "name": str(name or ""),
             "owner": dict(owner or {}),
+            "native": bool(native),
+            "return_to": str(return_to or ""),
             "created_at": now,
             "expires_at": now + self.LIFETIME,
         })
         return token
+
+    def hand_off(self, state: Dict[str, Any], code: str) -> str:
+        """The provider's code, parked for the app that started the
+        flow: a second one-use token, carried back to the app in the
+        callback's return link. The app spends it with its own session,
+        which is what proves the account is going to the person who
+        chose Connect — the browser the callback came back to has no
+        session to prove it with."""
+        token = PasswordHasher.random_secret()
+        now = utc_now()
+        self.col.insert_one({
+            **{key: value for key, value in state.items() if key != "_id"},
+            "_id": PasswordHasher.token_fingerprint(token),
+            "handoff": True,
+            "code": str(code or ""),
+            "created_at": now,
+            "expires_at": now + self.HANDOFF_LIFETIME,
+        })
+        return token
+
+    def take_handoff(self, token: str, user_id: str, session_id: str) -> Optional[Dict[str, Any]]:
+        """A hand-off's row for the person and session that started the
+        flow, deleted as it is read. Somebody else asking is refused
+        and spends nothing: the hand-off stays for its owner. A plain
+        state is never handed back here."""
+        if not token:
+            return None
+        key = {"_id": PasswordHasher.token_fingerprint(token)}
+        doc = self.col.find_one(key)
+        if doc is None or not doc.get("handoff"):
+            return None
+        if doc.get("expires_at") is not None and doc["expires_at"] <= utc_now():
+            self.col.delete_one(key)
+            return None
+        if str(doc.get("user_id") or "") != str(user_id or ""):
+            return {"refused": "This connection was started by somebody else."}
+        started_in = str(doc.get("session_id") or "")
+        if started_in and started_in != str(session_id or ""):
+            return {"refused": "Finish connecting on the phone where you chose Connect."}
+        self.col.delete_one(key)
+        return doc
 
     def spend(self, token: str) -> Optional[Dict[str, Any]]:
         """The row for a raw token, deleted as it is read — a state is

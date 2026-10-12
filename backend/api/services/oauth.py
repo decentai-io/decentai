@@ -129,15 +129,42 @@ class OauthFlow:
             return explicit
         return f"{str(settings.public_app_url or '').rstrip('/')}/oauth/callback"
 
+    #: Where the browser goes back into the app when the app does not
+    #: say: the installed app's own scheme.
+    APP_RETURN = "decentai://oauth"
+
+    @classmethod
+    def _app_link(cls, offered: str) -> str:
+        """The app's return link, or the default. An app in development
+        (Expo Go) answers ``exp://``; the installed app its own scheme.
+        A web address is refused: the hand-off would be handed to a
+        page, which is exactly what the browser session check on the
+        web flow exists to stop."""
+        link = str(offered or "").strip()
+        if not link:
+            return cls.APP_RETURN
+        scheme = link.split(":", 1)[0].lower() if ":" in link else ""
+        if len(link) > 300 or scheme in ("", "http", "https", "javascript", "data", "file") \
+                or any(c in link for c in "\r\n\"'<>"):
+            raise OauthError("return_to must be the app's own link, such as decentai://oauth.")
+        return link
+
     # ------------------------------------------------------------------
     # begin
     # ------------------------------------------------------------------
 
     def begin(self, user: Dict[str, Any], definition: Dict[str, Any],
               resource_ref: str = "", name: str = "",
-              owner: Optional[Dict[str, Any]] = None) -> str:
+              owner: Optional[Dict[str, Any]] = None,
+              native: bool = False, return_to: str = "") -> str:
         """The consent URL for this person, this definition. Raises
-        OauthError when the organization has not registered the app."""
+        OauthError when the organization has not registered the app.
+        ``native``: the app on a phone started it, and will complete it
+        itself from the callback's hand-off, which the browser carries
+        back to the app at ``return_to`` — the app's own scheme, never
+        a web address, so only the app answers it."""
+        if native:
+            return_to = self._app_link(return_to)
         oauth = definition.get("oauth") or {}
         provider = str(oauth.get("provider") or "")
         org_id = str(user.get("org_id") or "")
@@ -155,7 +182,8 @@ class OauthFlow:
         state = self.states.issue(
             org_id, str(user.get("user_id") or ""), definition["_id"], provider,
             verifier, resource_ref=resource_ref, name=name, owner=owner,
-            session_id=str(user.get("session_id") or ""))
+            session_id=str(user.get("session_id") or ""), native=native,
+            return_to=return_to)
 
         params = {
             # Slack takes a user token's scopes as user_scope; Slack and

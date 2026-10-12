@@ -108,6 +108,7 @@ Generated from `backend/server/authentication/catalog.py` by
 | Action | Grants | Baseline | Runtime |
 |---|---|---|---|
 | `secrets:oauth:start` | Connect an account by signing in with the provider, instead of typing a credential | yes |  |
+| `secrets:oauth:complete` | Finish connecting an account from the app on a phone | yes |  |
 
 ## Secret types
 

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import html
 import json
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
@@ -60,6 +61,42 @@ def _script_json(value) -> str:
             .replace("&", "\\u0026"))
 
 
+APP_PAGE = """<!doctype html>
+<meta charset="utf-8">
+<meta http-equiv="refresh" content="0;url={link}">
+<title>{title}</title>
+<style>
+  body {{ font: 15px system-ui, sans-serif; color: #222; background: #fafafa;
+         display: grid; place-items: center; height: 100vh; margin: 0; }}
+  main {{ max-width: 420px; padding: 28px; text-align: center; }}
+  p {{ color: #555; }}
+  a {{ color: #047857; }}
+</style>
+<main>
+  <h2>{title}</h2>
+  <p>{detail}</p>
+  <p><a href="{link}">Back to DecentAI</a></p>
+</main>
+"""
+
+
+def _app_page(ok: bool, title: str, detail: str, return_to: str,
+              handoff: str = "") -> HTMLResponse:
+    """The callback for a flow the app started: nothing to tell an
+    opener, so the browser is sent back into the app — at the link the
+    app gave when it started — with the hand-off, or with the reason
+    it failed."""
+    from api.services.oauth import OauthFlow
+
+    query = urlencode({"handoff": handoff} if ok else {"error": detail})
+    base = return_to or OauthFlow.APP_RETURN
+    joiner = "&" if "?" in base else "?"
+    return HTMLResponse(APP_PAGE.format(
+        title=html.escape(title), detail=html.escape(detail),
+        link=html.escape(f"{base}{joiner}{query}"),
+    ), status_code=200 if ok else 400)
+
+
 def _page(ok: bool, title: str, detail: str, resource_ref: str = "") -> HTMLResponse:
     origin = str(get_settings().public_app_url or "").rstrip("/") or "*"
     payload = {"type": "decentai:oauth", "ok": ok,
@@ -92,6 +129,20 @@ async def oauth_callback(request: Request):
     if state is None:
         return _page(False, "This link has expired",
                      "Go back to DecentAI and choose Connect again.")
+    if state.get("native"):
+        # The app's browser carries no session to check here; the
+        # check happens where it can — when the app spends the
+        # hand-off under its own session (Secrets:Oauth:complete).
+        back = str(state.get("return_to") or "")
+        if query.get("error"):
+            detail = str(query.get("error_description") or query.get("error"))
+            return _app_page(False, "Not connected", f"The provider said: {detail}", back)
+        code = str(query.get("code") or "")
+        if not code:
+            return _app_page(False, "Not connected", "The provider sent no authorization code.", back)
+        return _app_page(True, "Almost there",
+                         "Go back to the DecentAI app to finish connecting.", back,
+                         handoff=OauthStateStore().hand_off(state, code))
     if not _same_browser(request, state):
         return _page(False, "Not connected",
                      "Finish connecting in the DecentAI window where you "

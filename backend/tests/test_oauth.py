@@ -235,6 +235,53 @@ class TestConnecting:
         assert sent["client_secret"] == "csec-1" and sent["code_verifier"]
         assert sent["redirect_uri"].endswith("/oauth/callback")
 
+    def test_the_app_on_a_phone_finishes_through_a_hand_off(
+            self, app, admin, anon, seed, provider):
+        """Started as native, the callback — reached by a browser with no
+        session — parks the code and sends the browser into the app; the
+        app spends the hand-off under the session that started it."""
+        from fastapi.testclient import TestClient
+
+        from conftest import ADMIN_EMAIL, ADMIN_PASSWORD
+
+        define(admin)
+        register(admin)
+        phone = TestClient(app)
+        token = phone.post("/auth/login", json={
+            "email": ADMIN_EMAIL, "password": ADMIN_PASSWORD, "client": "native",
+        }).json()["access_token"]
+        phone.headers["Authorization"] = f"Bearer {token}"
+
+        started = app_call(phone, "Secrets:Oauth:Start",
+                           {"definition_id": "gmail_probe", "client": "native"})
+        assert started.status_code == 200, started.text
+        page = anon.get(f"/oauth/callback?state={state_of(started.json()['url'])}&code=good-code")
+        assert page.status_code == 200 and "decentai://oauth?handoff=" in page.text, page.text
+        assert not provider.posts, "the exchange waits for the app"
+        handoff = re.search(r"decentai://oauth\?handoff=([A-Za-z0-9_-]+)", page.text).group(1)
+
+        # Another session of the same person: not the one that chose Connect.
+        assert app_call(admin, "Secrets:Oauth:Complete", {"handoff": handoff}).status_code == 403
+        done = app_call(phone, "Secrets:Oauth:Complete", {"handoff": handoff})
+        assert done.status_code == 200, done.text
+        assert done.json()["account"] == "sami@example.test" and done.json()["resource_ref"]
+        assert provider.posts[0][1]["code"] == "good-code"
+        # Spent: a second attempt finds nothing.
+        assert app_call(phone, "Secrets:Oauth:Complete", {"handoff": handoff}).status_code == 404
+
+        # The provider refusing: the app is told, and nothing is parked.
+        again = app_call(phone, "Secrets:Oauth:Start", {"definition_id": "gmail_probe", "client": "native"})
+        refused = anon.get(f"/oauth/callback?state={state_of(again.json()['url'])}&error=access_denied")
+        assert refused.status_code == 400 and "decentai://oauth?error=" in refused.text
+
+        # An app in development says where it answers; a web page may not.
+        dev = app_call(phone, "Secrets:Oauth:Start", {
+            "definition_id": "gmail_probe", "client": "native", "return_to": "exp://192.168.8.65:8081/--/oauth"})
+        back = anon.get(f"/oauth/callback?state={state_of(dev.json()['url'])}&code=good-code")
+        assert "exp://192.168.8.65:8081/--/oauth?handoff=" in back.text, back.text
+        assert app_call(phone, "Secrets:Oauth:Start", {
+            "definition_id": "gmail_probe", "client": "native", "return_to": "https://evil.test/"}).status_code == 409
+
     def test_a_state_is_spent_on_first_use(self, admin, seed, provider):
         define(admin)
         register(admin)

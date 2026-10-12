@@ -326,6 +326,14 @@ refresh token: the refresh token never leaves the backend. A grant the provider 
 `needs_reconnect` and the agent is told, in words, to have it
 reconnected.
 
+The app on a phone has no popup to tell and a browser that carries no
+session. It starts with `client: native`; the callback then spends the
+state and parks the provider's code behind a second one-use, two-minute
+hand-off, sending the browser back into the app (`decentai://oauth`);
+the app spends the hand-off with `Secrets:Oauth:Complete` under its own
+session, where the same-person, same-session check is made, and the
+exchange happens then.
+
 The platform's own two credentials are deliberately NOT definitions.
 The model key a chat thinks with is an **LLM connection** — the settings
 module's own record (`llm_connections`), whose shape the platform knows

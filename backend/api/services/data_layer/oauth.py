@@ -6,6 +6,12 @@ it answers with the provider's consent URL, pinned to a state, and the
 browser opens it in a popup. The provider sends the popup back to the
 platform's callback route, which finishes the job and tells the opener.
 Reconnecting an existing credential is the same call with its ref.
+
+The app on a phone has no popup to tell: it starts with ``client:
+native``, the callback parks the provider's code behind a one-use
+hand-off and sends the browser back into the app, and the app spends
+the hand-off with ``complete`` — under its own session, so the account
+lands with the person who chose Connect.
 """
 
 from __future__ import annotations
@@ -70,13 +76,48 @@ class OauthConnectController:
         if not definition.get("oauth"):
             return {"error": "This credential type is filled in by hand, not connected."}, 400
 
+        # The app on a phone: its callback cannot carry its session, so
+        # the flow ends in a hand-off the app completes (``complete``).
+        native = payload.get("client") == "native"
         try:
             url = self.flow.begin(
                 user, definition, resource_ref=resource_ref,
-                name=str(payload.get("name") or ""), owner=owner)
+                name=str(payload.get("name") or ""), owner=owner, native=native,
+                return_to=str(payload.get("return_to") or ""))
         except OauthError as exc:
             return {"error": str(exc), "redirect_uri": self.flow.redirect_uri()}, 409
 
         self.logger.info(f"{user.get('email')} started a "
-                         f"{definition['oauth'].get('provider')} connection")
+                         f"{definition['oauth'].get('provider')} connection"
+                         f"{' from the app' if native else ''}")
         return {"url": url}, 200
+
+    async def complete(self, data: dict, user: dict):
+        """{handoff} → {resource_ref, name, account}: the app finishing
+        a flow it started. The hand-off is the callback's one-use
+        token; it is honoured only for the session that chose Connect,
+        which is what keeps a consent link forwarded to a colleague
+        from saving the colleague's account as the sender's."""
+        if user.get("principal_type") == "runtime":
+            return {"error": "A person connects an account, not a chat."}, 403
+
+        from database.stores.settings.oauth import OauthStateStore
+
+        handoff = str(self._payload(data).get("handoff") or "")
+        state = OauthStateStore().take_handoff(
+            handoff, str(user.get("user_id") or ""), str(user.get("session_id") or ""))
+        if state is None:
+            return {"error": "This connection has expired. Choose Connect again."}, 404
+        if state.get("refused"):
+            return {"error": state["refused"]}, 403
+
+        try:
+            secret = await self.flow.complete(state, str(state.get("code") or ""))
+        except OauthError as exc:
+            return {"error": str(exc)}, 400
+
+        return {
+            "resource_ref": str(secret.get("resource_ref") or ""),
+            "name": str(secret.get("name") or ""),
+            "account": str((secret.get("keys") or {}).get("account") or ""),
+        }, 200
