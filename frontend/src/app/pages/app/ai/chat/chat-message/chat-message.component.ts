@@ -1,6 +1,13 @@
 import { AfterViewChecked, Component, ElementRef, Input, OnChanges, OnDestroy, Renderer2 } from '@angular/core';
 import { Clipboard } from '@angular/cdk/clipboard';
 import { MarkdownService } from 'ngx-markdown';
+import * as Prism from 'prismjs';
+import 'prismjs/components/prism-bash';
+import 'prismjs/components/prism-json';
+import 'prismjs/components/prism-python';
+import 'prismjs/components/prism-sql';
+import 'prismjs/components/prism-typescript';
+import 'prismjs/components/prism-yaml';
 import { AiSessionService } from 'src/app/services/ai-session.service';
 import { ReadAloudService } from 'src/app/services/read-aloud.service';
 import { ChatMarkdownService } from './chat-markdown.service';
@@ -24,6 +31,8 @@ export class ChatMessageComponent implements OnChanges, AfterViewChecked, OnDest
   /** What the copy control copies when the answer spans several
    *  messages: the whole of it, handed in by the thread. */
   @Input() copyText: string | null = null;
+  /** The answer is still being written: its last words end in a caret. */
+  @Input() streaming = false;
   copiedPart: string | null = null;
   contentExpanded = false;
   fileError = '';
@@ -81,31 +90,36 @@ export class ChatMessageComponent implements OnChanges, AfterViewChecked, OnDest
       if (!code) return;
       const language = Array.from(code.classList).find((name) => name.startsWith('language-'))
         ?.replace('language-', '') || 'code';
+      // Coloured where the language is one of those loaded above.
+      // Prism escapes what it colours, so the markup is its own.
+      const grammar = Prism.languages[language];
+      if (grammar) code.innerHTML = Prism.highlight(code.textContent || '', grammar, language);
       const toolbar = this.renderer.createElement('div');
       this.renderer.addClass(toolbar, 'code-toolbar');
       const label = this.renderer.createElement('span');
       this.renderer.appendChild(label, this.renderer.createText(language));
       const wrap = this.renderer.createElement('button');
       this.renderer.setAttribute(wrap, 'type', 'button');
-      this.renderer.setAttribute(wrap, 'aria-label', 'Toggle code wrapping');
+      this.renderer.setAttribute(wrap, 'aria-pressed', 'false');
       this.renderer.appendChild(wrap, this.renderer.createText('Wrap'));
       const copy = this.renderer.createElement('button');
       this.renderer.setAttribute(copy, 'type', 'button');
-      this.renderer.setAttribute(copy, 'aria-label', 'Copy code block');
+      // Its word changes to "Copied", and that is said aloud.
+      this.renderer.setAttribute(copy, 'aria-live', 'polite');
       this.renderer.appendChild(copy, this.renderer.createText('Copy'));
       this.renderer.appendChild(toolbar, label);
       this.renderer.appendChild(toolbar, wrap);
       this.renderer.appendChild(toolbar, copy);
       this.renderer.insertBefore(pre, toolbar, code);
       this.cleanups.push(this.renderer.listen(wrap, 'click', () =>
-        pre.classList.toggle('code-wrap')));
+        wrap.setAttribute('aria-pressed', String(pre.classList.toggle('code-wrap')))));
       this.cleanups.push(this.renderer.listen(copy, 'click', () => {
         this.clipboard.copy(code.textContent || '');
         copy.textContent = 'Copied';
         setTimeout(() => copy.textContent = 'Copy', 1500);
       }));
     });
-    this.host.nativeElement.querySelectorAll<HTMLAnchorElement>('.ai-markdown a').forEach((link) => {
+    this.host.nativeElement.querySelectorAll<HTMLAnchorElement>('.msg-ai markdown a').forEach((link) => {
       if (/^https?:/i.test(link.href)) {
         link.target = '_blank';
         link.rel = 'noopener noreferrer';
@@ -115,7 +129,18 @@ export class ChatMessageComponent implements OnChanges, AfterViewChecked, OnDest
 
   ngOnDestroy(): void { this.cleanups.forEach((cleanup) => cleanup()); }
 
-  get isLongResponse(): boolean { return this.isAI() && this.getFullText().length > 6000; }
+  /** From this many characters an answer is folded. */
+  private static readonly FOLD_AT = 6000;
+
+  get isLongResponse(): boolean {
+    return this.isAI() && this.getFullText().length > ChatMessageComponent.FOLD_AT;
+  }
+
+  /** How long the whole answer is, for the fold's button: "2,400".
+   *  The fold is at a height, so what is behind it cannot be counted. */
+  get wordCount(): string {
+    return this.getFullText().split(/\s+/).filter(Boolean).length.toLocaleString();
+  }
   toggleContent(): void { this.contentExpanded = !this.contentExpanded; }
   isFilePart(part: any): boolean { return part?.type === 'file'; }
 

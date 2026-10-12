@@ -11,9 +11,9 @@
   position: absolute;
   inset: 0;
   display: block;
-  /* The conversation reads wider than the line it is written on. */
-  --chat-column: 1040px;
-  --chat-thread-column: 1200px;
+  /* The measure of the conversation: the thread, what waits for the
+     person and the line it is written on are all this wide. */
+  --chat-column: 800px;
 }
 
 .chat-shell {
@@ -107,7 +107,7 @@
   flex: none;
   align-items: center;
   gap: 12px;
-  width: min(var(--chat-thread-column), calc(100% - 32px));
+  width: min(var(--chat-column), calc(100% - 32px));
   margin: 8px auto 0;
   padding: 8px 8px 8px 12px;
   border-radius: var(--r-md);
@@ -206,7 +206,7 @@
    thread. */
 .chat-screen {
   flex-shrink: 0;
-  width: min(var(--chat-thread-column), calc(100% - 32px));
+  width: min(var(--chat-column), calc(100% - 32px));
   margin: 0 auto 8px;
 }
 
@@ -215,7 +215,7 @@
   flex-direction: column;
   flex-shrink: 0;
   gap: 8px;
-  width: min(var(--chat-thread-column), calc(100% - 32px));
+  width: min(var(--chat-column), calc(100% - 32px));
   max-height: 40vh;
   margin: 0 auto;
   padding: 4px 0 10px;

@@ -205,6 +205,13 @@ a:hover {
   }
 }
 
+/* The caret at the end of an answer being written. */
+@keyframes blink {
+  50% {
+    opacity: 0;
+  }
+}
+
 /* A person who asked for less motion gets none: every animation and
    transition ends at once, the endless ones run once, and nothing
    scrolls smoothly. (Scripts that scroll ask matchMedia themselves.) */

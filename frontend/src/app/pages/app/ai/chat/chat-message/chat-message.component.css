@@ -1,396 +1,253 @@
-/* ===== Wrapper ===== */
-.message-wrapper {
+/* One message of the thread. The person's is a bubble at the right;
+   the assistant's has no bubble and takes the column. What markdown
+   looks like is styles/markdown.scss; buttons and notices are the
+   shared ones (styles/controls.scss). */
+:host {
+  display: block;
+}
+
+.msg {
   display: flex;
-  width: 100%;
-  margin-bottom: 20px;
-}
-
-.user-msg {
   flex-direction: column;
-  align-items: flex-end;
+  min-width: 0;
 }
 
-.ai-msg {
-  justify-content: flex-start;
-  flex-direction: column;
-  width: 100%;
-}
-
-/* ===== Timestamps ===== */
 .msg-time {
-  font-size: 11px;
-  color: var(--muted-foreground);
-  line-height: 1;
+  color: var(--ink-3);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
 }
 
-.user-time { margin:5px 6px 0 0; opacity:.72; transition:opacity .2s ease; }
-
-.user-msg:hover .user-time {
-  opacity: 1;
+/* ── The person's message ──────────────────────────────────────────── */
+/* The time and Copy are beside the bubble, at its foot, and never over
+   its words: seen when the turn is pointed at or holds the focus. They
+   take no height, so an answer stays close to what it answers. */
+.msg-user {
+  flex-direction: row;
+  align-items: flex-end;
+  justify-content: flex-end;
+  gap: 4px;
 }
 
-/* ===== AI identity (avatar · name · time) ===== */
-.ai-identity {
+.user-bubble {
   display: flex;
-  align-items: center;
-  gap: 7px;
-  margin-bottom: 8px;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 80%;
+  padding: 10px 16px;
+  border-radius: var(--r-lg) var(--r-lg) var(--r-sm) var(--r-lg);
+  background: var(--surface-2);
+  color: var(--ink);
 }
 
-/* Pushed to the far edge of the header, so the controls for a response
-   sit at a fixed place instead of wherever its text happened to end. */
-.ai-header-actions {
+.msg-foot {
   display: flex;
-  align-items: center;
-  gap: 2px;
-  margin-left: auto;
-  /* The row may run out of width; the buttons are the part of it that
-     must not shrink. */
   flex: none;
-  /* Present but quiet: a control you cannot see until you hover is one
-     most people never find. */
-  opacity: 0.55;
-  transition: opacity 0.15s ease;
+  align-items: center;
+  gap: 4px;
+  order: -1;
+  opacity: 0;
+  transition: opacity var(--dur-1) var(--ease);
 }
 
-.ai-message-container:hover .ai-header-actions,
-.ai-header-actions:focus-within {
+:host-context(.chat-turn:hover) .msg-foot,
+:host-context(.chat-turn:focus-within) .msg-foot {
   opacity: 1;
 }
 
-.ai-avatar {
-  display: inline-flex;
+/* ── The assistant's message ───────────────────────────────────────── */
+.ai-head {
+  display: flex;
   align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  background: var(--accent-soft);
-  color: var(--accent-ink);
-  flex-shrink: 0;
+  gap: 8px;
+  min-height: 32px;
+  margin-bottom: 4px;
 }
 
-.ai-avatar lucide-icon {
-  width: 14px;
-  height: 14px;
+.ai-mark {
+  display: flex;
+  flex: none;
+  color: var(--accent-ink);
 }
 
 .ai-name {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--muted-foreground);
+  color: var(--ink);
+  font-size: var(--t-sm);
+  font-weight: 500;
+  line-height: var(--lh-sm);
 }
 
-/* A continued answer: no second name, no second clock. The actions
-   keep their place at the edge, the row itself takes no height, and the
-   messages read as one. */
-/* A continuation is the next paragraph of one answer, not a new card:
-   no second header, and no padding above it to reopen the gap the
-   thread just closed. */
-.ai-message-container--continued { margin-top: 0; padding-top: 0; }
-.ai-identity--continued { min-height: 0; margin-bottom: 0; }
-.ai-identity--continued .ai-header-actions { margin-top: -4px; }
-
-/* ===== USER MESSAGE ===== */
-.user-bubble {
-  max-width: 68%;
-  min-width: 80px;
-  width: fit-content;
-  background: var(--card);
-  border-radius: var(--radius-2xl) var(--radius-2xl) var(--radius-sm) var(--radius-2xl);
-  border: 1px solid var(--border);
-  position: relative;
-  align-self: flex-end;
-  transition: box-shadow 0.2s ease, border-color 0.2s ease;
-}
-
-.user-bubble:hover {
-  border-color: color-mix(in srgb, var(--foreground) 18%, var(--border));
-}
-
-/* Hover-revealed copy button */
-.user-copy-btn {
-  position: absolute;
-  top: 8px;
-  right: 10px;
-  border: none;
-  background: var(--secondary);
-  border-radius: var(--ui-radius-sm);
-  padding: 4px;
-  cursor: pointer;
-  opacity: 0;
-  color: var(--muted-foreground);
+.ai-actions {
   display: flex;
-  align-items: center;
-  transition: opacity 0.2s ease, background 0.2s ease;
-  line-height: 1;
-  z-index: 1;
+  gap: 2px;
+  margin-left: auto;
+  opacity: 0;
+  transition: opacity var(--dur-1) var(--ease);
 }
 
-.user-bubble:hover .user-copy-btn {
+:host-context(.chat-turn:hover) .ai-actions,
+:host-context(.chat-turn:focus-within) .ai-actions {
   opacity: 1;
 }
 
-.user-copy-btn:hover {
-  background: var(--secondary);
+/* Under a finger nothing is pointed at: the actions are always there,
+   and the person's are under the bubble, where a wide bubble leaves
+   them room. */
+@media (hover: none) {
+  .msg-foot,
+  .ai-actions {
+    opacity: 1;
+  }
+
+  .msg-user {
+    flex-direction: column;
+  }
+
+  .msg-foot {
+    order: 0;
+  }
 }
 
-.user-copy-btn.copied {
-  opacity: 1;
-  background: var(--accent-soft);
+.icon-btn.is-on {
   color: var(--accent-ink);
 }
 
-/* ===== USER CONTENT ===== */
-.user-content {
-  padding: 11px 42px 11px 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  color: var(--foreground);
-  font-size: 14px;
-  line-height: 1.55;
-}
-
-/* ===== AI MESSAGE ===== */
-.ai-message-container {
-  position: relative;
-  width: 100%;
-  background: transparent;
-  padding: 8px 16px 12px;
+.is-waiting {
+  animation: spin 1s linear infinite;
 }
 
 .ai-content {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  min-width: 0;
 }
 
-/* ===== AI action footer (copy · feedback · duration) ===== */
-.ai-action-btn {
-  display: inline-flex;
-  align-items: center;
+/* A long answer shows its beginning; the rest is behind the fold. */
+.ai-content.is-folded {
+  max-height: 520px;
+  overflow: hidden;
+}
+
+.msg-fold {
+  display: flex;
   justify-content: center;
-  width: 28px;
-  height: 28px;
-  border: none;
-  border-radius: var(--ui-radius-sm);
-  background: transparent;
-  color: var(--muted-foreground);
-  cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease;
+  margin-top: 12px;
+  border-top: 1px solid var(--line);
 }
 
-.ai-action-btn:hover {
-  background: var(--secondary);
-  color: var(--foreground);
+/* The button sits on the line. */
+.msg-fold .btn {
+  margin-top: -16px;
 }
 
-.ai-action-btn.copied,
-.ai-action-btn.speaking {
-  color: var(--accent-ink);
+/* ── Parts that are not words ──────────────────────────────────────── */
+.part-state {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
-/* The first piece of a reply being said is on its way. */
-.ai-action-waiting {
-  animation: ai-action-turn 0.9s linear infinite;
+.part-state .icon-btn {
+  margin-left: auto;
 }
 
-@keyframes ai-action-turn {
-  to { transform: rotate(360deg); }
+.table-part {
+  max-width: 100%;
+  overflow-x: auto;
 }
 
-.ai-action-btn lucide-icon {
-  width: 16px;
-  height: 16px;
+/* Whose words or data a part is, when an agent produced it. */
+.part-source {
+  margin-top: -6px;
+  color: var(--ink-3);
+  font-size: var(--t-xs);
+  line-height: var(--lh-xs);
 }
 
+.image-card {
+  display: block;
+  max-width: 100%;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  cursor: zoom-in;
+}
 
+.image-card img {
+  display: block;
+  max-width: 100%;
+  max-height: 360px;
+  object-fit: contain;
+}
 
-/* ===== FILE CARD ===== */
+.file-card,
+.file-strip {
+  max-width: 100%;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+
 .file-card {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px 12px;
-  border-radius: var(--ui-radius-card);
-  border: 1px solid var(--border);
-  background: var(--muted);
-  max-width: 320px;
-  transition: background 0.15s ease, box-shadow 0.15s ease;
+  min-height: 52px;
+  padding: 8px 8px 8px 12px;
 }
 
-.file-card:hover {
-  background: var(--secondary);
+.file-card.is-unavailable {
+  color: var(--ink-3);
 }
 
-.file-icon-wrap {
-  width: 40px;
-  height: 40px;
-  border-radius: var(--ui-radius-card);
-  background: color-mix(in srgb, var(--foreground) 6%, transparent);
-  color: var(--ink-2);
+.file-icon {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
+  flex: none;
+  color: var(--ink-2);
 }
 
-.file-icon-wrap lucide-icon {
-  width: 22px;
-  height: 22px;
-}
-
-.file-details {
+.file-words {
+  display: flex;
   flex: 1;
+  flex-direction: column;
   min-width: 0;
 }
 
 .file-name {
-  font-size: 13.5px;
-  font-weight: 500;
-  color: var(--foreground);
   overflow: hidden;
+  color: var(--ink);
+  font-size: var(--t-base);
+  font-weight: 500;
+  line-height: var(--lh-base);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.file-ext {
-  font-size: 11px;
-  color: var(--muted-foreground);
-  margin-top: 2px;
-  letter-spacing: 0.05em;
+.file-kind {
+  color: var(--ink-3);
+  font-size: var(--t-xs);
+  line-height: var(--lh-xs);
 }
 
-.file-actions {
-  display: flex;
-  gap: 2px;
-  flex-shrink: 0;
-}
-
-.file-action-btn {
-  border: none;
-  background: none;
-  color: var(--muted-foreground);
-  border-radius: var(--ui-radius-sm);
-  padding: 4px;
-  cursor: pointer;
+/* Several files in a row are one list that scrolls, not that many
+   cards. */
+.file-strip-head {
   display: flex;
   align-items: center;
-  transition: background 0.15s ease, color 0.15s ease;
-}
-
-.file-action-btn lucide-icon {
-  width: 18px;
-  height: 18px;
-}
-
-.file-action-btn:hover {
-  background: var(--secondary);
-  color: var(--foreground);
-}
-
-/* ===== Image ===== */
-.chat-image {
-  max-width: 100%;
-  border-radius: var(--ui-radius-card);
-}
-
-/* The picture itself, above the card that names it. No frame of its
-   own: the file card sits directly beneath, and two bordered boxes
-   read as two attachments rather than one shown twice. Clicking it
-   opens the full image, so it is a button — and looks like neither. */
-.image-card {
-  display: block;
-  width: 100%;
-  max-width: 320px;
-  margin-bottom: 6px;
-  padding: 0;
-  border: 0;
-  background: none;
-  cursor: zoom-in;
-}
-
-.image-card .chat-image {
-  display: block;
-  max-height: 320px;
-  object-fit: contain;
-}
-
-.ai-content.long-content-collapsed {
-  position: relative;
-  max-height: 720px;
-  overflow: hidden;
-  mask-image: linear-gradient(to bottom, #000 88%, transparent);
-}
-
-.long-content-toggle {
-  display: inline-flex; align-items: center; gap: 5px;
-  border: 1px solid var(--line); border-radius: var(--ui-radius-card);
-  background: transparent; padding: 6px 10px; cursor: pointer;
+  gap: 8px;
+  height: 36px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--line);
   color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
 }
 
-.structured-table-wrap { max-width: 100%; overflow-x: auto; }
-.rich-part-state, .file-inline-error { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: var(--ui-radius-card); background: color-mix(in srgb, var(--foreground) 6%, transparent); color: #64748b; }
-.file-card--unavailable { opacity: .72; cursor: default; }
-.file-inline-error { color: var(--destructive-strong); background: color-mix(in srgb, var(--destructive) 10%, transparent); }
-.file-inline-error button { margin-left: auto; border: 0; background: transparent; cursor: pointer; color: inherit; }
-
-@media (hover: none) { .ai-header-actions, .user-copy-btn { opacity: 1 !important; } }
-button:focus-visible, a:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
-@media (max-width: 640px) {
-  .message-wrapper { max-width: 100%; }
-  .user-bubble { max-width: 92%; }
-  .ai-content { font-size: 14px; }
-  .file-card { max-width: 100%; }
-}
-
-/* One type scale and restrained surfaces across the conversation. */
-.message-wrapper { margin-bottom:18px; }
-.user-bubble { max-width:78%; border:1px solid color-mix(in srgb,var(--primary) 16%,var(--background)); background:color-mix(in srgb,var(--primary) 8%,var(--background)); border-radius:var(--radius-2xl) var(--radius-2xl) var(--radius-sm) var(--radius-2xl); box-shadow:none; }
-.user-bubble:hover { box-shadow:none; }
-.user-content { font-size:15px; line-height:1.7; padding:14px 20px; }
-.ai-avatar { background:transparent; color:var(--foreground); width:24px; height:24px; }
-.ai-name { color:var(--foreground); font-size:13px; }
-.ai-identity { gap:9px; margin-bottom:12px; }
-.ai-message-container { animation:assistant-arrive .18s ease-out; }
-.user-copy-btn:focus-visible,.user-msg:focus-within .user-time { opacity:1; }
-
-@keyframes assistant-arrive { from { opacity:.35; transform:translateY(3px); } to { opacity:1; transform:none; } }
-@media(prefers-reduced-motion:reduce) { .ai-message-container { animation:none; } }
-@media(max-width:640px) { .user-bubble { max-width:92%; } }
-
-/* Whose data it is, when an agent produced it: a caption, not a voice. */
-.part-source { margin:-6px 0 2px 2px; color:var(--muted-foreground); font-size:11.5px; }
-
-/* ===== FILE STRIP =====
-   Many files at once — a folder an agent fetched — as one bounded,
-   scrollable list. One card each was correct and unreadable: six of
-   them stood taller than the answer they belonged to. */
-.file-strip {
-  max-width: 420px;
-  border: 1px solid var(--border);
-  border-radius: var(--ui-radius-card);
-  background: var(--muted);
-  overflow: hidden;
-}
-
-.file-strip__head {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 8px 11px;
-  border-bottom: 1px solid var(--border);
-  color: var(--muted-foreground);
-  font-size: 12px;
-  font-weight: 500;
-}
-
-.file-strip__list {
-  /* Five and a half rows: enough to read the set, short enough that
-     the edge of the sixth says there is more to scroll to. */
-  max-height: 196px;
+.file-strip-list {
+  max-height: 232px;
   overflow-y: auto;
 }
 
@@ -398,28 +255,23 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--primary); outli
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 11px;
+  min-height: 40px;
+  padding: 4px 8px 4px 12px;
   color: var(--ink-2);
 }
 
-.file-row + .file-row { border-top: 1px solid color-mix(in srgb, var(--border) 55%, transparent); }
-.file-row:hover { background: var(--secondary); }
+.file-row + .file-row {
+  border-top: 1px solid var(--line);
+}
 
-.file-row__name {
+.file-row .file-name {
   flex: 1;
   min-width: 0;
-  font-size: 13px;
-  color: var(--foreground);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-weight: 400;
 }
 
-.file-row__ext {
-  font-size: 10.5px;
-  letter-spacing: 0.05em;
-  color: var(--muted-foreground);
-  flex-shrink: 0;
+@media (max-width: 700px) {
+  .user-bubble {
+    max-width: 92%;
+  }
 }
-
-@media (max-width: 640px) { .file-strip { max-width: 100%; } }

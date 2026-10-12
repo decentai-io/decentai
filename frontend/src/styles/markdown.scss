@@ -61,6 +61,15 @@ markdown ol {
   padding-left: 24px;
 }
 
+/* The reset takes the markers from every list; a list here has them. */
+markdown ul {
+  list-style: disc;
+}
+
+markdown ol {
+  list-style: decimal;
+}
+
 markdown li {
   margin: 6px 0;
 }
@@ -214,6 +223,19 @@ markdown pre .code-toolbar button {
 markdown pre .code-toolbar button:hover {
   background: var(--surface-3);
   color: var(--ink);
+}
+
+/* An answer still being written ends in a caret. Its words arrive as
+   they are, with no motion of their own. */
+markdown.is-streaming > :last-child::after {
+  content: '';
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  margin-left: 2px;
+  background: var(--ink);
+  vertical-align: text-bottom;
+  animation: blink 1s steps(2, start) infinite;
 }
 
 /* ── Code's colours ──────────────────────────────────────────────────
