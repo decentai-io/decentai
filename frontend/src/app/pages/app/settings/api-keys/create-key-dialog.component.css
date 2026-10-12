@@ -1,0 +1,27 @@
+/* The key, once made: a mono block that can be selected whole, and the
+   line under it. The dialog's own surface and buttons are the shell's
+   (styles/controls.scss). */
+.made-key {
+  display: block;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: var(--t-code);
+  line-height: var(--lh-code);
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+.made-note {
+  margin-top: 8px;
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.made-note.is-warning {
+  color: var(--warn-ink);
+}

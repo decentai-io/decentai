@@ -1,61 +1,95 @@
 import { Component, OnInit } from '@angular/core';
 
-import { Memory, MemoryService } from 'src/app/services/memory.service';
+import { fullDate, relativeDate } from 'src/app/components/ui/dates';
 import { AuthService } from 'src/app/services/auth.service';
-import { DataPageBase } from '../../data-page-base';
+import { ConfirmService } from 'src/app/services/confirm.service';
+import { Memory, MemoryService } from 'src/app/services/memory.service';
+
+/** With fewer spaces than this left, the page says the cap is near. */
+const NEAR_LIMIT = 10;
 
 /**
- * Memory: what the assistant has been told to remember about you. A tab
- * of the Settings page — the person's own configuration of the
- * assistant, beside the models it thinks with.
+ * Settings › Memory: what the assistant has been told to remember about
+ * you.
  *
  * A memory arrives one of two ways — a chat asking to remember
  * something, which the conversation announces as it happens, or written
  * here by you. Every row says which, and says so again once you have
  * edited it, because a record that cannot account for its own wording is
  * not one anybody can trust. The rest of the bargain is here too: it is
- * yours to correct and to delete.
+ * yours to correct and to forget.
  */
 @Component({
   selector: 'app-memory',
   standalone: false,
   templateUrl: './memory.component.html',
-  styleUrls: ['../../data-shared.css', '../../../admin/iam-shared.css', './memory.component.css'],
+  styleUrls: ['./memory.component.css'],
 })
-export class MemoryComponent extends DataPageBase implements OnInit {
+export class MemoryComponent implements OnInit {
   loading = true;
+  /** Why the memories could not be read. */
+  loadError = '';
   memories: Memory[] = [];
   /** How many memories may be kept at once, from the server rather than
    *  a number copied into the page. */
   limit = 0;
-  busyId = '';
   query = '';
-  editingId: string | null = null;
-  editText = '';
-  /** The person's own write, folded away until asked for so the page
-   *  still leads with the record rather than a blank box. */
-  composerOpen = false;
+  readonly textLimit = 500;
+
+  /** The memory being written. */
   newText = '';
   adding = false;
-  forgetTarget: Memory | null = null;
-  readonly textLimit = 500;
+  addError = '';
+
+  /** The memory being edited in its row. */
+  editingId: string | null = null;
+  editText = '';
+  editError = '';
+  busyId = '';
+  /** Why a memory could not be forgotten. */
+  forgetError = '';
+  forgettingAll = false;
 
   constructor(
     private service: MemoryService,
     public auth: AuthService,
-  ) {
-    super();
+    private confirm: ConfirmService,
+  ) {}
+
+  ngOnInit(): Promise<void> {
+    return this.load();
   }
 
-  async ngOnInit(): Promise<void> {
-    await this.reload();
-    this.loading = false;
+  async load(): Promise<void> {
+    this.loading = true;
+    this.loadError = '';
+    try {
+      await this.reload();
+    } catch {
+      this.loadError = 'Could not reach the server. Check your connection.';
+    } finally {
+      this.loading = false;
+    }
   }
 
   private async reload(): Promise<void> {
     const page = await this.service.list();
     this.memories = page.memories;
     this.limit = page.limit;
+  }
+
+  // ── Access, and the cap ─────────────────────────────────────────────
+
+  get canAdd(): boolean {
+    return this.auth.can('settings:memory:create');
+  }
+
+  get canEdit(): boolean {
+    return this.auth.can('settings:memory:update');
+  }
+
+  get canForget(): boolean {
+    return this.auth.can('settings:memory:delete');
   }
 
   /** Room left before the oldest memory starts being dropped. */
@@ -65,23 +99,23 @@ export class MemoryComponent extends DataPageBase implements OnInit {
 
   /** Near enough the cap that the eviction rule is about to matter. */
   get nearLimit(): boolean {
-    return !!this.limit && this.remaining <= 5;
+    return !!this.limit && this.remaining < NEAR_LIMIT;
   }
 
   get atLimit(): boolean {
     return !!this.limit && this.memories.length >= this.limit;
   }
 
-  get canForget(): boolean {
-    return this.auth.can('settings:memory:delete');
+  /** The counts under the list. */
+  get foot(): string {
+    const saved = `${this.memories.length} saved`;
+    return this.limit ? `${saved} · ${this.remaining} space${this.remaining === 1 ? '' : 's'} left` : saved;
   }
 
-  get canAdd(): boolean {
-    return this.auth.can('settings:memory:create');
-  }
-
-  get canEdit(): boolean {
-    return this.auth.can('settings:memory:update');
+  /** What the cap means, said before something quietly goes. */
+  get capWarning(): string {
+    if (this.atLimit) return `Full at ${this.limit}: the next memory saved drops the oldest.`;
+    return `At ${this.limit}, a new memory drops the oldest.`;
   }
 
   /** Newest first. The server hands them over oldest first so the prompt
@@ -99,16 +133,6 @@ export class MemoryComponent extends DataPageBase implements OnInit {
 
   // ── Writing one yourself ────────────────────────────────────────────
 
-  openComposer(): void {
-    this.composerOpen = true;
-    this.error = '';
-  }
-
-  closeComposer(): void {
-    this.composerOpen = false;
-    this.newText = '';
-  }
-
   get canSubmitNew(): boolean {
     const text = this.newText.trim();
     return !!text && text.length <= this.textLimit && !this.adding;
@@ -117,88 +141,126 @@ export class MemoryComponent extends DataPageBase implements OnInit {
   async addMemory(): Promise<void> {
     if (!this.canSubmitNew) return;
     this.adding = true;
+    this.addError = '';
     try {
       const result = await this.service.create(this.newText.trim());
-      if (result.error) return this.fail(result.error);
-      this.closeComposer();
+      if (result.error) {
+        this.addError = result.error;
+        return;
+      }
+      this.newText = '';
       await this.reload();
-      this.flash('Added. New conversations will use it.');
     } finally {
       this.adding = false;
     }
   }
 
-  dateLabel(value?: string | null): string {
-    if (!value) return '';
-    const date = new Date(value);
-    return isNaN(date.getTime()) ? '' : date.toLocaleDateString();
-  }
+  // ── A row ───────────────────────────────────────────────────────────
 
   /** Where this sentence came from, in the order that matters: who
    *  wrote the words, then when. A chat that only STARTED it is a link
    *  beside this, not the answer to it. */
   originLabel(memory: Memory): string {
     if (memory.authored) {
-      const edited = this.dateLabel(memory.updated_at);
+      const edited = relativeDate(memory.updated_at);
       return memory.corrected && edited
         ? `Added by you, edited ${edited}`
-        : `Added by you ${this.dateLabel(memory.created_at)}`.trim();
+        : `Added by you ${relativeDate(memory.created_at)}`.trim();
     }
     if (memory.corrected) {
-      return `Corrected by you ${this.dateLabel(memory.updated_at)}`.trim();
+      return `Corrected by you ${relativeDate(memory.updated_at)}`.trim();
     }
-    return `Saved ${this.dateLabel(memory.created_at)}`.trim();
+    return `Saved ${relativeDate(memory.created_at)}`.trim();
+  }
+
+  /** The whole date, for the origin's tooltip. */
+  originInFull(memory: Memory): string {
+    return fullDate(memory.updated_at || memory.created_at);
   }
 
   startEdit(memory: Memory): void {
     this.editingId = memory.memory_id;
     this.editText = memory.text;
-    this.error = '';
+    this.editError = '';
   }
 
   cancelEdit(): void {
     this.editingId = null;
     this.editText = '';
+    this.editError = '';
   }
 
   async saveEdit(memory: Memory): Promise<void> {
     const text = this.editText.trim();
     if (!text || text === memory.text) return;
     this.busyId = memory.memory_id;
+    this.editError = '';
     try {
       const result = await this.service.update(memory.memory_id, text);
-      if (result.error) return this.fail(result.error);
+      if (result.error) {
+        // The editor stays open, holding the text that was refused.
+        this.editError = result.error;
+        return;
+      }
       const saved = result.data?.memory;
       memory.text = saved?.text ?? text;
       memory.corrected = saved?.corrected ?? true;
       memory.updated_at = saved?.updated_at ?? memory.updated_at;
       this.cancelEdit();
-      this.flash('Memory updated. New conversations will use the correction.');
     } finally {
       this.busyId = '';
     }
   }
 
-  requestForget(memory: Memory): void {
-    this.forgetTarget = memory;
-    this.error = '';
-  }
-
-  closeForgetDialog(): void {
-    if (this.busyId) return;
-    this.forgetTarget = null;
-  }
+  // ── Forgetting ──────────────────────────────────────────────────────
 
   async forget(memory: Memory): Promise<void> {
+    const sure = await this.confirm.ask({
+      title: 'Forget this memory?',
+      body: `“${memory.text}” The assistant stops using it in new conversations; those that already used it are unchanged.`,
+      confirm: 'Forget',
+      cancel: 'Keep it',
+      danger: true,
+    });
+    if (!sure) return;
     this.busyId = memory.memory_id;
+    this.forgetError = '';
     try {
       const result = await this.service.remove(memory.memory_id);
-      if (result.error) return this.fail(result.error);
-      this.forgetTarget = null;
+      if (result.error) {
+        this.forgetError = result.error;
+        return;
+      }
       await this.reload();
-      this.flash('Forgotten.');
     } finally {
       this.busyId = '';
+    }
+  }
+
+  /** Every memory, one after the other, after one question. */
+  async forgetAll(): Promise<void> {
+    const count = this.memories.length;
+    const sure = await this.confirm.ask({
+      title: `Forget all ${count} memories?`,
+      body: 'The assistant starts new conversations knowing none of them. This cannot be undone.',
+      confirm: 'Forget all',
+      cancel: 'Keep them',
+      danger: true,
+    });
+    if (!sure) return;
+    this.forgettingAll = true;
+    this.forgetError = '';
+    try {
+      for (const memory of [...this.memories]) {
+        const result = await this.service.remove(memory.memory_id);
+        if (result.error) {
+          this.forgetError = result.error;
+          break;
+        }
+      }
+      await this.reload();
+    } finally {
+      this.forgettingAll = false;
     }
   }
 }
