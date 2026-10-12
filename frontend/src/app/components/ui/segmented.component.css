@@ -1,0 +1,53 @@
+/* A segmented control: a 36px track of surface-2 holding the choices;
+   the chosen one is a raised surface. */
+:host {
+  display: inline-block;
+  max-width: 100%;
+}
+
+.segmented {
+  display: inline-flex;
+  max-width: 100%;
+  height: 36px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+}
+
+.segment {
+  min-width: 0;
+  padding: 0 12px;
+  border: 0;
+  border-radius: calc(var(--r-md) - 3px);
+  background: transparent;
+  color: var(--ink-2);
+  font: 500 var(--t-base) / var(--lh-base) var(--font-sans);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  transition:
+    background var(--dur-1) var(--ease),
+    color var(--dur-1) var(--ease);
+}
+
+.segment:hover {
+  color: var(--ink);
+}
+
+.segment[aria-checked='true'] {
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 0 0 1px var(--line);
+}
+
+.segment:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+}
+
+.segment:disabled {
+  opacity: 0.5;
+  cursor: default;
+}

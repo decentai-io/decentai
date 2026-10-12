@@ -1,0 +1,94 @@
+/* A row: 56px at least, a hairline between it and the next. Its
+   actions show when the row is hovered or holds the focus, and always
+   where there is no hover (touch). */
+:host {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 56px;
+  padding: 12px 16px;
+  border-radius: var(--r-md);
+  transition: background var(--dur-1) var(--ease);
+}
+
+/* The hairline above every row but the first: straight, and inset to
+   the row's padding, whatever the row's own corners are. */
+:host(:not(:first-child))::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 16px;
+  left: 16px;
+  height: 1px;
+  background: var(--line);
+}
+
+:host(:hover) {
+  background: var(--surface-2);
+}
+
+.row-mark {
+  display: flex;
+  flex: none;
+  color: var(--ink-3);
+}
+
+.row-mark:empty {
+  display: none;
+}
+
+.row-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.row-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+
+.row-name {
+  min-width: 0;
+  color: var(--ink);
+  font-size: var(--t-base);
+  font-weight: 500;
+  line-height: var(--lh-base);
+  overflow-wrap: anywhere;
+}
+
+.row-meta {
+  margin-top: 2px;
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+  overflow-wrap: anywhere;
+}
+
+.row-meta:empty {
+  display: none;
+}
+
+.row-actions {
+  display: flex;
+  flex: none;
+  gap: 2px;
+}
+
+.row-actions:empty {
+  display: none;
+}
+
+@media (hover: hover) {
+  .row-actions {
+    opacity: 0;
+    transition: opacity var(--dur-1) var(--ease);
+  }
+
+  :host(:hover) .row-actions,
+  :host(:focus-within) .row-actions {
+    opacity: 1;
+  }
+}

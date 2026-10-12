@@ -28,7 +28,7 @@ interface Choice { value: string; label: string; help: string; }
   selector: 'app-safety',
   standalone: false,
   templateUrl: './safety.component.html',
-  styleUrls: ['../../data-shared.css', '../../../admin/iam-shared.css', './safety.component.css'],
+  styleUrls: ['../../data-shared.css', './safety.component.css'],
 })
 export class SafetyComponent extends DataPageBase implements OnInit {
   loading = true;

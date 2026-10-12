@@ -223,6 +223,15 @@ textarea.input {
   padding-left: 34px;
 }
 
+/* ── Form ────────────────────────────────────────────────────────────
+   class="form" on what holds a page's fields (<app-field>, <app-switch>,
+   components/ui/): one column, 20px between them. */
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
 /* ── Chip ────────────────────────────────────────────────────────────
    A small label for a state or a count. `accent` for chosen or new,
    `live` for something running now (it carries the pulsing dot),
@@ -341,6 +350,7 @@ html {
 }
 
 .mat-mdc-menu-item .menu-check {
+  flex: none;
   margin: 0 0 0 auto;
   padding-left: 12px;
   color: var(--accent-ink);
@@ -513,4 +523,25 @@ div.mat-mdc-select-panel {
 
 .mat-mdc-paginator {
   font-size: var(--t-sm);
+}
+
+/* ── The select's panel ──────────────────────────────────────────────
+   <app-select> (components/ui/select.component.ts) opens the menu panel
+   with options of two lines: the name, and what it means. */
+.select-panel.mat-mdc-menu-panel {
+  max-width: min(480px, calc(100vw - 32px));
+}
+
+.select-option {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 6px 0;
+}
+
+.select-option-hint {
+  color: var(--ink-3);
+  font-size: var(--t-xs);
+  line-height: var(--lh-xs);
+  white-space: normal;
 }

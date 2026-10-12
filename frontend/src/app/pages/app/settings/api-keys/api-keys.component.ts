@@ -19,7 +19,7 @@ import { DataPageBase } from '../../data-page-base';
   selector: 'app-api-keys',
   standalone: false,
   templateUrl: './api-keys.component.html',
-  styleUrls: ['../../data-shared.css', '../../../admin/iam-shared.css', './api-keys.component.css'],
+  styleUrls: ['../../data-shared.css', './api-keys.component.css'],
 })
 export class ApiKeysComponent extends DataPageBase implements OnInit {
   loading = true;

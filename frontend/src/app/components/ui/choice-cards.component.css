@@ -1,0 +1,82 @@
+/* Choice cards: a column of radios, each a 44px card with a dot, a
+   name and one line. The chosen one is tinted and edged in the accent. */
+:host {
+  display: block;
+}
+
+.choice-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.choice-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  width: 100%;
+  min-height: 44px;
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background var(--dur-1) var(--ease),
+    border-color var(--dur-1) var(--ease);
+}
+
+.choice-card:hover {
+  background: var(--surface-2);
+}
+
+.choice-card[aria-checked='true'] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.choice-card:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+}
+
+.choice-card:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.choice-dot {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  border: 1.5px solid var(--ink-3);
+  border-radius: var(--r-full);
+  background: var(--surface);
+}
+
+.choice-card[aria-checked='true'] .choice-dot {
+  border: 5px solid var(--accent);
+}
+
+.choice-words {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.choice-name {
+  font-size: var(--t-base);
+  font-weight: 500;
+  line-height: var(--lh-base);
+}
+
+.choice-hint {
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}

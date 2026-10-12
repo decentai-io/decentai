@@ -26,7 +26,7 @@ type MonitoringView = 'agents' | 'events' | 'connections';
   standalone: false,
   templateUrl: './monitoring.component.html',
   styleUrls: [
-    '../../data-shared.css', '../../../admin/iam-shared.css',
+    '../../data-shared.css',
     '../../ai/audit/audit.component.css', './monitoring.component.css',
   ],
 })

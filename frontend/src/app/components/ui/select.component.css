@@ -1,0 +1,32 @@
+/* The select's button: the shared .input (styles/controls.scss), laid
+   out as the chosen value and a chevron. Its panel is styled with the
+   other menus in controls.scss, since it opens outside this component. */
+:host {
+  display: block;
+}
+
+.select-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.select-trigger.is-empty .select-value {
+  color: var(--ink-3);
+}
+
+.select-value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.select-trigger lucide-icon {
+  display: inline-flex;
+  flex: none;
+  color: var(--ink-3);
+}

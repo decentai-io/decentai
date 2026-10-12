@@ -1,0 +1,33 @@
+/* A field: label, control, then one line of help or the error. A
+   form (.form, styles/controls.scss) sets the fields 20px apart. */
+:host {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.field-label {
+  color: var(--ink);
+  font-size: var(--t-sm);
+  font-weight: 500;
+  line-height: var(--lh-sm);
+}
+
+.field-help,
+.field-error {
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.field-help {
+  color: var(--ink-3);
+}
+
+.field-help a {
+  white-space: nowrap;
+}
+
+.field-error {
+  color: var(--danger-ink);
+}

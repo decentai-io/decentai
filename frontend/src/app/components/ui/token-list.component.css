@@ -1,0 +1,50 @@
+/* The token list: an input and Add in a row, the chips wrapping under
+   it. The input, the button and the chip are the shared ones
+   (styles/controls.scss). */
+:host {
+  display: block;
+}
+
+.token-add {
+  display: flex;
+  gap: 8px;
+}
+
+.tokens {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+  list-style: none;
+}
+
+.tokens:empty {
+  display: none;
+}
+
+.token {
+  padding-right: 2px;
+}
+
+.token-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: 0;
+  border-radius: var(--r-full);
+  background: transparent;
+  color: var(--ink-3);
+  cursor: pointer;
+}
+
+.token-remove:hover {
+  background: var(--surface-3);
+  color: var(--ink);
+}
+
+.token-remove:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+}
