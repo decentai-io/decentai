@@ -10,6 +10,7 @@ export const SecretsRoutes: Routes = [
   { path: '', redirectTo: 'values', pathMatch: 'full' },
   {
     path: 'values',
+    title: 'Secrets',
     component: SecretsComponent,
     canActivate: [permissionGuard],
     data: { requiredAction: 'secrets:secret:list' },

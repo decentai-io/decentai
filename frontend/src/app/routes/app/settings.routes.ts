@@ -30,6 +30,7 @@ const settingsLandingGuard: CanActivateFn = async () => {
 export const SettingsRoutes: Routes = [
   {
     path: '',
+    title: 'Settings',
     component: SettingsComponent,
     canActivate: [settingsLandingGuard, permissionGuard],
     data: { requiredAction: 'settings:llm:list' },
@@ -38,6 +39,7 @@ export const SettingsRoutes: Routes = [
   // the person is theirs to review from a link as well as a click.
   {
     path: 'memory',
+    title: 'Memory',
     component: SettingsComponent,
     canActivate: [permissionGuard],
     data: { requiredAction: 'settings:memory:list', tab: 'memory' },
@@ -46,6 +48,7 @@ export const SettingsRoutes: Routes = [
   // agent routing. Anyone who can open a chat may set their defaults.
   {
     path: 'chat',
+    title: 'Chat defaults',
     component: SettingsComponent,
     canActivate: [permissionGuard],
     data: { requiredAction: 'ai:chat:create', tab: 'chat' },
@@ -53,6 +56,7 @@ export const SettingsRoutes: Routes = [
   // The person's own API keys, addressable for the same reason.
   {
     path: 'keys',
+    title: 'API keys',
     component: SettingsComponent,
     canActivate: [permissionGuard],
     data: { requiredAction: 'settings:apikey:list', tab: 'keys' },
@@ -61,6 +65,7 @@ export const SettingsRoutes: Routes = [
   // to when a Connect button says nothing is registered yet.
   {
     path: 'apps',
+    title: 'Connected apps',
     component: SettingsComponent,
     canActivate: [permissionGuard],
     data: { requiredAction: 'settings:oauth:list', tab: 'apps' },
@@ -68,6 +73,7 @@ export const SettingsRoutes: Routes = [
   // What agents may do without asking, for the organization.
   {
     path: 'safety',
+    title: 'Safety',
     component: SettingsComponent,
     canActivate: [permissionGuard],
     data: { requiredAction: 'settings:safety:get', tab: 'safety' },
@@ -75,18 +81,21 @@ export const SettingsRoutes: Routes = [
   // What agents use and did: read-only, and a grant of its own.
   {
     path: 'monitoring',
+    title: 'Monitoring',
     component: SettingsComponent,
     canActivate: [permissionGuard],
     data: { requiredAction: 'agents:monitor:usage', tab: 'monitoring' },
   },
   {
     path: 'audit',
+    title: 'Audit',
     component: SettingsComponent,
     canActivate: [permissionGuard],
     data: { requiredAction: 'ai:audit:list', tab: 'audit', auditView: 'mine' },
   },
   {
     path: 'audit/org',
+    title: 'Audit',
     component: SettingsComponent,
     canActivate: [permissionGuard],
     data: { requiredAction: 'ai:audit:list_all', tab: 'audit', auditView: 'org' },

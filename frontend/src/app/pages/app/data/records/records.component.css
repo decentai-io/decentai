@@ -19,7 +19,7 @@
 .agent-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:12px; }
 .agent-search { display:flex; align-items:center; gap:9px; margin-bottom:14px; padding:9px 11px; border:1px solid var(--line); border-radius:var(--radius-lg); background:var(--surface); }
 .agent-search lucide-icon { color:var(--ink-2); }
-.agent-search input { flex:1; min-width:0; color:inherit; border:0; outline:0; background:transparent; }
+.agent-search input { flex:1; min-width:0; color:inherit; border:0; background:transparent; }
 .agent-search small { color:var(--ink-2); white-space:nowrap; }
 .no-agent-results { padding:32px; color:var(--ink-2); text-align:center; border:1px dashed var(--line); border-radius:var(--radius-xl); }
 .agent-card { display:grid; grid-template-columns:auto minmax(0,1fr) auto; grid-template-areas:'icon copy arrow' 'kinds kinds kinds'; gap:12px; padding:17px; text-align:left; color:inherit; border:1px solid var(--line); border-radius:var(--radius-xl); background:var(--surface); cursor:pointer; }

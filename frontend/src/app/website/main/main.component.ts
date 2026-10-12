@@ -234,6 +234,17 @@ export class MainComponent implements OnInit, OnDestroy {
     );
   }
 
+  /** The skip link: past the bar and the sidebar, to the page. The
+   *  link's address is not followed, since the page is not a route. */
+  skipToContent(event: Event): void {
+    event.preventDefault();
+    const page = document.getElementById('page_container');
+    const heading = page?.querySelector<HTMLElement>('h1') ?? page;
+    if (!heading) return;
+    heading.tabIndex = -1;
+    heading.focus();
+  }
+
   toggleTheme(): void {
     this.theme.toggle();
   }

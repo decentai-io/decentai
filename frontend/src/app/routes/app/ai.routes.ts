@@ -11,6 +11,7 @@ export const AIRoutes: Routes = [
   { path: 'marketplace', redirectTo: '/agents/marketplace', pathMatch: 'full' },
   {
     path: 'chats',
+    title: 'Chats',
     component: ChatHomeComponent,
     canActivate: [permissionGuard],
     data: { requiredAction: 'ai:chat:list' },
@@ -20,6 +21,7 @@ export const AIRoutes: Routes = [
   { path: 'chats/history', redirectTo: 'chats', pathMatch: 'full' },
   {
     path: 'chats/:chat_id',
+    title: 'Chat',
     component: ChatDetailComponent,
     canActivate: [permissionGuard],
     data: { requiredAction: 'ai:chat:get' },
@@ -32,6 +34,7 @@ export const AIRoutes: Routes = [
   // the old activity and tasks bookmarks land here.
   {
     path: 'schedules',
+    title: 'Schedules',
     component: SchedulesComponent,
     canActivate: [permissionGuard],
     data: { requiredAction: 'ai:activity:list' },

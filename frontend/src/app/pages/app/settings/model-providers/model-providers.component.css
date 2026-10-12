@@ -18,7 +18,7 @@
 }
 .provider-choice:hover, .provider-choice:focus-visible {
   border-color: color-mix(in srgb, var(--primary) 42%, var(--border));
-  background: var(--accent-soft); outline: none;
+  background: var(--accent-soft);
 }
 .provider-choice small { color: var(--ink-2); font-size: 13px; line-height: 1.5; }
 .provider-note { margin: 10px 0 0; }

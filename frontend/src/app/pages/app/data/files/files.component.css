@@ -13,7 +13,7 @@
 .overview-tools .seg { flex:none; }
 .source-search { display:flex; align-items:center; gap:9px; flex:1; min-width:0; padding:9px 11px; border:1px solid var(--line); border-radius:var(--radius-lg); background:var(--surface); }
 .source-search lucide-icon { color:var(--ink-2); }
-.source-search input { flex:1; min-width:0; color:inherit; border:0; outline:0; background:transparent; }
+.source-search input { flex:1; min-width:0; color:inherit; border:0; background:transparent; }
 .source-search small { color:var(--ink-2); white-space:nowrap; }
 .source-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:12px; }
 .no-source-results { padding:32px; color:var(--ink-2); text-align:center; border:1px dashed var(--line); border-radius:var(--radius-xl); }

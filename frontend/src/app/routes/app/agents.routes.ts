@@ -10,6 +10,7 @@ export const AgentsRoutes: Routes = [
   { path: '', redirectTo: 'installed', pathMatch: 'full' },
   {
     path: 'installed',
+    title: 'Installed agents',
     component: AgentsComponent,
     canActivate: [permissionGuard],
     data: { requiredAction: 'agents:agent:list' },
@@ -19,6 +20,7 @@ export const AgentsRoutes: Routes = [
     // the grant that gates the marketplace; reading the approved set is
     // not enough to go shopping.
     path: 'marketplace',
+    title: 'Marketplace',
     component: MarketplaceComponent,
     canActivate: [permissionGuard],
     data: { requiredAction: 'agents:agent:install' },

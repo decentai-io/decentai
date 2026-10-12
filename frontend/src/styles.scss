@@ -97,6 +97,49 @@ h1 {
   letter-spacing: -0.017em;
 }
 
+/* ── Focus ───────────────────────────────────────────────────────────
+   Whatever the keyboard lands on shows the one ring. It is drawn as an
+   outline so that nothing clips it; the controls in controls.scss draw
+   the same ring as a shadow (--focus) and switch this one off. */
+:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  outline-offset: 1px;
+}
+
+/* Something focused by the page itself, not reached by Tab (a page's
+   title after a navigation), is a place to read from, not a control. */
+[tabindex='-1']:focus-visible {
+  outline: none;
+}
+
+/* Present for a screen reader, absent for the eye. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* The first stop of the Tab key: out of sight until it is focused. */
+.skip-link {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  z-index: calc(var(--z-overlay) + 1);
+  transform: translateY(-200%);
+}
+
+.skip-link:focus {
+  transform: none;
+}
+
+/* Material's overlays, on the stacking scale. */
+.cdk-overlay-container {
+  z-index: var(--z-overlay);
+}
+
 a {
   color: var(--accent-ink);
   text-decoration: none;

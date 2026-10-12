@@ -1,4 +1,5 @@
 <div class="app-shell" [class.sidebar-open]="isSidebarOpen">
+  <a class="skip-link btn" href="#page_container" (click)="skipToContent($event)">Skip to content</a>
   <div
     class="mobile-sidebar-backdrop"
     [class.is-open]="isSidebarOpen"

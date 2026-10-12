@@ -4,7 +4,7 @@
 .transfer-dialog { width: min(520px, 92vw); }
 .transfer-dialog .dialog-body { display: flex; flex-direction: column; gap: 10px; max-height: 60vh; overflow-y: auto; }
 .search-field { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--ui-radius-card); }
-.search-field input { width: 100%; border: 0; outline: 0; background: transparent; color: inherit; }
+.search-field input { width: 100%; border: 0; background: transparent; color: inherit; }
 .candidates { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 .candidate {
   display: flex; align-items: center; gap: 10px;

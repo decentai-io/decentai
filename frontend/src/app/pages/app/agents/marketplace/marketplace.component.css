@@ -242,7 +242,7 @@
 
 /* ── Modals: the review, and the removal confirmation ────────────────── */
 .modal-backdrop {
-  position: fixed; inset: 0; z-index: 1100;
+  position: fixed; inset: 0; z-index: var(--z-dialog);
   display: grid; place-items: center; padding: 20px;
   background: var(--scrim); backdrop-filter: blur(3px);
 }

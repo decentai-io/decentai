@@ -10,7 +10,7 @@
 
 .audit-filters { display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin-bottom:14px; }
 .search-field { display:flex; align-items:center; gap:8px; flex:1 1 260px; min-width:220px; padding:8px 10px; border:1px solid var(--line); border-radius:var(--ui-radius-card); }
-.search-field input { width:100%; border:0; outline:0; background:transparent; color:inherit; }
+.search-field input { width:100%; border:0; background:transparent; color:inherit; }
 .audit-filters .sel { min-width:170px; }
 .date-field { display:flex; align-items:center; gap:6px; color:var(--ink-2); font-size:12px; }
 .date-field input { width:150px; }

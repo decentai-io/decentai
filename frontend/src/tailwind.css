@@ -93,6 +93,17 @@
   --ease: cubic-bezier(0.2, 0, 0, 1);
   --ease-in: cubic-bezier(0.4, 0, 1, 1);
 
+  /* ── Stacking ──────────────────────────────────────────────────────
+     What sits over what, in one scale. The phone's drawer is under
+     dialogs, so a confirm opened from it is seen; a dialog a page draws
+     itself is under Material's overlays, so its own menus and tooltips
+     show above it. */
+  --z-bar: 30;              /* the top bar */
+  --z-drawer-backdrop: 890;
+  --z-drawer: 900;          /* the sidebar, as a drawer on a phone */
+  --z-dialog: 950;          /* a dialog drawn by a page */
+  --z-overlay: 1000;        /* Material's menus, dialogs, tooltips */
+
   /* ── Names from before the redesign ────────────────────────────────
      Aliases of the tokens above, so a page that has not been redone
      yet keeps working. A page drops them as it is redone; when the last

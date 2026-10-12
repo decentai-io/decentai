@@ -1,5 +1,5 @@
 ﻿import { NgModule } from '@angular/core';
-import { RouterModule, Routes } from '@angular/router';
+import { RouterModule, Routes, TitleStrategy } from '@angular/router';
 import { AdminRoutes } from './routes/admin/admin.routes';
 import { AgentsRoutes } from './routes/app/agents.routes';
 import { AIRoutes } from './routes/app/ai.routes';
@@ -10,6 +10,7 @@ import { GuideComponent } from './pages/app/guide/guide.component';
 import { NoAccessComponent } from './website/no-access/no-access.component';
 import { PageNotFoundComponent } from './website/page-not-found/page-not-found.component';
 import { permissionGuard } from './guards/permission.guard';
+import { PageTitleStrategy } from './title.strategy';
 
 const routes: Routes = [
   {
@@ -47,12 +48,14 @@ const routes: Routes = [
   // Open to anyone signed in; a chapter is addressable.
   {
     path: 'guide',
+    title: 'Guide',
     component: GuideComponent,
     canActivate: [permissionGuard],
     data: { requiredAction: 'account:profile:get' },
   },
   {
     path: 'guide/:chapter',
+    title: 'Guide',
     component: GuideComponent,
     canActivate: [permissionGuard],
     data: { requiredAction: 'account:profile:get' },
@@ -65,13 +68,15 @@ const routes: Routes = [
 
   // Deliberately unguarded: it exists for the user a guard has
   // nowhere else to send.
-  { path: 'no-access', component: NoAccessComponent },
+  { path: 'no-access', title: 'No access', component: NoAccessComponent },
 
-  { path: '**', component: PageNotFoundComponent },
+  { path: '**', title: 'Page not found', component: PageNotFoundComponent },
 ];
 
 @NgModule({
   imports: [RouterModule.forRoot(routes, { onSameUrlNavigation: 'reload' })],
   exports: [RouterModule],
+  // Each route's `title` reaches the browser's tab through this.
+  providers: [{ provide: TitleStrategy, useClass: PageTitleStrategy }],
 })
 export class AppRoutingModule {}

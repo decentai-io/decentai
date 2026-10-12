@@ -12,24 +12,28 @@ export const DataRoutes: Routes = [
   { path: '', redirectTo: 'files', pathMatch: 'full' },
   {
     path: 'files',
+    title: 'Files',
     component: FilesComponent,
     canActivate: [permissionGuard],
     data: { requiredAction: 'files:file:list' },
   },
   {
     path: 'records',
+    title: 'Saved data',
     component: RecordsComponent,
     canActivate: [permissionGuard],
     data: { requiredAction: 'data:record:list' },
   },
   {
     path: 'skills',
+    title: 'Skills',
     component: SkillsComponent,
     canActivate: [permissionGuard],
     data: { requiredAction: 'skills:skill:list' },
   },
   {
     path: 'mcp',
+    title: 'MCP servers',
     component: McpComponent,
     canActivate: [permissionGuard],
     data: { requiredAction: 'mcp:server:list' },
