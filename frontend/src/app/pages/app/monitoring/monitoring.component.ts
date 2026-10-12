@@ -3,7 +3,7 @@ import { ActivatedRoute, NavigationEnd, Router } from '@angular/router';
 import { Subscription } from 'rxjs';
 import { filter } from 'rxjs/operators';
 
-import { byDay, clockTime, fullDate, relativeDate } from 'src/app/components/ui/dates';
+import { byDay, clockTime, fullDate, localDay, relativeDate } from 'src/app/components/ui/dates';
 import { Choice } from 'src/app/components/ui/radio-keys';
 import { RecordTone } from 'src/app/components/ui/record-row.component';
 import { AuthService } from 'src/app/services/auth.service';
@@ -70,6 +70,9 @@ export class MonitoringComponent implements OnInit, OnDestroy {
   loadingMore = false;
   kind = '';
   agent = '';
+  /** The days asked for, as the date boxes give them. */
+  since = '';
+  until = '';
   refusedOnly = false;
   expanded = new Set<MonitorEvent>();
   /** The agents the log has named, for the filter: ref -> name. */
@@ -215,7 +218,14 @@ export class MonitoringComponent implements OnInit, OnDestroy {
   private query(before?: number | null) {
     const kinds = this.view === 'connections' ? ['connection']
       : this.kind ? [this.kind] : [];
-    return { kinds, agent: this.agent, before, limit: 100 };
+    // The server reads `until` as the first moment not asked for.
+    const since = localDay(this.since, false);
+    const until = localDay(this.until, true);
+    return {
+      kinds, agent: this.agent, before, limit: 100,
+      since: since ? since.getTime() / 1000 : null,
+      until: until ? (until.getTime() + 1) / 1000 : null,
+    };
   }
 
   async reload(): Promise<void> {
@@ -278,11 +288,15 @@ export class MonitoringComponent implements OnInit, OnDestroy {
     this.arrange();
   }
 
-  get filtered(): boolean { return !!(this.kind || this.agent || this.refusedOnly); }
+  get filtered(): boolean {
+    return !!(this.kind || this.agent || this.since || this.until || this.refusedOnly);
+  }
 
   clearFilters(): void {
     this.kind = '';
     this.agent = '';
+    this.since = '';
+    this.until = '';
     this.refusedOnly = false;
     void this.reload();
   }

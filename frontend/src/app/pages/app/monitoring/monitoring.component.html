@@ -208,6 +208,14 @@
         [ngModel]="refusedOnly"
         (ngModelChange)="showRefusedOnly($event)"
       ></app-switch>
+      <label class="toolbar-date">
+        From
+        <input class="input" type="date" name="since" [(ngModel)]="since" />
+      </label>
+      <label class="toolbar-date">
+        To
+        <input class="input" type="date" name="until" [(ngModel)]="until" />
+      </label>
       <button class="btn" type="submit" [disabled]="loading">Apply</button>
       <button class="btn ghost" type="button" *ngIf="filtered" [disabled]="loading" (click)="clearFilters()">Clear</button>
     </form>

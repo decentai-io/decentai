@@ -94,11 +94,16 @@ export class MonitoringService {
 
   async events(query: {
     kinds?: string[]; agent?: string; before?: number | null; limit?: number;
+    /** The days asked for, in seconds: nothing from before `since`,
+     *  nothing from `until` on. */
+    since?: number | null; until?: number | null;
   }): Promise<MonitorPage> {
     const data: any = { limit: query.limit || 100 };
     if (query.kinds?.length) data.kinds = query.kinds;
     if (query.agent) data.agent = query.agent;
     if (query.before != null) data.before = query.before;
+    if (query.since != null) data.since = query.since;
+    if (query.until != null) data.until = query.until;
     const res = await this.session.ai('Agents:Monitor:Events', data);
     return {
       events: res.data?.events || [],

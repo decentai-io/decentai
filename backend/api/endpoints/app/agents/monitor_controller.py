@@ -179,10 +179,18 @@ class MonitorController(AIController):
             return self._fail(data, "not_found",
                               "That agent is not installed here.", 404)
         before = payload.get("before")
-        if before is not None and (isinstance(before, bool)
-                                   or not isinstance(before, (int, float))):
+        if not self._is_time(before):
             return self._fail(data, "invalid_request",
                               "before is the time a previous page ended at.")
+        # The days asked for: nothing from before `since`, nothing from
+        # `until` on. The log is read the latest first, so `until` is
+        # where the reading starts and `since` is where it ends.
+        since, until = payload.get("since"), payload.get("until")
+        if not (self._is_time(since) and self._is_time(until)):
+            return self._fail(data, "invalid_request",
+                              "since and until are times, in seconds.")
+        if until is not None and (before is None or before > until):
+            before = until
         limit = self._limit(data, self.DEFAULT_LIMIT, self.MAX_LIMIT)
         alone = self._alone()
 
@@ -192,10 +200,17 @@ class MonitorController(AIController):
             for _ in range(self.ROUNDS):
                 asked = await self.runtime.events(
                     self.ASKED, kinds, agent, before)
+                more = len(asked) >= self.ASKED
+                if since is not None:
+                    recent = [event for event in asked
+                              if not isinstance(event, dict)
+                              or (event.get("at") or 0) >= since]
+                    # An event from before `since`: all after it are older.
+                    more = more and len(recent) == len(asked)
+                    asked = recent
                 for event in asked:
                     if isinstance(event, dict) and self._shown(event, mine, alone):
                         found.append(self._named(event, mine))
-                more = len(asked) >= self.ASKED
                 if asked:
                     # How far back was read: where the next asking of
                     # the runtime, or the next page, goes on from.
@@ -213,6 +228,12 @@ class MonitorController(AIController):
             "next_before": (page[-1].get("at") if len(found) > limit
                             else before if more else None),
         })
+
+    @staticmethod
+    def _is_time(value: Any) -> bool:
+        """Whether a time was left out, or given as seconds."""
+        return value is None or (not isinstance(value, bool)
+                                 and isinstance(value, (int, float)))
 
     @staticmethod
     def _shown(event: Dict[str, Any], mine: Dict[str, str], alone: bool) -> bool:

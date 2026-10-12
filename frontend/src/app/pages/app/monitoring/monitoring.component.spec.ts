@@ -97,7 +97,20 @@ describe('MonitoringComponent', () => {
     component.agent = 'agt_a';
     await component.select('events');
 
-    expect(asked[0]).toEqual({ kinds: ['log'], agent: 'agt_a', before: undefined, limit: 100 });
+    expect(asked[0]).toEqual({
+      kinds: ['log'], agent: 'agt_a', before: undefined, limit: 100, since: null, until: null,
+    });
+  });
+
+  it('asks for the whole of the days chosen', async () => {
+    const asked: any[] = [];
+    const component = create({}, asked);
+    component.since = '2026-10-01';
+    component.until = '2026-10-02';
+    await component.select('events');
+
+    expect(asked[0].since).toBe(new Date(2026, 9, 1).getTime() / 1000);
+    expect(asked[0].until).toBe(new Date(2026, 9, 3).getTime() / 1000);
   });
 
   it('reads the page after the one it has, from where that one ended', async () => {

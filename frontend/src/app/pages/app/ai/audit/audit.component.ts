@@ -1,7 +1,7 @@
 import { Component, Input, OnInit } from '@angular/core';
 import { Router } from '@angular/router';
 
-import { byDay, clockTime } from 'src/app/components/ui/dates';
+import { byDay, clockTime, localDay } from 'src/app/components/ui/dates';
 import { Choice } from 'src/app/components/ui/radio-keys';
 import { RecordTone } from 'src/app/components/ui/record-row.component';
 import { AiSessionService, AuditPage, AuditQuery } from 'src/app/services/ai-session.service';
@@ -99,25 +99,12 @@ export class AuditComponent implements OnInit {
     const query: AuditQuery = { limit: 50 };
     if (this.text.trim()) query.text = this.text.trim();
     if (this.type) query.event_types = [this.type];
-    const since = AuditComponent.localDay(this.since, false);
-    const until = AuditComponent.localDay(this.until, true);
+    const since = localDay(this.since, false);
+    const until = localDay(this.until, true);
     if (since) query.since = since.toISOString();
     if (until) query.until = until.toISOString();
     if (before) query.before = before;
     return query;
-  }
-
-  /** The first or the last moment of a picked day, in the person's own
-   *  zone. A date input gives `YYYY-MM-DD`, which `new Date()` reads as
-   *  midnight UTC — hours off the day they chose, and on the day before
-   *  it west of UTC — so the parts are read as local ones. */
-  static localDay(value: string, end: boolean): Date | null {
-    const parts = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || ''));
-    if (!parts) return null;
-    const [year, month, day] = [Number(parts[1]), Number(parts[2]), Number(parts[3])];
-    return end
-      ? new Date(year, month - 1, day, 23, 59, 59, 999)
-      : new Date(year, month - 1, day, 0, 0, 0, 0);
   }
 
   async reload(): Promise<void> {

@@ -82,3 +82,17 @@ export function byDay<T>(
   }
   return days;
 }
+
+/** The first or the last moment of a day picked in a date box, in the
+ *  person's own zone. A date input gives `YYYY-MM-DD`, which
+ *  `new Date()` reads as midnight UTC: hours off the day they chose,
+ *  and on the day before it west of UTC. So the parts are read as
+ *  local ones. Null for a box left empty. */
+export function localDay(value: string, end: boolean): Date | null {
+  const parts = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || ''));
+  if (!parts) return null;
+  const [year, month, day] = [Number(parts[1]), Number(parts[2]), Number(parts[3])];
+  return end
+    ? new Date(year, month - 1, day, 23, 59, 59, 999)
+    : new Date(year, month - 1, day, 0, 0, 0, 0);
+}

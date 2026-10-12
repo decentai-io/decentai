@@ -1,3 +1,4 @@
+import { localDay } from 'src/app/components/ui/dates';
 import { AuditComponent } from './audit.component';
 import { groupAudit } from './audit-groups';
 
@@ -27,8 +28,8 @@ describe('AuditComponent', () => {
   it('reads a picked day as that day where the person is', () => {
     // A date input gives YYYY-MM-DD. Read as UTC it starts hours into
     // the day east of UTC and ends on the day before it west of UTC.
-    const start = AuditComponent.localDay('2026-10-02', false)!;
-    const end = AuditComponent.localDay('2026-10-02', true)!;
+    const start = localDay('2026-10-02', false)!;
+    const end = localDay('2026-10-02', true)!;
 
     expect([start.getFullYear(), start.getMonth(), start.getDate()]).toEqual([2026, 9, 2]);
     expect([start.getHours(), start.getMinutes(), start.getSeconds()]).toEqual([0, 0, 0]);
@@ -37,8 +38,8 @@ describe('AuditComponent', () => {
   });
 
   it('reads nothing from a box left empty', () => {
-    expect(AuditComponent.localDay('', false)).toBeNull();
-    expect(AuditComponent.localDay('yesterday', true)).toBeNull();
+    expect(localDay('', false)).toBeNull();
+    expect(localDay('yesterday', true)).toBeNull();
   });
 
   it('sends the window as the whole of the days chosen', async () => {

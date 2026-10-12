@@ -1,25 +1,12 @@
 /* Audit. The page frame, the list and the rows are the shared ones;
-   here are the two date boxes in the filter row, who did a thing, the
-   way to its chat, and what a row opens to. */
+   here are the filter row, who did a thing, the way to its chat, and
+   what a row opens to. */
 .audit-filters {
   display: flex;
   flex: 1;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px 12px;
-}
-
-.audit-date {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--ink-2);
-  font-size: var(--t-sm);
-  line-height: var(--lh-sm);
-}
-
-.audit-date .input {
-  width: 140px;
 }
 
 /* The search gives way first, so the filters stay on one line. */
@@ -66,17 +53,7 @@
 }
 
 @media (max-width: 700px) {
-  .audit-date {
-    flex: 1 1 140px;
-  }
-
-  .audit-date .input {
-    flex: 1;
-    width: auto;
-    min-width: 0;
-  }
-
-  /* No room to line the ends up: who did it is in the details, and
+/* No room to line the ends up: who did it is in the details, and
      only a row with a chat keeps the way to it. */
   .audit-who,
   .audit-chat:empty {

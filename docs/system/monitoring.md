@@ -105,7 +105,7 @@ person through three actions of its own
 | Action | Answers |
 |---|---|
 | `Agents:Monitor:Usage` | what the agents are given, how much the agents' container holds, and what each of this organization's running agents uses; where the deployment has one organization, what each part of the platform holds too |
-| `Agents:Monitor:Events` | what happened, by kind and by agent, a page at a time |
+| `Agents:Monitor:Events` | what happened, by kind and by agent, a page at a time; `since` and `until`, in seconds, keep it to the days asked for |
 | `Agents:Monitor:Files` | what one of this organization's agents keeps |
 
 - **Each is a grant of its own.** No member holds one by default.
