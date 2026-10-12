@@ -221,6 +221,64 @@ class TestRunAgain:
                                 "compose --env-file deploy.env up -d --build"]
         assert handed(link)["email"] == "me@decentai.local"
 
+    @staticmethod
+    def without(setup, prefix):
+        """The file as an older platform wrote it: the lines naming
+        ``prefix`` gone."""
+        kept = setup.settings.path.read_text(encoding="utf-8")
+        setup.settings.path.write_text(
+            "\n".join(line for line in kept.splitlines()
+                      if not line.startswith(prefix)) + "\n",
+            encoding="utf-8")
+
+    def test_a_key_the_platform_gained_is_made_and_added(self, setup, docker):
+        """A deploy.env from before the runtime had a key of its own:
+        the run makes that pair and adds it, and the keys the file
+        held are the keys it holds."""
+        setup.run()
+        before = setup.settings.values()
+        self.without(setup, "AI_RUNTIME_SERVICE_")
+        docker.asked.clear()
+        setup.run()
+        said = setup.settings.values()
+        assert said["AI_RUNTIME_SERVICE_PRIVATE_KEY"] == PRIVATE + "-of-the-runtime"
+        assert said["AI_RUNTIME_SERVICE_PUBLIC_KEY"] == PUBLIC + "-of-the-runtime"
+        kept = {name: value for name, value in before.items()
+                if not name.startswith("AI_RUNTIME_SERVICE_")}
+        assert {name: value for name, value in said.items()
+                if not name.startswith("AI_RUNTIME_SERVICE_")} == kept
+        assert docker.asked == [
+            "compose version",
+            "info --format {{.ServerVersion}}",
+            "build -q -f backend/Dockerfile .",
+            "run --rm sha256:the-backend-image python "
+            "/opt/decentai/bootstrap/generate_service_keys.py",
+            "compose --env-file deploy.env up -d --build",
+        ]
+        assert any("gained AI_RUNTIME_SERVICE_PRIVATE_KEY" in line
+                   for line in setup.said)
+
+    def test_a_setting_the_platform_gained_is_added_as_the_template_says(
+            self, setup, docker):
+        setup.run()
+        self.without(setup, "JWT_COOKIE_SAMESITE=")
+        docker.asked.clear()
+        setup.run()
+        text = setup.settings.path.read_text(encoding="utf-8")
+        assert setup.settings.values()["JWT_COOKIE_SAMESITE"] == "lax"
+        assert text.count("JWT_COOKIE_SAMESITE=") == 1
+        assert "# Added by bootstrap/setup.py on " in text
+        # No key was lacking, so no image is built and no generator run.
+        assert docker.asked == ["compose version",
+                                "info --format {{.ServerVersion}}",
+                                "compose --env-file deploy.env up -d --build"]
+
+    def test_a_file_that_lacks_nothing_is_not_written(self, setup):
+        setup.run()
+        before = setup.settings.path.stat().st_mtime_ns
+        setup.run()
+        assert setup.settings.path.stat().st_mtime_ns == before
+
     def test_the_port_is_the_files_to_say_by_then(self, setup):
         setup.run()
         with pytest.raises(module.SetupError, match="says the port"):

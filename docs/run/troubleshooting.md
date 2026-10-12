@@ -158,7 +158,13 @@ and updating. Where to look is at the end.
 ## Updating
 
 - **Pull, then `python bootstrap/setup.py`.** It builds what changed
-  and starts it; your data and `deploy.env` are kept.
+  and starts it; your data and `deploy.env` are kept, and a setting the
+  platform gained since the file was written is added to it first, and
+  said.
+- **Compose says *required variable … is missing a value*.**
+  `deploy.env` predates that setting. On your own computer
+  `python bootstrap/setup.py` adds it; on a server, set it by hand as
+  `deploy.env.example` says ([operating](operating.md#updating)).
 - **An agent says *Preparing* after an update.** A version that
   changes the interpreter agents run on leaves their environments
   built for the old one: each is built again the first time it is

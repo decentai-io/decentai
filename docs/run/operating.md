@@ -18,11 +18,22 @@ docker compose --env-file deploy.env logs -f backend
 
 After pulling newer code, `python bootstrap/setup.py` builds and starts
 it: the seeder runs first and brings the database's schema up to date.
+A setting the platform gained since `deploy.env` was written is added
+to the file before anything starts — a key, made by the platform's
+generator; anything else, as `deploy.env.example` says it — and the
+script says which. Nothing the file already says is changed.
 
 On a server, the same in steps, so that the old code serves until the
 new is ready:
 
-1. Pull the new code.
+1. Pull the new code, and compare `deploy.env` with
+   `deploy.env.example`: a name the template has and your file lacks is
+   set by hand, or Compose refuses to start saying *required variable …
+   is missing a value*. A key comes from
+   `python bootstrap/generate_service_keys.py` — take only the pair you
+   lack and keep the one you have, since a database is readable with the
+   keys it was written with and no others; anything else, as the
+   template says it.
 2. **Seed first.** `docker compose --env-file deploy.env run --rm --build init`
    applies the schema and grants any new baseline actions while the old
    code still serves. `--build` is what makes it the new seeder: without

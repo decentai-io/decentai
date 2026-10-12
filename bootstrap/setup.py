@@ -24,9 +24,12 @@ only (docker-compose.yml), so nobody else reaches the page at all.
 
 Run again, it starts what is there and prints the address: the keys
 are made once, because a database is readable with the keys it was
-written with and no others. A `deploy.env` written by hand for a
-server is left alone (docs/run/deploying.md says how that one is
-started).
+written with and no others. What the platform gained since the file
+was written — a setting `deploy.env.example` names and the file does
+not — is added to the file first: a key, made now by the generator;
+anything else, as the template says it. Nothing the file says is
+changed. A `deploy.env` written by hand for a server is left alone
+(docs/run/deploying.md says how that one is started, and updated).
 """
 
 from __future__ import annotations
@@ -109,8 +112,22 @@ class Settings:
 
     def values(self) -> Dict[str, str]:
         """What the file says, name by name."""
+        return self._read(self.path)
+
+    def template(self) -> Dict[str, str]:
+        """What the template says, name by name, in its order."""
+        return self._read(self.folder / self.TEMPLATE)
+
+    def missing(self) -> List[str]:
+        """The template's settings the file does not name: what the
+        platform gained since the file was written."""
+        said = self.values()
+        return [name for name in self.template() if name not in said]
+
+    @staticmethod
+    def _read(path: Path) -> Dict[str, str]:
         found: Dict[str, str] = {}
-        for line in self.path.read_text(encoding="utf-8").splitlines():
+        for line in path.read_text(encoding="utf-8").splitlines():
             name, mark, value = line.partition("=")
             if mark and name.strip() and not name.lstrip().startswith("#"):
                 found[name.strip()] = value.strip()
@@ -170,8 +187,32 @@ class Settings:
             raise SetupError(
                 f"{self.TEMPLATE} names no {', '.join(sorted(left))}: it is "
                 f"not the template this script was written for.")
+        self._put("\n".join(lines) + "\n")
+
+    def add(self, added: Dict[str, str]) -> None:
+        """``added`` at the end of the file, under a line saying when
+        and why. Nothing the file already says is touched: that is what
+        keeps the keys made once."""
+        said = self.values()
+        for name, value in added.items():
+            if name in said:
+                raise SetupError(f"{self.FILE} already says {name}.")
+            if "\n" in value or "\r" in value:
+                raise SetupError(f"{name} does not fit on one line.")
+        text = self.path.read_text(encoding="utf-8")
+        lines = [
+            "",
+            f"# Added by bootstrap/setup.py on {time.strftime('%Y-%m-%d')}: what "
+            "the platform gained",
+            f"# since this file was written. {self.TEMPLATE} explains each.",
+            *(f"{name}={value}" for name, value in added.items()),
+        ]
+        self._put(text.rstrip("\n") + "\n" + "\n".join(lines) + "\n")
+
+    def _put(self, text: str) -> None:
+        """The whole file, in one move: nobody reads it half written."""
         staging = self.folder / f".{self.FILE}.incoming"
-        staging.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
+        staging.write_text(text, encoding="utf-8", newline="\n")
         try:
             os.chmod(staging, 0o600)
         except OSError:
@@ -217,6 +258,7 @@ class Setup:
                     f"change PORT, PUBLIC_APP_URL and CORS_ALLOW_ORIGINS "
                     f"there together.")
             self._must_be_local()
+            self._complete()
         else:
             self.say("Building the backend, to make this install's keys...")
             self.settings.write(self.settings.local(
@@ -238,8 +280,8 @@ class Setup:
         nowhere, as the sign-in page reads it."""
         if not self.settings.written:
             raise SetupError(
-                f"Nothing is set up here yet: `python bootstrap/setup.py` "
-                f"does it.")
+                "Nothing is set up here yet: `python bootstrap/setup.py` "
+                "does it.")
         self._must_be_local()
         said = self.settings.values()
         handed = json.dumps({"email": said.get("ADMIN_EMAIL", ""),
@@ -254,10 +296,31 @@ class Setup:
     def _address(self) -> str:
         return self.settings.values().get("PUBLIC_APP_URL", "").rstrip("/")
 
-    def _keys(self) -> Dict[str, str]:
+    def _complete(self) -> None:
+        """What the template gained since the file was written, added
+        to it. A key is made now, by the generator that makes it — and
+        only the key the file lacks is taken from what it prints: the
+        keys the file holds are kept, as they are made once. Any other
+        setting is added as the template says it."""
+        missing = self.settings.missing()
+        if not missing:
+            return
+        generators = {script for script, names in self.KEYS.items()
+                      if set(names) & set(missing)}
+        if generators:
+            self.say("Building the backend, to make the keys this install lacks...")
+        made = self._keys(generators) if generators else {}
+        template = self.settings.template()
+        self.settings.add({name: made.get(name, template[name]) for name in missing})
+        self.say(f"{Settings.FILE} gained {', '.join(missing)}: what the "
+                 f"platform has since the file was written. Nothing else in "
+                 f"it changed.")
+
+    def _keys(self, scripts: Optional[set] = None) -> Dict[str, str]:
         """The keys, made by the platform's own generators in the
         backend's image: this computer needs nothing installed for
-        them, and the image is the one the stack is about to run."""
+        them, and the image is the one the stack is about to run.
+        ``scripts`` names the generators to run; all of them, unsaid."""
         code, said = self.engine.ask(
             ["build", "-q", "-f", "backend/Dockerfile", "."])
         image = said.strip().splitlines()[-1].strip() if said.strip() else ""
@@ -266,6 +329,8 @@ class Setup:
                 "The backend's image could not be built:\n" + said.strip()[-800:])
         keys: Dict[str, str] = {}
         for script, names in self.KEYS.items():
+            if scripts is not None and script not in scripts:
+                continue
             code, said = self.engine.ask(
                 ["run", "--rm", image, "python", f"{self.GENERATORS}/{script}"])
             for name in names:
