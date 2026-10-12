@@ -1,5 +1,4 @@
-<!-- A tab of the Settings page: the page owns the header. -->
-<div class="data-page">
+<app-page title="Audit" sentence="A permanent record of changes, access, approvals and agent activity." [wide]="true">
   <nav class="settings-tabs" role="tablist" aria-label="Audit views" *ngIf="canSeeOrg">
     <button class="settings-tab" type="button" role="tab"
             [class.on]="tab === 'mine'" [attr.aria-selected]="tab === 'mine'"
@@ -85,4 +84,4 @@
       </button>
     </div>
   </section>
-</div>
+</app-page>

@@ -396,10 +396,16 @@ export class MainComponent implements OnInit, OnDestroy {
     }
   }
 
+  /** The pages that show their own title (the page frame,
+   *  components/ui/page.component.ts). The bar above them would say it
+   *  twice; it goes for good when every page has the frame. */
+  private readonly framedPages = /^\/(settings|monitoring|audit)(\/|$|\?)/;
+
   /** A chat on a phone has its own header with the way back: the
    *  breadcrumb above it would be a third bar saying the same thing. */
   get pageBarHidden(): boolean {
-    return this.isMobile && /\/ai\/chats\/[^/?#]+/.test(this.router.url);
+    return this.framedPages.test(this.router.url)
+      || (this.isMobile && /\/ai\/chats\/[^/?#]+/.test(this.router.url));
   }
 
   private applyViewport(isMobile: boolean): void {

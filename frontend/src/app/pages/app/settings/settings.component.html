@@ -1,125 +1,17 @@
-<div class="data-page">
-  <header class="data-header">
-    <div class="data-heading">
-      <h1>Settings</h1>
-      <p *ngIf="tab === 'llm'">
-        Where the models come from. Keys are write-only — set them here,
-        nobody reads them back.
-      </p>
-      <p *ngIf="tab === 'chat'">
-        How your chats behave: what a new chat starts with, and how the
-        assistant finds the right agent when many are installed.
-      </p>
-      <p *ngIf="tab === 'memory'">
-        What the assistant remembers about you. Each of these was saved
-        during a conversation, which said so at the time, or written here
-        by you — nothing is collected quietly. Yours to correct and delete.
-      </p>
-      <p *ngIf="tab === 'keys'">
-        Your API keys: a script acting as you, with your permissions and
-        no more. Each is shown once when made; revoke it here when it is
-        done.
-      </p>
-      <p *ngIf="tab === 'apps'">
-        The apps this organization registered with providers — Google,
-        Microsoft, Slack — so members connect their accounts with a click
-        instead of pasting credentials. One per provider; the secret is
-        write-only.
-      </p>
-      <p *ngIf="tab === 'safety'">
-        What agents may do without asking you: the sites none of them may
-        open, how often a script or a program is shown to you before it
-        runs, and the packages a program may install.
-      </p>
-      <p *ngIf="tab === 'monitoring'">
-        What agents use now and what was seen of them: when each started
-        and ended, its log, the processes it started, and every connection
-        it made or was refused. Nothing a connection carried is read.
-      </p>
-      <p *ngIf="tab === 'audit'">
-        A permanent record of platform changes, access, approvals, and agent activity.
-      </p>
-    </div>
-  </header>
+<!-- A page of Settings, inside the shell, which shows its title. One
+     component still holds five of the pages; `section` is the one open. -->
+<div class="data-alert error" *ngIf="error">{{ error }}</div>
+<div class="data-alert ok" *ngIf="notice">{{ notice }}</div>
 
-  <!-- One tab per section, each shown to whoever may read it. -->
-  <nav class="settings-tabs" role="tablist" aria-label="Settings sections">
-    <button class="settings-tab" type="button" role="tab" *ngIf="canSeeLlm"
-            [class.on]="tab === 'llm'" [attr.aria-selected]="tab === 'llm'"
-            (click)="selectTab('llm')">
-      <lucide-icon name="brain-circuit" [size]="15"></lucide-icon>
-      Model providers
-      <span class="tab-count" *ngIf="!loading">{{ connections.length }}</span>
-    </button>
-    <button class="settings-tab" type="button" role="tab" *ngIf="canSeeChat"
-            [class.on]="tab === 'chat'" [attr.aria-selected]="tab === 'chat'"
-            (click)="selectTab('chat')">
-      <lucide-icon name="gauge" [size]="15"></lucide-icon>
-      Chat configuration
-    </button>
-    <button class="settings-tab" type="button" role="tab" *ngIf="canSeeMemory"
-            [class.on]="tab === 'memory'" [attr.aria-selected]="tab === 'memory'"
-            (click)="selectTab('memory')">
-      <lucide-icon name="lightbulb" [size]="15"></lucide-icon>
-      Memory
-    </button>
-    <button class="settings-tab" type="button" role="tab" *ngIf="canSeeKeys"
-            [class.on]="tab === 'keys'" [attr.aria-selected]="tab === 'keys'"
-            (click)="selectTab('keys')">
-      <lucide-icon name="key-round" [size]="15"></lucide-icon>
-      API keys
-    </button>
-    <button class="settings-tab" type="button" role="tab" *ngIf="canSeeApps"
-            [class.on]="tab === 'apps'" [attr.aria-selected]="tab === 'apps'"
-            (click)="selectTab('apps')">
-      <lucide-icon name="globe" [size]="15"></lucide-icon>
-      Connected apps
-    </button>
-    <button class="settings-tab" type="button" role="tab" *ngIf="canSeeSafety"
-            [class.on]="tab === 'safety'" [attr.aria-selected]="tab === 'safety'"
-            (click)="selectTab('safety')">
-      <lucide-icon name="shield-check" [size]="15"></lucide-icon>
-      Safety
-    </button>
-    <button class="settings-tab" type="button" role="tab" *ngIf="canSeeMonitoring"
-            [class.on]="tab === 'monitoring'" [attr.aria-selected]="tab === 'monitoring'"
-            (click)="selectTab('monitoring')">
-      <lucide-icon name="activity" [size]="15"></lucide-icon>
-      Monitoring
-    </button>
-    <button class="settings-tab" type="button" role="tab" *ngIf="canSeeAudit"
-            [class.on]="tab === 'audit'" [attr.aria-selected]="tab === 'audit'"
-            (click)="selectTab('audit')">
-      <lucide-icon name="scroll-text" [size]="15"></lucide-icon>
-      Audit
-    </button>
-  </nav>
+<div class="data-loading" *ngIf="loading">
+  <span class="ui-spinner" role="status" aria-label="Loading"></span>
+  <span>Loading…</span>
+</div>
 
-  <div class="data-alert error" *ngIf="error">{{ error }}</div>
-  <div class="data-alert ok" *ngIf="notice">{{ notice }}</div>
-
-  <div class="data-loading" *ngIf="loading && tab === 'llm'">
-    <span class="ui-spinner" role="status" aria-label="Loading"></span>
-    <span>Loading providers…</span>
-  </div>
-
-  <app-memory *ngIf="tab === 'memory'"></app-memory>
-  <app-api-keys *ngIf="tab === 'keys'"></app-api-keys>
-  <app-connected-apps *ngIf="tab === 'apps'"></app-connected-apps>
-  <app-safety *ngIf="tab === 'safety'"></app-safety>
-  <app-monitoring *ngIf="tab === 'monitoring'"></app-monitoring>
-  <app-audit *ngIf="tab === 'audit'" [initialView]="auditView"></app-audit>
-
-  <ng-container *ngIf="!loading && tab === 'chat'">
+  <ng-container *ngIf="!loading && section !== 'providers'">
     <!-- What a new chat of this person starts with. Each chat may still
          choose otherwise from its own header. -->
-    <section class="routing-section">
-      <header class="llm-section-header">
-        <div>
-          <h2>Your chat defaults</h2>
-          <p>What a new chat starts with. Any chat can still change these from its own menu.</p>
-        </div>
-      </header>
+    <section class="routing-section" *ngIf="section === 'chat'">
       <div class="routing-form">
         <label class="field full" *ngIf="canSeeLlm">
           <span class="field-label">Model</span>
@@ -165,13 +57,7 @@
       </div>
     </section>
 
-    <section class="routing-section" *ngIf="canSeeNotifications && notificationSettings as ns">
-      <header class="llm-section-header">
-        <div>
-          <h2>Notifications</h2>
-          <p>A chat keeps working after you close it. When it needs you — a card to decide, a question, an answer — you are told here, on the devices you allow, and by email when none can be reached.</p>
-        </div>
-      </header>
+    <section class="routing-section" *ngIf="section === 'notifications' && notificationSettings as ns">
       <div class="routing-form">
         <div class="field full">
           <span class="field-label">This device</span>
@@ -203,13 +89,7 @@
       </div>
     </section>
 
-    <section class="routing-section" *ngIf="canSeeSpeech">
-      <header class="llm-section-header">
-        <div>
-          <h2>Speech</h2>
-          <p>A message spoken into the composer's microphone is written down before it is sent, and a reply can be said aloud instead of read. Neither is stored: a recording is transcribed and dropped, and a reply's audio is played and gone.</p>
-        </div>
-      </header>
+    <section class="routing-section" *ngIf="section === 'speech'">
       <div class="routing-form">
         <label class="field full">
           <span class="field-label">Speech to text</span>
@@ -270,13 +150,7 @@
       </div>
     </section>
 
-    <section class="routing-section" *ngIf="canSeeRouting && routingDraft as draft">
-      <header class="llm-section-header">
-        <div>
-          <h2>Agent routing</h2>
-          <p>How a chat finds the right agent when many are installed: below the threshold every agent is listed; above it the closest by meaning, in any language.</p>
-        </div>
-      </header>
+    <section class="routing-section" *ngIf="section === 'routing' && routingDraft as draft">
       <div class="routing-form">
         <label class="field full">
           <span class="field-label">Embedding model</span>
@@ -324,8 +198,7 @@
 
   </ng-container>
 
-  <app-model-providers *ngIf="!loading && tab === 'llm'"
+  <app-model-providers *ngIf="!loading && section === 'providers'"
                        [connections]="managed" [providers]="providers"
                        [profile]="profile" [peers]="peers" (changed)="reload()">
   </app-model-providers>
-</div>

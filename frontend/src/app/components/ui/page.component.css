@@ -1,0 +1,49 @@
+/* The page frame: a column 720px wide at most (1040px when wide), the
+   title row, then the page. */
+:host {
+  display: block;
+  max-width: 720px;
+  padding: 8px 0 24px;
+}
+
+:host(.is-wide) {
+  max-width: 1040px;
+}
+
+.page-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px 16px;
+  margin-bottom: 24px;
+}
+
+.page-words {
+  min-width: 0;
+}
+
+.page-title {
+  color: var(--ink);
+  font-size: var(--t-lg);
+  font-weight: 600;
+  line-height: var(--lh-lg);
+}
+
+.page-sentence {
+  margin-top: 4px;
+  color: var(--ink-2);
+  font-size: var(--t-base);
+  line-height: var(--lh-base);
+}
+
+.page-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+}
+
+.page-actions:empty {
+  display: none;
+}

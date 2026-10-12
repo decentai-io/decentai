@@ -23,9 +23,14 @@ export class NavigatorService {
     tertiary: '',
   };
 
-  /** Top-level segments we recognise as valid landing destinations. */
+  /** Top-level segments we recognise as valid landing destinations:
+   *  each section's, and each page's own (Monitoring and Audit sit in
+   *  the Organization section and live at /monitoring and /audit). */
   private readonly knownPrimaries = new Set(
-    [...mainRoutes, ...adminRoutes].map((route) => route.url),
+    [...mainRoutes, ...adminRoutes].flatMap((section) => [
+      section.url,
+      ...(section.children ?? []).map((page) => page.url.split('/')[0]),
+    ]),
   );
 
   /** The address the person arrived at, kept until the app opens. The

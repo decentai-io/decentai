@@ -1,5 +1,4 @@
-<!-- A tab of the Settings page: the page owns the header. -->
-<div class="data-page">
+<app-page title="Monitoring" sentence="What agents use now, and what was seen of them." [wide]="true">
   <nav class="settings-tabs" role="tablist" aria-label="Monitoring views">
     <button class="settings-tab" type="button" role="tab"
             [class.on]="view === 'agents'" [attr.aria-selected]="view === 'agents'"
@@ -209,4 +208,4 @@
       </button>
     </div>
   </section>
-</div>
+</app-page>

@@ -51,16 +51,15 @@ describe('SettingsComponent', () => {
       // Notifications and push: not asked for here.
       { get: async () => null } as any,
       { isEnabled: false } as any,
-      // The route names the tab; the router is only navigated.
-      { snapshot: { data: {} } } as any,
-      { navigate: async () => true } as any,
+      // The route names the page that is open.
+      { snapshot: { routeConfig: { path: 'providers' } } } as any,
       // The voice: whether replies are said is not asked for here.
       { available: false, automatic: false, refresh: async () => false } as any,
     );
     return component;
   }
 
-  it('reads the connections and reads them again when the providers tab changed one', async () => {
+  it('reads the connections and reads them again when the providers page changed one', async () => {
     const connections = [connection('Anthropic')];
     const component = create(connections);
     await component.ngOnInit();
@@ -160,5 +159,21 @@ describe('SettingsComponent', () => {
     expect(calls['routing']).toEqual(jasmine.objectContaining({
       embedding_connection_id: 'llm_OpenAI', embedding_model: 'text-embedding-3-large',
       threshold: 15 }));
+  });
+});
+
+describe('SettingsComponent, leaving', () => {
+  it('names the open page while it has unsaved changes, and nothing otherwise', () => {
+    const component = Object.create(SettingsComponent.prototype) as SettingsComponent;
+    Object.assign(component, {
+      section: 'chat',
+      chatDefaults: { trust_level: 2 },
+      chatDefaultsSaved: JSON.stringify({ trust_level: 1 }),
+    });
+
+    expect(component.unsavedChangesTo()).toBe('Chat defaults');
+
+    Object.assign(component, { chatDefaultsSaved: JSON.stringify({ trust_level: 2 }) });
+    expect(component.unsavedChangesTo()).toBe('');
   });
 });

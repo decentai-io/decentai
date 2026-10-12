@@ -193,14 +193,18 @@ export class SidebarComponent implements OnInit, OnDestroy {
     );
   }
 
+  /** A section is the one in use when one of its pages is. */
   isPrimaryActive(primaryRoute: string): boolean {
-    return this.currentRoute?.primary === primaryRoute;
+    const section = this.routes.find((node) => node.url === primaryRoute);
+    return (section?.children ?? []).some((page) => this.isSecondaryActive(page.url));
   }
 
+  /** A page's item is lit on the page and on everything under its
+   *  address: /settings/speech lights Settings, /audit/org lights Audit. */
   isSecondaryActive(secondaryRoute: string): boolean {
-    return (
-      this.currentRoute?.secondary === secondaryRoute ||
-      this.currentRoute?.tertiary?.startsWith(`${secondaryRoute}/`)
+    const { primary, secondary, tertiary } = this.currentRoute;
+    return [primary, secondary, tertiary].some(
+      (path) => path === secondaryRoute || path.startsWith(`${secondaryRoute}/`),
     );
   }
 

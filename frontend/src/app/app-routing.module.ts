@@ -6,7 +6,9 @@ import { AIRoutes } from './routes/app/ai.routes';
 import { DataRoutes } from './routes/app/data.routes';
 import { SecretsRoutes } from './routes/app/secrets.routes';
 import { SettingsRoutes } from './routes/app/settings.routes';
+import { AuditComponent } from './pages/app/ai/audit/audit.component';
 import { GuideComponent } from './pages/app/guide/guide.component';
+import { MonitoringComponent } from './pages/app/settings/monitoring/monitoring.component';
 import { NoAccessComponent } from './website/no-access/no-access.component';
 import { PageNotFoundComponent } from './website/page-not-found/page-not-found.component';
 import { permissionGuard } from './guards/permission.guard';
@@ -44,6 +46,31 @@ const routes: Routes = [
     children: SettingsRoutes,
   },
 
+  // The two records: what agents use and were seen doing, and the
+  // permanent trail. Audit's two views are two addresses; the view is
+  // the route's data, which the router binds to the component's input.
+  {
+    path: 'monitoring',
+    title: 'Monitoring',
+    component: MonitoringComponent,
+    canActivate: [permissionGuard],
+    data: { requiredAction: 'agents:monitor:usage' },
+  },
+  {
+    path: 'audit',
+    title: 'Audit',
+    component: AuditComponent,
+    canActivate: [permissionGuard],
+    data: { requiredAction: 'ai:audit:list', initialView: 'mine' },
+  },
+  {
+    path: 'audit/org',
+    title: 'Audit',
+    component: AuditComponent,
+    canActivate: [permissionGuard],
+    data: { requiredAction: 'ai:audit:list_all', initialView: 'org' },
+  },
+
   // The guide: how to use the platform, chapter by chapter.
   // Open to anyone signed in; a chapter is addressable.
   {
@@ -74,7 +101,9 @@ const routes: Routes = [
 ];
 
 @NgModule({
-  imports: [RouterModule.forRoot(routes, { onSameUrlNavigation: 'reload' })],
+  imports: [
+    RouterModule.forRoot(routes, { onSameUrlNavigation: 'reload', bindToComponentInputs: true }),
+  ],
   exports: [RouterModule],
   // Each route's `title` reaches the browser's tab through this.
   providers: [{ provide: TitleStrategy, useClass: PageTitleStrategy }],

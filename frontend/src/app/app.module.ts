@@ -198,6 +198,17 @@ import { ChatApprovalCardComponent } from './pages/app/ai/chat/chat-approval-car
 import { FilePickerComponent } from './pages/app/ai/chat/file-picker/file-picker.component';
 import { ChatFilePickerDialogComponent } from './pages/app/ai/chat/chat-file-picker-dialog/chat-file-picker-dialog.component';
 import { ChatScreenComponent } from './pages/app/ai/chat/chat-screen/chat-screen.component';
+import { ChoiceCardsComponent } from './components/ui/choice-cards.component';
+import { EmptyComponent } from './components/ui/empty.component';
+import { FieldComponent } from './components/ui/field.component';
+import { ListComponent } from './components/ui/list.component';
+import { PageComponent } from './components/ui/page.component';
+import { RowComponent } from './components/ui/row.component';
+import { SaveBarComponent } from './components/ui/save-bar.component';
+import { SegmentedComponent } from './components/ui/segmented.component';
+import { SelectComponent } from './components/ui/select.component';
+import { SwitchComponent } from './components/ui/switch.component';
+import { TokenListComponent } from './components/ui/token-list.component';
 
 import { LoadingComponent } from './website/loading/loading.component';
 import { LogoutComponent } from './pages/logout/logout.component';
@@ -329,6 +340,19 @@ import { ServiceWorkerModule } from '@angular/service-worker';
       sanitize: { provide: SANITIZE, useValue: SecurityContext.HTML },
     }),
     BaseChartDirective,
+
+    // The form and row system (components/ui): what pages are built from.
+    PageComponent,
+    FieldComponent,
+    SwitchComponent,
+    SegmentedComponent,
+    ChoiceCardsComponent,
+    SelectComponent,
+    TokenListComponent,
+    ListComponent,
+    RowComponent,
+    EmptyComponent,
+    SaveBarComponent,
 
     // The icon set (Lucide): only the icons named here are bundled.
     LucideAngularModule.pick({

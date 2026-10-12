@@ -25,8 +25,8 @@ type AuditTab = 'mine' | 'org';
   styleUrls: ['../../data-shared.css', '../../../admin/iam-shared.css', './audit.component.css'],
 })
 export class AuditComponent extends DataPageBase implements OnInit {
-  /** Which view the address names: the Settings page reads it from
-   *  the route and hands it down. */
+  /** Which view the address names (/audit or /audit/org): the route's
+   *  data, bound to this input by the router. */
   @Input() initialView: AuditTab = 'mine';
   loading = true;
   loadingMore = false;
@@ -74,7 +74,7 @@ export class AuditComponent extends DataPageBase implements OnInit {
    *  again with that view: nothing is read from here. */
   selectTab(tab: AuditTab): void {
     if (this.tab === tab) return;
-    this.router.navigate([tab === 'org' ? '/settings/audit/org' : '/settings/audit']);
+    this.router.navigate([tab === 'org' ? '/audit/org' : '/audit']);
   }
 
   private query(before?: any): AuditQuery {

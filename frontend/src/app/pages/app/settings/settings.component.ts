@@ -1,6 +1,6 @@
 import { Component, OnDestroy, OnInit } from '@angular/core';
 import { Subscription } from 'rxjs';
-import { ActivatedRoute, Router } from '@angular/router';
+import { ActivatedRoute } from '@angular/router';
 
 import { AuthService } from 'src/app/services/auth.service';
 import { ModelChoice } from 'src/app/components/model-select/model-select.component';
@@ -13,20 +13,18 @@ import { Profile, ProfileService } from 'src/app/services/profile.service';
 import {
   LlmConnection, LlmProvider, SettingsLlmService,
 } from 'src/app/services/settings-llm.service';
+import { HasUnsavedChanges } from 'src/app/guards/unsaved-changes.guard';
 import { DataPageBase } from '../data-page-base';
 
-type SettingsTab = 'llm' | 'chat' | 'memory' | 'keys' | 'apps' | 'safety' | 'monitoring' | 'audit';
+/** The pages of Settings this component still holds, by their path. */
+type SettingsSection = 'chat' | 'notifications' | 'providers' | 'speech' | 'routing';
 
 /**
- * Settings: what the platform itself is configured with, and what a
- * person has configured of it. Tabbed: the organization's model
- * providers, the person's chat defaults, their memory and API keys,
- * the organization's connected apps and safety, and the audit trail.
- *
- * Each tab but the chat defaults is a component of its own; this one
- * reads what several of them share — the connections and the catalog
- * of providers — and holds the chat tab: what a new chat starts with,
- * the models that write speech down and that find the right agent.
+ * Five pages of Settings in one component, shown inside the settings
+ * shell: a person's chat defaults and notifications, and the
+ * organization's model providers, speech and agent routing. The route
+ * names which (`section`). They share what this component reads: the
+ * connections and the catalog of providers.
  */
 @Component({
   selector: 'app-settings',
@@ -37,7 +35,7 @@ type SettingsTab = 'llm' | 'chat' | 'memory' | 'keys' | 'apps' | 'safety' | 'mon
     './settings.component.css',
   ],
 })
-export class SettingsComponent extends DataPageBase implements OnInit, OnDestroy {
+export class SettingsComponent extends DataPageBase implements OnInit, OnDestroy, HasUnsavedChanges {
   private subscriptions = new Subscription();
 
   ngOnDestroy(): void {
@@ -46,7 +44,8 @@ export class SettingsComponent extends DataPageBase implements OnInit, OnDestroy
   }
 
   loading = true;
-  tab: SettingsTab = 'llm';
+  /** The page that is open: its path under /settings. */
+  section: SettingsSection = 'providers';
 
   /** The connections this person can use: what the chat tab chooses
    *  among. */
@@ -78,14 +77,13 @@ export class SettingsComponent extends DataPageBase implements OnInit, OnDestroy
     private notifications: NotificationsService,
     private swPush: SwPush,
     private route: ActivatedRoute,
-    private router: Router,
     public readAloud: ReadAloudService,
   ) {
     super();
   }
 
   async ngOnInit(): Promise<void> {
-    this.tab = this.initialTab();
+    this.section = this.route.snapshot.routeConfig?.path as SettingsSection;
     this.loading = true;
     const [connections, providers, profile, peers] = await Promise.all([
       this.canSeeLlm ? this.service.list() : Promise.resolve([]),
@@ -258,7 +256,9 @@ export class SettingsComponent extends DataPageBase implements OnInit, OnDestroy
   };
   /** Where the platform's own models stand on this machine. */
   localSpeech: LocalSpeech = { reachable: false };
-  private speechSaved = '';
+  /** What is saved, to tell a change from it. Nothing is changed
+   *  before the settings are read, so it starts as the form does. */
+  private speechSaved = JSON.stringify(this.speech);
   private speechWatch: ReturnType<typeof setTimeout> | null = null;
   speechSaving = false;
 
@@ -367,7 +367,7 @@ export class SettingsComponent extends DataPageBase implements OnInit, OnDestroy
   get canSeeChat(): boolean { return this.auth.can('ai:chat:create'); }
 
   chatDefaults = { llm_secret_ref: '', llm_model: '', trust_level: 1, max_turns: 20, max_skills: 40 };
-  private chatDefaultsSaved = '';
+  private chatDefaultsSaved = JSON.stringify(this.chatDefaults);
   chatDefaultsSaving = false;
 
   /** A function runs without asking when its level is at or below the
@@ -503,49 +503,15 @@ export class SettingsComponent extends DataPageBase implements OnInit, OnDestroy
       ? this.service.list(true) : this.connections;
   }
 
-  // ── Tabs ────────────────────────────────────────────────────────────
-
   get canSeeLlm(): boolean { return this.auth.can('settings:llm:list'); }
-  get canSeeMemory(): boolean { return this.auth.can('settings:memory:list'); }
-  get canSeeKeys(): boolean { return this.auth.can('settings:apikey:list'); }
-  get canSeeApps(): boolean { return this.auth.can('settings:oauth:list'); }
-  get canSeeSafety(): boolean { return this.auth.can('settings:safety:get'); }
-  get canSeeMonitoring(): boolean { return this.auth.can('agents:monitor:usage'); }
-  get canSeeAudit(): boolean { return this.auth.can('ai:audit:list'); }
-  get auditView(): 'mine' | 'org' {
-    return this.route.snapshot.data['auditView'] === 'org' ? 'org' : 'mine';
-  }
 
-  /** The route names the tab (/settings/memory); otherwise the first
-   *  tab this person may see. */
-  private initialTab(): SettingsTab {
-    const named = this.route.snapshot.data['tab'] as SettingsTab | undefined;
-    if (named === 'chat' && this.canSeeChat) return 'chat';
-    if (named === 'memory' && this.canSeeMemory) return 'memory';
-    if (named === 'keys' && this.canSeeKeys) return 'keys';
-    if (named === 'apps' && this.canSeeApps) return 'apps';
-    if (named === 'safety' && this.canSeeSafety) return 'safety';
-    if (named === 'monitoring' && this.canSeeMonitoring) return 'monitoring';
-    if (named === 'audit' && this.canSeeAudit) return 'audit';
-    if (this.canSeeLlm) return 'llm';
-    if (this.canSeeMemory) return 'memory';
-    if (this.canSeeKeys) return 'keys';
-    if (this.canSeeApps) return 'apps';
-    return this.canSeeAudit ? 'audit' : 'llm';
-  }
+  // ── Leaving ─────────────────────────────────────────────────────────
 
-  selectTab(tab: SettingsTab): void {
-    if (this.tab === tab) return;
-    this.tab = tab;
-    this.router.navigate([
-      tab === 'chat' ? '/settings/chat'
-        : tab === 'memory' ? '/settings/memory'
-        : tab === 'keys' ? '/settings/keys'
-        : tab === 'apps' ? '/settings/apps'
-        : tab === 'safety' ? '/settings/safety'
-        : tab === 'monitoring' ? '/settings/monitoring'
-        : tab === 'audit' ? '/settings/audit'
-        : '/settings',
-    ]);
+  /** The open page's name while it has changes not yet saved. */
+  unsavedChangesTo(): string {
+    if (this.section === 'chat' && this.chatDefaultsDirty) return 'Chat defaults';
+    if (this.section === 'speech' && this.speechDirty) return 'Speech';
+    if (this.section === 'routing' && this.routingDirty) return 'Agent routing';
+    return '';
   }
 }

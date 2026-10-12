@@ -1,0 +1,94 @@
+/* Settings: a 220px nav and the page. Under 900px the nav is the menu
+   button above the page. */
+.settings {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 32px;
+  align-items: start;
+}
+
+.settings-nav {
+  position: sticky;
+  top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-top: 8px;
+}
+
+.settings-nav-label {
+  padding: 0 12px 4px;
+  color: var(--ink-3);
+  font-size: var(--t-xs);
+  font-weight: 500;
+  line-height: var(--lh-xs);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.settings-nav-item + .settings-nav-label {
+  margin-top: 16px;
+}
+
+/* An item: 32px, and the open one on surface-2 with the accent bar. */
+.settings-nav-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: var(--r-sm);
+  color: var(--ink-2);
+  font-size: var(--t-base);
+  line-height: var(--lh-base);
+  text-decoration: none;
+  transition:
+    background var(--dur-1) var(--ease),
+    color var(--dur-1) var(--ease);
+}
+
+.settings-nav-item:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.settings-nav-item.is-current {
+  background: var(--surface-2);
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.settings-nav-item.is-current::before {
+  content: '';
+  position: absolute;
+  top: 6px;
+  bottom: 6px;
+  left: 0;
+  width: 2px;
+  border-radius: var(--r-full);
+  background: var(--accent);
+}
+
+.settings-page {
+  min-width: 0;
+}
+
+.settings-nav-button {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  .settings {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .settings-nav {
+    display: none;
+  }
+
+  .settings-nav-button {
+    display: inline-flex;
+    margin-top: 8px;
+  }
+}

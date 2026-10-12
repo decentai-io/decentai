@@ -82,6 +82,12 @@ export class SafetyComponent extends DataPageBase implements OnInit {
     return JSON.stringify(this.saved) !== JSON.stringify(this.draft);
   }
 
+  /** The page's name while it has changes not yet saved, for the
+   *  guard that asks before leaving (guards/unsaved-changes.guard.ts). */
+  unsavedChangesTo(): string {
+    return this.dirty ? 'Safety' : '';
+  }
+
   /** Whether anything is looser than the platform's own start. */
   get loosened(): boolean {
     return !!this.draft && (this.draft.scripts !== 'always' || this.draft.programs !== 'always');

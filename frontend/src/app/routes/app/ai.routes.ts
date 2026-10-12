@@ -42,6 +42,6 @@ export const AIRoutes: Routes = [
   { path: 'activity', redirectTo: '/ai/schedules', pathMatch: 'full' },
   { path: 'activity/:tab', redirectTo: '/ai/schedules' },
   { path: 'tasks', redirectTo: '/ai/schedules', pathMatch: 'full' },
-  { path: 'audit', redirectTo: '/settings/audit', pathMatch: 'full' },
-  { path: 'audit/org', redirectTo: '/settings/audit/org', pathMatch: 'full' },
+  { path: 'audit', redirectTo: '/audit', pathMatch: 'full' },
+  { path: 'audit/org', redirectTo: '/audit/org', pathMatch: 'full' },
 ];
