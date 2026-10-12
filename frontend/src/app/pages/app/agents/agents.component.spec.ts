@@ -261,18 +261,15 @@ describe('AgentsComponent', () => {
   // ── The open agent ──────────────────────────────────────────────────
 
   it('shows the open agent as it reads after an update', async () => {
+    // The update itself is taken on the review page; what this page
+    // owes is to show the open agent from the next read of the rows.
     let rows = [offer('jira', { status: 'update_available', loaded_version: '1.1.0' })];
-    const component = createComponent([], {
-      available: async () => rows,
-      install: async () => {
-        rows = [offer('jira', { installed_version: '1.1.0', loaded_version: '1.1.0' })];
-        return { data: {} };
-      },
-    });
+    const component = createComponent([], { available: async () => rows });
     await component.ngOnInit();
     await component.openDetail(component.agents[0]);
 
-    await component.update(component.agents[0]);
+    rows = [offer('jira', { installed_version: '1.1.0', loaded_version: '1.1.0' })];
+    await component.onCredentialsChanged();
 
     expect(component.openAgent?.status).toBe('installed');
     expect(component.openAgent?.installed_version).toBe('1.1.0');
