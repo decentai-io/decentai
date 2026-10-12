@@ -161,26 +161,42 @@ export function networkNote(network: AgentNetwork): string {
     : 'These are the only hosts it declared.';
 }
 
-/** What this install does NOT hold an agent to, one sentence a part —
- *  empty when it holds it to everything, or when no runtime has said.
- *  The platform confines an agent three ways; where one of them is
- *  missing, whoever approved the agent is owed the fact. */
-export function notEnforced(agent: AgentOffer): string[] {
+/** One of the three ways the platform confines an agent where it
+ *  runs, and whether this install does. */
+export interface Confinement {
+  held: boolean;
+  /** Said when it is held. */
+  words: string;
+  /** Said when it is not: whoever approved the agent is owed the fact. */
+  missing: string;
+}
+
+/** What this install holds an agent to, a line a part: a user of its
+ *  own, its own files, the hosts it declared. Empty when no runtime
+ *  has said. Files cannot be fenced without a user of its own. */
+export function confinementOf(agent: AgentOffer): Confinement[] {
   const confined = agent.prepared?.confined;
   if (!confined) return [];
-  const lines: string[] = [];
-  if (!confined.user) {
-    lines.push('It runs as the same user as the platform here: nothing separates '
-      + 'it from the platform, or from other agents.');
-  } else if (!confined.files) {
-    lines.push('Its files are not fenced here: it can read what any program on '
-      + 'the same machine can.');
-  }
-  if (!confined.network) {
-    lines.push('Nothing holds it to the hosts it declared here: it can connect '
-      + 'anywhere the runtime can.');
-  }
-  return lines;
+  return [
+    {
+      held: !!confined.user,
+      words: 'It runs as a user of its own.',
+      missing: 'It runs as the same user as the platform here: nothing separates it '
+        + 'from the platform, or from other agents.',
+    },
+    {
+      held: !!confined.user && !!confined.files,
+      words: 'It opens its own files and the system\'s, and nothing else.',
+      missing: 'Its files are not fenced here: it can read what any program on the '
+        + 'same machine can.',
+    },
+    {
+      held: !!confined.network,
+      words: 'It connects only through the platform, which holds it to the hosts it declared.',
+      missing: 'Nothing holds it to the hosts it declared here: it can connect '
+        + 'anywhere the runtime can.',
+    },
+  ];
 }
 
 /** The line of a card that a person compares agents by: how many

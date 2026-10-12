@@ -1,36 +1,36 @@
 import {
   Component, EventEmitter, Input, OnChanges, Output, SimpleChanges,
 } from '@angular/core';
+import { Clipboard } from '@angular/cdk/clipboard';
 import { Router } from '@angular/router';
+
+import { relativeDate } from 'src/app/components/ui/dates';
+import { Choice } from 'src/app/components/ui/radio-keys';
 
 import { AgentOffer, AgentsService, SampleSummary } from 'src/app/services/agents.service';
 import { AuthService } from 'src/app/services/auth.service';
 import { Group } from 'src/app/services/group.service';
 import {
-  AgentCredential, AgentNetwork, Standing, credentialHost, levelLabel, networkNote,
-  notEnforced, standingOf, versionLabel,
+  AgentCredential, AgentNetwork, Confinement, PERMISSION_LEVELS, Standing, confinementOf,
+  credentialHost, levelLabel, networkNote, standingOf, versionLabel,
 } from './agent-shared';
 
 export type DetailTab = 'overview' | 'credentials' | 'functions' | 'access';
 
 /**
- * One agent, managed in place.
+ * One agent's page.
  *
  * Everything you do TO an agent happens here: fill its credentials, read
- * its functions, decide who may use it. Nothing sends you to another
- * page — this component is the header and the tab bar, and each tab is
- * its own component below it.
+ * its functions, decide who may use it. This component is the title row,
+ * the row of sections and the Overview; each other section is its own
+ * component below. The Overview answers, in order: what it is, what to
+ * say to it, what approving it agreed to, and then one fact a card.
  */
 @Component({
   selector: 'app-agent-detail',
   standalone: false,
   templateUrl: './agent-detail.component.html',
-  styleUrls: [
-    '../data-shared.css',
-    '../../admin/iam-shared.css',
-    './agent-shared.css',
-    './agents.component.css',
-  ],
+  styleUrls: ['./agent-shared.css', './agent-detail.component.css'],
 })
 export class AgentDetailComponent implements OnChanges {
   @Input() agent!: AgentOffer;
@@ -44,7 +44,6 @@ export class AgentDetailComponent implements OnChanges {
   @Input() canUninstall = false;
   @Input() busyId = '';
 
-  @Output() back = new EventEmitter<void>();
   @Output() update = new EventEmitter<AgentOffer>();
   @Output() uninstall = new EventEmitter<AgentOffer>();
   @Output() credentialsChanged = new EventEmitter<void>();
@@ -56,9 +55,28 @@ export class AgentDetailComponent implements OnChanges {
   @Input() tab: DetailTab = 'overview';
   @Output() tabChange = new EventEmitter<DetailTab>();
 
-  levelLabel = levelLabel;
+  /** The sections, each saying how many it holds. Built when what they
+   *  count changes, since the control draws its choices again for a
+   *  new array. */
+  tabs: Choice<DetailTab>[] = [];
+
+  private nameTabs(): void {
+    const tabs: Choice<DetailTab>[] = [{ value: 'overview', name: 'Overview' }];
+    if (this.credentials.length) {
+      tabs.push({
+        value: 'credentials',
+        name: this.missing.length ? `Credentials · ${this.missing.length} missing` : 'Credentials',
+      });
+    }
+    tabs.push({ value: 'functions', name: `Functions ${this.agent.functions.length}` });
+    if (this.showAccess) tabs.push({ value: 'access', name: 'Access' });
+    if (tabs.map((tab) => tab.name).join() !== this.tabs.map((tab) => tab.name).join()) {
+      this.tabs = tabs;
+    }
+  }
 
   ngOnChanges(changes: SimpleChanges): void {
+    this.nameTabs();
     // Only when the AGENT changes. Every input arrives here, `busyId`
     // included, and resetting on that would throw somebody off the
     // Access tab the moment they saved a grant. The same agent read
@@ -131,7 +149,19 @@ export class AgentDetailComponent implements OnChanges {
     private router: Router,
     private agents: AgentsService,
     private auth: AuthService,
+    private clipboard: Clipboard,
   ) {}
+
+  /** What the sample data is about, as one sentence. */
+  get samplesStory(): string {
+    const story = String(this.samples?.story || '').trim().replace(/\.+$/, '');
+    return story ? `${story}.` : '';
+  }
+
+  /** When this person loaded the sample data, as a list says a date. */
+  get samplesLoadedWhen(): string {
+    return relativeDate(this.samplesLoaded?.loaded_at).toLowerCase();
+  }
 
   /** Open the chats page with this prompt written in the composer, for
    *  the person to send: the shortest path from
@@ -157,21 +187,23 @@ export class AgentDetailComponent implements OnChanges {
       const name = levelLabel(fn.permission_level);
       counts.set(name, (counts.get(name) || 0) + 1);
     }
-    return [...counts.entries()].map(([name, count]) => ({ name, count }));
+    return PERMISSION_LEVELS
+      .filter((name) => counts.has(name))
+      .map((name) => ({ name, count: counts.get(name)! }));
   }
 
-  /** What the agent KEEPS. Credentials have a tab of their own. */
-  get keeps(): Array<{ kind: string; items: any[] }> {
+  /** What the agent keeps, records and files together. Credentials
+   *  have a section of their own. */
+  get kept(): Array<{ id: string; kind: string; label?: string; description?: string }> {
     const resources: any = this.agent.resources || {};
-    return ['data', 'files']
-      .map((kind) => ({ kind, items: resources[kind] || [] }))
-      .filter((group) => group.items.length);
+    return [
+      ...(resources.data || []).map((resource: any) => ({ ...resource, kind: 'records' })),
+      ...(resources.files || []).map((resource: any) => ({ ...resource, kind: 'files' })),
+    ];
   }
 
-  get resourceTotal(): number {
-    const resources: any = this.agent.resources || {};
-    return ['secrets', 'data', 'files']
-      .reduce((total, kind) => total + (resources[kind] || []).length, 0);
+  get keptCount(): number {
+    return this.kept.length;
   }
 
   /** Whether the row says where the agent connects. The plain list a
@@ -192,15 +224,10 @@ export class AgentDetailComponent implements OnChanges {
 
   readonly credentialHost = credentialHost;
 
-  /** What this install does not hold the agent to, as the runtime
-   *  that prepared it said. */
-  get notEnforced(): string[] {
-    return notEnforced(this.agent);
-  }
-
-  /** A runtime has said what it holds the agent to, and it is all of it. */
-  get fullyConfined(): boolean {
-    return !!this.agent.prepared?.confined && !this.notEnforced.length;
+  /** What this install holds the agent to, as the runtime that
+   *  prepared it said: three lines, each held or not. */
+  get confinement(): Confinement[] {
+    return confinementOf(this.agent);
   }
 
   /** Where the agent stands, in the one word the list uses too. */
@@ -221,6 +248,22 @@ export class AgentDetailComponent implements OnChanges {
     const repository = String(source.url || '')
       .replace(/\.git$/, '').split('/').slice(-2).join('/');
     return sha ? `${repository} @ ${sha}` : repository || 'a repository';
+  }
+
+  /** The repository the code came from, where it is one a browser can
+   *  open. */
+  get repository(): string {
+    const url = String(this.agent.source?.url || '').replace(/\.git$/, '');
+    return /^https:\/\//.test(url) ? url : '';
+  }
+
+  /** The whole digest, copied: the short one on the page names it, and
+   *  a comparison needs every character. */
+  copied = false;
+  copyDigest(): void {
+    this.clipboard.copy(String(this.agent.package_digest || ''));
+    this.copied = true;
+    setTimeout(() => (this.copied = false), 1500);
   }
 
   /** The code itself, short enough to read. The repository and commit say

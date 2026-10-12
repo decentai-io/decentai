@@ -23,16 +23,21 @@ export function initialsOf(name: string): string {
  *
  * `icon` is a Lucide icon's name; one the app does not carry
  * (app.module.ts registers the set) falls back to the initials.
- * `size="sm"` is the 20px mark for a row or a chip.
+ * `size="sm"` is the 20px mark for a row or a chip, `size="lg"` the
+ * 48px one beside a page's title.
  */
 @Component({
   selector: 'app-agent-mark',
   standalone: true,
   imports: [NgIf, LucideAngularModule],
   styleUrl: './agent-mark.component.css',
-  host: { 'aria-hidden': 'true', '[class.is-small]': "size === 'sm'" },
+  host: {
+    'aria-hidden': 'true',
+    '[class.is-small]': "size === 'sm'",
+    '[class.is-large]': "size === 'lg'",
+  },
   template: `
-    <lucide-icon *ngIf="shownIcon" [name]="shownIcon" [size]="size === 'sm' ? 12 : 18" [strokeWidth]="1.75"></lucide-icon>
+    <lucide-icon *ngIf="shownIcon" [name]="shownIcon" [size]="size === 'sm' ? 12 : size === 'lg' ? 24 : 18" [strokeWidth]="1.75"></lucide-icon>
     <ng-container *ngIf="!shownIcon">{{ initials }}</ng-container>
   `,
 })
@@ -41,7 +46,7 @@ export class AgentMarkComponent implements OnChanges {
   @Input({ required: true }) name = '';
   /** The manifest's icon, when it gives one. */
   @Input() icon: string | null | undefined = '';
-  @Input() size: 'sm' | 'md' = 'md';
+  @Input() size: 'sm' | 'md' | 'lg' = 'md';
 
   initials = '';
   /** The icon, when the app carries it; else ''. */

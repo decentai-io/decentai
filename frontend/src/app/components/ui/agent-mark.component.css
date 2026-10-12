@@ -1,5 +1,5 @@
 /* The agent mark: a 36px tile on surface-2 with initials or an icon;
-   20px when small. No colour of its own. */
+   20px when small, 48px when large. No colour of its own. */
 :host {
   display: inline-flex;
   flex: none;
@@ -22,6 +22,12 @@
   border-radius: var(--r-sm);
   font-size: var(--t-xs);
   letter-spacing: 0;
+}
+
+:host(.is-large) {
+  width: 48px;
+  height: 48px;
+  font-size: var(--t-md);
 }
 
 lucide-icon {

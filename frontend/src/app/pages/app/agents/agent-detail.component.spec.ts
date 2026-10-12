@@ -27,7 +27,7 @@ describe('AgentDetailComponent', () => {
 
   function create(credentials: any[] = []) {
     const component = new AgentDetailComponent(
-      {} as any, {} as any, { can: () => true } as any);
+      {} as any, {} as any, { can: () => true } as any, { copy: () => true } as any);
     component.agent = agent();
     component.credentials = credentials as any;
     return component;
@@ -104,5 +104,30 @@ describe('AgentDetailComponent', () => {
 
     expect(component.origin).toBe('org/agents @ abcdef1');
     expect(component.packageLabel).toBe('9f2c11223344');
+  });
+
+  it('names its sections with what each holds, and keeps the names while nothing changes', () => {
+    const component = create([
+      { id: 'connection', family: 'agt_1__connection', label: 'Jira', saved: 0 },
+    ]);
+    component.agent = agent({ functions: [{ name: 'a.b', permission_level: 0 }] });
+    component.ngOnChanges(changed(['agent']));
+    const first = component.tabs;
+
+    expect(first.map((tab) => tab.name))
+      .toEqual(['Overview', 'Credentials · 1 missing', 'Functions 1', 'Access']);
+    component.ngOnChanges(changed(['busyId']));
+    expect(component.tabs).toBe(first);
+  });
+
+  it('says what the install holds it to, a line a part', () => {
+    const component = create();
+    expect(component.confinement).toEqual([]);
+
+    component.agent = agent({ prepared: { state: 'ready', confined: { user: true, files: false, network: true } } });
+    expect(component.confinement.map((line) => line.held)).toEqual([true, false, true]);
+    // Files cannot be fenced where the agent has no user of its own.
+    component.agent = agent({ prepared: { state: 'ready', confined: { user: false, files: true, network: true } } });
+    expect(component.confinement.map((line) => line.held)).toEqual([false, false, true]);
   });
 });

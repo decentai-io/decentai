@@ -1,5 +1,6 @@
 /* A segmented control: a 36px track of surface-2 holding the choices;
-   the chosen one is a raised surface. */
+   the chosen one is a raised surface. Choices keep their words whole:
+   where they are wider than the room, the track scrolls sideways. */
 :host {
   display: inline-block;
   max-width: 100%;
@@ -9,6 +10,8 @@
   display: inline-flex;
   max-width: 100%;
   height: 36px;
+  overflow-x: auto;
+  scrollbar-width: none;
   padding: 3px;
   border: 1px solid var(--line);
   border-radius: var(--r-md);
@@ -16,7 +19,7 @@
 }
 
 .segment {
-  min-width: 0;
+  flex: none;
   padding: 0 12px;
   border: 0;
   border-radius: calc(var(--r-md) - 3px);
@@ -24,8 +27,6 @@
   color: var(--ink-2);
   font: 500 var(--t-base) / var(--lh-base) var(--font-sans);
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
   cursor: pointer;
   transition:
     background var(--dur-1) var(--ease),
