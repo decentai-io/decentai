@@ -66,7 +66,7 @@
       </div>
       <footer class="dialog-actions">
         <button class="btn" type="button" (click)="closeDeleteDialog()" [disabled]="!!busyRef">Cancel</button>
-        <button class="btn danger" type="button" (click)="remove(deleteTarget)" [disabled]="!!busyRef">{{ busyRef ? "Deleting…" : "Delete skill" }}</button>
+        <button class="btn danger primary" type="button" (click)="remove(deleteTarget)" [disabled]="!!busyRef">{{ busyRef ? "Deleting…" : "Delete skill" }}</button>
       </footer>
     </section>
   </div>
@@ -127,7 +127,7 @@
         <div class="field">
           <div class="skill-body-heading">
             <label class="field-label" for="skill-body">The skill itself</label>
-            <button class="btn ghost sm" type="button" *ngIf="isCreating"
+            <button class="btn sm" type="button" *ngIf="isCreating"
                     (click)="useExample()" [disabled]="saving">Use example</button>
           </div>
           <textarea

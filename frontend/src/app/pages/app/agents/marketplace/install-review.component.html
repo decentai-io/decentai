@@ -152,7 +152,7 @@
   </div>
 
   <footer class="review-actions">
-    <button class="btn ghost" type="button" (click)="close.emit()" [disabled]="busy">
+    <button class="btn" type="button" (click)="close.emit()" [disabled]="busy">
       {{ installed ? "Back" : "Cancel" }}
     </button>
     <button class="btn primary" type="button" *ngIf="!installed"

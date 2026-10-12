@@ -76,7 +76,6 @@
 .fp-selection { display:flex; align-items:center; gap:12px; color:var(--ink-2); font-size:12.5px; white-space:nowrap; }
 .fp-selection .link-btn { padding:0; border:0; background:none; color:var(--accent-ink); font:inherit; font-size:12.5px; cursor:pointer; }
 .fp-selection .link-btn:hover { text-decoration:underline; }
-.fp-selection .btn.sm { display:inline-flex; align-items:center; gap:6px; min-height:34px; padding:6px 11px; font-size:12.5px; }
 
 /* ── The list ───────────────────────────────────────────────────────── */
 .file-row { align-items:center; padding:13px 16px; }

@@ -123,7 +123,7 @@
               <span>{{ agent.processes }}</span>
               <span>{{ agent.disk == null ? "—" : bytes(agent.disk) }}</span>
               <span class="mon-actions">
-                <button class="btn ghost" type="button" *ngIf="canSeeFiles"
+                <button class="btn" type="button" *ngIf="canSeeFiles"
                         (click)="toggleFiles(agent)" [attr.aria-expanded]="filesOf === agent.agent">
                   <lucide-icon name="folder-open" [size]="14"></lucide-icon>
                   Files
@@ -171,7 +171,7 @@
         Refused or not reached only
       </label>
       <button class="btn primary" type="submit" [disabled]="loading">Apply</button>
-      <button class="btn ghost" type="button" *ngIf="filtered" (click)="clearFilters()" [disabled]="loading">Clear</button>
+      <button class="btn" type="button" *ngIf="filtered" (click)="clearFilters()" [disabled]="loading">Clear</button>
     </form>
 
     <div class="data-loading" *ngIf="loading">

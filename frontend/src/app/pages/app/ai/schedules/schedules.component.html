@@ -158,7 +158,7 @@
       </div>
       <footer class="dialog-actions">
         <button class="btn" type="button" (click)="closeDelete()" [disabled]="!!busyId">Cancel</button>
-        <button class="btn danger" type="button" (click)="remove(deleteTarget)" [disabled]="!!busyId">{{ busyId ? "Removing…" : "Delete" }}</button>
+        <button class="btn danger primary" type="button" (click)="remove(deleteTarget)" [disabled]="!!busyId">{{ busyId ? "Removing…" : "Delete" }}</button>
       </footer>
     </section>
   </div>

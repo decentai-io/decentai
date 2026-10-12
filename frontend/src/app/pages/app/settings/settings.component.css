@@ -118,11 +118,6 @@
 }
 
 .llm-actions { display: flex; gap: 7px; flex: none; }
-.btn.sm.danger { color: var(--destructive-strong); }
-.btn.sm.danger:hover:not(:disabled) {
-  color: var(--destructive-strong); background: var(--danger-soft);
-  border-color: color-mix(in srgb, var(--destructive) 30%, transparent);
-}
 
 /* ── The editor dialog ───────────────────────────────────────────────── */
 .llm-form { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 14px; }

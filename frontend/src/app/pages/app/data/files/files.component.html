@@ -198,7 +198,7 @@
                   >
                     {{ share.saving ? "Saving…" : "Save sharing" }}
                   </button>
-                  <button class="btn ghost" type="button" (click)="share.close()">
+                  <button class="btn" type="button" (click)="share.close()">
                     Cancel
                   </button>
                 </div>
@@ -297,7 +297,7 @@
           <button class="btn" type="button" (click)="closeDelete()" [disabled]="deleteBusy">
             Cancel
           </button>
-          <button class="btn danger" type="button" (click)="confirmDelete()"
+          <button class="btn danger primary" type="button" (click)="confirmDelete()"
                   [disabled]="deleteBusy">
             {{ deleteBusy ? "Deleting…" : (count === 1 ? "Delete file" : "Delete " + count + " files") }}
           </button>

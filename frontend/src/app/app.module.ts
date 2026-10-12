@@ -13,11 +13,11 @@ import { AppRoutingModule } from './app-routing.module';
 import { MatPaginatorModule } from '@angular/material/paginator';
 import { MatSortModule } from '@angular/material/sort';
 import { MatTableModule } from '@angular/material/table';
-import { MatDialogModule } from '@angular/material/dialog';
+import { MAT_DIALOG_DEFAULT_OPTIONS, MatDialogConfig, MatDialogModule } from '@angular/material/dialog';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatMenuModule } from '@angular/material/menu';
-import { MatTooltipModule } from '@angular/material/tooltip';
+import { MAT_TOOLTIP_DEFAULT_OPTIONS, MatTooltipDefaultOptions, MatTooltipModule } from '@angular/material/tooltip';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MarkdownModule, SANITIZE } from 'ngx-markdown';
@@ -477,6 +477,29 @@ import { ServiceWorkerModule } from '@angular/service-worker';
     DataStoreService,
     provideHttpClient(withInterceptorsFromDi()),
     provideCharts(withDefaultRegisterables()),
+    // How every dialog and tooltip behaves; how they look is in
+    // styles/controls.scss. A dialog takes the focus when it opens and
+    // gives it back when it closes; a tooltip waits before it shows.
+    {
+      provide: MAT_DIALOG_DEFAULT_OPTIONS,
+      useValue: {
+        ...new MatDialogConfig(),
+        width: '480px',
+        maxWidth: '96vw',
+        autoFocus: 'first-tabbable',
+        restoreFocus: true,
+        enterAnimationDuration: '180ms',
+        exitAnimationDuration: '120ms',
+      } satisfies MatDialogConfig,
+    },
+    {
+      provide: MAT_TOOLTIP_DEFAULT_OPTIONS,
+      useValue: {
+        showDelay: 300,
+        hideDelay: 0,
+        touchendHideDelay: 1500,
+      } satisfies MatTooltipDefaultOptions,
+    },
   ],
 })
 export class AppModule {}

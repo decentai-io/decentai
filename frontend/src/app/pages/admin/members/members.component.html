@@ -44,7 +44,7 @@
       </div>
       <div class="data-alert ok">
         <code class="invite-link">{{ given.password }}</code>
-        <button class="btn ghost sm" type="button" (click)="copyPassword()">
+        <button class="btn sm" type="button" (click)="copyPassword()">
           Copy
         </button>
       </div>
@@ -118,7 +118,7 @@
           shown only now:
         </span>
         <code class="invite-link">{{ inviteLink }}</code>
-        <button class="btn ghost sm" type="button" (click)="copyLink()">
+        <button class="btn sm" type="button" (click)="copyLink()">
           Copy
         </button>
       </div>
@@ -143,7 +143,7 @@
           {{ saving ? "Adding…" : "Add person" }}
         </button>
         <button
-          class="btn ghost"
+          class="btn"
           type="button"
           (click)="cancelInvite()"
           [disabled]="saving"
@@ -260,7 +260,7 @@
                 {{ saving ? "Saving…" : "Save groups" }}
               </button>
               <button
-                class="btn ghost sm"
+                class="btn sm"
                 type="button"
                 (click)="cancelEditGroups()"
                 [disabled]="saving"
@@ -366,7 +366,7 @@
         </div>
         <footer class="dialog-actions">
           <button class="btn" type="button" (click)="closeRemove()" [disabled]="isBusy(member.user_id)">Keep them</button>
-          <button class="btn danger" type="button" (click)="remove(member)" [disabled]="!leaving || isBusy(member.user_id)">
+          <button class="btn danger primary" type="button" (click)="remove(member)" [disabled]="!leaving || isBusy(member.user_id)">
             {{ isBusy(member.user_id) ? "Removing…" : "Remove and hand over" }}
           </button>
         </footer>

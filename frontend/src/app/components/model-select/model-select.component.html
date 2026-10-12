@@ -20,7 +20,7 @@
       <input class="txt" aria-label="Model id" [disabled]="disabled"
              [ngModel]="model" (ngModelChange)="typeModel($event)"
              placeholder="The provider's own id for the model" />
-      <button class="btn ghost" type="button" *ngIf="models.length"
+      <button class="btn" type="button" *ngIf="models.length"
               [disabled]="disabled" (click)="pickFromList()">
         Choose from the list
       </button>

@@ -40,7 +40,7 @@
             limited to {{ limits(grant) }}
           </span>
         </div>
-        <button class="btn ghost sm" type="button" (click)="revoke(grant)" [disabled]="!!busyId">
+        <button class="btn sm" type="button" (click)="revoke(grant)" [disabled]="!!busyId">
           {{ busyId === grant.grant_id ? "Removing…" : "Revoke" }}
         </button>
       </div>

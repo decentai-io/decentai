@@ -64,7 +64,7 @@
         <button class="btn primary" type="button" (click)="addMemory()" [disabled]="!canSubmitNew">
           {{ adding ? "Saving…" : "Remember this" }}
         </button>
-        <button class="btn ghost" type="button" (click)="closeComposer()" [disabled]="adding">Cancel</button>
+        <button class="btn" type="button" (click)="closeComposer()" [disabled]="adding">Cancel</button>
       </span>
     </div>
     <div class="memory-tools" *ngIf="memories.length">
@@ -123,7 +123,7 @@
               <span class="edit-meta">{{ editText.length }}/500</span>
               <span class="edit-actions">
                 <button class="btn primary" type="button" (click)="saveEdit(memory)" [disabled]="busyId === memory.memory_id || !editText.trim() || editText.trim() === memory.text">{{ busyId === memory.memory_id ? "Saving…" : "Save" }}</button>
-                <button class="btn ghost" type="button" (click)="cancelEdit()" [disabled]="busyId === memory.memory_id">Cancel</button>
+                <button class="btn" type="button" (click)="cancelEdit()" [disabled]="busyId === memory.memory_id">Cancel</button>
               </span>
             </span>
             <!-- Whose words these are comes first; the conversation that

@@ -85,6 +85,11 @@ body {
   text-rendering: optimizeLegibility;
 }
 
+/* A heading's line follows its own size, not the body's 20px. */
+h1, h2, h3, h4, h5, h6 {
+  line-height: 1.25;
+}
+
 /* A page has one h1, its title, and that is where the serif is used.
    Every other heading is sans. */
 h1 {
@@ -379,88 +384,4 @@ app-chat-message .ai-markdown a:hover {
 app-chat-message .ai-markdown strong {
   font-weight: 600;
   color: var(--ink);
-}
-
-/* ════════════════════════════════════════════════════════════════════
-   Material overlays re-skinned to the shadcn look.
-   Material stays as the behavioral engine (dialog service, menus,
-   tooltips); these overrides make its surfaces match the rest.
-   ════════════════════════════════════════════════════════════════════ */
-
-/* Menus */
-.mat-mdc-menu-panel {
-  border-radius: var(--radius) !important;
-  border: 1px solid var(--border);
-  background: var(--popover) !important;
-  box-shadow: var(--shadow-overlay) !important;
-  min-width: 168px !important;
-}
-
-.mat-mdc-menu-content {
-  padding: 4px !important;
-}
-
-.mat-mdc-menu-item {
-  min-height: 34px !important;
-  border-radius: var(--radius-sm);
-  font-size: 13px !important;
-  color: var(--popover-foreground) !important;
-  gap: 10px;
-}
-
-.mat-mdc-menu-item lucide-icon {
-  color: var(--muted-foreground);
-  display: inline-flex;
-  margin-right: 10px;
-}
-
-.mat-mdc-menu-item:hover:not([disabled]) {
-  background: var(--secondary) !important;
-}
-
-/* Dialogs */
-/* Material 20 clamps every dialog pane to 560px unless MatDialogConfig.maxWidth
-   is passed; our dialogs size themselves (component CSS / dialogWidth config),
-   so lift the cap and let the per-dialog widths win. */
-html {
-  --mat-dialog-container-max-width: 96vw;
-}
-
-.mat-mdc-dialog-container .mdc-dialog__surface {
-  border-radius: calc(var(--radius) + 2px) !important;
-  border: 1px solid var(--border);
-  background: var(--popover) !important;
-  color: var(--popover-foreground) !important;
-  box-shadow: var(--shadow-overlay) !important;
-}
-
-/* Tooltips */
-.mat-mdc-tooltip .mdc-tooltip__surface {
-  background: var(--foreground) !important;
-  color: var(--background) !important;
-  font-size: 11.5px !important;
-  font-family: var(--font-sans) !important;
-  border-radius: var(--radius-md) !important;
-  padding: 5px 9px !important;
-  line-height: 1.35 !important;
-}
-
-/* Select panels (the paginator's page-size list) */
-div.mat-mdc-select-panel {
-  border-radius: var(--radius) !important;
-  border: 1px solid var(--border);
-  background: var(--popover) !important;
-  box-shadow: var(--shadow-overlay) !important;
-  padding: 4px !important;
-}
-
-.mat-mdc-option {
-  min-height: 34px !important;
-  border-radius: var(--radius-sm);
-  font-size: 13px !important;
-}
-
-/* Paginator (used inside informative-table) */
-.mat-mdc-paginator {
-  font-size: 12.5px;
 }

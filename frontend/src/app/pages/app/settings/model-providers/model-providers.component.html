@@ -38,7 +38,7 @@
     and paste its key — the first becomes the default.
   </p>
   <div class="empty-actions">
-    <button class="btn ghost" type="button" *ngIf="query" (click)="query = ''">Clear the filter</button>
+    <button class="btn" type="button" *ngIf="query" (click)="query = ''">Clear the filter</button>
     <button class="btn primary" type="button" *ngIf="!query && canCreate" (click)="startCreate()">
       Add a provider
     </button>
@@ -236,7 +236,7 @@
               <span class="model-typed" *ngIf="typingModel">
                 <input class="txt" [ngModel]="draft.model" (ngModelChange)="chooseModel($event)"
                        [placeholder]="endpointIsYours ? 'As the server calls it, e.g. llama3.3' : 'The provider\'s own id for the model'" />
-                <button class="btn ghost" type="button" *ngIf="models.length" (click)="pickFromList()">
+                <button class="btn" type="button" *ngIf="models.length" (click)="pickFromList()">
                   Choose from the list
                 </button>
               </span>

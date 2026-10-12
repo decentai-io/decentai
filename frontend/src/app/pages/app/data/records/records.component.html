@@ -287,7 +287,7 @@
         <button class="btn primary" type="button" (click)="saveShare(record)" [disabled]="share.saving || !share.ready">
           {{ share.saving ? "Saving…" : "Save sharing" }}
         </button>
-        <button class="btn ghost" type="button" (click)="share.close()">Cancel</button>
+        <button class="btn" type="button" (click)="share.close()">Cancel</button>
       </div>
     </div>
   </ng-template>
@@ -462,7 +462,7 @@
         </div>
         <footer class="dialog-actions">
           <button class="btn" type="button" (click)="closeDelete()" [disabled]="deleteBusy">Cancel</button>
-          <button class="btn danger" type="button" (click)="confirmDelete()" [disabled]="deleteBusy">
+          <button class="btn danger primary" type="button" (click)="confirmDelete()" [disabled]="deleteBusy">
             {{ deleteBusy ? "Deleting…" : (count === 1 ? "Delete record" : "Delete " + count + " records") }}
           </button>
         </footer>

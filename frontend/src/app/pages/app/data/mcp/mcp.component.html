@@ -107,7 +107,7 @@
       </div>
       <footer class="dialog-actions">
         <button class="btn" type="button" (click)="closeDelete()" [disabled]="!!busy">Cancel</button>
-        <button class="btn danger" type="button" (click)="remove(deleteTarget)" [disabled]="!!busy">
+        <button class="btn danger primary" type="button" (click)="remove(deleteTarget)" [disabled]="!!busy">
           {{ busy ? "Removing…" : "Remove server" }}
         </button>
       </footer>
@@ -186,7 +186,7 @@
     <!-- ── One server, looked over ──────────────────────────────── -->
     <section class="mcp-workspace" *ngIf="open as server">
       <div class="mcp-toolbar">
-        <button class="btn ghost" type="button" (click)="close()">
+        <button class="btn" type="button" (click)="close()">
           <lucide-icon name="arrow-left" [size]="15"></lucide-icon>
           All servers
         </button>

@@ -218,7 +218,7 @@
           <button class="btn" type="button" (click)="closeUninstall()" [disabled]="uninstallBusy">
             Cancel
           </button>
-          <button class="btn danger" type="button" (click)="confirmUninstall()"
+          <button class="btn danger primary" type="button" (click)="confirmUninstall()"
                   [disabled]="uninstallBusy">
             {{ uninstallBusy ? "Uninstalling…"
                : (count === 1 ? "Uninstall" : "Uninstall " + count) }}

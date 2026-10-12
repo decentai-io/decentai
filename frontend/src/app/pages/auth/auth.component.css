@@ -126,49 +126,6 @@
   color: var(--muted-foreground);
 }
 
-/* ── Buttons ───────────────────────────────────────────────────── */
-
-.btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  padding: 0.625rem 1rem;
-  font: inherit;
-  font-size: 0.9375rem;
-  font-weight: 500;
-  border-radius: var(--radius-md);
-  border: 1px solid transparent;
-  cursor: pointer;
-  transition:
-    background-color 120ms ease,
-    border-color 120ms ease;
-}
-
-.btn:disabled {
-  opacity: 0.65;
-  cursor: default;
-}
-
-.btn--primary {
-  background: var(--primary-fill);
-  color: var(--primary-foreground);
-}
-
-.btn--primary:hover:not(:disabled) {
-  background: color-mix(in oklab, var(--primary) 88%, black);
-}
-
-.btn--ghost {
-  background: transparent;
-  color: var(--muted-foreground);
-  border-color: transparent;
-}
-
-.btn--ghost:hover:not(:disabled) {
-  color: var(--foreground);
-  background: var(--muted);
-}
 
 /* ── Organization picker ───────────────────────────────────────── */
 

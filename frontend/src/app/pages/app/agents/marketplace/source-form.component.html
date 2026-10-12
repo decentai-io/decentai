@@ -63,14 +63,14 @@
             [disabled]="busy || !draft.url.trim() || missingToken || !!shareBlocker">
       {{ busy ? "Reading…" : editing ? "Save and re-read" : "Save and read catalog" }}
     </button>
-    <button class="btn ghost" type="button" (click)="cancel.emit()" [disabled]="busy">
+    <button class="btn" type="button" (click)="cancel.emit()" [disabled]="busy">
       Cancel
     </button>
-    <button class="btn ghost" type="button" *ngIf="suggestedUrl && !editing"
+    <button class="btn" type="button" *ngIf="suggestedUrl && !editing"
             (click)="useSuggested()" [disabled]="busy">
       Use the reference catalog
     </button>
-    <button class="btn ghost guide-toggle" type="button" (click)="guideOpen = !guideOpen">
+    <button class="btn guide-toggle" type="button" (click)="guideOpen = !guideOpen">
       <lucide-icon name="info" [size]="14"></lucide-icon>
       What does the repository need?
     </button>

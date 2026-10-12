@@ -36,7 +36,7 @@
         <input type="date" class="txt" [(ngModel)]="until" name="until" aria-label="To date" />
       </label>
       <button class="btn primary" type="submit" [disabled]="loading">Apply</button>
-      <button class="btn ghost" type="button" *ngIf="filtered" (click)="clearFilters()" [disabled]="loading">Clear</button>
+      <button class="btn" type="button" *ngIf="filtered" (click)="clearFilters()" [disabled]="loading">Clear</button>
     </form>
 
     <div class="data-loading" *ngIf="loading">

@@ -225,7 +225,7 @@
               <!-- Installing is agreeing to what the agent declares,
                    so the way to install is through the page that says
                    it: approving is on that page, and nowhere else. -->
-              <button class="btn ghost sm" type="button"
+              <button class="btn sm" type="button"
                       *ngIf="entryStatus(entry) !== 'broken' && !installable(entry)"
                       [disabled]="!!busyId"
                       (click)="openReview(source, entry)">
@@ -293,14 +293,14 @@
         </div>
       </div>
       <footer class="modal-actions">
-        <button class="btn ghost" type="button" (click)="closeRemove()" [disabled]="!!busyId">
+        <button class="btn" type="button" (click)="closeRemove()" [disabled]="!!busyId">
           Cancel
         </button>
-        <button class="btn danger" type="button" *ngIf="!removalBlocker(removing)" (click)="remove(removing)"
+        <button class="btn danger primary" type="button" *ngIf="!removalBlocker(removing)" (click)="remove(removing)"
                 [disabled]="!!busyId">
           {{ busyId ? "Removing…" : "Remove source" }}
         </button>
-        <button class="btn danger" type="button" *ngIf="removalBlocker(removing)" (click)="purge(removing)"
+        <button class="btn danger primary" type="button" *ngIf="removalBlocker(removing)" (click)="purge(removing)"
                 [disabled]="!!busyId">
           {{ busyId ? "Removing…" : "Uninstall " + (removing.installed_agents?.length || 0) + " and remove source" }}
         </button>

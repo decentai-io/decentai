@@ -15,7 +15,7 @@
          header is words only. -->
     <div class="safety-toolbar" *ngIf="canEdit">
       <span class="safety-state" *ngIf="dirty">You have changes that are not saved.</span>
-      <button class="btn ghost" type="button" (click)="discard()" [disabled]="!dirty || saving">Discard</button>
+      <button class="btn" type="button" (click)="discard()" [disabled]="!dirty || saving">Discard</button>
       <button class="btn primary" type="button" (click)="save()" [disabled]="!dirty || saving">
         {{ saving ? "Saving…" : "Save" }}
       </button>

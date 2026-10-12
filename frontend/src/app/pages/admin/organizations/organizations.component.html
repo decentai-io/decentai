@@ -29,7 +29,7 @@
       <div class="org-name-row" *ngIf="!renaming">
         <span class="org-name">{{ org.org_name }}</span>
         <button
-          class="btn ghost sm"
+          class="btn sm"
           type="button"
           *ngIf="canRename"
           (click)="startRename()"
@@ -55,7 +55,7 @@
           {{ saving ? "Saving…" : "Save" }}
         </button>
         <button
-          class="btn ghost sm"
+          class="btn sm"
           type="button"
           (click)="cancelRename()"
           [disabled]="saving"

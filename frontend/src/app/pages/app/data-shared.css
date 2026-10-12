@@ -71,33 +71,10 @@
 .panel-head h2 { margin: 0; font-size: var(--ui-text-md); font-weight: 600; }
 .panel-head p { margin: 3px 0 0; color: var(--ink-2); font-size: var(--ui-text-sm); }
 
-.btn {
-  display: inline-flex; align-items: center; gap: 6px;
-  border-radius: var(--ui-radius-card); padding: 8px 16px;
-  font: inherit; font-size: var(--ui-text-base); font-weight: 600;
-  cursor: pointer; border: 1px solid var(--border);
-}
-.btn.primary { background: var(--primary-fill); color: var(--primary-foreground); border-color: var(--primary-fill); }
-.btn.primary:hover:not(:disabled) { background: color-mix(in srgb, var(--primary-fill) 88%, #000); }
-.btn.primary:disabled { opacity: 0.55; cursor: default; }
-.btn.danger { color:var(--destructive-foreground); border-color:var(--destructive); background:var(--destructive); }
-.btn.danger:hover:not(:disabled) { border-color:color-mix(in srgb,var(--destructive) 86%,#000); background:color-mix(in srgb,var(--destructive) 86%,#000); }
-.btn.danger:disabled { opacity:.45; cursor:not-allowed; }
-.btn.ghost { background: var(--surface-2); color: var(--ink-2); }
-.btn.ghost:hover:not(:disabled) { color: var(--accent-ink); background: var(--accent-soft); border-color: var(--accent); }
-.btn.sm { padding: 6px 12px; font-size: var(--ui-text-sm); }
 .btn.add-icon-button {
   width: 40px; height: 40px; padding: 0;
   align-items: center; justify-content: center;
 }
-
-.icon-btn {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 30px; height: 30px; border-radius: var(--ui-radius-sm);
-  background: transparent; border: none; color: var(--ink-2);
-  font-size: var(--ui-text-md); cursor: pointer;
-}
-.icon-btn:hover { color: var(--destructive-strong); background: var(--danger-soft); }
 
 /* ── Inputs ──────────────────────────────────────────────────────── */
 /* An input reads as a place to type: the page's own surface with a

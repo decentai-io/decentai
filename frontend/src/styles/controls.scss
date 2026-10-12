@@ -1,0 +1,516 @@
+@use '@angular/material' as mat;
+
+/* ════════════════════════════════════════════════════════════════════
+   The controls: one of each, used on every page.
+
+   Button, icon button, input, chip and skeleton are classes a template
+   puts on its own element. Menu, dialog, tooltip and checkbox are
+   Angular Material's, given our surfaces here once, so every menu is
+   the one panel and every dialog the one shell.
+
+   The tokens read here (--surface, --line, --t-base, --dur-1 …) are
+   defined in tailwind.css; the keyframes (pulse, shimmer) in
+   styles.scss. A page's stylesheet places these controls; it does not
+   restyle them.
+   ════════════════════════════════════════════════════════════════════ */
+
+/* ── Button ──────────────────────────────────────────────────────────
+   class="btn" is the secondary button. Add `primary` for the one main
+   action, `ghost` for an action that should stay quiet, `danger` for a
+   destructive one, and `danger primary` for the confirm that destroys.
+   `sm` is the 32px size. An icon inside is 16px. */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  color: var(--ink);
+  font: 500 var(--t-base) / var(--lh-base) var(--font-sans);
+  white-space: nowrap;
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    background var(--dur-1) var(--ease),
+    border-color var(--dur-1) var(--ease),
+    color var(--dur-1) var(--ease);
+}
+
+.btn:hover {
+  background: var(--surface-3);
+  text-decoration: none;
+}
+
+.btn.sm {
+  height: 32px;
+  padding: 0 12px;
+}
+
+.btn.primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+
+.btn.primary:hover {
+  border-color: color-mix(in srgb, var(--accent) 88%, var(--ink));
+  background: color-mix(in srgb, var(--accent) 88%, var(--ink));
+}
+
+.btn.ghost,
+.btn.danger {
+  border-color: transparent;
+  background: transparent;
+}
+
+.btn.ghost:hover {
+  background: var(--surface-2);
+}
+
+.btn.danger {
+  color: var(--danger-ink);
+}
+
+.btn.danger:hover {
+  background: var(--danger-soft);
+}
+
+.btn.danger.primary {
+  border-color: var(--danger);
+  background: var(--danger);
+  color: var(--danger-fg);
+}
+
+.btn.danger.primary:hover {
+  border-color: color-mix(in srgb, var(--danger) 88%, var(--ink));
+  background: color-mix(in srgb, var(--danger) 88%, var(--ink));
+}
+
+/* ── Icon button ─────────────────────────────────────────────────────
+   The same button, square, holding one icon: 36px with an 18px icon,
+   or `sm` at 32px with a 16px icon. It always carries an aria-label. */
+.icon-btn {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--ink-2);
+  cursor: pointer;
+  transition:
+    background var(--dur-1) var(--ease),
+    color var(--dur-1) var(--ease);
+}
+
+.icon-btn.sm {
+  width: 32px;
+  height: 32px;
+}
+
+.icon-btn:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+
+.icon-btn:active {
+  background: var(--surface-3);
+}
+
+.icon-btn.danger {
+  color: var(--danger-ink);
+}
+
+.icon-btn.danger:hover {
+  background: var(--danger-soft);
+  color: var(--danger-ink);
+}
+
+.icon-btn.primary {
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+
+.icon-btn.primary:hover {
+  background: color-mix(in srgb, var(--accent) 88%, var(--ink));
+  color: var(--accent-fg);
+}
+
+.icon-btn.round {
+  border-radius: var(--r-full);
+}
+
+/* What every button shares: the focus ring, and how disabled looks. */
+.btn:focus-visible,
+.icon-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+}
+
+.btn:disabled,
+.btn[aria-disabled='true'],
+.icon-btn:disabled,
+.icon-btn[aria-disabled='true'] {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+/* ── Input ───────────────────────────────────────────────────────────
+   class="input" on an <input> or a <textarea>. A search field wraps
+   its input and a 16px magnifier in class="search-field". */
+.input {
+  width: 100%;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  color: var(--ink);
+  font: 400 var(--t-base) / var(--lh-base) var(--font-sans);
+  transition:
+    border-color var(--dur-1) var(--ease),
+    box-shadow var(--dur-1) var(--ease);
+}
+
+textarea.input {
+  height: auto;
+  min-height: 72px;
+  padding: 8px 12px;
+  resize: vertical;
+}
+
+.input::placeholder {
+  color: var(--ink-3);
+}
+
+.input:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--focus);
+}
+
+.input[aria-invalid='true'] {
+  border-color: var(--danger);
+}
+
+.input:disabled {
+  background: var(--surface-2);
+  color: var(--ink-3);
+}
+
+.search-field {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.search-field > lucide-icon {
+  position: absolute;
+  left: 10px;
+  display: inline-flex;
+  color: var(--ink-3);
+  pointer-events: none;
+}
+
+.search-field > .input {
+  padding-left: 34px;
+}
+
+/* ── Chip ────────────────────────────────────────────────────────────
+   A small label for a state or a count. `accent` for chosen or new,
+   `live` for something running now (it carries the pulsing dot),
+   `warn` for "needs you", `danger` for failed. */
+.chip {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: var(--r-full);
+  background: var(--surface-2);
+  color: var(--ink-2);
+  font: 500 var(--t-xs) / var(--lh-xs) var(--font-sans);
+  white-space: nowrap;
+}
+
+.chip.accent,
+.chip.live {
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+}
+
+.chip.live::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: var(--r-full);
+  background: currentColor;
+  animation: pulse 1.6s var(--ease) infinite;
+}
+
+.chip.warn {
+  background: var(--warn-soft);
+  color: var(--warn-ink);
+}
+
+.chip.danger {
+  background: var(--danger-soft);
+  color: var(--danger-ink);
+}
+
+/* ── Skeleton ────────────────────────────────────────────────────────
+   class="sk" on a block the size of what is loading. */
+.sk {
+  display: block;
+  border-radius: var(--r-sm);
+  background: linear-gradient(
+    90deg,
+    var(--surface-2) 25%,
+    var(--surface-3) 37%,
+    var(--surface-2) 63%
+  );
+  background-size: 400% 100%;
+  animation: shimmer 1.6s linear infinite;
+}
+
+/* ── Menu ────────────────────────────────────────────────────────────
+   Every mat-menu is this panel. Inside one, class="menu-label" heads a
+   section and class="menu-check" marks the chosen item at its right. */
+html {
+  @include mat.menu-overrides((
+    container-color: var(--surface),
+    container-shape: var(--r-md),
+    container-elevation-shadow: var(--shadow-float),
+    divider-color: var(--line),
+    divider-top-spacing: 4px,
+    divider-bottom-spacing: 4px,
+    item-label-text-color: var(--ink),
+    item-label-text-font: var(--font-sans),
+    item-label-text-size: var(--t-base),
+    item-label-text-line-height: var(--lh-base),
+    item-label-text-weight: 400,
+    item-label-text-tracking: 0,
+    item-icon-color: var(--ink-2),
+    item-icon-size: 16px,
+    item-hover-state-layer-color: var(--surface-2),
+    item-focus-state-layer-color: var(--surface-2),
+    item-leading-spacing: 8px,
+    item-trailing-spacing: 8px,
+    item-with-icon-leading-spacing: 8px,
+    item-with-icon-trailing-spacing: 8px,
+    item-spacing: 8px,
+  ));
+}
+
+/* Material's own component styles load after this file, so a rule that
+   has to beat one of them names the panel as well. */
+.mat-mdc-menu-panel.mat-mdc-menu-panel {
+  min-width: 180px;
+  border: 1px solid var(--line);
+}
+
+.mat-mdc-menu-panel .mat-mdc-menu-content {
+  padding: 4px;
+}
+
+.mat-mdc-menu-panel .mat-mdc-menu-item {
+  min-height: 32px;
+  border-radius: var(--r-sm);
+}
+
+/* An item's icon and words sit in Material's text span: one row,
+   centred, 8px apart. */
+.mat-mdc-menu-panel .mat-mdc-menu-item-text {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+}
+
+.mat-mdc-menu-item lucide-icon {
+  display: inline-flex;
+  color: var(--ink-2);
+}
+
+.mat-mdc-menu-item .menu-check {
+  margin: 0 0 0 auto;
+  padding-left: 12px;
+  color: var(--accent-ink);
+}
+
+.menu-label {
+  padding: 8px 8px 4px;
+  color: var(--ink-3);
+  font-size: var(--t-xs);
+  font-weight: 500;
+  line-height: var(--lh-xs);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* ── Dialog ──────────────────────────────────────────────────────────
+   Every MatDialog is this shell: a title row, a scrolling body, and an
+   action row at the right with the secondary action before the
+   primary. On a phone it is a sheet from the bottom. */
+html {
+  @include mat.dialog-overrides((
+    container-color: var(--surface),
+    container-shape: var(--r-lg),
+    container-elevation-shadow: var(--shadow-float),
+    container-max-width: 96vw,
+    container-small-max-width: 100vw,
+    subhead-color: var(--ink),
+    subhead-font: var(--font-sans),
+    subhead-size: var(--t-md),
+    subhead-line-height: var(--lh-md),
+    subhead-weight: 600,
+    subhead-tracking: 0,
+    supporting-text-color: var(--ink),
+    supporting-text-font: var(--font-sans),
+    supporting-text-size: var(--t-base),
+    supporting-text-line-height: var(--lh-base),
+    supporting-text-weight: 400,
+    supporting-text-tracking: 0,
+    headline-padding: 16px 20px 12px,
+    content-padding: 0 20px 20px,
+    with-actions-content-padding: 0 20px 16px,
+    actions-padding: 12px 20px 16px,
+    actions-alignment: flex-end,
+  ));
+
+  /* The buttons Material draws in a dialog's action row, on the shape
+     of ours until those templates use class="btn". */
+  @include mat.button-overrides((
+    text-container-shape: var(--r-md),
+    text-container-height: 36px,
+    text-horizontal-padding: 14px,
+    text-label-text-color: var(--ink),
+    text-label-text-font: var(--font-sans),
+    text-label-text-size: var(--t-base),
+    text-label-text-weight: 500,
+    text-label-text-tracking: 0,
+    text-state-layer-color: var(--ink),
+    filled-container-shape: var(--r-md),
+    filled-container-height: 36px,
+    filled-horizontal-padding: 14px,
+    filled-container-color: var(--accent),
+    filled-label-text-color: var(--accent-fg),
+    filled-label-text-font: var(--font-sans),
+    filled-label-text-size: var(--t-base),
+    filled-label-text-weight: 500,
+    filled-label-text-tracking: 0,
+  ));
+}
+
+.mat-mdc-dialog-surface {
+  border: 1px solid var(--line);
+}
+
+/* Material props a title up with a 40px strut; the padding above is
+   what places ours. */
+.mat-mdc-dialog-container .mat-mdc-dialog-title::before {
+  display: none;
+}
+
+.cdk-overlay-dark-backdrop {
+  background: var(--scrim);
+}
+
+.mat-mdc-dialog-actions {
+  gap: 8px;
+}
+
+.mat-mdc-dialog-actions .mat-mdc-button-base + .mat-mdc-button-base {
+  margin-left: 0;
+}
+
+@media (max-width: 700px) {
+  .cdk-global-overlay-wrapper:has(> .mat-mdc-dialog-panel) {
+    align-items: flex-end !important;
+    justify-content: stretch !important;
+  }
+
+  /* Material writes a dialog's width on the pane itself, so only
+     !important reaches it. */
+  .cdk-overlay-pane.mat-mdc-dialog-panel {
+    width: 100% !important;
+    max-width: 100% !important;
+    max-height: 90dvh;
+  }
+
+  .mat-mdc-dialog-container .mat-mdc-dialog-surface {
+    border-width: 1px 0 0;
+    border-radius: var(--r-lg) var(--r-lg) 0 0;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+/* ── Tooltip ─────────────────────────────────────────────────────────
+   Ink on paper, inverted. Its delay is set with the other Material
+   defaults in app.module.ts. */
+html {
+  @include mat.tooltip-overrides((
+    container-color: var(--ink),
+    container-shape: var(--r-sm),
+    supporting-text-color: var(--bg),
+    supporting-text-font: var(--font-sans),
+    supporting-text-size: var(--t-sm),
+    supporting-text-line-height: var(--lh-sm),
+    supporting-text-weight: 400,
+    supporting-text-tracking: 0,
+  ));
+}
+
+/* ── Checkbox ────────────────────────────────────────────────────────
+   mat-checkbox, ticked in the accent. */
+html {
+  @include mat.checkbox-overrides((
+    label-text-color: var(--ink),
+    label-text-font: var(--font-sans),
+    label-text-size: var(--t-base),
+    label-text-line-height: var(--lh-base),
+    label-text-tracking: 0,
+    selected-icon-color: var(--accent),
+    selected-hover-icon-color: var(--accent),
+    selected-focus-icon-color: var(--accent),
+    selected-pressed-icon-color: var(--accent),
+    selected-checkmark-color: var(--accent-fg),
+    selected-hover-state-layer-color: var(--accent),
+    selected-focus-state-layer-color: var(--accent),
+    selected-pressed-state-layer-color: var(--accent),
+    unselected-icon-color: var(--ink-3),
+    unselected-hover-icon-color: var(--ink-2),
+    unselected-focus-icon-color: var(--ink-2),
+    unselected-hover-state-layer-color: var(--ink),
+    unselected-focus-state-layer-color: var(--ink),
+    unselected-pressed-state-layer-color: var(--ink),
+  ));
+}
+
+/* ── The paginator's page-size list ──────────────────────────────────
+   A mat-select panel and its options, on the menu's surface. */
+div.mat-mdc-select-panel {
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-float);
+}
+
+.mat-mdc-select-panel .mat-mdc-option {
+  min-height: 32px;
+  border-radius: var(--r-sm);
+  font-size: var(--t-base);
+}
+
+.mat-mdc-paginator {
+  font-size: var(--t-sm);
+}

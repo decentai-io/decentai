@@ -62,7 +62,7 @@
         It acts as you, with your permissions.
       </p>
       <span class="made-actions">
-        <button class="btn ghost" type="button" (click)="dismissMade()">I have copied it</button>
+        <button class="btn" type="button" (click)="dismissMade()">I have copied it</button>
       </span>
     </div>
 
@@ -77,7 +77,7 @@
         <button class="btn primary" type="button" (click)="create()" [disabled]="!canSubmit">
           {{ creating ? "Making…" : "Make the key" }}
         </button>
-        <button class="btn ghost" type="button" (click)="closeComposer()" [disabled]="creating">Cancel</button>
+        <button class="btn" type="button" (click)="closeComposer()" [disabled]="creating">Cancel</button>
       </span>
     </div>
 

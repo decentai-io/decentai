@@ -24,7 +24,7 @@
 .mon-name { font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .mon-memory { display:flex; flex-direction:column; gap:5px; }
 .mon-actions { display:flex; justify-content:flex-end; }
-.mon-actions .btn { padding:4px 9px; font-size:12px; }
+
 
 .mon-files { padding:2px 4px 14px; }
 .mon-files-note { margin:0 0 8px; color:var(--ink-2); font-size:12px; }

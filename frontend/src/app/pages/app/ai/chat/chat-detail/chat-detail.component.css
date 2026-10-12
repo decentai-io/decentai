@@ -396,7 +396,7 @@
 .chat-jobs-text { flex:1; min-width:0; }
 .chat-jobs-text strong { color:var(--foreground); font-weight:600; }
 .chat-jobs-text em { font-style:normal; color:var(--warning); }
-.chat-jobs .btn.sm { padding:4px 10px; min-height:30px; font-size:12px; flex:none; }
+.chat-jobs .btn.sm { flex:none; }
 
 /* ── One column, or two ────────────────────────────────────────────── */
 /* The thread column is what the shell used to be below the header; a

@@ -69,14 +69,14 @@
           </span>
         </label>
 
-        <button class="btn btn--primary" type="submit" [disabled]="busy">
+        <button class="btn primary" type="submit" [disabled]="busy">
           {{ busy ? "Joining…" : "Join " + orgName }}
         </button>
       </form>
 
       <button
         *ngIf="!checkingInvite && !inviteValid"
-        class="btn btn--primary"
+        class="btn primary"
         type="button"
         (click)="dismissInvitation()"
       >
@@ -119,11 +119,11 @@
           <span>Keep me signed in on this device</span>
         </label>
 
-        <button class="btn btn--primary" type="submit" [disabled]="busy">
+        <button class="btn primary" type="submit" [disabled]="busy">
           {{ busy ? "Signing in…" : "Sign in" }}
         </button>
 
-        <button class="btn btn--ghost" type="button" (click)="startForgot()">
+        <button class="btn ghost" type="button" (click)="startForgot()">
           Forgot your password?
         </button>
       </form>
@@ -160,11 +160,11 @@
           </span>
         </label>
 
-        <button class="btn btn--primary" type="submit" [disabled]="busy">
+        <button class="btn primary" type="submit" [disabled]="busy">
           {{ busy ? "Saving…" : "Save and sign in" }}
         </button>
 
-        <button class="btn btn--ghost" type="button" (click)="backToLogin()">
+        <button class="btn ghost" type="button" (click)="backToLogin()">
           Back to sign in
         </button>
       </form>
@@ -191,11 +191,11 @@
           />
         </label>
 
-        <button class="btn btn--primary" type="submit" [disabled]="busy">
+        <button class="btn primary" type="submit" [disabled]="busy">
           {{ busy ? "Sending…" : "Email me a link" }}
         </button>
 
-        <button class="btn btn--ghost" type="button" (click)="backToLogin()">
+        <button class="btn ghost" type="button" (click)="backToLogin()">
           Back to sign in
         </button>
       </form>
@@ -203,7 +203,7 @@
       <!-- The answer is the subtitle: a link on its way, or how this
            install resets a password when it sends no email. -->
       <div class="auth-form" *ngIf="forgotMessage">
-        <button class="btn btn--primary" type="button" (click)="backToLogin()">
+        <button class="btn primary" type="button" (click)="backToLogin()">
           Back to sign in
         </button>
       </div>
@@ -249,14 +249,14 @@
           </span>
         </label>
 
-        <button class="btn btn--primary" type="submit" [disabled]="busy">
+        <button class="btn primary" type="submit" [disabled]="busy">
           {{ busy ? "Saving…" : "Set password and sign in" }}
         </button>
       </form>
 
       <button
         *ngIf="!checkingReset && !resetValid"
-        class="btn btn--primary"
+        class="btn primary"
         type="button"
         (click)="backToLogin()"
       >

@@ -29,7 +29,8 @@
             ],
             "styles": [
               "src/tailwind.css",
-              "src/styles.scss"
+              "src/styles.scss",
+              "src/styles/controls.scss"
             ],
             "scripts": [],
             "browser": "src/main.ts"
@@ -141,7 +142,8 @@
             ],
             "styles": [
               "src/tailwind.css",
-              "src/styles.scss"
+              "src/styles.scss",
+              "src/styles/controls.scss"
             ],
             "scripts": []
           }
