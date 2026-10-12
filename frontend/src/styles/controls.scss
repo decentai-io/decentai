@@ -463,6 +463,35 @@ textarea.input {
   color: var(--danger-ink);
 }
 
+/* ── Under a finger ──────────────────────────────────────────────────
+   A button keeps its size and takes a touch 44px high: what answers
+   reaches past its edge by the difference. A menu's rows are 44px. */
+@media (pointer: coarse) {
+  /* `:where`, so a button placed by a rule of its own (the skip link,
+     off screen until it has the focus) keeps that place. */
+  :where(.btn, .icon-btn) {
+    position: relative;
+  }
+
+  /* The class twice: the menu's own row height is set further down,
+     and this must win over it. */
+  .mat-mdc-menu-panel .mat-mdc-menu-item.mat-mdc-menu-item {
+    min-height: 44px;
+  }
+
+  .btn::after,
+  .icon-btn::after {
+    content: '';
+    position: absolute;
+    inset: -4px;
+  }
+
+  .btn.sm::after,
+  .icon-btn.sm::after {
+    inset: -6px;
+  }
+}
+
 /* ── Skeleton ────────────────────────────────────────────────────────
    class="sk" on a block the size of what is loading. */
 .sk {

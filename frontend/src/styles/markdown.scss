@@ -225,6 +225,18 @@ markdown pre .code-toolbar button:hover {
   color: var(--ink);
 }
 
+/* Under a finger the block's buttons are taller, and so is its row. */
+@media (pointer: coarse) {
+  markdown pre .code-toolbar {
+    height: 44px;
+  }
+
+  markdown pre .code-toolbar button {
+    height: 36px;
+    padding: 0 12px;
+  }
+}
+
 /* An answer still being written ends in a caret. Its words arrive as
    they are, with no motion of their own. */
 markdown.is-streaming > :last-child::after {

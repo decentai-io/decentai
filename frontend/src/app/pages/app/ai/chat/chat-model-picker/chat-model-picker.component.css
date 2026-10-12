@@ -127,3 +127,27 @@
   font-size: var(--t-sm);
   line-height: var(--lh-sm);
 }
+
+@media (pointer: coarse) {
+  .model-option {
+    min-height: 44px;
+  }
+}
+
+/* On a phone the panel is a sheet at the foot of the screen, whichever
+   way it would have opened. */
+@media (max-width: 700px) {
+  .model-panel,
+  .model-panel.is-below {
+    position: fixed;
+    top: auto;
+    right: 8px;
+    bottom: max(8px, env(safe-area-inset-bottom));
+    left: 8px;
+    z-index: var(--z-overlay);
+    width: auto;
+    /* Over the height the component worked out for a panel beside
+       its button. */
+    max-height: 60dvh !important;
+  }
+}

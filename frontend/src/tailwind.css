@@ -39,7 +39,9 @@
   --line-strong: var(--n-300);    /* inputs, focused borders */
   --ink: var(--n-900);            /* text */
   --ink-2: var(--n-600);          /* secondary text */
-  --ink-3: var(--n-500);          /* timestamps, counts; never under 13px */
+  /* Timestamps, counts; never under 13px. A step darker than n-500,
+     which read at 4.3:1 on the page: this is 5:1, and 4.7:1 on a chip. */
+  --ink-3: #6f6b63;
 
   --accent: #047857;              /* emerald fills; white on it is 5.5:1 */
   --accent-fg: #ffffff;           /* text on an emerald fill */
@@ -160,7 +162,9 @@
   --line-strong: var(--n-700);
   --ink: var(--n-100);
   --ink-2: var(--n-400);
-  --ink-3: var(--n-500);
+  /* Lighter than n-500 for the same reason: 5.6:1 on the page, 4.9:1
+     on the darkest surface it sits on. */
+  --ink-3: #8f8b82;
 
   --accent: #10b981;
   --accent-fg: var(--n-950);

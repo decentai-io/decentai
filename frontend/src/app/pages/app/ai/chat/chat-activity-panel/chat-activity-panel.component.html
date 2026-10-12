@@ -15,7 +15,7 @@
               <lucide-icon class="work-caret"
                            [name]="isTaskOpen(group.item) ? 'chevron-down' : 'chevron-right'"
                            [size]="14"
-                           [class.work-caret--hidden]="!group.steps.length"></lucide-icon>
+                           [class.work-caret--hidden]="!group.steps.length" aria-hidden="true"></lucide-icon>
               @if (group.item.id) { <span class="work-id">{{ group.item.id }}</span> }
               <span class="work-text">{{ humanize(group.item.text) }}</span>
               @if (group.steps.length) {
