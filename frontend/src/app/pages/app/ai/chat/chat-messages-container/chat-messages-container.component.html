@@ -1,7 +1,6 @@
 <div class="messages">
   <!-- Scrollable area (header/title/status/actions now live in the chat-detail shell) -->
-  <div class="messages-scroll" #messagesContainer (scroll)="onScroll()"
-       [class.has-live]="showDock">
+  <div class="messages-scroll" #messagesContainer (scroll)="onScroll()">
     @if (loading) {
       <div class="thread-column thread-loading" aria-busy="true" aria-label="Loading the chat">
         <span class="sk sk-bubble"></span>
@@ -18,10 +17,15 @@
       }
       @if (turns.length > 0) {
         <div class="thread-column thread-turns" #messagesInner>
-          @for (turn of turns; track turn.id; let lastTurn = $last) {
+          @for (turn of turns; track turn.key; let lastTurn = $last) {
             <section class="chat-turn">
               @if (turn.userMessage) {
                 <app-chat-message [message]="turn.userMessage"></app-chat-message>
+              }
+              <!-- The turn's work, between what was asked and the
+                   answer, where it happened. -->
+              @if (lastTurn ? showLiveWork : pastWork[turn.key]) {
+                <ng-container *ngTemplateOutlet="work; context: { key: turn.key, live: lastTurn }"></ng-container>
               }
               <!-- The assistant's side of the turn: one speaker, one
                    header, however many messages the answer took. The
@@ -34,6 +38,12 @@
               }
             </section>
           }
+        </div>
+      }
+      <!-- Work with no turn to stand in: a run nobody here asked for. -->
+      @if (!turns.length && showLiveWork) {
+        <div class="thread-column">
+          <ng-container *ngTemplateOutlet="work; context: { key: '', live: true }"></ng-container>
         </div>
       }
       @if (!turns.length && !isProcessing && !activity.length && !livePlan.length) {
@@ -49,48 +59,40 @@
         </div>
       }
     }
-
-    <!-- A chat with no turns yet needs nothing here: the docked line
-         below carries what is happening, so no empty card stands
-         waiting for an answer that has not started. -->
   </div>
 
-  <!-- The one place for what the assistant is doing in this turn. It
-       docks at the foot of the thread rather than riding under an
-       answer's header: a long reply would push it off the top of the
-       screen, and it must stay reachable after the turn ends. Closed it
-       is a single line; opened it grows upward. -->
-  @if (showDock) {
-    <div class="live-activity" [class.is-open]="panelOpen">
-      <div class="activity" [class.activity--live]="isProcessing" role="status" aria-live="polite">
-        <button type="button" class="activity-line" (click)="togglePanel()"
-                [attr.aria-expanded]="panelOpen" aria-label="What the assistant did">
-          @if (isProcessing) {
-            <span class="activity-spinner" aria-hidden="true"></span>
-          } @else if (planWaiting) {
-            <lucide-icon class="activity-waiting" name="circle-question-mark" [size]="15" aria-hidden="true"></lucide-icon>
-          } @else {
-            <lucide-icon class="activity-done" name="circle-check" [size]="15" aria-hidden="true"></lucide-icon>
-          }
-          <span class="activity-label">{{ dockLabel }}</span>
-          <lucide-icon class="activity-chevron" name="chevron-right" [size]="14" aria-hidden="true"></lucide-icon>
-        </button>
-
-        @if (panelOpen) {
-          <app-chat-activity-panel
-            [activity]="activity" [livePlan]="livePlan"
-            [isProcessing]="isProcessing" [agentLabels]="agentLabels">
-          </app-chat-activity-panel>
-        }
-      </div>
-    </div>
-  }
-
   @if (showJumpToLatest) {
-    <button class="jump-pill" type="button" [class.above-live]="isProcessing && showActivity"
+    <button class="jump-pill" type="button"
             (click)="jumpToLatest()" [attr.aria-label]="newUpdateCount > 0 ? 'New reply. Jump to it' : 'Jump to the latest'">
       <lucide-icon name="arrow-down" [size]="16" aria-hidden="true"></lucide-icon>
       @if (newUpdateCount > 0) { <span>New reply</span> }
     </button>
   }
 </div>
+
+<!-- The work of one turn: a line that says what is happening or what
+     it came to, opening in place to the plan and the steps. The live
+     one is the turn in hand; the others are what the page kept. -->
+<ng-template #work let-key="key" let-live="live">
+  <div class="turn-work" [class.is-live]="live && isProcessing"
+       [attr.role]="live ? 'status' : null" [attr.aria-live]="live ? 'polite' : null">
+    <button type="button" class="turn-work-head" (click)="toggleWork(key, live)"
+            [attr.aria-expanded]="isWorkOpen(key, live)">
+      @if (live && isProcessing) {
+        <span class="turn-work-spinner" aria-hidden="true"></span>
+      } @else if (live && planWaiting) {
+        <lucide-icon class="turn-work-waiting" name="circle-question-mark" [size]="16" aria-hidden="true"></lucide-icon>
+      } @else {
+        <lucide-icon class="turn-work-done" name="circle-check" [size]="16" aria-hidden="true"></lucide-icon>
+      }
+      <span class="turn-work-label">{{ live ? workLabel : ranLine(pastWork[key]) }}</span>
+      <lucide-icon class="turn-work-chevron" name="chevron-right" [size]="16" aria-hidden="true"></lucide-icon>
+    </button>
+    @if (isWorkOpen(key, live)) {
+      <app-chat-activity-panel
+        [activity]="live ? activity : pastWork[key]" [livePlan]="live ? livePlan : []"
+        [isProcessing]="live && isProcessing" [agentLabels]="agentLabels">
+      </app-chat-activity-panel>
+    }
+  </div>
+</ng-template>

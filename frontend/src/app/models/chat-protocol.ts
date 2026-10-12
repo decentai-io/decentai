@@ -166,6 +166,10 @@ export interface SessionContract {
  *  background job reporting in. */
 export interface ChatTurn {
   id: string;
+  /** What the turn is known by from the moment it is sent: the id the
+   *  page gave the submission, which the server's message keeps, or
+   *  the message's own id for a turn nobody here sent. */
+  key: string;
   userMessage: ChatMessage | null;
   assistantMessages: ChatMessage[];
 }

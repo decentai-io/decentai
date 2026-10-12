@@ -91,3 +91,40 @@ describe('ChatMessagesContainerComponent following the foot of the thread', () =
     expect(asked).toEqual(['auto', 'smooth']);
   });
 });
+
+describe('ChatMessagesContainerComponent, a turn’s work', () => {
+  function container() {
+    return new ChatMessagesContainerComponent({ runOutsideAngular: (fn: () => void) => fn() } as any);
+  }
+
+  it('says what a finished turn’s work came to', () => {
+    const line = container().ranLine([
+      { id: 'c_1', text: 'Notebook · Save Note', agent: 'Notebook', status: 'success', durationMs: 1800 },
+      { id: 'c_2', text: 'Browser · Open', agent: 'Browser', status: 'error', durationMs: 40200 },
+      { id: 'note_1', text: 'Stopped.' },
+    ]);
+
+    expect(line).toBe('Ran 3 steps · 2 agents · 1 failed · 42s');
+  });
+
+  it('opens the turn in hand and an earlier turn apart', () => {
+    const component = container();
+
+    component.toggleWork('turn_1', false);
+    expect(component.isWorkOpen('turn_1', false)).toBeTrue();
+    expect(component.isWorkOpen('turn_2', true)).toBeFalse();
+
+    component.toggleWork('turn_2', true);
+    component.toggleWork('turn_1', false);
+    expect(component.isWorkOpen('turn_2', true)).toBeTrue();
+    expect(component.isWorkOpen('turn_1', false)).toBeFalse();
+  });
+
+  it('has a block for the turn in hand while it runs, and none for a chat just opened', () => {
+    const component = container();
+    expect(component.showLiveWork).toBeFalse();
+
+    component.isProcessing = true;
+    expect(component.showLiveWork).toBeTrue();
+  });
+});

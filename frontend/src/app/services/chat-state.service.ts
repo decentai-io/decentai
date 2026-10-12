@@ -42,7 +42,12 @@ export interface ChatViewState {
   jobs: ChatJob[];
   /** The mind is advancing — bracketed by the door's working/idle. */
   working: boolean;
+  /** The steps of the turn in hand, or of the last one once it ended. */
   activity: ActivityEntry[];
+  /** The steps of the turns before it, by the turn's key: kept by the
+   *  page for as long as it is open. A turn read from history has
+   *  none; what it ran is in the chat's audit trail. */
+  pastWork: Record<string, ActivityEntry[]>;
   liveText: string | null;
   /** The work in hand, as the runtime last recorded it. */
   plan: PlanStep[];
@@ -61,6 +66,7 @@ const initialState = (): ChatViewState => ({
   jobs: [],
   working: false,
   activity: [],
+  pastWork: {},
   liveText: null,
   plan: [],
   sleeping: null,
@@ -90,6 +96,7 @@ export class ChatStateService {
       approvals,
       latestEventSeq: snapshot.latest_event_seq,
       activity: [],
+      pastWork: {},
       liveText: null,
       errors: [],
     });
@@ -149,7 +156,7 @@ export class ChatStateService {
     // No words, nothing to show: a caller that names only the
     // submission (a test, a resend) gets the old behaviour exactly.
     if (!text.trim() && !parts.length) {
-      this.patch({ working: true, activity: [], liveText: 'Sending…' });
+      this.patch({ working: true, pastWork: this.workKept(), activity: [], liveText: 'Sending…' });
       this.clearErrors('composer');
       return;
     }
@@ -174,9 +181,18 @@ export class ChatStateService {
       messages,
       turns: this.buildTurns(messages),
       working: true,
+      pastWork: this.workKept(),
       activity: [], liveText: 'Sending…',
     });
     this.clearErrors('composer');
+  }
+
+  /** The steps kept so far, with those of the turn that is ending put
+   *  under its key: a new turn starts with none of its own. */
+  private workKept(): Record<string, ActivityEntry[]> {
+    const ending = this.value.turns[this.value.turns.length - 1];
+    if (!ending || !this.value.activity.length) return this.value.pastWork;
+    return { ...this.value.pastWork, [ending.key]: this.value.activity };
   }
 
   /** The send never left. Take the words back rather than leave them
@@ -361,12 +377,13 @@ export class ChatStateService {
     const turns: ChatTurn[] = [];
     for (const message of messages) {
       if (message.actor === 'user') {
-        turns.push({ id: message.message_id, userMessage: message,
-          assistantMessages: [] });
+        turns.push({ id: message.message_id,
+          key: message.client_message_id || message.message_id,
+          userMessage: message, assistantMessages: [] });
       } else if (message.actor === 'ai') {
         if (!turns.length) {
-          turns.push({ id: message.message_id, userMessage: null,
-            assistantMessages: [] });
+          turns.push({ id: message.message_id, key: message.message_id,
+            userMessage: null, assistantMessages: [] });
         }
         turns[turns.length - 1].assistantMessages.push(message);
       }

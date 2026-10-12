@@ -64,6 +64,7 @@ export class ChatDetailComponent implements OnInit, OnDestroy {
   loadingOlderMessages = false;
   liveSystemText: string | null = null;
   activity: ActivityEntry[] = [];
+  pastWork: Record<string, ActivityEntry[]> = {};
 
   /** The cards waiting on this person (approval_requested, hello). */
   pendingApprovals: any[] = [];
@@ -284,6 +285,7 @@ export class ChatDetailComponent implements OnInit, OnDestroy {
       this.jobs = state.jobs;
       this.activeJobs = state.jobs.length;
       this.activity = state.activity;
+      this.pastWork = state.pastWork;
       this.liveSystemText = state.liveText;
       this.isLoading = state.working;
       this.isChatLoading = state.loading;

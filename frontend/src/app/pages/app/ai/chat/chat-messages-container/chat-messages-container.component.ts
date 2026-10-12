@@ -26,11 +26,14 @@ export class ChatMessagesContainerComponent
   @Input() loading = false;
   @Input() isProcessing = false;
   @Input() systemText: string | null = null;
-  /** The work as it happened: calls under their agents, and notes. */
+  /** The work of the turn in hand as it happened: calls under their
+   *  agents, and notes. */
   @Input() activity: ActivityEntry[] = [];
+  /** The steps of earlier turns the page kept, by the turn's key. */
+  @Input() pastWork: Record<string, ActivityEntry[]> = {};
   /** The work in hand, as the runtime keeps it: each item with its
-   *  status and what the trace proved for it. It is shown in the docked
-   *  panel — the plan is state, not a second message. */
+   *  status and what the trace proved for it. It is shown in the turn's
+   *  work block: the plan is state, not a second message. */
   @Input() livePlan: PlanStep[] = [];
   @Input() turns: ChatTurn[] = [];
   @Input() hasMore = false;
@@ -98,29 +101,49 @@ export class ChatMessagesContainerComponent
   @ViewChild('messagesInner', { static: false })
   private messagesInner?: ElementRef<HTMLDivElement>;
 
-  /** The docked line, opened: the plan as it stands and the steps of
-   *  this turn. */
+  /** The work block of the turn in hand, opened: the plan as it stands
+   *  and the steps so far. */
   panelOpen = false;
+  /** The earlier turns whose kept steps are open, by key. */
+  private openTurns = new Set<string>();
 
-  togglePanel(): void {
-    this.panelOpen = !this.panelOpen;
-    if (this.panelOpen) this.openedByPerson = true;
+  isWorkOpen(key: string, live: boolean): boolean {
+    return live ? this.panelOpen : this.openTurns.has(key);
   }
 
-  /** The dock stands wherever there is something to say OR something to
-   *  look back on, which in a chat with any history is always. */
-  get showDock(): boolean {
-    return this.showActivity || this.turns.length > 0 || this.panelOpen;
-  }
-
-  /** One line: what is happening, what it came to, or simply the way in. */
-  get dockLabel(): string {
-    if (this.isProcessing || this.activity.length || this.livePlan.length) {
-      return this.activityLine;
+  toggleWork(key: string, live: boolean): void {
+    if (live) {
+      this.panelOpen = !this.panelOpen;
+      if (this.panelOpen) this.openedByPerson = true;
+    } else if (!this.openTurns.delete(key)) {
+      this.openTurns.add(key);
     }
+  }
+
+  /** Whether the turn in hand has a work block: while it runs, and
+   *  after it for as long as there is something to say of it. */
+  get showLiveWork(): boolean {
+    return this.showActivity || this.lastTurnSeconds > 0;
+  }
+
+  /** The live block's one line: what is happening, or what it came to. */
+  get workLabel(): string {
+    if (this.showActivity) return this.activityLine;
     // A turn that needed no agent: only the time it took to answer.
-    if (this.lastTurnSeconds) return `Answered · ${this.lastTurnSeconds}s`;
-    return 'This turn';
+    return `Answered · ${this.lastTurnSeconds}s`;
+  }
+
+  /** What a finished turn's work came to: "Ran 7 steps · 2 agents ·
+   *  1 failed · 41s". */
+  ranLine(entries: ActivityEntry[] = []): string {
+    const steps = entries.length;
+    const agents = new Set(entries.map((entry) => entry.agent).filter(Boolean)).size;
+    const failed = entries.filter((entry) => this.isFailed(entry)).length;
+    const ms = entries.reduce((total, entry) => total + (entry.durationMs || 0), 0);
+    return `Ran ${steps} ${steps === 1 ? 'step' : 'steps'}`
+      + (agents ? ` · ${agents} ${agents === 1 ? 'agent' : 'agents'}` : '')
+      + (failed ? ` · ${failed} failed` : '')
+      + (ms ? ` · ${this.durationLabel(ms)}` : '');
   }
 
   /** How long the last turn took, once it is over; 0 before any turn. */
@@ -141,10 +164,6 @@ export class ChatMessagesContainerComponent
 
   private stopElapsedClock(): void {
     if (this.elapsedTimer) { clearInterval(this.elapsedTimer); this.elapsedTimer = null; }
-  }
-
-  get failedSteps(): number {
-    return this.activity.filter((entry) => this.isFailed(entry)).length;
   }
 
   /** The panel folds on its own once, when the turn ends; after that
@@ -192,12 +211,7 @@ export class ChatMessagesContainerComponent
     }
     if (this.planWaiting) return 'Waiting for your input';
     if (this.livePlan.length) return this.planSummary;
-    const steps = this.activity.length;
-    const ms = this.activity.reduce((total, entry) => total + (entry.durationMs || 0), 0);
-    const failed = this.failedSteps;
-    return `Done · ${steps} ${steps === 1 ? 'step' : 'steps'}`
-      + (failed ? ` · ${failed} failed` : '')
-      + (ms ? ` · ${this.durationLabel(ms)}` : '');
+    return this.ranLine(this.activity);
   }
 
   /** A calm, human summary for the collapsed state. The expanded panel

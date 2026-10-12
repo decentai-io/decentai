@@ -1,5 +1,5 @@
-/* The panel behind the docked line. It lives inside the dock, which
-   owns its position and its height cap; everything here is content. */
+/* What a turn's work block opens to. The block (in the thread) owns
+   its frame; everything here is content. */
 
 .panel { display: flex; flex-direction: column; min-height: 0; }
 
