@@ -1,5 +1,7 @@
 """Where a person can be reached when they are not looking: the push
-subscriptions their browsers registered, one row per device."""
+subscriptions their browsers registered and the phones running the app,
+one row per device. A row's `endpoint` is what names the device — the
+push service's URL for a browser, the Expo push token for a phone."""
 
 from __future__ import annotations
 
@@ -12,6 +14,11 @@ from util import new_id, utc_now
 class PushSubscriptionStore(MongoStore):
     COLLECTION = "push_subscriptions"
 
+    #: a phone running the app, reached through Expo's push service;
+    #: a row without a kind is a browser, reached by web push
+    EXPO = "expo"
+    EXPO_TOKEN_PREFIXES = ("ExponentPushToken[", "ExpoPushToken[")
+
     def add(self, org_id: str, user_id: str, subscription: Dict[str, Any],
             user_agent: str = "") -> Optional[Dict[str, Any]]:
         """Keep a browser's subscription, once per endpoint: the same
@@ -21,10 +28,23 @@ class PushSubscriptionStore(MongoStore):
         if not endpoint or not isinstance(keys, dict) \
                 or not keys.get("p256dh") or not keys.get("auth"):
             return None
+        return self._keep(org_id, user_id, endpoint, user_agent, {
+            "keys": {"p256dh": str(keys["p256dh"]), "auth": str(keys["auth"])},
+        })
+
+    def add_device(self, org_id: str, user_id: str, token: str,
+                   user_agent: str = "") -> Optional[Dict[str, Any]]:
+        """Keep a phone's Expo push token, once per token."""
+        token = str(token or "").strip()
+        if not token.startswith(self.EXPO_TOKEN_PREFIXES) or not token.endswith("]"):
+            return None
+        return self._keep(org_id, user_id, token, user_agent, {"kind": self.EXPO})
+
+    def _keep(self, org_id: str, user_id: str, endpoint: str, user_agent: str,
+              extra: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         doc = {
             "org_id": str(org_id or ""), "user_id": str(user_id or ""),
-            "endpoint": endpoint,
-            "keys": {"p256dh": str(keys["p256dh"]), "auth": str(keys["auth"])},
+            "endpoint": endpoint, **extra,
             "user_agent": str(user_agent or "")[:200],
             "updated_at": utc_now(),
         }

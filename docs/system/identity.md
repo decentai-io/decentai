@@ -383,7 +383,10 @@ Every request resolves the session and the user behind it — from the
 database, or from a copy the process keeps for at most a minute and
 drops the moment either changes — which is what makes disabling,
 deleting or signing out take effect immediately rather than whenever
-the cookie would have expired. An API key is never kept that way: it is
+the cookie would have expired. A native app, with no cookie jar of its
+own to trust, asks for the token in the body instead (`"client":
+"native"`) and presents it as a Bearer header: the same session, kept
+in the device's store. An API key is never kept that way: it is
 looked up on every call. Sessions last seven days, or ninety when the
 person asked to be kept signed in on that device; the cookie and the
 token inside it last as long as the session, and without that ask the

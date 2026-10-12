@@ -55,6 +55,64 @@ class TestLogin:
         assert admin.get("/auth/me").status_code == 401
 
 
+class TestANativeSignIn:
+    """The app on a phone keeps the token itself: asked for as a native
+    client, the sign-in answers with the token in the body and sets no
+    cookie, and the token works as a Bearer header — the same session
+    a browser would have, ended the same way."""
+
+    def sign_in(self, anon, **extra):
+        response = anon.post("/auth/login", json={
+            "email": ADMIN_EMAIL, "password": ADMIN_PASSWORD,
+            "client": "native", **extra})
+        assert response.status_code == 200, response.text
+        return response
+
+    def test_the_token_comes_in_the_body_and_no_cookie_is_set(self, anon):
+        response = self.sign_in(anon)
+        body = response.json()
+        assert body["access_token"] and body["expires_at"]
+        assert body["user"]["email"] == ADMIN_EMAIL
+        assert "set-cookie" not in response.headers
+        assert not anon.cookies.get("access_token")
+
+    def test_the_token_opens_every_door_as_a_bearer(self, anon):
+        token = self.sign_in(anon).json()["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+        assert anon.get("/auth/me").status_code == 401
+        me = anon.get("/auth/me", headers=headers)
+        assert me.status_code == 200 and me.json()["user"]["email"] == ADMIN_EMAIL
+        # The gateway, and a door kept for browser sessions: the token
+        # names a browser-grade session, not a key.
+        assert anon.post("/app", headers=headers, json={
+            "endpoint": "Settings:ApiKey:List", "data": {}}).status_code == 200
+        assert anon.post("/app", headers=headers, json={
+            "endpoint": "Settings:ApiKey:Create",
+            "data": {"name": "phone"}}).status_code == 200
+
+    def test_signing_out_ends_it(self, anon):
+        token = self.sign_in(anon).json()["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+        assert anon.post("/auth/logout", headers=headers).status_code == 200
+        assert anon.get("/auth/me", headers=headers).status_code == 401
+
+    def test_kept_signed_in_lasts_ninety_days(self, anon):
+        from datetime import datetime, timedelta, timezone
+
+        expires = datetime.fromisoformat(
+            self.sign_in(anon, remember=True).json()["expires_at"])
+        assert expires - datetime.now(timezone.utc) > timedelta(days=89)
+        expires = datetime.fromisoformat(self.sign_in(anon).json()["expires_at"])
+        assert expires - datetime.now(timezone.utc) < timedelta(days=8)
+
+    def test_anything_but_native_is_a_browser(self, anon):
+        response = anon.post("/auth/login", json={
+            "email": ADMIN_EMAIL, "password": ADMIN_PASSWORD, "client": "app"})
+        assert response.status_code == 200
+        assert "access_token" not in response.json()
+        assert "set-cookie" in response.headers
+
+
 class TestAHandedOverPassword:
     """An administrator adds a person, or resets their password, and
     hands over a temporary one. It opens nothing until the person has

@@ -74,6 +74,7 @@ Three values are generated, never chosen:
 | `MAIL_FROM` | unset | The sender address, one the server is allowed to send as. |
 | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` | unset | The deployment's web push pair (`bootstrap/generate_vapid_keys.py`). Unset, nothing is pushed; a person is told by email instead, where email is set up. The private key is a secret. |
 | `VAPID_SUBJECT` | `mailto:admin@example.com` | A `mailto:` address push services may contact about this deployment. |
+| `EXPO_ACCESS_TOKEN` | unset | Phones running the DecentAI app are pushed to through Expo's push service, which needs no key. A token from an Expo account only raises the service's rate limits. A secret. |
 
 ### Logs
 

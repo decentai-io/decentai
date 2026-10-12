@@ -3,10 +3,11 @@
 A chat keeps working after its tab is closed, and the things it needs
 — a card to decide, a question to answer — and the things it did — an
 answer written — used to wait until the person happened to open it
-again. The notifier tells them: a push to every browser that
-subscribed (the installed web app, a desktop tab), and when none can
-be reached, an email, unless they turned email off. Nothing is sent to
-a person whose browser has the chat open right now; they are looking.
+again. The notifier tells them: a push to every device that subscribed
+(a browser or installed web app by web push, a phone running the app
+through Expo's push service), and when none can be reached, an email,
+unless they turned email off. Nothing is sent to a person whose
+browser has the chat open right now; they are looking.
 
 Delivery runs on its own thread: the doors that trigger it are the
 runtime's, in the middle of a turn, and must not wait on a push
@@ -19,7 +20,9 @@ from __future__ import annotations
 import json
 import threading
 from datetime import timedelta
-from typing import Any, Dict
+from typing import Any, Dict, Optional
+
+import httpx
 
 from database.stores import ChatStore, UserStore
 from database.stores.notifications import PushSubscriptionStore
@@ -36,6 +39,8 @@ class Notifier:
     ANSWER_MIN_MINUTES = 2
     #: how long a push service may keep an undelivered push
     PUSH_TTL_SECONDS = 24 * 3600
+    #: where a phone running the app is reached
+    EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send"
 
     def __init__(self, settings=None):
         self.settings = settings or get_settings()
@@ -123,11 +128,33 @@ class Notifier:
         return outcome
 
     def _push(self, user: Dict[str, str], title: str, body: str, url: str):
-        if not self.push_configured:
-            return 0, 0
+        """Every device of the person, each by its own service. A device
+        the service says is gone is dropped; one that merely failed is
+        kept for next time."""
+        store = PushSubscriptionStore()
+        pushed = dropped = 0
+        for row in store.for_user(user["org_id"], user["user_id"]):
+            try:
+                if row.get("kind") == PushSubscriptionStore.EXPO:
+                    reached = self._push_expo(row["endpoint"], title, body, url)
+                elif self.push_configured:
+                    reached = self._push_web(row, title, body, url)
+                else:
+                    continue
+            except Exception as exc:
+                self.logger.warning(f"Push to {row['endpoint'][:40]}… failed: {exc}")
+                continue
+            if reached:
+                pushed += 1
+            elif reached is False:
+                store.drop_endpoint(row["endpoint"])
+                dropped += 1
+        return pushed, dropped
+
+    def _push_web(self, row: Dict[str, Any], title: str, body: str, url: str) -> Optional[bool]:
+        """Web push to a browser: True delivered, False gone, None failed."""
         from pywebpush import WebPushException, webpush
 
-        store = PushSubscriptionStore()
         payload = json.dumps({"notification": {
             "title": title, "body": body,
             "icon": "assets/brand/icons/decentai-mark-256.png",
@@ -136,27 +163,42 @@ class Notifier:
             "data": {"url": url, "onActionClick": {
                 "default": {"operation": "navigateLastFocusedOrOpen", "url": url}}},
         }})
-        pushed = dropped = 0
-        for row in store.for_user(user["org_id"], user["user_id"]):
-            try:
-                webpush(
-                    subscription_info={"endpoint": row["endpoint"], "keys": row["keys"]},
-                    data=payload,
-                    vapid_private_key=self.settings.vapid_private_key,
-                    vapid_claims={"sub": self.settings.vapid_subject or "mailto:admin@example.com"},
-                    ttl=self.PUSH_TTL_SECONDS,
-                )
-                pushed += 1
-            except WebPushException as exc:
-                status = getattr(getattr(exc, "response", None), "status_code", None)
-                if status in (404, 410):
-                    store.drop_endpoint(row["endpoint"])
-                    dropped += 1
-                else:
-                    self.logger.warning(f"Push to {row['endpoint'][:40]}… failed: {exc}")
-            except Exception as exc:
-                self.logger.warning(f"Push to {row['endpoint'][:40]}… failed: {exc}")
-        return pushed, dropped
+        try:
+            webpush(
+                subscription_info={"endpoint": row["endpoint"], "keys": row["keys"]},
+                data=payload,
+                vapid_private_key=self.settings.vapid_private_key,
+                vapid_claims={"sub": self.settings.vapid_subject or "mailto:admin@example.com"},
+                ttl=self.PUSH_TTL_SECONDS,
+            )
+        except WebPushException as exc:
+            status = getattr(getattr(exc, "response", None), "status_code", None)
+            if status in (404, 410):
+                return False
+            self.logger.warning(f"Push to {row['endpoint'][:40]}… failed: {exc}")
+            return None
+        return True
+
+    def _push_expo(self, token: str, title: str, body: str, url: str) -> Optional[bool]:
+        """A phone running the app, through Expo's push service: True
+        delivered, False the app is no longer on the phone, None failed."""
+        headers = {"Accept": "application/json"}
+        access = getattr(self.settings, "expo_access_token", "") or ""
+        if access:
+            headers["Authorization"] = f"Bearer {access}"
+        response = httpx.post(self.EXPO_PUSH_URL, headers=headers, timeout=10, json={
+            "to": token, "title": title, "body": body, "sound": "default",
+            "data": {"url": url}, "ttl": self.PUSH_TTL_SECONDS,
+        })
+        response.raise_for_status()
+        ticket = ((response.json() or {}).get("data") or [{}])[0]
+        if ticket.get("status") == "ok":
+            return True
+        details = ticket.get("details") or {}
+        if details.get("error") == "DeviceNotRegistered":
+            return False
+        self.logger.warning(f"Push to {token[:40]}… failed: {ticket.get('message')}")
+        return None
 
     def _email(self, chat: Dict[str, Any], user: Dict[str, str], title: str,
                body: str, url: str, now) -> bool:

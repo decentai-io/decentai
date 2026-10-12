@@ -2004,15 +2004,14 @@
       ]
     },
     "push_subscriptions": {
-      "description": "A person's web push subscriptions, one per browser that asked to be told when a chat needs them. The keys are the browser's; nothing here is secret to the platform.",
+      "description": "A person's push subscriptions, one per device that asked to be told when a chat needs them: a browser (endpoint and keys are the browser's web push subscription) or a phone running the app (kind 'expo', endpoint is its Expo push token). Nothing here is secret to the platform.",
       "validator": {
         "$jsonSchema": {
           "bsonType": "object",
           "required": [
             "org_id",
             "user_id",
-            "endpoint",
-            "keys"
+            "endpoint"
           ],
           "properties": {
             "_id": {
@@ -2026,6 +2025,11 @@
             },
             "endpoint": {
               "bsonType": "string"
+            },
+            "kind": {
+              "enum": [
+                "expo"
+              ]
             },
             "keys": {
               "bsonType": "object"

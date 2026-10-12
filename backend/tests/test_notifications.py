@@ -13,6 +13,26 @@ from test_runtime_secret_use import (  # noqa: F401
 
 SUBSCRIPTION = {"endpoint": "https://push.example.test/abc",
                 "keys": {"p256dh": "BPUBLIC", "auth": "AUTH"}}
+EXPO_TOKEN = "ExponentPushToken[phone-1]"
+
+
+class FakeExpo:
+    """Stands in for Expo's push service: records sends, says the tokens
+    told are no longer on a phone."""
+
+    def __init__(self, gone=()):
+        self.sent = []
+        self.gone = set(gone)
+
+    def __call__(self, url, headers=None, timeout=None, json=None):
+        self.sent.append((url, headers, json))
+        if json["to"] in self.gone:
+            ticket = {"status": "error", "message": "gone",
+                      "details": {"error": "DeviceNotRegistered"}}
+        else:
+            ticket = {"status": "ok", "id": "ticket-1"}
+        return SimpleNamespace(raise_for_status=lambda: None,
+                               json=lambda: {"data": [ticket]})
 
 
 class TestTheDoor:
@@ -30,6 +50,18 @@ class TestTheDoor:
             "subscription": {"endpoint": "x"}}).status_code == 400
         gone = app_call(admin, "Settings:Notifications:Unsubscribe", {
             "endpoint": SUBSCRIPTION["endpoint"]})
+        assert gone.json()["push"]["devices"] == 0
+
+    def test_a_phone_subscribes_with_its_expo_token(self, admin, seed):
+        subscribed = app_call(admin, "Settings:Notifications:Subscribe", {
+            "expo_token": EXPO_TOKEN, "user_agent": "DecentAI on iPhone"})
+        assert subscribed.status_code == 200, subscribed.text
+        assert subscribed.json()["push"]["devices"] == 1
+        app_call(admin, "Settings:Notifications:Subscribe", {"expo_token": EXPO_TOKEN})
+        assert app_call(admin, "Settings:Notifications:Get", {}).json()["push"]["devices"] == 1
+        assert app_call(admin, "Settings:Notifications:Subscribe", {
+            "expo_token": "not-a-token"}).status_code == 400
+        gone = app_call(admin, "Settings:Notifications:Unsubscribe", {"endpoint": EXPO_TOKEN})
         assert gone.json()["push"]["devices"] == 0
 
     def test_email_can_be_turned_off_and_on(self, admin, seed):
@@ -92,6 +124,33 @@ class TestDelivery:
         assert payload["data"]["url"].endswith(f"/ai/chats/{chat_id}")
         assert kwargs["vapid_claims"] == {"sub": "mailto:ops@example.test"}
         assert app_call(admin, "Settings:Notifications:Get", {}).json()["push"]["devices"] == 1
+
+    def test_a_phone_is_reached_through_expo_even_without_web_push(
+            self, admin, seed, monkeypatch):
+        from server import notifications
+
+        chat_id = make_chat(admin)
+        app_call(admin, "Settings:Notifications:Subscribe", {"expo_token": EXPO_TOKEN})
+        app_call(admin, "Settings:Notifications:Subscribe", {
+            "expo_token": "ExponentPushToken[old-phone]"})
+        app_call(admin, "Settings:Notifications:Subscribe", {"subscription": SUBSCRIPTION})
+        expo = FakeExpo(gone={"ExponentPushToken[old-phone]"})
+        monkeypatch.setattr(notifications.httpx, "post", expo)
+        web = FakePush()
+        who = {"org_id": seed.org["_id"], "user_id": seed.admin["_id"]}
+        # No VAPID pair: the browser is skipped, the phones are not.
+        outcome = notifier(monkeypatch, web, vapid_public_key="", vapid_private_key="",
+                           expo_access_token="expo-secret")._deliver(
+            chat_id, who, "card", "Notebook has a question", "Which folder?")
+        assert outcome["pushed"] == 1 and outcome["dropped"] == 1 and outcome["emailed"] is False
+        assert web.sent == []
+        url, headers, body = next(s for s in expo.sent if s[2]["to"] == EXPO_TOKEN)
+        assert url == notifications.Notifier.EXPO_PUSH_URL
+        assert headers["Authorization"] == "Bearer expo-secret"
+        assert body["title"] == "Notebook has a question" and body["body"] == "Which folder?"
+        assert body["data"]["url"].endswith(f"/ai/chats/{chat_id}")
+        # The old phone is gone from the list; the browser's row stays.
+        assert app_call(admin, "Settings:Notifications:Get", {}).json()["push"]["devices"] == 2
 
     def test_with_no_device_reached_an_email_follows_unless_turned_off(
             self, admin, seed, monkeypatch):

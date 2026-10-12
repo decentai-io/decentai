@@ -1,6 +1,6 @@
 """Settings:Notifications — how a person is reached when they are not
-looking: the push subscriptions their browsers keep here, and whether
-an email may follow when no browser can be reached.
+looking: the push subscriptions their browsers and phones keep here,
+and whether an email may follow when no device can be reached.
 """
 
 from __future__ import annotations
@@ -45,14 +45,21 @@ class NotificationsController:
         return self._answer(user), 200
 
     def subscribe(self, data: dict, user: dict):
-        """This browser's subscription, kept for the person. The same
-        endpoint registering again replaces its row."""
+        """This device, kept for the person: a browser's push subscription,
+        or the app's Expo push token. The same device registering again
+        replaces its row."""
         payload = self._payload(data)
-        row = self.subscriptions.add(
-            str(user.get("org_id") or ""), str(user.get("user_id") or ""),
-            payload.get("subscription") or {}, str(payload.get("user_agent") or ""))
+        org_id, user_id = str(user.get("org_id") or ""), str(user.get("user_id") or "")
+        user_agent = str(payload.get("user_agent") or "")
+        if payload.get("expo_token"):
+            row = self.subscriptions.add_device(
+                org_id, user_id, str(payload["expo_token"]), user_agent)
+        else:
+            row = self.subscriptions.add(
+                org_id, user_id, payload.get("subscription") or {}, user_agent)
         if row is None:
-            return {"error": "A push subscription needs an endpoint and its keys."}, 400
+            return {"error": "A push subscription needs an endpoint and its keys, "
+                             "or an Expo push token."}, 400
         self.logger.info(f"{user.get('email')} subscribed a device to push")
         return self._answer(user), 200
 

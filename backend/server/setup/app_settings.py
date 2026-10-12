@@ -107,6 +107,9 @@ def _load_settings() -> Dict[str, Any]:
         "vapid_public_key": os.getenv("VAPID_PUBLIC_KEY", ""),
         "vapid_private_key": os.getenv("VAPID_PRIVATE_KEY", ""),
         "vapid_subject": os.getenv("VAPID_SUBJECT", ""),
+        # phones running the app are reached through Expo's push service,
+        # which needs no key; a token only raises its limits.
+        "expo_access_token": os.getenv("EXPO_ACCESS_TOKEN", ""),
 
         # Where the browser reaches this app — the base for links we email
         # out. In development the SPA is served by the dev server on another
@@ -220,6 +223,8 @@ class Settings:
     vapid_public_key: Optional[str] = ""
     vapid_private_key: Optional[str] = ""
     vapid_subject: Optional[str] = ""
+    # push to the app, through Expo
+    expo_access_token: Optional[str] = ""
 
     # public base for emailed links
     public_app_url: Optional[str] = None

@@ -1,6 +1,7 @@
 """Public /auth/* surface — outside the gateway because these endpoints are
 how a session is obtained. Routes stay thin: decisions live in
-AuthController, the routes only manage the session cookie. A decision
+AuthController, the routes only hand over the session token — in the
+cookie for a browser, in the body for a native app. A decision
 that hashes a password runs on a worker thread: bcrypt takes a moment,
 and on the event loop it would stall every other request and socket.
 """
@@ -73,8 +74,10 @@ def _clear_session_cookie(response: JSONResponse, request: Request) -> JSONRespo
 
 def _start_session(request: Request, controller: AuthController,
                    body: Dict[str, Any], user_doc: Dict[str, Any],
-                   remember: bool = False) -> JSONResponse:
-    """Open a server-side session and hand back its signed cookie."""
+                   remember: bool = False, native: bool = False) -> JSONResponse:
+    """Open a server-side session and hand back its signed token: in a
+    cookie for a browser, or in the body for a native app, which keeps
+    it in the device's own store and presents it as a Bearer header."""
     session = controller.open_session(
         user_doc, remember=remember, **_client(request))
     token = get_access_controller().create_session_token(session, user_doc)
@@ -84,8 +87,18 @@ def _start_session(request: Request, controller: AuthController,
         controller.close_session(session["_id"])
         return JSONResponse({"error": "Could not start a session."}, status_code=500)
 
+    if native:
+        return JSONResponse({
+            **body, "access_token": token,
+            "expires_at": session["expires_at"].isoformat(),
+        }, status_code=200)
     return _set_session_cookie(
         JSONResponse(body, status_code=200), request, token, remember)
+
+
+def _native(payload: Dict[str, Any]) -> bool:
+    """A native app asks for the token itself: `"client": "native"`."""
+    return payload.get("client") == "native"
 
 
 # ----------------------------------------------------------------------
@@ -104,13 +117,15 @@ async def invitation(request: Request):
 async def accept_invitation(request: Request):
     """Become a member and sign in, in one step."""
     controller = AuthController()
+    payload = await _body(request)
     body, status, user_doc = await asyncio.to_thread(
-        controller.accept_invitation, await _body(request))
+        controller.accept_invitation, payload)
 
     if status != 200 or user_doc is None:
         return JSONResponse(body, status_code=status)
 
-    return _start_session(request, controller, body, user_doc)
+    return _start_session(request, controller, body, user_doc,
+                          native=_native(payload))
 
 
 @router.post("/password/first")
@@ -126,7 +141,8 @@ async def first_password(request: Request):
         return JSONResponse(body, status_code=status)
 
     return _start_session(request, controller, body, user_doc,
-                          remember=payload.get("remember") is True)
+                          remember=payload.get("remember") is True,
+                          native=_native(payload))
 
 
 @router.post("/password/forgot")
@@ -150,13 +166,15 @@ async def reset_info(request: Request):
 async def reset_password(request: Request):
     """Set a new password from a link, and sign in."""
     controller = AuthController()
+    payload = await _body(request)
     body, status, user_doc = await asyncio.to_thread(
-        controller.reset_password, await _body(request))
+        controller.reset_password, payload)
 
     if status != 200 or user_doc is None:
         return JSONResponse(body, status_code=status)
 
-    return _start_session(request, controller, body, user_doc)
+    return _start_session(request, controller, body, user_doc,
+                          native=_native(payload))
 
 
 @router.post("/login")
@@ -173,7 +191,8 @@ async def login(request: Request):
 
     # "Keep me signed in": a longer session, and a cookie that stays.
     return _start_session(request, controller, body, user_doc,
-                          remember=payload.get("remember") is True)
+                          remember=payload.get("remember") is True,
+                          native=_native(payload))
 
 
 # ----------------------------------------------------------------------

@@ -115,9 +115,10 @@ The frontend's Schedules page is `/ai/schedules`.
 When a runtime opens a card (`AI:Approval:Open`) or the assistant writes
 a message (`AI:Message:Create`, actor `ai`, root thread) and no browser
 of the chat's person has it open, the notifier pushes to every device
-the person subscribed (web push, VAPID pair from
-`VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY`/`VAPID_SUBJECT`; dead endpoints
-dropped) and, when none was reached, emails them unless they turned
+the person subscribed (browsers by web push, VAPID pair from
+`VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY`/`VAPID_SUBJECT`; phones running
+the app through Expo's push service, by the token they registered;
+dead devices dropped) and, when none was reached, emails them unless they turned
 email off — one email per chat per ten minutes, answers pushed at most
 every two minutes per chat.
 

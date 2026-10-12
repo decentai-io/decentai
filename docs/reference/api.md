@@ -19,6 +19,14 @@ administrator handed over: `POST /auth/password/first` with `email`,
 actions it holds — what the web app uses to decide which controls to
 show. `POST /auth/logout` ends the session.
 
+A native app has no cookie jar to trust. Signing in with
+`"client": "native"` in the body (on login, on the first password, on
+accepting an invitation or resetting a password) answers with the same
+session token in the body instead — `access_token`, with `expires_at` —
+for the app to keep in the device's own store and present as
+`Authorization: Bearer …` on every request and on the chat socket. It
+is the same session: signed out, disabled or expired the same way.
+
 For a script, an **API key** is simpler: make one on Settings → API
 keys and send it as `Authorization: Bearer dk_…`. It resolves to you,
 with your permissions checked on every request.
