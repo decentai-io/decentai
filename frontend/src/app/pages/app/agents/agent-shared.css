@@ -103,9 +103,9 @@
 
 /* ── An agent, as a card ──────────────────────────────────────────────
    What a card says is what approving it agreed to: how much runs without
-   asking, what it keeps, and where the code came from. The grid and the
-   card's own frame live in agents.component.css; what is here is the
-   vocabulary the marketplace's review shares. */
+   asking, what it keeps, and where the code came from. The card's own
+   frame is the card component's; what is here is the vocabulary the
+   marketplace's review shares. */
 .agent-avatar {
   display: grid; place-items: center; width: 34px; height: 34px; flex: none;
   color: var(--accent-ink); background: var(--accent-soft);

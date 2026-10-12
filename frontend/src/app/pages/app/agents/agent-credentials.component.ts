@@ -1,10 +1,13 @@
 import {
-  Component, EventEmitter, Input, OnChanges, Output, SimpleChanges,
+  Component, EventEmitter, Input, OnChanges, Output, SimpleChanges, TemplateRef, ViewChild,
 } from '@angular/core';
+import { MatDialog, MatDialogRef } from '@angular/material/dialog';
 
+import { Choice } from 'src/app/components/ui/radio-keys';
 import {
   AgentOffer, AgentSecretSlot, AgentsService, LendableAgent,
 } from 'src/app/services/agents.service';
+import { ConfirmService } from 'src/app/services/confirm.service';
 import { Group } from 'src/app/services/group.service';
 import { OauthConnectService } from 'src/app/services/oauth.service';
 import { Secret, SecretsService } from 'src/app/services/secrets.service';
@@ -35,11 +38,7 @@ import { AgentCredential } from './agent-shared';
   selector: 'app-agent-credentials',
   standalone: false,
   templateUrl: './agent-credentials.component.html',
-  styleUrls: [
-    '../data-shared.css',
-    './agent-shared.css',
-    './agents.component.css',
-  ],
+  styleUrl: './agent-credentials.component.css',
 })
 export class AgentCredentialsComponent implements OnChanges {
   @Input() agent!: AgentOffer;
@@ -62,7 +61,13 @@ export class AgentCredentialsComponent implements OnChanges {
   private definitionsByFamily = new Map<string, SecretDefinition>();
   private secretsByFamily = new Map<string, Secret[]>();
 
-  formFamily = '';
+  /** The new credential's form, on the dialog shell, and the slot it
+   *  is open for. */
+  @ViewChild('editor') private editor!: TemplateRef<unknown>;
+  private dialogRef: MatDialogRef<unknown> | null = null;
+  formCredential: AgentCredential | null = null;
+  /** Save was pressed: what is missing is said under its field. */
+  tried = false;
   name = '';
   values: Record<string, string> = {};
   shareMode: 'private' | 'groups' | 'org' = 'private';
@@ -72,9 +77,6 @@ export class AgentCredentialsComponent implements OnChanges {
 
   /** What this agent may use, and what it could be given, by slot. */
   private slotsById = new Map<string, AgentSecretSlot>();
-  /** Which slot's "use one I already have" picker is open. */
-  pickerFor = '';
-  picked = '';
 
   /** Offered once, right after a Connect: the other installed agents of
    *  the same provider this account could reach. Ticked by default —
@@ -94,12 +96,16 @@ export class AgentCredentialsComponent implements OnChanges {
    *  new array each change-detection pass re-renders, which triggers
    *  another pass, which freezes the tab. */
   private static readonly NONE: any[] = [];
+  /** A select field's choices, made once for the same reason. */
+  private choicesByField = new WeakMap<DefinitionField, Choice<string>[]>();
 
   constructor(
     private secrets: SecretsService,
     private definitionsService: SecretDefinitionsService,
     private agents: AgentsService,
     private oauth: OauthConnectService,
+    private dialog: MatDialog,
+    private confirm: ConfirmService,
   ) {}
 
   // ── Connected accounts ──────────────────────────────────────────────
@@ -123,13 +129,13 @@ export class AgentCredentialsComponent implements OnChanges {
   async connect(credential: AgentCredential): Promise<void> {
     const pinned = this.agent.resource_refs?.secrets?.[credential.id];
     if (!pinned) return;
-    this.saving = true;
+    this.hold(true);
     try {
       const result = await this.oauth.connect({
         definition_ref: String(pinned), owner: this.buildOwner(),
       });
       if (result.error) return this.failed.emit(result.error);
-      this.formFamily = '';
+      this.closeForm();
       await this.reload(credential.family);
       this.changed.emit();
       this.flashed.emit(`${credential.label} connected. This agent can use it now.`);
@@ -137,7 +143,7 @@ export class AgentCredentialsComponent implements OnChanges {
         await this.offerLend(result.resource_ref, this.providerOf(credential.family));
       }
     } finally {
-      this.saving = false;
+      this.hold(false);
     }
   }
 
@@ -276,24 +282,38 @@ export class AgentCredentialsComponent implements OnChanges {
     return slot.grant.secret_name || match?.name || 'a credential';
   }
 
-  openPicker(credential: AgentCredential): void {
-    this.pickerFor = credential.id;
-    this.picked = this.slot(credential)?.grant?.secret_ref || '';
+  /** Where the slot stands, in one line: which credential answers a
+   *  chat that has not chosen one, or why none does. The order is the
+   *  one a call is resolved in. */
+  stateOf(credential: AgentCredential): { words: string; warn: boolean } {
+    const grant = this.slot(credential)?.grant;
+    if (grant) {
+      return grant.fits === false
+        ? { words: 'The credential lent to it no longer fits.', warn: true }
+        : { words: `Using ${this.grantedName(credential)}, lent to this agent.`, warn: false };
+    }
+    const saved = this.savedSecrets(credential.family);
+    const pinned = saved.find((secret) => this.isDefault(credential.family, secret));
+    if (pinned) return { words: `Using ${pinned.name}, which you pinned.`, warn: false };
+    if (saved.length === 1) return { words: `Using ${saved[0].name}.`, warn: false };
+    if (this.needsDefault(credential.family)) {
+      return {
+        words: 'Several credentials, none pinned: a chat that has not chosen one is refused. '
+          + 'Pin the one that should answer.',
+        warn: true,
+      };
+    }
+    return { words: 'Nothing usable yet.', warn: true };
   }
 
-  closePicker(): void {
-    this.pickerFor = '';
-    this.picked = '';
-  }
-
-  async grant(credential: AgentCredential): Promise<void> {
-    if (!this.picked) return;
+  /** Hand the agent a credential that exists already. */
+  async grant(credential: AgentCredential, secretRef: string): Promise<void> {
+    if (!secretRef || secretRef === this.slot(credential)?.grant?.secret_ref) return;
     this.saving = true;
     try {
       const result = await this.agents.grantSecret(
-        this.agent.agent_id, credential.id, this.picked);
+        this.agent.agent_id, credential.id, secretRef);
       if (result.error) return this.failed.emit(result.error);
-      this.closePicker();
       await this.loadSlots();
       this.changed.emit();
       this.flashed.emit(
@@ -352,12 +372,6 @@ export class AgentCredentialsComponent implements OnChanges {
     return 'personal';
   }
 
-  ownerKind(secret: Secret): 'org' | 'group' | 'personal' {
-    const groups = secret.owner?.groups ?? [];
-    if (groups.includes(this.EVERYONE)) return 'org';
-    return groups.length ? 'group' : 'personal';
-  }
-
   // ── Which one answers ───────────────────────────────────────────────
   //
   // When a chat has not chosen a credential itself, the person's default
@@ -391,11 +405,44 @@ export class AgentCredentialsComponent implements OnChanges {
   // ── Adding and removing ─────────────────────────────────────────────
 
   openForm(credential: AgentCredential): void {
-    this.formFamily = credential.family;
+    this.formCredential = credential;
+    this.tried = false;
     this.name = '';
     this.values = {};
     this.shareMode = 'private';
     this.selectedGroups.clear();
+    this.dialogRef = this.dialog.open(this.editor, { width: '520px', maxWidth: '100vw' });
+    this.dialogRef.afterClosed().subscribe(() => {
+      this.dialogRef = null;
+      this.formCredential = null;
+    });
+  }
+
+  closeForm(): void {
+    this.dialogRef?.close();
+  }
+
+  /** Saving, or waiting on the provider's window: the dialog stays
+   *  until that is over. */
+  private hold(saving: boolean): void {
+    this.saving = saving;
+    if (this.dialogRef) this.dialogRef.disableClose = saving;
+  }
+
+  optionsOf(field: DefinitionField): Choice<string>[] {
+    let choices = this.choicesByField.get(field);
+    if (!choices) {
+      choices = (field.options || []).map((option) => ({ value: option, name: option }));
+      this.choicesByField.set(field, choices);
+    }
+    return choices;
+  }
+
+  /** What a required field still needs, said under it. */
+  errorFor(credential: AgentCredential, fieldName: string): string {
+    const field = this.fieldsFor(credential.family).find((entry) => entry.name === fieldName);
+    if (!field?.required || String(this.values[fieldName] ?? '').trim() !== '') return '';
+    return field.type === 'select' ? 'Choose one.' : `Enter ${field.label || field.name}.`;
   }
 
   toggleGroup(groupId: string): void {
@@ -412,20 +459,18 @@ export class AgentCredentialsComponent implements OnChanges {
     return { users: [this.myUserId] };
   }
 
-  closeForm(): void {
-    this.formFamily = '';
-  }
-
   async save(credential: AgentCredential): Promise<void> {
     const pinned = this.agent.resource_refs?.secrets?.[credential.id];
     if (!pinned) return;
+    this.tried = true;
+    if (this.fieldsFor(credential.family).some((field) => this.errorFor(credential, field.name))) return;
 
     const fields: Record<string, string> = {};
     for (const [name, value] of Object.entries(this.values)) {
       if (String(value ?? '').trim() !== '') fields[name] = value;
     }
 
-    this.saving = true;
+    this.hold(true);
     try {
       const result = await this.secrets.create({
         definition_ref: String(pinned),
@@ -434,32 +479,32 @@ export class AgentCredentialsComponent implements OnChanges {
         owner: this.buildOwner(),
       });
       if (result.error) return this.failed.emit(result.error);
-      this.formFamily = '';
+      this.closeForm();
       await this.reload(credential.family);
       this.changed.emit();
       this.flashed.emit(`${credential.label} saved. This agent can use it now.`);
     } finally {
-      this.saving = false;
+      this.hold(false);
     }
   }
 
-  /** The credential a delete is asked about, by ref: the row turns
-   *  into the question, and nothing goes until it is answered. */
-  removingRef = '';
-
-  requestRemove(secret: Secret): void {
-    this.removingRef = secret.resource_ref;
-  }
-
-  cancelRemove(): void {
-    this.removingRef = '';
+  /** A deleted credential is gone for every chat and agent that used
+   *  it, so it is asked. */
+  async askRemove(credential: AgentCredential, secret: Secret): Promise<void> {
+    const sure = await this.confirm.ask({
+      title: `Delete ${secret.name}?`,
+      body: 'Its values are destroyed and cannot be read back. Anything that used this '
+        + 'credential is refused until it is given another.',
+      confirm: 'Delete',
+      danger: true,
+    });
+    if (sure) await this.remove(credential, secret);
   }
 
   async remove(credential: AgentCredential, secret: Secret): Promise<void> {
     this.busyRef = secret.resource_ref;
     try {
       const result = await this.secrets.remove(secret.resource_ref);
-      this.removingRef = '';
       if (result.error) return this.failed.emit(result.error);
       await this.reload(credential.family);
       this.changed.emit();

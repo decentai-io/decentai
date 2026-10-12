@@ -33,6 +33,9 @@ describe('AgentCredentialsComponent', () => {
       } as any,
       // Connecting an account opens a popup; nothing here does.
       {} as any,
+      // Nor does anything here open the form or ask before a delete.
+      {} as any,
+      {} as any,
     );
     component.agent = {
       agent_id: 'agt_1',
@@ -113,12 +116,10 @@ describe('AgentCredentialsComponent', () => {
     const component = create();
     component.groups = [{ group_id: 'g1', group_name: 'Research' }] as any;
 
-    expect(component.ownerKind({ owner: { groups: ['everyone'] } } as any)).toBe('org');
     expect(component.ownerLabel({ owner: { groups: ['everyone'] } } as any))
       .toBe('organization');
-    expect(component.ownerKind({ owner: { groups: ['g1'] } } as any)).toBe('group');
     expect(component.ownerLabel({ owner: { groups: ['g1'] } } as any)).toBe('Research');
-    expect(component.ownerKind({ owner: { groups: [] } } as any)).toBe('personal');
+    expect(component.ownerLabel({ owner: { groups: [] } } as any)).toBe('personal');
   });
 
   // ── Being handed one that already exists ────────────────────────────
@@ -176,14 +177,11 @@ describe('AgentCredentialsComponent', () => {
     });
     await component.ngOnChanges(changed(['agent']));
 
-    component.openPicker(credential);
-    component.picked = 'sec_1';
-    await component.grant(credential);
+    await component.grant(credential, 'sec_1');
 
     expect(calls).toEqual([
       { agent: 'agt_1', resource: 'connection', secret: 'sec_1' },
     ]);
-    expect(component.pickerFor).toBe('');
   });
 
   it('will not grant with nothing chosen', async () => {
@@ -197,9 +195,7 @@ describe('AgentCredentialsComponent', () => {
     });
     await component.ngOnChanges(changed(['agent']));
 
-    component.openPicker(credential);
-    component.picked = '';
-    await component.grant(credential);
+    await component.grant(credential, '');
 
     expect(called).toBeFalse();
   });
@@ -213,13 +209,41 @@ describe('AgentCredentialsComponent', () => {
     await component.ngOnChanges(changed(['agent']));
     component.failed.subscribe((message: string) => failures.push(message));
 
-    component.openPicker(credential);
-    component.picked = 'sec_1';
-    await component.grant(credential);
+    await component.grant(credential, 'sec_1');
 
     expect(failures).toEqual(['not the shape this agent asked for']);
-    // Still open, so the choice is not silently lost.
-    expect(component.pickerFor).toBe('connection');
+  });
+
+  it('says in one line which credential answers, or why none does', async () => {
+    const component = create({
+      list: async () => [
+        { resource_ref: 'sec_1', name: 'A' },
+        { resource_ref: 'sec_2', name: 'B' },
+      ],
+    });
+    await component.ngOnChanges(changed(['agent']));
+
+    expect(component.stateOf(credential).warn).toBeTrue();
+    expect(component.stateOf(credential).words).toContain('none pinned');
+
+    component.defaults = { agt_1__connection: 'sec_2' };
+    expect(component.stateOf(credential)).toEqual({ words: 'Using B, which you pinned.', warn: false });
+  });
+
+  it('keeps the form open and says what a required field needs', async () => {
+    let created = false;
+    const component = create(
+      { create: async () => { created = true; return {}; } },
+      { get: async () => ({ definition: { fields: [
+        { name: 'token', label: 'API token', type: 'secret', storage: 'values', required: true, options: [] },
+      ] } }) },
+    );
+    await component.ngOnChanges(changed(['agent']));
+
+    await component.save(credential);
+
+    expect(created).toBeFalse();
+    expect(component.errorFor(credential, 'token')).toBe('Enter API token.');
   });
 
   it('takes a granted credential back', async () => {
