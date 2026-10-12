@@ -38,3 +38,47 @@ export function relativeDate(
 export function fullDate(value: string | number | Date | null | undefined): string {
   return parse(value)?.toLocaleString() ?? '';
 }
+
+/** The time of day to the second, "11:34:08", for a row of a record. */
+export function clockTime(value: string | number | Date | null | undefined): string {
+  return parse(value)?.toLocaleTimeString(undefined, {
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+  }) ?? '';
+}
+
+/** The day a record's rows stand under: "Today", "Yesterday",
+ *  "Mon 6 Oct", "Mon 6 Oct 2025". */
+export function dayHeading(
+  value: string | number | Date | null | undefined,
+  now: Date = new Date(),
+): string {
+  const date = parse(value);
+  if (!date) return '';
+  const midnight = (of: Date) => new Date(of.getFullYear(), of.getMonth(), of.getDate()).getTime();
+  const daysAgo = Math.round((midnight(now) - midnight(date)) / DAY);
+  if (daysAgo === 0) return 'Today';
+  if (daysAgo === 1) return 'Yesterday';
+  return date.toLocaleDateString(undefined, {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    ...(date.getFullYear() === now.getFullYear() ? {} : { year: 'numeric' }),
+  });
+}
+
+/** What was read newest first, cut into its days: each day's heading
+ *  and the items under it, in the order they came. */
+export function byDay<T>(
+  items: T[],
+  when: (item: T) => string | number | Date | null | undefined,
+  now: Date = new Date(),
+): { day: string; items: T[] }[] {
+  const days: { day: string; items: T[] }[] = [];
+  for (const item of items) {
+    const day = dayHeading(when(item), now);
+    const last = days[days.length - 1];
+    if (last && last.day === day) last.items.push(item);
+    else days.push({ day, items: [item] });
+  }
+  return days;
+}

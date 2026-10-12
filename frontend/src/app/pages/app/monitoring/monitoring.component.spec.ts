@@ -1,10 +1,15 @@
+import { EMPTY } from 'rxjs';
+
 import { MonitoringComponent } from './monitoring.component';
 import {
-  bytesLabel, monitorChip, monitorLabel, monitorSummary, monitorTone,
+  bytesLabel, monitorChip, monitorKind, monitorLabel, monitorSummary, monitorTone,
 } from './monitor-words';
 
 describe('MonitoringComponent', () => {
-  function create(answers: any = {}, asked: any[] = [], can = (_: string) => true) {
+  function create(
+    answers: any = {}, asked: any[] = [], can = (_: string) => true,
+    address: { view?: string; went?: any[][] } = {},
+  ) {
     return new MonitoringComponent(
       {
         usage: async () => answers.usage || {
@@ -20,6 +25,11 @@ describe('MonitoringComponent', () => {
         },
       } as any,
       { can } as any,
+      {
+        events: EMPTY,
+        navigate: async (to: any[]) => { address.went?.push(to); return true; },
+      } as any,
+      { snapshot: { firstChild: { url: address.view ? [{ path: address.view }] : [] } } } as any,
     );
   }
 
@@ -100,7 +110,9 @@ describe('MonitoringComponent', () => {
 
     expect(asked[1].before).toBe(9);
     expect(component.events.length).toBe(2);
-    expect(component.agentChoices).toEqual([{ value: 'agt_a', label: 'Notes' }]);
+    expect(component.agentChoices).toEqual([
+      { value: '', name: 'Every agent' }, { value: 'agt_a', name: 'Notes' },
+    ]);
   });
 
   it('shows of the connections only those refused or not reached, when asked', async () => {
@@ -115,9 +127,10 @@ describe('MonitoringComponent', () => {
       },
     });
     await component.select('connections');
-    component.refusedOnly = true;
+    component.showRefusedOnly(true);
 
     expect(component.shown.map(e => e.at)).toEqual([2, 1]);
+    expect(component.days.flatMap(day => day.items).map(e => e.at)).toEqual([2, 1]);
   });
 
   it('lists what an agent keeps, and closes it on a second press', async () => {
@@ -137,11 +150,34 @@ describe('MonitoringComponent', () => {
   });
 
   it('opens on the agents for somebody who may not read events', async () => {
-    const component = create({}, [], action => action === 'agents:monitor:usage');
-    component.initialView = 'events';
+    const went: any[][] = [];
+    const component = create({}, [], action => action === 'agents:monitor:usage', { view: 'events', went });
     await component.ngOnInit();
 
     expect(component.view).toBe('agents');
+    expect(went).toEqual([['/monitoring']]);
+    component.ngOnDestroy();
+  });
+
+  it('opens on the view its address names', async () => {
+    const asked: any[] = [];
+    const component = create({}, asked, () => true, { view: 'connections' });
+    await component.ngOnInit();
+
+    expect(component.view).toBe('connections');
+    expect(asked[0].kinds).toEqual(['connection']);
+    component.ngOnDestroy();
+  });
+
+  it('says how old the numbers are', async () => {
+    jasmine.clock().install();
+    jasmine.clock().mockDate(new Date(2026, 9, 12, 11, 0, 0));
+    const component = create();
+    await component.select('agents');
+    expect(component.updated).toBe('Updated just now');
+
+    jasmine.clock().tick(3000);
+    expect(component.updated).toBe('Updated 3 s ago');
     component.ngOnDestroy();
   });
 
@@ -191,6 +227,7 @@ describe('what was written down, in words', () => {
     const job = { at: 1, kind: 'helper', job: 'stop', name: 'Browser', code: 0, seconds: 0.02 };
     expect(monitorLabel(job)).toBe("Helper ended every process of the agent's user");
     expect(monitorSummary(job)).toBe('Browser · 20 ms');
+    expect(monitorKind(job)).toBe('Helper job');
     expect(monitorTone(job)).toBe('muted');
   });
 

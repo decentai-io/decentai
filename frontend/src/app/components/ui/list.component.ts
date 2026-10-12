@@ -37,9 +37,10 @@ export class ListComponent {
   /** What the rows are, for a screen reader: "Model providers". */
   @Input({ required: true }) label = '';
   @Input() loading = false;
-  /** What is inside: <app-row>s, or a <table class="table"> with the
-   *  pager under it. */
-  @Input() rows: 'list' | 'table' = 'list';
+  /** What is inside: <app-row>s, a <table class="table"> with the
+   *  pager under it, or groups that are each a list of their own (a
+   *  record's days). */
+  @Input() rows: 'list' | 'table' | 'groups' = 'list';
   /** The counts under the rows: "3 active · 7 available". */
   @Input() foot = '';
 

@@ -1,0 +1,249 @@
+<app-page title="Monitoring" sentence="What agents use now, and what was seen of them." [wide]="true">
+  <span pageActions class="mon-updated" *ngIf="view === 'agents' && updated">{{ updated }}</span>
+  <app-segmented
+    pageActions
+    *ngIf="canSeeEvents"
+    label="Monitoring views"
+    [choices]="views"
+    [ngModel]="view"
+    (ngModelChange)="go($event)"
+  ></app-segmented>
+
+  <p class="form-notice is-error" role="alert" *ngIf="error">{{ error }}</p>
+
+  <!-- ── What the agents use now ─────────────────────────────────── -->
+  <ng-container *ngIf="view === 'agents'">
+    <div class="form" *ngIf="loadingUsage" aria-busy="true" aria-label="Loading what the agents use">
+      <span class="sk sk-field"></span>
+      <span class="sk sk-field"></span>
+      <span class="sk sk-field"></span>
+    </div>
+
+    <ng-container *ngIf="usage as u">
+      <section class="form-section" *ngIf="u.services.length">
+        <h2 class="form-section-title">The platform</h2>
+        <p class="form-section-note">What each part holds now, as it read of its own container.</p>
+        <app-list label="The platform" rows="table">
+          <table class="table">
+            <thead>
+              <tr>
+                <th scope="col">Part</th>
+                <th scope="col">Memory</th>
+                <th scope="col" class="num">Processor</th>
+                <th scope="col" class="num cell-minor">On disk</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let service of u.services; trackBy: byService">
+                <td class="cell-main">{{ service.name }}</td>
+                <td class="cell-fact">
+                  <span class="mon-memory">
+                    <span class="mon-number">
+                      {{ service.memory == null ? "—" : bytes(service.memory) }}<span class="mon-of" *ngIf="service.memory_limit"> of {{ bytes(service.memory_limit) }}</span>
+                    </span>
+                    <span
+                      class="mon-meter"
+                      *ngIf="fullnessOf(service) != null"
+                      role="img"
+                      [attr.aria-label]="fullnessOf(service) + '% of what it is given'"
+                    >
+                      <span [style.width.%]="fullnessOf(service)" [class.is-high]="fullnessOf(service)! >= 90"></span>
+                    </span>
+                  </span>
+                </td>
+                <td class="num cell-fact">
+                  <span class="fact-label">Processor </span>{{ service.cpu == null ? "—" : processors(service.cpu) }}
+                </td>
+                <td class="num cell-minor">{{ service.disk == null ? "—" : bytes(service.disk) }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </app-list>
+      </section>
+
+      <section class="form-section">
+        <h2 class="form-section-title">The agents</h2>
+        <p class="form-section-note">What they are given together, and what each running agent holds.</p>
+
+        <app-empty
+          *ngIf="!u.counted"
+          icon="gauge"
+          title="Not counted here"
+          line="Agents have no container of their own in this install, so nothing adds up what each one uses."
+        ></app-empty>
+
+        <ng-container *ngIf="u.counted">
+          <dl class="mon-tiles">
+            <div class="mon-tile">
+              <dt>Memory the agents are given</dt>
+              <dd>{{ u.limits.memory ? bytes(u.limits.memory) : "No limit" }}</dd>
+            </div>
+            <div class="mon-tile">
+              <dt>Memory they hold now</dt>
+              <dd>
+                {{ u.memory == null ? "Unknown" : bytes(u.memory) }}
+                <span
+                  class="mon-meter"
+                  *ngIf="fullness != null"
+                  role="img"
+                  [attr.aria-label]="fullness + '% of what they are given'"
+                >
+                  <span [style.width.%]="fullness" [class.is-high]="fullness >= 90"></span>
+                </span>
+              </dd>
+            </div>
+            <div class="mon-tile">
+              <dt>Processors they are given</dt>
+              <dd>{{ u.limits.cpus ? u.limits.cpus : "No limit" }}</dd>
+            </div>
+          </dl>
+
+          <div class="form-notice is-warn mon-not-held" *ngIf="notHeld.length">
+            <p *ngFor="let line of notHeld">{{ line }}</p>
+          </div>
+
+          <app-empty
+            *ngIf="!u.agents.length"
+            icon="gauge"
+            title="No agent is running"
+            line="An agent starts when a chat first calls it, and is listed here while it runs."
+          ></app-empty>
+
+          <app-list label="Running agents" rows="table" *ngIf="u.agents.length">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th scope="col">Agent</th>
+                  <th scope="col">Memory</th>
+                  <th scope="col" class="num">Processor</th>
+                  <th scope="col" class="num cell-minor">Processes</th>
+                  <th scope="col" class="num cell-minor">On disk</th>
+                  <th scope="col" *ngIf="canSeeFiles"><span class="visually-hidden">Files</span></th>
+                </tr>
+              </thead>
+              <tbody>
+                <ng-container *ngFor="let agent of u.agents; trackBy: byAgent">
+                  <tr>
+                    <td class="cell-main">{{ agent.name }}</td>
+                    <td class="cell-fact">
+                      <span class="mon-memory">
+                        <span class="mon-number">{{ bytes(agent.memory) }}</span>
+                        <span
+                          class="mon-meter"
+                          *ngIf="share(agent) != null"
+                          role="img"
+                          [attr.aria-label]="share(agent) + '% of what the agents are given'"
+                        >
+                          <span [style.width.%]="share(agent)"></span>
+                        </span>
+                      </span>
+                    </td>
+                    <td class="num cell-fact"><span class="fact-label">Processor </span>{{ processors(agent.cpu) }}</td>
+                    <td class="num cell-minor">{{ agent.processes }}</td>
+                    <td class="num cell-minor">{{ agent.disk == null ? "—" : bytes(agent.disk) }}</td>
+                    <td class="cell-actions" *ngIf="canSeeFiles">
+                      <button
+                        class="btn sm"
+                        type="button"
+                        [attr.aria-label]="'Files of ' + agent.name"
+                        [attr.aria-expanded]="filesOf === agent.agent"
+                        (click)="toggleFiles(agent)"
+                      >
+                        <lucide-icon name="folder-open" [size]="16" aria-hidden="true"></lucide-icon>
+                        Files
+                      </button>
+                    </td>
+                  </tr>
+                  <tr class="table-detail" *ngIf="filesOf === agent.agent">
+                    <td colspan="6">
+                      <p class="mon-files-note" *ngIf="loadingFiles" role="status">Listing what it keeps…</p>
+                      <ng-container *ngIf="files as f">
+                        <p class="mon-files-note" *ngIf="f.note">{{ f.note }}</p>
+                        <p class="mon-files-note" *ngIf="!f.note && !f.count">
+                          It keeps no files now. An agent's folder is emptied each time it starts.
+                        </p>
+                        <p class="mon-files-note" *ngIf="f.count">
+                          {{ f.count }} {{ f.count === 1 ? "file" : "files" }}, {{ bytes(f.bytes) }}<span *ngIf="f.count > f.files.length">; the first {{ f.files.length }} are listed</span>.
+                        </p>
+                        <ul class="mon-files" *ngIf="f.files.length">
+                          <li *ngFor="let file of f.files">
+                            <code>{{ file.path }}</code>
+                            <span>{{ bytes(file.bytes) }}</span>
+                            <span [title]="fullWhen(file.modified)">{{ when(file.modified) }}</span>
+                          </li>
+                        </ul>
+                      </ng-container>
+                    </td>
+                  </tr>
+                </ng-container>
+              </tbody>
+            </table>
+          </app-list>
+        </ng-container>
+      </section>
+    </ng-container>
+  </ng-container>
+
+  <!-- ── What was seen of them ───────────────────────────────────── -->
+  <app-list
+    *ngIf="view !== 'agents'"
+    rows="groups"
+    [label]="view === 'connections' ? 'Connections' : 'Events'"
+    [loading]="loading"
+  >
+    <form listToolbar class="mon-filters" (ngSubmit)="reload()">
+      <app-select class="toolbar-sort" label="Agent" name="agent" [choices]="agentChoices" [(ngModel)]="agent"></app-select>
+      <app-select
+        *ngIf="view === 'events'"
+        class="toolbar-sort"
+        label="Kind of event"
+        name="kind"
+        [choices]="kinds"
+        [(ngModel)]="kind"
+      ></app-select>
+      <app-switch
+        *ngIf="view === 'connections'"
+        label="Refused or not reached only"
+        name="refusedOnly"
+        [ngModel]="refusedOnly"
+        (ngModelChange)="showRefusedOnly($event)"
+      ></app-switch>
+      <button class="btn" type="submit" [disabled]="loading">Apply</button>
+      <button class="btn ghost" type="button" *ngIf="filtered" [disabled]="loading" (click)="clearFilters()">Clear</button>
+    </form>
+
+    <app-empty
+      *ngIf="!days.length"
+      [icon]="view === 'connections' ? 'network' : 'scroll-text'"
+      [title]="filtered ? 'Nothing matches' : 'Nothing written down yet'"
+      [line]="view === 'connections'
+        ? 'Every connection an agent asks for is listed here, made or refused. What it carried is never read.'
+        : 'What the platform does to an agent, and what the agent does, appears here as it happens.'"
+    ></app-empty>
+
+    <section *ngFor="let day of days">
+      <h2 class="record-day">{{ day.day }}</h2>
+      <div role="list" [attr.aria-label]="day.day">
+        <app-record-row
+          *ngFor="let event of day.items"
+          [time]="time(event)"
+          [tone]="tone(event)"
+          [outcome]="outcome(event)"
+          [words]="label(event)"
+          [more]="summary(event)"
+          [chip]="kindOf(event)"
+          [open]="isOpen(event)"
+          (toggle)="toggle(event)"
+        >
+          <pre class="record-json" *ngIf="isOpen(event)">{{ details(event) }}</pre>
+        </app-record-row>
+      </div>
+    </section>
+
+    <div class="record-older" *ngIf="nextBefore != null">
+      <button class="btn" type="button" [disabled]="loadingMore" (click)="loadMore()">
+        {{ loadingMore ? "Loading…" : "Load older" }}
+      </button>
+    </div>
+  </app-list>
+</app-page>

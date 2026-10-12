@@ -940,8 +940,17 @@ div.mat-mdc-select-panel {
   text-underline-offset: 3px;
 }
 
-/* An editor opened under a row (who can see it). Sharing moves to a
-   dialog of its own in a later step, and these four rules go with it. */
+/* A number's column name, said beside the number where the header row
+   is not shown. */
+.table .fact-label {
+  display: none;
+}
+
+/* What opens under a row (`table-detail`: an agent's files), and an
+   editor opened under one (`table-editor`: who can see it). Sharing
+   moves to a dialog of its own in a later step, and the editor's rules
+   go with it. */
+.table .table-detail td,
 .table .table-editor td {
   height: auto;
   padding: 16px 12px;
@@ -1026,6 +1035,12 @@ div.mat-mdc-select-panel {
     order: 4;
   }
 
+  .table .fact-label {
+    display: inline;
+    color: var(--ink-3);
+  }
+
+  .table .table-detail td,
   .table .table-editor td {
     display: block;
     flex: 1 1 100%;
@@ -1038,4 +1053,41 @@ div.mat-mdc-select-panel {
     margin-right: 8px;
     color: var(--ink-3);
   }
+}
+
+/* ── Records ─────────────────────────────────────────────────────────
+   What stands around the rows of a record (components/ui/record-row):
+   the day its rows happened on, the details as they were written down,
+   and the way to the older ones under the list. */
+.record-day {
+  margin: 20px 0 4px;
+  padding: 0 8px;
+  color: var(--ink-3);
+  font-size: var(--t-xs);
+  font-weight: 500;
+  line-height: var(--lh-xs);
+}
+
+.record-day:first-child {
+  margin-top: 0;
+}
+
+.record-json {
+  max-height: 320px;
+  padding: 10px 12px;
+  overflow: auto;
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+  line-height: var(--lh-sm);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.record-older {
+  display: flex;
+  justify-content: center;
+  margin-top: 16px;
 }

@@ -8,7 +8,7 @@ import { SecretsRoutes } from './routes/app/secrets.routes';
 import { SettingsRoutes } from './routes/app/settings.routes';
 import { AuditComponent } from './pages/app/ai/audit/audit.component';
 import { GuideComponent } from './pages/app/guide/guide.component';
-import { MonitoringComponent } from './pages/app/settings/monitoring/monitoring.component';
+import { MonitoringComponent } from './pages/app/monitoring/monitoring.component';
 import { NoAccessComponent } from './website/no-access/no-access.component';
 import { PageNotFoundComponent } from './website/page-not-found/page-not-found.component';
 import { permissionGuard } from './guards/permission.guard';
@@ -47,14 +47,21 @@ const routes: Routes = [
   },
 
   // The two records: what agents use and were seen doing, and the
-  // permanent trail. Audit's two views are two addresses; the view is
-  // the route's data, which the router binds to the component's input.
+  // permanent trail. Each view has its own address. Monitoring's are
+  // children with no component, so the page stays while the view
+  // changes; Audit's view is the route's data, which the router binds
+  // to the component's input.
   {
     path: 'monitoring',
     title: 'Monitoring',
     component: MonitoringComponent,
     canActivate: [permissionGuard],
     data: { requiredAction: 'agents:monitor:usage' },
+    children: [
+      { path: '', pathMatch: 'full', children: [] },
+      { path: 'events', children: [] },
+      { path: 'connections', children: [] },
+    ],
   },
   {
     path: 'audit',

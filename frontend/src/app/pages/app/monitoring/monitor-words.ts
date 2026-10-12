@@ -3,20 +3,22 @@
  * (docs/system/monitoring.md): one line a person reads, a second that
  * says the rest, and the colour the outcome deserves.
  */
+import { Choice } from 'src/app/components/ui/radio-keys';
+import { RecordTone } from 'src/app/components/ui/record-row.component';
 import { MonitorEvent } from 'src/app/services/monitoring.service';
 
 /** The kinds a person can ask for, in the words they read. */
-export const MONITOR_KINDS: { value: string; label: string }[] = [
-  { value: '', label: 'Every kind' },
-  { value: 'worker.started', label: 'Agent started' },
-  { value: 'worker.ended', label: 'Agent ended' },
-  { value: 'worker.failed', label: 'Agent could not start' },
-  { value: 'connection', label: 'Connection' },
-  { value: 'log', label: 'Log line' },
-  { value: 'process', label: 'Process started' },
-  { value: 'memory', label: 'Ended for memory' },
-  { value: 'helper', label: 'Helper job' },
-  { value: 'program', label: 'Program run' },
+export const MONITOR_KINDS: Choice<string>[] = [
+  { value: '', name: 'Every kind' },
+  { value: 'worker.started', name: 'Agent started' },
+  { value: 'worker.ended', name: 'Agent ended' },
+  { value: 'worker.failed', name: 'Agent could not start' },
+  { value: 'connection', name: 'Connection' },
+  { value: 'log', name: 'Log line' },
+  { value: 'process', name: 'Process started' },
+  { value: 'memory', name: 'Ended for memory' },
+  { value: 'helper', name: 'Helper job' },
+  { value: 'program', name: 'Program run' },
 ];
 
 /** What each job of the spawn helper does, for somebody who never
@@ -28,6 +30,11 @@ const HELPER_JOBS: Record<string, string> = {
   stop: "ended every process of the agent's user",
   sweep: 'removed what the agent left in shared temporary folders',
 };
+
+/** The kind of an event in those words, for its chip. */
+export function monitorKind(event: MonitorEvent): string {
+  return MONITOR_KINDS.find((kind) => kind.value === event.kind)?.name || event.kind;
+}
 
 export function bytesLabel(value: any): string {
   const amount = Number(value) || 0;
@@ -93,7 +100,7 @@ export function monitorSummary(event: MonitorEvent): string {
   }
 }
 
-/** The word on the chip. */
+/** How it went, in a word, for someone who cannot see the dot. */
 export function monitorChip(event: MonitorEvent): string {
   if (event.kind === 'connection') {
     return event['allowed'] === false ? 'refused'
@@ -109,8 +116,8 @@ export function monitorChip(event: MonitorEvent): string {
   } as Record<string, string>)[event.kind] || event.kind;
 }
 
-/** ok | bad | muted | live — the colour an outcome deserves. */
-export function monitorTone(event: MonitorEvent): string {
+/** The colour an outcome deserves. */
+export function monitorTone(event: MonitorEvent): RecordTone {
   switch (event.kind) {
     case 'worker.started': return 'ok';
     case 'worker.failed':
