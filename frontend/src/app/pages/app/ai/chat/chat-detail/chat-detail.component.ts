@@ -1379,7 +1379,7 @@ export class ChatDetailComponent implements OnInit, OnDestroy {
     const profile = await this.profileService.get();
     const defaults = profile?.preferences?.chat?.enabled_skills;
     const ref = this.dialog.open(ChatSkillsDialogComponent, {
-      width: '520px',
+      width: '560px',
       maxWidth: '95vw',
       data: { enabled_skills: this.chat?.config?.enabled_skills,
         default_skills: Array.isArray(defaults) ? defaults : null,

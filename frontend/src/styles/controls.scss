@@ -1120,3 +1120,64 @@ div.mat-mdc-select-panel {
   justify-content: center;
   margin-top: 16px;
 }
+
+/* ── A dialog's own pieces ───────────────────────────────────────────
+   class="dialog-note" is the sentence at the head of a dialog's body;
+   class="dialog-aside" on an action puts it, and the ones before it,
+   at the left of the action row, away from Cancel and the primary. */
+.dialog-note {
+  margin-bottom: 12px;
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.mat-mdc-dialog-actions .dialog-aside {
+  margin-right: auto;
+}
+
+/* ── Rows to tick ────────────────────────────────────────────────────
+   class="check-row" on a mat-checkbox makes it a row 44px high at
+   least: the box, then `check-name` and under it `check-hint`. The
+   whole row ticks. */
+.mat-mdc-checkbox.check-row {
+  display: block;
+  border-radius: var(--r-sm);
+  transition: background var(--dur-1) var(--ease);
+}
+
+.mat-mdc-checkbox.check-row:hover {
+  background: var(--surface-2);
+}
+
+.mat-mdc-checkbox.check-row .mdc-form-field {
+  display: flex;
+  align-items: flex-start;
+  width: 100%;
+}
+
+.mat-mdc-checkbox.check-row .mdc-label {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 44px;
+  padding: 6px 8px 6px 0;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.check-name {
+  color: var(--ink);
+  font-size: var(--t-base);
+  font-weight: 500;
+  line-height: var(--lh-base);
+  overflow-wrap: anywhere;
+}
+
+.check-hint {
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+  overflow-wrap: anywhere;
+}

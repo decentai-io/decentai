@@ -1,48 +1,32 @@
 <h2 mat-dialog-title>Agents</h2>
 
-<mat-dialog-content class="agents-dialog">
+<mat-dialog-content>
   @if (isLoading) {
-    <div class="agents-loading">
-      <mat-spinner diameter="28"></mat-spinner>
-      <span>Loading installed agents…</span>
+    <div class="form" aria-busy="true" aria-label="Loading installed agents">
+      <span class="sk sk-field"></span>
+      <span class="sk sk-field"></span>
     </div>
+  } @else if (agents.length === 0) {
+    <app-empty
+      icon="bot"
+      title="No agents are available to this chat"
+      line="Install one from the marketplace, or widen your chat defaults under Settings."
+    ></app-empty>
   } @else {
-    @if (agents.length === 0) {
-      <p class="agents-empty">
-        No agents are available to this chat. Install one from the
-        marketplace, or widen your chat defaults under Settings.
-      </p>
-    } @else {
-      <p class="agents-hint">
-        Only checked agents can work in this chat. Unchecking every agent
-        makes it a pure conversation.
-      </p>
-      @for (agent of agents; track agent.agent_id) {
-        <div class="agents-row">
-          <mat-checkbox
-            [checked]="selection.has(agent.agent_id)"
-            (change)="toggle(agent.agent_id)"
-          >
-            <span class="agents-name">
-              {{ agent.name || agent.agent_id }}
-            </span>
-          </mat-checkbox>
-          <div class="agents-description">{{ agent.description }}</div>
-        </div>
-      }
+    <p class="dialog-note">
+      Only checked agents can work in this chat. Unchecking every agent makes it a pure conversation.
+    </p>
+    @for (agent of agents; track agent.agent_id) {
+      <mat-checkbox class="check-row" [checked]="selection.has(agent.agent_id)" (change)="toggle(agent.agent_id)">
+        <span class="check-name">{{ agent.name || agent.agent_id }}</span>
+        @if (agent.description) { <span class="check-hint">{{ agent.description }}</span> }
+      </mat-checkbox>
     }
   }
 </mat-dialog-content>
 
-<mat-dialog-actions align="end">
-  <button mat-button (click)="reset()">Reset to my defaults</button>
-  <button mat-button (click)="close()">Cancel</button>
-  <button
-    mat-flat-button
-    color="primary"
-    [disabled]="isLoading"
-    (click)="save()"
-  >
-    Save
-  </button>
+<mat-dialog-actions>
+  <button class="btn ghost dialog-aside" type="button" (click)="reset()">Reset to my defaults</button>
+  <button class="btn" type="button" (click)="close()">Cancel</button>
+  <button class="btn primary" type="button" [disabled]="isLoading" (click)="save()">Save</button>
 </mat-dialog-actions>

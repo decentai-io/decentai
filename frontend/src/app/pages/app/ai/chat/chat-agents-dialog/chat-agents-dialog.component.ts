@@ -14,7 +14,6 @@ import { AiSessionService } from 'src/app/services/ai-session.service';
   selector: 'app-chat-agents-dialog',
   standalone: false,
   templateUrl: './chat-agents-dialog.component.html',
-  styleUrls: ['./chat-agents-dialog.component.css'],
 })
 export class ChatAgentsDialogComponent implements OnInit {
   agents: any[] = [];
