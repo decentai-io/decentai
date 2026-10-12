@@ -223,21 +223,12 @@
   overscroll-behavior: contain;
 }
 
-/* The composer sits on the page's own surface, like the messages. A
-   block, so its own wrapper can centre itself. */
+/* The composer sits on the page's own surface, like the messages, and
+   clear of a phone's home bar. */
 .chat-composer-bar {
   flex: 0 0 auto;
+  padding: 8px 0 max(8px, env(safe-area-inset-bottom));
   background: var(--bg);
-}
-
-.chat-composer-bar app-chat-composer {
-  display: block;
-  width: 100%;
-}
-
-/* The composer ships with a margin meant for a scrolling page. */
-.chat-composer-bar ::ng-deep .composer_wrapper {
-  margin: 0.9rem auto;
 }
 
 /* Beside the thread the view is as wide as its picture is at the
@@ -304,9 +295,5 @@
     flex-shrink: 1;
     min-height: 0;
     overflow: hidden;
-  }
-
-  .chat-composer-bar ::ng-deep .composer_wrapper {
-    margin: 0.55rem auto;
   }
 }

@@ -10,9 +10,7 @@
 .start-mark { display:grid; place-items:center; width:44px; height:44px; flex:none; border-radius:var(--radius-xl); color:var(--foreground); }
 .start-copy h2 { margin:0; font-family:var(--font-serif); color:var(--foreground); font-size:25px; line-height:1.3; letter-spacing:-.025em; }
 .start-copy p { margin:5px 0 0; color:var(--muted-foreground); font-size:13.5px; }
-.composer-section { display:flex; width:100%; max-width:1040px; margin:22px auto 0; }
-.composer-section app-chat-composer { display:flex; width:100%; }
-:host ::ng-deep .composer-section .composer_wrapper { margin:0 auto; }
+.composer-section { width:100%; margin:22px auto 0; }
 
 /* ===== Chats: every conversation, under the composer ===== */
 .chats { flex:1 0 auto; display:flex; flex-direction:column; width:100%; max-width:1040px; min-height:320px; height:0; margin:32px auto 0; padding:0 12px; box-sizing:border-box; }

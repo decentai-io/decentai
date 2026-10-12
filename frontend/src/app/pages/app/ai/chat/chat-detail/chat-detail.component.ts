@@ -1166,24 +1166,14 @@ export class ChatDetailComponent implements OnInit, OnDestroy {
       || !this.maySend;
   }
 
-  get composerPlaceholder(): string {
+  /** What the page says under the composer: why it is closed, or
+   *  what a message sent now will do. */
+  get composerHint(): string {
     if (this.isChatLoading) return 'Loading conversation…';
-    if (!this.maySend) return 'You may read this chat, not write in it';
-    if (!this.chat?.config?.llm) return 'Choose a model to continue';
+    if (!this.maySend) return 'Read only: sending messages is not among your permissions.';
+    if (!this.chat?.config?.llm) return 'Choose a model to continue.';
     if (this.isConnecting) return 'Connecting…';
     if (!this.isSocketReady) return 'Reconnecting…';
-    if (this.screen && !this.screen.idle) return `Tell ${this.screen.agent_name || 'the agent'} something…`;
-    if (this.isLoading) return 'Add to what it is doing…';
-    return 'Message DecentAI';
-  }
-
-  get composerHint(): string {
-    if (!this.maySend) return 'Sending messages is not among your permissions.';
-    if (!this.chat?.config?.llm) return 'Choose a model, on the left.';
-    // Nothing to say about a connection being made for the first time:
-    // it takes a moment and then it is there.
-    if (this.isConnecting) return '';
-    if (!this.isSocketReady) return 'Restoring the chat connection…';
     if (this.screen && !this.screen.idle) return `${this.screen.agent_name || 'The agent'} hears this as it works.`;
     if (this.isLoading) return 'Sent now, it steers the turn in progress.';
     return '';

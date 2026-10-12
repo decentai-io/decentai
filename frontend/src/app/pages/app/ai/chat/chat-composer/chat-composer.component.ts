@@ -2,6 +2,7 @@
 import {
   Component,
   EventEmitter,
+  HostListener,
   Input,
   OnChanges,
   OnDestroy,
@@ -18,6 +19,7 @@ import { RequestService } from 'src/app/services/request.service';
 import { AiSessionService } from 'src/app/services/ai-session.service';
 import { SettingsSpeechService } from 'src/app/services/settings-speech.service';
 import { MicrophoneService } from 'src/app/services/microphone.service';
+import { sizeLabel } from 'src/app/pages/app/data/files/file-types';
 import { ChatFilePickerDialogComponent } from '../chat-file-picker-dialog/chat-file-picker-dialog.component';
 import { ChatModel } from '../chat-model-picker/chat-model-picker.component';
 
@@ -34,8 +36,9 @@ export class ChatComposerComponent implements OnChanges, OnInit, OnDestroy {
    *  sendMessage), not when loading ends. */
   @Input() loading = false;
   @Input() disabled = false;
-  @Input() placeholder = 'Write a message';
-  @Input() hint = 'Enter to send · Shift+Enter for a new line';
+  /** What the page has to say under the box: why it is closed, what a
+   *  message sent now will do. Empty when there is nothing to say. */
+  @Input() hint = '';
 
   /** Chat ID for the active session. Upload button is shown only when set. */
   @Input() chatId: string | null = null;
@@ -73,6 +76,50 @@ export class ChatComposerComponent implements OnChanges, OnInit, OnDestroy {
   userUploads: any[] = [];
   isUploading = false;
 
+  /** The line under the box, at the right: the composer's own state
+   *  first, then the page's. Empty leaves the reminder of the keys. */
+  get state(): string {
+    if (this.isUploading) return 'Uploading attachments…';
+    if (this.recording) return 'Listening… press the square to stop';
+    if (this.transcribing) return 'Writing it down…';
+    return this.notice || this.hint;
+  }
+
+  size(bytes: number): string { return sizeLabel(bytes); }
+
+  // ── A file dragged over the page ────────────────────────────────────
+
+  /** A file is being dragged over the page: the composer shows where
+   *  it lands. */
+  dropping = false;
+  private dropTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /** Nothing says a drag has left the window, so the frame goes when
+   *  the drag stops being reported. */
+  @HostListener('window:dragover', ['$event'])
+  onDragOver(event: DragEvent): void {
+    if (!this.takesFiles(event)) return;
+    event.preventDefault();
+    this.dropping = true;
+    if (this.dropTimer) clearTimeout(this.dropTimer);
+    this.dropTimer = setTimeout(() => this.zone.run(() => (this.dropping = false)), 200);
+  }
+
+  @HostListener('window:drop', ['$event'])
+  async onDrop(event: DragEvent): Promise<void> {
+    if (!this.takesFiles(event)) return;
+    // Otherwise the browser opens the file in place of the app.
+    event.preventDefault();
+    this.dropping = false;
+    await this.addFiles(Array.from(event.dataTransfer?.files || []));
+  }
+
+  /** Files, and a chat to attach them to. */
+  private takesFiles(event: DragEvent): boolean {
+    return !!this.chatId && !this.disabled
+      && Array.from(event.dataTransfer?.types || []).includes('Files');
+  }
+
   constructor(
     private request: RequestService,
     private aiSession: AiSessionService,
@@ -103,6 +150,7 @@ export class ChatComposerComponent implements OnChanges, OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.destroyed = true;
+    if (this.dropTimer) clearTimeout(this.dropTimer);
     // A recording under way ends with the composer: nothing would read
     // it, and a recorder left running keeps the microphone's stream.
     const recorder = this.recorder;
@@ -411,6 +459,9 @@ export class ChatComposerComponent implements OnChanges, OnInit, OnDestroy {
   }
 
   onPrompt(event: KeyboardEvent): void {
+    // Enter while a word is being composed (an input method's
+    // candidates) chooses the word; it does not send.
+    if (event.isComposing) return;
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
       this.sendMessage();
