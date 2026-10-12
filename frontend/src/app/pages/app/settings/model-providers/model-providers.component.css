@@ -1,36 +1,114 @@
-/* Model providers: the list and its editor share the settings page's
-   row and form classes (../settings.component.css). What is here is the
-   one thing only this tab has — the choice of a provider. */
-:host { display: block; }
-
-.provider-search { flex: none; margin-bottom: 14px; }
-.provider-grid {
-  list-style: none; margin: 0; padding: 0;
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px;
+/* Model providers. The list, the rows, the fields and the dialog are
+   the shared ones; what is here is the one thing only this page has,
+   the choice of a provider, and a few placements in its form. */
+:host {
+  display: block;
 }
+
+/* Step one: the providers as rows in two columns, since their names
+   are what a person scans. */
+.provider-search {
+  margin-bottom: 12px;
+}
+
+.provider-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  list-style: none;
+}
+
+.provider-list li:first-child:has(.provider-hint) {
+  grid-column: 1 / -1;
+}
+
 .provider-choice {
-  display: flex; flex-direction: column; gap: 3px; width: 100%;
-  min-height: 46px; padding: 11px 13px; text-align: left;
-  border: 1px solid var(--border); border-radius: var(--ui-radius-card);
-  background: var(--surface); color: var(--ink);
-  font: inherit; font-size: var(--ui-text-sm); cursor: pointer;
-  transition: border-color .15s ease, background .15s ease;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--dur-1) var(--ease);
 }
-.provider-choice:hover, .provider-choice:focus-visible {
-  border-color: color-mix(in srgb, var(--primary) 42%, var(--border));
-  background: var(--accent-soft);
+
+.provider-choice:hover {
+  background: var(--surface-2);
 }
-.provider-choice small { color: var(--ink-2); font-size: 13px; line-height: 1.5; }
-.provider-note { margin: 10px 0 0; }
-.provider-custom { margin-top: 14px; }
 
-.model-typed { display: flex; gap: 8px; min-width: 0; }
-.model-typed .txt { flex: 1; min-width: 0; }
-.model-typed .btn { flex: none; white-space: nowrap; }
+.provider-choice:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+}
 
-.dialog-error { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 14px; }
-.dialog-error .btn { margin-left: auto; }
+.provider-name {
+  font-size: var(--t-base);
+  font-weight: 500;
+  line-height: var(--lh-base);
+}
 
-@media (max-width: 680px) {
-  .model-typed { flex-wrap: wrap; }
+.provider-hint,
+.provider-note,
+.provider-servers {
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.provider-note {
+  margin-top: 8px;
+}
+
+/* Step two. */
+.provider-servers {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.model-typed {
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+}
+
+.model-typed .input {
+  flex: 1;
+  min-width: 0;
+}
+
+.provider-more {
+  align-self: flex-start;
+  margin-left: -8px;
+}
+
+.provider-refused {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+}
+
+.provider-back {
+  margin-right: auto;
+}
+
+@media (max-width: 700px) {
+  .provider-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .model-typed {
+    flex-wrap: wrap;
+  }
 }

@@ -388,16 +388,29 @@ describe('ModelProvidersComponent', () => {
     expect(calls['defaulted']).toBe('llm_Y');
   });
 
-  it('removes through the dialog, never directly', async () => {
+  it('asks before removing, and removes only on a yes', async () => {
     const calls: Record<string, any> = {};
     const component = create([connection('X')], calls);
-
     const target = component.connections[0];
-    component.requestDelete(target);
-    expect(component.deleteTarget).toBe(target);
 
-    await component.remove(target);
-    expect(component.deleteTarget).toBeNull();
+    (component as any).confirm = { ask: async () => false };
+    await component.askRemove(target);
+    expect(calls['changed']).toBeUndefined();
+
+    (component as any).confirm = { ask: async () => true };
+    await component.askRemove(target);
     expect(calls['changed']).toBe(1);
+  });
+
+  it('says what is missing under its field, once Save was pressed', async () => {
+    const component = create();
+    component.startCreate();
+    component.selectProvider(component.providers.find((provider) => !!provider.endpoint)!);
+    expect(component.errorFor('key')).toBe('');
+
+    await component.save();
+
+    expect(component.errorFor('key')).toBe('Paste the API key.');
+    expect(component.errorFor('model')).toBe('');
   });
 });

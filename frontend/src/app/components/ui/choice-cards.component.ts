@@ -11,13 +11,14 @@ import { Choice, radioKeyTarget } from './radio-keys';
  *                     [(ngModel)]="policy.programs"></app-choice-cards>
  *
  * Inside an <app-field> the field's label names it and `label` is not
- * needed. It is a group of radios: the arrow keys move the choice.
+ * needed. It is a group of radios: the arrow keys move the choice. The
+ * card's look is the shared .choice-card (styles/controls.scss).
  */
 @Component({
   selector: 'app-choice-cards',
   standalone: true,
   imports: [NgFor, NgIf],
-  styleUrl: './choice-cards.component.css',
+  styles: [':host { display: block; }'],
   providers: [
     { provide: NG_VALUE_ACCESSOR, useExisting: forwardRef(() => ChoiceCardsComponent), multi: true },
   ],

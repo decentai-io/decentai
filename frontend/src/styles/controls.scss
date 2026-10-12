@@ -282,7 +282,9 @@ textarea.input {
   width: 96px;
 }
 
-/* One line at the top of a page a person may read but not change. */
+/* One line said to the person about the page: that they may read it
+   but not change it, that something was saved, or (`is-warn`,
+   `is-error`) that something needs them or went wrong. */
 .form-notice {
   padding: 8px 12px;
   border-radius: var(--r-md);
@@ -292,9 +294,121 @@ textarea.input {
   line-height: var(--lh-sm);
 }
 
+.form-notice.is-warn {
+  background: var(--warn-soft);
+  color: var(--warn-ink);
+}
+
+.form-notice.is-error {
+  background: var(--danger-soft);
+  color: var(--danger-ink);
+}
+
 /* A form while it loads: blocks the height of a field. */
 .sk-field {
   height: 58px;
+}
+
+/* ── Choice card ─────────────────────────────────────────────────────
+   One option of a choice whose options need a sentence each: a 44px
+   card with a dot, a name and one line. <app-choice-cards>
+   (components/ui) is a column of them; the sharing selector is the
+   same cards with what a chosen one opens into under it. A card is a
+   radio: aria-checked says which is chosen. */
+.choice-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.choice-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  width: 100%;
+  min-height: 44px;
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background var(--dur-1) var(--ease),
+    border-color var(--dur-1) var(--ease);
+}
+
+.choice-card:hover {
+  background: var(--surface-2);
+}
+
+.choice-card[aria-checked='true'] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.choice-card:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+}
+
+.choice-card:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.choice-dot {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  border: 1.5px solid var(--ink-3);
+  border-radius: var(--r-full);
+  background: var(--surface);
+}
+
+.choice-card[aria-checked='true'] .choice-dot {
+  border: 5px solid var(--accent);
+}
+
+.choice-words {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.choice-name {
+  font-size: var(--t-base);
+  font-weight: 500;
+  line-height: var(--lh-base);
+}
+
+.choice-hint {
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+/* ── Secret field ────────────────────────────────────────────────────
+   class="secret-field" around an <input class="input"> that holds
+   something write-only (a key, a client secret) and the icon button
+   that shows or hides what is being typed. */
+.secret-field {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.secret-field > .input {
+  padding-right: 40px;
+}
+
+.secret-field > .icon-btn {
+  position: absolute;
+  right: 2px;
 }
 
 /* ── Chip ────────────────────────────────────────────────────────────

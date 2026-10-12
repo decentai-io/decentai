@@ -1,5 +1,9 @@
-import { Component, EventEmitter, Input, OnInit, Output } from '@angular/core';
+import {
+  Component, EventEmitter, Input, OnChanges, OnDestroy, OnInit, Output, TemplateRef, ViewChild,
+} from '@angular/core';
+import { MatDialog, MatDialogRef } from '@angular/material/dialog';
 
+import { Choice } from 'src/app/components/ui/radio-keys';
 import { AuthService } from 'src/app/services/auth.service';
 import { MembersService } from 'src/app/services/members.service';
 import { ProfileService } from 'src/app/services/profile.service';
@@ -26,9 +30,9 @@ export interface Candidate {
   selector: 'app-transfer-dialog',
   standalone: false,
   templateUrl: './transfer-dialog.component.html',
-  styleUrls: ['../../pages/app/data-shared.css', './transfer-dialog.component.css'],
+  styleUrls: ['./transfer-dialog.component.css'],
 })
-export class TransferDialogComponent implements OnInit {
+export class TransferDialogComponent implements OnInit, OnChanges, OnDestroy {
   /** What is being handed over, in words: "the credential “Gmail”". */
   @Input() subject = 'this';
   /** The current steward, never offered. */
@@ -36,6 +40,14 @@ export class TransferDialogComponent implements OnInit {
   @Input() busy = false;
   @Output() chosen = new EventEmitter<Candidate>();
   @Output() closed = new EventEmitter<void>();
+
+  /** What the dialog shows. A page puts <app-transfer-dialog> in its
+   *  template while something is being handed over; the component opens
+   *  this on the dialog shell as it appears, and says `closed` when the
+   *  dialog goes. */
+  @ViewChild('sheet', { static: true })
+  private sheet!: TemplateRef<unknown>;
+  private dialogRef?: MatDialogRef<unknown>;
 
   loading = true;
   candidates: Candidate[] = [];
@@ -46,9 +58,25 @@ export class TransferDialogComponent implements OnInit {
     private profiles: ProfileService,
     private members: MembersService,
     private auth: AuthService,
+    private dialog: MatDialog,
   ) {}
 
+  ngOnChanges(): void {
+    // While the hand-over is on its way the dialog stays.
+    if (this.dialogRef) this.dialogRef.disableClose = this.busy;
+  }
+
+  ngOnDestroy(): void {
+    this.dialogRef?.close();
+  }
+
   async ngOnInit(): Promise<void> {
+    this.dialogRef = this.dialog.open(this.sheet, { width: '480px' });
+    this.dialogRef.afterClosed().subscribe(() => {
+      this.dialogRef = undefined;
+      this.closed.emit();
+    });
+
     const found = new Map<string, Candidate>();
     for (const peer of await this.profiles.peers().catch(() => [])) {
       found.set(peer.user_id, peer);
@@ -75,6 +103,27 @@ export class TransferDialogComponent implements OnInit {
       `${c.user_name} ${c.email}`.toLowerCase().includes(q));
   }
 
+  /** The people shown, as the choices of the dialog's cards. */
+  get choices(): Choice[] {
+    this.refreshChoices();
+    return this.shown;
+  }
+  private shown: Choice[] = [];
+  private shownFor = '';
+
+  /** Rebuilt only when the search or the people change, so the cards
+   *  keep their elements while one is being chosen. */
+  private refreshChoices(): void {
+    const key = `${this.query}|${this.candidates.length}`;
+    if (key === this.shownFor) return;
+    this.shownFor = key;
+    this.shown = this.visible.map((person) => ({
+      value: person.user_id,
+      name: person.user_name || person.email,
+      hint: person.user_name ? person.email : undefined,
+    }));
+  }
+
   get selected(): Candidate | null {
     return this.candidates.find((c) => c.user_id === this.selectedId) || null;
   }
@@ -85,6 +134,6 @@ export class TransferDialogComponent implements OnInit {
   }
 
   close(): void {
-    if (!this.busy) this.closed.emit();
+    if (!this.busy) this.dialogRef?.close();
   }
 }
