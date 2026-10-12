@@ -26,8 +26,8 @@ seeder runs once at every start and exits.
                                                      ▼
 ┌─────────┐  seeds, then exits        ┌──────────────────────┐      ┌─────────┐
 │  init   │──────────────────────────▶│       backend        │─────▶│  mongo  │
-└─────────┘                           │      port 8000       │      └─────────┘
-                                      └──────────────────────┘
+└─────────┘   ─ ─ the `data` network: ─│      port 8000       │─ ─ ─ └─────────┘
+              internal, these three    └──────────────────────┘
                  dials WS /chats/{chat_id}   │   ▲   POST /app, as the person,
                  with two tokens (below)     ▼   │   under the chat's delegation
                                       ┌──────────────────────┐
@@ -49,20 +49,31 @@ seeder runs once at every start and exits.
 | `caddy` | `frontend/` | serves the web app's files and passes the backend's paths on (`frontend/Caddyfile`) | 80, published as `LISTEN:PORT` — the only published port |
 | `backend` | `backend/` | the platform's API: identity and access, the data layer, the gateway, chat sessions as the runtime's services | 8000 |
 | `init` | the backend's | `bootstrap/init_db.py`: the schema, the access chains, the first administrator | — |
-| `mongo` | `mongo:7` | the database | 27017, inside only |
+| `mongo` | `mongo:7` | the database | 27017, on the `data` network only |
 | `ai-runtime` | `ai_runtime/` | one assistant per chat, the executor and its gates, the clock, the agents' proxy | 8001 (the door), 8002 (the proxy) |
 | `agents` | the runtime's, started as `python -m ai_runtime.agents_container.service` | the spawner, and every agent's worker | 8003 |
 | `speech` | `speech/` | speech to text and text to speech, from models that run here ([below](#speech)) | 8004 |
 
-Two networks. Everything but `agents` is on `default`. `ai-runtime`
-and `agents` are on `agents`, which is `internal: true`: nothing on it
-has a route out. The runtime is the only container on both, so the
-only way from an agent's worker to anywhere is through the runtime.
+Three networks (`docker-compose.yml`):
+
+| Network | On it | What it is for |
+|---|---|---|
+| `default` | `caddy`, `backend`, `ai-runtime`, `speech` | the one with a way out. Caddy reaches the backend; the backend reaches the runtime's door and the speech container, and the internet for repositories, mail and OAuth; the runtime reaches the backend's gateway, and the internet for agents' packages and, through its proxy, for agents |
+| `data` | `mongo`, `backend`, `init` | `internal: true`: the database, and the two that speak to it. Nothing else has a route to it, and it has none out |
+| `agents` | `ai-runtime`, `agents` | `internal: true`: the runtime is the only container on it with a way anywhere, so a worker's only way out is the runtime's proxy |
+
+A container on two networks keeps the reach of each: the backend
+reaches GitHub over `default` and the database over `data`; `mongo`,
+on `data` alone, reaches nothing and is reached by two. The speech
+container is on `default` and so reachable from the runtime as well
+as the backend; it holds no data and takes no key, which is why that
+is left as it is.
 
 **Only the backend speaks to the database.** The runtime has no
-database and no key to one: everything it keeps, it keeps by asking
-the backend ([the chat session](chat-session.md)). That is what lets
-the process that runs other people's code be handed so little
+database, no key to one, and since `data` no route to one: everything
+it keeps, it keeps by asking the backend ([the chat
+session](chat-session.md)). That is what lets the process that runs
+other people's code be handed so little
 ([the sandbox](sandbox.md#the-runtimes-own-settings)).
 
 ## Speech

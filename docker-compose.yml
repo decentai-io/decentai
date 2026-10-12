@@ -12,8 +12,26 @@
 #
 # As written it serves this computer only, in plain HTTP. A server with
 # an address of its own lays docker-compose.server.yml over it
-# (docs/run/deploying.md). Only Caddy publishes a port; everything
-# else lives on the private compose network.
+# (docs/run/deploying.md). Only Caddy publishes a port.
+#
+# Three networks, and who is on which (docs/system/architecture.md):
+#
+#   default   the one with a way out to the internet: caddy, backend,
+#             ai-runtime, speech. Caddy reaches the backend here; the
+#             backend reaches the runtime's door and the speech
+#             container, and the internet for repositories, mail and
+#             OAuth; the runtime reaches the backend's gateway, and the
+#             internet for agents' packages and, through its proxy, for
+#             agents.
+#   data      internal: mongo, and the two that speak to it, backend
+#             and init. Nothing else has a route to the database, and
+#             the database has none out.
+#   agents    internal: ai-runtime and agents. A worker's only way
+#             anywhere is the runtime's proxy.
+#
+# A container on two networks keeps the reach of each: the backend on
+# default and data reaches GitHub and the database both; mongo on data
+# alone reaches nothing and is reached by two.
 services:
   mongo:
     image: mongo:7
@@ -21,6 +39,8 @@ services:
     environment:
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME:?set in deploy.env}
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:?set in deploy.env}
+    networks:
+      - data
     volumes:
       - mongo_data:/data/db
     healthcheck:
@@ -38,6 +58,8 @@ services:
     env_file: deploy.env
     command: ["python", "/opt/decentai/bootstrap/init_db.py"]
     restart: "no"
+    networks:
+      - data
     depends_on:
       mongo:
         condition: service_healthy
@@ -48,6 +70,9 @@ services:
       dockerfile: backend/Dockerfile
     restart: unless-stopped
     env_file: deploy.env
+    networks:
+      - default
+      - data
     volumes:
       - uploads_data:/data/uploads
       # Approved agent code, one folder per organization. The only copy
@@ -232,6 +257,10 @@ services:
         condition: service_healthy
 
 networks:
+  # The database's: mongo, and the backend and the seeder that speak
+  # to it. Nothing on it reaches the internet.
+  data:
+    internal: true
   # Between the runtime and the agents' container, and nowhere else:
   # nothing on it reaches the internet, the database or the backend.
   agents:
