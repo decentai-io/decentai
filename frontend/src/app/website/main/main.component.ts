@@ -27,6 +27,7 @@ import { WorkSwitchService } from 'src/app/services/work-switch.service';
 import { AlertComponent } from 'src/app/components/alert/alert.component';
 import { ContentView } from '../config/config.model';
 import { adminConsoleActions } from '../config/config';
+import { TopBarService } from 'src/app/services/top-bar.service';
 
 /** Below this width the sidebar becomes a modal drawer (see *.css). */
 const MOBILE_QUERY = '(max-width: 900px)';
@@ -71,12 +72,12 @@ export class MainComponent implements OnInit, OnDestroy {
   hasAdminConsoleAccess = false;
 
   themeChoice: ThemeChoice = 'system';
-  /** The toggle's icon and name for each choice. */
-  readonly themeFaces: Record<ThemeChoice, { icon: string; label: string }> = {
-    light: { icon: 'sun', label: 'Light' },
-    dark: { icon: 'moon', label: 'Dark' },
-    system: { icon: 'monitor', label: 'System' },
-  };
+  /** The three themes, as the user menu lists them. */
+  readonly themes: { value: ThemeChoice; name: string; icon: string }[] = [
+    { value: 'light', name: 'Light', icon: 'sun' },
+    { value: 'dark', name: 'Dark', icon: 'moon' },
+    { value: 'system', name: 'System', icon: 'monitor' },
+  ];
 
   /** Whether this person has stopped everything of theirs (AI:Switch). */
   workStopped = false;
@@ -107,6 +108,7 @@ export class MainComponent implements OnInit, OnDestroy {
     private auth: AuthService,
     private workSwitch: WorkSwitchService,
     private updates: SwUpdate,
+    readonly topBar: TopBarService,
   ) {}
 
   /** Off-screen drawer must leave the tab order when closed on mobile. */
@@ -141,6 +143,7 @@ export class MainComponent implements OnInit, OnDestroy {
     this.subscriptions.add(
       this.workSwitch.stopped$.subscribe((stopped) => (this.workStopped = stopped)),
     );
+    this.subscriptions.add(this.topBar.stopAsked.subscribe(() => this.stopEverything()));
     void this.workSwitch.refresh();
 
     // The service worker keeps serving the version it has until the page
@@ -245,8 +248,8 @@ export class MainComponent implements OnInit, OnDestroy {
     heading.focus();
   }
 
-  toggleTheme(): void {
-    this.theme.toggle();
+  setTheme(choice: ThemeChoice): void {
+    this.theme.set(choice);
   }
 
   /** The person's own switch: end everything their chats are doing,
@@ -401,13 +404,10 @@ export class MainComponent implements OnInit, OnDestroy {
   /** The pages that show their own title (the page frame,
    *  components/ui/page.component.ts). The bar above them would say it
    *  twice; it goes for good when every page has the frame. */
-  private readonly framedPages = /^\/(settings|monitoring|audit|data\/files|data\/records)(\/|$|\?)/;
+  private readonly framedPages = /^\/(ai\/chats|settings|monitoring|audit|data\/files|data\/records)(\/|$|\?)/;
 
-  /** A chat on a phone has its own header with the way back: the
-   *  breadcrumb above it would be a third bar saying the same thing. */
   get pageBarHidden(): boolean {
-    return this.framedPages.test(this.router.url)
-      || (this.isMobile && /\/ai\/chats\/[^/?#]+/.test(this.router.url));
+    return this.framedPages.test(this.router.url);
   }
 
   private applyViewport(isMobile: boolean): void {

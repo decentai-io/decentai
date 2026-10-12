@@ -5,7 +5,7 @@
 // WebSocket carries the conversation: AI:Chat:Input out, AI:Chat:Event in
 // (the runtime door's frames, relayed). A decision or a stop goes through
 // the HTTP gateway, where the backend records it before the runtime hears.
-import { Component, NgZone, OnDestroy, OnInit } from '@angular/core';
+import { Component, ElementRef, NgZone, OnDestroy, OnInit, TemplateRef, ViewChild } from '@angular/core';
 import { MatDialog } from '@angular/material/dialog';
 import { ActivatedRoute, Router } from '@angular/router';
 import { AlertComponent } from 'src/app/components/alert/alert.component';
@@ -17,6 +17,7 @@ import { ChatTurn, FileChoice, PlanStep } from 'src/app/models/chat-protocol';
 import { ScreenInputEvent, ScreenTab, ScreenView } from '../chat-screen/chat-screen.component';
 import { ViewportService } from 'src/app/services/viewport.service';
 import { ReadAloudService } from 'src/app/services/read-aloud.service';
+import { TopBarService } from 'src/app/services/top-bar.service';
 import {
   ChatConnectionService, ChatConnectionState,
 } from 'src/app/services/chat-connection.service';
@@ -37,6 +38,17 @@ import { SKILLS_LISTED_OPTIONS, STANDARD_SKILLS_LISTED } from '../chat-defaults'
   styleUrls: ['./chat-detail.component.css'],
 })
 export class ChatDetailComponent implements OnInit, OnDestroy {
+  /** The chat's row of the app's top bar: back, title, status, actions. */
+  @ViewChild('bar', { static: true }) private bar?: TemplateRef<unknown>;
+  /** The kill switch's question takes the focus as it opens, on the
+   *  answer that changes nothing. */
+  @ViewChild('killCancel') private set killCancel(button: ElementRef<HTMLElement> | undefined) {
+    button?.nativeElement.focus();
+  }
+  @ViewChild('titleInput') private set titleInput(input: ElementRef<HTMLInputElement> | undefined) {
+    input?.nativeElement.select();
+  }
+
   title: string = '';
   chat_id: string | null = null;
   chat: any = null;
@@ -167,6 +179,18 @@ export class ChatDetailComponent implements OnInit, OnDestroy {
   connectionState: ChatConnectionState = 'disconnected';
   inlineErrors: InlineChatError[] = [];
 
+  /** What the banner under the header shows: the two newest, the
+   *  newest first. */
+  get shownErrors(): InlineChatError[] {
+    return this.inlineErrors.slice(-2).reverse();
+  }
+
+  /** What the live-view button does now, in words. */
+  get liveViewLabel(): string {
+    return this.screen && this.screenHidden && !this.screen.idle
+      ? 'Show the live view' : 'Open the browser';
+  }
+
   isLoading = false;
   /** Background jobs the chat holds — the strip at the top, and the
    *  header's word on it. */
@@ -244,9 +268,11 @@ export class ChatDetailComponent implements OnInit, OnDestroy {
     private state: ChatStateService,
     private viewport: ViewportService,
     private readAloud: ReadAloudService,
+    readonly topBar: TopBarService,
   ) {}
 
   ngOnInit(): void {
+    this.topBar.content.set(this.bar ?? null);
     this.state.reset();
     void this.readAloud.refresh();
     this.subscriptions.add(this.viewport.narrow$.subscribe((narrow) => (this.isNarrow = narrow)));
@@ -352,6 +378,7 @@ export class ChatDetailComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.destroyed = true;
+    this.topBar.content.set(null);
     this.clearKillTimer();
     // A reply being said belongs to the chat that was left.
     this.readAloud.stop();
@@ -1163,8 +1190,8 @@ export class ChatDetailComponent implements OnInit, OnDestroy {
   /** What the status pill reads. */
   get connectionLabel(): string {
     if (this.isSocketReady) return 'Connected';
-    if (this.isConnecting) return 'Connecting';
-    return this.isReconnecting ? 'Reconnecting' : 'Reconnect';
+    if (this.isConnecting) return 'Connecting…';
+    return this.isReconnecting ? 'Reconnecting…' : 'Reconnect';
   }
 
   /** Trust lives in the chat's config; a change reconnects the chat. */

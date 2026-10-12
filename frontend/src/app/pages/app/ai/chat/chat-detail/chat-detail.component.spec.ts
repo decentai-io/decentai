@@ -1,3 +1,4 @@
+import { TopBarService } from 'src/app/services/top-bar.service';
 import { ChatDetailComponent } from './chat-detail.component';
 
 describe('ChatDetailComponent approval lifecycle', () => {
@@ -29,6 +30,8 @@ describe('ChatDetailComponent approval lifecycle', () => {
       {} as any,
       // The voice: nothing here is said aloud.
       { arrived: () => {}, stop: () => {}, refresh: async () => false } as any,
+      // The app's top bar, which the chat fills with its own row.
+      new TopBarService(),
     );
     return component;
   }
@@ -174,6 +177,8 @@ describe('ChatDetailComponent title', () => {
       { acceptSequence: () => true } as any,
       {} as any,
       { arrived: () => {}, stop: () => {}, refresh: async () => false } as any,
+      // The app's top bar, which the chat fills with its own row.
+      new TopBarService(),
     );
   }
 
@@ -196,5 +201,17 @@ describe('ChatDetailComponent title', () => {
 
     (page as any).handleSocketMessage(titled('Quarterly figures'));
     expect(page.title).toBe('New chat');
+  });
+});
+
+describe('ChatDetailComponent, what went wrong', () => {
+  it('shows the two newest, the newest first', () => {
+    const page = new ChatDetailComponent(
+      {} as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any,
+      {} as any, {} as any, {} as any, new TopBarService(),
+    );
+    page.inlineErrors = [1, 2, 3].map((id) => ({ id })) as any;
+
+    expect(page.shownErrors.map((error) => error.id)).toEqual([3, 2]);
   });
 });

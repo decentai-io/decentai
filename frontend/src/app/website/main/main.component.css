@@ -315,6 +315,24 @@
   }
 }
 
+/* A page's own row in the bar (a chat) needs the room on a phone: the
+   person is their initials there. */
+@media (max-width: 700px) {
+  .top-bar.has-page-row {
+    gap: 4px;
+    padding: 0 8px;
+  }
+
+  .top-bar.has-page-row .user-name,
+  .top-bar.has-page-row .user-trigger > lucide-icon {
+    display: none;
+  }
+
+  .top-bar.has-page-row .user-trigger {
+    padding: 0 4px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .sidebar-shell,
   .mobile-sidebar-backdrop {

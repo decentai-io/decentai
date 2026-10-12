@@ -23,7 +23,7 @@
 
   <div class="app-main">
     <!-- Top bar -->
-    <header class="top-bar">
+    <header class="top-bar" [class.has-page-row]="topBar.content()">
       <button
         #menuButton
         type="button"
@@ -35,9 +35,15 @@
         <lucide-icon name="menu" [size]="17" [strokeWidth]="1.75"></lucide-icon>
       </button>
 
+      <!-- A page that fills the bar (a chat): its own row, in place of
+           the brand and of Stop everything, which it carries in a menu. -->
+      <ng-container *ngIf="topBar.content() as content">
+        <ng-container *ngTemplateOutlet="content"></ng-container>
+      </ng-container>
+
       <!-- Brand lockup: shown only when the sidebar isn't (mobile drawer, or
            desktop collapsed) — otherwise the sidebar mark already brands it. -->
-      <span class="top-bar__brand">
+      <span class="top-bar__brand" *ngIf="!topBar.content()">
         <img
           class="top-bar__logo top-bar__logo--light"
           src="assets/brand/logos/decentai-lockup-horizontal.svg"
@@ -50,10 +56,10 @@
         />
       </span>
 
-      <div class="top-bar__spacer"></div>
+      <div class="top-bar__spacer" *ngIf="!topBar.content()"></div>
 
       <button
-        *ngIf="!workStopped"
+        *ngIf="!workStopped && !topBar.content()"
         type="button"
         class="icon-button stop-all"
         (click)="stopEverything()"
@@ -62,20 +68,6 @@
         matTooltip="Stop everything"
       >
         <lucide-icon name="octagon-x" [size]="16" [strokeWidth]="1.75"></lucide-icon>
-      </button>
-
-      <button
-        type="button"
-        class="icon-button"
-        (click)="toggleTheme()"
-        [attr.aria-label]="'Theme: ' + themeFaces[themeChoice].label + '. Change theme'"
-        [matTooltip]="'Theme: ' + themeFaces[themeChoice].label"
-      >
-        <lucide-icon
-          [name]="themeFaces[themeChoice].icon"
-          [size]="16"
-          [strokeWidth]="1.75"
-        ></lucide-icon>
       </button>
 
       <button
@@ -119,6 +111,26 @@
           <span>{{
             contentView === "admin" ? "Main workspace" : "Admin console"
           }}</span>
+        </button>
+
+        <!-- The theme, where the person's other choices are. -->
+        <p class="menu-label">Theme</p>
+        <button
+          *ngFor="let choice of themes"
+          mat-menu-item
+          role="menuitemradio"
+          [attr.aria-checked]="choice.value === themeChoice"
+          (click)="setTheme(choice.value)"
+        >
+          <lucide-icon [name]="choice.icon" [size]="16" [strokeWidth]="1.75" aria-hidden="true"></lucide-icon>
+          <span>{{ choice.name }}</span>
+          <lucide-icon
+            *ngIf="choice.value === themeChoice"
+            class="menu-check"
+            name="check"
+            [size]="16"
+            aria-hidden="true"
+          ></lucide-icon>
         </button>
 
         <button mat-menu-item (click)="logout()">
