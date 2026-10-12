@@ -15,13 +15,26 @@ export interface ScreenView {
   agent_name?: string;
   /** What is open behind the picture; none where the agent tells of none. */
   tabs?: ScreenTab[];
-  /** The agent's latest step, in its own words, for the caption. */
-  caption?: string;
+  /** The agent's last few steps in its own words, oldest first: the
+   *  log under the picture (`screenLog`). */
+  log?: string[];
   /** When this frame arrived, so a picture that is not moving says so. */
   at: number;
   /** The call that showed this screen has ended; the browser behind it
    *  may still be open, and the next run continues there. */
   idle?: boolean;
+}
+
+/** How many of the agent's lines the log under the picture keeps. */
+const LOG_LINES = 5;
+
+/** The log with one more line said: the last few, oldest first, and a
+ *  line said twice running kept once. */
+export function screenLog(log: string[] | undefined, line: string): string[] {
+  const said = String(line || '').trim();
+  const kept = log || [];
+  if (!said || kept[kept.length - 1] === said) return kept;
+  return [...kept, said].slice(-LOG_LINES);
 }
 
 /** One thing the person did on the screen, as the runtime takes it. */
@@ -90,10 +103,31 @@ export class ChatScreenComponent implements OnChanges, OnDestroy {
   @Output() takenChange = new EventEmitter<boolean>();
   /** A larger view, when the picture deserves the room. */
   expanded = false;
-  /** Where the person wants the browser to go — sent as an input the
-   *  agent takes to the page through its own address policy, so a
-   *  blank browser is not a dead end. */
+  /** The address box: where the browser is, until the person types
+   *  where they want it to go. That is sent as an input the agent
+   *  takes to the page through its own address policy, so a blank
+   *  browser is not a dead end. */
   address = '';
+  /** The person is typing an address: frames stop writing over it. */
+  private typing = false;
+  @ViewChild('log') private log?: ElementRef<HTMLElement>;
+
+  /** Where the browser is: the address of the tab in front. */
+  get here(): string {
+    return this.frame?.tabs?.find((tab) => tab.active)?.address || '';
+  }
+
+  typeAddress(typed: string): void {
+    this.address = typed;
+    this.typing = true;
+  }
+
+  /** Left empty, the box says where the browser is again. */
+  leaveAddress(): void {
+    if (this.address.trim()) return;
+    this.typing = false;
+    this.address = this.here;
+  }
   /** How old the frame on screen is, in whole seconds, ticked once a
    *  second: a picture that has not moved for a while says so, since a
    *  still frame and a stuck one look the same. */
@@ -114,7 +148,14 @@ export class ChatScreenComponent implements OnChanges, OnDestroy {
   }
 
   ngOnChanges(changes: SimpleChanges): void {
-    if (changes['frame'] && this.frame) this.draw(this.frame.src);
+    if (!changes['frame'] || !this.frame) return;
+    this.draw(this.frame.src);
+    if (!this.typing) this.address = this.here;
+    // The newest line of the log is the one in view.
+    queueMicrotask(() => {
+      const log = this.log?.nativeElement;
+      if (log) log.scrollTop = log.scrollHeight;
+    });
   }
 
   /** Decode off screen, then paint in one go; a frame that arrives
@@ -220,7 +261,9 @@ export class ChatScreenComponent implements OnChanges, OnDestroy {
     const url = this.address.trim();
     if (!url) return;
     this.screenInput.emit([{ type: 'navigate', url: /^[a-z]+:\/\//i.test(url) ? url : `https://${url}` }]);
-    this.address = '';
+    // The box goes back to saying where the browser is, which the
+    // frames after this one will tell.
+    this.typing = false;
   }
 
   // -- the person's hand -----------------------------------------------------

@@ -257,7 +257,7 @@
 
 /* Beside the thread the view is as wide as its picture is at the
    column's full height (what is left of the height after the view's
-   own head, address and caption), so a large window shows a large
+   own head, address and log), so a large window shows a large
    browser. Never more than 60% of the row, and the thread keeps 480px. */
 .chat-main.has-side-screen {
   flex-direction: row;
@@ -265,7 +265,7 @@
 }
 
 .chat-side {
-  --screen-chrome: 150px;
+  --screen-chrome: 210px;
   display: flex;
   flex: 0 0 clamp(480px, calc((100cqh - var(--screen-chrome)) * var(--screen-ratio, 1.6) + 32px), min(60cqw, 100cqw - 480px));
   flex-direction: column;
@@ -288,7 +288,7 @@
 
 /* With its tabs shown, the view's own rows take one more. */
 .chat-side.has-tabs {
-  --screen-chrome: 188px;
+  --screen-chrome: 248px;
 }
 
 /* ── A phone ───────────────────────────────────────────────────────── */
@@ -309,15 +309,27 @@
     max-height: 52vh;
   }
 
-  /* A live view and cards together: the cards scroll sooner, so the
-     composer never leaves the screen. */
-  .chat-screen + .chat-approvals {
-    max-height: 28vh;
+  /* The live view is a sheet over the foot of the page, half the
+     screen high: opened from the header's menu, folded to its head
+     (back in the column) or hidden from its own buttons. */
+  .chat-screen.is-sheet {
+    position: fixed;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: var(--z-drawer);
+    width: auto;
+    height: 50dvh;
+    margin: 0;
+    padding-bottom: env(safe-area-inset-bottom);
+    border-radius: var(--r-lg) var(--r-lg) 0 0;
+    background: var(--surface);
+    box-shadow: var(--shadow-float);
+    animation: arrive var(--dur-2) var(--ease);
   }
 
-  .chat-screen {
-    flex-shrink: 1;
-    min-height: 0;
-    overflow: hidden;
+  .chat-screen.is-sheet app-chat-screen {
+    display: block;
+    height: 100%;
   }
 }

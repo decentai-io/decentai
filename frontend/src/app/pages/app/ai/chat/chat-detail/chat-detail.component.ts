@@ -14,7 +14,7 @@ import { ProfileService } from 'src/app/services/profile.service';
 import { CHAT_PROTOCOL_VERSION, ChatInputCommand, FilePart, parseChatEvent, SessionContract, toApprovalCard, ChatJob } from 'src/app/models/chat-protocol';
 import { Subscription } from 'rxjs';
 import { ChatTurn, FileChoice, PlanStep } from 'src/app/models/chat-protocol';
-import { ScreenInputEvent, ScreenTab, ScreenView } from '../chat-screen/chat-screen.component';
+import { ScreenInputEvent, ScreenTab, ScreenView, screenLog } from '../chat-screen/chat-screen.component';
 import { ViewportService } from 'src/app/services/viewport.service';
 import { ReadAloudService } from 'src/app/services/read-aloud.service';
 import { TopBarService } from 'src/app/services/top-bar.service';
@@ -533,11 +533,12 @@ export class ChatDetailComponent implements OnInit, OnDestroy {
         // The work as it happens, each line saying whose it is; the
         // lines of one call gather under it (contracts/chat.py).
         this.state.addActivity(data);
-        // The screen's own call speaking: its words caption the picture,
-        // so the person knows what the still frame is waiting on.
+        // The screen's own call speaking: its words go in the log under
+        // the picture, so the person knows what the still frame is
+        // waiting on and what led to it.
         if (data.kind === 'agent_progress' && this.screen
             && data.source?.call_id === this.screen.call_id && data.text) {
-          this.screen = { ...this.screen, caption: String(data.text) };
+          this.screen = { ...this.screen, log: screenLog(this.screen.log, data.text) };
         }
         return;
 
@@ -628,7 +629,7 @@ export class ChatDetailComponent implements OnInit, OnDestroy {
           width: Number(data.width) || 1, height: Number(data.height) || 1,
           frame: Number(data.frame) || 0,
           agent_name: data.source?.agent_name || this.agentLabels[data.source?.agent || ''] || '',
-          caption: this.screen?.call_id === String(data.call_id || '') ? this.screen.caption : '',
+          log: this.screen?.call_id === String(data.call_id || '') ? this.screen.log : [],
           at: Date.now(),
           tabs: this.screenTabs(data.tabs),
         };

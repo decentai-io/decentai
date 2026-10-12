@@ -260,7 +260,7 @@
   <!-- A screen an agent is showing (call.screen): watched here, taken
        over when a site wants a human. -->
   @if (screen && !screenHidden && !showSideScreen) {
-    <div class="chat-screen" role="region" aria-label="Live view">
+    <div class="chat-screen" [class.is-sheet]="isNarrow && !screenMinimized" role="region" aria-label="Live view">
       <app-chat-screen [frame]="screen" (screenInput)="onScreenInput($event)" (closed)="onScreenClosed()" (quit)="onScreenQuit()" [(minimized)]="screenMinimized" [(taken)]="screenTaken"></app-chat-screen>
     </div>
   }

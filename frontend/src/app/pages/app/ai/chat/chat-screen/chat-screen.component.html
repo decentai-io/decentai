@@ -1,33 +1,33 @@
 @if (frame) {
 <section class="screen" [class.is-expanded]="expanded" [class.is-taken]="taken" [class.is-minimized]="minimized" [class.is-side]="side" role="region" [attr.aria-label]="title">
   <header class="screen-head">
-    <lucide-icon name="monitor" [size]="16"></lucide-icon>
+    <lucide-icon class="screen-mark" name="monitor" [size]="16" aria-hidden="true"></lucide-icon>
     <span class="screen-title">{{ title }}</span>
-    <span class="screen-status">{{ status }}</span>
-    <button type="button" class="screen-btn" (click)="toggleMinimized()" [matTooltip]="minimized ? 'Show' : 'Minimize'" [attr.aria-label]="minimized ? 'Show the live view' : 'Minimize the live view'">
-      <lucide-icon [name]="minimized ? 'chevron-up' : 'minus'" [size]="16"></lucide-icon>
+    <span class="screen-status" role="status">{{ status }}</span>
+    <button type="button" class="icon-btn sm" (click)="toggleMinimized()" [matTooltip]="minimized ? 'Show' : 'Minimize'" [attr.aria-label]="minimized ? 'Show the live view' : 'Minimize the live view'">
+      <lucide-icon [name]="minimized ? 'chevron-up' : 'minus'" [size]="16" aria-hidden="true"></lucide-icon>
     </button>
     @if (!minimized && !side) {
-      <button type="button" class="screen-btn" (click)="toggleExpanded()" [matTooltip]="expanded ? 'Smaller' : 'Larger'" [attr.aria-label]="expanded ? 'Smaller' : 'Larger'">
-        <lucide-icon [name]="expanded ? 'chevron-down' : 'chevron-up'" [size]="16"></lucide-icon>
+      <button type="button" class="icon-btn sm screen-size" (click)="toggleExpanded()" [matTooltip]="expanded ? 'Smaller' : 'Larger'" [attr.aria-label]="expanded ? 'Smaller' : 'Larger'">
+        <lucide-icon [name]="expanded ? 'chevron-down' : 'chevron-up'" [size]="16" aria-hidden="true"></lucide-icon>
       </button>
     }
     @if (!frame.idle) {
-      <button type="button" class="screen-btn" (click)="quitBrowser()" matTooltip="Close the browser" aria-label="Close the browser itself">
-        <lucide-icon name="log-out" [size]="16"></lucide-icon>
+      <button type="button" class="icon-btn sm" (click)="quitBrowser()" matTooltip="Close the browser" aria-label="Close the browser itself">
+        <lucide-icon name="log-out" [size]="16" aria-hidden="true"></lucide-icon>
       </button>
     }
-    <button type="button" class="screen-btn" (click)="close()" matTooltip="Hide the live view" aria-label="Hide the live view">
-      <lucide-icon name="x" [size]="16"></lucide-icon>
+    <button type="button" class="icon-btn sm" (click)="close()" matTooltip="Hide the live view" aria-label="Hide the live view">
+      <lucide-icon name="x" [size]="16" aria-hidden="true"></lucide-icon>
     </button>
     @if (taken) {
-      <button type="button" class="screen-btn screen-btn--primary" (click)="handBack()">
-        <lucide-icon name="check" [size]="15"></lucide-icon>
+      <button type="button" class="btn sm primary" (click)="handBack()">
+        <lucide-icon name="check" [size]="16" aria-hidden="true"></lucide-icon>
         Hand back
       </button>
     } @else if (!frame.idle) {
-      <button type="button" class="screen-btn screen-btn--primary" (click)="takeOver()">
-        <lucide-icon name="mouse-pointer-click" [size]="15"></lucide-icon>
+      <button type="button" class="btn sm primary" (click)="takeOver()">
+        <lucide-icon name="mouse-pointer-click" [size]="16" aria-hidden="true"></lucide-icon>
         Take over
       </button>
     }
@@ -39,28 +39,31 @@
     <div class="screen-tabs" role="tablist" aria-label="Open tabs">
       @for (tab of frame.tabs; track tab.index) {
         <div class="screen-tab" [class.is-active]="tab.active" role="presentation">
-          <button type="button" class="screen-tab__name" role="tab" [attr.aria-selected]="tab.active"
+          <button type="button" class="screen-tab-name" role="tab" [attr.aria-selected]="tab.active"
                   [matTooltip]="tab.address || tab.title" (click)="onTab('switch', tab)">
             {{ tab.title }}
           </button>
           @if ((frame.tabs?.length || 0) > 1) {
-            <button type="button" class="screen-tab__close" (click)="onTab('close', tab)"
+            <button type="button" class="screen-tab-btn" (click)="onTab('close', tab)"
                     [attr.aria-label]="'Close the tab ' + tab.title" matTooltip="Close this tab">
-              <lucide-icon name="x" [size]="13"></lucide-icon>
+              <lucide-icon name="x" [size]="14" aria-hidden="true"></lucide-icon>
             </button>
           }
         </div>
       }
-      <button type="button" class="screen-tab__new" (click)="onTab('new')" matTooltip="New tab" aria-label="Open a new tab">
-        <lucide-icon name="plus" [size]="14"></lucide-icon>
+      <button type="button" class="screen-tab-btn" (click)="onTab('new')" matTooltip="New tab" aria-label="Open a new tab">
+        <lucide-icon name="plus" [size]="14" aria-hidden="true"></lucide-icon>
       </button>
     </div>
   }
+  <!-- Where the browser is, whole and selectable; typing replaces it
+       and Go sends the browser there. -->
   @if (!frame.idle) {
     <form class="screen-address" (submit)="go(); $event.preventDefault()">
-      <input type="text" name="address" class="screen-address__input" [(ngModel)]="address"
-             placeholder="Go to an address…" aria-label="Address to open in the browser" autocomplete="off" />
-      <button type="submit" class="screen-btn" [disabled]="!address.trim()">Go</button>
+      <input type="text" name="address" class="input" [ngModel]="address" (ngModelChange)="typeAddress($event)"
+             (blur)="leaveAddress()" placeholder="Go to an address…" aria-label="Where the browser is. Type to go elsewhere"
+             autocomplete="off" spellcheck="false" />
+      <button type="submit" class="btn sm" [disabled]="!address.trim() || address === here">Go</button>
     </form>
   }
   <div class="screen-stage">
@@ -71,8 +74,14 @@
             (keydown)="onKey($event, 'down')" (keyup)="onKey($event, 'up')"
             (contextmenu)="onContextMenu($event)"></canvas>
   </div>
-  @if (frame.caption && !taken) {
-    <footer class="screen-caption">{{ frame.caption }}</footer>
+  <!-- The agent's last few steps in its own words, oldest first, each
+       whole: a long address is the very thing being read. -->
+  @if (frame.log?.length && !taken) {
+    <ol #log class="screen-log" aria-label="What the agent did last" aria-live="polite">
+      @for (line of frame.log; track $index) {
+        <li>{{ line }}</li>
+      }
+    </ol>
   }
   }
 </section>
