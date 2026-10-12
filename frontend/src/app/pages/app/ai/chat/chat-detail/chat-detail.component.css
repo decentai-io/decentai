@@ -94,6 +94,16 @@
   gap: 4px;
 }
 
+/* The trust level shows without opening its menu, at its two ends:
+   everything runs, or everything asks. */
+.icon-btn.is-open-handed {
+  color: var(--accent-ink);
+}
+
+.icon-btn.is-careful {
+  color: var(--warn-ink);
+}
+
 /* The live-view button says when a browser is streaming. */
 .icon-btn.is-live {
   color: var(--accent-ink);

@@ -67,6 +67,8 @@
         <button
           type="button"
           class="icon-btn"
+          [class.is-open-handed]="trustLevel === 3"
+          [class.is-careful]="trustLevel === 0"
           [matMenuTriggerFor]="trustMenu"
           [matTooltip]="'Trust level: ' + trustLabel(trustLevel)"
           [attr.aria-label]="'Change trust level: ' + trustLabel(trustLevel)"

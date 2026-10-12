@@ -1,79 +1,78 @@
-<div class="model-picker">
-  <button type="button" class="model-chip" [class.is-unset]="!llm?.model"
-          [disabled]="disabled" (click)="toggle()"
-          aria-haspopup="listbox" [attr.aria-expanded]="open"
-          [attr.aria-label]="'Model: ' + label">
-    <lucide-icon name="brain-circuit" [size]="14"></lucide-icon>
-    <span class="model-chip-name">{{ label }}</span>
-    <lucide-icon name="chevron-down" [size]="13"></lucide-icon>
-  </button>
+<button type="button" class="btn ghost sm model-chip" [class.is-unset]="!llm?.model"
+        [disabled]="disabled" (click)="toggle()"
+        aria-haspopup="dialog" [attr.aria-expanded]="open"
+        [attr.aria-label]="'Model: ' + label">
+  <lucide-icon name="brain-circuit" [size]="16" aria-hidden="true"></lucide-icon>
+  <span class="model-chip-name">{{ label }}</span>
+  <lucide-icon name="chevron-down" [size]="16" aria-hidden="true"></lucide-icon>
+</button>
 
-  <!-- How hard a model that thinks before answering is asked to. -->
-  @if (efforts.length) {
-    <select class="model-effort" aria-label="Reasoning effort" [disabled]="disabled"
-            [ngModel]="llm?.reasoning_effort || ''" (ngModelChange)="chooseEffort($event)">
-      <option value="">Default effort</option>
-      @for (effort of efforts; track effort) {
-        <option [value]="effort">{{ effortLabel(effort) }}</option>
+<!-- The same panel every menu is (styles/controls.scss), with a search
+     row at its head: a mat-menu would take the typing for itself. -->
+@if (open) {
+  <div class="model-panel" [class.is-below]="below" [style.max-height.px]="panelHeight"
+       role="dialog" aria-label="Choose a model" (keydown)="moveThroughModels($event)">
+    <span class="search-field model-search">
+      <lucide-icon name="search" [size]="16" aria-hidden="true"></lucide-icon>
+      <input class="input" type="search" [(ngModel)]="query" placeholder="Search models"
+             aria-label="Search models" #search />
+    </span>
+
+    <div class="model-list" role="listbox" aria-label="Models">
+      @if (loading && !groups.length) {
+        <p class="model-note">Loading models…</p>
+      } @else if (!groups.length) {
+        <p class="model-note">No provider yet. Add one and paste its key, and its models are listed here.</p>
+      } @else if (!visible.length) {
+        <p class="model-note">No model matches “{{ query }}”.</p>
       }
-    </select>
-  }
 
-  @if (open) {
-    <div class="model-panel" [class.is-below]="below" [style.max-height.px]="panelHeight"
-         role="dialog" aria-label="Choose a model">
-      <label class="model-search">
-        <lucide-icon name="search" [size]="14"></lucide-icon>
-        <input type="text" [(ngModel)]="query" placeholder="Search models"
-               aria-label="Search models" #search />
-      </label>
-
-      <div class="model-list" role="listbox">
-        @if (loading && !groups.length) {
-          <p class="model-note">Loading models…</p>
-        } @else if (!groups.length) {
-          <p class="model-note">
-            No provider yet. Add one and paste its key, and its models
-            are listed here.
-          </p>
-        } @else if (!visible.length) {
-          <p class="model-note">No model matches "{{ query }}".</p>
+      @if (recent.length) {
+        <p class="menu-label">Recent</p>
+        @for (entry of recent; track entry.connection.resource_ref + entry.model.id) {
+          <button type="button" class="model-option" role="option"
+                  [attr.aria-selected]="isCurrent(entry.connection, entry.model)"
+                  (click)="choose(entry.connection, entry.model)">
+            <span class="model-name">{{ entry.model.name }}</span>
+            <span class="model-of">{{ entry.connection.name }}</span>
+            @if (isCurrent(entry.connection, entry.model)) {
+              <lucide-icon class="model-check" name="check" [size]="16" aria-hidden="true"></lucide-icon>
+            }
+          </button>
         }
+      }
 
-        @if (recent.length) {
-          <p class="model-group">Recent</p>
-          @for (entry of recent; track entry.connection.resource_ref + entry.model.id) {
-            <button type="button" class="model-option" role="option"
-                    [attr.aria-selected]="isCurrent(entry.connection, entry.model)"
-                    (click)="choose(entry.connection, entry.model)">
-              <span class="model-name">{{ entry.model.name }}</span>
-              <span class="model-of">{{ entry.connection.name }}</span>
-              @if (isCurrent(entry.connection, entry.model)) {
-                <lucide-icon name="check" [size]="14"></lucide-icon>
-              }
-            </button>
-          }
+      @for (group of visible; track group.connection.resource_ref) {
+        <p class="menu-label">{{ group.connection.name }}</p>
+        @for (model of group.models; track model.id) {
+          <button type="button" class="model-option" role="option"
+                  [attr.aria-selected]="isCurrent(group.connection, model)"
+                  (click)="choose(group.connection, model)">
+            <span class="model-name">{{ model.name }}</span>
+            @if (isCurrent(group.connection, model)) {
+              <lucide-icon class="model-check" name="check" [size]="16" aria-hidden="true"></lucide-icon>
+            }
+          </button>
         }
+      }
 
-        @for (group of visible; track group.connection.resource_ref) {
-          <p class="model-group">{{ group.connection.name }}</p>
-          @for (model of group.models; track model.id) {
-            <button type="button" class="model-option" role="option"
-                    [attr.aria-selected]="isCurrent(group.connection, model)"
-                    (click)="choose(group.connection, model)">
-              <span class="model-name">{{ model.name }}</span>
-              @if (isCurrent(group.connection, model)) {
-                <lucide-icon name="check" [size]="14"></lucide-icon>
-              }
-            </button>
-          }
-        }
-      </div>
-
-      <a class="model-add" routerLink="/settings/providers" (click)="close()">
-        <lucide-icon name="plus" [size]="14"></lucide-icon>
-        Add a provider
+      <a class="model-option" routerLink="/settings/providers" (click)="close()">
+        <lucide-icon name="plus" [size]="16" aria-hidden="true"></lucide-icon>
+        <span class="model-name">Add a provider…</span>
       </a>
     </div>
-  }
-</div>
+
+    <!-- How hard a model that thinks before answering is asked to. -->
+    @if (efforts.length) {
+      <div class="model-effort">
+        <span class="model-effort-label">Effort</span>
+        <app-segmented
+          label="Reasoning effort"
+          [choices]="effortChoices"
+          [ngModel]="llm?.reasoning_effort || ''"
+          (ngModelChange)="chooseEffort($event)"
+        ></app-segmented>
+      </div>
+    }
+  </div>
+}

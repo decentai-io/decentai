@@ -112,7 +112,7 @@ describe('ChatModelPickerComponent', () => {
       endpoint: 'https://api.anthropic.com', reasoning_effort: 'high' }]);
     component.chooseEffort('');
     expect(chosen[1].reasoning_effort).toBeUndefined();
-    expect(component.effortLabel('xhigh')).toBe('Extra high');
+    expect(component.effortLabel('xhigh')).toBe('Extra');
   });
 
   it('shows the models picked lately first, while nothing is typed', async () => {
