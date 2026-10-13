@@ -1,5 +1,4 @@
 <app-page
-  *ngIf="!open"
   title="MCP servers"
   sentence="Remote tool servers you add for your own chats. You decide which of a server's tools are on, and what each may cost to call."
   [wide]="true"
@@ -74,8 +73,9 @@
   </span>
 </ng-template>
 
-<!-- Everything that can be done to a server. While the deployment has
-     the feature off, only removing one is left. -->
+<!-- Everything that can be done to a server. Its name, its address and
+     its credential are changed on its own page. While the deployment
+     has the feature off, only removing one is left. -->
 <mat-menu #serverMenu="matMenu" xPosition="before">
   <ng-template matMenuContent let-server="server">
     <a mat-menu-item [routerLink]="['/data/mcp', server.resource_ref]">Open</a>
@@ -84,10 +84,13 @@
         {{ server.keys.enabled ? "Switch off" : "Switch on" }}
       </button>
       <button mat-menu-item [disabled]="blocked || !!busy" (click)="readAgain(server)">Read again</button>
-      <button mat-menu-item [disabled]="blocked" (click)="startChange(server, 'name')">Rename</button>
-      <button mat-menu-item [disabled]="blocked" (click)="startChange(server, 'url')">Change the address</button>
-      <button mat-menu-item [disabled]="blocked" (click)="replaceOn(server)">Replace the credential</button>
     </span>
+    <!-- These lead to the server's page, which does them. -->
+    <ng-container *ngIf="!blocked">
+      <a mat-menu-item [routerLink]="['/data/mcp', server.resource_ref]" [queryParams]="{ change: 'name' }">Rename</a>
+      <a mat-menu-item [routerLink]="['/data/mcp', server.resource_ref]" [queryParams]="{ change: 'url' }">Change the address</a>
+      <a mat-menu-item [routerLink]="['/data/mcp', server.resource_ref]" [queryParams]="{ change: 'credential' }">Replace the credential</a>
+    </ng-container>
     <button mat-menu-item [disabled]="!!busy" (click)="askRemove(server)">Remove</button>
   </ng-template>
 </mat-menu>
@@ -112,20 +115,7 @@
           <input class="input" name="mcp-url" type="url" autocomplete="off" maxlength="500"
                  placeholder="https://mcp.example.com/mcp" [(ngModel)]="formUrl" />
         </app-field>
-        <app-field label="Credential" help="Kept encrypted and sent only to this server. It is never shown again.">
-          <app-segmented name="mcp-credential" label="Kind of credential" [choices]="credentialKinds" [(ngModel)]="credentialKind"></app-segmented>
-        </app-field>
-        <app-field label="Token" *ngIf="credentialKind === 'token'" [error]="tried && !formToken.trim() ? 'Enter the token.' : ''">
-          <input class="input" name="mcp-token" type="password" autocomplete="new-password" maxlength="4000" [(ngModel)]="formToken" />
-        </app-field>
-        <ng-container *ngIf="credentialKind === 'header'">
-          <app-field label="Header" help="The name the server asks for, like X-API-Key." [error]="tried && !formHeader.trim() ? 'Enter the header\'s name.' : ''">
-            <input class="input" name="mcp-header" autocomplete="off" maxlength="80" [(ngModel)]="formHeader" />
-          </app-field>
-          <app-field label="Value" [error]="tried && !formValue.trim() ? 'Enter the header\'s value.' : ''">
-            <input class="input" name="mcp-value" type="password" autocomplete="new-password" maxlength="4000" [(ngModel)]="formValue" />
-          </app-field>
-        </ng-container>
+        <app-mcp-credential [draft]="credential" [tried]="tried"></app-mcp-credential>
       </div>
     </mat-dialog-content>
     <mat-dialog-actions>
@@ -134,138 +124,3 @@
     </mat-dialog-actions>
   </form>
 </ng-template>
-
-<!-- ── A new name, or a new address ─────────────────────────────────── -->
-<ng-template #changeDialog>
-  <h2 mat-dialog-title>{{ changeKind === "name" ? "Rename " : "Change the address of " }}{{ changeTarget?.keys?.name }}</h2>
-  <form (ngSubmit)="saveChange()">
-    <mat-dialog-content>
-      <div class="form">
-        <p class="dialog-note" *ngIf="changeKind === 'url'">
-          The server is read again at the new address before it is kept. A tool that is new there,
-          or describes itself differently, comes back switched off.
-        </p>
-        <app-field
-          [label]="changeKind === 'name' ? 'Name' : 'Address'"
-          [error]="(tried && !changeValue.trim() ? (changeKind === 'name' ? 'Give the server a name.' : 'Enter the server\'s address.') : '') || changeProblem"
-        >
-          <input class="input" name="mcp-change" autocomplete="off" [attr.maxlength]="changeKind === 'name' ? 80 : 500"
-                 [type]="changeKind === 'name' ? 'text' : 'url'" [(ngModel)]="changeValue" />
-        </app-field>
-      </div>
-    </mat-dialog-content>
-    <mat-dialog-actions>
-      <button class="btn" type="button" [disabled]="saving" (click)="closeDialog()">Cancel</button>
-      <button class="btn primary" type="submit" [disabled]="saving">
-        {{ saving ? (changeKind === "name" ? "Saving…" : "Reading…") : (changeKind === "name" ? "Rename" : "Save and read") }}
-      </button>
-    </mat-dialog-actions>
-  </form>
-</ng-template>
-
-<!-- ── One server, looked over: its own page comes in the next step,
-     and until then this is the view it had. ──────────────────────── -->
-<div class="data-page" *ngIf="open">
-  <div class="data-alert error" *ngIf="error">{{ error }}</div>
-  <div class="data-alert ok" *ngIf="notice">{{ notice }}</div>
-
-  <!-- A credential, as it is given when one is replaced. -->
-  <ng-template #credentialFields>
-    <select class="txt sel" [(ngModel)]="credentialKind" aria-label="Kind of credential">
-      <option value="none">None</option>
-      <option value="token">A token</option>
-      <option value="header">A header the server names</option>
-    </select>
-    <input class="txt mcp-secret" type="password" *ngIf="credentialKind === 'token'"
-           [(ngModel)]="formToken" maxlength="4000" placeholder="Token" autocomplete="off"
-           aria-label="Token" />
-    <div class="mcp-header-pair" *ngIf="credentialKind === 'header'">
-      <input class="txt" type="text" [(ngModel)]="formHeader" maxlength="80"
-             placeholder="Header, e.g. X-API-Key" autocomplete="off" aria-label="Header name" />
-      <input class="txt" type="password" [(ngModel)]="formValue" maxlength="4000"
-             placeholder="Value" autocomplete="off" aria-label="Header value" />
-    </div>
-    <span class="field-help">Kept encrypted and sent only to this server. It is never shown again.</span>
-  </ng-template>
-
-
-    <!-- ── One server, looked over ──────────────────────────────── -->
-    <section class="mcp-workspace" *ngIf="open as server">
-      <div class="mcp-toolbar">
-        <button class="btn" type="button" (click)="close()">
-          <lucide-icon name="arrow-left" [size]="15"></lucide-icon>
-          All servers
-        </button>
-        <span class="mcp-toolbar-actions">
-          <button class="btn" type="button" (click)="startReplace()" [disabled]="!!busy || replacing">
-            <lucide-icon name="key-round" [size]="15"></lucide-icon>
-            {{ server.values?.has_credential ? "Replace credential" : "Add credential" }}
-          </button>
-          <button class="btn" type="button" (click)="refresh()" [disabled]="!!busy">
-            <lucide-icon name="refresh-cw" [size]="15"></lucide-icon>
-            {{ busy ? "Reading…" : "Read again" }}
-          </button>
-        </span>
-      </div>
-
-      <section class="mcp-document">
-        <header class="mcp-about">
-          <div>
-            <h2>{{ server.keys.name }}</h2>
-            <p>
-              {{ server.keys.url }}<ng-container *ngIf="server.keys.server"> · calls itself
-              “{{ server.keys.server }}”</ng-container>
-            </p>
-          </div>
-          <span class="mcp-state" [class.off]="!server.keys.enabled || blocked">
-            {{ blocked ? "Off for this deployment" : server.keys.enabled ? "On" : "Switched off" }}
-          </span>
-        </header>
-
-        <form class="mcp-replace" *ngIf="replacing" (submit)="$event.preventDefault(); replace()">
-          <ng-container *ngTemplateOutlet="credentialFields"></ng-container>
-          <span class="mcp-replace-actions">
-            <button class="btn" type="button" (click)="replacing = false" [disabled]="!!busy">Cancel</button>
-            <button class="btn primary" type="submit" [disabled]="!!busy || !credentialReady">Save and read again</button>
-          </span>
-        </form>
-
-        <p class="mcp-empty" *ngIf="!tools.length">
-          This server offers no tools<ng-container *ngIf="server.values?.resources">, only things to read</ng-container>.
-        </p>
-
-        <ul class="mcp-tools" *ngIf="tools.length">
-          <li class="mcp-tool" *ngFor="let tool of tools" [class.off]="!tool.enabled">
-            <label class="mcp-switch">
-              <input type="checkbox" [checked]="tool.enabled" [disabled]="!!busy"
-                     (change)="setSwitch(tool, $any($event.target))"
-                     [attr.aria-label]="(tool.enabled ? 'Switch off ' : 'Switch on ') + tool.name" />
-            </label>
-            <div class="mcp-tool-body">
-              <span class="mcp-tool-name">{{ tool.name }}</span>
-              <span class="mcp-tool-text">{{ tool.description || "The server gives no description." }}</span>
-              <span class="mcp-tool-flag" *ngIf="toolNote(tool)">
-                <lucide-icon name="triangle-alert" [size]="13"></lucide-icon>
-                {{ toolNote(tool) }}
-              </span>
-            </div>
-            <label class="mcp-level">
-              <span>Costs</span>
-              <select class="txt sel" (change)="setLevel(tool, $any($event.target))"
-                      [disabled]="!!busy" [attr.aria-label]="'What ' + tool.name + ' costs to call'">
-                <option *ngFor="let level of levels" [value]="level.value"
-                        [selected]="level.value === tool.level" [title]="level.help">
-                  {{ level.value }} · {{ level.label }}
-                </option>
-              </select>
-            </label>
-          </li>
-        </ul>
-
-        <footer class="mcp-note">
-          <lucide-icon name="shield-check" [size]="14"></lucide-icon>
-          A server does not say what its tools do to the world, so each starts at 3. Lower one you know only reads; a chat asks you first for anything above its own level.
-        </footer>
-      </section>
-    </section>
-</div>

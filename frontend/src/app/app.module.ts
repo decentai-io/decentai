@@ -248,6 +248,8 @@ import { SkillsComponent } from './pages/app/data/skills/skills.component';
 import { SkillViewComponent } from './pages/app/data/skills/skill-view.component';
 import { SkillEditorComponent } from './pages/app/data/skills/skill-editor.component';
 import { McpComponent } from './pages/app/data/mcp/mcp.component';
+import { McpServerComponent } from './pages/app/data/mcp/mcp-server.component';
+import { McpCredentialComponent } from './pages/app/data/mcp/mcp-credential.component';
 import { MemoryComponent } from './pages/app/settings/memory/memory.component';
 import { ApiKeysComponent } from './pages/app/settings/api-keys/api-keys.component';
 import { SafetyComponent } from './pages/app/settings/safety/safety.component';
@@ -310,6 +312,8 @@ import { AgentCardComponent } from './pages/app/agents/agent-card.component';
     SkillViewComponent,
     SkillEditorComponent,
     McpComponent,
+    McpServerComponent,
+    McpCredentialComponent,
     MemoryComponent,
     ApiKeysComponent,
     SafetyComponent,

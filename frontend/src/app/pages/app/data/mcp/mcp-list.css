@@ -1,6 +1,10 @@
 /* The MCP servers list is made of the shared pieces (the page frame,
    the list, the row, the chips, the dialog shell). Here is how a row
    says a server. */
+:host {
+  display: block;
+}
+
 .mcp-row-name {
   color: inherit;
 }

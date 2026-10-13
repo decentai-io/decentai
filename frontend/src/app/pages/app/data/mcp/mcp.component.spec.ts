@@ -14,8 +14,7 @@ describe('McpComponent', () => {
     return new McpComponent(
       { list: async () => listed, refresh: async () => ({}), remove: async () => ({}), ...service } as any,
       { can: () => true } as any,
-      { events: { subscribe: () => ({ unsubscribe() {} }) }, navigate: async () => true } as any,
-      { snapshot: { firstChild: null } } as any,
+      { navigate: async () => true } as any,
       { open: () => ({ afterClosed: () => ({ subscribe() {} }), close() {} }) } as any,
       { ask: async () => true, ...confirm } as any,
     );

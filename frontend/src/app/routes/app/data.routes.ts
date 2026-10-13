@@ -7,6 +7,7 @@ import { RecordsComponent } from '../../pages/app/data/records/records.component
 import { SkillsComponent } from '../../pages/app/data/skills/skills.component';
 import { SkillEditorComponent } from '../../pages/app/data/skills/skill-editor.component';
 import { McpComponent } from '../../pages/app/data/mcp/mcp.component';
+import { McpServerComponent } from '../../pages/app/data/mcp/mcp-server.component';
 import { permissionGuard } from '../../guards/permission.guard';
 import { unsavedChangesGuard } from '../../guards/unsaved-changes.guard';
 
@@ -72,16 +73,20 @@ export const DataRoutes: Routes = [
       { path: ':ref', children: [] },
     ],
   },
+  // One server, looked over, is a page of its own: its tool table
+  // wants the width.
+  {
+    path: 'mcp/:ref',
+    title: 'MCP server',
+    component: McpServerComponent,
+    canActivate: [permissionGuard],
+    data: { requiredAction: 'mcp:server:get' },
+  },
   {
     path: 'mcp',
     title: 'MCP servers',
     component: McpComponent,
     canActivate: [permissionGuard],
     data: { requiredAction: 'mcp:server:list' },
-    // One server, looked over, is a view of the list's page.
-    children: [
-      { path: '', pathMatch: 'full', children: [] },
-      { path: ':ref', children: [] },
-    ],
   },
 ];
