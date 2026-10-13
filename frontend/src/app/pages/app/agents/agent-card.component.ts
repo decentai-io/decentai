@@ -44,7 +44,7 @@ export interface CardChip {
       *ngIf="selectable"
       class="card-check"
       [checked]="selected"
-      [attr.aria-label]="'Select ' + name"
+      [aria-label]="'Select ' + name"
       (change)="selectedChange.emit($event.checked)"
     ></mat-checkbox>
 
