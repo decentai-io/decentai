@@ -291,3 +291,24 @@ markdown.is-streaming > :last-child::after {
   text-decoration-color: var(--line-strong);
   text-underline-offset: 3px;
 }
+
+/* A heading that has an address (the guide's): it lands clear of the
+   page's top edge, and its link shows when it is pointed at or holds
+   the focus. */
+markdown :is(h2, h3, h4)[id] {
+  scroll-margin-top: 16px;
+}
+
+markdown .heading-anchor {
+  margin-left: 8px;
+  color: var(--ink-3);
+  font-weight: 400;
+  text-decoration: none;
+  opacity: 0;
+  transition: opacity var(--dur-1) var(--ease);
+}
+
+markdown :is(h2, h3, h4):hover .heading-anchor,
+markdown .heading-anchor:focus-visible {
+  opacity: 1;
+}

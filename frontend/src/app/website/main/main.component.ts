@@ -438,7 +438,7 @@ export class MainComponent implements OnInit, OnDestroy {
   /** The pages that show their own title (the page frame,
    *  components/ui/page.component.ts). The bar above them would say it
    *  twice; it goes for good when every page has the frame. */
-  private readonly framedPages = /^\/(agents|ai\/chats|ai\/schedules|settings|monitoring|audit|data\/files|data\/records|data\/skills|data\/mcp|secrets)(\/|$|\?)/;
+  private readonly framedPages = /^\/(agents|ai\/chats|ai\/schedules|settings|monitoring|audit|data\/files|data\/records|data\/skills|data\/mcp|secrets|guide)(\/|$|\?)/;
 
   get pageBarHidden(): boolean {
     return this.framedPages.test(this.router.url);
