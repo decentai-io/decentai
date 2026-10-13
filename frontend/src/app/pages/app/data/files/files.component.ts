@@ -71,7 +71,7 @@ function nameOfSort(sort: Sort): string {
   selector: 'app-files',
   standalone: false,
   templateUrl: './files.component.html',
-  styleUrls: ['../../data-shared.css', './files.component.css'],
+  styleUrl: './files.component.css',
 })
 export class FilesComponent extends DataPageBase implements OnInit, OnDestroy {
   loading = true;

@@ -165,17 +165,6 @@
       </div>
     </ng-container>
 
-    <!-- Page header (breadcrumb + title) -->
-    <div class="page-bar" *ngIf="currentPageTitle && !pageBarHidden">
-      <nav class="page-bar__crumbs" aria-label="Breadcrumb">
-        <ng-container *ngIf="moduleName && moduleName !== currentPageTitle">
-          <span class="crumb-module">{{ moduleName }}</span>
-          <span class="crumb-sep" aria-hidden="true">/</span>
-        </ng-container>
-        <h1 class="crumb-page">{{ currentPageTitle }}</h1>
-      </nav>
-    </div>
-
     <main
       class="content-shell"
       [attr.inert]="contentInert ? '' : null"

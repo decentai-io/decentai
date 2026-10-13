@@ -1,4 +1,5 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, TemplateRef, ViewChild } from '@angular/core';
+import { MatDialog, MatDialogRef } from '@angular/material/dialog';
 
 import { AuthService, CatalogService } from 'src/app/services/auth.service';
 import {
@@ -6,6 +7,7 @@ import {
   Policy,
   PolicyService,
 } from 'src/app/services/policy.service';
+import { ConfirmService } from 'src/app/services/confirm.service';
 import { DataPageBase } from '../../app/data-page-base';
 
 /**
@@ -33,7 +35,7 @@ import { DataPageBase } from '../../app/data-page-base';
   selector: 'app-policies',
   standalone: false,
   templateUrl: './policies.component.html',
-  styleUrls: ['../../app/data-shared.css', '../iam-shared.css'],
+  styleUrl: '../admin-shared.css',
 })
 export class PoliciesComponent extends DataPageBase implements OnInit {
   loading = true;
@@ -54,10 +56,19 @@ export class PoliciesComponent extends DataPageBase implements OnInit {
   saving = false;
   busy = new Set<string>();
 
+  query = '';
+  /** Save was pressed: what the name still needs is said under it. */
+  tried = false;
+  /** The editor, on the dialog shell. */
+  @ViewChild('editor') private editor!: TemplateRef<unknown>;
+  private dialogRef: MatDialogRef<unknown> | null = null;
+
 
   constructor(
     private policyService: PolicyService,
     public auth: AuthService,
+    private dialog: MatDialog,
+    private confirm: ConfirmService,
   ) {
     super();
   }
@@ -153,6 +164,8 @@ export class PoliciesComponent extends DataPageBase implements OnInit {
     this.advanced = false;
     this.advancedText = '';
     this.error = '';
+    this.openEditor();
+    this.readOpenAtStart();
   }
 
   startEdit(policy: Policy): void {
@@ -160,6 +173,7 @@ export class PoliciesComponent extends DataPageBase implements OnInit {
     this.formName = policy.name;
     this.formDescription = policy.description;
     this.error = '';
+    this.openEditor();
 
     const selection = this.gridSelection(policy.permissions);
     if (selection) {
@@ -173,6 +187,7 @@ export class PoliciesComponent extends DataPageBase implements OnInit {
       this.advanced = true;
       this.advancedText = JSON.stringify(policy.permissions, null, 2);
     }
+    this.readOpenAtStart();
   }
 
   /** Start a new policy from an existing one. */
@@ -183,8 +198,7 @@ export class PoliciesComponent extends DataPageBase implements OnInit {
   }
 
   cancelEdit(): void {
-    this.editingId = null;
-    this.error = '';
+    if (!this.saving) this.dialogRef?.close();
   }
 
   get isCreating(): boolean {
@@ -289,6 +303,41 @@ export class PoliciesComponent extends DataPageBase implements OnInit {
     return this.catalog.reduce((sum, g) => sum + this.selectedCount(g), 0);
   }
 
+  /** Opens the editor on the dialog shell; closing it, however it is
+   *  closed, ends the edit. */
+  private openEditor(): void {
+    if (this.dialogRef) return;
+    this.tried = false;
+    this.dialogRef = this.dialog.open(this.editor, { width: '640px', maxWidth: '100vw' });
+    this.dialogRef.afterClosed().subscribe(() => {
+      this.dialogRef = null;
+      this.editingId = null;
+      this.error = '';
+    });
+  }
+
+  /** The editor is open: what goes wrong is said in it, not behind it. */
+  get editing(): boolean {
+    return this.dialogRef !== null;
+  }
+
+  /** The policies the search leaves. */
+  get shown(): Policy[] {
+    const query = this.query.trim().toLowerCase();
+    return this.policies.filter((policy) => !query
+      || `${policy.name} ${policy.description} ${this.summarise(policy)}`.toLowerCase().includes(query));
+  }
+
+  /** The services that open unfolded: the ones the policy already
+   *  allows something of. Read once as the editor opens, so a fold
+   *  does not move while its boxes are ticked. */
+  openAtStart = new Set<string>();
+
+  private readOpenAtStart(): void {
+    this.openAtStart = new Set(this.catalog
+      .filter((group) => this.selectedCount(group) > 0).map((group) => group.service));
+  }
+
   // ── Saving ──────────────────────────────────────────────────────────
 
   /** Build the permissions document from whichever editor is in use. */
@@ -308,7 +357,7 @@ export class PoliciesComponent extends DataPageBase implements OnInit {
     }
 
     if (!this.selected.size) {
-      this.fail('Choose at least one permission.');
+      this.fail('Allow at least one thing.');
       return null;
     }
 
@@ -333,10 +382,10 @@ export class PoliciesComponent extends DataPageBase implements OnInit {
   }
 
   async save(): Promise<void> {
+    this.tried = true;
+    this.error = '';
     const name = this.formName.trim();
-    if (!name) {
-      return this.fail('Give the policy a name.');
-    }
+    if (!name) return;
 
     const permissions = this.buildPermissions();
     if (!permissions) {
@@ -363,8 +412,7 @@ export class PoliciesComponent extends DataPageBase implements OnInit {
 
       await this.reload();
       this.flash(this.isCreating ? `Policy “${name}” created.` : 'Policy saved.');
-      this.editingId = null;
-
+      this.dialogRef?.close();
       // Their own permissions may have just changed.
       await this.auth.refresh();
     } finally {
@@ -373,14 +421,13 @@ export class PoliciesComponent extends DataPageBase implements OnInit {
   }
 
   async remove(policy: Policy): Promise<void> {
-    if (
-      !confirm(
-        `Delete the policy “${policy.name}”?\n\nIt will be detached from ` +
-          `every role that carries it, and whoever relied on it loses that access.`,
-      )
-    ) {
-      return;
-    }
+    const sure = await this.confirm.ask({
+      title: `Delete the policy “${policy.name}”?`,
+      body: 'It is detached from every role that carries it, and whoever relied on it loses that access.',
+      confirm: 'Delete',
+      danger: true,
+    });
+    if (!sure) return;
 
     this.busy.add(policy.policy_id);
     try {

@@ -59,11 +59,8 @@ export class MainComponent implements OnInit, OnDestroy {
   /** Desktop: drawer fully slides away when collapsed (M3 modal-rail). */
   isDrawerCollapsed = false;
 
-  currentPageTitle = '';
   contentView: ContentView = 'main';
 
-  /** Name of the active top-level module, shown as the breadcrumb root. */
-  moduleName = '';
 
   userName = '';
   userEmail = '';
@@ -149,7 +146,6 @@ export class MainComponent implements OnInit, OnDestroy {
     this.initials = this.computeInitials(this.userName);
     this.syncAdminAccess();
     this.contentView = this.datastore.getCurrentContentView();
-    this.moduleName = this.computeModuleName();
 
     this.subscriptions.add(
       this.theme.choice$.subscribe((choice) => (this.themeChoice = choice)),
@@ -175,19 +171,10 @@ export class MainComponent implements OnInit, OnDestroy {
         .subscribe(() => (this.updateReady = true)),
     );
 
-    // Title/breadcrumb emissions fire synchronously inside navigation
-    // (mid change-detection); defer a microtask to avoid NG0100.
-    this.subscriptions.add(
-      this.datastore.currentPageTitle$.subscribe((title) => {
-        queueMicrotask(() => (this.currentPageTitle = title));
-      }),
-    );
-
     this.subscriptions.add(
       this.datastore.currentContentView$.subscribe((view) => {
         queueMicrotask(() => {
           this.contentView = view;
-          this.moduleName = this.computeModuleName();
         });
       }),
     );
@@ -204,10 +191,6 @@ export class MainComponent implements OnInit, OnDestroy {
           ),
         )
         .subscribe((event) => {
-          if (!(event instanceof NavigationStart)) {
-            // currentRoute is synced by the navigator once navigation ends.
-            this.moduleName = this.computeModuleName();
-          }
           if (event instanceof NavigationEnd) {
             // Re-read permissions as the user moves around, so a role change
             // made elsewhere takes effect without a manual reload.
@@ -435,15 +418,6 @@ export class MainComponent implements OnInit, OnDestroy {
     }
   }
 
-  /** The pages that show their own title (the page frame,
-   *  components/ui/page.component.ts). The bar above them would say it
-   *  twice; it goes for good when every page has the frame. */
-  private readonly framedPages = /^\/(agents|ai\/chats|ai\/schedules|settings|monitoring|audit|data\/files|data\/records|data\/skills|data\/mcp|secrets|guide)(\/|$|\?)/;
-
-  get pageBarHidden(): boolean {
-    return this.framedPages.test(this.router.url);
-  }
-
   private applyViewport(isMobile: boolean): void {
     this.isMobile = isMobile;
     // Leaving mobile while the drawer was open must not strand the scroll lock.
@@ -466,29 +440,6 @@ export class MainComponent implements OnInit, OnDestroy {
     this.renderer.removeStyle(document.body, 'overflow');
   }
 
-  /** The sidebar section the active page sits in. Sections share a primary
-   *  url — every admin group is 'admin' — so matching on that alone would
-   *  always name the first one; find the section that actually holds the
-   *  page, and fall back to the primary match for anything unlisted. */
-  private computeModuleName(): string {
-    const route = this.navigator.getCurrentRoute();
-    const active = [route.tertiary, route.secondary].filter(Boolean);
-    const sections = this.datastore.getRoutes();
-
-    for (const section of sections) {
-      for (const page of section.children ?? []) {
-        if (active.includes(page.url)) {
-          return section.name;
-        }
-        for (const leaf of page.children ?? []) {
-          if (active.includes(leaf.url)) {
-            return section.name;
-          }
-        }
-      }
-    }
-    return sections.find((r) => r.url === route.primary)?.name ?? '';
-  }
 
   private computeInitials(name: string): string {
     const parts = name.trim().split(/\s+/).filter(Boolean);

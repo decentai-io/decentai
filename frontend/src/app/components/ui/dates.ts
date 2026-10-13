@@ -96,3 +96,10 @@ export function localDay(value: string, end: boolean): Date | null {
     ? new Date(year, month - 1, day, 23, 59, 59, 999)
     : new Date(year, month - 1, day, 0, 0, 0, 0);
 }
+
+/** A day, with no time of day: "6 Oct 2026"; '' for no date. */
+export function dayDate(value: string | number | null | undefined): string {
+  if (!value) return '';
+  const date = new Date(value);
+  return isNaN(date.getTime()) ? '' : date.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+}

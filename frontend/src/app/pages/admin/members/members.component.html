@@ -1,376 +1,193 @@
-<div class="data-page">
-  <header class="data-header">
-    <div class="data-heading">
-      <h1>Users</h1>
-      <p *ngIf="!adds">
-        Everyone arrives by invitation. A user's access is exactly the groups
-        they are in — nothing more, nothing less.
-      </p>
-      <p *ngIf="adds">
-        You add people here and hand them a temporary password. A user's
-        access is exactly the groups they are in — nothing more, nothing less.
-      </p>
-    </div>
-    <button
-      class="btn primary"
-      type="button"
-      *ngIf="canInvite && !inviting"
-      (click)="startInvite()"
-    >
-      <lucide-icon [name]="adds ? 'user-plus' : 'mail-plus'" [size]="16"></lucide-icon>
-      {{ adds ? "Add person" : "Invite" }}
-    </button>
-  </header>
+<app-page title="Users"
+          [sentence]="adds ? 'You add people here and hand each a temporary password. What a person may do is exactly what their groups grant.'
+                           : 'Everyone arrives by invitation. What a person may do is exactly what their groups grant.'"
+          [wide]="true">
+  <p class="form-notice is-error" role="alert" *ngIf="error && !dialogOpen">{{ error }}</p>
+  <p class="form-notice" role="status" *ngIf="notice">{{ notice }}</p>
 
-  <div class="data-alert error" *ngIf="error">{{ error }}</div>
-  <div class="data-alert ok" *ngIf="notice">{{ notice }}</div>
+  <app-list label="Users" [loading]="loading">
+    <ng-container listToolbar>
+      <span class="search-field toolbar-search">
+        <lucide-icon name="search" [size]="16" aria-hidden="true"></lucide-icon>
+        <input class="input" type="search" placeholder="Search people" aria-label="Search people" [(ngModel)]="query" />
+      </span>
+      <button class="btn primary toolbar-end" type="button" *ngIf="canInvite" (click)="startInvite()">
+        <lucide-icon [name]="adds ? 'user-plus' : 'mail-plus'" [size]="16" aria-hidden="true"></lucide-icon>
+        {{ adds ? "Add a person" : "Invite" }}
+      </button>
+    </ng-container>
 
-  <div class="data-loading" *ngIf="loading">
-    <span class="ui-spinner" role="status" aria-label="Loading"></span>
-    <span>Loading users…</span>
-  </div>
+    <app-row *ngFor="let member of shown" [name]="member.user_name || member.email">
+      <lucide-icon rowMark name="user" [size]="20" [strokeWidth]="1.75" aria-hidden="true"></lucide-icon>
+      <span rowChips class="chip accent" *ngIf="isSelf(member)">You</span>
+      <span rowChips class="chip" *ngIf="member.status === 'disabled'">Disabled</span>
+      <span rowChips class="chip warn" *ngIf="member.must_change_password"
+            matTooltip="They sign in with it once and are asked to choose their own">Temporary password</span>
+      <ng-container rowMeta>{{ member.email }} · {{ groupNames(member) }}</ng-container>
 
-  <ng-container *ngIf="!loading">
-    <!-- ── A temporary password, shown once ───────────────────────── -->
-    <section class="panel editor" *ngIf="handed as given">
-      <div class="panel-head">
-        <div>
-          <h2>{{ given.reset ? "Password reset" : "Person added" }}</h2>
-          <p>
-            Hand this temporary password to {{ given.email }}. It is shown only
-            now. They sign in with it once and are asked to choose their own.
+      <button rowState class="icon-btn sm" type="button" *ngIf="hasActions(member)"
+              [attr.aria-label]="'More for ' + (member.user_name || member.email)" [disabled]="isBusy(member.user_id)"
+              [matMenuTriggerFor]="memberMenu" [matMenuTriggerData]="{ member: member }">
+        <lucide-icon name="ellipsis-vertical" [size]="16" aria-hidden="true"></lucide-icon>
+      </button>
+    </app-row>
+
+    <app-empty *ngIf="members.length && !shown.length" icon="search-x" title="Nobody matches" line="Try another search."></app-empty>
+  </app-list>
+
+  <!-- ── Invitations that nobody has taken up yet ────────────────────── -->
+  <section class="admin-section" *ngIf="canReadInvitations && invitations.length" aria-labelledby="invitations-title">
+    <h2 class="admin-section-title" id="invitations-title">Pending invitations</h2>
+    <app-list label="Pending invitations">
+      <app-row *ngFor="let invitation of invitations" [name]="invitation.email">
+        <lucide-icon rowMark name="mail" [size]="20" [strokeWidth]="1.75" aria-hidden="true"></lucide-icon>
+        <ng-container rowMeta>Invited by {{ invitation.invited_by_email }} · expires {{ day(invitation.expires_at) }}</ng-container>
+        <!-- Sending again makes a new link, and the old one stops working. -->
+        <button rowState class="btn sm" type="button" *ngIf="canInvite" [disabled]="isBusy(invitation.invitation_id)"
+                (click)="resend(invitation)">Send again</button>
+        <button rowState class="btn ghost danger sm" type="button" *ngIf="canRevokeInvitations"
+                [disabled]="isBusy(invitation.invitation_id)" (click)="revoke(invitation)">Revoke</button>
+      </app-row>
+    </app-list>
+  </section>
+
+  <mat-menu #memberMenu="matMenu" xPosition="before">
+    <ng-template matMenuContent let-member="member">
+      <button mat-menu-item *ngIf="canAssignGroups" (click)="startEditGroups(member)">Groups</button>
+      <button mat-menu-item *ngIf="canResetPassword && !isSelf(member)" (click)="resetPassword(member)">Reset password</button>
+      <button mat-menu-item *ngIf="canDisable && !isSelf(member) && member.status === 'active'" (click)="setStatus(member, 'disabled')">Disable</button>
+      <button mat-menu-item *ngIf="canDisable && member.status === 'disabled'" (click)="setStatus(member, 'active')">Enable</button>
+      <button mat-menu-item *ngIf="canDelete && !isSelf(member)" (click)="requestRemove(member)">Remove</button>
+    </ng-template>
+  </mat-menu>
+
+  <!-- ── Inviting someone, or adding them ────────────────────────────── -->
+  <ng-template #inviteDialog>
+    <h2 mat-dialog-title>{{ adds ? "Add a person" : "Invite someone" }}</h2>
+    <form (ngSubmit)="adds ? addPerson() : sendInvite()">
+      <mat-dialog-content>
+        <div class="form">
+          <p class="dialog-note" *ngIf="!inviteLink">
+            {{ adds ? "You are shown a temporary password to hand them. They land in exactly the groups you pick."
+                    : "They get a link, choose a name and a password, and land in exactly the groups you pick." }}
           </p>
-        </div>
-      </div>
-      <div class="data-alert ok">
-        <code class="invite-link">{{ given.password }}</code>
-        <button class="btn sm" type="button" (click)="copyPassword()">
-          Copy
-        </button>
-      </div>
-      <div class="editor-actions">
-        <button class="btn primary" type="button" (click)="handed = null">Done</button>
-      </div>
-    </section>
+          <ng-container *ngIf="!inviteLink">
+            <app-field label="Name" *ngIf="adds" [error]="tried && !inviteName.trim() ? 'Enter their name.' : ''">
+              <input class="input" name="invite-name" autocomplete="off" [(ngModel)]="inviteName" />
+            </app-field>
+            <app-field label="Email" [error]="tried && !inviteEmail.trim() ? 'Enter their email address.' : ''">
+              <input class="input" type="email" name="invite-email" autocomplete="off" [(ngModel)]="inviteEmail" />
+            </app-field>
+            <fieldset class="admin-picks">
+              <legend>Groups<span class="admin-count">{{ inviteGroupIds.size }} of {{ groups.length }}</span></legend>
+              <mat-checkbox class="check-row" *ngFor="let group of groups" [checked]="inviteGroupIds.has(group.group_id)"
+                            (change)="toggleInviteGroup(group.group_id)">
+                <span class="check-name">{{ group.group_name }}</span>
+              </mat-checkbox>
+            </fieldset>
+          </ng-container>
 
-    <!-- ── Invite, or add ─────────────────────────────────────────── -->
-    <section class="panel editor" *ngIf="inviting">
-      <div class="panel-head">
-        <div *ngIf="!adds">
-          <h2>Invite someone</h2>
-          <p>
-            They get a link, choose a name and password, and land in exactly
-            the groups you pick here.
-          </p>
-        </div>
-        <div *ngIf="adds">
-          <h2>Add a person</h2>
-          <p>
-            You are shown a temporary password to hand them. They land in
-            exactly the groups you pick here.
-          </p>
-        </div>
-      </div>
-
-      <div class="editor-fields">
-        <label class="field grow" *ngIf="adds">
-          <span class="field-label">Name</span>
-          <input class="txt" type="text" [(ngModel)]="inviteName" placeholder="Their name" />
-        </label>
-        <label class="field grow">
-          <span class="field-label">Email</span>
-          <input
-            class="txt"
-            type="email"
-            [(ngModel)]="inviteEmail"
-            placeholder="person@company.com"
-            (keyup.enter)="adds ? addPerson() : sendInvite()"
-          />
-        </label>
-      </div>
-
-      <div class="grid-head">
-        <span class="member-title">
-          Groups <strong>({{ inviteGroupIds.size }})</strong>
-        </span>
-      </div>
-
-      <div class="action-list">
-        <label
-          class="action"
-          *ngFor="let group of groups"
-          [class.on]="inviteGroupIds.has(group.group_id)"
-        >
-          <input
-            type="checkbox"
-            [checked]="inviteGroupIds.has(group.group_id)"
-            (change)="toggleInviteGroup(group.group_id)"
-          />
-          <span class="action-text">
-            <span class="action-desc">{{ group.group_name }}</span>
-          </span>
-        </label>
-      </div>
-
-      <div class="data-alert ok" *ngIf="inviteLink">
-        <span>
-          No email service is configured, so share this link yourself — it is
-          shown only now:
-        </span>
-        <code class="invite-link">{{ inviteLink }}</code>
-        <button class="btn sm" type="button" (click)="copyLink()">
-          Copy
-        </button>
-      </div>
-
-      <div class="editor-actions">
-        <button
-          class="btn primary"
-          type="button"
-          *ngIf="!adds"
-          (click)="sendInvite()"
-          [disabled]="saving || !inviteEmail.trim()"
-        >
-          {{ saving ? "Sending…" : "Send invitation" }}
-        </button>
-        <button
-          class="btn primary"
-          type="button"
-          *ngIf="adds"
-          (click)="addPerson()"
-          [disabled]="saving || !inviteEmail.trim() || !inviteName.trim()"
-        >
-          {{ saving ? "Adding…" : "Add person" }}
-        </button>
-        <button
-          class="btn"
-          type="button"
-          (click)="cancelInvite()"
-          [disabled]="saving"
-        >
-          Close
-        </button>
-      </div>
-    </section>
-
-    <!-- ── Users ──────────────────────────────────────────────────── -->
-    <section class="panel">
-      <div class="panel-head">
-        <div>
-          <h2>All users</h2>
-          <p>{{ members.length }} user{{ members.length === 1 ? "" : "s" }}.</p>
-        </div>
-      </div>
-
-      <ul class="rows">
-        <li class="row" *ngFor="let member of members">
-          <span class="row-mark" aria-hidden="true">
-            <lucide-icon name="user" [size]="15"></lucide-icon>
-          </span>
-
-          <span class="row-id">
-            <span class="row-name">
-              {{ member.user_name || member.email }}
-              <span class="tag" *ngIf="isSelf(member)">You</span>
-              <span class="tag tag--off" *ngIf="member.status === 'disabled'">
-                Disabled
-              </span>
-              <span class="tag" *ngIf="member.must_change_password">
-                Temporary password
-              </span>
-            </span>
-            <span class="row-sub">{{ member.email }}</span>
-            <span class="row-meta">{{ groupNames(member) }}</span>
-          </span>
-
-          <button
-            class="btn"
-            type="button"
-            *ngIf="canAssignGroups"
-            (click)="startEditGroups(member)"
-            [disabled]="isBusy(member.user_id)"
-          >
-            Groups
-          </button>
-
-          <button
-            class="btn"
-            type="button"
-            *ngIf="canResetPassword && !isSelf(member)"
-            (click)="resetPassword(member)"
-            [disabled]="isBusy(member.user_id)"
-          >
-            Reset password
-          </button>
-
-          <button
-            class="btn"
-            type="button"
-            *ngIf="canDisable && !isSelf(member) && member.status === 'active'"
-            (click)="setStatus(member, 'disabled')"
-            [disabled]="isBusy(member.user_id)"
-          >
-            Disable
-          </button>
-          <button
-            class="btn"
-            type="button"
-            *ngIf="canDisable && member.status === 'disabled'"
-            (click)="setStatus(member, 'active')"
-            [disabled]="isBusy(member.user_id)"
-          >
-            Enable
-          </button>
-
-          <button
-            class="btn danger"
-            type="button"
-            *ngIf="canDelete && !isSelf(member)"
-            (click)="requestRemove(member)"
-            [disabled]="isBusy(member.user_id)"
-          >
-            Remove
-          </button>
-
-          <!-- Group editor, inline under the row it concerns -->
-          <div class="row-editor" *ngIf="editingId === member.user_id">
-            <div class="action-list">
-              <label
-                class="action"
-                *ngFor="let group of groups"
-                [class.on]="isGroupOn(group.group_id)"
-              >
-                <input
-                  type="checkbox"
-                  [checked]="isGroupOn(group.group_id)"
-                  (change)="toggleGroup(group.group_id)"
-                />
-                <span class="action-text">
-                  <span class="action-desc">{{ group.group_name }}</span>
-                </span>
-              </label>
+          <!-- No email goes out from this install: the link is theirs to pass on. -->
+          <ng-container *ngIf="inviteLink">
+            <p class="dialog-note">No email service is set up, so send {{ inviteEmail }} this link yourself. It is shown only now.</p>
+            <div class="admin-once">
+              <code>{{ inviteLink }}</code>
+              <button class="btn sm" type="button" (click)="copyLink()">{{ copied ? "Copied" : "Copy" }}</button>
             </div>
-            <div class="editor-actions">
-              <button
-                class="btn primary sm"
-                type="button"
-                (click)="saveGroups()"
-                [disabled]="saving"
-              >
-                {{ saving ? "Saving…" : "Save groups" }}
-              </button>
-              <button
-                class="btn sm"
-                type="button"
-                (click)="cancelEditGroups()"
-                [disabled]="saving"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </li>
-      </ul>
-    </section>
-
-    <!-- ── Pending invitations ────────────────────────────────────── -->
-    <section class="panel" *ngIf="canReadInvitations && invitations.length">
-      <div class="panel-head">
-        <div>
-          <h2>Pending invitations</h2>
-          <p>
-            {{ invitations.length }} waiting. Re-sending mints a fresh link and
-            quietly kills the old one.
-          </p>
+          </ng-container>
+          <p class="form-notice is-error" role="alert" *ngIf="error">{{ error }}</p>
         </div>
-      </div>
+      </mat-dialog-content>
+      <mat-dialog-actions>
+        <button class="btn" type="button" [disabled]="saving" (click)="closeDialog()">{{ inviteLink ? "Done" : "Cancel" }}</button>
+        <button class="btn primary" type="submit" *ngIf="!inviteLink" [disabled]="saving">
+          {{ saving ? (adds ? "Adding…" : "Sending…") : adds ? "Add person" : "Send invitation" }}
+        </button>
+      </mat-dialog-actions>
+    </form>
+  </ng-template>
 
-      <ul class="rows">
-        <li class="row" *ngFor="let invitation of invitations">
-          <span class="row-mark" aria-hidden="true">
-            <lucide-icon name="mail" [size]="15"></lucide-icon>
-          </span>
-
-          <span class="row-id">
-            <span class="row-name">{{ invitation.email }}</span>
-            <span class="row-sub">
-              Invited by {{ invitation.invited_by_email }} · expires
-              {{ invitation.expires_at | slice: 0 : 10 }}
-            </span>
-          </span>
-
-          <button
-            class="btn"
-            type="button"
-            *ngIf="canInvite"
-            (click)="resend(invitation)"
-            [disabled]="isBusy(invitation.invitation_id)"
-          >
-            Resend
-          </button>
-          <button
-            class="btn danger"
-            type="button"
-            *ngIf="canRevokeInvitations"
-            (click)="revoke(invitation)"
-            [disabled]="isBusy(invitation.invitation_id)"
-          >
-            Revoke
-          </button>
-        </li>
-      </ul>
-    </section>
-  </ng-container>
-
-  <!-- ── Removing: a hand-over, shown before it happens ─────────────── -->
-  <ng-container *ngIf="removing as member">
-    <div class="dialog-backdrop" (click)="closeRemove()">
-      <section class="info-dialog leaving-dialog" role="alertdialog" aria-modal="true"
-               aria-labelledby="leaving-title" (click)="$event.stopPropagation()">
-        <header class="dialog-head">
-          <span class="dialog-icon danger-dialog-icon"><lucide-icon name="user-x" [size]="21"></lucide-icon></span>
-          <div>
-            <h2 id="leaving-title">Remove {{ member.user_name || member.email }}?</h2>
-            <p>Their account goes. What they made for the organization passes to someone else.</p>
+  <!-- ── A temporary password, shown once ────────────────────────────── -->
+  <ng-template #handedDialog>
+    <ng-container *ngIf="handed as given">
+      <h2 mat-dialog-title>{{ given.reset ? "Password reset" : "Person added" }}</h2>
+      <mat-dialog-content>
+        <div class="form">
+          <p class="dialog-note">
+            Hand this temporary password to {{ given.email }}. It is shown only now. They sign in with it once
+            and are asked to choose their own.
+          </p>
+          <div class="admin-once">
+            <code>{{ given.password }}</code>
+            <button class="btn sm" type="button" (click)="copyPassword()">{{ copied ? "Copied" : "Copy" }}</button>
           </div>
-          <button class="icon-button" type="button" (click)="closeRemove()" [disabled]="isBusy(member.user_id)" aria-label="Close">
-            <lucide-icon name="x" [size]="19"></lucide-icon>
-          </button>
-        </header>
-        <div class="dialog-body leaving-body">
-          <div class="data-loading" *ngIf="!leaving">
-            <span class="ui-spinner" role="status" aria-label="Loading"></span>
-            <span>Looking at what they own…</span>
+          <p class="form-notice is-error" role="alert" *ngIf="error">{{ error }}</p>
+        </div>
+      </mat-dialog-content>
+      <mat-dialog-actions>
+        <button class="btn primary" type="button" (click)="closeDialog()">Done</button>
+      </mat-dialog-actions>
+    </ng-container>
+  </ng-template>
+
+  <!-- ── The groups of one person ────────────────────────────────────── -->
+  <ng-template #groupsDialog>
+    <h2 mat-dialog-title>Groups of {{ editingName }}</h2>
+    <form (ngSubmit)="saveGroups()">
+      <mat-dialog-content>
+        <div class="form">
+          <fieldset class="admin-picks">
+            <legend>Groups<span class="admin-count">{{ selected.size }} of {{ groups.length }}</span></legend>
+            <mat-checkbox class="check-row" *ngFor="let group of groups" [checked]="isGroupOn(group.group_id)"
+                          (change)="toggleGroup(group.group_id)">
+              <span class="check-name">{{ group.group_name }}</span>
+            </mat-checkbox>
+          </fieldset>
+          <p class="form-notice is-error" role="alert" *ngIf="error">{{ error }}</p>
+        </div>
+      </mat-dialog-content>
+      <mat-dialog-actions>
+        <button class="btn" type="button" [disabled]="saving" (click)="closeDialog()">Cancel</button>
+        <button class="btn primary" type="submit" [disabled]="saving">{{ saving ? "Saving…" : "Save groups" }}</button>
+      </mat-dialog-actions>
+    </form>
+  </ng-template>
+
+  <!-- ── Removing: a hand-over, shown before it happens ──────────────── -->
+  <ng-template #leavingDialog>
+    <ng-container *ngIf="removing as member">
+      <h2 mat-dialog-title>Remove {{ member.user_name || member.email }}?</h2>
+      <mat-dialog-content>
+        <div class="form">
+          <p class="dialog-note">Their account goes. What they made for the organization passes to someone else.</p>
+          <div *ngIf="!leaving && !error" aria-busy="true" aria-label="Looking at what they own">
+            <span class="sk sk-field"></span>
           </div>
           <ng-container *ngIf="leaving">
-            <div class="leaving-block" *ngIf="deletedKinds.length">
-              <strong>Deleted with them</strong>
-              <span *ngFor="let kind of deletedKinds">{{ ownsLine(kind) }}</span>
-              <em>Conversations, schedules and memory are personal, and an MCP server is reached with their own credential; nothing keeps acting for a person who is gone.</em>
-            </div>
-            <div class="leaving-block" *ngIf="handedOver.length">
-              <strong>Handed over</strong>
-              <span *ngFor="let kind of handedOver">{{ ownsLine(kind) }}</span>
-              <em>Credentials, records, files, skills, connections and sources keep their sharing; the successor becomes their owner.</em>
-            </div>
-            <p class="leaving-none" *ngIf="!deletedKinds.length && !handedOver.length">They own nothing yet.</p>
-            <label class="field" *ngIf="handedOver.length">
-              <span class="field-label">Successor</span>
-              <select class="txt sel" [(ngModel)]="successorId" [ngModelOptions]="{ standalone: true }">
-                <option value="">Me</option>
-                <option *ngFor="let person of successors" [value]="person.user_id">{{ person.user_name || person.email }} · {{ person.email }}</option>
-              </select>
-            </label>
+            <section class="dialog-section" *ngIf="deletedKinds.length">
+              <h3 class="form-section-title">Deleted with them</h3>
+              <ul class="admin-lines"><li *ngFor="let kind of deletedKinds">{{ ownsLine(kind) }}</li></ul>
+              <p class="dialog-note">Conversations, schedules and memory are personal, and an MCP server is reached with their own credential: nothing keeps acting for a person who is gone.</p>
+            </section>
+            <section class="dialog-section" *ngIf="handedOver.length">
+              <h3 class="form-section-title">Handed over</h3>
+              <ul class="admin-lines"><li *ngFor="let kind of handedOver">{{ ownsLine(kind) }}</li></ul>
+              <p class="dialog-note">Secrets, records, files, skills, connections and sources keep their sharing; the successor becomes their owner.</p>
+              <app-field label="Successor">
+                <app-select name="successor" [choices]="successorChoices" [(ngModel)]="successorId"></app-select>
+              </app-field>
+            </section>
+            <p class="dialog-note" *ngIf="!deletedKinds.length && !handedOver.length">They own nothing yet.</p>
           </ng-container>
-          <div class="data-alert error dialog-error" *ngIf="error">{{ error }}</div>
+          <p class="form-notice is-error" role="alert" *ngIf="error">{{ error }}</p>
         </div>
-        <footer class="dialog-actions">
-          <button class="btn" type="button" (click)="closeRemove()" [disabled]="isBusy(member.user_id)">Keep them</button>
-          <button class="btn danger primary" type="button" (click)="remove(member)" [disabled]="!leaving || isBusy(member.user_id)">
-            {{ isBusy(member.user_id) ? "Removing…" : "Remove and hand over" }}
-          </button>
-        </footer>
-      </section>
-    </div>
-  </ng-container>
-</div>
+      </mat-dialog-content>
+      <mat-dialog-actions>
+        <button class="btn" type="button" [disabled]="isBusy(member.user_id)" (click)="closeDialog()">Keep them</button>
+        <button class="btn danger" type="button" [disabled]="!leaving || isBusy(member.user_id)" (click)="remove(member)">
+          {{ isBusy(member.user_id) ? "Removing…" : handedOver.length ? "Remove and hand over" : "Remove" }}
+        </button>
+      </mat-dialog-actions>
+    </ng-container>
+  </ng-template>
+</app-page>

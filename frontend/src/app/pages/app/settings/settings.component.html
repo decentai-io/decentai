@@ -1,10 +1,10 @@
 <!-- Settings › Model providers, inside the shell, which shows its title. -->
-<div class="data-alert error" *ngIf="error">{{ error }}</div>
-<div class="data-alert ok" *ngIf="notice">{{ notice }}</div>
+<p class="form-notice is-error" role="alert" *ngIf="error">{{ error }}</p>
+<p class="form-notice" role="status" *ngIf="notice">{{ notice }}</p>
 
-<div class="data-loading" *ngIf="loading">
-  <span class="ui-spinner" role="status" aria-label="Loading"></span>
-  <span>Loading providers…</span>
+<div class="form" *ngIf="loading" aria-busy="true" aria-label="Reading the providers">
+  <span class="sk sk-field"></span>
+  <span class="sk sk-field"></span>
 </div>
 
 <app-model-providers

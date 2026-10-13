@@ -3,8 +3,8 @@
   sentence="Files you upload, attach to chats, or receive from your agents."
   [wide]="true"
 >
-  <div class="data-alert error" *ngIf="error" role="alert">{{ error }}</div>
-  <div class="data-alert ok" *ngIf="notice" role="status">{{ notice }}</div>
+  <p class="form-notice is-error" *ngIf="error" role="alert">{{ error }}</p>
+  <p class="form-notice" *ngIf="notice" role="status">{{ notice }}</p>
 
   <div class="side-layout" [class.has-opened]="opened">
     <app-filter-column

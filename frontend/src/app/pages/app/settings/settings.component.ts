@@ -17,7 +17,6 @@ import { DataPageBase } from '../data-page-base';
   selector: 'app-settings',
   standalone: false,
   templateUrl: './settings.component.html',
-  styleUrls: ['../data-shared.css'],
 })
 export class SettingsComponent extends DataPageBase implements OnInit {
   loading = true;

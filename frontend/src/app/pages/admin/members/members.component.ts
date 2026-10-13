@@ -1,4 +1,8 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, TemplateRef, ViewChild } from '@angular/core';
+import { MatDialog, MatDialogRef } from '@angular/material/dialog';
+
+import { dayDate } from 'src/app/components/ui/dates';
+import { Choice } from 'src/app/components/ui/radio-keys';
 
 import { AuthService } from 'src/app/services/auth.service';
 import { Group, GroupService } from 'src/app/services/group.service';
@@ -7,6 +11,7 @@ import {
   Member,
   MembersService,
 } from 'src/app/services/members.service';
+import { ConfirmService } from 'src/app/services/confirm.service';
 import { DataPageBase } from '../../app/data-page-base';
 
 /**
@@ -28,7 +33,7 @@ import { DataPageBase } from '../../app/data-page-base';
   selector: 'app-members',
   standalone: false,
   templateUrl: './members.component.html',
-  styleUrls: ['../../app/data-shared.css', '../iam-shared.css'],
+  styleUrl: '../admin-shared.css',
 })
 export class MembersComponent extends DataPageBase implements OnInit {
   loading = true;
@@ -54,10 +59,25 @@ export class MembersComponent extends DataPageBase implements OnInit {
   saving = false;
   busy = new Set<string>();
 
+  query = '';
+  /** A dialog's button was pressed: what a field still needs is said under it. */
+  tried = false;
+  /** What is shown once was copied. */
+  copied = false;
+
+  /** The page's dialogs, one open at a time. */
+  @ViewChild('inviteDialog') private inviteDialog!: TemplateRef<unknown>;
+  @ViewChild('handedDialog') private handedDialog!: TemplateRef<unknown>;
+  @ViewChild('groupsDialog') private groupsDialog!: TemplateRef<unknown>;
+  @ViewChild('leavingDialog') private leavingDialog!: TemplateRef<unknown>;
+  private dialogRef: MatDialogRef<unknown> | null = null;
+
   constructor(
     private members_: MembersService,
     private groupService: GroupService,
     public auth: AuthService,
+    private dialog: MatDialog,
+    private confirm: ConfirmService,
   ) {
     super();
   }
@@ -126,7 +146,67 @@ export class MembersComponent extends DataPageBase implements OnInit {
     return this.busy.has(id);
   }
 
+  // ── The page's dialogs ──────────────────────────────────────────────
+
+  /** Opens one of the page's dialogs in place of whichever is open.
+   *  Closing it, however it is closed, ends what it was for. */
+  private show(template: TemplateRef<unknown>, width = '520px'): void {
+    const before = this.dialogRef;
+    this.dialogRef = null;
+    before?.close();
+    this.tried = false;
+    this.copied = false;
+    const ref = this.dialog.open(template, { width, maxWidth: '100vw' });
+    this.dialogRef = ref;
+    ref.afterClosed().subscribe(() => {
+      // Replaced by another dialog: that one's state is not this one's to clear.
+      if (this.dialogRef !== ref) return;
+      this.dialogRef = null;
+      this.editingId = null;
+      this.inviting = false;
+      this.inviteLink = '';
+      this.handed = null;
+      this.removing = null;
+      this.leaving = null;
+      this.error = '';
+    });
+  }
+
+  closeDialog(): void {
+    if (!this.saving && !this.busy.size) this.dialogRef?.close();
+  }
+
+  /** A dialog is open: what goes wrong is said in it, not behind it. */
+  get dialogOpen(): boolean {
+    return this.dialogRef !== null;
+  }
+
   // ── Reading a user ──────────────────────────────────────────────────
+
+  /** The people the search leaves. */
+  get shown(): Member[] {
+    const query = this.query.trim().toLowerCase();
+    return this.members.filter((member) => !query
+      || `${member.user_name} ${member.email} ${this.groupNames(member)}`.toLowerCase().includes(query));
+  }
+
+  /** Whether the row's menu has anything in it for this person. */
+  hasActions(member: Member): boolean {
+    return this.canAssignGroups
+      || (!this.isSelf(member) && (this.canResetPassword || this.canDelete))
+      || (this.canDisable && (!this.isSelf(member) || member.status === 'disabled'));
+  }
+
+  day(when: string | null | undefined): string {
+    return dayDate(when || '');
+  }
+
+  /** The person whose groups are open, by name. */
+  get editingName(): string {
+    const member = this.members.find((each) => each.user_id === this.editingId);
+    return member?.user_name || member?.email || '';
+  }
+
 
   groupName(groupId: string): string {
     return this.groups.find((g) => g.group_id === groupId)?.group_name ?? groupId;
@@ -145,14 +225,10 @@ export class MembersComponent extends DataPageBase implements OnInit {
     this.editingId = member.user_id;
     this.selected = new Set(member.assigned_groups);
     this.error = '';
+    this.show(this.groupsDialog);
   }
 
-  cancelEditGroups(): void {
-    this.editingId = null;
-    this.error = '';
-  }
-
-  isGroupOn(groupId: string): boolean {
+isGroupOn(groupId: string): boolean {
     return this.selected.has(groupId);
   }
 
@@ -182,7 +258,7 @@ export class MembersComponent extends DataPageBase implements OnInit {
         return this.fail(result.error);
       }
 
-      this.editingId = null;
+      this.dialogRef?.close();
       await this.reload();
       this.flash('Groups updated.');
       // Their own permissions may have just changed.
@@ -195,14 +271,14 @@ export class MembersComponent extends DataPageBase implements OnInit {
   // ── Status & removal ────────────────────────────────────────────────
 
   async setStatus(member: Member, status: 'active' | 'disabled'): Promise<void> {
-    if (
-      status === 'disabled' &&
-      !confirm(
-        `Disable ${member.email}?\n\nTheir sessions end immediately and they ` +
-          `cannot sign in until re-enabled.`,
-      )
-    ) {
-      return;
+    if (status === 'disabled') {
+      const sure = await this.confirm.ask({
+        title: `Disable ${member.email}?`,
+        body: 'Their sessions end at once, and they cannot sign in until the account is enabled again.',
+        confirm: 'Disable',
+        danger: true,
+      });
+      if (!sure) return;
     }
 
     this.busy.add(member.user_id);
@@ -223,27 +299,26 @@ export class MembersComponent extends DataPageBase implements OnInit {
   removing: Member | null = null;
   leaving: any = null;
   successorId = '';
+  /** Who what they own can pass to: the remover first, then the rest. */
+  successorChoices: Choice[] = [];
 
   async requestRemove(member: Member): Promise<void> {
     this.removing = member;
     this.leaving = null;
     this.successorId = '';
     this.error = '';
+    this.successorChoices = [
+      { value: '', name: 'Me' },
+      ...this.members
+        .filter((each) => each.status === 'active' && each.user_id !== member.user_id && !this.isSelf(each))
+        .map((each) => ({ value: each.user_id, name: each.user_name || each.email, hint: each.email })),
+    ];
+    this.show(this.leavingDialog);
     const preview = await this.members_.leaving(member.user_id);
     if (preview.error) return this.fail(preview.error);
     this.leaving = preview;
   }
 
-  closeRemove(): void {
-    if (!this.busy.size) {
-      this.removing = null;
-      this.leaving = null;
-    }
-  }
-
-  get successors(): Member[] {
-    return this.members.filter((m) => m.status === 'active' && m.user_id !== this.removing?.user_id);
-  }
 
   /** The kinds a removal touches, in words a person reads. */
   private static readonly KIND_LABELS: Record<string, string> = {
@@ -274,8 +349,7 @@ export class MembersComponent extends DataPageBase implements OnInit {
       if (result.error) {
         return this.fail(result.error);
       }
-      this.removing = null;
-      this.leaving = null;
+      this.dialogRef?.close();
       await this.reload();
       const to = result.successor?.email ? ` What they owned is now ${result.successor.email}'s.` : '';
       this.flash(`${member.email} removed.${to}`);
@@ -292,6 +366,7 @@ export class MembersComponent extends DataPageBase implements OnInit {
 
   startInvite(): void {
     this.inviting = true;
+    this.show(this.inviteDialog);
     this.inviteName = '';
     this.handed = null;
     this.inviteEmail = '';
@@ -304,12 +379,7 @@ export class MembersComponent extends DataPageBase implements OnInit {
     this.error = '';
   }
 
-  cancelInvite(): void {
-    this.inviting = false;
-    this.inviteLink = '';
-  }
-
-  toggleInviteGroup(groupId: string): void {
+toggleInviteGroup(groupId: string): void {
     this.inviteGroupIds.has(groupId)
       ? this.inviteGroupIds.delete(groupId)
       : this.inviteGroupIds.add(groupId);
@@ -319,8 +389,9 @@ export class MembersComponent extends DataPageBase implements OnInit {
   async addPerson(): Promise<void> {
     const email = this.inviteEmail.trim();
     const name = this.inviteName.trim();
-    if (!name) return this.fail('Their name is required.');
-    if (!email) return this.fail('An email address is required.');
+    this.tried = true;
+    this.error = '';
+    if (!name || !email) return;
 
     this.saving = true;
     try {
@@ -338,6 +409,7 @@ export class MembersComponent extends DataPageBase implements OnInit {
       this.inviting = false;
       this.handed = { email, password: result.password ?? '', reset: false };
       this.error = '';
+      this.show(this.handedDialog);
     } finally {
       this.saving = false;
     }
@@ -345,14 +417,12 @@ export class MembersComponent extends DataPageBase implements OnInit {
 
   /** A temporary password for someone who forgot theirs. */
   async resetPassword(member: Member): Promise<void> {
-    if (
-      !confirm(
-        `Reset the password of ${member.email}?\n\nThey are signed out everywhere, ` +
-          `and you are shown a temporary password to hand them.`,
-      )
-    ) {
-      return;
-    }
+    const sure = await this.confirm.ask({
+      title: `Reset the password of ${member.email}?`,
+      body: 'They are signed out everywhere, and you are shown a temporary password to hand them.',
+      confirm: 'Reset password',
+    });
+    if (!sure) return;
 
     this.busy.add(member.user_id);
     try {
@@ -363,6 +433,7 @@ export class MembersComponent extends DataPageBase implements OnInit {
       await this.reload();
       this.handed = { email: member.email, password: result.password ?? '', reset: true };
       this.error = '';
+      this.show(this.handedDialog);
     } finally {
       this.busy.delete(member.user_id);
     }
@@ -372,17 +443,17 @@ export class MembersComponent extends DataPageBase implements OnInit {
     if (!this.handed) return;
     try {
       await navigator.clipboard.writeText(this.handed.password);
-      this.flash('Password copied.');
+      this.copied = true;
     } catch {
       this.fail('Could not copy — select the password and copy it yourself.');
     }
   }
 
   async sendInvite(): Promise<void> {
+    this.tried = true;
+    this.error = '';
     const email = this.inviteEmail.trim();
-    if (!email) {
-      return this.fail('An email address is required.');
-    }
+    if (!email) return;
 
     this.saving = true;
     try {
@@ -400,12 +471,12 @@ export class MembersComponent extends DataPageBase implements OnInit {
       await this.reload();
 
       if (result.email_sent) {
-        this.inviting = false;
+        this.dialogRef?.close();
         this.flash(`Invitation emailed to ${email}.`);
       } else {
         // No email service configured: the link exists only here, right now.
         this.inviteLink = result.accept_url ?? '';
-        this.flash(`Invitation created for ${email} — copy the link below.`);
+        this.copied = false;
       }
     } finally {
       this.saving = false;
@@ -428,9 +499,10 @@ export class MembersComponent extends DataPageBase implements OnInit {
         this.flash(`Invitation re-sent to ${invitation.email}.`);
       } else {
         this.inviting = true;
+        this.show(this.inviteDialog);
         this.inviteEmail = invitation.email;
         this.inviteLink = result.accept_url ?? '';
-        this.flash('New link created — the old one no longer works.');
+        this.copied = false;
       }
     } finally {
       this.busy.delete(invitation.invitation_id);
@@ -455,7 +527,7 @@ export class MembersComponent extends DataPageBase implements OnInit {
     if (!this.inviteLink) return;
     try {
       await navigator.clipboard.writeText(this.inviteLink);
-      this.flash('Link copied.');
+      this.copied = true;
     } catch {
       this.fail('Could not copy — select the link and copy it yourself.');
     }

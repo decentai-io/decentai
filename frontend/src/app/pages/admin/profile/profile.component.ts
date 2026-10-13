@@ -1,43 +1,44 @@
 import { Component, OnInit } from '@angular/core';
 
+import { dayDate } from 'src/app/components/ui/dates';
 import { AuthService } from 'src/app/services/auth.service';
 import { Profile, ProfileService } from 'src/app/services/profile.service';
-import { DataPageBase } from '../../app/data-page-base';
 
 /**
  * Admin → Account → Profile: your own record.
  *
- * Nothing here is special-cased in the frontend — the page is visible
- * because `account:profile:get` is granted (by default to everyone, through
- * the built-in Everyone group), and an administrator can widen or withdraw
- * that from the Policies screen like any other page.
+ * Nothing here is special-cased in the frontend: the page is visible
+ * because `account:profile:get` is granted (by default to everyone,
+ * through the built-in Everyone group), and an administrator can widen
+ * or withdraw that from the Policies page like any other.
  *
- * Changing a password is deliberately elsewhere: credential rotation lives
- * on the public /auth/* surface so policy can never lock a user out of it.
+ * Changing a password is deliberately elsewhere: it lives on the public
+ * /auth/* surface so policy can never lock a person out of it.
  */
 @Component({
   selector: 'app-profile',
   standalone: false,
   templateUrl: './profile.component.html',
-  styleUrls: ['../../app/data-shared.css', '../iam-shared.css'],
+  styleUrl: '../admin-shared.css',
 })
-export class ProfileComponent extends DataPageBase implements OnInit {
+export class ProfileComponent implements OnInit {
   loading = true;
   profile: Profile | null = null;
 
-  renaming = false;
-  renameValue = '';
+  name = '';
+  /** Save was pressed: what the name still needs is said under it. */
+  tried = false;
   saving = false;
+  saveError = '';
 
   constructor(
     private profiles: ProfileService,
     public auth: AuthService,
-  ) {
-    super();
-  }
+  ) {}
 
   async ngOnInit(): Promise<void> {
     this.profile = await this.profiles.get();
+    this.name = this.profile?.user_name ?? '';
     this.loading = false;
   }
 
@@ -45,35 +46,32 @@ export class ProfileComponent extends DataPageBase implements OnInit {
     return this.auth.can('account:profile:update');
   }
 
-  startRename(): void {
-    this.renaming = true;
-    this.renameValue = this.profile?.user_name ?? '';
-    this.error = '';
+  get dirty(): boolean {
+    return this.name.trim() !== (this.profile?.user_name ?? '');
   }
 
-  cancelRename(): void {
-    this.renaming = false;
-    this.renameValue = '';
+  get lastSignIn(): string {
+    return dayDate(this.profile?.last_login_at || '');
   }
 
-  async saveRename(): Promise<void> {
-    const name = this.renameValue.trim();
-    if (!name || name === this.profile?.user_name) {
-      this.cancelRename();
-      return;
-    }
+  async save(): Promise<void> {
+    this.tried = true;
+    this.saveError = '';
+    const name = this.name.trim();
+    if (!name || !this.dirty || this.saving) return;
 
     this.saving = true;
     try {
       const result = await this.profiles.rename(name);
       if (result.error) {
-        return this.fail(result.error);
+        this.saveError = result.error;
+        return;
       }
-      this.cancelRename();
       this.profile = await this.profiles.get();
-      // The shell shows the name too, so re-read the session.
+      this.name = this.profile?.user_name ?? name;
+      this.tried = false;
+      // The shell shows the name too.
       await this.auth.refresh();
-      this.flash('Name updated.');
     } finally {
       this.saving = false;
     }

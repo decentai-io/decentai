@@ -1,100 +1,34 @@
-<div class="data-page">
-  <header class="data-header">
-    <div class="data-heading">
-      <h1>Profile</h1>
-      <p>Your account: who you are, and the groups your access comes from.</p>
-    </div>
-  </header>
-
-  <div class="data-alert error" *ngIf="error">{{ error }}</div>
-  <div class="data-alert ok" *ngIf="notice">{{ notice }}</div>
-
-  <div class="data-loading" *ngIf="loading">
-    <span class="ui-spinner" role="status" aria-label="Loading"></span>
-    <span>Loading your profile…</span>
+<app-page title="Profile" sentence="Your account: who you are, and the groups your access comes from.">
+  <div class="form" *ngIf="loading" aria-busy="true" aria-label="Reading your profile">
+    <span class="sk sk-field"></span>
+    <span class="sk sk-field"></span>
   </div>
 
-  <ng-container *ngIf="!loading && profile as me">
-    <section class="panel">
-      <div class="panel-head">
-        <div>
-          <h2>Name</h2>
-          <p>How you appear to everyone else in the workspace.</p>
-        </div>
-      </div>
-
-      <div class="org-name-row" *ngIf="!renaming">
-        <span class="org-name">{{ me.user_name || "—" }}</span>
-        <button
-          class="btn sm"
-          type="button"
-          *ngIf="canRename"
-          (click)="startRename()"
-        >
-          <lucide-icon name="pencil-line" [size]="15"></lucide-icon>
-          Rename
-        </button>
-      </div>
-
-      <div class="org-name-row" *ngIf="renaming">
-        <input
-          class="txt grow"
-          [(ngModel)]="renameValue"
-          placeholder="Your name"
-          (keyup.enter)="saveRename()"
-        />
-        <button
-          class="btn primary sm"
-          type="button"
-          (click)="saveRename()"
-          [disabled]="saving || !renameValue.trim()"
-        >
-          {{ saving ? "Saving…" : "Save" }}
-        </button>
-        <button
-          class="btn sm"
-          type="button"
-          (click)="cancelRename()"
-          [disabled]="saving"
-        >
-          Cancel
-        </button>
-      </div>
+  <form class="form" *ngIf="!loading && profile as me" (ngSubmit)="save()">
+    <section class="form-section">
+      <app-field label="Name" help="How you appear to everyone else."
+                 [error]="tried && !name.trim() ? 'Enter your name.' : ''">
+        <input class="input" name="user-name" autocomplete="name" [(ngModel)]="name" [readOnly]="!canRename" />
+      </app-field>
+      <app-field label="Email" help="What you sign in with. An administrator changes it.">
+        <input class="input" name="email" [value]="me.email" readonly />
+      </app-field>
+      <p class="form-section-note admin-fact" *ngIf="lastSignIn">Last signed in {{ lastSignIn }}.</p>
     </section>
 
-    <section class="panel">
-      <div class="panel-head">
-        <div>
-          <h2>Account</h2>
-          <p>
-            Signed in as {{ me.email }}<span *ngIf="me.last_login_at">
-              · last sign-in {{ me.last_login_at | slice: 0 : 10 }}</span
-            >.
-          </p>
-        </div>
-      </div>
-
-      <div class="grid-head">
-        <span class="member-title">
-          Your groups <strong>({{ me.groups.length }})</strong>
-        </span>
-      </div>
-
-      <p class="row-sub" *ngIf="!me.groups.length">
-        You are in no groups yet — your access is whatever everyone gets. Ask
-        an administrator if you need more.
-      </p>
-
-      <ul class="rows" *ngIf="me.groups.length">
-        <li class="row" *ngFor="let group of me.groups">
-          <span class="row-mark" aria-hidden="true">
-            <lucide-icon name="users" [size]="15"></lucide-icon>
-          </span>
-          <span class="row-id">
-            <span class="row-name">{{ group.group_name }}</span>
-          </span>
-        </li>
-      </ul>
+    <section class="form-section" aria-labelledby="profile-groups-title">
+      <h2 class="form-section-title" id="profile-groups-title">Your groups</h2>
+      <p class="form-section-note">What you may do comes from the groups you are in.</p>
+      <app-list label="Your groups" *ngIf="me.groups.length">
+        <app-row *ngFor="let group of me.groups" [name]="group.group_name">
+          <lucide-icon rowMark name="users" [size]="20" [strokeWidth]="1.75" aria-hidden="true"></lucide-icon>
+        </app-row>
+      </app-list>
+      <app-empty *ngIf="!me.groups.length" icon="users" title="You are in no group yet"
+                 line="Your access is what everyone gets. Ask an administrator if you need more."></app-empty>
     </section>
-  </ng-container>
-</div>
+
+    <app-save-bar *ngIf="canRename" [dirty]="dirty" [saving]="saving" [error]="saveError"
+                  (save)="save()" (discard)="name = me.user_name || ''"></app-save-bar>
+  </form>
+</app-page>
