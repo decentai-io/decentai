@@ -131,7 +131,9 @@
                 </ng-template>
               </td>
               <td class="cell-when" [title]="changedInFull(record)">{{ changed(record) }}</td>
-              <td class="cell-minor">{{ shareSummary(record) }}</td>
+              <td class="cell-minor">
+                <span class="chip" [matTooltip]="sharing(record).names">{{ sharing(record).word }}</span>
+              </td>
               <td class="cell-actions">
                 <button
                   class="icon-btn sm"
@@ -154,27 +156,6 @@
               </td>
             </tr>
 
-            <!-- Who can see the record, edited under its row until sharing
-                 moves to a dialog of its own. -->
-            <tr class="table-editor" *ngIf="share.isOpen(record.resource_ref)">
-              <td [attr.colspan]="columns.length + (canDelete ? 4 : 3)">
-                <p class="table-editor-title">Who can see this record</p>
-                <app-sharing-selector
-                  [mode]="share.mode" (modeChange)="share.mode = $any($event)"
-                  [groups]="share.myGroups" [people]="share.peers"
-                  [selectedGroups]="share.groups" [selectedPeople]="share.users"
-                  groupLabel="My groups" peopleMode="people" [allowOrganization]="canShareOrgWide"
-                  (groupToggled)="share.toggleGroup($event)" (personToggled)="share.toggleUser($event)">
-                </app-sharing-selector>
-                <p class="table-editor-note">Shared people and their assistants can read this record.</p>
-                <div class="table-editor-actions">
-                  <button class="btn" type="button" (click)="share.close()">Cancel</button>
-                  <button class="btn primary" type="button" (click)="saveShare(record)" [disabled]="share.saving || !share.ready">
-                    {{ share.saving ? "Saving…" : "Save" }}
-                  </button>
-                </div>
-              </td>
-            </tr>
           </ng-container>
         </tbody>
       </table>
@@ -217,11 +198,11 @@
       [name]="recordName(record)"
       [kind]="kindLabelOf(record.resource_id)"
       [agent]="agentNameOf(record.resource_id)"
-      [sharing]="shareSummary(record)"
+      [sharing]="sharing(record).word"
       (closed)="closeView()"
     >
       <button recordActions class="btn sm" type="button" *ngIf="canUpdate && canTouch(record) && mayEdit(record)" (click)="startEdit(record)">Edit</button>
-      <button recordActions class="btn sm" type="button" *ngIf="canShare && canTouch(record)" (click)="closeView(); openShare(record)">Share</button>
+      <button recordActions class="btn sm" type="button" *ngIf="canShare && canTouch(record)" (click)="openShare(record)">Share</button>
       <button recordActions class="btn sm" type="button" *ngIf="canTransfer && canTouch(record)" (click)="requestTransfer(record)">Hand over</button>
       <button recordActions class="btn ghost danger sm" type="button" *ngIf="canDelete && canTouch(record)"
               [disabled]="busyRef === record.resource_ref" (click)="deleteOne(record)">Delete</button>
@@ -323,6 +304,15 @@
       </form>
     </ng-container>
   </ng-template>
+
+  <app-share-dialog *ngIf="share.ref"
+                    [share]="share"
+                    heading="Who can see this record"
+                    note="The people you share with, and their assistants, can read this record."
+                    [allowOrganization]="canShareOrgWide"
+                    [problem]="shareProblem"
+                    (save)="saveShare()" (closed)="share.close()">
+  </app-share-dialog>
 
   <app-transfer-dialog *ngIf="transferTarget as item"
                        [subject]="'the record “' + recordName(item) + '”'" [ownerId]="item.created_by"

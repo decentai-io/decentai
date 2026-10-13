@@ -13,7 +13,7 @@ import { ConfirmService } from 'src/app/services/confirm.service';
 import { FileResource, FilesService } from 'src/app/services/files.service';
 import { Profile, ProfileService } from 'src/app/services/profile.service';
 import { DataPageBase } from '../../data-page-base';
-import { ShareEditor } from '../../share-editor';
+import { ShareEditor, SharingChip } from '../../share-editor';
 import { extensionOf, FILE_GROUPS, fileKindOf, sizeLabel } from 'src/app/components/ui/file-types';
 
 /** Whose files are listed. */
@@ -610,36 +610,9 @@ export class FilesComponent extends DataPageBase implements OnInit, OnDestroy {
       .join(' · ');
   }
 
-  /** Who sees the file, as the row's chip: a word, and the names
-   *  behind it where the word is a count. Somebody else's file says
-   *  whose it is, which is what the reader does not know. */
-  sharing(file: FileResource): { word: string; names: string } {
-    const groups = file.owner?.groups ?? [];
-    const everyone = groups.includes('everyone');
-    const named = (ids: string[], names: string[] | undefined, skip: (id: string) => boolean) =>
-      ids.map((id, index) => ({ id, name: names?.[index] || '' }))
-        .filter((entry) => !skip(entry.id)).map((entry) => entry.name || 'someone who left');
-    const groupNames = named(groups, file.owner_names?.groups, (id) => id === 'everyone');
-    const people = named(file.owner?.users ?? [], file.owner_names?.users,
-      (id) => id === this.myUserId || id === file.created_by);
-
-    if (!this.isMine(file)) {
-      return {
-        word: `Shared by ${file.created_by_name || 'a colleague'}`,
-        names: everyone ? 'With everyone in the organization'
-          : groupNames.length ? `With ${groupNames.join(', ')}` : '',
-      };
-    }
-    if (everyone) return { word: 'Everyone', names: 'Everyone in the organization' };
-    if (groupNames.length) {
-      return groupNames.length === 1 ? { word: groupNames[0], names: 'A group' }
-        : { word: `${groupNames.length} groups`, names: groupNames.join(', ') };
-    }
-    if (people.length) {
-      return people.length === 1 ? { word: people[0], names: 'One person' }
-        : { word: `${people.length} people`, names: people.join(', ') };
-    }
-    return { word: 'Private', names: '' };
+  /** Who sees the file, as the row's chip. */
+  sharing(file: FileResource): SharingChip {
+    return this.share.chip(file.owner, file.created_by, file.owner_names, file.created_by_name);
   }
 
   // ── Actions ─────────────────────────────────────────────────────────
@@ -694,19 +667,25 @@ export class FilesComponent extends DataPageBase implements OnInit, OnDestroy {
     }
   }
 
+  /** Why the last change of sharing was refused, said in its dialog. */
+  shareProblem = '';
+
   openShare(file: FileResource): void {
-    if (this.share.isOpen(file.resource_ref)) return this.share.close();
+    this.shareProblem = '';
     this.share.open(file.resource_ref, file.owner);
   }
 
-  async saveShare(file: FileResource): Promise<void> {
+  /** Saves who sees the file the share dialog is open on, and reads
+   *  the list again for the names of who that now is. */
+  async saveShare(): Promise<void> {
     this.share.saving = true;
+    this.shareProblem = '';
     try {
-      const result = await this.service.setOwner(
-        file.resource_ref,
-        this.share.owner() as any,
-      );
-      if (result.error) return this.fail(result.error);
+      const result = await this.service.setOwner(this.share.ref, this.share.owner() as any);
+      if (result.error) {
+        this.shareProblem = result.error;
+        return;
+      }
       this.share.close();
       await this.reload();
       this.flash('Sharing updated.');

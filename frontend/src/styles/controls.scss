@@ -1092,36 +1092,11 @@ div.mat-mdc-select-panel {
   display: none;
 }
 
-/* What opens under a row (`table-detail`: an agent's files), and an
-   editor opened under one (`table-editor`: who can see it). Sharing
-   moves to a dialog of its own in a later step, and the editor's rules
-   go with it. */
-.table .table-detail td,
-.table .table-editor td {
+/* What opens under a row (`table-detail`: an agent's files). */
+.table .table-detail td {
   height: auto;
   padding: 16px 12px;
   background: var(--surface-2);
-}
-
-.table-editor-title {
-  margin-bottom: 8px;
-  color: var(--ink);
-  font-size: var(--t-sm);
-  font-weight: 500;
-  line-height: var(--lh-sm);
-}
-
-.table-editor-note {
-  margin: 8px 0 12px;
-  color: var(--ink-3);
-  font-size: var(--t-sm);
-  line-height: var(--lh-sm);
-}
-
-.table-editor-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
 }
 
 @container (max-width: 640px) {

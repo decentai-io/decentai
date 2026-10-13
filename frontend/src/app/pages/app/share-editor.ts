@@ -13,6 +13,23 @@ export interface ResourceOwner {
   users?: string[];
 }
 
+/** The names a listing gives for an owner map's ids, in their order. */
+export interface OwnerNames {
+  groups?: string[];
+  users?: string[];
+}
+
+/** Who sees a thing, as a row's chip: a word, and what is behind it. */
+export interface SharingChip {
+  word: string;
+  names: string;
+}
+
+/** Up to two names as they are, then the first and how many more. */
+function listed(names: string[]): string {
+  return names.length <= 2 ? names.join(', ') : `${names[0]} and ${names.length - 1} others`;
+}
+
 /**
  * Who can see one resource — the private / my groups / whole organization
  * choice, and the owner map it turns into.
@@ -120,22 +137,33 @@ export class ShareEditor {
 
   // ── What gets shown ─────────────────────────────────────────────────
 
-  /** A private resource still names its creator in owner.users, so only a
-   *  group — or a user who is not me — counts as actually shared. */
-  summary(owner: ResourceOwner | undefined, createdBy: string): string {
+  /** Who sees a thing, for its row: the groups or the people by name,
+   *  "Everyone", "Private", or, on somebody else's, whose it is, which
+   *  is what the reader does not know. A private resource still names
+   *  its creator in owner.users, so only a group, or a user who is
+   *  neither me nor the creator, counts as shared. */
+  chip(owner: ResourceOwner | undefined, createdBy: string,
+       names?: OwnerNames, createdByName?: string): SharingChip {
     const groups = owner?.groups ?? [];
-    if (groups.includes('everyone')) return 'Organization-wide';
-    if (groups.length) {
-      return groups.length === 1
-        ? 'Shared with a group'
-        : `Shared with ${groups.length} groups`;
+    const everyone = groups.includes('everyone');
+    // An id with no name behind it is a group or a person that is gone.
+    const named = (ids: string[], given: string[] | undefined, gone: string, skip: (id: string) => boolean) =>
+      ids.map((id, index) => ({ id, name: given?.[index] || '' }))
+        .filter((entry) => !skip(entry.id)).map((entry) => entry.name || gone);
+    const groupNames = named(groups, names?.groups, 'a deleted group', (id) => id === 'everyone');
+    const people = named(owner?.users ?? [], names?.users, 'someone who left',
+      (id) => id === this.myUserId || id === createdBy);
+
+    if (createdBy !== this.myUserId) {
+      return {
+        word: `Shared by ${createdByName || 'a colleague'}`,
+        names: everyone ? 'With everyone in the organization'
+          : groupNames.length ? `With ${groupNames.join(', ')}` : '',
+      };
     }
-    const others = (owner?.users ?? []).filter((id) => id !== this.myUserId);
-    if (others.length) {
-      return others.length === 1
-        ? 'Shared with a person'
-        : `Shared with ${others.length} people`;
-    }
-    return createdBy === this.myUserId ? 'Private' : 'Shared with you';
+    if (everyone) return { word: 'Everyone', names: 'Everyone in the organization' };
+    if (groupNames.length) return { word: listed(groupNames), names: groupNames.join(', ') };
+    if (people.length) return { word: listed(people), names: people.join(', ') };
+    return { word: 'Private', names: '' };
   }
 }

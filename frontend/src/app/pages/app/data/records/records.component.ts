@@ -17,7 +17,7 @@ import {
 import { DataPageBase } from '../../data-page-base';
 import { recordsAsCsv, recordsAsJson } from './record-export';
 import { numberLabel } from './record-values';
-import { ShareEditor } from '../../share-editor';
+import { ShareEditor, SharingChip } from '../../share-editor';
 
 /** One kind an agent keeps, as the filter column shows it. */
 interface KindNode {
@@ -595,8 +595,9 @@ export class RecordsComponent extends DataPageBase implements OnInit, OnDestroy 
     return 'text';
   }
 
-  shareSummary(record: AgentRecord): string {
-    return this.share.summary(record.owner, record.created_by);
+  /** Who sees the record, as its row's chip. */
+  sharing(record: AgentRecord): SharingChip {
+    return this.share.chip(record.owner, record.created_by, record.owner_names, record.created_by_name);
   }
 
   /** When the record last changed. */
@@ -833,19 +834,25 @@ export class RecordsComponent extends DataPageBase implements OnInit, OnDestroy 
 
   // ── Actions ─────────────────────────────────────────────────────────
 
+  /** Why the last change of sharing was refused, said in its dialog. */
+  shareProblem = '';
+
   openShare(record: AgentRecord): void {
-    if (this.share.isOpen(record.resource_ref)) return this.share.close();
+    this.shareProblem = '';
     this.share.open(record.resource_ref, record.owner);
   }
 
-  async saveShare(record: AgentRecord): Promise<void> {
+  /** Saves who sees the record the share dialog is open on, and reads
+   *  the list again for the names of who that now is. */
+  async saveShare(): Promise<void> {
     this.share.saving = true;
+    this.shareProblem = '';
     try {
-      const result = await this.service.setOwner(
-        record.resource_ref,
-        this.share.owner() as any,
-      );
-      if (result.error) return this.fail(result.error);
+      const result = await this.service.setOwner(this.share.ref, this.share.owner() as any);
+      if (result.error) {
+        this.shareProblem = result.error;
+        return;
+      }
       this.share.close();
       await this.reload();
       this.flash('Sharing updated.');

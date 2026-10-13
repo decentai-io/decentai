@@ -191,30 +191,6 @@
               </td>
             </tr>
 
-            <!-- Who can see the file, edited under its row until sharing
-                 moves to a dialog of its own. -->
-            <tr class="table-editor" *ngIf="share.isOpen(file.resource_ref)">
-              <td [attr.colspan]="canDelete ? 7 : 6">
-                <p class="table-editor-title">Who can see this file</p>
-                <app-sharing-selector
-                  [mode]="share.mode" (modeChange)="share.mode = $any($event)"
-                  [groups]="share.myGroups" [people]="share.peers"
-                  [selectedGroups]="share.groups" [selectedPeople]="share.users"
-                  groupLabel="My groups" peopleMode="people" [allowOrganization]="canShareOrgWide"
-                  (groupToggled)="share.toggleGroup($event)" (personToggled)="share.toggleUser($event)">
-                </app-sharing-selector>
-                <p class="table-editor-note">
-                  Anyone you share with can download this file, and their
-                  assistant can read it too if an agent goes looking.
-                </p>
-                <div class="table-editor-actions">
-                  <button class="btn" type="button" (click)="share.close()">Cancel</button>
-                  <button class="btn primary" type="button" (click)="saveShare(file)" [disabled]="share.saving || !share.ready">
-                    {{ share.saving ? "Saving…" : "Save" }}
-                  </button>
-                </div>
-              </td>
-            </tr>
           </ng-container>
         </tbody>
       </table>
@@ -276,7 +252,7 @@
         <lucide-icon name="ellipsis-vertical" [size]="16" aria-hidden="true"></lucide-icon>
       </button>
       <mat-menu #openedMenu="matMenu" xPosition="before">
-        <button mat-menu-item *ngIf="canShare" (click)="closeOpened(); openShare(file)">Share</button>
+        <button mat-menu-item *ngIf="canShare" (click)="openShare(file)">Share</button>
         <button mat-menu-item *ngIf="canTransfer" (click)="requestTransfer(file)">Hand over</button>
         <button mat-menu-item *ngIf="canDelete" [disabled]="busyRef === file.resource_ref" (click)="deleteOne(file)">Delete</button>
       </mat-menu>
@@ -294,6 +270,15 @@
     </ng-container>
   </ng-template>
   <input #picker type="file" multiple hidden (change)="onPicked($event)" />
+
+  <app-share-dialog *ngIf="share.ref"
+                    [share]="share"
+                    heading="Who can see this file"
+                    note="Anyone you share with can download this file, and their assistant can read it too if an agent goes looking."
+                    [allowOrganization]="canShareOrgWide"
+                    [problem]="shareProblem"
+                    (save)="saveShare()" (closed)="share.close()">
+  </app-share-dialog>
 
   <app-transfer-dialog *ngIf="transferTarget as item"
                        [subject]="'the file “' + filename(item) + '”'" [ownerId]="item.created_by"

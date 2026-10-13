@@ -175,6 +175,7 @@ import { MainComponent } from './website/main/main.component';
 import { AlertComponent } from './components/alert/alert.component';
 import { InformativeTableComponent } from './components/informative-table/informative-table.component';
 import { TransferDialogComponent } from './components/transfer-dialog/transfer-dialog.component';
+import { ShareDialogComponent } from './components/share-dialog/share-dialog.component';
 import { SharingSelectorComponent } from './components/sharing-selector/sharing-selector.component';
 import { DataStoreService } from './services/datastore.service';
 
@@ -276,6 +277,7 @@ import { AgentCardComponent } from './pages/app/agents/agent-card.component';
     AlertComponent,
     InformativeTableComponent,
     TransferDialogComponent,
+    ShareDialogComponent,
     SharingSelectorComponent,
     ChartViewerComponent,
     LoadingComponent,

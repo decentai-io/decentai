@@ -98,41 +98,6 @@ class FileController(ResourceController):
         return answer, status
 
     @staticmethod
-    def _name_people(resources: list, user: dict) -> None:
-        """``created_by_name`` and ``owner_names`` on every resource,
-        from two reads for the whole listing. Only this organization's
-        people and groups are looked up, and only the ones these files
-        already name: a file the caller can see says who made it. A
-        person or a group that is gone is an empty name."""
-        from database.stores import GroupStore, UserStore
-
-        org_id = str(user.get("org_id") or "")
-        user_ids, group_ids = set(), set()
-        for resource in resources:
-            owner = resource.get("owner") or {}
-            user_ids.update([resource.get("created_by"), *(owner.get("users") or [])])
-            group_ids.update(owner.get("groups") or [])
-        people = {
-            doc["_id"]: doc.get("user_name") or doc.get("email", "")
-            for doc in UserStore().list_in(org_id, sorted(filter(None, user_ids)))
-        }
-        groups = {
-            doc["_id"]: doc.get("group_name", "")
-            for doc in GroupStore().list_in(org_id, sorted(filter(None, group_ids)))
-        }
-        for resource in resources:
-            owner = resource.get("owner") or {}
-            resource["created_by_name"] = people.get(resource.get("created_by"), "")
-            resource["owner_names"] = {
-                "groups": [
-                    "Everyone" if GroupStore.is_everyone(group_id)
-                    else groups.get(group_id, "")
-                    for group_id in owner.get("groups") or []
-                ],
-                "users": [people.get(user_id, "") for user_id in owner.get("users") or []],
-            }
-
-    @staticmethod
     def _agent_ref_of(resource: Dict[str, Any]) -> str:
         """The approval ref an agent's file was stored under, from its
         category key; empty for an upload or a chat attachment."""

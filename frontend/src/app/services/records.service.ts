@@ -40,6 +40,10 @@ export interface AgentRecord {
   /** The payload. Stored encrypted, returned decrypted to its owner. */
   values: Record<string, any>;
   created_by: string;
+  /** Who made it, by name; empty when that person is gone. */
+  created_by_name?: string;
+  /** The names of `owner.groups` and `owner.users`, in their order. */
+  owner_names?: { groups: string[]; users: string[] };
   created_at?: string | null;
   updated_at?: string | null;
 }

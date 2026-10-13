@@ -1,0 +1,25 @@
+<!-- Shown on the dialog shell (styles/controls.scss), which this
+     component opens as it appears. -->
+<ng-template #sheet>
+  <h2 mat-dialog-title>{{ heading }}</h2>
+  <form (ngSubmit)="submit()">
+    <mat-dialog-content>
+      <div class="form">
+        <p class="dialog-note" *ngIf="note">{{ note }}</p>
+        <app-sharing-selector
+          [label]="heading"
+          [mode]="share.mode" (modeChange)="share.mode = $any($event)"
+          [groups]="share.myGroups" [people]="share.peers"
+          [selectedGroups]="share.groups" [selectedPeople]="share.users"
+          groupLabel="My groups" peopleMode="people" [allowOrganization]="allowOrganization"
+          (groupToggled)="share.toggleGroup($event)" (personToggled)="share.toggleUser($event)">
+        </app-sharing-selector>
+        <p class="form-notice is-error" role="alert" *ngIf="(tried && missing) || problem">{{ (tried && missing) || problem }}</p>
+      </div>
+    </mat-dialog-content>
+    <mat-dialog-actions>
+      <button class="btn" type="button" [disabled]="share.saving" (click)="close()">Cancel</button>
+      <button class="btn primary" type="submit" [disabled]="share.saving">{{ share.saving ? "Saving…" : "Save" }}</button>
+    </mat-dialog-actions>
+  </form>
+</ng-template>
