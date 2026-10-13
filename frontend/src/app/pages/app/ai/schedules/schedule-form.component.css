@@ -1,0 +1,139 @@
+/* The schedule dialog: the chat, what it does, and the cadence builder
+   with what it comes to. The fields, the choice cards, the segmented
+   control and the select are the shared ones. */
+
+.schedule-chat-search {
+  margin-bottom: 8px;
+}
+
+.schedule-json {
+  align-self: flex-start;
+  margin-top: -8px;
+}
+
+/* When: one group, its own boxes changing with the way chosen. */
+.schedule-when {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+}
+
+.schedule-legend {
+  margin-bottom: 8px;
+  padding: 0;
+  color: var(--ink);
+  font-size: var(--t-sm);
+  font-weight: 500;
+  line-height: var(--lh-sm);
+}
+
+.schedule-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink-2);
+  font-size: var(--t-base);
+  line-height: var(--lh-base);
+}
+
+.schedule-count {
+  width: 72px;
+}
+
+.schedule-time {
+  width: 128px;
+}
+
+.schedule-date {
+  width: 168px;
+}
+
+.schedule-when > .input {
+  align-self: stretch;
+}
+
+/* The days of the week, each one pressed in or not. */
+.schedule-days {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.schedule-day {
+  min-width: 48px;
+  height: 36px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  color: var(--ink-2);
+  font: inherit;
+  font-size: var(--t-sm);
+  cursor: pointer;
+  transition: background var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease);
+}
+
+.schedule-day:hover {
+  border-color: var(--line-strong);
+}
+
+.schedule-day[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.schedule-day:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+}
+
+/* A cron's five parts, each over its name. */
+.schedule-cron {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  align-self: stretch;
+  gap: 4px;
+  text-align: center;
+}
+
+.schedule-cron dd {
+  padding: 4px;
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+  overflow-wrap: anywhere;
+}
+
+.schedule-cron dt {
+  margin-top: 2px;
+  color: var(--ink-2);
+  font-size: var(--t-xs);
+  line-height: var(--lh-xs);
+}
+
+/* What the cadence comes to. */
+.schedule-preview {
+  align-self: stretch;
+  padding: 8px 12px;
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  color: var(--ink);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+@media (pointer: coarse) {
+  .schedule-day {
+    height: 44px;
+  }
+}

@@ -1,0 +1,188 @@
+/* One schedule, opened: when and what, what can be done, what comes
+   next, and every run. The chips, the buttons, the segmented control,
+   the fold and the pager are the shared ones. */
+:host {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.schedule-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.schedule-words {
+  flex: 1;
+  min-width: 0;
+}
+
+.schedule-title {
+  color: var(--ink);
+  font-size: var(--t-md);
+  font-weight: 600;
+  line-height: var(--lh-md);
+  overflow-wrap: anywhere;
+}
+
+.schedule-kind {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin-top: 2px;
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+/* What it does, at reading size, with the kind's glyph at its left. */
+.schedule-what {
+  display: flex;
+  gap: 8px;
+  color: var(--ink);
+  font-size: var(--t-base);
+  line-height: var(--lh-base);
+}
+
+.schedule-what lucide-icon {
+  display: flex;
+  flex: none;
+  align-items: center;
+  height: var(--lh-base);
+  color: var(--ink-2);
+}
+
+.schedule-what p {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.schedule-also {
+  display: block;
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.schedule-also a {
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.schedule-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.schedule-section {
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  font-weight: 500;
+  line-height: var(--lh-sm);
+}
+
+.schedule-section + * {
+  margin-top: 8px;
+}
+
+.schedule-note {
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+* + .schedule-note {
+  margin-top: 8px;
+}
+
+.schedule-upcoming {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--ink);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+  list-style: none;
+}
+
+.schedule-upcoming li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.schedule-away {
+  color: var(--ink-2);
+}
+
+/* The runs: a title with the two views of them at its right. */
+.schedule-runs-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.schedule-runs {
+  display: flex;
+  flex-direction: column;
+  list-style: none;
+}
+
+.schedule-runs li + li {
+  border-top: 1px solid var(--line);
+}
+
+.schedule-run,
+.schedule-runs summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 12px;
+  min-height: 36px;
+  padding: 6px 0;
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.run-when {
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.run-what {
+  flex: 1;
+  min-width: 0;
+  color: var(--ink);
+}
+
+.run-what.is-failed {
+  color: var(--danger);
+  font-weight: 500;
+}
+
+.run-took {
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.schedule-runs pre {
+  margin-bottom: 8px;
+  max-height: 240px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+@media (pointer: coarse) {
+  .schedule-run,
+  .schedule-runs summary {
+    min-height: 44px;
+  }
+}

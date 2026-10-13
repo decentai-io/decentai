@@ -1293,3 +1293,8 @@ div.mat-mdc-select-panel {
   line-height: var(--lh-sm);
   overflow-wrap: anywhere;
 }
+
+/* What is written for a machine to read: a cron, JSON. */
+.input.mono {
+  font-family: var(--font-mono);
+}

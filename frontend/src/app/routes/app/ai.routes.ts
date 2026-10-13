@@ -38,6 +38,11 @@ export const AIRoutes: Routes = [
     component: SchedulesComponent,
     canActivate: [permissionGuard],
     data: { requiredAction: 'ai:activity:list' },
+    // One schedule, opened, is a view of the list's page.
+    children: [
+      { path: '', pathMatch: 'full', children: [] },
+      { path: ':id', children: [] },
+    ],
   },
   { path: 'activity', redirectTo: '/ai/schedules', pathMatch: 'full' },
   { path: 'activity/:tab', redirectTo: '/ai/schedules' },

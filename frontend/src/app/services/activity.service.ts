@@ -57,12 +57,18 @@ export interface ScheduleDraft {
   delay_seconds?: number;
   every_seconds?: number;
   cron?: string;
+  /** The zone its times are read in; the chat's own when left out. */
+  timezone?: string;
 }
+
+/** What of a schedule a person may rewrite: what is not named stays. */
+export type ScheduleChanges = Partial<Omit<ScheduleDraft, 'chat_id'>> & { enabled?: boolean };
 
 /** A function an installed agent's manifest declared fit to run
  *  unattended — the only kind a schedule may run. */
 export interface SchedulableFunction {
   value: string;
+  /** "Notebook · Find notes": the agent's name and the function's. */
   label: string;
   agent: string;
   inputs: Record<string, unknown>;
@@ -93,9 +99,15 @@ export class ActivityService {
     return this.ai.ai('AI:Schedule:Create', draft);
   }
 
-  async setEnabled(chatId: string, scheduleId: string, enabled: boolean) {
+  setEnabled(chatId: string, scheduleId: string, enabled: boolean) {
+    return this.update(chatId, scheduleId, { enabled });
+  }
+
+  /** Changes a schedule, held to what a new one is held to. A new
+   *  "when" counts its first run from now. */
+  async update(chatId: string, scheduleId: string, changes: ScheduleChanges) {
     return this.ai.ai('AI:Schedule:Update', {
-      chat_id: chatId, schedule_id: scheduleId, enabled,
+      chat_id: chatId, schedule_id: scheduleId, ...changes,
     });
   }
 
@@ -110,7 +122,7 @@ export class ActivityService {
     const offered: any[] = res.data?.functions || [];
     return offered.map((fn) => ({
       value: fn.function,
-      label: `${fn.agent} · ${fn.name} (${String(fn.function).split('.').slice(1).join('.')})`,
+      label: `${fn.agent} · ${fn.name}`,
       agent: fn.agent_id,
       inputs: fn.inputs || {},
       outputs: fn.outputs || [],

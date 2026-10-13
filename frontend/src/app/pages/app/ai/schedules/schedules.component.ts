@@ -1,385 +1,335 @@
 import { Component, OnDestroy, OnInit } from '@angular/core';
-import { Router } from '@angular/router';
+import { MatDialog } from '@angular/material/dialog';
+import { ActivatedRoute, NavigationEnd, Router } from '@angular/router';
+import { firstValueFrom, Subscription } from 'rxjs';
 
+import { FilterGroup, FilterItem } from 'src/app/components/ui/filter-column.component';
 import {
-  ActivitySchedule, ActivityService, ScheduleDraft, ScheduleRun, SchedulableFunction,
+  ActivitySchedule, ActivityService, SchedulableFunction,
 } from 'src/app/services/activity.service';
 import { AiSessionService } from 'src/app/services/ai-session.service';
 import { AuthService } from 'src/app/services/auth.service';
+import { ConfirmService } from 'src/app/services/confirm.service';
+import { WorkSwitchService } from 'src/app/services/work-switch.service';
 import { DataPageBase } from '../../data-page-base';
+import { cadenceWords, momentWords, until } from './cadence-words';
+import {
+  ScheduleChat, ScheduleFormComponent, ScheduleFormData, ScheduleFormResult,
+} from './schedule-form.component';
+import {
+  STATE_WORDS, ScheduleState, alsoOf, failuresOf, lastRun, runLabel, stateOf, took, whatOf,
+} from './schedule-shared';
 
-type WhenKind = 'at' | 'every' | 'cron';
-type EveryUnit = 'minutes' | 'hours' | 'days';
-
-/** The new-schedule form, as the person fills it. */
-interface ScheduleForm {
-  chatId: string;          // '' = a new chat
-  kind: 'note' | 'function';
-  note: string;
-  fn: string;
-  inputsText: string;
-  wakeField: string;
-  when: WhenKind;
-  at: string;
-  everyCount: number;
-  everyUnit: EveryUnit;
-  cron: string;
-}
+const STATES: ScheduleState[] = ['active', 'paused', 'done', 'failing'];
 
 /**
  * Schedules: everything the person's chats keep on the clock, read from
- * every chat at once — what each one does, when it fires next and the
- * few fires after that, and what every past fire did. Cards and
- * background work are not here: they live in their chats, where the
- * badges point.
+ * every chat at once. A row reads as an appointment: when it comes
+ * round, in words; what it does and in which chat; when it runs next
+ * and how the last run went.
+ *
+ * One list, with a column at its left that narrows it by how a schedule
+ * stands and by chat. A row's name opens the schedule at
+ * /ai/schedules/<id>, beside the list on a wide screen, with every run
+ * it has had. Making one and changing one are the same dialog
+ * (schedule-form.component); saying it in plain words goes to a chat,
+ * where the assistant sets the clock.
  */
 @Component({
   selector: 'app-schedules',
   standalone: false,
   templateUrl: './schedules.component.html',
-  styleUrls: [
-    '../../data-shared.css',
-    '../../../admin/iam-shared.css',
-    './schedules.component.css',
-  ],
+  styleUrl: './schedules.component.css',
 })
 export class SchedulesComponent extends DataPageBase implements OnInit, OnDestroy {
   loading = true;
   schedules: ActivitySchedule[] = [];
-  /** The person stopped everything: the rows stay on the clock and
-   *  none fires until they resume. */
-  stopped = false;
-  /** The schedule whose run history is unfolded. */
-  openRuns: string | null = null;
-  busyId = '';
-
-  /** Self-service: delete asks; the form writes; plain words go to a chat. */
-  deleteTarget: ActivitySchedule | null = null;
-  formOpen = false;
-  saving = false;
-  form: ScheduleForm = this.blankForm();
-  chats: { chat_id: string; title: string }[] = [];
   functions: SchedulableFunction[] = [];
-  functionsLoaded = false;
+  private chats: ScheduleChat[] = [];
+  /** The person stopped everything: the rows stay on the clock and
+   *  none runs until they resume. */
+  stopped = false;
+  resuming = false;
+
+  // ── What the address says ───────────────────────────────────────────
+  /** How a schedule stands, or '' for all of them. */
+  state: ScheduleState | '' = '';
+  chat = '';
+  query = '';
+  page = 1;
+  readonly pageSize = 20;
+  /** The schedule opened beside the list; '' for none. */
+  openId = '';
+  private address = new Subscription();
+
+  /** The schedule an action is on its way for. */
+  busyId = '';
   intent = '';
   sending = false;
-  query = '';
-  filter: 'all' | 'active' | 'paused' = 'all';
-  page = 1;
-  readonly pageSize = 10;
 
-  /** A fire changes the row; the page reads again every minute while
-   *  anything is live, so "next in 3 min" stays true. */
-  private poller: any = null;
-  private static readonly POLL_MS = 60000;
+  /** The clock "in 14 h" is read against, in seconds: it moves every
+   *  minute, and the rows are read again while any is live. */
+  now = Date.now() / 1000;
+  private ticker: ReturnType<typeof setInterval> | null = null;
 
   constructor(
     private service: ActivityService,
     private session: AiSessionService,
+    private work: WorkSwitchService,
     public auth: AuthService,
     private router: Router,
+    private route: ActivatedRoute,
+    private dialog: MatDialog,
+    private confirm: ConfirmService,
   ) {
     super();
   }
 
   async ngOnInit(): Promise<void> {
+    this.address.add(this.route.queryParamMap.subscribe((params) => {
+      const state = params.get('state') as ScheduleState;
+      this.state = STATES.includes(state) ? state : '';
+      this.chat = params.get('chat') ?? '';
+      this.query = params.get('q') ?? '';
+      this.page = Math.max(1, Number(params.get('page')) || 1);
+    }));
+    this.address.add(this.router.events.subscribe((event) => {
+      if (event instanceof NavigationEnd) this.readOpened();
+    }));
+    // Resumed from the bar at the top of the app: the page follows.
+    this.address.add(this.work.stopped$.subscribe((stopped) => {
+      if (!this.loading) this.stopped = stopped;
+    }));
+
     await this.reload();
     this.loading = false;
-    this.poller = setInterval(() => {
-      if (this.liveSchedules.length) void this.reload();
-    }, SchedulesComponent.POLL_MS);
+    this.readOpened();
+    this.ticker = setInterval(() => {
+      this.now = Date.now() / 1000;
+      if (this.schedules.some((schedule) => schedule.enabled)) void this.reload();
+    }, 60000);
+    // A function's own names, for the rows that run one.
+    this.functions = await this.service.schedulableFunctions().catch(() => []);
   }
 
   ngOnDestroy(): void {
-    if (this.poller) clearInterval(this.poller);
+    this.address.unsubscribe();
+    if (this.ticker) clearInterval(this.ticker);
   }
 
   private async reload(): Promise<void> {
-    const page = await this.service.list();
+    const read = await this.service.list();
     // A read that failed says so and leaves what was on screen: an
     // empty list would read as "nothing scheduled".
-    if (page.error) return this.fail(`Unable to load your schedules: ${page.error}`);
-    this.schedules = page.schedules;
-    this.stopped = page.stopped;
+    if (read.error) return this.fail(`Could not read your schedules: ${read.error}`);
+    this.schedules = read.schedules;
+    this.stopped = read.stopped;
+    this.now = Date.now() / 1000;
+  }
+
+  get canCreate(): boolean { return this.auth.can('ai:schedule:create'); }
+  get canUpdate(): boolean { return this.auth.can('ai:schedule:update'); }
+  get canDelete(): boolean { return this.auth.can('ai:schedule:delete'); }
+
+  // ── The address ─────────────────────────────────────────────────────
+
+  go(changes: Record<string, string>): void {
+    const queryParams: Record<string, string | null> = { page: null };
+    for (const [key, value] of Object.entries(changes)) queryParams[key] = value || null;
+    void this.router.navigate([], {
+      relativeTo: this.route.firstChild ?? this.route,
+      queryParams,
+      queryParamsHandling: 'merge',
+      replaceUrl: true,
+    });
+  }
+
+  filter(key: string, value: string): void {
+    this.go({ [key]: key === 'state' && value === 'all' ? '' : value });
+  }
+
+  private readOpened(): void {
+    this.openId = this.route.snapshot.firstChild?.paramMap.get('id') || '';
+    if (this.openId && !this.loading && !this.opened) {
+      this.fail('That schedule is no longer on the clock.');
+      this.closeOpened();
+    }
+  }
+
+  get opened(): ActivitySchedule | null {
+    return this.schedules.find((schedule) => schedule.schedule_id === this.openId) || null;
+  }
+
+  closeOpened(): void {
+    void this.router.navigate(['/ai/schedules'], { queryParamsHandling: 'preserve' });
   }
 
   // ── The list ────────────────────────────────────────────────────────
 
-  get liveSchedules(): ActivitySchedule[] {
-    return this.schedules.filter((s) => s.enabled);
+  get chosen(): Record<string, string> {
+    return { state: this.state || 'all', chat: this.chat };
   }
 
-  get pausedSchedules(): ActivitySchedule[] {
-    return this.schedules.filter((s) => !s.enabled);
+  get filters(): FilterGroup[] {
+    const counts: Record<string, number> = {};
+    const byChat = new Map<string, FilterItem>();
+    for (const schedule of this.schedules) {
+      const state = stateOf(schedule);
+      counts[state] = (counts[state] || 0) + 1;
+      const item = byChat.get(schedule.chat_id)
+        ?? { value: schedule.chat_id, name: schedule.chat_title || 'Untitled chat', count: 0 };
+      item.count = (item.count ?? 0) + 1;
+      byChat.set(schedule.chat_id, item);
+    }
+    const groups: FilterGroup[] = [{
+      key: 'state',
+      required: true,
+      items: [
+        { value: 'all', name: 'All', count: this.schedules.length },
+        // Done and Failing only once there is one: most people have none.
+        ...STATES.filter((state) => counts[state] || state === 'active' || state === 'paused')
+          .map((state) => ({ value: state, name: STATE_WORDS[state], count: counts[state] || 0 })),
+      ],
+    }];
+    if (byChat.size > 1 || this.chat) {
+      groups.push({
+        key: 'chat', label: 'By chat',
+        items: [...byChat.values()].sort((a, b) => a.name.localeCompare(b.name)),
+      });
+    }
+    return groups;
   }
 
+  /** What the column and the search leave, the next to run first; what
+   *  is not running comes after, the last to have run first. */
   get shownSchedules(): ActivitySchedule[] {
     const query = this.query.trim().toLowerCase();
     return this.schedules.filter((schedule) => {
-      if (this.filter === 'active' && !schedule.enabled) return false;
-      if (this.filter === 'paused' && schedule.enabled) return false;
-      return !query || `${this.what(schedule)} ${this.cadence(schedule)} ${schedule.chat_title || ''}`
-        .toLowerCase().includes(query);
+      if (this.state && stateOf(schedule) !== this.state) return false;
+      if (this.chat && schedule.chat_id !== this.chat) return false;
+      return !query || [this.what(schedule), this.cadence(schedule), schedule.chat_title, schedule.timezone]
+        .join(' ').toLowerCase().includes(query);
+    }).sort((a, b) => {
+      if (a.enabled !== b.enabled) return a.enabled ? -1 : 1;
+      return a.enabled ? a.next_run_at - b.next_run_at : (b.last_run_at || 0) - (a.last_run_at || 0);
     });
   }
 
   get pagedSchedules(): ActivitySchedule[] {
-    const start = (this.page - 1) * this.pageSize;
-    return this.shownSchedules.slice(start, start + this.pageSize);
+    return this.shownSchedules.slice((this.page - 1) * this.pageSize, this.page * this.pageSize);
   }
 
-  get pageCount(): number {
-    return Math.max(1, Math.ceil(this.shownSchedules.length / this.pageSize));
+  get filtered(): boolean {
+    return !!(this.query || this.state || this.chat);
   }
 
-  setFilter(filter: 'all' | 'active' | 'paused'): void {
-    this.filter = filter;
-    this.page = 1;
+  toPage(page: number): void {
+    void this.router.navigate([], {
+      relativeTo: this.route.firstChild ?? this.route,
+      queryParams: { page: page > 1 ? page : null },
+      queryParamsHandling: 'merge',
+    });
   }
 
-  search(value: string): void {
-    this.query = value;
-    this.page = 1;
+  // ── A schedule, in words ────────────────────────────────────────────
+
+  cadence(schedule: ActivitySchedule): string { return cadenceWords(schedule); }
+  what(schedule: ActivitySchedule): string { return whatOf(schedule, this.functions); }
+  also(schedule: ActivitySchedule): string { return alsoOf(schedule, this.functions); }
+  stateOf(schedule: ActivitySchedule): ScheduleState { return stateOf(schedule); }
+  stateWord(schedule: ActivitySchedule): string { return STATE_WORDS[stateOf(schedule)]; }
+  failures(schedule: ActivitySchedule): string { return failuresOf(schedule); }
+
+  /** "Next Tue 14 Oct, 09:00 (in 14 h)"; '' when it is not running. */
+  next(schedule: ActivitySchedule): string {
+    if (!schedule.enabled || !schedule.next_run_at) return '';
+    const moment = momentWords(schedule.next_run_at, schedule.timezone);
+    return this.stopped ? `Next ${moment}, once you resume` : `Next ${moment} (${until(schedule.next_run_at, this.now)})`;
   }
 
-  // ── Words for a schedule ────────────────────────────────────────────
-
-  /** What the schedule does, in the person's words where there are
-   *  any, otherwise the function it runs. */
-  what(schedule: ActivitySchedule): string {
-    if (schedule.note) return schedule.note;
-    if (schedule.function) return `Run ${schedule.function}`;
-    return 'Wake the assistant';
+  /** "last ran Mon 13 Oct, 09:00 · Ran quietly · 3.0 s". */
+  last(schedule: ActivitySchedule): string {
+    const run = lastRun(schedule);
+    if (!run) return schedule.enabled ? 'has not run yet' : '';
+    return [`last ran ${momentWords(run.at, schedule.timezone)}`, runLabel(run).toLowerCase(), took(run)]
+      .filter(Boolean).join(' · ');
   }
 
-  /** How often, in words. Cron stays cron — with the zone it is read
-   *  in — because a translation that gets one case wrong is worse than
-   *  the expression; the upcoming times beside it say what it means. */
-  cadence(schedule: ActivitySchedule): string {
-    if (schedule.cron) {
-      return `cron ${schedule.cron}${schedule.timezone ? ` · ${schedule.timezone}` : ''}`;
-    }
-    if (schedule.every_seconds) return `every ${this.duration(schedule.every_seconds)}`;
-    return 'once';
-  }
-
-  statusLabel(schedule: ActivitySchedule): string {
-    if (schedule.enabled) return schedule.mode === 'invoke' ? 'Function' : 'Assistant';
-    if (schedule.last_run_at && !schedule.cron && !schedule.every_seconds) return 'Completed';
-    return 'Paused';
-  }
-
-  duration(seconds: number): string {
-    if (seconds % 86400 === 0) return `${seconds / 86400} day${seconds === 86400 ? '' : 's'}`;
-    if (seconds % 3600 === 0) return `${seconds / 3600} hour${seconds === 3600 ? '' : 's'}`;
-    if (seconds % 60 === 0) return `${seconds / 60} minute${seconds === 60 ? '' : 's'}`;
-    return `${seconds} seconds`;
-  }
-
-  took(run: ScheduleRun): string {
-    const ms = Number(run.took_ms || 0);
-    if (!ms) return '';
-    if (ms < 1000) return `${ms} ms`;
-    if (ms < 60000) return `${(ms / 1000).toFixed(1)} s`;
-    return `${Math.round(ms / 60000)} min`;
-  }
-
-  when(timestamp: number | null | undefined): string {
-    if (!timestamp) return '';
-    const date = new Date(timestamp * 1000);
-    return isNaN(date.getTime()) ? '' : date.toLocaleString();
-  }
-
-  /** Relative to now, for the next run: the thing a person actually
-   *  asks of a schedules page. */
-  until(timestamp: number): string {
-    const seconds = Math.round(timestamp - Date.now() / 1000);
-    if (seconds <= 0) return 'due now';
-    if (seconds < 60) return 'in under a minute';
-    if (seconds < 3600) return `in ${Math.round(seconds / 60)} min`;
-    if (seconds < 86400) return `in ${Math.round(seconds / 3600)} h`;
-    return `in ${Math.round(seconds / 86400)} d`;
-  }
-
-  /** The fires after the next one, when the backend could say. */
-  upcoming(schedule: ActivitySchedule): number[] {
-    return (schedule.upcoming || []).slice(1, 4);
-  }
-
-  toggleRuns(schedule: ActivitySchedule): void {
-    this.openRuns = this.openRuns === schedule.schedule_id ? null : schedule.schedule_id;
-  }
-
-  /** Newest first: the last fire is the one being asked about. */
-  runsOf(schedule: ActivitySchedule): ScheduleRun[] {
-    return [...(schedule.runs || [])].reverse();
-  }
-
-  runLabel(run: ScheduleRun): string {
-    if (run.status === 'error') return 'Failed';
-    if (run.status === 'woke') return 'Woke the assistant';
-    if (run.status === 'success') return run.woke ? 'Ran, woke the assistant' : 'Ran quietly';
-    return run.status;
-  }
-
-  lastRun(schedule: ActivitySchedule): ScheduleRun | null {
-    const runs = schedule.runs || [];
-    return runs.length ? runs[runs.length - 1] : null;
-  }
-
-  failures(schedule: ActivitySchedule): number {
-    return (schedule.runs || []).filter((run) => run.status === 'error').length;
-  }
-
-  // ── Self-service: the person's own hand on the clock ────────────────
-
-  get canCreate(): boolean { return this.auth.can('ai:schedule:create'); }
-  get canPause(): boolean { return this.auth.can('ai:schedule:update'); }
-  get canDelete(): boolean { return this.auth.can('ai:schedule:delete'); }
+  // ── The person's own hand on the clock ──────────────────────────────
 
   async setEnabled(schedule: ActivitySchedule, enabled: boolean): Promise<void> {
     this.busyId = schedule.schedule_id;
     try {
       const result = await this.service.setEnabled(schedule.chat_id, schedule.schedule_id, enabled);
       if (result.error) return this.fail(result.error);
-      this.flash(enabled ? 'Resumed — the next run is counted from now.' : 'Paused.');
       await this.reload();
+      this.flash(enabled ? 'Resumed. The next run is counted from now.' : 'Paused.');
     } finally {
       this.busyId = '';
     }
   }
 
-  requestDelete(schedule: ActivitySchedule): void {
-    this.deleteTarget = schedule;
-    this.error = '';
-  }
-
-  closeDelete(): void {
-    if (this.busyId) return;
-    this.deleteTarget = null;
-  }
-
-  async remove(schedule: ActivitySchedule): Promise<void> {
+  async askDelete(schedule: ActivitySchedule): Promise<void> {
+    const sure = await this.confirm.ask({
+      title: 'Delete this schedule?',
+      body: `“${this.what(schedule)}”, ${this.cadence(schedule).replace(/^./, (first) => first.toLowerCase())}. `
+        + 'It stops running. What it already did stays in its chat.',
+      confirm: 'Delete',
+      danger: true,
+    });
+    if (!sure) return;
     this.busyId = schedule.schedule_id;
     try {
       const result = await this.service.remove(schedule.chat_id, schedule.schedule_id);
       if (result.error) return this.fail(result.error);
-      this.deleteTarget = null;
-      this.flash('Taken off the clock.');
+      if (this.openId === schedule.schedule_id) this.closeOpened();
       await this.reload();
+      this.flash('Deleted.');
     } finally {
       this.busyId = '';
     }
   }
 
-  private blankForm(): ScheduleForm {
-    return {
-      chatId: '', kind: 'note', note: '', fn: '', inputsText: '{}',
-      wakeField: '', when: 'cron', at: '', everyCount: 1, everyUnit: 'hours',
-      cron: '0 9 * * 1-5',
-    };
-  }
-
-  async openForm(): Promise<void> {
-    this.form = this.blankForm();
-    this.formOpen = true;
-    this.error = '';
-    if (!this.chats.length) {
-      // Without the list the form still works: a new chat is offered.
-      const chats = await this.session.listChats().catch(() => []);
-      this.chats = chats.map((chat: any) => ({
-        chat_id: chat.chat_id, title: chat.title || 'Untitled chat',
-      }));
-    }
-    if (!this.functionsLoaded) {
-      this.functions = await this.service.schedulableFunctions().catch(() => []);
-      this.functionsLoaded = true;
-    }
-  }
-
-  closeForm(): void {
-    if (this.saving) return;
-    this.formOpen = false;
-  }
-
-  get chosenFunction(): SchedulableFunction | null {
-    return this.functions.find((fn) => fn.value === this.form.fn) || null;
-  }
-
-  onFunctionChosen(): void {
-    const fn = this.chosenFunction;
-    if (!fn) return;
-    // Seed the inputs with the declared fields so the shape is in view.
-    const seed: Record<string, unknown> = {};
-    for (const key of Object.keys(fn.inputs)) seed[key] = '';
-    this.form.inputsText = JSON.stringify(seed, null, 2);
-    this.form.wakeField = fn.outputs[0] || '';
-  }
-
-  private everySeconds(): number {
-    const unit = { minutes: 60, hours: 3600, days: 86400 }[this.form.everyUnit];
-    return Math.max(1, Math.round(this.form.everyCount)) * unit;
-  }
-
-  get canSubmit(): boolean {
-    const form = this.form;
-    if (form.kind === 'note' && !form.note.trim()) return false;
-    if (form.kind === 'function' && !form.fn) return false;
-    if (form.when === 'at' && !form.at) return false;
-    if (form.when === 'cron' && form.cron.trim().split(/\s+/).length !== 5) return false;
-    return !this.saving;
-  }
-
-  async submitForm(): Promise<void> {
-    if (!this.canSubmit) return;
-    // Everything the page can check is checked before a chat is made
-    // for the schedule: a refused form must not leave a chat behind.
-    let inputs: Record<string, unknown> = {};
-    if (this.form.kind === 'function') {
-      try {
-        inputs = JSON.parse(this.form.inputsText || '{}');
-      } catch {
-        return this.fail('Inputs must be valid JSON.');
-      }
-    }
-
-    this.saving = true;
+  /** Lifts the stop on everything, as the bar at the top does. */
+  async resumeAll(): Promise<void> {
+    this.resuming = true;
     try {
-      let chatId = this.form.chatId;
-      if (!chatId) {
-        const created = await this.session.createChat('Schedules', {});
-        chatId = created.data?.chat?.chat_id || '';
-        if (!chatId) return this.fail(created.error || 'Could not create a chat for it.');
-        this.chats = [{ chat_id: chatId, title: 'Schedules' }, ...this.chats];
-        // The chat exists now: a second try after a refusal goes into
-        // it, not into another new one.
-        this.form.chatId = chatId;
-      }
-      const draft: ScheduleDraft = { chat_id: chatId };
-      if (this.form.kind === 'note') {
-        draft.note = this.form.note.trim();
-      } else {
-        draft.function = this.form.fn;
-        draft.inputs = inputs;
-        if (this.form.wakeField.trim()) draft.wake_field = this.form.wakeField.trim();
-      }
-      if (this.form.when === 'at') draft.at = this.form.at;
-      else if (this.form.when === 'every') draft.every_seconds = this.everySeconds();
-      else draft.cron = this.form.cron.trim();
-
-      const result = await this.service.create(draft);
+      const result = await this.work.resume();
       if (result.error) return this.fail(result.error);
-      this.formOpen = false;
-      this.flash('On the clock.');
       await this.reload();
     } finally {
-      this.saving = false;
+      this.resuming = false;
     }
   }
 
-  /** Plain words: the sentence goes to a chat, and the assistant —
-   *  which already turns intent into schedules, with evidence and
-   *  audit — sets the clock. No second translator. */
+  // ── Making and changing: the one dialog ─────────────────────────────
+
+  private async openForm(schedule?: ActivitySchedule): Promise<void> {
+    if (!schedule && !this.chats.length) {
+      // Without the list the form still works: a new chat is offered.
+      const chats = await this.session.listChats().catch(() => []);
+      this.chats = chats.map((chat: any) => ({ chat_id: chat.chat_id, title: chat.title || 'Untitled chat' }));
+    }
+    const ref = this.dialog.open<ScheduleFormComponent, ScheduleFormData, ScheduleFormResult | null>(
+      ScheduleFormComponent, {
+        width: '640px', maxWidth: '100vw',
+        data: { chats: this.chats, functions: this.functions, schedule, chatId: this.chat },
+      });
+    const done = await firstValueFrom(ref.afterClosed());
+    if (!done) return;
+    // A chat the form made is one to offer by its name the next time.
+    if (!schedule) this.chats = [];
+    await this.reload();
+    this.flash(done.notice);
+    if (done.id && !schedule) void this.router.navigate(['/ai/schedules', done.id], { queryParamsHandling: 'preserve' });
+  }
+
+  add(): Promise<void> { return this.openForm(); }
+  edit(schedule: ActivitySchedule): Promise<void> { return this.openForm(schedule); }
+
+  /** Plain words: the sentence goes to a chat, and the assistant, which
+   *  already turns intent into schedules with evidence and audit, sets
+   *  the clock. No second translator. */
   async describe(): Promise<void> {
     const text = this.intent.trim();
     if (!text || this.sending) return;
@@ -388,7 +338,7 @@ export class SchedulesComponent extends DataPageBase implements OnInit, OnDestro
       const created = await this.session.createChat(text.substring(0, 80), {});
       const chatId = created.data?.chat?.chat_id;
       if (!chatId) return this.fail(created.error || 'Could not open a chat for it.');
-      this.router.navigate(['ai/chats', chatId], {
+      void this.router.navigate(['ai/chats', chatId], {
         state: { initialMessage: { query: text, uploads: [] } },
       });
     } finally {

@@ -36,7 +36,7 @@ let created = 0;
     >
       <span class="switch-track"><span class="switch-thumb"></span></span>
     </button>
-    <div class="switch-words">
+    <div class="switch-words" [class.visually-hidden]="labelHidden">
       <label class="switch-label" [attr.for]="id">
         {{ label }}
         <span class="switch-note" *ngIf="note" role="status">{{ note }}</span>
@@ -49,6 +49,9 @@ export class SwitchComponent implements ControlValueAccessor {
   @Input({ required: true }) label = '';
   @Input() help = '';
   @Input() note = '';
+  /** The label is read out and not shown: for a switch in a row that
+   *  already says what it turns on. */
+  @Input() labelHidden = false;
   @Input() disabled = false;
 
   readonly id = `switch-${++created}`;

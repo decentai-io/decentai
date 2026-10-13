@@ -113,6 +113,7 @@ import {
   ChevronLeft,
   ArrowUpDown,
   Bell,
+  Zap,
   BookOpen,
   Bot,
   BrainCircuit,
@@ -258,6 +259,8 @@ import { ModelProvidersComponent } from './pages/app/settings/model-providers/mo
 import { ModelSelectComponent } from './components/model-select/model-select.component';
 import { ConnectedAppsComponent } from './pages/app/settings/connected-apps/connected-apps.component';
 import { SchedulesComponent } from './pages/app/ai/schedules/schedules.component';
+import { ScheduleViewComponent } from './pages/app/ai/schedules/schedule-view.component';
+import { ScheduleFormComponent } from './pages/app/ai/schedules/schedule-form.component';
 import { AuditComponent } from './pages/app/ai/audit/audit.component';
 import { FilesComponent } from './pages/app/data/files/files.component';
 import { FilePreviewComponent } from './pages/app/data/files/file-preview.component';
@@ -324,6 +327,8 @@ import { AgentCardComponent } from './pages/app/agents/agent-card.component';
     ModelSelectComponent,
     ConnectedAppsComponent,
     SchedulesComponent,
+    ScheduleViewComponent,
+    ScheduleFormComponent,
     AuditComponent,
     FilesComponent,
     FilePreviewComponent,
@@ -493,6 +498,7 @@ import { AgentCardComponent } from './pages/app/agents/agent-card.component';
       ChevronLeft,
       ArrowUpDown,
       Bell,
+      Zap,
       BookOpen,
       Bot,
       BrainCircuit,
