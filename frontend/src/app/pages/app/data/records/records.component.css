@@ -1,8 +1,12 @@
 /* The Saved data page. Its list is made of the shared pieces (the
    filter column, the list frame, the table and its toolbar:
    components/ui and styles/controls.scss); what is here is how a
-   record's values read in a cell, and the two dialogs that are still
-   the page's own. */
+   record's values read in a cell, and the two text boxes of its form. */
+
+/* The toolbar holds four things here, so the search gives way sooner. */
+.records-search {
+  flex-basis: 140px;
+}
 
 /* What the manifest says the open kind is. */
 .records-kind {
@@ -28,29 +32,18 @@
   color: var(--ink-2);
 }
 
-/* ── The dialogs: choosing a kind, the form ────────────────────────── */
-.icon-button.danger:hover { color: var(--destructive-strong); }
+/* The form's boxes for text written at length: they grow with what is
+   typed. JSON is in the mono face. */
+.record-form-text,
+.record-form-json {
+  field-sizing: content;
+  min-height: 72px;
+  max-height: 40vh;
+  resize: vertical;
+}
 
-/* ── Authoring: the kind picker, the generated form ─────────────────── */
-.picker-dialog .dialog-body,
-.form-dialog .dialog-body {
-  display: flex; flex-direction: column; gap: 10px;
-  max-height: 60vh; overflow-y: auto;
+.record-form-json {
+  font-family: var(--font-mono);
+  font-size: var(--t-code);
+  line-height: var(--lh-code);
 }
-.picker-row {
-  display: flex; flex-direction: column; gap: 3px;
-  padding: 10px 12px; text-align: left; cursor: pointer;
-  border: 1px solid var(--border);
-  border-radius: var(--ui-radius-card);
-  background: var(--surface);
-  color: inherit; font: inherit;
-}
-.picker-row:hover { border-color: var(--line-strong); }
-.picker-name { display: flex; align-items: baseline; gap: 8px; }
-.picker-name strong { font-size: var(--ui-text-sm); }
-.picker-name em { font-style: normal; color: var(--ink-2); font-size: var(--ui-text-xs); }
-.picker-desc { color: var(--ink-2); font-size: var(--ui-text-xs); line-height: 1.5; }
-.form-dialog .field { display: flex; flex-direction: column; gap: 5px; }
-.form-dialog .field-label { display: flex; align-items: baseline; gap: 8px; font-size: var(--ui-text-xs); font-weight: 600; }
-.form-dialog .field-label em { font-style: normal; font-weight: 400; color: var(--ink-2); }
-.rec-json { font-family: var(--font-mono); font-size: 12px; resize: vertical; }

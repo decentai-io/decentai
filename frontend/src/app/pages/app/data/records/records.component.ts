@@ -1,4 +1,5 @@
-import { Component, OnDestroy, OnInit } from '@angular/core';
+import { Component, OnDestroy, OnInit, TemplateRef, ViewChild } from '@angular/core';
+import { MatDialog, MatDialogRef } from '@angular/material/dialog';
 import { ActivatedRoute, NavigationEnd, Router } from '@angular/router';
 import { Subscription } from 'rxjs';
 import { filter } from 'rxjs/operators';
@@ -14,6 +15,7 @@ import {
   AgentRecord, RecordField, RecordShape, RecordsService,
 } from 'src/app/services/records.service';
 import { DataPageBase } from '../../data-page-base';
+import { recordsAsCsv, recordsAsJson } from './record-export';
 import { numberLabel } from './record-values';
 import { ShareEditor } from '../../share-editor';
 
@@ -68,13 +70,7 @@ const BY_CHANGE: Sort = { key: 'updated', direction: 'desc' };
   selector: 'app-records',
   standalone: false,
   templateUrl: './records.component.html',
-  // iam-shared.css styles the fields of the form dialog, until that
-  // dialog is on the form system.
-  styleUrls: [
-    '../../data-shared.css',
-    '../../../admin/iam-shared.css',
-    './records.component.css',
-  ],
+  styleUrl: './records.component.css',
 })
 export class RecordsComponent extends DataPageBase implements OnInit, OnDestroy {
   loading = true;
@@ -108,10 +104,19 @@ export class RecordsComponent extends DataPageBase implements OnInit, OnDestroy 
   /** The record types installed agents declare — the filter column's
    *  labels, the table's columns, and what Add a record offers. */
   shapes: RecordShape[] = [];
+  /** The dialog a record is written in. Its first step, when more than
+   *  one kind can be made, is which kind (`pickerOpen`); then the form
+   *  for `formShape`. */
+  @ViewChild('formDialog') private formDialog?: TemplateRef<unknown>;
+  private formRef: MatDialogRef<unknown> | null = null;
   pickerOpen = false;
   formShape: RecordShape | null = null;
   editingRef = '';
   formFields: Record<string, any> = {};
+  /** Save was pressed: what is wrong is said under its field. */
+  tried = false;
+  /** Why the backend refused the last save. */
+  formError = '';
   saving = false;
 
   /** Who can see a record. An agent stored it privately; deciding to
@@ -130,6 +135,7 @@ export class RecordsComponent extends DataPageBase implements OnInit, OnDestroy 
     private router: Router,
     private route: ActivatedRoute,
     private confirm: ConfirmService,
+    private dialog?: MatDialog,
   ) {
     super();
   }
@@ -171,6 +177,7 @@ export class RecordsComponent extends DataPageBase implements OnInit, OnDestroy 
 
   ngOnDestroy(): void {
     this.address.unsubscribe();
+    this.formRef?.close();
   }
 
   private readKind(): void {
@@ -622,11 +629,32 @@ export class RecordsComponent extends DataPageBase implements OnInit, OnDestroy 
     const offered = this.pickerShapes;
     if (offered.length === 1) return this.startCreate(offered[0]);
     this.pickerOpen = true;
-    this.error = '';
+    this.formShape = null;
+    this.showDialog();
   }
 
-  closePicker(): void {
-    this.pickerOpen = false;
+  /** The kinds a record can be made of, as the first step's choices:
+   *  made again only when the kinds change, so the cards are not
+   *  redrawn under the pointer. */
+  get kindChoices(): Choice[] {
+    const offered = this.pickerShapes;
+    const key = offered.map((shape) => shape.resource_id).join();
+    if (key !== this.kindChoicesFor) {
+      this.kindChoicesFor = key;
+      this.kindChoicesMade = offered.map((shape) => ({
+        value: shape.resource_id,
+        name: shape.label,
+        hint: [shape.agent_name, shape.description].filter(Boolean).join(': '),
+      }));
+    }
+    return this.kindChoicesMade;
+  }
+  private kindChoicesFor = '';
+  private kindChoicesMade: Choice[] = [];
+
+  chooseKind(resourceId: string): void {
+    const shape = this.pickerShapes.find((candidate) => candidate.resource_id === resourceId);
+    if (shape) this.startCreate(shape);
   }
 
   startCreate(shape: RecordShape): void {
@@ -637,12 +665,13 @@ export class RecordsComponent extends DataPageBase implements OnInit, OnDestroy 
     for (const field of shape.fields) {
       this.formFields[field.name] = this.blankFor(field);
     }
-    this.error = '';
+    this.showDialog();
   }
 
   startEdit(record: AgentRecord): void {
     const shape = this.shapeOf(record);
     if (!shape) return;
+    this.pickerOpen = false;
     this.formShape = shape;
     this.editingRef = record.resource_ref;
     this.formFields = {};
@@ -654,12 +683,29 @@ export class RecordsComponent extends DataPageBase implements OnInit, OnDestroy 
         ? JSON.stringify(stored ?? {}, null, 2)
         : stored ?? this.blankFor(field);
     }
-    this.error = '';
+    this.showDialog();
+  }
+
+  /** Opens the dialog for the step the state says, once. */
+  private showDialog(): void {
+    this.tried = false;
+    this.formError = '';
+    if (this.formRef || !this.dialog || !this.formDialog) return;
+    this.formRef = this.dialog.open(this.formDialog, { width: '560px', maxWidth: '100vw' });
+    this.formRef.afterClosed().subscribe(() => {
+      this.formRef = null;
+      this.pickerOpen = false;
+      this.formShape = null;
+      this.editingRef = '';
+    });
   }
 
   cancelForm(): void {
+    if (this.saving) return;
+    this.pickerOpen = false;
     this.formShape = null;
     this.editingRef = '';
+    this.formRef?.close();
   }
 
   private blankFor(field: RecordField): any {
@@ -667,56 +713,95 @@ export class RecordsComponent extends DataPageBase implements OnInit, OnDestroy 
     return '';
   }
 
-  async saveForm(): Promise<void> {
-    const shape = this.formShape;
-    if (!shape) return;
+  /** A select field's choices, made once for each field. */
+  optionsOf(field: RecordField): Choice[] {
+    let choices = this.choicesByField.get(field);
+    if (!choices) {
+      choices = (field.options || []).map((option) => ({ value: option, name: option }));
+      this.choicesByField.set(field, choices);
+    }
+    return choices;
+  }
+  private choicesByField = new WeakMap<RecordField, Choice[]>();
 
-    const editing = !!this.editingRef;
-    const stored = editing
+  /** Text that is written at length: what an agent keeps as content
+   *  rather than as something to find the record by. */
+  isLong(field: RecordField): boolean {
+    return field.type === 'string' && field.storage === 'values';
+  }
+
+  private get editedRecord(): AgentRecord | undefined {
+    return this.editingRef
       ? this.records.find((record) => record.resource_ref === this.editingRef)
       : undefined;
+  }
+
+  /** What a field of the form would send: its value, nothing (`omit`),
+   *  or why it cannot be sent as it stands. */
+  private read(field: RecordField): { value?: any; omit?: true; problem?: string } {
+    const raw = this.formFields[field.name];
+    const label = field.label || field.name;
+    if (field.type === 'boolean') return { value: !!raw };
+
+    if (raw === '' || raw === null || raw === undefined) {
+      if (field.required) return { problem: `Enter ${label}.` };
+      // On an edit a blank box over a stored value is a deliberate
+      // clearing, and an edit is merged over what is stored: leaving
+      // the field out would keep the old value. Text can be emptied;
+      // the other types have no empty value in the agent's shape.
+      const stored = this.editedRecord;
+      const had = (field.storage === 'values' ? stored?.values : stored?.keys)?.[field.name];
+      if (!stored || had === undefined || had === null || had === '') return { omit: true };
+      if (field.type !== 'string' && field.type !== 'secret') {
+        return { problem: `${label} cannot be emptied once it has a value.` };
+      }
+      return { value: '' };
+    }
+    if (field.type === 'number') {
+      const parsed = Number(raw);
+      return Number.isNaN(parsed) ? { problem: `${label} is a number, like 12 or 3.5.` } : { value: parsed };
+    }
+    if (field.type === 'object') {
+      try {
+        return { value: JSON.parse(String(raw)) };
+      } catch (error) {
+        return { problem: `Not valid JSON: ${(error as Error).message}` };
+      }
+    }
+    return { value: raw };
+  }
+
+  /** What is wrong with a field as it stands; '' when nothing is. */
+  problemOf(field: RecordField): string {
+    return this.read(field).problem || '';
+  }
+
+  async saveForm(): Promise<void> {
+    const shape = this.formShape;
+    if (!shape || this.saving) return;
+    this.tried = true;
+    this.formError = '';
+
+    const editing = !!this.editingRef;
     const fields: Record<string, any> = {};
     for (const field of shape.fields) {
-      const raw = this.formFields[field.name];
-      if (field.type === 'boolean') {
-        fields[field.name] = !!raw;
-        continue;
-      }
-      if (raw === '' || raw === null || raw === undefined) {
-        // On an edit a blank box over a stored value is a deliberate
-        // clearing, and an edit is merged over what is stored: leaving
-        // the field out would keep the old value. Text can be emptied;
-        // the other types have no empty value in the agent's shape.
-        const had = (field.storage === 'values' ? stored?.values : stored?.keys)?.[field.name];
-        if (!editing || had === undefined || had === null || had === '') continue;
-        if (field.required) return this.fail(`${field.label || field.name} is required.`);
-        if (field.type !== 'string' && field.type !== 'secret') {
-          return this.fail(`${field.label || field.name} cannot be emptied once it has a value.`);
-        }
-        fields[field.name] = '';
-        continue;
-      }
-      if (field.type === 'number') {
-        const parsed = Number(raw);
-        if (Number.isNaN(parsed)) return this.fail(`${field.label} must be a number.`);
-        fields[field.name] = parsed;
-      } else if (field.type === 'object') {
-        try {
-          fields[field.name] = JSON.parse(String(raw));
-        } catch {
-          return this.fail(`${field.label} must be valid JSON.`);
-        }
-      } else {
-        fields[field.name] = raw;
-      }
+      const read = this.read(field);
+      // Said under the field it belongs to; nothing is sent.
+      if (read.problem) return;
+      if (!read.omit) fields[field.name] = read.value;
     }
 
     this.saving = true;
+    if (this.formRef) this.formRef.disableClose = true;
     try {
       const result = editing
         ? await this.service.update(this.editingRef, fields)
         : await this.service.create(shape.resource_id, fields);
-      if (result.error) return this.fail(result.error);
+      if (result.error) {
+        this.formError = result.error;
+        return;
+      }
+      this.saving = false;
       this.cancelForm();
       await this.reload();
       // A first record of a kind that held none: show it.
@@ -724,7 +809,26 @@ export class RecordsComponent extends DataPageBase implements OnInit, OnDestroy 
       this.flash(editing ? 'Record updated.' : 'Record created.');
     } finally {
       this.saving = false;
+      if (this.formRef) this.formRef.disableClose = false;
     }
+  }
+
+  // ── Export ──────────────────────────────────────────────────────────
+
+  /** The records listed (every page of them, as filtered and sorted),
+   *  saved as a file made here: the data is already on the page. */
+  export(format: 'csv' | 'json'): void {
+    const records = this.shownRecords;
+    const shape = this.tableShape;
+    const text = format === 'csv' ? recordsAsCsv(records, shape) : recordsAsJson(records, shape);
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(new Blob([text], {
+      type: format === 'csv' ? 'text/csv;charset=utf-8' : 'application/json',
+    }));
+    const kind = this.kindLabelOf(this.activeGroup).toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    link.download = `${kind || 'records'}-${new Date().toISOString().slice(0, 10)}.${format}`;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(link.href), 1000);
   }
 
   // ── Actions ─────────────────────────────────────────────────────────

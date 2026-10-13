@@ -3,8 +3,8 @@
   sentence="Notes, tasks and other records your agents keep for you."
   [wide]="true"
 >
-  <div class="data-alert error" *ngIf="error" role="alert">{{ error }}</div>
-  <div class="data-alert ok" *ngIf="notice" role="status">{{ notice }}</div>
+  <p class="form-notice is-error" role="alert" *ngIf="error">{{ error }}</p>
+  <p class="form-notice" role="status" *ngIf="notice">{{ notice }}</p>
 
   <div class="side-layout" [class.has-opened]="opened">
     <app-filter-column
@@ -33,7 +33,7 @@
         </app-selection-bar>
 
         <ng-template #toolbar>
-          <span class="search-field toolbar-search">
+          <span class="search-field toolbar-search records-search">
             <lucide-icon name="search" [size]="16" aria-hidden="true"></lucide-icon>
             <input
               class="input"
@@ -52,6 +52,17 @@
             [ngModel]="sort.key"
             (ngModelChange)="sortByChoice($event)"
           ></app-select>
+          <!-- The records listed, as a file: every page of them, as
+               they are filtered and sorted. -->
+          <button class="icon-btn" type="button" *ngIf="shownRecords.length" aria-label="Export these records"
+                  matTooltip="Export" [matMenuTriggerFor]="exportMenu">
+            <lucide-icon name="download" [size]="16" aria-hidden="true"></lucide-icon>
+          </button>
+          <mat-menu #exportMenu="matMenu" xPosition="before">
+            <p class="menu-label">{{ shownRecords.length }} {{ shownRecords.length === 1 ? "record" : "records" }}, without secret fields</p>
+            <button mat-menu-item (click)="export('csv')">As CSV</button>
+            <button mat-menu-item (click)="export('json')">As JSON</button>
+          </mat-menu>
           <ng-container *ngTemplateOutlet="add"></ng-container>
         </ng-template>
       </ng-container>
@@ -229,84 +240,89 @@
     </button>
   </ng-template>
 
-  <!-- ── Which kind? A dialog on the way to the form ────────────────── -->
-  <div class="dialog-backdrop" *ngIf="pickerOpen" (click)="closePicker()">
-    <section class="info-dialog picker-dialog" role="dialog" aria-modal="true"
-             aria-labelledby="record-picker-title" (click)="$event.stopPropagation()">
-      <header class="dialog-head">
-        <span class="dialog-icon">
-          <lucide-icon name="database" [size]="21"></lucide-icon>
-        </span>
-        <div>
-          <h2 id="record-picker-title">What kind of record?</h2>
-          <p>Choose what you want to add.</p>
+  <!-- ── Writing a record: which kind, then its form ────────────────── -->
+  <ng-template #formDialog>
+    <!-- The first step, when more than one kind can be made. -->
+    <ng-container *ngIf="pickerOpen">
+      <h2 mat-dialog-title>Add a record</h2>
+      <mat-dialog-content>
+        <div class="form">
+          <p class="dialog-note">Choose the kind. Each is an agent's, and is written in the shape that agent reads back.</p>
+          <app-choice-cards name="kind" label="The kind of record" [choices]="kindChoices"
+                            [ngModel]="''" (ngModelChange)="chooseKind($event)"></app-choice-cards>
         </div>
-        <button class="icon-button" type="button" (click)="closePicker()" aria-label="Close">
-          <lucide-icon name="x" [size]="19"></lucide-icon>
-        </button>
-      </header>
-      <div class="dialog-body">
-        <button class="picker-row" type="button" *ngFor="let shape of pickerShapes" (click)="startCreate(shape)">
-          <span class="picker-name">
-            <strong>{{ shape.label }}</strong>
-            <em>{{ shape.agent_name }}</em>
-          </span>
-          <span class="picker-desc" *ngIf="shape.description">{{ shape.description }}</span>
-        </button>
-      </div>
-    </section>
-  </div>
+      </mat-dialog-content>
+      <mat-dialog-actions>
+        <button class="btn" type="button" (click)="cancelForm()">Cancel</button>
+      </mat-dialog-actions>
+    </ng-container>
 
-  <!-- ── The form, generated from the declared fields ───────────────── -->
-  <ng-container *ngIf="formShape as shape">
-    <div class="dialog-backdrop" (click)="!saving && cancelForm()">
-      <section class="info-dialog form-dialog" role="dialog" aria-modal="true"
-               aria-labelledby="record-form-title" (click)="$event.stopPropagation()">
-        <header class="dialog-head">
-          <span class="dialog-icon">
-            <lucide-icon name="database" [size]="21"></lucide-icon>
-          </span>
-          <div>
-            <h2 id="record-form-title">{{ editingRef ? "Edit " : "New " }}{{ shape.label }}</h2>
-            <p>{{ shape.agent_name }} reads this back, so the shape is its.</p>
+    <!-- The form, generated from the fields the kind declares. -->
+    <ng-container *ngIf="formShape as shape">
+      <h2 mat-dialog-title>{{ editingRef ? "Edit " : "New " }}{{ shape.label }}</h2>
+      <form (ngSubmit)="saveForm()">
+        <mat-dialog-content>
+          <div class="form">
+            <p class="dialog-note">{{ shape.agent_name }} reads this back, so the shape is its.</p>
+            <ng-container *ngFor="let field of shape.fields">
+              <app-switch
+                *ngIf="field.type === 'boolean'; else boxed"
+                [name]="field.name"
+                [label]="field.label || field.name"
+                [(ngModel)]="formFields[field.name]"
+              ></app-switch>
+              <ng-template #boxed>
+                <app-field
+                  [label]="(field.label || field.name) + (field.required ? '' : ' (optional)')"
+                  [help]="field.type === 'secret' ? 'Masked wherever the record is shown.' : field.type === 'object' ? 'Written as JSON.' : ''"
+                  [error]="tried ? problemOf(field) : ''"
+                >
+                  <app-select
+                    *ngIf="field.type === 'select'"
+                    [name]="field.name"
+                    placeholder="Choose one"
+                    [choices]="optionsOf(field)"
+                    [(ngModel)]="formFields[field.name]"
+                  ></app-select>
+                  <textarea
+                    *ngIf="field.type === 'object'"
+                    class="input record-form-json"
+                    rows="5"
+                    spellcheck="false"
+                    [name]="field.name"
+                    [(ngModel)]="formFields[field.name]"
+                  ></textarea>
+                  <textarea
+                    *ngIf="isLong(field)"
+                    class="input record-form-text"
+                    rows="3"
+                    [name]="field.name"
+                    [(ngModel)]="formFields[field.name]"
+                  ></textarea>
+                  <input
+                    *ngIf="field.type === 'number' || field.type === 'secret' || (field.type === 'string' && !isLong(field))"
+                    class="input"
+                    autocomplete="off"
+                    [name]="field.name"
+                    [type]="field.type === 'secret' ? 'password' : 'text'"
+                    [attr.inputmode]="field.type === 'number' ? 'decimal' : null"
+                    [(ngModel)]="formFields[field.name]"
+                  />
+                </app-field>
+              </ng-template>
+            </ng-container>
+            <p class="form-notice is-error" role="alert" *ngIf="formError">{{ formError }}</p>
           </div>
-          <button class="icon-button" type="button" (click)="cancelForm()" [disabled]="saving" aria-label="Close">
-            <lucide-icon name="x" [size]="19"></lucide-icon>
-          </button>
-        </header>
-        <div class="dialog-body">
-          <label class="field" *ngFor="let field of shape.fields">
-            <span class="field-label">
-              {{ field.label || field.name }}
-              <em *ngIf="field.required">required</em>
-            </span>
-            <select class="txt sel" *ngIf="field.type === 'select'"
-                    [(ngModel)]="formFields[field.name]" [ngModelOptions]="{ standalone: true }">
-              <option value="">—</option>
-              <option *ngFor="let option of field.options" [value]="option">{{ option }}</option>
-            </select>
-            <input type="checkbox" *ngIf="field.type === 'boolean'"
-                   [(ngModel)]="formFields[field.name]" [ngModelOptions]="{ standalone: true }" />
-            <textarea class="txt rec-json" *ngIf="field.type === 'object'" rows="5" spellcheck="false"
-                      [(ngModel)]="formFields[field.name]" [ngModelOptions]="{ standalone: true }"
-                      placeholder='{ "…": "valid JSON" }'></textarea>
-            <input class="txt"
-                   *ngIf="field.type === 'string' || field.type === 'number' || field.type === 'secret'"
-                   [type]="field.type === 'secret' ? 'password' : field.type === 'number' ? 'number' : 'text'"
-                   [(ngModel)]="formFields[field.name]" [ngModelOptions]="{ standalone: true }"
-                   autocomplete="off" />
-          </label>
-          <div class="data-alert error dialog-error" *ngIf="error">{{ error }}</div>
-        </div>
-        <footer class="dialog-actions">
-          <button class="btn" type="button" (click)="cancelForm()" [disabled]="saving">Cancel</button>
-          <button class="btn primary" type="button" (click)="saveForm()" [disabled]="saving">
+        </mat-dialog-content>
+        <mat-dialog-actions>
+          <button class="btn" type="button" [disabled]="saving" (click)="cancelForm()">Cancel</button>
+          <button class="btn primary" type="submit" [disabled]="saving">
             {{ saving ? "Saving…" : editingRef ? "Save changes" : "Create record" }}
           </button>
-        </footer>
-      </section>
-    </div>
-  </ng-container>
+        </mat-dialog-actions>
+      </form>
+    </ng-container>
+  </ng-template>
 
   <app-transfer-dialog *ngIf="transferTarget as item"
                        [subject]="'the record “' + recordName(item) + '”'" [ownerId]="item.created_by"

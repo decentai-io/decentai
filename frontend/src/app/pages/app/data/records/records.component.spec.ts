@@ -302,12 +302,52 @@ describe('RecordsComponent writing a record by hand', () => {
     component.formFields['count'] = '';
     await component.saveForm();
     expect(calls.updated).toBeUndefined();
-    expect(component.error).toContain('Count');
+    // Said under the field it belongs to, once Save was pressed.
+    expect(component.tried).toBeTrue();
+    expect(component.problemOf(COUNT as any)).toContain('Count');
 
     component.formFields['count'] = 3;
     component.formFields['title'] = '';
     await component.saveForm();
     expect(calls.updated).toBeUndefined();
-    expect(component.error).toBe('Title is required.');
+    expect(component.problemOf(TITLE as any)).toBe('Enter Title.');
+  });
+
+  it('asks for what is required before a new record is sent', async () => {
+    const calls: any = {};
+    const component = await componentWith([], [shape('note', ['create'], [TITLE, COUNT])], calls);
+
+    component.openPicker();
+    component.formFields['count'] = 'many';
+    await component.saveForm();
+
+    expect(calls.created).toBeUndefined();
+    expect(component.problemOf(TITLE as any)).toBe('Enter Title.');
+    expect(component.problemOf(COUNT as any)).toContain('number');
+
+    component.formFields['title'] = 'Ops';
+    component.formFields['count'] = '4';
+    await component.saveForm();
+    expect(calls.created.fields).toEqual({ title: 'Ops', count: 4 });
+  });
+
+  it('keeps the form open with the reason when the backend refuses', async () => {
+    const { router, route } = address();
+    const component = new RecordsComponent(
+      {
+        list: async () => [], shapes: async () => [shape('note', ['create'], [TITLE])],
+        create: async () => ({ error: 'A note with this title exists.' }),
+      } as any,
+      { get: async () => ({ user_id: ME }), peers: async () => [] } as any,
+      { can: () => true } as any, router as any, route as any, confirm as any,
+    );
+    await component.ngOnInit();
+
+    component.openPicker();
+    component.formFields['title'] = 'Ops';
+    await component.saveForm();
+
+    expect(component.formShape).not.toBeNull();
+    expect(component.formError).toBe('A note with this title exists.');
   });
 });
