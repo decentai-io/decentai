@@ -32,6 +32,8 @@ describe('ChatDetailComponent approval lifecycle', () => {
       { arrived: () => {}, stop: () => {}, refresh: async () => false } as any,
       // The app's top bar, which the chat fills with its own row.
       new TopBarService(),
+      // The clock and what the person may do: neither is asked here.
+      {} as any, { can: () => false } as any,
     );
     return component;
   }
@@ -179,6 +181,8 @@ describe('ChatDetailComponent title', () => {
       { arrived: () => {}, stop: () => {}, refresh: async () => false } as any,
       // The app's top bar, which the chat fills with its own row.
       new TopBarService(),
+      // The clock and what the person may do: neither is asked here.
+      {} as any, { can: () => false } as any,
     );
   }
 
@@ -209,6 +213,7 @@ describe('ChatDetailComponent, what went wrong', () => {
     const page = new ChatDetailComponent(
       {} as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any,
       {} as any, {} as any, {} as any, new TopBarService(),
+      {} as any, { can: () => false } as any,
     );
     page.inlineErrors = [1, 2, 3].map((id) => ({ id })) as any;
 

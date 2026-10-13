@@ -9,7 +9,7 @@
   <!-- Stopping everything holds the clock too: said here, so a "next
        run" below is not read as about to happen. -->
   <p class="form-notice is-warn schedules-stopped" role="status" *ngIf="stopped">
-    <span>You stopped everything, so no schedule runs. They stay on the clock and start again when you resume.</span>
+    <span>You stopped everything. No schedule runs until you resume; each one stays on the clock.</span>
     <button class="btn sm" type="button" [disabled]="resuming" (click)="resumeAll()">{{ resuming ? "Resuming…" : "Resume" }}</button>
   </p>
 

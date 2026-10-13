@@ -169,6 +169,14 @@
   overflow-wrap: anywhere;
 }
 
+/* Where a step leads: the page of what it made. */
+.step-link {
+  margin-left: 6px;
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 .step-detail,
 .step-meta {
   color: var(--ink-2);

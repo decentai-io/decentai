@@ -9,7 +9,9 @@ import { Component, ElementRef, NgZone, OnDestroy, OnInit, TemplateRef, ViewChil
 import { MatDialog } from '@angular/material/dialog';
 import { ActivatedRoute, Router } from '@angular/router';
 import { AlertComponent } from 'src/app/components/alert/alert.component';
+import { ActivityService } from 'src/app/services/activity.service';
 import { AiSessionService } from 'src/app/services/ai-session.service';
+import { AuthService } from 'src/app/services/auth.service';
 import { ProfileService } from 'src/app/services/profile.service';
 import { CHAT_PROTOCOL_VERSION, ChatInputCommand, FilePart, parseChatEvent, SessionContract, toApprovalCard, ChatJob } from 'src/app/models/chat-protocol';
 import { Subscription } from 'rxjs';
@@ -25,6 +27,7 @@ import {
   ActivityEntry, ChatStateService, InlineChatError,
 } from 'src/app/services/chat-state.service';
 
+import { cadenceWords } from '../../schedules/cadence-words';
 import { ChatActivityDialogComponent } from '../chat-activity-dialog/chat-activity-dialog.component';
 import { ChatAgentsDialogComponent } from '../chat-agents-dialog/chat-agents-dialog.component';
 import { ChatSkillsDialogComponent } from '../chat-skills-dialog/chat-skills-dialog.component';
@@ -270,6 +273,8 @@ export class ChatDetailComponent implements OnInit, OnDestroy {
     private viewport: ViewportService,
     private readAloud: ReadAloudService,
     readonly topBar: TopBarService,
+    private activityService: ActivityService,
+    private auth: AuthService,
   ) {}
 
   ngOnInit(): void {
@@ -452,6 +457,7 @@ export class ChatDetailComponent implements OnInit, OnDestroy {
       }
 
       this.snapshotFresh = true;
+      void this.countSchedules();
       this.connection.connect(this.chat_id!, () => this.state.value.latestEventSeq);
     } catch (err) {
       if (this.destroyed || opening !== this.opening) return;
@@ -568,16 +574,25 @@ export class ChatDetailComponent implements OnInit, OnDestroy {
         return;
 
       case 'schedule_set': {
+        // When it comes round, in the words its page uses, and the way
+        // to that page.
         const schedule = data.schedule || {};
-        const what = schedule.note || schedule.function || 'a check';
+        const when = cadenceWords({
+          cron: schedule.cron || '', every_seconds: schedule.every_seconds || null,
+          timezone: schedule.timezone || '', next_run_at: schedule.next_run_at || 0,
+        });
+        const what = schedule.note || schedule.function || '';
         this.state.addProgress(
-          schedule.every_seconds ? `Scheduled: ${what}, repeating` : `Scheduled: ${what}`,
+          `Scheduled: ${when.replace(/^./, (first) => first.toLowerCase())}${what ? ` · ${what}` : ''}`,
+          schedule.schedule_id ? { text: 'Open', to: `/ai/schedules/${schedule.schedule_id}` } : undefined,
         );
+        void this.countSchedules();
         return;
       }
 
       case 'schedule_removed':
         this.state.addProgress('Schedule removed.');
+        void this.countSchedules();
         return;
 
       case 'approval_requested':
@@ -1108,6 +1123,22 @@ export class ChatDetailComponent implements OnInit, OnDestroy {
   onScreenInput(events: ScreenInputEvent[]): void {
     if (!this.screen || !events.length) return;
     this.connection.send('AI:Chat:Screen', { call_id: this.screen.call_id, events });
+  }
+
+  /** How many schedules this chat keeps on the clock: the header's
+   *  clock shows the number and leads to them. */
+  scheduleCount = 0;
+
+  private async countSchedules(): Promise<void> {
+    if (!this.auth.can('ai:activity:list')) return;
+    const chatId = this.chat_id;
+    const read = await this.activityService.list().catch(() => null);
+    if (!read || read.error || chatId !== this.chat_id) return;
+    this.scheduleCount = read.schedules.filter((schedule) => schedule.chat_id === chatId).length;
+  }
+
+  get schedulesLabel(): string {
+    return `${this.scheduleCount} ${this.scheduleCount === 1 ? 'schedule' : 'schedules'} in this chat`;
   }
 
   /** Whether this chat holds an agent that can open a browser on

@@ -20,6 +20,8 @@ export interface ActivityEntry {
    *  keeps each task's steps with it once the work has moved on. The
    *  runtime attributes evidence the same way. */
   item?: string;
+  /** Where the step leads, when what it made has a page of its own. */
+  link?: { text: string; to: string };
 }
 
 export interface InlineChatError {
@@ -250,7 +252,7 @@ export class ChatStateService {
 
   /** A note in the timeline — something the page itself says, or a
    *  retired `progress` line from a replay. */
-  addProgress(description: string): void {
+  addProgress(description: string, link?: ActivityEntry['link']): void {
     if (!description) return;
     const activity = this.value.activity;
     if (activity[activity.length - 1]?.text === description) {
@@ -258,7 +260,7 @@ export class ChatStateService {
       return;
     }
     this.patch({
-      activity: [...activity.slice(-199), { id: `note_${++this.noteId}`, text: description }],
+      activity: [...activity.slice(-199), { id: `note_${++this.noteId}`, text: description, link }],
       liveText: description,
     });
   }

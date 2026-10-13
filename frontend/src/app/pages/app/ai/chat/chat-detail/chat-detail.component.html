@@ -64,6 +64,20 @@
             <lucide-icon name="monitor" [size]="18" aria-hidden="true"></lucide-icon>
           </button>
         }
+        <!-- The chat's clock: how many schedules it keeps, and the way
+             to them. -->
+        @if (scheduleCount) {
+          <a
+            class="icon-btn chat-clock"
+            routerLink="/ai/schedules"
+            [queryParams]="{ chat: chat_id }"
+            [matTooltip]="schedulesLabel"
+            [attr.aria-label]="schedulesLabel"
+          >
+            <lucide-icon name="calendar-clock" [size]="18" aria-hidden="true"></lucide-icon>
+            <span class="chat-clock-count" aria-hidden="true">{{ scheduleCount }}</span>
+          </a>
+        }
         <button
           type="button"
           class="icon-btn"
@@ -112,6 +126,12 @@
       <lucide-icon name="shield-check" [size]="16" aria-hidden="true"></lucide-icon>
       <span>Trust level: {{ trustLabel(trustLevel) }}</span>
     </button>
+    @if (scheduleCount) {
+      <a mat-menu-item routerLink="/ai/schedules" [queryParams]="{ chat: chat_id }">
+        <lucide-icon name="calendar-clock" [size]="16" aria-hidden="true"></lucide-icon>
+        <span>{{ schedulesLabel }}</span>
+      </a>
+    }
   }
   <button mat-menu-item (click)="startTitleEdit()">
     <lucide-icon name="pencil" [size]="16" aria-hidden="true"></lucide-icon>

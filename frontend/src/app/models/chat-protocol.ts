@@ -213,7 +213,7 @@ export type ChatEvent =
   | (EventBase & { event: 'agent_status'; agent?: string; name?: string; phase?: 'pulling' | 'installing' | 'ready' | 'failed'; text?: string })
   | (EventBase & { event: 'plan_updated'; steps?: PlanStep[] })
   | (EventBase & { event: 'memory_saved'; text?: string })
-  | (EventBase & { event: 'schedule_set'; schedule?: { note?: string; function?: string; every_seconds?: number | null } })
+  | (EventBase & { event: 'schedule_set'; schedule?: { schedule_id?: string; note?: string; function?: string; every_seconds?: number | null; cron?: string; timezone?: string; next_run_at?: number } })
   | (EventBase & { event: 'schedule_removed'; schedule_id?: string })
   /** The assistant paused until a time (epoch seconds); null when a stop ended the pause. */
   | (EventBase & { event: 'sleeping'; until?: number | null; why?: string })
