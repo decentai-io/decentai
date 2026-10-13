@@ -5,8 +5,10 @@ import { Routes } from '@angular/router';
 import { FilesComponent } from '../../pages/app/data/files/files.component';
 import { RecordsComponent } from '../../pages/app/data/records/records.component';
 import { SkillsComponent } from '../../pages/app/data/skills/skills.component';
+import { SkillEditorComponent } from '../../pages/app/data/skills/skill-editor.component';
 import { McpComponent } from '../../pages/app/data/mcp/mcp.component';
 import { permissionGuard } from '../../guards/permission.guard';
+import { unsavedChangesGuard } from '../../guards/unsaved-changes.guard';
 
 export const DataRoutes: Routes = [
   { path: '', redirectTo: 'files', pathMatch: 'full' },
@@ -38,6 +40,25 @@ export const DataRoutes: Routes = [
       // One record of the kind, opened beside its list.
       { path: ':agent/:kind/:ref', children: [] },
     ],
+  },
+  // Writing a skill, or changing one, is a page of its own. Before the
+  // list's `:ref`, which would take "new" for a skill. Leaving with
+  // changes not saved asks first.
+  {
+    path: 'skills/new',
+    title: 'Write a skill',
+    component: SkillEditorComponent,
+    canActivate: [permissionGuard],
+    canDeactivate: [unsavedChangesGuard],
+    data: { requiredAction: 'skills:skill:create' },
+  },
+  {
+    path: 'skills/:ref/edit',
+    title: 'Edit skill',
+    component: SkillEditorComponent,
+    canActivate: [permissionGuard],
+    canDeactivate: [unsavedChangesGuard],
+    data: { requiredAction: 'skills:skill:update' },
   },
   {
     path: 'skills',

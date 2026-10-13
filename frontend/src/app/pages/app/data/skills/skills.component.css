@@ -1,6 +1,5 @@
 /* The Skills page is made of the shared pieces (the filter column, the
-   list frame, the row, the switch). Here is how a row says a skill,
-   and what the editor's dialog still needs until it is a page. */
+   list frame, the row, the switch). Here is how a row says a skill. */
 
 /* The title is the way in to the skill. */
 .skill-row-title {
@@ -54,10 +53,3 @@ app-row.is-current {
     min-height: 44px;
   }
 }
-
-/* ── The editor's dialog, until the editor is a page ───────────────── */
-.field-help { margin-top: 5px; color: var(--ink-2); font-size: 12px; line-height: 1.5; }
-.skill-body-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.skill-editor-dialog { width: min(720px, 100%); }
-.skill-editor-dialog .dialog-body { display: grid; gap: 18px; }
-.skill-editor-dialog .share-row { display: grid; gap: 7px; }

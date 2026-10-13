@@ -13,7 +13,6 @@ import { DataPageBase } from '../../data-page-base';
 import { STANDARD_SKILLS_LISTED } from '../../ai/chat/chat-defaults';
 import { ShareEditor, SharingChip } from '../../share-editor';
 
-type ShareMode = 'private' | 'groups' | 'people' | 'org';
 /** Which skills are listed, and in what order. */
 type Show = 'all' | 'mine' | 'shared' | 'on';
 type SkillSort = 'updated' | 'title' | 'author';
@@ -31,28 +30,22 @@ const SAVED_FOR_MS = 2000;
  * and which are on for new chats). A skill's title opens it to be read
  * at /data/skills/<ref>, beside the list on a wide screen. What is
  * chosen, the search and the sort are in the address.
+ *
+ * Writing a skill and changing one are a page of their own
+ * (skill-editor.component): this page only leads there.
  */
 @Component({
   selector: 'app-skills',
   standalone: false,
   templateUrl: './skills.component.html',
-  styleUrls: ['../../data-shared.css', '../../../admin/iam-shared.css', './skills.component.css'],
+  styleUrl: './skills.component.css',
 })
 export class SkillsComponent extends DataPageBase implements OnInit, OnDestroy {
   loading = true;
   skills: Skill[] = [];
   profile: Profile | null = null;
 
-  // Editor state: null = closed, '' = creating, ref = editing.
-  editingRef: string | null = null;
-  formTitle = '';
-  formSummary = '';
-  formBody = '';
-  shareMode: ShareMode = 'private';
-  selectedGroups = new Set<string>();
-  selectedUsers = new Set<string>();
   peers: { user_id: string; user_name: string; email: string }[] = [];
-  saving = false;
   busyRef = '';
 
   // ── What the address says ───────────────────────────────────────────
@@ -129,6 +122,20 @@ export class SkillsComponent extends DataPageBase implements OnInit, OnDestroy {
     this.readDefaults(profile);
     this.loading = false;
     this.readOpened();
+    this.sayWhatWasSaved();
+  }
+
+  /** Arriving from the editor after a save: said once, here. A person
+   *  who chose which skills new chats start with has a list the new
+   *  one is not on yet. */
+  private sayWhatWasSaved(): void {
+    const from = history.state as { skillSaved?: string; ref?: string } | null;
+    if (!from?.skillSaved) return;
+    history.replaceState({ ...from, skillSaved: undefined }, '');
+    this.flash(from.skillSaved !== 'created' ? 'Skill updated.'
+      : !from.ref || this.defaultSkills.has(from.ref)
+        ? 'Skill created. New chats can read it from now on.'
+        : 'Skill created. Switch it on in its row for new chats to read it.');
   }
 
   // ── The address ─────────────────────────────────────────────────────
@@ -197,10 +204,6 @@ export class SkillsComponent extends DataPageBase implements OnInit, OnDestroy {
 
   get myUserId(): string {
     return this.profile?.user_id ?? '';
-  }
-
-  get isCreating(): boolean {
-    return this.editingRef === '';
   }
 
   /** Whether the person may change this skill: its writer, or whoever
@@ -275,133 +278,14 @@ export class SkillsComponent extends DataPageBase implements OnInit, OnDestroy {
     return `A chat lists at most ${this.catalogLimit} skills; the summary decides which it reads.${over}`;
   }
 
-  // ── Editor ──────────────────────────────────────────────────────────
+  // ── Writing and changing: the editor's page ─────────────────────────
 
-  startCreate(): void {
-    this.editingRef = '';
-    this.formTitle = '';
-    this.formSummary = '';
-    this.formBody = '';
-    this.shareMode = 'private';
-    this.selectedGroups.clear();
-    this.selectedUsers.clear();
-    this.error = '';
+  startCreate(fromExample = false): void {
+    void this.router.navigate(['/data/skills/new'], { queryParams: fromExample ? { example: 1 } : {} });
   }
 
-  useExample(): void {
-    this.editingRef = '';
-    if (!this.formTitle.trim()) this.formTitle = 'Clear, useful writing';
-    if (!this.formSummary.trim()) this.formSummary = 'Use when drafting or revising professional messages, explanations, and updates';
-    this.formBody = `Write in plain, direct language.
-
-- Lead with the main point or requested action.
-- Keep each paragraph focused on one idea.
-- Prefer concrete verbs and familiar words.
-- Include only context the reader needs to decide or act.
-- Put steps in the order they should happen.
-- Match the reader's level of technical knowledge.
-- End with the next action, owner, or decision when needed.
-
-Before sending, remove repetition and vague filler. Preserve important facts, constraints, dates, and names.`;
-    this.error = '';
-  }
-
-  async startEdit(skill: Skill): Promise<void> {
-    // The list is the catalog; the body needs its own read.
-    const full = await this.service.get(skill.resource_ref);
-    if (!full) return this.fail('Could not load this skill.');
-
-    this.editingRef = full.resource_ref;
-    this.formTitle = full.keys.title;
-    this.formSummary = full.keys.summary;
-    this.formBody = full.values?.body ?? '';
-
-    const owner = full.owner;
-    if (owner.groups.includes('everyone')) {
-      this.shareMode = 'org';
-    } else if (owner.groups.length) {
-      this.shareMode = 'groups';
-    } else if (owner.users.some((userId) => userId !== this.myUserId)) {
-      this.shareMode = 'people';
-    } else {
-      this.shareMode = 'private';
-    }
-    this.selectedGroups = new Set(owner.groups);
-    this.selectedUsers = new Set(owner.users.filter((userId) => userId !== this.myUserId));
-    this.error = '';
-  }
-
-  cancelEdit(): void {
-    this.editingRef = null;
-  }
-
-  toggleGroup(groupId: string): void {
-    if (!this.selectedGroups.delete(groupId)) {
-      this.selectedGroups.add(groupId);
-    }
-  }
-
-  toggleUser(userId: string): void {
-    if (!this.selectedUsers.delete(userId)) this.selectedUsers.add(userId);
-  }
-
-  private buildOwner(): Record<string, any> {
-    if (this.shareMode === 'org') {
-      return { groups: ['everyone'], users: [] };
-    }
-    if (this.shareMode === 'groups') {
-      return { groups: Array.from(this.selectedGroups) };
-    }
-    if (this.shareMode === 'people') {
-      return { groups: [], users: [this.myUserId, ...Array.from(this.selectedUsers)] };
-    }
-    return { users: [this.myUserId] };
-  }
-
-  get formReady(): boolean {
-    return (
-      !!this.formTitle.trim() &&
-      !!this.formSummary.trim() &&
-      !!this.formBody.trim() && !this.duplicateTitle
-    );
-  }
-
-  get duplicateTitle(): boolean {
-    const normalize = (value: string) => value.trim().replace(/\s+/g, ' ').toLowerCase();
-    return this.skills.some(skill => skill.resource_ref !== this.editingRef
-      && normalize(skill.keys.title) === normalize(this.formTitle));
-  }
-
-  async save(): Promise<void> {
-    if (this.saving || !this.formReady) return;
-    this.saving = true;
-    const creating = this.isCreating;
-    try {
-      const fields = {
-        title: this.formTitle.trim(),
-        summary: this.formSummary.trim(),
-        body: this.formBody.trim(),
-        owner: this.buildOwner(),
-      };
-      const result = creating
-        ? await this.service.create(fields)
-        : await this.service.update(this.editingRef!, fields);
-      if (result.error) return this.fail(result.error);
-
-      this.editingRef = null;
-      await this.reload();
-      // A person who chose which skills new chats start with has a list
-      // the new one is not on yet.
-      const made = result.resource?.resource_ref;
-      this.flash(
-        !creating ? 'Skill updated.'
-          : !made || this.defaultSkills.has(made)
-            ? 'Skill created. New chats can read it from now on.'
-            : 'Skill created. Switch it on in its row for new chats to read it.',
-      );
-    } finally {
-      this.saving = false;
-    }
+  startEdit(skill: Skill): void {
+    void this.router.navigate(['/data/skills', skill.resource_ref, 'edit']);
   }
 
   // ── What a new chat starts with ─────────────────────────────────────

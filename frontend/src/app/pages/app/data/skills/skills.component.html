@@ -3,7 +3,7 @@
   sentence="Instructions you write for the assistant, which it reads when they apply to a conversation."
   [wide]="true"
 >
-  <p class="form-notice is-error" role="alert" *ngIf="error && editingRef === null">{{ error }}</p>
+  <p class="form-notice is-error" role="alert" *ngIf="error">{{ error }}</p>
   <p class="form-notice" role="status" *ngIf="notice">{{ notice }}</p>
 
   <div class="side-layout" [class.has-opened]="opened">
@@ -35,7 +35,7 @@
           [ngModel]="sort"
           (ngModelChange)="go({ sort: $event === 'updated' ? '' : $event })"
         ></app-select>
-        <!-- The example to start from is offered in the editor itself. -->
+        <!-- The example to start from is offered on the editor's page. -->
         <button class="btn primary toolbar-end" type="button" *ngIf="canCreate" (click)="startCreate()">
           <lucide-icon name="plus" [size]="16" aria-hidden="true"></lucide-icon>
           Write a skill
@@ -81,7 +81,7 @@
       >
         <ng-container *ngIf="canCreate">
           <button class="btn primary" type="button" (click)="startCreate()">Write a skill</button>
-          <button class="btn" type="button" (click)="startCreate(); useExample()">Start from an example</button>
+          <button class="btn" type="button" (click)="startCreate(true)">Start from an example</button>
         </ng-container>
       </app-empty>
       <app-empty
@@ -123,97 +123,6 @@
       </ng-container>
     </ng-template>
   </mat-menu>
-
-  <!-- ── The editor: still a dialog of the page's own until it is a
-       page (the next step). ──────────────────────────────────────── -->
-    <div class="dialog-backdrop" *ngIf="editingRef !== null" (click)="cancelEdit()">
-    <section class="info-dialog skill-editor-dialog" role="dialog" aria-modal="true"
-             aria-labelledby="skill-editor-title" (click)="$event.stopPropagation()">
-      <header class="dialog-head">
-        <span class="dialog-icon"><lucide-icon name="sparkles" [size]="21"></lucide-icon></span>
-        <div>
-          <h2 id="skill-editor-title">{{ isCreating ? "New skill" : "Edit skill" }}</h2>
-          <p>
-            Write the summary for the assistant: one line that says when
-            this skill applies.
-          </p>
-        </div>
-        <button class="icon-button" type="button" (click)="cancelEdit()" [disabled]="saving" aria-label="Close">
-          <lucide-icon name="x" [size]="19"></lucide-icon>
-        </button>
-      </header>
-
-      <div class="dialog-body">
-      <p class="data-alert error" *ngIf="error">{{ error }}</p>
-      <p class="data-alert error" *ngIf="duplicateTitle">A skill with this title already exists. Choose a different title.</p>
-      <div class="editor-fields column">
-        <label class="field">
-          <span class="field-label">Title</span>
-          <input
-            class="txt"
-            type="text"
-            [(ngModel)]="formTitle"
-            maxlength="120"
-            placeholder="e.g. Quarterly report format"
-          />
-          <span class="field-help">{{ formTitle.length }}/120 · Give people a recognizable name.</span>
-        </label>
-        <label class="field">
-          <span class="field-label">Summary — when does this apply?</span>
-          <input
-            class="txt"
-            type="text"
-            [(ngModel)]="formSummary"
-            maxlength="300"
-            placeholder="e.g. How to structure and phrase our quarterly reports"
-          />
-          <span class="field-help">{{ formSummary.length }}/300 · Say when this knowledge should be used.</span>
-        </label>
-        <div class="field">
-          <div class="skill-body-heading">
-            <label class="field-label" for="skill-body">The skill itself</label>
-            <button class="btn sm" type="button" *ngIf="isCreating"
-                    (click)="useExample()" [disabled]="saving">Use example</button>
-          </div>
-          <textarea
-            id="skill-body"
-            class="txt notes"
-            [(ngModel)]="formBody"
-            maxlength="20000"
-            rows="10"
-            placeholder="Everything the assistant should know when this applies — formats, rules, examples, tone."
-          ></textarea>
-          <span class="field-help">{{ formBody.length }}/20,000 · Include concrete rules and examples; never add secrets.</span>
-        </div>
-      </div>
-
-      <div class="share-row">
-        <span class="field-label">Who can use it</span>
-        <app-sharing-selector
-          [mode]="shareMode" (modeChange)="shareMode = $any($event)"
-          [groups]="myGroups" [people]="peers"
-          [selectedGroups]="selectedGroups" [selectedPeople]="selectedUsers"
-          groupLabel="Share with my groups" peopleMode="people" [allowOrganization]="canShareAny"
-          (groupToggled)="toggleGroup($event)" (personToggled)="toggleUser($event)">
-        </app-sharing-selector>
-      </div>
-      </div>
-
-      <footer class="dialog-actions">
-        <button class="btn" type="button" (click)="cancelEdit()" [disabled]="saving">
-          Cancel
-        </button>
-        <button
-          class="btn primary"
-          type="button"
-          (click)="save()"
-          [disabled]="saving || !formReady"
-        >
-          {{ saving ? "Saving…" : isCreating ? "Create skill" : "Save changes" }}
-        </button>
-      </footer>
-    </section>
-    </div>
 
   <app-share-dialog *ngIf="share.ref"
                     [share]="share"
