@@ -125,6 +125,24 @@ export class InstallReviewComponent {
     return group.items.map((item) => item.label || item.id).join(', ');
   }
 
+  /** The README with its headings two levels down: the page has the
+   *  one `h1`, and "README" is an `h2` above them. Lines inside a code
+   *  fence are left as they are. */
+  get readme(): string {
+    const written = this.entry?.readme || '';
+    if (written !== this.readmeWritten) {
+      this.readmeWritten = written;
+      let fenced = false;
+      this.readmeShown = written.split('\n').map((line) => {
+        if (/^\s*(```|~~~)/.test(line)) fenced = !fenced;
+        return fenced ? line : line.replace(/^(#{1,4})(?=\s)/, '$1##');
+      }).join('\n');
+    }
+    return this.readmeShown;
+  }
+  private readmeWritten = '';
+  private readmeShown = '';
+
   get readmeLong(): boolean {
     return (this.entry?.readme || '').length > README_FOLD_CHARS;
   }

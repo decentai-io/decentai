@@ -18,15 +18,6 @@
   line-height: var(--lh-sm);
 }
 
-.source-needs summary {
-  display: inline-block;
-  padding: 4px 0;
-  text-decoration: underline;
-  text-decoration-color: var(--line-strong);
-  text-underline-offset: 3px;
-  cursor: pointer;
-}
-
 .source-needs p {
   margin-top: 8px;
 }

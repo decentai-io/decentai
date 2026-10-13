@@ -23,6 +23,8 @@
                   (flashed)="notice = $event"></app-agent-detail>
 </ng-container>
 
+<p class="visually-hidden" aria-live="polite">{{ announcement }}</p>
+
 <app-page
   *ngIf="!openAgent"
   title="Agents"

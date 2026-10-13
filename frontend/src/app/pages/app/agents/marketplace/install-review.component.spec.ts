@@ -63,6 +63,14 @@ describe('InstallReviewComponent', () => {
     expect(component.codeLink).toBe('');
   });
 
+  it('puts a README\'s headings under the page\'s own, and leaves code alone', () => {
+    const component = create({
+      id: 'jira', manifest: manifest(),
+      readme: '# Jira\n\n## Setup\n\n```\n# a comment\n```\n',
+    });
+    expect(component.readme).toBe('### Jira\n\n#### Setup\n\n```\n# a comment\n```\n');
+  });
+
   it('folds only a README too long for its first screen', () => {
     const short = create({ id: 'jira', manifest: manifest(), readme: '# Jira' });
     expect(short.readmeLong).toBeFalse();

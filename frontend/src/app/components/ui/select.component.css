@@ -30,3 +30,9 @@
   flex: none;
   color: var(--ink-3);
 }
+
+@media (pointer: coarse) {
+  .select-trigger {
+    min-height: 44px;
+  }
+}

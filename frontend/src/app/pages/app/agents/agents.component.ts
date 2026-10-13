@@ -206,7 +206,28 @@ export class AgentsComponent extends DataPageBase implements OnInit, OnDestroy {
     this.stopWatching();
   }
 
+  /** What a screen reader is told when an agent that was preparing
+   *  no longer is: the chip changes on its own, and silently. */
+  announcement = '';
+
+  private announcePrepared(before: AgentOffer[]): void {
+    const waiting = new Set(before
+      .filter((agent) => agent.prepared?.state === 'preparing')
+      .map((agent) => agent.agent_id));
+    const done = this.agents
+      .filter((agent) => waiting.has(agent.agent_id) && agent.prepared?.state !== 'preparing')
+      .map((agent) => `${agent.name || agent.agent_id} `
+        + (agent.prepared?.state === 'failed' ? 'could not be prepared' : 'is ready'));
+    if (done.length) this.announcement = `${done.join('. ')}.`;
+  }
+
   private async fetchAgents(): Promise<void> {
+    const before = this.agents;
+    await this.readAgents();
+    this.announcePrepared(before);
+  }
+
+  private async readAgents(): Promise<void> {
     if (this.canDiscover) {
       this.agents = await this.service.available();
       return;

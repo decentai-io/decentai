@@ -43,7 +43,7 @@
 
       <!-- What it takes, touches, is scoped by and returns: behind one
            disclosure, since a list is read by name first. -->
-      <details class="fn-more" [open]="expanded" *ngIf="fn.params.length || fn.touches.length || fn.scopes.length || fn.returns.length">
+      <details class="fold fn-more" [open]="expanded" *ngIf="fn.params.length || fn.touches.length || fn.scopes.length || fn.returns.length">
         <summary>What it takes and returns</summary>
         <dl class="fn-facts">
           <ng-container *ngIf="fn.params.length">

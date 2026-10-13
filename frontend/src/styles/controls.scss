@@ -492,6 +492,51 @@ textarea.input {
   }
 }
 
+/* ── A fold ──────────────────────────────────────────────────────────
+   <details class="fold">: what most people skip, one press away. Its
+   summary reads as a link; what it opens is the page's own. */
+.fold > summary {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 0;
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+  text-decoration: underline;
+  text-decoration-color: var(--line-strong);
+  text-underline-offset: 3px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.fold > summary::-webkit-details-marker {
+  display: none;
+}
+
+.fold > summary:hover {
+  color: var(--ink);
+}
+
+@media (pointer: coarse) {
+  .fold > summary {
+    min-height: 44px;
+  }
+}
+
+/* Read to a screen reader, shown to nobody: an announcement, or the
+   word a picture stands for. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 /* ── Skeleton ────────────────────────────────────────────────────────
    class="sk" on a block the size of what is loading. */
 .sk {

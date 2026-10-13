@@ -22,7 +22,7 @@
 <section *ngIf="entry.readme && !brief" [attr.aria-labelledby]="id + '-readme'">
   <h2 class="agent-section-title" [id]="id + '-readme'">README</h2>
   <div class="reading-readme" [class.is-folded]="readmeLong && !readmeOpen">
-    <markdown [data]="entry.readme"></markdown>
+    <markdown [data]="readme"></markdown>
   </div>
   <button class="btn ghost sm" type="button" *ngIf="readmeLong" [attr.aria-expanded]="readmeOpen" (click)="readmeOpen = !readmeOpen">
     {{ readmeOpen ? "Show less" : "Read more" }}
@@ -110,7 +110,7 @@
         <span class="lvl-dot"></span>{{ level.count }} {{ level.name }}
       </span>
     </p>
-    <details class="reading-functions">
+    <details class="fold reading-functions">
       <summary>{{ functions.length === 1 ? "Its function" : "Its " + functions.length + " functions" }}</summary>
       <app-agent-functions [manifest]="manifest"></app-agent-functions>
     </details>
