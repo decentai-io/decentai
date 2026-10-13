@@ -41,10 +41,13 @@
   min-width: 0;
 }
 
+/* A long name may break anywhere, so the table can always fit its
+   column; nine characters stay together, so a short one never breaks
+   inside a word. */
 .file-name-words {
-  min-width: 0;
+  min-width: 9ch;
   color: inherit;
-  overflow-wrap: break-word;
+  overflow-wrap: anywhere;
 }
 
 .file-extension {
@@ -61,4 +64,101 @@
 .file-name-words:hover {
   text-decoration: underline;
   text-underline-offset: 3px;
+}
+
+/* ── Upload ──────────────────────────────────────────────────────────
+   Files dragged over the list put a dashed frame on it and say where
+   they go; each file on its way in is a row above the list with a 2px
+   bar. */
+.files-list {
+  position: relative;
+}
+
+.files-list.is-dropping {
+  border-radius: var(--r-md);
+  outline: 2px dashed var(--accent);
+  outline-offset: 4px;
+}
+
+.files-drop {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 24px 16px;
+  border-radius: var(--r-md);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  font-size: var(--t-base);
+  font-weight: 500;
+  line-height: var(--lh-base);
+  pointer-events: none;
+}
+
+.files-drop span {
+  font-size: var(--t-sm);
+  font-weight: 400;
+}
+
+.upload-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+  list-style: none;
+}
+
+.upload-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+
+.upload-words {
+  display: grid;
+  flex: 1;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 12px;
+  min-width: 0;
+}
+
+.upload-name {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: var(--t-sm);
+  font-weight: 500;
+  line-height: var(--lh-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.upload-state {
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.upload-row.is-failed .upload-state {
+  grid-column: 1 / -1;
+  color: var(--danger-ink);
+}
+
+.upload-bar {
+  grid-column: 1 / -1;
+  height: 2px;
+  overflow: hidden;
+  border-radius: 1px;
+  background: var(--surface-3);
+}
+
+.upload-bar span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transition: width var(--dur-1) linear;
 }

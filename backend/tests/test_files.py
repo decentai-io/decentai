@@ -516,6 +516,11 @@ class TestNames:
         assert seen["created_by_name"] == "U"
         assert seen["owner_names"] == {"groups": ["Research"], "users": ["U"]}
 
+    def test_the_list_says_how_large_an_upload_may_be(self, admin, seed):
+        from server.setup.app_state import get_settings
+        listed = app_call(admin, "Files:File:List", {}).json()
+        assert listed["max_upload_mb"] == get_settings().max_upload_mb
+
     def test_everyone_is_named_as_everyone(self, admin, seed):
         ref = _upload(admin).json()["resource"]["resource_ref"]
         app_call(admin, "Files:File:Update", {

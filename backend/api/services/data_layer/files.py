@@ -84,6 +84,9 @@ class FileController(ResourceController):
         if status != 200:
             return answer, status
         self._name_people(answer.get("resources") or [], user)
+        # What the upload door will refuse, so the page can say it
+        # before a file is sent rather than after.
+        answer["max_upload_mb"] = self.settings.max_upload_mb
         names = None
         for resource in answer.get("resources") or []:
             ref = self._agent_ref_of(resource)

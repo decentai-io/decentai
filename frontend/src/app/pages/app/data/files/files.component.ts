@@ -19,6 +19,20 @@ import { extensionOf, FILE_GROUPS, fileKindOf, sizeLabel } from 'src/app/compone
 /** Whose files are listed. */
 type Show = 'all' | 'mine' | 'shared';
 
+/** One file on its way in, as a row above the list. */
+interface Upload {
+  file: File;
+  /** How much has been sent, from 0 to 1. */
+  sent: number;
+  state: 'waiting' | 'uploading' | 'done' | 'failed';
+  /** Why it failed. */
+  problem: string;
+  cancel?: () => void;
+}
+
+/** How long a finished upload's row stays before it leaves. */
+const DONE_FOR_MS = 2500;
+
 /** The sorts the address can name, each a column and a direction. The
  *  toolbar offers the first four; a column's heading reaches them all. */
 const SORTS: Record<string, Sort> = {
@@ -86,7 +100,10 @@ export class FilesComponent extends DataPageBase implements OnInit, OnDestroy {
   ];
 
   busyRef = '';
-  uploading = false;
+  /** The files on their way in, oldest first: sent one at a time. */
+  uploads: Upload[] = [];
+  /** Files are being dragged over the list. */
+  dropping = false;
   /** Files ticked to go together, by resource_ref. */
   selected = new Set<string>();
   bulkBusy = false;
@@ -452,26 +469,100 @@ export class FilesComponent extends DataPageBase implements OnInit, OnDestroy {
   /** Upload straight from the page — the same door a chat attachment
    *  uses, minus the chat. The list stays where it is; what was
    *  uploaded is at its top when it is sorted by newest. */
-  async onUpload(event: Event): Promise<void> {
-    const input = event.target as HTMLInputElement;
-    const chosen = Array.from(input.files ?? []);
-    input.value = ''; // the same file can be picked again
-    if (!chosen.length || this.uploading) return;
+  /** The largest file the backend takes, in MB. */
+  get uploadLimitMb(): number {
+    return this.service.maxUploadMb;
+  }
 
-    this.uploading = true;
-    try {
-      const failed: string[] = [];
-      for (const file of chosen) {
-        const result = await this.service.upload(file);
-        if (result.error) failed.push(`${file.name}: ${result.error}`);
-      }
+  onPicked(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    this.queue(Array.from(input.files ?? []));
+    input.value = ''; // the same file can be picked again
+  }
+
+  // Dropped anywhere over the list. Only files count: dragging a row's
+  // text or a link over the page is not an upload.
+  private carriesFiles(event: DragEvent): boolean {
+    return this.canUpload && Array.from(event.dataTransfer?.types ?? []).includes('Files');
+  }
+
+  onDragOver(event: DragEvent): void {
+    if (!this.carriesFiles(event)) return;
+    event.preventDefault();
+    this.dropping = true;
+  }
+
+  onDragLeave(event: DragEvent): void {
+    // Leaving for a child of the list is not leaving the list.
+    const into = event.relatedTarget as Node | null;
+    if (!into || !(event.currentTarget as Node).contains(into)) this.dropping = false;
+  }
+
+  onDrop(event: DragEvent): void {
+    if (!this.carriesFiles(event)) return;
+    event.preventDefault();
+    this.dropping = false;
+    this.queue(Array.from(event.dataTransfer?.files ?? []));
+  }
+
+  /** Adds files to the queue. One too large is refused here, in its
+   *  row, without being sent to be refused. */
+  private queue(chosen: File[]): void {
+    const limit = this.uploadLimitMb * 1024 * 1024;
+    for (const file of chosen) {
+      const large = file.size > limit;
+      this.uploads.push({
+        file, sent: 0,
+        state: large ? 'failed' : 'waiting',
+        problem: large ? `Larger than ${this.uploadLimitMb} MB` : '',
+      });
+    }
+    void this.sendNext();
+  }
+
+  /** Sends the next waiting file, when none is on its way. The list is
+   *  read again as each arrives, and stays where it is. */
+  private async sendNext(): Promise<void> {
+    if (this.uploads.some((upload) => upload.state === 'uploading')) return;
+    const next = this.uploads.find((upload) => upload.state === 'waiting');
+    if (!next) return;
+
+    next.state = 'uploading';
+    const sending = this.service.upload(next.file, (sent) => (next.sent = sent));
+    next.cancel = sending.cancel;
+    const result = await sending.done;
+    next.cancel = undefined;
+    if (result.error) {
+      next.state = 'failed';
+      next.problem = result.error;
+    } else {
+      next.state = 'done';
+      next.sent = 1;
       await this.reload();
-      if (failed.length) return this.fail(failed.join(' — '));
-      this.flash(chosen.length === 1
-        ? `"${chosen[0].name}" uploaded.`
-        : `${chosen.length} files uploaded.`);
-    } finally {
-      this.uploading = false;
+      setTimeout(() => this.dismiss(next), DONE_FOR_MS);
+    }
+    void this.sendNext();
+  }
+
+  retry(upload: Upload): void {
+    upload.state = 'waiting';
+    upload.problem = '';
+    upload.sent = 0;
+    void this.sendNext();
+  }
+
+  /** Stops one on its way, or takes a row that is over off the list. */
+  dismiss(upload: Upload): void {
+    upload.cancel?.();
+    this.uploads = this.uploads.filter((entry) => entry !== upload);
+  }
+
+  uploadWords(upload: Upload): string {
+    switch (upload.state) {
+      case 'waiting': return 'Waiting';
+      case 'uploading': return `Uploading ${Math.round(upload.sent * 100)}%`;
+      case 'done': return 'Done';
+      default: return `Failed: ${upload.problem}`;
     }
   }
 

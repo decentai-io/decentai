@@ -15,7 +15,9 @@
       (choose)="filter($event.key, $event.value)"
     ></app-filter-column>
 
-    <app-list class="files-list" label="Files" rows="table" [loading]="loading" [class.side-alone]="!files.length">
+    <app-list class="files-list" label="Files" rows="table" [loading]="loading" [class.side-alone]="!files.length"
+              [class.is-dropping]="dropping"
+              (dragover)="onDragOver($event)" (dragleave)="onDragLeave($event)" (drop)="onDrop($event)">
       <ng-container listToolbar *ngIf="files.length">
         <!-- With something ticked, the toolbar is what can be done to it. -->
         <app-selection-bar
@@ -55,6 +57,36 @@
           <ng-container *ngTemplateOutlet="upload"></ng-container>
         </ng-template>
       </ng-container>
+
+      <!-- Shown while files are dragged over the list: where they go,
+           and how large one may be. -->
+      <p class="files-drop" *ngIf="dropping" aria-hidden="true">
+        <lucide-icon name="upload" [size]="20" aria-hidden="true"></lucide-icon>
+        Drop files to upload
+        <span>Up to {{ uploadLimitMb }} MB each</span>
+      </p>
+
+      <!-- The files on their way in, above the ones already here. -->
+      <ul class="upload-rows" *ngIf="uploads.length" aria-label="Uploads" aria-live="polite">
+        <li class="upload-row" *ngFor="let upload of uploads" [class.is-failed]="upload.state === 'failed'">
+          <app-file-icon [name]="upload.file.name" [mime]="upload.file.type"></app-file-icon>
+          <div class="upload-words">
+            <span class="upload-name">{{ upload.file.name }}</span>
+            <span class="upload-state">{{ uploadWords(upload) }}</span>
+            <span class="upload-bar" *ngIf="upload.state === 'uploading' || upload.state === 'waiting'" role="progressbar"
+                  aria-valuemin="0" aria-valuemax="100" [attr.aria-valuenow]="upload.sent * 100"
+                  [attr.aria-label]="upload.file.name + ' upload'">
+              <span [style.width.%]="upload.sent * 100"></span>
+            </span>
+          </div>
+          <button class="btn sm" type="button" *ngIf="upload.state === 'failed' && !upload.problem.startsWith('Larger')" (click)="retry(upload)">Retry</button>
+          <button class="icon-btn sm" type="button"
+                  [attr.aria-label]="(upload.state === 'uploading' ? 'Cancel the upload of ' : 'Dismiss ') + upload.file.name"
+                  (click)="dismiss(upload)">
+            <lucide-icon name="x" [size]="16" aria-hidden="true"></lucide-icon>
+          </button>
+        </li>
+      </ul>
 
       <table class="table" *ngIf="shownFiles.length">
         <thead>
@@ -207,7 +239,7 @@
           <app-empty
             icon="file-text"
             title="No files yet"
-            line="Upload one here, attach one to a chat, or let an agent produce one."
+            [line]="'Upload one here or drop it on this page, attach one to a chat, or let an agent produce one. Up to ' + uploadLimitMb + ' MB each.'"
           >
             <ng-container *ngTemplateOutlet="upload"></ng-container>
           </app-empty>
@@ -255,13 +287,13 @@
        behind it. -->
   <ng-template #upload>
     <ng-container *ngIf="canUpload">
-      <button class="btn primary toolbar-end" type="button" [disabled]="uploading" (click)="picker.click()">
+      <button class="btn primary toolbar-end" type="button" (click)="picker.click()">
         <lucide-icon name="upload" [size]="16" aria-hidden="true"></lucide-icon>
-        {{ uploading ? "Uploading…" : "Upload" }}
+        Upload
       </button>
     </ng-container>
   </ng-template>
-  <input #picker type="file" multiple hidden (change)="onUpload($event)" />
+  <input #picker type="file" multiple hidden (change)="onPicked($event)" />
 
   <app-transfer-dialog *ngIf="transferTarget as item"
                        [subject]="'the file “' + filename(item) + '”'" [ownerId]="item.created_by"
