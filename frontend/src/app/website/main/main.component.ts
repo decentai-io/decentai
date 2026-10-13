@@ -111,9 +111,16 @@ export class MainComponent implements OnInit, OnDestroy {
     readonly topBar: TopBarService,
   ) {}
 
-  /** Off-screen drawer must leave the tab order when closed on mobile. */
+  /** The drawer leaves the tab order while it is closed on a phone.
+   *  On a wide screen it is always there: open, or as a rail. */
   get drawerInert(): boolean {
-    return this.isMobile ? !this.isSidebarOpen : this.isDrawerCollapsed;
+    return this.isMobile && !this.isSidebarOpen;
+  }
+
+  /** The person's own page and the Guide: open to whoever is signed in
+   *  with the action everybody holds. */
+  get canSeeProfile(): boolean {
+    return this.auth.can('account:profile:get');
   }
 
   /** Content behind the drawer is inert while the modal drawer is open. */
@@ -224,7 +231,7 @@ export class MainComponent implements OnInit, OnDestroy {
     this.unlockBodyScroll();
   }
 
-  /** Top-bar menu button: modal drawer on mobile, collapse on desktop. */
+  /** The drawer on a phone; on a wide screen, the sidebar or its rail. */
   toggleMenu(): void {
     if (this.isMobile) {
       this.isSidebarOpen ? this.closeSidebar() : this.openSidebar();
@@ -310,8 +317,8 @@ export class MainComponent implements OnInit, OnDestroy {
       width: 'auto',
       data: {
         type: 'confirm',
-        title: 'Log out?',
-        messages: [{ description: "You'll be returned to the login screen." }],
+        title: 'Sign out?',
+        messages: [{ description: 'You will be returned to the sign-in screen.' }],
       },
     });
 

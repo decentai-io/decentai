@@ -137,7 +137,7 @@ export const mainRoutes: RouteNode[] = [
       {
         name: 'Files',
         url: 'data/files',
-        icon: 'file-text',
+        icon: 'folder',
         domain: 'Global',
         active: true,
         requiredAction: 'files:file:list',
@@ -240,12 +240,14 @@ export const mainRoutes: RouteNode[] = [
   },
   {
     // The guide: how to use all of the above, and how to build an
-    // agent of your own. Open to anyone signed in.
+    // agent of your own. Open to anyone signed in. It sits in the
+    // sidebar's footer, beside Sign out.
     name: 'Help',
     url: 'guide',
     icon: 'book-open',
     domain: 'Global',
     active: false,
+    footer: true,
     children: [
       {
         name: 'Guide',
@@ -277,7 +279,7 @@ export const adminRoutes: RouteNode[] = [
       {
         name: 'Profile',
         url: 'admin/profile',
-        icon: 'user',
+        icon: 'circle-user',
         domain: 'Global',
         active: true,
         requiredAction: 'account:profile:get',
@@ -340,7 +342,7 @@ export const adminRoutes: RouteNode[] = [
       {
         name: 'Policies',
         url: 'admin/policies',
-        icon: 'file-text',
+        icon: 'scroll-text',
         domain: 'Global',
         active: true,
         requiredAction: 'iam:policy:list',

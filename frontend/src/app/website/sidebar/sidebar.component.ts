@@ -1,20 +1,22 @@
-import {
-  Component,
-  EventEmitter,
-  OnDestroy,
-  OnInit,
-  Output,
-} from '@angular/core';
-import { NavigationEnd, Router } from '@angular/router';
+import { Component, EventEmitter, Input, OnDestroy, OnInit, Output } from '@angular/core';
 import { Subscription } from 'rxjs';
-import { filter } from 'rxjs/operators';
-import { NavigatorService } from '../../services/navigator.service';
-import { DataStoreService } from 'src/app/services/datastore.service';
-import { AuthService } from 'src/app/services/auth.service';
-import { AttentionService } from 'src/app/services/attention.service';
-import { ActiveRoute, RouteNode } from '../config/config.model';
-import { pageAllowed } from '../config/config';
 
+import { AttentionService } from 'src/app/services/attention.service';
+import { AuthService } from 'src/app/services/auth.service';
+import { DataStoreService } from 'src/app/services/datastore.service';
+import { NavigatorService } from '../../services/navigator.service';
+import { pageAllowed } from '../config/config';
+import { RouteNode } from '../config/config.model';
+
+/**
+ * The sidebar: the pages of the workspace being shown (the main one, or
+ * the admin console), in their groups, each a link that is lit while
+ * the address is on it or under it. A page appears only to whoever may
+ * open it, and a group with no page to show is not shown.
+ *
+ * Collapsed, it is a rail: the same links as icons with their names in
+ * tooltips, never nothing.
+ */
 @Component({
   selector: 'app-sidebar',
   templateUrl: './sidebar.component.html',
@@ -22,20 +24,19 @@ import { pageAllowed } from '../config/config';
   standalone: false,
 })
 export class SidebarComponent implements OnInit, OnDestroy {
+  /** Collapsed to icons. */
+  @Input() rail = false;
+
   @Output() navigationSelected = new EventEmitter<void>();
   @Output() collapseClicked = new EventEmitter<void>();
   @Output() signOutClicked = new EventEmitter<void>();
 
-  /** The sections of the workspace being shown: main, or the admin console. */
-  routes: RouteNode[] = [];
-  expandedRouteKeys: string[] = [];
-
+  private routes: RouteNode[] = [];
   private readonly subscriptions = new Subscription();
 
   constructor(
     private navigator: NavigatorService,
-    private router: Router,
-    public datastore: DataStoreService,
+    private datastore: DataStoreService,
     private auth: AuthService,
     public attention: AttentionService,
   ) {
@@ -43,27 +44,10 @@ export class SidebarComponent implements OnInit, OnDestroy {
     this.attention.start();
   }
 
-  /** Active route is owned by the navigator (kept in sync with the URL). */
-  get currentRoute(): ActiveRoute {
-    return this.navigator.getCurrentRoute();
-  }
-
   ngOnInit(): void {
-    this.initExpandedUrls();
-
-    // Workspace switch (main <-> admin) swaps the route set.
+    // Switching workspace (main, admin) swaps the pages.
     this.subscriptions.add(
-      this.datastore.currentContentView$.subscribe(() => {
-        this.routes = this.datastore.getRoutes();
-        this.initExpandedUrls();
-      }),
-    );
-
-    // Re-expand the active group after navigation, back/forward or refresh.
-    this.subscriptions.add(
-      this.router.events
-        .pipe(filter((event) => event instanceof NavigationEnd))
-        .subscribe(() => this.initExpandedUrls()),
+      this.datastore.currentContentView$.subscribe(() => (this.routes = this.datastore.getRoutes())),
     );
   }
 
@@ -71,132 +55,21 @@ export class SidebarComponent implements OnInit, OnDestroy {
     this.subscriptions.unsubscribe();
   }
 
-  private initExpandedUrls(): void {
-    this.expandedRouteKeys = [];
-
-    for (const primary of this.routes) {
-      for (const secondary of primary.children ?? []) {
-        if (
-          (secondary.children?.length ?? 0) > 0 &&
-          this.isSecondaryActive(secondary.url)
-        ) {
-          this.expandedRouteKeys.push(
-            this.getRouteKey(primary.url, secondary.url),
-          );
-        }
-      }
-    }
+  /** The groups listed in the body; the rest sit in the footer. */
+  get sections(): RouteNode[] {
+    return this.routes.filter((section) => !section.footer);
   }
 
-  /**
-   * A navigable page is visible only when its action is granted — there is
-   * no "public by omission": a page that declares none is hidden, so the
-   * only way to show it is to grant its action from the admin page.
-   *
-   * Section headers declare nothing and are judged by their children.
-   */
-  canAccess(routeNode: RouteNode): boolean {
-    if (
-      routeNode.active &&
-      !pageAllowed(routeNode, (action) => this.auth.can(action))
-    ) {
-      return false;
-    }
-
-    // A non-navigable grouping with nothing visible under it disappears too,
-    // so a member with a handful of permissions only sees the sections that
-    // actually contain something for them.
-    if (
-      !routeNode.active &&
-      (routeNode.children?.length ?? 0) > 0 &&
-      this.getVisibleChildCount(routeNode) === 0
-    ) {
-      return false;
-    }
-
-    return true;
+  /** The pages beside Sign out: the Guide. */
+  get footerPages(): RouteNode[] {
+    return this.routes.filter((section) => section.footer).flatMap((section) => this.pagesOf(section));
   }
 
-  primaryRouteClicked(primaryRoute: any, active: boolean, pageTitle: string) {
-    if (!active) {
-      return;
-    }
-
-    this.navigator.primaryClicked(primaryRoute);
-    this.datastore.changePageTitle(pageTitle);
-    this.navigationSelected.emit();
-  }
-
-  secondaryRouteClicked(
-    secondaryRoute: string,
-    primaryRoute: string,
-    active: boolean,
-    pageTitle: string,
-    hasChildren: boolean,
-  ) {
-    if (hasChildren) {
-      this.expandSecondaryRoute(secondaryRoute, primaryRoute);
-    }
-
-    if (!active) {
-      return;
-    }
-
-    this.navigator.secondaryClicked(secondaryRoute, primaryRoute);
-    this.datastore.changePageTitle(pageTitle);
-    this.navigationSelected.emit();
-  }
-
-  expandSecondaryRoute(secondaryRoute: string, primaryRoute: string) {
-    const routeKey = this.getRouteKey(primaryRoute, secondaryRoute);
-
-    if (this.expandedRouteKeys.includes(routeKey)) {
-      this.expandedRouteKeys = this.expandedRouteKeys.filter(
-        (url: string) => url !== routeKey,
-      );
-    } else {
-      this.expandedRouteKeys.push(routeKey);
-    }
-  }
-
-  toggleSecondaryRoute(
-    event: Event,
-    secondaryRoute: string,
-    primaryRoute: string,
-  ) {
-    event.stopPropagation();
-    this.expandSecondaryRoute(secondaryRoute, primaryRoute);
-  }
-
-  tertiaryRouteClicked(
-    event: Event,
-    tertiaryRoute: string,
-    secondaryRoute: string,
-    primaryRoute: string,
-    active: boolean,
-    pageTitle: string,
-  ) {
-    event.stopPropagation();
-
-    if (!active) {
-      return;
-    }
-
-    this.navigator.tertiaryClicked(tertiaryRoute, secondaryRoute, primaryRoute);
-    this.datastore.changePageTitle(pageTitle);
-    this.navigationSelected.emit();
-  }
-
-  isExpanded(secondaryRoute: string, primaryRoute: string) {
-    return this.expandedRouteKeys.includes(
-      this.getRouteKey(primaryRoute, secondaryRoute),
-    );
-  }
-
-  /** A section is the one in use when one of its pages is. */
-  isPrimaryActive(primaryRoute: string): boolean {
-    const section = this.routes.find((node) => node.url === primaryRoute);
-    return (section?.children ?? []).some((page) => this.isSecondaryActive(page.url));
+  /** The pages of a group this person may open. A page that declares
+   *  no action is hidden: there is no "public by omission". */
+  pagesOf(section: RouteNode): RouteNode[] {
+    return (section.children ?? []).filter(
+      (page) => page.active && pageAllowed(page, (action) => this.auth.can(action)));
   }
 
   /** A page's item is lit on the page and on everything under its
@@ -204,26 +77,12 @@ export class SidebarComponent implements OnInit, OnDestroy {
    *  Where another page's address is under this one's, that page claims
    *  what is under its own: /agents/marketplace is the Marketplace's,
    *  and every other address under /agents is Installed's. */
-  isSecondaryActive(secondaryRoute: string): boolean {
-    const { primary, secondary, tertiary } = this.currentRoute;
+  isActive(url: string): boolean {
+    const { primary, secondary, tertiary } = this.navigator.getCurrentRoute();
     const here = tertiary || secondary || primary;
     const under = (address: string) => here === address || here.startsWith(`${address}/`);
-    if (!under(secondaryRoute)) return false;
+    if (!under(url)) return false;
     return !this.routes.some((section) => (section.children ?? []).some(
-      (page) => page.url.length > secondaryRoute.length && under(page.url)));
-  }
-
-  isTertiaryActive(tertiaryRoute: string): boolean {
-    return this.currentRoute?.tertiary === tertiaryRoute;
-  }
-
-  getVisibleChildCount(routeNode: RouteNode): number {
-    return (routeNode?.children ?? []).filter((child) =>
-      this.canAccess(child),
-    ).length;
-  }
-
-  private getRouteKey(primaryRoute: string, secondaryRoute: string): string {
-    return `${primaryRoute}::${secondaryRoute}`;
+      (page) => page.url.length > url.length && under(page.url)));
   }
 }

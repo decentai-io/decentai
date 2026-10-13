@@ -223,26 +223,7 @@ export class NavigatorService {
     }
   }
 
-  primaryClicked(primary: string): void {
-    this.currentRoute = { primary, secondary: '', tertiary: '' };
-    this.performRouting();
-  }
-
-  secondaryClicked(secondary: string, primary: string): void {
-    this.currentRoute = { primary, secondary, tertiary: '' };
-    this.performRouting();
-  }
-
-  tertiaryClicked(
-    tertiary: string,
-    secondary: string,
-    primary: string = this.currentRoute.primary,
-  ): void {
-    this.currentRoute = { primary, secondary, tertiary };
-    this.performRouting();
-  }
-
-  performRouting(): void {
+  private performRouting(): void {
     const target =
       this.currentRoute.tertiary ||
       this.currentRoute.secondary ||

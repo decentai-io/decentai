@@ -15,6 +15,7 @@
     [attr.aria-hidden]="drawerInert ? 'true' : null"
   >
     <app-sidebar
+      [rail]="!isMobile && isDrawerCollapsed"
       (navigationSelected)="closeSidebar()"
       (collapseClicked)="toggleMenu()"
       (signOutClicked)="logout()"
@@ -29,8 +30,8 @@
         type="button"
         class="icon-button top-bar__menu"
         (click)="toggleMenu()"
-        aria-label="Toggle navigation"
-        [attr.aria-expanded]="isMobile ? isSidebarOpen : !isDrawerCollapsed"
+        aria-label="Open navigation"
+        [attr.aria-expanded]="isSidebarOpen"
       >
         <lucide-icon name="menu" [size]="17" [strokeWidth]="1.75"></lucide-icon>
       </button>
@@ -41,20 +42,9 @@
         <ng-container *ngTemplateOutlet="content"></ng-container>
       </ng-container>
 
-      <!-- Brand lockup: shown only when the sidebar isn't (mobile drawer, or
-           desktop collapsed) — otherwise the sidebar mark already brands it. -->
-      <span class="top-bar__brand" *ngIf="!topBar.content()">
-        <img
-          class="top-bar__logo top-bar__logo--light"
-          src="assets/brand/logos/decentai-lockup-horizontal.svg"
-          alt="DecentAI"
-        />
-        <img
-          class="top-bar__logo top-bar__logo--dark"
-          src="assets/brand/logos/decentai-lockup-horizontal-dark.svg"
-          alt="DecentAI"
-        />
-      </span>
+      <!-- The brand, on a phone: there the sidebar that carries it is a
+           drawer, closed. -->
+      <span class="top-bar__brand" *ngIf="!topBar.content()">DecentAI</span>
 
       <div class="top-bar__spacer" *ngIf="!topBar.content()"></div>
 
@@ -98,6 +88,10 @@
           </span>
         </div>
 
+        <a mat-menu-item routerLink="/admin/profile" *ngIf="canSeeProfile">
+          <lucide-icon name="circle-user" [size]="16" [strokeWidth]="1.75" aria-hidden="true"></lucide-icon>
+          <span>Profile</span>
+        </a>
         <button
           *ngIf="hasAdminConsoleAccess"
           mat-menu-item
@@ -133,13 +127,13 @@
           ></lucide-icon>
         </button>
 
+        <a mat-menu-item routerLink="/guide" *ngIf="canSeeProfile">
+          <lucide-icon name="book-open" [size]="16" [strokeWidth]="1.75" aria-hidden="true"></lucide-icon>
+          <span>Guide</span>
+        </a>
         <button mat-menu-item (click)="logout()">
-          <lucide-icon
-            name="log-out"
-            [size]="16"
-            [strokeWidth]="1.75"
-          ></lucide-icon>
-          <span>Log out</span>
+          <lucide-icon name="log-out" [size]="16" [strokeWidth]="1.75" aria-hidden="true"></lucide-icon>
+          <span>Sign out</span>
         </button>
       </mat-menu>
     </header>

@@ -27,9 +27,9 @@
   z-index: 20;
 }
 
+/* Collapsed, it is a rail of icons: never nothing. */
 .sidebar-shell.is-collapsed {
-  width: 0;
-  border-right: none;
+  width: 56px;
 }
 
 /* ── Main column ─────────────────────────────────────────────────── */
@@ -77,29 +77,6 @@
 .icon-button:focus-visible {
   outline: 2px solid var(--ring);
   outline-offset: 1px;
-}
-
-.top-bar__logo {
-  height: 30px;
-  width: auto;
-  max-width: 40vw;
-  object-fit: contain;
-  margin-left: 4px;
-  user-select: none;
-}
-
-/* Themed lockups: ink on light, reversed (white text + emerald dot) on dark.
-   No invert filter — the emerald focal dot must keep its color. */
-.top-bar__logo--dark {
-  display: none;
-}
-
-:host-context(.dark) .top-bar__logo--light {
-  display: none;
-}
-
-:host-context(.dark) .top-bar__logo--dark {
-  display: inline-block;
 }
 
 .top-bar__spacer {
@@ -247,11 +224,18 @@
   display: none;
 }
 
-/* Desktop, sidebar expanded: the sidebar owns the brand — hide the
-   redundant top-bar lockup (revealed again on mobile / when collapsed). */
+/* On a wide screen the sidebar carries the brand, open or as a rail;
+   the bar carries it on a phone, in the same serif word. */
 .top-bar__brand {
   display: none;
   align-items: center;
+  margin-left: 4px;
+  color: var(--ink);
+  font-family: var(--font-serif);
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
 }
 
 @media (max-width: 900px) {
@@ -261,11 +245,6 @@
 
   .top-bar__brand {
     display: inline-flex;
-  }
-
-  .top-bar__logo {
-    height: 22px;
-    max-width: 46vw;
   }
 
   .sidebar-shell {
@@ -298,20 +277,6 @@
   .mobile-sidebar-backdrop.is-open {
     pointer-events: auto;
     opacity: 1;
-  }
-}
-
-/* Desktop: hamburger + brand lockup appear only when the drawer is collapsed
-   (the sidebar is width:0, so nothing brands the shell otherwise). */
-@media (min-width: 901px) {
-  .sidebar-shell.is-collapsed ~ .app-main .top-bar__menu,
-  .app-shell:has(.sidebar-shell.is-collapsed) .top-bar__menu {
-    display: flex;
-  }
-
-  .sidebar-shell.is-collapsed ~ .app-main .top-bar__brand,
-  .app-shell:has(.sidebar-shell.is-collapsed) .top-bar__brand {
-    display: inline-flex;
   }
 }
 
