@@ -19,8 +19,8 @@ The platform keeps a record of what agents did, and of what people changed. It i
 ## Reading it
 
 - **In a chat**, the *Activity & audit* dialog is that chat's trail as a timeline. Each row opens to its details; a function that stored a result can open the result itself.
-- **Settings → Audit → Mine** is your own trail across every chat you own, with search, event filters, a date window, and paging into the past.
-- **Settings → Audit → Organization** includes everyone's trail and organization events such as installs, grants, and sources. This view requires administrative access; without it the page shows your own trail and no tabs.
+- **Organization → Audit**, on *Mine*, is your own trail across every chat you own, with search, event filters, a date window, and paging into the past.
+- **Organization → Audit**, on *Organization*, includes everyone's trail and organization events such as installs, grants, and sources. This view requires administrative access; without it the page shows your own trail and no tabs.
 
 Your own trail is yours by default: reading what agents did for you is not a privilege to hand out.
 

@@ -23,7 +23,7 @@ The sidebar on the left is the map:
 | **Agents** | The agents installed in your organization, what each may do, and the marketplace they come from. |
 | **Data** | Saved data agents keep for you, files you and they have stored, skills, MCP servers, and secrets. |
 | **Settings** | Model providers, chat defaults and notifications, memory, API keys, connected apps, safety, monitoring, and the audit trail. |
-| **Help → Guide** | This guide. |
+| **Guide** | This guide, at the foot of the sidebar and in the menu on your name. |
 
 People, groups, roles and policies are not in the sidebar. Whoever administers the organization opens the menu on their name at the top right of the page and chooses **Admin console**: the sidebar becomes the administration's — **Account** with your Profile, and **IAM** with Organization, Users, Groups, Roles and Policies — and **Main workspace** in the same menu brings the workspace back.
 
@@ -43,6 +43,6 @@ The assistant will open the agent it needs, do the work, and answer. Beneath its
 
 - **Trust level.** Every agent function says whether it only views information, makes an ordinary change, makes a change with wider reach, or acts on an outside service. The shield in the chat header shows the chat's **trust level** — *Ask for every change*, *Standard*, *Trusted* or *Autonomous* — and what runs without asking at it. If an action needs more than the chat's level, the assistant pauses and shows you exactly what it wants to do.
 - **Nothing is invented.** The assistant's tables and files are rendered from stored results of real calls. Its plan is checked against what actually ran. If it could not verify something, it says so.
-- **Everything is recorded.** **Settings → Audit** and each chat's activity view show what ran, the inputs in outline, and the result — written by the platform, never by the assistant.
+- **Everything is recorded.** **Organization → Audit** and each chat's activity view show what ran, the inputs in outline, and the result — written by the platform, never by the assistant.
 
 Next: [Chats](/guide/chats), where most of the work happens.

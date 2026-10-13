@@ -10,7 +10,9 @@ The encrypted half is written once and never returned by any read. What a person
 
 ## Connected accounts
 
-Some credentials are not typed in. When an agent's credential is a Google, Microsoft or similar account, there is no form to fill in: the agent's Credentials tab shows **Connect account**, and on the Secrets page **Add secret** lists it as *Sign in with* the provider. You sign in with the provider in a new window, allow what the agent asked for, and come back with the credential made and named after the account. The platform keeps the tokens and renews them; the agent only ever receives a short-lived access token.
+Some credentials are not typed in. When an agent's credential is a Google, Microsoft or similar account, there is no form to fill in: the agent's Credentials tab shows **Connect account**, and on the Secrets page **Add a secret** lists it as *Sign in with* the provider.
+
+You sign in with the provider in a new window, allow what the agent asked for, and come back with the credential made and named after the account. The platform keeps the tokens and renews them; the agent only ever receives a short-lived access token.
 
 If the provider stops accepting the grant — you changed your password, an administrator revoked it — the credential shows **needs reconnect**, the agent says so in the chat, and **Reconnect** signs you in again without making a second credential.
 
@@ -22,7 +24,7 @@ Some agents cannot know in advance which sites you will send them to — a brows
 
 The next time, no card. A saved login is used again only by the agent you typed it for, on the site you typed it for: another agent, or the same agent on another site of the same company, shows a consent card first, and you can allow it, decline, or update the details. Two accounts on one site are two logins, and the agent asks which. A code the site sends you each time is asked each time and kept nowhere.
 
-Saved logins sit in their own section on the Secrets page: which agents are allowed on which sites, with each consent revocable, and a hand-over and a delete of its own on each.
+Saved logins have a group of their own in the column at the left of the Secrets page, by site: which agents are allowed on which sites, with each consent revocable, and a hand-over and a delete of its own on each.
 
 ## Who may use one
 
@@ -42,7 +44,9 @@ A person may keep their own credential — their own mailbox, their own calendar
 
 ## When an agent is updated
 
-An update may change the fields an agent's credential has. Credentials saved for that agent move to the new shape by themselves wherever the new shape asks for nothing they lack. One that lacks a newly required field is marked **outdated** on the Secrets page: open it, fill in what is asked, and save. A credential lent to the agent from elsewhere that no longer matches is refused when the agent tries to use it, and the agent's Credentials tab says it no longer fits: take it back and give the agent a credential of its own.
+An update may change the fields an agent's credential has. Credentials saved for that agent move to the new shape by themselves wherever the new shape asks for nothing they lack. One that lacks a newly required field is marked **outdated** on the Secrets page: open it, fill in what is asked, and save.
+
+A credential lent to the agent from elsewhere that no longer matches is refused when the agent tries to use it, and the agent's Credentials tab says it no longer fits: take it back and give the agent a credential of its own.
 
 ## Model provider keys
 

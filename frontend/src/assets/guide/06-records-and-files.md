@@ -18,10 +18,14 @@ A record an agent stored for you is private. You may share it with your groups, 
 
 ## Files
 
-**Data → Files** is where uploaded and produced files live: what you uploaded on the page or dropped into a chat, and what agents made — a filled document, a statement, a comparison workbook. The page groups them by where they came from. Each file is stored as bytes with a small metadata record; it can be downloaded, shared and deleted the same way a record can. A file's content is immutable: replacing one is a delete and a create. **Use in a chat** on any file opens a new chat with it attached, ready for you to say what to do with it.
+**Data → Files** is where uploaded and produced files live: what you uploaded on the page or dropped into a chat, and what agents made — a filled document, a statement, a comparison workbook. The page groups them by where they came from.
+
+Each file is stored as bytes with a small metadata record; it can be downloaded, shared and deleted the same way a record can. A file's content is immutable: replacing one is a delete and a create. **Use in a chat** on any file opens a new chat with it attached, ready for you to say what to do with it.
 
 Agents read files by reference — the reference the chat gives them when you attach a file, when you pick one from the card the assistant offers, or the reference another agent returned — and never modify an original.
 
 ## Skills
 
-**Data → Skills** holds short instructions your organization wrote for the assistant: how to write a customer quotation, what the expense policy says, how meeting notes are laid out. The assistant reads the catalog of skills in every chat — the first 40 unless the chat's *Skills listed* says otherwise, and only the ones chosen in the chat's Skills dialog when you chose — and pulls one in when the task calls for it. **Add skill** writes one, private to you until you share it. Authoring is a grant; reading is baseline.
+**Data → Skills** holds short instructions your organization wrote for the assistant: how to write a customer quotation, what the expense policy says, how meeting notes are laid out.
+
+The assistant reads the catalog of skills in every chat — the first 40 unless the chat's *Skills listed* says otherwise, and only the ones chosen in the chat's Skills dialog when you chose — and pulls one in when the task calls for it. **Add skill** writes one, private to you until you share it. Authoring is a grant; reading is baseline.
