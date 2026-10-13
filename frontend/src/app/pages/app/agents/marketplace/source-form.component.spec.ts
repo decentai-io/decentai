@@ -106,6 +106,13 @@ describe('SourceFormComponent', () => {
 
     component.draft.url = 'git@github.com:org/agents.git';
     expect(component.urlMessage).toBe('');
+    // What the backend refuses by name is refused here too; a folder is
+    // left to it, since a computer may allow local sources.
+    component.draft.url = 'http://github.com/org/agents.git';
+    expect(component.urlMessage).toContain('https://');
+    component.draft.url = '/home/me/agents';
+    expect(component.urlMessage).toBe('');
+    component.draft.url = 'git@github.com:org/agents.git';
     // What the server said about the last attempt stands there too.
     component.error = 'The repository could not be reached.';
     expect(component.urlMessage).toBe('The repository could not be reached.');

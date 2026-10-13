@@ -134,14 +134,20 @@ export class SourceFormComponent implements OnChanges {
     return this.isPrivate && !this.token.trim() && !this.hasStoredToken;
   }
 
-  /** What is wrong with the URL as typed: a repository is read over
-   *  https or ssh, and anything else is a typing mistake caught here
-   *  rather than after a failed read. */
+  /** What is wrong with the URL as typed, by the backend's own rule
+   *  (clean_url in the agents' repository service): https, ssh, the
+   *  user@host:path form, or a folder on a computer that allows local
+   *  sources. A typing mistake is caught here rather than after a
+   *  failed save; whether the address is allowed stays the backend's
+   *  to say. */
   get urlProblem(): string {
     const url = this.draft.url.trim();
     if (!url) return 'Enter the repository\'s URL.';
-    return /^(https?:\/\/|ssh:\/\/|git@)\S+$/.test(url)
-      ? '' : 'A repository URL starts with https:// or git@ and has no spaces.';
+    const remote = /^(https|ssh|git\+ssh|file):\/\/\S+$/.test(url)
+      || /^[A-Za-z0-9._-]+@[A-Za-z0-9.-]+:\S+$/.test(url);
+    const folder = /^(\/|[A-Za-z]:[\\/])/.test(url);
+    return remote || folder
+      ? '' : 'A repository URL starts with https:// or ssh://, or is written user@host:path.';
   }
 
   /** What stands under the URL: what is wrong with it once Save was
@@ -154,7 +160,7 @@ export class SourceFormComponent implements OnChanges {
    *  the likely one, so it is filled in to be read and changed. */
   nameFromUrl(): void {
     if (this.draft.name.trim() || this.urlProblem) return;
-    const last = this.draft.url.trim().replace(/\/+$/, '').split(/[\/:]/).pop() || '';
+    const last = this.draft.url.trim().replace(/[\\/]+$/, '').split(/[\\/:]/).pop() || '';
     this.draft.name = last.replace(/\.git$/, '');
   }
 
