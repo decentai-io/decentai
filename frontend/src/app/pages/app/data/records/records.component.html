@@ -6,9 +6,9 @@
   <div class="data-alert error" *ngIf="error" role="alert">{{ error }}</div>
   <div class="data-alert ok" *ngIf="notice" role="status">{{ notice }}</div>
 
-  <div class="side-layout">
+  <div class="side-layout" [class.has-opened]="opened">
     <app-filter-column
-      *ngIf="records.length"
+      *ngIf="records.length && !opened"
       label="Filter saved data"
       [groups]="filters"
       [chosen]="chosen"
@@ -85,7 +85,7 @@
         </thead>
         <tbody>
           <ng-container *ngFor="let record of pagedRecords">
-            <tr [class.is-selected]="isSelected(record)">
+            <tr [class.is-selected]="isSelected(record) || record.resource_ref === openRef">
               <td class="cell-check" *ngIf="canDelete">
                 <mat-checkbox
                   *ngIf="deletable(record)"
@@ -101,11 +101,22 @@
                 [class.num]="cellKind(record, column) === 'number'"
               >
                 <!-- The first column is the record's name, and the way in. -->
-                <button class="cell-open" type="button" *ngIf="first; else plain" (click)="openView(record)">
+                <a class="cell-open" *ngIf="first; else plain" [routerLink]="recordLink(record)" queryParamsHandling="preserve"
+                   [attr.aria-current]="record.resource_ref === openRef ? 'true' : null">
                   {{ cell(record, column) || recordName(record) }}
-                </button>
+                </a>
                 <ng-template #plain>
-                  <span [ngClass]="'records-' + cellKind(record, column)" [class.chip]="cellKind(record, column) === 'chip'">{{ cell(record, column) || '—' }}</span>
+                  <ng-container [ngSwitch]="cellKind(record, column)">
+                    <!-- A yes or a no is a mark, said in words to a screen reader. -->
+                    <span class="records-flag" *ngSwitchCase="'yes'">
+                      <lucide-icon name="check" [size]="16" aria-hidden="true"></lucide-icon><span class="visually-hidden">yes</span>
+                    </span>
+                    <span class="records-flag" *ngSwitchCase="'no'">
+                      <lucide-icon name="minus" [size]="16" aria-hidden="true"></lucide-icon><span class="visually-hidden">no</span>
+                    </span>
+                    <span class="chip" *ngSwitchCase="'chip'">{{ cell(record, column) }}</span>
+                    <span *ngSwitchDefault [ngClass]="'records-' + cellKind(record, column)">{{ cell(record, column) || '—' }}</span>
+                  </ng-container>
                 </ng-template>
               </td>
               <td class="cell-when" [title]="changedInFull(record)">{{ changed(record) }}</td>
@@ -121,6 +132,7 @@
                   <lucide-icon name="ellipsis-vertical" [size]="16" aria-hidden="true"></lucide-icon>
                 </button>
                 <mat-menu #recordMenu="matMenu">
+                  <a mat-menu-item [routerLink]="recordLink(record)" queryParamsHandling="preserve">Open</a>
                   <button mat-menu-item *ngIf="canUpdate && mayEdit(record)" (click)="startEdit(record)">Edit</button>
                   <button mat-menu-item *ngIf="canShare" (click)="openShare(record)">Share</button>
                   <button mat-menu-item *ngIf="canTransfer" (click)="requestTransfer(record)">Hand over</button>
@@ -183,6 +195,26 @@
         </ng-template>
       </ng-container>
     </app-list>
+
+    <!-- The record the address names: beside the list on a wide screen,
+         in its place on a narrow one. -->
+    <app-record-view
+      class="side-opened"
+      *ngIf="opened as record"
+      [record]="record"
+      [shape]="shapeOf(record)"
+      [name]="recordName(record)"
+      [kind]="kindLabelOf(record.resource_id)"
+      [agent]="agentNameOf(record.resource_id)"
+      [sharing]="shareSummary(record)"
+      (closed)="closeView()"
+    >
+      <button recordActions class="btn sm" type="button" *ngIf="canUpdate && canTouch(record) && mayEdit(record)" (click)="startEdit(record)">Edit</button>
+      <button recordActions class="btn sm" type="button" *ngIf="canShare && canTouch(record)" (click)="closeView(); openShare(record)">Share</button>
+      <button recordActions class="btn sm" type="button" *ngIf="canTransfer && canTouch(record)" (click)="requestTransfer(record)">Hand over</button>
+      <button recordActions class="btn ghost danger sm" type="button" *ngIf="canDelete && canTouch(record)"
+              [disabled]="busyRef === record.resource_ref" (click)="deleteOne(record)">Delete</button>
+    </app-record-view>
   </div>
 
   <ng-template #add>
@@ -196,69 +228,6 @@
       Add a record
     </button>
   </ng-template>
-
-  <!-- ── Viewing: the whole record, every field by its label ───────── -->
-  <ng-container *ngIf="viewTarget as record">
-    <div class="dialog-backdrop" (click)="closeView()">
-      <section class="info-dialog view-dialog" role="dialog" aria-modal="true"
-               aria-labelledby="record-view-title" (click)="$event.stopPropagation()">
-        <header class="dialog-head">
-          <span class="dialog-icon">
-            <lucide-icon name="database" [size]="21"></lucide-icon>
-          </span>
-          <div>
-            <h2 id="record-view-title">{{ recordName(record) }}</h2>
-            <p>
-              {{ kindLabelOf(record.resource_id) }} kept by {{ agentNameOf(record.resource_id) }}
-              · {{ shareSummary(record) }}
-            </p>
-          </div>
-          <button class="icon-button" type="button" (click)="closeView()" aria-label="Close">
-            <lucide-icon name="x" [size]="19"></lucide-icon>
-          </button>
-        </header>
-        <div class="dialog-body view-body">
-          <ng-container *ngIf="keyEntries(record).length">
-            <h3 class="view-section">Fields</h3>
-            <table class="view-table">
-              <tr *ngFor="let entry of keyEntries(record)">
-                <th [title]="entry.name">{{ entry.label }}</th>
-                <td [class.is-long]="entry.long">{{ entry.value }}</td>
-              </tr>
-            </table>
-          </ng-container>
-          <ng-container *ngIf="valueEntries(record).length">
-            <h3 class="view-section">Content</h3>
-            <div class="record-value" *ngFor="let entry of valueEntries(record)">
-              <span class="record-value-name" [title]="entry.name">{{ entry.label }}</span>
-              <pre class="record-value-text">{{ entry.text }}</pre>
-            </div>
-          </ng-container>
-          <p class="record-empty" *ngIf="!keyEntries(record).length && !valueEntries(record).length">
-            This record is empty.
-          </p>
-          <p class="view-stamp">
-            Created {{ dateLabel(record.created_at) }}
-            <ng-container *ngIf="record.updated_at && record.updated_at !== record.created_at">
-              · changed {{ dateLabel(record.updated_at) }}
-            </ng-container>
-            · <code>{{ record.resource_ref }}</code>
-          </p>
-        </div>
-        <footer class="dialog-actions">
-          <button class="btn danger" type="button" *ngIf="canDelete && canTouch(record)"
-                  (click)="closeView(); deleteOne(record)">
-            Delete
-          </button>
-          <button class="btn" type="button" *ngIf="canUpdate && canTouch(record) && mayEdit(record)"
-                  (click)="closeView(); startEdit(record)">
-            Edit
-          </button>
-          <button class="btn primary" type="button" (click)="closeView()">Close</button>
-        </footer>
-      </section>
-    </div>
-  </ng-container>
 
   <!-- ── Which kind? A dialog on the way to the form ────────────────── -->
   <div class="dialog-backdrop" *ngIf="pickerOpen" (click)="closePicker()">

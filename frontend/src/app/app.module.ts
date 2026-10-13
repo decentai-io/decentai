@@ -252,6 +252,7 @@ import { AuditComponent } from './pages/app/ai/audit/audit.component';
 import { FilesComponent } from './pages/app/data/files/files.component';
 import { FilePreviewComponent } from './pages/app/data/files/file-preview.component';
 import { RecordsComponent } from './pages/app/data/records/records.component';
+import { RecordViewComponent } from './pages/app/data/records/record-view.component';
 import { SecretsComponent } from './pages/app/secrets/secrets.component';
 import { SettingsComponent } from './pages/app/settings/settings.component';
 import { ChatDefaultsComponent } from './pages/app/settings/chat-defaults/chat-defaults.component';
@@ -310,6 +311,7 @@ import { AgentCardComponent } from './pages/app/agents/agent-card.component';
     FilesComponent,
     FilePreviewComponent,
     RecordsComponent,
+    RecordViewComponent,
     SecretsComponent,
     SettingsComponent,
     ChatDefaultsComponent,

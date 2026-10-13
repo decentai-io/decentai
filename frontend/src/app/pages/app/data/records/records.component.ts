@@ -14,6 +14,7 @@ import {
   AgentRecord, RecordField, RecordShape, RecordsService,
 } from 'src/app/services/records.service';
 import { DataPageBase } from '../../data-page-base';
+import { numberLabel } from './record-values';
 import { ShareEditor } from '../../share-editor';
 
 /** One kind an agent keeps, as the filter column shows it. */
@@ -86,6 +87,8 @@ export class RecordsComponent extends DataPageBase implements OnInit, OnDestroy 
   activeAgent = '';
   /** The kind half of the address. */
   private kindParam = '';
+  /** The record the address names, opened beside the list; '' for none. */
+  openRef = '';
   query = '';
   sort: Sort = BY_CHANGE;
   page = 1;
@@ -110,9 +113,6 @@ export class RecordsComponent extends DataPageBase implements OnInit, OnDestroy 
   editingRef = '';
   formFields: Record<string, any> = {};
   saving = false;
-
-  /** The record open in the View dialog, or null. */
-  viewTarget: AgentRecord | null = null;
 
   /** Who can see a record. An agent stored it privately; deciding to
    *  show it to a colleague is the person's call, not the agent's. */
@@ -143,7 +143,10 @@ export class RecordsComponent extends DataPageBase implements OnInit, OnDestroy 
       .pipe(filter((event) => event instanceof NavigationEnd))
       .subscribe(() => {
         this.readKind();
-        if (!this.loading) this.settleSelection();
+        if (!this.loading) {
+          this.settleSelection();
+          this.settleOpened();
+        }
       }));
     this.address.add(this.route.queryParamMap.subscribe((params) => {
       this.show = params.get('show') === 'shared' ? 'shared' : 'mine';
@@ -161,6 +164,7 @@ export class RecordsComponent extends DataPageBase implements OnInit, OnDestroy 
     this.profile = profile;
     this.loading = false;
     this.settleSelection();
+    this.settleOpened();
     this.shapes = await this.service.shapes().catch(() => []);
     this.share.peers = await this.profiles.peers().catch(() => []);
   }
@@ -173,6 +177,7 @@ export class RecordsComponent extends DataPageBase implements OnInit, OnDestroy 
     const params = this.route.snapshot.firstChild?.paramMap;
     const agent = params?.get('agent') ?? '';
     const kind = params?.get('kind') ?? '';
+    this.openRef = params?.get('ref') ?? '';
     if (agent === this.activeAgent && kind === this.kindParam) return;
     this.activeAgent = agent;
     this.kindParam = kind;
@@ -188,6 +193,33 @@ export class RecordsComponent extends DataPageBase implements OnInit, OnDestroy 
     return this.activeAgent === this.kindParam
       ? this.activeAgent
       : `${this.activeAgent}__${this.kindParam}`;
+  }
+
+  // ── The opened record ───────────────────────────────────────────────
+
+  get opened(): AgentRecord | null {
+    return this.records.find((record) => record.resource_ref === this.openRef) || null;
+  }
+
+  /** A ref that names no record the person can see goes back to its
+   *  kind, and says so. */
+  private settleOpened(): void {
+    if (!this.openRef || this.opened) return;
+    this.fail('That record is not one you can see any more.');
+    this.closeView();
+  }
+
+  /** Where a record is opened: its kind's address, then its ref. */
+  recordLink(record: AgentRecord): string[] {
+    const agent = this.agentOf(record.resource_id) || record.resource_id;
+    return ['/data/records', agent, this.kindOf(record.resource_id), record.resource_ref];
+  }
+
+  /** Back to the kind's list as it was: its search, its sort, its page. */
+  closeView(): void {
+    if (!this.activeAgent) return;
+    void this.router.navigate(['/data/records', this.activeAgent, this.kindParam],
+      { queryParamsHandling: 'preserve' });
   }
 
   /** Opens a kind: its address. */
@@ -539,46 +571,21 @@ export class RecordsComponent extends DataPageBase implements OnInit, OnDestroy 
     const value = record.keys?.[column.name];
     if (value === null || value === undefined || value === '') return '';
     if (column.type === 'boolean') return value ? 'yes' : 'no';
-    if (typeof value === 'number') return this.numberLabel(value);
+    if (typeof value === 'number') return numberLabel(value);
     return String(value);
   }
 
+  /** How a cell reads: a yes or a no as a mark, a select's choice as a
+   *  chip, a reference in mono, a number to the right. */
   cellKind(record: AgentRecord, column: Column): string {
     if (column.name === NAME_COLUMN) return 'text';
     const value = record.keys?.[column.name];
     if (value === null || value === undefined || value === '') return 'empty';
+    if (column.type === 'boolean' || typeof value === 'boolean') return value ? 'yes' : 'no';
     if (column.type === 'select') return 'chip';
     if (column.type === 'number' || typeof value === 'number') return 'number';
     if (typeof value === 'string' && /^[0-9a-f]{32}$/.test(value)) return 'ref';
     return 'text';
-  }
-
-  private numberLabel(value: number): string {
-    return Number.isInteger(value) ? String(value)
-      : value.toLocaleString(undefined, { maximumFractionDigits: 2 });
-  }
-
-  // ── The record, whole ───────────────────────────────────────────────
-
-  /** Every key, labelled, for the View dialog. */
-  keyEntries(record: AgentRecord): { name: string; label: string; value: string; long: boolean }[] {
-    return Object.entries(record.keys ?? {}).map(([name, value]) => {
-      const text = typeof value === 'string' ? value
-        : typeof value === 'number' ? this.numberLabel(value)
-        : JSON.stringify(value);
-      // A field an agent writes prose into — a site's notes, a summary —
-      // keeps its lines and reads whole, not as one collapsed cell.
-      return { name, label: this.fieldLabel(record, name), value: text,
-               long: text.length > 120 || text.includes('\n') };
-    });
-  }
-
-  valueEntries(record: AgentRecord): { name: string; label: string; text: string }[] {
-    return Object.entries(record.values ?? {}).map(([name, value]) => ({
-      name,
-      label: this.fieldLabel(record, name),
-      text: typeof value === 'string' ? value : JSON.stringify(value, null, 2),
-    }));
   }
 
   shareSummary(record: AgentRecord): string {
@@ -596,11 +603,6 @@ export class RecordsComponent extends DataPageBase implements OnInit, OnDestroy 
 
   changedInFull(record: AgentRecord): string {
     return fullDate(this.changedAt(record));
-  }
-
-  /** The whole date and time, for the record's own view. */
-  dateLabel(value?: string | null): string {
-    return fullDate(value);
   }
 
   // ── Authoring ───────────────────────────────────────────────────────
@@ -727,14 +729,6 @@ export class RecordsComponent extends DataPageBase implements OnInit, OnDestroy 
 
   // ── Actions ─────────────────────────────────────────────────────────
 
-  openView(record: AgentRecord): void {
-    this.viewTarget = record;
-  }
-
-  closeView(): void {
-    this.viewTarget = null;
-  }
-
   openShare(record: AgentRecord): void {
     if (this.share.isOpen(record.resource_ref)) return this.share.close();
     this.share.open(record.resource_ref, record.owner);
@@ -805,7 +799,7 @@ export class RecordsComponent extends DataPageBase implements OnInit, OnDestroy 
         }
         gone.push(this.recordName(record));
         this.selected.delete(record.resource_ref);
-        if (this.viewTarget?.resource_ref === record.resource_ref) this.viewTarget = null;
+        if (record.resource_ref === this.openRef) this.closeView();
       }
     } finally {
       this.busyRef = '';

@@ -1,0 +1,87 @@
+<header class="record-head">
+  <div class="record-words">
+    <h2 class="record-name">{{ name }}</h2>
+    <p class="record-line">
+      <span>{{ kind }}<ng-container *ngIf="agent"> kept by {{ agent }}</ng-container></span>
+      <span *ngIf="sharing">{{ sharing }}</span>
+      <span *ngIf="changed" [matTooltip]="changedInFull">changed {{ changed }}</span>
+    </p>
+  </div>
+  <button class="icon-btn sm" type="button" aria-label="Close the record" (click)="closed.emit()">
+    <lucide-icon name="x" [size]="16" aria-hidden="true"></lucide-icon>
+  </button>
+</header>
+
+<div class="record-actions"><ng-content select="[recordActions]"></ng-content></div>
+
+<!-- One value, shown as what it is. Used for a field, for a part of the
+     content, and again for what an object holds. -->
+<ng-template #shown let-value let-name="name">
+  <ng-container [ngSwitch]="value.kind">
+    <span class="record-none" *ngSwitchCase="'empty'">—</span>
+    <span *ngSwitchCase="'text'">{{ value.text }}</span>
+    <span class="record-number" *ngSwitchCase="'number'">{{ value.text }}</span>
+    <code class="record-ref" *ngSwitchCase="'ref'">{{ value.text }}</code>
+    <span class="chip" *ngSwitchCase="'chip'">{{ value.text }}</span>
+    <span class="record-flag" *ngSwitchCase="'flag'">
+      <lucide-icon [name]="value.on ? 'check' : 'minus'" [size]="16" aria-hidden="true"></lucide-icon>
+      <span class="visually-hidden">{{ value.on ? "yes" : "no" }}</span>
+    </span>
+    <div class="record-prose" *ngSwitchCase="'prose'">
+      <p *ngFor="let paragraph of value.paragraphs">{{ paragraph }}</p>
+    </div>
+    <span class="record-chips" *ngSwitchCase="'chips'">
+      <span class="chip" *ngFor="let item of value.items">{{ item }}</span>
+    </span>
+    <div class="record-table" *ngSwitchCase="'table'" tabindex="0" role="region" [attr.aria-label]="'The rows of ' + name">
+      <table class="table">
+        <thead><tr><th *ngFor="let column of value.columns">{{ column }}</th></tr></thead>
+        <tbody><tr *ngFor="let row of value.rows"><td *ngFor="let cell of row">{{ cell }}</td></tr></tbody>
+      </table>
+    </div>
+    <dl class="record-fields is-nested" *ngSwitchCase="'object'">
+      <ng-container *ngFor="let entry of value.entries">
+        <dt>{{ entry.name }}</dt>
+        <dd><ng-container *ngTemplateOutlet="shown; context: { $implicit: entry.value, name: entry.name }"></ng-container></dd>
+      </ng-container>
+    </dl>
+    <!-- Masked until asked for: a secret is not read over a shoulder. -->
+    <span class="record-secret" *ngSwitchCase="'secret'">
+      <code>{{ revealed.has(name) ? value.text : "••••••" }}</code>
+      <button class="btn ghost sm" type="button" [attr.aria-pressed]="revealed.has(name)" (click)="toggleReveal(name)">
+        {{ revealed.has(name) ? "Hide" : "Reveal" }}
+      </button>
+    </span>
+  </ng-container>
+</ng-template>
+
+<dl class="record-fields" *ngIf="fields.length">
+  <ng-container *ngFor="let entry of fields">
+    <dt>{{ entry.label }}</dt>
+    <dd><ng-container *ngTemplateOutlet="shown; context: { $implicit: entry.value, name: entry.name }"></ng-container></dd>
+  </ng-container>
+</dl>
+
+<!-- The content: what the record is for, under the label the agent
+     gave each part. -->
+<section class="record-part" *ngFor="let entry of content">
+  <h3 class="record-part-title">{{ entry.label }}</h3>
+  <ng-container *ngTemplateOutlet="shown; context: { $implicit: entry.value, name: entry.name }"></ng-container>
+</section>
+
+<app-empty *ngIf="!fields.length && !content.length" icon="database" title="This record is empty"></app-empty>
+
+<details class="fold record-raw" *ngIf="fields.length || content.length">
+  <summary>Show as JSON</summary>
+  <pre class="code-tile"><code>{{ json }}</code></pre>
+</details>
+
+<footer class="record-foot">
+  <span *ngIf="created">Created {{ created }}</span>
+  <span class="record-foot-ref">
+    <code>{{ record.resource_ref }}</code>
+    <button class="icon-btn sm" type="button" [attr.aria-label]="copied ? 'Copied' : 'Copy the reference'" (click)="copyRef()">
+      <lucide-icon [name]="copied ? 'check' : 'copy'" [size]="14" aria-hidden="true"></lucide-icon>
+    </button>
+  </span>
+</footer>

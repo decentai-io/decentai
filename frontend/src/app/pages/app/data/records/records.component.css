@@ -1,7 +1,7 @@
 /* The Saved data page. Its list is made of the shared pieces (the
    filter column, the list frame, the table and its toolbar:
    components/ui and styles/controls.scss); what is here is how a
-   record's values read in a cell, and the three dialogs that are still
+   record's values read in a cell, and the two dialogs that are still
    the page's own. */
 
 /* What the manifest says the open kind is. */
@@ -23,7 +23,12 @@
   color: var(--ink-3);
 }
 
-/* ── The dialogs: viewing a record, choosing a kind, the form ──────── */
+.records-flag {
+  display: inline-flex;
+  color: var(--ink-2);
+}
+
+/* ── The dialogs: choosing a kind, the form ────────────────────────── */
 .icon-button.danger:hover { color: var(--destructive-strong); }
 
 /* ── Authoring: the kind picker, the generated form ─────────────────── */
@@ -49,36 +54,3 @@
 .form-dialog .field-label { display: flex; align-items: baseline; gap: 8px; font-size: var(--ui-text-xs); font-weight: 600; }
 .form-dialog .field-label em { font-style: normal; font-weight: 400; color: var(--ink-2); }
 .rec-json { font-family: var(--font-mono); font-size: 12px; resize: vertical; }
-
-/* ── The record, whole ──────────────────────────────────────────────── */
-.view-dialog { width: min(720px, 92vw); }
-.view-body { display: flex; flex-direction: column; gap: 8px; max-height: 62vh; overflow-y: auto; }
-.view-section {
-  margin: 4px 0 0; font-size: var(--ui-text-xs); font-weight: 600;
-  text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-2);
-}
-.view-table { border-collapse: collapse; width: 100%; }
-.view-table tr { border-bottom: 1px solid color-mix(in srgb, var(--border) 55%, transparent); }
-.view-table tr:last-child { border-bottom: 0; }
-.view-table th {
-  padding: 7px 14px 7px 2px; text-align: left; vertical-align: top;
-  font-size: var(--ui-text-xs); font-weight: 600; color: var(--ink-2);
-  white-space: nowrap; width: 1%;
-}
-.view-table td { padding: 7px 2px; font-size: var(--ui-text-sm); overflow-wrap: anywhere; }
-.view-table td.is-long { white-space: pre-wrap; line-height: 1.55; }
-.record-value { display: flex; flex-direction: column; gap: 4px; }
-.record-value-name {
-  font-size: 11px; font-weight: 600; letter-spacing: 0.02em;
-  text-transform: uppercase; color: var(--muted-foreground);
-}
-.record-value-text {
-  margin: 0; padding: 8px 10px;
-  border: 1px solid var(--border); border-radius: var(--ui-radius-card); background: var(--secondary);
-  color: var(--foreground);
-  font-family: var(--font-mono); font-size: 12.5px; line-height: 1.5;
-  white-space: pre-wrap; word-break: break-word; max-height: 320px; overflow: auto;
-}
-.record-empty { margin: 0; font-size: 12.5px; color: var(--muted-foreground); }
-.view-stamp { margin: 6px 0 0; color: var(--ink-2); font-size: var(--ui-text-xs); }
-.view-stamp code { font-size: 11px; }

@@ -6,7 +6,7 @@
   <div class="data-alert error" *ngIf="error" role="alert">{{ error }}</div>
   <div class="data-alert ok" *ngIf="notice" role="status">{{ notice }}</div>
 
-  <div class="side-layout files-layout" [class.has-opened]="opened">
+  <div class="side-layout" [class.has-opened]="opened">
     <app-filter-column
       *ngIf="files.length && !opened"
       label="Filter files"
@@ -250,7 +250,7 @@
     <!-- The file the address names: beside the list on a wide screen,
          in its place on a narrow one. -->
     <app-file-preview
-      class="files-opened"
+      class="side-opened"
       *ngIf="opened as file"
       [file]="file"
       [source]="sourceLabel(file)"

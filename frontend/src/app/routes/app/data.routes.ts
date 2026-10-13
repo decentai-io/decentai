@@ -35,6 +35,8 @@ export const DataRoutes: Routes = [
     children: [
       { path: '', pathMatch: 'full', children: [] },
       { path: ':agent/:kind', children: [] },
+      // One record of the kind, opened beside its list.
+      { path: ':agent/:kind/:ref', children: [] },
     ],
   },
   {

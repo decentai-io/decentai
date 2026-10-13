@@ -895,6 +895,40 @@ div.mat-mdc-select-panel {
   grid-column: 1 / -1;
 }
 
+/* One thing of the list, opened (a file, a record): a 480px panel
+   beside the list, which narrows; the page leaves the filter column
+   out to give it the room. Under 1200px there is no room for both, and
+   the opened thing takes the list's place. */
+.side-layout.has-opened {
+  grid-template-columns: minmax(0, 1fr) 480px;
+  gap: 16px;
+}
+
+.side-opened {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  animation: arrive var(--dur-2) var(--ease);
+}
+
+@media (max-width: 1200px) {
+  .side-layout.has-opened {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .side-layout.has-opened > app-list {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .side-opened {
+    animation: none;
+  }
+}
+
 /* ── A list's toolbar ────────────────────────────────────────────────
    What goes in the toolbar of <app-list> says where it sits: the
    search grows (`toolbar-search`), the sort is as wide as its words
