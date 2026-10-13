@@ -37,6 +37,24 @@
   line-height: var(--lh-base);
 }
 
+/* The way to the Guide's chapter on this page. */
+.page-guide {
+  margin-left: 4px;
+  color: var(--accent-ink);
+  white-space: nowrap;
+}
+
+.page-guide:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.page-guide:focus-visible {
+  outline: none;
+  border-radius: var(--r-sm);
+  box-shadow: var(--focus);
+}
+
 .page-actions {
   display: flex;
   flex: none;

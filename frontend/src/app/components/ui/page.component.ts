@@ -1,5 +1,6 @@
 import { NgIf } from '@angular/common';
 import { Component, Input } from '@angular/core';
+import { RouterLink } from '@angular/router';
 
 /**
  * The frame of a page: its one title, one sentence saying what the page
@@ -12,18 +13,23 @@ import { Component, Input } from '@angular/core';
  *
  * What is marked `pageActions` sits at the right of the title. A page
  * of fields is read at 720px; a page that is a table or a list of wide
- * rows sets `wide`.
+ * rows sets `wide`. `guide` names the chapter of the Guide that
+ * explains the page ("chats", or "chats#approvals" for one heading):
+ * the sentence then ends in a link to it.
  */
 @Component({
   selector: 'app-page',
   standalone: true,
-  imports: [NgIf],
+  imports: [NgIf, RouterLink],
   styleUrl: './page.component.css',
   template: `
     <header class="page-head">
       <div class="page-words">
         <h1 class="page-title">{{ title }}</h1>
-        <p class="page-sentence" *ngIf="sentence">{{ sentence }}</p>
+        <p class="page-sentence" *ngIf="sentence">
+          {{ sentence }}
+          <a class="page-guide" *ngIf="guide" [routerLink]="['/guide', chapter]" [fragment]="heading">Learn more</a>
+        </p>
       </div>
       <div class="page-actions"><ng-content select="[pageActions]"></ng-content></div>
     </header>
@@ -35,4 +41,9 @@ export class PageComponent {
   @Input({ required: true }) title = '';
   @Input() sentence = '';
   @Input() wide = false;
+  /** The Guide's chapter for this page, with a heading after a #. */
+  @Input() guide = '';
+
+  get chapter(): string { return this.guide.split('#')[0]; }
+  get heading(): string | undefined { return this.guide.split('#')[1] || undefined; }
 }
