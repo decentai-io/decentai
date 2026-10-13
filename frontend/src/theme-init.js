@@ -19,5 +19,5 @@
   // The browser's own chrome takes the page's colour: --bg in
   // tailwind.css, written out because the stylesheet is not read yet.
   var meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) meta.setAttribute('content', dark ? '#0f0e0d' : '#faf9f7');
+  if (meta) meta.setAttribute('content', dark ? '#0f0e0d' : '#ffffff');
 })();

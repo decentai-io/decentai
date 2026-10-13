@@ -31,7 +31,7 @@
   --n-950: #0f0e0d;
 
   /* ── Colour, by meaning ────────────────────────────────────────── */
-  --bg: var(--n-50);              /* the page */
+  --bg: var(--n-0);               /* the page: white */
   --surface: var(--n-0);          /* cards, composer, menus */
   --surface-2: var(--n-100);      /* hover, table header, chips */
   --surface-3: var(--n-200);      /* pressed, selected row */

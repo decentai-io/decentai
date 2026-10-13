@@ -1,5 +1,6 @@
-/* The page frame: a column 720px wide at most (1040px when wide), the
-   title row, then the page. */
+/* The page frame: the title row, then the page. A page of fields is a
+   column 720px wide at most, which is as wide as a form reads well; a
+   page that is a list or a table (wide) takes the width it is given. */
 :host {
   display: block;
   max-width: 720px;
@@ -7,7 +8,7 @@
 }
 
 :host(.is-wide) {
-  max-width: 1040px;
+  max-width: none;
 }
 
 .page-head {
