@@ -16,7 +16,7 @@ import { DataPageBase } from '../data-page-base';
 import { Peer, ShareEditor, SharingChip } from '../share-editor';
 import { SecretFormComponent, SecretFormData, SecretFormResult } from './secret-form.component';
 import {
-  Consent, agentLabel, agentsUsing, consentsOf, definitionOf, identifier, isOauth, isOutdated, isSiteLogin,
+  Consent, agentLabel, agentsUsing, consentsOf, definitionOf, deleteQuestion, identifier, isOauth, isOutdated, isSiteLogin,
   lentTo, loginHost, needsReconnect, secretTitle,
 } from './secret-shared';
 
@@ -393,21 +393,12 @@ export class SecretsComponent extends DataPageBase implements OnInit, OnDestroy 
    *  saved for is left without one, and it is taken back from the
    *  agents it was lent to. Deleting does both; it is not refused. */
   async askDelete(secret: Secret): Promise<void> {
-    const lent = lentTo(secret).map((agent) => agent.name);
-    const sure = await this.confirm.ask({
-      title: `Delete ${secretTitle(secret)}?`,
-      body: [
-        'The stored values are destroyed and cannot be read back.',
-        secret.home_agent ? `${agentLabel(secret.home_agent.name)} is left without it and will need another.` : '',
-        lent.length ? `It is lent to ${lent.join(' and ')}; deleting takes it back from ${lent.length === 1 ? 'it' : 'them'}.` : '',
-      ].filter(Boolean).join(' '),
-      confirm: lent.length ? 'Take back and delete' : 'Delete',
-      danger: true,
-    });
+    const question = deleteQuestion(secret);
+    const sure = await this.confirm.ask({ ...question, danger: true });
     if (!sure) return;
     this.busyRef = secret.resource_ref;
     try {
-      const result = await this.service.remove(secret.resource_ref, lent.length > 0);
+      const result = await this.service.remove(secret.resource_ref, question.takeBack);
       if (result.error) return this.fail(result.error);
       if (secret.resource_ref === this.openRef) this.closeOpened();
       await this.reload();

@@ -1,4 +1,5 @@
 import { SimpleChange, SimpleChanges } from '@angular/core';
+import { of } from 'rxjs';
 
 import { AgentCredentialsComponent } from './agent-credentials.component';
 
@@ -15,7 +16,7 @@ describe('AgentCredentialsComponent', () => {
     }, {} as SimpleChanges);
   }
 
-  function create(secrets: any = {}, definitions: any = {}, agents: any = {}) {
+  function create(secrets: any = {}, definitions: any = {}, agents: any = {}, dialog: any = {}) {
     const component = new AgentCredentialsComponent(
       {
         list: async () => [],
@@ -33,9 +34,11 @@ describe('AgentCredentialsComponent', () => {
       } as any,
       // Connecting an account opens a popup; nothing here does.
       {} as any,
-      // Nor does anything here open the form or ask before a delete.
+      // The dialog, the question before a delete, and the profile the
+      // dialog is handed: a test that needs one passes its own.
+      dialog as any,
       {} as any,
-      {} as any,
+      { get: async () => null, peers: async () => [] } as any,
     );
     component.agent = {
       agent_id: 'agt_1',
@@ -56,7 +59,6 @@ describe('AgentCredentialsComponent', () => {
   it('hands back the same empty array every time, not a new one', () => {
     const component = create();
 
-    expect(component.fieldsFor('nothing')).toBe(component.fieldsFor('nothing'));
     expect(component.savedSecrets('nothing')).toBe(component.savedSecrets('nothing'));
   });
 
@@ -92,7 +94,6 @@ describe('AgentCredentialsComponent', () => {
     await component.ngOnChanges(changed(['agent']));
 
     expect(asked).toEqual({ definition_ref: 'agt_1__connection/v1' });
-    expect(component.fieldsFor('agt_1__connection').length).toBe(1);
   });
 
   it('knows when several credentials exist and none was pinned', async () => {
@@ -230,20 +231,32 @@ describe('AgentCredentialsComponent', () => {
     expect(component.stateOf(credential)).toEqual({ words: 'Using B, which you pinned.', warn: false });
   });
 
-  it('keeps the form open and says what a required field needs', async () => {
-    let created = false;
+  it('opens the one secret dialog on the shape the agent approved', async () => {
+    const definition = { definition_ref: 'agt_1__connection/v1', label: 'Jira Connection', fields: [] };
+    let opened: any = null;
+    let listed = 0;
     const component = create(
-      { create: async () => { created = true; return {}; } },
-      { get: async () => ({ definition: { fields: [
-        { name: 'token', label: 'API token', type: 'secret', storage: 'values', required: true, options: [] },
-      ] } }) },
+      { list: async () => { listed += 1; return []; } },
+      { get: async () => ({ definition }) },
+      {},
+      { open: (_form: unknown, config: any) => {
+        opened = config.data;
+        return { afterClosed: () => of({ notice: 'Secret created.', ref: 'sec_9' }) };
+      } },
     );
+    const said: string[] = [];
+    component.flashed.subscribe((text) => said.push(text));
     await component.ngOnChanges(changed(['agent']));
+    const before = listed;
 
-    await component.save(credential);
+    await component.openForm(credential);
 
-    expect(created).toBeFalse();
-    expect(component.errorFor(credential, 'token')).toBe('Enter API token.');
+    // The pinned version, with no choosing among shapes.
+    expect(opened.definition).toBe(definition);
+    expect(opened.definitions).toEqual([definition]);
+    // What it made is read back, and the person is told.
+    expect(listed).toBe(before + 1);
+    expect(said).toEqual(['Secret created. This agent can use it now.']);
   });
 
   it('takes a granted credential back', async () => {

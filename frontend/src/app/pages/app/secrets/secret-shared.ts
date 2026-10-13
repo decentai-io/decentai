@@ -150,3 +150,20 @@ export function shownFields(secret: Secret, definitions: SecretDefinition[]): Sh
     hidden: field.storage === 'values',
   }));
 }
+
+/** What deleting a secret is asked with, on the Secrets page and on an
+ *  agent's own: what is lost, who is left without it, and whether it
+ *  has to be taken back from agents it is lent to first. */
+export function deleteQuestion(secret: Secret): { title: string; body: string; confirm: string; takeBack: boolean } {
+  const lent = lentTo(secret).map((agent) => agent.name);
+  return {
+    title: `Delete ${secretTitle(secret)}?`,
+    body: [
+      'The stored values are destroyed and cannot be read back.',
+      secret.home_agent ? `${agentLabel(secret.home_agent.name)} is left without it and will need another.` : '',
+      lent.length ? `It is lent to ${lent.join(' and ')}; deleting takes it back from ${lent.length === 1 ? 'it' : 'them'}.` : '',
+    ].filter(Boolean).join(' '),
+    confirm: lent.length ? 'Take back and delete' : 'Delete',
+    takeBack: lent.length > 0,
+  };
+}

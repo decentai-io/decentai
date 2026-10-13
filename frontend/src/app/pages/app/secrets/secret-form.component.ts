@@ -22,6 +22,9 @@ export interface SecretFormData {
   secret?: Secret;
   /** Open on lending this secret, and nothing else. */
   lend?: Secret;
+  /** Add one of this shape, with no choosing: an agent's own page
+   *  knows which shape its slot takes, and at which version. */
+  definition?: SecretDefinition;
 }
 
 /** What it closes with when something was done: what the page says. */
@@ -105,6 +108,7 @@ export class SecretFormComponent implements OnInit {
     if (this.data.lend) return this.startLend(this.data.lend.resource_ref);
     if (this.data.secret) return this.startEdit(this.data.secret);
     this.share.open('new', undefined);
+    if (this.data.definition) this.choose(this.data.definition);
   }
 
   get myUserId(): string {
