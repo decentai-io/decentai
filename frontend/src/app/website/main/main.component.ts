@@ -27,6 +27,8 @@ import { WorkSwitchService } from 'src/app/services/work-switch.service';
 import { AlertComponent } from 'src/app/components/alert/alert.component';
 import { ContentView } from '../config/config.model';
 import { adminConsoleActions } from '../config/config';
+import { AttentionService } from 'src/app/services/attention.service';
+import { ShellStatusService } from 'src/app/services/shell-status.service';
 import { TopBarService } from 'src/app/services/top-bar.service';
 
 /** Below this width the sidebar becomes a modal drawer (see *.css). */
@@ -86,6 +88,9 @@ export class MainComponent implements OnInit, OnDestroy {
 
   /** A newer version of the app has been fetched and waits for a reload. */
   updateReady = false;
+  /** The backend answered that nobody is signed in any more. */
+  sessionEnded = false;
+  offline = false;
 
   private readonly subscriptions = new Subscription();
   private readonly collapsedPreferenceKey = 'decentai.sidebar-collapsed';
@@ -109,6 +114,8 @@ export class MainComponent implements OnInit, OnDestroy {
     private workSwitch: WorkSwitchService,
     private updates: SwUpdate,
     readonly topBar: TopBarService,
+    private shellStatus: ShellStatusService,
+    private attention: AttentionService,
   ) {}
 
   /** The drawer leaves the tab order while it is closed on a phone.
@@ -151,6 +158,12 @@ export class MainComponent implements OnInit, OnDestroy {
       this.workSwitch.stopped$.subscribe((stopped) => (this.workStopped = stopped)),
     );
     this.subscriptions.add(this.topBar.stopAsked.subscribe(() => this.stopEverything()));
+    this.subscriptions.add(this.shellStatus.offline$.subscribe((offline) => (this.offline = offline)));
+    this.subscriptions.add(this.shellStatus.sessionEnded$.subscribe((ended) => {
+      this.sessionEnded = ended;
+      // Nothing more is asked of a backend that knows nobody.
+      if (ended) this.attention.stop();
+    }));
     void this.workSwitch.refresh();
 
     // The service worker keeps serving the version it has until the page
@@ -309,6 +322,20 @@ export class MainComponent implements OnInit, OnDestroy {
   }
 
   reloadForUpdate(): void {
+    document.location.reload();
+  }
+
+  /** The one line under the top bar, the most pressing first. */
+  get bar(): 'session' | 'offline' | 'stopped' | 'update' | '' {
+    if (this.sessionEnded) return 'session';
+    if (this.offline) return 'offline';
+    if (this.workStopped) return 'stopped';
+    return this.updateReady ? 'update' : '';
+  }
+
+  /** The app is loaded again on the address it is at: it finds no
+   *  session, shows the sign-in, and comes back to this page after. */
+  signInAgain(): void {
     document.location.reload();
   }
 

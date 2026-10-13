@@ -138,31 +138,32 @@
       </mat-menu>
     </header>
 
-    <!-- The person stopped everything of theirs: said on every page,
-         with the one way back. -->
-    <div class="stopped-bar" *ngIf="workStopped" role="status">
-      <lucide-icon name="octagon-x" [size]="16" [strokeWidth]="1.75"></lucide-icon>
-      <span class="stopped-bar__text">
-        You stopped everything. Nothing of yours runs until you resume.
-      </span>
-      <button
-        type="button"
-        class="stopped-bar__resume"
-        (click)="resumeEverything()"
-        [disabled]="switching"
-      >
-        Resume
-      </button>
-    </div>
-
-    <!-- A newer version is ready: said once, quietly, with the way to it. -->
-    <div class="update-bar" *ngIf="updateReady" role="status">
-      <lucide-icon name="refresh-cw" [size]="15" [strokeWidth]="1.75"></lucide-icon>
-      <span class="update-bar__text">A new version is ready.</span>
-      <button type="button" class="update-bar__reload" (click)="reloadForUpdate()">
-        Reload
-      </button>
-    </div>
+    <!-- What the shell has to say, one line at a time, the most
+         pressing first: the session ended, the browser is offline, the
+         person stopped everything, a newer version is ready. -->
+    <ng-container [ngSwitch]="bar">
+      <div class="shell-bar is-warn" *ngSwitchCase="'session'" role="alert">
+        <lucide-icon name="log-out" [size]="16" [strokeWidth]="1.75" aria-hidden="true"></lucide-icon>
+        <span class="shell-bar__text">Your session ended. Sign in again to continue.</span>
+        <button type="button" class="btn sm" (click)="signInAgain()">Sign in</button>
+      </div>
+      <div class="shell-bar is-warn" *ngSwitchCase="'offline'" role="status">
+        <lucide-icon name="wifi-off" [size]="16" [strokeWidth]="1.75" aria-hidden="true"></lucide-icon>
+        <span class="shell-bar__text">You are offline. Changes wait until you are back.</span>
+      </div>
+      <div class="shell-bar is-warn" *ngSwitchCase="'stopped'" role="status">
+        <lucide-icon name="octagon-x" [size]="16" [strokeWidth]="1.75" aria-hidden="true"></lucide-icon>
+        <span class="shell-bar__text">You stopped everything. Nothing of yours runs until you resume.</span>
+        <button type="button" class="btn sm" (click)="resumeEverything()" [disabled]="switching">Resume</button>
+      </div>
+      <!-- Said quietly: a reload of its own accord would take a
+           half-written message with it. -->
+      <div class="shell-bar" *ngSwitchCase="'update'" role="status">
+        <lucide-icon name="refresh-cw" [size]="16" [strokeWidth]="1.75" aria-hidden="true"></lucide-icon>
+        <span class="shell-bar__text">A new version is ready.</span>
+        <button type="button" class="btn sm" (click)="reloadForUpdate()">Reload</button>
+      </div>
+    </ng-container>
 
     <!-- Page header (breadcrumb + title) -->
     <div class="page-bar" *ngIf="currentPageTitle && !pageBarHidden">

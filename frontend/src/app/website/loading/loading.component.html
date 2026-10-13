@@ -15,8 +15,11 @@
 
     <div class="loading-status">
       <div class="loading-spinner" aria-hidden="true"></div>
-      <p class="loading-text" role="status">Loading DecentAI…</p>
+      <p class="loading-text" role="status">
+        {{ unreachable ? "The server cannot be reached. Trying again…" : "Loading DecentAI…" }}
+      </p>
     </div>
+    <button class="btn" type="button" *ngIf="unreachable" (click)="retry.emit()">Try now</button>
 
     <div class="loading-bar" aria-hidden="true">
       <span class="loading-bar__fill"></span>
