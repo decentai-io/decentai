@@ -52,6 +52,24 @@ describe('InstallReviewComponent', () => {
     ]);
   });
 
+  it('says where the code is, at the commit that would be installed', () => {
+    const component = create({ id: 'jira', path: 'agents/jira', manifest: manifest() });
+    component.source = { source_id: 'one', name: 'One', url: 'https://example.test/org/agents.git', sha: 'abc123' } as any;
+    expect(component.codeLink).toBe('https://example.test/org/agents/tree/abc123/agents/jira');
+    expect(component.codePlace).toBe('https://example.test/org/agents.git · agents/jira');
+
+    // A repository a browser cannot open is named, not linked.
+    component.source = { source_id: 'one', name: 'One', url: 'git@example.test:org/agents.git', sha: 'abc123' } as any;
+    expect(component.codeLink).toBe('');
+  });
+
+  it('folds only a README too long for its first screen', () => {
+    const short = create({ id: 'jira', manifest: manifest(), readme: '# Jira' });
+    expect(short.readmeLong).toBeFalse();
+    const long = create({ id: 'jira', manifest: manifest(), readme: 'x'.repeat(2000) });
+    expect(long.readmeLong).toBeTrue();
+  });
+
   it('has nothing to say about changes on a first install', () => {
     const component = create({ id: 'jira', manifest: manifest() });
 

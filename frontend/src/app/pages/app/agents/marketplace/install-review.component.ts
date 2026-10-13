@@ -1,4 +1,7 @@
-import { Component, EventEmitter, Input, Output } from '@angular/core';
+import { Component, Input } from '@angular/core';
+import { MarkdownService } from 'ngx-markdown';
+
+import { ChatMarkdownService } from '../../ai/chat/chat-message/chat-markdown.service';
 
 import { AgentSource, CatalogEntry } from 'src/app/services/agents.service';
 import {
@@ -12,12 +15,19 @@ interface ReviewedFunction {
   level: number | null;
 }
 
+/** How long a README is shown whole; a longer one is folded. */
+const README_FOLD_CHARS = 900;
+
+let created = 0;
+
 /**
- * What installing an agent would agree to.
+ * What installing one agent would agree to, in the order a careful
+ * person reads it: what it is and its README, what an update changes,
+ * what it needs by name, where it connects, what it may do, and the
+ * code. The page around it (the title, Approve) is the marketplace's;
+ * in a review of several agents each is one of these, in brief.
  *
- * The whole approval step: every function the manifest declares and the
- * permission each one needs, what the agent wants to keep, and what it
- * would install to run. On an update it also says what CHANGED — a
+ * On an update it also says what CHANGED — a
  * version number says something is different, this says what, which is
  * the only form of the question an administrator can actually answer.
  *
@@ -28,11 +38,10 @@ interface ReviewedFunction {
   selector: 'app-install-review',
   standalone: false,
   templateUrl: './install-review.component.html',
-  styleUrls: [
-    '../../data-shared.css',
-    '../agent-shared.css',
-    './marketplace.component.css',
-  ],
+  styleUrls: ['../agent-shared.css', './install-review.component.css'],
+  // A README is somebody else's markdown: what it would load from
+  // elsewhere is taken out, as in a chat.
+  providers: [{ provide: MarkdownService, useClass: ChatMarkdownService }],
 })
 export class InstallReviewComponent {
   @Input() source!: AgentSource;
@@ -43,40 +52,16 @@ export class InstallReviewComponent {
   /** Reading an agent that is already installed and current: the page
    *  shows what was agreed to, and offers nothing to approve. */
   @Input() installed = false;
-  @Input() loading = false;
-  @Input() busy = false;
+  /** One of several agents under review: its own name at the head,
+   *  no README, and the functions folded. */
+  @Input() brief = false;
 
-  @Output() approve = new EventEmitter<void>();
-  @Output() close = new EventEmitter<void>();
+  /** For the ids that tie each section to its title. */
+  readonly id = `reading-${++created}`;
+  readmeOpen = false;
 
   /** The same naming the installed agent's Functions tab uses. */
   levelLabel = levelLabel;
-  /** What each level means. Whether a function asks first depends on
-   *  the chat that calls it: it asks when its level is above that
-   *  chat's trust level. */
-  readonly permissionMeaning: Record<string, { label: string; title: string; description: string }> = {
-    'Reads': {
-      label: 'Reads',
-      title: 'Reads information',
-      description: 'Looks up data available to the agent and changes nothing. Runs in every chat without asking.',
-    },
-    'Changes': {
-      label: 'Changes',
-      title: 'Changes data inside the platform',
-      description: 'Creates or updates records this agent keeps. Asks first in a chat whose trust level is 0.',
-    },
-    'Wider change': {
-      label: 'Wider change',
-      title: 'Makes a change with wider reach',
-      description: 'Still inside the platform. Asks first in a chat whose trust level is below 2.',
-    },
-    'Outside action': {
-      label: 'Outside action',
-      title: 'Acts outside DecentAI',
-      description: 'Contacts or changes an outside service. Asks first in every chat whose trust level is below 3.',
-    },
-  };
-
   get manifest(): any {
     return this.entry?.manifest || {};
   }
@@ -133,6 +118,37 @@ export class InstallReviewComponent {
 
   get dependencies(): string[] {
     return this.manifest.implementation?.dependencies || [];
+  }
+
+  /** The kinds of record or file a group keeps, by name. */
+  kindsOf(group: { items: any[] }): string {
+    return group.items.map((item) => item.label || item.id).join(', ');
+  }
+
+  get readmeLong(): boolean {
+    return (this.entry?.readme || '').length > README_FOLD_CHARS;
+  }
+
+  /** Where the code is, in words: the repository and the agent's
+   *  folder in it. */
+  get codePlace(): string {
+    const folder = this.entry?.path && this.entry.path !== '.' ? ` · ${this.entry.path}` : '';
+    return `${this.source?.url || ''}${folder}`;
+  }
+
+  /** The agent's folder at the commit that would be installed, where
+   *  the repository is one a browser can open. */
+  get codeLink(): string {
+    const url = String(this.source?.url || '').replace(/\.git$/, '');
+    if (!/^https:\/\//.test(url)) return '';
+    if (!this.source.sha) return url;
+    const folder = this.entry?.path && this.entry.path !== '.' ? `/${this.entry.path}` : '';
+    return `${url}/tree/${this.source.sha}${folder}`;
+  }
+
+  /** The package kept at the last approval, short enough to read. */
+  get digest(): string {
+    return String(this.approved?.package_digest || '').replace('sha256:', '').slice(0, 12);
   }
 
   /** Where the agent connects: part of what approving agrees to. */
@@ -207,22 +223,6 @@ export class InstallReviewComponent {
     ];
   }
 
-  /** Functions grouped by the TOOL that carries them — the manifest's
-   *  own structure, and the hierarchy the flat list was missing. */
-  get toolGroups(): Array<{
-    tool: string; description: string; functions: ReviewedFunction[];
-  }> {
-    return (this.manifest.tools || []).map((tool: any) => ({
-      tool: tool.id || tool.name || 'tool',
-      description: tool.description || '',
-      functions: (tool.functions || []).map((fn: any) => ({
-        name: fn.id || fn.name,
-        description: fn.description || '',
-        level: fn.permission_level ?? tool.permission_level ?? null,
-      })),
-    })).filter((group: any) => group.functions.length);
-  }
-
   private functionsOf(manifest: any): ReviewedFunction[] {
     return (manifest?.tools || []).flatMap((tool: any) =>
       (tool.functions || []).map((fn: any) => ({
@@ -237,13 +237,4 @@ export class InstallReviewComponent {
     return ['secrets', 'data', 'files'].flatMap((kind) =>
       (declared[kind] || []).map((item: any) => `${kind}:${item.id}`));
   }
-
-  permissionLabel(level: string): string {
-    return this.permissionMeaning[level]?.label || level;
-  }
-
-  toolName(value: string): string {
-    return value.replace(/[_-]+/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
-  }
-
 }

@@ -207,6 +207,11 @@ What the agent does, what it will not do, what it needs bound before it
 works, and — for an example — which platform feature each function is
 there to show. A reviewer reads this before approving; write it for them.
 
+The marketplace shows it in the review of the agent, above what the
+manifest declares: as markdown, without anything it would load from
+elsewhere, and up to 20,000 characters. Put what a reviewer must know
+first.
+
 ## What goes into the package
 
 When an agent is installed, its folder is packed into one archive, and

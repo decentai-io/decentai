@@ -153,6 +153,9 @@ export interface CatalogEntry {
   installed_version?: string;
   /** Sample data the agent ships; null or absent when it ships none. */
   samples?: SampleSummary | null;
+  /** The package's README as markdown; empty when it ships none, and
+   *  absent on a catalog read before READMEs were carried. */
+  readme?: string;
 }
 
 /** A private repository's read credential, typed once and stored on

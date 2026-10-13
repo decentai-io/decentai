@@ -201,15 +201,44 @@ describe('MarketplaceComponent', () => {
       },
     });
 
-    await component.openReview(source('one', []), entry('fresh') as any);
+    await component.openReview(source('one', []), [entry('fresh') as any]);
     expect(reads).toBe(0);
-    expect(component.reviewApproved).toBeNull();
+    expect(component.reviewApproved).toEqual({});
 
     await component.openReview(
       source('one', []),
-      entry('older', { installed_version: '0.9.0', agent_ref: 'agt_1' }) as any,
+      [entry('older', { installed_version: '0.9.0', agent_ref: 'agt_1' }) as any],
     );
     expect(reads).toBe(1);
+    expect(Object.keys(component.reviewApproved)).toEqual(['older']);
+  });
+
+  it('puts the ticked agents under one review, and installs none before it is approved', async () => {
+    const installed: string[] = [];
+    const one = source('one', [entry('gmail'), entry('drive'), entry('forms')]);
+    const component = createComponent({
+      sources: async () => ({ sources: [one], referenceCatalogUrl: '' }),
+      installCatalogAgent: async (_source: any, chosen: any) => {
+        if (chosen.id === 'drive') return { error: 'its package could not be built' };
+        installed.push(chosen.id);
+        return { data: {} };
+      },
+    });
+    component.sources = [one];
+    component.toggleSelect(one, one.catalog.agents[0]);
+    component.toggleSelect(one, one.catalog.agents[1]);
+
+    await component.reviewSelected(one);
+    expect(component.review?.entries.map((e) => e.id)).toEqual(['gmail', 'drive']);
+    expect(component.approveLabel).toBe('Approve and install 2');
+    expect(installed).toEqual([]);
+
+    await component.approve();
+    // One refusal does not stop the rest, and what was refused stays
+    // under review with the reason.
+    expect(installed).toEqual(['gmail']);
+    expect(component.review?.entries.map((e) => e.id)).toEqual(['drive']);
+    expect(component.error).toContain('its package could not be built');
   });
 
   it('names an offered agent before it has a ref to name it by', () => {

@@ -77,9 +77,10 @@
           (selectAll)="selectAll(source)"
           (clear)="clearSelection(source)"
         >
-          <button class="btn primary sm" type="button" [disabled]="!!busyId" (click)="installSelected(source)">
-            <lucide-icon name="download" [size]="16" aria-hidden="true"></lucide-icon>
-            {{ busyId === "bulk:" + source.source_id ? "Installing…" : "Install" }}
+          <!-- Several are installed the way one is: through the page
+               that says what each would be agreeing to. -->
+          <button class="btn primary sm" type="button" (click)="reviewSelected(source)">
+            Review and install
           </button>
         </app-selection-bar>
 
@@ -169,17 +170,66 @@
   </app-list>
 </app-page>
 
-<ng-container *ngIf="review">
+<!-- ── The review: one agent, or several, read before approving ─────── -->
+<div class="review" *ngIf="review as open">
+  <a class="btn ghost sm agent-back" [routerLink]="['/agents/marketplace', open.source.source_id]">
+    <lucide-icon name="arrow-left" [size]="16" aria-hidden="true"></lucide-icon>
+    {{ open.source.name }}
+  </a>
+
+  <header class="agent-head">
+    <app-agent-mark size="lg" *ngIf="open.entries.length === 1"
+                    [name]="entryName(open.entries[0])" [icon]="open.entries[0].manifest?.agent?.icon"></app-agent-mark>
+    <div class="agent-head-words">
+      <h1 class="agent-head-name">
+        <ng-container *ngIf="open.entries.length === 1; else several">
+          {{ entryName(open.entries[0]) }}
+          <span class="agent-head-version">{{ entryVersion(open.entries[0]) }}</span>
+          <span class="chip accent" *ngIf="reviewInstalled">Installed</span>
+          <span class="chip" *ngIf="entryStatus(open.entries[0]) === 'update_available'">replaces v{{ open.entries[0].installed_version }}</span>
+        </ng-container>
+        <ng-template #several>Review {{ open.entries.length }} agents</ng-template>
+      </h1>
+      <p class="agent-head-source">
+        From {{ open.source.name }}<ng-container *ngIf="open.source.sha"> &#64; <code>{{ open.source.sha.slice(0, 7) }}</code></ng-container>
+      </p>
+    </div>
+    <div class="agent-head-actions"><ng-container *ngTemplateOutlet="reviewActions"></ng-container></div>
+  </header>
+
   <p class="form-notice is-error" role="alert" *ngIf="error">{{ error }}</p>
-  <app-install-review [installed]="entryStatus(review.entry) === 'installed'"
-                      [source]="review.source"
-                      [entry]="review.entry"
-                      [approved]="reviewApproved"
-                      [loading]="reviewLoading"
-                      [busy]="busyId === entryKey(review.entry)"
-                      (approve)="approve()"
-                      (close)="closeReview()"></app-install-review>
-</ng-container>
+  <p class="form-notice" role="status" *ngIf="reviewLoading">Reading what was approved before…</p>
+
+  <app-install-review *ngFor="let entry of open.entries"
+                      [class.is-one-of-several]="open.entries.length > 1"
+                      [source]="open.source"
+                      [entry]="entry"
+                      [approved]="reviewApproved[entry.id] || null"
+                      [installed]="reviewInstalled"
+                      [brief]="open.entries.length > 1"></app-install-review>
+
+  <ng-container *ngIf="!reviewInstalled">
+    <p class="review-foot">
+      Approving installs this exact code, at this commit, for this organization. A newer
+      version is reviewed again.
+    </p>
+    <!-- The same two buttons as at the top, where a person who has read
+         to the end is. -->
+    <div class="review-strip">
+      <p>{{ open.entries.length === 1 ? entryName(open.entries[0]) + " " + entryVersion(open.entries[0]) : open.entries.length + " agents" }}</p>
+      <ng-container *ngTemplateOutlet="reviewActions"></ng-container>
+    </div>
+  </ng-container>
+</div>
+
+<ng-template #reviewActions>
+  <button class="btn" type="button" [disabled]="!!busyId" (click)="closeReview()">{{ reviewInstalled ? "Back" : "Cancel" }}</button>
+  <a class="btn primary" *ngIf="reviewInstalled" [routerLink]="['/agents', review?.entries?.[0]?.agent_ref]">Open</a>
+  <button class="btn primary" type="button" *ngIf="!reviewInstalled"
+          [disabled]="!!busyId || reviewLoading || reviewBlocked" (click)="approve()">
+    {{ approveLabel }}
+  </button>
+</ng-template>
 
 <!-- ── A source, new or changed: on the dialog shell ────────────────── -->
 <ng-template #sourceDialog>

@@ -43,6 +43,11 @@ from util import remove_tree
 MANIFEST_FILENAME = "manifest.yaml"
 CATALOG_FILENAME = "decentai-agents.yaml"
 CATALOG_ID_RE = re.compile(r"^[a-z][a-z0-9_]{1,63}$")
+README_FILENAME = "readme.md"
+#: A README is carried in the catalog so a review can show it. It is
+#: read by a person before approving, not stored for its own sake, so
+#: one longer than this is cut and says so.
+MAX_README_CHARS = 20_000
 
 # A ref names a branch, a tag, or a commit — nothing else, and in
 # particular nothing beginning with '-'. git parses options anywhere in
@@ -310,6 +315,7 @@ class Repository:
                 "path": ".",
                 "manifest": document,
                 "samples": self._samples(root, document),
+                "readme": self._readme(root),
             }],
         }
 
@@ -388,7 +394,8 @@ class Repository:
                 f"agent.id '{declared}'."
             )
         return {"id": local_id, "path": relative, "manifest": document,
-                "samples": self._samples(target, document)}
+                "samples": self._samples(target, document),
+                "readme": self._readme(target)}
 
     @staticmethod
     def _samples(folder: Path, document: Dict) -> Optional[Dict]:
@@ -397,6 +404,28 @@ class Repository:
         the marketplace can say so before anyone installs."""
         sheet = SampleSheet.read(folder, document)
         return sheet.summary() if sheet else None
+
+    @staticmethod
+    def _readme(folder: Path) -> str:
+        """The agent's README as text, or '' when it ships none. Read
+        and never rendered or run here: what an administrator reads
+        before approving, beside what the manifest declares. A link is
+        not followed, and one too long to review is cut."""
+        for path in sorted(folder.iterdir()):
+            if path.name.lower() != README_FILENAME:
+                continue
+            if path.is_symlink() or not path.is_file():
+                return ""
+            try:
+                with path.open(encoding="utf-8", errors="replace") as handle:
+                    text = handle.read(MAX_README_CHARS + 1)
+            except OSError:
+                return ""
+            if len(text) > MAX_README_CHARS:
+                return (text[:MAX_README_CHARS].rstrip()
+                        + "\n\n*The README continues in the repository.*")
+            return text
+        return ""
 
     # ------------------------------------------------------------------
     @staticmethod

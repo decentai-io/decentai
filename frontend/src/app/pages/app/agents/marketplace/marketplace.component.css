@@ -141,3 +141,58 @@
     animation: none;
   }
 }
+
+/* ── The review ──────────────────────────────────────────────────────
+   The agent's title row (agent-shared.css), then each agent read in
+   order, then Approve again at the foot. */
+.review {
+  max-width: 1040px;
+  padding: 8px 0 24px;
+}
+
+.review > .form-notice {
+  margin-bottom: 16px;
+}
+
+/* Among several, each agent is a section of its own. */
+.review app-install-review.is-one-of-several {
+  padding: 24px 0;
+  border-top: 1px solid var(--line);
+}
+
+.review-foot {
+  max-width: 72ch;
+  margin-top: 32px;
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+/* Stays at the foot of the column as the review scrolls, over what is
+   read, so it carries the one shadow. */
+.review-strip {
+  position: sticky;
+  bottom: max(16px, env(safe-area-inset-bottom));
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 880px;
+  margin-top: 16px;
+  padding: 8px 8px 8px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-float);
+}
+
+.review-strip p {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

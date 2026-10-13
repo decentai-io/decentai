@@ -54,6 +54,9 @@ interface ToolGroup {
  * The manifest is the source. `available()` carries only names, levels
  * and descriptions, so the full document is fetched for the approval and
  * the flat list is the fallback when there is no approval to fetch.
+ *
+ * A review reads an agent before there is an approval: it hands in the
+ * manifest on offer, and nothing is fetched.
  */
 @Component({
   selector: 'app-agent-functions',
@@ -63,6 +66,11 @@ interface ToolGroup {
 })
 export class AgentFunctionsComponent implements OnChanges {
   @Input() agent!: AgentOffer;
+  /** The manifest on offer, for a review: shown as it is, in place of
+   *  an approved agent's. */
+  @Input() manifest: any = null;
+  /** Every function with what it takes and returns open. */
+  @Input() expanded = false;
 
   tools: ToolGroup[] = [];
   loading = false;
@@ -82,6 +90,12 @@ export class AgentFunctionsComponent implements OnChanges {
   private read = '';
 
   async ngOnChanges(): Promise<void> {
+    if (this.manifest) {
+      this.read = '';
+      this.tools = this.fromManifest(this.manifest);
+      this.detailed = false;
+      return;
+    }
     const approval = `${this.agent?.agent_id}@${this.agent?.installed_version}`;
     if (approval === this.read) return;
     this.read = approval;

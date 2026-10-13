@@ -24,8 +24,9 @@ type EntrySort = 'listed' | 'name';
  * The marketplace: where agents come FROM.
  *
  * The sources are a row of chips, and the chosen one's catalog is the
- * page: with nothing chosen in the address, the first source is. One
- * agent's review takes the page's place.
+ * page: with nothing chosen in the address, the first source is. The
+ * review of one agent, or of several ticked together, takes the page's
+ * place.
  *
  * Nothing on this page is running. Everything here is a proposal until
  * an agent is approved by name, at which point it belongs to the
@@ -34,7 +35,8 @@ type EntrySort = 'listed' | 'name';
  *
  * Each view has an address under /agents/marketplace: a source's
  * catalog is /<source>, the review of one of its agents
- * /<source>/<agent>, the source form (a dialog over the page)
+ * /<source>/<agent> (several are their ids with commas between), the
+ * source form (a dialog over the page)
  * /sources/new and /<source>/edit.
  * They are views of this one page (routes/app/agents.routes.ts): what
  * a person presses changes the view and the address together, and the
@@ -78,11 +80,14 @@ export class MarketplaceComponent extends DataPageBase implements OnInit, OnDest
   /** Why the last save was refused or its read failed, for the form. */
   formError = '';
 
-  review: { source: AgentSource; entry: CatalogEntry } | null = null;
-  /** Entries ticked for a bulk install, keyed per source so one card's
-   *  "install selected" never drags another card's ticks along. */
+  /** What is under review: one agent, or the several ticked together. */
+  review: { source: AgentSource; entries: CatalogEntry[] } | null = null;
+  /** Entries ticked to be reviewed together, keyed per source so one
+   *  source's ticks never drag another's along. */
   selected = new Set<string>();
-  reviewApproved: any = null;
+  /** What was approved before, by entry id, for the entries that are
+   *  installed: an update is read against it. */
+  reviewApproved: Record<string, any> = {};
   reviewLoading = false;
   private catalogScrollY = 0;
 
@@ -137,19 +142,21 @@ export class MarketplaceComponent extends DataPageBase implements OnInit, OnDest
       return;
     }
     if (this.selectedId !== source.source_id) this.showSource(source);
-    const agent = child?.paramMap.get('agent') || '';
-    if (!agent) {
+    const agents = (child?.paramMap.get('agent') || '').split(',').filter(Boolean);
+    if (!agents.length) {
       if (this.review) this.hideReview();
       return;
     }
-    const entry = this.entriesFor(source).find(
-      (candidate) => candidate.id === agent || candidate.agent_ref === agent);
-    if (!entry) {
+    const entries = agents.map((agent) => this.entriesFor(source).find(
+      (candidate) => candidate.id === agent || candidate.agent_ref === agent));
+    if (entries.some((entry) => !entry)) {
       this.fail('That agent is not in this source\'s catalog.');
       this.go(source.source_id);
       return;
     }
-    if (this.review?.entry !== entry) await this.showReview(source, entry);
+    const shown = this.review?.source.source_id === source.source_id
+      && this.review.entries.map((entry) => entry.id).join() === entries.map((entry) => entry!.id).join();
+    if (!shown) await this.showReview(source, entries as CatalogEntry[]);
   }
 
   entryName(entry: CatalogEntry): string {
@@ -179,7 +186,7 @@ export class MarketplaceComponent extends DataPageBase implements OnInit, OnDest
         .find((candidate) => candidate.agent_ref === agentRef);
       if (entry) {
         this.showSource(source);
-        await this.openReview(source, entry);
+        await this.openReview(source, [entry]);
         return;
       }
     }
@@ -561,60 +568,57 @@ export class MarketplaceComponent extends DataPageBase implements OnInit, OnDest
     }
   }
 
-  /** Install every ticked agent, one after another — each gets its own
-   *  approval, and one failure never stops the rest. */
-  async installSelected(source: AgentSource): Promise<void> {
+  /** The ticked agents, read together before any of them is installed. */
+  async reviewSelected(source: AgentSource): Promise<void> {
     const chosen = this.selectableEntries(source)
       .filter((entry) => this.isSelected(source, entry));
-    if (!chosen.length || this.busyId) return;
-
-    this.busyId = `bulk:${source.source_id}`;
-    const failed: string[] = [];
-    try {
-      for (const entry of chosen) {
-        const result = await this.service.installCatalogAgent(source, entry);
-        if (result.error) {
-          failed.push(`${entry.manifest?.agent?.name || entry.id}: `
-            + result.error);
-        } else {
-          this.selected.delete(this.selectionKey(source, entry));
-        }
-      }
-      this.busyId = '';
-      await this.load();
-      if (failed.length) return this.fail(failed.join(' — '));
-      this.flash(chosen.length === 1
-        ? `${chosen[0].manifest?.agent?.name || chosen[0].id} installed.`
-        : `${chosen.length} agents installed — they are on the Installed `
-          + `Agents page now.`);
-    } finally {
-      this.busyId = '';
-    }
+    if (chosen.length) await this.openReview(source, chosen);
   }
 
-  async openReview(source: AgentSource, entry: CatalogEntry): Promise<void> {
-    this.go(source.source_id, entry.id);
-    await this.showReview(source, entry);
+  async openReview(source: AgentSource, entries: CatalogEntry[]): Promise<void> {
+    this.go(source.source_id, entries.map((entry) => entry.id).join(','));
+    await this.showReview(source, entries);
   }
 
-  private async showReview(source: AgentSource, entry: CatalogEntry): Promise<void> {
+  private async showReview(source: AgentSource, entries: CatalogEntry[]): Promise<void> {
     this.catalogScrollY = window.scrollY;
-    this.review = { source, entry };
-    this.reviewApproved = null;
+    this.review = { source, entries };
+    this.reviewApproved = {};
     this.error = '';
     requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: 'auto' }));
-    // An update is only reviewable against what was approved before it —
+    // An update is only reviewable against what was approved before it,
     // and an INSTALLED agent against itself, so the page can say "this
     // is what you agreed to".
-    if (this.entryStatus(entry) === 'update_available'
-        || this.entryStatus(entry) === 'installed') {
-      this.reviewLoading = true;
-      try {
-        this.reviewApproved = await this.service.get(entry.agent_ref);
-      } finally {
-        this.reviewLoading = false;
+    const known = entries.filter((entry) => entry.agent_ref
+      && ['update_available', 'installed'].includes(this.entryStatus(entry)));
+    if (!known.length) return;
+    this.reviewLoading = true;
+    try {
+      for (const entry of known) {
+        this.reviewApproved[entry.id] = await this.service.get(entry.agent_ref);
       }
+    } finally {
+      this.reviewLoading = false;
     }
+  }
+
+  /** Reading one agent that is installed and current: there is nothing
+   *  to approve, only what was agreed to. */
+  get reviewInstalled(): boolean {
+    return this.review?.entries.length === 1
+      && this.entryStatus(this.review.entries[0]) === 'installed';
+  }
+
+  /** One that cannot be read cannot be approved, alone or among others. */
+  get reviewBlocked(): boolean {
+    return !!this.review?.entries.some((entry) => (entry.errors || []).length);
+  }
+
+  get approveLabel(): string {
+    const entries = this.review?.entries || [];
+    if (this.busyId === 'review') return 'Installing…';
+    if (entries.length > 1) return `Approve and install ${entries.length}`;
+    return entries[0]?.installed_version ? 'Approve update' : 'Approve and install';
   }
 
   closeReview(): void {
@@ -625,32 +629,56 @@ export class MarketplaceComponent extends DataPageBase implements OnInit, OnDest
 
   private hideReview(): void {
     this.review = null;
-    this.reviewApproved = null;
+    this.reviewApproved = {};
     requestAnimationFrame(() => window.scrollTo({ top: this.catalogScrollY, behavior: 'auto' }));
   }
 
+  /** Installs what is under review, one after another: each is its own
+   *  approval, and one refusal never stops the rest. One agent lands on
+   *  its own page, where what it needs is filled in; several land back
+   *  in the catalog. What was refused stays under review, with why. */
   async approve(): Promise<void> {
-    if (!this.review) return;
-    const { source, entry } = this.review;
-    this.busyId = this.entryKey(entry);
+    if (!this.review || this.busyId) return;
+    const { source, entries } = this.review;
+    this.busyId = 'review';
+    const refused: string[] = [];
+    const left: CatalogEntry[] = [];
     try {
-      const result = await this.service.installCatalogAgent(source, entry);
-      if (result.error) return this.fail(result.error);
-      this.busyId = '';
-      this.selected.delete(this.selectionKey(source, entry));
-      await this.load();
-      // Installed: the next thing to do is on the agent's own page,
-      // which opens on its credentials when one is missing.
-      const ref = this.sources.find((candidate) => candidate.source_id === source.source_id)
-        ?.catalog?.agents?.find((candidate) => candidate.id === entry.id
-          && candidate.path === entry.path)?.agent_ref;
-      if (ref && this.router) {
-        void this.router.navigate(['/agents', ref]);
-        return;
+      for (const entry of entries) {
+        const result = await this.service.installCatalogAgent(source, entry);
+        if (result.error) {
+          refused.push(`${this.entryName(entry)}: ${result.error}`);
+          left.push(entry);
+        } else {
+          this.selected.delete(this.selectionKey(source, entry));
+        }
       }
+      await this.load();
+      const fresh = this.sources.find((candidate) => candidate.source_id === source.source_id);
+      const again = (entry: CatalogEntry) => (fresh ? this.entriesFor(fresh) : [])
+        .find((candidate) => candidate.id === entry.id && candidate.path === entry.path);
+
+      if (refused.length) {
+        const still = left.map(again).filter((entry): entry is CatalogEntry => !!entry);
+        if (fresh && still.length) {
+          this.review = { source: fresh, entries: still };
+          this.go(fresh.source_id, still.map((entry) => entry.id).join(','));
+        }
+        return this.fail(refused.join(' · '));
+      }
+      if (entries.length === 1) {
+        const ref = again(entries[0])?.agent_ref;
+        if (ref && this.router) {
+          void this.router.navigate(['/agents', ref]);
+          return;
+        }
+      }
+      this.busyId = '';
       this.closeReview();
-      this.flash(`${entry.manifest?.agent?.name || entry.id} installed — it is `
-        + `on the Installed Agents page now.`);
+      this.flash(entries.length === 1
+        ? `${this.entryName(entries[0])} installed.`
+        : `${entries.length} agents installed. Each is on the Installed page, `
+          + 'where what it needs is filled in.');
     } finally {
       this.busyId = '';
     }

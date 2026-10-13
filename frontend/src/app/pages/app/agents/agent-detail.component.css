@@ -1,100 +1,11 @@
-/* One agent's page: its title row, its sections as a segmented row,
-   and the Overview. The mark, the chips, the buttons and the segmented
-   control are the shared ones; the level chips and the host chips are
+/* One agent's page: its sections as a segmented row, and the Overview.
+   The mark, the chips, the buttons and the segmented control are the
+   shared ones; the title row, the level chips and the host chips are
    the agents' own (agent-shared.css). */
 :host {
   display: block;
   max-width: 1040px;
   padding: 8px 0 24px;
-}
-
-.agent-back {
-  margin: 0 0 12px -8px;
-}
-
-/* ── The title row ─────────────────────────────────────────────────── */
-.agent-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  gap: 12px 16px;
-  margin-bottom: 20px;
-}
-
-.agent-head-words {
-  flex: 1 1 280px;
-  min-width: 0;
-}
-
-.agent-head-name {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px 12px;
-  color: var(--ink);
-  font-size: var(--t-lg);
-  font-weight: 600;
-  line-height: var(--lh-lg);
-}
-
-/* The version and the chip are in the sans face beside a serif name. */
-.agent-head-version {
-  color: var(--ink-3);
-  font-family: var(--font-sans);
-  font-size: var(--t-sm);
-  font-weight: 400;
-}
-
-.agent-head-name .chip {
-  font-family: var(--font-sans);
-}
-
-.agent-head-source {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px 6px;
-  margin-top: 4px;
-  color: var(--ink-2);
-  font-size: var(--t-sm);
-  line-height: var(--lh-sm);
-}
-
-.agent-head-source a {
-  color: inherit;
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-
-.agent-head-source code {
-  font-family: var(--font-mono);
-  font-size: var(--t-xs);
-}
-
-/* Copying the digest is offered when the line is pointed at, and
-   always where nothing can point. */
-.agent-copy {
-  width: 24px;
-  height: 24px;
-  opacity: 0;
-  transition: opacity var(--dur-1) var(--ease);
-}
-
-.agent-head-source:hover .agent-copy,
-.agent-copy:focus-visible {
-  opacity: 1;
-}
-
-@media (hover: none) {
-  .agent-copy {
-    opacity: 1;
-  }
-}
-
-.agent-head-actions {
-  display: flex;
-  flex: none;
-  gap: 8px;
 }
 
 .agent-tabs {
@@ -106,21 +17,6 @@
   display: flex;
   flex-direction: column;
   gap: 24px;
-}
-
-.agent-description {
-  max-width: 72ch;
-  color: var(--ink);
-  font-size: var(--t-read);
-  line-height: var(--lh-read);
-}
-
-.agent-section-title {
-  margin-bottom: 8px;
-  color: var(--ink);
-  font-size: var(--t-md);
-  font-weight: 600;
-  line-height: var(--lh-md);
 }
 
 .try-cards {
@@ -325,9 +221,5 @@
   .agent-glance-levels {
     flex: 1 1 100%;
     margin-left: 0;
-  }
-
-  .agent-head-actions {
-    flex: 1 1 100%;
   }
 }
