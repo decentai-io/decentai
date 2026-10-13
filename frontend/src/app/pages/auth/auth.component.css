@@ -85,6 +85,12 @@
   color: var(--accent-ink);
 }
 
+/* The time left of a lockout: its digits do not shift as they change. */
+.auth-count {
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+
 @media (pointer: coarse) {
   .auth-link {
     min-height: 44px;

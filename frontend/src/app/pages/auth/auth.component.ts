@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnDestroy, OnInit } from '@angular/core';
 
 import { AuthService } from '../../services/auth.service';
 import { DataStoreService } from '../../services/datastore.service';
@@ -26,7 +26,7 @@ type Mode = 'login' | 'invitation' | 'forgot' | 'reset' | 'first' | 'entering';
   styleUrls: ['./auth.component.css'],
   standalone: false,
 })
-export class AuthComponent implements OnInit {
+export class AuthComponent implements OnInit, OnDestroy {
   mode: Mode = 'login';
 
   email = '';
@@ -58,6 +58,9 @@ export class AuthComponent implements OnInit {
   error = '';
   /** The refusal is a lockout, not a wrong password. */
   throttled = false;
+  /** Seconds until a locked door opens, counted down; 0 when it is open. */
+  lockedFor = 0;
+  private lockTimer: ReturnType<typeof setInterval> | null = null;
   /** The button was pressed: what a field still needs is said under it. */
   tried = false;
   /** The password is shown as typed. */
@@ -177,6 +180,7 @@ export class AuthComponent implements OnInit {
       }
       this.throttled = !!result.throttled;
       this.error = result.error || 'Email or password is incorrect.';
+      if (result.retryAfter) this.lockFor(result.retryAfter);
     } finally {
       this.busy = false;
     }
@@ -252,8 +256,38 @@ export class AuthComponent implements OnInit {
     this.forgotMessage = '';
   }
 
+  ngOnDestroy(): void {
+    this.unlock();
+  }
+
+  /** The door is shut for this long: the button waits, and the notice
+   *  counts the time down. */
+  private lockFor(seconds: number): void {
+    this.unlock();
+    this.lockedFor = seconds;
+    this.lockTimer = setInterval(() => {
+      this.lockedFor -= 1;
+      if (this.lockedFor > 0) return;
+      this.unlock();
+      this.error = '';
+      this.throttled = false;
+    }, 1000);
+  }
+
+  private unlock(): void {
+    if (this.lockTimer) clearInterval(this.lockTimer);
+    this.lockTimer = null;
+    this.lockedFor = 0;
+  }
+
+  /** What is left of a lockout: "4:59". */
+  get lockLeft(): string {
+    return `${Math.floor(this.lockedFor / 60)}:${String(this.lockedFor % 60).padStart(2, '0')}`;
+  }
+
   /** A mode starts clean: nothing refused, nothing pressed, no password. */
   private clearForm(): void {
+    this.unlock();
     this.error = '';
     this.throttled = false;
     this.tried = false;

@@ -15,7 +15,7 @@
     </mat-checkbox>
 
     <ng-container *ngTemplateOutlet="refusal"></ng-container>
-    <button class="btn primary auth-wide" type="submit" [disabled]="busy">{{ busy ? "Signing in…" : "Sign in" }}</button>
+    <button class="btn primary auth-wide" type="submit" [disabled]="busy || lockedFor > 0">{{ busy ? "Signing in…" : "Sign in" }}</button>
     <button class="auth-link" type="button" (click)="startForgot()">Forgot your password?</button>
     <p class="auth-foot">No account? Ask an administrator for an invitation.</p>
   </form>
@@ -109,5 +109,8 @@
 <!-- What the server refused, in one block above the button; a lockout
      is told apart from a wrong password. -->
 <ng-template #refusal>
-  <p class="form-notice" [class.is-warn]="throttled" [class.is-error]="!throttled" role="alert" *ngIf="error">{{ error }}</p>
+  <p class="form-notice" [class.is-warn]="throttled" [class.is-error]="!throttled" role="alert" *ngIf="error">
+    <ng-container *ngIf="lockedFor > 0; else said">Too many attempts. Try again in <span class="auth-count">{{ lockLeft }}</span>.</ng-container>
+    <ng-template #said>{{ error }}</ng-template>
+  </p>
 </ng-template>
