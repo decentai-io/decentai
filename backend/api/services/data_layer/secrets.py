@@ -178,10 +178,16 @@ class SecretController(ResourceController):
         A credential's own page is the only place that can answer "what
         can read this". The agent side lists what one agent may use; the
         question people actually ask about a secret points the other
-        way."""
+        way.
+
+        Each also says who made it and who it is shared with, by name
+        (the shared naming of every resource list), and each grant
+        carries its id, so that taking a credential back from one agent
+        can be done from the credential's own page."""
         message, status = super().list(data, user)
         if status != 200:
             return message, status
+        self._name_people(message.get("resources") or [], user)
 
         org_id = str(user.get("org_id") or "")
         grants = AgentSecretGrantStore()
@@ -196,7 +202,8 @@ class SecretController(ResourceController):
             resource["used_by_agents"] = [
                 {"agent_ref": doc["agent_ref"],
                  "name": names.get(doc["agent_ref"], doc["agent_ref"]),
-                 "resource_id": doc.get("resource_id", "")}
+                 "resource_id": doc.get("resource_id", ""),
+                 "grant_id": str(doc.get("_id") or "")}
                 for doc in used_by
             ]
             # A secret saved under an agent's own slot reaches that agent
@@ -228,12 +235,25 @@ class SecretController(ResourceController):
         The refusal is the point: a grant is a decision somebody made,
         and deleting the secret out from under it would break that
         agent silently. Taking the grants back first is explicit, one
-        click each, and leaves nothing to discover in a failing chat."""
+        click each, and leaves nothing to discover in a failing chat.
+
+        ``take_back: true`` is that decision made in one step, by
+        somebody who was shown the agents and said to go on: the grants
+        are taken back first, then the secret is deleted. It is only
+        honoured for a secret the caller may delete, so it cannot be
+        used to revoke grants on somebody else's."""
         org_id = str(user.get("org_id") or "")
-        ref = str(self._payload(data).get("resource_ref") or "")
+        payload = self._payload(data)
+        ref = str(payload.get("resource_ref") or "")
         doc = self.store.visible_doc(user, ref)
 
-        granted_to = AgentSecretGrantStore().for_secret(org_id, ref)
+        grants = AgentSecretGrantStore()
+        granted_to = grants.for_secret(org_id, ref)
+        if granted_to and payload.get("take_back") is True and doc is not None \
+                and self._edit_refusal(user, doc) is None:
+            for grant in granted_to:
+                grants.delete(org_id, str(grant["_id"]))
+            granted_to = []
         if granted_to:
             names = AgentManifestStore().qualified_ids(org_id)
             readable = {ref_: name for name, ref_ in names.items()}

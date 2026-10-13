@@ -332,6 +332,37 @@ class TestGrantsGoWithWhatTheyName:
         assert app_call(admin, "Secrets:Secret:Delete", {
             "resource_ref": secret}).status_code == 200
 
+    def test_a_confirmed_delete_takes_the_secret_back_first(
+        self, admin, seed, control
+    ):
+        """Somebody shown the agents who said to go on has made the
+        decision the refusal protects: the grants are taken back, then
+        the secret goes. The list names each grant so one can be taken
+        back from the secret's own page."""
+        agent_id = install(admin, control, "jira_issues")
+        author_definition(admin)
+        secret = make_secret(admin)
+        granted = app_call(admin, "Agents:Agent:SecretGrant", {
+            "agent_id": agent_id, "resource_id": "connection",
+            "secret_ref": secret,
+        }).json()["data"]["grant"]
+
+        listed = next(row for row in app_call(admin, "Secrets:Secret:List", {}).json()["resources"]
+                      if row["resource_ref"] == secret)
+        assert [user["grant_id"] for user in listed["used_by_agents"]] == [granted["grant_id"]]
+        assert listed["created_by_name"]
+
+        # Anything but a plain yes still refuses.
+        assert app_call(admin, "Secrets:Secret:Delete", {
+            "resource_ref": secret, "take_back": "yes"}).status_code == 409
+
+        deleted = app_call(admin, "Secrets:Secret:Delete", {
+            "resource_ref": secret, "take_back": True})
+        assert deleted.status_code == 200, deleted.text
+        from database.stores import AgentSecretGrantStore
+
+        assert AgentSecretGrantStore().for_agent(seed.org["_id"], agent_id) == []
+
     def test_a_grant_naming_a_vanished_secret_does_not_answer(
         self, anon, admin, seed, control, signing_key
     ):

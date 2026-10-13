@@ -58,5 +58,5 @@ export const AdminRoutes: Routes = [
   { path: 'members', redirectTo: 'users' },
 
   // Secret types moved to the main workspace as Secret definitions.
-  { path: 'secret_types', redirectTo: '/secrets/values', pathMatch: 'full' },
+  { path: 'secret_types', redirectTo: '/secrets', pathMatch: 'full' },
 ];

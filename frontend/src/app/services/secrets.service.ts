@@ -15,6 +15,9 @@ export interface SecretUser {
   name: string;
   resource_id: string;
   site?: string;
+  /** The grant that lent it, by which it is taken back; absent for a
+   *  consent on a saved login. */
+  grant_id?: string;
 }
 
 export interface Secret {
@@ -26,6 +29,10 @@ export interface Secret {
   owner: SecretOwner;
   keys: Record<string, any>;
   created_by: string;
+  /** Who made it, by name; empty when that person is gone. */
+  created_by_name?: string;
+  /** The names of `owner.groups` and `owner.users`, in their order. */
+  owner_names?: { groups: string[]; users: string[] };
   created_at?: string | null;
   updated_at?: string | null;
   /** Which agents were lent this, or allowed it on a site. A
@@ -98,9 +105,13 @@ export class SecretsService {
     return this.request.gateway('Secrets:Secret:transfer', { resource_ref: ref, user_id: userId });
   }
 
-  async remove(ref: string): Promise<{ deleted?: boolean; error?: string }> {
+  /** Deletes a secret. One lent to agents is refused unless
+   *  `takeBack` says the person was shown them and went on: then it is
+   *  taken back from each first. */
+  async remove(ref: string, takeBack = false): Promise<{ deleted?: boolean; error?: string }> {
     return this.request.gateway('Secrets:Secret:delete', {
       resource_ref: ref,
+      ...(takeBack ? { take_back: true } : {}),
     });
   }
 }

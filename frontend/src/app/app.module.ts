@@ -264,6 +264,8 @@ import { FilePreviewComponent } from './pages/app/data/files/file-preview.compon
 import { RecordsComponent } from './pages/app/data/records/records.component';
 import { RecordViewComponent } from './pages/app/data/records/record-view.component';
 import { SecretsComponent } from './pages/app/secrets/secrets.component';
+import { SecretViewComponent } from './pages/app/secrets/secret-view.component';
+import { SecretFormComponent } from './pages/app/secrets/secret-form.component';
 import { SettingsComponent } from './pages/app/settings/settings.component';
 import { ChatDefaultsComponent } from './pages/app/settings/chat-defaults/chat-defaults.component';
 import { NotificationsComponent } from './pages/app/settings/notifications/notifications.component';
@@ -328,6 +330,8 @@ import { AgentCardComponent } from './pages/app/agents/agent-card.component';
     RecordsComponent,
     RecordViewComponent,
     SecretsComponent,
+    SecretViewComponent,
+    SecretFormComponent,
     SettingsComponent,
     ChatDefaultsComponent,
     NotificationsComponent,

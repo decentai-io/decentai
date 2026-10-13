@@ -185,7 +185,7 @@ export const mainRoutes: RouteNode[] = [
         // attribute of an agent's credential slot, shown where it is
         // used — on the secret's row and in the new-secret picker.
         name: 'Secrets',
-        url: 'secrets/values',
+        url: 'secrets',
         icon: 'key-round',
         domain: 'Global',
         active: true,
