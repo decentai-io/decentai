@@ -10,12 +10,18 @@ import { permissionGuard } from '../../guards/permission.guard';
 
 export const DataRoutes: Routes = [
   { path: '', redirectTo: 'files', pathMatch: 'full' },
+  // One file, opened, is a view of the list's page: a child route with
+  // no component of its own, so the list keeps what it has read.
   {
     path: 'files',
     title: 'Files',
     component: FilesComponent,
     canActivate: [permissionGuard],
     data: { requiredAction: 'files:file:list' },
+    children: [
+      { path: '', pathMatch: 'full', children: [] },
+      { path: ':ref', children: [] },
+    ],
   },
   // Saved data shows one kind of record at a time, and the address
   // names it. The kind is a child route with no component of its own,

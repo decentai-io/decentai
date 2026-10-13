@@ -6,16 +6,16 @@
   <div class="data-alert error" *ngIf="error" role="alert">{{ error }}</div>
   <div class="data-alert ok" *ngIf="notice" role="status">{{ notice }}</div>
 
-  <div class="side-layout">
+  <div class="side-layout files-layout" [class.has-opened]="opened">
     <app-filter-column
-      *ngIf="files.length"
+      *ngIf="files.length && !opened"
       label="Filter files"
       [groups]="filters"
       [chosen]="chosen"
       (choose)="filter($event.key, $event.value)"
     ></app-filter-column>
 
-    <app-list label="Files" rows="table" [loading]="loading" [class.side-alone]="!files.length">
+    <app-list class="files-list" label="Files" rows="table" [loading]="loading" [class.side-alone]="!files.length">
       <ng-container listToolbar *ngIf="files.length">
         <!-- With something ticked, the toolbar is what can be done to it. -->
         <app-selection-bar
@@ -78,7 +78,7 @@
         </thead>
         <tbody>
           <ng-container *ngFor="let file of pagedFiles">
-            <tr [class.is-selected]="isSelected(file)">
+            <tr [class.is-selected]="isSelected(file) || file.resource_ref === openRef">
               <td class="cell-check" *ngIf="canDelete">
                 <mat-checkbox
                   *ngIf="deletable(file)"
@@ -90,7 +90,8 @@
               <td class="cell-main">
                 <span class="file-name">
                   <app-file-icon [name]="filename(file)" [mime]="file.values.file_type"></app-file-icon>
-                  <span class="file-name-words">{{ stem(file) }}<span class="file-extension" *ngIf="extension(file)">.{{ extension(file) }}</span></span>
+                  <a class="file-name-words" [routerLink]="['/data/files', file.resource_ref]" queryParamsHandling="preserve"
+                     [attr.aria-current]="file.resource_ref === openRef ? 'true' : null">{{ stem(file) }}<span class="file-extension" *ngIf="extension(file)">.{{ extension(file) }}</span></a>
                   <span
                     class="chip warn"
                     *ngIf="file.unreadable"
@@ -212,6 +213,37 @@
         </ng-template>
       </ng-container>
     </app-list>
+
+    <!-- The file the address names: beside the list on a wide screen,
+         in its place on a narrow one. -->
+    <app-file-preview
+      class="files-opened"
+      *ngIf="opened as file"
+      [file]="file"
+      [source]="sourceLabel(file)"
+      [sharing]="sharing(file).word"
+      [canDownload]="canDownload"
+      (closed)="closeOpened()"
+      (download)="download(file)"
+    >
+      <button previewActions class="btn primary sm" type="button" *ngIf="canChat && !file.unreadable"
+              [disabled]="busyRef === file.resource_ref" (click)="useInChat(file)">
+        Use in a chat
+      </button>
+      <button previewActions class="btn sm" type="button" *ngIf="canDownload" (click)="download(file)">
+        Download
+      </button>
+      <button previewActions class="icon-btn sm" type="button"
+              *ngIf="canTouch(file) && (canShare || canTransfer || canDelete)"
+              [attr.aria-label]="'More actions for ' + filename(file)" [matMenuTriggerFor]="openedMenu">
+        <lucide-icon name="ellipsis-vertical" [size]="16" aria-hidden="true"></lucide-icon>
+      </button>
+      <mat-menu #openedMenu="matMenu" xPosition="before">
+        <button mat-menu-item *ngIf="canShare" (click)="closeOpened(); openShare(file)">Share</button>
+        <button mat-menu-item *ngIf="canTransfer" (click)="requestTransfer(file)">Hand over</button>
+        <button mat-menu-item *ngIf="canDelete" [disabled]="busyRef === file.resource_ref" (click)="deleteOne(file)">Delete</button>
+      </mat-menu>
+    </app-file-preview>
   </div>
 
   <!-- The one way in for a file: a real button, and the browser's picker

@@ -159,8 +159,10 @@ markdown tr:last-child td {
   border-bottom: 0;
 }
 
-/* ── Code blocks: a tile a step off the page, never inverted ───────── */
-markdown pre {
+/* ── Code blocks: a tile a step off the page, never inverted ─────────
+   In markdown, and wherever else code is shown (<pre class="code-tile">). */
+markdown pre,
+pre.code-tile {
   margin: 0 0 12px;
   padding: 16px;
   overflow-x: auto;
@@ -173,7 +175,8 @@ markdown pre {
   line-height: var(--lh-code);
 }
 
-markdown pre code {
+markdown pre code,
+pre.code-tile code {
   padding: 0;
   border-radius: 0;
   background: none;
@@ -181,7 +184,8 @@ markdown pre code {
 }
 
 /* What a highlighter wraps code in keeps the mono face. */
-markdown pre * {
+markdown pre *,
+pre.code-tile * {
   font-family: inherit;
 }
 

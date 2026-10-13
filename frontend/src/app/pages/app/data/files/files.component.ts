@@ -1,5 +1,5 @@
 import { Component, OnDestroy, OnInit } from '@angular/core';
-import { ActivatedRoute, Router } from '@angular/router';
+import { ActivatedRoute, NavigationEnd, Router } from '@angular/router';
 import { Subscription } from 'rxjs';
 
 import { fullDate, relativeDate } from 'src/app/components/ui/dates';
@@ -47,6 +47,9 @@ function nameOfSort(sort: Sort): string {
  * is chosen there, the search, the sort and the page are in the
  * address, so a view of the list can be linked to and returned to.
  *
+ * A file's name opens it at /data/files/<ref>: shown beside the list
+ * on a wide screen, in its place on a narrow one.
+ *
  * Chat titles are fetched to name the conversation an attachment came
  * from, and skipped without complaint when the user cannot list chats.
  */
@@ -70,6 +73,9 @@ export class FilesComponent extends DataPageBase implements OnInit, OnDestroy {
   query = '';
   sort: Sort = SORTS['newest'];
   page = 1;
+
+  /** The file the address names, opened beside the list; '' for none. */
+  openRef = '';
 
   readonly pageSize = 20;
   readonly sortChoices: Choice[] = [
@@ -116,6 +122,10 @@ export class FilesComponent extends DataPageBase implements OnInit, OnDestroy {
       this.page = Math.max(1, Number(params.get('page')) || 1);
     });
 
+    this.address.add(this.router.events.subscribe((event) => {
+      if (event instanceof NavigationEnd) this.readOpened();
+    }));
+
     const [files, profile] = await Promise.all([
       this.service.list(),
       this.profiles.get(),
@@ -123,6 +133,7 @@ export class FilesComponent extends DataPageBase implements OnInit, OnDestroy {
     this.files = files;
     this.profile = profile;
     this.loading = false;
+    this.readOpened();
 
     // The reach of a person-share: peers only, and the backend agrees.
     this.share.peers = await this.profiles.peers().catch(() => []);
@@ -148,13 +159,35 @@ export class FilesComponent extends DataPageBase implements OnInit, OnDestroy {
       this.files.some((file) => file.resource_ref === ref)));
   }
 
+  // ── The opened file ─────────────────────────────────────────────────
+
+  /** Opens what the address names. A ref that names nothing the person
+   *  can see, once the list is read, goes back to the list and says so. */
+  private readOpened(): void {
+    this.openRef = this.route.snapshot.firstChild?.paramMap.get('ref') || '';
+    if (this.openRef && !this.loading && !this.opened) {
+      this.fail('That file is not one you can see any more.');
+      this.closeOpened();
+    }
+  }
+
+  get opened(): FileResource | null {
+    return this.files.find((file) => file.resource_ref === this.openRef) || null;
+  }
+
+  /** Back to the list as it was: its filters, its sort, its page. */
+  closeOpened(): void {
+    void this.router.navigate(['/data/files'], { queryParamsHandling: 'preserve' });
+  }
+
   /** Changes what the address says, and so what is listed. A value of
-   *  '' (or the default) leaves the address without it. */
+   *  '' (or the default) leaves the address without it. The opened
+   *  file, when there is one, stays open. */
   private go(changes: Record<string, string | number | null>): void {
     const queryParams: Record<string, string | number | null> = {};
     for (const [key, value] of Object.entries(changes)) queryParams[key] = value || null;
     void this.router.navigate([], {
-      relativeTo: this.route,
+      relativeTo: this.route.firstChild ?? this.route,
       queryParams,
       queryParamsHandling: 'merge',
       replaceUrl: true,

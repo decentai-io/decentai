@@ -1,6 +1,39 @@
 /* The Files page is made of the shared pieces (the filter column, the
    list frame, the table and its toolbar, the file icon). Here is how a
-   row lays out its name and its source. */
+   row lays out its name and its source, and where an opened file sits. */
+
+/* An opened file is a 480px panel beside the list, which narrows; the
+   filter column gives it the room. Under 1200px there is no room for
+   both, and the file takes the list's place. */
+.files-layout.has-opened {
+  grid-template-columns: minmax(0, 1fr) 480px;
+  gap: 16px;
+}
+
+.files-opened {
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  animation: arrive var(--dur-2) var(--ease);
+}
+
+@media (max-width: 1200px) {
+  .files-layout.has-opened {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .files-layout.has-opened .files-list {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .files-opened {
+    animation: none;
+  }
+}
+
 .file-name {
   display: flex;
   align-items: center;
@@ -10,6 +43,7 @@
 
 .file-name-words {
   min-width: 0;
+  color: inherit;
   overflow-wrap: break-word;
 }
 
@@ -22,4 +56,9 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
+}
+
+.file-name-words:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }

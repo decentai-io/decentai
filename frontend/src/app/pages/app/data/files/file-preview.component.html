@@ -1,0 +1,90 @@
+<header class="preview-head">
+  <app-file-icon [name]="name" [mime]="file.values.file_type"></app-file-icon>
+  <div class="preview-words">
+    <h2 class="preview-name">{{ name }}</h2>
+    <p class="preview-facts">
+      <span *ngIf="source">{{ source }}</span>
+      <span *ngIf="size">{{ size }}</span>
+      <span *ngIf="created">Stored {{ created }}</span>
+      <span *ngIf="changed">changed {{ changed }}</span>
+      <span *ngIf="file.created_by_name">by {{ file.created_by_name }}</span>
+    </p>
+  </div>
+  <button class="icon-btn sm" type="button" aria-label="Close the preview" (click)="closed.emit()">
+    <lucide-icon name="x" [size]="16" aria-hidden="true"></lucide-icon>
+  </button>
+</header>
+
+<div class="preview-actions">
+  <span class="chip" *ngIf="sharing">{{ sharing }}</span>
+  <ng-content select="[previewActions]"></ng-content>
+</div>
+
+<!-- A file whose details cannot be read says why, in words. -->
+<p class="form-notice is-warn" role="status" *ngIf="file.unreadable">
+  Unreadable: this file's details are encrypted with a key version this deployment no longer
+  has. The bytes are still stored, and nothing about them can be shown.
+</p>
+
+<div class="preview-body" [attr.aria-busy]="loading">
+  <span class="sk sk-field" *ngIf="loading && kind !== 'pdf'"></span>
+  <p class="form-notice" role="status" *ngIf="problem">{{ problem }}</p>
+
+  <ng-container *ngIf="!problem && !loading">
+    <button
+      class="preview-image"
+      type="button"
+      *ngIf="kind === 'image' && address"
+      [class.is-zoomed]="zoomed"
+      [attr.aria-label]="zoomed ? 'Fit the picture to the panel' : 'Show the picture at its own size'"
+      (click)="zoomed = !zoomed"
+    >
+      <img [src]="address" alt="" />
+    </button>
+
+    <markdown class="preview-markdown" *ngIf="kind === 'markdown'" [data]="text"></markdown>
+
+    <div class="preview-table" *ngIf="kind === 'table' && rows.length" tabindex="0" role="region" [attr.aria-label]="'The rows of ' + name">
+      <table class="table">
+        <thead>
+          <tr><th *ngFor="let cell of rows[0]">{{ cell }}</th></tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let row of rows.slice(1)"><td *ngFor="let cell of row">{{ cell }}</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="preview-note" *ngIf="kind === 'table' && rowsLeft">
+      The first {{ rows.length - 1 }} rows. {{ rowsLeft }} more are in the file.
+    </p>
+
+    <pre class="code-tile" *ngIf="kind === 'code' && coloured"><code [innerHTML]="coloured"></code></pre>
+    <pre class="code-tile" *ngIf="(kind === 'code' && !coloured) || kind === 'text'"><code>{{ text }}</code></pre>
+
+    <audio *ngIf="kind === 'audio' && address" controls [src]="address"></audio>
+    <video *ngIf="kind === 'video' && address" controls [src]="address"></video>
+  </ng-container>
+
+  <!-- Nothing inside a frame on this deployment, so a PDF is opened
+       beside the app rather than in it. -->
+  <app-empty *ngIf="kind === 'pdf' && !problem" icon="file-text" title="A PDF opens in a tab of its own" line="It is read there, with this page left as it is.">
+    <button class="btn" type="button" *ngIf="canDownload" [disabled]="loading" (click)="openPdf()">
+      {{ loading ? "Opening…" : "Open the PDF" }}
+    </button>
+  </app-empty>
+
+  <app-empty *ngIf="kind === 'none' && !file.unreadable" icon="file" title="No preview for this type" line="Download it to open it with what reads it.">
+    <button class="btn" type="button" *ngIf="canDownload" (click)="download.emit()">Download</button>
+  </app-empty>
+</div>
+
+<!-- What an agent or a chat attached to the file, for whoever needs it. -->
+<details class="fold preview-keys" *ngIf="keys.length">
+  <summary>Keys attached to it</summary>
+  <dl>
+    <ng-container *ngFor="let entry of keys">
+      <dt>{{ entry[0] }}</dt>
+      <dd>{{ entry[1] }}</dd>
+    </ng-container>
+  </dl>
+</details>

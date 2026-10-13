@@ -250,6 +250,7 @@ import { ConnectedAppsComponent } from './pages/app/settings/connected-apps/conn
 import { SchedulesComponent } from './pages/app/ai/schedules/schedules.component';
 import { AuditComponent } from './pages/app/ai/audit/audit.component';
 import { FilesComponent } from './pages/app/data/files/files.component';
+import { FilePreviewComponent } from './pages/app/data/files/file-preview.component';
 import { RecordsComponent } from './pages/app/data/records/records.component';
 import { SecretsComponent } from './pages/app/secrets/secrets.component';
 import { SettingsComponent } from './pages/app/settings/settings.component';
@@ -307,6 +308,7 @@ import { AgentCardComponent } from './pages/app/agents/agent-card.component';
     SchedulesComponent,
     AuditComponent,
     FilesComponent,
+    FilePreviewComponent,
     RecordsComponent,
     SecretsComponent,
     SettingsComponent,
