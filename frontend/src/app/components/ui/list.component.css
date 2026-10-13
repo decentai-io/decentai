@@ -21,6 +21,16 @@
   display: none;
 }
 
+/* Rows and tables sit in a frame with a little depth; groups that are
+   each a thing of their own (cards, a record's days) do not. */
+.list-rows.is-framed {
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-1);
+}
+
 .list-foot {
   margin-top: 12px;
   padding: 0 16px;
@@ -43,8 +53,9 @@
 
 .sk-mark {
   flex: none;
-  width: 20px;
-  height: 20px;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--r-md);
 }
 
 .sk-words {

@@ -21,13 +21,13 @@ import { Component, Input } from '@angular/core';
   styleUrl: './list.component.css',
   template: `
     <div class="list-toolbar"><ng-content select="[listToolbar]"></ng-content></div>
-    <div class="list-rows" *ngIf="loading" aria-busy="true" [attr.aria-label]="'Loading ' + label">
+    <div class="list-rows is-framed" *ngIf="loading" aria-busy="true" [attr.aria-label]="'Loading ' + label">
       <div class="list-skeleton" *ngFor="let row of skeletonRows">
         <span class="sk sk-mark"></span>
         <span class="sk-words"><span class="sk sk-name"></span><span class="sk sk-meta"></span></span>
       </div>
     </div>
-    <div class="list-rows" *ngIf="!loading" [attr.role]="rows === 'list' ? 'list' : null" [attr.aria-label]="rows === 'list' ? label : null">
+    <div class="list-rows" *ngIf="!loading" [class.is-framed]="rows !== 'groups'" [attr.role]="rows === 'list' ? 'list' : null" [attr.aria-label]="rows === 'list' ? label : null">
       <ng-content></ng-content>
     </div>
     <p class="list-foot" *ngIf="foot && !loading">{{ foot }}</p>

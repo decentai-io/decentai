@@ -10,15 +10,21 @@
 
 .empty-icon {
   display: inline-flex;
-  margin-bottom: 8px;
-  color: var(--ink-3);
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  margin-bottom: 12px;
+  border-radius: var(--r-full);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
 }
 
 .empty-title {
   color: var(--ink);
-  font-size: var(--t-base);
-  font-weight: 500;
-  line-height: var(--lh-base);
+  font-size: var(--t-md);
+  font-weight: 600;
+  line-height: var(--lh-md);
 }
 
 .empty-line {

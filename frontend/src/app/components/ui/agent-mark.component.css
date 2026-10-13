@@ -1,5 +1,7 @@
-/* The agent mark: a 36px tile on surface-2 with initials or an icon;
-   20px when small, 48px when large. No colour of its own. */
+/* The agent mark: a 36px tile with initials or an icon, in the hue the
+   agent's name gives it (--mark-hue); 20px when small, 48px when
+   large. The tint is light under dark letters, and the other way round
+   in the dark theme: 7:1 or better either way. */
 :host {
   display: inline-flex;
   flex: none;
@@ -8,8 +10,8 @@
   width: 36px;
   height: 36px;
   border-radius: var(--r-md);
-  background: var(--surface-2);
-  color: var(--ink-2);
+  background: hsl(var(--mark-hue, 152) 62% 93%);
+  color: hsl(var(--mark-hue, 152) 58% 24%);
   font-size: var(--t-sm);
   font-weight: 600;
   line-height: 1;
@@ -32,4 +34,9 @@
 
 lucide-icon {
   display: inline-flex;
+}
+
+:host-context(.dark) {
+  background: hsl(var(--mark-hue, 152) 34% 20%);
+  color: hsl(var(--mark-hue, 152) 62% 80%);
 }

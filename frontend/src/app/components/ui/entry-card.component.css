@@ -6,7 +6,7 @@
   min-height: 100vh;
   min-height: 100dvh;
   padding: max(24px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom));
-  background: var(--bg);
+  background: var(--chrome);
   color: var(--ink);
   font-size: var(--t-base);
   line-height: var(--lh-base);
@@ -21,6 +21,7 @@
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
   background: var(--surface);
+  box-shadow: var(--shadow-2);
 }
 
 /* One brand: the serif word, as in the sidebar. */

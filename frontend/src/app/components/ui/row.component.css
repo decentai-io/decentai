@@ -25,13 +25,21 @@
 }
 
 :host(:hover) {
-  background: var(--surface-2);
+  background: var(--accent-wash);
 }
 
+/* The mark sits in a tile of the accent: the colour a list has. An
+   agent's own mark fills the tile with its own. */
 .row-mark {
   display: flex;
   flex: none;
-  color: var(--ink-3);
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--r-md);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
 }
 
 .row-mark:empty {
@@ -104,7 +112,7 @@
   .row-state {
     order: 1;
     flex: 1 1 100%;
-    padding-left: 32px;
+    padding-left: 48px;
   }
 }
 

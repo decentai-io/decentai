@@ -28,7 +28,8 @@
   padding: 0 14px;
   border: 1px solid var(--line);
   border-radius: var(--r-md);
-  background: var(--surface-2);
+  background: var(--surface);
+  box-shadow: var(--shadow-1);
   color: var(--ink);
   font: 500 var(--t-base) / var(--lh-base) var(--font-sans);
   white-space: nowrap;
@@ -37,12 +38,20 @@
   transition:
     background var(--dur-1) var(--ease),
     border-color var(--dur-1) var(--ease),
-    color var(--dur-1) var(--ease);
+    box-shadow var(--dur-1) var(--ease),
+    color var(--dur-1) var(--ease),
+    transform var(--dur-1) var(--ease);
 }
 
 .btn:hover {
-  background: var(--surface-3);
+  border-color: var(--line-strong);
+  background: var(--surface-2);
   text-decoration: none;
+}
+
+/* A button gives a little when it is pressed. */
+.btn:active:not(:disabled) {
+  transform: scale(0.98);
 }
 
 .btn.sm {
@@ -59,12 +68,14 @@
 .btn.primary:hover {
   border-color: color-mix(in srgb, var(--accent) 88%, var(--ink));
   background: color-mix(in srgb, var(--accent) 88%, var(--ink));
+  box-shadow: 0 6px 16px -8px color-mix(in srgb, var(--accent) 70%, transparent);
 }
 
 .btn.ghost,
 .btn.danger {
   border-color: transparent;
   background: transparent;
+  box-shadow: none;
 }
 
 .btn.ghost:hover {
@@ -875,9 +886,9 @@ div.mat-mdc-select-panel {
 }
 
 .side-item.is-current {
-  background: var(--surface-2);
-  color: var(--ink);
-  font-weight: 500;
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  font-weight: 600;
 }
 
 /* A count at the right of its entry. */
@@ -913,10 +924,11 @@ div.mat-mdc-select-panel {
 
 .side-opened {
   min-width: 0;
-  padding: 16px;
+  padding: 20px;
   border: 1px solid var(--line);
-  border-radius: var(--r-md);
+  border-radius: var(--r-lg);
   background: var(--surface);
+  box-shadow: var(--shadow-2);
   animation: arrive var(--dur-2) var(--ease);
 }
 
@@ -1037,7 +1049,7 @@ div.mat-mdc-select-panel {
 }
 
 .table tbody tr:hover {
-  background: var(--surface-2);
+  background: var(--accent-wash);
 }
 
 .table tbody tr.is-selected {

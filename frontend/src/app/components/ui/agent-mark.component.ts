@@ -13,11 +13,23 @@ export function initialsOf(name: string): string {
     .join('');
 }
 
+/** The hues an agent's mark may take: apart enough to tell two agents
+ *  by, and none of them the red or amber that mean something here. */
+const HUES = [152, 172, 196, 214, 234, 262, 286, 318];
+
+/** The hue an agent's name comes to: the same name, the same hue,
+ *  every time and on every device. */
+export function hueOf(name: string): number {
+  let sum = 0;
+  for (const letter of name.toLowerCase()) sum = (sum * 31 + letter.charCodeAt(0)) % 9973;
+  return HUES[sum % HUES.length];
+}
+
 /**
  * An agent's face: a small tile with its initials, or with the icon
- * its manifest names. Wherever an agent is shown (a card, a row, a
- * filter, a chip) this is how the eye tells one from the next, with no
- * colour of its own.
+ * its manifest names, in a colour its name gives it. Wherever an agent
+ * is shown (a card, a row, a filter, a chip) this is how the eye tells
+ * one from the next.
  *
  *   <app-agent-mark name="Google Calendar" icon="calendar"></app-agent-mark>
  *
@@ -35,6 +47,7 @@ export function initialsOf(name: string): string {
     'aria-hidden': 'true',
     '[class.is-small]': "size === 'sm'",
     '[class.is-large]': "size === 'lg'",
+    '[style.--mark-hue]': 'hue',
   },
   template: `
     <lucide-icon *ngIf="shownIcon" [name]="shownIcon" [size]="size === 'sm' ? 12 : size === 'lg' ? 24 : 18" [strokeWidth]="1.75"></lucide-icon>
@@ -49,6 +62,7 @@ export class AgentMarkComponent implements OnChanges {
   @Input() size: 'sm' | 'md' | 'lg' = 'md';
 
   initials = '';
+  hue = HUES[0];
   /** The icon, when the app carries it; else ''. */
   shownIcon = '';
 
@@ -57,6 +71,7 @@ export class AgentMarkComponent implements OnChanges {
   ngOnChanges(): void {
     // A small mark has room for one letter.
     this.initials = initialsOf(this.name).slice(0, this.size === 'sm' ? 1 : 2);
+    this.hue = hueOf(this.name);
     this.shownIcon = this.icon && this.isCarried(this.icon) ? this.icon : '';
   }
 

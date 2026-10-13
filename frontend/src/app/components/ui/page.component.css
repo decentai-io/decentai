@@ -5,6 +5,15 @@
   display: block;
   max-width: 720px;
   padding: 8px 0 24px;
+  animation: page-arrive var(--dur-3) var(--ease) both;
+}
+
+/* A page arrives: it does not blink into place. */
+@keyframes page-arrive {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
 }
 
 :host(.is-wide) {
@@ -24,18 +33,21 @@
   min-width: 0;
 }
 
+/* The title is in the brand's serif: the one place a page speaks up. */
 .page-title {
   color: var(--ink);
-  font-size: var(--t-lg);
+  font-family: var(--font-serif);
+  font-size: var(--t-xl);
   font-weight: 600;
-  line-height: var(--lh-lg);
+  letter-spacing: -0.01em;
+  line-height: var(--lh-xl);
 }
 
 /* The way to read about the page without leaving it. */
 .page-title {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 8px;
 }
 
 .page-help {
