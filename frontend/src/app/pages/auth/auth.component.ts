@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnDestroy, OnInit } from '@angular/core';
 
 import { AuthService } from '../../services/auth.service';
 import { DataStoreService } from '../../services/datastore.service';
@@ -26,7 +26,7 @@ type Mode = 'login' | 'invitation' | 'forgot' | 'reset' | 'first' | 'entering';
   styleUrls: ['./auth.component.css'],
   standalone: false,
 })
-export class AuthComponent implements OnInit {
+export class AuthComponent implements OnInit, OnDestroy {
   mode: Mode = 'login';
 
   email = '';
@@ -50,9 +50,21 @@ export class AuthComponent implements OnInit {
   /** After asking for a reset: what to tell them, and the link when there is
    * no email service to send it. */
   forgotMessage = '';
+  /** Whether a link was sent, or the message says who to ask instead. */
+  private forgotSent = true;
 
   busy = false;
+  /** What the server refused, said in one block above the button. */
   error = '';
+  /** The refusal is a lockout, not a wrong password. */
+  throttled = false;
+  /** Seconds until a locked door opens, counted down; 0 when it is open. */
+  lockedFor = 0;
+  private lockTimer: ReturnType<typeof setInterval> | null = null;
+  /** The button was pressed: what a field still needs is said under it. */
+  tried = false;
+  /** The password is shown as typed. */
+  shown = false;
 
   constructor(
     private auth: AuthService,
@@ -139,17 +151,12 @@ export class AuthComponent implements OnInit {
   // ------------------------------------------------------------------
 
   async signIn(): Promise<void> {
-    if (!this.looksLikeEmail(this.email.trim())) {
-      this.error = 'Enter a valid email address.';
-      return;
-    }
-    if (!this.password) {
-      this.error = 'Enter your password.';
-      return;
-    }
+    this.tried = true;
+    this.error = '';
+    if (this.emailProblem || !this.password) return;
 
     this.busy = true;
-    this.error = '';
+    this.throttled = false;
 
     try {
       const result = await this.auth.login({
@@ -167,11 +174,13 @@ export class AuthComponent implements OnInit {
         // Held until their own is chosen: it is asked for again then.
         this.handedPassword = this.password;
         this.password = '';
+        this.tried = false;
         this.mode = 'first';
         return;
       }
-
+      this.throttled = !!result.throttled;
       this.error = result.error || 'Email or password is incorrect.';
+      if (result.retryAfter) this.lockFor(result.retryAfter);
     } finally {
       this.busy = false;
     }
@@ -186,13 +195,11 @@ export class AuthComponent implements OnInit {
   private handedPassword = '';
 
   async chooseOwnPassword(): Promise<void> {
-    if (!this.password) {
-      this.error = 'Choose a password.';
-      return;
-    }
+    this.tried = true;
+    this.error = '';
+    if (this.passwordProblem) return;
 
     this.busy = true;
-    this.error = '';
 
     try {
       const result = await this.auth.firstPassword({
@@ -245,19 +252,55 @@ export class AuthComponent implements OnInit {
 
   startForgot(): void {
     this.mode = 'forgot';
-    this.error = '';
-    this.password = '';
+    this.clearForm();
     this.forgotMessage = '';
   }
 
+  ngOnDestroy(): void {
+    this.unlock();
+  }
+
+  /** The door is shut for this long: the button waits, and the notice
+   *  counts the time down. */
+  private lockFor(seconds: number): void {
+    this.unlock();
+    this.lockedFor = seconds;
+    this.lockTimer = setInterval(() => {
+      this.lockedFor -= 1;
+      if (this.lockedFor > 0) return;
+      this.unlock();
+      this.error = '';
+      this.throttled = false;
+    }, 1000);
+  }
+
+  private unlock(): void {
+    if (this.lockTimer) clearInterval(this.lockTimer);
+    this.lockTimer = null;
+    this.lockedFor = 0;
+  }
+
+  /** What is left of a lockout: "4:59". */
+  get lockLeft(): string {
+    return `${Math.floor(this.lockedFor / 60)}:${String(this.lockedFor % 60).padStart(2, '0')}`;
+  }
+
+  /** A mode starts clean: nothing refused, nothing pressed, no password. */
+  private clearForm(): void {
+    this.unlock();
+    this.error = '';
+    this.throttled = false;
+    this.tried = false;
+    this.shown = false;
+    this.password = '';
+  }
+
   async requestReset(): Promise<void> {
-    if (!this.looksLikeEmail(this.email.trim())) {
-      this.error = 'Enter a valid email address.';
-      return;
-    }
+    this.tried = true;
+    this.error = '';
+    if (this.emailProblem) return;
 
     this.busy = true;
-    this.error = '';
 
     try {
       const result = await this.auth.forgotPassword(this.email.trim());
@@ -269,6 +312,7 @@ export class AuthComponent implements OnInit {
 
       // Deliberately the same words whether or not the account exists.
       this.forgotMessage = result.message ?? '';
+      this.forgotSent = result.sent !== false;
     } finally {
       this.busy = false;
     }
@@ -297,13 +341,11 @@ export class AuthComponent implements OnInit {
   }
 
   async setNewPassword(): Promise<void> {
-    if (!this.password) {
-      this.error = 'Choose a password.';
-      return;
-    }
+    this.tried = true;
+    this.error = '';
+    if (this.passwordProblem) return;
 
     this.busy = true;
-    this.error = '';
 
     try {
       const result = await this.auth.resetPassword({
@@ -327,9 +369,8 @@ export class AuthComponent implements OnInit {
     this.clearTokenFromUrl();
     this.resetToken = '';
     this.resetValid = false;
-    this.password = '';
     this.handedPassword = '';
-    this.error = '';
+    this.clearForm();
     this.forgotMessage = '';
     this.mode = 'login';
   }
@@ -365,13 +406,11 @@ export class AuthComponent implements OnInit {
   }
 
   async acceptInvitation(): Promise<void> {
-    if (!this.name.trim()) {
-      this.error = 'Enter your name.';
-      return;
-    }
+    this.tried = true;
+    this.error = '';
+    if (!this.name.trim() || this.passwordProblem) return;
 
     this.busy = true;
-    this.error = '';
 
     try {
       const result = await this.auth.acceptInvitation({
@@ -401,8 +440,7 @@ export class AuthComponent implements OnInit {
     this.clearTokenFromUrl();
     this.inviteToken = '';
     this.inviteValid = false;
-    this.error = '';
-    this.password = '';
+    this.clearForm();
     this.name = '';
     this.email = '';
 
@@ -426,6 +464,26 @@ export class AuthComponent implements OnInit {
   // Presentation helpers
   // ------------------------------------------------------------------
 
+  /** What the email box still needs; '' when it reads as an address. */
+  get emailProblem(): string {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(this.email.trim()) ? '' : 'Enter a valid email address.';
+  }
+
+  /** The rule a chosen password is held to, each part with whether
+   *  what is typed meets it: the server checks the same. */
+  get passwordRule(): { words: string; met: boolean }[] {
+    return [
+      { words: 'At least 10 characters', met: this.password.length >= 10 },
+      { words: 'A letter', met: /[A-Za-z]/.test(this.password) },
+      { words: 'A number', met: /\d/.test(this.password) },
+    ];
+  }
+
+  get passwordProblem(): string {
+    if (!this.password) return 'Choose a password.';
+    return this.passwordRule.every((part) => part.met) ? '' : 'It does not meet the rule below yet.';
+  }
+
   get title(): string {
     if (this.mode === 'entering') {
       return 'Opening DecentAI…';
@@ -443,7 +501,10 @@ export class AuthComponent implements OnInit {
       return this.resetValid ? 'Choose a new password' : 'Link problem';
     }
     if (this.mode === 'forgot') {
-      return this.forgotMessage ? 'Check your email' : 'Reset your password';
+      // What happened: a link on its way, or who to ask where this
+      // install sends none.
+      if (this.forgotMessage) return this.forgotSent ? 'Check your email' : 'Ask your administrator';
+      return 'Reset your password';
     }
     if (this.mode === 'first') {
       return 'Choose your own password';
@@ -461,7 +522,7 @@ export class AuthComponent implements OnInit {
       }
       return this.inviteValid
         ? `Set a password for ${this.email}`
-        : 'Ask whoever invited you to send a new link.';
+        : this.error || 'Ask whoever invited you to send a new link.';
     }
     if (this.mode === 'reset') {
       if (this.checkingReset) {
@@ -469,7 +530,7 @@ export class AuthComponent implements OnInit {
       }
       return this.resetValid
         ? `For ${this.email}${this.orgName ? ' at ' + this.orgName : ''}`
-        : 'Ask for a new link and try again.';
+        : this.error || 'Ask for a new link and try again.';
     }
     if (this.mode === 'forgot') {
       return this.forgotMessage
@@ -493,9 +554,5 @@ export class AuthComponent implements OnInit {
     // just gets it written back. A used invitation token must not be left in
     // the address bar, browser history, or the next referrer header.
     setTimeout(() => this.clearTokenFromUrl(), 0);
-  }
-
-  private looksLikeEmail(value: string): boolean {
-    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
   }
 }

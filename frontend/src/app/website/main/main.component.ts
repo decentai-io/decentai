@@ -1,4 +1,5 @@
 import {
+  TemplateRef,
   Component,
   ElementRef,
   HostListener,
@@ -21,12 +22,15 @@ import { filter } from 'rxjs/operators';
 import { NavigatorService } from '../../services/navigator.service';
 import { DataStoreService } from 'src/app/services/datastore.service';
 import { AuthService } from 'src/app/services/auth.service';
-import { ThemeService } from 'src/app/services/theme.service';
+import { ThemeChoice, ThemeService } from 'src/app/services/theme.service';
 import { MicrophoneService } from 'src/app/services/microphone.service';
 import { WorkSwitchService } from 'src/app/services/work-switch.service';
 import { AlertComponent } from 'src/app/components/alert/alert.component';
 import { ContentView } from '../config/config.model';
 import { adminConsoleActions } from '../config/config';
+import { AttentionService } from 'src/app/services/attention.service';
+import { ShellStatusService } from 'src/app/services/shell-status.service';
+import { TopBarService } from 'src/app/services/top-bar.service';
 
 /** Below this width the sidebar becomes a modal drawer (see *.css). */
 const MOBILE_QUERY = '(max-width: 900px)';
@@ -39,6 +43,9 @@ const FOCUSABLE_SELECTOR = [
   'textarea:not([disabled])',
   '[tabindex]:not([tabindex="-1"])',
 ].join(',');
+
+/** The key that saves, as this keyboard calls it. */
+const SAVE_KEY = /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl';
 
 @Component({
   selector: 'app-main',
@@ -56,11 +63,8 @@ export class MainComponent implements OnInit, OnDestroy {
   /** Desktop: drawer fully slides away when collapsed (M3 modal-rail). */
   isDrawerCollapsed = false;
 
-  currentPageTitle = '';
   contentView: ContentView = 'main';
 
-  /** Name of the active top-level module, shown as the breadcrumb root. */
-  moduleName = '';
 
   userName = '';
   userEmail = '';
@@ -70,7 +74,13 @@ export class MainComponent implements OnInit, OnDestroy {
    *  policy action that unlocks at least one console page. */
   hasAdminConsoleAccess = false;
 
-  isDarkTheme = false;
+  themeChoice: ThemeChoice = 'system';
+  /** The three themes, as the user menu lists them. */
+  readonly themes: { value: ThemeChoice; name: string; icon: string }[] = [
+    { value: 'light', name: 'Light', icon: 'sun' },
+    { value: 'dark', name: 'Dark', icon: 'moon' },
+    { value: 'system', name: 'System', icon: 'monitor' },
+  ];
 
   /** Whether this person has stopped everything of theirs (AI:Switch). */
   workStopped = false;
@@ -79,6 +89,9 @@ export class MainComponent implements OnInit, OnDestroy {
 
   /** A newer version of the app has been fetched and waits for a reload. */
   updateReady = false;
+  /** The backend answered that nobody is signed in any more. */
+  sessionEnded = false;
+  offline = false;
 
   private readonly subscriptions = new Subscription();
   private readonly collapsedPreferenceKey = 'decentai.sidebar-collapsed';
@@ -101,11 +114,21 @@ export class MainComponent implements OnInit, OnDestroy {
     private auth: AuthService,
     private workSwitch: WorkSwitchService,
     private updates: SwUpdate,
+    readonly topBar: TopBarService,
+    private shellStatus: ShellStatusService,
+    private attention: AttentionService,
   ) {}
 
-  /** Off-screen drawer must leave the tab order when closed on mobile. */
+  /** The drawer leaves the tab order while it is closed on a phone.
+   *  On a wide screen it is always there: open, or as a rail. */
   get drawerInert(): boolean {
-    return this.isMobile ? !this.isSidebarOpen : this.isDrawerCollapsed;
+    return this.isMobile && !this.isSidebarOpen;
+  }
+
+  /** The person's own page and the Guide: open to whoever is signed in
+   *  with the action everybody holds. */
+  get canSeeProfile(): boolean {
+    return this.auth.can('account:profile:get');
   }
 
   /** Content behind the drawer is inert while the modal drawer is open. */
@@ -127,14 +150,20 @@ export class MainComponent implements OnInit, OnDestroy {
     this.initials = this.computeInitials(this.userName);
     this.syncAdminAccess();
     this.contentView = this.datastore.getCurrentContentView();
-    this.moduleName = this.computeModuleName();
 
     this.subscriptions.add(
-      this.theme.theme$.subscribe((t) => (this.isDarkTheme = t === 'dark')),
+      this.theme.choice$.subscribe((choice) => (this.themeChoice = choice)),
     );
     this.subscriptions.add(
       this.workSwitch.stopped$.subscribe((stopped) => (this.workStopped = stopped)),
     );
+    this.subscriptions.add(this.topBar.stopAsked.subscribe(() => this.stopEverything()));
+    this.subscriptions.add(this.shellStatus.offline$.subscribe((offline) => (this.offline = offline)));
+    this.subscriptions.add(this.shellStatus.sessionEnded$.subscribe((ended) => {
+      this.sessionEnded = ended;
+      // Nothing more is asked of a backend that knows nobody.
+      if (ended) this.attention.stop();
+    }));
     void this.workSwitch.refresh();
 
     // The service worker keeps serving the version it has until the page
@@ -146,19 +175,10 @@ export class MainComponent implements OnInit, OnDestroy {
         .subscribe(() => (this.updateReady = true)),
     );
 
-    // Title/breadcrumb emissions fire synchronously inside navigation
-    // (mid change-detection); defer a microtask to avoid NG0100.
-    this.subscriptions.add(
-      this.datastore.currentPageTitle$.subscribe((title) => {
-        queueMicrotask(() => (this.currentPageTitle = title));
-      }),
-    );
-
     this.subscriptions.add(
       this.datastore.currentContentView$.subscribe((view) => {
         queueMicrotask(() => {
           this.contentView = view;
-          this.moduleName = this.computeModuleName();
         });
       }),
     );
@@ -175,10 +195,6 @@ export class MainComponent implements OnInit, OnDestroy {
           ),
         )
         .subscribe((event) => {
-          if (!(event instanceof NavigationStart)) {
-            // currentRoute is synced by the navigator once navigation ends.
-            this.moduleName = this.computeModuleName();
-          }
           if (event instanceof NavigationEnd) {
             // Re-read permissions as the user moves around, so a role change
             // made elsewhere takes effect without a manual reload.
@@ -215,7 +231,7 @@ export class MainComponent implements OnInit, OnDestroy {
     this.unlockBodyScroll();
   }
 
-  /** Top-bar menu button: modal drawer on mobile, collapse on desktop. */
+  /** The drawer on a phone; on a wide screen, the sidebar or its rail. */
   toggleMenu(): void {
     if (this.isMobile) {
       this.isSidebarOpen ? this.closeSidebar() : this.openSidebar();
@@ -228,8 +244,19 @@ export class MainComponent implements OnInit, OnDestroy {
     );
   }
 
-  toggleTheme(): void {
-    this.theme.toggle();
+  /** The skip link: past the bar and the sidebar, to the page. The
+   *  link's address is not followed, since the page is not a route. */
+  skipToContent(event: Event): void {
+    event.preventDefault();
+    const page = document.getElementById('page_container');
+    const heading = page?.querySelector<HTMLElement>('h1') ?? page;
+    if (!heading) return;
+    heading.tabIndex = -1;
+    heading.focus();
+  }
+
+  setTheme(choice: ThemeChoice): void {
+    this.theme.set(choice);
   }
 
   /** The person's own switch: end everything their chats are doing,
@@ -240,6 +267,8 @@ export class MainComponent implements OnInit, OnDestroy {
       width: 'auto',
       data: {
         type: 'confirm',
+        confirm: 'Stop everything',
+        danger: true,
         title: 'Stop everything?',
         messages: [{
           description:
@@ -283,13 +312,27 @@ export class MainComponent implements OnInit, OnDestroy {
     document.location.reload();
   }
 
+  /** The one line under the top bar, the most pressing first. */
+  get bar(): 'session' | 'offline' | 'stopped' | 'update' | '' {
+    if (this.sessionEnded) return 'session';
+    if (this.offline) return 'offline';
+    if (this.workStopped) return 'stopped';
+    return this.updateReady ? 'update' : '';
+  }
+
+  /** The app is loaded again on the address it is at: it finds no
+   *  session, shows the sign-in, and comes back to this page after. */
+  signInAgain(): void {
+    document.location.reload();
+  }
+
   logout(): void {
     const dialogRef = this.dialog.open(AlertComponent, {
       width: 'auto',
       data: {
         type: 'confirm',
-        title: 'Log out?',
-        messages: [{ description: "You'll be returned to the login screen." }],
+        title: 'Sign out?',
+        messages: [{ description: 'You will be returned to the sign-in screen.' }],
       },
     });
 
@@ -342,9 +385,44 @@ export class MainComponent implements OnInit, OnDestroy {
     }
   }
 
+  /** The keys the app answers to, as the sheet lists them. */
+  readonly shortcutList: { keys: string[]; does: string }[] = [
+    { keys: ['/'], does: 'Go to the page’s search' },
+    { keys: ['?'], does: 'Show this list' },
+    { keys: ['Esc'], does: 'Close a menu, a dialog or the sidebar' },
+    { keys: [SAVE_KEY, 'S'], does: 'Save, on a page with unsaved changes' },
+    { keys: ['Enter'], does: 'Send the message, in a chat' },
+    { keys: ['Shift', 'Enter'], does: 'Start a new line, in a chat' },
+  ];
+
+  @ViewChild('shortcuts') private shortcuts!: TemplateRef<unknown>;
+
+  showShortcuts(): void {
+    this.dialog.open(this.shortcuts, { width: '400px', maxWidth: '100vw' });
+  }
+
+  /** "/" goes to the page's search and "?" lists the keys, unless the
+   *  person is typing somewhere or a dialog is open. */
+  private onShortcut(event: KeyboardEvent): void {
+    if (event.ctrlKey || event.metaKey || event.altKey) return;
+    const target = event.target as HTMLElement | null;
+    if (target?.closest('input, textarea, select, [contenteditable=""], [contenteditable="true"]')) return;
+    if (this.dialog.openDialogs.length) return;
+    if (event.key === '/') {
+      const search = document.querySelector<HTMLInputElement>('main input[type="search"]');
+      if (!search) return;
+      event.preventDefault();
+      search.focus();
+    } else if (event.key === '?') {
+      event.preventDefault();
+      this.showShortcuts();
+    }
+  }
+
   /** Keep Tab focus inside the open drawer (a focus trap). */
   @HostListener('document:keydown', ['$event'])
   onDocumentKeydown(event: KeyboardEvent): void {
+    this.onShortcut(event);
     if (!this.isSidebarOpen || !this.isMobile || event.key !== 'Tab') {
       return;
     }
@@ -379,12 +457,6 @@ export class MainComponent implements OnInit, OnDestroy {
     }
   }
 
-  /** A chat on a phone has its own header with the way back: the
-   *  breadcrumb above it would be a third bar saying the same thing. */
-  get pageBarHidden(): boolean {
-    return this.isMobile && /\/ai\/chats\/[^/?#]+/.test(this.router.url);
-  }
-
   private applyViewport(isMobile: boolean): void {
     this.isMobile = isMobile;
     // Leaving mobile while the drawer was open must not strand the scroll lock.
@@ -407,29 +479,6 @@ export class MainComponent implements OnInit, OnDestroy {
     this.renderer.removeStyle(document.body, 'overflow');
   }
 
-  /** The sidebar section the active page sits in. Sections share a primary
-   *  url — every admin group is 'admin' — so matching on that alone would
-   *  always name the first one; find the section that actually holds the
-   *  page, and fall back to the primary match for anything unlisted. */
-  private computeModuleName(): string {
-    const route = this.navigator.getCurrentRoute();
-    const active = [route.tertiary, route.secondary].filter(Boolean);
-    const sections = this.datastore.getRoutes();
-
-    for (const section of sections) {
-      for (const page of section.children ?? []) {
-        if (active.includes(page.url)) {
-          return section.name;
-        }
-        for (const leaf of page.children ?? []) {
-          if (active.includes(leaf.url)) {
-            return section.name;
-          }
-        }
-      }
-    }
-    return sections.find((r) => r.url === route.primary)?.name ?? '';
-  }
 
   private computeInitials(name: string): string {
     const parts = name.trim().split(/\s+/).filter(Boolean);

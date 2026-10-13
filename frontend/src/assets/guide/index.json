@@ -1,14 +1,17 @@
 {
   "chapters": [
-    { "id": "start", "section": "Essentials", "title": "Getting started", "summary": "Your workspace and first useful chat", "file": "01-getting-started.md" },
-    { "id": "chats", "section": "Essentials", "title": "Chats", "summary": "Messages, files, approvals, and results", "file": "02-chats.md" },
-    { "id": "agents", "section": "Essentials", "title": "Agents and marketplace", "summary": "Install capabilities and review access", "file": "03-agents.md" },
-    { "id": "credentials", "section": "Connect & organize", "title": "Credentials", "summary": "Connect accounts without exposing secrets", "file": "04-credentials.md" },
-    { "id": "records", "section": "Connect & organize", "title": "Saved data and files", "summary": "Find, manage, and share agent output", "file": "05-records-and-files.md" },
-    { "id": "activity", "section": "Connect & organize", "title": "Schedules", "summary": "What your chats keep on the clock", "file": "06-activity.md" },
-    { "id": "mcp", "section": "Connect & organize", "title": "MCP servers", "summary": "Add remote tools and decide what each may do", "file": "09-mcp.md" },
-    { "id": "audit", "section": "Control & administration", "title": "Audit trail", "summary": "Understand who did what and when", "file": "07-audit.md" },
-    { "id": "admin", "section": "Control & administration", "title": "Administration", "summary": "People, groups, roles, and policies", "file": "10-administration.md" },
-    { "id": "keys", "section": "For builders", "title": "API keys", "summary": "Let scripts act with your access", "file": "08-api-keys.md" }
+    {"id": "start", "section": "Essentials", "title": "Getting started", "summary": "Your workspace and first useful chat", "file": "01-getting-started.md"},
+    {"id": "chats", "section": "Essentials", "title": "Chats", "summary": "Asking, following the work, and a chat’s own settings", "file": "02-chats.md"},
+    {"id": "results", "section": "Essentials", "title": "Approvals, files and results", "summary": "Cards to decide, questions, files and what comes back", "file": "03-approvals-files-results.md"},
+    {"id": "agents", "section": "Essentials", "title": "Agents and the marketplace", "summary": "Install capabilities and review access", "file": "04-agents.md"},
+    {"id": "credentials", "section": "Connect & organize", "title": "Credentials", "summary": "Connect accounts without exposing secrets", "file": "05-credentials.md"},
+    {"id": "records", "section": "Connect & organize", "title": "Saved data and files", "summary": "Find, manage, and share agent output", "file": "06-records-and-files.md"},
+    {"id": "schedules", "section": "Connect & organize", "title": "Schedules", "summary": "What your chats keep on the clock", "file": "07-schedules.md"},
+    {"id": "mcp", "section": "Connect & organize", "title": "MCP servers", "summary": "Add remote tools and decide what each may do", "file": "08-mcp.md"},
+    {"id": "audit", "section": "Control & administration", "title": "The audit trail", "summary": "Understand who did what and when", "file": "09-audit.md"},
+    {"id": "admin", "section": "Control & administration", "title": "Administration", "summary": "The organization and its people", "file": "10-administration.md"},
+    {"id": "access", "section": "Control & administration", "title": "Roles and policies", "summary": "Groups, roles, policies and sharing", "file": "11-roles-and-policies.md"},
+    {"id": "organization", "section": "Control & administration", "title": "Providers, safety and monitoring", "summary": "Model providers, connected apps, safety and monitoring", "file": "12-providers-safety-monitoring.md"},
+    {"id": "keys", "section": "For builders", "title": "API keys", "summary": "Let scripts act with your access", "file": "13-api-keys.md"}
   ]
 }

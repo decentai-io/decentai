@@ -5,9 +5,14 @@ import {
 import {
   AgentFunction, AgentGrant, AgentOffer, AgentsService,
 } from 'src/app/services/agents.service';
+import { Choice } from 'src/app/components/ui/radio-keys';
+import { ConfirmService } from 'src/app/services/confirm.service';
 import { Group, GroupService } from 'src/app/services/group.service';
 import { Member, MembersService } from 'src/app/services/members.service';
 import { localFunction } from './agent-shared';
+
+/** Who one grant is for. */
+type Audience = 'everyone' | 'groups' | 'people';
 
 /**
  * Who may ask this agent to do things.
@@ -20,12 +25,16 @@ import { localFunction } from './agent-shared';
  * Grants are allow-only — absence is denial — and a grant can be
  * narrowed twice over: to particular functions, and to particular values
  * of the scopes the manifest declares.
+ *
+ * A grant is made for one kind of audience at a time: everyone, some
+ * groups, or some people. Groups and people together are two grants,
+ * which comes to the same, since grants only add.
  */
 @Component({
   selector: 'app-agent-access',
   standalone: false,
   templateUrl: './agent-access.component.html',
-  styleUrls: ['../data-shared.css', './agent-shared.css', './agents.component.css'],
+  styleUrl: './agent-access.component.css',
 })
 export class AgentAccessComponent implements OnChanges {
   @Input() agent!: AgentOffer;
@@ -40,13 +49,29 @@ export class AgentAccessComponent implements OnChanges {
   groups: Group[] = [];
   members: Member[] = [];
 
-  /** The grant being composed. Whole agent by default: the common case
-   *  is "this team may use this", and a list is the narrower decision. */
+  /** The grant being composed. Nobody is chosen to begin with: who
+   *  gets access is the one thing that must be said. The whole agent by
+   *  default: the common case is "this team may use this", and a list
+   *  is the narrower decision. */
+  draftAudience: Audience | null = null;
   draftGroups = new Set<string>();
   draftUsers = new Set<string>();
   draftWhole = true;
   draftFunctions = new Set<string>();
-  draftScopes: Record<string, string> = {};
+  /** Per scope, the values allowed; none is any value. */
+  draftScopes: Record<string, string[]> = {};
+  /** Give access was pressed: what is missing is said under its field. */
+  tried = false;
+
+  readonly audiences: Choice<Audience>[] = [
+    { value: 'everyone', name: 'Everyone', hint: 'Every person in this organization, now and later.' },
+    { value: 'groups', name: 'Groups', hint: 'The members of the groups you tick.' },
+    { value: 'people', name: 'People', hint: 'Only the people you tick.' },
+  ];
+  readonly reaches: Choice<boolean>[] = [
+    { value: true, name: 'All of them' },
+    { value: false, name: 'Only some' },
+  ];
 
   readonly EVERYONE = 'everyone';
 
@@ -56,6 +81,7 @@ export class AgentAccessComponent implements OnChanges {
     private service: AgentsService,
     private groupService: GroupService,
     private memberService: MembersService,
+    private confirm: ConfirmService,
   ) {}
 
   /** Why the grants could not be read, when they could not: an empty
@@ -87,11 +113,14 @@ export class AgentAccessComponent implements OnChanges {
   }
 
   private resetDraft(): void {
+    this.draftAudience = null;
     this.draftGroups = new Set<string>();
     this.draftUsers = new Set<string>();
     this.draftWhole = true;
     this.draftFunctions = new Set<string>();
-    this.draftScopes = {};
+    this.draftScopes = Object.fromEntries(
+      (this.agent?.scopes || []).map((scope) => [scope, [] as string[]]));
+    this.tried = false;
   }
 
   // ── What a grant row says ───────────────────────────────────────────
@@ -135,42 +164,67 @@ export class AgentAccessComponent implements OnChanges {
     if (!this.draftFunctions.delete(local)) this.draftFunctions.add(local);
   }
 
-  isFunctionOn(fn: AgentFunction): boolean {
-    return this.draftWhole || this.draftFunctions.has(localFunction(fn));
-  }
-
-  get reaches(): boolean {
-    return this.draftGroups.size > 0 || this.draftUsers.size > 0;
-  }
-
   get hasScopes(): boolean {
     return !!this.agent?.scopes?.length;
+  }
+
+  /** Who the grant being composed reaches. */
+  private get draftOwner(): { groups: string[]; users: string[] } {
+    switch (this.draftAudience) {
+      case 'everyone': return { groups: [this.EVERYONE], users: [] };
+      case 'groups': return { groups: [...this.draftGroups], users: [] };
+      case 'people': return { groups: [], users: [...this.draftUsers] };
+      default: return { groups: [], users: [] };
+    }
+  }
+
+  /** What still has to be said before the grant can be made, by the
+   *  field it belongs under. */
+  private get missing(): { field: 'who' | 'functions'; message: string }[] {
+    const missing: { field: 'who' | 'functions'; message: string }[] = [];
+    const owner = this.draftOwner;
+    if (!this.draftAudience) {
+      missing.push({ field: 'who', message: 'Choose who gets access.' });
+    } else if (!owner.groups.length && !owner.users.length) {
+      missing.push({
+        field: 'who',
+        message: this.draftAudience === 'groups' ? 'Tick at least one group.' : 'Tick at least one person.',
+      });
+    }
+    if (!this.draftWhole && !this.draftFunctions.size) {
+      missing.push({ field: 'functions', message: 'Tick at least one function, or give all of them.' });
+    }
+    return missing;
+  }
+
+  errorFor(field: 'who' | 'functions'): string {
+    return this.missing.find((entry) => entry.field === field)?.message || '';
   }
 
   /** The grant as a sentence, before it is written. Three controls that
    *  each narrow something are hard to hold in the head at once; the
    *  result of combining them is not. */
   get draftSummary(): string {
-    const people = this.draftGroups.size + this.draftUsers.size;
-    const who = this.draftGroups.has(this.EVERYONE)
-      ? 'Everyone'
-      : `${people} group${people === 1 ? '' : 's'}/person`;
-    const what = this.draftWhole
-      ? 'every function'
-      : `${this.draftFunctions.size} function${this.draftFunctions.size === 1 ? '' : 's'}`;
-    const limited = Object.values(this.draftScopes)
-      .filter((value) => String(value || '').trim()).length;
-    return `${who}, for ${what}`
-      + (limited ? `, limited on ${limited} scope${limited === 1 ? '' : 's'}` : '');
+    const owner = this.draftOwner;
+    const count = owner.groups.length + owner.users.length;
+    if (!this.draftAudience || !count) return 'Nobody is chosen yet.';
+    const who = this.draftAudience === 'everyone' ? 'Everyone in this organization'
+      : this.draftAudience === 'groups' ? `${count} ${count === 1 ? 'group' : 'groups'}`
+        : `${count} ${count === 1 ? 'person' : 'people'}`;
+    const functions = this.draftFunctions.size;
+    const what = this.draftWhole ? 'every function, now and later'
+      : `${functions} ${functions === 1 ? 'function' : 'functions'}`;
+    const limited = Object.values(this.draftScopes).filter((values) => values.length).length;
+    return `${who} may use ${what}`
+      + (limited ? `, limited on ${limited} ${limited === 1 ? 'scope' : 'scopes'}.` : '.');
   }
 
   async save(): Promise<void> {
-    if (!this.reaches) return;
+    this.tried = true;
+    if (this.missing.length || this.busyId) return;
 
     const constraints: Record<string, string[]> = {};
-    for (const [scope, raw] of Object.entries(this.draftScopes)) {
-      const values = String(raw || '')
-        .split(',').map((value) => value.trim()).filter(Boolean);
+    for (const [scope, values] of Object.entries(this.draftScopes)) {
       if (values.length) constraints[scope] = values;
     }
 
@@ -178,7 +232,7 @@ export class AgentAccessComponent implements OnChanges {
     try {
       const result = await this.service.grant(
         this.agent.agent_id,
-        { groups: [...this.draftGroups], users: [...this.draftUsers] },
+        this.draftOwner,
         this.draftWhole ? '*' : [...this.draftFunctions],
         constraints,
       );
@@ -189,6 +243,18 @@ export class AgentAccessComponent implements OnChanges {
     } finally {
       this.busyId = '';
     }
+  }
+
+  /** Taking access away stops people mid-work, so it is asked. */
+  async askRevoke(grant: AgentGrant): Promise<void> {
+    const sure = await this.confirm.ask({
+      title: `Revoke the access of ${this.audience(grant)}?`,
+      body: `They can no longer ask ${this.agent.name || 'this agent'} for `
+        + `${this.scope(grant)}, unless another grant still covers them.`,
+      confirm: 'Revoke',
+      danger: true,
+    });
+    if (sure) await this.revoke(grant);
   }
 
   async revoke(grant: AgentGrant): Promise<void> {

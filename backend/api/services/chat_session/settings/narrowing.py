@@ -14,6 +14,13 @@ conversation grants nothing they did not have, so a chat is NOT bounded
 by the default — only the default itself is checked, and only so that it
 does not quietly name somebody else's private skill and do nothing.
 
+An MCP server is the person's own, reached with their own credential,
+and already theirs to switch off for every chat. A chat leaving one out
+grants nothing and takes nothing from anyone else, so its list is only
+checked for its shape: a ref that names no server of theirs leaves
+nothing out. There is no default behind it; a server is on for the
+person's chats or it is not.
+
 Absent and empty are never the same. No key means no narrowing at all;
 an empty list is a choice, and it means none.
 """
@@ -148,6 +155,20 @@ class EnabledSkills(Narrowing):
         if set(cleaned) - visible:
             return None, "One or more selected skills are not visible to you."
         return cleaned, ""
+
+    def check(
+        self, user: Dict[str, Any], value: Any,
+    ) -> Tuple[Optional[List[str]], str]:
+        cleaned, problem = self._shape(value)
+        return (None, problem) if problem else (cleaned, "")
+
+
+class EnabledMcp(Narrowing):
+    """Which of the person's MCP servers this chat may call. No list
+    is every one that is on; a list is those and no others."""
+
+    name = "enabled_mcp"
+    noun = "MCP server references"
 
     def check(
         self, user: Dict[str, Any], value: Any,

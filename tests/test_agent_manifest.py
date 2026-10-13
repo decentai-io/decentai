@@ -106,6 +106,16 @@ class TestStructure:
         doc = broken(document, lambda d: d["agent"].update(id="Data::SQL"))
         assert any("agent.id" in e for e in errors_of(doc))
 
+    def test_an_icon_is_a_name_and_nothing_else(self, document):
+        """The manifest names an icon the app carries; it does not
+        ship a picture, an address or markup for the app to draw."""
+        document["agent"]["icon"] = "calendar-clock"
+        assert errors_of(document) == []
+        for bad in ["Calendar", "calendar clock", "https://x.example/i.svg",
+                    "<svg/>", "", "-calendar", "a" * 41, 7]:
+            document["agent"]["icon"] = bad
+            assert any("agent.icon" in e for e in errors_of(document)), bad
+
     def test_bad_version(self, document):
         doc = broken(document, lambda d: d["agent"].update(version="v1"))
         assert any("agent.version" in e for e in errors_of(doc))

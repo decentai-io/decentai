@@ -119,7 +119,7 @@ class AgentCatalogMixin:
         agent can do, what it will hold, and what it wants installed."""
         if not document:
             return {
-                "name": "", "description": "",
+                "name": "", "description": "", "icon": "",
                 "functions": [], "resources": {}, "dependencies": [],
                 "network": {"declared": False, "any": False,
                             "hosts": [], "from_secrets": []},
@@ -129,6 +129,7 @@ class AgentCatalogMixin:
         return {
             "name": agent.get("name", ""),
             "description": agent.get("description", ""),
+            "icon": agent.get("icon", ""),
             # What to try first, as the manifest declared it.
             "examples": manifest.examples(),
             "functions": [

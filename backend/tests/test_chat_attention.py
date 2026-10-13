@@ -2,7 +2,7 @@
 cards waiting, news since they last looked (attention badges)."""
 
 from conftest import app_call
-from test_ai_messages import make_chat
+from test_ai_messages import create_message, make_chat
 from test_runtime_secret_use import (  # noqa: F401
     runtime_call, runtime_headers, signing_key,
 )
@@ -11,6 +11,18 @@ from test_runtime_secret_use import (  # noqa: F401
 def row(admin, chat_id):
     return next(c for c in app_call(admin, "AI:Chat:List", {}).json()["data"]["chats"]
                 if c["chat_id"] == chat_id)
+
+
+class TestTheRowsSecondLine:
+    def test_a_row_carries_the_first_words_of_what_was_last_said(
+            self, anon, admin, seed, signing_key):
+        chat_id = make_chat(admin)
+        assert "preview" not in row(admin, chat_id)
+        create_message(anon, seed, chat_id, content="Save a note\n\nin my   notebook")
+        assert row(admin, chat_id)["preview"] == "Save a note in my notebook"
+        create_message(anon, seed, chat_id, actor="ai", content="Saved. " + "x" * 400)
+        said = row(admin, chat_id)["preview"]
+        assert said.startswith("Saved. ") and len(said) == 140
 
 
 class TestAttention:

@@ -5,8 +5,8 @@
   "display": "standalone",
   "scope": "/",
   "start_url": "/",
-  "background_color": "#0B0B0B",
-  "theme_color": "#0B0B0B",
+  "background_color": "#0f0e0d",
+  "theme_color": "#0f0e0d",
   "icons": [
     {
       "src": "assets/brand/icons/decentai-mark-180.png",

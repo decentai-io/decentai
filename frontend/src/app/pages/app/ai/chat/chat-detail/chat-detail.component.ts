@@ -5,18 +5,21 @@
 // WebSocket carries the conversation: AI:Chat:Input out, AI:Chat:Event in
 // (the runtime door's frames, relayed). A decision or a stop goes through
 // the HTTP gateway, where the backend records it before the runtime hears.
-import { Component, NgZone, OnDestroy, OnInit } from '@angular/core';
+import { Component, ElementRef, NgZone, OnDestroy, OnInit, TemplateRef, ViewChild } from '@angular/core';
 import { MatDialog } from '@angular/material/dialog';
 import { ActivatedRoute, Router } from '@angular/router';
 import { AlertComponent } from 'src/app/components/alert/alert.component';
+import { ActivityService } from 'src/app/services/activity.service';
 import { AiSessionService } from 'src/app/services/ai-session.service';
+import { AuthService } from 'src/app/services/auth.service';
 import { ProfileService } from 'src/app/services/profile.service';
 import { CHAT_PROTOCOL_VERSION, ChatInputCommand, FilePart, parseChatEvent, SessionContract, toApprovalCard, ChatJob } from 'src/app/models/chat-protocol';
 import { Subscription } from 'rxjs';
 import { ChatTurn, FileChoice, PlanStep } from 'src/app/models/chat-protocol';
-import { ScreenInputEvent, ScreenTab, ScreenView } from '../chat-screen/chat-screen.component';
+import { ScreenInputEvent, ScreenTab, ScreenView, screenLog } from '../chat-screen/chat-screen.component';
 import { ViewportService } from 'src/app/services/viewport.service';
 import { ReadAloudService } from 'src/app/services/read-aloud.service';
+import { TopBarService } from 'src/app/services/top-bar.service';
 import {
   ChatConnectionService, ChatConnectionState,
 } from 'src/app/services/chat-connection.service';
@@ -24,10 +27,12 @@ import {
   ActivityEntry, ChatStateService, InlineChatError,
 } from 'src/app/services/chat-state.service';
 
+import { cadenceWords } from '../../schedules/cadence-words';
 import { ChatActivityDialogComponent } from '../chat-activity-dialog/chat-activity-dialog.component';
 import { ChatAgentsDialogComponent } from '../chat-agents-dialog/chat-agents-dialog.component';
 import { ChatSkillsDialogComponent } from '../chat-skills-dialog/chat-skills-dialog.component';
 import { ChatModel } from '../chat-model-picker/chat-model-picker.component';
+import { SKILLS_LISTED_OPTIONS, STANDARD_SKILLS_LISTED } from '../chat-defaults';
 
 @Component({
   selector: 'app-chat-detail',
@@ -36,6 +41,17 @@ import { ChatModel } from '../chat-model-picker/chat-model-picker.component';
   styleUrls: ['./chat-detail.component.css'],
 })
 export class ChatDetailComponent implements OnInit, OnDestroy {
+  /** The chat's row of the app's top bar: back, title, status, actions. */
+  @ViewChild('bar', { static: true }) private bar?: TemplateRef<unknown>;
+  /** The kill switch's question takes the focus as it opens, on the
+   *  answer that changes nothing. */
+  @ViewChild('killCancel') private set killCancel(button: ElementRef<HTMLElement> | undefined) {
+    button?.nativeElement.focus();
+  }
+  @ViewChild('titleInput') private set titleInput(input: ElementRef<HTMLInputElement> | undefined) {
+    input?.nativeElement.select();
+  }
+
   title: string = '';
   chat_id: string | null = null;
   chat: any = null;
@@ -51,6 +67,7 @@ export class ChatDetailComponent implements OnInit, OnDestroy {
   loadingOlderMessages = false;
   liveSystemText: string | null = null;
   activity: ActivityEntry[] = [];
+  pastWork: Record<string, ActivityEntry[]> = {};
 
   /** The cards waiting on this person (approval_requested, hello). */
   pendingApprovals: any[] = [];
@@ -150,15 +167,10 @@ export class ChatDetailComponent implements OnInit, OnDestroy {
   ];
 
   /** How many skills the assistant is shown each turn. It lives in the
-   *  chat's config as `max_skills`; the platform's standard is 40, and
-   *  0 lists every skill the person can see. */
-  skillsCap = 40;
-  readonly skillsCapOptions = [
-    { rows: 40, label: 'Standard', hint: '40 skills listed' },
-    { rows: 80, label: 'More', hint: '80 skills listed' },
-    { rows: 160, label: 'Many', hint: '160 skills listed' },
-    { rows: 0, label: 'All', hint: 'Every skill you can see' },
-  ];
+   *  chat's config as `max_skills`; 0 lists every skill the person
+   *  can see. */
+  skillsCap = STANDARD_SKILLS_LISTED;
+  readonly skillsCapOptions = SKILLS_LISTED_OPTIONS;
 
   isSocketReady = false;
   /** The work in hand, as the runtime records it moving. */
@@ -170,6 +182,18 @@ export class ChatDetailComponent implements OnInit, OnDestroy {
   isConnecting = false;
   connectionState: ChatConnectionState = 'disconnected';
   inlineErrors: InlineChatError[] = [];
+
+  /** What the banner under the header shows: the two newest, the
+   *  newest first. */
+  get shownErrors(): InlineChatError[] {
+    return this.inlineErrors.slice(-2).reverse();
+  }
+
+  /** What the live-view button does now, in words. */
+  get liveViewLabel(): string {
+    return this.screen && this.screenHidden && !this.screen.idle
+      ? 'Show the live view' : 'Open the browser';
+  }
 
   isLoading = false;
   /** Background jobs the chat holds — the strip at the top, and the
@@ -248,9 +272,13 @@ export class ChatDetailComponent implements OnInit, OnDestroy {
     private state: ChatStateService,
     private viewport: ViewportService,
     private readAloud: ReadAloudService,
+    readonly topBar: TopBarService,
+    private activityService: ActivityService,
+    private auth: AuthService,
   ) {}
 
   ngOnInit(): void {
+    this.topBar.content.set(this.bar ?? null);
     this.state.reset();
     void this.readAloud.refresh();
     this.subscriptions.add(this.viewport.narrow$.subscribe((narrow) => (this.isNarrow = narrow)));
@@ -262,6 +290,7 @@ export class ChatDetailComponent implements OnInit, OnDestroy {
       this.jobs = state.jobs;
       this.activeJobs = state.jobs.length;
       this.activity = state.activity;
+      this.pastWork = state.pastWork;
       this.liveSystemText = state.liveText;
       this.isLoading = state.working;
       this.isChatLoading = state.loading;
@@ -356,6 +385,7 @@ export class ChatDetailComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.destroyed = true;
+    this.topBar.content.set(null);
     this.clearKillTimer();
     // A reply being said belongs to the chat that was left.
     this.readAloud.stop();
@@ -399,7 +429,7 @@ export class ChatDetailComponent implements OnInit, OnDestroy {
         : 20;
       this.skillsCap = Number.isInteger(config.max_skills)
         ? config.max_skills
-        : 40;
+        : STANDARD_SKILLS_LISTED;
       this.messageLookup.clear();
 
       // The cards still waiting survive disconnects: rebuilt from the
@@ -427,6 +457,7 @@ export class ChatDetailComponent implements OnInit, OnDestroy {
       }
 
       this.snapshotFresh = true;
+      void this.countSchedules();
       this.connection.connect(this.chat_id!, () => this.state.value.latestEventSeq);
     } catch (err) {
       if (this.destroyed || opening !== this.opening) return;
@@ -508,11 +539,12 @@ export class ChatDetailComponent implements OnInit, OnDestroy {
         // The work as it happens, each line saying whose it is; the
         // lines of one call gather under it (contracts/chat.py).
         this.state.addActivity(data);
-        // The screen's own call speaking: its words caption the picture,
-        // so the person knows what the still frame is waiting on.
+        // The screen's own call speaking: its words go in the log under
+        // the picture, so the person knows what the still frame is
+        // waiting on and what led to it.
         if (data.kind === 'agent_progress' && this.screen
             && data.source?.call_id === this.screen.call_id && data.text) {
-          this.screen = { ...this.screen, caption: String(data.text) };
+          this.screen = { ...this.screen, log: screenLog(this.screen.log, data.text) };
         }
         return;
 
@@ -542,16 +574,25 @@ export class ChatDetailComponent implements OnInit, OnDestroy {
         return;
 
       case 'schedule_set': {
+        // When it comes round, in the words its page uses, and the way
+        // to that page.
         const schedule = data.schedule || {};
-        const what = schedule.note || schedule.function || 'a check';
+        const when = cadenceWords({
+          cron: schedule.cron || '', every_seconds: schedule.every_seconds || null,
+          timezone: schedule.timezone || '', next_run_at: schedule.next_run_at || 0,
+        });
+        const what = schedule.note || schedule.function || '';
         this.state.addProgress(
-          schedule.every_seconds ? `Scheduled: ${what}, repeating` : `Scheduled: ${what}`,
+          `Scheduled: ${when.replace(/^./, (first) => first.toLowerCase())}${what ? ` · ${what}` : ''}`,
+          schedule.schedule_id ? { text: 'Open', to: `/ai/schedules/${schedule.schedule_id}` } : undefined,
         );
+        void this.countSchedules();
         return;
       }
 
       case 'schedule_removed':
         this.state.addProgress('Schedule removed.');
+        void this.countSchedules();
         return;
 
       case 'approval_requested':
@@ -603,7 +644,7 @@ export class ChatDetailComponent implements OnInit, OnDestroy {
           width: Number(data.width) || 1, height: Number(data.height) || 1,
           frame: Number(data.frame) || 0,
           agent_name: data.source?.agent_name || this.agentLabels[data.source?.agent || ''] || '',
-          caption: this.screen?.call_id === String(data.call_id || '') ? this.screen.caption : '',
+          log: this.screen?.call_id === String(data.call_id || '') ? this.screen.log : [],
           at: Date.now(),
           tabs: this.screenTabs(data.tabs),
         };
@@ -1084,6 +1125,22 @@ export class ChatDetailComponent implements OnInit, OnDestroy {
     this.connection.send('AI:Chat:Screen', { call_id: this.screen.call_id, events });
   }
 
+  /** How many schedules this chat keeps on the clock: the header's
+   *  clock shows the number and leads to them. */
+  scheduleCount = 0;
+
+  private async countSchedules(): Promise<void> {
+    if (!this.auth.can('ai:activity:list')) return;
+    const chatId = this.chat_id;
+    const read = await this.activityService.list().catch(() => null);
+    if (!read || read.error || chatId !== this.chat_id) return;
+    this.scheduleCount = read.schedules.filter((schedule) => schedule.chat_id === chatId).length;
+  }
+
+  get schedulesLabel(): string {
+    return `${this.scheduleCount} ${this.scheduleCount === 1 ? 'schedule' : 'schedules'} in this chat`;
+  }
+
   /** Whether this chat holds an agent that can open a browser on
    *  request — a function declaring `watch` in the contract. */
   get canWatch(): boolean {
@@ -1141,24 +1198,14 @@ export class ChatDetailComponent implements OnInit, OnDestroy {
       || !this.maySend;
   }
 
-  get composerPlaceholder(): string {
+  /** What the page says under the composer: why it is closed, or
+   *  what a message sent now will do. */
+  get composerHint(): string {
     if (this.isChatLoading) return 'Loading conversation…';
-    if (!this.maySend) return 'You may read this chat, not write in it';
-    if (!this.chat?.config?.llm) return 'Choose a model to continue';
+    if (!this.maySend) return 'Read only: sending messages is not among your permissions.';
+    if (!this.chat?.config?.llm) return 'Choose a model to continue.';
     if (this.isConnecting) return 'Connecting…';
     if (!this.isSocketReady) return 'Reconnecting…';
-    if (this.screen && !this.screen.idle) return `Tell ${this.screen.agent_name || 'the agent'} something…`;
-    if (this.isLoading) return 'Add to what it is doing…';
-    return 'Message DecentAI';
-  }
-
-  get composerHint(): string {
-    if (!this.maySend) return 'Sending messages is not among your permissions.';
-    if (!this.chat?.config?.llm) return 'Choose a model, on the left.';
-    // Nothing to say about a connection being made for the first time:
-    // it takes a moment and then it is there.
-    if (this.isConnecting) return '';
-    if (!this.isSocketReady) return 'Restoring the chat connection…';
     if (this.screen && !this.screen.idle) return `${this.screen.agent_name || 'The agent'} hears this as it works.`;
     if (this.isLoading) return 'Sent now, it steers the turn in progress.';
     return '';
@@ -1167,8 +1214,8 @@ export class ChatDetailComponent implements OnInit, OnDestroy {
   /** What the status pill reads. */
   get connectionLabel(): string {
     if (this.isSocketReady) return 'Connected';
-    if (this.isConnecting) return 'Connecting';
-    return this.isReconnecting ? 'Reconnecting' : 'Reconnect';
+    if (this.isConnecting) return 'Connecting…';
+    return this.isReconnecting ? 'Reconnecting…' : 'Reconnect';
   }
 
   /** Trust lives in the chat's config; a change reconnects the chat. */
@@ -1335,6 +1382,7 @@ export class ChatDetailComponent implements OnInit, OnDestroy {
       width: '480px',
       maxWidth: '95vw',
       data: { enabled_agents: this.chat?.config?.enabled_agents,
+        enabled_mcp: this.chat?.config?.enabled_mcp,
         default_agents: Array.isArray(defaults) ? defaults : null },
     });
     ref.afterClosed().subscribe(async (result) => {
@@ -1344,6 +1392,9 @@ export class ChatDetailComponent implements OnInit, OnDestroy {
       // whole config back, so the key is dropped rather than emptied.
       if (result.enabled_agents === null) delete config.enabled_agents;
       else config.enabled_agents = result.enabled_agents;
+      // The person's MCP servers, the same way.
+      if (result.enabled_mcp === null) delete config.enabled_mcp;
+      else config.enabled_mcp = result.enabled_mcp;
       const res = await this.aiSession.updateChatConfig(this.chat_id!, config);
       if (res.error) {
         this.onError(res.error);
@@ -1364,7 +1415,7 @@ export class ChatDetailComponent implements OnInit, OnDestroy {
     const profile = await this.profileService.get();
     const defaults = profile?.preferences?.chat?.enabled_skills;
     const ref = this.dialog.open(ChatSkillsDialogComponent, {
-      width: '520px',
+      width: '560px',
       maxWidth: '95vw',
       data: { enabled_skills: this.chat?.config?.enabled_skills,
         default_skills: Array.isArray(defaults) ? defaults : null,

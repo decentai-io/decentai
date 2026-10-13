@@ -1,0 +1,86 @@
+/* A switch, 36×20, in the accent when on; its label at the right. */
+:host {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+/* The button is the size of its track; what takes a finger reaches
+   12px above and below it. */
+.switch {
+  position: relative;
+  flex: none;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-full);
+  background: none;
+  cursor: pointer;
+}
+
+.switch::after {
+  content: '';
+  position: absolute;
+  inset: -12px -4px;
+}
+
+.switch:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+}
+
+.switch-track {
+  display: block;
+  width: 36px;
+  height: 20px;
+  padding: 2px;
+  border-radius: var(--r-full);
+  background: var(--line-strong);
+  transition: background var(--dur-1) var(--ease);
+}
+
+.switch-thumb {
+  display: block;
+  width: 16px;
+  height: 16px;
+  border-radius: var(--r-full);
+  background: var(--n-0);
+  transition: transform var(--dur-1) var(--ease);
+}
+
+.switch[aria-checked='true'] .switch-track {
+  background: var(--accent);
+}
+
+.switch[aria-checked='true'] .switch-thumb {
+  transform: translateX(16px);
+}
+
+.switch:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.switch-words {
+  min-width: 0;
+}
+
+.switch-label {
+  display: block;
+  color: var(--ink);
+  font-size: var(--t-base);
+  line-height: var(--lh-base);
+  cursor: pointer;
+}
+
+.switch-note {
+  margin-left: 8px;
+  color: var(--ink-3);
+  font-size: var(--t-xs);
+}
+
+.switch-help {
+  margin-top: 2px;
+  color: var(--ink-3);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}

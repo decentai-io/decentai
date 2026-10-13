@@ -1,0 +1,58 @@
+<div class="side-layout">
+  <!-- Wide screens: the pages, always in view. -->
+  <nav class="settings-nav" aria-label="Settings">
+    <ng-container *ngFor="let group of groups">
+      <p class="side-label">{{ group.name }}</p>
+      <a
+        *ngFor="let page of group.pages"
+        class="side-item"
+        [routerLink]="page.path"
+        routerLinkActive="is-current"
+        ariaCurrentWhenActive="page"
+      >
+        {{ page.name }}
+        <ng-container *ngIf="page.path === 'providers' && (llm.count$ | async) as count">
+          <span class="chip side-count" aria-hidden="true">{{ count }}</span>
+          <span class="visually-hidden">, {{ count }} connected</span>
+        </ng-container>
+      </a>
+    </ng-container>
+  </nav>
+
+  <div class="settings-page">
+    <!-- Narrow screens: the same pages, behind a button naming the open one. -->
+    <button
+      type="button"
+      class="btn settings-nav-button"
+      aria-label="Settings pages"
+      [matMenuTriggerFor]="pagesMenu"
+    >
+      <span>{{ current?.name || 'Settings' }}</span>
+      <lucide-icon name="chevron-down" [size]="16" aria-hidden="true"></lucide-icon>
+    </button>
+    <mat-menu #pagesMenu="matMenu">
+      <ng-container *ngFor="let group of groups">
+        <p class="menu-label">{{ group.name }}</p>
+        <a
+          *ngFor="let page of group.pages"
+          mat-menu-item
+          [routerLink]="page.path"
+          [attr.aria-current]="page === current ? 'page' : null"
+        >
+          {{ page.name }}
+          <lucide-icon
+            *ngIf="page === current"
+            class="menu-check"
+            name="check"
+            [size]="16"
+            aria-hidden="true"
+          ></lucide-icon>
+        </a>
+      </ng-container>
+    </mat-menu>
+
+    <app-page [title]="current?.name || 'Settings'" [sentence]="current?.sentence || ''">
+      <router-outlet></router-outlet>
+    </app-page>
+  </div>
+</div>

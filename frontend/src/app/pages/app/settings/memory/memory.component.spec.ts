@@ -1,7 +1,8 @@
 import { MemoryComponent } from './memory.component';
 
 describe('MemoryComponent', () => {
-  function createComponent(page: any = { memories: [], limit: 50 }, service: any = {}) {
+  /** `sure` is what the person answers when asked before forgetting. */
+  function createComponent(page: any = { memories: [], limit: 50 }, service: any = {}, sure = true) {
     return new MemoryComponent(
       {
         list: async () => page,
@@ -10,6 +11,7 @@ describe('MemoryComponent', () => {
         ...service,
       } as any,
       { can: () => true } as any,
+      { ask: async () => sure } as any,
     );
   }
 
@@ -71,7 +73,7 @@ describe('MemoryComponent', () => {
 
     expect(component.originLabel({
       text: '', created_at: '2026-08-18T09:00:00Z', source_chat_id: 'chat_1',
-    } as any)).toBe(`Saved ${component.dateLabel('2026-08-18T09:00:00Z')}`);
+    } as any)).toMatch(/^Saved .*18/);
 
     expect(component.originLabel({
       text: '', corrected: true, updated_at: '2026-08-20T09:00:00Z',
@@ -98,8 +100,6 @@ describe('MemoryComponent', () => {
     });
     await component.ngOnInit();
 
-    component.openComposer();
-    expect(component.composerOpen).toBeTrue();
     expect(component.canSubmitNew).toBeFalse();
 
     component.newText = '  I prefer concise status updates.  ';
@@ -107,32 +107,65 @@ describe('MemoryComponent', () => {
 
     await component.addMemory();
     expect(created).toBe('I prefer concise status updates.');
-    expect(component.composerOpen).toBeFalse();
     expect(component.newText).toBe('');
+  });
+
+  it('keeps what was written, and says why, when it is refused', async () => {
+    const component = createComponent({ memories: [], limit: 50 }, {
+      create: async () => ({ error: 'Another memory already says exactly that.' }),
+    });
+    await component.ngOnInit();
+    component.newText = 'Works in Abu Dhabi.';
+
+    await component.addMemory();
+
+    expect(component.addError).toBe('Another memory already says exactly that.');
+    expect(component.newText).toBe('Works in Abu Dhabi.');
   });
 
   it('asks before forgetting instead of going straight through', async () => {
     const memory = { memory_id: 'mem_1', text: 'Delete me.' } as any;
-    let removed = '';
-    const component = createComponent({ memories: [memory], limit: 50 }, {
+    const removed: string[] = [];
+    const remove = async (id: string) => {
+      removed.push(id);
+      return {};
+    };
+
+    const kept = createComponent({ memories: [memory], limit: 50 }, { remove }, false);
+    await kept.ngOnInit();
+    await kept.forget(memory);
+    expect(removed).toEqual([]);
+
+    const gone = createComponent({ memories: [memory], limit: 50 }, { remove }, true);
+    await gone.ngOnInit();
+    await gone.forget(memory);
+    expect(removed).toEqual(['mem_1']);
+  });
+
+  it('forgets every memory after one question', async () => {
+    const removed: string[] = [];
+    const component = createComponent({ memories: filled(3), limit: 50 }, {
       remove: async (id: string) => {
-        removed = id;
+        removed.push(id);
         return {};
       },
     });
     await component.ngOnInit();
 
-    component.requestForget(memory);
-    expect(component.forgetTarget).toBe(memory);
-    expect(removed).toBe('');
+    await component.forgetAll();
 
-    component.closeForgetDialog();
-    expect(component.forgetTarget).toBeNull();
+    expect(removed).toEqual(['mem_0', 'mem_1', 'mem_2']);
+  });
 
-    component.requestForget(memory);
-    await component.forget(memory);
-    expect(removed).toBe('mem_1');
-    expect(component.forgetTarget).toBeNull();
+  it('says so when the memories could not be read, and stops loading', async () => {
+    const component = createComponent(undefined, {
+      list: async () => { throw new Error('offline'); },
+    });
+
+    await component.ngOnInit();
+
+    expect(component.loading).toBeFalse();
+    expect(component.loadError).not.toBe('');
   });
 
   it('marks a corrected memory so the row stops crediting the chat', async () => {
@@ -176,7 +209,7 @@ describe('MemoryComponent', () => {
     component.editText = 'Works in Abu Dhabi.';
     await component.saveEdit(memory);
 
-    expect(component.error).toBe('Another memory already says exactly that.');
+    expect(component.editError).toBe('Another memory already says exactly that.');
     expect(memory.text).toBe('Prefers long reports.');
     expect(memory.corrected).toBeUndefined();
     // The editor stays open, holding the text that was refused.

@@ -28,8 +28,8 @@ export class AttentionService {
     this.timer = setInterval(() => { void this.refresh(); }, 30000);
   }
 
-  /** End the poll on sign-out: a list asked for without a session is
-   *  answered 401, and a 401 reloads the page. */
+  /** End the poll on sign-out, or when the session ended: a list asked
+   *  for without a session is only refused. */
   stop(): void {
     if (this.timer) {
       clearInterval(this.timer);

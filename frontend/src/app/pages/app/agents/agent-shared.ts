@@ -1,13 +1,53 @@
 import { AgentFunction, AgentOffer } from 'src/app/services/agents.service';
 
-/** Permission levels 0–3, named rather than numbered. How much of an
- *  agent runs without asking is the thing an administrator is actually
- *  deciding, and "3" does not say it. */
-export const PERMISSION_LEVELS = ['read', 'change', 'sandboxed', 'external'];
+/** Permission levels 0 to 3, in the words every page uses: chips,
+ *  functions, the review, a card in a chat. How much of an agent runs
+ *  without asking is what an administrator decides, and "3" does not
+ *  say it. The number is a tooltip, never the name. */
+export const PERMISSION_LEVELS = ['Reads', 'Changes', 'Wider change', 'Outside action'];
 
 export function levelLabel(level: number | null | undefined): string {
   return level === null || level === undefined
-    ? '' : PERMISSION_LEVELS[level] || `level ${level}`;
+    ? '' : PERMISSION_LEVELS[level] || `Level ${level}`;
+}
+
+/** What each level means, by its word. Whether a function asks first
+ *  is not the level's to say alone: it asks when its level is above
+ *  the trust level of the chat that calls it. */
+export const LEVEL_MEANINGS: Record<string, string> = {
+  'Reads': 'Level 0. Reads only, and changes nothing. Runs in every chat without asking.',
+  'Changes': 'Level 1. An ordinary change inside the platform. Asks first in a chat whose trust level is 0.',
+  'Wider change': 'Level 2. A change with wider reach, still inside the platform. Asks first in a chat whose trust level is below 2.',
+  'Outside action': 'Level 3. Acts outside the platform. Asks first in every chat whose trust level is below 3.',
+};
+
+/** Where an installed agent stands: one word, the colour it deserves,
+ *  and which of the six it is. */
+export interface Standing {
+  kind: 'failed' | 'preparing' | 'credential' | 'update' | 'gone' | 'ready';
+  word: string;
+  /** The chip's variant (styles/controls.scss): '' is the plain one. */
+  tone: '' | 'danger' | 'live' | 'warn' | 'accent';
+}
+
+/** The standing of an installed agent, for the list, its own page and
+ *  the counts alike, so they cannot disagree. The first that holds:
+ *  it could not be prepared, it is being prepared, a credential it
+ *  declared has nothing usable (`missing` of them), its source offers
+ *  newer code, its source lists it no more, or it is ready. */
+export function standingOf(agent: AgentOffer, missing: number): Standing {
+  if (agent.prepared?.state === 'failed') return { kind: 'failed', word: 'Failed', tone: 'danger' };
+  if (agent.prepared?.state === 'preparing') return { kind: 'preparing', word: 'Preparing', tone: 'live' };
+  if (missing > 0) return { kind: 'credential', word: 'Needs a credential', tone: 'warn' };
+  if (agent.status === 'update_available') return { kind: 'update', word: 'Update available', tone: '' };
+  if (agent.status === 'removed') return { kind: 'gone', word: 'Not in its source any more', tone: '' };
+  return { kind: 'ready', word: 'Ready', tone: 'accent' };
+}
+
+/** The installed version as it is said, once, beside the name: "v2.0.9",
+ *  or nothing where there is none to say. */
+export function versionLabel(agent: AgentOffer): string {
+  return agent.installed_version ? `v${agent.installed_version}` : '';
 }
 
 /** `agt_x.note.save` → `note.save`. A grant already names the agent, so
@@ -121,37 +161,56 @@ export function networkNote(network: AgentNetwork): string {
     : 'These are the only hosts it declared.';
 }
 
-/** What this install does NOT hold an agent to, one sentence a part —
- *  empty when it holds it to everything, or when no runtime has said.
- *  The platform confines an agent three ways; where one of them is
- *  missing, whoever approved the agent is owed the fact. */
-export function notEnforced(agent: AgentOffer): string[] {
-  const confined = agent.prepared?.confined;
-  if (!confined) return [];
-  const lines: string[] = [];
-  if (!confined.user) {
-    lines.push('It runs as the same user as the platform here: nothing separates '
-      + 'it from the platform, or from other agents.');
-  } else if (!confined.files) {
-    lines.push('Its files are not fenced here: it can read what any program on '
-      + 'the same machine can.');
-  }
-  if (!confined.network) {
-    lines.push('Nothing holds it to the hosts it declared here: it can connect '
-      + 'anywhere the runtime can.');
-  }
-  return lines;
+/** One of the three ways the platform confines an agent where it
+ *  runs, and whether this install does. */
+export interface Confinement {
+  held: boolean;
+  /** Said when it is held. */
+  words: string;
+  /** Said when it is not: whoever approved the agent is owed the fact. */
+  missing: string;
 }
 
-/** The installed pill's words: what a runtime has said about this
- *  version's code being ready to run, or plain Installed when nothing
- *  has been said. */
-export function installedLabel(agent: AgentOffer): string {
-  const version = `v${agent.installed_version}`;
-  switch (agent.prepared?.state) {
-    case 'preparing': return `Preparing · ${version}`;
-    case 'ready': return `Ready · ${version}`;
-    case 'failed': return `Could not prepare · ${version}`;
-    default: return `Installed · ${version}`;
+/** What this install holds an agent to, a line a part: a user of its
+ *  own, its own files, the hosts it declared. Empty when no runtime
+ *  has said. Files cannot be fenced without a user of its own. */
+export function confinementOf(agent: AgentOffer): Confinement[] {
+  const confined = agent.prepared?.confined;
+  if (!confined) return [];
+  return [
+    {
+      held: !!confined.user,
+      words: 'It runs as a user of its own.',
+      missing: 'It runs as the same user as the platform here: nothing separates it '
+        + 'from the platform, or from other agents.',
+    },
+    {
+      held: !!confined.user && !!confined.files,
+      words: 'It opens its own files and the system\'s, and nothing else.',
+      missing: 'Its files are not fenced here: it can read what any program on the '
+        + 'same machine can.',
+    },
+    {
+      held: !!confined.network,
+      words: 'It connects only through the platform, which holds it to the hosts it declared.',
+      missing: 'Nothing holds it to the hosts it declared here: it can connect '
+        + 'anywhere the runtime can.',
+    },
+  ];
+}
+
+/** The line of a card that a person compares agents by: how many
+ *  functions, what it needs, and where it connects (the first host,
+ *  and how many more). */
+export function agentFacts(functions: number, credentials: number,
+                           network?: AgentNetwork | null): string[] {
+  const facts = [`${functions} ${functions === 1 ? 'function' : 'functions'}`];
+  if (credentials) facts.push(`${credentials} ${credentials === 1 ? 'credential' : 'credentials'}`);
+  if (network?.any) {
+    facts.push('the open web');
+  } else if (network?.hosts.length) {
+    const more = network.hosts.length - 1;
+    facts.push(network.hosts[0] + (more ? ` +${more}` : ''));
   }
+  return facts;
 }

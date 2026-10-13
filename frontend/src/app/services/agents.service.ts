@@ -45,6 +45,8 @@ export interface AgentOffer {
   agent_id: string;
   name: string;
   description: string;
+  /** The icon its manifest names for its mark, when it names one. */
+  icon?: string;
   status: 'installed' | 'update_available' | 'removed';
   /** Absent or null until a runtime has spoken about this version. */
   prepared?: AgentReadiness | null;
@@ -151,6 +153,14 @@ export interface CatalogEntry {
   installed_version?: string;
   /** Sample data the agent ships; null or absent when it ships none. */
   samples?: SampleSummary | null;
+  /** The package's README as markdown; empty when it ships none, and
+   *  absent on a catalog read before READMEs were carried. */
+  readme?: string;
+  /** What the package is made of: each file's path in it and its size
+   *  in bytes; absent on a catalog read before files were carried. */
+  files?: { path: string; size: number }[];
+  /** How many files there are past the ones listed. */
+  files_more?: number;
 }
 
 /** A private repository's read credential, typed once and stored on

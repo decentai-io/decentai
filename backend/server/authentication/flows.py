@@ -81,6 +81,13 @@ class AuthController:
     # Login
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _too_many(wait: int) -> Dict[str, Any]:
+        """The answer of a shut door: the sentence, and how many
+        seconds until it opens, for a page that counts them down."""
+        return {"error": "Too many attempts. Try again in a few minutes.",
+                "retry_after": int(wait)}
+
     def login(
         self, payload: Dict[str, Any], client_ip: str = ""
     ) -> Tuple[Dict[str, Any], int, Optional[Dict[str, Any]]]:
@@ -93,9 +100,10 @@ class AuthController:
 
         # Throttle BEFORE the password check — a locked window answers the
         # same for right and wrong passwords.
-        if self.throttle.is_locked(email, client_ip):
+        wait = self.throttle.locked_for(email, client_ip)
+        if wait:
             self.logger.warning(f"Throttled login for {email} from {client_ip or '-'}")
-            return {"error": "Too many attempts. Try again in a few minutes."}, 429, None
+            return self._too_many(wait), 429, None
 
         user = self.users.get_by_email(email)
 
@@ -145,8 +153,9 @@ class AuthController:
         current = str(payload.get("current_password") or "")
         new_password = str(payload.get("new_password") or "")
 
-        if self.throttle.is_locked(email, client_ip):
-            return {"error": "Too many attempts. Try again in a few minutes."}, 429, None
+        wait = self.throttle.locked_for(email, client_ip)
+        if wait:
+            return self._too_many(wait), 429, None
 
         user = self.users.get_by_email(email) if email else None
         if user is None:
@@ -263,8 +272,9 @@ class AuthController:
             return {"error": "A valid email address is required."}, 400
 
         # Shares login's per-IP budget: this endpoint sends email on demand.
-        if self.throttle.is_locked("", client_ip):
-            return {"error": "Too many attempts. Try again in a few minutes."}, 429
+        wait = self.throttle.locked_for("", client_ip)
+        if wait:
+            return self._too_many(wait), 429
         if client_ip:
             self.throttle.record_failure("", client_ip)
 

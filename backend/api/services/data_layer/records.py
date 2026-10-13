@@ -36,6 +36,15 @@ class DataController(ResourceController):
     STORE = AgentDataStore
     ESCAPE_ACTION = "data:record:set_owner_any"
 
+    def list(self, data: dict, user: dict):
+        """Every visible record, each saying who made it and who it is
+        shared with, by name: the page that lists them says "Shared by
+        Dana", not that an id is in a map."""
+        answer, status = super().list(data, user)
+        if status == 200:
+            self._name_people(answer.get("resources") or [], user)
+        return answer, status
+
     # ------------------------------------------------------------------
     # The declared shape a category answers to
     # ------------------------------------------------------------------

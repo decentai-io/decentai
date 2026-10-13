@@ -1,14 +1,20 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, TemplateRef, ViewChild } from '@angular/core';
+import { MatDialog, MatDialogRef } from '@angular/material/dialog';
 
+import { Choice } from 'src/app/components/ui/radio-keys';
 import { AuthService } from 'src/app/services/auth.service';
+import { ConfirmService } from 'src/app/services/confirm.service';
 import {
   DeclaredProvider, OauthApp, OauthEndpoints, SettingsOauthService,
 } from 'src/app/services/settings-oauth.service';
 import { DataPageBase } from '../../data-page-base';
 
+/** The provider select's value for an id that is typed. */
+const OTHER = 'other';
+
 /**
- * Connected apps: what the organization registered with each provider
- * so its members can connect accounts with a click. A tab of Settings.
+ * Settings › Connected apps: what the organization registered with each
+ * provider so its members can connect accounts with a click.
  *
  * OAuth involves two secrets with two owners. The app registration —
  * a client id and secret issued to this software — is the
@@ -31,10 +37,12 @@ import { DataPageBase } from '../../data-page-base';
   selector: 'app-connected-apps',
   standalone: false,
   templateUrl: './connected-apps.component.html',
-  styleUrls: ['../../data-shared.css', '../../../admin/iam-shared.css', './connected-apps.component.css'],
+  styleUrls: ['./connected-apps.component.css'],
 })
 export class ConnectedAppsComponent extends DataPageBase implements OnInit {
   loading = true;
+  /** Why the apps could not be read. */
+  loadError = '';
   apps: OauthApp[] = [];
   redirectUri = '';
   copied = false;
@@ -51,12 +59,21 @@ export class ConnectedAppsComponent extends DataPageBase implements OnInit {
   /** The provider's addresses, typed — for one no installed agent names. */
   typedAddresses: OauthEndpoints = { authorize_url: '', token_url: '', identity_url: '' };
   saving = false;
+  /** The secret is shown as it is typed. */
+  secretShown = false;
+  /** Save was pressed with something missing: from then on the form
+   *  says what, under the field it belongs to. */
+  private tried = false;
+
+  /** The form, which is shown on the dialog shell. */
+  @ViewChild('editor')
+  private editor?: TemplateRef<unknown>;
+  private editorRef?: MatDialogRef<unknown>;
 
   /** What the backend accepts as an id — the same rule, so the form
    *  refuses before the round trip does. */
   static readonly ID_PATTERN = /^[a-z][a-z0-9_]{1,31}$/;
 
-  deleteTarget: OauthApp | null = null;
   busyId = '';
 
   /** The ids by convention, and where each provider's console is.
@@ -94,13 +111,29 @@ export class ConnectedAppsComponent extends DataPageBase implements OnInit {
     { id: 'box', label: 'Box', console: 'https://app.box.com/developers/console' },
   ];
 
-  constructor(private service: SettingsOauthService, public auth: AuthService) {
+  constructor(
+    private service: SettingsOauthService,
+    public auth: AuthService,
+    private dialog: MatDialog,
+    private confirm: ConfirmService,
+  ) {
     super();
   }
 
-  async ngOnInit(): Promise<void> {
-    await this.reload();
-    this.loading = false;
+  ngOnInit(): Promise<void> {
+    return this.load();
+  }
+
+  async load(): Promise<void> {
+    this.loading = true;
+    this.loadError = '';
+    try {
+      await this.reload();
+    } catch {
+      this.loadError = 'Could not reach the server. Check your connection.';
+    } finally {
+      this.loading = false;
+    }
   }
 
   private async reload(): Promise<void> {
@@ -154,6 +187,33 @@ export class ConnectedAppsComponent extends DataPageBase implements OnInit {
       !this.registered(k.id) && !this.declared.some((d) => d.provider === k.id));
   }
 
+  /** The providers the form offers: those an installed agent is
+   *  waiting on first, then the known ones, then the way to any other.
+   *  Rebuilt only when what is registered or declared changes. */
+  get providerChoices(): Choice[] {
+    const key = `${this.apps.length}|${this.declared.length}`;
+    if (key !== this.choicesFor) {
+      this.choicesFor = key;
+      this.choices = [
+        ...this.missing.map((need) => ({
+          value: need.provider,
+          name: this.labelFor(need.provider),
+          hint: `Needed by ${need.needed_by.join(', ')}`,
+        })),
+        ...this.suggested.map((known) => ({ value: known.id, name: known.label })),
+        { value: OTHER, name: 'Another provider…', hint: 'By the id an agent\'s manifest names.' },
+      ];
+    }
+    return this.choices;
+  }
+  private choicesFor = '';
+  private choices: Choice[] = [];
+
+  /** Whether the provider's id is being typed. */
+  get typingProvider(): boolean {
+    return this.providerChoice === OTHER;
+  }
+
   // ── Where the provider is ───────────────────────────────────────────
 
   /** The address sets on offer for the draft: what it is registered
@@ -180,6 +240,11 @@ export class ConnectedAppsComponent extends DataPageBase implements OnInit {
       && a.identity_url === b.identity_url;
   }
 
+  /** The address sets as the select's choices. */
+  get addressChoices(): Choice<number>[] {
+    return this.addressOptions.map((option, index) => ({ value: index, name: option.label }));
+  }
+
   /** The chosen set, or the typed one where nothing is on offer. */
   get chosenAddresses(): OauthEndpoints {
     return this.addressOptions[this.addressChoice]?.endpoints ?? this.typedAddresses;
@@ -195,7 +260,7 @@ export class ConnectedAppsComponent extends DataPageBase implements OnInit {
 
   chooseProvider(choice: string): void {
     this.providerChoice = choice;
-    this.draft.provider = choice === 'other' ? '' : choice;
+    this.draft.provider = choice === OTHER ? '' : choice;
     this.addressChoice = 0;
   }
 
@@ -223,7 +288,7 @@ export class ConnectedAppsComponent extends DataPageBase implements OnInit {
       this.copied = true;
       setTimeout(() => (this.copied = false), 1800);
     } catch {
-      this.fail('Could not copy — select the address and copy it yourself.');
+      this.fail('Could not copy. Select the address and copy it yourself.');
     }
   }
 
@@ -236,6 +301,7 @@ export class ConnectedAppsComponent extends DataPageBase implements OnInit {
     this.typedAddresses = { authorize_url: '', token_url: '', identity_url: '' };
     this.providerChoice = provider;
     this.error = '';
+    this.openEditor();
   }
 
   startEdit(app: OauthApp): void {
@@ -244,23 +310,57 @@ export class ConnectedAppsComponent extends DataPageBase implements OnInit {
     this.addressChoice = 0;
     this.typedAddresses = { authorize_url: '', token_url: '', identity_url: '' };
     this.error = '';
+    this.openEditor();
+  }
+
+  /** Shows the form on the dialog shell, which gives it Escape, the
+   *  focus and the way back to what opened it. */
+  private openEditor(): void {
+    this.secretShown = false;
+    this.tried = false;
+    if (!this.editor || this.editorRef) return;
+    this.editorRef = this.dialog.open(this.editor, { width: '560px' });
+    this.editorRef.afterClosed().subscribe(() => {
+      this.editorRef = undefined;
+      this.editingId = null;
+    });
   }
 
   closeEditor(): void {
-    if (!this.saving) this.editingId = null;
+    if (this.saving) return;
+    this.editingId = null;
+    this.editorRef?.close();
+  }
+
+  /** What is still missing, with the field it belongs to. */
+  private get missingField(): { field: string; message: string } | null {
+    const at = (field: string, message: string) => ({ field, message });
+    if (!this.draft.provider.trim()) return at('provider', 'Choose a provider.');
+    if (!this.providerValid) {
+      return at('provider', 'Lowercase letters, digits and underscores, starting with a letter, as the manifest spells it.');
+    }
+    const where = this.chosenAddresses;
+    if (!(where.authorize_url || '').startsWith('https://')) {
+      return at('authorize', 'The consent address must begin with https://');
+    }
+    if (!(where.token_url || '').startsWith('https://')) {
+      return at('token', 'The token address must begin with https://');
+    }
+    if (!this.draft.client_id.trim()) return at('client_id', 'Paste the client id.');
+    if (this.isCreating && !this.secretOptional && !this.draft.client_secret.trim()) {
+      return at('client_secret', 'Paste the client secret.');
+    }
+    return null;
+  }
+
+  /** What is missing from this field, once Save has been pressed. */
+  errorFor(field: string): string {
+    const missing = this.tried ? this.missingField : null;
+    return missing?.field === field ? missing.message : '';
   }
 
   get canSubmit(): boolean {
-    if (this.saving) return false;
-    const { client_id, client_secret } = this.draft;
-    if (!this.providerValid || !client_id.trim()) return false;
-    const where = this.chosenAddresses;
-    if (!(where.authorize_url || '').startsWith('https://')
-        || !(where.token_url || '').startsWith('https://')) {
-      return false;
-    }
-    if (!this.isCreating || this.secretOptional) return true;
-    return !!client_secret.trim();
+    return !this.saving && !this.missingField;
   }
 
   private get secret(): string {
@@ -268,8 +368,13 @@ export class ConnectedAppsComponent extends DataPageBase implements OnInit {
   }
 
   async save(): Promise<void> {
-    if (!this.canSubmit) return;
+    if (this.saving) return;
+    if (this.missingField) {
+      this.tried = true;
+      return;
+    }
     this.saving = true;
+    if (this.editorRef) this.editorRef.disableClose = true;
     try {
       const result = this.isCreating
         ? await this.service.create({
@@ -286,24 +391,29 @@ export class ConnectedAppsComponent extends DataPageBase implements OnInit {
       if (result.error) return this.fail(result.error);
       const made = this.isCreating;
       this.editingId = null;
+      this.editorRef?.close();
       await this.reload();
       this.flash(made
-        ? `${this.labelFor(result.app!.provider)} registered. Members can now connect their accounts.`
+        ? `${this.labelFor(result.app!.provider)} connected. People can now connect their accounts.`
         : `${this.labelFor(result.app!.provider)} updated.`);
     } finally {
       this.saving = false;
+      if (this.editorRef) this.editorRef.disableClose = false;
     }
   }
 
   // ── Removing ────────────────────────────────────────────────────────
 
-  requestDelete(app: OauthApp): void {
-    this.deleteTarget = app;
-    this.error = '';
-  }
-
-  closeDelete(): void {
-    if (!this.busyId) this.deleteTarget = null;
+  async askRemove(app: OauthApp): Promise<void> {
+    const name = this.labelFor(app.provider);
+    const sure = await this.confirm.ask({
+      title: `Remove the ${name} app?`,
+      body: `Nobody can connect a new ${name} account, and connected ones stop refreshing once their tokens expire: each will ask to be reconnected.`,
+      confirm: 'Remove',
+      cancel: 'Keep it',
+      danger: true,
+    });
+    if (sure) await this.remove(app);
   }
 
   async remove(app: OauthApp): Promise<void> {
@@ -311,7 +421,6 @@ export class ConnectedAppsComponent extends DataPageBase implements OnInit {
     try {
       const result = await this.service.remove(app.resource_ref);
       if (result.error) return this.fail(result.error);
-      this.deleteTarget = null;
       await this.reload();
       this.flash(`${this.labelFor(app.provider)} removed. Accounts already connected keep working until their tokens expire.`);
     } finally {

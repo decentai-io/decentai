@@ -15,6 +15,9 @@ describe('PoliciesComponent', () => {
     const component = new PoliciesComponent(
       { list: async () => [] } as any,
       { can: () => true, catalog: CATALOG, ensureLoaded: async () => undefined } as any,
+      // The editor's dialog and the question before a delete: not asked here.
+      { open: () => ({ afterClosed: () => ({ subscribe: () => undefined }) }) } as any,
+      {} as any,
     );
     component.catalog = CATALOG;
     return component;

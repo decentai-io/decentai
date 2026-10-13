@@ -1,0 +1,34 @@
+/* Settings: the shared side column (.side-layout, .side-label and
+   .side-item, styles/controls.scss) holding the nav, and the page.
+   Under 900px the nav is the menu button above the page. */
+.settings-nav {
+  position: sticky;
+  top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-top: 8px;
+}
+
+.side-item + .side-label {
+  margin-top: 16px;
+}
+
+.settings-page {
+  min-width: 0;
+}
+
+.settings-nav-button {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  .settings-nav {
+    display: none;
+  }
+
+  .settings-nav-button {
+    display: inline-flex;
+    margin-top: 8px;
+  }
+}

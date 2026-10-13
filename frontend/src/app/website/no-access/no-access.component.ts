@@ -17,7 +17,8 @@ import { firstVisiblePage } from '../config/config';
 @Component({
   selector: 'app-no-access',
   templateUrl: './no-access.component.html',
-  styleUrls: ['../page-not-found/page-not-found.component.css'],
+  // Its card covers the shell: the sidebar it would sit in is empty.
+  styles: [':host { position: fixed; inset: 0; z-index: var(--z-overlay); overflow: auto; }'],
   standalone: false,
 })
 export class NoAccessComponent implements OnInit {

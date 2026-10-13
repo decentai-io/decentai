@@ -1,0 +1,84 @@
+/* The page before the app: its background, and one card in the middle. */
+:host {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding: max(24px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom));
+  background: var(--bg);
+  color: var(--ink);
+  font-size: var(--t-base);
+  line-height: var(--lh-base);
+}
+
+.entry-card {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 400px;
+  padding: 32px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+}
+
+/* One brand: the serif word, as in the sidebar. */
+.entry-brand {
+  margin-bottom: 24px;
+  color: var(--ink);
+  font-family: var(--font-serif);
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+
+.entry-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink);
+  font-family: var(--font-serif);
+  font-size: var(--t-lg);
+  font-weight: 600;
+  line-height: var(--lh-lg);
+}
+
+.entry-sentence {
+  margin-top: 4px;
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+
+/* Something is on its way. */
+.entry-spinner {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--line-strong);
+  border-top-color: var(--accent);
+  border-radius: var(--r-full);
+  animation: entry-spin 0.8s linear infinite;
+}
+
+@keyframes entry-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* What the screen puts under the words. */
+.entry-body {
+  margin-top: 24px;
+}
+
+.entry-body:empty {
+  display: none;
+}
+
+@media (max-width: 480px) {
+  .entry-card {
+    padding: 24px 20px;
+  }
+}

@@ -107,18 +107,18 @@ class ScheduleController(AIController):
             return refusal
         payload = self._payload(data)
 
-        function = str(payload.get("function") or "").strip()
-        note = str(payload.get("note") or "").strip()
-        if function:
-            why = self._not_schedulable(user, function)
-            if why:
-                return self._fail(data, "not_schedulable", why)
-        elif not note:
-            return self._fail(
-                data, "invalid_request",
-                "Say what for: a note to wake with, or a function to run.")
+        what, refusal = self._what(data, user, payload)
+        if refusal is not None:
+            return refusal
 
+        # The chat's own zone, unless the person said another for this
+        # schedule: a report for an office elsewhere is read in its day.
         timezone = str((chat.get("config") or {}).get("timezone") or "")
+        if "timezone" in payload:
+            timezone = str(payload.get("timezone") or "").strip()
+            if timezone and zone(timezone) is None:
+                return self._fail(
+                    data, "invalid_when", f"'{timezone}' is not a time zone.")
         when, problem = self._when(payload, timezone)
         if problem:
             return self._fail(data, "invalid_when", problem)
@@ -126,12 +126,7 @@ class ScheduleController(AIController):
         row = {
             "schedule_id": f"sch_{uuid.uuid4().hex[:8]}",
             "chat_id": chat["chat_id"],
-            "mode": "invoke" if function else "wake",
-            "function": function,
-            "inputs": dict(payload.get("inputs") or {})
-            if isinstance(payload.get("inputs"), dict) else {},
-            "wake_field": str(payload.get("wake_field") or ""),
-            "note": note,
+            **what,
             "every_seconds": when["every_seconds"],
             "cron": when["cron"],
             "timezone": timezone if zone(timezone) else "",
@@ -144,7 +139,7 @@ class ScheduleController(AIController):
             return self._full(data)
         AuditStore().append(
             "schedule.created", user, chat_id=chat["chat_id"],
-            function=function or None, resource_refs=[row["schedule_id"]],
+            function=row["function"] or None, resource_refs=[row["schedule_id"]],
             details={"mode": row["mode"], "cron": row["cron"],
                      "every_seconds": row["every_seconds"]},
         )
@@ -185,17 +180,37 @@ class ScheduleController(AIController):
                     })
         return self._respond(data, {"functions": found})
 
+    #: What a person may rewrite on a schedule they made.
+    WHAT_FIELDS = ("note", "function", "inputs", "wake_field")
+    WHEN_FIELDS = ("cron", "at", "every_seconds", "delay_seconds")
+
     async def update(self, data, user):
-        """Pause or resume. A resumed cadence counts forward from now —
-        a row paused for a month does not owe a month of fires — while
-        a resumed one-shot whose time has passed fires once, which is
-        what leaving it enabled would have done."""
+        """Pause or resume, and change a schedule: what it is for, when
+        it runs, and the zone its times are read in.
+
+        A resumed cadence counts forward from now — a row paused for a
+        month does not owe a month of fires — while a resumed one-shot
+        whose time has passed fires once, which is what leaving it
+        enabled would have done.
+
+        A change is held to exactly what ``create`` holds a new one to:
+        the same two gates on a function, the same ways of saying when.
+        What is not named stays as it was, and a new *when* counts its
+        first run from now.
+
+        ``run_now`` moves the next run of a schedule that is on to this
+        moment: the clock fires it as it fires any other, with the same
+        gates and the same record, and its cadence goes on from there."""
         chat, refusal = self._person_chat(data, user, "change schedules")
         if refusal is not None:
             return refusal
         payload = self._payload(data)
+        rewrites = [name for name in (*self.WHAT_FIELDS, *self.WHEN_FIELDS, "timezone")
+                    if name in payload]
         enabled = payload.get("enabled")
-        if not isinstance(enabled, bool):
+        run_now = payload.get("run_now") is True
+        if (("enabled" in payload or not (rewrites or run_now))
+                and not isinstance(enabled, bool)):
             return self._fail(
                 data, "invalid_request", "enabled must be true or false.")
 
@@ -203,24 +218,82 @@ class ScheduleController(AIController):
         row = self._row(store.rows(chat["chat_id"]), payload.get("schedule_id"))
         if row is None:
             return self._fail(data, "not_found", "Schedule not found.", 404)
-        changed = {"enabled": enabled}
-        if enabled and not row.get("enabled", True):
-            now = utc_now().timestamp()
-            if row.get("cron"):
-                try:
-                    changed["next_run_at"] = Cron(str(row["cron"])).next_after(
-                        now, zone(str(row.get("timezone") or "")))
-                except CronError as exc:
-                    return self._fail(data, "invalid_when", str(exc))
-            elif row.get("every_seconds"):
-                changed["next_run_at"] = now + float(row["every_seconds"])
+
+        changed = {}
+        if any(name in payload for name in self.WHAT_FIELDS):
+            # What is not named is what the row holds now.
+            what, refusal = self._what(data, user, {
+                **{name: row.get(name) for name in self.WHAT_FIELDS},
+                **{name: payload[name] for name in self.WHAT_FIELDS if name in payload},
+            })
+            if refusal is not None:
+                return refusal
+            changed.update(what)
+
+        timezone = str(row.get("timezone") or "")
+        if "timezone" in payload:
+            timezone = str(payload.get("timezone") or "").strip()
+            if timezone and zone(timezone) is None:
+                return self._fail(
+                    data, "invalid_when", f"'{timezone}' is not a time zone.")
+            changed["timezone"] = timezone
+
+        recounted = False
+        if any(name in payload for name in self.WHEN_FIELDS):
+            when, problem = self._when(payload, timezone)
+            if problem:
+                return self._fail(data, "invalid_when", problem)
+            changed.update(when)
+            recounted = True
+        elif "timezone" in changed and row.get("cron"):
+            # The same cron, read in another zone, is another moment.
+            try:
+                changed["next_run_at"] = Cron(str(row["cron"])).next_after(
+                    utc_now().timestamp(), zone(timezone))
+            except CronError as exc:
+                return self._fail(data, "invalid_when", str(exc))
+            recounted = True
+
+        if isinstance(enabled, bool):
+            changed["enabled"] = enabled
+            if enabled and not row.get("enabled", True) and not recounted:
+                now = utc_now().timestamp()
+                if row.get("cron"):
+                    try:
+                        changed["next_run_at"] = Cron(str(row["cron"])).next_after(
+                            now, zone(timezone))
+                    except CronError as exc:
+                        return self._fail(data, "invalid_when", str(exc))
+                elif row.get("every_seconds"):
+                    changed["next_run_at"] = now + float(row["every_seconds"])
+        if run_now:
+            if not changed.get("enabled", row.get("enabled", True)):
+                return self._fail(
+                    data, "invalid_request",
+                    "This schedule is paused. Resume it to run it.")
+            changed["next_run_at"] = utc_now().timestamp()
         if not store.change(chat["chat_id"], row["schedule_id"], changed):
             return self._fail(data, "not_found", "Schedule not found.", 404)
         row.update(changed)
-        AuditStore().append(
-            "schedule.resumed" if enabled else "schedule.paused", user,
-            chat_id=chat["chat_id"], resource_refs=[row["schedule_id"]],
-        )
+        if rewrites:
+            AuditStore().append(
+                "schedule.changed", user, chat_id=chat["chat_id"],
+                function=row.get("function") or None,
+                resource_refs=[row["schedule_id"]],
+                details={"changed": sorted(rewrites), "cron": row.get("cron"),
+                         "every_seconds": row.get("every_seconds")},
+            )
+        if run_now:
+            AuditStore().append(
+                "schedule.run_requested", user, chat_id=chat["chat_id"],
+                function=row.get("function") or None,
+                resource_refs=[row["schedule_id"]],
+            )
+        if isinstance(enabled, bool):
+            AuditStore().append(
+                "schedule.resumed" if enabled else "schedule.paused", user,
+                chat_id=chat["chat_id"], resource_refs=[row["schedule_id"]],
+            )
         delivered = await self._notify(chat["chat_id"], user)
         return self._respond(data, {"schedule": row, "delivered": delivered})
 
@@ -261,6 +334,30 @@ class ScheduleController(AIController):
         """The function patterns the person's grants name."""
         return [pattern for permission in AgentScope().of(user)["permissions"]
                 for pattern in permission.get("functions") or []]
+
+    def _what(self, data, user, payload):
+        """({mode, function, inputs, wake_field, note}, None) or
+        (None, the refusal): what a schedule is for, held to the two
+        gates on a function. A note alone wakes the assistant; a
+        function runs unattended, and may carry a note beside it."""
+        function = str(payload.get("function") or "").strip()
+        note = str(payload.get("note") or "").strip()
+        if function:
+            why = self._not_schedulable(user, function)
+            if why:
+                return None, self._fail(data, "not_schedulable", why)
+        elif not note:
+            return None, self._fail(
+                data, "invalid_request",
+                "Say what for: a note to wake with, or a function to run.")
+        return {
+            "mode": "invoke" if function else "wake",
+            "function": function,
+            "inputs": dict(payload.get("inputs") or {})
+            if function and isinstance(payload.get("inputs"), dict) else {},
+            "wake_field": str(payload.get("wake_field") or "") if function else "",
+            "note": note,
+        }, None
 
     def _not_schedulable(self, user, function):
         """Two gates. The person must have been given the function — a

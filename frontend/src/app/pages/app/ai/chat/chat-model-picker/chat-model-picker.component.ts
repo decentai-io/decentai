@@ -3,6 +3,7 @@ import {
   SimpleChanges, ViewChild,
 } from '@angular/core';
 
+import { Choice } from 'src/app/components/ui/radio-keys';
 import {
   LlmConnection, LlmModel, SettingsLlmService,
 } from 'src/app/services/settings-llm.service';
@@ -27,10 +28,11 @@ interface ModelGroup {
  * Which model this chat thinks with, chosen where the message is
  * written.
  *
- * A chip names the model; pressing it lists every model of every
+ * A button names the model; pressing it lists every model of every
  * provider the person has a key for — the ones picked lately first,
  * then by provider, narrowed as they type. For a model that thinks
- * before answering, how hard is chosen beside it.
+ * before answering, how hard is chosen at the foot of the list and
+ * said on the button.
  *
  * The component chooses and says so (`chosen`); saving the choice — to
  * the chat, and as what the person's next chat starts with — is the
@@ -86,13 +88,24 @@ export class ChatModelPickerComponent implements OnChanges {
 
   get label(): string {
     if (!this.llm?.model) return 'Choose a model';
-    return this.current?.name ?? this.llm.model;
+    const name = this.current?.name ?? this.llm.model;
+    const effort = this.llm.reasoning_effort;
+    return effort ? `${name} · ${this.effortLabel(effort)}` : name;
   }
 
   /** How hard the chosen model may be asked to think; empty for one
    *  that does not say. */
   get efforts(): string[] {
     return this.current?.efforts ?? [];
+  }
+
+  /** The same, as the choices of the control at the list's foot: the
+   *  provider's own default first. */
+  get effortChoices(): Choice<string>[] {
+    return [
+      { value: '', name: 'Default' },
+      ...this.efforts.map((effort) => ({ value: effort, name: this.effortLabel(effort) })),
+    ];
   }
 
   // ── The list ────────────────────────────────────────────────────────
@@ -154,6 +167,22 @@ export class ChatModelPickerComponent implements OnChanges {
   @HostListener('document:keydown.escape')
   onEscape(): void {
     this.close();
+  }
+
+  /** The arrows move through the list as they do in a menu: down from
+   *  the search to the first model, and from one row to the next. */
+  moveThroughModels(event: KeyboardEvent): void {
+    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+    const panel = event.currentTarget as HTMLElement;
+    if ((event.target as HTMLElement).closest('app-segmented')) return;
+    const stops = [this.search?.nativeElement,
+      ...Array.from(panel.querySelectorAll<HTMLElement>('.model-option'))]
+      .filter((stop): stop is HTMLElement => !!stop);
+    const at = stops.indexOf(document.activeElement as HTMLElement);
+    const next = stops[at + (event.key === 'ArrowDown' ? 1 : -1)];
+    if (!next) return;
+    event.preventDefault();
+    next.focus();
   }
 
   /** The providers and their models, narrowed by what was typed: a
@@ -218,7 +247,7 @@ export class ChatModelPickerComponent implements OnChanges {
   }
 
   effortLabel(effort: string): string {
-    return effort === 'xhigh' ? 'Extra high'
+    return effort === 'xhigh' ? 'Extra'
       : effort.charAt(0).toUpperCase() + effort.slice(1);
   }
 

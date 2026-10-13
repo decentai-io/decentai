@@ -14,36 +14,42 @@ export const AdminRoutes: Routes = [
   // because the sidebar matches a page against the second URL segment)
   {
     path: 'organization',
+    title: 'Organization',
     component: OrganizationsComponent,
     canActivate: [permissionGuard],
     data: { requiredAction: 'iam:organization:get' },
   },
   {
     path: 'users',
+    title: 'Users',
     component: MembersComponent,
     canActivate: [permissionGuard],
     data: { requiredAction: 'iam:user:list' },
   },
   {
     path: 'groups',
+    title: 'Groups',
     component: GroupsComponent,
     canActivate: [permissionGuard],
     data: { requiredAction: 'iam:group:list' },
   },
   {
     path: 'roles',
+    title: 'Roles',
     component: RolesComponent,
     canActivate: [permissionGuard],
     data: { requiredAction: 'iam:role:list' },
   },
   {
     path: 'profile',
+    title: 'Profile',
     component: ProfileComponent,
     canActivate: [permissionGuard],
     data: { requiredAction: 'account:profile:get' },
   },
   {
     path: 'policies',
+    title: 'Policies',
     component: PoliciesComponent,
     canActivate: [permissionGuard],
     data: { requiredAction: 'iam:policy:list' },
@@ -52,5 +58,5 @@ export const AdminRoutes: Routes = [
   { path: 'members', redirectTo: 'users' },
 
   // Secret types moved to the main workspace as Secret definitions.
-  { path: 'secret_types', redirectTo: '/secrets/values', pathMatch: 'full' },
+  { path: 'secret_types', redirectTo: '/secrets', pathMatch: 'full' },
 ];

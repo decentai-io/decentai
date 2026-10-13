@@ -5,6 +5,7 @@
  * to its own name rather than being hidden: a trail that quietly drops
  * events it does not know is worse than an ugly one.
  */
+import { RecordTone } from 'src/app/components/ui/record-row.component';
 
 const LABELS: Record<string, string> = {
   'execution': 'Function ran',
@@ -58,6 +59,12 @@ function reachedWords(details: any): string {
   const named = reached.slice(0, 3).map((site) => site.host).filter(Boolean);
   const more = reached.length - named.length + Number(details?.reached_more || 0);
   return `reached ${named.join(', ')}${more > 0 ? ` and ${more} more` : ''}`;
+}
+
+/** The kind of an event, whatever it was about: "Function ran". */
+export function auditKind(event: any): string {
+  const type = String(event?.event_type || '');
+  return LABELS[type] || type || 'Event';
 }
 
 export function auditLabel(event: any): string {
@@ -117,8 +124,8 @@ export function auditSummary(event: any): string {
   return rest.join(' · ');
 }
 
-/** ok | bad | muted | live — the chip colour an outcome deserves. */
-export function auditTone(event: any): string {
+/** The colour an outcome deserves. */
+export function auditTone(event: any): RecordTone {
   const type = String(event?.event_type || '');
   const details = event?.details || {};
   if (type === 'execution') {

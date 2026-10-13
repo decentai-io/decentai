@@ -1,0 +1,94 @@
+<div class="form" *ngIf="loading" aria-busy="true" aria-label="Loading speech settings">
+  <span class="sk sk-field"></span>
+  <span class="sk sk-field"></span>
+</div>
+
+<app-empty *ngIf="loadError" icon="cloud-off" title="Speech could not be loaded" [line]="loadError">
+  <button class="btn" type="button" (click)="load()">Try again</button>
+</app-empty>
+
+<ng-container *ngIf="!loading && !loadError">
+  <p class="form-notice" *ngIf="!canEdit">Only an administrator changes this.</p>
+
+  <div class="form-section">
+    <app-field
+      label="Speech to text"
+      [help]="draft.value.transcription_source === 'local'
+        ? 'Nothing spoken leaves this machine. ' + localStanding('transcription')
+        : draft.value.transcription_source === 'off' ? 'No microphone in the composer.'
+        : 'A recording is transcribed by the provider and not stored.'"
+    >
+      <app-segmented
+        [choices]="sourceChoices"
+        [disabled]="!canEdit"
+        [(ngModel)]="draft.value.transcription_source"
+      ></app-segmented>
+    </app-field>
+
+    <app-field
+      *ngIf="draft.value.transcription_source === 'connection'"
+      label="Transcription model"
+      help="A provider shared with the whole organization, and one of its speech-to-text models."
+      [error]="draft.dirty ? transcriptionError : ''"
+    >
+      <app-model-select
+        kind="transcription"
+        noneLabel="Choose a provider"
+        [connections]="shared"
+        [connectionId]="draft.value.transcription_connection_id"
+        [model]="draft.value.transcription_model"
+        [disabled]="!canEdit"
+        (changed)="chooseTranscription($event)"
+      ></app-model-select>
+    </app-field>
+  </div>
+
+  <div class="form-section">
+    <app-field
+      label="Text to speech"
+      [help]="draft.value.speech_source === 'local'
+        ? 'Nothing said leaves this machine. ' + localStanding('speech')
+        : draft.value.speech_source === 'off' ? 'Replies are read, not heard.'
+        : 'A reply is said by the provider and not stored.'"
+    >
+      <app-segmented
+        [choices]="sourceChoices"
+        [disabled]="!canEdit"
+        [(ngModel)]="draft.value.speech_source"
+      ></app-segmented>
+    </app-field>
+
+    <ng-container *ngIf="draft.value.speech_source === 'connection'">
+      <app-field
+        label="Provider"
+        help="One that serves OpenAI's speech protocol, shared with the whole organization."
+        [error]="draft.dirty ? providerError : ''"
+      >
+        <app-select
+          placeholder="Choose a provider"
+          [choices]="providerChoices"
+          [disabled]="!canEdit"
+          [(ngModel)]="draft.value.speech_connection_id"
+        ></app-select>
+      </app-field>
+
+      <div class="form-pair">
+        <app-field label="Speech model" help="As the provider names it." [error]="draft.dirty && !providerError ? modelError : ''">
+          <input class="input" type="text" placeholder="gpt-4o-mini-tts" [disabled]="!canEdit" [(ngModel)]="draft.value.speech_model" />
+        </app-field>
+        <app-field label="Voice" help="One of the provider's voices." [error]="draft.dirty && !providerError && !modelError ? voiceError : ''">
+          <input class="input" type="text" placeholder="alloy" [disabled]="!canEdit" [(ngModel)]="draft.value.speech_voice" />
+        </app-field>
+      </div>
+    </ng-container>
+  </div>
+
+  <app-save-bar
+    *ngIf="canEdit"
+    [dirty]="draft.dirty"
+    [saving]="saving"
+    [error]="saveError"
+    (save)="save()"
+    (discard)="discard()"
+  ></app-save-bar>
+</ng-container>

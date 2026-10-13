@@ -1,0 +1,29 @@
+<nav class="filters" [attr.aria-label]="label">
+  <div class="filter-group" *ngFor="let group of groups" role="group" [attr.aria-label]="group.label || label">
+    <p class="side-label" *ngIf="group.label">{{ group.label }}</p>
+    <ng-container *ngFor="let item of group.items">
+      <ng-container *ngTemplateOutlet="entry; context: { group, item }"></ng-container>
+      <ng-container *ngIf="isOpen(group, item)">
+        <ng-container *ngFor="let child of item.children">
+          <ng-container *ngTemplateOutlet="entry; context: { group, item: child, nested: true }"></ng-container>
+        </ng-container>
+      </ng-container>
+    </ng-container>
+  </div>
+</nav>
+
+<ng-template #entry let-group="group" let-item="item" let-nested="nested">
+  <button
+    type="button"
+    class="side-item filter-item"
+    [class.is-current]="isChosen(group, item)"
+    [class.is-nested]="nested"
+    [attr.aria-pressed]="isChosen(group, item)"
+    (click)="pick(group, item)"
+  >
+    <app-agent-mark *ngIf="item.agent" size="sm" [name]="item.agent.name" [icon]="item.agent.icon"></app-agent-mark>
+    <lucide-icon *ngIf="item.icon && !item.agent" [name]="item.icon" [size]="16" [strokeWidth]="1.75" aria-hidden="true"></lucide-icon>
+    <span class="filter-name">{{ item.name }}</span>
+    <span class="filter-count" *ngIf="item.count !== undefined">{{ item.count }}</span>
+  </button>
+</ng-template>

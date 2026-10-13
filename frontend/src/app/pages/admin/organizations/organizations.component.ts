@@ -1,41 +1,39 @@
 import { Component, OnInit } from '@angular/core';
 
+import { dayDate } from 'src/app/components/ui/dates';
 import { AuthService } from 'src/app/services/auth.service';
-import {
-  Organization,
-  OrganizationService,
-} from 'src/app/services/organization.service';
-import { DataPageBase } from '../../app/data-page-base';
+import { Organization, OrganizationService } from 'src/app/services/organization.service';
 
 /**
  * Admin → Organization.
  *
  * The person's own organization. Its name is the only thing to manage
- * here — there is no create, no delete, no list.
+ * here: there is no create, no delete, no list.
  */
 @Component({
   selector: 'app-admin-organizations',
   standalone: false,
   templateUrl: './organizations.component.html',
-  styleUrls: ['../../app/data-shared.css', './organizations.component.css'],
+  styleUrl: '../admin-shared.css',
 })
-export class OrganizationsComponent extends DataPageBase implements OnInit {
+export class OrganizationsComponent implements OnInit {
   loading = true;
   organization: Organization | null = null;
 
-  renaming = false;
-  renameValue = '';
+  name = '';
+  /** Save was pressed: what the name still needs is said under it. */
+  tried = false;
   saving = false;
+  saveError = '';
 
   constructor(
     private organizations: OrganizationService,
     public auth: AuthService,
-  ) {
-    super();
-  }
+  ) {}
 
   async ngOnInit(): Promise<void> {
     this.organization = await this.organizations.get();
+    this.name = this.organization?.org_name ?? '';
     this.loading = false;
   }
 
@@ -43,35 +41,32 @@ export class OrganizationsComponent extends DataPageBase implements OnInit {
     return this.auth.can('iam:organization:rename');
   }
 
-  startRename(): void {
-    this.renaming = true;
-    this.renameValue = this.organization?.org_name ?? '';
-    this.error = '';
+  get dirty(): boolean {
+    return this.name.trim() !== (this.organization?.org_name ?? '');
   }
 
-  cancelRename(): void {
-    this.renaming = false;
-    this.renameValue = '';
+  get created(): string {
+    return dayDate(this.organization?.created_at || '');
   }
 
-  async saveRename(): Promise<void> {
-    const name = this.renameValue.trim();
-    if (!name || name === this.organization?.org_name) {
-      this.cancelRename();
-      return;
-    }
+  async save(): Promise<void> {
+    this.tried = true;
+    this.saveError = '';
+    const name = this.name.trim();
+    if (!name || !this.dirty || this.saving) return;
 
     this.saving = true;
     try {
       const result = await this.organizations.rename(name);
       if (result.error) {
-        return this.fail(result.error);
+        this.saveError = result.error;
+        return;
       }
-      this.cancelRename();
       this.organization = await this.organizations.get();
-      // The session carries the organization name too, so refresh it.
+      this.name = this.organization?.org_name ?? name;
+      this.tried = false;
+      // The session carries the organization's name too.
       await this.auth.refresh();
-      this.flash('Organization renamed.');
     } finally {
       this.saving = false;
     }

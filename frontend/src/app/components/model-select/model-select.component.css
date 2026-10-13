@@ -1,13 +1,36 @@
-/* A provider and one of its models, side by side; stacked on a phone. */
-:host { display: block; }
-.model-select {
-  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 8px;
+/* A provider and one of its models, side by side; stacked on a phone.
+   The selects, the input and the button are the shared ones. */
+:host {
+  display: block;
 }
-.model-select > .txt:only-child { grid-column: 1 / -1; }
-.model-typed { display: flex; gap: 8px; min-width: 0; }
-.model-typed .txt { flex: 1; min-width: 0; }
-.model-typed .btn { flex: none; white-space: nowrap; }
-@media (max-width: 680px) {
-  .model-select { grid-template-columns: 1fr; }
-  .model-typed { flex-wrap: wrap; }
+
+.model-select {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+  gap: 8px;
+}
+
+.model-select > app-select:only-child {
+  grid-column: 1 / -1;
+}
+
+.model-typed {
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+}
+
+.model-typed .input {
+  flex: 1;
+  min-width: 0;
+}
+
+@media (max-width: 700px) {
+  .model-select {
+    grid-template-columns: 1fr;
+  }
+
+  .model-typed {
+    flex-wrap: wrap;
+  }
 }

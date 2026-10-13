@@ -1,240 +1,222 @@
-/* What the Agents page and the marketplace both say about an agent:
-   what state it is in, what it can do, what it keeps, and why it did
-   not load. Both pages describe the same object. */
+/* What the agents' pages say the same way: an agent's title row, the
+   level of a function, where an agent connects, and the grid of cards.
+   Loaded by the Installed page, the agent's page, the marketplace and
+   its review. */
 
-.agent-status {
-  margin-left: 8px;
-  padding: 1px 8px;
-  border-radius: var(--ui-radius-pill);
-  font-size: 11px;
-  font-weight: 500;
-  letter-spacing: 0.01em;
-  vertical-align: middle;
-  color: var(--muted-foreground);
-  background: var(--secondary);
-  border: 1px solid var(--border);
+/* ── An agent's title row ──────────────────────────────────────────────
+   On its own page and at the head of its review: the way back, the
+   mark, the name with its version and chip, where the code came from,
+   and what can be done at the right. */
+.agent-back {
+  margin: 0 0 12px -8px;
 }
 
-/* --accent is the SOLID emerald fill inside a data page (data-shared.css
-   rebinds it), so text painted with --primary on it disappears. The pale
-   pair is what the rest of the page uses for tinted surfaces. */
-.agent-status.is-installed {
-  color: var(--accent-strong);
-  background: var(--accent-soft);
-  border-color: color-mix(in srgb, var(--primary) 22%, transparent);
-}
-
-.agent-status.is-update_available,
-.agent-status.is-removed {
-  color: var(--warning);
-  background: var(--warning-bg);
-  border-color: color-mix(in srgb, var(--warning) 24%, transparent);
-}
-
-/* A runtime is still building it, or could not: the words on the pill
-   say which, the colour says whether to wait or to act. */
-.agent-status.is-installed.is-preparing {
-  color: var(--warning);
-  background: var(--warning-bg);
-  border-color: color-mix(in srgb, var(--warning) 24%, transparent);
-}
-
-.agent-status.is-installed.is-failed {
-  color: var(--destructive-strong);
-  background: color-mix(in srgb, var(--destructive) 10%, transparent);
-  border-color: color-mix(in srgb, var(--destructive) 24%, transparent);
-}
-
-.agent-status.is-broken {
-  color: var(--destructive-strong);
-  background: color-mix(in srgb, var(--destructive) 10%, transparent);
-  border-color: color-mix(in srgb, var(--destructive) 24%, transparent);
-}
-
-/* Why an agent did not load — the administrator's actual next step. */
-.agent-errors { margin-top: 6px; display: flex; flex-direction: column; gap: 4px; }
-
-.agent-error {
-  font-family: var(--font-mono);
-  font-size: 12px;
-  line-height: 1.45;
-  color: var(--destructive);
-  word-break: break-word;
-}
-
-.agent-detail {
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.agent-section { display: flex; flex-direction: column; gap: 5px; }
-
-.agent-section-name {
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-  color: var(--muted-foreground);
-}
-
-.agent-function,
-.agent-resource {
+/* ── The title row ─────────────────────────────────────────────────── */
+.agent-head {
   display: flex;
   flex-wrap: wrap;
-  align-items: baseline;
-  gap: 8px;
-  font-size: 12.5px;
-  line-height: 1.5;
+  align-items: flex-start;
+  gap: 12px 16px;
+  margin-bottom: 20px;
 }
 
-.agent-function code,
-.agent-resource code {
+.agent-head-words {
+  flex: 1 1 280px;
+  min-width: 0;
+}
+
+.agent-head-name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  color: var(--ink);
+  font-size: var(--t-lg);
+  font-weight: 600;
+  line-height: var(--lh-lg);
+}
+
+/* The version and the chip are in the sans face beside a serif name. */
+.agent-head-version {
+  color: var(--ink-3);
+  font-family: var(--font-sans);
+  font-size: var(--t-sm);
+  font-weight: 400;
+}
+
+.agent-head-name .chip {
+  font-family: var(--font-sans);
+}
+
+.agent-head-source {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  margin-top: 4px;
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.agent-head-source a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.agent-head-source code {
   font-family: var(--font-mono);
-  font-size: 12px;
-  padding: 1px 6px;
-  border-radius: var(--ui-radius-sm);
-  background: var(--secondary);
-  color: var(--foreground);
+  font-size: var(--t-xs);
 }
 
-.agent-level { font-size: 11.5px; color: var(--warning); }
-.agent-function-desc { color: var(--muted-foreground); }
+/* Copying the digest is offered when the line is pointed at, and
+   always where nothing can point. */
+.agent-copy {
+  width: 24px;
+  height: 24px;
+  opacity: 0;
+  transition: opacity var(--dur-1) var(--ease);
+}
 
+.agent-head-source:hover .agent-copy,
+.agent-copy:focus-visible {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .agent-copy {
+    opacity: 1;
+  }
+}
+
+.agent-head-actions {
+  display: flex;
+  flex: none;
+  gap: 8px;
+}
+
+.agent-description {
+  max-width: 72ch;
+  color: var(--ink);
+  font-size: var(--t-read);
+  line-height: var(--lh-read);
+}
+
+.agent-section-title {
+  margin-bottom: 8px;
+  color: var(--ink);
+  font-size: var(--t-md);
+  font-weight: 600;
+  line-height: var(--lh-md);
+}
+
+@media (max-width: 700px) {
+  .agent-head-actions {
+    flex: 1 1 100%;
+  }
+}
 
 /* ── Permission level, said the same way everywhere ───────────────────
-   The marketplace's review and the installed agent's Functions tab are
-   answering one question — how much of this runs without asking — so
-   they use one chip. Levels 0-1 run unattended and are emerald; 2-3 stop
-   and ask, and take the platform's neutral attention state. Never a
-   third hue: this product has one identity colour. */
+   The review and the Functions tab answer one question: how much of
+   this runs without asking. The two lower levels are neutral; a wider
+   change takes a strong outline; an outside action, the one that
+   reaches what the platform does not control, is the one solid chip.
+   Inverted rather than coloured: a hue would say "brand", and this
+   needs to say "look". */
 .lvl {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 3px 10px;
-  border-radius: var(--ui-radius-pill);
-  border: 1px solid var(--border);
-  background: var(--secondary);
-  color: var(--muted-foreground);
-  font-size: var(--ui-text-xs);
-  font-weight: 600;
+  padding: 2px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--ink-2);
+  font-family: var(--font-sans);
+  font-size: var(--t-xs);
+  font-weight: 500;
+  line-height: var(--lh-xs);
   white-space: nowrap;
 }
 
 .lvl-dot {
+  flex: none;
   width: 6px;
   height: 6px;
-  flex: none;
   border-radius: 50%;
   background: currentColor;
 }
 
-/* A row of them: the level breakdown, which is what "what can it do"
-   actually reduces to before any individual name matters. */
-.fn-tally {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 10px;
+.lvl[data-level="Wider change"] {
+  border-color: var(--warn-ink);
+  background: transparent;
+  color: var(--ink);
 }
 
-.lvl[data-level="read"],
-.lvl[data-level="change"],
-.lvl[data-level="0"],
-.lvl[data-level="1"] {
-  color: var(--accent-strong);
-  background: var(--accent-soft);
-  border-color: color-mix(in srgb, var(--primary) 22%, transparent);
+.lvl[data-level="Outside action"] {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--bg);
 }
-
-/* Sandboxed stops and asks, so it has to out-weigh the two that do not.
-   With one identity colour and a deliberately hueless attention state,
-   weight is the only axis left: full-contrast ink against emerald's
-   softer tint. */
-.lvl[data-level="sandboxed"],
-.lvl[data-level="2"] {
-  color: var(--foreground);
-  background: var(--secondary);
-  border-color: color-mix(in srgb, var(--foreground) 40%, transparent);
-}
-
-/* External reaches systems the platform does not control — the single
-   most consequential thing on this page, so it is the single solid
-   chip. Inverted rather than coloured: a third hue would say "brand",
-   and this needs to say "look". */
-.lvl[data-level="external"],
-.lvl[data-level="3"] {
-  color: var(--background);
-  background: var(--foreground);
-  border-color: var(--foreground);
-}
-
 
 /* ── Where an agent connects ──────────────────────────────────────────
-   Shown at approval and on the agent's page, so it is said once here.
-   A name is a plain chip. "Any website" is the one that reaches what
-   the platform does not control, and takes the same weight external
-   functions do: inverted, never a third hue. */
-.host-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+   Shown at approval and on the agent's page. A host is a plain chip;
+   one read from a credential is in the accent; "any website" takes the
+   weight an outside action does. */
+.host-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 .host-chips code {
-  display: inline-flex; align-items: center; gap: 5px;
-  padding: 3px 10px; border-radius: var(--ui-radius-sm);
-  border: 1px solid var(--border); background: var(--secondary);
-  color: var(--foreground);
-  font-family: var(--font-mono); font-size: var(--ui-text-xs);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+  line-height: var(--lh-xs);
+  overflow-wrap: anywhere;
 }
+
 .host-chips code.is-wide {
-  color: var(--background); background: var(--foreground);
-  border-color: var(--foreground);
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--bg);
 }
-.host-chips code.is-none { color: var(--muted-foreground); }
+
+.host-chips code.is-none {
+  color: var(--ink-2);
+}
+
 .host-chips code.is-credential {
-  color: var(--accent-strong); background: var(--accent-soft);
-  border-color: color-mix(in srgb, var(--primary) 22%, transparent);
+  border-color: transparent;
+  background: var(--accent-soft);
+  color: var(--accent-ink);
 }
 
-
-/* ── An agent, as a card ──────────────────────────────────────────────
-   What a card says is what approving it agreed to: how much runs without
-   asking, what it keeps, and where the code came from. The grid and the
-   card's own frame live in agents.component.css; what is here is the
-   vocabulary the marketplace's review shares. */
-.agent-avatar {
-  display: grid; place-items: center; width: 34px; height: 34px; flex: none;
-  color: var(--accent-strong); background: var(--accent-soft);
-  border-radius: var(--ui-radius-sm);
+.host-chips lucide-icon {
+  display: flex;
 }
 
-.agent-facts { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 11px; }
-.fact {
-  padding: 4px 10px; border-radius: var(--ui-radius-pill);
-  border: 1px solid var(--border-color); background: var(--surface-subtle);
-  color: var(--muted); font-size: 11.5px;
-}
-.fact strong { color: var(--ink); font-variant-numeric: tabular-nums; }
-
-.agent-origin {
-  display: flex; align-items: center; flex-wrap: wrap; gap: 6px;
-  margin-top: 10px; color: var(--muted); font-size: 11.5px;
-}
-.agent-origin code { font-family: var(--font-mono); font-size: 11px; }
-
-.detail-block { display: flex; flex-direction: column; gap: 6px; }
-.detail-title {
-  color: var(--muted); font-size: 11px; font-weight: 700;
-  letter-spacing: .05em; text-transform: uppercase;
+/* ── The grid of agent cards (agent-card.component) ──────────────────
+   The same on the Installed page and in the Marketplace: cards at
+   least 320px wide, and one column under 700px. */
+.agent-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 12px;
+  align-items: stretch;
 }
 
-/* One function line, shared with the marketplace's approval review. */
-.fn {
-  display: flex; align-items: baseline; flex-wrap: wrap; gap: 9px;
-  padding: 8px 11px; border-radius: var(--ui-radius-card);
-  border: 1px solid var(--border-color); background: var(--surface-subtle);
+@media (max-width: 700px) {
+  .agent-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
-.fn code { font-family: var(--font-mono); font-size: 11.5px; }
-.fn-desc { flex: 1; min-width: 200px; color: var(--muted); font-size: 11.5px; line-height: 1.5; }

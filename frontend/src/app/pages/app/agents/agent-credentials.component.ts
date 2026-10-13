@@ -1,16 +1,16 @@
-import {
-  Component, EventEmitter, Input, OnChanges, Output, SimpleChanges,
-} from '@angular/core';
+import { Component, EventEmitter, Input, OnChanges, Output, SimpleChanges } from '@angular/core';
+import { MatDialog } from '@angular/material/dialog';
+import { firstValueFrom } from 'rxjs';
 
-import {
-  AgentOffer, AgentSecretSlot, AgentsService, LendableAgent,
-} from 'src/app/services/agents.service';
+import { AgentOffer, AgentSecretSlot, AgentsService } from 'src/app/services/agents.service';
+import { ConfirmService } from 'src/app/services/confirm.service';
 import { Group } from 'src/app/services/group.service';
 import { OauthConnectService } from 'src/app/services/oauth.service';
+import { ProfileService } from 'src/app/services/profile.service';
 import { Secret, SecretsService } from 'src/app/services/secrets.service';
-import {
-  DefinitionField, SecretDefinition, SecretDefinitionsService,
-} from 'src/app/services/secret-definitions.service';
+import { SecretDefinition, SecretDefinitionsService } from 'src/app/services/secret-definitions.service';
+import { SecretFormComponent, SecretFormData, SecretFormResult } from '../secrets/secret-form.component';
+import { deleteQuestion } from '../secrets/secret-shared';
 import { AgentCredential } from './agent-shared';
 
 /**
@@ -30,23 +30,21 @@ import { AgentCredential } from './agent-shared';
  * which is a GRANT — offered only where the shapes match exactly, and
  * revocable. The manifest declares what shape the agent expects; it
  * never decides which credential answers.
+ *
+ * Filling one in, signing in for one and deleting one are the Secrets
+ * page's own dialog and question (secret-form.component), opened here
+ * on the shape this agent's slot takes: one form, wherever it is met.
  */
 @Component({
   selector: 'app-agent-credentials',
   standalone: false,
   templateUrl: './agent-credentials.component.html',
-  styleUrls: [
-    '../data-shared.css',
-    './agent-shared.css',
-    './agents.component.css',
-  ],
+  styleUrl: './agent-credentials.component.css',
 })
 export class AgentCredentialsComponent implements OnChanges {
   @Input() agent!: AgentOffer;
   @Input() credentials: AgentCredential[] = [];
   @Input() groups: Group[] = [];
-  /** The groups the person belongs to — the reach sharing may have. */
-  @Input() myGroups: { group_id: string; group_name: string }[] = [];
   @Input() canShareAny = false;
   @Input() myUserId = '';
   /** family -> the resource_ref this person marked as their default. */
@@ -62,29 +60,11 @@ export class AgentCredentialsComponent implements OnChanges {
   private definitionsByFamily = new Map<string, SecretDefinition>();
   private secretsByFamily = new Map<string, Secret[]>();
 
-  formFamily = '';
-  name = '';
-  values: Record<string, string> = {};
-  shareMode: 'private' | 'groups' | 'org' = 'private';
-  selectedGroups = new Set<string>();
   saving = false;
   busyRef = '';
 
   /** What this agent may use, and what it could be given, by slot. */
   private slotsById = new Map<string, AgentSecretSlot>();
-  /** Which slot's "use one I already have" picker is open. */
-  pickerFor = '';
-  picked = '';
-
-  /** Offered once, right after a Connect: the other installed agents of
-   *  the same provider this account could reach. Ticked by default —
-   *  the person just proved they hold the account, and the alternative
-   *  is doing this once per agent. Nothing happens until they click. */
-  lendOffer: {
-    secretRef: string; provider: string;
-    agents: (LendableAgent & { picked: boolean })[];
-  } | null = null;
-  lending = false;
 
   readonly EVERYONE = 'everyone';
 
@@ -94,12 +74,14 @@ export class AgentCredentialsComponent implements OnChanges {
    *  new array each change-detection pass re-renders, which triggers
    *  another pass, which freezes the tab. */
   private static readonly NONE: any[] = [];
-
   constructor(
     private secrets: SecretsService,
     private definitionsService: SecretDefinitionsService,
     private agents: AgentsService,
     private oauth: OauthConnectService,
+    private dialog: MatDialog,
+    private confirm: ConfirmService,
+    private profiles: ProfileService,
   ) {}
 
   // ── Connected accounts ──────────────────────────────────────────────
@@ -109,88 +91,8 @@ export class AgentCredentialsComponent implements OnChanges {
     return !!this.definitionsByFamily.get(family)?.oauth;
   }
 
-  providerOf(family: string): string {
-    const id = this.definitionsByFamily.get(family)?.oauth?.provider || '';
-    return id ? id.charAt(0).toUpperCase() + id.slice(1) : 'the provider';
-  }
-
   needsReconnect(secret: Secret): boolean {
     return secret.keys?.['status'] === 'needs_reconnect';
-  }
-
-  /** Sign in with the provider; the credential is made on the way back,
-   *  shared the way the form below chose. */
-  async connect(credential: AgentCredential): Promise<void> {
-    const pinned = this.agent.resource_refs?.secrets?.[credential.id];
-    if (!pinned) return;
-    this.saving = true;
-    try {
-      const result = await this.oauth.connect({
-        definition_ref: String(pinned), owner: this.buildOwner(),
-      });
-      if (result.error) return this.failed.emit(result.error);
-      this.formFamily = '';
-      await this.reload(credential.family);
-      this.changed.emit();
-      this.flashed.emit(`${credential.label} connected. This agent can use it now.`);
-      if (result.resource_ref) {
-        await this.offerLend(result.resource_ref, this.providerOf(credential.family));
-      }
-    } finally {
-      this.saving = false;
-    }
-  }
-
-  // ── Lending the account on to the other agents that use it ─────────
-
-  private async offerLend(secretRef: string, provider: string): Promise<void> {
-    try {
-      const found = await this.agents.lendable(secretRef);
-      if (!found.eligible.length) return;
-      this.lendOffer = {
-        secretRef, provider,
-        agents: found.eligible.map((agent) => ({ ...agent, picked: true })),
-      };
-    } catch {
-      // A reader without the lend action just saw the flash; nothing
-      // is lost, the picker on each agent still exists.
-    }
-  }
-
-  pickedCount(): number {
-    return this.lendOffer?.agents.filter((a) => a.picked).length ?? 0;
-  }
-
-  dismissLend(): void {
-    this.lendOffer = null;
-  }
-
-  async lendToPicked(): Promise<void> {
-    const offer = this.lendOffer;
-    if (!offer) return;
-    const chosen = offer.agents.filter((a) => a.picked)
-      .map((a) => ({ agent_id: a.agent_id, resource_id: a.resource_id }));
-    if (!chosen.length) return;
-    this.lending = true;
-    try {
-      const result = await this.agents.lendMany(offer.secretRef, chosen);
-      if (result.error) return this.failed.emit(result.error);
-      const granted: { name: string }[] = result.data?.granted || [];
-      const failed = result.data?.failed;
-      this.lendOffer = null;
-      this.changed.emit();
-      const names = granted.map((g) => g.name).join(', ');
-      if (failed) {
-        this.failed.emit(
-          `${names ? `Lent to ${names}. ` : ''}Could not lend to `
-          + `${offer.agents.find((a) => a.agent_id === failed.agent_id)?.name || failed.agent_id}: `
-          + `${failed.error}`);
-      } else {
-        this.flashed.emit(`Lent to ${names}.`);
-      }
-    } finally {
-      this.lending = false;
-    }
   }
 
   async reconnect(credential: AgentCredential, secret: Secret): Promise<void> {
@@ -276,24 +178,38 @@ export class AgentCredentialsComponent implements OnChanges {
     return slot.grant.secret_name || match?.name || 'a credential';
   }
 
-  openPicker(credential: AgentCredential): void {
-    this.pickerFor = credential.id;
-    this.picked = this.slot(credential)?.grant?.secret_ref || '';
+  /** Where the slot stands, in one line: which credential answers a
+   *  chat that has not chosen one, or why none does. The order is the
+   *  one a call is resolved in. */
+  stateOf(credential: AgentCredential): { words: string; warn: boolean } {
+    const grant = this.slot(credential)?.grant;
+    if (grant) {
+      return grant.fits === false
+        ? { words: 'The credential lent to it no longer fits.', warn: true }
+        : { words: `Using ${this.grantedName(credential)}, lent to this agent.`, warn: false };
+    }
+    const saved = this.savedSecrets(credential.family);
+    const pinned = saved.find((secret) => this.isDefault(credential.family, secret));
+    if (pinned) return { words: `Using ${pinned.name}, which you pinned.`, warn: false };
+    if (saved.length === 1) return { words: `Using ${saved[0].name}.`, warn: false };
+    if (this.needsDefault(credential.family)) {
+      return {
+        words: 'Several credentials, none pinned: a chat that has not chosen one is refused. '
+          + 'Pin the one that should answer.',
+        warn: true,
+      };
+    }
+    return { words: 'Nothing usable yet.', warn: true };
   }
 
-  closePicker(): void {
-    this.pickerFor = '';
-    this.picked = '';
-  }
-
-  async grant(credential: AgentCredential): Promise<void> {
-    if (!this.picked) return;
+  /** Hand the agent a credential that exists already. */
+  async grant(credential: AgentCredential, secretRef: string): Promise<void> {
+    if (!secretRef || secretRef === this.slot(credential)?.grant?.secret_ref) return;
     this.saving = true;
     try {
       const result = await this.agents.grantSecret(
-        this.agent.agent_id, credential.id, this.picked);
+        this.agent.agent_id, credential.id, secretRef);
       if (result.error) return this.failed.emit(result.error);
-      this.closePicker();
       await this.loadSlots();
       this.changed.emit();
       this.flashed.emit(
@@ -322,15 +238,9 @@ export class AgentCredentialsComponent implements OnChanges {
   // Identity for the loops, so a re-render never means re-creation.
   byFamily(_: number, credential: AgentCredential): string { return credential.family; }
   byRef(_: number, secret: Secret): string { return secret.resource_ref; }
-  byFieldName(_: number, field: DefinitionField): string { return field.name; }
 
   savedSecrets(family: string): Secret[] {
     return this.secretsByFamily.get(family) ?? AgentCredentialsComponent.NONE;
-  }
-
-  fieldsFor(family: string): DefinitionField[] {
-    return this.definitionsByFamily.get(family)?.fields
-      ?? AgentCredentialsComponent.NONE;
   }
 
   descriptionFor(id: string): string {
@@ -350,12 +260,6 @@ export class AgentCredentialsComponent implements OnChanges {
         + (names.length > 2 ? ` +${names.length - 2}` : '');
     }
     return 'personal';
-  }
-
-  ownerKind(secret: Secret): 'org' | 'group' | 'personal' {
-    const groups = secret.owner?.groups ?? [];
-    if (groups.includes(this.EVERYONE)) return 'org';
-    return groups.length ? 'group' : 'personal';
   }
 
   // ── Which one answers ───────────────────────────────────────────────
@@ -390,76 +294,42 @@ export class AgentCredentialsComponent implements OnChanges {
 
   // ── Adding and removing ─────────────────────────────────────────────
 
-  openForm(credential: AgentCredential): void {
-    this.formFamily = credential.family;
-    this.name = '';
-    this.values = {};
-    this.shareMode = 'private';
-    this.selectedGroups.clear();
-  }
-
-  toggleGroup(groupId: string): void {
-    if (!this.selectedGroups.delete(groupId)) this.selectedGroups.add(groupId);
-  }
-
-  /** Same rule as the secrets page: private is the default; sharing is
-   *  a choice, and the backend re-checks the reach either way. */
-  private buildOwner(): Record<string, any> {
-    if (this.shareMode === 'org') return { groups: ['everyone'], users: [] };
-    if (this.shareMode === 'groups') {
-      return { groups: Array.from(this.selectedGroups) };
-    }
-    return { users: [this.myUserId] };
-  }
-
-  closeForm(): void {
-    this.formFamily = '';
-  }
-
-  async save(credential: AgentCredential): Promise<void> {
-    const pinned = this.agent.resource_refs?.secrets?.[credential.id];
-    if (!pinned) return;
-
-    const fields: Record<string, string> = {};
-    for (const [name, value] of Object.entries(this.values)) {
-      if (String(value ?? '').trim() !== '') fields[name] = value;
-    }
-
-    this.saving = true;
-    try {
-      const result = await this.secrets.create({
-        definition_ref: String(pinned),
-        name: this.name.trim() || credential.label,
-        fields,
-        owner: this.buildOwner(),
+  /** A new credential for this slot: the Secrets page's dialog, opened
+   *  on the VERSION of the shape the agent approved, so the form asks
+   *  for the fields the backend will check. A sign-in ends on the offer
+   *  to lend the account to the other agents that could use it. */
+  async openForm(credential: AgentCredential): Promise<void> {
+    const definition = this.definitionsByFamily.get(credential.family);
+    if (!definition) return this.failed.emit('The shape of this credential could not be read.');
+    const [profile, peers] = await Promise.all([
+      this.profiles.get().catch(() => null),
+      this.profiles.peers().catch(() => []),
+    ]);
+    const ref = this.dialog.open<SecretFormComponent, SecretFormData, SecretFormResult | null>(
+      SecretFormComponent, {
+        width: '560px', maxWidth: '100vw',
+        data: { definitions: [definition], definition, profile, peers, canShareAny: this.canShareAny },
       });
-      if (result.error) return this.failed.emit(result.error);
-      this.formFamily = '';
-      await this.reload(credential.family);
-      this.changed.emit();
-      this.flashed.emit(`${credential.label} saved. This agent can use it now.`);
-    } finally {
-      this.saving = false;
-    }
+    const done = await firstValueFrom(ref.afterClosed());
+    if (!done) return;
+    await this.reload(credential.family);
+    await this.loadSlots();
+    this.changed.emit();
+    this.flashed.emit(`${done.notice} This agent can use it now.`);
   }
 
-  /** The credential a delete is asked about, by ref: the row turns
-   *  into the question, and nothing goes until it is answered. */
-  removingRef = '';
-
-  requestRemove(secret: Secret): void {
-    this.removingRef = secret.resource_ref;
+  /** A deleted credential is gone for every chat and agent that used
+   *  it, so it is asked. */
+  async askRemove(credential: AgentCredential, secret: Secret): Promise<void> {
+    const question = deleteQuestion(secret);
+    const sure = await this.confirm.ask({ ...question, danger: true });
+    if (sure) await this.remove(credential, secret, question.takeBack);
   }
 
-  cancelRemove(): void {
-    this.removingRef = '';
-  }
-
-  async remove(credential: AgentCredential, secret: Secret): Promise<void> {
+  async remove(credential: AgentCredential, secret: Secret, takeBack = false): Promise<void> {
     this.busyRef = secret.resource_ref;
     try {
-      const result = await this.secrets.remove(secret.resource_ref);
-      this.removingRef = '';
+      const result = await this.secrets.remove(secret.resource_ref, takeBack);
       if (result.error) return this.failed.emit(result.error);
       await this.reload(credential.family);
       this.changed.emit();

@@ -1,0 +1,128 @@
+<h2 mat-dialog-title>{{ editing ? "Edit schedule" : "New schedule" }}</h2>
+<form (ngSubmit)="save()">
+  <mat-dialog-content>
+    <div class="form">
+      <!-- ── Which chat ─────────────────────────────────────────────── -->
+      <app-field *ngIf="!editing" label="In which chat" help="What it does shows up there, each time it runs.">
+        <span class="search-field schedule-chat-search" *ngIf="manyChats">
+          <lucide-icon name="search" [size]="16" aria-hidden="true"></lucide-icon>
+          <input class="input" type="search" placeholder="Search your chats" aria-label="Search your chats"
+                 name="chat-query" [(ngModel)]="chatQuery" />
+        </span>
+        <app-select name="chat" [choices]="chatChoices" [(ngModel)]="chatId"></app-select>
+      </app-field>
+      <p class="dialog-note" *ngIf="editing">In the chat “{{ editing.chat_title || "Untitled chat" }}”.</p>
+
+      <!-- ── What ───────────────────────────────────────────────────── -->
+      <app-choice-cards name="kind" label="What it does" [choices]="kinds" [(ngModel)]="kind"></app-choice-cards>
+
+      <app-field
+        [label]="kind === 'note' ? 'The note' : 'A note beside it (optional)'"
+        [help]="(kind === 'note' ? 'What the assistant is woken with. ' : 'Shown as what this schedule is for. ') + note.length + ' of ' + noteLimit"
+        [error]="tried && kind === 'note' ? whatProblem : ''"
+      >
+        <input class="input" name="note" autocomplete="off" [maxlength]="noteLimit"
+               [placeholder]="kind === 'note' ? 'Send the weekly report' : ''" [(ngModel)]="note" />
+      </app-field>
+
+      <ng-container *ngIf="kind === 'function'">
+        <app-field label="Function" [error]="tried ? whatProblem : ''">
+          <app-select name="fn" placeholder="Choose a function" [choices]="functionChoices"
+                      [(ngModel)]="fn" (ngModelChange)="onFunctionChosen()"></app-select>
+        </app-field>
+
+        <ng-container *ngIf="fn">
+          <!-- The inputs the function declares, one box each. -->
+          <ng-container *ngIf="!asJson">
+            <ng-container *ngFor="let box of boxes">
+              <app-switch *ngIf="box.kind === 'switch'; else boxed" [name]="'in-' + box.key" [label]="box.label"
+                          [help]="box.help" [(ngModel)]="values[box.key]"></app-switch>
+              <ng-template #boxed>
+                <app-field [label]="box.label" [help]="box.help || (box.kind === 'json' ? 'As JSON.' : '')">
+                  <app-select *ngIf="box.kind === 'select'" [name]="'in-' + box.key" placeholder="Choose one"
+                              [choices]="box.choices" [(ngModel)]="values[box.key]"></app-select>
+                  <input *ngIf="box.kind !== 'select'" class="input" autocomplete="off" [name]="'in-' + box.key"
+                         [class.mono]="box.kind === 'json'"
+                         [attr.inputmode]="box.kind === 'number' ? 'decimal' : null" [(ngModel)]="values[box.key]" />
+                </app-field>
+              </ng-template>
+            </ng-container>
+            <p class="dialog-note" *ngIf="!boxes.length">This function takes no inputs.</p>
+          </ng-container>
+          <app-field *ngIf="asJson" label="Inputs, as JSON" [error]="tried ? inputsProblem : ''">
+            <textarea class="input mono" name="inputs" rows="5" spellcheck="false" [(ngModel)]="inputsText"></textarea>
+          </app-field>
+          <p class="form-notice is-error" role="alert" *ngIf="tried && !asJson && inputsProblem">{{ inputsProblem }}</p>
+          <button class="btn ghost sm schedule-json" type="button" *ngIf="boxes.length || asJson" (click)="setAsJson(!asJson)">
+            {{ asJson ? "Fill in the boxes" : "Edit as JSON" }}
+          </button>
+
+          <app-field label="Wake the assistant" help="A run that brings this back wakes the assistant in the chat; one that does not stays quiet.">
+            <app-select name="wake" [choices]="wakeChoices" [(ngModel)]="wakeField"></app-select>
+          </app-field>
+        </ng-container>
+      </ng-container>
+
+      <!-- ── When ───────────────────────────────────────────────────── -->
+      <fieldset class="schedule-when">
+        <legend class="schedule-legend">When</legend>
+        <app-segmented name="cadence-kind" label="How it comes round" [choices]="cadenceKinds" [(ngModel)]="cadence.kind"></app-segmented>
+
+        <div class="schedule-line" *ngIf="cadence.kind === 'every'">
+          <span>Every</span>
+          <input class="input schedule-count" name="count" inputmode="numeric" aria-label="How many"
+                 [(ngModel)]="cadence.count" />
+          <app-select name="unit" label="Minutes, hours or days" [choices]="units" [(ngModel)]="cadence.unit"></app-select>
+        </div>
+
+        <ng-container *ngIf="cadence.kind === 'days'">
+          <div class="schedule-days" role="group" aria-label="On which days">
+            <button class="schedule-day" type="button" *ngFor="let each of week"
+                    [attr.aria-pressed]="cadence.days.includes(each.day)" (click)="toggleDay(each.day)">{{ each.name }}</button>
+          </div>
+          <div class="schedule-line">
+            <span>at</span>
+            <input class="input schedule-time" type="time" name="time" aria-label="At what time" [(ngModel)]="cadence.time" />
+          </div>
+        </ng-container>
+
+        <div class="schedule-line" *ngIf="cadence.kind === 'once'">
+          <span>On</span>
+          <input class="input schedule-date" type="date" name="date" aria-label="On which date" [(ngModel)]="cadence.date" />
+          <span>at</span>
+          <input class="input schedule-time" type="time" name="once-time" aria-label="At what time" [(ngModel)]="cadence.time" />
+        </div>
+
+        <ng-container *ngIf="cadence.kind === 'custom'">
+          <input class="input mono" name="cron" autocomplete="off" spellcheck="false" aria-label="Cron expression"
+                 placeholder="0 9 * * 1-5" [(ngModel)]="cadence.cron" />
+          <!-- The expression as it is typed, each part under its name. -->
+          <dl class="schedule-cron" aria-label="The parts of the cron">
+            <div *ngFor="let part of cronParts">
+              <dd>{{ part.value }}</dd>
+              <dt>{{ part.name }}</dt>
+            </div>
+          </dl>
+        </ng-container>
+
+        <p class="form-notice is-error" role="alert" *ngIf="tried && whenProblem">{{ whenProblem }}</p>
+        <p class="schedule-preview" role="status" *ngIf="preview">{{ preview }}</p>
+      </fieldset>
+
+      <app-field label="Time zone" help="The clock its times are read on." [error]="tried ? zoneProblem : ''">
+        <input class="input" name="zone" autocomplete="off" spellcheck="false" list="schedule-zones" [(ngModel)]="zone" />
+      </app-field>
+      <datalist id="schedule-zones">
+        <option *ngFor="let each of zones" [value]="each"></option>
+      </datalist>
+
+      <p class="form-notice is-error" role="alert" *ngIf="problem">{{ problem }}</p>
+    </div>
+  </mat-dialog-content>
+  <mat-dialog-actions>
+    <button class="btn" type="button" [disabled]="saving" (click)="close()">Cancel</button>
+    <button class="btn primary" type="submit" [disabled]="saving">
+      {{ saving ? "Saving…" : editing ? "Save changes" : "Put it on the clock" }}
+    </button>
+  </mat-dialog-actions>
+</form>

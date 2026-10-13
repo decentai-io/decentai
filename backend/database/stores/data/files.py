@@ -104,6 +104,20 @@ class FileStore(ResourceStore):
         self._insert_unique(doc, "A file with this resource id already exists.")
         return self.to_public(doc)
 
+    def rename(self, doc: Dict[str, Any], filename: str) -> Optional[Dict[str, Any]]:
+        """A new name for a file, and nothing else about it. ``doc`` is
+        the caller's visibility-checked document with its values read
+        (``visible_doc``): the rest of what was written when the bytes
+        landed is written back as it was."""
+        doc_id = doc["_id"]
+        values = self.clean_generated_values(
+            {**(doc.get("values") or {}), "filename": filename})
+        self.col.update_one({"_id": doc_id}, {"$set": {
+            "values": SecretCipher.encrypt(values, doc_id),
+            "updated_at": utc_now(),
+        }})
+        return self.to_public(self.get(doc_id))
+
     def visible_record(self, user, doc_id):
         """Values decrypted, LOUDLY — the download path, where handing
         back nothing must fail with the sentence that says why."""

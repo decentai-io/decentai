@@ -1,22 +1,62 @@
 import { RouteNode } from './config.model';
 
+/** One page of Settings. */
+export interface SettingsPage {
+  /** Whose setting it is: the person's own, or the organization's. */
+  group: 'You' | 'Organization';
+  /** The page's address under /settings. */
+  path: string;
+  /** Its name: in the nav, the title and the browser's tab. */
+  name: string;
+  /** The one sentence under the title. */
+  sentence: string;
+  /** The action that opens it. */
+  action: string;
+}
+
 /**
- * The settings page is a set of tabs, each opened by an action of its
- * own. Listed once, in the order the page is entered: the sidebar shows
- * Settings to whoever holds any of these, and the page opens on the
- * first tab the person may use. `path` is the tab's address under
- * /settings; '' is the page itself.
+ * The pages of Settings, in the order of the nav. Listed once: the nav
+ * shows the pages a person may open, a group with none is not shown,
+ * the sidebar shows Settings to whoever may open any, and /settings
+ * opens on the first.
  */
-export const settingsTabs: { path: string; action: string }[] = [
-  { path: '', action: 'settings:llm:list' },
-  { path: 'chat', action: 'ai:chat:create' },
-  { path: 'memory', action: 'settings:memory:list' },
-  { path: 'keys', action: 'settings:apikey:list' },
-  { path: 'apps', action: 'settings:oauth:list' },
-  { path: 'safety', action: 'settings:safety:get' },
-  { path: 'monitoring', action: 'agents:monitor:usage' },
-  { path: 'audit', action: 'ai:audit:list' },
-  { path: 'audit/org', action: 'ai:audit:list_all' },
+export const settingsPages: SettingsPage[] = [
+  {
+    group: 'You', path: 'chat', name: 'Chat defaults', action: 'ai:chat:create',
+    sentence: 'What a new chat starts with. Any chat can change these from its own menu.',
+  },
+  {
+    group: 'You', path: 'notifications', name: 'Notifications', action: 'settings:notifications:get',
+    sentence: 'When a chat needs you after you close it, where you hear about it.',
+  },
+  {
+    group: 'You', path: 'memory', name: 'Memory', action: 'settings:memory:list',
+    sentence: 'Facts the assistant saved during conversations, or you wrote here. Yours to correct and delete.',
+  },
+  {
+    group: 'You', path: 'keys', name: 'API keys', action: 'settings:apikey:list',
+    sentence: 'A script acting as you, with your permissions and no more.',
+  },
+  {
+    group: 'Organization', path: 'providers', name: 'Model providers', action: 'settings:llm:list',
+    sentence: 'The providers this organization has a key for. One key serves every model its provider has.',
+  },
+  {
+    group: 'Organization', path: 'speech', name: 'Speech', action: 'settings:speech:get',
+    sentence: 'Spoken messages written down, and replies said aloud, for everyone in the organization.',
+  },
+  {
+    group: 'Organization', path: 'routing', name: 'Agent routing', action: 'settings:routing:get',
+    sentence: 'How a chat finds the right agent when many are installed.',
+  },
+  {
+    group: 'Organization', path: 'apps', name: 'Connected apps', action: 'settings:oauth:list',
+    sentence: 'Apps registered with Google, Microsoft and Slack, so people connect their accounts with a click.',
+  },
+  {
+    group: 'Organization', path: 'safety', name: 'Safety', action: 'settings:safety:get',
+    sentence: 'What no agent may do, and what is always shown to you before it runs.',
+  },
 ];
 
 // The main workspace: what a user works in day to day. Pages are role-gated
@@ -64,12 +104,12 @@ export const mainRoutes: RouteNode[] = [
     children: [
       {
         name: 'Installed',
-        url: 'agents/installed',
+        url: 'agents',
         icon: 'bot',
         domain: 'Global',
         active: true,
         requiredAction: 'agents:agent:list',
-        title: 'Installed agents',
+        title: 'Agents',
         children: [],
       },
       {
@@ -97,7 +137,7 @@ export const mainRoutes: RouteNode[] = [
       {
         name: 'Files',
         url: 'data/files',
-        icon: 'file-text',
+        icon: 'folder',
         domain: 'Global',
         active: true,
         requiredAction: 'files:file:list',
@@ -145,7 +185,7 @@ export const mainRoutes: RouteNode[] = [
         // attribute of an agent's credential slot, shown where it is
         // used — on the secret's row and in the new-secret picker.
         name: 'Secrets',
-        url: 'secrets/values',
+        url: 'secrets',
         icon: 'key-round',
         domain: 'Global',
         active: true,
@@ -157,10 +197,10 @@ export const mainRoutes: RouteNode[] = [
   },
 
   {
-    // What the platform itself is configured with — its own module,
-    // its own collections. First section: the LLM connections the
-    // organization's chats think with.
-    name: 'Settings',
+    // What the platform is configured with, and the two records of
+    // what it did: what agents use and were seen doing, and the
+    // permanent trail of changes, access and approvals.
+    name: 'Organization',
     url: 'settings',
     icon: 'settings',
     domain: 'Global',
@@ -172,20 +212,42 @@ export const mainRoutes: RouteNode[] = [
         icon: 'settings',
         domain: 'Global',
         active: true,
-        anyAction: settingsTabs.map((tab) => tab.action),
+        anyAction: settingsPages.map((page) => page.action),
         title: 'Settings',
+        children: [],
+      },
+      {
+        name: 'Monitoring',
+        url: 'monitoring',
+        icon: 'activity',
+        domain: 'Global',
+        active: true,
+        requiredAction: 'agents:monitor:usage',
+        title: 'Monitoring',
+        children: [],
+      },
+      {
+        name: 'Audit',
+        url: 'audit',
+        icon: 'scroll-text',
+        domain: 'Global',
+        active: true,
+        requiredAction: 'ai:audit:list',
+        title: 'Audit',
         children: [],
       },
     ],
   },
   {
     // The guide: how to use all of the above, and how to build an
-    // agent of your own. Open to anyone signed in.
+    // agent of your own. Open to anyone signed in. It sits in the
+    // sidebar's footer, beside Sign out.
     name: 'Help',
     url: 'guide',
     icon: 'book-open',
     domain: 'Global',
     active: false,
+    footer: true,
     children: [
       {
         name: 'Guide',
@@ -217,7 +279,7 @@ export const adminRoutes: RouteNode[] = [
       {
         name: 'Profile',
         url: 'admin/profile',
-        icon: 'user',
+        icon: 'circle-user',
         domain: 'Global',
         active: true,
         requiredAction: 'account:profile:get',
@@ -280,7 +342,7 @@ export const adminRoutes: RouteNode[] = [
       {
         name: 'Policies',
         url: 'admin/policies',
-        icon: 'file-text',
+        icon: 'scroll-text',
         domain: 'Global',
         active: true,
         requiredAction: 'iam:policy:list',

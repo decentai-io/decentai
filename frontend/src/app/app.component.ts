@@ -16,6 +16,10 @@ export class AppComponent implements OnInit, OnDestroy {
   private subscriptions = new Subscription();
 
   view: AppView = 'loading';
+  /** The backend has not answered for a while: the loading card says so. */
+  unreachable = false;
+  /** Which run of asking is the current one: "Try now" starts another. */
+  private round = 0;
 
   constructor(
     public datastore: DataStoreService,
@@ -64,16 +68,20 @@ export class AppComponent implements OnInit, OnDestroy {
    * and the sign-in screen is the right answer. A backend that is not
    * answering is not — offering a sign-in form that cannot possibly
    * succeed invites someone to type a password and blame themselves. So
-   * an unreachable backend is waited on briefly instead (a restart takes
-   * seconds), and only then given up on.
+   * an unreachable backend is waited on (a restart takes seconds): in
+   * silence for the first tries, then saying so on the loading card,
+   * with a way to try at once.
    */
-  private async resolveSession(attempt = 0): Promise<void> {
+  private async resolveSession(attempt = 0, round = this.round): Promise<void> {
+    if (round !== this.round) return;
     if (await this.readSession()) {
       this.datastore.setview('app');
       return;
     }
 
     const reachable = await this.navigator.checkStatus();
+    // "Try now" started a round of its own while this one was asking.
+    if (round !== this.round) return;
 
     // The probe found the session after all, so the read failed for some
     // other reason and nobody is signed out. The app is no use without the
@@ -84,16 +92,22 @@ export class AppComponent implements OnInit, OnDestroy {
       return;
     }
 
-    if (reachable !== 'signed-out' && attempt < AppComponent.BOOT_RETRIES) {
+    if (reachable !== 'signed-out') {
+      this.unreachable = attempt + 1 >= AppComponent.QUIET_TRIES;
       await new Promise((resolve) =>
         setTimeout(resolve, AppComponent.BOOT_RETRY_MS),
       );
-      return this.resolveSession(attempt + 1);
+      return this.resolveSession(attempt + 1, round);
     }
 
-    // Either genuinely signed out, or the backend never came back: the
-    // sign-in screen, which will say so when tried.
+    // Signed out: the sign-in screen.
     this.datastore.setview('auth');
+  }
+
+  /** The loading card's button: ask again now, not in two seconds. */
+  tryNow(): void {
+    this.round += 1;
+    void this.resolveSession(AppComponent.QUIET_TRIES);
   }
 
   private async readSession(): Promise<boolean> {
@@ -104,8 +118,9 @@ export class AppComponent implements OnInit, OnDestroy {
     }
   }
 
-  /** How long boot waits for a backend that is restarting: 5 × 2s. */
-  private static readonly BOOT_RETRIES = 5;
+  /** A backend that is restarting is asked again every two seconds;
+   *  after three tries the loading card says what it is waiting for. */
+  private static readonly QUIET_TRIES = 3;
   private static readonly BOOT_RETRY_MS = 2000;
 
   ngOnDestroy(): void {

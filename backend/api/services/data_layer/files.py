@@ -75,10 +75,18 @@ class FileController(ResourceController):
         ``<ref>__<resource id>`` — and a page that printed that showed
         people a minted id where a name belongs. The names come from
         this organization's approvals, read once per listing; a ref no
-        approval answers for any more is passed through as it is."""
+        approval answers for any more is passed through as it is.
+
+        Each also says who stored it and who it is shared with, by name:
+        an owner map is ids, and a row that reads "shared with a group"
+        is showing its working."""
         answer, status = super().list(data, user)
         if status != 200:
             return answer, status
+        self._name_people(answer.get("resources") or [], user)
+        # What the upload door will refuse, so the page can say it
+        # before a file is sent rather than after.
+        answer["max_upload_mb"] = self.settings.max_upload_mb
         names = None
         for resource in answer.get("resources") or []:
             ref = self._agent_ref_of(resource)
@@ -302,9 +310,14 @@ class FileController(ResourceController):
         return {"error": "Files are created by upload."}, 400
 
     def update(self, data: dict, user: dict):
-        """Keys and sharing. Everything else about a file — where its
-        bytes live, how big they are, what type they are — was written
-        when they landed and is not a caller's to revise.
+        """Keys, sharing and the name. Everything else about a file —
+        where its bytes live, how big they are, what type they are — was
+        written when they landed and is not a caller's to revise.
+
+        The name is a person's word for the file, so it can be changed;
+        its extension cannot, because the type was decided from it when
+        the bytes landed and a name that disagreed with the type would
+        be a file that says one thing and is served as another.
 
         Sharing IS the caller's: it is the only decision about a file
         that belongs to the person rather than to the platform, and it
@@ -330,8 +343,14 @@ class FileController(ResourceController):
             if refusal:
                 return refusal
 
-        if "keys" not in payload and owner is None:
-            return {"error": "Keys or owner are required."}, 400
+        filename = None
+        if payload.get("filename") is not None:
+            filename, refusal = self._new_name_or_refusal(doc, payload.get("filename"))
+            if refusal:
+                return refusal
+
+        if "keys" not in payload and owner is None and filename is None:
+            return {"error": "Keys, owner or a filename are required."}, 400
         keys = payload.get("keys")
         if isinstance(keys, dict) and "category" in keys and str(
                 keys["category"] or "") != str(
@@ -339,13 +358,40 @@ class FileController(ResourceController):
             return {"error": "Where a file belongs is set when it lands."}, 400
 
         try:
-            resource = self.store.update(
-                doc, owner=owner, keys=payload.get("keys"),
-            )
+            if "keys" in payload or owner is not None:
+                resource = self.store.update(
+                    doc, owner=owner, keys=payload.get("keys"),
+                )
+            if filename is not None:
+                resource = self.store.rename(doc, filename)
         except ValueError as exc:
             return {"error": str(exc)}, 400
         self.logger.info(f"{user.get('email')} updated file {ref}")
         return {"resource": resource}, 200
+
+    @staticmethod
+    def _new_name_or_refusal(doc: Dict[str, Any], raw: Any):
+        """The name a rename asks for, or why it is refused: a name is
+        one segment of plain text, and it ends as the old one did."""
+        name = str(raw or "").strip()
+        if not name or len(name) > 255:
+            return None, ({"error": "A filename is between 1 and 255 characters."}, 400)
+        if any(ch in name for ch in '/\\') or any(ord(ch) < 32 for ch in name):
+            return None, ({"error": "A filename cannot hold a slash or a control character."}, 400)
+        if doc.get("unreadable"):
+            return None, ({"error": "This file's details cannot be read, so they cannot be "
+                                    "rewritten. It can still be deleted."}, 409)
+
+        def extension(value: str) -> str:
+            stem, dot, ending = value.rpartition(".")
+            return ending.lower() if dot and stem else ""
+
+        before = extension(str((doc.get("values") or {}).get("filename") or ""))
+        if extension(name) != before:
+            kept = f"its extension (.{before})" if before else "no extension, as before"
+            return None, ({"error": f"A rename keeps {kept}: the file's type was set "
+                                    "when it was stored."}, 400)
+        return name, None
 
     # ------------------------------------------------------------------
     # Download — visibility-checked bytes

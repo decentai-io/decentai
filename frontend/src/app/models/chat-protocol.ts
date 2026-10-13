@@ -166,6 +166,10 @@ export interface SessionContract {
  *  background job reporting in. */
 export interface ChatTurn {
   id: string;
+  /** What the turn is known by from the moment it is sent: the id the
+   *  page gave the submission, which the server's message keeps, or
+   *  the message's own id for a turn nobody here sent. */
+  key: string;
   userMessage: ChatMessage | null;
   assistantMessages: ChatMessage[];
 }
@@ -209,7 +213,7 @@ export type ChatEvent =
   | (EventBase & { event: 'agent_status'; agent?: string; name?: string; phase?: 'pulling' | 'installing' | 'ready' | 'failed'; text?: string })
   | (EventBase & { event: 'plan_updated'; steps?: PlanStep[] })
   | (EventBase & { event: 'memory_saved'; text?: string })
-  | (EventBase & { event: 'schedule_set'; schedule?: { note?: string; function?: string; every_seconds?: number | null } })
+  | (EventBase & { event: 'schedule_set'; schedule?: { schedule_id?: string; note?: string; function?: string; every_seconds?: number | null; cron?: string; timezone?: string; next_run_at?: number } })
   | (EventBase & { event: 'schedule_removed'; schedule_id?: string })
   /** The assistant paused until a time (epoch seconds); null when a stop ended the pause. */
   | (EventBase & { event: 'sleeping'; until?: number | null; why?: string })

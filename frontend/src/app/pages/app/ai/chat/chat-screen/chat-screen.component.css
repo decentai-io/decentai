@@ -1,134 +1,280 @@
-/* The live view: a picture with a head, watched by default, driven when
-   taken. Same tokens as the cards it sits beside. */
+/* The live view: a picture with a head, watched by default, driven
+   when taken. Its buttons and its address box are the shared ones
+   (styles/controls.scss); here are its frame, the tabs behind the
+   picture, the picture, and the log under it. */
 .screen {
-  display: flex; flex-direction: column;
-  border: 1px solid var(--border);
-  border-left: 3px solid var(--primary);
-  border-radius: var(--ui-radius-card);
-  background: var(--card);
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
 }
-.screen.is-taken { border-left-color: var(--chat-accent-strong); }
-.screen.is-minimized .screen-head { border-bottom: none; }
-.screen-head {
-  display: flex; align-items: center; gap: 8px;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--border);
-  font-size: 0.82rem;
-}
-.screen-head lucide-icon { color: var(--chat-accent-strong); flex-shrink: 0; }
-/* In a narrow column the head stays one row: the status gives way
-   first, cut short, and the buttons keep their size. */
-.screen-title { font-weight: 600; color: var(--foreground); white-space: nowrap; }
-.screen-status {
-  color: var(--muted-foreground); margin-left: auto; font-size: 0.78rem;
-  min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.screen-btn {
-  flex-shrink: 0; white-space: nowrap;
-  display: inline-flex; align-items: center; gap: 5px;
-  padding: 4px 10px; border-radius: var(--ui-radius-card);
-  border: 1px solid var(--border); background: transparent; color: var(--foreground);
-  font: inherit; font-size: 0.8rem; cursor: pointer;
-}
-.screen-btn:hover { background: var(--secondary); }
-.screen-btn--primary { background: var(--foreground); color: var(--background); border-color: transparent; }
-.screen-btn--primary:hover { opacity: 0.9; background: var(--foreground); }
-.screen-stage {
-  display: flex; justify-content: center;
-  background: color-mix(in srgb, var(--foreground) 6%, transparent);
-  max-height: 34vh;
-}
-.screen.is-expanded .screen-stage { max-height: 70vh; }
-.screen-picture {
-  display: block; width: auto; height: auto; max-width: 100%; max-height: inherit;
-  user-select: none; -webkit-user-drag: none; outline: none;
-  background: var(--page-paper);
-}
-/* The tabs behind the picture: one row, scrolling sideways when they
-   are many, the one in front marked. */
-.screen-tabs {
-  display: flex; align-items: stretch; gap: 4px;
-  padding: 6px 12px 0;
-  overflow-x: auto; scrollbar-width: thin;
-  border-bottom: 1px solid var(--border);
-}
-.screen-tab {
-  display: flex; align-items: center; flex: 0 1 190px; min-width: 96px;
-  border: 1px solid var(--border); border-bottom: none;
-  border-radius: var(--ui-radius-card) var(--ui-radius-card) 0 0;
-  background: transparent; color: var(--muted-foreground);
-}
-.screen-tab.is-active { background: var(--secondary); color: var(--foreground); }
-.screen-tab__name {
-  flex: 1; min-width: 0; min-height: 30px;
-  padding: 4px 4px 4px 10px;
-  border: none; background: transparent; color: inherit;
-  font: inherit; font-size: 0.78rem; text-align: start; cursor: pointer;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.screen-tab.is-active .screen-tab__name { font-weight: 600; cursor: default; }
-.screen-tab__close, .screen-tab__new {
-  display: inline-flex; align-items: center; justify-content: center; flex: none;
-  width: 24px; height: 24px; margin: 0 3px;
-  border: none; border-radius: 50%; background: transparent; color: inherit; cursor: pointer;
-}
-.screen-tab__new { align-self: center; margin-bottom: 4px; color: var(--muted-foreground); }
-.screen-tab__close:hover, .screen-tab__new:hover { background: var(--border); color: var(--foreground); }
-.screen-tab__name:focus-visible, .screen-tab__close:focus-visible, .screen-tab__new:focus-visible {
-  outline: 2px solid var(--primary); outline-offset: -2px;
-}
-.screen-address {
-  display: flex; gap: 6px; align-items: center;
-  padding: 6px 12px;
-  border-bottom: 1px solid var(--border);
-}
-.screen-address__input {
-  flex: 1; min-width: 0;
-  padding: 5px 10px; border-radius: var(--ui-radius-card);
-  border: 1px solid var(--border); background: var(--background); color: var(--foreground);
-  font: inherit; font-size: 0.8rem;
-}
-.screen-caption {
-  padding: 6px 12px;
-  border-top: 1px solid var(--border);
-  font-size: 0.78rem; color: var(--muted-foreground);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.screen.is-taken .screen-picture { cursor: crosshair; }
-.screen.is-taken .screen-picture:focus-visible { box-shadow: inset 0 0 0 2px var(--primary); }
 
-/* Beside the thread: the whole column is the view. */
-.screen.is-side { flex: 1; min-height: 0; }
-.screen.is-side .screen-stage { flex: 1; min-height: 0; max-height: none; align-items: flex-start; overflow: hidden; container-type: size; }
+/* A hand on the browser shows on the frame. */
+.screen.is-taken {
+  border-color: var(--accent);
+}
+
+/* The head stays one row in a narrow column: the status gives way
+   first, cut short, and the buttons keep their size. */
+.screen-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 44px;
+  padding: 4px 8px 4px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.screen.is-minimized .screen-head {
+  border-bottom: 0;
+}
+
+.screen-mark {
+  display: flex;
+  flex: none;
+  margin-right: 4px;
+  color: var(--accent-ink);
+}
+
+.screen-title {
+  color: var(--ink);
+  font-size: var(--t-sm);
+  font-weight: 600;
+  line-height: var(--lh-sm);
+  white-space: nowrap;
+}
+
+.screen-status {
+  min-width: 0;
+  margin: 0 4px 0 auto;
+  overflow: hidden;
+  color: var(--ink-3);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.screen-head .btn {
+  flex: none;
+  margin-left: 4px;
+}
+
+/* ── The tabs behind the picture ───────────────────────────────────── */
+/* One row, scrolling sideways when they are many, the one in front
+   marked. */
+.screen-tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px 0;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--line);
+  scrollbar-width: thin;
+}
+
+.screen-tab {
+  display: flex;
+  flex: 0 1 190px;
+  align-items: center;
+  min-width: 96px;
+  border-radius: var(--r-sm) var(--r-sm) 0 0;
+  color: var(--ink-2);
+}
+
+.screen-tab.is-active {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+
+.screen-tab-name {
+  flex: 1;
+  min-width: 0;
+  min-height: 32px;
+  padding: 4px 4px 4px 10px;
+  overflow: hidden;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: 400 var(--t-sm) / var(--lh-sm) var(--font-sans);
+  text-align: start;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.screen-tab.is-active .screen-tab-name {
+  font-weight: 500;
+  cursor: default;
+}
+
+.screen-tab-btn {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin: 0 3px;
+  border: 0;
+  border-radius: var(--r-full);
+  background: none;
+  color: var(--ink-3);
+  cursor: pointer;
+}
+
+.screen-tab-btn:hover {
+  background: var(--surface-3);
+  color: var(--ink);
+}
+
+/* ── Where the browser is ──────────────────────────────────────────── */
+.screen-address {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px 6px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.screen-address .input {
+  flex: 1;
+  min-width: 0;
+  height: 32px;
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+}
+
+/* ── The picture ───────────────────────────────────────────────────── */
+.screen-stage {
+  display: flex;
+  justify-content: center;
+  max-height: 34vh;
+  background: var(--surface-2);
+}
+
+.screen.is-expanded .screen-stage {
+  max-height: 70vh;
+}
+
+.screen-picture {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  height: auto;
+  max-height: inherit;
+  outline: none;
+  background: var(--n-0);
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+/* A finger on the picture must reach the browser, not scroll the chat. */
+.screen.is-taken .screen-picture {
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.screen.is-taken .screen-picture:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+/* ── The log: the agent's last steps ───────────────────────────────── */
+/* Three lines high, so the picture keeps its place; it scrolls inside
+   that, and is taller when the view is. The newest line reads strong
+   and the ones before it step back. */
+.screen-log {
+  flex: none;
+  max-height: calc(3 * var(--lh-sm) + 12px);
+  padding: 6px 12px;
+  overflow-y: auto;
+  border-top: 1px solid var(--line);
+  color: var(--ink-3);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+  list-style: none;
+  overflow-wrap: anywhere;
+}
+
+.screen.is-expanded .screen-log,
+.screen.is-side .screen-log {
+  max-height: calc(5 * var(--lh-sm) + 12px);
+}
+
+.screen-log li:last-child {
+  color: var(--ink);
+}
+
+/* ── Beside the thread: the whole column is the view ───────────────── */
+.screen.is-side {
+  flex: 1;
+  min-height: 0;
+}
+
+.screen.is-side .screen-stage {
+  flex: 1;
+  align-items: flex-start;
+  min-height: 0;
+  max-height: none;
+  overflow: hidden;
+  container-type: size;
+}
+
 /* The picture fills the stage, whichever of its sides runs out first:
    sized by its own ratio, so a hand on it lands where it points. */
 .screen.is-side .screen-picture {
   width: min(100cqw, calc(100cqh * var(--screen-ratio, 1.6)));
-  height: auto; max-width: none; max-height: none;
+  max-width: none;
+  height: auto;
+  max-height: none;
 }
-.screen.is-side.is-minimized { flex: 0 0 auto; }
 
-/* A finger on the page must reach the browser, not scroll the chat. */
-.screen.is-taken .screen-picture { touch-action: none; }
-.screen-btn { min-height: 32px; }
+.screen.is-side.is-minimized {
+  flex: 0 0 auto;
+}
 
-/* A phone: the head keeps its buttons on one row, the picture more of
-   the height, and the words that do not fit go. */
+/* ── A phone: the view is a sheet (the chat page places it) ────────── */
+/* The sheet has one height, so Larger has nothing to add; the status
+   goes, and the picture takes what the head, the address and the log
+   leave. */
 @media (max-width: 700px) {
-  .screen-head { flex-wrap: wrap; gap: 4px; padding: 6px 8px; }
-  .screen-title { flex: 1 1 calc(100% - 24px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .screen-btn--primary { margin-left: auto; white-space: nowrap; }
-  .screen-status { display: none; }
-  .screen-btn { padding: 4px 7px; min-height: 36px; min-width: 36px; justify-content: center; }
-  .screen-btn--primary { padding: 4px 10px; }
-  .screen-stage { max-height: 36vh; }
-  .screen.is-expanded .screen-stage { max-height: 72vh; }
-  .screen-tabs { padding: 6px 8px 0; }
-  .screen-tab { flex-basis: 150px; }
-  .screen-tab__name { min-height: 36px; }
-  .screen-tab__close, .screen-tab__new { width: 32px; height: 32px; margin: 0 1px; }
-  .screen-address { padding: 6px 8px; }
-  .screen-address__input { min-height: 36px; }
-  .screen-caption { padding: 6px 8px; white-space: normal; }
+  .screen {
+    height: 100%;
+  }
+
+  .screen-status,
+  .screen-size {
+    display: none;
+  }
+
+  .screen-title {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .screen-stage,
+  .screen.is-expanded .screen-stage {
+    flex: 1;
+    min-height: 0;
+    max-height: none;
+  }
+
+  .screen-picture {
+    max-height: 100%;
+    object-fit: contain;
+  }
+
+  .screen-tab-btn {
+    width: 32px;
+    height: 32px;
+    margin: 0 1px;
+  }
+
+  .screen-tab-name {
+    min-height: 36px;
+  }
 }

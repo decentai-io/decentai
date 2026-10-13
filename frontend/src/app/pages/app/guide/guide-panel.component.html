@@ -1,0 +1,19 @@
+<h2 mat-dialog-title class="guide-panel-title">
+  <span>{{ chapter?.title || "Guide" }}</span>
+  <button class="icon-btn sm" type="button" aria-label="Close the guide" (click)="close()">
+    <lucide-icon name="x" [size]="16" aria-hidden="true"></lucide-icon>
+  </button>
+</h2>
+<mat-dialog-content>
+  <div *ngIf="loading" aria-busy="true" aria-label="Opening the chapter">
+    <span class="sk sk-field"></span>
+    <span class="sk sk-field"></span>
+  </div>
+  <p class="dialog-note" *ngIf="!loading && !chapter">This chapter could not be opened.</p>
+  <article class="guide-panel-text" #reading *ngIf="chapter">
+    <markdown [data]="body" (ready)="rendered()"></markdown>
+  </article>
+</mat-dialog-content>
+<mat-dialog-actions *ngIf="chapter as open">
+  <a class="btn" [routerLink]="['/guide', open.id]" [fragment]="data.heading" (click)="close()">Open in the Guide</a>
+</mat-dialog-actions>

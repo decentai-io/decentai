@@ -1,0 +1,29 @@
+/* A sorting heading: the heading's own text as a button, with the
+   arrow of the order beside it while it is the one sorted by. */
+.sort-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0 -6px;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.sort-button:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+
+:host([aria-sort='ascending']) .sort-button,
+:host([aria-sort='descending']) .sort-button {
+  color: var(--ink);
+}
+
+lucide-icon {
+  display: inline-flex;
+}

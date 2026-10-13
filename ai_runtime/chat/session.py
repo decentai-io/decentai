@@ -62,6 +62,7 @@ from __future__ import annotations
 
 import logging
 import asyncio
+import re
 import time
 from typing import Any, Callable, Dict, List, Optional
 
@@ -1162,7 +1163,13 @@ class Session:
             # the first line with words is the name, and none is no name.
             lines = [line for line in str(getattr(reply, "content", "") or "").splitlines()
                      if line.strip()]
-            title = (lines[0] if lines else "").strip(" \"'.`*#-")[:80]
+            # A small model may spell a character as its JSON escape
+            # (the six characters of \u2014 for a dash): the name is
+            # the character.
+            title = re.sub(r"\\u([0-9a-fA-F]{4})",
+                           lambda found: chr(int(found.group(1), 16)),
+                           lines[0] if lines else "")
+            title = title.strip(" \"'.`*#-")[:80]
         except Exception as exc:
             self.logger.warning(f"Chat {self.chat_id} not named: {exc}")
             return

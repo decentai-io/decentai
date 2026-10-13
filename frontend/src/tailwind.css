@@ -1,9 +1,13 @@
 /* ════════════════════════════════════════════════════════════════════
-   DECENTAI — brand design system (shadcn/spartan conventions)
-   THREE-COLOR SYSTEM: Emerald #10b981 (identity) + Black + White.
-   All neutrals are tints of black/white only — no other hues. Red is
-   reserved for errors. No gradients. Borders define edges (no shadows).
+   DECENTAI — the design tokens
+   Paper and ink, with one colour. A warm neutral scale, and the semantic
+   names read from it; emerald for meaning only (live, on, chosen,
+   primary), red for danger, amber for "needs you". No gradients. Depth
+   is a surface step and a hairline; only what floats carries a shadow.
    Dark mode = .dark on <html>.
+
+   Components read the semantic names and nothing else. Each token is
+   defined once, here.
    ════════════════════════════════════════════════════════════════════ */
 @import "tailwindcss";
 @plugin "tailwindcss-animate";
@@ -11,142 +15,192 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 :root {
-  --background: #ffffff;
-  --foreground: #0a0a0a;
-  --card: #ffffff;
-  --card-foreground: #0a0a0a;
-  --popover: #ffffff;
-  --popover-foreground: #0a0a0a;
-  --primary: #10b981;              /* emerald — the single identity color */
-  --primary-foreground: #ffffff;
+  /* ── The neutral scale ─────────────────────────────────────────── */
+  --n-0: #ffffff;
+  --n-50: #faf9f7;
+  --n-100: #f3f2ef;
+  --n-200: #e8e6e1;
+  --n-300: #d6d3cc;
+  --n-400: #a8a49b;
+  --n-500: #7a766e;
+  --n-600: #5b5850;
+  --n-700: #403e39;
+  --n-800: #2a2925;
+  --n-850: #1f1e1b;
+  --n-900: #171614;
+  --n-950: #0f0e0d;
+
+  /* ── Colour, by meaning ────────────────────────────────────────── */
+  --bg: var(--n-50);              /* the page */
+  --surface: var(--n-0);          /* cards, composer, menus */
+  --surface-2: var(--n-100);      /* hover, table header, chips */
+  --surface-3: var(--n-200);      /* pressed, selected row */
+  --line: var(--n-200);           /* hairlines */
+  --line-strong: var(--n-300);    /* inputs, focused borders */
+  --ink: var(--n-900);            /* text */
+  --ink-2: var(--n-600);          /* secondary text */
+  /* Timestamps, counts; never under 13px. A step darker than n-500,
+     which read at 4.3:1 on the page: this is 5:1, and 4.7:1 on a chip. */
+  --ink-3: #6f6b63;
+
+  --accent: #047857;              /* emerald fills; white on it is 5.5:1 */
+  --accent-fg: #ffffff;           /* text on an emerald fill */
+  --accent-ink: #047857;          /* emerald text and icons */
+  --accent-soft: color-mix(in srgb, var(--accent) 10%, transparent);
+
+  --danger: #dc2626;
+  --danger-fg: #ffffff;
+  --danger-ink: #b91c1c;
+  --danger-soft: color-mix(in srgb, var(--danger) 10%, transparent);
+
+  --warn: #d97706;
+  --warn-ink: #b45309;
+  --warn-soft: color-mix(in srgb, var(--warn) 10%, transparent);
+
+  --focus: 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent);
+  --shadow-float: 0 8px 30px -12px rgb(0 0 0 / 0.25);
+  --scrim: rgb(15 14 13 / 0.45);  /* behind a dialog or a drawer */
+
   /* A web page's own paper, the same in either theme: what the live
      screen's picture sits on while it loads. */
   --page-paper: #ffffff;
-  /* The same emerald, deep enough to carry white text: #ffffff on
-     --primary is 2.5:1, which is not a readable button. Fills that hold
-     --primary-foreground use this; dots, borders, focus rings and icons
-     stay on --primary. */
-  --primary-fill: #047857;
-  --secondary: #f5f5f5;
-  --secondary-foreground: #0a0a0a;
-  --muted: #f5f5f5;
-  --muted-foreground: #6b6b6b;
-  --accent: #e7f8f1;              /* emerald tint for hover/active surfaces */
-  --accent-foreground: #04563e;
-  --destructive: #dc2626;         /* errors only — fills and borders */
-  --destructive-foreground: #ffffff;
-  --destructive-strong: #b31616;  /* the same red, readable as text */
-  --warning: #3f3f3f;             /* no amber hue — neutral attention state */
-  --warning-bg: #f5f5f5;
-  --border: #e4e4e7;
-  --input: #e4e4e7;
-  --ring: #10b981;
-  /* Data-viz: emerald focal series + graded neutral tints (tints of black) */
-  --chart-1: #10b981;
-  --chart-2: #111111;
-  --chart-3: #6b6b6b;
-  --chart-4: #9a9a9a;
-  --chart-5: #cfcfcf;
-  --sidebar: #fafafa;
-  --sidebar-foreground: #0a0a0a;
-  --sidebar-primary: #10b981;
-  --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #e7f8f1;
-  --sidebar-accent-foreground: #04563e;
-  --sidebar-border: #e4e4e7;
-  --sidebar-ring: #10b981;
-  --radius: 0.5rem;               /* 8px cards (12px panels via radius-xl) */
-  --shadow-card: none;            /* borders define edges — no drop shadows */
-  /* The one exception: a surface that floats over the whole page (modal,
-     drawer) is not separated by a border alone. Nothing else may carry a
-     shadow — set this to none to make the rule absolute. */
-  --shadow-overlay: 0 24px 70px color-mix(in srgb, var(--foreground) 22%, transparent);
+
+  /* Data-viz: the emerald focal series, then graded neutrals. */
+  --chart-1: var(--accent);
+  --chart-2: var(--n-900);
+  --chart-3: var(--n-500);
+  --chart-4: var(--n-400);
+  --chart-5: var(--n-300);
+
+  /* ── Type: eight sizes, each with its line ─────────────────────── */
+  --t-xs: 12px;     --lh-xs: 16px;    /* counts, badges, code toolbar */
+  --t-sm: 13px;     --lh-sm: 18px;    /* metadata, hints, menu items */
+  --t-base: 14px;   --lh-base: 20px;  /* UI: buttons, inputs, rows */
+  --t-read: 15.5px; --lh-read: 25px;  /* text that is read */
+  --t-md: 16px;     --lh-md: 24px;    /* dialog titles, section heads */
+  --t-lg: 20px;     --lh-lg: 28px;    /* a page's title */
+  --t-xl: 28px;     --lh-xl: 34px;    /* the greeting */
+  --t-code: 13px;   --lh-code: 20px;  /* code blocks */
+
+  /* ── Radius ────────────────────────────────────────────────────── */
+  --r-sm: 6px;      /* chips, code toolbar buttons */
+  --r-md: 10px;     /* buttons, inputs, menu items, cards */
+  --r-lg: 16px;     /* composer, dialog, the live view */
+  --r-full: 999px;
+
+  /* ── Motion ────────────────────────────────────────────────────── */
+  --dur-1: 120ms;   /* hover, press, toggle */
+  --dur-2: 180ms;   /* arrive, expand, menus */
+  --dur-3: 280ms;   /* dialogs, the live view opening */
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+
+  /* ── Stacking ──────────────────────────────────────────────────────
+     What sits over what, in one scale. The phone's drawer is under
+     dialogs, so a confirm opened from it is seen; a dialog a page draws
+     itself is under Material's overlays, so its own menus and tooltips
+     show above it. */
+  --z-bar: 30;              /* the top bar */
+  --z-drawer-backdrop: 890;
+  --z-drawer: 900;          /* the sidebar, as a drawer on a phone */
+  --z-dialog: 950;          /* a dialog drawn by a page */
+  --z-overlay: 1000;        /* Material's menus, dialogs, tooltips */
+
+  /* ── Names from before the redesign ────────────────────────────────
+     Aliases of the tokens above, so a page that has not been redone
+     yet keeps working. A page drops them as it is redone; when the last
+     use is gone, so is the line. */
+  --background: var(--bg);
+  --foreground: var(--ink);
+  --card: var(--surface);
+  --card-foreground: var(--ink);
+  --popover: var(--surface);
+  --popover-foreground: var(--ink);
+  --primary: var(--accent);
+  --primary-foreground: var(--accent-fg);
+  --primary-fill: var(--accent);
+  --secondary: var(--surface-2);
+  --secondary-foreground: var(--ink);
+  --muted: var(--surface-2);
+  --muted-foreground: var(--ink-2);
+  --destructive: var(--danger);
+  --destructive-foreground: var(--danger-fg);
+  --destructive-strong: var(--danger-ink);
+  --warning: var(--warn-ink);
+  --warning-bg: var(--warn-soft);
+  --border: var(--line);
+  --input: var(--line-strong);
+  --ring: var(--accent);
+  --shadow-card: none;
+  --shadow-overlay: var(--shadow-float);
+
+  --radius: var(--r-md);
+  --radius-sm: var(--r-sm);
+  --radius-md: var(--r-sm);
+  --radius-lg: var(--r-md);
+  --radius-xl: var(--r-md);
+  --radius-2xl: var(--r-lg);
+  --radius-pill: var(--r-full);
+  --ui-radius-sm: var(--r-sm);
+  --ui-radius-card: var(--r-md);
+  --ui-radius-pill: var(--r-full);
+
+  --ui-text-xs: var(--t-xs);
+  --ui-text-sm: var(--t-sm);
+  --ui-text-base: var(--t-base);
+  --ui-text-md: var(--t-md);
+  --ui-text-lg: var(--t-lg);
+  --ui-text-2xl: var(--t-xl);
 }
 
 .dark {
-  --background: #000000;
-  --foreground: #ffffff;
-  --card: #111111;
-  --card-foreground: #ffffff;
-  --popover: #111111;
-  --popover-foreground: #ffffff;
-  --primary: #10b981;
-  --primary-foreground: #000000;
-  --primary-fill: #10b981;        /* black on emerald is already 8.9:1 */
-  --secondary: #1a1a1a;
-  --secondary-foreground: #ffffff;
-  --muted: #161616;
-  --muted-foreground: #9a9a9a;
-  --accent: #10281f;             /* dark emerald tint */
-  --accent-foreground: #6ee7b7;
-  --destructive: #f87171;
-  --destructive-foreground: #000000;
-  --destructive-strong: #f87171;  /* already readable on a dark surface */
-  --warning: #cfcfcf;
-  --warning-bg: #1a1a1a;
-  --border: #222222;
-  --input: #2a2a2a;
-  --ring: #10b981;
-  --chart-1: #10b981;
-  --chart-2: #f5f5f5;
-  --chart-3: #9a9a9a;
-  --chart-4: #6b6b6b;
-  --chart-5: #3a3a3a;
-  --sidebar: #0a0a0a;
-  --sidebar-foreground: #ffffff;
-  --sidebar-primary: #10b981;
-  --sidebar-primary-foreground: #000000;
-  --sidebar-accent: #10281f;
-  --sidebar-accent-foreground: #6ee7b7;
-  --sidebar-border: #222222;
-  --sidebar-ring: #10b981;
-  --shadow-card: none;
-  --shadow-overlay: 0 24px 70px rgba(0, 0, 0, 0.6);
+  --bg: var(--n-950);
+  --surface: var(--n-900);
+  --surface-2: var(--n-850);
+  --surface-3: var(--n-800);
+  --line: var(--n-800);
+  --line-strong: var(--n-700);
+  --ink: var(--n-100);
+  --ink-2: var(--n-400);
+  /* Lighter than n-500 for the same reason: 5.6:1 on the page, 4.9:1
+     on the darkest surface it sits on. */
+  --ink-3: #8f8b82;
+
+  --accent: #10b981;
+  --accent-fg: var(--n-950);
+  --accent-ink: #34d399;
+  --accent-soft: color-mix(in srgb, var(--accent) 14%, transparent);
+
+  --danger: #f87171;
+  --danger-fg: var(--n-950);
+  --danger-ink: #fca5a5;
+  --danger-soft: color-mix(in srgb, var(--danger) 14%, transparent);
+
+  --warn: #fbbf24;
+  --warn-ink: #fcd34d;
+  --warn-soft: color-mix(in srgb, var(--warn) 14%, transparent);
+
+  --shadow-float: 0 8px 30px -12px rgb(0 0 0 / 0.7);
+  --scrim: rgb(0 0 0 / 0.6);
+
+  --chart-2: var(--n-100);
+  --chart-3: var(--n-400);
+  --chart-4: var(--n-500);
+  --chart-5: var(--n-700);
+}
+
+/* Every duration becomes an instant for a person who asked for less
+   motion; the rule that stops the animations themselves is in
+   styles.scss. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-1: 1ms;
+    --dur-2: 1ms;
+    --dur-3: 1ms;
+  }
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-card: var(--card);
-  --color-card-foreground: var(--card-foreground);
-  --color-popover: var(--popover);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-primary: var(--primary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-secondary: var(--secondary);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-muted: var(--muted);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-accent: var(--accent);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-destructive: var(--destructive);
-  --color-destructive-foreground: var(--destructive-foreground);
-  --color-warning: var(--warning);
-  --color-border: var(--border);
-  --color-input: var(--input);
-  --color-ring: var(--ring);
-  --color-chart-1: var(--chart-1);
-  --color-chart-2: var(--chart-2);
-  --color-chart-3: var(--chart-3);
-  --color-chart-4: var(--chart-4);
-  --color-chart-5: var(--chart-5);
-  --color-sidebar: var(--sidebar);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-ring: var(--sidebar-ring);
-
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);   /* 12px — panels */
-  --radius-2xl: calc(var(--radius) + 8px);  /* 16px — large surfaces:
-     chat bubbles, the composer, hero media, landing cards */
-  --radius-pill: 999px;                     /* fully round: chips, pills */
-
   --font-sans: "IBM Plex Sans", "IBM Plex Sans Arabic", ui-sans-serif, system-ui, sans-serif;
   --font-serif: "IBM Plex Serif", Georgia, serif;
   --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;

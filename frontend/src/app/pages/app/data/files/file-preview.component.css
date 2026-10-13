@@ -1,0 +1,176 @@
+/* One file, shown: its head, its actions, then the file by type. The
+   icon, the chip, the buttons, the table and the code tile are the
+   shared ones. */
+:host {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.preview-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.preview-words {
+  flex: 1;
+  min-width: 0;
+}
+
+.preview-name {
+  color: var(--ink);
+  font-size: var(--t-md);
+  font-weight: 600;
+  line-height: var(--lh-md);
+  overflow-wrap: anywhere;
+}
+
+.preview-name .icon-btn {
+  vertical-align: middle;
+}
+
+.preview-rename {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.preview-rename .input {
+  flex: 1 1 160px;
+  min-width: 0;
+}
+
+.preview-ending {
+  color: var(--ink-3);
+  font-size: var(--t-sm);
+}
+
+.preview-rename-problem {
+  margin-top: 4px;
+  color: var(--danger-ink);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.preview-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 6px;
+  margin-top: 2px;
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+/* The dot follows a fact, so a wrapped line never begins with one. */
+.preview-facts span:not(:last-child)::after {
+  content: '·';
+  margin-left: 6px;
+  color: var(--ink-3);
+}
+
+.preview-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.preview-actions .chip {
+  margin-right: auto;
+}
+
+.preview-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* A picture fits the panel; pressed, it is shown at its own size and
+   the panel scrolls to reach the rest. */
+.preview-image {
+  display: block;
+  max-width: 100%;
+  padding: 0;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  cursor: zoom-in;
+}
+
+.preview-image img {
+  display: block;
+  max-width: 100%;
+  max-height: 70vh;
+  margin: 0 auto;
+}
+
+.preview-image.is-zoomed {
+  cursor: zoom-out;
+}
+
+.preview-image.is-zoomed img {
+  max-width: none;
+  max-height: none;
+}
+
+.preview-markdown {
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  overflow-wrap: anywhere;
+}
+
+.preview-table {
+  max-height: 70vh;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+
+.preview-table td,
+.preview-table th {
+  white-space: nowrap;
+}
+
+.preview-note {
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.code-tile {
+  max-height: 70vh;
+  margin: 0;
+}
+
+audio,
+video {
+  width: 100%;
+  max-height: 70vh;
+  border-radius: var(--r-md);
+}
+
+.preview-keys dl {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 4px 16px;
+  margin-top: 8px;
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.preview-keys dt {
+  color: var(--ink-2);
+}
+
+.preview-keys dd {
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}

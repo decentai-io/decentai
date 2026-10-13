@@ -2062,6 +2062,23 @@ class TestForegroundParks:
         run(session._name_chat())
         assert services.titles["chat_1"] == "Open tasks this week"
 
+    def test_a_name_spelled_with_an_escape_is_kept_as_the_character(self):
+        """A small model wrote a dash as the six characters of its JSON
+        escape, and the list showed them."""
+        session, services = build([
+            action(action="say", text="Noted.", final=True),
+            "Remembered \\u2014 wrap up",
+        ])
+        session.connector.names_chats = True
+
+        async def scenario():
+            await session.open()
+            await session.deliver_user("remember this")
+            await session.wait_idle()
+
+        run(scenario())
+        assert services.titles["chat_1"] == "Remembered \u2014 wrap up"
+
     def test_a_denied_hydrated_park_is_an_honest_observation(self):
         services = SimSessionServices()
         services.provider.secrets.update(SYNC_SECRET)

@@ -91,7 +91,7 @@ that carries authority.
 | `skills` | *which* skills, when the chat narrowed them: the `enabled_skills` refs, or None for every visible one; the runtime lists only those and cuts the list down when the choice changes mid-chat |
 | `routing` | how the runtime finds the right agent among many — the organization's `Settings:Routing` numbers: threshold, shortlist, candidates, rerank, open_max — and inside it `embedding`, the embedding connection as a block with `secret_ref`, resolved at `Settings:Llm:Use` like the chat's model, or None when none is chosen |
 | `safety` | the organization's blocked sites and package list, which the runtime holds agents to |
-| `mcp` | the person's MCP servers with the tools they left on, each of which also adds one allow statement to `grants` (`<server ref>.*.*`) ([MCP servers](mcp.md)) |
+| `mcp` | the person's MCP servers with the tools they left on, each of which also adds one allow statement to `grants` (`<server ref>.*.*`) ([MCP servers](mcp.md)); a chat that names some in its `enabled_mcp` is served those and no others, and an empty list is none |
 
 ### The Schedules page
 

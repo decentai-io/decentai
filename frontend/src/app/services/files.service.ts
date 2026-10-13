@@ -34,6 +34,10 @@ export interface FileResource {
    *  longer holds: the row is real, its details cannot be read. */
   unreadable?: boolean;
   created_by: string;
+  /** Who stored it, by name; empty when that person is gone. */
+  created_by_name?: string;
+  /** The names of `owner.groups` and `owner.users`, in their order. */
+  owner_names?: { groups: string[]; users: string[] };
   created_at?: string | null;
   updated_at?: string | null;
 }
@@ -48,8 +52,13 @@ export interface FileResource {
 export class FilesService {
   constructor(private request: RequestService) {}
 
+  /** The largest file the upload door takes, in MB, as the last list
+   *  said it; the backend's default until one has. */
+  maxUploadMb = 25;
+
   async list(): Promise<FileResource[]> {
     const result = await this.request.gateway('Files:File:list', {});
+    if (Number(result?.max_upload_mb) > 0) this.maxUploadMb = Number(result.max_upload_mb);
     return Array.isArray(result?.resources) ? result.resources : [];
   }
 
@@ -62,23 +71,39 @@ export class FilesService {
     return this.request.gateway('Files:File:delete', { resource_ref: ref });
   }
 
-  /** Upload one file from the page. The same door a chat attachment and
-   *  the runtime use — base64 over the gateway, the backend owns the
-   *  metadata it writes. */
-  async upload(
-    file: File,
-  ): Promise<{ resource?: FileResource; error?: string }> {
-    const content_base64 = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () =>
-        resolve(String(reader.result).split(',').pop() ?? '');
-      reader.onerror = () => reject(reader.error);
-      reader.readAsDataURL(file);
+  /** Upload one file from the page: the bytes as they are, in a
+   *  multipart body, to the door a chat attachment uses. `progress` is
+   *  told how much has been sent, from 0 to 1; `cancel` stops it, and
+   *  the answer then says so. */
+  upload(file: File, progress?: (sent: number) => void): {
+    done: Promise<{ resource?: FileResource; error?: string }>;
+    cancel: () => void;
+  } {
+    const call = new XMLHttpRequest();
+    const done = new Promise<{ resource?: FileResource; error?: string }>((resolve) => {
+      const answer = (): any => {
+        try { return JSON.parse(call.responseText || '{}'); } catch { return {}; }
+      };
+      call.upload.onprogress = (event) => {
+        if (event.lengthComputable) progress?.(event.loaded / event.total);
+      };
+      call.onload = () => {
+        const body = answer();
+        resolve(call.status === 200 && body.resource
+          ? { resource: body.resource }
+          : { error: body.error || `The upload was refused (${call.status}).` });
+      };
+      call.onerror = () => resolve({ error: 'The connection was lost before the file arrived.' });
+      call.onabort = () => resolve({ error: 'Cancelled.' });
     });
-    return this.request.gateway('Files:File:upload', {
-      filename: file.name,
-      content_base64,
-    });
+
+    const body = new FormData();
+    body.append('file', file, file.name);
+    body.append('additionalData', JSON.stringify({ endpoint: 'Files:File:Upload' }));
+    call.open('POST', new URL('upload', new URL(environment.apiEndpoint, window.location.origin)).toString());
+    call.withCredentials = true; // the session cookie rides on this
+    call.send(body);
+    return { done, cancel: () => call.abort() };
   }
 
   /** Change who can see a file. Only the owner map travels — the rest of
@@ -91,6 +116,12 @@ export class FilesService {
       resource_ref: ref,
       owner,
     });
+  }
+
+  /** A new name for a file. Its extension stays: the backend refuses a
+   *  name that would say another type. */
+  async rename(ref: string, filename: string): Promise<{ resource?: FileResource; error?: string }> {
+    return this.request.gateway('Files:File:update', { resource_ref: ref, filename });
   }
 
   /** Direct download URL; the browser's GET carries the session cookie. */

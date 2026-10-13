@@ -114,9 +114,9 @@ export class ChartViewerComponent implements OnChanges, OnDestroy {
 
     // Axis text, gridlines and the tooltip follow the theme too — a fixed
     // '#444' label and a black 4%-opacity grid vanish on a dark canvas.
-    const family = this.token('--chat-font', 'system-ui');
-    const ink = this.token('--foreground', '#0a0a0a');
-    const muted = this.token('--muted-foreground', '#6b6b6b');
+    const family = this.token('--font-sans', 'system-ui');
+    const ink = this.token('--ink', '#171614');
+    const muted = this.token('--ink-2', '#5b5850');
     // Composed here rather than with color-mix(): this string is handed to
     // a canvas context, which does not parse CSS colour functions.
     const grid = this.rgba(muted, 0.22);
@@ -138,7 +138,7 @@ export class ChartViewerComponent implements OnChanges, OnDestroy {
           },
         },
         tooltip: {
-          backgroundColor: this.token('--popover', '#111111'),
+          backgroundColor: this.token('--surface', '#ffffff'),
           titleColor: this.token('--popover-foreground', '#ffffff'),
           bodyColor: this.token('--popover-foreground', '#ffffff'),
           borderColor: this.token('--border', '#222222'),

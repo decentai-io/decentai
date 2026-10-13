@@ -1305,12 +1305,29 @@ class LoginThrottle(MongoStore):
             self.col.update_one({"_id": key}, {"$inc": {"attempts": 1}})
 
     # ------------------------------------------------------------------
+    def _left(self, key: str, cap: int) -> int:
+        """Seconds until a counter at its cap opens again; 0 when it
+        is under the cap or its window is over."""
+        doc = self.col.find_one({"_id": key})
+        now = utc_now()
+        if doc is None or doc.get("expires_at", now) <= now:
+            return 0
+        if int(doc.get("attempts") or 0) < cap:
+            return 0
+        return max(1, int((doc["expires_at"] - now).total_seconds()))
+
+    def locked_for(self, email: str, ip_address: str = "") -> int:
+        """How many seconds the door stays shut for this account from
+        this address; 0 when it is open. Saying how long tells nobody
+        anything the refusal has not: the answer is the same for a
+        right password and a wrong one."""
+        return max(
+            self._left(f"acct:{email}", self.MAX_PER_ACCOUNT) if email else 0,
+            self._left(f"ip:{ip_address}", self.MAX_PER_IP) if ip_address else 0,
+        )
+
     def is_locked(self, email: str, ip_address: str = "") -> bool:
-        if email and self._count(f"acct:{email}") >= self.MAX_PER_ACCOUNT:
-            return True
-        if ip_address and self._count(f"ip:{ip_address}") >= self.MAX_PER_IP:
-            return True
-        return False
+        return self.locked_for(email, ip_address) > 0
 
     def record_failure(self, email: str, ip_address: str = "") -> None:
         if email:

@@ -1,0 +1,225 @@
+/* One agent's page: its sections as a segmented row, and the Overview.
+   The mark, the chips, the buttons and the segmented control are the
+   shared ones; the title row, the level chips and the host chips are
+   the agents' own (agent-shared.css). */
+:host {
+  display: block;
+  max-width: 1040px;
+  padding: 8px 0 24px;
+}
+
+.agent-tabs {
+  margin-bottom: 24px;
+}
+
+/* ── Overview ──────────────────────────────────────────────────────── */
+.agent-overview {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.try-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  list-style: none;
+}
+
+.try-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 16px;
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+}
+
+.try-card strong {
+  color: var(--ink);
+  font-size: var(--t-sm);
+  font-weight: 500;
+  line-height: var(--lh-sm);
+}
+
+.try-prompt {
+  flex: 1;
+  color: var(--ink);
+  font-size: var(--t-base);
+  line-height: var(--lh-base);
+}
+
+.try-card .btn {
+  align-self: flex-start;
+  margin-top: 8px;
+  background: var(--surface);
+}
+
+.agent-glance {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  color: var(--ink-2);
+  font-size: var(--t-base);
+  line-height: var(--lh-base);
+}
+
+.agent-glance strong {
+  color: var(--ink);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* A number that has a tab of its own leads there. */
+.agent-glance-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--line-strong);
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.agent-glance-link:hover {
+  text-decoration-color: var(--ink-2);
+}
+
+.agent-glance-levels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-left: auto;
+}
+
+/* ── The cards: one fact each ──────────────────────────────────────── */
+.agent-cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  align-items: start;
+}
+
+.agent-fact-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+
+.agent-fact-card h3 {
+  color: var(--ink);
+  font-size: var(--t-md);
+  font-weight: 600;
+  line-height: var(--lh-md);
+}
+
+.agent-fact-note {
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.agent-fact-state {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--accent-ink);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.agent-fact-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.agent-fact-list dt {
+  margin-top: 6px;
+  color: var(--ink);
+}
+
+.agent-fact-list dt:first-child {
+  margin-top: 0;
+}
+
+.agent-fact-list dd {
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+
+.agent-fact-list code {
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+}
+
+.agent-fact-kind {
+  color: var(--ink-3);
+}
+
+/* A name, then the fact, side by side. */
+.agent-fact-list.is-pairs {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 4px 16px;
+}
+
+.agent-fact-list.is-pairs dt {
+  margin-top: 0;
+  color: var(--ink-3);
+}
+
+.agent-fact-list.is-pairs dd {
+  color: var(--ink);
+}
+
+.confined-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  list-style: none;
+  color: var(--ink);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.confined-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.confined-list lucide-icon {
+  display: flex;
+  flex: none;
+  margin-top: 2px;
+  color: var(--accent-ink);
+}
+
+.confined-list .is-missing,
+.confined-list .is-missing lucide-icon {
+  color: var(--warn-ink);
+}
+
+@media (max-width: 700px) {
+  .agent-cards {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .agent-glance-levels {
+    flex: 1 1 100%;
+    margin-left: 0;
+  }
+}

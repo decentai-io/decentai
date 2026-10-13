@@ -1,0 +1,24 @@
+/* The pager: the range at the left, the two buttons at the right. */
+:host {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 32px;
+  margin-top: 12px;
+}
+
+:host([hidden]) {
+  display: none;
+}
+
+.pager-range {
+  color: var(--ink-3);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.pager-buttons {
+  display: flex;
+  gap: 2px;
+}

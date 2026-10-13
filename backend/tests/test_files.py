@@ -495,3 +495,75 @@ class TestWhatASlotTakes:
         assert kept["values"]["file_type"] == (
             "application/vnd.openxmlformats-officedocument."
             "wordprocessingml.document")
+
+
+class TestNames:
+    """A row that says "shared with a group" is showing its working: the
+    list names who stored a file and who it is shared with."""
+
+    def test_the_list_names_the_uploader_and_who_it_is_shared_with(
+            self, app, admin, seed):
+        team = _group(admin, "Research", FILE_ACTIONS)
+        uploader, doc = _user(app, seed, "dana@test.org", [team])
+        teammate, _ = _user(app, seed, "sam@test.org", [team])
+        ref = _upload(uploader, b"team bytes", "team.txt").json()["resource"]["resource_ref"]
+        shared = app_call(uploader, "Files:File:Update", {
+            "resource_ref": ref, "owner": {"groups": [team], "users": [doc["_id"]]}})
+        assert shared.status_code == 200, shared.text
+
+        seen = next(f for f in app_call(teammate, "Files:File:List", {}).json()["resources"]
+                    if f["resource_ref"] == ref)
+        assert seen["created_by_name"] == "U"
+        assert seen["owner_names"] == {"groups": ["Research"], "users": ["U"]}
+
+    def test_the_list_says_how_large_an_upload_may_be(self, admin, seed):
+        from server.setup.app_state import get_settings
+        listed = app_call(admin, "Files:File:List", {}).json()
+        assert listed["max_upload_mb"] == get_settings().max_upload_mb
+
+    def test_everyone_is_named_as_everyone(self, admin, seed):
+        ref = _upload(admin).json()["resource"]["resource_ref"]
+        app_call(admin, "Files:File:Update", {
+            "resource_ref": ref, "owner": {"groups": ["everyone"], "users": []}})
+        seen = next(f for f in app_call(admin, "Files:File:List", {}).json()["resources"]
+                    if f["resource_ref"] == ref)
+        assert seen["owner_names"]["groups"] == ["Everyone"]
+
+
+class TestRename:
+    """A file's name is a person's word for it and can be changed; what
+    the name says about the type cannot."""
+
+    def test_a_rename_changes_the_name_and_nothing_else(self, admin, seed):
+        resource = _upload(admin, b"hello bytes", "report.txt").json()["resource"]
+        response = app_call(admin, "Files:File:Update", {
+            "resource_ref": resource["resource_ref"], "filename": "  Quarter one.txt "})
+        assert response.status_code == 200, response.text
+        renamed = response.json()["resource"]
+        assert renamed["values"] == {**resource["values"], "filename": "Quarter one.txt"}
+        assert renamed["owner"] == resource["owner"]
+
+        download = admin.get(f"/download/{resource['resource_ref']}")
+        assert download.content == b"hello bytes"
+        assert "Quarter%20one.txt" in download.headers["content-disposition"]
+
+    @pytest.mark.parametrize("name", [
+        "report.pdf", "report", "", "   ", "a/b.txt", "..\\up.txt", "x" * 300 + ".txt"])
+    def test_a_name_that_changes_the_type_or_is_not_a_name_is_refused(
+            self, admin, seed, name):
+        resource = _upload(admin, b"hello bytes", "report.txt").json()["resource"]
+        response = app_call(admin, "Files:File:Update", {
+            "resource_ref": resource["resource_ref"], "filename": name})
+        assert response.status_code == 400, response.text
+
+    def test_only_who_may_edit_a_file_may_rename_it(self, app, admin, seed):
+        team = _group(admin, "Renamers", FILE_ACTIONS)
+        uploader, doc = _user(app, seed, "owner@test.org", [team])
+        teammate, _ = _user(app, seed, "other@test.org", [team])
+        ref = _upload(uploader, b"team bytes", "team.txt").json()["resource"]["resource_ref"]
+        app_call(uploader, "Files:File:Update", {
+            "resource_ref": ref, "owner": {"groups": [team], "users": [doc["_id"]]}})
+
+        refused = app_call(teammate, "Files:File:Update", {
+            "resource_ref": ref, "filename": "mine now.txt"})
+        assert refused.status_code in (403, 404), refused.text

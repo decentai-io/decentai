@@ -1,4 +1,5 @@
 <div class="app-shell" [class.sidebar-open]="isSidebarOpen">
+  <a class="skip-link btn" href="#page_container" (click)="skipToContent($event)">Skip to content</a>
   <div
     class="mobile-sidebar-backdrop"
     [class.is-open]="isSidebarOpen"
@@ -14,6 +15,7 @@
     [attr.aria-hidden]="drawerInert ? 'true' : null"
   >
     <app-sidebar
+      [rail]="!isMobile && isDrawerCollapsed"
       (navigationSelected)="closeSidebar()"
       (collapseClicked)="toggleMenu()"
       (signOutClicked)="logout()"
@@ -22,37 +24,32 @@
 
   <div class="app-main">
     <!-- Top bar -->
-    <header class="top-bar">
+    <header class="top-bar" [class.has-page-row]="topBar.content()">
       <button
         #menuButton
         type="button"
         class="icon-button top-bar__menu"
         (click)="toggleMenu()"
-        aria-label="Toggle navigation"
-        [attr.aria-expanded]="isMobile ? isSidebarOpen : !isDrawerCollapsed"
+        aria-label="Open navigation"
+        [attr.aria-expanded]="isSidebarOpen"
       >
         <lucide-icon name="menu" [size]="17" [strokeWidth]="1.75"></lucide-icon>
       </button>
 
-      <!-- Brand lockup: shown only when the sidebar isn't (mobile drawer, or
-           desktop collapsed) — otherwise the sidebar mark already brands it. -->
-      <span class="top-bar__brand">
-        <img
-          class="top-bar__logo top-bar__logo--light"
-          src="assets/brand/logos/decentai-lockup-horizontal.svg"
-          alt="DecentAI"
-        />
-        <img
-          class="top-bar__logo top-bar__logo--dark"
-          src="assets/brand/logos/decentai-lockup-horizontal-dark.svg"
-          alt="DecentAI"
-        />
-      </span>
+      <!-- A page that fills the bar (a chat): its own row, in place of
+           the brand and of Stop everything, which it carries in a menu. -->
+      <ng-container *ngIf="topBar.content() as content">
+        <ng-container *ngTemplateOutlet="content"></ng-container>
+      </ng-container>
 
-      <div class="top-bar__spacer"></div>
+      <!-- The brand, on a phone: there the sidebar that carries it is a
+           drawer, closed. -->
+      <span class="top-bar__brand" *ngIf="!topBar.content()">DecentAI</span>
+
+      <div class="top-bar__spacer" *ngIf="!topBar.content()"></div>
 
       <button
-        *ngIf="!workStopped"
+        *ngIf="!workStopped && !topBar.content()"
         type="button"
         class="icon-button stop-all"
         (click)="stopEverything()"
@@ -61,22 +58,6 @@
         matTooltip="Stop everything"
       >
         <lucide-icon name="octagon-x" [size]="16" [strokeWidth]="1.75"></lucide-icon>
-      </button>
-
-      <button
-        type="button"
-        class="icon-button"
-        (click)="toggleTheme()"
-        [attr.aria-label]="
-          isDarkTheme ? 'Switch to light theme' : 'Switch to dark theme'
-        "
-        [matTooltip]="isDarkTheme ? 'Light theme' : 'Dark theme'"
-      >
-        <lucide-icon
-          [name]="isDarkTheme ? 'sun' : 'moon'"
-          [size]="16"
-          [strokeWidth]="1.75"
-        ></lucide-icon>
       </button>
 
       <button
@@ -107,6 +88,10 @@
           </span>
         </div>
 
+        <a mat-menu-item routerLink="/admin/profile" *ngIf="canSeeProfile">
+          <lucide-icon name="circle-user" [size]="16" [strokeWidth]="1.75" aria-hidden="true"></lucide-icon>
+          <span>Profile</span>
+        </a>
         <button
           *ngIf="hasAdminConsoleAccess"
           mat-menu-item
@@ -122,53 +107,67 @@
           }}</span>
         </button>
 
-        <button mat-menu-item (click)="logout()">
+        <!-- The theme, where the person's other choices are. -->
+        <p class="menu-label">Theme</p>
+        <button
+          *ngFor="let choice of themes"
+          mat-menu-item
+          role="menuitemradio"
+          [attr.aria-checked]="choice.value === themeChoice"
+          (click)="setTheme(choice.value)"
+        >
+          <lucide-icon [name]="choice.icon" [size]="16" [strokeWidth]="1.75" aria-hidden="true"></lucide-icon>
+          <span>{{ choice.name }}</span>
           <lucide-icon
-            name="log-out"
+            *ngIf="choice.value === themeChoice"
+            class="menu-check"
+            name="check"
             [size]="16"
-            [strokeWidth]="1.75"
+            aria-hidden="true"
           ></lucide-icon>
-          <span>Log out</span>
+        </button>
+
+        <a mat-menu-item routerLink="/guide" *ngIf="canSeeProfile">
+          <lucide-icon name="book-open" [size]="16" [strokeWidth]="1.75" aria-hidden="true"></lucide-icon>
+          <span>Guide</span>
+        </a>
+        <button mat-menu-item (click)="showShortcuts()">
+          <lucide-icon name="keyboard" [size]="16" [strokeWidth]="1.75" aria-hidden="true"></lucide-icon>
+          <span>Keyboard shortcuts</span>
+        </button>
+        <button mat-menu-item (click)="logout()">
+          <lucide-icon name="log-out" [size]="16" [strokeWidth]="1.75" aria-hidden="true"></lucide-icon>
+          <span>Sign out</span>
         </button>
       </mat-menu>
     </header>
 
-    <!-- The person stopped everything of theirs: said on every page,
-         with the one way back. -->
-    <div class="stopped-bar" *ngIf="workStopped" role="status">
-      <lucide-icon name="octagon-x" [size]="16" [strokeWidth]="1.75"></lucide-icon>
-      <span class="stopped-bar__text">
-        You stopped everything. Nothing of yours runs until you resume.
-      </span>
-      <button
-        type="button"
-        class="stopped-bar__resume"
-        (click)="resumeEverything()"
-        [disabled]="switching"
-      >
-        Resume
-      </button>
-    </div>
-
-    <!-- A newer version is ready: said once, quietly, with the way to it. -->
-    <div class="update-bar" *ngIf="updateReady" role="status">
-      <lucide-icon name="refresh-cw" [size]="15" [strokeWidth]="1.75"></lucide-icon>
-      <span class="update-bar__text">A new version is ready.</span>
-      <button type="button" class="update-bar__reload" (click)="reloadForUpdate()">
-        Reload
-      </button>
-    </div>
-
-    <!-- Page header (breadcrumb + title) -->
-    <div class="page-bar" *ngIf="currentPageTitle && !pageBarHidden">
-      <nav class="page-bar__crumbs" aria-label="Breadcrumb">
-        <ng-container *ngIf="moduleName && moduleName !== currentPageTitle">
-          <span class="crumb-module">{{ moduleName }}</span>
-          <span class="crumb-sep" aria-hidden="true">/</span>
-        </ng-container>
-        <h1 class="crumb-page">{{ currentPageTitle }}</h1>
-      </nav>
-    </div>
+    <!-- What the shell has to say, one line at a time, the most
+         pressing first: the session ended, the browser is offline, the
+         person stopped everything, a newer version is ready. -->
+    <ng-container [ngSwitch]="bar">
+      <div class="shell-bar is-warn" *ngSwitchCase="'session'" role="alert">
+        <lucide-icon name="log-out" [size]="16" [strokeWidth]="1.75" aria-hidden="true"></lucide-icon>
+        <span class="shell-bar__text">Your session ended. Sign in again to continue.</span>
+        <button type="button" class="btn sm" (click)="signInAgain()">Sign in</button>
+      </div>
+      <div class="shell-bar is-warn" *ngSwitchCase="'offline'" role="status">
+        <lucide-icon name="wifi-off" [size]="16" [strokeWidth]="1.75" aria-hidden="true"></lucide-icon>
+        <span class="shell-bar__text">You are offline. Changes wait until you are back.</span>
+      </div>
+      <div class="shell-bar is-warn" *ngSwitchCase="'stopped'" role="status">
+        <lucide-icon name="octagon-x" [size]="16" [strokeWidth]="1.75" aria-hidden="true"></lucide-icon>
+        <span class="shell-bar__text">You stopped everything. Nothing of yours runs until you resume.</span>
+        <button type="button" class="btn sm" (click)="resumeEverything()" [disabled]="switching">Resume</button>
+      </div>
+      <!-- Said quietly: a reload of its own accord would take a
+           half-written message with it. -->
+      <div class="shell-bar" *ngSwitchCase="'update'" role="status">
+        <lucide-icon name="refresh-cw" [size]="16" [strokeWidth]="1.75" aria-hidden="true"></lucide-icon>
+        <span class="shell-bar__text">A new version is ready.</span>
+        <button type="button" class="btn sm" (click)="reloadForUpdate()">Reload</button>
+      </div>
+    </ng-container>
 
     <main
       class="content-shell"
@@ -179,3 +178,19 @@
     </main>
   </div>
 </div>
+
+<!-- The keys the app answers to, wherever the person is. -->
+<ng-template #shortcuts>
+  <h2 mat-dialog-title>Keyboard shortcuts</h2>
+  <mat-dialog-content>
+    <dl class="shortcut-list">
+      <ng-container *ngFor="let shortcut of shortcutList">
+        <dt><kbd *ngFor="let key of shortcut.keys">{{ key }}</kbd></dt>
+        <dd>{{ shortcut.does }}</dd>
+      </ng-container>
+    </dl>
+  </mat-dialog-content>
+  <mat-dialog-actions>
+    <button class="btn" type="button" mat-dialog-close>Close</button>
+  </mat-dialog-actions>
+</ng-template>

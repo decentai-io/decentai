@@ -201,6 +201,71 @@ class TestPauseResumeDelete:
             "chat_id": chat_id, "schedule_id": row["schedule_id"],
             "enabled": "no"}).status_code == 400
 
+    def test_a_schedule_can_be_changed_and_keeps_what_was_not_named(self, admin, seed):
+        """The page can change what a schedule is for, when it runs
+        and the zone it is read in. A new when counts from now; what is
+        not named stays."""
+        chat_id = chat_in_dubai(admin)
+        row = self._row(admin, chat_id, cron="0 9 * * *")
+
+        changed = app_call(admin, "AI:Schedule:Update", {
+            "chat_id": chat_id, "schedule_id": row["schedule_id"],
+            "cron": "30 17 * * 1-5"})
+        assert changed.status_code == 200, changed.text
+        fresh = changed.json()["data"]["schedule"]
+        assert (fresh["cron"], fresh["note"], fresh["enabled"]) == ("30 17 * * 1-5", "x", True)
+        assert local(fresh["next_run_at"]).endswith("17:30")
+
+        noted = app_call(admin, "AI:Schedule:Update", {
+            "chat_id": chat_id, "schedule_id": row["schedule_id"],
+            "note": "Send the report"}).json()["data"]["schedule"]
+        assert (noted["note"], noted["cron"]) == ("Send the report", "30 17 * * 1-5")
+
+        # The same cron read in another zone is another moment.
+        moved = app_call(admin, "AI:Schedule:Update", {
+            "chat_id": chat_id, "schedule_id": row["schedule_id"],
+            "timezone": "Europe/London"}).json()["data"]["schedule"]
+        assert moved["timezone"] == "Europe/London"
+        assert moved["next_run_at"] != fresh["next_run_at"]
+
+    def test_a_change_is_held_to_what_a_new_schedule_is(self, admin, seed):
+        chat_id = chat_in_dubai(admin)
+        row = self._row(admin, chat_id, cron="0 9 * * *")
+        for bad in ({"cron": "not a cron"}, {"every_seconds": 5}, {"note": "  "},
+                    {"timezone": "Mars/Olympus"}, {"function": "nobody.has.this"}):
+            refused = app_call(admin, "AI:Schedule:Update", {
+                "chat_id": chat_id, "schedule_id": row["schedule_id"], **bad})
+            assert refused.status_code == 400, (bad, refused.text)
+
+    def test_a_schedule_may_be_read_in_a_zone_of_its_own(self, admin, seed):
+        chat_id = chat_in_dubai(admin)
+        row = self._row(admin, chat_id, cron="0 9 * * *", timezone="Europe/London")
+        assert row["timezone"] == "Europe/London"
+        assert app_call(admin, "AI:Schedule:Create", {
+            "chat_id": chat_id, "note": "x", "cron": "0 9 * * *",
+            "timezone": "Nowhere/Land"}).status_code == 400
+
+    def test_a_schedule_that_is_on_can_be_run_now(self, admin, seed):
+        """Its next run moves to this moment, for the clock to fire as
+        it fires any other; a paused one says to resume it first."""
+        import time
+        chat_id = chat_in_dubai(admin)
+        row = self._row(admin, chat_id, cron="0 9 * * *")
+        before = time.time()
+        ran = app_call(admin, "AI:Schedule:Update", {
+            "chat_id": chat_id, "schedule_id": row["schedule_id"], "run_now": True})
+        assert ran.status_code == 200, ran.text
+        fresh = ran.json()["data"]["schedule"]
+        assert before - 1 <= fresh["next_run_at"] <= time.time() + 1
+        assert (fresh["cron"], fresh["enabled"]) == ("0 9 * * *", True)
+
+        app_call(admin, "AI:Schedule:Update", {
+            "chat_id": chat_id, "schedule_id": row["schedule_id"], "enabled": False})
+        refused = app_call(admin, "AI:Schedule:Update", {
+            "chat_id": chat_id, "schedule_id": row["schedule_id"], "run_now": True})
+        assert refused.status_code == 400
+        assert "Resume" in refused.text
+
     def test_delete_takes_it_off_the_clock(self, admin, seed):
         from database.stores import ScheduleStore
 

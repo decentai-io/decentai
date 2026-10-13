@@ -7,11 +7,18 @@ import { SecretsComponent } from '../../pages/app/secrets/secrets.component';
 import { permissionGuard } from '../../guards/permission.guard';
 
 export const SecretsRoutes: Routes = [
-  { path: '', redirectTo: 'values', pathMatch: 'full' },
+  // The page used to live at /secrets/values; links to it still work.
+  { path: 'values', redirectTo: '', pathMatch: 'full' },
   {
-    path: 'values',
+    path: '',
+    title: 'Secrets',
     component: SecretsComponent,
     canActivate: [permissionGuard],
     data: { requiredAction: 'secrets:secret:list' },
+    // One secret, opened, is a view of the list's page.
+    children: [
+      { path: '', pathMatch: 'full', children: [] },
+      { path: ':ref', children: [] },
+    ],
   },
 ];

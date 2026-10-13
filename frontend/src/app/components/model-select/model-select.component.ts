@@ -1,5 +1,6 @@
 import { Component, EventEmitter, Input, OnChanges, Output, SimpleChanges } from '@angular/core';
 
+import { Choice } from 'src/app/components/ui/radio-keys';
 import {
   LlmConnection, LlmModel, LlmModelKind, SettingsLlmService,
 } from 'src/app/services/settings-llm.service';
@@ -26,7 +27,7 @@ export interface ModelChoice {
   selector: 'app-model-select',
   standalone: false,
   templateUrl: './model-select.component.html',
-  styleUrls: ['../../pages/app/data-shared.css', './model-select.component.css'],
+  styleUrls: ['./model-select.component.css'],
 })
 export class ModelSelectComponent implements OnChanges {
   /** The connections to choose among — already narrowed by the page
@@ -51,8 +52,30 @@ export class ModelSelectComponent implements OnChanges {
 
   constructor(private service: SettingsLlmService) {}
 
+  /** The providers, with "none of them" first; and the chosen one's
+   *  models, with the way to one not listed last. */
+  providerChoices: Choice[] = [];
+  get modelChoices(): Choice[] {
+    return this.offeredModels;
+  }
+  private offeredModels: Choice[] = [];
+
   ngOnChanges(changes: SimpleChanges): void {
+    if (changes['connections'] || changes['noneLabel']) {
+      this.providerChoices = [
+        { value: '', name: this.noneLabel },
+        ...this.connections.map((connection) => ({ value: connection.resource_ref, name: connection.name })),
+      ];
+    }
     if (changes['connectionId'] || changes['kind']) void this.load(false);
+  }
+
+  private offer(models: LlmModel[]): void {
+    this.models = models;
+    this.offeredModels = [
+      ...models.map((model) => ({ value: model.id, name: model.name })),
+      { value: this.other, name: 'Another model…' },
+    ];
   }
 
   /** The chosen connection's models. `choose` picks one when the
@@ -60,7 +83,7 @@ export class ModelSelectComponent implements OnChanges {
    *  with for a chat, else the first offered. */
   private async load(choose: boolean): Promise<void> {
     const connectionId = this.connectionId;
-    this.models = [];
+    this.offer([]);
     this.typing = false;
     if (!connectionId) return;
     this.loading = true;
@@ -72,7 +95,7 @@ export class ModelSelectComponent implements OnChanges {
     }
     // A slow answer for a connection since changed is nobody's list.
     if (this.connectionId !== connectionId) return;
-    this.models = models;
+    this.offer(models);
     this.loading = false;
     if (choose) {
       const starting = this.connections.find(
@@ -90,7 +113,7 @@ export class ModelSelectComponent implements OnChanges {
     this.connectionId = connectionId;
     this.model = '';
     if (!connectionId) {
-      this.models = [];
+      this.offer([]);
       this.typing = false;
       this.changed.emit({ connectionId: '', model: '' });
       return;

@@ -1,0 +1,119 @@
+/* The admin console's pages are made of the shared pieces (the page
+   frame, the list, the row, the form, the dialog shell). Here is the
+   little they have of their own. */
+
+/* A fact under a field: when it was made, when it was last used. */
+.admin-fact {
+  margin-top: 0;
+}
+
+/* A row's name is the way in to changing it. */
+.admin-name {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.admin-name:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.admin-name:focus-visible {
+  outline: none;
+  border-radius: var(--r-sm);
+  box-shadow: var(--focus);
+}
+
+/* What is picked for a thing (a role's policies, a group's roles, a
+   person's groups): tick rows under one heading. */
+.admin-picks {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+}
+
+.admin-picks legend {
+  margin-bottom: 4px;
+  padding: 0;
+  color: var(--ink);
+  font-size: var(--t-sm);
+  font-weight: 500;
+  line-height: var(--lh-sm);
+}
+
+.admin-picks .fold + .fold {
+  border-top: 1px solid var(--line);
+}
+
+.admin-count {
+  margin-left: 8px;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+  font-weight: 400;
+}
+
+/* A plain list inside a dialog: who is in a group, what a person owns. */
+.admin-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+  list-style: none;
+}
+
+.admin-lines strong {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+/* Something shown once, to be copied: a link, a temporary password. */
+.admin-once {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 8px 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+}
+
+.admin-once code {
+  flex: 1;
+  min-width: 0;
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+/* A second list under the first (the invitations under the people). */
+.admin-section {
+  margin-top: 32px;
+}
+
+.admin-section-title {
+  margin-bottom: 8px;
+  color: var(--ink);
+  font-size: var(--t-md);
+  font-weight: 600;
+  line-height: var(--lh-md);
+}
+
+@media (pointer: coarse) {
+  .admin-name {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+}

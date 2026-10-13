@@ -4,6 +4,9 @@ import { MAT_DIALOG_DATA, MatDialogRef } from '@angular/material/dialog';
 import {
   AiSessionService, AssistantTranscript, TranscriptEntry,
 } from 'src/app/services/ai-session.service';
+import { clockTime } from 'src/app/components/ui/dates';
+import { Choice } from 'src/app/components/ui/radio-keys';
+import { RecordTone } from 'src/app/components/ui/record-row.component';
 import { auditLabel, auditSummary, auditTone, durationLabel } from './audit-words';
 
 /** A stored result opened from an execution's row. */
@@ -34,14 +37,15 @@ interface ResultView {
   selector: 'app-chat-activity-dialog',
   standalone: false,
   templateUrl: './chat-activity-dialog.component.html',
-  styleUrls: [
-    './chat-activity-dialog.shared.css',
-    './chat-activity-dialog.component.css',
-  ],
+  styleUrl: './chat-activity-dialog.component.css',
 })
 export class ChatActivityDialogComponent implements OnInit {
   loading = true;
   view: 'record' | 'assistant' = 'record';
+  readonly views: Choice<'record' | 'assistant'>[] = [
+    { value: 'record', name: 'The record' },
+    { value: 'assistant', name: 'The assistant' },
+  ];
   /** What the assistant was shown: read the first time it is asked for. */
   transcript: AssistantTranscript | null = null;
   loadingTranscript = false;
@@ -97,7 +101,7 @@ export class ChatActivityDialogComponent implements OnInit {
       : entry.role === 'assistant' ? 'decided' : 'told';
   }
 
-  turnTone(entry: TranscriptEntry): string {
+  turnTone(entry: TranscriptEntry): RecordTone {
     return entry.role === 'assistant' ? 'ok'
       : entry.role === 'system' ? 'live' : 'muted';
   }
@@ -150,7 +154,7 @@ export class ChatActivityDialogComponent implements OnInit {
 
   label(event: any): string { return auditLabel(event); }
   summary(event: any): string { return auditSummary(event); }
-  tone(event: any): string { return auditTone(event); }
+  tone(event: any): RecordTone { return auditTone(event); }
 
   chip(event: any): string {
     if (event?.event_type === 'execution') return String(event?.details?.status || 'ran');
@@ -240,11 +244,7 @@ export class ChatActivityDialogComponent implements OnInit {
     return isNaN(date.getTime()) ? '' : date.toLocaleString();
   }
 
-  timeLabel(value?: string | null): string {
-    if (!value) return '';
-    const date = new Date(value);
-    return isNaN(date.getTime()) ? '' : date.toLocaleTimeString();
-  }
+  timeLabel(value?: string | null): string { return clockTime(value); }
 
   close(): void {
     this.dialogRef.close();

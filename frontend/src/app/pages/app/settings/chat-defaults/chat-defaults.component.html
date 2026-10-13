@@ -1,0 +1,63 @@
+<div class="form" *ngIf="loading" aria-busy="true" aria-label="Loading chat defaults">
+  <span class="sk sk-field"></span>
+  <span class="sk sk-field"></span>
+  <span class="sk sk-field"></span>
+</div>
+
+<app-empty *ngIf="loadError" icon="cloud-off" title="Chat defaults could not be loaded" [line]="loadError">
+  <button class="btn" type="button" (click)="load()">Try again</button>
+</app-empty>
+
+<ng-container *ngIf="!loading && !loadError">
+  <div class="form-section">
+    <app-field
+      *ngIf="canChooseModel"
+      label="Model"
+      help="Remembered from the model you last picked in a chat."
+    >
+      <app-model-select
+        kind="chat"
+        noneLabel="The organization's default"
+        [connections]="connections"
+        [connectionId]="draft.value.llm_secret_ref"
+        [model]="draft.value.llm_model"
+        (changed)="chooseModel($event)"
+      ></app-model-select>
+    </app-field>
+
+    <app-field
+      label="Trust level"
+      help="How much a chat may do without asking."
+      [link]="{ text: 'What no agent may do at all is under Safety.', to: '/settings/safety' }"
+    >
+      <app-select [choices]="trustChoices" [(ngModel)]="draft.value.trust_level"></app-select>
+    </app-field>
+
+    <app-field label="Turn budget" help="How many steps one message may take before the chat stops and asks.">
+      <app-select [choices]="turnChoices" [(ngModel)]="draft.value.max_turns"></app-select>
+    </app-field>
+
+    <app-field label="Skills listed" help="How many skills the assistant is shown each turn.">
+      <app-select [choices]="skillsChoices" [(ngModel)]="draft.value.max_skills"></app-select>
+    </app-field>
+  </div>
+
+  <!-- Not one of the saved defaults: this device's own, kept as it is set. -->
+  <div class="form-section" *ngIf="readAloud.available">
+    <app-switch
+      label="Read replies aloud"
+      help="On this device only."
+      [note]="readAloudNote"
+      [ngModel]="readAloud.automatic"
+      (ngModelChange)="setReadAloud($event)"
+    ></app-switch>
+  </div>
+
+  <app-save-bar
+    [dirty]="draft.dirty"
+    [saving]="saving"
+    [error]="saveError"
+    (save)="save()"
+    (discard)="draft.discard()"
+  ></app-save-bar>
+</ng-container>

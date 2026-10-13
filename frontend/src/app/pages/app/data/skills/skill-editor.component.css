@@ -1,0 +1,110 @@
+/* The skill editor: a page of fields on the form system, and a writing
+   area with its tabs and toolbar. The fields, the segmented control,
+   the buttons, the choice cards and the save bar are the shared ones. */
+:host {
+  display: block;
+}
+
+.editor-back {
+  margin: 8px 0 0 -8px;
+}
+
+/* A counter under its box, at the right: quiet until the last tenth. */
+.editor-count {
+  display: block;
+  margin-top: 4px;
+  color: var(--ink-3);
+  font-size: var(--t-xs);
+  line-height: var(--lh-xs);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.editor-count.is-near {
+  color: var(--warn-ink);
+}
+
+.editor-body .form-section-title,
+section > .form-section-title {
+  margin-bottom: 8px;
+}
+
+/* The tabs, the marks, and the example at the right. */
+.editor-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.editor-marks {
+  display: flex;
+  gap: 2px;
+}
+
+.editor-example {
+  margin-left: auto;
+}
+
+/* The writing area: the reading size, and as tall as what is written. */
+.editor-area {
+  display: block;
+  width: 100%;
+  min-height: 280px;
+  max-height: 70vh;
+  padding: 12px 16px;
+  font-size: var(--t-read);
+  line-height: var(--lh-read);
+  field-sizing: content;
+  resize: vertical;
+  tab-size: 2;
+}
+
+.editor-preview {
+  min-height: 280px;
+  padding: 12px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  overflow-wrap: anywhere;
+}
+
+.editor-nothing {
+  color: var(--ink-3);
+  font-size: var(--t-sm);
+}
+
+.editor-foot {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 4px;
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.editor-foot .editor-count {
+  flex: none;
+  margin-top: 0;
+}
+
+.editor-error {
+  margin-top: 4px;
+  color: var(--danger-ink);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+/* On a phone the tabs take the width, and the marks the next line. */
+@media (max-width: 700px) {
+  .editor-bar app-segmented {
+    flex: 1 1 100%;
+  }
+
+  .editor-example {
+    margin-left: 0;
+  }
+}

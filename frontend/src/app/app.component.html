@@ -1,6 +1,6 @@
 <!-- Loading View -->
 <ng-container *ngIf="view === 'loading'">
-  <app-loading></app-loading>
+  <app-loading [unreachable]="unreachable" (retry)="tryNow()"></app-loading>
 </ng-container>
 
 <!-- Sign in -->

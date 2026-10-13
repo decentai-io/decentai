@@ -760,3 +760,17 @@ class TestAnAgentStaysInItsSlot:
             "endpoint": "Data:Record:Get", "data": {"resource_ref": ref},
         }, headers=_runtime_headers(seed))
         assert unnamed.status_code == 200
+
+
+def test_a_listing_names_who_made_a_resource_and_who_it_is_shared_with(seed):
+    """The shared naming, asked directly: a person by name, the
+    organization's Everyone as Everyone, and somebody gone as nothing."""
+    from api.services.data_layer.base import ResourceController
+
+    me = seed.admin["_id"]
+    resources = [{"created_by": me, "owner": {"groups": ["everyone"], "users": [me, "usr_gone"]}}]
+    ResourceController._name_people(resources, {"org_id": seed.org["_id"]})
+
+    name = seed.admin.get("user_name") or seed.admin.get("email")
+    assert resources[0]["created_by_name"] == name
+    assert resources[0]["owner_names"] == {"groups": ["Everyone"], "users": [name, ""]}

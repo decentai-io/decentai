@@ -1,24 +1,31 @@
-<!-- chat-composer.component.html -->
-<!-- One row: attach, what you write, send. Attachments wait above it as
-     chips until the message goes; the model is named on the line below. -->
-<div class="composer_wrapper">
+<!-- The line a message is written on. Inside the field: what is
+     attached, as chips, then one row of + · microphone · the words ·
+     send. Under it: the model at the left, and at the right what the
+     composer or the page has to say. -->
+<div class="composer" [class.is-disabled]="disabled" [class.is-dropping]="dropping" (click)="focusInput($event)">
+  <!-- A file dragged over the page lands here. -->
+  @if (dropping) {
+    <div class="composer-drop" aria-hidden="true">Drop to attach</div>
+  }
+
   @if (userUploads.length > 0) {
-    <ul class="composer-attachments" aria-label="Attachments">
+    <ul class="composer-chips" aria-label="Attachments">
       @for (item of userUploads; track item.file_id || item.local_id) {
         <li
-          class="attachment-chip"
+          class="attachment"
           [class.is-failed]="item.status === 'failed'"
+          [class.is-uploading]="item.status === 'uploading'"
           [matTooltip]="item.error || item.filename"
         >
-          <!-- A picture shows itself; everything else keeps its clip. -->
+          <!-- A picture shows itself; everything else has its kind's icon. -->
           @if (item.preview && item.status !== 'failed') {
             <img class="attachment-preview" [src]="item.preview" alt="" />
           } @else {
             <lucide-icon
               class="attachment-icon"
-              [class.uploading-icon]="item.status === 'uploading'"
-              [name]="item.status === 'failed' ? 'circle-alert' : item.status === 'uploading' ? 'loader-circle' : item.linked ? 'file-text' : 'paperclip'"
-              [size]="15"
+              [name]="item.status === 'failed' ? 'circle-alert' : item.linked ? 'file-text' : 'paperclip'"
+              [size]="16"
+              aria-hidden="true"
             ></lucide-icon>
           }
           <span class="attachment-name">{{ item.filename }}</span>
@@ -27,72 +34,58 @@
           } @else if (item.status === 'failed') {
             <span class="attachment-meta" role="alert">Failed</span>
           } @else if (item.file_size) {
-            <span class="attachment-meta">{{ item.file_size / 1024 | number: "1.0-0" }} KB</span>
+            <span class="attachment-meta">{{ size(item.file_size) }}</span>
           }
           @if (item.status === 'failed' && item.file) {
-            <button type="button" class="attachment-btn" (click)="retryUpload(item)" aria-label="Retry upload">
-              <lucide-icon name="refresh-cw" [size]="13"></lucide-icon>
-            </button>
+            <button type="button" class="attachment-btn" (click)="retryUpload(item)">Retry</button>
           }
           <button type="button" class="attachment-btn" (click)="removeUpload(item)" [attr.aria-label]="'Remove ' + item.filename">
-            <lucide-icon name="x" [size]="14"></lucide-icon>
+            <lucide-icon name="x" [size]="14" aria-hidden="true"></lucide-icon>
           </button>
         </li>
       }
     </ul>
   }
 
-  <div
-    class="composer"
-    [class.is-loading]="loading"
-    [class.is-disabled]="disabled"
-    (click)="focusInput($event)"
-  >
+  <div class="composer-row">
+    <!-- Attaching needs a chat to attach to: a first message has none yet. -->
     @if (chatId) {
       <input #fileInput type="file" multiple (change)="onFileSelect($event)" hidden />
-      <button
-        type="button"
-        class="composer-btn composer-attach"
-        (click)="openFilePicker()"
-        [disabled]="disabled || isUploading"
-        matTooltip="Attach files"
-        aria-label="Attach files"
-      >
-        <lucide-icon
-          [class.uploading-icon]="isUploading"
-          [name]="isUploading ? 'loader-circle' : 'paperclip'"
-          [size]="18"
-        ></lucide-icon>
-      </button>
-      <button
-        type="button"
-        class="composer-btn composer-attach"
-        (click)="chooseFromFiles()"
-        [disabled]="disabled || isUploading"
-        matTooltip="Choose from your files"
-        aria-label="Choose from your files"
-      >
-        <lucide-icon name="folder-open" [size]="18"></lucide-icon>
-      </button>
-    }
-
-    @if (chatId) {
       <input #cameraInput type="file" accept="image/*" capture="environment" (change)="onFileSelect($event)" hidden />
       <button
         type="button"
-        class="composer-btn composer-attach composer-camera"
-        (click)="openCamera()"
+        class="icon-btn"
+        [matMenuTriggerFor]="attachMenu"
         [disabled]="disabled || isUploading"
-        matTooltip="Take a photo"
-        aria-label="Take a photo"
+        matTooltip="Attach"
+        aria-label="Attach"
       >
-        <lucide-icon name="camera" [size]="18"></lucide-icon>
+        <lucide-icon
+          [class.is-waiting]="isUploading"
+          [name]="isUploading ? 'loader-circle' : 'plus'"
+          [size]="18"
+          aria-hidden="true"
+        ></lucide-icon>
       </button>
+      <mat-menu #attachMenu="matMenu" yPosition="above">
+        <button mat-menu-item (click)="openFilePicker()">
+          <lucide-icon name="paperclip" [size]="16" aria-hidden="true"></lucide-icon>
+          <span>Attach files</span>
+        </button>
+        <button mat-menu-item (click)="chooseFromFiles()">
+          <lucide-icon name="folder-open" [size]="16" aria-hidden="true"></lucide-icon>
+          <span>From your files</span>
+        </button>
+        <button mat-menu-item (click)="openCamera()">
+          <lucide-icon name="camera" [size]="16" aria-hidden="true"></lucide-icon>
+          <span>Take a photo</span>
+        </button>
+      </mat-menu>
     }
     @if (canSpeak) {
       <button
         type="button"
-        class="composer-btn composer-attach composer-mic"
+        class="icon-btn"
         [class.is-recording]="recording"
         (click)="toggleRecording()"
         [disabled]="disabled || transcribing"
@@ -101,9 +94,10 @@
         [attr.aria-pressed]="recording"
       >
         <lucide-icon
-          [class.uploading-icon]="transcribing"
+          [class.is-waiting]="transcribing"
           [name]="transcribing ? 'loader-circle' : recording ? 'square' : 'mic'"
           [size]="18"
+          aria-hidden="true"
         ></lucide-icon>
       </button>
     }
@@ -111,7 +105,7 @@
     <textarea
       #messageInput
       [(ngModel)]="userInput"
-      [placeholder]="placeholder"
+      placeholder="Message DecentAI"
       [disabled]="disabled"
       aria-label="Message"
       rows="1"
@@ -120,38 +114,32 @@
       (paste)="onPaste($event)"
     ></textarea>
 
+    <!-- While the assistant works the button stops it. Words typed
+         then steer the work, so Send comes back beside it. -->
     @if (loading) {
-      <button
-        type="button"
-        class="composer-btn composer-send is-stop"
-        (click)="stop()"
-        matTooltip="Stop generating"
-        aria-label="Stop generating"
-      >
-        <lucide-icon name="circle-stop" [size]="18"></lucide-icon>
+      <button type="button" class="icon-btn round danger primary" (click)="stop()" matTooltip="Stop generating" aria-label="Stop generating">
+        <lucide-icon name="square" [size]="14" aria-hidden="true"></lucide-icon>
       </button>
     }
-    <button
-      type="button"
-      class="composer-btn composer-send"
-      (click)="sendMessage()"
-      [disabled]="disabled || isUploading || !userInput.trim()"
-      matTooltip="Send"
-      aria-label="Send message"
-    >
-      <lucide-icon name="arrow-up" [size]="18"></lucide-icon>
-    </button>
+    @if (!loading || userInput.trim()) {
+      <button
+        type="button"
+        class="icon-btn round primary"
+        (click)="sendMessage()"
+        [disabled]="disabled || isUploading || !userInput.trim()"
+        matTooltip="Send"
+        aria-label="Send message"
+      >
+        <lucide-icon name="arrow-up" [size]="18" aria-hidden="true"></lucide-icon>
+      </button>
+    }
   </div>
+</div>
 
-  @if (modelPicker || hint || notice || isUploading || recording || transcribing) {
-    <div class="composer-foot">
-      @if (modelPicker) {
-        <app-chat-model-picker [llm]="llm" [disabled]="modelLocked"
-                               (chosen)="modelChosen.emit($event)"></app-chat-model-picker>
-      }
-      <div class="composer-hint" [class.is-unavailable]="disabled || isUploading">
-        {{ isUploading ? 'Uploading attachments…' : recording ? 'Listening… press the square to stop' : transcribing ? 'Writing it down…' : notice || hint }}
-      </div>
-    </div>
+<div class="composer-foot">
+  @if (modelPicker) {
+    <app-chat-model-picker [llm]="llm" [disabled]="modelLocked" (chosen)="modelChosen.emit($event)"></app-chat-model-picker>
   }
+  <!-- The keys are a reminder for a keyboard; anything else is news. -->
+  <p class="composer-state" [class.is-keys]="!state" role="status">{{ state || 'Enter to send · Shift+Enter for a line' }}</p>
 </div>

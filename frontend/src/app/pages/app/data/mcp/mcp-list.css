@@ -1,0 +1,37 @@
+/* The MCP servers list is made of the shared pieces (the page frame,
+   the list, the row, the chips, the dialog shell). Here is how a row
+   says a server. */
+:host {
+  display: block;
+}
+
+.mcp-row-name {
+  color: inherit;
+}
+
+.mcp-row-name:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* Where it is, what it offers, what it is reached with, when it was
+   last read. */
+.mcp-row-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 6px;
+}
+
+.mcp-row-facts > span + span::before {
+  content: '·';
+  margin-right: 6px;
+  color: var(--ink-3);
+}
+
+@media (pointer: coarse) {
+  .mcp-row-name {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+}

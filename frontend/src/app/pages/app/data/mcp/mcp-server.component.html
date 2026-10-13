@@ -1,0 +1,198 @@
+<a class="btn ghost sm server-back" routerLink="/data/mcp">
+  <lucide-icon name="arrow-left" [size]="16" aria-hidden="true"></lucide-icon>
+  MCP servers
+</a>
+
+<div class="form" *ngIf="loading" aria-busy="true" aria-label="Opening the server">
+  <span class="sk sk-field"></span>
+  <span class="sk sk-field"></span>
+  <span class="sk sk-field"></span>
+</div>
+<app-empty *ngIf="problem" icon="triangle-alert" title="The server could not be opened" [line]="problem">
+  <a class="btn" routerLink="/data/mcp">Back to the list</a>
+</app-empty>
+
+<ng-container *ngIf="server as server">
+  <!-- Who it is, where it is, how it stands. -->
+  <header class="server-head">
+    <div class="server-words">
+      <h1 class="server-name">
+        {{ server.keys.name }}
+        <span class="chip" [ngClass]="status.tone" [matTooltip]="status.why">{{ status.word }}</span>
+        <button class="icon-btn sm" type="button" *ngIf="!blocked" aria-label="Rename this server" matTooltip="Rename" (click)="startChange('name')">
+          <lucide-icon name="pencil" [size]="14" aria-hidden="true"></lucide-icon>
+        </button>
+      </h1>
+      <p class="server-address">
+        <code>{{ server.keys.url }}</code>
+        <button class="icon-btn sm" type="button" *ngIf="!blocked" aria-label="Change the address" matTooltip="Change the address" (click)="startChange('url')">
+          <lucide-icon name="pencil" [size]="14" aria-hidden="true"></lucide-icon>
+        </button>
+        <span *ngIf="server.keys.server">It calls itself “{{ server.keys.server }}”.</span>
+      </p>
+    </div>
+    <div class="server-actions">
+      <span [matTooltip]="off">
+        <app-switch
+          label="On for my chats"
+          [disabled]="blocked || busy === 'switch'"
+          [ngModel]="server.keys.enabled"
+          (ngModelChange)="setEnabled($event)"
+        ></app-switch>
+      </span>
+      <button class="icon-btn" type="button" [attr.aria-label]="'More for ' + server.keys.name" [matMenuTriggerFor]="serverMenu">
+        <lucide-icon name="ellipsis-vertical" [size]="16" aria-hidden="true"></lucide-icon>
+      </button>
+      <mat-menu #serverMenu="matMenu" xPosition="before">
+        <button mat-menu-item (click)="askRemove()">Remove</button>
+      </mat-menu>
+    </div>
+  </header>
+
+  <p class="form-notice is-warn" role="status" *ngIf="blocked">
+    An administrator turned MCP servers off for this deployment. This one is kept, switched off:
+    no chat can call its tools. It can still be removed.
+  </p>
+  <p class="form-notice" role="status" *ngIf="notice">{{ notice }}</p>
+  <!-- What a read or a change of the server itself was refused for. -->
+  <p class="form-notice is-error" role="alert" *ngIf="error">{{ error }}</p>
+  <p class="form-notice is-error" role="alert" *ngIf="!error && server.keys.last_read_error && !blocked">
+    The last read failed: {{ server.keys.last_read_error }} The tools below are as they were before it.
+  </p>
+
+  <!-- When it was read, and what it is reached with. -->
+  <dl class="server-facts">
+    <div>
+      <dt>Read</dt>
+      <dd>
+        <span [matTooltip]="lastReadInFull">{{ lastRead || "not yet" }}</span>
+        <span [matTooltip]="off">
+          <button class="btn sm" type="button" [disabled]="blocked || !!busy" (click)="readAgain()">
+            <lucide-icon name="refresh-cw" [size]="16" aria-hidden="true" [class.is-turning]="busy === 'read'"></lucide-icon>
+            {{ busy === "read" ? "Reading…" : "Read again" }}
+          </button>
+        </span>
+      </dd>
+    </div>
+    <div>
+      <dt>Credential</dt>
+      <dd>
+        <span>{{ credentialWord }}</span>
+        <span [matTooltip]="off">
+          <button class="btn sm" type="button" [disabled]="blocked" (click)="startChange('credential')">Replace</button>
+        </span>
+      </dd>
+    </div>
+  </dl>
+
+  <!-- ── The tools: each with its switch and what it may cost ──────── -->
+  <section aria-labelledby="server-tools-title">
+    <h2 class="form-section-title" id="server-tools-title">Tools</h2>
+
+    <app-list label="The tools this server offers" [foot]="tools.length ? 'A chat asks before calling a tool whose level is above its trust level.' : ''">
+      <ng-container listToolbar *ngIf="tools.length">
+        <span class="search-field toolbar-search">
+          <lucide-icon name="search" [size]="16" aria-hidden="true"></lucide-icon>
+          <input class="input" type="search" placeholder="Search tools" aria-label="Search this server's tools" [(ngModel)]="query" />
+        </span>
+        <span class="server-count" role="status">{{ onCount }} of {{ tools.length }} on</span>
+        <span class="toolbar-end server-bulk" [matTooltip]="off">
+          <button class="btn sm" type="button" [disabled]="blocked || !!busy || onCount === tools.length" (click)="setAll(true)">All on</button>
+          <button class="btn sm" type="button" [disabled]="blocked || !!busy || onCount === 0" (click)="setAll(false)">All off</button>
+        </span>
+      </ng-container>
+
+      <ul class="tool-rows" *ngIf="shownTools.length">
+        <li class="tool-row" *ngFor="let tool of shownTools; trackBy: byId" [class.is-off]="!tool.enabled">
+          <!-- The switch is named by the tool, so its whole label is
+               the way to press it. -->
+          <app-switch
+            class="tool-switch"
+            [label]="tool.name"
+            [disabled]="blocked"
+            [ngModel]="tool.enabled"
+            (ngModelChange)="setTool(tool, { enabled: $event })"
+          ></app-switch>
+
+          <div class="tool-words">
+            <p class="tool-about">{{ tool.description || "The server gives no description." }}</p>
+            <p class="tool-flags" *ngIf="changeWord(tool) || saveOf(tool)">
+              <span class="chip warn" *ngIf="changeWord(tool)" [matTooltip]="changeWhy(tool)">{{ changeWord(tool) }}</span>
+              <span class="tool-save" role="status" [class.is-failed]="saveFailed(tool)" *ngIf="saveOf(tool)">{{ saveOf(tool) }}</span>
+            </p>
+            <!-- The whole description, and what the tool takes. -->
+            <details class="fold tool-more">
+              <summary>What it takes</summary>
+              <p class="tool-whole" *ngIf="tool.description">{{ tool.description }}</p>
+              <p class="tool-none" *ngIf="!inputsOf(tool).length">It takes nothing.</p>
+              <dl class="tool-inputs" *ngIf="inputsOf(tool).length">
+                <ng-container *ngFor="let input of inputsOf(tool)">
+                  <dt><code>{{ input.name }}</code> <em>{{ input.type }}{{ input.required ? ", required" : "" }}</em></dt>
+                  <dd>{{ input.about || "No description." }}</dd>
+                </ng-container>
+              </dl>
+            </details>
+          </div>
+
+          <span class="tool-level" [matTooltip]="off">
+            <app-select
+              [label]="'What ' + tool.name + ' may cost to call'"
+              [choices]="levels"
+              [disabled]="blocked"
+              [ngModel]="tool.level"
+              (ngModelChange)="setTool(tool, { level: $event })"
+            ></app-select>
+          </span>
+        </li>
+      </ul>
+
+      <app-empty
+        *ngIf="!tools.length"
+        icon="server"
+        [title]="server.values?.resources ? 'This server offers things to read, and no tools' : 'This server offers no tools'"
+        line="Read it again if that should have changed."
+      ></app-empty>
+      <app-empty *ngIf="tools.length && !shownTools.length" icon="search-x" title="No tool matches" line="Try another search.">
+        <button class="btn" type="button" (click)="query = ''">Clear the search</button>
+      </app-empty>
+    </app-list>
+  </section>
+</ng-container>
+
+<!-- ── A new name, address or credential: on the dialog shell ───────── -->
+<ng-template #changeDialog>
+  <h2 mat-dialog-title>{{ changeTitle }}</h2>
+  <form (ngSubmit)="saveChange()">
+    <mat-dialog-content>
+      <div class="form">
+        <p class="dialog-note" *ngIf="changing !== 'name'">
+          The server is read again before the change is kept. A tool that is new, or describes
+          itself differently, comes back switched off.
+        </p>
+        <app-field
+          *ngIf="changing !== 'credential'"
+          [label]="changing === 'name' ? 'Name' : 'Address'"
+          [error]="(tried ? valueMissing : '') || changeProblem"
+        >
+          <input class="input" name="mcp-change" autocomplete="off" [attr.maxlength]="changing === 'name' ? 80 : 500"
+                 [type]="changing === 'name' ? 'text' : 'url'" [(ngModel)]="changeValue" />
+        </app-field>
+        <ng-container *ngIf="changing === 'credential'">
+          <app-mcp-credential [draft]="credential" [tried]="tried"></app-mcp-credential>
+          <p class="form-notice" role="status" *ngIf="credential.kind === 'none'">
+            Saving with None removes the credential the server is reached with now.
+          </p>
+          <p class="form-notice is-error" role="alert" *ngIf="changeProblem">{{ changeProblem }}</p>
+        </ng-container>
+      </div>
+    </mat-dialog-content>
+    <mat-dialog-actions>
+      <button class="btn" type="button" [disabled]="saving" (click)="closeDialog()">Cancel</button>
+      <button class="btn primary" type="submit" [disabled]="saving">
+        {{ saving ? (changing === "name" ? "Saving…" : "Reading…")
+                  : changing === "name" ? "Rename"
+                  : changing === "credential" && credential.kind === "none" ? "Remove the credential" : "Save and read" }}
+      </button>
+    </mat-dialog-actions>
+  </form>
+</ng-template>

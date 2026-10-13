@@ -1,0 +1,43 @@
+/* The save bar: it stays at the foot of the page's column as the page
+   scrolls, and floats over the fields, so it carries the one shadow.
+   While nothing is shown it takes no room. */
+:host {
+  display: none;
+}
+
+:host(.is-shown) {
+  position: sticky;
+  bottom: max(16px, env(safe-area-inset-bottom));
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 24px;
+  padding: 8px 8px 8px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-float);
+  animation: arrive var(--dur-2) var(--ease);
+}
+
+.save-state {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  min-height: 36px;
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.save-state lucide-icon {
+  display: inline-flex;
+  color: var(--accent-ink);
+}
+
+.save-state.is-error {
+  color: var(--danger-ink);
+}

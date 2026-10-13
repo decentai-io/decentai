@@ -1,0 +1,78 @@
+/* The page frame: a column 720px wide at most (1040px when wide), the
+   title row, then the page. */
+:host {
+  display: block;
+  max-width: 720px;
+  padding: 8px 0 24px;
+}
+
+:host(.is-wide) {
+  max-width: 1040px;
+}
+
+.page-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px 16px;
+  margin-bottom: 24px;
+}
+
+.page-words {
+  min-width: 0;
+}
+
+.page-title {
+  color: var(--ink);
+  font-size: var(--t-lg);
+  font-weight: 600;
+  line-height: var(--lh-lg);
+}
+
+/* The way to read about the page without leaving it. */
+.page-title {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.page-help {
+  color: var(--ink-3);
+}
+
+.page-sentence {
+  margin-top: 4px;
+  color: var(--ink-2);
+  font-size: var(--t-base);
+  line-height: var(--lh-base);
+}
+
+/* The way to the Guide's chapter on this page. */
+.page-guide {
+  margin-left: 4px;
+  color: var(--accent-ink);
+  white-space: nowrap;
+}
+
+.page-guide:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.page-guide:focus-visible {
+  outline: none;
+  border-radius: var(--r-sm);
+  box-shadow: var(--focus);
+}
+
+.page-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+}
+
+.page-actions:empty {
+  display: none;
+}

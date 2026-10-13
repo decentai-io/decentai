@@ -1,0 +1,40 @@
+<header class="skill-head">
+  <div class="skill-words">
+    <h2 class="skill-title">{{ skill.keys.title }}</h2>
+    <p class="skill-summary">{{ skill.keys.summary }}</p>
+    <p class="skill-line">
+      <span *ngIf="author">By {{ author }}</span>
+      <span *ngIf="updated" [matTooltip]="updatedInFull">updated {{ updated }}</span>
+      <span *ngIf="created">written {{ created }}</span>
+    </p>
+  </div>
+  <button class="icon-btn sm" type="button" aria-label="Close the skill" (click)="closed.emit()">
+    <lucide-icon name="x" [size]="16" aria-hidden="true"></lucide-icon>
+  </button>
+</header>
+
+<div class="skill-actions">
+  <span class="chip" *ngIf="sharing">{{ sharing }}</span>
+  <ng-content select="[skillActions]"></ng-content>
+</div>
+
+<div class="skill-body" [attr.aria-busy]="loading">
+  <ng-container *ngIf="loading">
+    <span class="sk sk-field"></span>
+    <span class="sk sk-field"></span>
+  </ng-container>
+  <p class="form-notice" role="status" *ngIf="problem">{{ problem }}</p>
+
+  <!-- A body that cannot be read says so, and why: shown as empty it
+       would look like a skill nobody wrote. -->
+  <p class="form-notice is-warn" role="status" *ngIf="unreadable">
+    This skill cannot be read. It was encrypted with a key version this deployment no longer
+    has, so neither you nor the assistant can open it. Its title and when it applies still
+    work; the skill itself has to be written again.
+  </p>
+
+  <ng-container *ngIf="!loading && !problem && !unreadable">
+    <p class="skill-note">What the assistant reads once it decides this skill applies:</p>
+    <markdown class="skill-text" [data]="body"></markdown>
+  </ng-container>
+</div>

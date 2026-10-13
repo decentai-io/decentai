@@ -1,0 +1,314 @@
+/* ════════════════════════════════════════════════════════════════════
+   Markdown, as it reads everywhere: an answer in a chat, a skill, a
+   chapter of the guide. Every <markdown> element (ngx-markdown) is
+   styled here and nowhere else; a page gives it a place and a width,
+   not a look.
+
+   The tokens (--t-read, --ink, --surface-2 …) are defined in
+   tailwind.css. The code toolbar is added to a chat's code blocks by
+   chat-message.component.ts.
+   ════════════════════════════════════════════════════════════════════ */
+
+markdown {
+  display: block;
+  color: var(--ink);
+  font-size: var(--t-read);
+  line-height: var(--lh-read);
+  overflow-wrap: anywhere;
+}
+
+markdown > :first-child {
+  margin-top: 0;
+}
+
+markdown > :last-child {
+  margin-bottom: 0;
+}
+
+markdown p {
+  margin: 0 0 12px;
+}
+
+/* ── Headings: sans, 600, a step above the text each ───────────────── */
+markdown h1,
+markdown h2,
+markdown h3,
+markdown h4 {
+  margin: 24px 0 8px;
+  font-family: var(--font-sans);
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: 0;
+}
+
+markdown h1 {
+  font-size: 1.25em;
+}
+
+markdown h2 {
+  font-size: 1.15em;
+}
+
+markdown h3,
+markdown h4 {
+  font-size: 1.05em;
+}
+
+/* ── Lists ─────────────────────────────────────────────────────────── */
+markdown ul,
+markdown ol {
+  margin: 0 0 12px;
+  padding-left: 24px;
+}
+
+/* The reset takes the markers from every list; a list here has them. */
+markdown ul {
+  list-style: disc;
+}
+
+markdown ol {
+  list-style: decimal;
+}
+
+markdown li {
+  margin: 6px 0;
+}
+
+markdown li::marker {
+  color: var(--ink-3);
+}
+
+markdown li > p {
+  margin: 0;
+}
+
+/* ── Inline ────────────────────────────────────────────────────────── */
+markdown a {
+  color: var(--accent-ink);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+markdown strong {
+  font-weight: 600;
+}
+
+/* Inline code: a tint of the ink, so it shows on the page and on a
+   message's bubble alike. */
+markdown code {
+  padding: 2px 5px;
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--ink) 7%, transparent);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+}
+
+/* ── Blocks ────────────────────────────────────────────────────────── */
+markdown blockquote {
+  margin: 0 0 12px;
+  padding: 2px 0 2px 14px;
+  border-left: 2px solid var(--line-strong);
+  color: var(--ink-2);
+}
+
+markdown blockquote > :last-child {
+  margin-bottom: 0;
+}
+
+markdown hr {
+  margin: 20px 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+
+markdown img {
+  max-width: 100%;
+  border-radius: var(--r-md);
+}
+
+/* A table scrolls sideways inside its own frame, never the page. */
+markdown table {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  margin: 0 0 12px;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: var(--t-base);
+  line-height: var(--lh-base);
+}
+
+markdown th,
+markdown td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+
+markdown th {
+  background: var(--surface-2);
+  font-weight: 600;
+}
+
+markdown tr:last-child td {
+  border-bottom: 0;
+}
+
+/* ── Code blocks: a tile a step off the page, never inverted ─────────
+   In markdown, and wherever else code is shown (<pre class="code-tile">). */
+markdown pre,
+pre.code-tile {
+  margin: 0 0 12px;
+  padding: 16px;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: var(--t-code);
+  line-height: var(--lh-code);
+}
+
+markdown pre code,
+pre.code-tile code {
+  padding: 0;
+  border-radius: 0;
+  background: none;
+  font-size: inherit;
+}
+
+/* What a highlighter wraps code in keeps the mono face. */
+markdown pre *,
+pre.code-tile * {
+  font-family: inherit;
+}
+
+markdown pre.code-wrap code {
+  white-space: pre-wrap;
+}
+
+/* The block's header row: its language at the left, Wrap and Copy at
+   the right. */
+markdown pre .code-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 32px;
+  margin: -16px -16px 12px;
+  padding: 0 8px 0 16px;
+  border-bottom: 1px solid var(--line);
+  color: var(--ink-3);
+  font: 500 var(--t-xs) / var(--lh-xs) var(--font-sans);
+  text-transform: uppercase;
+}
+
+markdown pre .code-toolbar span {
+  margin-right: auto;
+}
+
+markdown pre .code-toolbar button {
+  height: 24px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--ink-2);
+  font: inherit;
+  text-transform: none;
+  cursor: pointer;
+}
+
+markdown pre .code-toolbar button:hover {
+  background: var(--surface-3);
+  color: var(--ink);
+}
+
+/* Under a finger the block's buttons are taller, and so is its row. */
+@media (pointer: coarse) {
+  markdown pre .code-toolbar {
+    height: 44px;
+  }
+
+  markdown pre .code-toolbar button {
+    height: 36px;
+    padding: 0 12px;
+  }
+}
+
+/* An answer still being written ends in a caret. Its words arrive as
+   they are, with no motion of their own. */
+markdown.is-streaming > :last-child::after {
+  content: '';
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  margin-left: 2px;
+  background: var(--ink);
+  vertical-align: text-bottom;
+  animation: blink 1s steps(2, start) infinite;
+}
+
+/* ── Code's colours ──────────────────────────────────────────────────
+   Code a highlighter marked up (Prism's spans; today the approval
+   card's code). One accent and the greys: what the language fixes
+   reads strong, what the author wrote reads in the accent, and a
+   comment steps back. */
+.token.comment,
+.token.prolog,
+.token.doctype {
+  color: var(--ink-3);
+  font-style: italic;
+}
+
+.token.punctuation,
+.token.operator {
+  color: var(--ink-2);
+}
+
+.token.keyword,
+.token.builtin,
+.token.boolean {
+  font-weight: 600;
+}
+
+.token.string,
+.token.template-string,
+.token.number,
+.token.regex {
+  color: var(--accent-ink);
+}
+
+.token.function,
+.token.class-name,
+.token.decorator {
+  text-decoration: underline;
+  text-decoration-color: var(--line-strong);
+  text-underline-offset: 3px;
+}
+
+/* A heading that has an address (the guide's): it lands clear of the
+   page's top edge, and its link shows when it is pointed at or holds
+   the focus. */
+markdown :is(h2, h3, h4)[id] {
+  scroll-margin-top: 16px;
+}
+
+markdown .heading-anchor {
+  margin-left: 8px;
+  color: var(--ink-3);
+  font-weight: 400;
+  text-decoration: none;
+  opacity: 0;
+  transition: opacity var(--dur-1) var(--ease);
+}
+
+markdown :is(h2, h3, h4):hover .heading-anchor,
+markdown .heading-anchor:focus-visible {
+  opacity: 1;
+}

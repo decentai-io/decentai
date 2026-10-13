@@ -2,7 +2,7 @@
   <div class="panel-body">
     <!-- ── This turn: the plan as it stands, and the steps as they land.
          The whole record of the chat is not here: it is the audit trail,
-         opened from Activity & audit in the header. ── -->
+         opened from Activity and audit in the chat's menu. ── -->
     @if (livePlan.length) {
       <ol class="work-items" aria-label="Plan">
         @for (group of taskGroups; track group.item.id ?? $index) {
@@ -15,7 +15,7 @@
               <lucide-icon class="work-caret"
                            [name]="isTaskOpen(group.item) ? 'chevron-down' : 'chevron-right'"
                            [size]="14"
-                           [class.work-caret--hidden]="!group.steps.length"></lucide-icon>
+                           [class.work-caret--hidden]="!group.steps.length" aria-hidden="true"></lucide-icon>
               @if (group.item.id) { <span class="work-id">{{ group.item.id }}</span> }
               <span class="work-text">{{ humanize(group.item.text) }}</span>
               @if (group.steps.length) {
@@ -35,6 +35,7 @@
                     <span class="step-main">
                       <span class="step-text">{{ entry.helper ? 'Helper: ' : '' }}{{ humanize(entry.text) }}</span>
                       @if (entry.detail) { <span class="step-detail">{{ entry.detail }}</span> }
+                      @if (entry.link; as link) { <a class="step-link" [routerLink]="link.to">{{ link.text }}</a> }
                     </span>
                     @if (entry.durationMs != null) {
                       <span class="step-meta">{{ isFailed(entry) ? 'failed · ' : '' }}{{ stepDuration(entry.durationMs) }}</span>
@@ -59,6 +60,7 @@
             <span class="step-main">
               <span class="step-text">{{ entry.helper ? 'Helper: ' : '' }}{{ humanize(entry.text) }}</span>
               @if (entry.detail) { <span class="step-detail">{{ entry.detail }}</span> }
+              @if (entry.link; as link) { <a class="step-link" [routerLink]="link.to">{{ link.text }}</a> }
             </span>
             @if (entry.durationMs != null) {
               <span class="step-meta">{{ isFailed(entry) ? 'failed · ' : '' }}{{ stepDuration(entry.durationMs) }}</span>
@@ -73,7 +75,7 @@
     @if (!hasLive) {
       <p class="panel-note">
         Nothing is happening in this turn. Everything this chat has ever
-        run is under <strong>Activity &amp; audit</strong> in the header.
+        run is under <strong>Activity and audit</strong> in the chat's menu.
       </p>
     }
   </div>

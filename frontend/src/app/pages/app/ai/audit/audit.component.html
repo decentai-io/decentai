@@ -1,88 +1,120 @@
-<!-- A tab of the Settings page: the page owns the header. -->
-<div class="data-page">
-  <nav class="settings-tabs" role="tablist" aria-label="Audit views" *ngIf="canSeeOrg">
-    <button class="settings-tab" type="button" role="tab"
-            [class.on]="tab === 'mine'" [attr.aria-selected]="tab === 'mine'"
-            (click)="selectTab('mine')">
-      <lucide-icon name="user" [size]="15"></lucide-icon>
-      Mine
-    </button>
-    <button class="settings-tab" type="button" role="tab"
-            [class.on]="tab === 'org'" [attr.aria-selected]="tab === 'org'"
-            (click)="selectTab('org')">
-      <lucide-icon name="building-2" [size]="15"></lucide-icon>
-      Organization
-    </button>
-  </nav>
+<app-page guide="audit" title="Audit" sentence="A permanent record of changes, access, approvals and agent activity." [wide]="true">
+  <app-segmented
+    pageActions
+    *ngIf="canSeeOrg"
+    label="Whose record"
+    [choices]="tabs"
+    [ngModel]="tab"
+    (ngModelChange)="selectTab($event)"
+  ></app-segmented>
 
-  <div class="data-alert error" *ngIf="error">{{ error }}</div>
+  <p class="form-notice is-error" role="alert" *ngIf="error">{{ error }}</p>
 
-  <section class="panel">
-    <form class="audit-filters" (ngSubmit)="reload()">
-      <label class="search-field">
-        <lucide-icon name="search" [size]="15"></lucide-icon>
-        <input type="search" [(ngModel)]="text" name="text"
-               placeholder="Action, agent, endpoint, or person…" aria-label="Search the trail" />
+  <app-list rows="groups" label="the record" [loading]="loading">
+    <form listToolbar class="audit-filters" (ngSubmit)="reload()">
+      <span class="search-field toolbar-search">
+        <lucide-icon name="search" [size]="16" aria-hidden="true"></lucide-icon>
+        <input
+          class="input"
+          type="search"
+          name="text"
+          placeholder="Action, agent, endpoint or person"
+          aria-label="Search the record"
+          [(ngModel)]="text"
+        />
+      </span>
+      <app-select class="toolbar-sort" label="Kind of event" name="type" [choices]="types" [(ngModel)]="type"></app-select>
+      <label class="toolbar-date">
+        From
+        <input class="input" type="date" name="since" [(ngModel)]="since" />
       </label>
-      <select class="txt sel" [(ngModel)]="type" name="type" aria-label="Kind of event">
-        <option *ngFor="let kind of types" [value]="kind.value">{{ kind.label }}</option>
-      </select>
-      <label class="date-field">
-        <span>From</span>
-        <input type="date" class="txt" [(ngModel)]="since" name="since" aria-label="From date" />
+      <label class="toolbar-date">
+        To
+        <input class="input" type="date" name="until" [(ngModel)]="until" />
       </label>
-      <label class="date-field">
-        <span>To</span>
-        <input type="date" class="txt" [(ngModel)]="until" name="until" aria-label="To date" />
-      </label>
-      <button class="btn primary" type="submit" [disabled]="loading">Apply</button>
-      <button class="btn ghost" type="button" *ngIf="filtered" (click)="clearFilters()" [disabled]="loading">Clear</button>
+      <button class="btn" type="submit" [disabled]="loading">Apply</button>
+      <button class="btn ghost" type="button" *ngIf="filtered" [disabled]="loading" (click)="clearFilters()">Clear</button>
     </form>
 
-    <div class="data-loading" *ngIf="loading">
-      <span class="ui-spinner" role="status" aria-label="Loading"></span>
-      <span>Reading the record…</span>
-    </div>
+    <app-empty
+      *ngIf="!days.length"
+      icon="scroll-text"
+      [title]="filtered ? 'Nothing matches those filters' : 'Nothing recorded yet'"
+      [line]="filtered ? 'Widen the dates or clear the search.' : 'Platform changes and agent activity appear here as they happen.'"
+    ></app-empty>
 
-    <div class="empty-state" *ngIf="!loading && !events.length">
-      <span class="empty-mark"><lucide-icon name="scroll-text" [size]="22"></lucide-icon></span>
-      <strong>{{ filtered ? "Nothing matches those filters" : "Nothing recorded yet" }}</strong>
-      <p>{{ filtered ? "Widen the dates or clear the search." : "Platform changes and agent activity appear here as they happen." }}</p>
-    </div>
-
-    <ul class="audit-rows" *ngIf="!loading && events.length">
-      <li class="audit-row" *ngFor="let event of events" [class.open]="isOpen(event)">
-        <button class="audit-head" type="button" (click)="toggle(event)"
-                [attr.aria-expanded]="isOpen(event)" [disabled]="!hasDetails(event)">
-          <span class="audit-when">{{ when(event.timestamp) }}</span>
-          <span class="audit-chip" [ngClass]="'tone-' + tone(event)">{{ event.event_type === 'execution' ? (event.details?.status || 'ran') : 'record' }}</span>
-          <span class="audit-main">
-            <span class="audit-label">{{ label(event) }}</span>
-            <span class="audit-summary">{{ summary(event) }}</span>
+    <section *ngFor="let day of days">
+      <h2 class="record-day">{{ day.day }}</h2>
+      <div role="list" [attr.aria-label]="day.day">
+        <app-record-row
+          *ngFor="let group of day.items"
+          [time]="time(group.first)"
+          [tone]="tone(group.first)"
+          [outcome]="outcome(group.first)"
+          [words]="words(group.first)"
+          [more]="more(group.first)"
+          [chip]="kind(group.first)"
+          [count]="group.events.length"
+          [canOpen]="group.events.length > 1 || hasDetails(group.first)"
+          [open]="isOpen(groupKey(group))"
+          (toggle)="toggle(groupKey(group))"
+        >
+          <span recordEnd class="audit-who" *ngIf="tab === 'org' && group.first.actor">{{ group.first.actor }}</span>
+          <span recordEnd class="audit-chat">
+            <a
+              class="icon-btn sm"
+              *ngIf="group.first.chat_id"
+              aria-label="Open the chat"
+              matTooltip="Open the chat"
+              [routerLink]="['/ai/chats', group.first.chat_id]"
+            >
+              <lucide-icon name="message-square-text" [size]="16" aria-hidden="true"></lucide-icon>
+            </a>
           </span>
-          <span class="audit-who" *ngIf="tab === 'org' && event.actor">{{ event.actor }}</span>
-          <a class="audit-chat" *ngIf="event.chat_id" [routerLink]="['/ai/chats', event.chat_id]"
-             (click)="$event.stopPropagation()" title="Open the chat">
-            <lucide-icon name="message-square-text" [size]="14"></lucide-icon>
-          </a>
-          <lucide-icon class="audit-caret" *ngIf="hasDetails(event)"
-                       [name]="isOpen(event) ? 'chevron-up' : 'chevron-down'" [size]="16"></lucide-icon>
-        </button>
-        <div class="audit-body" *ngIf="isOpen(event)">
-          <div class="audit-refs" *ngIf="event.resource_refs?.length">
-            <span class="audit-key">References</span>
-            <code *ngFor="let ref of event.resource_refs">{{ ref }}</code>
-          </div>
-          <pre class="audit-json">{{ details(event) }}</pre>
-          <span class="audit-id">{{ event.event_id }}</span>
-        </div>
-      </li>
-    </ul>
 
-    <div class="audit-more" *ngIf="!loading && nextBefore">
-      <button class="btn" type="button" (click)="loadMore()" [disabled]="loadingMore">
+          <ng-container *ngIf="isOpen(groupKey(group))">
+            <ng-container *ngIf="group.events.length === 1">
+              <ng-container *ngTemplateOutlet="written; context: { $implicit: group.first }"></ng-container>
+            </ng-container>
+
+            <!-- Several alike: each of them, with its own time and details. -->
+            <div role="list" *ngIf="group.events.length > 1" [attr.aria-label]="words(group.first)">
+              <app-record-row
+                *ngFor="let event of group.events"
+                [time]="time(event)"
+                [tone]="tone(event)"
+                [outcome]="outcome(event)"
+                [words]="words(event)"
+                [more]="more(event)"
+                [canOpen]="hasDetails(event)"
+                [open]="isOpen(event.event_id)"
+                (toggle)="toggle(event.event_id)"
+              >
+                <ng-container *ngIf="isOpen(event.event_id)">
+                  <ng-container *ngTemplateOutlet="written; context: { $implicit: event }"></ng-container>
+                </ng-container>
+              </app-record-row>
+            </div>
+          </ng-container>
+        </app-record-row>
+      </div>
+    </section>
+
+    <div class="record-older" *ngIf="nextBefore">
+      <button class="btn" type="button" [disabled]="loadingMore" (click)="loadMore()">
         {{ loadingMore ? "Loading…" : "Load older" }}
       </button>
     </div>
-  </section>
-</div>
+  </app-list>
+</app-page>
+
+<!-- One event as it was written down: who did it, what it names, its details, its id. -->
+<ng-template #written let-event>
+  <div class="audit-refs" *ngIf="event.actor">By {{ event.actor }}</div>
+  <div class="audit-refs" *ngIf="event.resource_refs?.length">
+    References
+    <code *ngFor="let ref of event.resource_refs">{{ ref }}</code>
+  </div>
+  <pre class="record-json">{{ details(event) }}</pre>
+  <span class="audit-id">{{ event.event_id }}</span>
+</ng-template>

@@ -77,6 +77,7 @@ class ChatStore(MongoStore):
                     "title": 1,
                     "status": 1,
                     "message_sequence": 1,
+                    "preview": 1,
                     "created_at": 1,
                     "updated_at": 1,
                     # What a row must say about attention: whether the
@@ -88,6 +89,27 @@ class ChatStore(MongoStore):
                 },
             ).sort("updated_at", -1)
         )
+
+    # ── the row's second line ───────────────────────────────────────────
+
+    #: How much of the last message a list row carries.
+    PREVIEW_CHARS = 140
+
+    @classmethod
+    def preview_of(cls, parts: List[Dict[str, Any]]) -> str:
+        """The first words of a message, on one line: what its first
+        part with words says. A message of files and tables alone has
+        none."""
+        for part in parts or []:
+            words = " ".join(str(part.get("content") or part.get("text") or "").split())
+            if words:
+                return words[:cls.PREVIEW_CHARS]
+        return ""
+
+    def set_preview(self, chat_id: str, preview: str) -> None:
+        """What was last said in the chat, kept on its row so the list
+        reads it without opening the messages."""
+        self.col.update_one({"chat_id": chat_id}, {"$set": {"preview": preview}})
 
     # ── attention ───────────────────────────────────────────────────────
 

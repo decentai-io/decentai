@@ -1,18 +1,27 @@
-import { inject } from '@angular/core';
+import { inject, Type } from '@angular/core';
 import { CanActivateFn, Router, Routes } from '@angular/router';
-// What the platform itself is configured with — its own module, apart
-// from secrets: an LLM connection is the organization's configuration,
-// not somebody's credential record.
+// What the platform itself is configured with, and what a person has
+// configured of it: one frame (the shell) and a page per concern. The
+// pages, their names and the actions that open them are listed once,
+// in website/config/config.ts.
+import { ApiKeysComponent } from '../../pages/app/settings/api-keys/api-keys.component';
+import { ChatDefaultsComponent } from '../../pages/app/settings/chat-defaults/chat-defaults.component';
+import { ConnectedAppsComponent } from '../../pages/app/settings/connected-apps/connected-apps.component';
+import { MemoryComponent } from '../../pages/app/settings/memory/memory.component';
+import { NotificationsComponent } from '../../pages/app/settings/notifications/notifications.component';
+import { RoutingComponent } from '../../pages/app/settings/routing/routing.component';
+import { SafetyComponent } from '../../pages/app/settings/safety/safety.component';
+import { SpeechComponent } from '../../pages/app/settings/speech/speech.component';
 import { SettingsComponent } from '../../pages/app/settings/settings.component';
+import { SettingsShellComponent } from '../../pages/app/settings/settings-shell.component';
 import { permissionGuard } from '../../guards/permission.guard';
+import { unsavedChangesGuard } from '../../guards/unsaved-changes.guard';
 import { AuthService } from '../../services/auth.service';
-import { settingsTabs } from '../../website/config/config';
+import { firstVisiblePage, settingsPages } from '../../website/config/config';
 
 /**
- * Entering Settings without the first tab's action: go to the first tab
- * the person does hold, rather than be turned away from a page that has
- * something for them. With none, the permission guard that follows
- * answers as it does for any page.
+ * /settings itself is no page: it opens the first page the person may
+ * open. With none, they are sent where anyone without a page is.
  */
 const settingsLandingGuard: CanActivateFn = async () => {
   const auth = inject(AuthService);
@@ -20,75 +29,44 @@ const settingsLandingGuard: CanActivateFn = async () => {
 
   await auth.ensureLoaded();
 
-  const tab = settingsTabs.find((candidate) => auth.can(candidate.action));
-  if (tab && tab.path) {
-    return router.parseUrl(`/settings/${tab.path}`);
+  const page = settingsPages.find((candidate) => auth.can(candidate.action));
+  if (page) {
+    return router.parseUrl(`/settings/${page.path}`);
   }
-  return true;
+  return router.parseUrl(firstVisiblePage((action) => auth.can(action)) || 'no-access');
+};
+
+/** The component of each page, by the page's path. */
+const pageComponents: Record<string, Type<unknown>> = {
+  chat: ChatDefaultsComponent,
+  notifications: NotificationsComponent,
+  memory: MemoryComponent,
+  keys: ApiKeysComponent,
+  providers: SettingsComponent,
+  speech: SpeechComponent,
+  routing: RoutingComponent,
+  apps: ConnectedAppsComponent,
+  safety: SafetyComponent,
 };
 
 export const SettingsRoutes: Routes = [
+  // Monitoring and Audit were tabs here; they are pages of their own.
+  { path: 'monitoring', redirectTo: '/monitoring', pathMatch: 'full' },
+  { path: 'audit', redirectTo: '/audit', pathMatch: 'full' },
+  { path: 'audit/org', redirectTo: '/audit/org', pathMatch: 'full' },
   {
     path: '',
-    component: SettingsComponent,
-    canActivate: [settingsLandingGuard, permissionGuard],
-    data: { requiredAction: 'settings:llm:list' },
-  },
-  // The memory tab, addressable: what the assistant remembers about
-  // the person is theirs to review from a link as well as a click.
-  {
-    path: 'memory',
-    component: SettingsComponent,
-    canActivate: [permissionGuard],
-    data: { requiredAction: 'settings:memory:list', tab: 'memory' },
-  },
-  // How chats behave: the person's own defaults, and the organization's
-  // agent routing. Anyone who can open a chat may set their defaults.
-  {
-    path: 'chat',
-    component: SettingsComponent,
-    canActivate: [permissionGuard],
-    data: { requiredAction: 'ai:chat:create', tab: 'chat' },
-  },
-  // The person's own API keys, addressable for the same reason.
-  {
-    path: 'keys',
-    component: SettingsComponent,
-    canActivate: [permissionGuard],
-    data: { requiredAction: 'settings:apikey:list', tab: 'keys' },
-  },
-  // The organization's provider apps — what an administrator is sent
-  // to when a Connect button says nothing is registered yet.
-  {
-    path: 'apps',
-    component: SettingsComponent,
-    canActivate: [permissionGuard],
-    data: { requiredAction: 'settings:oauth:list', tab: 'apps' },
-  },
-  // What agents may do without asking, for the organization.
-  {
-    path: 'safety',
-    component: SettingsComponent,
-    canActivate: [permissionGuard],
-    data: { requiredAction: 'settings:safety:get', tab: 'safety' },
-  },
-  // What agents use and did: read-only, and a grant of its own.
-  {
-    path: 'monitoring',
-    component: SettingsComponent,
-    canActivate: [permissionGuard],
-    data: { requiredAction: 'agents:monitor:usage', tab: 'monitoring' },
-  },
-  {
-    path: 'audit',
-    component: SettingsComponent,
-    canActivate: [permissionGuard],
-    data: { requiredAction: 'ai:audit:list', tab: 'audit', auditView: 'mine' },
-  },
-  {
-    path: 'audit/org',
-    component: SettingsComponent,
-    canActivate: [permissionGuard],
-    data: { requiredAction: 'ai:audit:list_all', tab: 'audit', auditView: 'org' },
+    component: SettingsShellComponent,
+    children: [
+      { path: '', pathMatch: 'full', canActivate: [settingsLandingGuard], children: [] },
+      ...settingsPages.map((page) => ({
+        path: page.path,
+        title: page.name,
+        component: pageComponents[page.path],
+        canActivate: [permissionGuard],
+        canDeactivate: [unsavedChangesGuard],
+        data: { requiredAction: page.action },
+      })),
+    ],
   },
 ];

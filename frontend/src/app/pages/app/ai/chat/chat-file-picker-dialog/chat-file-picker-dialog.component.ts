@@ -12,7 +12,6 @@ import { FileChoice } from 'src/app/models/chat-protocol';
   selector: 'app-chat-file-picker-dialog',
   standalone: false,
   templateUrl: './chat-file-picker-dialog.component.html',
-  styleUrls: ['./chat-file-picker-dialog.component.css'],
 })
 export class ChatFilePickerDialogComponent {
   chosen: FileChoice[] = [];

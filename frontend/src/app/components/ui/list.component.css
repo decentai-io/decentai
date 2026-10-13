@@ -1,0 +1,65 @@
+/* The list frame: a toolbar that wraps, the rows, a foot line. The
+   skeleton is three rows the shape of a real row (row.component.css);
+   .sk is the shared shimmer (styles/controls.scss). */
+/* The frame is a container: the table inside drops its minor columns
+   by the frame's width, not the window's (styles/controls.scss). */
+:host {
+  display: block;
+  min-width: 0;
+  container-type: inline-size;
+}
+
+.list-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.list-toolbar:empty {
+  display: none;
+}
+
+.list-foot {
+  margin-top: 12px;
+  padding: 0 16px;
+  color: var(--ink-3);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.list-skeleton {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 56px;
+  padding: 12px 16px;
+}
+
+.list-skeleton + .list-skeleton {
+  border-top: 1px solid var(--line);
+}
+
+.sk-mark {
+  flex: none;
+  width: 20px;
+  height: 20px;
+}
+
+.sk-words {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sk-name {
+  width: 32%;
+  height: 12px;
+}
+
+.sk-meta {
+  width: 56%;
+  height: 10px;
+}

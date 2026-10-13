@@ -104,11 +104,17 @@ export class AuthService {
     password: string;
     /** Keep the sign-in on this device past the browser being closed. */
     remember?: boolean;
-  }): Promise<{ ok: boolean; error?: string; throttled?: boolean; changeRequired?: boolean }> {
+  }): Promise<{
+    ok: boolean; error?: string; changeRequired?: boolean;
+    /** The door is shut for a while, for a right password as for a wrong one. */
+    throttled?: boolean;
+    /** How many seconds until it opens. */
+    retryAfter?: number;
+  }> {
     const { status, data } = await this.post('auth/login', payload);
 
     if (status === 429) {
-      return { ok: false, error: data?.error ?? '', throttled: true };
+      return { ok: false, error: data?.error ?? '', throttled: true, retryAfter: Number(data?.retry_after) || 0 };
     }
     if (status === 403 && data?.change_required === true) {
       // The password is one an administrator handed over: right, and
@@ -175,6 +181,9 @@ export class AuthService {
   async forgotPassword(email: string): Promise<{
     ok: boolean;
     message?: string;
+    /** False where this install sends no email: the message then says
+     *  who resets a password instead. */
+    sent?: boolean;
     error?: string;
   }> {
     const { status, data } = await this.post('auth/password/forgot', { email });
@@ -186,6 +195,7 @@ export class AuthService {
     return {
       ok: true,
       message: data?.message ?? '',
+      sent: data?.requested !== false,
     };
   }
 

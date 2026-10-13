@@ -1,0 +1,105 @@
+<a class="btn ghost sm editor-back" [routerLink]="back">
+  <lucide-icon name="arrow-left" [size]="16" aria-hidden="true"></lucide-icon>
+  {{ ref ? "The skill" : "Skills" }}
+</a>
+
+<app-page
+  [title]="ref ? 'Edit skill' : 'Write a skill'"
+  sentence="The assistant sees every skill's title and when it applies, and reads the skill itself only once it decides the skill applies."
+>
+  <div class="form" *ngIf="loading" aria-busy="true" aria-label="Opening the skill">
+    <span class="sk sk-field"></span>
+    <span class="sk sk-field"></span>
+    <span class="sk sk-field"></span>
+  </div>
+  <p class="form-notice is-error" role="alert" *ngIf="problem">{{ problem }}</p>
+
+  <form class="form" *ngIf="!loading && !problem" (ngSubmit)="save()">
+    <p class="form-notice is-warn" role="status" *ngIf="unreadable">
+      The skill itself cannot be read: it was encrypted with a key version this deployment no
+      longer has. What you write below replaces it.
+    </p>
+
+    <app-field label="Title" help="A name people recognise in a list." [error]="titleError">
+      <input class="input" name="title" autocomplete="off" placeholder="Quarterly report format"
+             [maxlength]="limits.title" [(ngModel)]="draft.value.title" />
+      <span class="editor-count" [class.is-near]="near(draft.value.title.length, limits.title)">
+        {{ draft.value.title.length }}/{{ limits.title }}
+      </span>
+    </app-field>
+
+    <app-field
+      label="When does this apply?"
+      help="One line, written for the assistant: it decides from this whether to read the skill."
+      [error]="summaryError"
+    >
+      <input class="input" name="summary" autocomplete="off" placeholder="Use when structuring and phrasing our quarterly reports"
+             [maxlength]="limits.summary" [(ngModel)]="draft.value.summary" />
+      <span class="editor-count" [class.is-near]="near(draft.value.summary.length, limits.summary)">
+        {{ draft.value.summary.length }}/{{ limits.summary }}
+      </span>
+    </app-field>
+
+    <!-- The skill itself: written as markdown, with how it reads one
+         press away. -->
+    <section class="editor-body" aria-labelledby="skill-body-title">
+      <h2 class="form-section-title" id="skill-body-title">The skill itself</h2>
+      <div class="editor-bar">
+        <app-segmented name="tab" label="Write or preview" [choices]="tabs" [(ngModel)]="tab"></app-segmented>
+        <div class="editor-marks" role="toolbar" aria-label="Formatting" *ngIf="tab === 'write'">
+          <button class="icon-btn sm" type="button" *ngFor="let each of marks"
+                  [attr.aria-label]="each.name" [matTooltip]="each.name" (click)="apply(each.mark)">
+            <lucide-icon [name]="each.icon" [size]="16" aria-hidden="true"></lucide-icon>
+          </button>
+        </div>
+        <button class="btn ghost sm editor-example" type="button" (click)="insertExample()">Insert the example</button>
+      </div>
+
+      <textarea
+        #area
+        class="input editor-area"
+        *ngIf="tab === 'write'"
+        name="body"
+        aria-labelledby="skill-body-title"
+        aria-describedby="skill-body-help"
+        placeholder="Everything the assistant should know when this applies: formats, rules, examples, tone."
+        [maxlength]="limits.body"
+        [(ngModel)]="draft.value.body"
+        (keydown)="onAreaKey($event)"
+      ></textarea>
+      <div class="editor-preview" *ngIf="tab === 'preview'">
+        <markdown *ngIf="draft.value.body.trim(); else nothing" [data]="preview"></markdown>
+        <ng-template #nothing><p class="editor-nothing">Nothing is written yet.</p></ng-template>
+      </div>
+
+      <p class="editor-foot" id="skill-body-help">
+        <span>Markdown is supported. Tab indents; Escape, then Tab, moves on. Never put a secret in a skill.</span>
+        <span class="editor-count" [class.is-near]="near(draft.value.body.length, limits.body)">
+          {{ draft.value.body.length | number }}/{{ limits.body | number }}
+        </span>
+      </p>
+      <p class="editor-error" role="alert" *ngIf="bodyError">{{ bodyError }}</p>
+    </section>
+
+    <section aria-labelledby="skill-share-title">
+      <h2 class="form-section-title" id="skill-share-title">Who can use it</h2>
+      <app-sharing-selector
+        label="Who can use it"
+        [mode]="share.mode" (modeChange)="share.mode = $any($event)"
+        [groups]="share.myGroups" [people]="share.peers"
+        [selectedGroups]="share.groups" [selectedPeople]="share.users"
+        groupLabel="My groups" peopleMode="people" [allowOrganization]="canShareAny"
+        (groupToggled)="share.toggleGroup($event)" (personToggled)="share.toggleUser($event)">
+      </app-sharing-selector>
+      <p class="editor-error" role="alert" *ngIf="shareError">{{ shareError }}</p>
+    </section>
+  </form>
+
+  <app-save-bar
+    [dirty]="dirty && !loading"
+    [saving]="saving"
+    [error]="saveError"
+    (save)="save()"
+    (discard)="discard()"
+  ></app-save-bar>
+</app-page>

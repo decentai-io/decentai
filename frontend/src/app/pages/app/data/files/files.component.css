@@ -1,114 +1,127 @@
-/* Files: the same two levels as Saved data — an overview of where files
-   come from (uploads, chats, one card per agent), then one source's
-   files as a list with a tick per file. Rows and dialogs come from the
-   shared sheets; this file carries only what is this page's own. */
+/* The Files page is made of the shared pieces (the filter column, the
+   list frame, the table and its toolbar, the file icon). Here is how a
+   row lays out its name and its source, and the uploads on their way in. */
 
-/* ── The overview ───────────────────────────────────────────────────── */
-.source-overview { margin-top:18px; }
-.overview-heading { display:flex; align-items:flex-end; justify-content:space-between; gap:20px; margin-bottom:14px; }
-.overview-heading h2,.source-workspace-head h2 { margin:0; color:var(--foreground); font-size:16px; }
-.overview-heading p,.source-workspace-head p { margin:3px 0 0; color:var(--muted); font-size:12px; }
-.overview-heading > span { color:var(--muted); font-size:12px; }
-.overview-tools { display:flex; align-items:center; gap:12px; margin-bottom:14px; }
-.overview-tools .seg { flex:none; }
-.source-search { display:flex; align-items:center; gap:9px; flex:1; min-width:0; padding:9px 11px; border:1px solid var(--border-color); border-radius:var(--radius-lg); background:var(--surface); }
-.source-search lucide-icon { color:var(--muted); }
-.source-search input { flex:1; min-width:0; color:inherit; border:0; outline:0; background:transparent; }
-.source-search small { color:var(--muted); white-space:nowrap; }
-.source-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:12px; }
-.no-source-results { padding:32px; color:var(--muted); text-align:center; border:1px dashed var(--border-color); border-radius:var(--radius-xl); }
-.source-card { display:grid; grid-template-columns:auto minmax(0,1fr) auto; grid-template-areas:'icon copy arrow' 'types types types'; gap:12px; padding:17px; text-align:left; color:inherit; border:1px solid var(--border-color); border-radius:var(--radius-xl); background:var(--surface); cursor:pointer; }
-.source-card:hover { border-color:var(--border-strong); }
-.source-card-icon { grid-area:icon; display:grid; place-items:center; width:38px; height:38px; color:var(--accent-strong); border-radius:var(--radius-lg); background:var(--accent-soft); }
-.source-card-copy { grid-area:copy; display:flex; flex-direction:column; gap:3px; min-width:0; }
-.source-card-copy strong { overflow:hidden; text-overflow:ellipsis; font-size:14px; }
-.source-card-copy small { color:var(--muted); font-size:12px; }
-.source-card-arrow { grid-area:arrow; align-self:center; color:var(--muted); }
-.source-type-list { grid-area:types; display:flex; flex-wrap:wrap; gap:6px; padding-top:11px; border-top:1px solid var(--border-color); }
-.source-type-list span { display:inline-flex; align-items:center; gap:6px; color:var(--muted); font-size:11.5px; }
-.source-type-list em { padding:1px 6px; color:var(--foreground); font-style:normal; border-radius:var(--radius-pill); background:var(--surface-subtle); }
-.pagination { display:flex; align-items:center; justify-content:center; gap:12px; margin-top:16px; }
-.pagination button { padding:7px 11px; color:var(--foreground); border:1px solid var(--border-color); border-radius:var(--radius-lg); background:var(--surface); cursor:pointer; }
-.pagination button:disabled { opacity:.45; cursor:default; }
-.pagination span { color:var(--muted); font-size:12px; font-variant-numeric:tabular-nums; }
-
-/* ── One source ─────────────────────────────────────────────────────── */
-.source-workspace { margin-top:18px; }
-.source-workspace-head { display:flex; align-items:center; gap:12px; margin-bottom:14px; }
-.source-workspace-head > div { flex:1; }
-
-.fp-main { min-width:0; overflow:hidden; padding:0; }
-.fp-main .rows { border:0; border-radius:0; }
-.fp-main .tab-hint { padding:28px 18px; text-align:center; }
-.fp-toolbar {
-  display:flex; flex-direction:column; gap:12px;
-  padding:14px 16px; border-bottom:1px solid var(--border-color); background:var(--surface-subtle);
+.file-name {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
 }
-.fp-toolbar-head { display:flex; align-items:center; justify-content:space-between; gap:16px; }
-.fp-title { display:flex; flex-direction:column; gap:2px; min-width:0; }
-.fp-title strong { font-size:15px; color:var(--foreground); }
-.fp-title span { color:var(--muted); font-size:12px; }
-.fp-controls { display:flex; align-items:center; gap:12px; }
-.fp-search {
-  position: relative; display: flex; align-items: center;
-  flex:1; min-width:200px; max-width:560px;
-}
-.fp-search lucide-icon { position: absolute; left: 11px; color: var(--muted); pointer-events: none; }
-.fp-search .txt { width: 100%; padding-left: 34px; padding-right: 32px; }
-.search-clear {
-  position: absolute; right: 6px;
-  display: grid; place-items: center; width: 22px; height: 22px;
-  border: 0; border-radius: var(--ui-radius-sm); background: none;
-  color: var(--muted); cursor: pointer;
-}
-.search-clear:hover { color: var(--ink); background: var(--surface-2); }
-.fp-search-status { margin-left:auto; color:var(--muted); font-size:12px; white-space:nowrap; }
-.fp-upload { display:grid; place-items:center; cursor:pointer; flex:none; }
-.fp-upload.disabled { opacity: .6; pointer-events: none; }
-.ui-spinner.compact { width:15px; height:15px; }
 
-/* ── Choosing several files at once ─────────────────────────────────
-   The tick sits with the row's identity; what to do with the ticked
-   ones stays in the toolbar row, where the page's other actions are. */
-.select-box { display:inline-flex; align-items:center; flex:none; cursor:pointer; }
-.select-box input { width:15px; height:15px; margin:0; accent-color:var(--primary-fill); cursor:pointer; }
-.file-row .select-box { margin-right:2px; }
-.fp-selection { display:flex; align-items:center; gap:12px; color:var(--muted); font-size:12.5px; white-space:nowrap; }
-.fp-selection .link-btn { padding:0; border:0; background:none; color:var(--accent-strong); font:inherit; font-size:12.5px; cursor:pointer; }
-.fp-selection .link-btn:hover { text-decoration:underline; }
-.fp-selection .btn.sm { display:inline-flex; align-items:center; gap:6px; min-height:34px; padding:6px 11px; font-size:12.5px; }
-
-/* ── The list ───────────────────────────────────────────────────────── */
-.file-row { align-items:center; padding:13px 16px; }
-.file-row:hover { background:var(--surface-subtle); }
-.file-row.is-selected { background:var(--accent-soft); }
-.file-actions { display:flex; align-items:center; gap:3px; flex:none; }
-.more-dots { font-size:24px; line-height:1; letter-spacing:1px; }
-.file-footer {
-  display:flex; align-items:center; justify-content:space-between; gap:16px;
-  min-height:48px; padding:8px 16px; border-top:1px solid var(--border-color);
-  background:var(--surface-subtle); color:var(--muted); font-size:12px;
-  font-variant-numeric:tabular-nums;
+/* A long name may break anywhere, so the table can always fit its
+   column; nine characters stay together, so a short one never breaks
+   inside a word. */
+.file-name-words {
+  min-width: 9ch;
+  color: inherit;
+  overflow-wrap: anywhere;
 }
-.file-page-controls { display:flex; align-items:center; gap:7px; }
-.file-page-controls > span { margin-right:5px; }
-.file-page-controls button {
-  display:grid; place-items:center; width:30px; height:30px; padding:0;
-  color:var(--foreground); border:1px solid var(--border-color); border-radius:var(--radius-lg);
-  background:var(--surface); cursor:pointer;
-}
-.file-page-controls button:hover:not(:disabled) { border-color:var(--border-strong); background:var(--surface-2); }
-.file-page-controls button:disabled { opacity:.4; cursor:default; }
 
-@media (max-width: 860px) {
-  .overview-heading { align-items:flex-start; flex-direction:column; gap:6px; }
-  .overview-tools { flex-wrap:wrap; }
-  .source-grid { grid-template-columns:1fr; }
-  .fp-search { max-width:none; }
-  .fp-controls { align-items:stretch; flex-direction:column; gap:7px; }
-  .fp-search-status { align-self:flex-end; margin-left:0; }
-  .fp-selection { flex-wrap:wrap; white-space:normal; }
-  .file-row { align-items:flex-start; }
-  .file-footer { align-items:flex-start; flex-direction:column; gap:7px; }
-  .file-page-controls { align-self:stretch; justify-content:flex-end; }
+.file-extension {
+  color: var(--ink-3);
+  font-weight: 400;
+}
+
+.file-source {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ── Upload ──────────────────────────────────────────────────────────
+   Files dragged over the list put a dashed frame on it and say where
+   they go; each file on its way in is a row above the list with a 2px
+   bar. */
+.files-list {
+  position: relative;
+}
+
+.files-list.is-dropping {
+  border-radius: var(--r-md);
+  outline: 2px dashed var(--accent);
+  outline-offset: 4px;
+}
+
+.files-drop {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 24px 16px;
+  border-radius: var(--r-md);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  font-size: var(--t-base);
+  font-weight: 500;
+  line-height: var(--lh-base);
+  pointer-events: none;
+}
+
+.files-drop span {
+  font-size: var(--t-sm);
+  font-weight: 400;
+}
+
+.upload-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+  list-style: none;
+}
+
+.upload-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+
+.upload-words {
+  display: grid;
+  flex: 1;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 12px;
+  min-width: 0;
+}
+
+.upload-name {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: var(--t-sm);
+  font-weight: 500;
+  line-height: var(--lh-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.upload-state {
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.upload-row.is-failed .upload-state {
+  grid-column: 1 / -1;
+  color: var(--danger-ink);
+}
+
+.upload-bar {
+  grid-column: 1 / -1;
+  height: 2px;
+  overflow: hidden;
+  border-radius: 1px;
+  background: var(--surface-3);
+}
+
+.upload-bar span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transition: width var(--dur-1) linear;
 }

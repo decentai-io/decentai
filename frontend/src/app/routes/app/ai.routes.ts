@@ -7,10 +7,11 @@ import { permissionGuard } from '../../guards/permission.guard';
 export const AIRoutes: Routes = [
   { path: '', redirectTo: 'chats', pathMatch: 'full' },
   // Managing agents moved to its own section; bookmarks follow.
-  { path: 'agents', redirectTo: '/agents/installed', pathMatch: 'full' },
+  { path: 'agents', redirectTo: '/agents', pathMatch: 'full' },
   { path: 'marketplace', redirectTo: '/agents/marketplace', pathMatch: 'full' },
   {
     path: 'chats',
+    title: 'Chats',
     component: ChatHomeComponent,
     canActivate: [permissionGuard],
     data: { requiredAction: 'ai:chat:list' },
@@ -20,6 +21,7 @@ export const AIRoutes: Routes = [
   { path: 'chats/history', redirectTo: 'chats', pathMatch: 'full' },
   {
     path: 'chats/:chat_id',
+    title: 'Chat',
     component: ChatDetailComponent,
     canActivate: [permissionGuard],
     data: { requiredAction: 'ai:chat:get' },
@@ -32,13 +34,19 @@ export const AIRoutes: Routes = [
   // the old activity and tasks bookmarks land here.
   {
     path: 'schedules',
+    title: 'Schedules',
     component: SchedulesComponent,
     canActivate: [permissionGuard],
     data: { requiredAction: 'ai:activity:list' },
+    // One schedule, opened, is a view of the list's page.
+    children: [
+      { path: '', pathMatch: 'full', children: [] },
+      { path: ':id', children: [] },
+    ],
   },
   { path: 'activity', redirectTo: '/ai/schedules', pathMatch: 'full' },
   { path: 'activity/:tab', redirectTo: '/ai/schedules' },
   { path: 'tasks', redirectTo: '/ai/schedules', pathMatch: 'full' },
-  { path: 'audit', redirectTo: '/settings/audit', pathMatch: 'full' },
-  { path: 'audit/org', redirectTo: '/settings/audit/org', pathMatch: 'full' },
+  { path: 'audit', redirectTo: '/audit', pathMatch: 'full' },
+  { path: 'audit/org', redirectTo: '/audit/org', pathMatch: 'full' },
 ];

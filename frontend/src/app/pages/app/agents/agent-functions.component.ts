@@ -1,7 +1,7 @@
 import { Component, Input, OnChanges } from '@angular/core';
 
 import { AgentOffer, AgentsService } from 'src/app/services/agents.service';
-import { PERMISSION_LEVELS, levelLabel } from './agent-shared';
+import { LEVEL_MEANINGS, PERMISSION_LEVELS, levelLabel } from './agent-shared';
 
 /** One input a function accepts, read from its JSON schema. */
 interface Param {
@@ -27,6 +27,12 @@ interface ReviewedFunction {
   params: Param[];
   touches: string[];
   scopes: FunctionScope[];
+  /** What it gives back, read from its `outputs` schema. */
+  returns: Param[];
+  /** A schedule may run it with nobody there. */
+  schedulable: boolean;
+  /** It asks the model of the chat that calls it. */
+  llm: boolean;
 }
 
 interface ToolGroup {
@@ -40,23 +46,31 @@ interface ToolGroup {
  * Everything this agent can be asked to do.
  *
  * A flat list of dotted names is a list of strings. What an administrator
- * actually needs to know about a function is four things: how much of it
- * runs without asking, what it takes, what it touches, and which
- * authorization scopes gate it — so each one is read out of the approved
- * manifest and shown together.
+ * needs to know about a function is how much of it runs without asking,
+ * what it takes and returns, what it touches, which authorization scopes
+ * gate it, and whether it runs on a schedule or asks a model — so each is
+ * read out of the approved manifest and shown together.
  *
  * The manifest is the source. `available()` carries only names, levels
  * and descriptions, so the full document is fetched for the approval and
  * the flat list is the fallback when there is no approval to fetch.
+ *
+ * A review reads an agent before there is an approval: it hands in the
+ * manifest on offer, and nothing is fetched.
  */
 @Component({
   selector: 'app-agent-functions',
   standalone: false,
   templateUrl: './agent-functions.component.html',
-  styleUrls: ['../data-shared.css', './agent-shared.css', './agents.component.css'],
+  styleUrls: ['./agent-shared.css', './agent-functions.component.css'],
 })
 export class AgentFunctionsComponent implements OnChanges {
   @Input() agent!: AgentOffer;
+  /** The manifest on offer, for a review: shown as it is, in place of
+   *  an approved agent's. */
+  @Input() manifest: any = null;
+  /** Every function with what it takes and returns open. */
+  @Input() expanded = false;
 
   tools: ToolGroup[] = [];
   loading = false;
@@ -67,19 +81,24 @@ export class AgentFunctionsComponent implements OnChanges {
   readonly levels = PERMISSION_LEVELS;
   levelLabel = levelLabel;
 
-  /** What each level means. Whether a function asks first is not the
-   *  level's to say alone: it asks when its level is above the trust
-   *  level of the chat that calls it. */
-  readonly meanings: Record<string, string> = {
-    read: 'Level 0. Reads only, and changes nothing. Runs in every chat without asking.',
-    change: 'Level 1. An ordinary change inside the platform. Asks first in a chat whose trust level is 0.',
-    sandboxed: 'Level 2. A change with wider reach, still inside the platform. Asks first in a chat whose trust level is below 2.',
-    external: 'Level 3. Acts outside the platform. Asks first in every chat whose trust level is below 3.',
-  };
+  readonly meanings = LEVEL_MEANINGS;
 
   constructor(private service: AgentsService) {}
 
+  /** The approval last read: the same agent at the same version, handed
+   *  in again as its row is refreshed, is not read again. */
+  private read = '';
+
   async ngOnChanges(): Promise<void> {
+    if (this.manifest) {
+      this.read = '';
+      this.tools = this.fromManifest(this.manifest);
+      this.detailed = false;
+      return;
+    }
+    const approval = `${this.agent?.agent_id}@${this.agent?.installed_version}`;
+    if (approval === this.read) return;
+    this.read = approval;
     this.tools = this.fromNames();
     this.detailed = false;
     if (!this.agent?.agent_id) return;
@@ -142,6 +161,9 @@ export class AgentFunctionsComponent implements OnChanges {
         params: this.paramsOf(fn.inputs),
         touches: this.touchesOf(fn.resources),
         scopes: this.scopesOf(fn.authorization),
+        returns: this.paramsOf(fn.outputs),
+        schedulable: fn.schedulable === true,
+        llm: fn.llm === true,
       })),
     }));
   }
@@ -201,7 +223,8 @@ export class AgentFunctionsComponent implements OnChanges {
         description: fn.description || '',
         level: fn.permission_level,
         timeout: fn.timeout_seconds,
-        params: [], touches: [], scopes: [],
+        params: [], touches: [], scopes: [], returns: [],
+        schedulable: false, llm: fn.llm === true,
       }]);
     }
     return [...grouped.entries()].map(([id, functions]) => ({

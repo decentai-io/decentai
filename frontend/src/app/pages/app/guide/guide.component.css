@@ -1,4 +1,286 @@
-.guide-page{--guide-reading:860px}.guide-hero{display:grid;grid-template-columns:minmax(280px,.9fr) minmax(520px,1.1fr);align-items:center;gap:34px;padding:28px 30px;margin-bottom:18px;border:1px solid var(--border);border-left:3px solid var(--accent-strong);border-radius:var(--ui-radius-card);background:var(--surface)}.guide-kicker{display:block;margin-bottom:7px;color:var(--accent-strong);font-size:11px;font-weight:700;letter-spacing:.09em}.guide-hero h1{margin:0 0 7px;color:var(--ink);font-size:30px;font-weight:650;letter-spacing:-.035em}.guide-hero p{max-width:620px;margin:0;color:var(--muted);font-size:14px;line-height:1.6}.guide-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.guide-actions a{display:flex;align-items:center;gap:10px;min-width:0;padding:13px;border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--background);color:var(--ink);text-decoration:none;transition:.15s ease}.guide-actions a:hover{border-color:color-mix(in srgb,var(--accent-strong) 32%,var(--border));background:var(--accent-soft);transform:translateY(-1px)}.guide-actions lucide-icon{flex:none;color:var(--accent-strong)}.guide-actions span{display:flex;min-width:0;flex-direction:column;gap:2px}.guide-actions strong{font-size:13px;font-weight:650}.guide-actions small{overflow:hidden;color:var(--muted);font-size:11px;text-overflow:ellipsis;white-space:nowrap}
-.guide-layout{display:grid;grid-template-columns:310px minmax(0,1fr);gap:16px;align-items:start}.guide-toc{position:sticky;top:8px;display:flex;max-height:calc(100vh - 120px);flex-direction:column;overflow:hidden;border:1px solid var(--border);border-radius:var(--ui-radius-card);background:var(--surface)}.guide-search{display:flex;align-items:center;gap:8px;margin:10px;padding:0 10px;border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--background);color:var(--muted)}.guide-search:focus-within{border-color:color-mix(in srgb,var(--accent-strong) 45%,var(--border));box-shadow: var(--chat-focus-ring)}.guide-search input{width:100%;min-width:0;padding:10px 0;border:0;outline:0;background:transparent;color:var(--ink);font:inherit;font-size:13px}.guide-search button{display:grid;flex:none;width:26px;height:26px;padding:0;place-items:center;border:0;border-radius:var(--radius-md);background:transparent;color:var(--muted);cursor:pointer}.toc-scroll{overflow-y:auto;padding:2px 8px 10px;scrollbar-width:thin}.toc-section+.toc-section{margin-top:10px;padding-top:10px;border-top:1px solid var(--border)}.toc-label{display:block;padding:2px 9px 6px;color:var(--muted);font-size:10.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase}.toc-row{display:flex;align-items:center;gap:10px;width:100%;padding:9px;border:0;border-radius:var(--radius-lg);background:none;color:var(--ink);font:inherit;text-align:left;cursor:pointer}.toc-row:hover{background:var(--surface-2)}.toc-row.on{background:var(--accent-soft)}.toc-row.on strong,.toc-row.on>lucide-icon{color:var(--accent-strong)}.toc-num{display:grid;flex:none;width:24px;height:24px;place-items:center;border:1px solid var(--border);border-radius:var(--radius-md);color:var(--muted);font-size:10.5px}.toc-row.on .toc-num{background:var(--background);color:var(--accent-strong)}.toc-text{display:flex;min-width:0;flex:1;flex-direction:column;gap:2px}.toc-text strong{font-size:13px;font-weight:620}.toc-text em{overflow:hidden;color:var(--muted);font-size:11.5px;font-style:normal;text-overflow:ellipsis;white-space:nowrap}.toc-row>lucide-icon{flex:none;color:var(--muted);opacity:.65}.toc-empty{padding:22px 12px;color:var(--muted);font-size:12.5px;text-align:center}
-.guide-content{min-width:0;padding:0;overflow:hidden}.chapter-meta{display:flex;justify-content:space-between;gap:20px;padding:15px 34px 10px;color:var(--muted);font-size:11px;font-weight:650;letter-spacing:.04em;text-transform:uppercase}.chapter-progress{height:2px;background:var(--surface-2)}.chapter-progress span{display:block;height:100%;background:var(--accent-strong);transition:width .2s ease}.guide-markdown{max-width:var(--guide-reading);margin:0 auto;padding:34px 44px 12px;color:var(--ink);font-size:15px;line-height:1.75;overflow-wrap:anywhere}.guide-markdown ::ng-deep h1{margin:0 0 10px;font-size:30px;font-weight:650;letter-spacing:-.035em;line-height:1.2}.guide-markdown ::ng-deep h1+p{margin-bottom:26px;color:var(--muted);font-size:16px}.guide-markdown ::ng-deep h2{margin:34px 0 12px;font-size:20px;font-weight:650}.guide-markdown ::ng-deep h3{margin:24px 0 8px;font-size:16px}.guide-markdown ::ng-deep p{margin:0 0 14px}.guide-markdown ::ng-deep ul,.guide-markdown ::ng-deep ol{margin:0 0 16px;padding-left:22px}.guide-markdown ::ng-deep li{margin:6px 0;padding-left:3px}.guide-markdown ::ng-deep li::marker{color:var(--accent-strong)}.guide-markdown ::ng-deep code{padding:2px 5px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface-2);font-size:12.5px}.guide-markdown ::ng-deep pre{margin:0 0 18px;padding:16px 18px;overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--surface-2);font-size:12.5px;line-height:1.6}.guide-markdown ::ng-deep pre code{padding:0;border:0}.guide-markdown ::ng-deep table{width:100%;margin:4px 0 20px;border-collapse:separate;border-spacing:0;border:1px solid var(--border);border-radius:var(--radius-lg);font-size:13.5px}.guide-markdown ::ng-deep th,.guide-markdown ::ng-deep td{padding:10px 12px;border:0;border-bottom:1px solid var(--border);text-align:left;vertical-align:top}.guide-markdown ::ng-deep th{background:var(--surface-2)}.guide-markdown ::ng-deep tr:last-child td{border-bottom:0}.guide-markdown ::ng-deep blockquote{margin:4px 0 18px;padding:13px 16px;border:1px solid color-mix(in srgb,var(--accent-strong) 20%,var(--border));border-left:3px solid var(--accent-strong);border-radius:0 var(--radius-lg) var(--radius-lg) 0;background:color-mix(in srgb,var(--accent-soft) 55%,var(--background))}.guide-markdown ::ng-deep blockquote p{margin:0}.guide-markdown ::ng-deep a{color:var(--accent-strong);font-weight:550;text-underline-offset:3px}.guide-markdown ::ng-deep hr{margin:28px 0;border:0;border-top:1px solid var(--border)}.guide-nav{display:flex;align-items:center;gap:10px;max-width:var(--guide-reading);margin:18px auto 0;padding:20px 44px 28px;border-top:1px solid var(--border)}.guide-nav .btn{display:inline-flex;align-items:center;gap:6px}.guide-spacer{flex:1}
-@media(max-width:1100px){.guide-hero{grid-template-columns:1fr;gap:18px}}@media(max-width:900px){.guide-layout{grid-template-columns:1fr}.guide-toc{position:static;max-height:420px}.guide-markdown{padding:28px 24px 10px}.guide-nav{padding:18px 24px 24px}}@media(max-width:620px){.guide-hero{padding:22px 20px}.guide-hero h1{font-size:25px}.guide-actions{grid-template-columns:1fr}.guide-actions small{white-space:normal}.chapter-meta{padding-inline:20px}.guide-markdown{padding:24px 20px 8px;font-size:14.5px}.guide-markdown ::ng-deep h1{font-size:25px}.guide-markdown ::ng-deep table{display:block;overflow-x:auto}.guide-nav{align-items:stretch;padding-inline:20px}.guide-nav .btn{flex:1;justify-content:center}}
+/* The guide: a contents column and a page to read. The page frame, the
+   search field, the buttons and the markdown styles are the shared
+   ones. */
+
+.guide {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 720px);
+  align-items: start;
+  gap: 32px;
+}
+
+/* ── The contents ──────────────────────────────────────────────────── */
+.guide-contents {
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-height: calc(100vh - 160px);
+  min-width: 0;
+  overflow-y: auto;
+}
+
+.guide-contents ul {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  list-style: none;
+}
+
+.guide-section-name {
+  margin-bottom: 4px;
+  padding: 0 8px;
+  color: var(--ink-2);
+  font-size: var(--t-xs);
+  font-weight: 500;
+  line-height: var(--lh-xs);
+}
+
+.guide-chapter {
+  display: flex;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: var(--r-md);
+  color: var(--ink-2);
+  transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
+}
+
+.guide-chapter:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+
+.guide-chapter:focus-visible,
+.guide-headings a:focus-visible,
+.guide-matches a:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+}
+
+.guide-chapter.is-current {
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+}
+
+.guide-chapter-number {
+  flex: none;
+  width: 16px;
+  color: var(--ink-3);
+  font-size: var(--t-sm);
+  font-variant-numeric: tabular-nums;
+  line-height: var(--lh-base);
+}
+
+.guide-chapter.is-current .guide-chapter-number {
+  color: inherit;
+}
+
+.guide-chapter-words {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.guide-chapter-title {
+  font-size: var(--t-base);
+  font-weight: 500;
+  line-height: var(--lh-base);
+}
+
+/* What a chapter is about: said on the cover, where there is room. */
+.guide-chapter-summary {
+  display: none;
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+/* The open chapter's headings, under its name. */
+.guide-headings {
+  margin: 2px 0 6px 32px;
+  padding-left: 8px;
+  border-left: 1px solid var(--line);
+}
+
+.guide-headings a {
+  display: block;
+  padding: 3px 8px;
+  border-radius: var(--r-sm);
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.guide-headings a.is-part {
+  padding-left: 20px;
+}
+
+.guide-headings a:hover,
+.guide-headings a.is-reached {
+  color: var(--ink);
+}
+
+.guide-headings a.is-reached {
+  font-weight: 500;
+}
+
+/* What the search found. */
+.guide-matches a {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px;
+  border-radius: var(--r-md);
+}
+
+.guide-matches a:hover {
+  background: var(--surface-2);
+}
+
+.guide-match-where {
+  color: var(--ink);
+  font-size: var(--t-sm);
+  font-weight: 500;
+  line-height: var(--lh-sm);
+}
+
+.guide-match-words,
+.guide-nothing {
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.guide-nothing {
+  padding: 8px;
+}
+
+/* ── The cover ─────────────────────────────────────────────────────── */
+/* The contents are the page: wider, with what each chapter is about. */
+.guide.is-cover {
+  grid-template-columns: minmax(0, 720px);
+}
+
+.guide.is-cover .guide-cover {
+  order: -1;
+}
+
+.guide.is-cover .guide-contents {
+  position: static;
+  max-height: none;
+  overflow: visible;
+}
+
+.guide.is-cover .guide-chapter-summary {
+  display: block;
+}
+
+.guide-cover-title {
+  color: var(--ink);
+  font-family: var(--font-serif);
+  font-size: var(--t-xl);
+  font-weight: 600;
+  line-height: var(--lh-xl);
+}
+
+.guide-cover-words {
+  max-width: 60ch;
+  margin-top: 8px;
+  color: var(--ink-2);
+  font-size: var(--t-read);
+  line-height: var(--lh-read);
+}
+
+.guide-starts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+/* ── A chapter ─────────────────────────────────────────────────────── */
+.guide-reading {
+  min-width: 0;
+}
+
+.guide-menu {
+  display: none;
+  justify-content: space-between;
+  width: 100%;
+  margin-bottom: 16px;
+}
+
+.guide-menu span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.guide-where {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  color: var(--ink-2);
+  font-size: var(--t-xs);
+  line-height: var(--lh-xs);
+}
+
+.guide-progress {
+  height: 2px;
+  margin: 8px 0 24px;
+  border-radius: var(--r-full);
+  background: var(--surface-2);
+}
+
+.guide-progress span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width var(--dur-2) var(--ease);
+}
+
+/* Text that is read, at the reading size. */
+.guide-text {
+  display: block;
+  font-size: var(--t-read);
+  line-height: var(--lh-read);
+  overflow-wrap: anywhere;
+}
+
+.guide-turn {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 32px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.guide-turn-next {
+  margin-left: auto;
+}
+
+/* ── Narrow: the contents are a menu at the chapter's top ──────────── */
+@media (max-width: 899px) {
+  .guide {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .guide:not(.is-cover) .guide-contents {
+    display: none;
+  }
+
+  .guide-menu {
+    display: flex;
+  }
+}
+
+@media (pointer: coarse) {
+  .guide-chapter,
+  .guide-headings a {
+    display: flex;
+    align-items: center;
+    min-height: 44px;
+  }
+}

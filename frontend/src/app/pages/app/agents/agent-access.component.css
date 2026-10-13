@@ -1,0 +1,55 @@
+/* Who may use an agent: the grants as rows, then the form that makes
+   one. The list, the rows, the fields and the controls are the shared
+   ones; here are the form's place and the lists it ticks from. */
+:host {
+  display: block;
+  max-width: 720px;
+}
+
+.access-intro {
+  max-width: 72ch;
+  margin-bottom: 16px;
+}
+
+.access-form {
+  margin-top: 32px;
+  padding-top: 32px;
+  border-top: 1px solid var(--line);
+}
+
+.access-form .form-section-title {
+  margin-bottom: 16px;
+}
+
+/* Groups, people or functions to tick: a list that scrolls past ten
+   rows, under the control that opened it. */
+.access-picks {
+  max-height: 264px;
+  margin-top: -8px;
+  padding: 4px;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+
+.access-function {
+  font-family: var(--font-mono);
+  font-size: var(--t-sm);
+  font-weight: 400;
+}
+
+.access-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 16px;
+  margin-top: 24px;
+}
+
+.access-sentence {
+  flex: 1 1 240px;
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}

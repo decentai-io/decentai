@@ -47,9 +47,35 @@ describe('InstallReviewComponent', () => {
     });
 
     expect(component.tally).toEqual([
-      { name: 'read', count: 2 },
-      { name: 'external', count: 1 },
+      { name: 'Reads', count: 2 },
+      { name: 'Outside action', count: 1 },
     ]);
+  });
+
+  it('says where the code is, at the commit that would be installed', () => {
+    const component = create({ id: 'jira', path: 'agents/jira', manifest: manifest() });
+    component.source = { source_id: 'one', name: 'One', url: 'https://example.test/org/agents.git', sha: 'abc123' } as any;
+    expect(component.codeLink).toBe('https://example.test/org/agents/tree/abc123/agents/jira');
+    expect(component.codePlace).toBe('https://example.test/org/agents.git · agents/jira');
+
+    // A repository a browser cannot open is named, not linked.
+    component.source = { source_id: 'one', name: 'One', url: 'git@example.test:org/agents.git', sha: 'abc123' } as any;
+    expect(component.codeLink).toBe('');
+  });
+
+  it('puts a README\'s headings under the page\'s own, and leaves code alone', () => {
+    const component = create({
+      id: 'jira', manifest: manifest(),
+      readme: '# Jira\n\n## Setup\n\n```\n# a comment\n```\n',
+    });
+    expect(component.readme).toBe('### Jira\n\n#### Setup\n\n```\n# a comment\n```\n');
+  });
+
+  it('folds only a README too long for its first screen', () => {
+    const short = create({ id: 'jira', manifest: manifest(), readme: '# Jira' });
+    expect(short.readmeLong).toBeFalse();
+    const long = create({ id: 'jira', manifest: manifest(), readme: 'x'.repeat(2000) });
+    expect(long.readmeLong).toBeTrue();
   });
 
   it('has nothing to say about changes on a first install', () => {
@@ -89,7 +115,7 @@ describe('InstallReviewComponent', () => {
     expect(component.isUpdate).toBeTrue();
     const changes = component.changes;
     expect(changes.some((line) => line.includes('New function: main.delete'))).toBeTrue();
-    expect(changes.some((line) => line.includes('main.run: permission read → change'))).toBeTrue();
+    expect(changes.some((line) => line.includes('main.run: permission Reads → Changes'))).toBeTrue();
     expect(changes.some((line) => line.includes('New package: boto3'))).toBeTrue();
     expect(changes.some((line) => line.includes('New secret: connection'))).toBeTrue();
   });

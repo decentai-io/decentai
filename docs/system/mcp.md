@@ -55,6 +55,14 @@ what it offers now with what was kept: a tool that is new, or whose
 description or inputs changed, comes back **switched off**, saying
 which. Switching it on by hand is the looking-over.
 
+**How a server stands is said in the list**, without opening it: the
+kind of credential it is reached with (`none`, `token`, or the name of
+the header it asked for, never the credential), when its tools were
+last read (`last_read_at`), and, when the last *Read again* failed,
+why (`last_read_error`). A read that fails changes nothing else: the
+server and its tools stay as they were, and the next read that works
+clears the reason.
+
 ## In a chat
 
 The chat's contract ([session door](../reference/session-door.md))

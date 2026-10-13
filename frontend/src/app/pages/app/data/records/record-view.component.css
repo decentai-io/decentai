@@ -1,0 +1,186 @@
+/* One record, read: its head, its actions, its fields as names and
+   values, its content by type, and its foot. The chips, the buttons,
+   the table and the code tile are the shared ones. */
+:host {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.record-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.record-words {
+  flex: 1;
+  min-width: 0;
+}
+
+.record-name {
+  color: var(--ink);
+  font-size: var(--t-md);
+  font-weight: 600;
+  line-height: var(--lh-md);
+  overflow-wrap: anywhere;
+}
+
+.record-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 6px;
+  margin-top: 2px;
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+/* The dot follows a fact, so a wrapped line never begins with one. */
+.record-line span:not(:last-child)::after {
+  content: '·';
+  margin-left: 6px;
+  color: var(--ink-3);
+}
+
+.record-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.record-actions:empty {
+  display: none;
+}
+
+/* A field's label at the left, its value at the right. */
+.record-fields {
+  display: grid;
+  grid-template-columns: minmax(96px, max-content) minmax(0, 1fr);
+  gap: 8px 16px;
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.record-fields dt {
+  color: var(--ink-2);
+}
+
+.record-fields dd {
+  min-width: 0;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+/* What an object holds, a step in from the name that holds it. */
+.record-fields.is-nested {
+  padding-left: 12px;
+  border-left: 1px solid var(--line);
+}
+
+.record-none {
+  color: var(--ink-3);
+}
+
+.record-number {
+  font-variant-numeric: tabular-nums;
+}
+
+.record-ref {
+  color: var(--ink-3);
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+}
+
+.record-flag {
+  display: inline-flex;
+  color: var(--ink-2);
+}
+
+.record-chips {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+/* Text that is read. */
+.record-prose {
+  max-width: 72ch;
+  color: var(--ink);
+  font-size: var(--t-read);
+  line-height: var(--lh-read);
+}
+
+.record-prose p + p {
+  margin-top: 8px;
+}
+
+.record-table {
+  max-height: 50vh;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+
+.record-secret {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.record-secret code {
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+}
+
+.record-part {
+  min-width: 0;
+}
+
+.record-part-title {
+  margin-bottom: 4px;
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  font-weight: 500;
+  line-height: var(--lh-sm);
+}
+
+.record-raw .code-tile {
+  max-height: 50vh;
+  margin: 8px 0 0;
+}
+
+.record-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  color: var(--ink-2);
+  font-size: var(--t-xs);
+  line-height: var(--lh-xs);
+}
+
+.record-foot-ref {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.record-foot-ref code {
+  font-family: var(--font-mono);
+}
+
+@media (max-width: 700px) {
+  .record-fields:not(.is-nested) {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+  }
+
+  .record-fields:not(.is-nested) dd {
+    margin-bottom: 8px;
+  }
+}

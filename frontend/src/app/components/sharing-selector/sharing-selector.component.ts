@@ -10,6 +10,8 @@ export interface SharingPerson { user_id: string; user_name?: string; email?: st
   styleUrls: ['./sharing-selector.component.css'],
 })
 export class SharingSelectorComponent {
+  /** What the choice is about, as the heading above it says it. */
+  @Input() label = 'Who can use this';
   @Input() mode = 'private';
   @Input() groups: SharingGroup[] = [];
   @Input() people: SharingPerson[] = [];

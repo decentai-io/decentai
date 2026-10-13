@@ -1,4 +1,5 @@
 import { SimpleChange, SimpleChanges } from '@angular/core';
+import { of } from 'rxjs';
 
 import { AgentCredentialsComponent } from './agent-credentials.component';
 
@@ -15,7 +16,7 @@ describe('AgentCredentialsComponent', () => {
     }, {} as SimpleChanges);
   }
 
-  function create(secrets: any = {}, definitions: any = {}, agents: any = {}) {
+  function create(secrets: any = {}, definitions: any = {}, agents: any = {}, dialog: any = {}) {
     const component = new AgentCredentialsComponent(
       {
         list: async () => [],
@@ -33,6 +34,11 @@ describe('AgentCredentialsComponent', () => {
       } as any,
       // Connecting an account opens a popup; nothing here does.
       {} as any,
+      // The dialog, the question before a delete, and the profile the
+      // dialog is handed: a test that needs one passes its own.
+      dialog as any,
+      {} as any,
+      { get: async () => null, peers: async () => [] } as any,
     );
     component.agent = {
       agent_id: 'agt_1',
@@ -53,7 +59,6 @@ describe('AgentCredentialsComponent', () => {
   it('hands back the same empty array every time, not a new one', () => {
     const component = create();
 
-    expect(component.fieldsFor('nothing')).toBe(component.fieldsFor('nothing'));
     expect(component.savedSecrets('nothing')).toBe(component.savedSecrets('nothing'));
   });
 
@@ -89,7 +94,6 @@ describe('AgentCredentialsComponent', () => {
     await component.ngOnChanges(changed(['agent']));
 
     expect(asked).toEqual({ definition_ref: 'agt_1__connection/v1' });
-    expect(component.fieldsFor('agt_1__connection').length).toBe(1);
   });
 
   it('knows when several credentials exist and none was pinned', async () => {
@@ -113,12 +117,10 @@ describe('AgentCredentialsComponent', () => {
     const component = create();
     component.groups = [{ group_id: 'g1', group_name: 'Research' }] as any;
 
-    expect(component.ownerKind({ owner: { groups: ['everyone'] } } as any)).toBe('org');
     expect(component.ownerLabel({ owner: { groups: ['everyone'] } } as any))
       .toBe('organization');
-    expect(component.ownerKind({ owner: { groups: ['g1'] } } as any)).toBe('group');
     expect(component.ownerLabel({ owner: { groups: ['g1'] } } as any)).toBe('Research');
-    expect(component.ownerKind({ owner: { groups: [] } } as any)).toBe('personal');
+    expect(component.ownerLabel({ owner: { groups: [] } } as any)).toBe('personal');
   });
 
   // ── Being handed one that already exists ────────────────────────────
@@ -176,14 +178,11 @@ describe('AgentCredentialsComponent', () => {
     });
     await component.ngOnChanges(changed(['agent']));
 
-    component.openPicker(credential);
-    component.picked = 'sec_1';
-    await component.grant(credential);
+    await component.grant(credential, 'sec_1');
 
     expect(calls).toEqual([
       { agent: 'agt_1', resource: 'connection', secret: 'sec_1' },
     ]);
-    expect(component.pickerFor).toBe('');
   });
 
   it('will not grant with nothing chosen', async () => {
@@ -197,9 +196,7 @@ describe('AgentCredentialsComponent', () => {
     });
     await component.ngOnChanges(changed(['agent']));
 
-    component.openPicker(credential);
-    component.picked = '';
-    await component.grant(credential);
+    await component.grant(credential, '');
 
     expect(called).toBeFalse();
   });
@@ -213,13 +210,53 @@ describe('AgentCredentialsComponent', () => {
     await component.ngOnChanges(changed(['agent']));
     component.failed.subscribe((message: string) => failures.push(message));
 
-    component.openPicker(credential);
-    component.picked = 'sec_1';
-    await component.grant(credential);
+    await component.grant(credential, 'sec_1');
 
     expect(failures).toEqual(['not the shape this agent asked for']);
-    // Still open, so the choice is not silently lost.
-    expect(component.pickerFor).toBe('connection');
+  });
+
+  it('says in one line which credential answers, or why none does', async () => {
+    const component = create({
+      list: async () => [
+        { resource_ref: 'sec_1', name: 'A' },
+        { resource_ref: 'sec_2', name: 'B' },
+      ],
+    });
+    await component.ngOnChanges(changed(['agent']));
+
+    expect(component.stateOf(credential).warn).toBeTrue();
+    expect(component.stateOf(credential).words).toContain('none pinned');
+
+    component.defaults = { agt_1__connection: 'sec_2' };
+    expect(component.stateOf(credential)).toEqual({ words: 'Using B, which you pinned.', warn: false });
+  });
+
+  it('opens the one secret dialog on the shape the agent approved', async () => {
+    const definition = { definition_ref: 'agt_1__connection/v1', label: 'Jira Connection', fields: [] };
+    let opened: any = null;
+    let listed = 0;
+    const component = create(
+      { list: async () => { listed += 1; return []; } },
+      { get: async () => ({ definition }) },
+      {},
+      { open: (_form: unknown, config: any) => {
+        opened = config.data;
+        return { afterClosed: () => of({ notice: 'Secret created.', ref: 'sec_9' }) };
+      } },
+    );
+    const said: string[] = [];
+    component.flashed.subscribe((text) => said.push(text));
+    await component.ngOnChanges(changed(['agent']));
+    const before = listed;
+
+    await component.openForm(credential);
+
+    // The pinned version, with no choosing among shapes.
+    expect(opened.definition).toBe(definition);
+    expect(opened.definitions).toEqual([definition]);
+    // What it made is read back, and the person is told.
+    expect(listed).toBe(before + 1);
+    expect(said).toEqual(['Secret created. This agent can use it now.']);
   });
 
   it('takes a granted credential back', async () => {

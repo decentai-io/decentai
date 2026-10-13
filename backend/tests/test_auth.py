@@ -303,6 +303,9 @@ class TestThrottle:
             "/auth/login", json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD}
         )
         assert wrong.status_code == right.status_code == 429
+        # It says for how long, the same to both: a page counts it down.
+        assert 0 < wrong.json()["retry_after"] <= 15 * 60
+        assert abs(wrong.json()["retry_after"] - right.json()["retry_after"]) <= 2
 
     def test_success_clears_the_account_counter(self, anon):
         for _ in range(4):

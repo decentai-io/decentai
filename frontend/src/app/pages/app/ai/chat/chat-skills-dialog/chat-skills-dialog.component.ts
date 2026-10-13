@@ -1,6 +1,7 @@
 import { Component, Inject, OnInit } from '@angular/core';
 import { MAT_DIALOG_DATA, MatDialogRef } from '@angular/material/dialog';
 import { Skill, SkillsService } from 'src/app/services/skills.service';
+import { STANDARD_SKILLS_LISTED } from '../chat-defaults';
 
 /**
  * Which skills this chat puts in front of the assistant.
@@ -43,7 +44,7 @@ export class ChatSkillsDialogComponent implements OnInit {
     const enabled = data?.enabled_skills;
     this.configured = Array.isArray(enabled) ? enabled : null;
     this.defaults = Array.isArray(data?.default_skills) ? data.default_skills : null;
-    this.catalogLimit = Number.isInteger(data?.max_skills) ? data.max_skills : 40;
+    this.catalogLimit = Number.isInteger(data?.max_skills) ? data.max_skills : STANDARD_SKILLS_LISTED;
   }
 
   async ngOnInit(): Promise<void> {

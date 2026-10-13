@@ -1,3 +1,6 @@
+import { convertToParamMap } from '@angular/router';
+import { EMPTY } from 'rxjs';
+
 import { AgentsComponent } from './agents.component';
 
 describe('AgentsComponent', () => {
@@ -39,24 +42,39 @@ describe('AgentsComponent', () => {
       } as any,
       { list: async (family: string) => secretsByFamily[family] || [] } as any,
       { list: async () => [] } as any,
+      { ask: async (asked: any) => { questions.push(asked); return answer; } } as any,
     );
   }
 
-  it('names every state an approved agent can be in', () => {
-    const component = createComponent();
+  /** What the page asked before uninstalling, and what it is told. */
+  let questions: any[] = [];
+  let answer = true;
+  beforeEach(() => { questions = []; answer = true; });
 
-    expect(component.statusLabel(offer('a'))).toBe('Installed · v1.0.0');
-    expect(component.statusLabel(offer('a', { prepared: { state: 'preparing' } })))
-      .toBe('Preparing · v1.0.0');
-    expect(component.statusLabel(offer('a', { prepared: { state: 'ready' } })))
-      .toBe('Ready · v1.0.0');
-    expect(component.statusLabel(offer('a', { prepared: { state: 'failed', error: 'pip' } })))
-      .toBe('Could not prepare · v1.0.0');
-    expect(component.statusLabel(offer('b', {
-      status: 'update_available', loaded_version: '1.1.0',
-    }))).toBe('v1.0.0 installed · v1.1.0 available');
-    expect(component.statusLabel(offer('c', { status: 'removed' })))
-      .toContain("no longer in the source's catalog");
+  it('says where an approved agent stands in one word, the first that holds', () => {
+    const component = createComponent();
+    const word = (agent: any) => component.standing(agent).word;
+
+    expect(word(offer('a'))).toBe('Ready');
+    expect(word(offer('a', { prepared: { state: 'preparing' } }))).toBe('Preparing');
+    expect(word(offer('a', { prepared: { state: 'failed', error: 'pip' } }))).toBe('Failed');
+    expect(word(offer('b', { status: 'update_available', loaded_version: null })))
+      .toBe('Update available');
+    expect(word(offer('c', { status: 'removed' }))).toBe('Not in its source any more');
+    // Failing comes before anything else that is also true of it.
+    expect(word(offer('d', { status: 'update_available', prepared: { state: 'failed' } })))
+      .toBe('Failed');
+  });
+
+  it('counts what needs attention from the same standing the cards show', async () => {
+    const component = createComponent([
+      offer('a'), offer('b', { status: 'update_available' }),
+      offer('c', { prepared: { state: 'failed' } }),
+    ]);
+    await component.ngOnInit();
+
+    expect(component.readyCount).toBe(1);
+    expect(component.attentionCount).toBe(2);
   });
 
   // ── Credentials an approved agent is still waiting for ──────────────
@@ -261,18 +279,15 @@ describe('AgentsComponent', () => {
   // ── The open agent ──────────────────────────────────────────────────
 
   it('shows the open agent as it reads after an update', async () => {
+    // The update itself is taken on the review page; what this page
+    // owes is to show the open agent from the next read of the rows.
     let rows = [offer('jira', { status: 'update_available', loaded_version: '1.1.0' })];
-    const component = createComponent([], {
-      available: async () => rows,
-      install: async () => {
-        rows = [offer('jira', { installed_version: '1.1.0', loaded_version: '1.1.0' })];
-        return { data: {} };
-      },
-    });
+    const component = createComponent([], { available: async () => rows });
     await component.ngOnInit();
     await component.openDetail(component.agents[0]);
 
-    await component.update(component.agents[0]);
+    rows = [offer('jira', { installed_version: '1.1.0', loaded_version: '1.1.0' })];
+    await component.onCredentialsChanged();
 
     expect(component.openAgent?.status).toBe('installed');
     expect(component.openAgent?.installed_version).toBe('1.1.0');
@@ -305,6 +320,7 @@ describe('AgentsComponent', () => {
       { get: async () => ({}) } as any,
       { list: async () => [] } as any,
       { list: async () => [] } as any,
+      { ask: async () => true } as any,
     );
     await component.ngOnInit();
 
@@ -329,17 +345,15 @@ describe('AgentsComponent', () => {
     });
     await component.ngOnInit();
 
-    component.requestUninstall(agent);
-    expect(component.uninstalling).toEqual([agent]);
+    answer = false;
+    await component.requestUninstall(agent);
+    expect(questions[0].title).toBe('Uninstall jira?');
+    expect(questions[0].danger).toBeTrue();
     expect(removed).toBe('');
 
-    component.closeUninstall();
-    expect(component.uninstalling).toEqual([]);
-
-    component.requestUninstall(agent);
-    await component.confirmUninstall();
+    answer = true;
+    await component.requestUninstall(agent);
     expect(removed).toBe('jira');
-    expect(component.uninstalling).toEqual([]);
   });
 
   it('uninstalls everything ticked, behind one confirmation', async () => {
@@ -356,11 +370,11 @@ describe('AgentsComponent', () => {
 
     component.toggleSelected(one);
     component.toggleSelected(two);
-    component.requestUninstallSelected();
-    expect(component.uninstalling.length).toBe(2);
+    await component.requestUninstallSelected();
 
-    await component.confirmUninstall();
-
+    expect(questions.length).toBe(1);
+    expect(questions[0].title).toBe('Uninstall 2 agents?');
+    expect(questions[0].body).toContain('one, two');
     expect(removed).toEqual(['one', 'two']);
     expect(component.selected.size).toBe(0);
     expect(component.notice).toContain('2 agents uninstalled');
@@ -379,12 +393,76 @@ describe('AgentsComponent', () => {
 
     component.toggleSelected(one);
     component.toggleSelected(two);
-    component.requestUninstallSelected();
-    await component.confirmUninstall();
+    await component.requestUninstallSelected();
 
     expect(component.error).toContain('two');
     expect(component.error).toContain('It is in use.');
     expect(component.selected.has('one')).toBe(false);
     expect(component.selected.has('two')).toBe(true);
+  });
+
+  it('says how many each view of the list holds, and sums them under the grid', async () => {
+    const component = createComponent([offer('a'), offer('b', { status: 'update_available' })]);
+    await component.ngOnInit();
+
+    expect(component.filters.map((choice) => choice.name))
+      .toEqual(['All 2', 'Needs attention 1', 'Updates 1']);
+    expect(component.foot).toBe('2 installed · 1 ready · 2 in new chats');
+  });
+
+  // ── Every view has an address ───────────────────────────────────────
+
+  function addressed(agents: any[], params: Record<string, string>, secretsByFamily: any = {}) {
+    const went: any[][] = [];
+    const component = new AgentsComponent(
+      { available: async () => agents, installed: async () => [] } as any,
+      { can: () => true } as any,
+      { get: async () => ({}) } as any,
+      { list: async (family: string) => secretsByFamily[family] || [] } as any,
+      { list: async () => [] } as any,
+      { ask: async () => true } as any,
+      { events: EMPTY, navigate: async (to: any[]) => { went.push(to); return true; } } as any,
+      { snapshot: { firstChild: { paramMap: convertToParamMap(params) } } } as any,
+    );
+    return { component, went };
+  }
+
+  it('opens the agent and the tab its address names', async () => {
+    const { component } = addressed([offer('agt_1')], { ref: 'agt_1', tab: 'functions' });
+    await component.ngOnInit();
+
+    expect(component.openAgent?.agent_id).toBe('agt_1');
+    expect(component.openTab).toBe('functions');
+  });
+
+  it('lands on Credentials when the address names no tab and one is missing', async () => {
+    const waiting = offer('agt_1', {
+      resources: { secrets: [{ id: 'connection', label: 'Jira' }] },
+      resource_refs: { secrets: { connection: 'org:agt_1__connection/v1' } },
+    });
+    const { component } = addressed([waiting], { ref: 'agt_1' });
+    await component.ngOnInit();
+
+    expect(component.openTab).toBe('credentials');
+  });
+
+  it('says so, and goes back to the list, for an agent that is not installed', async () => {
+    const { component, went } = addressed([offer('agt_1')], { ref: 'agt_gone' });
+    await component.ngOnInit();
+
+    expect(component.openAgent).toBeNull();
+    expect(component.error).toContain('not installed');
+    expect(went).toEqual([['/agents']]);
+  });
+
+  it('puts the agent and its tab in the address when they are opened', async () => {
+    const { component, went } = addressed([offer('agt_1')], {});
+    await component.ngOnInit();
+
+    await component.openDetail(component.agents[0]);
+    component.openTabOf('access');
+    component.openTabOf('overview');
+
+    expect(went).toEqual([['/agents', 'agt_1'], ['/agents', 'agt_1', 'access'], ['/agents', 'agt_1']]);
   });
 });

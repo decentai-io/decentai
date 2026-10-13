@@ -75,33 +75,49 @@ describe('MarketplaceComponent', () => {
       source('colleagues', [], { owned: false }),
     ];
 
-    expect(component.visible.map((s) => s.source_id))
+    expect(component.sources.map((s) => s.source_id))
       .toEqual(['mine', 'colleagues']);
-    expect(component.visible[1].owned).toBe(false);
+    expect(component.sources[1].owned).toBe(false);
   });
 
-  it('filters sources by their own name, and agents inside the open one', () => {
-    // Two searches, two levels: the source box narrows the list of
-    // sources, the agent box narrows what the open one offers.
+  it('shows the first source until the address names another', () => {
     const component = createComponent();
     component.sources = [
       source('one', [entry('invoices')]),
       source('two', [entry('payroll')]),
     ];
 
-    component.searchSources('Source two');
-    expect(component.filteredSources.map((s) => s.source_id)).toEqual(['two']);
+    expect(component.current?.source_id).toBe('one');
+    component.selectedId = 'two';
+    expect(component.current?.source_id).toBe('two');
+  });
 
-    component.searchSources('nothing here');
-    expect(component.filteredSources).toEqual([]);
+  it('narrows the chosen source by search and by what is installed, and orders it', () => {
+    const component = createComponent();
+    component.sources = [source('one', [
+      entry('payroll'),
+      entry('invoices', { installed_version: '1.0.0' }),
+      entry('audit', { installed_version: '0.9.0' }),
+    ])];
 
-    component.searchSources('');
-    component.select(component.sources[0]);
     component.search('invoice');
     expect(component.shownEntries.map((e) => e.id)).toEqual(['invoices']);
-
-    component.search('payroll');
+    component.search('nothing here');
     expect(component.shownEntries).toEqual([]);
+
+    component.search('');
+    expect(component.filters.map((choice) => choice.name))
+      .toEqual(['All 3', 'Not installed 1', 'Installed 2', 'Updates 1']);
+    // The same list while the counts stand, so the control is not redrawn.
+    expect(component.filters).toBe(component.filters);
+
+    component.setFilter('updates');
+    expect(component.shownEntries.map((e) => e.id)).toEqual(['audit']);
+
+    component.setFilter('all');
+    expect(component.shownEntries.map((e) => e.id)).toEqual(['payroll', 'invoices', 'audit']);
+    component.setSort('name');
+    expect(component.shownEntries.map((e) => e.id)).toEqual(['audit', 'invoices', 'payroll']);
   });
 
   it('names the four states an offered agent can be in', () => {
@@ -116,15 +132,18 @@ describe('MarketplaceComponent', () => {
       .toBe('broken');
   });
 
-  it('leaves "installed" to the row and keeps the label to versions', () => {
-    // The row's other half already says it is installed; saying it twice
-    // reads as two different facts.
+  it('says the version on offer once, and only what is unusual on the chip', () => {
+    // That an agent is installed is the card's foot's to say; saying it
+    // on the chip too reads as two different facts.
     const component = createComponent();
+    const installed = entry('b', { installed_version: '1.0.0' }) as any;
+    const behind = entry('c', { installed_version: '0.9.0' }) as any;
 
-    expect(component.entryLabel(entry('b', { installed_version: '1.0.0' }) as any))
-      .toBe('v1.0.0');
-    expect(component.entryLabel(entry('c', { installed_version: '0.9.0' }) as any))
-      .toContain('v0.9.0 installed');
+    expect(component.entryVersion(installed)).toBe('v1.0.0');
+    expect(component.entryChip(installed)).toBeNull();
+    expect(component.entryChip(behind)?.word).toBe('Update available');
+    expect(component.entryFacts(behind)).toContain('v0.9.0 installed');
+    expect(component.entryChip(entry('d', { errors: ['bad manifest'] }) as any)?.tone).toBe('danger');
   });
 
   it('says how stale a source is, and when it has never been read', () => {
@@ -144,14 +163,31 @@ describe('MarketplaceComponent', () => {
     expect(component.isStale(old)).toBeTrue();
   });
 
-  it('refuses to offer removal of a source whose agents are installed', () => {
-    const component = createComponent();
+  it('uninstalls a source\'s agents with it, and only once that was agreed to', async () => {
+    const calls: string[] = [];
+    let answer = false;
+    const component = new MarketplaceComponent(
+      {
+        sources: async () => ({ sources: [], referenceCatalogUrl: '' }),
+        deleteSource: async () => { calls.push('remove'); return {}; },
+        purgeSource: async () => { calls.push('purge'); return { data: { uninstalled: ['Jira Agent'] } }; },
+      } as any,
+      { get: async () => ({ user_id: 'me', groups: [] }), peers: async () => [] } as any,
+      { can: () => true } as any,
+      undefined, undefined, undefined,
+      { ask: async () => answer } as any,
+    );
     const busy = source('one', [entry('jira')], {
       installed_agents: [{ agent_ref: 'agt_jira', name: 'Jira Agent', version: '1.0.0' }],
     });
 
-    expect(component.removalBlocker(busy)).toContain('Jira Agent');
-    expect(component.removalBlocker(source('two', [entry('payroll')]))).toBe('');
+    await component.askRemove(busy);
+    expect(calls).toEqual([]);
+
+    answer = true;
+    await component.askRemove(busy);
+    await component.askRemove(source('two', [entry('payroll')]));
+    expect(calls).toEqual(['purge', 'remove']);
   });
 
   // ── Installing ──────────────────────────────────────────────────────
@@ -165,15 +201,44 @@ describe('MarketplaceComponent', () => {
       },
     });
 
-    await component.openReview(source('one', []), entry('fresh') as any);
+    await component.openReview(source('one', []), [entry('fresh') as any]);
     expect(reads).toBe(0);
-    expect(component.reviewApproved).toBeNull();
+    expect(component.reviewApproved).toEqual({});
 
     await component.openReview(
       source('one', []),
-      entry('older', { installed_version: '0.9.0', agent_ref: 'agt_1' }) as any,
+      [entry('older', { installed_version: '0.9.0', agent_ref: 'agt_1' }) as any],
     );
     expect(reads).toBe(1);
+    expect(Object.keys(component.reviewApproved)).toEqual(['older']);
+  });
+
+  it('puts the ticked agents under one review, and installs none before it is approved', async () => {
+    const installed: string[] = [];
+    const one = source('one', [entry('gmail'), entry('drive'), entry('forms')]);
+    const component = createComponent({
+      sources: async () => ({ sources: [one], referenceCatalogUrl: '' }),
+      installCatalogAgent: async (_source: any, chosen: any) => {
+        if (chosen.id === 'drive') return { error: 'its package could not be built' };
+        installed.push(chosen.id);
+        return { data: {} };
+      },
+    });
+    component.sources = [one];
+    component.toggleSelect(one, one.catalog.agents[0]);
+    component.toggleSelect(one, one.catalog.agents[1]);
+
+    await component.reviewSelected(one);
+    expect(component.review?.entries.map((e) => e.id)).toEqual(['gmail', 'drive']);
+    expect(component.approveLabel).toBe('Approve and install 2');
+    expect(installed).toEqual([]);
+
+    await component.approve();
+    // One refusal does not stop the rest, and what was refused stays
+    // under review with the reason.
+    expect(installed).toEqual(['gmail']);
+    expect(component.review?.entries.map((e) => e.id)).toEqual(['drive']);
+    expect(component.error).toContain('its package could not be built');
   });
 
   it('names an offered agent before it has a ref to name it by', () => {

@@ -206,4 +206,45 @@ describe('ChatStateService', () => {
     expect(state.value.turns.length).toBe(1);
     expect(state.value.approvals[0].approval_id).toBe('apr_1');
   });
+
+  it('keeps a turn’s steps under the turn when the next one is sent', () => {
+    const state = new ChatStateService();
+    state.startSubmission('client_1', 'Save a note');
+    state.addActivity({ kind: 'call_started', text: 'Notebook · Save Note',
+      source: { kind: 'agent', agent: 'agt_1', agent_name: 'Notebook', call_id: 'c_1' } as any });
+    state.setWorking(false);
+    expect(state.value.pastWork).toEqual({});
+
+    state.startSubmission('client_2', 'And another');
+
+    expect(state.value.activity).toEqual([]);
+    expect(state.value.pastWork['client_1'].map((entry) => entry.text)).toEqual(['Notebook · Save Note']);
+    expect(state.value.turns.map((turn) => turn.key)).toEqual(['client_1', 'client_2']);
+  });
+
+  it('knows a turn by the same key before and after the server’s message lands', () => {
+    const state = new ChatStateService();
+    state.startSubmission('client_1', 'Hello');
+    const before = state.value.turns[0];
+
+    state.replaceMessages([{
+      message_id: 'msg_9', client_message_id: 'client_1', chat_id: 'chat_1',
+      actor: 'user', parts: [],
+    } as any]);
+
+    expect(before.id).toBe('pending:client_1');
+    expect(state.value.turns[0].id).toBe('msg_9');
+    expect(state.value.turns[0].key).toBe(before.key);
+  });
+
+  it('keeps the steps and the live line when words are sent mid-turn', () => {
+    const state = new ChatStateService();
+    state.startSubmission('client_1', 'Do the long thing');
+    state.addProgress('Working on it');
+
+    state.startSubmission('client_2', 'And be quick');
+
+    expect(state.value.activity.length).toBe(1);
+    expect(state.value.pastWork).toEqual({});
+  });
 });

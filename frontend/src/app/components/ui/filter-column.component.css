@@ -1,0 +1,103 @@
+/* The filter column. Its entries are the shared .side-item and its
+   headings the shared .side-label (styles/controls.scss); here is how
+   they sit in the column, and what the column becomes under 900px. */
+.filters {
+  position: sticky;
+  top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.filter-item lucide-icon {
+  display: inline-flex;
+  flex: none;
+  color: var(--ink-3);
+}
+
+.filter-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.filter-count {
+  flex: none;
+  color: var(--ink-3);
+  font-size: var(--t-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.filter-item.is-nested {
+  padding-left: 40px;
+}
+
+/* Narrow: one row of chips that scrolls sideways, the groups one after
+   another with a hairline between them. */
+@media (max-width: 900px) {
+  .filters {
+    position: static;
+    flex-direction: row;
+    gap: 8px;
+    margin: 0 -16px;
+    padding: 0 16px 4px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .filter-group {
+    flex: none;
+    flex-direction: row;
+    gap: 6px;
+  }
+
+  .filter-group + .filter-group {
+    padding-left: 8px;
+    border-left: 1px solid var(--line);
+  }
+
+  .side-label {
+    display: none;
+  }
+
+  .filter-item,
+  .filter-item.is-nested {
+    width: auto;
+    height: 32px;
+    padding: 0 12px;
+    border: 1px solid var(--line);
+    border-radius: var(--r-full);
+    white-space: nowrap;
+  }
+
+  .filter-item.is-current {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+    color: var(--accent-ink);
+  }
+
+  .filter-item.is-current::before {
+    display: none;
+  }
+
+  .filter-name {
+    overflow: visible;
+  }
+}
+
+/* The chips are 44px to a finger. */
+@media (max-width: 900px) and (pointer: coarse) {
+  .filter-item,
+  .filter-item.is-nested {
+    height: 44px;
+    padding: 0 16px;
+  }
+}

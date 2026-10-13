@@ -13,11 +13,11 @@ import { AppRoutingModule } from './app-routing.module';
 import { MatPaginatorModule } from '@angular/material/paginator';
 import { MatSortModule } from '@angular/material/sort';
 import { MatTableModule } from '@angular/material/table';
-import { MatDialogModule } from '@angular/material/dialog';
+import { MAT_DIALOG_DEFAULT_OPTIONS, MatDialogConfig, MatDialogModule } from '@angular/material/dialog';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatMenuModule } from '@angular/material/menu';
-import { MatTooltipModule } from '@angular/material/tooltip';
+import { MAT_TOOLTIP_DEFAULT_OPTIONS, MatTooltipDefaultOptions, MatTooltipModule } from '@angular/material/tooltip';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MarkdownModule, SANITIZE } from 'ngx-markdown';
@@ -32,6 +32,12 @@ import {
   CloudOff,
   CloudUpload,
   ExternalLink,
+  File as FileOutline,
+  Bold,
+  Italic,
+  Heading,
+  ListOrdered,
+  Link,
   FileArchive,
   FileBraces,
   FileCode,
@@ -86,6 +92,7 @@ import {
   Paperclip,
   PencilLine,
   Pin,
+  PinOff,
   ReceiptText,
   ScrollText,
   Send,
@@ -106,7 +113,13 @@ import {
   ChevronLeft,
   ArrowUpDown,
   Bell,
+  Zap,
   BookOpen,
+  Keyboard,
+  CircleHelp,
+  WifiOff,
+  CircleUser,
+  Folder,
   Bot,
   BrainCircuit,
   Building2,
@@ -127,6 +140,7 @@ import {
   Database,
   Download,
   Eye,
+  EyeOff,
   Filter,
   Flame,
   House,
@@ -173,6 +187,7 @@ import { MainComponent } from './website/main/main.component';
 import { AlertComponent } from './components/alert/alert.component';
 import { InformativeTableComponent } from './components/informative-table/informative-table.component';
 import { TransferDialogComponent } from './components/transfer-dialog/transfer-dialog.component';
+import { ShareDialogComponent } from './components/share-dialog/share-dialog.component';
 import { SharingSelectorComponent } from './components/sharing-selector/sharing-selector.component';
 import { DataStoreService } from './services/datastore.service';
 
@@ -198,8 +213,27 @@ import { ChatApprovalCardComponent } from './pages/app/ai/chat/chat-approval-car
 import { FilePickerComponent } from './pages/app/ai/chat/file-picker/file-picker.component';
 import { ChatFilePickerDialogComponent } from './pages/app/ai/chat/chat-file-picker-dialog/chat-file-picker-dialog.component';
 import { ChatScreenComponent } from './pages/app/ai/chat/chat-screen/chat-screen.component';
+import { AgentMarkComponent } from './components/ui/agent-mark.component';
+import { FileIconComponent } from './components/ui/file-icon.component';
+import { ChoiceCardsComponent } from './components/ui/choice-cards.component';
+import { EmptyComponent } from './components/ui/empty.component';
+import { FieldComponent } from './components/ui/field.component';
+import { FilterColumnComponent } from './components/ui/filter-column.component';
+import { ListComponent } from './components/ui/list.component';
+import { PageComponent } from './components/ui/page.component';
+import { PagerComponent } from './components/ui/pager.component';
+import { RecordRowComponent } from './components/ui/record-row.component';
+import { RowComponent } from './components/ui/row.component';
+import { SaveBarComponent } from './components/ui/save-bar.component';
+import { SegmentedComponent } from './components/ui/segmented.component';
+import { SelectionBarComponent } from './components/ui/selection-bar.component';
+import { SortHeaderComponent } from './components/ui/sort-header.component';
+import { SelectComponent } from './components/ui/select.component';
+import { SwitchComponent } from './components/ui/switch.component';
+import { TokenListComponent } from './components/ui/token-list.component';
 
 import { LoadingComponent } from './website/loading/loading.component';
+import { EntryCardComponent } from './components/ui/entry-card.component';
 import { LogoutComponent } from './pages/logout/logout.component';
 import { AuthComponent } from './pages/auth/auth.component';
 
@@ -219,23 +253,39 @@ import { MarketplaceComponent } from './pages/app/agents/marketplace/marketplace
 import { SourceFormComponent } from './pages/app/agents/marketplace/source-form.component';
 import { InstallReviewComponent } from './pages/app/agents/marketplace/install-review.component';
 import { SkillsComponent } from './pages/app/data/skills/skills.component';
+import { SkillViewComponent } from './pages/app/data/skills/skill-view.component';
+import { SkillEditorComponent } from './pages/app/data/skills/skill-editor.component';
 import { McpComponent } from './pages/app/data/mcp/mcp.component';
+import { McpServerComponent } from './pages/app/data/mcp/mcp-server.component';
+import { McpCredentialComponent } from './pages/app/data/mcp/mcp-credential.component';
 import { MemoryComponent } from './pages/app/settings/memory/memory.component';
 import { ApiKeysComponent } from './pages/app/settings/api-keys/api-keys.component';
 import { SafetyComponent } from './pages/app/settings/safety/safety.component';
-import { MonitoringComponent } from './pages/app/settings/monitoring/monitoring.component';
+import { MonitoringComponent } from './pages/app/monitoring/monitoring.component';
 import { ModelProvidersComponent } from './pages/app/settings/model-providers/model-providers.component';
 import { ModelSelectComponent } from './components/model-select/model-select.component';
 import { ConnectedAppsComponent } from './pages/app/settings/connected-apps/connected-apps.component';
 import { SchedulesComponent } from './pages/app/ai/schedules/schedules.component';
+import { ScheduleViewComponent } from './pages/app/ai/schedules/schedule-view.component';
+import { ScheduleFormComponent } from './pages/app/ai/schedules/schedule-form.component';
 import { AuditComponent } from './pages/app/ai/audit/audit.component';
 import { FilesComponent } from './pages/app/data/files/files.component';
+import { FilePreviewComponent } from './pages/app/data/files/file-preview.component';
 import { RecordsComponent } from './pages/app/data/records/records.component';
+import { RecordViewComponent } from './pages/app/data/records/record-view.component';
 import { SecretsComponent } from './pages/app/secrets/secrets.component';
+import { SecretViewComponent } from './pages/app/secrets/secret-view.component';
+import { SecretFormComponent } from './pages/app/secrets/secret-form.component';
 import { SettingsComponent } from './pages/app/settings/settings.component';
+import { ChatDefaultsComponent } from './pages/app/settings/chat-defaults/chat-defaults.component';
+import { NotificationsComponent } from './pages/app/settings/notifications/notifications.component';
+import { SpeechComponent } from './pages/app/settings/speech/speech.component';
+import { RoutingComponent } from './pages/app/settings/routing/routing.component';
 import { GuideComponent } from './pages/app/guide/guide.component';
+import { GuidePanelComponent } from './pages/app/guide/guide-panel.component';
 import { OrganizationsComponent } from './pages/admin/organizations/organizations.component';
 import { ServiceWorkerModule } from '@angular/service-worker';
+import { AgentCardComponent } from './pages/app/agents/agent-card.component';
 
 @NgModule({
   declarations: [
@@ -249,6 +299,7 @@ import { ServiceWorkerModule } from '@angular/service-worker';
     AlertComponent,
     InformativeTableComponent,
     TransferDialogComponent,
+    ShareDialogComponent,
     SharingSelectorComponent,
     ChartViewerComponent,
     LoadingComponent,
@@ -271,7 +322,11 @@ import { ServiceWorkerModule } from '@angular/service-worker';
     SourceFormComponent,
     InstallReviewComponent,
     SkillsComponent,
+    SkillViewComponent,
+    SkillEditorComponent,
     McpComponent,
+    McpServerComponent,
+    McpCredentialComponent,
     MemoryComponent,
     ApiKeysComponent,
     SafetyComponent,
@@ -280,12 +335,23 @@ import { ServiceWorkerModule } from '@angular/service-worker';
     ModelSelectComponent,
     ConnectedAppsComponent,
     SchedulesComponent,
+    ScheduleViewComponent,
+    ScheduleFormComponent,
     AuditComponent,
     FilesComponent,
+    FilePreviewComponent,
     RecordsComponent,
+    RecordViewComponent,
     SecretsComponent,
+    SecretViewComponent,
+    SecretFormComponent,
     SettingsComponent,
+    ChatDefaultsComponent,
+    NotificationsComponent,
+    SpeechComponent,
+    RoutingComponent,
     GuideComponent,
+    GuidePanelComponent,
     OrganizationsComponent,
     ChatHomeComponent,
     ChatDetailComponent,
@@ -330,6 +396,28 @@ import { ServiceWorkerModule } from '@angular/service-worker';
     }),
     BaseChartDirective,
 
+    // The form and row system (components/ui): what pages are built from.
+    PageComponent,
+    EntryCardComponent,
+    FieldComponent,
+    SwitchComponent,
+    SegmentedComponent,
+    ChoiceCardsComponent,
+    SelectComponent,
+    TokenListComponent,
+    ListComponent,
+    RowComponent,
+    RecordRowComponent,
+    AgentCardComponent,
+    EmptyComponent,
+    SaveBarComponent,
+    AgentMarkComponent,
+    FileIconComponent,
+    FilterColumnComponent,
+    SortHeaderComponent,
+    SelectionBarComponent,
+    PagerComponent,
+
     // The icon set (Lucide): only the icons named here are bundled.
     LucideAngularModule.pick({
       Mail,
@@ -341,6 +429,12 @@ import { ServiceWorkerModule } from '@angular/service-worker';
       CloudOff,
       CloudUpload,
       ExternalLink,
+      File: FileOutline,
+      Bold,
+      Italic,
+      Heading,
+      ListOrdered,
+      Link,
       FileArchive,
       FileBraces,
       FileCode,
@@ -395,6 +489,7 @@ import { ServiceWorkerModule } from '@angular/service-worker';
       Paperclip,
       PencilLine,
       Pin,
+      PinOff,
       ReceiptText,
       ScrollText,
       Send,
@@ -413,7 +508,13 @@ import { ServiceWorkerModule } from '@angular/service-worker';
       ChevronLeft,
       ArrowUpDown,
       Bell,
+      Zap,
       BookOpen,
+      Keyboard,
+      CircleHelp,
+      WifiOff,
+      CircleUser,
+      Folder,
       Bot,
       BrainCircuit,
       Building2,
@@ -434,6 +535,7 @@ import { ServiceWorkerModule } from '@angular/service-worker';
       Database,
       Download,
       Eye,
+      EyeOff,
       Filter,
       Flame,
       House,
@@ -477,6 +579,29 @@ import { ServiceWorkerModule } from '@angular/service-worker';
     DataStoreService,
     provideHttpClient(withInterceptorsFromDi()),
     provideCharts(withDefaultRegisterables()),
+    // How every dialog and tooltip behaves; how they look is in
+    // styles/controls.scss. A dialog takes the focus when it opens and
+    // gives it back when it closes; a tooltip waits before it shows.
+    {
+      provide: MAT_DIALOG_DEFAULT_OPTIONS,
+      useValue: {
+        ...new MatDialogConfig(),
+        width: '480px',
+        maxWidth: '96vw',
+        autoFocus: 'first-tabbable',
+        restoreFocus: true,
+        enterAnimationDuration: '180ms',
+        exitAnimationDuration: '120ms',
+      } satisfies MatDialogConfig,
+    },
+    {
+      provide: MAT_TOOLTIP_DEFAULT_OPTIONS,
+      useValue: {
+        showDelay: 300,
+        hideDelay: 0,
+        touchendHideDelay: 1500,
+      } satisfies MatTooltipDefaultOptions,
+    },
   ],
 })
 export class AppModule {}

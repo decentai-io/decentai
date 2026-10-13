@@ -1,262 +1,213 @@
-/* chat-composer.component.css
-   One row inside one bordered surface: attach, the text, send. The
-   surface is the page's own ground; its border is the edge. */
+/* The composer: a field as wide as the conversation's column, and one
+   row under it. The same on the chats page and in a chat; the page
+   gives it its place, not its look. Its buttons are the shared ones
+   (styles/controls.scss). */
+:host {
+  display: block;
+  width: min(100% - 32px, var(--chat-column, 800px));
+  margin-inline: auto;
+}
 
-.composer_wrapper {
+.composer {
+  position: relative;
   display: flex;
   flex-direction: column;
-  margin: 1.25rem auto;
-  /* Tracks the message column so input and replies line up. */
-  width: min(var(--chat-column, 1040px), 100%);
-  padding-inline: 20px;
-}
-
-/* ── The row ───────────────────────────────────────────────────────── */
-.composer {
-  display: flex;
-  /* Buttons stay on the last line as the text grows. */
-  align-items: flex-end;
-  gap: 6px;
-  width: 100%;
-  min-height: 56px;
-  padding: 9px 9px 9px 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-2xl);
-  background: var(--background);
+  gap: 8px;
+  min-height: 52px;
+  padding: 7px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
   cursor: text;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
-}
-
-.composer:hover {
-  border-color: color-mix(in srgb, var(--foreground) 22%, var(--border));
+  transition:
+    border-color var(--dur-1) var(--ease),
+    box-shadow var(--dur-1) var(--ease);
 }
 
 .composer:focus-within {
-  border-color: color-mix(in srgb, var(--primary) 55%, var(--border));
-  box-shadow: var(--chat-focus-ring);
-}
-
-.composer.is-loading {
-  border-color: color-mix(in srgb, var(--primary) 38%, var(--border));
+  border-color: var(--line-strong);
+  box-shadow: var(--focus);
 }
 
 .composer.is-disabled {
-  background: color-mix(in srgb, var(--foreground) 3%, var(--background));
-  cursor: not-allowed;
+  cursor: default;
 }
 
-.composer textarea {
+.composer-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+/* The words: at the size a message is read at, growing with them to
+   40% of the screen and scrolling past that. */
+textarea {
   flex: 1;
   min-width: 0;
-  min-height: 36px;
-  max-height: 30vh;
-  padding: 7px 6px;
-  border: none;
-  outline: none;
+  max-height: 40dvh;
+  padding: 6px 8px;
+  border: 0;
+  outline: 0;
+  background: none;
+  color: var(--ink);
+  font: 400 var(--t-read) / var(--lh-read) var(--font-sans);
   resize: none;
-  overflow: hidden;
-  background: transparent;
-  color: var(--foreground);
-  font: inherit;
-  font-size: 15px;
-  line-height: 1.5;
+  overflow-y: hidden;
 }
 
-.composer textarea::placeholder {
-  color: var(--muted-foreground);
+textarea::placeholder {
+  color: var(--ink-3);
 }
 
-.composer textarea:disabled {
-  cursor: not-allowed;
+.icon-btn.is-recording {
+  background: var(--danger-soft);
+  color: var(--danger-ink);
 }
 
-/* ── The two buttons: same size, so the row is balanced ───────────── */
-.composer-btn {
-  display: grid;
-  place-items: center;
-  flex: none;
-  width: 36px;
-  height: 36px;
-  padding: 0;
-  border: none;
-  border-radius: 50%;
-  cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease, opacity 0.15s ease;
+.is-waiting {
+  animation: spin 1s linear infinite;
 }
 
-.composer-btn:disabled {
-  cursor: not-allowed;
-}
-
-.composer-attach {
-  background: transparent;
-  color: var(--muted-foreground);
-}
-
-.composer-attach:hover:not(:disabled) {
-  background: var(--secondary);
-  color: var(--foreground);
-}
-
-.composer-attach:disabled {
-  opacity: 0.45;
-}
-
-.composer-send {
-  background: var(--foreground);
-  color: var(--background);
-}
-
-.composer-send:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--foreground) 85%, var(--background));
-}
-
-.composer-send:disabled {
-  opacity: 0.3;
-}
-
-/* While a response is generating, send becomes a clearly different stop. */
-.composer-send.is-stop {
-  background: var(--destructive);
-  color: var(--primary-foreground);
-}
-
-.composer-send.is-stop:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--destructive) 88%, var(--foreground));
-}
-
-.uploading-icon {
-  animation: composer-spin 0.9s linear infinite;
-}
-
-@keyframes composer-spin {
-  to { transform: rotate(360deg); }
-}
-
-/* ── Attachments: chips waiting above the row ─────────────────────── */
-.composer-attachments {
+/* ── Attachments: chips above the words ────────────────────────────── */
+.composer-chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  margin: 0 0 8px;
-  padding: 0 4px;
+  gap: 8px;
+  padding: 1px 1px 0;
   list-style: none;
-  max-height: 110px;
-  overflow-y: auto;
 }
 
-.attachment-chip {
-  display: inline-flex;
+.attachment {
+  position: relative;
+  display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   max-width: 100%;
-  height: 30px;
-  padding: 0 4px 0 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-pill);
-  color: var(--foreground);
-  font-size: 12.5px;
-}
-
-.attachment-chip.is-failed {
-  border-color: color-mix(in srgb, var(--destructive) 45%, var(--border));
-  color: var(--destructive-strong);
+  height: 32px;
+  padding: 0 4px 0 8px;
+  overflow: hidden;
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
 }
 
 .attachment-icon {
-  display: inline-flex;
+  display: flex;
   flex: none;
-  color: var(--chat-accent-strong);
 }
 
-/* A pasted picture shows itself in the chip, at the size the clip it
-   replaces occupied — the chip is a line of text, so the thumbnail is
-   a square that sits in it rather than a picture the row grows around. */
 .attachment-preview {
   flex: none;
-  width: 22px;
-  height: 22px;
-  border-radius: var(--radius-sm);
+  width: 20px;
+  height: 20px;
+  border-radius: var(--r-sm);
   object-fit: cover;
 }
 
-.attachment-chip.is-failed .attachment-icon {
-  color: var(--destructive-strong);
-}
-
 .attachment-name {
-  min-width: 0;
-  max-width: 240px;
+  max-width: 24ch;
   overflow: hidden;
+  color: var(--ink);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .attachment-meta {
   flex: none;
-  color: var(--muted-foreground);
-  font-size: 11.5px;
-}
-
-.attachment-chip.is-failed .attachment-meta {
-  color: inherit;
+  color: var(--ink-3);
 }
 
 .attachment-btn {
-  display: grid;
-  place-items: center;
+  display: flex;
   flex: none;
-  width: 22px;
-  height: 22px;
-  padding: 0;
-  border: none;
-  border-radius: var(--radius-pill);
-  background: transparent;
-  color: var(--muted-foreground);
+  align-items: center;
+  height: 24px;
+  min-width: 24px;
+  padding: 0 4px;
+  justify-content: center;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  color: inherit;
+  font: inherit;
   cursor: pointer;
 }
 
 .attachment-btn:hover {
-  background: var(--secondary);
-  color: var(--foreground);
+  background: var(--surface-3);
+  color: var(--ink);
 }
 
-/* ── Under the row: why you cannot send yet, when that is the case ── */
-/* Under the box: the model on the left, what the composer has to say
-   on the rest of the line. */
+/* Going up: a thin line under the chip, moving. */
+.attachment.is-uploading::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s linear infinite;
+}
+
+.attachment.is-failed {
+  background: var(--danger-soft);
+  color: var(--danger-ink);
+}
+
+.attachment.is-failed .attachment-name,
+.attachment.is-failed .attachment-meta {
+  color: var(--danger-ink);
+}
+
+/* ── A file dragged over the page ──────────────────────────────────── */
+.composer-drop {
+  position: absolute;
+  inset: 3px;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed var(--accent);
+  border-radius: calc(var(--r-lg) - 3px);
+  background: var(--surface);
+  color: var(--accent-ink);
+  font-size: var(--t-base);
+  font-weight: 500;
+  pointer-events: none;
+}
+
+/* ── Under the field ───────────────────────────────────────────────── */
 .composer-foot {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 6px 4px 0;
-  min-height: 26px;
-}
-.composer-foot .composer-hint { flex: 1; min-width: 0; padding: 0; }
-.composer-foot app-chat-model-picker + .composer-hint { text-align: right; }
-
-.composer-hint {
-  padding: 7px 4px 0;
-  text-align: center;
-  color: var(--muted-foreground);
-  font-size: 11.5px;
-  line-height: 1.3;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 32px;
+  padding: 4px 4px 0;
 }
 
-.composer-hint.is-unavailable {
-  color: var(--warning);
+.composer-state {
+  min-width: 0;
+  margin-left: auto;
+  color: var(--ink-3);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+  text-align: right;
 }
 
-@media (max-width: 640px) {
-  .composer_wrapper { padding-inline: 10px; }
-  .attachment-name { max-width: 150px; }
+/* A phone has no Shift+Enter to be reminded of, and no room for it. */
+@media (max-width: 700px), (hover: none) {
+  .composer-state.is-keys {
+    display: none;
+  }
 }
 
-/* The microphone: an attach-style button that turns red while listening. */
-.composer-mic.is-recording {
-  color: var(--destructive-strong);
-  animation: composer-pulse 1.2s ease-in-out infinite;
-}
-@keyframes composer-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: .45; }
+@media (max-width: 700px) {
+  :host {
+    width: calc(100% - 16px);
+  }
 }

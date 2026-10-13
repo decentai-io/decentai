@@ -1,174 +1,157 @@
-<div class="ctx-dialog">
-  <div class="ctx-header">
-    <span class="ctx-title">Activity &amp; audit — {{ data?.title || "Chat" }}</span>
-    <button mat-icon-button class="ctx-close" (click)="close()">
-      <lucide-icon name="x" [size]="19"></lucide-icon>
-    </button>
-  </div>
+<h2 mat-dialog-title>Activity and audit: {{ data?.title || "Chat" }}</h2>
 
-  <nav class="act-views" role="tablist" aria-label="What to read">
-    <button type="button" role="tab" [class.on]="view === 'record'"
-            [attr.aria-selected]="view === 'record'" (click)="show('record')">The record</button>
-    <button type="button" role="tab" [class.on]="view === 'assistant'"
-            [attr.aria-selected]="view === 'assistant'" (click)="show('assistant')">The assistant</button>
-  </nav>
+<mat-dialog-content>
+  <app-segmented
+    class="act-views"
+    label="What to read"
+    [choices]="views"
+    [ngModel]="view"
+    (ngModelChange)="show($event)"
+  ></app-segmented>
 
-  <div class="ctx-body">
-    @if (view === 'assistant') {
-      @if (loadingTranscript) {
-        <p class="ctx-note">Reading what the assistant was shown…</p>
-      } @else if (transcript?.error) {
-        <p class="ctx-note">{{ transcript?.error }}</p>
-      } @else {
-        @if (transcript; as t) {
-        <section class="ctx-section">
-          <div class="act-counts" *ngIf="t.entries.length">
-            <span class="act-count"><strong>{{ t.entries.length }}</strong> {{ t.entries.length === 1 ? 'entry' : 'entries' }}</span>
-            <span class="act-count" *ngIf="t.opened.length"><strong>{{ t.opened.length }}</strong> agent{{ t.opened.length === 1 ? '' : 's' }} open</span>
-          </div>
-
-          @if (t.summary) {
-            <details class="act-fold">
-              <summary>The earlier part of this chat, as it was folded to keep it small</summary>
-              <pre class="act-json">{{ t.summary }}</pre>
-            </details>
-          }
-
-          @if (!t.entries.length) {
-            <p class="ctx-note">The assistant has not been shown anything in this chat yet.</p>
-          }
-
-          <ol class="act-events">
-            @for (entry of t.entries; track entry.index) {
-              <li class="act-event" [class.act-event--open]="isTurnOpen(entry)">
-                <button class="act-event-head" type="button" (click)="toggleTurn(entry)"
-                        [attr.aria-expanded]="isTurnOpen(entry)">
-                  <span class="act-status" [ngClass]="'act-' + turnTone(entry)">{{ turnChip(entry) }}</span>
-                  <span class="act-event-main">
-                    <span class="act-event-name">{{ turnSummary(entry) }}</span>
-                  </span>
-                  <lucide-icon class="act-caret" [name]="isTurnOpen(entry) ? 'chevron-up' : 'chevron-down'" [size]="18"></lucide-icon>
-                </button>
-                @if (isTurnOpen(entry)) {
-                  <div class="act-event-body">
-                    <pre class="act-json">{{ turnText(entry) }}</pre>
-                    @if (entry.cut) { <span class="act-id">Only the first part of this entry is shown.</span> }
-                    @if (entry.images) { <span class="act-id">{{ entry.images }} picture{{ entry.images === 1 ? '' : 's' }} shown to the model beside this.</span> }
-                  </div>
-                }
-              </li>
-            }
-          </ol>
-        </section>
-
-        <section class="ctx-section">
-          <p class="ctx-note">
-            This is what the model was shown and what it answered, in order:
-            its instructions, each thing that arrived, and the action it chose
-            each time. It is yours to read and nobody else's, and nothing in it
-            can be edited. No secret value is in it: the model is never shown
-            one.
-          </p>
-        </section>
-        }
-      }
-    } @else if (loading) {
-      <p class="ctx-note">Reading the record…</p>
+  <!-- ── What the model was shown, and what it answered ──────────────── -->
+  @if (view === 'assistant') {
+    @if (loadingTranscript) {
+      <p class="dialog-note" role="status">Reading what the assistant was shown…</p>
+    } @else if (transcript?.error) {
+      <p class="form-notice is-error" role="alert">{{ transcript?.error }}</p>
     } @else {
-      <section class="ctx-section">
-        <div class="act-counts" *ngIf="events.length">
-          <span class="act-count"><strong>{{ ran }}</strong> function{{ ran === 1 ? '' : 's' }} ran</span>
-          <span class="act-count" [class.act-count--bad]="failed"><strong>{{ failed }}</strong> did not succeed</span>
-          <span class="act-count"><strong>{{ approvals }}</strong> approval{{ approvals === 1 ? '' : 's' }} asked</span>
-        </div>
-
-        @if (!events.length) {
-          <p class="ctx-note">
-            Nothing has been recorded in this chat yet. Every function an
-            agent runs, every approval and every credential read lands here
-            as it happens.
-          </p>
-        }
-
-        <ol class="act-events">
-          @for (event of events; track event.event_id) {
-            <li class="act-event" [class.act-event--open]="isOpen(event)">
-              <button class="act-event-head" type="button" (click)="toggle(event)"
-                      [attr.aria-expanded]="isOpen(event)" [disabled]="!hasBody(event)">
-                <span class="act-event-time">{{ timeLabel(event.timestamp) }}</span>
-                <span class="act-status" [ngClass]="'act-' + tone(event)">{{ chip(event) }}</span>
-                <span class="act-event-main">
-                  <span class="act-event-name">{{ label(event) }}</span>
-                  <span class="act-event-summary">{{ summary(event) }}</span>
-                </span>
-                @if (duration(event)) { <span class="act-duration">{{ duration(event) }}</span> }
-                @if (hasBody(event)) {
-                  <lucide-icon class="act-caret" [name]="isOpen(event) ? 'chevron-up' : 'chevron-down'" [size]="18"></lucide-icon>
-                }
-              </button>
-
-              @if (isOpen(event)) {
-                <div class="act-event-body">
-                  @if (event.event_type === 'execution') {
-                    <div class="act-kv">
-                      <span class="act-k">Agent</span><span class="act-v">{{ event.details?.agent_name || event.details?.agent_id }}</span>
-                      <span class="act-k">Function</span><span class="act-v"><code>{{ event.function }}</code></span>
-                      <span class="act-k">Level</span><span class="act-v">{{ event.details?.permission_level }} · chat at {{ event.details?.chat_level }}{{ event.details?.resumed ? ' · ran after approval' : '' }}</span>
-                      @if (event.details?.error) {
-                        <span class="act-k">Error</span><span class="act-v act-v--bad">{{ event.details.error }}</span>
-                      }
-                    </div>
-                    @if (inputs(event)) {
-                      <span class="act-k">Inputs</span>
-                      <pre class="act-json">{{ inputs(event) }}</pre>
-                    }
-                    @if (resultRef(event)) {
-                      <button class="act-result-btn" type="button" (click)="openResult(event)">
-                        <lucide-icon name="table" [size]="15"></lucide-icon>
-                        {{ results[resultRef(event)] ? 'Hide result' : 'Open result' }}
-                        <code>{{ resultRef(event) }}</code>
-                      </button>
-                      @if (results[resultRef(event)]; as view) {
-                        <div class="act-result">
-                          @if (view.state === 'loading') { <p class="ctx-note">Loading…</p> }
-                          @else if (view.state === 'missing') { <p class="ctx-note">This result is unavailable or has expired.</p> }
-                          @else if (view.state === 'rows') {
-                            <app-informative-table [title]="event.function" [data]="view.rows" [cols]="view.columns"></app-informative-table>
-                          } @else {
-                            <pre class="act-json">{{ resultText(view) }}</pre>
-                          }
-                        </div>
-                      }
-                    }
-                  } @else {
-                    <div class="act-kv">
-                      @if (event.function) { <span class="act-k">Function</span><span class="act-v"><code>{{ event.function }}</code></span> }
-                      @if (event.actor) { <span class="act-k">By</span><span class="act-v">{{ event.actor }}</span> }
-                      @for (item of otherDetails(event); track item.key) {
-                        <span class="act-k">{{ item.key }}</span><span class="act-v">{{ item.value }}</span>
-                      }
-                      @if (event.resource_refs?.length) {
-                        <span class="act-k">References</span>
-                        <span class="act-v">@for (ref of event.resource_refs; track ref) { <code>{{ ref }}</code> }</span>
-                      }
-                    </div>
-                  }
-                  <span class="act-id">{{ event.event_id }} · {{ dateLabel(event.timestamp) }}</span>
-                </div>
-              }
-            </li>
+      @if (transcript; as t) {
+      @if (t.entries.length) {
+        <p class="act-counts">
+          <span><strong>{{ t.entries.length }}</strong> {{ t.entries.length === 1 ? 'entry' : 'entries' }}</span>
+          @if (t.opened.length) {
+            <span><strong>{{ t.opened.length }}</strong> agent{{ t.opened.length === 1 ? '' : 's' }} open</span>
           }
-        </ol>
-      </section>
-
-      <section class="ctx-section">
-        <p class="ctx-note">
-          This record is written by the platform, not by the assistant, and
-          nothing in it can be edited. Credential reads are recorded by name
-          only — no secret value is ever written here. The inputs shown are
-          an outline of what was asked, never a copy of a document.
         </p>
-      </section>
+      } @else {
+        <p class="dialog-note">The assistant has not been shown anything in this chat yet.</p>
+      }
+
+      @if (t.summary) {
+        <details class="act-fold">
+          <summary>The earlier part of this chat, as it was folded to keep it small</summary>
+          <pre class="record-json">{{ t.summary }}</pre>
+        </details>
+      }
+
+      <div role="list" aria-label="What the assistant was shown and answered">
+        @for (entry of t.entries; track entry.index) {
+          <app-record-row
+            [time]="'' + (entry.index + 1)"
+            [tone]="turnTone(entry)"
+            [words]="turnSummary(entry)"
+            [chip]="turnChip(entry)"
+            [open]="isTurnOpen(entry)"
+            (toggle)="toggleTurn(entry)"
+          >
+            @if (isTurnOpen(entry)) {
+              <pre class="record-json">{{ turnText(entry) }}</pre>
+              @if (entry.cut) { <span class="act-small">Only the first part of this entry is shown.</span> }
+              @if (entry.images) {
+                <span class="act-small">{{ entry.images }} picture{{ entry.images === 1 ? '' : 's' }} shown to the model beside this.</span>
+              }
+            }
+          </app-record-row>
+        }
+      </div>
+
+      <p class="dialog-note act-foot">
+        This is what the model was shown and what it answered, in order: its instructions, each
+        thing that arrived, and the action it chose each time. It is yours to read and nobody
+        else's, and nothing in it can be edited. No secret value is in it: the model is never
+        shown one.
+      </p>
+      }
     }
-  </div>
-</div>
+  } @else if (loading) {
+    <p class="dialog-note" role="status">Reading the record…</p>
+  } @else {
+    <!-- ── What the platform recorded ───────────────────────────────── -->
+    @if (events.length) {
+      <p class="act-counts">
+        <span><strong>{{ ran }}</strong> function{{ ran === 1 ? '' : 's' }} ran</span>
+        <span [class.is-bad]="failed"><strong>{{ failed }}</strong> did not succeed</span>
+        <span><strong>{{ approvals }}</strong> approval{{ approvals === 1 ? '' : 's' }} asked</span>
+      </p>
+    } @else {
+      <p class="dialog-note">
+        Nothing has been recorded in this chat yet. Every function an agent runs, every approval
+        and every credential read lands here as it happens.
+      </p>
+    }
+
+    <div role="list" aria-label="The record">
+      @for (event of events; track event.event_id) {
+        <app-record-row
+          [time]="timeLabel(event.timestamp)"
+          [tone]="tone(event)"
+          [outcome]="chip(event)"
+          [words]="label(event)"
+          [more]="summary(event)"
+          [canOpen]="hasBody(event)"
+          [open]="isOpen(event)"
+          (toggle)="toggle(event)"
+        >
+          @if (isOpen(event)) {
+            <dl class="act-facts">
+              @if (event.event_type === 'execution') {
+                <dt>Agent</dt><dd>{{ event.details?.agent_name || event.details?.agent_id }}</dd>
+                <dt>Function</dt><dd><code>{{ event.function }}</code></dd>
+                <dt>Level</dt>
+                <dd>{{ event.details?.permission_level }} · chat at {{ event.details?.chat_level }}{{ event.details?.resumed ? ' · ran after approval' : '' }}</dd>
+                @if (event.details?.error) {
+                  <dt>Error</dt><dd class="is-bad">{{ event.details.error }}</dd>
+                }
+              } @else {
+                @if (event.function) { <dt>Function</dt><dd><code>{{ event.function }}</code></dd> }
+                @if (event.actor) { <dt>By</dt><dd>{{ event.actor }}</dd> }
+                @for (item of otherDetails(event); track item.key) {
+                  <dt>{{ item.key }}</dt><dd>{{ item.value }}</dd>
+                }
+                @if (event.resource_refs?.length) {
+                  <dt>References</dt>
+                  <dd>@for (ref of event.resource_refs; track ref) { <code>{{ ref }}</code> }</dd>
+                }
+              }
+            </dl>
+            @if (event.event_type === 'execution') {
+              @if (inputs(event)) {
+                <span class="act-small">Inputs</span>
+                <pre class="record-json">{{ inputs(event) }}</pre>
+              }
+              @if (resultRef(event)) {
+                <button class="btn sm act-result" type="button" [attr.aria-expanded]="!!results[resultRef(event)]" (click)="openResult(event)">
+                  <lucide-icon name="table" [size]="16" aria-hidden="true"></lucide-icon>
+                  {{ results[resultRef(event)] ? 'Hide result' : 'Open result' }}
+                </button>
+                @if (results[resultRef(event)]; as found) {
+                  @if (found.state === 'loading') { <p class="dialog-note" role="status">Loading…</p> }
+                  @else if (found.state === 'missing') { <p class="dialog-note">This result is unavailable or has expired.</p> }
+                  @else if (found.state === 'rows') {
+                    <div class="act-table">
+                      <app-informative-table [title]="event.function" [data]="found.rows" [cols]="found.columns"></app-informative-table>
+                    </div>
+                  } @else {
+                    <pre class="record-json">{{ resultText(found) }}</pre>
+                  }
+                }
+              }
+            }
+            <span class="act-small">{{ event.event_id }} · {{ dateLabel(event.timestamp) }}@if (duration(event)) { · took {{ duration(event) }} }</span>
+          }
+        </app-record-row>
+      }
+    </div>
+
+    <p class="dialog-note act-foot">
+      This record is written by the platform, not by the assistant, and nothing in it can be
+      edited. Credential reads are recorded by name only: no secret value is ever written here.
+      The inputs shown are an outline of what was asked, never a copy of a document.
+    </p>
+  }
+</mat-dialog-content>
+
+<mat-dialog-actions>
+  <button class="btn" type="button" (click)="close()">Close</button>
+</mat-dialog-actions>

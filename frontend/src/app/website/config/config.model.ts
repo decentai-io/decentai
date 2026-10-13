@@ -55,5 +55,8 @@ export interface RouteNode {
   active: boolean;
   /** Page title shown in the header when this node is selected. */
   title?: string;
+  /** A group whose pages sit in the sidebar's footer, beside Sign out,
+   *  under no heading: the Guide. */
+  footer?: boolean;
   children?: RouteNode[];
 }

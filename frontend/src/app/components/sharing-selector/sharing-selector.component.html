@@ -1,65 +1,95 @@
-<div class="sharing-selector" role="radiogroup" aria-label="Who can use this">
-  <label class="sharing-choice" [class.selected]="mode === 'private'"
-         [class.disabled]="disabled" [matTooltip]="disabled ? disabledReason : ''">
-    <input type="radio" [checked]="mode === 'private'" [disabled]="disabled"
-           (change)="choose('private')" />
-    <span><strong>Private</strong><small>Only you</small></span>
-  </label>
+<!-- Who can use or see a thing: four choices, the same words on every
+     page. A chosen "groups" or "people" opens to the list to pick from. -->
+<div class="choice-cards" role="radiogroup" [attr.aria-label]="label">
+  <button
+    type="button"
+    class="choice-card"
+    role="radio"
+    [attr.aria-checked]="mode === 'private'"
+    [disabled]="disabled"
+    [matTooltip]="disabled ? disabledReason : ''"
+    (click)="choose('private')"
+  >
+    <span class="choice-dot"></span>
+    <span class="choice-words">
+      <span class="choice-name">Only me</span>
+    </span>
+  </button>
 
-  <label class="sharing-choice expandable" [class.selected]="mode === 'groups'"
-         [class.disabled]="disabled || !groups.length"
-         [matTooltip]="!groups.length ? 'You are not in any groups yet' : disabled ? disabledReason : ''">
-    <span class="choice-line">
-      <input type="radio" [checked]="mode === 'groups'" [disabled]="disabled || !groups.length"
-             (change)="choose('groups')" />
-      <span><strong>{{ groupLabel }}</strong><small>{{ selectedGroups.size ? selectedGroups.size + ' selected' : 'Choose one or more groups' }}</small></span>
-    </span>
-    <span class="nested-options" *ngIf="mode === 'groups' && groups.length">
-      <span class="option-search" *ngIf="groups.length > 5" (click)="$event.stopPropagation()">
-        <lucide-icon name="search" [size]="14"></lucide-icon>
-        <input type="search" [(ngModel)]="groupQuery" placeholder="Search groups" aria-label="Search groups" />
-        <small>{{ filteredGroups.length }} of {{ groups.length }}</small>
+  <div class="sharing-choice">
+    <button
+      type="button"
+      class="choice-card"
+      role="radio"
+      [attr.aria-checked]="mode === 'groups'"
+      [disabled]="disabled || !groups.length"
+      [matTooltip]="!groups.length ? 'You are not in any groups yet' : disabled ? disabledReason : ''"
+      (click)="choose('groups')"
+    >
+      <span class="choice-dot"></span>
+      <span class="choice-words">
+        <span class="choice-name">{{ groupLabel }}</span>
+        <span class="choice-hint">{{ selectedGroups.size ? selectedGroups.size + ' chosen' : 'Choose one or more groups.' }}</span>
       </span>
-      <span class="option-list">
-        <label *ngFor="let group of filteredGroups" (click)="$event.stopPropagation()">
-          <input type="checkbox" [checked]="selectedGroups.has(group.group_id)"
-                 (change)="groupToggled.emit(group.group_id)" />
-          {{ group.group_name }}
-        </label>
-        <small class="no-results" *ngIf="!filteredGroups.length">No matching groups</small>
+    </button>
+    <div class="sharing-list" *ngIf="mode === 'groups' && groups.length">
+      <span class="search-field" *ngIf="groups.length > 5">
+        <lucide-icon name="search" [size]="16" aria-hidden="true"></lucide-icon>
+        <input class="input" type="search" placeholder="Search groups" aria-label="Search groups" [(ngModel)]="groupQuery" [ngModelOptions]="{ standalone: true }" />
       </span>
-    </span>
-  </label>
+      <mat-checkbox
+        *ngFor="let group of filteredGroups"
+        [checked]="selectedGroups.has(group.group_id)"
+        (change)="groupToggled.emit(group.group_id)"
+      >{{ group.group_name }}</mat-checkbox>
+      <p class="sharing-none" *ngIf="!filteredGroups.length">No group matches.</p>
+    </div>
+  </div>
 
-  <label class="sharing-choice expandable" [class.selected]="mode === peopleMode"
-         [class.disabled]="disabled || !people.length"
-         [matTooltip]="!people.length ? 'Nobody in your groups yet' : disabled ? disabledReason : ''">
-    <span class="choice-line">
-      <input type="radio" [checked]="mode === peopleMode" [disabled]="disabled || !people.length"
-             (change)="choose(peopleMode)" />
-      <span><strong>Specific people</strong><small>{{ selectedPeople.size ? selectedPeople.size + ' selected' : 'Choose people from your groups' }}</small></span>
-    </span>
-    <span class="nested-options" *ngIf="mode === peopleMode && people.length">
-      <span class="option-search" *ngIf="people.length > 5" (click)="$event.stopPropagation()">
-        <lucide-icon name="search" [size]="14"></lucide-icon>
-        <input type="search" [(ngModel)]="peopleQuery" placeholder="Search people" aria-label="Search people" />
-        <small>{{ filteredPeople.length }} of {{ people.length }}</small>
+  <div class="sharing-choice">
+    <button
+      type="button"
+      class="choice-card"
+      role="radio"
+      [attr.aria-checked]="mode === peopleMode"
+      [disabled]="disabled || !people.length"
+      [matTooltip]="!people.length ? 'Nobody in your groups yet' : disabled ? disabledReason : ''"
+      (click)="choose(peopleMode)"
+    >
+      <span class="choice-dot"></span>
+      <span class="choice-words">
+        <span class="choice-name">Specific people</span>
+        <span class="choice-hint">{{ selectedPeople.size ? selectedPeople.size + ' chosen' : 'Choose people from your groups.' }}</span>
       </span>
-      <span class="option-list">
-        <label *ngFor="let person of filteredPeople" (click)="$event.stopPropagation()">
-          <input type="checkbox" [checked]="selectedPeople.has(person.user_id)"
-                 (change)="personToggled.emit(person.user_id)" />
-          <span><strong>{{ person.user_name || person.email }}</strong><small *ngIf="person.user_name">{{ person.email }}</small></span>
-        </label>
-        <small class="no-results" *ngIf="!filteredPeople.length">No matching people</small>
+    </button>
+    <div class="sharing-list" *ngIf="mode === peopleMode && people.length">
+      <span class="search-field" *ngIf="people.length > 5">
+        <lucide-icon name="search" [size]="16" aria-hidden="true"></lucide-icon>
+        <input class="input" type="search" placeholder="Search people" aria-label="Search people" [(ngModel)]="peopleQuery" [ngModelOptions]="{ standalone: true }" />
       </span>
-    </span>
-  </label>
+      <mat-checkbox
+        *ngFor="let person of filteredPeople"
+        [checked]="selectedPeople.has(person.user_id)"
+        (change)="personToggled.emit(person.user_id)"
+      >{{ person.user_name || person.email }}<span class="sharing-email" *ngIf="person.user_name"> · {{ person.email }}</span></mat-checkbox>
+      <p class="sharing-none" *ngIf="!filteredPeople.length">No one matches.</p>
+    </div>
+  </div>
 
-  <label class="sharing-choice" *ngIf="allowOrganization" [class.selected]="mode === 'org'"
-         [class.disabled]="disabled" [matTooltip]="disabled ? disabledReason : ''">
-    <input type="radio" [checked]="mode === 'org'" [disabled]="disabled"
-           (change)="choose('org')" />
-    <span><strong>Entire organization</strong><small>Available to every member</small></span>
-  </label>
+  <button
+    type="button"
+    class="choice-card"
+    role="radio"
+    *ngIf="allowOrganization"
+    [attr.aria-checked]="mode === 'org'"
+    [disabled]="disabled"
+    [matTooltip]="disabled ? disabledReason : ''"
+    (click)="choose('org')"
+  >
+    <span class="choice-dot"></span>
+    <span class="choice-words">
+      <span class="choice-name">Everyone</span>
+      <span class="choice-hint">Every member of the organization.</span>
+    </span>
+  </button>
 </div>

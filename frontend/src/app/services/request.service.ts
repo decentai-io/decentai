@@ -1,12 +1,14 @@
 import { Injectable } from '@angular/core';
 import { environment } from 'src/environments/environment';
-import { loginUrl } from './auth.util';
+import { ShellStatusService } from './shell-status.service';
 
 @Injectable({
   providedIn: 'root',
 })
 export class RequestService {
   endpoint: string = environment.apiEndpoint; // e.g., "http://127.0.0.1/"
+
+  constructor(private shell: ShellStatusService) {}
 
   /**
    * Generic request sender. The session cookie rides on every call.
@@ -44,10 +46,12 @@ export class RequestService {
       const response = await fetch(url, options);
       const status = response.status;
 
-      // Handle unauthorized
+      // Nobody is signed in any more. The page is left as it is, so
+      // nothing typed is lost: the shell says so on every page, with
+      // the way to sign in again.
       if (status === 401) {
-        window.location.href = loginUrl();
-        return { status, data: { message: 'Unauthorized' } };
+        this.shell.sessionEnded();
+        return { status, data: { error: 'Your session ended. Sign in again to continue.' } };
       }
 
       // Handle HTML responses (like redirects or errors)

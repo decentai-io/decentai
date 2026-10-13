@@ -279,11 +279,44 @@ class TestWhatHappened:
         assert [event["line"] for event in said["events"]] == ["2", "1"]
         assert said["next_before"] == 11.0
 
+    def test_only_what_happened_in_the_days_asked_for(self, admin, seed, runtime):
+        install(seeded_org(), "agt_left", "Notes")
+        runtime.events = [
+            {"at": float(number), "kind": "log", "agent": "agt_left",
+             "line": str(number)} for number in range(1, 8)]
+        said = app_call(admin, "Agents:Monitor:Events", {
+            "since": 3.0, "until": 6.0}).json()["data"]
+        assert [event["line"] for event in said["events"]] == ["5", "4", "3"]
+        assert said["next_before"] is None
+
+    def test_the_days_are_read_a_page_at_a_time(
+            self, admin, seed, runtime, monkeypatch):
+        from api.endpoints.app.agents.monitor_controller import MonitorController
+
+        monkeypatch.setattr(MonitorController, "ASKED", 2)
+        install(seeded_org(), "agt_left", "Notes")
+        runtime.events = [
+            {"at": float(number), "kind": "log", "agent": "agt_left",
+             "line": str(number)} for number in range(1, 8)]
+        first = app_call(admin, "Agents:Monitor:Events", {
+            "limit": 2, "since": 3.0, "until": 7.0}).json()["data"]
+        assert [event["line"] for event in first["events"]] == ["6", "5"]
+        second = app_call(admin, "Agents:Monitor:Events", {
+            "limit": 2, "since": 3.0, "until": 7.0,
+            "before": first["next_before"]}).json()["data"]
+        assert [event["line"] for event in second["events"]] == ["4", "3"]
+        last = app_call(admin, "Agents:Monitor:Events", {
+            "limit": 2, "since": 3.0, "until": 7.0,
+            "before": second["next_before"]}).json()["data"]
+        assert last["events"] == [] and last["next_before"] is None
+
     def test_what_is_not_a_list_or_a_time_is_refused(self, admin, runtime):
         assert app_call(admin, "Agents:Monitor:Events",
                         {"kinds": "connection"}).status_code == 400
         assert app_call(admin, "Agents:Monitor:Events",
                         {"before": "yesterday"}).status_code == 400
+        assert app_call(admin, "Agents:Monitor:Events",
+                        {"since": "2026-10-01"}).status_code == 400
 
 
 class TestWhatAnAgentKeeps:

@@ -1,0 +1,250 @@
+/* One MCP server: its title row, its facts, and its tools as rows that
+   each hold a switch, what the tool is, and what it may cost. The chip,
+   the switch, the select, the list frame and the dialog are the shared
+   ones. */
+:host {
+  display: block;
+  max-width: 1040px;
+  padding: 8px 0 24px;
+}
+
+.server-back {
+  margin: 0 0 12px -8px;
+}
+
+.server-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 12px 16px;
+  margin-bottom: 16px;
+}
+
+.server-words {
+  flex: 1 1 320px;
+  min-width: 0;
+}
+
+.server-name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  color: var(--ink);
+  font-size: var(--t-lg);
+  font-weight: 600;
+  line-height: var(--lh-lg);
+  overflow-wrap: anywhere;
+}
+
+.server-name .chip {
+  font-family: var(--font-sans);
+}
+
+.server-address {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 6px;
+  margin-top: 4px;
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.server-address code {
+  min-width: 0;
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+  overflow-wrap: anywhere;
+}
+
+.server-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+}
+
+:host > .form-notice {
+  margin-bottom: 12px;
+}
+
+/* When it was read and what it is reached with: a name, a value, and
+   the one thing to do about it. */
+.server-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+  margin: 16px 0 32px;
+}
+
+.server-facts > div {
+  padding: 12px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+
+.server-facts dt {
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.server-facts dd {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 4px;
+  color: var(--ink);
+  font-size: var(--t-base);
+  line-height: var(--lh-base);
+}
+
+.server-facts .is-turning {
+  animation: spin 1s linear infinite;
+}
+
+.form-section-title {
+  margin-bottom: 12px;
+}
+
+.server-count {
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.server-bulk {
+  display: flex;
+  gap: 8px;
+}
+
+/* ── A tool: its switch and name, what it is, what it may cost ─────── */
+.tool-rows {
+  list-style: none;
+}
+
+.tool-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(0, 2fr) 168px;
+  align-items: start;
+  gap: 8px 16px;
+  padding: 12px 16px;
+}
+
+.tool-row + .tool-row {
+  border-top: 1px solid var(--line);
+}
+
+/* The tool's name is the platform's word for it: in mono. */
+.tool-switch {
+  min-width: 0;
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
+.tool-words {
+  min-width: 0;
+}
+
+.tool-about {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+.tool-row.is-off .tool-about {
+  color: var(--ink-3);
+}
+
+.tool-flags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.tool-save {
+  color: var(--accent-ink);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.tool-save.is-failed {
+  color: var(--danger-ink);
+}
+
+.tool-whole,
+.tool-none,
+.tool-inputs {
+  margin-top: 8px;
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.tool-whole {
+  max-width: 72ch;
+  white-space: pre-line;
+}
+
+.tool-inputs {
+  display: grid;
+  gap: 2px;
+}
+
+.tool-inputs dt {
+  margin-top: 6px;
+  color: var(--ink);
+}
+
+.tool-inputs code {
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+}
+
+.tool-inputs em {
+  color: var(--ink-3);
+  font-style: normal;
+}
+
+.tool-level {
+  display: block;
+}
+
+/* Under 900px the level goes under the words, at their width. */
+@media (max-width: 900px) {
+  .tool-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .tool-level {
+    max-width: 240px;
+  }
+}
+
+@media (max-width: 700px) {
+  .server-actions {
+    flex: 1 1 100%;
+    justify-content: space-between;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .server-facts .is-turning {
+    animation: none;
+  }
+}

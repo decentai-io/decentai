@@ -1,8 +1,10 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, TemplateRef, ViewChild } from '@angular/core';
+import { MatDialog, MatDialogRef } from '@angular/material/dialog';
 
 import { AuthService } from 'src/app/services/auth.service';
 import { Group, GroupMember, GroupService } from 'src/app/services/group.service';
 import { Role, RoleService } from 'src/app/services/role.service';
+import { ConfirmService } from 'src/app/services/confirm.service';
 import { DataPageBase } from '../../app/data-page-base';
 
 /**
@@ -17,7 +19,7 @@ import { DataPageBase } from '../../app/data-page-base';
   selector: 'app-groups',
   standalone: false,
   templateUrl: './groups.component.html',
-  styleUrls: ['../../app/data-shared.css', '../iam-shared.css'],
+  styleUrl: '../admin-shared.css',
 })
 export class GroupsComponent extends DataPageBase implements OnInit {
   loading = true;
@@ -34,10 +36,19 @@ export class GroupsComponent extends DataPageBase implements OnInit {
   saving = false;
   busy = new Set<string>();
 
+  query = '';
+  /** Save was pressed: what the name still needs is said under it. */
+  tried = false;
+  /** The editor, on the dialog shell. */
+  @ViewChild('editor') private editor!: TemplateRef<unknown>;
+  private dialogRef: MatDialogRef<unknown> | null = null;
+
   constructor(
     private groupService: GroupService,
     private roleService: RoleService,
     public auth: AuthService,
+    private dialog: MatDialog,
+    private confirm: ConfirmService,
   ) {
     super();
   }
@@ -101,6 +112,7 @@ export class GroupsComponent extends DataPageBase implements OnInit {
     this.selected = new Set<string>();
     this.editingMembers = [];
     this.error = '';
+    this.openEditor();
   }
 
   async startEdit(group: Group): Promise<void> {
@@ -108,6 +120,7 @@ export class GroupsComponent extends DataPageBase implements OnInit {
     this.formName = group.group_name;
     this.selected = new Set(group.assigned_roles);
     this.error = '';
+    this.openEditor();
 
     // Members ride on get(); shown so an admin can see who a change affects.
     const detailed = await this.groupService.get(group.group_id);
@@ -115,9 +128,7 @@ export class GroupsComponent extends DataPageBase implements OnInit {
   }
 
   cancelEdit(): void {
-    this.editingId = null;
-    this.editingMembers = [];
-    this.error = '';
+    if (!this.saving) this.dialogRef?.close();
   }
 
   get isCreating(): boolean {
@@ -138,6 +149,32 @@ export class GroupsComponent extends DataPageBase implements OnInit {
       : this.selected.add(roleId);
   }
 
+  /** Opens the editor on the dialog shell; closing it, however it is
+   *  closed, ends the edit. */
+  private openEditor(): void {
+    if (this.dialogRef) return;
+    this.tried = false;
+    this.dialogRef = this.dialog.open(this.editor, { width: '560px', maxWidth: '100vw' });
+    this.dialogRef.afterClosed().subscribe(() => {
+      this.dialogRef = null;
+      this.editingId = null;
+      this.error = '';
+      this.editingMembers = [];
+    });
+  }
+
+  /** The editor is open: what goes wrong is said in it, not behind it. */
+  get editing(): boolean {
+    return this.dialogRef !== null;
+  }
+
+  /** The groups the search leaves. */
+  get shown(): Group[] {
+    const query = this.query.trim().toLowerCase();
+    return this.groups.filter((group) => !query
+      || `${group.group_name} ${this.summarise(group)}`.toLowerCase().includes(query));
+  }
+
   // ── Saving ──────────────────────────────────────────────────────────
 
   private failGrant(result: { error?: string; ungrantable?: string[] }): void {
@@ -153,10 +190,10 @@ export class GroupsComponent extends DataPageBase implements OnInit {
   }
 
   async save(): Promise<void> {
+    this.tried = true;
+    this.error = '';
     const name = this.formName.trim();
-    if (!name) {
-      return this.fail('Give the group a name.');
-    }
+    if (!name) return;
 
     const roleIds = [...this.selected];
 
@@ -190,8 +227,7 @@ export class GroupsComponent extends DataPageBase implements OnInit {
 
       await this.reload();
       this.flash(this.isCreating ? `Group “${name}” created.` : 'Group saved.');
-      this.editingId = null;
-
+      this.dialogRef?.close();
       // Their own permissions may have just changed.
       await this.auth.refresh();
     } finally {
@@ -204,14 +240,13 @@ export class GroupsComponent extends DataPageBase implements OnInit {
   }
 
   async remove(group: Group): Promise<void> {
-    if (
-      !confirm(
-        `Delete the group “${group.group_name}”?\n\nEveryone in it loses ` +
-          `whatever access it granted.`,
-      )
-    ) {
-      return;
-    }
+    const sure = await this.confirm.ask({
+      title: `Delete the group “${group.group_name}”?`,
+      body: 'Everyone in it loses whatever access it granted.',
+      confirm: 'Delete',
+      danger: true,
+    });
+    if (!sure) return;
 
     this.busy.add(group.group_id);
     try {

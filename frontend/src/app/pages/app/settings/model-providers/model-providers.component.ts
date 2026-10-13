@@ -1,6 +1,9 @@
-import { Component, EventEmitter, Input, Output } from '@angular/core';
+import { Component, EventEmitter, Input, Output, TemplateRef, ViewChild } from '@angular/core';
+import { MatDialog, MatDialogRef } from '@angular/material/dialog';
 
+import { Choice } from 'src/app/components/ui/radio-keys';
 import { AuthService } from 'src/app/services/auth.service';
+import { ConfirmService } from 'src/app/services/confirm.service';
 import { Profile } from 'src/app/services/profile.service';
 import {
   LlmCheck, LlmConnection, LlmConnectionDraft, LlmModel, LlmProvider,
@@ -10,9 +13,17 @@ import { DataPageBase } from '../../data-page-base';
 
 type ShareMode = 'private' | 'groups' | 'users' | 'org';
 
+/** What is still missing from the form, and the field it belongs to. */
+interface Missing {
+  /** 'endpoint', 'key', 'model', 'name', 'sharing', 'provider', or
+   *  'blank:<its name>'. */
+  field: string;
+  message: string;
+}
+
 /**
- * Model providers: the providers this organization has a key for. A tab
- * of the Settings page.
+ * Settings › Model providers: the providers this organization has a
+ * key for.
  *
  * A connection is a provider and its key, pasted once; which of the
  * provider's models a chat thinks with is chosen in the chat. So adding
@@ -29,11 +40,7 @@ type ShareMode = 'private' | 'groups' | 'users' | 'org';
   selector: 'app-model-providers',
   standalone: false,
   templateUrl: './model-providers.component.html',
-  styleUrls: [
-    '../../data-shared.css',
-    '../settings.component.css',
-    './model-providers.component.css',
-  ],
+  styleUrls: ['./model-providers.component.css'],
 })
 export class ModelProvidersComponent extends DataPageBase {
   /** The connections this person can see, and the catalog of
@@ -47,10 +54,25 @@ export class ModelProvidersComponent extends DataPageBase {
 
   query = '';
   busyId = '';
-  deleteTarget: LlmConnection | null = null;
 
-  constructor(private service: SettingsLlmService, public auth: AuthService) {
+  /** The add-and-edit form, which is shown on the dialog shell. */
+  @ViewChild('editor')
+  private editor?: TemplateRef<unknown>;
+  private editorRef?: MatDialogRef<unknown>;
+
+  constructor(
+    private service: SettingsLlmService,
+    public auth: AuthService,
+    private dialog?: MatDialog,
+    private confirm?: ConfirmService,
+  ) {
     super();
+  }
+
+  /** The counts under the list. */
+  get foot(): string {
+    const count = this.connections.length;
+    return `${count} provider${count === 1 ? '' : 's'}`;
   }
 
   get canCreate(): boolean { return this.auth.can('settings:llm:create'); }
@@ -112,7 +134,7 @@ export class ModelProvidersComponent extends DataPageBase {
   /** How a row says who can use it. */
   shareLabel(connection: LlmConnection): string {
     const groups = connection.owner?.groups || [];
-    if (groups.includes('everyone')) return 'Organization-wide';
+    if (groups.includes('everyone')) return 'Everyone';
     if (groups.length) {
       return `${groups.length} group${groups.length === 1 ? '' : 's'}`;
     }
@@ -121,7 +143,7 @@ export class ModelProvidersComponent extends DataPageBase {
     if (others.length) {
       return `${others.length} ${others.length === 1 ? 'person' : 'people'}`;
     }
-    return 'Private';
+    return 'Only me';
   }
 
   // ── Adding: first which provider ────────────────────────────────────
@@ -171,6 +193,19 @@ export class ModelProvidersComponent extends DataPageBase {
     this.selectedGroups.clear();
     this.selectedUsers.clear();
     this.error = '';
+    this.openEditor();
+  }
+
+  /** Shows the form on the dialog shell, which gives it Escape, the
+   *  focus and the way back to what opened it. Closing the dialog by
+   *  any of those is closing the editor. */
+  private openEditor(): void {
+    if (!this.dialog || !this.editor || this.editorRef) return;
+    this.editorRef = this.dialog.open(this.editor, { width: '640px' });
+    this.editorRef.afterClosed().subscribe(() => {
+      this.editorRef = undefined;
+      this.editingId = null;
+    });
   }
 
   /** Back to the list of providers, from the form of one. */
@@ -194,6 +229,26 @@ export class ModelProvidersComponent extends DataPageBase {
   /** The starting model is being typed rather than picked. */
   typingModel = false;
   readonly other = '__other__';
+  /** The key is shown as it is typed. */
+  keyShown = false;
+  /** Save was pressed with something missing: from then on the form
+   *  says what, under the field it belongs to. */
+  private tried = false;
+
+  /** The models as the select's choices, with the way to one not
+   *  listed last. Rebuilt only when the models are. */
+  get modelChoices(): Choice[] {
+    if (this.choicesOf !== this.models) {
+      this.choicesOf = this.models;
+      this.choices = [
+        ...this.models.map((model) => ({ value: model.id, name: model.name })),
+        { value: this.other, name: 'Another model…' },
+      ];
+    }
+    return this.choices;
+  }
+  private choicesOf: LlmModel[] | null = null;
+  private choices: Choice[] = [];
 
   /** What the provider said when the key was last tried and refused. */
   refused: LlmCheck | null = null;
@@ -363,6 +418,8 @@ export class ModelProvidersComponent extends DataPageBase {
     this.nameIsAuto = creating;
     this.showMore = false;
     this.refused = null;
+    this.keyShown = false;
+    this.tried = false;
   }
 
   get chosen(): LlmProvider | null {
@@ -592,6 +649,7 @@ export class ModelProvidersComponent extends DataPageBase {
     this.selectedGroups = new Set(groups.filter((g) => g !== 'everyone'));
     this.selectedUsers = new Set(others);
     this.error = '';
+    this.openEditor();
   }
 
   get myGroups(): { group_id: string; group_name: string }[] {
@@ -622,50 +680,72 @@ export class ModelProvidersComponent extends DataPageBase {
   }
 
   closeEditor(): void {
-    if (!this.saving) this.editingId = null;
+    if (this.saving) return;
+    this.editingId = null;
+    this.editorRef?.close();
   }
 
-  /** What is still missing, said before the request rather than after.
-   *  The key is only demanded for a NEW connection — on an existing one,
-   *  blank keeps the stored key. */
-  get blocker(): string {
-    if (!this.draft.provider) return 'Choose a provider.';
+  /** What is still missing, said before the request rather than after,
+   *  with the field it belongs to. The key is only demanded for a NEW
+   *  connection — on an existing one, blank keeps the stored key. */
+  private get missing(): Missing | null {
+    const at = (field: string, message: string): Missing => ({ field, message });
+    if (!this.draft.provider) return at('provider', 'Choose a provider.');
     if (this.byDeployment) {
-      if (!this.draft.endpoint.trim()) return 'Paste your Azure endpoint.';
-      if (this.isCreating && !this.draft.api_key.trim()) return 'Paste the API key.';
-      if (!this.draft.model.trim()) return 'Name your deployment.';
+      if (!this.draft.endpoint.trim()) return at('endpoint', 'Paste your Azure endpoint.');
+      if (this.isCreating && !this.draft.api_key.trim()) return at('key', 'Paste the API key.');
+      if (!this.draft.model.trim()) return at('model', 'Name your deployment.');
     }
-    const missing = this.blanks.find((blank) => !(this.blankValues[blank] ?? '').trim());
-    if (missing) return `Enter your ${this.blankLabel(missing)}.`;
-    if (!this.draft.endpoint.trim()) return 'Enter the address the server answers at.';
+    const blank = this.blanks.find((name) => !(this.blankValues[name] ?? '').trim());
+    if (blank) return at(`blank:${blank}`, `Enter your ${this.blankLabel(blank)}.`);
+    if (!this.draft.endpoint.trim()) return at('endpoint', 'Enter the address the server answers at.');
     if (/[<>]/.test(this.draft.endpoint)) {
-      return 'Fill in the address: replace each <...> with your own account’s value.';
+      return at('endpoint', 'Fill in the address: replace each <...> with your own account’s value.');
     }
     // A server of the person's own may ask for no key at all.
     if (this.isCreating && !this.endpointIsYours && !this.draft.api_key.trim()) {
-      return 'Paste the API key.';
+      return at('key', 'Paste the API key.');
     }
     if (!this.draft.model.trim()) {
-      return this.models.length ? 'Choose a model.'
-        : 'Name the model, as the server calls it.';
+      return at('model', this.models.length ? 'Choose a model.'
+        : 'Name the model, as the server calls it.');
     }
-    if (!this.draft.name.trim()) return 'Give it a name.';
+    if (!this.draft.name.trim()) return at('name', 'Give it a name.');
     if (this.shareMode === 'groups' && !this.selectedGroups.size) {
-      return 'Pick at least one group, or share it another way.';
+      return at('sharing', 'Pick at least one group, or share it another way.');
     }
     if (this.shareMode === 'users' && !this.selectedUsers.size) {
-      return 'Pick at least one person, or share it another way.';
+      return at('sharing', 'Pick at least one person, or share it another way.');
     }
-    return '';
+    return null;
+  }
+
+  /** What stands in the way of saving, or ''. */
+  get blocker(): string {
+    return this.missing?.message ?? '';
+  }
+
+  /** What is missing from this field, once Save has been pressed. */
+  errorFor(field: string): string {
+    const missing = this.tried ? this.missing : null;
+    return missing?.field === field ? missing.message : '';
   }
 
   /** Save, asking the provider first whether the key works. A key it
    *  refuses, or an address nobody answers at, is not saved: the reason
    *  is shown, with the way to save all the same (`check` false). */
   async save(check = true): Promise<void> {
-    if (this.blocker || this.saving) return;
+    if (this.saving) return;
+    const missing = this.missing;
+    if (missing) {
+      // Said under its field, which may be behind "More options".
+      this.tried = true;
+      if (['name', 'sharing', 'endpoint'].includes(missing.field)) this.showMore = true;
+      return;
+    }
     this.saving = true;
     this.refused = null;
+    if (this.editorRef) this.editorRef.disableClose = true;
     try {
       const draft: LlmConnectionDraft = {
         name: this.draft.name.trim(),
@@ -690,6 +770,7 @@ export class ModelProvidersComponent extends DataPageBase {
       }
 
       this.editingId = null;
+      this.editorRef?.close();
       this.changed.emit();
       const name = result.connection?.name ?? draft.name;
       if (result.check?.outcome === 'works') {
@@ -701,6 +782,7 @@ export class ModelProvidersComponent extends DataPageBase {
       }
     } finally {
       this.saving = false;
+      if (this.editorRef) this.editorRef.disableClose = false;
     }
   }
 
@@ -721,13 +803,20 @@ export class ModelProvidersComponent extends DataPageBase {
 
   // ── Removing ────────────────────────────────────────────────────────
 
-  requestDelete(connection: LlmConnection): void {
-    this.deleteTarget = connection;
-    this.error = '';
-  }
-
-  closeDelete(): void {
-    if (!this.busyId) this.deleteTarget = null;
+  /** Asks first, saying what goes with it. */
+  async askRemove(connection: LlmConnection): Promise<void> {
+    const takeover = !connection.is_default ? ''
+      : this.connections.length > 1
+        ? ' It is the default: the most recently changed of the others takes over.'
+        : ' It is the only one, so new chats cannot start until another is added.';
+    const sure = await this.confirm?.ask({
+      title: `Remove “${connection.name}”?`,
+      body: `The key goes with it. Chats that think with one of its models stop until they pick another.${takeover}`,
+      confirm: 'Remove',
+      cancel: 'Keep it',
+      danger: true,
+    });
+    if (sure) await this.remove(connection);
   }
 
   async remove(connection: LlmConnection): Promise<void> {
@@ -735,7 +824,6 @@ export class ModelProvidersComponent extends DataPageBase {
     try {
       const result = await this.service.remove(connection.resource_ref);
       if (result.error) return this.fail(result.error);
-      this.deleteTarget = null;
       this.changed.emit();
       this.flash(`"${connection.name}" removed.`);
     } finally {
