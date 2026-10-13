@@ -25,15 +25,14 @@ type ShareMode = 'private' | 'groups' | 'users' | 'org';
  * The token is typed here once, stored encrypted on the source, and
  * never shown back; a repository nobody needs a token for is the normal
  * case and the default.
+ *
+ * It is the inside of a dialog: the page opens the shell around it.
  */
 @Component({
   selector: 'app-source-form',
   standalone: false,
   templateUrl: './source-form.component.html',
-  styleUrls: [
-    '../../data-shared.css',
-    './marketplace.component.css',
-  ],
+  styleUrl: './source-form.component.css',
 })
 export class SourceFormComponent implements OnChanges {
   /** The source being edited, or null when adding a new one. */
@@ -45,6 +44,8 @@ export class SourceFormComponent implements OnChanges {
    *  a platform that shipped pointing at its vendor would be making that
    *  choice for every deployment. */
   @Input() suggestedUrl = '';
+  /** Why the last save or read was refused, said under the URL. */
+  @Input() error = '';
 
   @Output() save = new EventEmitter<SourceDraft>();
   @Output() cancel = new EventEmitter<void>();
@@ -56,13 +57,15 @@ export class SourceFormComponent implements OnChanges {
   shareMode: ShareMode = 'private';
   selectedGroups = new Set<string>();
   selectedUsers = new Set<string>();
-  guideOpen = false;
+  /** Save was pressed: what is missing is said under its field. */
+  tried = false;
 
   ngOnChanges(changes: SimpleChanges): void {
     // Reset ONLY when the source being edited changes. The group/peer
     // lists arrive async as inputs too, and resetting on those wiped
     // whatever the person had just ticked.
     if (!changes['source']) return;
+    this.tried = false;
     this.draft = {
       name: this.source?.name || '',
       url: this.source?.url || '',
@@ -131,6 +134,30 @@ export class SourceFormComponent implements OnChanges {
     return this.isPrivate && !this.token.trim() && !this.hasStoredToken;
   }
 
+  /** What is wrong with the URL as typed: a repository is read over
+   *  https or ssh, and anything else is a typing mistake caught here
+   *  rather than after a failed read. */
+  get urlProblem(): string {
+    const url = this.draft.url.trim();
+    if (!url) return 'Enter the repository\'s URL.';
+    return /^(https?:\/\/|ssh:\/\/|git@)\S+$/.test(url)
+      ? '' : 'A repository URL starts with https:// or git@ and has no spaces.';
+  }
+
+  /** What stands under the URL: what is wrong with it once Save was
+   *  pressed, or what the server said about the last attempt. */
+  get urlMessage(): string {
+    return (this.tried && this.urlProblem) || this.error;
+  }
+
+  /** Leaving the URL with no name typed: the repository's own name is
+   *  the likely one, so it is filled in to be read and changed. */
+  nameFromUrl(): void {
+    if (this.draft.name.trim() || this.urlProblem) return;
+    const last = this.draft.url.trim().replace(/\/+$/, '').split(/[\/:]/).pop() || '';
+    this.draft.name = last.replace(/\.git$/, '');
+  }
+
   useSuggested(): void {
     if (!this.suggestedUrl) return;
     this.draft = {
@@ -144,8 +171,8 @@ export class SourceFormComponent implements OnChanges {
   }
 
   submit(): void {
-    if (!this.draft.url.trim() || this.busy || this.missingToken
-        || this.shareBlocker) return;
+    this.tried = true;
+    if (this.urlProblem || this.busy || this.missingToken || this.shareBlocker) return;
     this.save.emit({
       name: this.draft.name.trim(),
       url: this.draft.url.trim(),

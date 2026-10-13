@@ -1,10 +1,13 @@
-import { Component, OnDestroy, OnInit } from '@angular/core';
+import { Component, OnDestroy, OnInit, TemplateRef, ViewChild } from '@angular/core';
+import { MatDialog, MatDialogRef } from '@angular/material/dialog';
 import { ActivatedRoute, NavigationEnd, Router } from '@angular/router';
 import { Subscription } from 'rxjs';
 import { filter } from 'rxjs/operators';
+import { Choice } from 'src/app/components/ui/radio-keys';
 import {
   AgentSource, AgentsService, CatalogEntry,
 } from 'src/app/services/agents.service';
+import { ConfirmService } from 'src/app/services/confirm.service';
 import { DataPageBase } from '../../data-page-base';
 import { CardChip } from '../agent-card.component';
 import { agentFacts, networkOf } from '../agent-shared';
@@ -13,13 +16,16 @@ import { AuthService } from 'src/app/services/auth.service';
 import { Profile, ProfileService } from 'src/app/services/profile.service';
 
 type EntryStatus = 'broken' | 'installed' | 'update_available' | 'available';
+/** Which of a source's agents are shown, and in what order. */
+type EntryFilter = 'all' | 'new' | 'installed' | 'updates';
+type EntrySort = 'listed' | 'name';
 
 /**
  * The marketplace: where agents come FROM.
  *
- * Catalogs are listed first, then their agents, then one agent's
- * install details. Each level has its own search and pagination so the
- * page stays useful when organizations have hundreds of catalogs.
+ * The sources are a row of chips, and the chosen one's catalog is the
+ * page: with nothing chosen in the address, the first source is. One
+ * agent's review takes the page's place.
  *
  * Nothing on this page is running. Everything here is a proposal until
  * an agent is approved by name, at which point it belongs to the
@@ -28,7 +34,8 @@ type EntryStatus = 'broken' | 'installed' | 'update_available' | 'available';
  *
  * Each view has an address under /agents/marketplace: a source's
  * catalog is /<source>, the review of one of its agents
- * /<source>/<agent>, the source form /sources/new and /<source>/edit.
+ * /<source>/<agent>, the source form (a dialog over the page)
+ * /sources/new and /<source>/edit.
  * They are views of this one page (routes/app/agents.routes.ts): what
  * a person presses changes the view and the address together, and the
  * page reads the address after each navigation, so Back and a pasted
@@ -38,12 +45,7 @@ type EntryStatus = 'broken' | 'installed' | 'update_available' | 'available';
   selector: 'app-agent-marketplace',
   standalone: false,
   templateUrl: './marketplace.component.html',
-  styleUrls: [
-    '../../data-shared.css',
-    '../../../admin/iam-shared.css',
-    '../agent-shared.css',
-    './marketplace.component.css',
-  ],
+  styleUrls: ['../agent-shared.css', './marketplace.component.css'],
 })
 export class MarketplaceComponent extends DataPageBase implements OnInit, OnDestroy {
   private address = new Subscription();
@@ -54,18 +56,27 @@ export class MarketplaceComponent extends DataPageBase implements OnInit, OnDest
   sources: AgentSource[] = [];
   referenceCatalogUrl = '';
 
-  /** Which source is open. */
+  /** Which source the address names; none is the first one. */
   selectedId = '';
-  sourceQuery = '';
-  sourcePage = 1;
-  readonly sourcePageSize = 12;
   query = '';
+  filter: EntryFilter = 'all';
+  sort: EntrySort = 'listed';
   page = 1;
   readonly pageSize = 12;
 
+  readonly sorts: Choice<EntrySort>[] = [
+    { value: 'listed', name: 'As listed' },
+    { value: 'name', name: 'By name' },
+  ];
+
+  /** The source form, on the dialog shell. */
+  @ViewChild('sourceDialog') private sourceDialog?: TemplateRef<unknown>;
+  private formRef: MatDialogRef<unknown> | null = null;
   formOpen = false;
   editing: AgentSource | null = null;
   saving = false;
+  /** Why the last save was refused or its read failed, for the form. */
+  formError = '';
 
   review: { source: AgentSource; entry: CatalogEntry } | null = null;
   /** Entries ticked for a bulk install, keyed per source so one card's
@@ -75,20 +86,22 @@ export class MarketplaceComponent extends DataPageBase implements OnInit, OnDest
   reviewLoading = false;
   private catalogScrollY = 0;
 
-  removing: AgentSource | null = null;
-
   constructor(
     private service: AgentsService,
     private profiles: ProfileService,
     public auth: AuthService,
     private route?: ActivatedRoute,
     private router?: Router,
+    private dialog?: MatDialog,
+    private confirm?: ConfirmService,
   ) {
     super();
   }
 
   ngOnDestroy(): void {
     this.address.unsubscribe();
+    this.formOpen = false;
+    this.formRef?.close();
   }
 
   /** Say the view in the address: the segments after /agents/marketplace. */
@@ -116,7 +129,7 @@ export class MarketplaceComponent extends DataPageBase implements OnInit, OnDest
     if (this.formOpen) this.hideForm();
     if (!source) {
       if (this.review) this.hideReview();
-      if (this.selectedId) this.showSources();
+      if (this.selectedId) this.showSource(null);
       if (named) {
         this.fail('That source is not one of this organization\'s any more.');
         this.go();
@@ -165,7 +178,7 @@ export class MarketplaceComponent extends DataPageBase implements OnInit, OnDest
       const entry = this.entriesFor(source)
         .find((candidate) => candidate.agent_ref === agentRef);
       if (entry) {
-        this.select(source);
+        this.showSource(source);
         await this.openReview(source, entry);
         return;
       }
@@ -191,72 +204,70 @@ export class MarketplaceComponent extends DataPageBase implements OnInit, OnDest
 
   // ── The list ────────────────────────────────────────────────────────
 
-  /** Every catalog this organization saved — there is no other kind. */
-  get visible(): AgentSource[] {
-    return this.sources;
-  }
-
+  /** The source whose catalog is shown: the one the address names, or
+   *  the first. Every source is this organization's own; there is no
+   *  other kind. */
   get current(): AgentSource | null {
-    return this.visible.find((source) => source.source_id === this.selectedId) || null;
+    return this.sources.find((source) => source.source_id === this.selectedId)
+      || this.sources[0] || null;
   }
 
-  select(source: AgentSource): void {
-    this.go(source.source_id);
-    this.showSource(source);
-  }
-
-  backToSources(): void {
-    this.go();
-    this.showSources();
-  }
-
-  private showSource(source: AgentSource): void {
-    this.selectedId = source.source_id;
+  private showSource(source: AgentSource | null): void {
+    this.selectedId = source?.source_id || '';
     this.query = '';
+    this.filter = 'all';
     this.page = 1;
   }
 
-  private showSources(): void {
-    this.selectedId = '';
-    this.query = '';
-    this.page = 1;
+  private matchesFilter(entry: CatalogEntry, filter: EntryFilter): boolean {
+    const status = this.entryStatus(entry);
+    switch (filter) {
+      case 'new': return status === 'available';
+      case 'installed': return status === 'installed' || status === 'update_available';
+      case 'updates': return status === 'update_available';
+      default: return true;
+    }
   }
 
-  get filteredSources(): AgentSource[] {
-    const query = this.sourceQuery.trim().toLowerCase();
-    if (!query) return this.visible;
-    return this.visible.filter((source) => `${source.name} ${source.url} ${source.ref || ''}`
-      .toLowerCase().includes(query));
+  /** The filter's choices with how many agents each holds, made again
+   *  only when a count changes: a new list on every check would redraw
+   *  the control under the pointer. */
+  get filters(): Choice<EntryFilter>[] {
+    const entries = this.current ? this.entriesFor(this.current) : [];
+    const counts = (['all', 'new', 'installed', 'updates'] as EntryFilter[])
+      .map((filter) => entries.filter((entry) => this.matchesFilter(entry, filter)).length);
+    if (counts.join() !== this.filterCounts.join()) {
+      this.filterCounts = counts;
+      this.filterChoices = [
+        { value: 'all', name: `All ${counts[0]}` },
+        { value: 'new', name: `Not installed ${counts[1]}` },
+        { value: 'installed', name: `Installed ${counts[2]}` },
+        { value: 'updates', name: `Updates ${counts[3]}` },
+      ];
+    }
+    return this.filterChoices;
   }
+  private filterCounts: number[] = [];
+  private filterChoices: Choice<EntryFilter>[] = [];
 
-  get pagedSources(): AgentSource[] {
-    const start = (this.sourcePage - 1) * this.sourcePageSize;
-    return this.filteredSources.slice(start, start + this.sourcePageSize);
-  }
-
-  get sourcePageCount(): number {
-    return Math.max(1, Math.ceil(this.filteredSources.length / this.sourcePageSize));
-  }
-
-  searchSources(value: string): void {
-    this.sourceQuery = value;
-    this.sourcePage = 1;
-  }
-
-  /** The open source's agents, narrowed by the filter box. */
+  /** The chosen source's agents: the ones the filter and the search
+   *  leave, in the chosen order. */
   get shownEntries(): CatalogEntry[] {
     const source = this.current;
     if (!source) return [];
     const query = this.query.trim().toLowerCase();
-    const entries = this.entriesFor(source);
-    if (!query) return entries;
     // The parentheses are the point: without them `.toLowerCase()` binds
     // to the description alone and the whole expression is a string, so
     // every entry passed and the box filtered nothing.
-    return entries.filter((entry) => (
-      `${entry.id} ${this.entryName(entry)} `
-      + `${entry.manifest?.agent?.description || ''}`
-    ).toLowerCase().includes(query));
+    const entries = this.entriesFor(source).filter((entry) =>
+      this.matchesFilter(entry, this.filter) && (!query || (
+        `${entry.id} ${this.entryName(entry)} `
+        + `${entry.manifest?.agent?.description || ''}`
+      ).toLowerCase().includes(query)));
+    if (this.sort === 'name') {
+      entries.sort((a, b) => this.entryName(a).localeCompare(this.entryName(b)));
+    }
+    return entries;
   }
 
   get pagedEntries(): CatalogEntry[] {
@@ -264,13 +275,27 @@ export class MarketplaceComponent extends DataPageBase implements OnInit, OnDest
     return this.shownEntries.slice(start, start + this.pageSize);
   }
 
-  get pageCount(): number {
-    return Math.max(1, Math.ceil(this.shownEntries.length / this.pageSize));
-  }
-
   search(value: string): void {
     this.query = value;
     this.page = 1;
+  }
+
+  setFilter(filter: EntryFilter): void {
+    this.filter = filter;
+    this.page = 1;
+  }
+
+  setSort(sort: EntrySort): void {
+    this.sort = sort;
+    this.page = 1;
+  }
+
+  /** Under the catalog: how many of the source's agents are shown. */
+  foot(source: AgentSource): string {
+    const all = this.entriesFor(source).length;
+    const shown = this.shownEntries.length;
+    if (!all) return '';
+    return shown === all ? `${all} ${all === 1 ? 'agent' : 'agents'}` : `${shown} of ${all} agents`;
   }
 
   entryDescription(entry: CatalogEntry): string {
@@ -366,15 +391,6 @@ export class MarketplaceComponent extends DataPageBase implements OnInit, OnDest
     return (source.installed_agents || []).length;
   }
 
-  /** Why this source cannot be removed yet, in the words the backend
-   *  will use if the button is pressed anyway. */
-  removalBlocker(source: AgentSource): string {
-    const installed = source.installed_agents || [];
-    if (!installed.length) return '';
-    return 'Uninstall its agents first: '
-      + installed.map((agent) => agent.name).join(', ');
-  }
-
   // ── Saving a source ─────────────────────────────────────────────────
 
   startCreate(): void {
@@ -388,8 +404,9 @@ export class MarketplaceComponent extends DataPageBase implements OnInit, OnDest
   }
 
   /** Back to where the form was opened from: the source being changed,
-   *  the one that was open, or the list. */
+   *  the one that was open, or the first. */
   closeForm(): void {
+    if (this.saving) return;
     const back = this.editing?.source_id || this.selectedId;
     this.hideForm();
     this.go(...(back ? [back] : []));
@@ -397,13 +414,23 @@ export class MarketplaceComponent extends DataPageBase implements OnInit, OnDest
 
   private showForm(editing: AgentSource | null): void {
     this.editing = editing;
-    this.formOpen = true;
+    this.formError = '';
     this.error = '';
+    if (this.formOpen) return;
+    this.formOpen = true;
+    if (!this.dialog || !this.sourceDialog) return;
+    this.formRef = this.dialog.open(this.sourceDialog, { width: '560px', maxWidth: '100vw' });
+    // Escape and a click outside leave the form like Cancel does.
+    this.formRef.afterClosed().subscribe(() => {
+      this.formRef = null;
+      if (this.formOpen) this.closeForm();
+    });
   }
 
   private hideForm(): void {
     this.formOpen = false;
     this.editing = null;
+    this.formRef?.close();
   }
 
   profile: Profile | null = null;
@@ -429,25 +456,43 @@ export class MarketplaceComponent extends DataPageBase implements OnInit, OnDest
     return 'Private';
   }
 
+  /** Saves the source and reads its catalog. A source the server
+   *  refused stays in the form with the reason; one that was saved but
+   *  could not be read stays there too, as the saved source it now is,
+   *  so the URL or the token can be put right. */
   async saveSource(draft: SourceDraft): Promise<void> {
     this.saving = true;
+    this.formError = '';
+    if (this.formRef) this.formRef.disableClose = true;
     try {
       const result = this.editing
         ? await this.service.updateSource(this.editing.source_id, draft.name,
             draft.url, draft.ref, draft.credential, draft.owner)
         : await this.service.createSource(draft.name, draft.url, draft.ref,
             draft.credential ?? null, draft.owner);
-      if (result.error) return this.fail(result.error);
-      this.hideForm();
+      if (result.error) {
+        this.formError = result.error;
+        return;
+      }
       await this.load();
-      // A source just saved is the one to look at: its catalog opens.
       const saved = this.sources.find(
         (source) => source.source_id === result.data?.source?.source_id);
-      if (saved) this.select(saved);
-      else this.go(...(this.selectedId ? [this.selectedId] : []));
-      this.sayHowTheReadWent(result.data?.source, 'Source saved and its catalog read.');
+      if (saved?.status === 'error') {
+        this.showSource(saved);
+        this.editing = saved;
+        this.formError = 'Saved, but its catalog could not be read'
+          + (saved.last_error ? `: ${saved.last_error}` : '.');
+        this.go(saved.source_id, 'edit');
+        return;
+      }
+      // A source just saved is the one to look at: its catalog opens.
+      this.hideForm();
+      if (saved) this.showSource(saved);
+      this.go(...(saved ? [saved.source_id] : this.selectedId ? [this.selectedId] : []));
+      this.flash('Source saved and its catalog read.');
     } finally {
       this.saving = false;
+      if (this.formRef) this.formRef.disableClose = false;
     }
   }
 
@@ -504,19 +549,15 @@ export class MarketplaceComponent extends DataPageBase implements OnInit, OnDest
       .filter((entry) => this.isSelected(source, entry)).length;
   }
 
-  allSelected(source: AgentSource): boolean {
-    const pool = this.selectableEntries(source);
-    return pool.length > 0
-      && pool.every((entry) => this.isSelected(source, entry));
+  selectAll(source: AgentSource): void {
+    for (const entry of this.selectableEntries(source)) {
+      this.selected.add(this.selectionKey(source, entry));
+    }
   }
 
-  toggleAll(source: AgentSource): void {
-    const pool = this.selectableEntries(source);
-    const everything = this.allSelected(source);
-    for (const entry of pool) {
-      const key = this.selectionKey(source, entry);
-      if (everything) this.selected.delete(key);
-      else this.selected.add(key);
+  clearSelection(source: AgentSource): void {
+    for (const entry of this.entriesFor(source)) {
+      this.selected.delete(this.selectionKey(source, entry));
     }
   }
 
@@ -617,13 +658,24 @@ export class MarketplaceComponent extends DataPageBase implements OnInit, OnDest
 
   // ── Removing ────────────────────────────────────────────────────────
 
-  requestRemove(source: AgentSource): void {
-    this.removing = source;
-    this.error = '';
-  }
-
-  closeRemove(): void {
-    if (!this.busyId) this.removing = null;
+  /** Removing a source is asked, in the words of what goes with it:
+   *  with agents installed from it, they are uninstalled first. */
+  async askRemove(source: AgentSource): Promise<void> {
+    const installed = source.installed_agents || [];
+    const sure = await this.confirm?.ask({
+      title: `Remove ${source.name}?`,
+      body: installed.length
+        ? `Installed from it, and uninstalled with it: `
+          + `${installed.map((agent) => `${agent.name} ${agent.version}`).join(', ')}. `
+          + 'Uninstalling withdraws their approval, their grants and their credentials\' grants. '
+          + 'Records they kept stay: they are the people\'s.'
+        : 'The source leaves this page. No agent is installed from it, so nothing else '
+          + 'changes; add the repository again to list it again.',
+      confirm: installed.length ? `Uninstall ${installed.length} and remove` : 'Remove',
+      danger: true,
+    });
+    if (!sure) return;
+    await (installed.length ? this.purge(source) : this.remove(source));
   }
 
   async remove(source: AgentSource): Promise<void> {
@@ -631,8 +683,8 @@ export class MarketplaceComponent extends DataPageBase implements OnInit, OnDest
     try {
       const result = await this.service.deleteSource(source.source_id);
       if (result.error) return this.fail(result.error);
-      this.removing = null;
       await this.load();
+      this.go();
       this.flash(`Source "${source.name}" removed.`);
     } finally {
       this.busyId = '';
@@ -678,8 +730,8 @@ export class MarketplaceComponent extends DataPageBase implements OnInit, OnDest
       const result = await this.service.purgeSource(source.source_id);
       if (result.error) return this.fail(result.error);
       const names: string[] = result.data?.uninstalled || [];
-      this.removing = null;
       await this.load();
+      this.go();
       this.flash(names.length
         ? `Uninstalled ${names.join(', ')} and removed "${source.name}".`
         : `Source "${source.name}" removed.`);

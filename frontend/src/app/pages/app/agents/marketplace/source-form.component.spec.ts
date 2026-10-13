@@ -96,6 +96,32 @@ describe('SourceFormComponent', () => {
     }]);
   });
 
+  it('says what is wrong with a URL only once Save was pressed', () => {
+    const component = create();
+    component.draft.url = 'github.com/org/agents';
+    expect(component.urlMessage).toBe('');
+
+    component.submit();
+    expect(component.urlMessage).toContain('https://');
+
+    component.draft.url = 'git@github.com:org/agents.git';
+    expect(component.urlMessage).toBe('');
+    // What the server said about the last attempt stands there too.
+    component.error = 'The repository could not be reached.';
+    expect(component.urlMessage).toBe('The repository could not be reached.');
+  });
+
+  it('takes the name from the URL when none was typed', () => {
+    const component = create();
+    component.draft.url = 'https://github.com/org/team-agents.git';
+    component.nameFromUrl();
+    expect(component.draft.name).toBe('team-agents');
+
+    component.draft.url = 'git@github.com:org/other.git';
+    component.nameFromUrl();
+    expect(component.draft.name).toBe('team-agents');
+  });
+
   it('stays quiet while a save is already in flight', () => {
     const component = create();
     const emitted: any[] = [];

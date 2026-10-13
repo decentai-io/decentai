@@ -1,95 +1,96 @@
-<div class="source-form">
-  <div class="form-grid">
-    <label class="field span-2">
-      <span class="field-label">Repository URL</span>
-      <input class="txt" [(ngModel)]="draft.url" name="source-url"
-             placeholder="https://github.com/org/agents.git" />
-    </label>
+<h2 mat-dialog-title>{{ editing ? "Edit " + source?.name : "Add a source" }}</h2>
+<form (ngSubmit)="submit()">
+  <mat-dialog-content>
+    <div class="form">
+      <p class="dialog-note">
+        A source is a git repository, read into a catalog. Nothing in it runs until an agent
+        is reviewed and installed.
+      </p>
 
-    <label class="field">
-      <span class="field-label">Name</span>
-      <input class="txt" [(ngModel)]="draft.name" name="source-name"
-             placeholder="Taken from the URL if left empty" />
-    </label>
+      <app-field
+        label="Repository URL"
+        help="On GitHub, GitLab, Bitbucket or a git server of your own: https://… or git@…"
+        [error]="urlMessage"
+      >
+        <input
+          class="input"
+          name="source-url"
+          autocomplete="off"
+          placeholder="https://github.com/org/agents.git"
+          [(ngModel)]="draft.url"
+          (blur)="nameFromUrl()"
+        />
+      </app-field>
 
-    <label class="field">
-      <span class="field-label">Branch, tag or commit</span>
-      <input class="txt" [(ngModel)]="draft.ref" name="source-ref" placeholder="main" />
-    </label>
+      <app-field label="Name" help="What the source is called on its chip.">
+        <input class="input" name="source-name" autocomplete="off" [(ngModel)]="draft.name" />
+      </app-field>
 
-    <label class="field span-2 private-toggle">
-      <input type="checkbox" [(ngModel)]="isPrivate" name="source-private" />
-      <span>Private repository — reads with a credential</span>
-    </label>
+      <app-field label="Branch, tag or commit" help="Left empty, the repository's main branch is read.">
+        <input class="input" name="source-ref" autocomplete="off" placeholder="main" [(ngModel)]="draft.ref" />
+      </app-field>
 
-    <ng-container *ngIf="isPrivate">
-      <label class="field">
-        <span class="field-label">Username <em>usually leave empty</em></span>
-        <input class="txt" [(ngModel)]="username" name="source-cred-user"
-               placeholder="GitHub, GitLab and Bitbucket ignore it" />
-      </label>
+      <app-switch
+        name="source-private"
+        label="Private repository"
+        help="Read with an access token, stored encrypted on this source and never shown back."
+        [(ngModel)]="isPrivate"
+      ></app-switch>
 
-      <label class="field">
-        <span class="field-label">
-          Access token
-          <span class="field-flag lock"><lucide-icon name="lock" [size]="11"></lucide-icon> encrypted</span>
-        </span>
-        <input class="txt" type="password" autocomplete="new-password"
-               [(ngModel)]="token" name="source-cred-token"
-               [placeholder]="hasStoredToken ? '••••••  (unchanged)' : 'A token that may READ the repository'" />
-      </label>
+      <ng-container *ngIf="isPrivate">
+        <app-field label="Username" help="Usually left empty: GitHub, GitLab and Bitbucket ignore it.">
+          <input class="input" name="source-cred-user" autocomplete="off" [(ngModel)]="username" />
+        </app-field>
+        <app-field
+          label="Access token"
+          [help]="hasStoredToken ? 'One is stored. Left empty, it is kept.' : 'A token that may read the repository.'"
+          [error]="tried && missingToken ? 'Enter a token that may read the repository.' : ''"
+        >
+          <input class="input" type="password" name="source-cred-token" autocomplete="new-password" [(ngModel)]="token" />
+        </app-field>
+      </ng-container>
 
-      <small class="field-hint span-2">
-        <lucide-icon name="lock" [size]="12"></lucide-icon>
-        Stored encrypted on this source and never shown back.
-      </small>
-    </ng-container>
+      <!-- Who inside the organization sees the source: private to begin
+           with, like everything a person makes. -->
+      <div class="source-share" role="group" aria-label="Who can see it">
+        <p class="form-section-title">Who can see it</p>
+        <app-sharing-selector
+          [mode]="shareMode" (modeChange)="shareMode = $any($event)"
+          [groups]="myGroups" [people]="peers"
+          [selectedGroups]="selectedGroups" [selectedPeople]="selectedUsers"
+          groupLabel="Specific groups" peopleMode="users"
+          (groupToggled)="toggleGroup($event)" (personToggled)="toggleUser($event)">
+        </app-sharing-selector>
+        <p class="field-error" role="alert" *ngIf="tried && shareBlocker">{{ shareBlocker }}</p>
+      </div>
 
-    <div class="field span-2">
-      <span class="field-label">Who can see it</span>
-      <app-sharing-selector
-        [mode]="shareMode" (modeChange)="shareMode = $any($event)"
-        [groups]="myGroups" [people]="peers"
-        [selectedGroups]="selectedGroups" [selectedPeople]="selectedUsers"
-        groupLabel="Specific groups" peopleMode="users"
-        (groupToggled)="toggleGroup($event)" (personToggled)="toggleUser($event)">
-      </app-sharing-selector>
-      <small class="field-hint" *ngIf="shareBlocker">{{ shareBlocker }}</small>
+      <!-- What a repository has to hold, where somebody about to save
+           one is standing. -->
+      <details class="source-needs">
+        <summary>What the repository needs</summary>
+        <p>
+          DecentAI reads two files and runs none of your code. One agent needs a
+          <code>manifest.yaml</code> at the repository root; several need a
+          <code>decentai-agents.yaml</code> catalog naming each agent's folder, with a
+          <code>manifest.yaml</code> inside it.
+        </p>
+        <p>
+          The manifest declares what the agent can do, its functions and the permission each
+          needs, and what it wants to keep. That declaration is exactly what an administrator
+          approves, and approving pins the commit, so later pushes never change an install
+          that already happened.
+        </p>
+      </details>
     </div>
-  </div>
-
-  <div class="form-actions">
-    <button class="btn primary" type="button" (click)="submit()"
-            [disabled]="busy || !draft.url.trim() || missingToken || !!shareBlocker">
-      {{ busy ? "Reading…" : editing ? "Save and re-read" : "Save and read catalog" }}
-    </button>
-    <button class="btn" type="button" (click)="cancel.emit()" [disabled]="busy">
-      Cancel
-    </button>
-    <button class="btn" type="button" *ngIf="suggestedUrl && !editing"
-            (click)="useSuggested()" [disabled]="busy">
+  </mat-dialog-content>
+  <mat-dialog-actions>
+    <!-- A repository this deployment suggests: a hint, never a default. -->
+    <button class="btn dialog-aside" type="button" *ngIf="suggestedUrl && !editing" [disabled]="busy" (click)="useSuggested()">
       Use the reference catalog
     </button>
-    <button class="btn guide-toggle" type="button" (click)="guideOpen = !guideOpen">
-      <lucide-icon name="info" [size]="14"></lucide-icon>
-      What does the repository need?
+    <button class="btn" type="button" [disabled]="busy" (click)="cancel.emit()">Cancel</button>
+    <button class="btn primary" type="submit" [disabled]="busy">
+      {{ busy ? "Reading…" : "Save and read" }}
     </button>
-  </div>
-
-  <!-- The publishing guide, where somebody about to save a source is
-       standing — rather than a page of its own nobody opens. -->
-  <div class="guide" *ngIf="guideOpen">
-    <p>
-      DecentAI reads two files and runs none of your code. One agent needs a
-      <code>manifest.yaml</code> at the repository root; several need a
-      <code>decentai-agents.yaml</code> catalog naming each agent's folder,
-      with a <code>manifest.yaml</code> inside it.
-    </p>
-    <p>
-      The manifest declares what the agent can do — its functions and the
-      permission each needs — and what it wants to keep. That declaration is
-      exactly what an administrator approves, and approving pins the commit,
-      so later pushes never change an install that already happened.
-    </p>
-  </div>
-</div>
+  </mat-dialog-actions>
+</form>
