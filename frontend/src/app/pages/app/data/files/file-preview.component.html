@@ -1,7 +1,22 @@
 <header class="preview-head">
   <app-file-icon [name]="name" [mime]="file.values.file_type"></app-file-icon>
   <div class="preview-words">
-    <h2 class="preview-name">{{ name }}</h2>
+    <h2 class="preview-name" *ngIf="draftName === null">
+      {{ name }}
+      <button class="icon-btn sm" type="button" *ngIf="canRename && !file.unreadable" aria-label="Rename this file" matTooltip="Rename" (click)="startRename()">
+        <lucide-icon name="pencil" [size]="14" aria-hidden="true"></lucide-icon>
+      </button>
+    </h2>
+    <!-- The name, typed: the extension stays as it is, since it says
+         the type. -->
+    <form class="preview-rename" *ngIf="draftName !== null" (ngSubmit)="saveRename()" (keydown.escape)="draftName = null">
+      <input class="input" name="filename" aria-label="The file's name" autocomplete="off" #nameBox
+             [(ngModel)]="draftName" [disabled]="renaming" />
+      <span class="preview-ending" *ngIf="ending">{{ ending }}</span>
+      <button class="btn primary sm" type="submit" [disabled]="renaming || !draftName.trim()">{{ renaming ? "Saving…" : "Save" }}</button>
+      <button class="btn sm" type="button" [disabled]="renaming" (click)="draftName = null">Cancel</button>
+    </form>
+    <p class="preview-rename-problem" role="alert" *ngIf="draftName !== null && renameProblem">{{ renameProblem }}</p>
     <p class="preview-facts">
       <span *ngIf="source">{{ source }}</span>
       <span *ngIf="size">{{ size }}</span>

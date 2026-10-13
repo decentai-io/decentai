@@ -149,6 +149,7 @@
                   <lucide-icon name="ellipsis-vertical" [size]="16" aria-hidden="true"></lucide-icon>
                 </button>
                 <mat-menu #fileMenu="matMenu">
+                  <a mat-menu-item [routerLink]="['/data/files', file.resource_ref]" queryParamsHandling="preserve">Open</a>
                   <button mat-menu-item *ngIf="canShare" (click)="openShare(file)">Share</button>
                   <button mat-menu-item *ngIf="canTransfer" (click)="requestTransfer(file)">Hand over</button>
                   <button mat-menu-item *ngIf="canDelete" [disabled]="busyRef === file.resource_ref" (click)="deleteOne(file)">
@@ -223,8 +224,12 @@
       [source]="sourceLabel(file)"
       [sharing]="sharing(file).word"
       [canDownload]="canDownload"
+      [canRename]="canShare && canTouch(file)"
+      [renaming]="renaming"
+      [renameProblem]="renameProblem"
       (closed)="closeOpened()"
       (download)="download(file)"
+      (rename)="rename(file, $event)"
     >
       <button previewActions class="btn primary sm" type="button" *ngIf="canChat && !file.unreadable"
               [disabled]="busyRef === file.resource_ref" (click)="useInChat(file)">

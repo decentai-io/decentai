@@ -27,6 +27,34 @@
   overflow-wrap: anywhere;
 }
 
+.preview-name .icon-btn {
+  vertical-align: middle;
+}
+
+.preview-rename {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.preview-rename .input {
+  flex: 1 1 160px;
+  min-width: 0;
+}
+
+.preview-ending {
+  color: var(--ink-3);
+  font-size: var(--t-sm);
+}
+
+.preview-rename-problem {
+  margin-top: 4px;
+  color: var(--danger-ink);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
 .preview-facts {
   display: flex;
   flex-wrap: wrap;

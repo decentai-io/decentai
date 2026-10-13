@@ -1,4 +1,6 @@
-import { Component, EventEmitter, Input, OnChanges, OnDestroy, Output, SimpleChanges } from '@angular/core';
+import {
+  Component, ElementRef, EventEmitter, Input, OnChanges, OnDestroy, Output, SimpleChanges, ViewChild,
+} from '@angular/core';
 import { MarkdownService } from 'ngx-markdown';
 import * as Prism from 'prismjs';
 import 'prismjs/components/prism-bash';
@@ -56,9 +58,24 @@ export class FilePreviewComponent implements OnChanges, OnDestroy {
   @Input() source = '';
   @Input() sharing = '';
   @Input() canDownload = false;
+  /** The person may rename it, and the page's answer to the last try. */
+  @Input() canRename = false;
+  @Input() renaming = false;
+  @Input() renameProblem = '';
 
   @Output() closed = new EventEmitter<void>();
   @Output() download = new EventEmitter<void>();
+  /** The whole new name, extension included. */
+  @Output() rename = new EventEmitter<string>();
+
+  /** The name being typed, without its extension; null while the name
+   *  is only shown. */
+  draftName: string | null = null;
+  /** The box, as it appears: the name is selected, ready to be typed over. */
+  @ViewChild('nameBox') set nameBox(box: ElementRef<HTMLInputElement> | undefined) {
+    // After the form has written the name into it.
+    setTimeout(() => box?.nativeElement.select());
+  }
 
   kind: Preview = 'none';
   loading = false;
@@ -78,6 +95,8 @@ export class FilePreviewComponent implements OnChanges, OnDestroy {
   ngOnChanges(changes: SimpleChanges): void {
     const before = changes['file']?.previousValue as FileResource | undefined;
     if (before?.resource_ref !== this.file.resource_ref) void this.read();
+    // Another file, or this one under its new name: the box closes.
+    if (changes['file'] && before?.values?.filename !== this.name) this.draftName = null;
   }
 
   ngOnDestroy(): void {
@@ -88,6 +107,24 @@ export class FilePreviewComponent implements OnChanges, OnDestroy {
 
   get name(): string {
     return this.file.values?.filename || 'Untitled file';
+  }
+
+  /** The extension with its dot, which a rename keeps. */
+  get ending(): string {
+    const extension = extensionOf(this.name);
+    return extension ? this.name.slice(-(extension.length + 1)) : '';
+  }
+
+  startRename(): void {
+    this.draftName = this.ending ? this.name.slice(0, -this.ending.length) : this.name;
+  }
+
+  saveRename(): void {
+    const typed = (this.draftName || '').trim();
+    if (!typed || this.renaming) return;
+    const name = typed + this.ending;
+    if (name === this.name) this.draftName = null;
+    else this.rename.emit(name);
   }
 
   get size(): string {

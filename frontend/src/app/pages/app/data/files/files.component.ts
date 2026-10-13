@@ -581,6 +581,28 @@ export class FilesComponent extends DataPageBase implements OnInit, OnDestroy {
     link.click();
   }
 
+  /** A file's new name: the list's row is replaced by the answer, and
+   *  a refusal is said under the box it was typed in. */
+  renaming = false;
+  renameProblem = '';
+
+  async rename(file: FileResource, filename: string): Promise<void> {
+    this.renaming = true;
+    this.renameProblem = '';
+    try {
+      const result = await this.service.rename(file.resource_ref, filename);
+      if (result.error || !result.resource) {
+        this.renameProblem = result.error || 'The name could not be changed.';
+        return;
+      }
+      // What the list added to the row (the names, the agent) stays.
+      this.files = this.files.map((entry) => entry.resource_ref === file.resource_ref
+        ? { ...entry, values: result.resource!.values, updated_at: result.resource!.updated_at } : entry);
+    } finally {
+      this.renaming = false;
+    }
+  }
+
   openShare(file: FileResource): void {
     if (this.share.isOpen(file.resource_ref)) return this.share.close();
     this.share.open(file.resource_ref, file.owner);

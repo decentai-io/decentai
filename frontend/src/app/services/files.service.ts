@@ -97,6 +97,12 @@ export class FilesService {
     });
   }
 
+  /** A new name for a file. Its extension stays: the backend refuses a
+   *  name that would say another type. */
+  async rename(ref: string, filename: string): Promise<{ resource?: FileResource; error?: string }> {
+    return this.request.gateway('Files:File:update', { resource_ref: ref, filename });
+  }
+
   /** Direct download URL; the browser's GET carries the session cookie. */
   downloadUrl(ref: string): string {
     return new URL(
