@@ -78,5 +78,10 @@ export const DataRoutes: Routes = [
     component: McpComponent,
     canActivate: [permissionGuard],
     data: { requiredAction: 'mcp:server:list' },
+    // One server, looked over, is a view of the list's page.
+    children: [
+      { path: '', pathMatch: 'full', children: [] },
+      { path: ':ref', children: [] },
+    ],
   },
 ];

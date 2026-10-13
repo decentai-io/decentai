@@ -127,6 +127,47 @@ class TestLookingItOver:
         assert echo["enabled"] is True and "changed" not in echo
 
 
+class TestWhatARowSays:
+    """A list is the catalog: how a server stands is said without
+    opening it, and without its credential."""
+
+    def test_the_list_says_what_it_is_reached_with_and_when_it_was_read(
+            self, admin, server):
+        added(admin, server)
+        keys = app_call(admin, "Mcp:Server:List").json()["resources"][0]["keys"]
+        assert keys["credential"] == "token"
+        assert keys["last_read_at"] and keys["last_read_error"] == ""
+        assert "s3cret" not in str(keys)
+
+    def test_a_read_that_fails_is_remembered_and_a_good_one_forgets_it(
+            self, admin, server):
+        ref = added(admin, server)["resource_ref"]
+        read_at = app_call(admin, "Mcp:Server:List").json()["resources"][0]["keys"]["last_read_at"]
+
+        server.token = "rotated"
+        failed = app_call(admin, "Mcp:Server:Refresh", {"resource_ref": ref})
+        assert failed.status_code == 400
+        keys = failed.json()["resource"]["keys"]
+        assert "refused the credential" in keys["last_read_error"]
+        assert keys["last_read_at"] == read_at, "a failed read is not a read"
+
+        mended = app_call(admin, "Mcp:Server:Update", {
+            "resource_ref": ref, "credential": {"token": "rotated"}})
+        assert mended.status_code == 200, mended.text
+        keys = mended.json()["resource"]["keys"]
+        assert keys["last_read_error"] == "" and keys["credential"] == "token"
+
+    def test_a_rename_reads_nothing_and_says_nothing_new_about_the_reach(
+            self, admin, server):
+        ref = added(admin, server)["resource_ref"]
+        before = app_call(admin, "Mcp:Server:List").json()["resources"][0]["keys"]
+        renamed = app_call(admin, "Mcp:Server:Update", {
+            "resource_ref": ref, "name": "Wiki"}).json()["resource"]["keys"]
+        assert renamed["name"] == "Wiki"
+        assert renamed["last_read_at"] == before["last_read_at"]
+        assert renamed["credential"] == "token"
+
+
 class TestInAChat:
     def test_the_contract_names_the_servers_and_grants_their_tools(
             self, anon, admin, seed, server, signing_key):

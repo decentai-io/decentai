@@ -12,6 +12,11 @@ What the server says can change after it was looked over. So a tool
 that appears later, or whose description or inputs changed, comes back
 switched off, and says why.
 
+A list is the catalog, and carries what a row needs to say how a
+server stands without opening it: what kind of credential it is reached
+with (never the credential), when it was last read, and why the last
+read failed when it did.
+
 A server is personal: it is reached with its owner's credential, so it
 serves its owner's chats and nobody else's. The whole feature is the
 deployment's to switch off (Settings → Safety).
@@ -26,6 +31,7 @@ from contracts.mcp import McpClient, McpError, McpTools
 from database.crypto import SecretCipher, SecretCipherError
 from database.stores import AuditStore, OrganizationStore
 from database.stores.data.mcp import McpServerStore
+from util import utc_now
 
 
 class McpController(ResourceController):
@@ -75,7 +81,8 @@ class McpController(ResourceController):
             return {"error": why}, 400
         resource = self.store.create(
             user, resource_id="mcp", owner=self._default_owner(user),
-            keys=self._keys(name, url, True, offered),
+            keys=self._keys(name, url, True, offered,
+                            **self._read_now(headers)),
             values={
                 McpServerStore.CREDENTIAL: headers,
                 "tools": [{**tool, "enabled": True, "level": self.DEFAULT_LEVEL}
@@ -141,7 +148,9 @@ class McpController(ResourceController):
         keys = self._keys(keys["name"], keys["url"], keys.get("enabled", True),
                           {"tools": values.get("tools") or [],
                            "resources": bool(values.get("resources")),
-                           "server": keys.get("server", "")})
+                           "server": keys.get("server", "")},
+                          **(self._read_now(values.get(McpServerStore.CREDENTIAL))
+                             if reach_changed else self._read_before(keys)))
         resource = self.store.update(doc, keys=keys, values=values)
         return {"resource": resource}, 200
 
@@ -160,7 +169,11 @@ class McpController(ResourceController):
         offered, why = await self._read(
             keys.get("url", ""), values.get(McpServerStore.CREDENTIAL) or {})
         if why:
-            return {"error": why}, 400
+            # Kept as it was, and its row says it could not be reached:
+            # the refusal comes with the server as it now stands.
+            resource = self.store.update(doc, keys={
+                **keys, "last_read_error": why[:300]})
+            return {"error": why, "resource": resource}, 400
         self._merge(values, offered)
         resource = self.store.update(
             doc, values=values,
@@ -168,7 +181,8 @@ class McpController(ResourceController):
                             keys.get("enabled", True),
                             {"tools": values["tools"],
                              "resources": values["resources"],
-                             "server": offered["server"]}))
+                             "server": offered["server"]},
+                            **self._read_now(values.get(McpServerStore.CREDENTIAL))))
         return {"resource": resource}, 200
 
     def transfer(self, data: dict, user: dict):
@@ -312,7 +326,33 @@ class McpController(ResourceController):
             return None, "The server could not be read."
 
     @staticmethod
-    def _keys(name: str, url: str, enabled: bool, offered: Dict[str, Any]) -> Dict[str, Any]:
+    def _credential_kind(headers: Optional[Dict[str, str]]) -> str:
+        """What a server is reached with, as a word for its row:
+        ``none``, ``token``, or the name of the header it asked for.
+        Never the credential."""
+        if not headers:
+            return "none"
+        name, value = next(iter(headers.items()))
+        if name == "Authorization" and str(value).startswith("Bearer "):
+            return "token"
+        return f"header {name}"
+
+    @classmethod
+    def _read_now(cls, headers: Optional[Dict[str, str]]) -> Dict[str, str]:
+        """What a row says after a read that worked, just now."""
+        return {"credential": cls._credential_kind(headers),
+                "last_read_at": utc_now().isoformat(), "last_read_error": ""}
+
+    @staticmethod
+    def _read_before(keys: Dict[str, Any]) -> Dict[str, str]:
+        """The same three, kept as they were: nothing was read."""
+        return {name: str(keys.get(name) or "")
+                for name in ("credential", "last_read_at", "last_read_error")}
+
+    @staticmethod
+    def _keys(name: str, url: str, enabled: bool, offered: Dict[str, Any], *,
+              credential: str = "", last_read_at: str = "",
+              last_read_error: str = "") -> Dict[str, Any]:
         tools = offered.get("tools") or []
         return {
             "name": name, "url": url, "host": McpClient.host_of(url),
@@ -320,6 +360,9 @@ class McpController(ResourceController):
             "tool_count": len(tools),
             "tools_on": sum(1 for tool in tools if tool.get("enabled", True)),
             "resources": bool(offered.get("resources")),
+            "credential": credential,
+            "last_read_at": last_read_at,
+            "last_read_error": last_read_error,
         }
 
     def _set_tools(self, values: Dict[str, Any], raw) -> Optional[Refusal]:

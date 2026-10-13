@@ -31,6 +31,13 @@ export interface McpServer {
     tool_count: number;
     tools_on: number;
     resources: boolean;
+    /** What it is reached with, as a word: 'none', 'token', or
+     *  'header <name>'. Never the credential. Absent on a server added
+     *  before rows carried it. */
+    credential?: string;
+    /** When its tools were last read, and why the last read failed. */
+    last_read_at?: string;
+    last_read_error?: string;
   };
   /** On get, create, update and refresh; a list carries keys only. */
   values?: {
@@ -64,11 +71,13 @@ export class McpService {
 
   /** The person's servers, and whether the deployment has switched
    *  MCP off (Settings → Safety): then none of them can be called. */
-  async list(): Promise<{ servers: McpServer[]; blocked: boolean }> {
+  async list(): Promise<{ servers: McpServer[]; blocked: boolean; error?: string }> {
     const r = await this.request.gateway('Mcp:Server:List');
     return {
       servers: Array.isArray(r?.resources) ? r.resources : [],
       blocked: r?.blocked === true,
+      // A list that could not be read is not an empty list.
+      error: Array.isArray(r?.resources) ? undefined : r?.error || 'The servers could not be read.',
     };
   }
 
