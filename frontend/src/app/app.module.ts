@@ -138,6 +138,7 @@ import {
   Database,
   Download,
   Eye,
+  EyeOff,
   Filter,
   Flame,
   House,
@@ -230,6 +231,7 @@ import { SwitchComponent } from './components/ui/switch.component';
 import { TokenListComponent } from './components/ui/token-list.component';
 
 import { LoadingComponent } from './website/loading/loading.component';
+import { EntryCardComponent } from './components/ui/entry-card.component';
 import { LogoutComponent } from './pages/logout/logout.component';
 import { AuthComponent } from './pages/auth/auth.component';
 
@@ -392,6 +394,7 @@ import { AgentCardComponent } from './pages/app/agents/agent-card.component';
 
     // The form and row system (components/ui): what pages are built from.
     PageComponent,
+    EntryCardComponent,
     FieldComponent,
     SwitchComponent,
     SegmentedComponent,
@@ -526,6 +529,7 @@ import { AgentCardComponent } from './pages/app/agents/agent-card.component';
       Database,
       Download,
       Eye,
+      EyeOff,
       Filter,
       Flame,
       House,

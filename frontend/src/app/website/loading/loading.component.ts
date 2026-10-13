@@ -9,7 +9,6 @@ import { Component, EventEmitter, Input, Output } from '@angular/core';
   selector: 'app-loading',
   standalone: false,
   templateUrl: './loading.component.html',
-  styleUrls: ['./loading.component.css'],
 })
 export class LoadingComponent {
   /** The backend has not answered for a while. */

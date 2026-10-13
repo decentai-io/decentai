@@ -175,6 +175,9 @@ export class AuthService {
   async forgotPassword(email: string): Promise<{
     ok: boolean;
     message?: string;
+    /** False where this install sends no email: the message then says
+     *  who resets a password instead. */
+    sent?: boolean;
     error?: string;
   }> {
     const { status, data } = await this.post('auth/password/forgot', { email });
@@ -186,6 +189,7 @@ export class AuthService {
     return {
       ok: true,
       message: data?.message ?? '',
+      sent: data?.requested !== false,
     };
   }
 
