@@ -1,4 +1,4 @@
-<h2 mat-dialog-title>Agents</h2>
+<h2 mat-dialog-title>Agents and servers</h2>
 
 <mat-dialog-content>
   @if (isLoading) {
@@ -6,7 +6,7 @@
       <span class="sk sk-field"></span>
       <span class="sk sk-field"></span>
     </div>
-  } @else if (agents.length === 0) {
+  } @else if (agents.length === 0 && servers.length === 0) {
     <app-empty
       icon="bot"
       title="No agents are available to this chat"
@@ -14,13 +14,28 @@
     ></app-empty>
   } @else {
     <p class="dialog-note">
-      Only checked agents can work in this chat. Unchecking every agent makes it a pure conversation.
+      Only what is checked can work in this chat. Unchecking everything makes it a pure conversation.
     </p>
     @for (agent of agents; track agent.agent_id) {
       <mat-checkbox class="check-row" [checked]="selection.has(agent.agent_id)" (change)="toggle(agent.agent_id)">
         <span class="check-name">{{ agent.name || agent.agent_id }}</span>
         @if (agent.description) { <span class="check-hint">{{ agent.description }}</span> }
       </mat-checkbox>
+    }
+    @if (agents.length === 0) {
+      <p class="form-section-note">No agents are available to this chat.</p>
+    }
+
+    <!-- The person's own MCP servers that are on: in every chat until
+         a chat leaves one out here. -->
+    @if (servers.length) {
+      <p class="form-section-title dialog-section">MCP servers</p>
+      @for (server of servers; track server.resource_ref) {
+        <mat-checkbox class="check-row" [checked]="serverSelection.has(server.resource_ref)" (change)="toggleServer(server.resource_ref)">
+          <span class="check-name">{{ server.keys.name }}</span>
+          <span class="check-hint">{{ server.keys.host }} · {{ server.keys.tools_on }} {{ server.keys.tools_on === 1 ? "tool" : "tools" }} on</span>
+        </mat-checkbox>
+      }
     }
   }
 </mat-dialog-content>

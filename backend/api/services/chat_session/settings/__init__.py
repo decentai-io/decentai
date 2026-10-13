@@ -29,7 +29,9 @@ from api.services.chat_session.settings.bindings import CredentialBindings
 from api.services.chat_session.settings.model import (
     ModelChoice, PreferredEffort, PreferredModel,
 )
-from api.services.chat_session.settings.narrowing import EnabledAgents, EnabledSkills
+from api.services.chat_session.settings.narrowing import (
+    EnabledAgents, EnabledMcp, EnabledSkills,
+)
 from api.services.chat_session.settings.setting import Setting, chosen_by
 from api.services.chat_session.settings.skills_cap import SkillsCap
 from api.services.chat_session.settings.timezone import Timezone
@@ -37,7 +39,8 @@ from api.services.chat_session.settings.trust import TrustLevel
 from api.services.chat_session.settings.turns import TurnBudget
 
 __all__ = [
-    "ChatSettings", "CredentialBindings", "EnabledAgents", "EnabledSkills",
+    "ChatSettings", "CredentialBindings", "EnabledAgents", "EnabledMcp",
+    "EnabledSkills",
     "ModelChoice", "Setting", "SkillsCap", "Timezone", "TrustLevel",
     "TurnBudget", "chosen_by",
 ]
@@ -50,7 +53,8 @@ class ChatSettings:
         self.settings = (
             TrustLevel(), TurnBudget(), ModelChoice(),
             PreferredModel(), PreferredEffort(),
-            EnabledAgents(), EnabledSkills(), Timezone(), SkillsCap(),
+            EnabledAgents(), EnabledSkills(), EnabledMcp(), Timezone(),
+            SkillsCap(),
             CredentialBindings(),
         )
 

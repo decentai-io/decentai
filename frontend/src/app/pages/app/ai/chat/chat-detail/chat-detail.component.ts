@@ -1351,6 +1351,7 @@ export class ChatDetailComponent implements OnInit, OnDestroy {
       width: '480px',
       maxWidth: '95vw',
       data: { enabled_agents: this.chat?.config?.enabled_agents,
+        enabled_mcp: this.chat?.config?.enabled_mcp,
         default_agents: Array.isArray(defaults) ? defaults : null },
     });
     ref.afterClosed().subscribe(async (result) => {
@@ -1360,6 +1361,9 @@ export class ChatDetailComponent implements OnInit, OnDestroy {
       // whole config back, so the key is dropped rather than emptied.
       if (result.enabled_agents === null) delete config.enabled_agents;
       else config.enabled_agents = result.enabled_agents;
+      // The person's MCP servers, the same way.
+      if (result.enabled_mcp === null) delete config.enabled_mcp;
+      else config.enabled_mcp = result.enabled_mcp;
       const res = await this.aiSession.updateChatConfig(this.chat_id!, config);
       if (res.error) {
         this.onError(res.error);

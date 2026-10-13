@@ -185,6 +185,30 @@ class TestInAChat:
         # Where it is and what it is reached with are not in the contract.
         assert "s3cret" not in str(contract) and server.url not in str(contract)
 
+    def test_a_chat_can_leave_a_server_out(
+            self, anon, admin, seed, server, signing_key):
+        """Every server that is on is in every chat until a chat says
+        otherwise: its own list names the ones it may call, and an
+        empty one is none. The grant goes with the server."""
+        ref = added(admin, server)["resource_ref"]
+        chat = make_chat(admin, "without it")
+
+        narrowed = app_call(admin, "AI:Chat:Update", {
+            "chat_id": chat, "config": {"enabled_mcp": []}})
+        assert narrowed.status_code == 200, narrowed.text
+        contract = runtime_call(anon, seed, chat, "AI:Chat:Contract", {}).json()["data"]
+        assert contract["mcp"] == []
+        assert {"effect": "allow", "functions": [f"{ref}.*.*"]} not in contract["grants"]
+
+        app_call(admin, "AI:Chat:Update", {
+            "chat_id": chat, "config": {"enabled_mcp": [ref]}})
+        contract = runtime_call(anon, seed, chat, "AI:Chat:Contract", {}).json()["data"]
+        assert [served["ref"] for served in contract["mcp"]] == [ref]
+
+        refused = app_call(admin, "AI:Chat:Update", {
+            "chat_id": chat, "config": {"enabled_mcp": "all"}})
+        assert refused.status_code == 400
+
     def test_the_runtime_asks_where_it_is_and_nobody_else_may(
             self, anon, admin, seed, server, signing_key):
         ref = added(admin, server)["resource_ref"]

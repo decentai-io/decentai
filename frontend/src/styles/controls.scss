@@ -1239,6 +1239,11 @@ div.mat-mdc-select-panel {
   line-height: var(--lh-sm);
 }
 
+/* A second group inside a dialog's body starts a step down. */
+.dialog-section {
+  margin: 16px 0 4px;
+}
+
 .mat-mdc-dialog-actions .dialog-aside {
   margin-right: auto;
 }

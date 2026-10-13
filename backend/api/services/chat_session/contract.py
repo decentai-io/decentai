@@ -58,7 +58,7 @@ class SessionContract:
             "safety": self._safety(user),
             "agents": self._agents(user, config),
             "permissions": AgentScope().of(user)["permissions"],
-            "mcp": self._mcp(user),
+            "mcp": self._mcp(user, config.get("enabled_mcp")),
             "skills": config.get("enabled_skills"),
             "trust": config.get("trust_level"),
             "timezone": config.get("timezone"),
@@ -73,14 +73,21 @@ class SessionContract:
 
     # ------------------------------------------------------------------
     @staticmethod
-    def _mcp(user: Dict[str, Any]) -> list:
+    def _mcp(user: Dict[str, Any], chosen: Any = None) -> list:
         """The person's own MCP servers that are on, with the tools
         they kept on (api/services/data_layer/mcp.py). Where a server
         is and what it is reached with are not here: the runtime asks
-        for those when a tool is called (``Mcp:Server:Use``)."""
+        for those when a tool is called (``Mcp:Server:Use``).
+
+        A chat may leave servers out (``enabled_mcp``): then only the
+        ones it names are served, and with them their grants. No list
+        is every one."""
         from api.services.data_layer.mcp import McpController
 
-        return McpController().serving(user)
+        serving = McpController().serving(user)
+        if not isinstance(chosen, list):
+            return serving
+        return [server for server in serving if server["ref"] in chosen]
 
     @staticmethod
     def _safety(user: Dict[str, Any]) -> Dict[str, Any]:
