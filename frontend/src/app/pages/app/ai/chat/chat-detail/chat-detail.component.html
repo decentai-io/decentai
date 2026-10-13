@@ -64,6 +64,19 @@
             <lucide-icon name="monitor" [size]="18" aria-hidden="true"></lucide-icon>
           </button>
         }
+        <!-- The two things done most from a chat, out of the menu. -->
+        <a class="icon-btn" routerLink="/ai/chats" matTooltip="New chat" aria-label="New chat">
+          <lucide-icon name="square-pen" [size]="18" aria-hidden="true"></lucide-icon>
+        </a>
+        <button
+          type="button"
+          class="icon-btn"
+          (click)="onMessagesActionClicked({ type: 'refresh' })"
+          matTooltip="Refresh and reconnect"
+          aria-label="Refresh and reconnect"
+        >
+          <lucide-icon name="refresh-cw" [size]="18" aria-hidden="true"></lucide-icon>
+        </button>
         <!-- The chat's clock: how many schedules it keeps, and the way
              to them. -->
         @if (scheduleCount) {
@@ -111,11 +124,15 @@
 </ng-template>
 
 <mat-menu #chatMenu="matMenu" xPosition="before">
-  <a mat-menu-item routerLink="/ai/chats">
-    <lucide-icon name="square-pen" [size]="16" aria-hidden="true"></lucide-icon>
-    <span>New chat</span>
-  </a>
   @if (isNarrow) {
+    <a mat-menu-item routerLink="/ai/chats">
+      <lucide-icon name="square-pen" [size]="16" aria-hidden="true"></lucide-icon>
+      <span>New chat</span>
+    </a>
+    <button mat-menu-item (click)="onMessagesActionClicked({ type: 'refresh' })">
+      <lucide-icon name="refresh-cw" [size]="16" aria-hidden="true"></lucide-icon>
+      <span>Refresh and reconnect</span>
+    </button>
     @if (canWatch || screen) {
       <button mat-menu-item (click)="openScreen()">
         <lucide-icon name="monitor" [size]="16" aria-hidden="true"></lucide-icon>
@@ -156,10 +173,6 @@
   <button mat-menu-item (click)="onMessagesActionClicked({ type: 'activity' })">
     <lucide-icon name="history" [size]="16" aria-hidden="true"></lucide-icon>
     <span>Activity and audit</span>
-  </button>
-  <button mat-menu-item (click)="onMessagesActionClicked({ type: 'refresh' })">
-    <lucide-icon name="refresh-cw" [size]="16" aria-hidden="true"></lucide-icon>
-    <span>Refresh and reconnect</span>
   </button>
   <!-- The bar's own Stop everything, which this chat's row stands in
        place of: everything of this person's, in every chat. -->

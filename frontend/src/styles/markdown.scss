@@ -229,6 +229,34 @@ markdown pre .code-toolbar button:hover {
   color: var(--ink);
 }
 
+/* A block that is a diagram shows the drawing on the page's own white,
+   and its text only when asked for. */
+markdown pre.has-diagram {
+  background: var(--surface);
+}
+
+markdown pre .code-diagram {
+  display: flex;
+  font-family: var(--font-sans);
+  justify-content: center;
+  overflow-x: auto;
+}
+
+markdown pre .code-diagram svg {
+  max-width: 100%;
+  height: auto;
+}
+
+markdown pre.has-diagram:not(.show-code) code,
+markdown pre.has-diagram.show-code .code-diagram {
+  display: none;
+}
+
+markdown pre .code-toolbar button[aria-pressed='true'] {
+  background: var(--surface-3);
+  color: var(--ink);
+}
+
 /* Under a finger the block's buttons are taller, and so is its row. */
 @media (pointer: coarse) {
   markdown pre .code-toolbar {

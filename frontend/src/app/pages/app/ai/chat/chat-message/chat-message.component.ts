@@ -2,6 +2,8 @@ import { AfterViewChecked, Component, ElementRef, Input, OnChanges, OnDestroy, R
 import { Clipboard } from '@angular/cdk/clipboard';
 import { MarkdownService } from 'ngx-markdown';
 import * as Prism from 'prismjs';
+
+import { drawDiagram } from './chat-diagram';
 import 'prismjs/components/prism-bash';
 import 'prismjs/components/prism-json';
 import 'prismjs/components/prism-python';
@@ -113,6 +115,7 @@ export class ChatMessageComponent implements OnChanges, AfterViewChecked, OnDest
       this.renderer.insertBefore(pre, toolbar, code);
       this.cleanups.push(this.renderer.listen(wrap, 'click', () =>
         wrap.setAttribute('aria-pressed', String(pre.classList.toggle('code-wrap')))));
+      if (language === 'mermaid') this.drawInto(pre, toolbar, code);
       this.cleanups.push(this.renderer.listen(copy, 'click', () => {
         this.clipboard.copy(code.textContent || '');
         copy.textContent = 'Copied';
@@ -124,6 +127,33 @@ export class ChatMessageComponent implements OnChanges, AfterViewChecked, OnDest
         link.target = '_blank';
         link.rel = 'noopener noreferrer';
       }
+    });
+  }
+
+  /** A block of Mermaid is shown as the diagram it describes, with its
+   *  text one press away. Text that does not draw (a reply still being
+   *  written, a mistake) stays the code it is. */
+  private drawInto(pre: HTMLElement, toolbar: HTMLElement, code: HTMLElement): void {
+    const dark = document.documentElement.classList.contains('dark');
+    void drawDiagram(code.textContent || '', dark).then((svg) => {
+      if (!svg || !pre.isConnected) return;
+      const diagram = this.renderer.createElement('div');
+      this.renderer.addClass(diagram, 'code-diagram');
+      this.renderer.setAttribute(diagram, 'role', 'img');
+      this.renderer.setAttribute(diagram, 'aria-label', 'Diagram');
+      // The library's own drawing, made at its strict level: it holds
+      // no markup of the message's.
+      diagram.innerHTML = svg;
+      this.renderer.insertBefore(pre, diagram, code);
+      const show = this.renderer.createElement('button');
+      this.renderer.setAttribute(show, 'type', 'button');
+      this.renderer.setAttribute(show, 'aria-pressed', 'false');
+      this.renderer.appendChild(show, this.renderer.createText('Code'));
+      this.renderer.insertBefore(toolbar, show, toolbar.children[1]);
+      this.renderer.addClass(pre, 'has-diagram');
+      toolbar.children[0].textContent = 'Diagram';
+      this.cleanups.push(this.renderer.listen(show, 'click', () =>
+        show.setAttribute('aria-pressed', String(pre.classList.toggle('show-code')))));
     });
   }
 
