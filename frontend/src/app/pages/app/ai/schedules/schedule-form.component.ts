@@ -46,6 +46,18 @@ interface InputBox {
 /** The chat every schedule made here goes to unless another is chosen:
  *  made the first time, found by its name after that. */
 const HOME_CHAT = 'Schedules';
+/** Where this device keeps which chat that is. The assistant gives a
+ *  chat a name of its own once it has spoken in it, so the name alone
+ *  would lose the chat after its first run. */
+const HOME_CHAT_KEY = 'decentai.schedules-chat';
+
+function rememberedHome(): string {
+  try {
+    return localStorage.getItem(HOME_CHAT_KEY) || '';
+  } catch {
+    return '';
+  }
+}
 const NOTE_LIMIT = 300;
 
 /**
@@ -135,9 +147,11 @@ export class ScheduleFormComponent {
 
     // The home chat first: by its name once it exists, as an offer to
     // make it until then.
-    const home = data.chats.find((chat) => chat.title === HOME_CHAT);
+    const remembered = rememberedHome();
+    const home = data.chats.find((chat) => chat.chat_id === remembered)
+      || data.chats.find((chat) => chat.title === HOME_CHAT);
     this.allChats = [
-      home ? { value: home.chat_id, name: HOME_CHAT, hint: 'Where schedules made here go' }
+      home ? { value: home.chat_id, name: home.title, hint: 'Where schedules made here go' }
         : { value: '', name: `A new chat called “${HOME_CHAT}”` },
       ...data.chats.filter((chat) => chat !== home).map((chat) => ({ value: chat.chat_id, name: chat.title })),
     ];
@@ -395,6 +409,11 @@ export class ScheduleFormComponent {
         if (!chatId) { this.problem = created.error || 'Could not make a chat for it.'; return; }
         // The chat exists now: a second try goes into it.
         this.allChats[0] = { value: chatId, name: HOME_CHAT };
+        try {
+          localStorage.setItem(HOME_CHAT_KEY, chatId);
+        } catch {
+          // Without storage it is found by its name, while it keeps it.
+        }
         this.shownChats = [];
         this.chatId = chatId;
       }

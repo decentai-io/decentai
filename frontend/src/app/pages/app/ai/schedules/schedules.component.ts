@@ -269,6 +269,19 @@ export class SchedulesComponent extends DataPageBase implements OnInit, OnDestro
     }
   }
 
+  /** Its next run is now: what it does shows up in its chat. */
+  async runNow(schedule: ActivitySchedule): Promise<void> {
+    this.busyId = schedule.schedule_id;
+    try {
+      const result = await this.service.runNow(schedule.chat_id, schedule.schedule_id);
+      if (result.error) return this.fail(result.error);
+      await this.reload();
+      this.flash('Running now. What it does shows up in its chat.');
+    } finally {
+      this.busyId = '';
+    }
+  }
+
   async askDelete(schedule: ActivitySchedule): Promise<void> {
     const sure = await this.confirm.ask({
       title: 'Delete this schedule?',

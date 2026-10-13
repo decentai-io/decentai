@@ -37,6 +37,7 @@ export class ScheduleViewComponent implements OnChanges {
   @Output() closed = new EventEmitter<void>();
   @Output() edit = new EventEmitter<void>();
   @Output() setEnabled = new EventEmitter<boolean>();
+  @Output() runNow = new EventEmitter<void>();
   @Output() remove = new EventEmitter<void>();
 
   cadence = '';

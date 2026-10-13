@@ -27,6 +27,7 @@
   <button class="btn sm" type="button" *ngIf="canUpdate && state !== 'done'" [disabled]="busy" (click)="setEnabled.emit(!schedule.enabled)">
     {{ schedule.enabled ? "Pause" : "Resume" }}
   </button>
+  <button class="btn sm" type="button" *ngIf="canUpdate && schedule.enabled && !stopped" [disabled]="busy" (click)="runNow.emit()">Run now</button>
   <a class="btn sm" [routerLink]="['/ai/chats', schedule.chat_id]">Open the chat</a>
   <button class="btn ghost danger sm" type="button" *ngIf="canDelete" [disabled]="busy" (click)="remove.emit()">Delete</button>
 </div>

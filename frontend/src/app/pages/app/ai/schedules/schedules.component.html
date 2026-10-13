@@ -106,6 +106,7 @@
       [busy]="busyId === schedule.schedule_id"
       (closed)="closeOpened()"
       (edit)="edit(schedule)"
+      (runNow)="runNow(schedule)"
       (setEnabled)="setEnabled(schedule, $event)"
       (remove)="askDelete(schedule)"
     ></app-schedule-view>
@@ -122,6 +123,7 @@
     <ng-template matMenuContent let-schedule="schedule">
       <a mat-menu-item [routerLink]="['/ai/schedules', schedule.schedule_id]" queryParamsHandling="preserve">Open</a>
       <button mat-menu-item *ngIf="canUpdate" (click)="edit(schedule)">Edit</button>
+      <button mat-menu-item *ngIf="canUpdate && schedule.enabled && !stopped" [disabled]="busyId === schedule.schedule_id" (click)="runNow(schedule)">Run now</button>
       <a mat-menu-item [routerLink]="['/ai/chats', schedule.chat_id]">Open the chat</a>
       <button mat-menu-item *ngIf="canDelete" [disabled]="busyId === schedule.schedule_id" (click)="askDelete(schedule)">Delete</button>
     </ng-template>

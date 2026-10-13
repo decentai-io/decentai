@@ -30,6 +30,17 @@
   line-height: var(--lh-lg);
 }
 
+/* The way to read about the page without leaving it. */
+.page-title {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.page-help {
+  color: var(--ink-3);
+}
+
 .page-sentence {
   margin-top: 4px;
   color: var(--ink-2);

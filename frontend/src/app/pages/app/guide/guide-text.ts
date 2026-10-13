@@ -96,3 +96,23 @@ export function searchGuide(
   }
   return matches;
 }
+
+/** Gives the headings of a chapter that is on the page their addresses,
+ *  each with a link to itself that shows when it is pointed at. The
+ *  chapter is shown one level down, so its sections are h3 and h4.
+ *  Returns the headings' elements, in order. */
+export function addressHeadings(page: HTMLElement, headings: GuideHeading[], chapterId: string): HTMLElement[] {
+  const found = Array.from(page.querySelectorAll<HTMLElement>('h3, h4'));
+  found.forEach((element, at) => {
+    const heading = headings[at];
+    if (!heading || element.id) return;
+    element.id = heading.slug;
+    const link = document.createElement('a');
+    link.className = 'heading-anchor';
+    link.href = `/guide/${chapterId}#${heading.slug}`;
+    link.setAttribute('aria-label', `Link to “${heading.text}”`);
+    link.textContent = '#';
+    element.appendChild(link);
+  });
+  return found;
+}

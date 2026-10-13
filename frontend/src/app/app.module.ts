@@ -115,6 +115,8 @@ import {
   Bell,
   Zap,
   BookOpen,
+  Keyboard,
+  CircleHelp,
   WifiOff,
   CircleUser,
   Folder,
@@ -280,6 +282,7 @@ import { NotificationsComponent } from './pages/app/settings/notifications/notif
 import { SpeechComponent } from './pages/app/settings/speech/speech.component';
 import { RoutingComponent } from './pages/app/settings/routing/routing.component';
 import { GuideComponent } from './pages/app/guide/guide.component';
+import { GuidePanelComponent } from './pages/app/guide/guide-panel.component';
 import { OrganizationsComponent } from './pages/admin/organizations/organizations.component';
 import { ServiceWorkerModule } from '@angular/service-worker';
 import { AgentCardComponent } from './pages/app/agents/agent-card.component';
@@ -348,6 +351,7 @@ import { AgentCardComponent } from './pages/app/agents/agent-card.component';
     SpeechComponent,
     RoutingComponent,
     GuideComponent,
+    GuidePanelComponent,
     OrganizationsComponent,
     ChatHomeComponent,
     ChatDetailComponent,
@@ -506,6 +510,8 @@ import { AgentCardComponent } from './pages/app/agents/agent-card.component';
       Bell,
       Zap,
       BookOpen,
+      Keyboard,
+      CircleHelp,
       WifiOff,
       CircleUser,
       Folder,

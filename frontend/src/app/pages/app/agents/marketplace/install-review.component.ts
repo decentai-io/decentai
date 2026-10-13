@@ -22,6 +22,13 @@ const README_FOLD_CHARS = 900;
 
 let created = 0;
 
+/** A size in bytes as a person reads it: "812 B", "4.2 KB", "1.3 MB". */
+function sizeWords(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(bytes < 10240 ? 1 : 0)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
 /**
  * What installing one agent would agree to, in the order a careful
  * person reads it: what it is and its README, what an update changes,
@@ -61,6 +68,10 @@ export class InstallReviewComponent {
   /** For the ids that tie each section to its title. */
   readonly id = `reading-${++created}`;
   readmeOpen = false;
+  /** The files as last read, and as they are shown: made once, since a
+   *  list made anew on every pass is drawn anew on every pass. */
+  private filesListed: { path: string; size: number }[] = [];
+  private filesShown: { path: string; size: string; link: string }[] = [];
 
   /** The same naming the installed agent's Functions tab uses. */
   levelLabel = levelLabel;
@@ -159,6 +170,30 @@ export class InstallReviewComponent {
     if (!this.source.sha) return url;
     const folder = this.entry?.path && this.entry.path !== '.' ? `/${this.entry.path}` : '';
     return `${url}/tree/${this.source.sha}${folder}`;
+  }
+
+  /** The package's files, each with the page of it at the commit that
+   *  would be installed, where the repository is one a browser opens. */
+  get files(): { path: string; size: string; link: string }[] {
+    const listed = this.entry?.files || [];
+    if (listed !== this.filesListed) {
+      this.filesListed = listed;
+      const tree = this.source?.sha ? this.codeLink : '';
+      this.filesShown = listed.map((file) => ({
+        path: file.path,
+        size: sizeWords(file.size),
+        link: tree ? `${tree.replace('/tree/', '/blob/')}/${file.path}` : '',
+      }));
+    }
+    return this.filesShown;
+  }
+
+  /** "12 files · 48 KB", for the fold that holds them. */
+  get filesSummary(): string {
+    const listed = this.entry?.files || [];
+    const count = listed.length + (this.entry?.files_more || 0);
+    const bytes = listed.reduce((sum, file) => sum + file.size, 0);
+    return `${count} ${count === 1 ? 'file' : 'files'} · ${sizeWords(bytes)}${this.entry?.files_more ? ' and more' : ''}`;
   }
 
   /** The package kept at the last approval, short enough to read. */

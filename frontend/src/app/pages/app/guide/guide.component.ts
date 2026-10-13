@@ -7,7 +7,7 @@ import { Subscription, firstValueFrom } from 'rxjs';
 
 import { headingsDown } from 'src/app/components/ui/markdown-levels';
 import { ChatMarkdownService } from '../ai/chat/chat-message/chat-markdown.service';
-import { GuideChapter, GuideHeading, GuideMatch, headingsOf, searchGuide } from './guide-text';
+import { GuideChapter, GuideHeading, GuideMatch, addressHeadings, headingsOf, searchGuide } from './guide-text';
 
 /** Chapters that were renamed: an old link still opens the chapter. */
 const RENAMED: Record<string, string> = { activity: 'schedules' };
@@ -148,18 +148,7 @@ export class GuideComponent implements OnInit, OnDestroy {
   rendered(): void {
     const page = this.reading?.nativeElement;
     if (!page) return;
-    const found = Array.from(page.querySelectorAll<HTMLElement>('h3, h4'));
-    found.forEach((element, at) => {
-      const heading = this.headings[at];
-      if (!heading || element.id) return;
-      element.id = heading.slug;
-      const link = document.createElement('a');
-      link.className = 'heading-anchor';
-      link.href = `/guide/${this.current?.id}#${heading.slug}`;
-      link.setAttribute('aria-label', `Link to “${heading.text}”`);
-      link.textContent = '#';
-      element.appendChild(link);
-    });
+    const found = addressHeadings(page, this.headings, this.current?.id || '');
 
     this.watcher?.disconnect();
     // A heading is reached when it passes the top third of the window.

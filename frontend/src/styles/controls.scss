@@ -704,6 +704,13 @@ html {
   margin-left: 0;
 }
 
+/* A dialog that is a panel at the right edge (the Guide beside a page):
+   as tall as the window, square against the edge. */
+.side-sheet .mat-mdc-dialog-surface {
+  border-width: 0 0 0 1px;
+  border-radius: 0;
+}
+
 @media (max-width: 700px) {
   .cdk-global-overlay-wrapper:has(> .mat-mdc-dialog-panel) {
     align-items: flex-end !important;

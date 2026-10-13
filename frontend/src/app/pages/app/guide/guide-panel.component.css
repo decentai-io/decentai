@@ -1,0 +1,28 @@
+/* A chapter beside its page. The dialog shell, the buttons and the
+   markdown styles are the shared ones; the panel's place on the screen
+   is `.side-sheet` in controls.scss. */
+
+:host {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.guide-panel-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+mat-dialog-content {
+  flex: 1;
+  max-height: none;
+}
+
+/* Text that is read, at the reading size. */
+.guide-panel-text {
+  font-size: var(--t-read);
+  line-height: var(--lh-read);
+  overflow-wrap: anywhere;
+}

@@ -1,4 +1,5 @@
 import {
+  TemplateRef,
   Component,
   ElementRef,
   HostListener,
@@ -42,6 +43,9 @@ const FOCUSABLE_SELECTOR = [
   'textarea:not([disabled])',
   '[tabindex]:not([tabindex="-1"])',
 ].join(',');
+
+/** The key that saves, as this keyboard calls it. */
+const SAVE_KEY = /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl';
 
 @Component({
   selector: 'app-main',
@@ -381,9 +385,44 @@ export class MainComponent implements OnInit, OnDestroy {
     }
   }
 
+  /** The keys the app answers to, as the sheet lists them. */
+  readonly shortcutList: { keys: string[]; does: string }[] = [
+    { keys: ['/'], does: 'Go to the page’s search' },
+    { keys: ['?'], does: 'Show this list' },
+    { keys: ['Esc'], does: 'Close a menu, a dialog or the sidebar' },
+    { keys: [SAVE_KEY, 'S'], does: 'Save, on a page with unsaved changes' },
+    { keys: ['Enter'], does: 'Send the message, in a chat' },
+    { keys: ['Shift', 'Enter'], does: 'Start a new line, in a chat' },
+  ];
+
+  @ViewChild('shortcuts') private shortcuts!: TemplateRef<unknown>;
+
+  showShortcuts(): void {
+    this.dialog.open(this.shortcuts, { width: '400px', maxWidth: '100vw' });
+  }
+
+  /** "/" goes to the page's search and "?" lists the keys, unless the
+   *  person is typing somewhere or a dialog is open. */
+  private onShortcut(event: KeyboardEvent): void {
+    if (event.ctrlKey || event.metaKey || event.altKey) return;
+    const target = event.target as HTMLElement | null;
+    if (target?.closest('input, textarea, select, [contenteditable=""], [contenteditable="true"]')) return;
+    if (this.dialog.openDialogs.length) return;
+    if (event.key === '/') {
+      const search = document.querySelector<HTMLInputElement>('main input[type="search"]');
+      if (!search) return;
+      event.preventDefault();
+      search.focus();
+    } else if (event.key === '?') {
+      event.preventDefault();
+      this.showShortcuts();
+    }
+  }
+
   /** Keep Tab focus inside the open drawer (a focus trap). */
   @HostListener('document:keydown', ['$event'])
   onDocumentKeydown(event: KeyboardEvent): void {
+    this.onShortcut(event);
     if (!this.isSidebarOpen || !this.isMobile || event.key !== 'Tab') {
       return;
     }

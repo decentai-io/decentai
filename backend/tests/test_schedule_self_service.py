@@ -245,6 +245,27 @@ class TestPauseResumeDelete:
             "chat_id": chat_id, "note": "x", "cron": "0 9 * * *",
             "timezone": "Nowhere/Land"}).status_code == 400
 
+    def test_a_schedule_that_is_on_can_be_run_now(self, admin, seed):
+        """Its next run moves to this moment, for the clock to fire as
+        it fires any other; a paused one says to resume it first."""
+        import time
+        chat_id = chat_in_dubai(admin)
+        row = self._row(admin, chat_id, cron="0 9 * * *")
+        before = time.time()
+        ran = app_call(admin, "AI:Schedule:Update", {
+            "chat_id": chat_id, "schedule_id": row["schedule_id"], "run_now": True})
+        assert ran.status_code == 200, ran.text
+        fresh = ran.json()["data"]["schedule"]
+        assert before - 1 <= fresh["next_run_at"] <= time.time() + 1
+        assert (fresh["cron"], fresh["enabled"]) == ("0 9 * * *", True)
+
+        app_call(admin, "AI:Schedule:Update", {
+            "chat_id": chat_id, "schedule_id": row["schedule_id"], "enabled": False})
+        refused = app_call(admin, "AI:Schedule:Update", {
+            "chat_id": chat_id, "schedule_id": row["schedule_id"], "run_now": True})
+        assert refused.status_code == 400
+        assert "Resume" in refused.text
+
     def test_delete_takes_it_off_the_clock(self, admin, seed):
         from database.stores import ScheduleStore
 

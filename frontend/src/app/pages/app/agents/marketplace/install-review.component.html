@@ -127,4 +127,16 @@
   <p class="reading-note" *ngIf="approved?.package_digest">
     Kept at the last approval as <code>{{ digest }}</code>.
   </p>
+  <!-- What approving installs, file by file. -->
+  <details class="fold reading-files" *ngIf="files.length">
+    <summary>{{ filesSummary }}</summary>
+    <ul>
+      <li *ngFor="let file of files">
+        <a *ngIf="file.link; else plainFile" [href]="file.link" target="_blank" rel="noopener">{{ file.path }}</a>
+        <ng-template #plainFile><span>{{ file.path }}</span></ng-template>
+        <span class="reading-file-size">{{ file.size }}</span>
+      </li>
+      <li class="reading-note" *ngIf="entry.files_more">and {{ entry.files_more }} more, in the repository.</li>
+    </ul>
+  </details>
 </section>

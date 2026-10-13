@@ -131,6 +131,10 @@
           <lucide-icon name="book-open" [size]="16" [strokeWidth]="1.75" aria-hidden="true"></lucide-icon>
           <span>Guide</span>
         </a>
+        <button mat-menu-item (click)="showShortcuts()">
+          <lucide-icon name="keyboard" [size]="16" [strokeWidth]="1.75" aria-hidden="true"></lucide-icon>
+          <span>Keyboard shortcuts</span>
+        </button>
         <button mat-menu-item (click)="logout()">
           <lucide-icon name="log-out" [size]="16" [strokeWidth]="1.75" aria-hidden="true"></lucide-icon>
           <span>Sign out</span>
@@ -174,3 +178,19 @@
     </main>
   </div>
 </div>
+
+<!-- The keys the app answers to, wherever the person is. -->
+<ng-template #shortcuts>
+  <h2 mat-dialog-title>Keyboard shortcuts</h2>
+  <mat-dialog-content>
+    <dl class="shortcut-list">
+      <ng-container *ngFor="let shortcut of shortcutList">
+        <dt><kbd *ngFor="let key of shortcut.keys">{{ key }}</kbd></dt>
+        <dd>{{ shortcut.does }}</dd>
+      </ng-container>
+    </dl>
+  </mat-dialog-content>
+  <mat-dialog-actions>
+    <button class="btn" type="button" mat-dialog-close>Close</button>
+  </mat-dialog-actions>
+</ng-template>

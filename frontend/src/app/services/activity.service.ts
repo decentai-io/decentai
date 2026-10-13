@@ -62,7 +62,11 @@ export interface ScheduleDraft {
 }
 
 /** What of a schedule a person may rewrite: what is not named stays. */
-export type ScheduleChanges = Partial<Omit<ScheduleDraft, 'chat_id'>> & { enabled?: boolean };
+export type ScheduleChanges = Partial<Omit<ScheduleDraft, 'chat_id'>> & {
+  enabled?: boolean;
+  /** Move its next run to this moment. */
+  run_now?: boolean;
+};
 
 /** A function an installed agent's manifest declared fit to run
  *  unattended — the only kind a schedule may run. */
@@ -101,6 +105,12 @@ export class ActivityService {
 
   setEnabled(chatId: string, scheduleId: string, enabled: boolean) {
     return this.update(chatId, scheduleId, { enabled });
+  }
+
+  /** Runs a schedule that is on at once: its next run moves to now,
+   *  and the clock fires it as it fires any other. */
+  runNow(chatId: string, scheduleId: string) {
+    return this.update(chatId, scheduleId, { run_now: true });
   }
 
   /** Changes a schedule, held to what a new one is held to. A new

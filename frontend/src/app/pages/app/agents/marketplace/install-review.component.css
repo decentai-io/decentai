@@ -167,3 +167,42 @@
     margin-bottom: 12px;
   }
 }
+
+/* The package, file by file: its path, and its size at the right. */
+.reading-files {
+  margin-top: 8px;
+}
+
+.reading-files ul {
+  display: flex;
+  flex-direction: column;
+  max-width: 72ch;
+  list-style: none;
+}
+
+.reading-files li:not(.reading-note) {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 2px 0;
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: var(--t-code);
+  line-height: var(--lh-code);
+}
+
+.reading-files li > :first-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.reading-files a:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.reading-file-size {
+  flex: none;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}

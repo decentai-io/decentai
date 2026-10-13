@@ -196,7 +196,11 @@ class ScheduleController(AIController):
         A change is held to exactly what ``create`` holds a new one to:
         the same two gates on a function, the same ways of saying when.
         What is not named stays as it was, and a new *when* counts its
-        first run from now."""
+        first run from now.
+
+        ``run_now`` moves the next run of a schedule that is on to this
+        moment: the clock fires it as it fires any other, with the same
+        gates and the same record, and its cadence goes on from there."""
         chat, refusal = self._person_chat(data, user, "change schedules")
         if refusal is not None:
             return refusal
@@ -204,7 +208,9 @@ class ScheduleController(AIController):
         rewrites = [name for name in (*self.WHAT_FIELDS, *self.WHEN_FIELDS, "timezone")
                     if name in payload]
         enabled = payload.get("enabled")
-        if ("enabled" in payload or not rewrites) and not isinstance(enabled, bool):
+        run_now = payload.get("run_now") is True
+        if (("enabled" in payload or not (rewrites or run_now))
+                and not isinstance(enabled, bool)):
             return self._fail(
                 data, "invalid_request", "enabled must be true or false.")
 
@@ -260,6 +266,12 @@ class ScheduleController(AIController):
                         return self._fail(data, "invalid_when", str(exc))
                 elif row.get("every_seconds"):
                     changed["next_run_at"] = now + float(row["every_seconds"])
+        if run_now:
+            if not changed.get("enabled", row.get("enabled", True)):
+                return self._fail(
+                    data, "invalid_request",
+                    "This schedule is paused. Resume it to run it.")
+            changed["next_run_at"] = utc_now().timestamp()
         if not store.change(chat["chat_id"], row["schedule_id"], changed):
             return self._fail(data, "not_found", "Schedule not found.", 404)
         row.update(changed)
@@ -270,6 +282,12 @@ class ScheduleController(AIController):
                 resource_refs=[row["schedule_id"]],
                 details={"changed": sorted(rewrites), "cron": row.get("cron"),
                          "every_seconds": row.get("every_seconds")},
+            )
+        if run_now:
+            AuditStore().append(
+                "schedule.run_requested", user, chat_id=chat["chat_id"],
+                function=row.get("function") or None,
+                resource_refs=[row["schedule_id"]],
             )
         if isinstance(enabled, bool):
             AuditStore().append(
