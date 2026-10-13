@@ -71,14 +71,41 @@
   display: none;
 }
 
+/* How the row stands: always shown, unlike what can be done to it. */
+.row-state {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+}
+
 .row-actions {
   display: flex;
   flex: none;
   gap: 2px;
 }
 
+.row-state:empty,
 .row-actions:empty {
   display: none;
+}
+
+/* On a narrow screen the state takes a line of its own under the
+   words, which keep the row's width. */
+@media (max-width: 700px) {
+  :host {
+    flex-wrap: wrap;
+  }
+
+  .row-body {
+    flex: 1 1 0;
+  }
+
+  .row-state {
+    order: 1;
+    flex: 1 1 100%;
+    padding-left: 32px;
+  }
 }
 
 @media (hover: hover) {

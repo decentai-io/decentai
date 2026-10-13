@@ -1,0 +1,84 @@
+/* One skill, read: its head, its actions, then the skill itself as
+   markdown (styles/markdown.scss). The chip and the buttons are the
+   shared ones. */
+:host {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.skill-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.skill-words {
+  flex: 1;
+  min-width: 0;
+}
+
+.skill-title {
+  color: var(--ink);
+  font-size: var(--t-md);
+  font-weight: 600;
+  line-height: var(--lh-md);
+  overflow-wrap: anywhere;
+}
+
+.skill-summary {
+  margin-top: 2px;
+  color: var(--ink-2);
+  font-size: var(--t-base);
+  line-height: var(--lh-base);
+}
+
+.skill-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 6px;
+  margin-top: 4px;
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+/* The dot follows a fact, so a wrapped line never begins with one. */
+.skill-line span:not(:last-child)::after {
+  content: '·';
+  margin-left: 6px;
+  color: var(--ink-3);
+}
+
+.skill-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.skill-actions .chip {
+  margin-right: auto;
+}
+
+.skill-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.skill-note {
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.skill-text {
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  overflow-wrap: anywhere;
+}

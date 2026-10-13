@@ -12,6 +12,10 @@ export interface Skill {
    *  catalog line is still true, the body cannot be read. */
   unreadable?: boolean;
   created_by: string;
+  /** Who wrote it, by name; empty when that person is gone. */
+  created_by_name?: string;
+  /** The names of `owner.groups` and `owner.users`, in their order. */
+  owner_names?: { groups: string[]; users: string[] };
   created_at?: string | null;
   updated_at?: string | null;
 }

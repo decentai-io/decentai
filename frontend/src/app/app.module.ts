@@ -240,6 +240,7 @@ import { MarketplaceComponent } from './pages/app/agents/marketplace/marketplace
 import { SourceFormComponent } from './pages/app/agents/marketplace/source-form.component';
 import { InstallReviewComponent } from './pages/app/agents/marketplace/install-review.component';
 import { SkillsComponent } from './pages/app/data/skills/skills.component';
+import { SkillViewComponent } from './pages/app/data/skills/skill-view.component';
 import { McpComponent } from './pages/app/data/mcp/mcp.component';
 import { MemoryComponent } from './pages/app/settings/memory/memory.component';
 import { ApiKeysComponent } from './pages/app/settings/api-keys/api-keys.component';
@@ -300,6 +301,7 @@ import { AgentCardComponent } from './pages/app/agents/agent-card.component';
     SourceFormComponent,
     InstallReviewComponent,
     SkillsComponent,
+    SkillViewComponent,
     McpComponent,
     MemoryComponent,
     ApiKeysComponent,

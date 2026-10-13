@@ -16,6 +16,7 @@ describe('SkillsComponent', () => {
     profile: any = {},
     service: any = {},
     profiles: any = {},
+    confirm: any = {},
   ) {
     return new SkillsComponent(
       {
@@ -31,6 +32,9 @@ describe('SkillsComponent', () => {
         ...profiles,
       } as any,
       { can: () => true } as any,
+      { events: { subscribe: () => ({ unsubscribe() {} }) }, navigate: async () => true } as any,
+      { queryParamMap: { subscribe: () => ({ unsubscribe() {} }) }, snapshot: { firstChild: null } } as any,
+      { ask: async () => true, ...confirm } as any,
     );
   }
 
@@ -112,13 +116,35 @@ describe('SkillsComponent', () => {
     expect(component.myGroups).toEqual([{ group_id: 'grp_1', group_name: 'Finance' }]);
   });
 
-  it('says a skill shared with named people is not private', async () => {
+  it('says who can use a skill by name, and whose somebody else\'s is', async () => {
     const component = createComponent([], { user_id: 'u1' });
     await component.ngOnInit();
-    const shared = { ...skill('sk_1'), owner: { groups: [], users: ['u1', 'u2'] } };
+    const shared = {
+      ...skill('sk_1'), owner: { groups: [], users: ['u1', 'u2'] },
+      owner_names: { groups: [], users: ['Me', 'Dana'] },
+    };
+    const theirs = { ...skill('sk_2'), created_by: 'u2', created_by_name: 'Dana' };
 
-    expect(component.shareLabel(skill('sk_1'))).toBe('Private');
-    expect(component.shareLabel(shared)).toBe('People');
+    expect(component.sharing(skill('sk_1')).word).toBe('Private');
+    expect(component.sharing(shared).word).toBe('Dana');
+    expect(component.sharing(theirs).word).toBe('Shared by Dana');
+  });
+
+  it('narrows the list by whose a skill is and by what is on, and orders it', async () => {
+    const mine = { ...skill('sk_1', 'Zebra'), updated_at: '2026-10-01T00:00:00Z' };
+    const theirs = { ...skill('sk_2', 'Apple'), created_by: 'u2', created_by_name: 'Dana', updated_at: '2026-10-05T00:00:00Z' };
+    const component = createComponent([mine, theirs],
+      { user_id: 'u1', preferences: { chat: { enabled_skills: ['sk_2'] } } });
+    await component.ngOnInit();
+
+    expect(component.shownSkills.map((s) => s.resource_ref)).toEqual(['sk_2', 'sk_1']);
+    component.sort = 'title';
+    expect(component.shownSkills.map((s) => s.keys.title)).toEqual(['Apple', 'Zebra']);
+    component.show = 'mine';
+    expect(component.shownSkills.map((s) => s.resource_ref)).toEqual(['sk_1']);
+    component.show = 'on';
+    expect(component.shownSkills.map((s) => s.resource_ref)).toEqual(['sk_2']);
+    expect(component.filters[0].items.map((item) => item.count)).toEqual([2, 1, 1, 1]);
   });
 
   it('warns when more skills are selected than a chat can show', async () => {
@@ -145,23 +171,9 @@ describe('SkillsComponent', () => {
     expect(all.overCatalogLimit).toBeFalse();
   });
 
-  it('says a body cannot be read rather than showing it as empty', async () => {
-    const component = createComponent([skill('sk_1')], {}, {
-      get: async () => ({ ...skill('sk_1'), values: {}, unreadable: true }),
-    });
-    await component.ngOnInit();
-
-    await component.preview(skill('sk_1'));
-    expect(component.previewUnreadable).toBeTrue();
-    expect(component.previewBody).toBe('');
-
-    component.closePreview();
-    expect(component.previewSkill).toBeNull();
-    expect(component.previewUnreadable).toBeFalse();
-  });
-
   it('asks before deleting, and drops the skill from the defaults', async () => {
     let removed = '';
+    let answer = false;
     let listed = [skill('sk_1')];
     const component = createComponent(listed, {}, {
       list: async () => listed,
@@ -170,16 +182,15 @@ describe('SkillsComponent', () => {
         listed = [];
         return {};
       },
-    });
+    }, {}, { ask: async () => answer });
     await component.ngOnInit();
 
-    component.requestDelete(skill('sk_1'));
-    expect(component.deleteTarget?.resource_ref).toBe('sk_1');
+    await component.askDelete(skill('sk_1'));
     expect(removed).toBe('');
 
-    await component.remove(skill('sk_1'));
+    answer = true;
+    await component.askDelete(skill('sk_1'));
     expect(removed).toBe('sk_1');
-    expect(component.deleteTarget).toBeNull();
     expect(component.defaultSkills.has('sk_1')).toBeFalse();
   });
 });

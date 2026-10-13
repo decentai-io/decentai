@@ -1,18 +1,36 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnDestroy, OnInit } from '@angular/core';
+import { ActivatedRoute, NavigationEnd, Router } from '@angular/router';
+import { Subscription } from 'rxjs';
 
+import { fullDate, relativeDate } from 'src/app/components/ui/dates';
+import { FilterGroup } from 'src/app/components/ui/filter-column.component';
+import { Choice } from 'src/app/components/ui/radio-keys';
+import { ConfirmService } from 'src/app/services/confirm.service';
 import { Profile, ProfileService } from 'src/app/services/profile.service';
 import { Skill, SkillsService } from 'src/app/services/skills.service';
 import { AuthService } from 'src/app/services/auth.service';
 import { DataPageBase } from '../../data-page-base';
 import { STANDARD_SKILLS_LISTED } from '../../ai/chat/chat-defaults';
+import { ShareEditor, SharingChip } from '../../share-editor';
 
 type ShareMode = 'private' | 'groups' | 'people' | 'org';
+/** Which skills are listed, and in what order. */
+type Show = 'all' | 'mine' | 'shared' | 'on';
+type SkillSort = 'updated' | 'title' | 'author';
+
+/** How long "Saved" stays beside a switch. */
+const SAVED_FOR_MS = 2000;
 
 /**
  * Skills: knowledge people write for the assistant. The chat's main loop
  * sees every visible skill as one catalog line (title + summary) and
  * reads the full body only when it judges the skill relevant — so the
  * title and summary are what the MODEL chooses by, and the page says so.
+ *
+ * One list, with a column at its left that narrows it (whose skills,
+ * and which are on for new chats). A skill's title opens it to be read
+ * at /data/skills/<ref>, beside the list on a wide screen. What is
+ * chosen, the search and the sort are in the address.
  */
 @Component({
   selector: 'app-skills',
@@ -20,7 +38,7 @@ type ShareMode = 'private' | 'groups' | 'people' | 'org';
   templateUrl: './skills.component.html',
   styleUrls: ['../../data-shared.css', '../../../admin/iam-shared.css', './skills.component.css'],
 })
-export class SkillsComponent extends DataPageBase implements OnInit {
+export class SkillsComponent extends DataPageBase implements OnInit, OnDestroy {
   loading = true;
   skills: Skill[] = [];
   profile: Profile | null = null;
@@ -36,17 +54,31 @@ export class SkillsComponent extends DataPageBase implements OnInit {
   peers: { user_id: string; user_name: string; email: string }[] = [];
   saving = false;
   busyRef = '';
+
+  // ── What the address says ───────────────────────────────────────────
+  show: Show = 'all';
   query = '';
+  sort: SkillSort = 'updated';
+  /** The skill opened to be read; '' for none. */
+  openRef = '';
+  private address = new Subscription();
+
+  readonly sortChoices: Choice[] = [
+    { value: 'updated', name: 'Updated' },
+    { value: 'title', name: 'Title' },
+    { value: 'author', name: 'Author' },
+  ];
+
+  /** Who can use a skill, changed from its row without opening it. */
+  readonly share = new ShareEditor(() => this.profile);
+  shareProblem = '';
 
   /** Which skills a NEW chat starts with. An empty preference is a
    *  choice; no preference at all means every visible skill. */
   defaultSkills = new Set<string>();
   savingDefaults = false;
-  deleteTarget: Skill | null = null;
-  previewSkill: Skill | null = null;
-  previewBody = '';
-  previewLoading = false;
-  previewUnreadable = false;
+  /** The skill whose switch was just saved: "Saved" shows beside it. */
+  savedRef = '';
 
   /** How many skills a new chat of this person lists: their own
    *  "Skills listed" default (Settings → Chat configuration), where 0
@@ -62,11 +94,29 @@ export class SkillsComponent extends DataPageBase implements OnInit {
     private service: SkillsService,
     private profiles: ProfileService,
     public auth: AuthService,
+    private router: Router,
+    private route: ActivatedRoute,
+    private confirm: ConfirmService,
   ) {
     super();
   }
 
+  ngOnDestroy(): void {
+    this.address.unsubscribe();
+  }
+
   async ngOnInit(): Promise<void> {
+    this.address.add(this.route.queryParamMap.subscribe((params) => {
+      const show = params.get('show');
+      this.show = show === 'mine' || show === 'shared' || show === 'on' ? show : 'all';
+      this.query = params.get('q') ?? '';
+      const sort = params.get('sort');
+      this.sort = sort === 'title' || sort === 'author' ? sort : 'updated';
+    }));
+    this.address.add(this.router.events.subscribe((event) => {
+      if (event instanceof NavigationEnd) this.readOpened();
+    }));
+
     const [skills, profile, peers] = await Promise.all([
       this.service.list(),
       this.profiles.get(),
@@ -75,8 +125,42 @@ export class SkillsComponent extends DataPageBase implements OnInit {
     this.skills = skills;
     this.profile = profile;
     this.peers = peers;
+    this.share.peers = peers;
     this.readDefaults(profile);
     this.loading = false;
+    this.readOpened();
+  }
+
+  // ── The address ─────────────────────────────────────────────────────
+
+  /** Changes what the address says, and so what is listed. */
+  go(changes: Record<string, string>): void {
+    const queryParams: Record<string, string | null> = {};
+    for (const [key, value] of Object.entries(changes)) queryParams[key] = value || null;
+    void this.router.navigate([], {
+      relativeTo: this.route.firstChild ?? this.route,
+      queryParams,
+      queryParamsHandling: 'merge',
+      replaceUrl: true,
+    });
+  }
+
+  /** Opens what the address names. A ref that names no skill the person
+   *  can see, once the list is read, goes back to the list and says so. */
+  private readOpened(): void {
+    this.openRef = this.route.snapshot.firstChild?.paramMap.get('ref') || '';
+    if (this.openRef && !this.loading && !this.opened) {
+      this.fail('That skill is not one you can see any more.');
+      this.closeOpened();
+    }
+  }
+
+  get opened(): Skill | null {
+    return this.skills.find((skill) => skill.resource_ref === this.openRef) || null;
+  }
+
+  closeOpened(): void {
+    void this.router.navigate(['/data/skills'], { queryParamsHandling: 'preserve' });
   }
 
   private readDefaults(profile: Profile | null): void {
@@ -119,12 +203,76 @@ export class SkillsComponent extends DataPageBase implements OnInit {
     return this.editingRef === '';
   }
 
-  get filteredSkills(): Skill[] {
+  /** Whether the person may change this skill: its writer, or whoever
+   *  may maintain any. */
+  mayChange(skill: Skill): boolean {
+    return skill.created_by === this.myUserId || this.canShareAny;
+  }
+
+  // ── The list ────────────────────────────────────────────────────────
+
+  private matchesShow(skill: Skill, show: Show): boolean {
+    switch (show) {
+      case 'mine': return skill.created_by === this.myUserId;
+      case 'shared': return skill.created_by !== this.myUserId;
+      case 'on': return this.isDefault(skill);
+      default: return true;
+    }
+  }
+
+  get filters(): FilterGroup[] {
+    const count = (show: Show) => this.skills.filter((skill) => this.matchesShow(skill, show)).length;
+    return [{
+      key: 'show',
+      required: true,
+      items: [
+        { value: 'all', name: 'All', count: count('all') },
+        { value: 'mine', name: 'Mine', count: count('mine') },
+        { value: 'shared', name: 'Shared with me', count: count('shared') },
+        { value: 'on', name: 'On for new chats', count: count('on') },
+      ],
+    }];
+  }
+
+  /** The skills the filter and the search leave, in the chosen order. */
+  get shownSkills(): Skill[] {
     const query = this.query.trim().toLowerCase();
-    if (!query) return this.skills;
-    return this.skills.filter((skill) =>
-      `${skill.keys.title} ${skill.keys.summary}`.toLowerCase().includes(query),
-    );
+    const changed = (skill: Skill) => skill.updated_at || skill.created_at || '';
+    const by: Record<SkillSort, (a: Skill, b: Skill) => number> = {
+      updated: (a, b) => changed(b).localeCompare(changed(a)),
+      title: (a, b) => a.keys.title.localeCompare(b.keys.title),
+      author: (a, b) => (a.created_by_name || '').localeCompare(b.created_by_name || '')
+        || a.keys.title.localeCompare(b.keys.title),
+    };
+    return this.skills
+      .filter((skill) => this.matchesShow(skill, this.show)
+        && (!query || `${skill.keys.title} ${skill.keys.summary} ${skill.created_by_name || ''}`
+          .toLowerCase().includes(query)))
+      .sort(by[this.sort]);
+  }
+
+  updated(skill: Skill): string {
+    // Mid-sentence: "updated just now".
+    return relativeDate(skill.updated_at || skill.created_at || '').replace(/^J/, 'j');
+  }
+
+  updatedInFull(skill: Skill): string {
+    return fullDate(skill.updated_at || skill.created_at || '');
+  }
+
+  /** Who can use the skill, as its row's chip. */
+  sharing(skill: Skill): SharingChip {
+    return this.share.chip(skill.owner, skill.created_by, skill.owner_names, skill.created_by_name);
+  }
+
+  /** Under the list: how many skills a chat lists, and what decides
+   *  which. Past the number the list is cut, which the assistant is
+   *  told, so more on than that is worth saying. */
+  get foot(): string {
+    if (!this.skills.length) return '';
+    if (!this.catalogLimit) return 'A chat lists every skill that is on; the summary decides which it reads.';
+    const over = this.overCatalogLimit ? ` ${this.defaultCount} are on, so some are left out.` : '';
+    return `A chat lists at most ${this.catalogLimit} skills; the summary decides which it reads.${over}`;
   }
 
   // ── Editor ──────────────────────────────────────────────────────────
@@ -274,7 +422,12 @@ Before sending, remove repetition and vague filler. Preserve important facts, co
     if (!(await this.saveDefaults())) {
       if (wasOn) this.defaultSkills.add(skill.resource_ref);
       else this.defaultSkills.delete(skill.resource_ref);
+      return;
     }
+    this.savedRef = skill.resource_ref;
+    setTimeout(() => {
+      if (this.savedRef === skill.resource_ref) this.savedRef = '';
+    }, SAVED_FOR_MS);
   }
 
   get defaultCount(): number {
@@ -306,50 +459,49 @@ Before sending, remove repetition and vague filler. Preserve important facts, co
         this.profile = { ...result.profile, groups: this.profile?.groups ?? [] };
       }
       this.readDefaults(this.profile);
-      this.flash(
-        refs.length
-          ? `${refs.length} skill${refs.length === 1 ? "" : "s"} will be in new chats.`
-          : 'New chats will start with no skills.',
-      );
+      this.error = '';
       return true;
     } finally {
       this.savingDefaults = false;
     }
   }
 
-  // ── Reading one without opening the editor ──────────────────────────
+  // ── Sharing, from the row ───────────────────────────────────────────
 
-  async preview(skill: Skill): Promise<void> {
-    this.previewSkill = skill;
-    this.previewBody = '';
-    this.previewUnreadable = false;
-    this.previewLoading = true;
-    try {
-      const full = await this.service.get(skill.resource_ref);
-      if (!full) return this.fail('That skill could not be read.');
-      this.previewUnreadable = !!full.unreadable;
-      this.previewBody = full.values?.body ?? '';
-    } finally {
-      this.previewLoading = false;
-    }
+  openShare(skill: Skill): void {
+    this.shareProblem = '';
+    this.share.open(skill.resource_ref, skill.owner);
   }
 
-  closePreview(): void {
-    this.previewSkill = null;
-    this.previewBody = '';
-    this.previewUnreadable = false;
+  async saveShare(): Promise<void> {
+    this.share.saving = true;
+    this.shareProblem = '';
+    try {
+      const result = await this.service.update(this.share.ref, { owner: this.share.owner() as any });
+      if (result.error) {
+        this.shareProblem = result.error;
+        return;
+      }
+      this.share.close();
+      await this.reload();
+      this.flash('Sharing updated.');
+    } finally {
+      this.share.saving = false;
+    }
   }
 
   // ── Deleting ────────────────────────────────────────────────────────
 
-  requestDelete(skill: Skill): void {
-    this.deleteTarget = skill;
-    this.error = '';
-  }
-
-  closeDeleteDialog(): void {
-    if (this.busyRef) return;
-    this.deleteTarget = null;
+  /** Asked first: chats stop being able to read it at once. */
+  async askDelete(skill: Skill): Promise<void> {
+    const sure = await this.confirm.ask({
+      title: `Delete ${skill.keys.title}?`,
+      body: 'Chats stop being able to read it immediately. Anything already written using it '
+        + 'is unaffected: this only changes what comes next.',
+      confirm: 'Delete',
+      danger: true,
+    });
+    if (sure) await this.remove(skill);
   }
 
   async remove(skill: Skill): Promise<void> {
@@ -357,25 +509,14 @@ Before sending, remove repetition and vague filler. Preserve important facts, co
     try {
       const result = await this.service.remove(skill.resource_ref);
       if (result.error) return this.fail(result.error);
-      this.deleteTarget = null;
       this.defaultSkills.delete(skill.resource_ref);
+      if (skill.resource_ref === this.openRef) this.closeOpened();
       await this.reload();
       this.flash('Skill deleted.');
     } finally {
       this.busyRef = '';
     }
   }
-
-  shareLabel(skill: Skill): string {
-    if (skill.owner.groups.includes('everyone')) return 'Organization';
-    if (skill.owner.groups.length) return 'Groups';
-    // A private skill still names its creator; anyone else in the list
-    // is somebody it was shared with.
-    const others = (skill.owner.users ?? []).filter((id) => id !== skill.created_by);
-    if (others.length) return 'People';
-    return skill.created_by === this.myUserId ? 'Private' : 'Shared with you';
-  }
-
 
   // ── Handing over ────────────────────────────────────────────────────
 

@@ -8,8 +8,13 @@ import { Component, Input } from '@angular/core';
  *     <lucide-icon rowMark name="cloud" [size]="20"></lucide-icon>
  *     <span rowChips class="chip accent">Default</span>
  *     <ng-container rowMeta>OpenAI-compatible · starts with gpt-5</ng-container>
+ *     <app-switch rowState label="On for new chats" …></app-switch>
  *     <button rowActions class="icon-btn sm" aria-label="Edit OpenAI">…</button>
  *   </app-row>
+ *
+ * What is marked `rowState` says how the row stands (a switch, a word)
+ * and is always shown; `rowActions` are shown when the row is pointed
+ * at or holds the focus.
  *
  * A name too long for an attribute (a memory's text) goes inside the
  * tag instead, marked `rowName`. Rows live in an <app-list>.
@@ -29,6 +34,7 @@ import { Component, Input } from '@angular/core';
       <div class="row-meta"><ng-content select="[rowMeta]"></ng-content></div>
       <ng-content></ng-content>
     </div>
+    <div class="row-state"><ng-content select="[rowState]"></ng-content></div>
     <div class="row-actions"><ng-content select="[rowActions]"></ng-content></div>
   `,
 })

@@ -45,6 +45,11 @@ export const DataRoutes: Routes = [
     component: SkillsComponent,
     canActivate: [permissionGuard],
     data: { requiredAction: 'skills:skill:list' },
+    // One skill, read, is a view of the list's page.
+    children: [
+      { path: '', pathMatch: 'full', children: [] },
+      { path: ':ref', children: [] },
+    ],
   },
   {
     path: 'mcp',

@@ -71,6 +71,14 @@ class SkillController(ResourceController):
             return None, ({"error": "Nothing to change."}, 400)
         return fields, None
 
+    def list(self, data: dict, user: dict):
+        """The catalog, each skill saying who wrote it and who it is
+        shared with, by name."""
+        answer, status = super().list(data, user)
+        if status == 200:
+            self._name_people(answer.get("resources") or [], user)
+        return answer, status
+
     def create(self, data: dict, user: dict):
         payload = self._payload(data)
         fields, refusal = self._shape(payload, creating=True)
