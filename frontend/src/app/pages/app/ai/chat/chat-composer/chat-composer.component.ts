@@ -19,7 +19,7 @@ import { RequestService } from 'src/app/services/request.service';
 import { AiSessionService } from 'src/app/services/ai-session.service';
 import { SettingsSpeechService } from 'src/app/services/settings-speech.service';
 import { MicrophoneService } from 'src/app/services/microphone.service';
-import { sizeLabel } from 'src/app/pages/app/data/files/file-types';
+import { sizeLabel } from 'src/app/components/ui/file-types';
 import { ChatFilePickerDialogComponent } from '../chat-file-picker-dialog/chat-file-picker-dialog.component';
 import { ChatModel } from '../chat-model-picker/chat-model-picker.component';
 

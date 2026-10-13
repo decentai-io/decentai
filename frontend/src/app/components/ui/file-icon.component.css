@@ -1,0 +1,26 @@
+/* The file icon: a 32px tile on surface-2, the icon of the file's kind
+   in it, and for a PDF or an image the type as a word under the icon. */
+:host {
+  display: inline-flex;
+  flex: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  color: var(--ink-2);
+}
+
+lucide-icon {
+  display: flex;
+}
+
+.file-icon-word {
+  font-size: 9px;
+  font-weight: 600;
+  line-height: 10px;
+  letter-spacing: 0.02em;
+}

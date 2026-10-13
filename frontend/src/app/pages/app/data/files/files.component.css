@@ -1,3 +1,25 @@
 /* The Files page is made of the shared pieces (the filter column, the
-   list frame, the table and its toolbar: components/ui and
-   styles/controls.scss) and has no styles of its own. */
+   list frame, the table and its toolbar, the file icon). Here is how a
+   row lays out its name and its source. */
+.file-name {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.file-name-words {
+  min-width: 0;
+  overflow-wrap: break-word;
+}
+
+.file-extension {
+  color: var(--ink-3);
+  font-weight: 400;
+}
+
+.file-source {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}

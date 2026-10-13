@@ -32,6 +32,7 @@ import {
   CloudOff,
   CloudUpload,
   ExternalLink,
+  File as FileOutline,
   FileArchive,
   FileBraces,
   FileCode,
@@ -200,6 +201,7 @@ import { FilePickerComponent } from './pages/app/ai/chat/file-picker/file-picker
 import { ChatFilePickerDialogComponent } from './pages/app/ai/chat/chat-file-picker-dialog/chat-file-picker-dialog.component';
 import { ChatScreenComponent } from './pages/app/ai/chat/chat-screen/chat-screen.component';
 import { AgentMarkComponent } from './components/ui/agent-mark.component';
+import { FileIconComponent } from './components/ui/file-icon.component';
 import { ChoiceCardsComponent } from './components/ui/choice-cards.component';
 import { EmptyComponent } from './components/ui/empty.component';
 import { FieldComponent } from './components/ui/field.component';
@@ -372,6 +374,7 @@ import { AgentCardComponent } from './pages/app/agents/agent-card.component';
     EmptyComponent,
     SaveBarComponent,
     AgentMarkComponent,
+    FileIconComponent,
     FilterColumnComponent,
     SortHeaderComponent,
     SelectionBarComponent,
@@ -388,6 +391,7 @@ import { AgentCardComponent } from './pages/app/agents/agent-card.component';
       CloudOff,
       CloudUpload,
       ExternalLink,
+      File: FileOutline,
       FileArchive,
       FileBraces,
       FileCode,

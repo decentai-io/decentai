@@ -75,10 +75,15 @@ class FileController(ResourceController):
         ``<ref>__<resource id>`` — and a page that printed that showed
         people a minted id where a name belongs. The names come from
         this organization's approvals, read once per listing; a ref no
-        approval answers for any more is passed through as it is."""
+        approval answers for any more is passed through as it is.
+
+        Each also says who stored it and who it is shared with, by name:
+        an owner map is ids, and a row that reads "shared with a group"
+        is showing its working."""
         answer, status = super().list(data, user)
         if status != 200:
             return answer, status
+        self._name_people(answer.get("resources") or [], user)
         names = None
         for resource in answer.get("resources") or []:
             ref = self._agent_ref_of(resource)
@@ -88,6 +93,41 @@ class FileController(ResourceController):
                 names = self._agent_names(user)
             resource["agent"] = {"agent_id": ref, "name": names.get(ref, "")}
         return answer, status
+
+    @staticmethod
+    def _name_people(resources: list, user: dict) -> None:
+        """``created_by_name`` and ``owner_names`` on every resource,
+        from two reads for the whole listing. Only this organization's
+        people and groups are looked up, and only the ones these files
+        already name: a file the caller can see says who made it. A
+        person or a group that is gone is an empty name."""
+        from database.stores import GroupStore, UserStore
+
+        org_id = str(user.get("org_id") or "")
+        user_ids, group_ids = set(), set()
+        for resource in resources:
+            owner = resource.get("owner") or {}
+            user_ids.update([resource.get("created_by"), *(owner.get("users") or [])])
+            group_ids.update(owner.get("groups") or [])
+        people = {
+            doc["_id"]: doc.get("user_name") or doc.get("email", "")
+            for doc in UserStore().list_in(org_id, sorted(filter(None, user_ids)))
+        }
+        groups = {
+            doc["_id"]: doc.get("group_name", "")
+            for doc in GroupStore().list_in(org_id, sorted(filter(None, group_ids)))
+        }
+        for resource in resources:
+            owner = resource.get("owner") or {}
+            resource["created_by_name"] = people.get(resource.get("created_by"), "")
+            resource["owner_names"] = {
+                "groups": [
+                    "Everyone" if GroupStore.is_everyone(group_id)
+                    else groups.get(group_id, "")
+                    for group_id in owner.get("groups") or []
+                ],
+                "users": [people.get(user_id, "") for user_id in owner.get("users") or []],
+            }
 
     @staticmethod
     def _agent_ref_of(resource: Dict[str, Any]) -> str:

@@ -88,20 +88,33 @@
                 ></mat-checkbox>
               </td>
               <td class="cell-main">
-                {{ filename(file) }}
-                <span
-                  class="chip warn"
-                  *ngIf="file.unreadable"
-                  matTooltip="Encrypted with a key version this deployment no longer has. The bytes are still stored; their details cannot be read."
-                >Unreadable</span>
+                <span class="file-name">
+                  <app-file-icon [name]="filename(file)" [mime]="file.values.file_type"></app-file-icon>
+                  <span class="file-name-words">{{ stem(file) }}<span class="file-extension" *ngIf="extension(file)">.{{ extension(file) }}</span></span>
+                  <span
+                    class="chip warn"
+                    *ngIf="file.unreadable"
+                    matTooltip="Encrypted with a key version this deployment no longer has. The bytes are still stored; their details cannot be read."
+                  >Unreadable</span>
+                </span>
               </td>
+              <!-- Where it came from: an agent by its mark and name, a
+                   chat by its title, or that it was uploaded. -->
               <td class="cell-fact">
-                <a *ngIf="chatIdOf(file); else plainSource" [routerLink]="['/ai/chats', chatIdOf(file)]">{{ sourceLabel(file) }}</a>
-                <ng-template #plainSource>{{ sourceLabel(file) }}</ng-template>
+                <span class="file-source" *ngIf="file.agent; else notAgent">
+                  <app-agent-mark size="sm" [name]="sourceLabel(file)"></app-agent-mark>
+                  {{ sourceLabel(file) }}
+                </span>
+                <ng-template #notAgent>
+                  <a *ngIf="chatIdOf(file); else plainSource" [routerLink]="['/ai/chats', chatIdOf(file)]">{{ sourceLabel(file) }}</a>
+                  <ng-template #plainSource>{{ sourceLabel(file) }}</ng-template>
+                </ng-template>
               </td>
               <td class="cell-fact num">{{ sizeOf(file) }}</td>
               <td class="cell-when" [title]="changedInFull(file)">{{ changed(file) }}</td>
-              <td class="cell-minor">{{ shareSummary(file) }}</td>
+              <td class="cell-minor">
+                <span class="chip" [matTooltip]="sharing(file).names">{{ sharing(file).word }}</span>
+              </td>
               <td class="cell-actions">
                 <button
                   class="icon-btn sm"

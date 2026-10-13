@@ -14,7 +14,7 @@ import { FileResource, FilesService } from 'src/app/services/files.service';
 import { Profile, ProfileService } from 'src/app/services/profile.service';
 import { DataPageBase } from '../../data-page-base';
 import { ShareEditor } from '../../share-editor';
-import { FILE_GROUPS, fileKindOf, sizeLabel } from './file-types';
+import { extensionOf, FILE_GROUPS, fileKindOf, sizeLabel } from 'src/app/components/ui/file-types';
 
 /** Whose files are listed. */
 type Show = 'all' | 'mine' | 'shared';
@@ -222,18 +222,12 @@ export class FilesComponent extends DataPageBase implements OnInit, OnDestroy {
     return this.agentRefOf(file) || (this.chatIdOf(file) ? 'chats' : 'uploaded');
   }
 
-  /** Where the file came from, named as specifically as the metadata allows. */
+  /** Where the file came from, named as specifically as the metadata
+   *  allows: the agent, the chat by its title, or that it was uploaded. */
   sourceLabel(file: FileResource): string {
-    const ref = this.agentRefOf(file);
-    if (ref) {
-      const name = file.agent?.name;
-      return name ? `From ${name}` : `From a former agent (${ref})`;
-    }
+    if (this.agentRefOf(file)) return file.agent?.name || 'A former agent';
     const chatId = this.chatIdOf(file);
-    if (chatId) {
-      const title = this.chatTitles.get(chatId);
-      return title ? `From chat “${title}”` : 'From a chat';
-    }
+    if (chatId) return this.chatTitles.get(chatId) || 'A chat';
     const kind = String(file.keys?.['file_kind'] || '');
     return kind ? kind.replace(/_/g, ' ') : 'Uploaded';
   }
@@ -454,6 +448,18 @@ export class FilesComponent extends DataPageBase implements OnInit, OnDestroy {
     return file.values?.filename || 'Untitled file';
   }
 
+  /** The name without its extension, and the extension: the row says
+   *  the second more quietly. */
+  stem(file: FileResource): string {
+    const name = this.filename(file);
+    const extension = extensionOf(name);
+    return extension ? name.slice(0, -(extension.length + 1)) : name;
+  }
+
+  extension(file: FileResource): string {
+    return extensionOf(this.filename(file));
+  }
+
   sizeOf(file: FileResource): string {
     return sizeLabel(Number(file.values?.file_size ?? 0));
   }
@@ -480,8 +486,36 @@ export class FilesComponent extends DataPageBase implements OnInit, OnDestroy {
       .join(' · ');
   }
 
-  shareSummary(file: FileResource): string {
-    return this.share.summary(file.owner, file.created_by);
+  /** Who sees the file, as the row's chip: a word, and the names
+   *  behind it where the word is a count. Somebody else's file says
+   *  whose it is, which is what the reader does not know. */
+  sharing(file: FileResource): { word: string; names: string } {
+    const groups = file.owner?.groups ?? [];
+    const everyone = groups.includes('everyone');
+    const named = (ids: string[], names: string[] | undefined, skip: (id: string) => boolean) =>
+      ids.map((id, index) => ({ id, name: names?.[index] || '' }))
+        .filter((entry) => !skip(entry.id)).map((entry) => entry.name || 'someone who left');
+    const groupNames = named(groups, file.owner_names?.groups, (id) => id === 'everyone');
+    const people = named(file.owner?.users ?? [], file.owner_names?.users,
+      (id) => id === this.myUserId || id === file.created_by);
+
+    if (!this.isMine(file)) {
+      return {
+        word: `Shared by ${file.created_by_name || 'a colleague'}`,
+        names: everyone ? 'With everyone in the organization'
+          : groupNames.length ? `With ${groupNames.join(', ')}` : '',
+      };
+    }
+    if (everyone) return { word: 'Everyone', names: 'Everyone in the organization' };
+    if (groupNames.length) {
+      return groupNames.length === 1 ? { word: groupNames[0], names: 'A group' }
+        : { word: `${groupNames.length} groups`, names: groupNames.join(', ') };
+    }
+    if (people.length) {
+      return people.length === 1 ? { word: people[0], names: 'One person' }
+        : { word: `${people.length} people`, names: people.join(', ') };
+    }
+    return { word: 'Private', names: '' };
   }
 
   // ── Actions ─────────────────────────────────────────────────────────

@@ -43,6 +43,19 @@ export function fileKindOf(filename: string, mime = ''): FileKind {
   return KIND_BY_MIME.find(([prefix]) => mime.startsWith(prefix))?.[1] ?? 'file';
 }
 
+/** The Lucide icon of each kind. */
+export const FILE_KIND_ICONS: Record<FileKind, string> = {
+  document: 'file-text',
+  spreadsheet: 'file-spreadsheet',
+  presentation: 'presentation',
+  pdf: 'file-text',
+  image: 'file-image',
+  code: 'file-code',
+  media: 'file-music',
+  archive: 'file-archive',
+  file: 'file',
+};
+
 /** One of the groups the Files page filters by. */
 export interface FileGroup {
   value: string;

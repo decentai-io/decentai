@@ -495,3 +495,31 @@ class TestWhatASlotTakes:
         assert kept["values"]["file_type"] == (
             "application/vnd.openxmlformats-officedocument."
             "wordprocessingml.document")
+
+
+class TestNames:
+    """A row that says "shared with a group" is showing its working: the
+    list names who stored a file and who it is shared with."""
+
+    def test_the_list_names_the_uploader_and_who_it_is_shared_with(
+            self, app, admin, seed):
+        team = _group(admin, "Research", FILE_ACTIONS)
+        uploader, doc = _user(app, seed, "dana@test.org", [team])
+        teammate, _ = _user(app, seed, "sam@test.org", [team])
+        ref = _upload(uploader, b"team bytes", "team.txt").json()["resource"]["resource_ref"]
+        shared = app_call(uploader, "Files:File:Update", {
+            "resource_ref": ref, "owner": {"groups": [team], "users": [doc["_id"]]}})
+        assert shared.status_code == 200, shared.text
+
+        seen = next(f for f in app_call(teammate, "Files:File:List", {}).json()["resources"]
+                    if f["resource_ref"] == ref)
+        assert seen["created_by_name"] == "U"
+        assert seen["owner_names"] == {"groups": ["Research"], "users": ["U"]}
+
+    def test_everyone_is_named_as_everyone(self, admin, seed):
+        ref = _upload(admin).json()["resource"]["resource_ref"]
+        app_call(admin, "Files:File:Update", {
+            "resource_ref": ref, "owner": {"groups": ["everyone"], "users": []}})
+        seen = next(f for f in app_call(admin, "Files:File:List", {}).json()["resources"]
+                    if f["resource_ref"] == ref)
+        assert seen["owner_names"]["groups"] == ["Everyone"]
