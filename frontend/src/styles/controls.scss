@@ -972,6 +972,12 @@ div.mat-mdc-select-panel {
     max-width: none;
   }
 
+  /* The primary action takes a row of its own, under the search. */
+  .btn.toolbar-end {
+    flex: 1 1 100%;
+    justify-content: center;
+  }
+
   .toolbar-date {
     flex: 1 1 140px;
   }
@@ -1084,6 +1090,15 @@ div.mat-mdc-select-panel {
 .table .cell-open:hover {
   text-decoration: underline;
   text-underline-offset: 3px;
+}
+
+/* The name that opens a row is 44px to a finger. */
+@media (pointer: coarse) {
+  .table .cell-open {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
 }
 
 /* A number's column name, said beside the number where the header row

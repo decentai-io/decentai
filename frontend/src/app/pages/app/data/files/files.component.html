@@ -122,7 +122,7 @@
               <td class="cell-main">
                 <span class="file-name">
                   <app-file-icon [name]="filename(file)" [mime]="file.values.file_type"></app-file-icon>
-                  <a class="file-name-words" [routerLink]="['/data/files', file.resource_ref]" queryParamsHandling="preserve"
+                  <a class="cell-open file-name-words" [routerLink]="['/data/files', file.resource_ref]" queryParamsHandling="preserve"
                      [attr.aria-current]="file.resource_ref === openRef ? 'true' : null">{{ stem(file) }}<span class="file-extension" *ngIf="extension(file)">.{{ extension(file) }}</span></a>
                   <span
                     class="chip warn"

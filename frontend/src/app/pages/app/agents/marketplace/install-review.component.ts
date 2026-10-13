@@ -1,6 +1,8 @@
 import { Component, Input } from '@angular/core';
 import { MarkdownService } from 'ngx-markdown';
 
+import { headingsDown } from 'src/app/components/ui/markdown-levels';
+
 import { ChatMarkdownService } from '../../ai/chat/chat-message/chat-markdown.service';
 
 import { AgentSource, CatalogEntry } from 'src/app/services/agents.service';
@@ -126,17 +128,12 @@ export class InstallReviewComponent {
   }
 
   /** The README with its headings two levels down: the page has the
-   *  one `h1`, and "README" is an `h2` above them. Lines inside a code
-   *  fence are left as they are. */
+   *  one `h1`, and "README" is an `h2` above them. */
   get readme(): string {
     const written = this.entry?.readme || '';
     if (written !== this.readmeWritten) {
       this.readmeWritten = written;
-      let fenced = false;
-      this.readmeShown = written.split('\n').map((line) => {
-        if (/^\s*(```|~~~)/.test(line)) fenced = !fenced;
-        return fenced ? line : line.replace(/^(#{1,4})(?=\s)/, '$1##');
-      }).join('\n');
+      this.readmeShown = headingsDown(written, 2);
     }
     return this.readmeShown;
   }

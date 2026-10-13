@@ -92,3 +92,12 @@
     overflow: visible;
   }
 }
+
+/* The chips are 44px to a finger. */
+@media (max-width: 900px) and (pointer: coarse) {
+  .filter-item,
+  .filter-item.is-nested {
+    height: 44px;
+    padding: 0 16px;
+  }
+}

@@ -29,11 +29,6 @@
   gap: 6px;
 }
 
-.file-name-words:hover {
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-
 /* ── Upload ──────────────────────────────────────────────────────────
    Files dragged over the list put a dashed frame on it and say where
    they go; each file on its way in is a row above the list with a 2px

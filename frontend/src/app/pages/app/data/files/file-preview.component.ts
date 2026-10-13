@@ -12,6 +12,7 @@ import 'prismjs/components/prism-yaml';
 
 import { fullDate, relativeDate } from 'src/app/components/ui/dates';
 import { extensionOf, fileKindOf, sizeLabel } from 'src/app/components/ui/file-types';
+import { headingsDown } from 'src/app/components/ui/markdown-levels';
 import { FileResource, FilesService } from 'src/app/services/files.service';
 import { ChatMarkdownService } from '../../ai/chat/chat-message/chat-markdown.service';
 
@@ -202,6 +203,8 @@ export class FilePreviewComponent implements OnChanges, OnDestroy {
         return;
       }
       this.text = await bytes.text();
+      // The file's name is the panel's `h2`: its own headings go under it.
+      if (this.kind === 'markdown') this.text = headingsDown(this.text, 2);
       if (this.kind === 'table') this.fillTable();
       if (this.kind === 'code') this.colour();
     } catch {
