@@ -52,6 +52,7 @@ from database.stores.api_keys import ApiKeyStore
 from database.stores.settings import LlmConnectionStore, OauthAppStore, OauthStateStore
 from database.stores.notifications import PushSubscriptionStore
 from database.stores.iam import (
+    FirstRunStore,
     GroupStore,
     InvitationStore,
     LoginThrottle,
@@ -60,6 +61,7 @@ from database.stores.iam import (
     PolicyStore,
     RoleStore,
     SessionStore,
+    SignupStore,
     UserStore,
 )
 
@@ -80,6 +82,7 @@ __all__ = [
     "ScheduleStore",
     "DefinitionStore",
     "FileStore",
+    "FirstRunStore",
     "GroupStore",
     "InvitationStore",
     "LlmConnectionStore",
@@ -98,6 +101,7 @@ __all__ = [
     "RuntimeSessionStore",
     "SecretStore",
     "SessionStore",
+    "SignupStore",
     "McpServerStore",
     "SkillStore",
     "UserStore",

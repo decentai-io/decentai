@@ -987,7 +987,7 @@ class PolicyStore(OrgScopedStore):
 
 
 # ======================================================================
-# Invitation — how users join; there is no signup
+# Invitation — how users join an organization that exists
 # ======================================================================
 
 class InvitationStore(OrgScopedStore):
@@ -1266,6 +1266,141 @@ class PasswordResetStore(MongoStore):
         """Drop outstanding links — after any password change, so a reset
         mail already in flight cannot undo it."""
         return self.col.delete_many({"user_id": user_id}).deleted_count
+
+
+# ======================================================================
+# FirstRun — the one-time setup of a deployment nobody is in yet
+# ======================================================================
+
+class FirstRunStore(MongoStore):
+    """One document, ``first_run``: the code the first-run page asks for
+    where the deployment made its own, and whether somebody has started
+    setting it up. Claiming it is the lock that lets one person, and only
+    one, become the first administrator."""
+
+    COLLECTION = "first_run"
+    DOC_ID = "first_run"
+
+    #: No 0/O, 1/I/L: a code is read off a log and typed by hand.
+    ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
+
+    @classmethod
+    def normalize(cls, code: str) -> str:
+        """A code as compared: case, spaces and dashes are the typist's."""
+        return re.sub(r"[\s-]", "", str(code or "")).upper()
+
+    def code(self) -> str:
+        """The deployment's own setup code, made the first time it is
+        asked for and the same every time after, from any process."""
+        import secrets
+
+        made = "".join(secrets.choice(self.ALPHABET) for _ in range(8))
+        self.col.update_one(
+            {"_id": self.DOC_ID},
+            {"$setOnInsert": {"code": f"{made[:4]}-{made[4:]}",
+                              "claimed": False, "created_at": utc_now()}},
+            upsert=True,
+        )
+        doc = self.col.find_one({"_id": self.DOC_ID}) or {}
+        if not doc.get("code"):
+            # A document made by a claim before any code was asked for.
+            self.col.update_one({"_id": self.DOC_ID, "code": {"$in": [None, ""]}},
+                                {"$set": {"code": f"{made[:4]}-{made[4:]}"}})
+            doc = self.col.find_one({"_id": self.DOC_ID}) or {}
+        return str(doc.get("code") or "")
+
+    def claim(self) -> bool:
+        """Take the setup for this request. False where somebody else
+        has it: two pages submitted at once make one administrator."""
+        from pymongo.errors import DuplicateKeyError
+
+        try:
+            self.col.update_one(
+                {"_id": self.DOC_ID, "claimed": {"$ne": True}},
+                {"$set": {"claimed": True, "claimed_at": utc_now()}},
+                upsert=True,
+            )
+        except DuplicateKeyError:
+            # The document exists and is claimed: the upsert's insert
+            # collided with it.
+            return False
+        return True
+
+    def release(self) -> None:
+        """Give a claim back, after a setup that did not finish."""
+        self.col.update_one({"_id": self.DOC_ID},
+                            {"$set": {"claimed": False}})
+
+    def finish(self) -> None:
+        """The deployment is set up: the code is spent."""
+        self.col.update_one({"_id": self.DOC_ID},
+                            {"$set": {"claimed": True, "code": "",
+                                      "finished_at": utc_now()}},
+                            upsert=True)
+
+
+# ======================================================================
+# Signup — an organization asked for, waiting on its address
+# ======================================================================
+
+class SignupStore(MongoStore):
+    """Mirrors password resets: hash-only tokens, an hour to live, one
+    live link per address. What the person typed waits here — the
+    password already hashed — until the link proves the mailbox is
+    theirs; only then is anything made."""
+
+    COLLECTION = "signups"
+
+    LIFETIME = timedelta(hours=1)
+    RESEND_INTERVAL = timedelta(minutes=1)
+
+    @property
+    def lifetime_minutes(self) -> int:
+        return int(self.LIFETIME.total_seconds() // 60)
+
+    def issue(self, email: str, org_name: str, user_name: str,
+              password_hash: str) -> Optional[Dict[str, Any]]:
+        """A pending sign-up, or None where one was sent moments ago."""
+        existing = self.col.find_one({"email": email})
+        if existing is not None:
+            issued_at = existing.get("created_at")
+            if issued_at and issued_at > utc_now() - self.RESEND_INTERVAL:
+                return None
+
+        token = PasswordHasher.random_secret()
+        now = utc_now()
+        doc = {
+            "_id": new_id(),
+            "email": email,
+            "org_name": org_name,
+            "user_name": user_name,
+            "password_hash": password_hash,
+            "token_hash": PasswordHasher.token_fingerprint(token),
+            "created_at": now,
+            "expires_at": now + self.LIFETIME,
+        }
+        self.col.delete_many({"email": email})
+        self.col.insert_one(doc)
+        return {**doc, "token": token}
+
+    def get_by_token(self, token: str) -> Optional[Dict[str, Any]]:
+        """Resolve a raw token to a live sign-up, or None."""
+        if not token:
+            return None
+        doc = self.col.find_one(
+            {"token_hash": PasswordHasher.token_fingerprint(token)})
+        if doc is None:
+            return None
+        expires_at = doc.get("expires_at")
+        if expires_at is not None and expires_at <= utc_now():
+            self.col.delete_one({"_id": doc["_id"]})
+            return None
+        return doc
+
+    def spend(self, signup_id: str) -> bool:
+        """Consume the link. True for the one request that did: a link
+        followed twice at once makes one organization."""
+        return self.col.delete_one({"_id": signup_id}).deleted_count == 1
 
 
 # ======================================================================

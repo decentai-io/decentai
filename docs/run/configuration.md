@@ -88,15 +88,19 @@ these; the runtime reads `LOG_LEVEL`.
 | `LOG_COLOR` | when a terminal | `true` or `false`. |
 | `LOG_TO_FILE` | `false` | Also write rotating files under `LOGS_DIR` (`./logs`), `LOG_MAX_BYTES` each, `LOG_BACKUP_COUNT` kept. |
 
-### First-run seeding
+### First run and organizations
 
-Read by `bootstrap/init_db.py`, which is idempotent and safe on every
-start.
+A deployment nobody is in yet opens on the first-run page: the person
+there names the organization and becomes its administrator, once.
+`bootstrap/init_db.py`, idempotent and safe on every start, reads the
+seeding variables below.
 
 | Variable | Meaning |
 |---|---|
-| `ORG_NAME` | The organization's name. |
-| `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_NAME` | The first administrator; required on first run. Once they exist nothing of theirs is changed, except that an administrator found disabled or out of the Administrators group is put back: the seeder never leaves an organization nobody can manage. |
+| `SETUP_CODE` | What the first-run page asks for before it sets anything up. Empty (the default): the deployment makes one and writes it to the log — `docker compose --env-file deploy.env logs init`, and the backend's log. `none`: nothing is asked, for an address no other computer reaches; `bootstrap/setup.py` writes it. Anything else is the code. Wrong codes count against the address's sign-in budget. |
+| `ORG_SIGNUP` | `closed` (the default) or `open`. Open, the sign-in page offers **create an organization**: anybody may make one of their own, as its administrator, once a link sent to their address is followed. It stays shut where outbound email is not set up. Closing it shuts links already sent. ([Operating it](operating.md#organizations)) |
+| `ORG_NAME` | With `ADMIN_EMAIL`, the organization the seeder makes. |
+| `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_NAME` | Optional: a first administrator for the seeder to make, in place of the first-run page — for a deployment set up by automation. Once they exist nothing of theirs is changed, except that an administrator found disabled or out of the Administrators group is put back: the seeder never leaves an organization nobody can manage. Where people are in a deployment and none of them administers, these are required: the first-run page does not come back. |
 | `RESET_EMAIL`, `RESET_PASSWORD`, `RESET_NEW_EMAIL` | Read by `bootstrap/reset_password.py` alone, for the one run that sets a password ([operating it](operating.md#a-forgotten-password-without-email)). Never kept in `deploy.env`. |
 | `INIT_DB_FRESH` | `true` drops the whole database before seeding. Never set by accident; say it out loud. |
 

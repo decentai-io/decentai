@@ -6,7 +6,9 @@ This guide walks the workspace in the order you will meet it. Read this chapter 
 
 ## Signing in
 
-There is no self-service signup. Your organization's administrator invites you by email; the invitation link lets you set a password. Where DecentAI sends no email, they add you and hand you a temporary password, which you replace with your own the first time you sign in. From then on you sign in with that email and password.
+You join an organization that exists when its administrator invites you by email; the invitation link lets you set a password. Where DecentAI sends no email, they add you and hand you a temporary password, which you replace with your own the first time you sign in. From then on you sign in with that email and password.
+
+Whoever opens a DecentAI nobody is in yet meets the first-run page instead: they name the organization, choose their own email and password, and are its administrator. Where whoever runs DecentAI allows it, the sign-in page also offers *create an organization*: a link is emailed to you, and following it makes a new organization of your own, with you as its administrator.
 
 If you forget the password, use *Forgot your password?* on the sign-in page. A reset link is sent to the same address. Where DecentAI sends no email, whoever runs it sets a new password for you on the machine it runs on.
 

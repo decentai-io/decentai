@@ -19,9 +19,24 @@ administrator handed over: `POST /auth/password/first` with `email`,
 actions it holds — what the web app uses to decide which controls to
 show. `POST /auth/logout` ends the session.
 
+### Standing an organization up
+
+`GET /auth/setup` answers `setup_required` (nobody is in this
+deployment yet), `setup_code_required` and `signup_open`. While setup is
+required, `POST /auth/setup` with `org_name`, `name`, `email`,
+`password` — and `code`, where one is required — makes the organization
+with that person as its administrator, and signs them in; answered 409
+once anybody is in the deployment. Where sign-up is open,
+`POST /auth/signup` with the same four fields sends a link to the
+address and answers the same whoever the address belongs to;
+`POST /auth/signup/check` with its `token` says what it will create, and
+`POST /auth/signup/confirm` with the `token` creates it and signs in. A
+refusal of one field names it in `field`.
+
 A native app has no cookie jar to trust. Signing in with
 `"client": "native"` in the body (on login, on the first password, on
-accepting an invitation or resetting a password) answers with the same
+accepting an invitation or resetting a password, on the first run or a
+sign-up link) answers with the same
 session token in the body instead — `access_token`, with `expires_at` —
 for the app to keep in the device's own store and present as
 `Authorization: Bearer …` on every request and on the chat socket. It

@@ -65,9 +65,8 @@ The first time, it:
    the runtime know each other by, and the key that encrypts every
    stored credential and record value;
 2. writes `deploy.env` from `deploy.env.example`, with those keys, a
-   password for the database, the session secret, and a first person
-   nobody had to sign up as: an address that is nobody's
-   (`me@decentai.local`) and a password nobody chose;
+   password for the database and the session secret. Nobody is made
+   for you: you name yourself on the first-run page;
 3. starts the stack — `docker compose --env-file deploy.env up -d
    --build`;
 4. waits until it answers, and prints an address.
@@ -86,14 +85,17 @@ not in git.
 ## 2. Open it
 
 
-Open the address the script printed. It is `http://localhost:4280` with
-a sign-in after the `#`, a part of an address a browser sends nowhere;
-the sign-in page takes it out of the address and signs you in. You are
-the administrator of an organization of one.
+Open the address the script printed: `http://localhost:4280`. The first
+time, it is the first-run page. Name your organization, and give your
+name, the email you will sign in with and a password of your own; **Set
+up and sign in** makes the organization with you as its administrator.
+The page is there once: from then on the address opens the sign-in
+page, and you sign in with what you chose.
 
 DecentAI is served to this computer only, in plain HTTP: nobody else on
-the network reaches the page. The browser keeps you signed in; when it
-no longer does, the address is said again by
+the network reaches the page, which is why the first-run page here asks
+for no setup code (`SETUP_CODE=none` in `deploy.env`; a server's asks
+for one, [Deploying](deploying.md)). The address is said again by
 
 ```bash
 python bootstrap/setup.py --link

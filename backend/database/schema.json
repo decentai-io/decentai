@@ -1,5 +1,5 @@
 {
-  "schema_version": 47,
+  "schema_version": 48,
   "collections": {
     "ai_chats": {
       "description": "Backend-owned chat metadata, configuration, plan, the assistant's state (the mind, one document, per thread), and the runtime block.",
@@ -813,6 +813,80 @@
           ],
           "unique": true,
           "sparse": true
+        },
+        {
+          "name": "email_unique",
+          "keys": [
+            [
+              "email",
+              1
+            ]
+          ],
+          "unique": true
+        },
+        {
+          "name": "expires_at_ttl",
+          "keys": [
+            [
+              "expires_at",
+              1
+            ]
+          ],
+          "expireAfterSeconds": 0
+        }
+      ]
+    },
+    "first_run": {
+      "description": "One document: the deployment's own first-run setup code, and whether the first-run setup has been claimed.",
+      "validator": {
+        "$jsonSchema": {
+          "bsonType": "object",
+          "properties": {
+            "_id": {
+              "bsonType": "string"
+            },
+            "code": {
+              "bsonType": "string"
+            },
+            "claimed": {
+              "bsonType": "bool"
+            }
+          }
+        }
+      },
+      "indexes": []
+    },
+    "signups": {
+      "description": "Organizations asked for from the sign-up page, waiting on their address: hashed, expiring tokens, one per address.",
+      "validator": {
+        "$jsonSchema": {
+          "bsonType": "object",
+          "properties": {
+            "_id": {
+              "bsonType": "string"
+            },
+            "email": {
+              "bsonType": "string"
+            },
+            "token_hash": {
+              "bsonType": "string"
+            },
+            "expires_at": {
+              "bsonType": "date"
+            }
+          }
+        }
+      },
+      "indexes": [
+        {
+          "name": "token_hash_unique",
+          "keys": [
+            [
+              "token_hash",
+              1
+            ]
+          ],
+          "unique": true
         },
         {
           "name": "email_unique",

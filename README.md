@@ -78,13 +78,12 @@ cd decentai
 python bootstrap/setup.py
 ```
 
-The first time, this writes `deploy.env` — the keys, the database's
-password and a first person, all generated, none of them yours to think
-up — builds the images, starts the stack, and prints an address. Open
-it: DecentAI is at `http://localhost:4280`, served to this computer
-only, and the address signs you in. There is no sign-up and no sign-in
-page to get past; the platform's sign-in is still there for the day you
-add somebody else.
+The first time, this writes `deploy.env` — the keys and the database's
+password, all generated, none of them yours to think up — builds the
+images, starts the stack, and prints the address: `http://localhost:4280`,
+served to this computer only. Open it, and the first-run page asks you
+to name your organization and choose your own email and password; you
+are its administrator. After that it is the sign-in page.
 
 ```bash
 python bootstrap/setup.py --link                # the address again

@@ -83,10 +83,35 @@ agent reaches whoever installed it and their groups, and nobody else
 until somebody decides so on the agent's page, where the grant is
 withdrawn too.
 
-Creating an organization, and disabling or re-enabling one, happen from
-outside the application entirely — they are deployment operations, not
-features of the product, and no administrator inside an organization can
-perform them. A disabled organization keeps all of its data and refuses
+Disabling or re-enabling an organization happens from outside the
+application entirely — a deployment operation, which no administrator
+inside an organization can perform. Creating one happens three ways,
+all through the same provisioner
+(`backend/server/authentication/provisioning.py`):
+
+- **The first run.** A deployment nobody is in yet shows one page,
+  where the person who opens it names the organization and becomes its
+  administrator (`POST /auth/setup`). Nobody anywhere in the
+  deployment, and the page is there; one person, and it is gone for
+  good — a deployment whose administrators were all removed is a
+  lockout, recovered on the machine, not a first run. Where the address
+  is reachable from more than one computer the page asks for a setup
+  code the deployment wrote to its log (`SETUP_CODE`), and a claim on
+  one document (`first_run`) makes two submissions at once one
+  administrator.
+- **On the machine**, by whoever runs it (`bootstrap/organizations.py
+  create`), which invites the first administrator.
+- **Sign-up**, where the operator opened it (`ORG_SIGNUP=open`) and the
+  deployment sends mail. Anybody asks for an organization of their own
+  (`POST /auth/signup`); what they typed waits, the password already
+  hashed (`signups`), until a link sent to the address is followed
+  (`POST /auth/signup/confirm`), and only then is anything made. The
+  answer to asking, and its timing, are the same whether or not the
+  address has an account — that mailbox is sent a "you already have an
+  account" message instead of a link.
+
+None of the three puts anybody into an organization that already
+exists. A disabled organization keeps all of its data and refuses
 everyone in it: its members' sessions are dropped, and any that survives
 the moment of the decision is refused. Because the decision is made by
 another process (`bootstrap/organizations.py`), the running backend
@@ -335,9 +360,11 @@ anyone may write one.
 
 ## Becoming a user, and proving it later
 
-Nobody signs themselves up. A person exists in an organization because
-somebody who was already there invited them — or, where no mail server
-is set, added them.
+Nobody signs themselves into an organization that exists. A person is
+in one because somebody who was already there invited them — or, where
+no mail server is set, added them — or because they created it, on the
+first-run page or by sign-up (*Organization*, above), and are its first
+administrator.
 
 **Invitation.** An invitation records the address invited, the
 organization, any groups the person should land in, who invited them, and

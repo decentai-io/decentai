@@ -1,12 +1,9 @@
 """bootstrap/setup.py — DecentAI on a person's own computer, from a
 clone: the settings it writes, what it asks Docker for, and the address
-that signs the first person in. No Docker runs here: something that
-remembers what it was asked stands where the command line would."""
+it says. No Docker runs here: something that remembers what it was
+asked stands where the command line would."""
 
-import base64
 import importlib.util
-import json
-import re
 import shutil
 from pathlib import Path
 
@@ -68,18 +65,10 @@ def setup(docker, tmp_path):
     return found
 
 
-def handed(link):
-    """What the sign-in page reads out of the address, as it reads it."""
-    found = re.search(r"#enter=([A-Za-z0-9_-]+)$", link)
-    assert found, link
-    padded = found.group(1) + "=" * (-len(found.group(1)) % 4)
-    return json.loads(base64.urlsafe_b64decode(padded))
-
-
 class TestTheFirstTime:
     def test_it_writes_the_settings_starts_the_stack_and_says_where(self, setup, docker):
         link = setup.run()
-        assert link.startswith("http://localhost:4280/#enter=")
+        assert link == "http://localhost:4280"
         assert docker.asked == [
             "compose version",
             "info --format {{.ServerVersion}}",
@@ -123,7 +112,7 @@ class TestTheFirstTime:
         said = setup.settings.values()
         assert said["PORT"] == "4300"
         assert said["PUBLIC_APP_URL"] == said["CORS_ALLOW_ORIGINS"] == "http://localhost:4300"
-        assert link.startswith("http://localhost:4300/#enter=")
+        assert link == "http://localhost:4300"
 
     def test_every_setting_of_the_template_is_still_there(self, setup):
         setup.run()
@@ -131,20 +120,20 @@ class TestTheFirstTime:
         template.path = setup.folder / "deploy.env.example"
         assert set(setup.settings.values()) == set(template.values())
 
-    def test_the_first_person_is_nobodys_and_their_password_one_the_platform_takes(
-            self, setup):
+    def test_nobody_is_made_for_the_person_at_the_keyboard(self, setup):
+        """They name themselves on the first-run page: no address and
+        no password is written down for anybody."""
         setup.run()
         said = setup.settings.values()
-        password = said["ADMIN_PASSWORD"]
-        assert said["ADMIN_EMAIL"] == "me@decentai.local"
-        assert len(password) >= 10 and password.strip() == password
-        assert any(c.isalpha() for c in password) and any(c.isdigit() for c in password)
+        assert said["ADMIN_EMAIL"] == said["ADMIN_PASSWORD"] == ""
 
-    def test_the_address_signs_that_person_in(self, setup):
-        said_in_the_address = handed(setup.run())
-        said = setup.settings.values()
-        assert said_in_the_address == {"email": said["ADMIN_EMAIL"],
-                                       "password": said["ADMIN_PASSWORD"]}
+    def test_the_first_run_page_asks_this_computer_for_no_code(self, setup):
+        setup.run()
+        assert setup.settings.values()["SETUP_CODE"] == "none"
+
+    def test_the_address_carries_nothing(self, setup):
+        link = setup.run()
+        assert "#" not in link and "?" not in link
 
     def test_it_waits_until_decentai_answers(self, setup):
         looks = []
@@ -219,7 +208,7 @@ class TestRunAgain:
         assert docker.asked == ["compose version",
                                 "info --format {{.ServerVersion}}",
                                 "compose --env-file deploy.env up -d --build"]
-        assert handed(link)["email"] == "me@decentai.local"
+        assert link == "http://localhost:4280"
 
     @staticmethod
     def without(setup, prefix):
@@ -273,6 +262,15 @@ class TestRunAgain:
                                 "info --format {{.ServerVersion}}",
                                 "compose --env-file deploy.env up -d --build"]
 
+    def test_a_computers_file_from_before_the_first_run_page_asks_for_no_code(
+            self, setup, docker):
+        """The template's SETUP_CODE is a server's (empty: the
+        deployment makes one); this computer's file gains "none"."""
+        setup.run()
+        self.without(setup, "SETUP_CODE=")
+        setup.run()
+        assert setup.settings.values()["SETUP_CODE"] == "none"
+
     def test_a_file_that_lacks_nothing_is_not_written(self, setup):
         setup.run()
         before = setup.settings.path.stat().st_mtime_ns
@@ -297,7 +295,7 @@ class TestRunAgain:
 
 class TestAServersSettings:
     """A deploy.env written by hand for a server is somebody's own: it
-    is not started as a computer of one's own, and it signs nobody in."""
+    is not started as a computer of one's own, nor said as one."""
 
     @pytest.fixture
     def server(self, setup):

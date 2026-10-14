@@ -2,7 +2,7 @@
 
     python bootstrap/setup.py            set it up (the first time), start it,
                                          and say where it is
-    python bootstrap/setup.py --link     the address that opens it signed in
+    python bootstrap/setup.py --link     the address again, starting nothing
     python bootstrap/setup.py --port N   the port, said the first time
 
 It needs Docker with Compose and this Python, and imports nothing but
@@ -10,17 +10,14 @@ the standard library.
 
 The first time, it writes `deploy.env` from `deploy.env.example`: the
 keys, made by the platform's own generators inside the backend's
-image; a password for the database; and a first person nobody had to
-sign up as — an address that is nobody's and a password nobody chose.
-Then it starts the stack and prints an address that opens DecentAI
-signed in as that person.
+image, and a password for the database. Then it starts the stack and
+prints the address. Nobody is made for you: the address opens on the
+app's first-run page, where you name your organization and choose your
+own email and password, once. After that it is the sign-in page.
 
-The platform's sign-in is unchanged and is what is used: the address
-carries the email and the password in its fragment, which a browser
-sends nowhere, and the sign-in page takes them out of the address and
-signs in with them as it would with ones typed. Both stay in
-`deploy.env`, on this computer. DecentAI is served to this computer
-only (docker-compose.yml), so nobody else reaches the page at all.
+The first-run page asks this install for no setup code
+(`SETUP_CODE=none`): DecentAI is served to this computer only
+(docker-compose.yml), so nobody else reaches the page at all.
 
 Run again, it starts what is there and prints the address: the keys
 are made once, because a database is readable with the keys it was
@@ -35,8 +32,6 @@ changed. A `deploy.env` written by hand for a server is left alone
 from __future__ import annotations
 
 import argparse
-import base64
-import json
 import os
 import secrets
 import subprocess
@@ -99,8 +94,6 @@ class Settings:
     TEMPLATE = "deploy.env.example"
     FILE = "deploy.env"
     DEFAULT_PORT = 4280
-    #: The address the first person is made with: nobody's.
-    FIRST_PERSON = "me@decentai.local"
 
     def __init__(self, folder: Path):
         self.folder = Path(folder)
@@ -133,16 +126,11 @@ class Settings:
                 found[name.strip()] = value.strip()
         return found
 
-    @staticmethod
-    def a_password() -> str:
-        """A password nobody chose. It begins with a letter and a
-        number because the platform asks a password for both, whatever
-        the rest came out as."""
-        return "d4" + secrets.token_urlsafe(24)
-
     def local(self, port: int, keys: Dict[str, str]) -> Dict[str, str]:
         """What a run on one person's own computer sets: the template's
-        settings that cannot be left as they are written there."""
+        settings that cannot be left as they are written there. Nobody
+        is named: the person at the keyboard names themselves, on the
+        first-run page, which asks this computer for no code."""
         address = f"http://localhost:{int(port)}"
         database = secrets.token_urlsafe(32)
         return {
@@ -152,9 +140,7 @@ class Settings:
             "MONGO_ROOT_PASSWORD": database,
             "MONGO_URI": (f"mongodb://decentai:{database}"
                           f"@mongo:27017/?authSource=admin"),
-            "ADMIN_NAME": "Me",
-            "ADMIN_EMAIL": self.FIRST_PERSON,
-            "ADMIN_PASSWORD": self.a_password(),
+            "SETUP_CODE": "none",
             "TOKEN_SECRET_KEY": secrets.token_urlsafe(48),
             **keys,
         }
@@ -246,10 +232,14 @@ class Setup:
         self.pause = 3.0
         self.answers: Callable[[str], bool] = self._answers
 
+    #: What a setting this computer's file gains is set to, where the
+    #: template's word is a server's: the first-run page asks a computer
+    #: of one's own for no code.
+    LOCAL = {"SETUP_CODE": "none"}
+
     # ------------------------------------------------------------------
     def run(self, port: Optional[int] = None) -> str:
-        """Set up if nothing is, start, and return the address that
-        opens DecentAI signed in."""
+        """Set up if nothing is, start, and return DecentAI's address."""
         self._must_reach_docker()
         if self.settings.written:
             if port is not None:
@@ -263,9 +253,8 @@ class Setup:
             self.say("Building the backend, to make this install's keys...")
             self.settings.write(self.settings.local(
                 port or Settings.DEFAULT_PORT, self._keys()))
-            self.say(f"{Settings.FILE} is written: the keys, the database's "
-                     f"password and a first person. Keep it; it is not made "
-                     f"twice.")
+            self.say(f"{Settings.FILE} is written: the keys and the "
+                     f"database's password. Keep it; it is not made twice.")
         self.say("Starting DecentAI (the first build takes a few minutes)...")
         if self.engine.show(self._compose("up", "-d", "--build")) != 0:
             raise SetupError(
@@ -275,19 +264,15 @@ class Setup:
         return self.link()
 
     def link(self) -> str:
-        """The address that opens DecentAI signed in as the first
-        person: the sign-in, in the part of an address that is sent
-        nowhere, as the sign-in page reads it."""
+        """DecentAI's address: the first-run page the first time, and
+        the sign-in page after. It carries nothing — no password is
+        written for anybody to be signed in with."""
         if not self.settings.written:
             raise SetupError(
                 "Nothing is set up here yet: `python bootstrap/setup.py` "
                 "does it.")
         self._must_be_local()
-        said = self.settings.values()
-        handed = json.dumps({"email": said.get("ADMIN_EMAIL", ""),
-                             "password": said.get("ADMIN_PASSWORD", "")})
-        return (self._address() + "/#enter="
-                + base64.urlsafe_b64encode(handed.encode()).decode().rstrip("="))
+        return self._address()
 
     # ------------------------------------------------------------------
     def _compose(self, *arguments: str) -> List[str]:
@@ -311,7 +296,8 @@ class Setup:
             self.say("Building the backend, to make the keys this install lacks...")
         made = self._keys(generators) if generators else {}
         template = self.settings.template()
-        self.settings.add({name: made.get(name, template[name]) for name in missing})
+        self.settings.add({name: made.get(name, self.LOCAL.get(name, template[name]))
+                           for name in missing})
         self.say(f"{Settings.FILE} gained {', '.join(missing)}: what the "
                  f"platform has since the file was written. Nothing else in "
                  f"it changed.")
@@ -394,8 +380,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                         help=f"where it is opened (first run only; "
                              f"{Settings.DEFAULT_PORT} when left out)")
     parser.add_argument("--link", action="store_true",
-                        help="print the address that opens it signed in, "
-                             "and start nothing")
+                        help="print the address, and start nothing")
     asked = parser.parse_args(argv)
     setup = Setup()
     try:
@@ -409,10 +394,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     except KeyboardInterrupt:
         print("\nStopped. Run it again to carry on.", file=sys.stderr)
         return 130
-    print("\nDecentAI is running. Open this address; it signs you in:\n")
+    print("\nDecentAI is running at:\n")
     print(f"  {link}\n")
-    print(f"`python bootstrap/setup.py --link` says it again. To stop: "
-          f"`docker compose --env-file {Settings.FILE} stop`.")
+    print("The first time, it asks you to name your organization and choose "
+          "your own email and password. After that, sign in with them.")
+    print(f"`python bootstrap/setup.py --link` says the address again. To "
+          f"stop: `docker compose --env-file {Settings.FILE} stop`.")
     return 0
 
 
