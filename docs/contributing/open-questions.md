@@ -148,7 +148,7 @@ section, whose lines move with every edit.
 
 | Id | Where | Question |
 |---|---|---|
-| HOST-4 | `ai_runtime/door/host.py` `SessionHost._hand` 418–422; `ai_runtime/door/socket.py` 73 | The route handles one frame at a time, and a `user_message`, like a yes to a card (`approval_decided`, since the approval re-check), awaits the refresh, which may install an agent for a minute. A `stop`, the kill switch, an approval and a renewed credential are not read meanwhile (from reading). |
+| HOST-4 | `ai_runtime/door/host.py` `SessionHost._hand` 418–422; `ai_runtime/door/socket.py` 73 | The route handles one frame at a time, and a `user_message` awaits the refresh, which may install an agent for a minute. A `stop`, the kill switch, an approval and a renewed credential are not read meanwhile (from reading). |
 | HOST-8 | `ai_runtime/door/host.py` `SessionHost.handle` 373, `_hand` 432–433 | Frame values are read loosely (run): the text `"false"` approves, a missing `action_hash` becomes empty and the session falls back to its own record, any truthy `force` is the kill. Needs a faulty dialer. |
 | HOST-9 | `ai_runtime/door/host.py` `SessionHost._hand` 418–422 | No limit at the door for a message: a million characters of text, a 100,000-character `client_message_id` and 5,000 parts pass through (run). Settles CHAT-1: the 128-character id and 20-attachment cap are held nowhere. |
 | HOST-10 | `ai_runtime/door/host.py` `SessionHost._schedule_reap` 622–629; `ai_runtime/door/roster.py` `AgentRoster._installs` 54 | One 60-second sleeping task per frame that reaches a session (run: 2,000 `screen_input` frames left 2,000 tasks); background tasks are held by nothing; install locks are never dropped. Robustness. |

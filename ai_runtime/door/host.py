@@ -84,6 +84,9 @@ class SessionHost:
         self._emitting: Dict[str, asyncio.Lock] = {}
         #: chat -> how many deliveries are on their way in to its session
         self._busy: Dict[str, int] = {}
+        # Yeses on their way to the calls that waited for them; held so
+        # the loop does not drop a task nobody else refers to.
+        self._deciding: set = set()
         #: which agents a turn is shown when there are more than fit,
         #: by meaning (mind/router.py); its vectors live
         #: beside the packages
@@ -401,6 +404,29 @@ class SessionHost:
                     host._busy.pop(chat_id, None)
         return Arriving()
 
+    async def _deliver_yes(self, chat_id: str, session: Session,
+                           approval_id: str, approved: bool,
+                           action_hash: str) -> None:
+        """A yes, delivered once what the chat may do has been read
+        again: the call that waited is held to the grants as they are
+        now, not as they were when its card was opened
+        (FunctionExecutor._gates). A session ended meanwhile — the kill
+        switch expires its cards — is told nothing; one built since is
+        told instead."""
+        try:
+            await self.refresh(chat_id)
+            current = self.sessions.get(chat_id, session)
+            if current.dead:
+                return
+            await current.deliver_approval(
+                approval_id, approved, action_hash=action_hash)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            self.logger.error(
+                f"Approval {approval_id} in {chat_id} not delivered: {exc}",
+                exc_info=True)
+
     async def _hand(self, chat_id: str, session: Session, kind: str,
                     frame: Dict[str, Any]) -> None:
         if kind == "user_message":
@@ -427,17 +453,21 @@ class SessionHost:
                 # answers.
                 await self.session(chat_id)
         elif kind == "approval_decided":
-            if frame.get("approved"):
-                # What the chat may do is read again before a yes
-                # releases the call that waited for it, so the call is
-                # held to the grants as they are now, not as they were
-                # when the card was opened (FunctionExecutor._gates).
-                await self.refresh(chat_id)
-            await session.deliver_approval(
-                str(frame.get("approval_id") or ""),
-                bool(frame.get("approved")),
-                action_hash=str(frame.get("action_hash") or ""),
-            )
+            decided = (str(frame.get("approval_id") or ""),
+                       bool(frame.get("approved")),
+                       str(frame.get("action_hash") or ""))
+            if decided[1]:
+                # A yes waits for what the chat may do to be read again,
+                # which can install an agent for a minute; it does that
+                # beside the door, so a stop or the kill switch sent
+                # meanwhile is read at once (_deliver_yes).
+                task = asyncio.get_running_loop().create_task(
+                    self._deliver_yes(chat_id, session, *decided))
+                self._deciding.add(task)
+                task.add_done_callback(self._deciding.discard)
+            else:
+                await session.deliver_approval(
+                    decided[0], False, action_hash=decided[2])
         elif kind == "question_answered":
             # Words for an agent's question; a list for the files card;
             # an object for a credential card (the saved row's ref, or

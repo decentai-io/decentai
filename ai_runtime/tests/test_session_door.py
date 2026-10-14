@@ -705,6 +705,34 @@ class TestQuestions:
 
         assert run(scenario()) == (True, "a")
 
+    def test_a_yes_does_not_hold_the_door_while_the_contract_is_read(self):
+        """Reading the contract again before a yes is delivered may
+        install an agent for a minute. The door hands the yes on and
+        reads the next frame at once — a stop sent after a yes is not
+        held behind it."""
+        host, services = build([action(action="finish")])
+        released = asyncio.Event()
+        reads = []
+
+        async def slow_refresh(chat_id):
+            reads.append(chat_id)
+            await released.wait()
+
+        async def scenario():
+            await host.session("chat_1")
+            host.refresh = slow_refresh
+            await asyncio.wait_for(host.handle("chat_1", {
+                "event": "approval_decided", "approval_id": "apr_1",
+                "approved": True}), timeout=1)
+            await asyncio.wait_for(host.handle("chat_1", {
+                "event": "stop"}), timeout=1)
+            await until(lambda: reads)
+            released.set()
+            await asyncio.sleep(0.05)
+            return reads
+
+        assert run(scenario()) == ["chat_1"]
+
     def test_a_card_answer_keeps_its_shape(self):
         """Words for an agent's question; a list for the files card; an
         object for a credential card (the saved row's ref, or the fields
