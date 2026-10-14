@@ -4,9 +4,10 @@ A key acts as its owner: same user, same organization, same policy
 chain on every request. It is shown once, at creation; afterwards the
 page sees a name, a prefix and the dates. Revoking is the only edit.
 
-Keys are made and revoked from a browser session only. A key that
-could mint keys would make a leak permanent; a key that could revoke
-keys would let a leak lock its owner out of their own scripts.
+Keys are made and revoked from a browser session only: not with a key,
+and not from the app on a phone. A key that could mint keys would make
+a leak permanent; a key that could revoke keys would let a leak lock
+its owner out of their own scripts. The app lists them.
 """
 
 from api.endpoints.app.ai.base import AIController
@@ -22,12 +23,13 @@ class ApiKeyController(AIController):
         self.logger = CustomLoggerFactory.get_logger(self.__class__.__name__)
 
     def _from_browser(self, data, user):
-        if str(user.get("token_type") or "").upper() == "WEB":
+        if (str(user.get("token_type") or "").upper() == "WEB"
+                and user.get("client") == "browser"):
             return None
         return self._fail(
             data, "forbidden",
-            "API keys are managed from a signed-in browser session, not "
-            "with a key.", 403)
+            "API keys are made and revoked in a signed-in browser, not "
+            "with a key or from the app.", 403)
 
     def list(self, data, user):
         return self._respond(data, {

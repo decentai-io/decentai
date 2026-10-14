@@ -441,7 +441,8 @@ kept; it is presented as `Authorization: Bearer dk_…`; revoking it is
 the only edit, and disabling the user revokes them all. Keys are made
 and revoked from a browser session only — a key cannot mint or revoke
 keys, so a leaked one cannot make itself permanent or lock its owner
-out. Each person may hold twenty.
+out; and the app on a phone, whose session is presented as a Bearer
+header and not in the cookie, may list them and nothing more. Each person may hold twenty.
 
 A **runtime delegation** is the AI runtime acting *for* a person, within
 one conversation. It is the same identity — the same user, the same

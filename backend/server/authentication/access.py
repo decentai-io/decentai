@@ -252,6 +252,7 @@ class AccessController:
         runtime access token as a Bearer header. Same token structure, same
         resolution."""
         access_token = request.cookies.get("access_token")
+        in_cookie = bool(access_token)
         if access_token and not self._same_site(request):
             self.logger.warning(
                 "A cookie came from another origin: "
@@ -269,7 +270,13 @@ class AccessController:
             return self._api_key_user(access_token)
         if self._signed_by_a_runtime(access_token):
             return self._runtime_service_user(access_token)
-        return self.verify_token(access_token)
+        user = self.verify_token(access_token)
+        if user is not None and user.get("token_type") == "WEB":
+            # Which client holds the session: a browser keeps it in the
+            # cookie, the app on a phone presents it as a Bearer header.
+            # A copy, since the cached principal is shared by both.
+            user = {**user, "client": "browser" if in_cookie else "app"}
+        return user
 
     # ------------------------------------------------------------------
     # The runtime, as itself

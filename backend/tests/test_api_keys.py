@@ -70,6 +70,27 @@ class TestActingAsThePerson:
         assert app_call(script, "Settings:ApiKey:Revoke",
                         {"key_id": listed[0]["key_id"]}).status_code == 403
 
+    def test_the_app_on_a_phone_lists_keys_and_cannot_make_or_revoke_them(
+            self, app, admin, seed):
+        from conftest import ADMIN_EMAIL, ADMIN_PASSWORD
+
+        make_key(admin)
+        phone = TestClient(app)
+        token = phone.post("/auth/login", json={
+            "email": ADMIN_EMAIL, "password": ADMIN_PASSWORD,
+            "client": "native"}).json()["access_token"]
+        phone.headers.update({"Authorization": f"Bearer {token}"})
+        listed = app_call(phone, "Settings:ApiKey:List", {})
+        assert listed.status_code == 200
+        key_id = listed.json()["data"]["keys"][0]["key_id"]
+        assert app_call(phone, "Settings:ApiKey:Create",
+                        {"name": "x"}).status_code == 403
+        assert app_call(phone, "Settings:ApiKey:Revoke",
+                        {"key_id": key_id}).status_code == 403
+        # The browser, signed in as the same person, still may.
+        assert app_call(admin, "Settings:ApiKey:Revoke",
+                        {"key_id": key_id}).status_code == 200
+
     def test_a_key_cannot_change_its_persons_password(self, app, admin, seed):
         from conftest import ADMIN_EMAIL, ADMIN_PASSWORD
 

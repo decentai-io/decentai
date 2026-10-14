@@ -25,7 +25,9 @@ accepting an invitation or resetting a password) answers with the same
 session token in the body instead — `access_token`, with `expires_at` —
 for the app to keep in the device's own store and present as
 `Authorization: Bearer …` on every request and on the chat socket. It
-is the same session: signed out, disabled or expired the same way.
+is the same session: signed out, disabled or expired the same way. One
+door tells the two apart: API keys are made and revoked only with the
+cookie, so the app may list them and is refused the rest.
 
 For a script, an **API key** is simpler: make one on Settings → API
 keys and send it as `Authorization: Bearer dk_…`. It resolves to you,

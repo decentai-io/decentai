@@ -82,13 +82,13 @@ class TestANativeSignIn:
         assert anon.get("/auth/me").status_code == 401
         me = anon.get("/auth/me", headers=headers)
         assert me.status_code == 200 and me.json()["user"]["email"] == ADMIN_EMAIL
-        # The gateway, and a door kept for browser sessions: the token
-        # names a browser-grade session, not a key.
+        # The gateway: the app sees the person's keys, and is refused
+        # making or revoking one, which is kept for a browser.
         assert anon.post("/app", headers=headers, json={
             "endpoint": "Settings:ApiKey:List", "data": {}}).status_code == 200
         assert anon.post("/app", headers=headers, json={
             "endpoint": "Settings:ApiKey:Create",
-            "data": {"name": "phone"}}).status_code == 200
+            "data": {"name": "phone"}}).status_code == 403
 
     def test_signing_out_ends_it(self, anon):
         token = self.sign_in(anon).json()["access_token"]
