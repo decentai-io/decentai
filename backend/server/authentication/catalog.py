@@ -740,6 +740,11 @@ ACTION_CATALOG: Dict[str, Dict[str, Any]] = {
                 "or was refused, the processes it started"
             ),
             "agents:monitor:files": "See the files an agent keeps",
+            "agents:monitor:summary": (
+                "See what the organization's agents did, added up: calls "
+                "and how they ended, the agents called most, the hosts "
+                "they reached, approvals and model calls"
+            ),
         },
     },
     "ai:audit": {

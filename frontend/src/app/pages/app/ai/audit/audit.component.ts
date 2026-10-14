@@ -49,6 +49,9 @@ export class AuditComponent implements OnInit {
   nextBefore: any = null;
   /** What is open: an event by its id, a group by `groupKey`. */
   expanded = new Set<string>();
+  /** How many of each kind the window holds, as the first page said:
+   *  event type -> count. Read again with every new first page. */
+  counts: Record<string, number> = {};
   /** What each platform action is called: action -> the catalog's words. */
   private actions = new Map<string, string>();
 
@@ -70,6 +73,11 @@ export class AuditComponent implements OnInit {
     { value: 'llm.use', name: 'Model key read' },
     { value: 'agent.installed', name: 'Agent installed' },
     { value: 'agent.deleted', name: 'Agent uninstalled' },
+    { value: 'agent_source.created', name: 'Agent source added' },
+    { value: 'agent_source.refreshed', name: 'Agent source read again' },
+    { value: 'mcp.added', name: 'MCP server added' },
+    { value: 'work.stopped', name: 'Stopped everything' },
+    { value: 'work.resumed', name: 'Resumed everything' },
   ];
 
   constructor(
@@ -96,7 +104,7 @@ export class AuditComponent implements OnInit {
   }
 
   private query(before?: any): AuditQuery {
-    const query: AuditQuery = { limit: 50 };
+    const query: AuditQuery = { limit: 50, counts: !before };
     if (this.text.trim()) query.text = this.text.trim();
     if (this.type) query.event_types = [this.type];
     const since = localDay(this.since, false);
@@ -113,6 +121,7 @@ export class AuditComponent implements OnInit {
     try {
       const page = await this.fetch(this.query());
       this.expanded.clear();
+      this.counts = page.counts || {};
       this.take(page.events, page.next_before);
     } finally {
       this.loading = false;
@@ -149,6 +158,24 @@ export class AuditComponent implements OnInit {
     this.type = '';
     this.since = '';
     this.until = '';
+    void this.reload();
+  }
+
+  /** The window in numbers, a chip for each kind it holds, in the
+   *  order the filter lists them: pressing one shows that kind alone. */
+  get tally(): { value: string; name: string; count: number }[] {
+    return this.types
+      .filter((type) => type.value && this.counts[type.value])
+      .map((type) => ({ value: type.value, name: type.name, count: this.counts[type.value] }));
+  }
+
+  get total(): number {
+    return Object.values(this.counts).reduce((sum, count) => sum + count, 0);
+  }
+
+  /** Show one kind alone, or every kind again if it already is. */
+  showKind(value: string): void {
+    this.type = this.type === value ? '' : value;
     void this.reload();
   }
 

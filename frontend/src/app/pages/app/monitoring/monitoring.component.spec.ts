@@ -182,6 +182,24 @@ describe('MonitoringComponent', () => {
     component.ngOnDestroy();
   });
 
+  it('opens on the overview for whoever may see what agents did, added up', async () => {
+    const component = create({}, [], () => true, {});
+    await component.ngOnInit();
+
+    expect(component.view).toBe('overview');
+    expect(component.views.map((view) => view.value)).toEqual(['overview', 'agents', 'events', 'connections']);
+    component.ngOnDestroy();
+  });
+
+  it('opens on the agents, and offers no overview, without the summary', async () => {
+    const component = create({}, [], (action) => action !== 'agents:monitor:summary', {});
+    await component.ngOnInit();
+
+    expect(component.view).toBe('agents');
+    expect(component.views.map((view) => view.value)).toEqual(['agents', 'events', 'connections']);
+    component.ngOnDestroy();
+  });
+
   it('says how old the numbers are', async () => {
     jasmine.clock().install();
     jasmine.clock().mockDate(new Date(2026, 9, 12, 11, 0, 0));

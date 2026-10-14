@@ -1,6 +1,71 @@
 /* Audit. The page frame, the list and the rows are the shared ones;
    here are the filter row, who did a thing, the way to its chat, and
    what a row opens to. */
+/* The window in numbers: the total, then a pressable count per kind. */
+.audit-tally {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.audit-total {
+  margin-right: 4px;
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.audit-total strong {
+  color: var(--ink);
+  font-size: var(--t-md);
+  font-weight: 600;
+}
+
+.audit-kind {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-full);
+  background: var(--surface);
+  color: var(--ink-2);
+  font: 500 var(--t-sm) / 1 var(--font-sans);
+  cursor: pointer;
+  transition: background var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease),
+    color var(--dur-1) var(--ease);
+}
+
+.audit-kind:hover {
+  border-color: var(--line-strong);
+  background: var(--surface-2);
+  color: var(--ink);
+}
+
+.audit-kind:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+}
+
+.audit-kind.is-on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+}
+
+.audit-kind-count {
+  color: var(--ink);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.audit-kind.is-on .audit-kind-count {
+  color: inherit;
+}
+
 .audit-filters {
   display: flex;
   flex: 1;

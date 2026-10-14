@@ -371,6 +371,7 @@ Generated from `backend/server/authentication/catalog.py` by
 | `agents:monitor:usage` | See how much memory and processor each running agent uses, and what the agents are given |  |  |
 | `agents:monitor:events` | Read what was seen of agents' processes: when each started and ended, its log, every connection it made or was refused, the processes it started |  |  |
 | `agents:monitor:files` | See the files an agent keeps |  |  |
+| `agents:monitor:summary` | See what the organization's agents did, added up: calls and how they ended, the agents called most, the hosts they reached, approvals and model calls |  |  |
 
 ## AI audit trail
 

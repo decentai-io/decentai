@@ -133,3 +133,147 @@ class AuditStore(MongoStore):
             cursor = {"timestamp": iso(last.get("timestamp")),
                       "event_id": last.get("event_id")}
         return {"events": rows, "next_before": cursor}
+
+    # ------------------------------------------------------------------
+    def counts_by_type(self, org_id: str, user_id: Optional[str] = None,
+                       since: Optional[datetime] = None,
+                       until: Optional[datetime] = None) -> Dict[str, int]:
+        """How many events of each type, in the window: what the
+        Audit page says above its trail."""
+        query: Dict[str, Any] = {"org_id": str(org_id or "")}
+        if user_id is not None:
+            query["user_id"] = str(user_id)
+        window = self._window(since, until)
+        if window:
+            query["timestamp"] = window
+        return {
+            str(row["_id"]): int(row["n"])
+            for row in self.col.aggregate([
+                {"$match": query},
+                {"$group": {"_id": "$event_type", "n": {"$sum": 1}}},
+            ])
+        }
+
+    #: What a call that did not run to success is, by its status.
+    REFUSED = ("refused", "denied")
+
+    def activity(self, org_id: str, since: datetime, unit: str) -> Dict[str, Any]:
+        """What an organization's agents did since a moment: the calls
+        over time by how they ended, the agents called most, the hosts
+        they reached, approvals asked and decided, model calls, who was
+        active, and the latest calls that did not succeed.
+
+        ``unit`` is the step of the series: "hour" or "day". Added up
+        by the database; nothing here reads a call's inputs."""
+        org = str(org_id or "")
+        window = {"org_id": org, "timestamp": {"$gte": since}}
+        runs = {**window, "event_type": "execution"}
+
+        series: Dict[str, Dict[str, int]] = {}
+        for row in self.col.aggregate([
+            {"$match": runs},
+            {"$group": {
+                "_id": {"at": {"$dateTrunc": {"date": "$timestamp", "unit": unit}},
+                        "status": "$details.status"},
+                "n": {"$sum": 1}}},
+        ]):
+            at = iso(row["_id"]["at"])
+            bucket = series.setdefault(at, {"ok": 0, "failed": 0, "refused": 0})
+            bucket[self._ending(row["_id"].get("status"))] += int(row["n"])
+
+        agents = [
+            {"agent": str(row["_id"] or ""), "name": str(row.get("name") or row["_id"] or ""),
+             "calls": int(row["calls"]), "failed": int(row["failed"]),
+             "avg_ms": int(row["avg_ms"] or 0)}
+            for row in self.col.aggregate([
+                {"$match": runs},
+                {"$group": {
+                    "_id": "$details.agent_id",
+                    "name": {"$last": "$details.agent_name"},
+                    "calls": {"$sum": 1},
+                    "failed": {"$sum": {"$cond": [
+                        {"$eq": ["$details.status", "success"]}, 0, 1]}},
+                    "avg_ms": {"$avg": "$details.duration_ms"}}},
+                {"$sort": {"calls": -1}},
+                {"$limit": 8},
+            ])
+        ]
+
+        hosts = [
+            {"host": str(row["_id"]), "connections": int(row["n"]),
+             "calls": int(row["calls"])}
+            for row in self.col.aggregate([
+                {"$match": {**runs, "details.reached": {"$exists": True}}},
+                {"$unwind": "$details.reached"},
+                {"$group": {"_id": "$details.reached.host",
+                            "n": {"$sum": "$details.reached.connections"},
+                            "calls": {"$sum": 1}}},
+                {"$sort": {"n": -1}},
+                {"$limit": 8},
+            ])
+        ]
+
+        types = self.counts_by_type(org, since=since)
+        decided = {"allowed": 0, "denied": 0}
+        for row in self.col.aggregate([
+            {"$match": {**window, "event_type": "approval.resolved"}},
+            {"$group": {"_id": "$details.decision", "n": {"$sum": 1}}},
+        ]):
+            key = "denied" if str(row["_id"] or "").lower() in ("deny", "denied") else "allowed"
+            decided[key] += int(row["n"])
+        asked = set(self.col.distinct("resource_refs",
+                                      {**window, "event_type": "approval.requested"}))
+        settled = set(self.col.distinct("resource_refs",
+                                        {"org_id": org, "event_type": "approval.resolved"}))
+
+        problems = [
+            {"at": iso(row.get("timestamp")), "chat_id": row.get("chat_id"),
+             "function": row.get("function"),
+             "agent": str((row.get("details") or {}).get("agent_name") or ""),
+             "status": str((row.get("details") or {}).get("status") or ""),
+             "error": str((row.get("details") or {}).get("error") or "")[:240]}
+            for row in self.col.find(
+                {**runs, "details.status": {"$ne": "success"}},
+                {"timestamp": 1, "chat_id": 1, "function": 1, "details.agent_name": 1,
+                 "details.status": 1, "details.error": 1},
+            ).sort("timestamp", -1).limit(6)
+        ]
+
+        totals = {"ok": 0, "failed": 0, "refused": 0}
+        for bucket in series.values():
+            for key in totals:
+                totals[key] += bucket[key]
+        durations = list(self.col.aggregate([
+            {"$match": {**runs, "details.duration_ms": {"$type": "number"}}},
+            {"$group": {"_id": None, "avg": {"$avg": "$details.duration_ms"}}},
+        ]))
+
+        return {
+            "calls": {**totals, "total": sum(totals.values()),
+                      "avg_ms": int((durations[0]["avg"] or 0) if durations else 0)},
+            "series": [{"at": at, **counts} for at, counts in sorted(series.items())],
+            "agents": agents,
+            "hosts": hosts,
+            "approvals": {"asked": types.get("approval.requested", 0),
+                          **decided, "waiting": len(asked - settled)},
+            "model_calls": types.get("llm.use", 0),
+            "secret_uses": types.get("secret.use", 0),
+            "people": len([u for u in self.col.distinct("user_id", window) if u]),
+            "problems": problems,
+        }
+
+    @classmethod
+    def _ending(cls, status: Any) -> str:
+        status = str(status or "")
+        if status == "success":
+            return "ok"
+        return "refused" if status in cls.REFUSED else "failed"
+
+    @staticmethod
+    def _window(since: Optional[datetime], until: Optional[datetime]) -> Dict[str, Any]:
+        window: Dict[str, Any] = {}
+        if since is not None:
+            window["$gte"] = since
+        if until is not None:
+            window["$lte"] = until
+        return window

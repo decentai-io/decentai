@@ -10,6 +10,23 @@
 
   <p class="form-notice is-error" role="alert" *ngIf="error">{{ error }}</p>
 
+  <!-- The window in numbers: how much it holds, and of each kind. A
+       kind is also the way to show it alone. -->
+  <div class="audit-tally" *ngIf="total" role="group" aria-label="What the record holds">
+    <span class="audit-total"><strong>{{ total.toLocaleString() }}</strong> {{ total === 1 ? "event" : "events" }}{{ since || until ? " in these dates" : "" }}</span>
+    <button
+      *ngFor="let kind of tally"
+      type="button"
+      class="audit-kind"
+      [class.is-on]="type === kind.value"
+      [attr.aria-pressed]="type === kind.value"
+      [matTooltip]="type === kind.value ? 'Show every kind again' : 'Show only this kind'"
+      (click)="showKind(kind.value)"
+    >
+      {{ kind.name }} <span class="audit-kind-count">{{ kind.count.toLocaleString() }}</span>
+    </button>
+  </div>
+
   <app-list rows="groups" label="the record" [loading]="loading">
     <form listToolbar class="audit-filters" (ngSubmit)="reload()">
       <span class="search-field toolbar-search">

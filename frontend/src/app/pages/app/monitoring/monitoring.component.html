@@ -1,8 +1,8 @@
-<app-page guide="organization#monitoring" title="Monitoring" sentence="What agents use now, and what was seen of them." [wide]="true">
+<app-page guide="organization#monitoring" title="Monitoring" sentence="What agents did, what they use now, and what was seen of them." [wide]="true">
   <span pageActions class="mon-updated" *ngIf="view === 'agents' && updated">{{ updated }}</span>
   <app-segmented
     pageActions
-    *ngIf="canSeeEvents"
+    *ngIf="views.length > 1"
     label="Monitoring views"
     [choices]="views"
     [ngModel]="view"
@@ -10,6 +10,9 @@
   ></app-segmented>
 
   <p class="form-notice is-error" role="alert" *ngIf="error">{{ error }}</p>
+
+  <!-- ── What the agents did, added up ───────────────────────────── -->
+  <app-activity-overview *ngIf="view === 'overview'"></app-activity-overview>
 
   <!-- ── What the agents use now ─────────────────────────────────── -->
   <ng-container *ngIf="view === 'agents'">
@@ -186,7 +189,7 @@
 
   <!-- ── What was seen of them ───────────────────────────────────── -->
   <app-list
-    *ngIf="view !== 'agents'"
+    *ngIf="view === 'events' || view === 'connections'"
     rows="groups"
     [label]="view === 'connections' ? 'Connections' : 'Events'"
     [loading]="loading"

@@ -147,16 +147,23 @@ class AuditController(AIController):
         before = payload.get("before")
         if before is not None and not isinstance(before, dict):
             return self._fail(data, "invalid_request", "before is the cursor a previous page returned.")
-        page = AuditStore().search(
+        store = AuditStore()
+        page = store.search(
             self._org(user), user_id=user_id, chat_id=chat_id,
             event_types=types or None, text=str(payload.get("text") or ""),
             since=since, until=until, before=before,
             limit=self._limit(data, self.DEFAULT_LIMIT, self.MAX_LIMIT),
         )
-        return self._respond(data, {
+        answer = {
             "events": [self._public(event) for event in page["events"]],
             "next_before": page["next_before"],
-        })
+        }
+        # The first page may ask how many of each kind the same window
+        # holds — whose the trail is decides it, as it decides the page.
+        if payload.get("counts") is True and before is None:
+            answer["counts"] = store.counts_by_type(
+                self._org(user), user_id=user_id, since=since, until=until)
+        return self._respond(data, answer)
 
     @staticmethod
     def _when(value: Any) -> Optional[datetime]:

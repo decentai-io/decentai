@@ -13,6 +13,8 @@ where that is decided.
     Agents:Monitor:Events   what happened: workers' lives, the helper's
                             jobs, logs, connections, processes
     Agents:Monitor:Files    what one of this organization's agents keeps
+    Agents:Monitor:Summary  what this organization's agents did in a
+                            window, added up from the audit trail
 
 **An organization is shown its own agents and no other's.** Everything
 an agent did carries its approval's ref, which is this organization's
@@ -27,13 +29,15 @@ organization did through it.
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 from api.endpoints.app.ai.base import AIController
 from api.services.agents.monitoring import MonitorError, RuntimeMonitor
 from contracts.container import ContainerUsage
-from database.stores import AgentManifestStore, OrganizationStore
+from database.stores import AgentManifestStore, AuditStore, OrganizationStore
 from server.setup.app_state import get_db
+from util import iso, utc_now
 
 
 class MonitorController(AIController):
@@ -159,6 +163,52 @@ class MonitorController(AIController):
             # ask nothing of the server: what it could say, it said.
             pass
         return said
+
+    # ------------------------------------------------------------------
+    # What they did, added up
+    # ------------------------------------------------------------------
+
+    #: The windows a summary is asked for, each with the step its
+    #: series moves in.
+    WINDOWS = {"24h": (timedelta(hours=24), "hour"),
+               "7d": (timedelta(days=7), "day"),
+               "30d": (timedelta(days=30), "day")}
+
+    def summary(self, data, user):
+        """What this organization's agents did in a window, added up
+        from the audit trail: calls over time by how they ended, the
+        agents called most and how they fared, the hosts reached,
+        approvals, model calls and who was active, and the latest calls
+        that did not succeed. Counts, never a call's inputs."""
+        window = str(self._payload(data).get("window") or "7d")
+        if window not in self.WINDOWS:
+            return self._fail(data, "invalid_request",
+                              f"window is one of {', '.join(self.WINDOWS)}.")
+        span, unit = self.WINDOWS[window]
+        now = utc_now()
+        since = self._step_down(now - span, unit)
+        found = AuditStore().activity(self._org(user), since, unit)
+
+        # Every step of the window, the quiet ones too: a chart of
+        # only the busy hours draws a line through the silence.
+        counted = {row["at"]: row for row in found["series"]}
+        step = timedelta(hours=1) if unit == "hour" else timedelta(days=1)
+        series, at = [], since
+        while at <= now:
+            key = iso(at)
+            series.append(counted.get(key) or {"at": key, "ok": 0, "failed": 0, "refused": 0})
+            at += step
+        return self._respond(data, {**found, "series": series, "window": window,
+                                    "unit": unit, "since": iso(since), "until": iso(now)})
+
+    @staticmethod
+    def _step_down(moment: datetime, unit: str) -> datetime:
+        """The start of the hour, or of the day, a moment falls in, as
+        the database truncates it: in UTC."""
+        moment = moment.astimezone(timezone.utc)
+        if unit == "hour":
+            return moment.replace(minute=0, second=0, microsecond=0)
+        return moment.replace(hour=0, minute=0, second=0, microsecond=0)
 
     # ------------------------------------------------------------------
     # What happened

@@ -74,6 +74,35 @@ export interface AgentFiles {
   error?: string;
 }
 
+/** One step of the calls over time: how many ended each way. */
+export interface ActivityStep {
+  at: string;
+  ok: number;
+  failed: number;
+  refused: number;
+}
+
+/** What an organization's agents did in a window, added up from the
+ *  audit trail (Agents:Monitor:Summary). */
+export interface ActivitySummary {
+  window: SummaryWindow;
+  unit: 'hour' | 'day';
+  since: string;
+  until: string;
+  calls: { ok: number; failed: number; refused: number; total: number; avg_ms: number };
+  series: ActivityStep[];
+  agents: { agent: string; name: string; calls: number; failed: number; avg_ms: number }[];
+  hosts: { host: string; connections: number; calls: number }[];
+  approvals: { asked: number; allowed: number; denied: number; waiting: number };
+  model_calls: number;
+  secret_uses: number;
+  people: number;
+  problems: { at: string; chat_id?: string | null; function?: string; agent: string; status: string; error: string }[];
+  error?: string;
+}
+
+export type SummaryWindow = '24h' | '7d' | '30d';
+
 /** Client for Agents:Monitor — what agents use and did. Read-only. */
 @Injectable({ providedIn: 'root' })
 export class MonitoringService {
@@ -110,6 +139,12 @@ export class MonitoringService {
       next_before: res.data?.next_before ?? null,
       error: res.error,
     };
+  }
+
+  async summary(window: SummaryWindow): Promise<ActivitySummary | null> {
+    const res = await this.session.ai('Agents:Monitor:Summary', { window });
+    if (res.error || !res.data) return null;
+    return res.data as ActivitySummary;
   }
 
   async files(agent: string): Promise<AgentFiles> {
