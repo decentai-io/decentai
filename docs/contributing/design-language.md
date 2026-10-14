@@ -222,13 +222,13 @@ grep -rn "mat-icon" --include="*.html" --include="*.css" app \
   | grep -v "mat-icon-button"
 
 # a corner that is not on the scale
-grep -rn --include="*.css" -E "border-radius:[^;]*[0-9]+px" app
+grep -rn --include="*.css" -E "border-radius:[^;]*[0-9]+px" app   | grep -v "calc(var(--r-"
 
 # an edge drawn with a shadow rather than a border
 grep -rn --include="*.css" -oE "box-shadow:[^;]*;" app | grep -viE "none|var\("
 ```
 
-All six return nothing, and that is the standard. Three exemptions are
+All six return nothing, and that is the standard. Four exemptions are
 built into the greps above and are the only ones:
 
 - **`color-mix()` operands.** `color-mix(… var(--accent) 88%, var(--ink))`
@@ -238,6 +238,10 @@ built into the greps above and are the only ones:
   they used to carry. The first grep requires the literal to sit in a
   declaration — after a property's colon — which leaves prose alone
   without needing to parse comments.
+- **An inner corner.** A shape inset inside a rounded one takes the
+  outer corner less the inset — `calc(var(--r-md) - 3px)` for a segment
+  three pixels inside its track — so the two curves run parallel. The
+  token is still the one spent; the subtraction only follows it in.
 - **`tailwind.css`, `styles.scss` and `styles/`** are where the values
   legitimately live, and are not under `app/`.
 

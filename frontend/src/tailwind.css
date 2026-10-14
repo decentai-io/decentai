@@ -3,7 +3,9 @@
    Paper and ink, with one colour. A warm neutral scale, and the semantic
    names read from it; emerald for meaning only (live, on, chosen,
    primary), red for danger, amber for "needs you". No gradients. Depth
-   is a surface step and a hairline; only what floats carries a shadow.
+   is a surface step and a hairline first; a faint shadow rests under a
+   control or a list's frame and lifts a card when it is pointed at,
+   and the deep one is kept for what floats.
    Dark mode = .dark on <html>.
 
    Components read the semantic names and nothing else. Each token is

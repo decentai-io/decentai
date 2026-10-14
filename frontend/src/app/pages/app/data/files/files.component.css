@@ -115,7 +115,7 @@
   grid-column: 1 / -1;
   height: 2px;
   overflow: hidden;
-  border-radius: 1px;
+  border-radius: var(--r-full);
   background: var(--surface-3);
 }
 
