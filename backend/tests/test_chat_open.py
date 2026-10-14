@@ -110,14 +110,20 @@ class TestTheContract:
         assert "llm_missing" not in contract
 
     def test_a_blockless_provider_is_served_as_written(self, admin, seed):
-        """The scripted connector carries no secret_ref and must pass."""
+        """The scripted connector (``fake``, the one the runtime knows
+        by that name) carries no secret_ref and must pass; any other
+        provider without a connection is refused at the door."""
         chat_id = open_chat(admin, config={"llm": {
-            "provider": "scripted", "responses": ["ok"],
+            "provider": "fake", "responses": ["ok"],
         }}).json()["data"]["chat"]["chat_id"]
 
         contract = open_chat(
             admin, chat_id=chat_id).json()["data"]["contract"]
-        assert contract["llm"]["provider"] == "scripted"
+        assert contract["llm"]["provider"] == "fake"
+        refused = open_chat(admin, config={"llm": {
+            "provider": "scripted", "responses": ["ok"],
+        }})
+        assert refused.status_code >= 400, refused.text
 
     def test_powers_answer_what_the_page_used_to_probe(self, admin, seed):
         contract = open_chat(admin).json()["data"]["contract"]
