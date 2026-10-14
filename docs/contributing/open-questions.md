@@ -6,7 +6,7 @@ does on purpose or by omission, and either answer may be right. The
 bugs, the documentation gaps and the unused code the same review found
 were fixed then; these were left for a decision.
 
-147 questions, in the order the review read the code. To settle
+139 questions, in the order the review read the code. To settle
 one: decide, change the code or the docs if the decision asks for it,
 and delete the row. The review read the code on 7–10 October 2026,
 before the runtime was restructured; every row was re-pointed to the
@@ -18,7 +18,7 @@ section, whose lines move with every edit.
 
 | Id | Where | Question |
 |---|---|---|
-| ENV-3 | `ai_runtime/door/platform.py` `Gateway.call` 103–106, `GatewayError` | The runtime drops the error `code` and puts the whole error dict's Python repr in the message. The frontend keeps the code. |
+| ENV-3 | `ai_runtime/door/platform.py` `Gateway.call` 103–106, `GatewayError` | The runtime drops the error `code`: only the message reaches the caller. The frontend keeps the code. |
 | ENV-7 | `contracts/protocol.py` `EndpointResponse` | Nothing in the model ties `status` to `error`: a "success" with an error, or an "error" without one, can be built. Only the two classmethods keep them consistent. |
 
 ## Contracts 2: the chat's vocabulary
@@ -90,7 +90,6 @@ section, whose lines move with every edit.
 
 | Id | Where | Question |
 |---|---|---|
-| LLM-1 | `contracts/llm_providers.py` `route`, `azure`; `contracts/llm_models.json` (azure) | The eighteen Claude-on-Azure routes apply only when the connection's address is the `openai.azure.com` form and the deployment is named exactly the model's id (run). An address pasted in the `services.ai.azure.com` or `cognitiveservices.azure.com` form, which `azure()` accepts, gets OpenAI's protocol. |
 | LLM-2 | `contracts/generate_llm_providers.py` `_public` | Refuses only `localhost` and `127.*`; private ranges, `[::1]` and the metadata address pass (run). Today's catalog has none (run). For 193 providers the address a key is sent to comes from an open database, and the only defence is reading a long diff. |
 | LLM-3 | `backend/database/stores/settings/llm.py` `_clean`; `docs/system/data-layer.md`, section "Connected accounts" | A connection's endpoint may be any address: nothing checks scheme or host (from reading). Intended for a local model; it also lets whoever may add a connection aim the runtime's and the probe's requests inside the platform's own network. |
 | LLM-4 | `contracts/llm_providers.py` `_blanks` | A blank's value is any text without a slash, so a host can be changed through it (run). No gain while LLM-3 stands; the two belong together. |
@@ -144,14 +143,12 @@ section, whose lines move with every edit.
 | DOOR-2 | `ai_runtime/door/auth.py` `jwt.decode` 20 | No allowance for clocks that differ: a token from a clock 2 seconds ahead is refused (run). Fine on one machine; on two, a small drift refuses every dial. |
 | DOOR-4 | `ai_runtime/door/socket.py` `chat_socket` 58–71 | A frame that is not JSON, not an object, or binary ends the route without a close: the dialer sees an abnormal drop, code 1006, no reason (run on a real server). In the in-process test client the same path never returns, so it cannot be tested as written. |
 | DOOR-5 | `ai_runtime/door/socket.py` `chat_socket` 51, 83; `backend/api/services/chat_session/relay.py` `RuntimeClient._relay` 161 | An exception's own text goes back on the socket (run), and the relay forwards every runtime frame to the page, so an internal error's wording can reach a person's browser. |
-| DOOR-6 | `ai_runtime/main.py` (the services, 63) | With no backend address and `sim/` importable, the runtime starts on the simulator and says nothing. The simulator serves every agent held and asks for nobody's grants (from reading). The image cannot do this; a checkout can. |
 
 ## Runtime 2: the host
 
 | Id | Where | Question |
 |---|---|---|
 | HOST-4 | `ai_runtime/door/host.py` `SessionHost._hand` 418–422; `ai_runtime/door/socket.py` 73 | The route handles one frame at a time, and a `user_message` awaits the refresh, which may install an agent for a minute. A `stop`, the kill switch, an approval and a renewed credential are not read meanwhile (from reading). |
-| HOST-5 | `ai_runtime/door/roster.py` `AgentRoster.materialize` 212–262, `_pull` 390 | A package is fetched by the agent's ref and checked against a digest read earlier. If the approval moved in between, the old digest is remembered as refused, by digest alone, so another organization approving those same bytes is refused without a fetch until a sweep or a restart (run). |
 | HOST-8 | `ai_runtime/door/host.py` `SessionHost.handle` 373, `_hand` 432–433 | Frame values are read loosely (run): the text `"false"` approves, a missing `action_hash` becomes empty and the session falls back to its own record, any truthy `force` is the kill. Needs a faulty dialer. |
 | HOST-9 | `ai_runtime/door/host.py` `SessionHost._hand` 418–422 | No limit at the door for a message: a million characters of text, a 100,000-character `client_message_id` and 5,000 parts pass through (run). Settles CHAT-1: the 128-character id and 20-attachment cap are held nowhere. |
 | HOST-10 | `ai_runtime/door/host.py` `SessionHost._schedule_reap` 622–629; `ai_runtime/door/roster.py` `AgentRoster._installs` 54 | One 60-second sleeping task per frame that reaches a session (run: 2,000 `screen_input` frames left 2,000 tasks); background tasks are held by nothing; install locks are never dropped. Robustness. |
@@ -178,9 +175,7 @@ section, whose lines move with every edit.
 
 | Id | Where | Question |
 |---|---|---|
-| POOL-5 | `ai_runtime/agents/pool.py` `WorkerPool._call_of` 247, `_route` 253–259; `docs/reference/worker-protocol.md`, section "Hostility assumptions" | Two calls in flight on one worker can use each other's authority: a function asked with a concurrent call's id and was answered from that call's resources (run). Across workers it is refused (run). The same agent's code serves both calls, so the gain is small; the doc says more than is true. |
 | POOL-7 | `ai_runtime/agents/workers.py` `WorkerHandle._send` 394–403 | Settles WRK-4. `_send` checks no size. A 3 MiB answer to a worker makes the worker exit, and both the asking call and a bystander are told "was cancelled by the platform" as a function error, with nothing logged as an error on the host (run). Ordinary: a 4 MiB record. A line over 2 MiB from a worker kills it, and every call in flight gets "the worker broke the protocol" (run). |
-| POOL-9 | `ai_runtime/agents/pool.py` `WorkerPool._handle` 175–183 | An agent update retires the worker under calls still in flight on it; they are told "was cancelled by the platform" (run). The lifecycle doc does not mention it. |
 | POOL-10 | `ai_runtime/agents/workers.py` `WorkerHandle._spool_out` 179, `_spooled` 201–230, `_serve_ask` 483–486 | The spool (run): the host reads and encodes a spooled file before the router decides whether the ask is entitled, even for an ask naming no live call; a hard link is read as a plain file. From reading: the over-the-cap read is never tested, and a large read is written to the spool on the event loop. |
 | POOL-11 | `ai_runtime/agents/pool.py` `WorkerPool._within` 118–140; `ai_runtime/execution/call.py` `Call.paused` 211–221 | Overlapping asks each credit their full wait to the function's clock: three asks open for the same 2 s turned a 1 s timeout into 7 s (run on `_within` with a stand-in). |
 | POOL-12 | `ai_runtime/agents/workers.py` `WorkerHandle._die` 331–345, `_end` 362–368 | `_die` awaits the process's end with no bound. If a confined worker's stop fails, its pending calls are never failed and the caller never returns (from reading). |
@@ -193,13 +188,12 @@ section, whose lines move with every edit.
 
 | Id | Where | Question |
 |---|---|---|
-| RSN-3 | `ai_runtime/mind/evidence.py` `Evidence.files` 128–171 | A file part's ref is any string a function returned in a field marked `x-resource: file` (run). Unlike a table's ref, nothing checks it against the chat; the download's own visibility rule is the only guard (from reading). |
 | RSN-5 | `ai_runtime/mind/evidence.py` `Evidence._silent` 366–367 | That same line repeats a function's error text, uncut, as the assistant's own message (run: 4,067 characters). |
 | RSN-6 | `ai_runtime/mind/evidence.py` `Evidence.COLUMNS_MAX` 46, `shown` 274, `_display_part` 306 | `COLUMNS_MAX = 24` is a local copy, not the contract's (a third copy, with CHAT-3's two). Both table builders cut to 24 (run). A column name's length is unbounded and names are not checked against the rows. |
 | RSN-7 | `ai_runtime/mind/evidence.py` `Evidence._lists`, `writes`, `reads`, `files` 79–154 | Smaller (run): a field typed `["array", "null"]` is not treated as a list; a function with no `permission_level` counts as a write for one purpose and not as a read for another. |
 | RSN-10 | `ai_runtime/mind/plan.py` `WorkItem.verified` 45–47, `Plan.attach` 192–199; `ai_runtime/mind/assistant.py` `Assistant._record` 1376–1413; `ai_runtime/mind/acts.py` `Acts.proven` 384–396 | "Verified" means only "has some evidence". One unrelated successful call verifies every active item; the model may name any ref in the trace; evidence stays on an item moved back to pending; `done` does not check dependencies (all run). A step's status is the model's word. |
 | RSN-11 | `ai_runtime/mind/plan.py` `WorkItem.__init__` 39–43, `Plan.update` 134–190 | Smaller (run): `evidence` or `depends_on` that is not a list is ignored silently; a blocker and the evidence list are unbounded here while the backend's copy cuts them; dependency cycles are allowed. |
-| RSN-14 | `ai_runtime/mind/router.py` `AgentRouter.texts_for` 85–108, `scores` 211, `rerank` 254–264; `ai_runtime/prompts/__init__.py` `Prompts.render` 34–41 | An agent's own words decide whether it is listed: 160 characters of its description go into the ranking prompt (run; a real model was not tested), and an agent with many example prompts is close to many messages (run). It cannot hide an agent from being found or force a call. A person's message containing `{agents}` gets the candidate list pasted in (run). |
+| RSN-14 | `ai_runtime/mind/router.py` `AgentRouter.texts_for` 85–108, `scores` 211, `rerank` 254–264; `ai_runtime/prompts/__init__.py` `Prompts.render` 34–41 | An agent's own words decide whether it is listed: 160 characters of its description go into the ranking prompt (run; a real model was not tested), and an agent with many example prompts is close to many messages (run). It cannot hide an agent from being found or force a call. |
 | RSN-15 | `ai_runtime/mind/router.py` `AgentRouter.vectors` 124–137, `shortlist` 222, `parse_ids` 275–292 | Smaller (run): the fallback that reads ids from the model's reply takes them in order of mention, so "Not agt_mail" puts it first; a cache file that is JSON and not vectors switches routing off until it is deleted. |
 | RSN-17 | `ai_runtime/chat/summarizer.py` `Summarizer.maintain` 162–187; `ai_runtime/prompts/summary.md` 25–29; `docs/system/assistant.md`, section "The state" | The code carries nothing from the folded messages into the summary; what survives is what the model writes (run). The prompt does not name storage refs, job ids, file refs or schedule ids as things to keep. The doc says "so nothing known is lost". |
 | RSN-20 | `ai_runtime/mind/documents.py` `DocumentText` 38–114 | Reading files as text (run): `.sh`, `.tex` and `.ts` are refused on this machine because of the stored type (the same root as FT-1); UTF-16 without a mark comes back with a NUL after each letter; Arabic in Windows-1256 is refused as not text. |
@@ -226,7 +220,6 @@ section, whose lines move with every edit.
 | SES-14 | `ai_runtime/chat/session.py` `Session.adopt` 393–486; `ai_runtime/chat/helpers.py` `Helpers.inherit` 33 | `adopt(skills=None)` cannot lift a narrowing in an open chat (run). Helpers are given the new grants, level and safety, and not the new roster, model or zone (from reading). |
 | SES-15 | `ai_runtime/chat/session.py` `Session._say` 991, `_record_audit` 1091; `ai_runtime/chat/cards.py` `Cards.approve` 96, `ask_card` 285–286; `ai_runtime/mind/children.py` `Children.spawn` 71, `_take_in` 129 | A helper's foreground card carries the parent's job id (run). A helper's id is written in full in one place and short in two (run). Audit rows are written under the helper's id (run), where the doc says the audit takes no thread. |
 | SES-16 | `ai_runtime/mind/assistant.py` `Assistant._run_job` 1274; `ai_runtime/chat/session.py` `Session._post` 581, `_advance` 937 | Three narrow windows, from reading: `job_done` is never recorded, so a death between two beats loses it; two inbox records in flight can be saved out of order; the cycle's failure path returns without the last look at the inbox. |
-| SES-17 | `sim/session_services.py` `save_state` 153 | The simulator keeps the live state by reference, so its "saved" transcript changes as the mind goes on. The exactly-once scenario wrongly showed a message absorbed twice until a copying save was used (run). A test against the simulator can therefore pass or fail for the wrong reason. |
 
 ## Runtime 6a: confinement, the spawn helper, the egress proxy
 
@@ -250,7 +243,6 @@ section, whose lines move with every edit.
 | LIB-9 | `ai_runtime/agents_container/usage.py` `AgentsUsage` 82–215; `ai_runtime/agents_container/service.py` `SpawnerService._why` 481–496, `_end_largest_agent` 574–592 | Who is ended for memory (simulated): the trigger is the whole container's number, and the one chosen is the agent holding most of one kind of memory. Agents holding 30 and 25 MB were ended one after another when file-backed memory filled the container. Settles CON-1's effect: on the older cgroup layout the rule fires early (949 MB read where 650 is meant). |
 | LIB-10 | `ai_runtime/agents_container/service.py` `SpawnerService._hold` 370–384, `_let_go` 386–390 | The spawner keeps one process per user. A second start for the same user left the first out of its table: no memory rule, no disk measure (run). Not reachable from today's callers (from reading). |
 | LIB-11 | `ai_runtime/agents/library.py` `AgentLibrary.forget` 452–462, `_materialize` 500–501; `ai_runtime/door/roster.py` `AgentRoster.reclaim` 277–320 | `forget` takes no lock and deletes an environment on the event loop. A stale answer about which digests are still approved can delete a folder under a running install (from reading; the window is one backend round trip). Half-arrived package folders and spools left by a crash are never swept (run for the first). |
-| LIB-12 | `ai_runtime/agents/environments.py` `AgentEnvironment._extras_locks` 94, `extras` 336–348 | One lock for the whole process guards packages installed for one run, and it is held through up to five minutes of pip, so every agent's `call.install` waits on any other's (run). The folders are removed only with their environment. |
 | LIB-13 | `ai_runtime/agents_container/service.py` `SpawnerService.make_key` 136–153, `_serve` 213–677; `ai_runtime/agents/container.py` `AgentsContainer._ask` 87–104 | Smaller: a key that is not ASCII raises an uncaught error (run: the connection closes, nothing starts); no cap on connections before the key; the key is never changed; the runtime's request to the spawner has no deadline. |
 | LIB-14 | `ai_runtime/agents/library.py` `AgentLibrary.environment_key` 404–414; `ai_runtime/agents/environments.py` `AgentEnvironment.build` 132–136 | Smaller: dependencies are installed after the SDK is copied in, so a declared package could overwrite `decentai_sdk` in that environment; the environment's name does not include the machine type. |
 
@@ -259,7 +251,7 @@ section, whose lines move with every edit.
 | Id | Where | Question |
 |---|---|---|
 | EXE-7 | `ai_runtime/execution/executor.py` `FunctionExecutor._gates` 300–326 | A grant withdrawn while an approval card waits does not stop the approved call on the live path (run). After a restart, on the resume path, it does. One event, two outcomes. |
-| EXE-8 | `ai_runtime/execution/executor.py` `FunctionExecutor._gates` 286–313 | The resume path does not check again that every required scope has a value, and does not compare the level again: a parked call with no value for a required scope ran under an unconstrained allow (run). Hard to reach. |
+| EXE-8 | `ai_runtime/execution/executor.py` `FunctionExecutor._gates` 286–313 | The resume path does not compare the level again: a call parked under one level resumes under the approval it was given, whatever the chat's level is now (from reading). Hard to reach. |
 | EXE-10 | `ai_runtime/execution/executor.py` `FunctionExecutor._execute` 548–573, `_record` 622–626, 652–653 | The same root as RSN-1: keys the platform owns are taken from the agent's own result. `denied` or `not_permitted` in an ordinary error result sets the audit status to `denied` or `refused` (run with a real worker); an agent's own `displays` and `storage_ref` pass through when the platform has none to write (run). |
 | EXE-11 | `ai_runtime/execution/executor.py` `FunctionExecutor._witnessed` 176–196, `_record` 602–659, `_outline` 660–691 | The audit line's inputs are as the model proposed them, not as run: no defaults, references unresolved. Text up to 200 characters is kept as it is, and an agent's error text up to 500, so a password given as an input, or a secret an agent puts in its error, lands on the trail (run). |
 | EXE-12 | `ai_runtime/execution/executor.py` `FunctionExecutor._refs_in` 441–451, `_execute` 489; `ai_runtime/execution/resources.py` `ResourceAccess._read_slot` 74–77; `docs/agents/sdk.md`, the opening section and "`call.resources`" | Every string anywhere in a call's inputs is a ref the function may read wherever it is kept, records as well as files; whether the input is marked `x-resource` is not looked at. Run on the simulator: agent B read agent A's record when the ref was in B's inputs. `sdk.md` documents the rule, and opens with "no access to another agent's records". |
