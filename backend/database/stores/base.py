@@ -9,7 +9,8 @@ writes.
 from __future__ import annotations
 
 import time
-from typing import Any, Dict, List, Optional
+from contextlib import contextmanager
+from typing import Any, Dict, Iterator, List, Optional
 
 from pymongo.errors import DuplicateKeyError
 
@@ -23,6 +24,19 @@ class AccessCache:
         self._sessions: Dict[str, Dict[str, Any]] = {}
         self._statements: Dict[str, Dict[str, Any]] = {}
         self._permissions_version = 0
+        # Moves on every invalidation. A resolution carries the
+        # generation it began reading at, and is not kept when an
+        # invalidation came in the meantime: what it read may be from
+        # before a write that has since landed.
+        self._generation = 0
+
+    def generation(self) -> int:
+        """Taken before reading the database for a resolution, and
+        handed back when the result is put."""
+        return self._generation
+
+    def _current(self, since: Optional[int]) -> bool:
+        return since is None or since == self._generation
 
     # ── sessions (session_id → user dict) ──────────────────────────────
 
@@ -37,19 +51,24 @@ class AccessCache:
         # must never leak into the cached original.
         return dict(entry["user"])
 
-    def put_session(self, session_id: str, user: Dict[str, Any]) -> None:
+    def put_session(self, session_id: str, user: Dict[str, Any],
+                    since: Optional[int] = None) -> None:
+        if not self._current(since):
+            return
         self._sessions[session_id] = {
             "user": dict(user),
             "cached_at": time.monotonic(),
         }
 
     def drop_session(self, session_id: str) -> None:
+        self._generation += 1
         self._sessions.pop(session_id, None)
 
     def drop_user(self, user_id: str) -> None:
         """Everything cached about one user — sessions and statements.
         Called when they are disabled, deleted, re-grouped, or change
         password."""
+        self._generation += 1
         self._statements.pop(user_id, None)
         for session_id in [
             sid for sid, entry in self._sessions.items()
@@ -71,7 +90,10 @@ class AccessCache:
             return None
         return entry["statements"]
 
-    def put_statements(self, user_id: str, statements: List[Dict[str, Any]]) -> None:
+    def put_statements(self, user_id: str, statements: List[Dict[str, Any]],
+                       since: Optional[int] = None) -> None:
+        if not self._current(since):
+            return
         self._statements[user_id] = {
             "statements": statements,
             "version": self._permissions_version,
@@ -80,12 +102,45 @@ class AccessCache:
 
     def bump_permissions_version(self) -> None:
         """Any group/role/policy mutation: every cached resolution is stale."""
+        self._generation += 1
         self._permissions_version += 1
 
     def clear(self) -> None:
+        self._generation += 1
         self._sessions.clear()
         self._statements.clear()
         self._permissions_version += 1
+
+    # ── a write, with what it changes invalidated on both sides ────────
+    #
+    # Before, so nothing cached is served while the write runs; after,
+    # so a resolution that read the old rows in between and was put
+    # before the write landed is gone too, and one still reading is
+    # refused its put by the generation it carries.
+
+    @contextmanager
+    def changing_user(self, user_id: str) -> Iterator[None]:
+        self.drop_user(user_id)
+        try:
+            yield
+        finally:
+            self.drop_user(user_id)
+
+    @contextmanager
+    def changing_session(self, session_id: str) -> Iterator[None]:
+        self.drop_session(session_id)
+        try:
+            yield
+        finally:
+            self.drop_session(session_id)
+
+    @contextmanager
+    def changing_permissions(self) -> Iterator[None]:
+        self.bump_permissions_version()
+        try:
+            yield
+        finally:
+            self.bump_permissions_version()
 
 
 access_cache = AccessCache()

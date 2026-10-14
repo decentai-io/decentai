@@ -115,6 +115,7 @@ class PolicyEngine:
         if everyone not in group_ids:
             group_ids.append(everyone)
 
+        since = access_cache.generation()
         statements: List[Dict[str, Any]] = []
         if group_ids:
             role_ids: Set[str] = set()
@@ -131,7 +132,7 @@ class PolicyEngine:
                 )
 
         if user_id:
-            access_cache.put_statements(user_id, statements)
+            access_cache.put_statements(user_id, statements, since)
         return statements
 
     # ------------------------------------------------------------------

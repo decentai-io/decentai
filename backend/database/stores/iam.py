@@ -420,13 +420,13 @@ class UserStore(OrgScopedStore):
 
     # ------------------------------------------------------------------
     def update_profile(self, user_id: str, user_name: str) -> Optional[Dict[str, Any]]:
-        access_cache.drop_user(user_id)
-        self.col.update_one(
-            {"_id": user_id},
-            {"$set": {"user_name": str(user_name or "").strip(),
-                      "updated_at": utc_now()}},
-        )
-        return self.get(user_id)
+        with access_cache.changing_user(user_id):
+            self.col.update_one(
+                {"_id": user_id},
+                {"$set": {"user_name": str(user_name or "").strip(),
+                          "updated_at": utc_now()}},
+            )
+            return self.get(user_id)
 
     def set_stopped(self, user_id: str, stopped: bool) -> None:
         """The person's own switch (api/services/chat_session/halt.py):
@@ -514,12 +514,12 @@ class UserStore(OrgScopedStore):
     def set_email(self, user_id: str, email: str) -> None:
         """The address a person signs in with. The caller has checked
         that nobody else has it."""
-        access_cache.drop_user(user_id)
-        self.col.update_one(
-            {"_id": user_id},
-            {"$set": {"email": self.normalize_email(email),
-                      "updated_at": utc_now()}},
-        )
+        with access_cache.changing_user(user_id):
+            self.col.update_one(
+                {"_id": user_id},
+                {"$set": {"email": self.normalize_email(email),
+                          "updated_at": utc_now()}},
+            )
 
     def set_password(self, user_id: str, password_hash: str,
                      must_change: bool = False) -> None:
@@ -527,43 +527,43 @@ class UserStore(OrgScopedStore):
         an administrator handing one over — so the person is asked for
         their own at their next sign-in; a password a person sets for
         themselves is theirs to keep."""
-        access_cache.drop_user(user_id)
-        self.col.update_one(
-            {"_id": user_id},
-            {"$set": {"password_hash": password_hash,
-                      "must_change_password": bool(must_change),
-                      "updated_at": utc_now()}},
-        )
+        with access_cache.changing_user(user_id):
+            self.col.update_one(
+                {"_id": user_id},
+                {"$set": {"password_hash": password_hash,
+                          "must_change_password": bool(must_change),
+                          "updated_at": utc_now()}},
+            )
 
     def set_status(self, user_id: str, status: str) -> None:
-        access_cache.drop_user(user_id)
-        self.col.update_one(
-            {"_id": user_id}, {"$set": {"status": status, "updated_at": utc_now()}}
-        )
+        with access_cache.changing_user(user_id):
+            self.col.update_one(
+                {"_id": user_id}, {"$set": {"status": status, "updated_at": utc_now()}}
+            )
 
     def set_groups(self, user_id: str, group_ids: List[str]) -> Optional[Dict[str, Any]]:
-        access_cache.drop_user(user_id)
-        self.col.update_one(
-            {"_id": user_id},
-            {"$set": {"assigned_groups": list(group_ids or []),
-                      "updated_at": utc_now()}},
-        )
-        return self.get(user_id)
+        with access_cache.changing_user(user_id):
+            self.col.update_one(
+                {"_id": user_id},
+                {"$set": {"assigned_groups": list(group_ids or []),
+                          "updated_at": utc_now()}},
+            )
+            return self.get(user_id)
 
     def remove_group_everywhere(self, group_id: str) -> int:
         """Detach a deleted group from every user."""
-        access_cache.bump_permissions_version()
-        return self.col.update_many(
-            {"assigned_groups": group_id},
-            {"$pull": {"assigned_groups": group_id}},
-        ).modified_count
+        with access_cache.changing_permissions():
+            return self.col.update_many(
+                {"assigned_groups": group_id},
+                {"$pull": {"assigned_groups": group_id}},
+            ).modified_count
 
     def touch_login(self, user_id: str) -> None:
         self.col.update_one({"_id": user_id}, {"$set": {"last_login_at": utc_now()}})
 
     def delete(self, user_id: str) -> bool:
-        access_cache.drop_user(user_id)
-        return super().delete(user_id)
+        with access_cache.changing_user(user_id):
+            return super().delete(user_id)
 
 
 # ======================================================================
@@ -705,31 +705,31 @@ class GroupStore(OrgScopedStore):
 
     def set_roles(self, group_id: str, role_ids: List[str]) -> Optional[Dict[str, Any]]:
         """Replace the roles every member of this group inherits."""
-        access_cache.bump_permissions_version()
-        self.col.update_one(
-            {"_id": group_id},
-            {"$set": {"assigned_roles": list(role_ids or []),
-                      "updated_at": utc_now()}},
-        )
-        return self.get(group_id)
+        with access_cache.changing_permissions():
+            self.col.update_one(
+                {"_id": group_id},
+                {"$set": {"assigned_roles": list(role_ids or []),
+                          "updated_at": utc_now()}},
+            )
+            return self.get(group_id)
 
     def remove_role_everywhere(self, role_id: str) -> int:
         """Detach a deleted role from every group."""
-        access_cache.bump_permissions_version()
-        return self.col.update_many(
-            {"assigned_roles": role_id},
-            {"$pull": {"assigned_roles": role_id}},
-        ).modified_count
+        with access_cache.changing_permissions():
+            return self.col.update_many(
+                {"assigned_roles": role_id},
+                {"$pull": {"assigned_roles": role_id}},
+            ).modified_count
 
     def delete(self, group_id: str) -> bool:
         if self.is_everyone(group_id):
             raise ValueError("The Everyone group cannot be deleted.")
-        access_cache.bump_permissions_version()
-        return super().delete(group_id)
+        with access_cache.changing_permissions():
+            return super().delete(group_id)
 
     def restore(self, doc: Dict[str, Any]) -> None:
-        access_cache.bump_permissions_version()
-        super().restore(doc)
+        with access_cache.changing_permissions():
+            super().restore(doc)
 
 
 # ======================================================================
@@ -802,29 +802,29 @@ class RoleStore(OrgScopedStore):
         return self.get(role_id)
 
     def set_policies(self, role_id: str, policy_ids: List[str]) -> Optional[Dict[str, Any]]:
-        access_cache.bump_permissions_version()
-        self.col.update_one(
-            {"_id": role_id},
-            {"$set": {"assigned_policies": list(policy_ids or []),
-                      "updated_at": utc_now()}},
-        )
-        return self.get(role_id)
+        with access_cache.changing_permissions():
+            self.col.update_one(
+                {"_id": role_id},
+                {"$set": {"assigned_policies": list(policy_ids or []),
+                          "updated_at": utc_now()}},
+            )
+            return self.get(role_id)
 
     def remove_policy_everywhere(self, policy_id: str) -> int:
         """Detach a deleted policy from every role."""
-        access_cache.bump_permissions_version()
-        return self.col.update_many(
-            {"assigned_policies": policy_id},
-            {"$pull": {"assigned_policies": policy_id}},
-        ).modified_count
+        with access_cache.changing_permissions():
+            return self.col.update_many(
+                {"assigned_policies": policy_id},
+                {"$pull": {"assigned_policies": policy_id}},
+            ).modified_count
 
     def delete(self, role_id: str) -> bool:
-        access_cache.bump_permissions_version()
-        return super().delete(role_id)
+        with access_cache.changing_permissions():
+            return super().delete(role_id)
 
     def restore(self, doc: Dict[str, Any]) -> None:
-        access_cache.bump_permissions_version()
-        super().restore(doc)
+        with access_cache.changing_permissions():
+            super().restore(doc)
 
 
 # ======================================================================
@@ -963,27 +963,27 @@ class PolicyStore(OrgScopedStore):
         description: Optional[str] = None,
         permissions: Optional[Dict[str, Any]] = None,
     ) -> Optional[Dict[str, Any]]:
-        access_cache.bump_permissions_version()
-        changes: Dict[str, Any] = {"updated_at": utc_now()}
-        if name is not None:
-            changes["name"] = self._clean_name(name, "A policy name")
-        if description is not None:
-            changes["description"] = str(description).strip()
-        if permissions is not None:
-            changes["permissions"] = self.validate_permissions(permissions)
+        with access_cache.changing_permissions():
+            changes: Dict[str, Any] = {"updated_at": utc_now()}
+            if name is not None:
+                changes["name"] = self._clean_name(name, "A policy name")
+            if description is not None:
+                changes["description"] = str(description).strip()
+            if permissions is not None:
+                changes["permissions"] = self.validate_permissions(permissions)
 
-        self._update_unique(
-            {"_id": policy_id}, changes, "A policy with this name already exists."
-        )
-        return self.get(policy_id)
+            self._update_unique(
+                {"_id": policy_id}, changes, "A policy with this name already exists."
+            )
+            return self.get(policy_id)
 
     def delete(self, policy_id: str) -> bool:
-        access_cache.bump_permissions_version()
-        return super().delete(policy_id)
+        with access_cache.changing_permissions():
+            return super().delete(policy_id)
 
     def restore(self, doc: Dict[str, Any]) -> None:
-        access_cache.bump_permissions_version()
-        super().restore(doc)
+        with access_cache.changing_permissions():
+            super().restore(doc)
 
 
 # ======================================================================
@@ -1184,13 +1184,13 @@ class SessionStore(MongoStore):
         return doc
 
     def delete(self, session_id: str) -> bool:
-        access_cache.drop_session(session_id)
-        return super().delete(session_id)
+        with access_cache.changing_session(session_id):
+            return super().delete(session_id)
 
     def delete_for_user(self, user_id: str) -> int:
         """Every session of one user — on disable, delete, password change."""
-        access_cache.drop_user(user_id)
-        return self.col.delete_many({"user_id": user_id}).deleted_count
+        with access_cache.changing_user(user_id):
+            return self.col.delete_many({"user_id": user_id}).deleted_count
 
 
 # ======================================================================

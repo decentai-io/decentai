@@ -76,15 +76,15 @@ class RuntimeSessionStore(MongoStore):
         return doc
 
     def delete(self, session_id: str) -> bool:
-        access_cache.drop_session(session_id)
-        return super().delete(session_id)
+        with access_cache.changing_session(session_id):
+            return super().delete(session_id)
 
     def delete_for_chat(self, user_id: str, chat_id: str) -> int:
         """The chat was deleted or its delegation withdrawn."""
-        access_cache.drop_user(user_id)
-        return self.col.delete_many(
-            {"user_id": user_id, "chat_id": str(chat_id or "")}
-        ).deleted_count
+        with access_cache.changing_user(user_id):
+            return self.col.delete_many(
+                {"user_id": user_id, "chat_id": str(chat_id or "")}
+            ).deleted_count
 
     def chats_of(self, user_id: str) -> list:
         """The chats this person has a key out for."""
@@ -93,5 +93,5 @@ class RuntimeSessionStore(MongoStore):
 
     def delete_for_user(self, user_id: str) -> int:
         """Every delegation of one user — on disable and delete."""
-        access_cache.drop_user(user_id)
-        return self.col.delete_many({"user_id": user_id}).deleted_count
+        with access_cache.changing_user(user_id):
+            return self.col.delete_many({"user_id": user_id}).deleted_count

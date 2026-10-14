@@ -145,6 +145,7 @@ class AccessController:
         if cached is not None:
             return cached
 
+        since = access_cache.generation()
         session = store.get(session_id)
         if session is None:
             return None
@@ -173,7 +174,7 @@ class AccessController:
 
         user = self.build_user(user_doc, session_id=session["_id"])
         self._stamp_principal(user, session, kind)
-        access_cache.put_session(session_id, user)
+        access_cache.put_session(session_id, user, since)
         return user
 
     @classmethod
