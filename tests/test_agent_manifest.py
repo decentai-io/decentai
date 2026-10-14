@@ -604,6 +604,9 @@ class TestFieldStorageContradictions:
         assert kept.SLUG_PATTERN.match("agt_" + "a" * 20 + "__" + "s" * 34)
         assert not kept.SLUG_PATTERN.match("agt_" + "a" * 20 + "__" + "s" * 35)
         assert said.SECRET_ID_MAX_CHARS == 34
+        # A data or file slot's derived name, `<24-character ref>__<id>`,
+        # must fit the stores' 120-character name limit.
+        assert 24 + 2 + said.RESOURCE_ID_MAX_CHARS <= 120
 
     def test_a_secret_cannot_live_in_keys(self, document):
         """Keys are plaintext. A secret there is a credential stored in

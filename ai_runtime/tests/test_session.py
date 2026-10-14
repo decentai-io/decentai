@@ -2079,6 +2079,22 @@ class TestForegroundParks:
         run(scenario())
         assert services.titles["chat_1"] == "Remembered \u2014 wrap up"
 
+    def test_a_name_spelled_as_an_html_entity_is_kept_as_the_character(self):
+        """The same, written as the web writes a dash."""
+        session, services = build([
+            action(action="say", text="Noted.", final=True),
+            "Remembered &mdash; wrap up",
+        ])
+        session.connector.names_chats = True
+
+        async def scenario():
+            await session.open()
+            await session.deliver_user("remember this")
+            await session.wait_idle()
+
+        run(scenario())
+        assert services.titles["chat_1"] == "Remembered \u2014 wrap up"
+
     def test_a_denied_hydrated_park_is_an_honest_observation(self):
         services = SimSessionServices()
         services.provider.secrets.update(SYNC_SECRET)

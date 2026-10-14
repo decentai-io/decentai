@@ -7,6 +7,8 @@ retypes them. Reading belongs to the user (the frontend renders tables
 and graphs from here), optionally narrowed by a dot-path.
 """
 
+import json
+
 from database.stores import ChatStorageStore
 from util import new_id, utc_now
 
@@ -14,6 +16,10 @@ from .base import AIController
 
 
 class StorageController(AIController):
+    #: What one result may weigh as JSON: a page reads a result whole,
+    #: and a document has a ceiling of its own in the database.
+    MAX_BYTES = 8 * 1024 * 1024
+
     def create(self, data, user):
         chat, refusal = self._runtime_chat(
             data, user, "create storage results")
@@ -24,6 +30,14 @@ class StorageController(AIController):
         source = str(payload.get("source") or "")
         if not source:
             return self._fail(data, "invalid_request", "source is required.")
+        try:
+            weight = len(json.dumps(payload.get("data"), ensure_ascii=False).encode("utf-8"))
+        except (TypeError, ValueError):
+            return self._fail(data, "invalid_request", "data must be JSON.")
+        if weight > self.MAX_BYTES:
+            return self._fail(
+                data, "too_large",
+                f"A stored result is at most {self.MAX_BYTES // (1024 * 1024)} MB.", 413)
 
         document = {
             **self._identity(user, chat["chat_id"]),

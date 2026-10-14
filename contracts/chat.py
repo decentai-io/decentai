@@ -74,6 +74,8 @@ SCREEN_INPUT_EVENTS_MAX = 64
 SCREEN_TABS_MAX = 20
 SCREEN_TAB_TITLE_MAX_CHARS = 200
 SCREEN_TAB_ADDRESS_MAX_CHARS = 300
+#: The largest place a tab may say it has.
+SCREEN_TAB_INDEX_MAX = 1000
 #: A files question (the assistant's find_files): how many the card
 #: proposes, and how many the person may choose — the composer's cap.
 FILE_CANDIDATES_MAX = 5
@@ -520,7 +522,7 @@ class ScreenTab(ChatModel):
     """One of the things open behind a screen's picture: a browser's
     tab, an application's window."""
     #: its place among them, from 1 — what the person's hand names
-    index: int = Field(ge=1, le=1000)
+    index: int = Field(ge=1, le=SCREEN_TAB_INDEX_MAX)
     title: str = Field(default="", max_length=SCREEN_TAB_TITLE_MAX_CHARS)
     address: str = Field(default="", max_length=SCREEN_TAB_ADDRESS_MAX_CHARS)
     #: the one the picture shows

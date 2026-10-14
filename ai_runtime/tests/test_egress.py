@@ -354,6 +354,19 @@ class TestAddressesNobodyReaches:
         assert status == 403, body
         assert word in body and "only public internet addresses" in body
 
+    @pytest.mark.parametrize("spelling", ["2130706433", "0x7f000001", "0177.0.0.1", "127.1"])
+    def test_an_address_written_oddly_is_judged_as_what_it_resolves_to(
+            self, proxy, names, spelling):
+        """127.0.0.1 can be written as one number, in hex or in octal;
+        the proxy never reads the spelling, only the address a name
+        resolves to, which is what it connects to. However the name is
+        written, where it resolves to is what is judged."""
+        names[spelling] = ["10.0.0.5"]
+        token = proxy.admit("agt_web", network(any_host=True))
+        status, body = get(proxy, token, f"http://{spelling}/")
+        assert status == 403, body
+        assert "private network" in body
+
     def test_a_blocked_site_is_not_reached_by_its_address(self, proxy):
         """The list is of names; while one is in force, an address —
         which says nothing of whose site it is — reaches nothing."""

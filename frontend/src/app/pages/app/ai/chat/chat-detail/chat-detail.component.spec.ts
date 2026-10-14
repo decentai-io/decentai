@@ -220,3 +220,38 @@ describe('ChatDetailComponent, what went wrong', () => {
     expect(page.shownErrors.map((error) => error.id)).toEqual([3, 2]);
   });
 });
+
+describe('ChatDetailComponent sequence gaps', () => {
+  function event(seq: number): string {
+    return JSON.stringify({ endpoint: 'AI:Chat:Event', data: { event: 'working', seq } });
+  }
+
+  it('dials again on a frame past the next sequence, and leaves the mark', () => {
+    /** A live frame that jumps the sequence means frames were dropped on
+     *  the way: taken, the mark would move past them and the replay, which
+     *  reads only above the mark, would never go back for them. */
+    const reconnectNow = jasmine.createSpy('reconnectNow');
+    const state = {
+      value: { latestEventSeq: 4 },
+      acceptSequence: jasmine.createSpy('acceptSequence').and.returnValue(true),
+      setWorking: () => {},
+    };
+    const page = new ChatDetailComponent(
+      {} as any, {} as any, {} as any, {} as any, {} as any, {} as any,
+      { reconnectNow } as any,
+      state as any,
+      {} as any,
+      { arrived: () => {}, stop: () => {}, refresh: async () => false } as any,
+      new TopBarService(),
+      {} as any, { can: () => false } as any,
+    );
+
+    (page as any).handleSocketMessage(event(7));
+    expect(reconnectNow).toHaveBeenCalledTimes(1);
+    expect(state.acceptSequence).not.toHaveBeenCalled();
+
+    (page as any).handleSocketMessage(event(5));
+    expect(state.acceptSequence).toHaveBeenCalledWith(5);
+    expect(reconnectNow).toHaveBeenCalledTimes(1);
+  });
+});

@@ -114,6 +114,8 @@ describe is [`examples/note/`](../examples/note/).
 - [Reading the runtime](contributing/reading-the-runtime.md) — a route
   through `ai_runtime/` along the path of one message, with what to
   check at each stop and the tests that hold it.
+- [Open questions](contributing/open-questions.md) — the design
+  questions the October 2026 review raised and nobody has decided yet.
 - [The design language](contributing/design-language.md) — the tokens,
   the rules the interface keeps, and the greps that prove it still
   keeps them.

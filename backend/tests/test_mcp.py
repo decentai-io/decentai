@@ -273,3 +273,24 @@ class TestWhoseItIs:
                             {"resource_ref": ref}).status_code == 200
         finally:
             app_call(admin, "Settings:Safety:Update", {"mcp": "allowed"})
+
+
+class TestTwoNamesOneId:
+    def test_a_new_tool_never_takes_a_kept_tools_id(self, admin, server):
+        """Ids are derived from names, and two names can slug to one.
+        A kept tool keeps its id; a new one must take an id no kept
+        tool holds, or one switch would switch two tools."""
+        server.tools.append({"name": "get-weather", "description": "The weather, again.",
+                             "inputSchema": {"type": "object"}})
+        ref = added(admin, server)["resource_ref"]
+        # The server re-lists them the other way round and changes one.
+        server.tools.reverse()
+        server.tools[0]["description"] = "The weather, differently."
+        refreshed = app_call(admin, "Mcp:Server:Refresh", {"resource_ref": ref})
+        assert refreshed.status_code == 200, refreshed.text
+        tools = refreshed.json()["resource"]["values"]["tools"]
+        ids = [tool["id"] for tool in tools]
+        assert len(ids) == len(set(ids)), ids
+        by_name = {tool["name"]: tool for tool in tools}
+        assert by_name["Get-Weather"]["enabled"] is True
+        assert by_name["get-weather"]["enabled"] is False

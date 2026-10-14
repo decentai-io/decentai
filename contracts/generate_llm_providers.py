@@ -157,6 +157,16 @@ class ProviderCatalogWriter:
         self.MODELS_OUTPUT.write_text(self._models_text(), encoding="utf-8")
         return len(providers)
 
+    def differs(self) -> bool:
+        """Whether the two files on disk are not what this source
+        would write — byte for byte, nothing written."""
+        providers = json.dumps({"schema_version": "2.0", "source": self.source,
+                                "providers": self.providers()},
+                               indent=2, ensure_ascii=False) + "\n"
+        kept = (self.OUTPUT.read_text(encoding="utf-8") if self.OUTPUT.exists() else "",
+                self.MODELS_OUTPUT.read_text(encoding="utf-8") if self.MODELS_OUTPUT.exists() else "")
+        return kept != (providers, self._models_text())
+
     def _models_text(self) -> str:
         """The models file, one model to a line: a refresh then reads as
         the models that came and went, not as a file rewritten."""
@@ -339,9 +349,18 @@ class ProviderCatalogWriter:
 
 
 if __name__ == "__main__":
-    if len(sys.argv) > 2:
-        sys.exit("usage: python contracts/generate_llm_providers.py [path/to/api.json]")
-    writer = ProviderCatalogWriter.read(sys.argv[1] if len(sys.argv) == 2 else "")
+    arguments = [a for a in sys.argv[1:] if a != "--check"]
+    if len(arguments) > 1:
+        sys.exit("usage: python contracts/generate_llm_providers.py [--check] [path/to/api.json]")
+    writer = ProviderCatalogWriter.read(arguments[0] if arguments else "")
+    if "--check" in sys.argv:
+        # Whether the files in the repository are what this source
+        # writes, said without writing: for a refresh to be checked
+        # against the source it was made from.
+        differs = writer.differs()
+        print("the catalog files differ from what the source writes"
+              if differs else "the catalog files are what the source writes")
+        sys.exit(1 if differs else 0)
     count = writer.write()
     print(f"wrote {ProviderCatalogWriter.OUTPUT} ({count} providers)")
     print(f"wrote {ProviderCatalogWriter.MODELS_OUTPUT} "

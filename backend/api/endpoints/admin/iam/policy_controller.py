@@ -35,7 +35,13 @@ class PolicyController(IAMController):
 
     def create(self, data: dict, user: dict):
         payload = self._payload(data)
-        permissions = payload.get("permissions") or {}
+        # Normalised first, then bounded: the check must see the
+        # statements as they will be stored, not as they were typed — a
+        # bare string or a padded name would otherwise match nothing.
+        try:
+            permissions = PolicyStore.validate_permissions(payload.get("permissions") or {})
+        except ValueError as exc:
+            return {"error": str(exc)}, 400
 
         missing = self.policy.ungrantable_actions(user, permissions)
         if missing:
@@ -66,6 +72,10 @@ class PolicyController(IAMController):
 
         permissions = payload.get("permissions")
         if permissions is not None:
+            try:
+                permissions = PolicyStore.validate_permissions(permissions)
+            except ValueError as exc:
+                return {"error": str(exc)}, 400
             missing = self.policy.ungrantable_actions(user, permissions)
             if missing:
                 return {

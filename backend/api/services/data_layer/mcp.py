@@ -394,15 +394,30 @@ class McpController(ResourceController):
         says the same thing; one that is new, or says something else
         now, is switched off until they look again."""
         kept = {tool["name"]: tool for tool in values.get("tools") or []}
+        # Ids are derived from names on every read, and two names can
+        # slug to one id; a kept tool keeps its id, so a new or changed
+        # one must take an id no kept tool holds, or two tools would be
+        # switched by one switch.
+        taken = {before["id"] for name, before in kept.items()
+                 if any(t["name"] == name for t in offered["tools"])}
+
+        def fresh(tool):
+            wanted, candidate, n = tool["id"], tool["id"], 1
+            while candidate in taken:
+                n += 1
+                candidate = f"{wanted}_{n}"
+            taken.add(candidate)
+            return {**tool, "id": candidate}
+
         merged = []
         for tool in offered["tools"]:
             before = kept.get(tool["name"])
             if before is None:
-                merged.append({**tool, "enabled": False,
+                merged.append({**fresh(tool), "enabled": False,
                                "level": self.DEFAULT_LEVEL, "changed": "new"})
             elif (before.get("description") != tool["description"]
                   or before.get("inputs") != tool["inputs"]):
-                merged.append({**tool, "enabled": False,
+                merged.append({**tool, "id": before["id"], "enabled": False,
                                "level": before.get("level", self.DEFAULT_LEVEL),
                                "changed": "changed"})
             else:

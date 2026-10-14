@@ -268,3 +268,18 @@ class TestChatDelete:
             "endpoint": "AI:Chat:Delete", "data": {"chat_id": chat_id},
         }, headers=runtime_headers(seed, chat_id))
         assert response.status_code == 403  # outside the delegation surface
+
+
+class TestAStoredResultHasASize:
+    def test_a_result_past_the_ceiling_is_refused(self, anon, admin, seed, signing_key):  # noqa: F811
+        from api.endpoints.app.ai.storage_controller import StorageController
+        from test_runtime_secret_use import runtime_call
+
+        chat_id = make_chat(admin)
+        huge = {"rows": [{"text": "x" * 1024}] * ((StorageController.MAX_BYTES // 1030) + 8)}
+        refused = runtime_call(anon, seed, chat_id, "AI:Storage:Create", {
+            "source": "test", "data": huge})
+        assert refused.status_code == 413, refused.text
+        kept = runtime_call(anon, seed, chat_id, "AI:Storage:Create", {
+            "source": "test", "data": {"rows": [{"text": "small"}]}})
+        assert kept.status_code == 200, kept.text

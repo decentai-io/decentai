@@ -172,3 +172,23 @@ class TestTheDoor:
         answer = as_runtime(anon, runtime_identity, "Agents:Package:Prepared", {
             "package_digest": agent["package_digest"], "state": state})
         assert answer.status_code == 400, answer.text
+
+
+class TestOnlyWhatAnApprovalPins:
+    def test_bytes_on_disk_that_no_approval_pins_are_not_served(
+            self, anon, admin, seed, runtime_identity, control, manifest_doc, monkeypatch):
+        """An older version not yet reclaimed, or an archive an install
+        stored before it failed, is on disk and is nobody's to run: the
+        door serves a digest only while an approval pins it."""
+        from api.services.agents.acquisition import AgentAcquisition
+
+        agent = install(admin, control, manifest_doc)
+        stray = "sha256:" + "a" * 64
+        monkeypatch.setattr(AgentAcquisition, "package_anywhere",
+                            lambda self, digest: b"archive bytes")
+        refused = as_runtime(anon, runtime_identity, "Agents:Package:Fetch", {
+            "package_digest": stray})
+        assert refused.status_code == 404, refused.text
+        served = as_runtime(anon, runtime_identity, "Agents:Package:Fetch", {
+            "package_digest": agent["package_digest"]})
+        assert served.status_code == 200, served.text

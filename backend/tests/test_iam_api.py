@@ -239,3 +239,28 @@ class TestCentralAuthorizer:
 
         assert app_call(limited, "IAM:Organization:Get").status_code == 403
         assert app_call(limited, "IAM:Policy:List").status_code == 200
+
+
+class TestAPolicyIsBoundedAsItWillBeStored:
+    def test_a_bare_or_padded_action_cannot_grant_what_the_author_lacks(
+            self, app, admin, seed):
+        """The grant check sees the statements as the store keeps them:
+        a bare string, or a padded name, is normalised first, so it is
+        bounded like any other — it used to match nothing and pass."""
+        from test_data_layer import _group, _user
+
+        actions = ["iam:policy:create", "iam:policy:update", "iam:policy:get",
+                   "files:file:list"]
+        author, _ = _user(app, seed, "author@test.org", [_group(admin, "Authors", actions)])
+        for raw in ("ai:chat:create", [" ai:chat:create "]):
+            refused = app_call(author, "IAM:Policy:Create", {
+                "name": f"wide-{len(str(raw))}",
+                "permissions": {"statements": [{"effect": "allow", "actions": raw, "resources": "*"}]},
+            })
+            assert refused.status_code == 403, refused.text
+            assert "ai:chat:create" in refused.json()["ungrantable"]
+        allowed = app_call(author, "IAM:Policy:Create", {
+            "name": "narrow",
+            "permissions": {"statements": [{"effect": "allow", "actions": "files:file:list", "resources": "*"}]},
+        })
+        assert allowed.status_code == 200, allowed.text

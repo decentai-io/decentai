@@ -263,10 +263,20 @@ export class SchedulesComponent extends DataPageBase implements OnInit, OnDestro
       const result = await this.service.setEnabled(schedule.chat_id, schedule.schedule_id, enabled);
       if (result.error) return this.fail(result.error);
       await this.reload();
-      this.flash(enabled ? 'Resumed. The next run is counted from now.' : 'Paused.');
+      this.flash(this.delivered(result, enabled ? 'Resumed. The next run is counted from now.' : 'Paused.'));
     } finally {
       this.busyId = '';
     }
+  }
+
+  /** The row is written either way; whether the chat's clock heard
+   *  of it now is the door's `delivered`. When it did not, the clock
+   *  reads the rows again the next time the chat is dialled, and the
+   *  person is told that rather than nothing. */
+  private delivered(result: { data?: { delivered?: boolean } }, said: string): string {
+    return result.data?.delivered === false
+      ? `${said} The chat's runtime was not reached; it reads this when it next starts.`
+      : said;
   }
 
   /** Its next run is now: what it does shows up in its chat. */
@@ -276,7 +286,7 @@ export class SchedulesComponent extends DataPageBase implements OnInit, OnDestro
       const result = await this.service.runNow(schedule.chat_id, schedule.schedule_id);
       if (result.error) return this.fail(result.error);
       await this.reload();
-      this.flash('Running now. What it does shows up in its chat.');
+      this.flash(this.delivered(result, 'Running now. What it does shows up in its chat.'));
     } finally {
       this.busyId = '';
     }
@@ -297,7 +307,7 @@ export class SchedulesComponent extends DataPageBase implements OnInit, OnDestro
       if (result.error) return this.fail(result.error);
       if (this.openId === schedule.schedule_id) this.closeOpened();
       await this.reload();
-      this.flash('Deleted.');
+      this.flash(this.delivered(result, 'Deleted.'));
     } finally {
       this.busyId = '';
     }

@@ -845,3 +845,15 @@ class TestTheModelsOfAConnection:
             "connection_id": "llm_nobody_has"}).status_code == 404
         from server.authentication.catalog import BASELINE_ACTIONS
         assert "settings:llm:models" in BASELINE_ACTIONS
+
+
+class TestTheProbeRepeatsOnlyWhatWasSaidAsJson:
+    def test_a_providers_reason_is_its_json_and_never_its_page(self):
+        import httpx
+
+        from api.services.llm_probe import ProviderProbe
+
+        page = httpx.Response(502, text="<html>internal gateway at 10.0.0.9</html>")
+        assert ProviderProbe._reason(page) == "no reason given"
+        said = httpx.Response(401, json={"error": {"message": "bad key"}})
+        assert ProviderProbe._reason(said) == "bad key"

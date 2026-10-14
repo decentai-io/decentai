@@ -365,6 +365,10 @@ class RuntimeClientManager:
             await asyncio.sleep(self.RENEW_TICK_SECONDS)
             try:
                 await self.renew_due()
+                # A runtime that went and came back took every clock
+                # with it: the chats holding schedule rows are dialled
+                # again, which the ones still live take as nothing.
+                await self.redial_scheduled()
             except Exception as exc:  # one bad tick never ends the loop
                 self.logger.warning(f"Credential renewal tick failed: {exc}")
 

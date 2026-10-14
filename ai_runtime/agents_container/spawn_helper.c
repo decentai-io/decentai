@@ -888,6 +888,13 @@ static int run(int count, char **arguments)
 
     give_up_privileges();
     become(user, user);
+    /* The loader drops TMPDIR on the way into a set-user-id program
+     * (glibc's unsafe-variable list; TMP and TEMP are not on it), so a
+     * worker started this way found no TMPDIR while the container had
+     * set one. Its home is the one place it writes: said again here,
+     * after the privileges are gone and before the program runs. */
+    if (setenv("TMPDIR", arguments[2], 1) != 0)
+        fail("naming the temporary folder");
     if (fenced > 0)
         fence(rules - 6, arguments + 6);
     /* Last, so that nothing this program itself still had to do is

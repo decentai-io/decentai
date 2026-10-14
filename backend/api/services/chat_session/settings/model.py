@@ -159,6 +159,12 @@ class ModelChoice(Setting):
 
         ref = str(block.get("secret_ref") or "").strip()
         if not ref:
+            # Without a connection the only provider is the scripted
+            # one, which reaches nothing. Any other would let a chat
+            # carry its own address and key, and have the runtime call
+            # wherever that address says.
+            if str(block.get("provider") or "") != "fake":
+                return None, "Choose a model from a connection; a model block with no connection is not accepted."
             return block, ""
 
         from database.stores import LlmConnectionStore

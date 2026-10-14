@@ -468,3 +468,16 @@ class TestSkillsCap:
         assert cap.clamp(0) == 0
         for damaged in (-1, cap.LARGEST + 1, "many", None, []):
             assert cap.clamp(damaged) == cap.STANDARD, damaged
+
+
+class TestAModelBlockNamesAConnection:
+    def test_a_block_with_a_real_provider_and_no_connection_is_refused(self, admin, seed):
+        """Without a connection the only provider is the scripted one.
+        Any other would let a chat carry its own address and key, and
+        have the runtime call wherever that address says."""
+        for config in ({"llm": {"provider": "openai_compatible", "model": "x",
+                                "endpoint": "http://10.0.0.5/v1", "api_key": "k"}},
+                       {"llm": {"provider": "anthropic", "model": "x"}}):
+            response = app_call(admin, "AI:Chat:Create", {"request_id": "m5", "config": config})
+            assert response.status_code >= 400, response.text
+            assert "from a connection" in response.text

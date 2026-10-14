@@ -131,7 +131,8 @@ INTRUDER = textwrap.dedent("""\
                 temporary_name = temporary.name
             return {"user": os.getuid(), "group": os.getgid(),
                     "groups": os.getgroups(), "home": os.environ["HOME"],
-                    "kept_was_there": was_there, "temporary": temporary_name}
+                    "kept_was_there": was_there, "temporary": temporary_name,
+                    "tmpdir": os.environ.get("TMPDIR", "")}
 
         def close_home(self, target):
             # Its own home, closed to itself: nothing may then list it.
@@ -570,6 +571,9 @@ class TestAConfinedWorker:
         assert found["groups"] in ([], [user_of(place.name)])
         assert found["home"] == str(home_of(place.name))
         assert found["temporary"].startswith(str(home_of(place.name)))
+        # TMPDIR itself comes through the helper, not only one of the
+        # three names tempfile falls back through.
+        assert found["tmpdir"] == str(home_of(place.name))
 
     def test_its_home_is_emptied_before_every_start(self, ground, place):
         assert ask(ground, place, "whoami")["kept_was_there"] is False
@@ -588,6 +592,15 @@ class TestAConfinedWorker:
         assert ask(ground, place, "write",
                    str(environment.root))["happened"] is False
         assert not (package / "planted").exists()
+
+    def test_it_cannot_write_into_the_install_directory(self, ground, place):
+        """The folder every agent's environment and home sit under, and
+        the workers' own folder in it, are the runtime's: a worker that
+        could write there could plant something for the next one."""
+        assert ask(ground, place, "write", str(INSTALL_DIR))["happened"] is False
+        assert ask(ground, place, "write", str(INSTALL_DIR / "workers"))["happened"] is False
+        assert ask(ground, place, "write",
+                   str(INSTALL_DIR / "environments"))["happened"] is False
 
     def test_it_cannot_read_or_write_another_agents_home(
             self, ground, place, confinement):

@@ -165,7 +165,9 @@ class ProviderProbe:
             text = str(
                 (error.get("message") if isinstance(error, dict) else error)
                 or answer.get("message") or "")
-        return (text or response.text or "no reason given").strip()[:300]
+        # Only what the provider said as JSON: a page, a proxy's
+        # banner or a stray server's answer is not repeated.
+        return (text or "no reason given").strip()[:300]
 
     @staticmethod
     def _plain(exc: Exception) -> str:

@@ -57,6 +57,12 @@ class PackageController(AIController):
         digest = str(self._payload(data).get("package_digest") or "").strip()
         if not digest:
             return self._fail(data, "invalid_request", "package_digest is required.")
+        # Only what an approval pins: an older version not yet reclaimed,
+        # or an archive an install stored before it failed, is on disk
+        # and is nobody's to run.
+        if digest not in {str(p.get("package_digest") or "")
+                          for p in self.store.approved_packages()}:
+            return self._fail(data, "not_found", "No approval pins that package.", 404)
         try:
             archive = self.acquisition.package_anywhere(digest)
         except AcquisitionError as exc:

@@ -42,6 +42,9 @@ STORAGE_KINDS = {"keys", "values"}
 #: that whole name is at most 60 characters: the ref is 24 and the
 #: join 2, which leaves the id 34.
 SECRET_ID_MAX_CHARS = 34
+#: A data or file slot's id: its derived name, `<24-character ref>__<id>`,
+#: must fit the stores' 120-character name limit.
+RESOURCE_ID_MAX_CHARS = 94
 SECRET_FIELD_NAME_PATTERN = re.compile(r"^[a-z][a-z0-9_]{1,59}$")
 SECRET_FIELDS_MAX = 50
 #: ``name`` is every credential's own label.
@@ -377,6 +380,13 @@ class ManifestValidator:
                     continue
                 seen_ids[resource_id] = kind
 
+                if kind != "secrets" and len(resource_id) > RESOURCE_ID_MAX_CHARS:
+                    self._fail(
+                        path,
+                        f"a resource id is at most {RESOURCE_ID_MAX_CHARS} "
+                        f"characters",
+                    )
+                    continue
                 if kind == "secrets" and len(resource_id) > SECRET_ID_MAX_CHARS:
                     self._fail(
                         path,

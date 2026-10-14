@@ -472,6 +472,17 @@ export class ChatDetailComponent implements OnInit, OnDestroy {
     const data = parseChatEvent(raw);
     if (!data) return;
 
+    // A live frame that jumps past the next sequence means frames were
+    // dropped on the way; taken as it is, the mark would move past them
+    // and the replay, which reads only above the mark, would never go
+    // back for them. The frame is left where it is and the socket is
+    // dialled again: the replay then reads from the mark and brings
+    // every frame in order, this one among them.
+    if (typeof data.seq === 'number' && this.state.value.latestEventSeq !== null
+        && data.seq > this.state.value.latestEventSeq + 1) {
+      this.connection.reconnectNow();
+      return;
+    }
     // Sequenced events dedupe across replay and live delivery; events
     // without a sequence are connection-transient and always process.
     if (!this.state.acceptSequence(data.seq)) return;

@@ -62,6 +62,7 @@ from __future__ import annotations
 
 import logging
 import asyncio
+import html
 import re
 import time
 from typing import Any, Callable, Dict, List, Optional
@@ -1169,6 +1170,8 @@ class Session:
             title = re.sub(r"\\u([0-9a-fA-F]{4})",
                            lambda found: chr(int(found.group(1), 16)),
                            lines[0] if lines else "")
+            # Or as an HTML entity (&mdash;): the name is the character.
+            title = html.unescape(title)
             title = title.strip(" \"'.`*#-")[:80]
         except Exception as exc:
             self.logger.warning(f"Chat {self.chat_id} not named: {exc}")
