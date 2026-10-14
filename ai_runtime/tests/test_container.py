@@ -23,7 +23,7 @@ from ai_runtime.agents.container import AgentsContainer
 from ai_runtime.agents.workers import WorkerHandle
 from ai_runtime.agents_container import wire
 from ai_runtime.agents_container.places import Places
-from ai_runtime.agents_container.service import SpawnerService
+from ai_runtime.agents_container.service import SpawnerService, proxy_port
 from ai_runtime.tests.fake_container import MACHINE_VARIABLES, FakeHelper
 from ai_runtime.tests.test_agent_worker_handle import FIXTURE, manifest_document, venv  # noqa: F401
 
@@ -298,3 +298,19 @@ class TestTheWayOut:
                 await asyncio.to_thread(served.stop)
                 upstream.close()
         run(scenario())
+
+
+class TestTheProxyPort:
+    """The spawner reads the proxy's port as start.sh and the runtime
+    do, so a setting left blank or mistyped in deploy.env does not stop
+    the container: every side falls back to 8002 together."""
+
+    @pytest.mark.parametrize("said, read", [
+        (None, 8002), ("", 8002), ("  ", 8002), ("eight", 8002),
+        ("0", 8002), ("70000", 8002), ("9002", 9002), (" 9002 ", 9002)])
+    def test_as_the_others_read_it(self, monkeypatch, said, read):
+        if said is None:
+            monkeypatch.delenv("AI_RUNTIME_EGRESS_PORT", raising=False)
+        else:
+            monkeypatch.setenv("AI_RUNTIME_EGRESS_PORT", said)
+        assert proxy_port() == read

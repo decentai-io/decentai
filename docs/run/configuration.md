@@ -123,7 +123,7 @@ gone. Back them up with it.
 | `BACKEND_TOKEN_ISSUER` | `decentai-backend` | The issuer claim the runtime expects. |
 | `AI_RUNTIME_TOKEN_AUDIENCE` | `decentai-ai-runtime` | The audience claim the runtime expects. |
 | `LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING` or `ERROR`. |
-| `AI_RUNTIME_EGRESS_PORT` | `8002` | Where the proxy that agents connect through listens, on the runtime's container, reached over the network it shares with the agents' container and nothing else. The firewall rule of the agents' container is written for the same port when it starts. A value that is not a number is read as `8002` by both, so the rule and the proxy agree. |
+| `AI_RUNTIME_EGRESS_PORT` | `8002` | Where the proxy that agents connect through listens, on the runtime's container, reached over the network it shares with the agents' container and nothing else. The firewall rule of the agents' container is written for the same port when it starts. A value that is blank or not a port is read as `8002` by both containers, so the rule, the proxy and the workers agree. |
 | `AI_RUNTIME_PACKAGE_HOSTS` | `pypi.org, files.pythonhosted.org` | Where packages come from: the hosts the builder of an agent's declared packages may reach, and the whole of them. Separated by commas. |
 | `AI_RUNTIME_AGENTS_SPAWNER` | required | Where the agents' container answers, as `host:port`. `docker-compose.yml` writes `agents:8003` itself and does not read it from `deploy.env`. Every process of an agent's is started there; a runtime not told where it is does not start. |
 

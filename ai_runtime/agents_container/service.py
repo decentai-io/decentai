@@ -721,6 +721,16 @@ class SpawnerService:
             pass
 
 
+def proxy_port() -> int:
+    """The proxy's port as start.sh and the runtime read it: a value
+    that is blank or not a port is the default, so the firewall rule,
+    the proxy and the workers agree on one number."""
+    said = os.getenv("AI_RUNTIME_EGRESS_PORT", "").strip()
+    if said.isdigit() and 1 <= int(said) <= 65535:
+        return int(said)
+    return 8002
+
+
 def main() -> None:
     logging.basicConfig(
         level=os.getenv("LOG_LEVEL", "INFO").upper(),
@@ -733,7 +743,7 @@ def main() -> None:
         install_dir,
         port=int(os.getenv("AI_AGENTS_SPAWNER_PORT", "8003")),
         proxy=os.getenv("AI_AGENTS_PROXY", ""),
-        proxy_port=int(os.getenv("AI_RUNTIME_EGRESS_PORT", "8002")),
+        proxy_port=proxy_port(),
     )
     try:
         asyncio.run(service.serve_forever())

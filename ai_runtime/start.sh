@@ -23,10 +23,16 @@
 # the same; the runtime finds out that nothing holds a worker to the
 # proxy, and says so.
 
-PORT="${AI_RUNTIME_EGRESS_PORT:-8002}"
+# As the runtime and the spawner read it: blank, not a number, or not
+# a port is 8002. Six digits or more is never a port, and is caught
+# before the shell is asked to compare a number it may not hold.
+PORT=$(echo ${AI_RUNTIME_EGRESS_PORT:-})
 case "$PORT" in
-    ''|*[!0-9]*) PORT=8002 ;;
+    ''|*[!0-9]*|??????*) PORT=8002 ;;
 esac
+if [ "$PORT" -lt 1 ] || [ "$PORT" -gt 65535 ]; then
+    PORT=8002
+fi
 
 if [ "$(id -u)" != "0" ]; then
     exec "$@"
