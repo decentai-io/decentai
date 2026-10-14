@@ -88,6 +88,7 @@ class InvitationController(IAMController):
                 org_id=self._org(user),
                 email=email,
                 invited_by_email=str(user.get("email") or ""),
+                invited_by_user_id=str(user.get("user_id") or ""),
                 assigned_groups=group_ids,
             )
         except ValueError as exc:

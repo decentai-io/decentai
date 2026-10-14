@@ -211,6 +211,24 @@ class AuthController:
             "invited_by_email": invitation.get("invited_by_email", ""),
         }, 200
 
+    def _inviter_still_grants(self, invitation: Dict[str, Any], org_id: str,
+                              groups) -> bool:
+        """Whether the person who sent this invitation may, today, place
+        somebody in its groups. Found by id; an invitation sent before
+        the id was kept is found by the address it recorded."""
+        from server.authentication.access import AccessController
+
+        inviter = None
+        if invitation.get("invited_by_user_id"):
+            inviter = self.users.get(invitation["invited_by_user_id"])
+        elif invitation.get("invited_by_email"):
+            inviter = self.users.get_by_email(invitation["invited_by_email"])
+        if (inviter is None or inviter.get("org_id") != org_id
+                or inviter.get("status") == UserStore.STATUS_DISABLED):
+            return False
+        author = AccessController.build_user(inviter)
+        return not self.policy.ungrantable_in_groups(author, groups)
+
     def accept_invitation(
         self, payload: Dict[str, Any]
     ) -> Tuple[Dict[str, Any], int, Optional[Dict[str, Any]]]:
@@ -239,6 +257,21 @@ class AuthController:
         org = self.organization.get(invitation.get("org_id", ""))
         if org is None:
             return {"error": "This deployment has not been initialized."}, 500, None
+
+        # The grant boundary held when the invitation was sent; it is
+        # asked again now, since the groups are given now. An inviter
+        # who has since lost what those groups grant — or left, or was
+        # disabled — no longer vouches for them, and the link is spent
+        # rather than honoured on their old word.
+        groups = list(invitation.get("assigned_groups") or [])
+        if groups and not self._inviter_still_grants(invitation, org["_id"], groups):
+            self.invitations.revoke(invitation["_id"])
+            self.logger.info(
+                f"Invitation for {invitation['email']} withdrawn at accept: "
+                f"its sender can no longer place anyone in its groups")
+            return {"error": "This invitation no longer stands: whoever sent "
+                             "it can no longer give the access it offered. "
+                             "Ask for a new one."}, 409, None
 
         try:
             user = self.users.create(

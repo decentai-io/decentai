@@ -1030,6 +1030,7 @@ class InvitationStore(OrgScopedStore):
         email: str,
         invited_by_email: str,
         assigned_groups: Optional[List[str]] = None,
+        invited_by_user_id: str = "",
     ) -> Dict[str, Any]:
         """Create or refresh the invitation for this address.
 
@@ -1058,6 +1059,9 @@ class InvitationStore(OrgScopedStore):
             "status": self.STATUS_PENDING,
             "assigned_groups": list(assigned_groups or []),
             "invited_by_email": invited_by_email,
+            # Who is answerable for the groups, by the id that does not
+            # change: accepting asks again whether they still may.
+            "invited_by_user_id": str(invited_by_user_id or ""),
             "created_at": now,
             "expires_at": now + self.LIFETIME,
             "accepted_at": None,
