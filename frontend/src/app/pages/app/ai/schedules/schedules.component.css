@@ -5,6 +5,7 @@
 /* Saying it: the sentence, and the way to send it. */
 .schedules-intent {
   display: flex;
+  align-items: center;
   gap: 8px;
   margin-bottom: 16px;
 }

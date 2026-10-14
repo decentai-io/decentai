@@ -145,8 +145,10 @@
 /* ── The review ──────────────────────────────────────────────────────
    The agent's title row (agent-shared.css), then each agent read in
    order, then Approve again at the foot. */
+/* Room for the review's two columns: the agent's own account, and the
+   facts approving agrees to beside it. */
 .review {
-  max-width: 1040px;
+  max-width: 1320px;
   padding: 8px 0 24px;
 }
 

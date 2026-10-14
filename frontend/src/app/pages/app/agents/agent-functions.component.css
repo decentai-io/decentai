@@ -3,7 +3,6 @@
    chips are the agents' own (agent-shared.css); the rest is shared. */
 :host {
   display: block;
-  max-width: 880px;
 }
 
 .fn-intro {

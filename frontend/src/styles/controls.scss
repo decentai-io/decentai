@@ -17,8 +17,10 @@
 /* ── Button ──────────────────────────────────────────────────────────
    class="btn" is the secondary button. Add `primary` for the one main
    action, `ghost` for an action that should stay quiet, `danger` for a
-   destructive one, and `danger primary` for the confirm that destroys.
-   `sm` is the 32px size. An icon inside is 16px. */
+   destructive one, `danger outline` for a destructive one that stands
+   on its own (in a bar, away from the content it acts on) and so keeps
+   the button's edge, and `danger primary` for the confirm that
+   destroys. `sm` is the 32px size. An icon inside is 16px. */
 .btn {
   display: inline-flex;
   align-items: center;
@@ -87,6 +89,17 @@
 }
 
 .btn.danger:hover {
+  background: var(--danger-soft);
+}
+
+.btn.danger.outline {
+  border-color: color-mix(in srgb, var(--danger) 35%, var(--line));
+  background: var(--surface);
+  box-shadow: var(--shadow-1);
+}
+
+.btn.danger.outline:hover {
+  border-color: var(--danger);
   background: var(--danger-soft);
 }
 
@@ -250,6 +263,21 @@ textarea.input {
   display: flex;
   flex-direction: column;
   gap: 20px;
+}
+
+/* Settings take the whole width, for their lists; a field there stays
+   as wide as a form reads well, and the lists keep the rest. */
+.settings-page app-field,
+.settings-page app-switch,
+.settings-page app-choice-cards,
+.settings-page app-token-list {
+  max-width: 640px;
+}
+
+/* A field that is the page's own way in to its list (a memory being
+   written) runs as wide as the list it adds to. */
+.settings-page app-field.is-full {
+  max-width: none;
 }
 
 /* A form has sections when its page has more than one concern: a
@@ -757,6 +785,11 @@ html {
     supporting-text-weight: 400,
     supporting-text-tracking: 0,
   ));
+}
+
+/* matTooltipClass="tooltip-lines": a list, one item per line. */
+.tooltip-lines .mdc-tooltip__surface {
+  white-space: pre-line;
 }
 
 /* ── Checkbox ────────────────────────────────────────────────────────

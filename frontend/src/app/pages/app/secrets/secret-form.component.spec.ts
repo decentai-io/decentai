@@ -106,5 +106,7 @@ describe('SecretFormComponent', () => {
     });
     expect(component.groups.map((group) => group.agent)).toEqual(['Jira', '']);
     expect(component.aboutOf(definition)).toBe('2 fields');
+    expect(component.firstSentenceOf({ ...definition, description: 'An account. A note for tests only.' }))
+      .toBe('An account.');
   });
 });

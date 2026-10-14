@@ -51,7 +51,9 @@
       </ng-container>
     </mat-menu>
 
-    <app-page [title]="current?.name || 'Settings'" [sentence]="current?.sentence || ''">
+    <!-- Wide, as the Organization section's other pages are: the side
+         column already takes the room a narrow page would leave. -->
+    <app-page [title]="current?.name || 'Settings'" [sentence]="current?.sentence || ''" [wide]="true">
       <router-outlet></router-outlet>
     </app-page>
   </div>

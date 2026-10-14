@@ -7,6 +7,7 @@ import { ConfirmService } from 'src/app/services/confirm.service';
 import { McpServer, McpService, McpTool } from 'src/app/services/mcp.service';
 import {
   BLOCKED_WHY, CredentialDraft, ServerStatus, TOOL_LEVELS, credentialWord, lastRead, readAt, serverStatus,
+  needsChip, switchTip,
 } from './mcp-shared';
 
 /** One input a tool takes, read from its JSON schema. */
@@ -125,6 +126,16 @@ export class McpServerComponent implements OnInit, OnDestroy {
   /** Why nothing but Remove can be done, for a tooltip; '' when it can. */
   get off(): string {
     return this.blocked ? this.blockedWhy : '';
+  }
+
+  /** On or off is the switch's to show; the chip stays for the rest. */
+  get showChip(): boolean {
+    return needsChip(this.status);
+  }
+
+  /** What the server's switch means, said when it is pointed at. */
+  get switchTip(): string {
+    return switchTip(this.server!, this.blocked);
   }
 
   // ── The tools ───────────────────────────────────────────────────────

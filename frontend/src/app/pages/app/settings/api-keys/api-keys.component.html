@@ -5,17 +5,14 @@
 <app-list *ngIf="!loadError" label="API keys" [loading]="loading" [foot]="keys.length ? foot : ''">
   <ng-container listToolbar *ngIf="!loading">
     <app-switch *ngIf="revoked.length" class="keys-revoked" label="Show revoked" [(ngModel)]="showRevoked"></app-switch>
-    <button
-      class="btn primary toolbar-end"
-      type="button"
-      *ngIf="canCreate"
-      [disabled]="atLimit"
-      [matTooltip]="atLimit ? 'Revoke a key to create another: ' + limit + ' is the most at once.' : ''"
-      (click)="create()"
-    >
-      <lucide-icon name="plus" [size]="16" aria-hidden="true"></lucide-icon>
-      Create a key
-    </button>
+    <!-- The plus alone, at the list's top right, whether or not there
+         are keys yet. -->
+    <span class="toolbar-end" *ngIf="canCreate"
+          [matTooltip]="atLimit ? 'Revoke a key to create another: ' + limit + ' is the most at once.' : 'Create a key'">
+      <button class="icon-btn primary" type="button" aria-label="Create a key" [disabled]="atLimit" (click)="create()">
+        <lucide-icon name="plus" [size]="18" aria-hidden="true"></lucide-icon>
+      </button>
+    </span>
   </ng-container>
 
   <p class="keys-error" role="alert" *ngIf="revokeError">{{ revokeError }}</p>
@@ -46,9 +43,5 @@
     [line]="revoked.length
       ? 'Your revoked keys are kept as a record. Turn on Show revoked to see them.'
       : 'Create one when a script needs to act with your permissions. It is shown once.'"
-  >
-    <button class="btn primary" type="button" *ngIf="canCreate && !revoked.length" (click)="create()">
-      Create a key
-    </button>
-  </app-empty>
+  ></app-empty>
 </app-list>

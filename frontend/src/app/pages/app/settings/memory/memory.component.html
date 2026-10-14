@@ -7,6 +7,7 @@
        by showing where one goes. -->
   <form class="memory-add" *ngIf="canAdd && !loading" (ngSubmit)="addMemory()">
     <app-field
+      class="is-full"
       label="Add a memory"
       help="One lasting fact that stands on its own: a preference, your role, how you like things done."
       [error]="addError"
@@ -22,8 +23,10 @@
     </app-field>
     <div class="memory-add-foot">
       <span class="memory-counter">{{ newText.length }}/{{ textLimit }}</span>
-      <button class="btn primary" type="submit" [disabled]="!canSubmitNew">
-        {{ adding ? "Adding…" : "Add" }}
+      <button class="icon-btn primary" type="submit" [disabled]="!canSubmitNew"
+              [attr.aria-label]="adding ? 'Adding the memory' : 'Add this memory'"
+              [matTooltip]="adding ? 'Adding…' : 'Add this memory'">
+        <lucide-icon [name]="adding ? 'loader-circle' : 'plus'" [size]="18" aria-hidden="true"></lucide-icon>
       </button>
     </div>
   </form>

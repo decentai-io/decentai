@@ -1,5 +1,5 @@
 <app-page guide="records"
-  title="Saved data"
+  title="Records"
   sentence="Notes, tasks and other records your agents keep for you."
   [wide]="true"
 >
@@ -9,7 +9,7 @@
   <div class="side-layout" [class.has-opened]="opened">
     <app-filter-column
       *ngIf="records.length && !opened"
-      label="Filter saved data"
+      label="Filter records"
       [groups]="filters"
       [chosen]="chosen"
       (choose)="filter($event.key, $event.value)"
@@ -179,7 +179,7 @@
         <ng-template #nothingKept>
           <app-empty
             icon="database"
-            [title]="activeGroup ? 'No ' + kindLabelOf(activeGroup) + ' records yet' : 'No saved data yet'"
+            [title]="activeGroup ? 'No ' + kindLabelOf(activeGroup) + ' records yet' : 'No records yet'"
             line="Records appear here as your agents work."
           >
             <ng-container *ngTemplateOutlet="add"></ng-container>
@@ -211,13 +211,14 @@
 
   <ng-template #add>
     <button
-      class="btn primary toolbar-end"
+      class="icon-btn primary toolbar-end"
       type="button"
       *ngIf="canCreate && pickerShapes.length"
       (click)="openPicker()"
+      aria-label="Add a record"
+      matTooltip="Add a record"
     >
-      <lucide-icon name="plus" [size]="16" aria-hidden="true"></lucide-icon>
-      Add a record
+      <lucide-icon name="plus" [size]="18" aria-hidden="true"></lucide-icon>
     </button>
   </ng-template>
 

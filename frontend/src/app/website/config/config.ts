@@ -145,13 +145,13 @@ export const mainRoutes: RouteNode[] = [
         children: [],
       },
       {
-        name: 'Saved data',
+        name: 'Records',
         url: 'data/records',
         icon: 'database',
         domain: 'Global',
         active: true,
         requiredAction: 'data:record:list',
-        title: 'Saved data',
+        title: 'Records',
         children: [],
       },
       {
@@ -170,13 +170,13 @@ export const mainRoutes: RouteNode[] = [
       {
         // Remote tool servers a person adds for their own chats: what
         // the assistant can call, beside what it can read.
-        name: 'MCP servers',
+        name: 'Tools',
         url: 'data/mcp',
         icon: 'server',
         domain: 'Global',
         active: true,
         requiredAction: 'mcp:server:list',
-        title: 'MCP servers',
+        title: 'Tools',
         children: [],
       },
       {

@@ -263,9 +263,9 @@
        behind it. -->
   <ng-template #upload>
     <ng-container *ngIf="canUpload">
-      <button class="btn primary toolbar-end" type="button" (click)="picker.click()">
-        <lucide-icon name="upload" [size]="16" aria-hidden="true"></lucide-icon>
-        Upload
+      <button class="icon-btn primary toolbar-end" type="button" (click)="picker.click()"
+              aria-label="Upload files" matTooltip="Upload files">
+        <lucide-icon name="upload" [size]="18" aria-hidden="true"></lucide-icon>
       </button>
     </ng-container>
   </ng-template>

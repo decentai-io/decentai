@@ -6,19 +6,6 @@
   <p class="form-notice is-error" role="alert" *ngIf="error && editingId === null">{{ error }}</p>
   <p class="form-notice" role="status" *ngIf="notice">{{ notice }}</p>
 
-  <!-- What a Connect button is waiting on, with the answer beside it. -->
-  <div class="form-notice is-warn apps-needed" *ngIf="!loading && missing.length" role="status">
-    <p>Installed agents need an app for a provider that is not connected yet.</p>
-    <ul>
-      <li *ngFor="let need of missing">
-        <span><strong>{{ labelFor(need.provider) }}</strong> · needed by {{ need.needed_by.join(", ") }}</span>
-        <button class="btn sm" type="button" *ngIf="canCreate" (click)="startCreate(need.provider)">
-          Connect {{ labelFor(need.provider) }}
-        </button>
-      </li>
-    </ul>
-  </div>
-
   <!-- Before the list, not after it: this address is what a person needs
        in the provider's console before they can connect anything here. -->
   <app-field
@@ -35,11 +22,13 @@
     </span>
   </app-field>
 
-  <app-list label="Connected apps" [loading]="loading" [foot]="apps.length ? apps.length + ' connected' : ''">
-    <ng-container listToolbar *ngIf="!loading && canCreate && (apps.length || missing.length)">
-      <button class="btn primary toolbar-end" type="button" (click)="startCreate()">
-        <lucide-icon name="plus" [size]="16" aria-hidden="true"></lucide-icon>
-        Connect an app
+  <!-- One list: the providers connected, then the ones installed agents
+       are still waiting on, each with its own way to connect it. -->
+  <app-list label="Connected apps" [loading]="loading" [foot]="foot">
+    <ng-container listToolbar *ngIf="!loading && canCreate">
+      <button class="icon-btn primary toolbar-end" type="button" (click)="startCreate()"
+              aria-label="Connect an app" matTooltip="Connect an app">
+        <lucide-icon name="plus" [size]="18" aria-hidden="true"></lucide-icon>
       </button>
     </ng-container>
 
@@ -77,14 +66,22 @@
       </button>
     </app-row>
 
+    <app-row *ngFor="let need of missing" [name]="labelFor(need.provider)" class="apps-waiting">
+      <lucide-icon rowMark class="apps-waiting-mark" name="globe" [size]="20" [strokeWidth]="1.75" aria-hidden="true"></lucide-icon>
+      <span rowChips class="chip warn">Not connected</span>
+      <ng-container rowMeta>Needed by {{ need.needed_by.join(", ") }}</ng-container>
+      <button rowActions class="btn sm" type="button" *ngIf="canCreate" (click)="startCreate(need.provider)"
+              [attr.aria-label]="'Connect ' + labelFor(need.provider)">
+        Connect
+      </button>
+    </app-row>
+
     <app-empty
       *ngIf="!apps.length && !missing.length"
       icon="globe"
       title="No connected apps yet"
       line="Agents that connect to Gmail, Outlook or Slack need an app for their provider."
-    >
-      <button class="btn primary" type="button" *ngIf="canCreate" (click)="startCreate()">Connect an app</button>
-    </app-empty>
+    ></app-empty>
   </app-list>
 </ng-container>
 

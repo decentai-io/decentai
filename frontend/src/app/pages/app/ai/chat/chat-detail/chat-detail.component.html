@@ -91,30 +91,37 @@
             <span class="chat-clock-count" aria-hidden="true">{{ scheduleCount }}</span>
           </a>
         }
+        <!-- The trust level says itself: it decides what the chat may do
+             without asking, so it is read, not hovered for. -->
         <button
           type="button"
-          class="icon-btn"
+          class="btn sm chat-trust"
           [class.is-open-handed]="trustLevel === 3"
           [class.is-careful]="trustLevel === 0"
           [matMenuTriggerFor]="trustMenu"
-          [matTooltip]="'Trust level: ' + trustLabel(trustLevel)"
+          matTooltip="How much this chat may do without asking"
           [attr.aria-label]="'Change trust level: ' + trustLabel(trustLevel)"
         >
-          <lucide-icon name="shield-check" [size]="18" aria-hidden="true"></lucide-icon>
+          <lucide-icon name="shield-check" [size]="16" aria-hidden="true"></lucide-icon>
+          {{ trustLabel(trustLevel) }}
+          <lucide-icon name="chevron-down" [size]="14" aria-hidden="true"></lucide-icon>
         </button>
       }
 
       <!-- The kill switch, in plain sight: work goes on after the tab
-           closes, so it is offered whether or not anything looks busy. -->
+           closes, so it is offered whether or not anything looks busy.
+           A bordered button with its word, as the bar's Stop everything
+           is; the icon alone on a phone. -->
       <button
         type="button"
-        class="icon-btn danger"
+        class="btn sm danger outline chat-stop"
         (click)="askKill()"
         [disabled]="killing"
         matTooltip="Stop everything in this chat"
         aria-label="Stop everything in this chat"
       >
-        <lucide-icon name="circle-stop" [size]="18" aria-hidden="true"></lucide-icon>
+        <lucide-icon name="circle-stop" [size]="16" aria-hidden="true"></lucide-icon>
+        <span class="chat-stop-label">Stop</span>
       </button>
       <button type="button" class="icon-btn" [matMenuTriggerFor]="chatMenu" matTooltip="More actions" aria-label="More actions">
         <lucide-icon name="ellipsis-vertical" [size]="18" aria-hidden="true"></lucide-icon>
@@ -177,7 +184,7 @@
   <!-- The bar's own Stop everything, which this chat's row stands in
        place of: everything of this person's, in every chat. -->
   <button mat-menu-item (click)="topBar.stopAsked.next()">
-    <lucide-icon name="octagon-x" [size]="16" aria-hidden="true"></lucide-icon>
+    <lucide-icon name="circle-stop" [size]="16" aria-hidden="true"></lucide-icon>
     <span>Stop everything, in every chat</span>
   </button>
 </mat-menu>

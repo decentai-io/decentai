@@ -7,9 +7,11 @@
       <lucide-icon name="search" [size]="16" aria-hidden="true"></lucide-icon>
       <input class="input" type="search" placeholder="Search providers" aria-label="Search providers" [(ngModel)]="query" />
     </span>
-    <button class="btn primary toolbar-end" type="button" *ngIf="canCreate" (click)="startCreate()">
-      <lucide-icon name="plus" [size]="16" aria-hidden="true"></lucide-icon>
-      Add a provider
+    <!-- The plus alone, at the list's top right, whether or not there
+         are providers yet. -->
+    <button class="icon-btn primary toolbar-end" type="button" *ngIf="canCreate" (click)="startCreate()"
+            aria-label="Add a provider" matTooltip="Add a provider">
+      <lucide-icon name="plus" [size]="18" aria-hidden="true"></lucide-icon>
     </button>
   </ng-container>
 
@@ -78,9 +80,7 @@
     icon="brain-circuit"
     title="No provider yet"
     line="Chats cannot hold a conversation until there is one. The first you add becomes the default."
-  >
-    <button class="btn primary" type="button" *ngIf="canCreate" (click)="startCreate()">Add a provider</button>
-  </app-empty>
+  ></app-empty>
   <app-empty
     *ngIf="connections.length && !visible.length"
     icon="search-x"

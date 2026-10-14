@@ -94,14 +94,36 @@
   gap: 4px;
 }
 
-/* The trust level shows without opening its menu, at its two ends:
+.chat-bar-actions {
+  gap: 6px;
+}
+
+/* The trust level says its name, and its two ends are coloured too:
    everything runs, or everything asks. */
-.icon-btn.is-open-handed {
+.chat-trust lucide-icon:first-child {
+  color: var(--ink-2);
+}
+
+.chat-trust.is-open-handed,
+.chat-trust.is-open-handed lucide-icon:first-child {
   color: var(--accent-ink);
 }
 
-.icon-btn.is-careful {
+.chat-trust.is-careful,
+.chat-trust.is-careful lucide-icon:first-child {
   color: var(--warn-ink);
+}
+
+/* Narrow, the stop is its icon, still inside its edge. */
+@media (max-width: 700px) {
+  .chat-stop {
+    width: 32px;
+    padding: 0;
+  }
+
+  .chat-stop-label {
+    display: none;
+  }
 }
 
 /* The chat's clock, with how many schedules it keeps at its corner. */

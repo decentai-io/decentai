@@ -23,7 +23,7 @@ The sidebar on the left is the map:
 | **AI → Chats** | Where you ask for things. Each chat keeps its own history, its enabled agents and its settings. |
 | **AI → Schedules** | What your chats keep on the clock: reminders and functions that run later, and what each run did. |
 | **Agents** | The agents installed in your organization, what each may do, and the marketplace they come from. |
-| **Data** | Saved data agents keep for you, files you and they have stored, skills, MCP servers, and secrets. |
+| **Data** | Files you and agents have stored, records agents keep for you, skills, tools (MCP servers), and secrets. |
 | **Settings** | Model providers, chat defaults and notifications, memory, API keys, connected apps, safety, monitoring, and the audit trail. |
 | **Guide** | This guide, at the foot of the sidebar and in the menu on your name. |
 

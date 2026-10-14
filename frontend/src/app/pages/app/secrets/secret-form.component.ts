@@ -133,15 +133,29 @@ export class SecretFormComponent implements OnInit {
       .sort((a, b) => (!a.agent ? 1 : !b.agent ? -1 : a.agent.localeCompare(b.agent)));
   }
 
-  /** What choosing a shape leads to, said on its row. */
+  /** What choosing a shape leads to, said on its row: how it is given,
+   *  and how much it asks for. The scopes themselves are its tooltip. */
   aboutOf(definition: SecretDefinition): string {
     if (definition.oauth) {
-      const scopes = definition.oauth.scopes || [];
+      const count = (definition.oauth.scopes || []).length;
       return `Sign in with ${providerName(definition)}`
-        + (scopes.length ? ` · asks for ${scopes.join(', ')}` : '');
+        + (count ? ` · ${count} ${count === 1 ? 'permission' : 'permissions'}` : '');
     }
     const count = editableFields(definition).length;
     return `${count} ${count === 1 ? 'field' : 'fields'}`;
+  }
+
+  /** The permissions a sign-in asks for, one per line; '' for a form. */
+  scopesOf(definition: SecretDefinition): string {
+    return (definition.oauth?.scopes || []).join('\n');
+  }
+
+  /** What it is, in its first sentence: the rest — notes for whoever
+   *  wrote the agent, often — is the row's tooltip. */
+  firstSentenceOf(definition: SecretDefinition): string {
+    const text = (definition.description || '').trim();
+    const found = /^(.+?[.!?])(\s|$)/.exec(text);
+    return found ? found[1] : text;
   }
 
   choose(definition: SecretDefinition): void {

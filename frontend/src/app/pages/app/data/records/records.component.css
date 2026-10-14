@@ -1,4 +1,4 @@
-/* The Saved data page. Its list is made of the shared pieces (the
+/* The Records page. Its list is made of the shared pieces (the
    filter column, the list frame, the table and its toolbar:
    components/ui and styles/controls.scss); what is here is how a
    record's values read in a cell, and the two text boxes of its form. */

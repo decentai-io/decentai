@@ -181,6 +181,14 @@ export class ConnectedAppsComponent extends DataPageBase implements OnInit {
     return this.declared.filter((d) => !this.registered(d.provider));
   }
 
+  /** The counts under the list: "2 connected · 7 waiting". */
+  get foot(): string {
+    const parts: string[] = [];
+    if (this.apps.length) parts.push(`${this.apps.length} connected`);
+    if (this.missing.length) parts.push(`${this.missing.length} waiting`);
+    return parts.join(' · ');
+  }
+
   /** Known by convention, not declared by an agent, not registered. */
   get suggested(): { id: string; label: string }[] {
     return this.known.filter((k) =>
