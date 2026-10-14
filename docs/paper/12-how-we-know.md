@@ -25,8 +25,8 @@ Counting the test functions in each folder, on 14 October 2026:
 
 | Suite | Tests | What it shows |
 |---|---|---|
-| the runtime | 1,022 | the assistant, the gates every call passes, the clock, the stop, the sandbox, the proxy, the records |
-| the backend | 834 | who you are and what you may do, the vault for passwords, the audit trail, two organizations kept apart |
+| the runtime | 1,024 | the assistant, the gates every call passes, the clock, the stop, the sandbox, the proxy, the records |
+| the backend | 876 | who you are and what you may do, the vault for passwords, the audit trail, two organizations kept apart |
 | spanning both | 180 | an agent approved on one side becomes code served on the other; a chat runs end to end across both |
 | the example agent | 24 | the example agent, run the way an author would run their own |
 
@@ -162,11 +162,11 @@ Functions named `test_` in files named `test_*.py`, counted with
 grep -rE '^\s*(async )?def test_' ai_runtime/tests --include='test_*.py' | wc -l
 ```
 
-and the same for `backend/tests`, `tests` and `examples/tests`: 1,022
-in 45 files, 834 in 54, 180 in 6, 24 in 1. Parametrized tests (37
+and the same for `backend/tests`, `tests` and `examples/tests`: 1,024
+in 45 files, 876 in 59, 180 in 6, 24 in 1. Parametrized tests (37
 decorators across the four) make pytest's own count higher. Outside
-the four: `speech/tests` has 20, and the web app has 46 spec files
-under `frontend/src` (357 `it` blocks).
+the four: `speech/tests` has 20, and the web app has 47 spec files
+under `frontend/src` (365 `it` blocks).
 
 ### The harness
 

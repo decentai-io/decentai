@@ -57,6 +57,18 @@ administrative actions. Three rules decide every answer:
    no.
 3. **A deny always wins**, wherever in the chain it was written.
 
+**How an organization begins.** Nobody signs themselves into one that
+exists. A new deployment opens on a first-run page, once: whoever opens
+it names the organization and becomes its first administrator — and
+where the deployment can be reached from more than one computer, they
+must also give a setup code the deployment wrote to its log. Later
+organizations are made on the machine by whoever runs it, or, only
+where the operator opened sign-up and the deployment sends mail, asked
+for from the sign-in page and made once a link sent to the address is
+followed. After that, a person joins an organization only because an
+administrator invited them — or added them, where no mail is sent
+(*Organization*, in [identity](../system/identity.md)).
+
 **What an organization starts with.** Three groups are made with it:
 **Administrators**, whose policy allows everything; **Everyone**, which
 every person is in automatically and which carries the *baseline*; and
