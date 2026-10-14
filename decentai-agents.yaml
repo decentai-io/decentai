@@ -11,7 +11,9 @@
 # every path is resolved inside the checkout, every manifest is read and
 # its id checked against the entry, and nothing executes until an
 # administrator approves an agent by name. A manifest's grammar is
-# checked when that agent is installed.
+# checked when the catalog is read, and an agent whose manifest breaks
+# it is listed with the reasons and cannot be approved; it is checked
+# again when the agent is installed.
 
 schema_version: "1.0"
 
