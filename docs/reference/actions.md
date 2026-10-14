@@ -9,7 +9,7 @@ the actions a chat's delegation may call, and nothing else.
 Generated from `backend/server/authentication/catalog.py` by
 `docs/reference/generate.py`; do not edit by hand.
 
-188 actions in 36 services; 50 baseline.
+189 actions in 36 services; 51 baseline.
 
 ## Own account
 

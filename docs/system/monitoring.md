@@ -182,7 +182,7 @@ A person reads it in the chat's **Activity & audit** dialog, under
 ## Where a person reads it
 
 **Settings → Monitoring**, for whoever holds `agents:monitor:usage`
-(`frontend/src/app/pages/app/settings/monitoring/`). Three views:
+(`frontend/src/app/pages/app/monitoring/`). Three views:
 
 - **Agents** — where the deployment is one organization's, what each
   part of the platform holds; then what the agents are given, how much
@@ -213,5 +213,5 @@ Nothing on the page changes an agent or what it is given.
 - `backend/tests/test_assistant_transcript.py` — a person reading
   their own chat's assistant, and nobody reading another's.
 - `ai_runtime/tests/test_usage.py` — a container's own numbers.
-- `frontend/src/app/pages/app/settings/monitoring/monitoring.component.spec.ts`
+- `frontend/src/app/pages/app/monitoring/monitoring.component.spec.ts`
   — the page, and each kind of line in words.
