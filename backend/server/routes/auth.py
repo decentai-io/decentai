@@ -17,6 +17,7 @@ from fastapi.responses import JSONResponse
 
 from database.stores import SessionStore
 from server.authentication.flows import AuthController
+from server.authentication.onboarding import OnboardingController
 from server.setup.app_state import get_access_controller
 from server.custom_logging import CustomLoggerFactory
 
@@ -99,6 +100,67 @@ def _start_session(request: Request, controller: AuthController,
 def _native(payload: Dict[str, Any]) -> bool:
     """A native app asks for the token itself: `"client": "native"`."""
     return payload.get("client") == "native"
+
+
+# ----------------------------------------------------------------------
+# Standing an organization up: the first run, and sign-up
+# ----------------------------------------------------------------------
+
+@router.get("/setup")
+async def setup_status(request: Request):
+    """What the sign-in page shows before anything else: the first-run
+    page while nobody is in this deployment, and whether an organization
+    may be asked for."""
+    body = await asyncio.to_thread(OnboardingController().status)
+    return JSONResponse(body, status_code=200)
+
+
+@router.post("/setup")
+async def setup(request: Request):
+    """Set a fresh deployment up — its organization, and the person
+    asking as its administrator — and sign them in."""
+    payload = await _body(request)
+    body, status, user_doc = await asyncio.to_thread(
+        OnboardingController().setup, payload,
+        client_ip=_client(request)["ip_address"])
+
+    if status != 200 or user_doc is None:
+        return JSONResponse(body, status_code=status)
+
+    return _start_session(request, AuthController(), body, user_doc,
+                          remember=payload.get("remember") is True,
+                          native=_native(payload))
+
+
+@router.post("/signup")
+async def signup(request: Request):
+    """Ask for an organization of one's own: a link goes to the address."""
+    body, status = await asyncio.to_thread(
+        OnboardingController().signup, await _body(request),
+        client_ip=_client(request)["ip_address"])
+    return JSONResponse(body, status_code=status)
+
+
+@router.post("/signup/check")
+async def signup_info(request: Request):
+    """What a sign-up link will create — shown before it is followed."""
+    body, status = OnboardingController().signup_info(await _body(request))
+    return JSONResponse(body, status_code=status)
+
+
+@router.post("/signup/confirm")
+async def confirm_signup(request: Request):
+    """Follow a sign-up link: the organization is made, and its
+    administrator signed in."""
+    payload = await _body(request)
+    body, status, user_doc = await asyncio.to_thread(
+        OnboardingController().confirm_signup, payload)
+
+    if status != 200 or user_doc is None:
+        return JSONResponse(body, status_code=status)
+
+    return _start_session(request, AuthController(), body, user_doc,
+                          native=_native(payload))
 
 
 # ----------------------------------------------------------------------

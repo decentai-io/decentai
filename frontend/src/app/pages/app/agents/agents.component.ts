@@ -316,13 +316,14 @@ export class AgentsComponent extends DataPageBase implements OnInit, OnDestroy {
     this.showList();
   }
 
-  /** One of the open agent's tabs; the Overview is the agent's own
-   *  address. */
+  /** One of the open agent's tabs, each at an address of its own — the
+   *  Overview too. The agent's bare address opens where the work is
+   *  (Credentials while one is missing), so the Overview cannot be it:
+   *  pressed there, it would be read back as Credentials. */
   openTabOf(tab: DetailTab): void {
     if (!this.openAgent) return;
     this.openTab = tab;
-    void this.router?.navigate(tab === 'overview'
-      ? ['/agents', this.openAgent.agent_id] : ['/agents', this.openAgent.agent_id, tab]);
+    void this.router?.navigate(['/agents', this.openAgent.agent_id, tab]);
   }
 
   private async showAgent(agent: AgentOffer): Promise<void> {

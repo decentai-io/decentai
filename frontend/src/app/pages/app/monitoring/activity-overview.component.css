@@ -1,0 +1,432 @@
+/* Monitoring's Overview. The tiles, cards and bar lists are this page's;
+   the segmented control, chips, table and empty state are the shared
+   ones. Chart colours: an emphasis pair, run through the dataviz
+   validator against each theme's surface — calls that succeeded in a
+   quiet neutral (3:1 on the surface), the ones that did not in the
+   danger hue; CVD separation >= 8.8 in both themes. */
+:host {
+  --ov-ok: #8a847b;
+  --ov-bad: var(--danger);
+  display: block;
+}
+
+:host-context(.dark) {
+  --ov-ok: #77716a;
+}
+
+/* ── The filter row ─────────────────────────────────────────────── */
+.ov-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  margin-bottom: 16px;
+}
+
+.ov-window {
+  color: var(--ink-3);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+/* A new window is read with the last one still in view, quieter. */
+.ov {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  transition: opacity var(--dur-2) var(--ease);
+}
+
+.ov.is-stale {
+  opacity: 0.55;
+}
+
+/* ── The numbers ────────────────────────────────────────────────── */
+.ov-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 12px;
+}
+
+.ov-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-1);
+}
+
+.ov-tile dt {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  font-weight: 500;
+  line-height: var(--lh-sm);
+}
+
+/* Proportional figures: a tile's value stands alone. */
+.ov-value {
+  color: var(--ink);
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.15;
+}
+
+.ov-sub {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink-3);
+  font-size: var(--t-xs);
+  line-height: var(--lh-xs);
+}
+
+/* A tile that needs looking at says so with its icon and its edge;
+   the words stay in text ink. */
+.ov-tile.is-bad {
+  border-color: color-mix(in srgb, var(--danger) 40%, var(--line));
+}
+
+.ov-tile.is-bad dt lucide-icon {
+  color: var(--danger-ink);
+}
+
+.ov-tile.is-warn {
+  border-color: color-mix(in srgb, var(--warn) 45%, var(--line));
+}
+
+.ov-tile.is-warn dt lucide-icon {
+  color: var(--warn-ink);
+}
+
+.ov-tile-sk {
+  height: 104px;
+  border-radius: var(--r-lg);
+}
+
+.ov-meter {
+  display: inline-flex;
+  width: 56px;
+  height: 6px;
+  overflow: hidden;
+  border-radius: var(--r-full);
+  background: var(--accent-soft);
+}
+
+.ov-meter > span {
+  border-radius: var(--r-full);
+  background: var(--accent);
+}
+
+.ov-meter > span.is-high {
+  background: var(--danger);
+}
+
+/* ── A card ─────────────────────────────────────────────────────── */
+.ov-card {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-1);
+}
+
+.ov-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px 16px;
+  margin-bottom: 16px;
+}
+
+.ov-card-title {
+  color: var(--ink);
+  font-size: var(--t-md);
+  font-weight: 600;
+  line-height: var(--lh-md);
+}
+
+.ov-card-note {
+  color: var(--ink-3);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.ov-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 14px;
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+}
+
+.ov-key {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ov-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+
+.ov-swatch.is-ok,
+.ov-seg.is-ok {
+  background: var(--ov-ok);
+}
+
+.ov-swatch.is-bad,
+.ov-seg.is-bad {
+  background: var(--ov-bad);
+}
+
+/* ── The chart: columns from one baseline ───────────────────────── */
+.ov-chart {
+  display: flex;
+  gap: 8px;
+  height: 220px;
+}
+
+.ov-axis {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-width: 28px;
+  padding-bottom: 22px;
+  color: var(--ink-3);
+  font-size: var(--t-xs);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  text-align: right;
+}
+
+.ov-plot {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+/* Hairlines at the top, the half and the baseline: solid, recessive. */
+.ov-grid {
+  position: absolute;
+  inset: 0 0 22px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  pointer-events: none;
+}
+
+.ov-grid span {
+  border-top: 1px solid var(--line);
+}
+
+.ov-columns {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  gap: 2px;
+}
+
+.ov-column {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
+  border-radius: var(--r-sm);
+  outline: none;
+}
+
+.ov-column:hover,
+.ov-column:focus-visible {
+  background: var(--surface-2);
+}
+
+.ov-column:focus-visible {
+  box-shadow: var(--focus);
+}
+
+/* At most 24px thick; the bad ones on top, a 2px surface gap between,
+   rounded at the data end and square at the baseline. */
+.ov-stack {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  justify-content: flex-end;
+  width: min(24px, 70%);
+  padding-bottom: 0;
+}
+
+.ov-seg {
+  display: block;
+  width: 100%;
+  min-height: 2px;
+}
+
+.ov-seg:first-child {
+  border-radius: 4px 4px 0 0;
+}
+
+.ov-seg + .ov-seg {
+  margin-top: 2px;
+}
+
+.ov-tick {
+  height: 22px;
+  padding-top: 6px;
+  overflow: visible;
+  color: var(--ink-3);
+  font-size: var(--t-xs);
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.ov-table-wrap {
+  max-height: 320px;
+  overflow: auto;
+}
+
+/* ── Two cards side by side, one under the other when narrow ────── */
+.ov-pair {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 16px;
+}
+
+/* ── A bar list: one series, the accent, the number at the tip ──── */
+.ov-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  list-style: none;
+}
+
+.ov-bars li {
+  display: grid;
+  grid-template-columns: minmax(110px, 34%) 1fr auto auto;
+  align-items: center;
+  gap: 12px;
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.ov-bar-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ov-bar-name code {
+  overflow: hidden;
+  font-size: var(--t-xs);
+  text-overflow: ellipsis;
+}
+
+.ov-bar-track {
+  height: 10px;
+}
+
+.ov-bar-track > span {
+  display: block;
+  height: 100%;
+  border-radius: 0 4px 4px 0;
+  background: var(--accent);
+}
+
+.ov-bar-value {
+  min-width: 36px;
+  color: var(--ink);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.ov-bar-extra {
+  min-width: 72px;
+  color: var(--ink-3);
+  font-size: var(--t-xs);
+  text-align: right;
+}
+
+/* ── What went wrong ────────────────────────────────────────────── */
+.ov-problems {
+  display: flex;
+  flex-direction: column;
+  list-style: none;
+}
+
+.ov-problems li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.ov-problems li + li {
+  border-top: 1px solid var(--line);
+}
+
+.ov-problem-words {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  color: var(--ink);
+}
+
+.ov-problem-words code {
+  font-size: var(--t-xs);
+}
+
+.ov-problem-error {
+  overflow: hidden;
+  color: var(--ink-2);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ov-problem-when {
+  flex: none;
+  color: var(--ink-3);
+  font-size: var(--t-xs);
+}
+
+.ov-quiet {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+}
+
+.ov-quiet lucide-icon {
+  color: var(--accent-ink);
+}
+
+@media (max-width: 600px) {
+  .ov-bars li {
+    grid-template-columns: minmax(90px, 40%) 1fr auto;
+  }
+
+  .ov-bar-extra {
+    display: none;
+  }
+}

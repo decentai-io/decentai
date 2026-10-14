@@ -120,7 +120,7 @@ export class AgentDetailComponent implements OnChanges {
       const loaded = result.data?.loaded || {};
       this.flashed.emit(`Sample data loaded: ${loaded.records || 0} records`
         + (loaded.files ? ` and ${loaded.files} file${loaded.files === 1 ? '' : 's'}` : '')
-        + `. They are yours now — find them under Saved data and Files.`);
+        + `. They are yours now — find them under Records and Files.`);
     } finally {
       this.samplesBusy = false;
     }

@@ -50,8 +50,10 @@ export interface Identity {
  * membership test rather than a second policy engine that could drift from
  * the real one.
  *
- * There is no signup — the deployment's organization and first administrator
- * are seeded at launch; everyone else arrives by invitation.
+ * Nobody joins an organization that exists on their own say: they are
+ * invited, or added. What stands an organization up from here is the
+ * first-run page of a deployment nobody is in yet, and sign-up where the
+ * deployment opened it (`setupStatus`).
  *
  * Hiding a control the user cannot use is a courtesy, not a security
  * boundary — every action is checked again on the server.
@@ -95,10 +97,84 @@ export class AuthService {
   }
 
   // ------------------------------------------------------------------
+  // Standing an organization up
+  // ------------------------------------------------------------------
+
+  /** What the sign-in page shows before anything else: the first-run
+   *  page while nobody is in this deployment, and whether a new
+   *  organization may be asked for. Unreachable, it says neither. */
+  async setupStatus(): Promise<{
+    setupRequired: boolean;
+    codeRequired: boolean;
+    signupOpen: boolean;
+  }> {
+    const { status, data } = await this.request('auth/setup', 'GET');
+    if (status !== 200) {
+      return { setupRequired: false, codeRequired: false, signupOpen: false };
+    }
+    return {
+      setupRequired: data?.setup_required === true,
+      codeRequired: data?.setup_code_required === true,
+      signupOpen: data?.signup_open === true,
+    };
+  }
+
+  /** Set a fresh deployment up, as its first administrator, and sign in. */
+  async setup(payload: {
+    org_name: string;
+    name: string;
+    email: string;
+    password: string;
+    code?: string;
+    remember?: boolean;
+  }): Promise<{ ok: boolean; error?: string; field?: string; retryAfter?: number }> {
+    const { status, data } = await this.post('auth/setup', payload);
+    const adopted = this.adopt(status, data);
+    return adopted.ok
+      ? adopted
+      : { ...adopted, field: data?.field, retryAfter: Number(data?.retry_after) || 0 };
+  }
+
+  /** Ask for an organization of one's own: a link goes to the address. */
+  async signup(payload: {
+    org_name: string;
+    name: string;
+    email: string;
+    password: string;
+  }): Promise<{ ok: boolean; message?: string; error?: string; field?: string; retryAfter?: number }> {
+    const { status, data } = await this.post('auth/signup', payload);
+    return status === 200
+      ? { ok: true, message: data?.message ?? '' }
+      : {
+          ok: false,
+          error: data?.error ?? 'Could not ask for the organization.',
+          field: data?.field,
+          retryAfter: Number(data?.retry_after) || 0,
+        };
+  }
+
+  /** What a sign-up link will create, before it is followed. */
+  async signupInfo(
+    token: string,
+  ): Promise<{ ok: boolean; email?: string; orgName?: string; error?: string }> {
+    const { status, data } = await this.post('auth/signup/check', { token });
+    return status === 200
+      ? { ok: true, email: data?.email ?? '', orgName: data?.org_name ?? '' }
+      : { ok: false, error: data?.error ?? 'This link is invalid or has expired.' };
+  }
+
+  /** Follow a sign-up link: the organization is made, and its
+   *  administrator signed in. */
+  async confirmSignup(token: string): Promise<{ ok: boolean; error?: string }> {
+    const { status, data } = await this.post('auth/signup/confirm', { token });
+    return this.adopt(status, data);
+  }
+
+  // ------------------------------------------------------------------
   // Flow
   // ------------------------------------------------------------------
 
-  /** Email + password. One organization per deployment, so one step. */
+  /** Email + password. An address belongs to one account, so one step. */
   async login(payload: {
     email: string;
     password: string;

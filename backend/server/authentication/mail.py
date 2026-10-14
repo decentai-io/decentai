@@ -243,6 +243,98 @@ class Emails:
             "text": text,
         }
 
+    @classmethod
+    def signup_confirm(
+        cls,
+        *,
+        organization_name: str,
+        confirm_url: str,
+        expires_in_minutes: int,
+    ) -> Dict[str, str]:
+        """Prove the address, and the organization asked for is made."""
+        org = html.escape(organization_name)
+
+        body = "".join([
+            cls._paragraph(
+                f"Someone asked to create <strong>{org}</strong> on "
+                f"{cls.BRAND}, with this address as its administrator."
+            ),
+            cls._button(confirm_url, f"Create {organization_name}"),
+            cls._paragraph(
+                f"The link works once and expires in {expires_in_minutes} "
+                "minutes.",
+                muted=True,
+            ),
+            cls._paragraph(
+                "If this wasn't you, ignore this email — nothing is created "
+                "unless the link is followed.",
+                muted=True,
+            ),
+            f'<p style="margin:24px 0 0;padding-top:16px;font-size:12px;'
+            f'line-height:1.5;color:{cls.MUTED};border-top:1px solid {cls.BORDER};'
+            f'word-break:break-all;">If the button does not work, paste this '
+            f'into your browser:<br>{html.escape(confirm_url)}</p>',
+        ])
+
+        text = (
+            f"Someone asked to create {organization_name} on {cls.BRAND}, with "
+            f"this address as its administrator.\n\n"
+            f"Create it:\n{confirm_url}\n\n"
+            f"The link works once and expires in {expires_in_minutes} minutes.\n\n"
+            "If this wasn't you, ignore this email — nothing is created unless "
+            "the link is followed.\n"
+        )
+
+        return {
+            "subject": f"Confirm your email to create {organization_name}",
+            "html": cls._shell(
+                f"Create {org}",
+                body,
+                f"You received this because an organization was asked for on "
+                f"{cls.BRAND} with this address.",
+            ),
+            "text": text,
+        }
+
+    @classmethod
+    def signup_existing(cls, *, sign_in_url: str) -> Dict[str, str]:
+        """What a sign-up for an address that already has an account
+        sends instead: the same mailbox gets a message either way, so
+        the page that asked learns nothing about who is registered."""
+        body = "".join([
+            cls._paragraph(
+                f"Someone asked to create an organization on {cls.BRAND} with "
+                f"this address, and it already has an account. One address "
+                f"belongs to one organization, so nothing was created."
+            ),
+            cls._button(sign_in_url, "Sign in"),
+            cls._paragraph(
+                "Forgotten the password? The sign-in page can send a link "
+                "to choose a new one. If this wasn't you, ignore this email.",
+                muted=True,
+            ),
+        ])
+
+        text = (
+            f"Someone asked to create an organization on {cls.BRAND} with this "
+            f"address, and it already has an account. One address belongs to "
+            f"one organization, so nothing was created.\n\n"
+            f"Sign in:\n{sign_in_url}\n\n"
+            "Forgotten the password? The sign-in page can send a link to choose "
+            "a new one. If this wasn't you, ignore this email.\n"
+        )
+
+        return {
+            "subject": f"You already have a {cls.BRAND} account",
+            "html": cls._shell(
+                "You already have an account",
+                body,
+                f"You received this because an organization was asked for on "
+                f"{cls.BRAND} with this address.",
+            ),
+            "text": text,
+        }
+
 
 @dataclass(frozen=True)
 class SendResult:

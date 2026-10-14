@@ -1,6 +1,41 @@
-<app-entry-card [title]="title" [sentence]="subtitle" [busy]="mode === 'entering' || checkingInvite || checkingReset">
+<app-entry-card [title]="title" [sentence]="subtitle" [busy]="mode === 'opening' || checkingInvite || checkingReset || checkingSignup">
 
-  <!-- ── Sign in ────────────────────────────────────────────────── -->
+  <!-- â”€â”€ First run: name the organization, and become its admin â”€â”€â”€ -->
+  <form class="form" *ngIf="mode === 'setup'" (ngSubmit)="setUp()">
+    <ng-container *ngTemplateOutlet="organizationFields"></ng-container>
+    <app-field *ngIf="codeRequired" label="Setup code"
+               help="In the log of the machine DecentAI runs on: docker compose logs init"
+               [error]="(tried ? codeProblem : '') || refusedFor('code')">
+      <input class="input" type="text" name="code" autocomplete="off" spellcheck="false"
+             [(ngModel)]="code" [disabled]="busy" />
+    </app-field>
+    <ng-container *ngTemplateOutlet="refusalUnlessField"></ng-container>
+    <button class="btn primary auth-wide" type="submit" [disabled]="busy || lockedFor > 0">{{ busy ? "Setting upâ€¦" : "Set up and sign in" }}</button>
+  </form>
+
+  <!-- â”€â”€ Ask for an organization of one's own â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
+  <ng-container *ngIf="mode === 'signup'">
+    <form class="form" *ngIf="!signupMessage" (ngSubmit)="requestSignup()">
+      <ng-container *ngTemplateOutlet="organizationFields"></ng-container>
+      <ng-container *ngTemplateOutlet="refusalUnlessField"></ng-container>
+      <button class="btn primary auth-wide" type="submit" [disabled]="busy || lockedFor > 0">{{ busy ? "Sendingâ€¦" : "Email me the link" }}</button>
+      <p class="auth-foot">Already have an account? <button class="auth-link" type="button" (click)="backToLogin()">Sign in</button></p>
+    </form>
+    <!-- Where the link went is the title and the sentence above. -->
+    <button class="btn primary auth-wide" type="button" *ngIf="signupMessage" (click)="backToLogin()">Back to sign in</button>
+  </ng-container>
+
+  <!-- â”€â”€ Follow a sign-up link â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
+  <ng-container *ngIf="mode === 'signup-confirm' && !checkingSignup">
+    <ng-container *ngIf="signupValid">
+      <ng-container *ngTemplateOutlet="refusal"></ng-container>
+      <button class="btn primary auth-wide" type="button" [disabled]="busy" (click)="confirmSignup()">{{ busy ? "Creatingâ€¦" : "Create " + orgName + " and sign in" }}</button>
+      <p class="auth-foot">Not you? <button class="auth-link" type="button" (click)="backToLogin()">Sign in instead</button></p>
+    </ng-container>
+    <button class="btn primary auth-wide" type="button" *ngIf="!signupValid" (click)="backToLogin()">Go to sign in</button>
+  </ng-container>
+
+  <!-- â”€â”€ Sign in â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
   <form class="form" *ngIf="mode === 'login'" (ngSubmit)="signIn()">
     <app-field label="Email" [error]="tried ? emailProblem : ''">
       <input class="input" type="email" name="email" autocomplete="username" autofocus
@@ -15,12 +50,13 @@
     </mat-checkbox>
 
     <ng-container *ngTemplateOutlet="refusal"></ng-container>
-    <button class="btn primary auth-wide" type="submit" [disabled]="busy || lockedFor > 0">{{ busy ? "Signing in…" : "Sign in" }}</button>
+    <button class="btn primary auth-wide" type="submit" [disabled]="busy || lockedFor > 0">{{ busy ? "Signing inâ€¦" : "Sign in" }}</button>
     <button class="auth-link" type="button" (click)="startForgot()">Forgot your password?</button>
-    <p class="auth-foot">No account? Ask an administrator for an invitation.</p>
+    <p class="auth-foot" *ngIf="!signupOpen">No account? Ask an administrator for an invitation.</p>
+    <p class="auth-foot" *ngIf="signupOpen">No account? Ask an administrator for an invitation, or <button class="auth-link" type="button" (click)="startSignup()">create an organization</button>.</p>
   </form>
 
-  <!-- ── Accept an invitation ───────────────────────────────────── -->
+  <!-- â”€â”€ Accept an invitation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
   <ng-container *ngIf="mode === 'invitation' && !checkingInvite">
     <form class="form" *ngIf="inviteValid" (ngSubmit)="acceptInvitation()">
       <ng-container *ngTemplateOutlet="fixedEmail"></ng-container>
@@ -29,7 +65,7 @@
       </app-field>
       <ng-container *ngTemplateOutlet="newPassword; context: { label: 'Choose a password' }"></ng-container>
       <ng-container *ngTemplateOutlet="refusal"></ng-container>
-      <button class="btn primary auth-wide" type="submit" [disabled]="busy">{{ busy ? "Joining…" : "Join " + orgName }}</button>
+      <button class="btn primary auth-wide" type="submit" [disabled]="busy">{{ busy ? "Joiningâ€¦" : "Join " + orgName }}</button>
       <p class="auth-foot">Not you? <button class="auth-link" type="button" (click)="dismissInvitation()">Sign in instead</button></p>
     </form>
     <ng-container *ngIf="!inviteValid">
@@ -37,16 +73,16 @@
     </ng-container>
   </ng-container>
 
-  <!-- ── Replace a password that was handed over ────────────────── -->
+  <!-- â”€â”€ Replace a password that was handed over â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
   <form class="form" *ngIf="mode === 'first'" (ngSubmit)="chooseOwnPassword()">
     <ng-container *ngTemplateOutlet="fixedEmail"></ng-container>
     <ng-container *ngTemplateOutlet="newPassword; context: { label: 'New password' }"></ng-container>
     <ng-container *ngTemplateOutlet="refusal"></ng-container>
-    <button class="btn primary auth-wide" type="submit" [disabled]="busy">{{ busy ? "Saving…" : "Save and sign in" }}</button>
+    <button class="btn primary auth-wide" type="submit" [disabled]="busy">{{ busy ? "Savingâ€¦" : "Save and sign in" }}</button>
     <button class="auth-link" type="button" (click)="backToLogin()">Back to sign in</button>
   </form>
 
-  <!-- ── Ask for a reset link ───────────────────────────────────── -->
+  <!-- â”€â”€ Ask for a reset link â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
   <ng-container *ngIf="mode === 'forgot'">
     <form class="form" *ngIf="!forgotMessage" (ngSubmit)="requestReset()">
       <app-field label="Email" [error]="tried ? emailProblem : ''">
@@ -54,20 +90,20 @@
                [(ngModel)]="email" [disabled]="busy" />
       </app-field>
       <ng-container *ngTemplateOutlet="refusal"></ng-container>
-      <button class="btn primary auth-wide" type="submit" [disabled]="busy">{{ busy ? "Sending…" : "Email me a link" }}</button>
+      <button class="btn primary auth-wide" type="submit" [disabled]="busy">{{ busy ? "Sendingâ€¦" : "Email me a link" }}</button>
       <button class="auth-link" type="button" (click)="backToLogin()">Back to sign in</button>
     </form>
     <!-- What happened is the title and the sentence above. -->
     <button class="btn primary auth-wide" type="button" *ngIf="forgotMessage" (click)="backToLogin()">Back to sign in</button>
   </ng-container>
 
-  <!-- ── Set a new password from a link ─────────────────────────── -->
+  <!-- â”€â”€ Set a new password from a link â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
   <ng-container *ngIf="mode === 'reset' && !checkingReset">
     <form class="form" *ngIf="resetValid" (ngSubmit)="setNewPassword()">
       <ng-container *ngTemplateOutlet="fixedEmail"></ng-container>
       <ng-container *ngTemplateOutlet="newPassword; context: { label: 'New password', also: 'This signs you out everywhere else.' }"></ng-container>
       <ng-container *ngTemplateOutlet="refusal"></ng-container>
-      <button class="btn primary auth-wide" type="submit" [disabled]="busy">{{ busy ? "Saving…" : "Set password and sign in" }}</button>
+      <button class="btn primary auth-wide" type="submit" [disabled]="busy">{{ busy ? "Savingâ€¦" : "Set password and sign in" }}</button>
       <p class="auth-foot">Remembered it? <button class="auth-link" type="button" (click)="backToLogin()">Sign in instead</button></p>
     </form>
     <button class="btn primary auth-wide" type="button" *ngIf="!resetValid" (click)="backToLogin()">Back to sign in</button>
@@ -104,6 +140,30 @@
      manager still files the new password under it. -->
 <ng-template #fixedEmail>
   <input class="visually-hidden" type="email" name="email" autocomplete="username" readonly tabindex="-1" aria-hidden="true" [value]="email" />
+</ng-template>
+
+<!-- What standing an organization up asks for: its name, and the
+     person who will administer it. -->
+<ng-template #organizationFields>
+  <app-field label="Organization" [error]="(tried ? orgNameProblem : '') || refusedFor('org_name')">
+    <input class="input" type="text" name="org_name" autocomplete="organization" autofocus
+           [(ngModel)]="orgName" [disabled]="busy" />
+  </app-field>
+  <app-field label="Your name" [error]="(tried ? nameProblem : '') || refusedFor('name')">
+    <input class="input" type="text" name="name" autocomplete="name" [(ngModel)]="name" [disabled]="busy" />
+  </app-field>
+  <app-field label="Email" help="What you will sign in with." [error]="(tried ? emailProblem : '') || refusedFor('email')">
+    <input class="input" type="email" name="email" autocomplete="username" [(ngModel)]="email" [disabled]="busy" />
+  </app-field>
+  <ng-container *ngTemplateOutlet="newPassword; context: { label: 'Choose a password' }"></ng-container>
+</ng-template>
+
+<!-- A refusal that belongs to no one field; one that does is said
+     under it. -->
+<ng-template #refusalUnlessField>
+  <ng-container *ngIf="!refusedField || refusedField === 'password'">
+    <ng-container *ngTemplateOutlet="refusal"></ng-container>
+  </ng-container>
 </ng-template>
 
 <!-- What the server refused, in one block above the button; a lockout

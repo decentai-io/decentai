@@ -463,6 +463,19 @@ describe('AgentsComponent', () => {
     component.openTabOf('access');
     component.openTabOf('overview');
 
-    expect(went).toEqual([['/agents', 'agt_1'], ['/agents', 'agt_1', 'access'], ['/agents', 'agt_1']]);
+    expect(went).toEqual([['/agents', 'agt_1'], ['/agents', 'agt_1', 'access'], ['/agents', 'agt_1', 'overview']]);
+  });
+
+  it('keeps the overview open on an agent still waiting for a credential', async () => {
+    // Its bare address opens on Credentials, where the work is: the
+    // Overview, asked for by name, is the Overview.
+    const waiting = offer('agt_1', {
+      resources: { secrets: [{ id: 'connection', label: 'Jira' }] },
+      resource_refs: { secrets: { connection: 'org:agt_1__connection/v1' } },
+    });
+    const { component } = addressed([waiting], { ref: 'agt_1', tab: 'overview' });
+    await component.ngOnInit();
+
+    expect(component.openTab).toBe('overview');
   });
 });

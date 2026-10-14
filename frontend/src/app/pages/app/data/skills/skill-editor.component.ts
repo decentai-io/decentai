@@ -131,7 +131,9 @@ export class SkillEditorComponent implements OnInit, HasUnsavedChanges {
     if (this.ref) await this.open(this.ref);
     else {
       this.share.open('new', undefined);
-      if (this.route.snapshot.queryParamMap.get('example')) this.draft.take({ ...EXAMPLE });
+      // The example is written into the form, not taken as saved:
+      // nothing is saved yet, so the save bar is there from the start.
+      if (this.route.snapshot.queryParamMap.get('example')) Object.assign(this.draft.value, EXAMPLE);
     }
     this.sharedAtFirst = this.sharedNow;
     this.loading = false;

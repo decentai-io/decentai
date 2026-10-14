@@ -31,7 +31,7 @@ Actions worth knowing when writing a policy:
 | `secrets:secret:set_owner_any` | Sharing credentials organization-wide and maintaining others' |
 | `data:record:set_owner_any` | The same for records |
 | `ai:audit:list_all` | Reading the organization's whole audit trail |
-| `agents:monitor:usage`, `agents:monitor:events`, `agents:monitor:files` | Seeing what agents use and what was seen of them, on **Organization → Monitoring** |
+| `agents:monitor:usage`, `agents:monitor:events`, `agents:monitor:files`, `agents:monitor:summary` | Seeing what agents use, what was seen of them, and what they did added up, on **Organization → Monitoring** |
 | `settings:llm:create` | Adding language-model connections |
 | `skills:skill:create` | Writing skills, private until shared |
 | `skills:skill:set_owner_any` | Sharing skills organization-wide and maintaining others' |

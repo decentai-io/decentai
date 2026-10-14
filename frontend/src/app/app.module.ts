@@ -262,6 +262,7 @@ import { MemoryComponent } from './pages/app/settings/memory/memory.component';
 import { ApiKeysComponent } from './pages/app/settings/api-keys/api-keys.component';
 import { SafetyComponent } from './pages/app/settings/safety/safety.component';
 import { MonitoringComponent } from './pages/app/monitoring/monitoring.component';
+import { ActivityOverviewComponent } from './pages/app/monitoring/activity-overview.component';
 import { ModelProvidersComponent } from './pages/app/settings/model-providers/model-providers.component';
 import { ModelSelectComponent } from './components/model-select/model-select.component';
 import { ConnectedAppsComponent } from './pages/app/settings/connected-apps/connected-apps.component';
@@ -331,6 +332,7 @@ import { AgentCardComponent } from './pages/app/agents/agent-card.component';
     ApiKeysComponent,
     SafetyComponent,
     MonitoringComponent,
+    ActivityOverviewComponent,
     ModelProvidersComponent,
     ModelSelectComponent,
     ConnectedAppsComponent,

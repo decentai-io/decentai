@@ -36,9 +36,9 @@
           (ngModelChange)="go({ sort: $event === 'updated' ? '' : $event })"
         ></app-select>
         <!-- The example to start from is offered on the editor's page. -->
-        <button class="btn primary toolbar-end" type="button" *ngIf="canCreate" (click)="startCreate()">
-          <lucide-icon name="plus" [size]="16" aria-hidden="true"></lucide-icon>
-          Write a skill
+        <button class="icon-btn primary toolbar-end" type="button" *ngIf="canCreate" (click)="startCreate()"
+                aria-label="Write a skill" matTooltip="Write a skill">
+          <lucide-icon name="plus" [size]="18" aria-hidden="true"></lucide-icon>
         </button>
       </ng-container>
 
@@ -56,12 +56,15 @@
           </span>
         </ng-container>
 
-        <!-- Whether the person's new chats start with it. It saves
+        <!-- Whether the person's new chats start with it: said by the
+             tooltip, and read out as the switch's name. It saves
              itself, and says so beside it. -->
         <span rowState class="skill-row-saved" role="status" *ngIf="savedRef === skill.resource_ref">Saved</span>
         <app-switch
           rowState
           label="On for new chats"
+          [labelHidden]="true"
+          [matTooltip]="isDefault(skill) ? 'On for new chats: they start with this skill' : 'Off for new chats: switch on to start them with this skill'"
           [disabled]="savingDefaults"
           [ngModel]="isDefault(skill)"
           (ngModelChange)="toggleDefault(skill)"
@@ -80,8 +83,16 @@
         line="The assistant works without them. A skill is how you teach it something your organization does its own way: a format, a rule, a method it should follow without being reminded."
       >
         <ng-container *ngIf="canCreate">
-          <button class="btn primary" type="button" (click)="startCreate()">Write a skill</button>
-          <button class="btn" type="button" (click)="startCreate(true)">Start from an example</button>
+          <!-- Icons alone, as on the Data pages' toolbars; the words are
+               their tooltips, and read out. -->
+          <button class="icon-btn primary" type="button" (click)="startCreate()"
+                  aria-label="Write a skill" matTooltip="Write a skill">
+            <lucide-icon name="plus" [size]="18" aria-hidden="true"></lucide-icon>
+          </button>
+          <button class="icon-btn" type="button" (click)="startCreate(true)"
+                  aria-label="Start from an example" matTooltip="Start from an example">
+            <lucide-icon name="file-text" [size]="18" aria-hidden="true"></lucide-icon>
+          </button>
         </ng-container>
       </app-empty>
       <app-empty

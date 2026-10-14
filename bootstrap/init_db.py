@@ -4,10 +4,15 @@ and two access chains —
     FullAccess (*)   → Administrator → Administrators → the admin user
     BaseAccess       → User          → Everyone       → implicitly everybody
 
-Env: ORG_NAME, ADMIN_EMAIL + ADMIN_PASSWORD (required on first run),
-ADMIN_NAME. Existing records are never overwritten; the admin is self-healed
-back into Administrators and re-enabled if needed. INIT_DB_FRESH=1 drops
-the database first, for a deliberate fresh start.
+Env: ORG_NAME, ADMIN_EMAIL + ADMIN_PASSWORD, ADMIN_NAME — all optional.
+A deployment nobody is in yet, with no ADMIN_EMAIL and ADMIN_PASSWORD,
+is left for the app's first-run page, where a person names the
+organization and becomes its administrator; this prints the setup code
+that page asks for. Named, the first administrator is made here instead,
+for a deployment set up by automation. Existing records are never
+overwritten; the admin is self-healed back into Administrators and
+re-enabled if needed. INIT_DB_FRESH=1 drops the database first, for a
+deliberate fresh start.
 
 Policies lose any action the catalog no longer has, so a release that
 retires an action never leaves a policy nobody can edit.
@@ -59,11 +64,27 @@ def main() -> int:
     from server.authentication.credentials import PasswordHasher
     from database.stores import OrganizationStore, UserStore
 
-    org = OrganizationStore().ensure(os.getenv("ORG_NAME", "Organization"))
-    print(f"organization: {org['org_name']} ({org['_id']})")
+    users = UserStore()
+    admin_email = os.getenv("ADMIN_EMAIL", "")
+    admin_password = os.getenv("ADMIN_PASSWORD", "")
 
     drop_stale_actions()
     unescape_chat_titles()
+
+    if users.col.find_one({}, {"_id": 1}) is None and not (
+            admin_email and admin_password):
+        # Nobody is in this deployment and nobody is named: the app's
+        # first-run page sets it up. Every organization already here is
+        # brought up to date for when it does.
+        from provisioning import OrganizationProvisioner
+
+        for org in OrganizationStore().list():
+            OrganizationProvisioner().seed(org["_id"])
+        first_run_announcement()
+        return 0
+
+    org = OrganizationStore().ensure(os.getenv("ORG_NAME", "Organization"))
+    print(f"organization: {org['org_name']} ({org['_id']})")
 
     # The access chain, from the one implementation of it: this
     # deployment's first organization is laid out exactly like its tenth,
@@ -73,8 +94,6 @@ def main() -> int:
     administrators = OrganizationProvisioner(announce=print).seed(
         org["_id"])["administrators"]
 
-    users = UserStore()
-    admin_email = os.getenv("ADMIN_EMAIL", "")
     existing = users.get_by_email(admin_email) if admin_email else None
     if existing is not None:
         # Self-healing: re-running this script is the lockout recovery path.
@@ -102,10 +121,13 @@ def main() -> int:
         print("admin: an administrator exists — done")
         return 0
 
-    admin_password = os.getenv("ADMIN_PASSWORD", "")
     if not admin_email or not admin_password:
-        print("ERROR: set ADMIN_EMAIL and ADMIN_PASSWORD to create the first "
-              "administrator.", file=sys.stderr)
+        # People are here and none of them administers: a lockout, not
+        # a first run, so the first-run page stays shut. This is the way
+        # back in.
+        print("ERROR: nobody administers this deployment. Set ADMIN_EMAIL "
+              "and ADMIN_PASSWORD to create an administrator, and start "
+              "again.", file=sys.stderr)
         return 1
 
     strong, reason = PasswordHasher.validate(admin_password)
@@ -122,6 +144,25 @@ def main() -> int:
     )
     print(f"admin: {admin['email']} created — done")
     return 0
+
+
+def first_run_announcement() -> None:
+    """Say how this deployment is set up, and the code its first-run
+    page asks for where the deployment made its own: whoever runs a
+    server reads it here (`docker compose logs init`)."""
+    from database.stores import FirstRunStore
+    from server.setup.app_state import get_settings
+
+    url = str(get_settings().public_app_url or "").rstrip("/")
+    chosen = str(getattr(get_settings(), "setup_code", "") or "").strip()
+    print(f"first run: nobody is in this deployment yet. Open {url} to "
+          f"name the organization and become its administrator.")
+    if chosen.lower() == "none":
+        print("first run: the page asks for no code (SETUP_CODE=none).")
+    elif chosen:
+        print("first run: the page asks for the SETUP_CODE in the settings.")
+    else:
+        print(f"first run: the setup code is {FirstRunStore().code()}")
 
 
 def _truthy(value: str) -> bool:

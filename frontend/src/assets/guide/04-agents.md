@@ -14,7 +14,7 @@ A source belongs to whoever added it. They may edit, share, refresh and remove i
 
 Every agent carries a few prompts to try first, written by its author. They appear on the agent's page under *Try asking*, each one a click from a chat that sends it. They are the quickest way to see what an agent is for.
 
-An agent that keeps records may also ship **sample data**: the records and files that let you try it before you have any of your own. The marketplace says what a sheet would load; the agent's page loads it with one click as *your own* records and files — private to you, editable, visible under Saved data and Files — and removes it again in one click. Nothing marks them as samples once loaded; the platform simply remembers what it minted for you.
+An agent that keeps records may also ship **sample data**: the records and files that let you try it before you have any of your own. The marketplace says what a sheet would load; the agent's page loads it with one click as *your own* records and files — private to you, editable, visible under Records and Files — and removes it again in one click. Nothing marks them as samples once loaded; the platform simply remembers what it minted for you.
 
 
 Installing an agent is an **approval** of one exact commit. **Review and install** on an agent's card opens what it declares — its functions and their levels, the hosts it connects to, and how many credentials and packages it needs and whether it keeps data of its own (each is listed by name on the agent's page once it is installed) — and **Approve and install** is at the foot of that page, so one agent is not installed without it having been opened.
@@ -47,7 +47,7 @@ Each installed agent has a page with four tabs: **Overview**, what was approved 
 
 ## Uninstalling
 
-Removing an agent removes its approval and its grants. Data it kept stays: it remains readable and deletable under **Data → Saved data**, but can no longer be changed through that agent.
+Removing an agent removes its approval and its grants. Data it kept stays: it remains readable and deletable under **Data → Records**, but can no longer be changed through that agent.
 
 A source with agents still installed from it cannot be removed by itself. The dialog lists those agents, and its button uninstalls them and removes the source in one step.
 

@@ -121,6 +121,21 @@ def _load_settings() -> Dict[str, Any]:
         # serves; development, with the API on its own port, sets it.
         "oauth_redirect_url": os.getenv("OAUTH_REDIRECT_URL", ""),
 
+        # Who may stand a new organization up from the sign-in page.
+        # "closed" (the default): nobody — organizations are made on the
+        # machine (bootstrap/organizations.py). "open": anybody, once
+        # they prove an address by email, so it is open only where mail
+        # is sent.
+        "org_signup": (
+            "open" if (os.getenv("ORG_SIGNUP") or "").strip().lower() == "open"
+            else "closed"
+        ),
+        # What the first-run page asks for before it sets a fresh
+        # deployment up. Empty: one is made and written to the log.
+        # "none": nothing is asked — for an address only this computer
+        # reaches (bootstrap/setup.py). Anything else is the code.
+        "setup_code": (os.getenv("SETUP_CODE") or "").strip(),
+
         # backend -> runtime service identity (RS256; runtime holds the
         # public key)
         "backend_service_private_key": _env_pem("BACKEND_SERVICE_PRIVATE_KEY"),
@@ -230,6 +245,11 @@ class Settings:
     public_app_url: Optional[str] = None
     # where connected apps send consent back
     oauth_redirect_url: Optional[str] = ""
+
+    # who may make an organization from the sign-in page, and what the
+    # first-run page asks for
+    org_signup: str = "closed"
+    setup_code: str = ""
 
     # the Marketplace's one-click source, and where local sources may be
     reference_catalog_url: str = ""

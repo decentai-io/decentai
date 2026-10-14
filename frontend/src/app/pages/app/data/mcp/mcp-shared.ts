@@ -28,6 +28,22 @@ export function serverStatus(server: McpServer, blocked: boolean): ServerStatus 
     : { word: 'Off', tone: '', why: 'No chat can call it' };
 }
 
+/** What the server's switch says when pointed at: the switch shows on
+ *  or off, and this says what that means — the way a skill's does. */
+export function switchTip(server: McpServer, blocked: boolean): string {
+  if (blocked) return BLOCKED_WHY;
+  if (server.unreadable) return 'Its details can no longer be read. Remove it and add it again.';
+  return server.keys.enabled
+    ? 'On for your chats: they can call the tools you kept on'
+    : 'Off for your chats: switch on to let them call its tools';
+}
+
+/** The chip a row still needs beside its switch: only how a server
+ *  stands when that is more than on or off. */
+export function needsChip(status: ServerStatus): boolean {
+  return status.word !== 'On' && status.word !== 'Off';
+}
+
 /** What a server is reached with, as the backend words it: 'token',
  *  'header X-Api-Key', 'no credential'; '' for a server added before
  *  rows carried it. */

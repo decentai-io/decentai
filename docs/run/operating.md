@@ -78,16 +78,49 @@ and record value is unreadable.
 
 ## People
 
-The sign-in page is there the whole time; the address the script
-prints only fills it in for you. To add a person, **Admin → Users → Add
+You named yourself on the first-run page, and sign in with the address
+and password you chose there. To add a person, **Admin → Users → Add
 person**: with no email to send an invitation by, you are shown a
 temporary password once, to hand over, and they choose their own at
 their first sign-in.
 
-The first person's own address and password are in `deploy.env`
-(`ADMIN_EMAIL`, `ADMIN_PASSWORD`). To sign in by an address and a
-password of your own instead, see *A forgotten password, without email*
-below: the same line, with `RESET_NEW_EMAIL`.
+An install set up before the first-run page existed made its first
+person for you: their address and password are in `deploy.env`
+(`ADMIN_EMAIL`, `ADMIN_PASSWORD`, `me@decentai.local` unless changed).
+To sign in by an address and a password of your own instead, see *A
+forgotten password, without email* below: the same line, with
+`RESET_NEW_EMAIL`.
+
+## Organizations
+
+One deployment may hold several organizations, each apart from every
+other: its own people, agents, data, credentials and model providers.
+The first is made on the first-run page. More are made two ways:
+
+- **On the machine**, by whoever runs it — the default:
+
+  ```bash
+  docker compose --env-file deploy.env run --rm init \
+    python /opt/decentai/bootstrap/organizations.py create \
+    --name "Acme" --admin ada@acme.example
+  ```
+
+  This prints an invitation link for the first administrator.
+  `organizations.py list`, `disable --org <id>` and `enable --org <id>`
+  are beside it; a disabled organization keeps its data and lets nobody
+  in.
+- **From the sign-in page**, by anybody, where `ORG_SIGNUP=open`. They
+  give the organization's name, their own and an address and password;
+  a link goes to the address, and following it makes the organization
+  with them as its administrator. It is open only where outbound email
+  is set up — the link is the only proof the address is theirs — and
+  asking is limited per network address. Every organization made this
+  way brings its own language-model keys, so opening it does not spend
+  yours. Closing it again (`ORG_SIGNUP=closed`) shuts links already
+  sent, too.
+
+Joining an organization that exists is by invitation, or being added,
+either way.
 
 People on other computers need an address they can reach, and HTTPS:
 that is a server, and [Deploying](deploying.md) says how.

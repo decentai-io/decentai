@@ -1,0 +1,202 @@
+<!-- One filter row above everything it scopes. -->
+<div class="ov-bar">
+  <app-segmented label="Time window" [choices]="windows" [ngModel]="window" (ngModelChange)="choose($event)"></app-segmented>
+  <span class="ov-window" *ngIf="summary">Added up from the audit trail {{ inWindow }}.</span>
+</div>
+
+<p class="form-notice is-error" role="alert" *ngIf="error">{{ error }}</p>
+
+<div class="ov-tiles ov-loading" *ngIf="loading && !summary" aria-busy="true" aria-label="Adding up what the agents did">
+  <span class="sk ov-tile-sk" *ngFor="let n of [1, 2, 3, 4, 5]"></span>
+</div>
+
+<!-- Held at reduced opacity while a new window is read: no jump. -->
+<div class="ov" *ngIf="summary as s" [class.is-stale]="loading">
+  <!-- ── The numbers ─────────────────────────────────────────────── -->
+  <dl class="ov-tiles">
+    <div class="ov-tile">
+      <dt>Agent calls</dt>
+      <dd class="ov-value">{{ number(calls.total) }}</dd>
+      <dd class="ov-sub">{{ calls.total ? okShare + ' · ' + duration(calls.avg_ms) + ' on average' : 'None ' + inWindow }}</dd>
+    </div>
+    <div class="ov-tile" [class.is-bad]="notOk > 0">
+      <dt>
+        <lucide-icon *ngIf="notOk > 0" name="triangle-alert" [size]="14" aria-hidden="true"></lucide-icon>
+        Did not succeed
+      </dt>
+      <dd class="ov-value">{{ number(notOk) }}</dd>
+      <dd class="ov-sub">{{ calls.failed }} failed · {{ calls.refused }} refused or denied</dd>
+    </div>
+    <div class="ov-tile" [class.is-warn]="s.approvals.waiting > 0">
+      <dt>
+        <lucide-icon *ngIf="s.approvals.waiting > 0" name="hourglass" [size]="14" aria-hidden="true"></lucide-icon>
+        Approvals asked
+      </dt>
+      <dd class="ov-value">{{ number(s.approvals.asked) }}</dd>
+      <dd class="ov-sub">{{ s.approvals.allowed }} allowed · {{ s.approvals.denied }} denied · {{ s.approvals.waiting }} waiting</dd>
+    </div>
+    <div class="ov-tile">
+      <dt>Model calls</dt>
+      <dd class="ov-value">{{ number(s.model_calls) }}</dd>
+      <dd class="ov-sub">{{ s.people }} {{ s.people === 1 ? "person" : "people" }} active · {{ s.secret_uses }} credential {{ s.secret_uses === 1 ? "use" : "uses" }}</dd>
+    </div>
+    <div class="ov-tile">
+      <dt>Agents running now</dt>
+      <dd class="ov-value">{{ running == null ? "—" : running }}</dd>
+      <dd class="ov-sub">
+        <ng-container *ngIf="fullness != null; else noLimit">
+          <span class="ov-meter" role="img" [attr.aria-label]="fullness + '% of the memory they are given'">
+            <span [style.width.%]="fullness" [class.is-high]="fullness >= 90"></span>
+          </span>
+          {{ fullness }}% of their memory
+        </ng-container>
+        <ng-template #noLimit>{{ !usageRead ? "Asking the runtime…" : running == null ? "The runtime did not say" : "No memory limit set" }}</ng-template>
+      </dd>
+    </div>
+  </dl>
+
+  <app-empty
+    *ngIf="!calls.total"
+    icon="activity"
+    [title]="'No agent was called ' + inWindow"
+    line="Calls appear here as chats use agents: how many, how they ended, which agents and which hosts."
+  ></app-empty>
+
+  <ng-container *ngIf="calls.total">
+    <!-- ── Calls over time ───────────────────────────────────────── -->
+    <section class="ov-card" aria-labelledby="ov-calls-title">
+      <header class="ov-card-head">
+        <div>
+          <h2 class="ov-card-title" id="ov-calls-title">Agent calls over time</h2>
+          <p class="ov-card-note">Each {{ s.unit }}, by how the calls ended.</p>
+        </div>
+        <div class="ov-legend" aria-label="Legend">
+          <span class="ov-key"><span class="ov-swatch is-ok" aria-hidden="true"></span>Succeeded</span>
+          <span class="ov-key"><span class="ov-swatch is-bad" aria-hidden="true"></span>Failed or refused</span>
+          <button class="btn ghost sm" type="button" [attr.aria-pressed]="asTable" (click)="asTable = !asTable">
+            <lucide-icon [name]="asTable ? 'chart-column' : 'table'" [size]="16" aria-hidden="true"></lucide-icon>
+            {{ asTable ? "Chart" : "Table" }}
+          </button>
+        </div>
+      </header>
+
+      <div class="ov-chart" *ngIf="!asTable" role="img"
+           [attr.aria-label]="'Agent calls ' + inWindow + ': ' + calls.total + ' in all, ' + notOk + ' did not succeed. The table view lists each ' + s.unit + '.'">
+        <div class="ov-axis" aria-hidden="true">
+          <span *ngFor="let tick of ticks">{{ number(tick) }}</span>
+        </div>
+        <div class="ov-plot">
+          <div class="ov-grid" aria-hidden="true"><span></span><span></span><span></span></div>
+          <div class="ov-columns">
+            <div class="ov-column" *ngFor="let column of columns; trackBy: byStep"
+                 [matTooltip]="column.tip" matTooltipClass="tooltip-lines" tabindex="0" [attr.aria-label]="column.tip">
+              <span class="ov-stack">
+                <span class="ov-seg is-bad" *ngIf="column.badHeight" [style.height.%]="column.badHeight"></span>
+                <span class="ov-seg is-ok" *ngIf="column.okHeight" [style.height.%]="column.okHeight"></span>
+              </span>
+              <span class="ov-tick">{{ column.label }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="ov-table-wrap" *ngIf="asTable">
+        <table class="table">
+          <thead>
+            <tr>
+              <th scope="col">{{ s.unit === "hour" ? "Hour" : "Day" }}</th>
+              <th scope="col" class="num">Succeeded</th>
+              <th scope="col" class="num">Failed</th>
+              <th scope="col" class="num">Refused</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let column of columns; trackBy: byStep">
+              <td>{{ stepTitle(column.step.at) }}</td>
+              <td class="num">{{ column.step.ok }}</td>
+              <td class="num">{{ column.step.failed }}</td>
+              <td class="num">{{ column.step.refused }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <div class="ov-pair">
+      <!-- ── The agents called most ──────────────────────────────── -->
+      <section class="ov-card" aria-labelledby="ov-agents-title">
+        <header class="ov-card-head">
+          <div>
+            <h2 class="ov-card-title" id="ov-agents-title">Agents called most</h2>
+            <p class="ov-card-note">Calls, and how many did not succeed.</p>
+          </div>
+        </header>
+        <ul class="ov-bars">
+          <li *ngFor="let agent of s.agents">
+            <span class="ov-bar-name">
+              <app-agent-mark size="sm" [name]="agent.name" aria-hidden="true"></app-agent-mark>
+              {{ agent.name }}
+            </span>
+            <span class="ov-bar-track" aria-hidden="true"><span [style.width.%]="share(agent.calls, agentCalls)"></span></span>
+            <span class="ov-bar-value">{{ number(agent.calls) }}</span>
+            <span class="ov-bar-extra" [matTooltip]="'Average ' + duration(agent.avg_ms) + ' per call'">
+              <span class="chip danger" *ngIf="agent.failed">{{ agent.failed }} not ok</span>
+              <span *ngIf="!agent.failed">{{ duration(agent.avg_ms) }}</span>
+            </span>
+          </li>
+        </ul>
+      </section>
+
+      <!-- ── The hosts reached ───────────────────────────────────── -->
+      <section class="ov-card" aria-labelledby="ov-hosts-title">
+        <header class="ov-card-head">
+          <div>
+            <h2 class="ov-card-title" id="ov-hosts-title">Hosts reached</h2>
+            <p class="ov-card-note">Connections agents made, by where they went.</p>
+          </div>
+          <a class="btn ghost sm" routerLink="/monitoring/connections">All connections</a>
+        </header>
+        <ul class="ov-bars" *ngIf="s.hosts.length">
+          <li *ngFor="let host of s.hosts">
+            <span class="ov-bar-name"><code>{{ host.host }}</code></span>
+            <span class="ov-bar-track" aria-hidden="true"><span [style.width.%]="share(host.connections, hostConnections)"></span></span>
+            <span class="ov-bar-value">{{ number(host.connections) }}</span>
+            <span class="ov-bar-extra">{{ host.calls }} {{ host.calls === 1 ? "call" : "calls" }}</span>
+          </li>
+        </ul>
+        <p class="ov-quiet" *ngIf="!s.hosts.length">No agent connected outside the platform {{ inWindow }}.</p>
+      </section>
+    </div>
+
+    <!-- ── What went wrong, latest first ───────────────────────── -->
+    <section class="ov-card" aria-labelledby="ov-problems-title">
+      <header class="ov-card-head">
+        <div>
+          <h2 class="ov-card-title" id="ov-problems-title">Latest calls that did not succeed</h2>
+          <p class="ov-card-note">The rest are in the audit trail.</p>
+        </div>
+        <a class="btn ghost sm" routerLink="/audit/org">Open the audit trail</a>
+      </header>
+      <ul class="ov-problems" *ngIf="s.problems.length">
+        <li *ngFor="let problem of s.problems">
+          <span class="chip" [class.danger]="statusWord(problem.status) === 'Failed'" [class.warn]="statusWord(problem.status) !== 'Failed'">
+            {{ statusWord(problem.status) }}
+          </span>
+          <span class="ov-problem-words">
+            <strong>{{ problem.agent || "An agent" }}</strong> <code>{{ problem.function }}</code>
+            <span class="ov-problem-error" *ngIf="problem.error">{{ problem.error }}</span>
+          </span>
+          <span class="ov-problem-when" [matTooltip]="fullWhen(problem.at)">{{ when(problem.at) }}</span>
+          <a class="icon-btn sm" *ngIf="problem.chat_id" [routerLink]="['/ai/chats', problem.chat_id]"
+             aria-label="Open the chat" matTooltip="Open the chat">
+            <lucide-icon name="message-square-text" [size]="16" aria-hidden="true"></lucide-icon>
+          </a>
+        </li>
+      </ul>
+      <p class="ov-quiet" *ngIf="!s.problems.length">
+        <lucide-icon name="circle-check" [size]="16" aria-hidden="true"></lucide-icon>
+        Every call {{ inWindow }} succeeded.
+      </p>
+    </section>
+  </ng-container>
+</div>

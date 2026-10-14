@@ -8,6 +8,8 @@ import { AlertComponent } from 'src/app/components/alert/alert.component';
 import { fullDate, relativeDate } from 'src/app/components/ui/dates';
 import { ConfirmService } from 'src/app/services/confirm.service';
 import { ChatModel } from '../chat-model-picker/chat-model-picker.component';
+import { FileChoice } from 'src/app/models/chat-protocol';
+import { WorkSwitchService } from 'src/app/services/work-switch.service';
 
 /** The chats page: a new conversation starts at the composer, and every
  *  earlier one is listed under it — searched, archived, restored, or
@@ -37,6 +39,10 @@ export class ChatHomeComponent implements OnInit {
   /** A prompt another page handed over, put in the composer for the
    *  person to read and send. */
   draft = '';
+  /** Files handed over by another page (Files, "Use in chat"), staged
+   *  in the composer by reference. No chat exists for them yet: one is
+   *  made when the message is sent, so nothing is left behind unsent. */
+  staged: FileChoice[] | null = null;
 
   constructor(
     private router: Router,
@@ -46,6 +52,7 @@ export class ChatHomeComponent implements OnInit {
     public dialog: MatDialog,
     private attention: AttentionService,
     private confirm: ConfirmService,
+    private workSwitch: WorkSwitchService,
   ) {}
 
   async ngOnInit() {
@@ -59,6 +66,13 @@ export class ChatHomeComponent implements OnInit {
     // composer and nothing more: an address is something anybody can
     // write, and a link must not be able to make a chat and speak in
     // it as the person who followed it. They read it and press send.
+    const handed = history.state?.stagedFiles;
+    if (Array.isArray(handed) && handed.length) {
+      this.staged = handed;
+      // Read once: a reload, or Back, must not stage them again.
+      const { stagedFiles, ...rest } = history.state || {};
+      history.replaceState(rest, '');
+    }
     const prompt = String(this.route.snapshot.queryParamMap.get('prompt') || '').trim();
     if (prompt) {
       this.draft = prompt;
@@ -151,6 +165,23 @@ export class ChatHomeComponent implements OnInit {
   }
 
   async onPrompt(message: any) {
+    // Stopped, nothing runs: a chat made now would only hold a message
+    // refused, and stay in the list empty. The words go back in the box.
+    if (this.workSwitch.stopped$.value) {
+      // Emptied, then given back after a check: the same words sent
+      // twice must still come back.
+      this.draft = '';
+      setTimeout(() => (this.draft = message.query || ''));
+      if (message.uploads?.length) this.staged = [...message.uploads.map((u: any) => ({
+        resource_ref: u.file_id, filename: u.filename, file_size: u.file_size, file_type: u.file_type,
+      }))];
+      this.alert({
+        title: 'Everything is stopped',
+        type: 'error',
+        messages: [{ description: 'Nothing of yours runs until you resume, from the bar at the top. Your message is still in the box.' }],
+      });
+      return;
+    }
     this.isLoading = true;
     try {
       const query = message.query || 'Start a new chat';

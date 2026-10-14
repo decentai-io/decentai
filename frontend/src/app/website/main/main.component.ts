@@ -22,7 +22,7 @@ import { filter } from 'rxjs/operators';
 import { NavigatorService } from '../../services/navigator.service';
 import { DataStoreService } from 'src/app/services/datastore.service';
 import { AuthService } from 'src/app/services/auth.service';
-import { ThemeChoice, ThemeService } from 'src/app/services/theme.service';
+import { AppTheme, ThemeService } from 'src/app/services/theme.service';
 import { MicrophoneService } from 'src/app/services/microphone.service';
 import { WorkSwitchService } from 'src/app/services/work-switch.service';
 import { AlertComponent } from 'src/app/components/alert/alert.component';
@@ -74,13 +74,9 @@ export class MainComponent implements OnInit, OnDestroy {
    *  policy action that unlocks at least one console page. */
   hasAdminConsoleAccess = false;
 
-  themeChoice: ThemeChoice = 'system';
-  /** The three themes, as the user menu lists them. */
-  readonly themes: { value: ThemeChoice; name: string; icon: string }[] = [
-    { value: 'light', name: 'Light', icon: 'sun' },
-    { value: 'dark', name: 'Dark', icon: 'moon' },
-    { value: 'system', name: 'System', icon: 'monitor' },
-  ];
+  /** What is shown: the device's own until the person presses the
+   *  bar's button, which switches to the other one. */
+  appTheme: AppTheme = 'light';
 
   /** Whether this person has stopped everything of theirs (AI:Switch). */
   workStopped = false;
@@ -152,7 +148,7 @@ export class MainComponent implements OnInit, OnDestroy {
     this.contentView = this.datastore.getCurrentContentView();
 
     this.subscriptions.add(
-      this.theme.choice$.subscribe((choice) => (this.themeChoice = choice)),
+      this.theme.theme$.subscribe((theme) => (this.appTheme = theme)),
     );
     this.subscriptions.add(
       this.workSwitch.stopped$.subscribe((stopped) => (this.workStopped = stopped)),
@@ -255,8 +251,13 @@ export class MainComponent implements OnInit, OnDestroy {
     heading.focus();
   }
 
-  setTheme(choice: ThemeChoice): void {
-    this.theme.set(choice);
+  /** Light to dark, or dark to light; kept from then on. */
+  toggleTheme(): void {
+    this.theme.set(this.appTheme === 'dark' ? 'light' : 'dark');
+  }
+
+  get themeLabel(): string {
+    return this.appTheme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode';
   }
 
   /** The person's own switch: end everything their chats are doing,

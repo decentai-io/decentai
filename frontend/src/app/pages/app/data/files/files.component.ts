@@ -617,25 +617,16 @@ export class FilesComponent extends DataPageBase implements OnInit, OnDestroy {
 
   // ── Actions ─────────────────────────────────────────────────────────
 
-  /** A new chat with this file staged in the composer, by reference —
-   *  the person says what to do with it. */
-  async useInChat(file: FileResource): Promise<void> {
+  /** A new chat's composer with this file staged in it, by reference —
+   *  the person says what to do with it. No chat is made until they
+   *  send: one made now and left unsent would be an empty chat in the
+   *  list, and the file would not be in it. */
+  useInChat(file: FileResource): void {
     if (this.busyRef) return;
-    this.busyRef = file.resource_ref;
     this.error = '';
-    try {
-      const created = await this.aiSession.createChat(this.filename(file).slice(0, 80), {});
-      const chatId = created.data?.chat?.chat_id;
-      if (!chatId) {
-        this.error = created.error || 'Could not open a chat for it.';
-        return;
-      }
-      this.router.navigate(['ai/chats', chatId], {
-        state: { stagedFiles: [FilePickerComponent.toChoice(file)] },
-      });
-    } finally {
-      this.busyRef = '';
-    }
+    void this.router.navigate(['ai/chats'], {
+      state: { stagedFiles: [FilePickerComponent.toChoice(file)] },
+    });
   }
 
   download(file: FileResource): void {

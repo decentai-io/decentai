@@ -14,14 +14,20 @@
   </p>
 
   <!-- Saying it is the short way on to the clock. -->
+  <!-- A short composer: the words, and the arrow that hands them to
+       the assistant in a new chat, as the chat's own composer does. -->
   <form class="schedules-intent" *ngIf="canCreate && !loading && !opened" (ngSubmit)="describe()">
     <span class="search-field">
       <lucide-icon name="sparkles" [size]="16" aria-hidden="true"></lucide-icon>
       <input class="input" name="intent" autocomplete="off" [disabled]="sending" [(ngModel)]="intent"
-             placeholder="Describe it: every Monday at 10:44, remind me to send the weekly report"
+             placeholder="Describe it: every Monday at 9:00, remind me to send the weekly report"
              aria-label="Describe a schedule in plain words" />
     </span>
-    <button class="btn" type="submit" [disabled]="!intent.trim() || sending">{{ sending ? "Opening…" : "Ask the assistant" }}</button>
+    <button class="icon-btn primary round" type="submit" [disabled]="!intent.trim() || sending"
+            [attr.aria-label]="sending ? 'Opening a chat' : 'Ask the assistant to set it up'"
+            [matTooltip]="sending ? 'Opening a chat…' : 'Ask the assistant to set it up, in a new chat'">
+      <lucide-icon [name]="sending ? 'loader-circle' : 'arrow-up'" [size]="18" aria-hidden="true"></lucide-icon>
+    </button>
   </form>
 
   <div class="side-layout" [class.has-opened]="opened">
@@ -112,10 +118,11 @@
     ></app-schedule-view>
   </div>
 
+  <!-- The plus alone, as on the Data pages; its words in the tooltip. -->
   <ng-template #addButton>
-    <button class="btn primary toolbar-end" type="button" *ngIf="canCreate" (click)="add()">
-      <lucide-icon name="plus" [size]="16" aria-hidden="true"></lucide-icon>
-      New schedule
+    <button class="icon-btn primary toolbar-end" type="button" *ngIf="canCreate" (click)="add()"
+            aria-label="New schedule" matTooltip="New schedule">
+      <lucide-icon name="plus" [size]="18" aria-hidden="true"></lucide-icon>
     </button>
   </ng-template>
 

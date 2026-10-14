@@ -8,7 +8,8 @@ import { ConfirmService } from 'src/app/services/confirm.service';
 import { McpServer, McpService } from 'src/app/services/mcp.service';
 import { DataPageBase } from '../../data-page-base';
 import {
-  BLOCKED_WHY, CredentialDraft, ServerStatus, credentialWord, lastRead, readAt, serverStatus,
+  BLOCKED_WHY, CredentialDraft, ServerStatus, credentialWord, lastRead, needsChip, readAt, serverStatus,
+  switchTip,
 } from './mcp-shared';
 
 /**
@@ -104,6 +105,15 @@ export class McpComponent extends DataPageBase implements OnInit, OnDestroy {
 
   status(server: McpServer): ServerStatus {
     return serverStatus(server, this.blocked);
+  }
+
+  /** On or off is the switch's to show; the chip stays for the rest. */
+  needsChip(server: McpServer): boolean {
+    return needsChip(this.status(server));
+  }
+
+  switchTip(server: McpServer): string {
+    return switchTip(server, this.blocked);
   }
 
   credentialWord(server: McpServer): string {

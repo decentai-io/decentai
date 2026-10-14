@@ -1,6 +1,8 @@
-"""Signing in, signing out, joining — the only session-less endpoints.
+"""Signing in, signing out, joining — the session-less endpoints.
 
-No signup: the first admin is seeded, everyone else arrives by invitation.
+Nobody joins an organization that exists on their own say: they are
+invited, or added by an administrator. Standing a new organization up —
+the first-run page, and sign-up where it is open — is onboarding.py's.
 Nothing here reveals whether an account exists — login and password-reset
 answer identically for known and unknown addresses.
 """

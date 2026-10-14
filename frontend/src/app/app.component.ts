@@ -40,16 +40,11 @@ export class AppComponent implements OnInit, OnDestroy {
     // another (a shared machine, or a second organization) — showing them the
     // app instead would swallow the link silently. It matters even more for a
     // reset: the usual reason to follow one is that the session in this
-    // browser is not the account you are trying to recover.
+    // browser is not the account you are trying to recover. A sign-up
+    // link makes a new organization and signs its administrator in, so
+    // it wins for the same reason.
     const params = new URLSearchParams(window.location.search);
-    if (params.has('invite') || params.has('reset')) {
-      this.datastore.setview('auth');
-      return;
-    }
-
-    // A sign-in handed over in the address (bootstrap/setup.py's
-    // link): the sign-in page takes it out of the address and uses it.
-    if (window.location.hash.startsWith('#enter=')) {
+    if (params.has('invite') || params.has('reset') || params.has('signup')) {
       this.datastore.setview('auth');
       return;
     }

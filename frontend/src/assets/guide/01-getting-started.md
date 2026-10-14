@@ -6,7 +6,9 @@ This guide walks the workspace in the order you will meet it. Read this chapter 
 
 ## Signing in
 
-There is no self-service signup. Your organization's administrator invites you by email; the invitation link lets you set a password. Where DecentAI sends no email, they add you and hand you a temporary password, which you replace with your own the first time you sign in. From then on you sign in with that email and password.
+You join an organization that exists when its administrator invites you by email; the invitation link lets you set a password. Where DecentAI sends no email, they add you and hand you a temporary password, which you replace with your own the first time you sign in. From then on you sign in with that email and password.
+
+Whoever opens a DecentAI nobody is in yet meets the first-run page instead: they name the organization, choose their own email and password, and are its administrator. Where whoever runs DecentAI allows it, the sign-in page also offers *create an organization*: a link is emailed to you, and following it makes a new organization of your own, with you as its administrator.
 
 If you forget the password, use *Forgot your password?* on the sign-in page. A reset link is sent to the same address. Where DecentAI sends no email, whoever runs it sets a new password for you on the machine it runs on.
 
@@ -21,7 +23,7 @@ The sidebar on the left is the map:
 | **AI → Chats** | Where you ask for things. Each chat keeps its own history, its enabled agents and its settings. |
 | **AI → Schedules** | What your chats keep on the clock: reminders and functions that run later, and what each run did. |
 | **Agents** | The agents installed in your organization, what each may do, and the marketplace they come from. |
-| **Data** | Saved data agents keep for you, files you and they have stored, skills, MCP servers, and secrets. |
+| **Data** | Files you and agents have stored, records agents keep for you, skills, tools (MCP servers), and secrets. |
 | **Settings** | Model providers, chat defaults and notifications, memory, API keys, connected apps, safety, monitoring, and the audit trail. |
 | **Guide** | This guide, at the foot of the sidebar and in the menu on your name. |
 

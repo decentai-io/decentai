@@ -28,7 +28,7 @@
       <button
         #menuButton
         type="button"
-        class="icon-button top-bar__menu"
+        class="icon-btn sm top-bar__menu"
         (click)="toggleMenu()"
         aria-label="Open navigation"
         [attr.aria-expanded]="isSidebarOpen"
@@ -48,16 +48,28 @@
 
       <div class="top-bar__spacer" *ngIf="!topBar.content()"></div>
 
+      <!-- Light or dark, in one press: the other one of the two. -->
+      <button
+        type="button"
+        class="icon-btn sm top-bar__theme"
+        (click)="toggleTheme()"
+        [attr.aria-label]="themeLabel"
+        [matTooltip]="themeLabel"
+      >
+        <lucide-icon [name]="appTheme === 'dark' ? 'sun' : 'moon'" [size]="16" [strokeWidth]="1.75" aria-hidden="true"></lucide-icon>
+      </button>
+
       <button
         *ngIf="!workStopped && !topBar.content()"
         type="button"
-        class="icon-button stop-all"
+        class="btn sm danger outline stop-all"
         (click)="stopEverything()"
         [disabled]="switching"
         aria-label="Stop everything"
-        matTooltip="Stop everything"
+        matTooltip="Stop everything of yours, in every chat"
       >
-        <lucide-icon name="octagon-x" [size]="16" [strokeWidth]="1.75"></lucide-icon>
+        <lucide-icon name="circle-stop" [size]="16" [strokeWidth]="1.75" aria-hidden="true"></lucide-icon>
+        <span class="stop-all__label">Stop everything</span>
       </button>
 
       <button
@@ -107,26 +119,6 @@
           }}</span>
         </button>
 
-        <!-- The theme, where the person's other choices are. -->
-        <p class="menu-label">Theme</p>
-        <button
-          *ngFor="let choice of themes"
-          mat-menu-item
-          role="menuitemradio"
-          [attr.aria-checked]="choice.value === themeChoice"
-          (click)="setTheme(choice.value)"
-        >
-          <lucide-icon [name]="choice.icon" [size]="16" [strokeWidth]="1.75" aria-hidden="true"></lucide-icon>
-          <span>{{ choice.name }}</span>
-          <lucide-icon
-            *ngIf="choice.value === themeChoice"
-            class="menu-check"
-            name="check"
-            [size]="16"
-            aria-hidden="true"
-          ></lucide-icon>
-        </button>
-
         <a mat-menu-item routerLink="/guide" *ngIf="canSeeProfile">
           <lucide-icon name="book-open" [size]="16" [strokeWidth]="1.75" aria-hidden="true"></lucide-icon>
           <span>Guide</span>
@@ -156,7 +148,7 @@
         <span class="shell-bar__text">You are offline. Changes wait until you are back.</span>
       </div>
       <div class="shell-bar is-warn" *ngSwitchCase="'stopped'" role="status">
-        <lucide-icon name="octagon-x" [size]="16" [strokeWidth]="1.75" aria-hidden="true"></lucide-icon>
+        <lucide-icon name="circle-stop" [size]="16" [strokeWidth]="1.75" aria-hidden="true"></lucide-icon>
         <span class="shell-bar__text">You stopped everything. Nothing of yours runs until you resume.</span>
         <button type="button" class="btn sm" (click)="resumeEverything()" [disabled]="switching">Resume</button>
       </div>

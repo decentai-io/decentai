@@ -95,6 +95,7 @@
 }
 
 .nav-link {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -132,6 +133,16 @@
 .nav-icon {
   display: flex;
   flex: none;
+  transition: transform var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
+}
+
+/* The icon leans toward the pointer: a small sign the list is awake. */
+.nav-link:hover .nav-icon {
+  transform: scale(1.08);
+}
+
+.nav-link:active .nav-icon {
+  transform: scale(0.94);
 }
 
 .nav-label {
@@ -142,11 +153,29 @@
   white-space: nowrap;
 }
 
-/* Where the person is. */
+/* Where the person is: the wash, and a mark at the left edge that
+   grows in as the page is reached. */
 .nav-link.is-active {
   background: var(--accent-soft);
   color: var(--accent-ink);
   font-weight: 600;
+}
+
+.nav-link::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: -8px;
+  width: 3px;
+  height: 18px;
+  border-radius: 0 var(--r-full) var(--r-full) 0;
+  background: var(--accent);
+  transform: translateY(-50%) scaleY(0);
+  transition: transform var(--dur-2) var(--ease);
+}
+
+.nav-link.is-active::before {
+  transform: translateY(-50%) scaleY(1);
 }
 
 .nav-link.is-leaving:hover {
@@ -168,6 +197,29 @@
   line-height: 18px;
   text-align: center;
   font-variant-numeric: tabular-nums;
+  animation: badge-in var(--dur-2) var(--ease);
+}
+
+/* A count that appears arrives with a small lift. */
+@keyframes badge-in {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nav-icon,
+  .nav-link::before,
+  .nav-badge {
+    transition: none;
+    animation: none;
+  }
+
+  .nav-link:hover .nav-icon,
+  .nav-link:active .nav-icon {
+    transform: none;
+  }
 }
 
 /* ── Footer: the Guide, and the way out ──────────────────────────── */

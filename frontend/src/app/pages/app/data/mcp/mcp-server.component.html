@@ -1,6 +1,6 @@
 <a class="btn ghost sm server-back" routerLink="/data/mcp">
   <lucide-icon name="arrow-left" [size]="16" aria-hidden="true"></lucide-icon>
-  MCP servers
+  Tools
 </a>
 
 <div class="form" *ngIf="loading" aria-busy="true" aria-label="Opening the server">
@@ -18,7 +18,7 @@
     <div class="server-words">
       <h1 class="server-name">
         {{ server.keys.name }}
-        <span class="chip" [ngClass]="status.tone" [matTooltip]="status.why">{{ status.word }}</span>
+        <span class="chip" *ngIf="showChip" [ngClass]="status.tone" [matTooltip]="status.why">{{ status.word }}</span>
         <button class="icon-btn sm" type="button" *ngIf="!blocked" aria-label="Rename this server" matTooltip="Rename" (click)="startChange('name')">
           <lucide-icon name="pencil" [size]="14" aria-hidden="true"></lucide-icon>
         </button>
@@ -32,9 +32,10 @@
       </p>
     </div>
     <div class="server-actions">
-      <span [matTooltip]="off">
+      <span [matTooltip]="switchTip">
         <app-switch
           label="On for my chats"
+          [labelHidden]="true"
           [disabled]="blocked || busy === 'switch'"
           [ngModel]="server.keys.enabled"
           (ngModelChange)="setEnabled($event)"

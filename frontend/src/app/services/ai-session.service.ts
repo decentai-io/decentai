@@ -27,11 +27,15 @@ export interface AuditQuery {
   until?: string;
   before?: any;
   limit?: number;
+  /** Ask, with the first page, how many of each kind the same window holds. */
+  counts?: boolean;
 }
 
 export interface AuditPage {
   events: any[];
   next_before: any;
+  /** How many of each kind the window holds: event type -> count. */
+  counts?: Record<string, number>;
   error?: string;
 }
 
@@ -279,6 +283,7 @@ export class AiSessionService {
     return {
       events: res.data?.events || [],
       next_before: res.data?.next_before || null,
+      counts: res.data?.counts,
       error: res.error,
     };
   }
@@ -289,6 +294,7 @@ export class AiSessionService {
     return {
       events: res.data?.events || [],
       next_before: res.data?.next_before || null,
+      counts: res.data?.counts,
       error: res.error,
     };
   }

@@ -2,9 +2,10 @@
    The mark, the chips, the buttons and the segmented control are the
    shared ones; the title row, the level chips and the host chips are
    the agents' own (agent-shared.css). */
+/* As wide as the page gives it, like every other page of the app; the
+   description keeps a reading width of its own (agent-shared.css). */
 :host {
   display: block;
-  max-width: 1040px;
   padding: 8px 0 24px;
 }
 
@@ -96,9 +97,10 @@
 }
 
 /* ── The cards: one fact each ──────────────────────────────────────── */
+/* As many columns as the width holds, each card at least 340px. */
 .agent-cards {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
   gap: 12px;
   align-items: start;
 }

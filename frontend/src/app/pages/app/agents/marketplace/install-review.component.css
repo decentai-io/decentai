@@ -1,15 +1,16 @@
-/* One agent as a review reads it: sections in a column, each under
-   its title. The title, the level chips and the host chips are the
-   agents' own (agent-shared.css); the functions are the Functions
-   tab's. */
+/* One agent as a review reads it. Alone: two columns — the agent's own
+   account and its functions, wide; the facts approving agrees to, in a
+   card beside them that stays in view. Among several: one column, each
+   agent's sections under their titles. The level chips and the host
+   chips are the agents' own (agent-shared.css); the functions are the
+   Functions tab's. */
 :host {
   display: flex;
   flex-direction: column;
-  gap: 24px;
-  max-width: 880px;
+  gap: 20px;
 }
 
-/* Among several agents, each begins with its own name. */
+/* Among several, each begins with its own name. */
 .reading-head {
   display: flex;
   align-items: center;
@@ -29,36 +30,131 @@
 
 .reading-note {
   max-width: 72ch;
+  margin-top: 8px;
   color: var(--ink-2);
   font-size: var(--t-sm);
   line-height: var(--lh-sm);
 }
 
-/* The README, folded to its first screen with the fold fading out. */
-.reading-readme {
-  max-width: 72ch;
-  padding: 16px;
+/* ── Alone: the two columns ─────────────────────────────────────── */
+.reading-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  align-items: start;
+  gap: 20px;
+}
+
+.reading-main {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
+}
+
+/* The facts stay in view while the README and the functions are read. */
+.reading-side {
+  position: sticky;
+  top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+@media (max-width: 1100px) {
+  .reading-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* Narrow, the facts come first: they are what approving agrees to. */
+  .reading-side {
+    position: static;
+    order: -1;
+  }
+}
+
+/* A card: a surface with a little depth, its title with an icon. */
+.reading-card {
+  min-width: 0;
+  padding: 20px;
   border: 1px solid var(--line);
-  border-radius: var(--r-md);
+  border-radius: var(--r-lg);
   background: var(--surface);
+  box-shadow: var(--shadow-1);
+}
+
+.reading-card-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  color: var(--ink);
+  font-size: var(--t-md);
+  font-weight: 600;
+  line-height: var(--lh-md);
+}
+
+.reading-card-title lucide-icon {
+  display: flex;
+  color: var(--accent-ink);
+}
+
+.reading-count {
+  margin-left: auto;
+  color: var(--ink-3);
+  font-size: var(--t-sm);
+  font-weight: 500;
+}
+
+/* ── The README: read as an article ─────────────────────────────── */
+.reading-readme {
+  max-width: 78ch;
   overflow-wrap: anywhere;
+  font-size: var(--t-read);
+  line-height: var(--lh-read);
+}
+
+/* The README's first heading repeats the name the page is headed with
+   (its headings arrive a step down, as in a chat: a title is an h3). */
+.reading-readme ::ng-deep markdown > :is(h1, h2, h3):first-child {
+  display: none;
+}
+
+.reading-readme ::ng-deep table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
 }
 
 .reading-readme.is-folded {
-  max-height: 320px;
+  max-height: 420px;
   overflow: hidden;
-  -webkit-mask-image: linear-gradient(#000 70%, transparent);
-  mask-image: linear-gradient(#000 70%, transparent);
+  -webkit-mask-image: linear-gradient(#000 75%, transparent);
+  mask-image: linear-gradient(#000 75%, transparent);
 }
 
-.reading-readme + .btn {
+.reading-more {
   margin-top: 8px;
 }
 
+/* ── What an update changes ─────────────────────────────────────── */
+.reading-changes {
+  padding: 16px 20px;
+  border: 1px solid color-mix(in srgb, var(--warn) 45%, var(--line));
+  border-radius: var(--r-lg);
+  background: var(--warn-soft);
+}
+
+.reading-changes .reading-card-title {
+  margin-bottom: 8px;
+}
+
+.reading-changes .reading-card-title lucide-icon {
+  color: var(--warn-ink);
+}
+
 .reading-changes ul {
-  padding: 12px 16px 12px 32px;
-  border: 1px solid var(--warn-ink);
-  border-radius: var(--r-md);
+  padding-left: 20px;
   color: var(--ink);
   font-size: var(--t-sm);
   line-height: var(--lh-sm);
@@ -69,66 +165,100 @@
   margin-top: 4px;
 }
 
-/* What it needs: the kind at the left, the things by name at the right. */
-.reading-needs {
-  display: grid;
-  grid-template-columns: 140px minmax(0, 1fr);
-  gap: 16px;
-  font-size: var(--t-sm);
-  line-height: var(--lh-sm);
-}
-
-.reading-needs dt {
-  color: var(--ink-2);
-}
-
-.reading-needs dd {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  min-width: 0;
-  color: var(--ink);
-}
-
-.reading-needs ul {
-  display: flex;
-  flex: 1 1 100%;
-  flex-direction: column;
-  gap: 8px;
-  list-style: none;
-}
-
-.reading-needs li {
+/* ── At a glance: one fact under another, a hairline between ────── */
+.reading-facts {
   display: flex;
   flex-direction: column;
 }
 
-.reading-needs li span {
-  color: var(--ink-2);
+.reading-facts .reading-card-title {
+  margin-bottom: 4px;
 }
 
-.reading-needs code {
-  padding: 2px 8px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  background: var(--surface-2);
-  font-family: var(--font-mono);
+.fact {
+  padding: 14px 0;
+}
+
+.fact + .fact {
+  border-top: 1px solid var(--line);
+}
+
+.fact:last-child {
+  padding-bottom: 0;
+}
+
+.fact-name {
+  margin-bottom: 8px;
+  color: var(--ink-3);
   font-size: var(--t-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
   line-height: var(--lh-xs);
-}
-
-.reading-needs .reading-note {
-  flex: 1 1 100%;
-}
-
-.reading-note + .host-chips {
-  margin-top: 8px;
+  text-transform: uppercase;
 }
 
 .reading-levels {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+}
+
+/* A thing it needs or keeps: its icon, its name, a line about it. */
+.reading-items {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  list-style: none;
+}
+
+.reading-items li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.reading-items lucide-icon {
+  display: flex;
+  flex: none;
+  margin-top: 2px;
+  color: var(--ink-2);
+}
+
+.reading-item-words {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  color: var(--ink);
+}
+
+.reading-item-words strong {
+  font-weight: 600;
+}
+
+/* A slot's description can be long: three lines here, all of it in the
+   tooltip. */
+.reading-item-about {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--ink-2);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+}
+
+.reading-packages {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.reading-sub {
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
 }
 
 .reading-functions {
@@ -139,14 +269,22 @@
   margin-top: 12px;
 }
 
+/* ── The code ───────────────────────────────────────────────────── */
 .reading-code {
+  overflow-wrap: anywhere;
   color: var(--ink);
   font-size: var(--t-sm);
   line-height: var(--lh-sm);
 }
 
 .reading-code a {
-  color: inherit;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--accent-ink);
+}
+
+.reading-code a:hover {
   text-decoration: underline;
   text-underline-offset: 3px;
 }
@@ -157,26 +295,16 @@
   font-size: var(--t-xs);
 }
 
-@media (max-width: 700px) {
-  .reading-needs {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 4px;
-  }
-
-  .reading-needs dd {
-    margin-bottom: 12px;
-  }
-}
-
 /* The package, file by file: its path, and its size at the right. */
 .reading-files {
-  margin-top: 8px;
+  margin-top: 12px;
 }
 
 .reading-files ul {
   display: flex;
   flex-direction: column;
-  max-width: 72ch;
+  max-height: 320px;
+  overflow: auto;
   list-style: none;
 }
 

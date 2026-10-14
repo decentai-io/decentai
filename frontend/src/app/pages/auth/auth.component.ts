@@ -4,21 +4,21 @@ import { AuthService } from '../../services/auth.service';
 import { DataStoreService } from '../../services/datastore.service';
 import { NavigatorService } from '../../services/navigator.service';
 
-type Mode = 'login' | 'invitation' | 'forgot' | 'reset' | 'first' | 'entering';
+type Mode =
+  | 'opening' | 'login' | 'invitation' | 'forgot' | 'reset' | 'first'
+  | 'setup' | 'signup' | 'signup-confirm';
 
 /**
- * Signing in is one step: email and password. One organization per
- * deployment, and no signup — the first administrator is seeded at launch,
- * everyone else arrives through an invitation link.
+ * Signing in is one step: email and password. An address belongs to one
+ * account, and a person joins an organization that exists by invitation.
  *
- * The other modes are how those links land: `invitation` and `reset` are
- * opened from emailed URLs, `forgot` asks for a reset link.
- *
- * `entering` is a sign-in handed to the page: whoever set the install
- * up on a person's own computer (bootstrap/setup.py) opens it at
- * `#enter=…`, an email and a password in the part of an address that is
- * never sent anywhere, and the page signs in with them through the same
- * door as a person typing them.
+ * `setup` is the first-run page: a deployment nobody is in yet asks the
+ * person who opens it to name the organization and become its
+ * administrator, once. `signup` asks for an organization of one's own,
+ * where the deployment opened it; `signup-confirm` is how its emailed
+ * link lands. `invitation` and `reset` are opened from emailed URLs,
+ * `forgot` asks for a reset link. `opening` is the moment the page asks
+ * which of these it is.
  */
 @Component({
   selector: 'app-auth',
@@ -27,7 +27,7 @@ type Mode = 'login' | 'invitation' | 'forgot' | 'reset' | 'first' | 'entering';
   standalone: false,
 })
 export class AuthComponent implements OnInit, OnDestroy {
-  mode: Mode = 'login';
+  mode: Mode = 'opening';
 
   email = '';
   password = '';
@@ -36,6 +36,20 @@ export class AuthComponent implements OnInit, OnDestroy {
   remember = false;
   name = '';
   orgName = '';
+
+  /** The first-run page asks for the deployment's setup code. */
+  codeRequired = false;
+  code = '';
+  /** A new organization may be asked for from the sign-in page. */
+  signupOpen = false;
+  /** After asking for one: where the link went. */
+  signupMessage = '';
+  /** Set when the page was opened from a sign-up link. */
+  signupToken = '';
+  signupValid = false;
+  checkingSignup = false;
+  /** The field the server refused, for the error under it. */
+  refusedField = '';
 
   /** Set when the page was opened from an invitation link. */
   inviteToken = '';
@@ -73,12 +87,6 @@ export class AuthComponent implements OnInit, OnDestroy {
   ) {}
 
   ngOnInit(): void {
-    const handed = this.handedSignIn();
-    if (handed) {
-      this.enter(handed.email, handed.password);
-      return;
-    }
-
     const params = new URLSearchParams(window.location.search);
 
     const invite = params.get('invite');
@@ -93,57 +101,164 @@ export class AuthComponent implements OnInit, OnDestroy {
       return;
     }
 
+    const signup = params.get('signup');
+    if (signup) {
+      this.openSignup(signup);
+      return;
+    }
+
     this.recallChoice();
+    this.openDoor();
   }
 
   // ------------------------------------------------------------------
-  // A sign-in handed over
+  // The first run, and sign-up
   // ------------------------------------------------------------------
 
-  /** The sign-in in the address's fragment, if there is one — and out
-   *  of the address before anything else is done with it: it is a
-   *  password, and must not stay where a history could keep it. */
-  private handedSignIn(): { email: string; password: string } | null {
-    const found = /^#enter=([A-Za-z0-9_-]+)$/.exec(window.location.hash);
-    if (!found) {
-      return null;
-    }
-    if (window.history?.replaceState) {
-      window.history.replaceState(
-        {}, '', window.location.pathname + window.location.search);
-    }
-    try {
-      const bytes = Uint8Array.from(
-        atob(found[1].replace(/-/g, '+').replace(/_/g, '/')),
-        (letter) => letter.charCodeAt(0));
-      const said = JSON.parse(new TextDecoder().decode(bytes));
-      const email = String(said?.email || '');
-      const password = String(said?.password || '');
-      return email && password ? { email, password } : null;
-    } catch {
-      return null;
-    }
+  /** Which page this is: the first-run page while nobody is in this
+   *  deployment, else the sign-in, offering sign-up where it is open. */
+  private async openDoor(): Promise<void> {
+    const status = await this.auth.setupStatus();
+    this.codeRequired = status.codeRequired;
+    this.signupOpen = status.signupOpen;
+    this.mode = status.setupRequired ? 'setup' : 'login';
   }
 
-  /** Sign in with what was handed over. Where it is refused the form
-   *  is shown, with the reason, for a person to sign in themselves. */
-  private async enter(email: string, password: string): Promise<void> {
-    this.mode = 'entering';
+  /** What the organization's form still needs, field by field; '' for
+   *  each that reads as done. The server checks the same. */
+  get orgNameProblem(): string {
+    return this.orgName.trim() ? '' : "Enter the organization's name.";
+  }
+
+  get nameProblem(): string {
+    return this.name.trim() ? '' : 'Enter your name.';
+  }
+
+  get codeProblem(): string {
+    return !this.codeRequired || this.code.trim() ? '' : 'Enter the setup code.';
+  }
+
+  private get organizationFormProblem(): boolean {
+    return !!(this.orgNameProblem || this.nameProblem || this.emailProblem
+      || this.passwordProblem || (this.mode === 'setup' && this.codeProblem));
+  }
+
+  /** The server's refusal of one field, said under that field. */
+  refusedFor(field: string): string {
+    return this.refusedField === field ? this.error : '';
+  }
+
+  /** Name the organization and become its administrator. */
+  async setUp(): Promise<void> {
+    this.tried = true;
+    this.error = '';
+    this.refusedField = '';
+    if (this.organizationFormProblem) return;
+
     this.busy = true;
     try {
-      const result = await this.auth.login({ email, password, remember: true });
+      const result = await this.auth.setup({
+        org_name: this.orgName.trim(),
+        name: this.name.trim(),
+        email: this.email.trim(),
+        password: this.password,
+        code: this.codeRequired ? this.code.trim() : undefined,
+        remember: true,
+      });
       if (result.ok) {
         this.enterApp();
         return;
       }
-      this.error = result.error || 'That sign-in was not accepted.';
-    } catch {
-      this.error = 'DecentAI could not be reached.';
+      this.error = result.error || 'This DecentAI could not be set up.';
+      this.refusedField = result.field || '';
+      if (result.retryAfter) {
+        this.throttled = true;
+        this.lockFor(result.retryAfter);
+      }
+      // Somebody else finished first: what is left is to sign in.
+      const status = await this.auth.setupStatus();
+      if (!status.setupRequired) {
+        this.signupOpen = status.signupOpen;
+        this.clearForm();
+        this.error = result.error || '';
+        this.mode = 'login';
+      }
     } finally {
       this.busy = false;
     }
-    this.email = email;
-    this.mode = 'login';
+  }
+
+  startSignup(): void {
+    this.clearForm();
+    this.signupMessage = '';
+    this.mode = 'signup';
+  }
+
+  /** Ask for an organization: a link goes to the address. */
+  async requestSignup(): Promise<void> {
+    this.tried = true;
+    this.error = '';
+    this.refusedField = '';
+    if (this.organizationFormProblem) return;
+
+    this.busy = true;
+    try {
+      const result = await this.auth.signup({
+        org_name: this.orgName.trim(),
+        name: this.name.trim(),
+        email: this.email.trim(),
+        password: this.password,
+      });
+      if (result.ok) {
+        this.password = '';
+        this.signupMessage = result.message ?? '';
+        return;
+      }
+      this.error = result.error || 'Could not ask for the organization.';
+      this.refusedField = result.field || '';
+      if (result.retryAfter) {
+        this.throttled = true;
+        this.lockFor(result.retryAfter);
+      }
+    } finally {
+      this.busy = false;
+    }
+  }
+
+  /** Resolve a sign-up link before creating anything, so the page can
+   *  say what following it makes. */
+  private async openSignup(token: string): Promise<void> {
+    this.mode = 'signup-confirm';
+    this.signupToken = token;
+    this.checkingSignup = true;
+    try {
+      const result = await this.auth.signupInfo(token);
+      this.signupValid = result.ok;
+      if (result.ok) {
+        this.email = result.email ?? '';
+        this.orgName = result.orgName ?? '';
+      } else {
+        this.error = result.error ?? '';
+      }
+    } finally {
+      this.checkingSignup = false;
+    }
+  }
+
+  async confirmSignup(): Promise<void> {
+    this.error = '';
+    this.busy = true;
+    try {
+      const result = await this.auth.confirmSignup(this.signupToken);
+      if (result.ok) {
+        this.enterApp();
+        return;
+      }
+      this.signupValid = false;
+      this.error = result.error || 'This link is invalid or has expired.';
+    } finally {
+      this.busy = false;
+    }
   }
 
   // ------------------------------------------------------------------
@@ -289,6 +404,7 @@ export class AuthComponent implements OnInit, OnDestroy {
   private clearForm(): void {
     this.unlock();
     this.error = '';
+    this.refusedField = '';
     this.throttled = false;
     this.tried = false;
     this.shown = false;
@@ -369,10 +485,16 @@ export class AuthComponent implements OnInit, OnDestroy {
     this.clearTokenFromUrl();
     this.resetToken = '';
     this.resetValid = false;
+    this.signupToken = '';
+    this.signupValid = false;
     this.handedPassword = '';
     this.clearForm();
     this.forgotMessage = '';
+    this.signupMessage = '';
     this.mode = 'login';
+    // Whether sign-up is offered is the deployment's to say, and a page
+    // opened from a link has not asked yet.
+    this.openDoor();
   }
 
   // ------------------------------------------------------------------
@@ -485,18 +607,30 @@ export class AuthComponent implements OnInit, OnDestroy {
   }
 
   get title(): string {
-    if (this.mode === 'entering') {
-      return 'Opening DecentAI…';
+    if (this.mode === 'opening') {
+      return 'Opening DecentAIâ€¦';
+    }
+    if (this.mode === 'setup') {
+      return 'Set up DecentAI';
+    }
+    if (this.mode === 'signup') {
+      return this.signupMessage ? 'Check your email' : 'Create an organization';
+    }
+    if (this.mode === 'signup-confirm') {
+      if (this.checkingSignup) {
+        return 'Checking your linkâ€¦';
+      }
+      return this.signupValid ? `Create ${this.orgName}` : 'Link problem';
     }
     if (this.mode === 'invitation') {
       if (this.checkingInvite) {
-        return 'Checking your invitation…';
+        return 'Checking your invitationâ€¦';
       }
       return this.inviteValid ? `Join ${this.orgName}` : 'Invitation problem';
     }
     if (this.mode === 'reset') {
       if (this.checkingReset) {
-        return 'Checking your link…';
+        return 'Checking your linkâ€¦';
       }
       return this.resetValid ? 'Choose a new password' : 'Link problem';
     }
@@ -513,8 +647,26 @@ export class AuthComponent implements OnInit, OnDestroy {
   }
 
   get subtitle(): string {
-    if (this.mode === 'entering') {
+    if (this.mode === 'opening') {
       return '';
+    }
+    if (this.mode === 'setup') {
+      return 'Nobody is in this DecentAI yet. Name your organization and '
+        + 'choose how you sign in: you will be its administrator.';
+    }
+    if (this.mode === 'signup') {
+      return this.signupMessage
+        ? this.signupMessage
+        : 'Your own organization, with you as its administrator. We will '
+          + 'email you a link to confirm the address first.';
+    }
+    if (this.mode === 'signup-confirm') {
+      if (this.checkingSignup) {
+        return '';
+      }
+      return this.signupValid
+        ? `You will be its administrator, signed in as ${this.email}.`
+        : this.error || 'Ask for a new link and try again.';
     }
     if (this.mode === 'invitation') {
       if (this.checkingInvite) {

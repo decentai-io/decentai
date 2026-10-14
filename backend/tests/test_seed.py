@@ -87,7 +87,7 @@ class TestTheFirstAdministrator:
         monkeypatch.delenv("ADMIN_EMAIL", raising=False)
         monkeypatch.delenv("ADMIN_PASSWORD", raising=False)
         assert _run_init() == 1
-        assert "set ADMIN_EMAIL and ADMIN_PASSWORD" in capsys.readouterr().err
+        assert "Set ADMIN_EMAIL and ADMIN_PASSWORD" in capsys.readouterr().err
 
     def test_an_administrator_who_took_another_address_is_not_made_again(
             self, app, seed, monkeypatch, capsys):

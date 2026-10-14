@@ -54,31 +54,6 @@
   z-index: var(--z-bar);
 }
 
-.icon-button {
-  width: 32px;
-  height: 32px;
-  border: none;
-  border-radius: var(--radius-md);
-  background: transparent;
-  cursor: pointer;
-  color: var(--muted-foreground);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  transition: background-color 0.15s ease, color 0.15s ease;
-}
-
-.icon-button:hover {
-  background: var(--secondary);
-  color: var(--foreground);
-}
-
-.icon-button:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: 1px;
-}
-
 .top-bar__spacer {
   flex: 1;
 }
@@ -268,10 +243,26 @@
   }
 }
 
-/* The person's own stop for everything of theirs. */
-.stop-all:hover {
-  background: color-mix(in srgb, var(--destructive) 10%, transparent);
-  color: var(--destructive-strong);
+/* The person's own stop for everything of theirs: a bordered button
+   with its words, so it reads as one and not as a close mark. On a
+   phone the icon carries it alone, still inside its edge. */
+@media (max-width: 700px) {
+  .stop-all {
+    width: 32px;
+    padding: 0;
+  }
+
+  .stop-all__label {
+    display: none;
+  }
+}
+
+/* A chat's own row needs the bar's room on a phone; the theme button
+   is back on every other page. */
+@media (max-width: 700px) {
+  .top-bar.has-page-row .top-bar__theme {
+    display: none;
+  }
 }
 
 /* What the shell has to say, under the top bar: one line and one

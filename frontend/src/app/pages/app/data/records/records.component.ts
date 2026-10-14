@@ -51,7 +51,7 @@ const NAME_COLUMN = '__name';
 const BY_CHANGE: Sort = { key: 'updated', direction: 'desc' };
 
 /**
- * Saved data: what agents have stored on the user's behalf. Records are
+ * Records: what agents have stored on the user's behalf. Records are
  * grouped by `resource_id` (`agent__kind`), and the page shows one kind
  * at a time: the column at the list's left holds the agents, each
  * opening to the kinds it keeps, and the address names the one open

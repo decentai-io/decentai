@@ -361,7 +361,7 @@ isGroupOn(groupId: string): boolean {
   // ── Invitations ─────────────────────────────────────────────────────
 
   /** The group the platform seeds for people who use it without
-   *  administering it (bootstrap/provisioning.py). */
+   *  administering it (backend/server/authentication/provisioning.py). */
   private static readonly MEMBERS_GROUP = 'Members';
 
   startInvite(): void {

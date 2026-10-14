@@ -14,18 +14,21 @@ import {
   MONITOR_KINDS, bytesLabel, monitorChip, monitorKind, monitorLabel, monitorSummary, monitorTone,
 } from './monitor-words';
 
-type MonitoringView = 'agents' | 'events' | 'connections';
+type MonitoringView = 'overview' | 'agents' | 'events' | 'connections';
 
 /**
- * Monitoring: what agents use now, and what was seen of them
+ * Monitoring: what agents did, use now, and what was seen of them
  * (docs/system/monitoring.md). Read-only: nothing here changes an
  * agent or what it is given.
  *
- * Three views, each with its own address. "Agents" (/monitoring) is
- * the running agents with what each holds, against what they are given
- * together, and what each keeps on disk. "Events" (/monitoring/events)
- * is everything written down, by kind and by agent. "Connections"
- * (/monitoring/connections) is the connections alone, made and refused.
+ * Four views, each with its own address. "Overview" (/monitoring) is
+ * what the agents did in a window, added up from the audit trail
+ * (activity-overview.component); for whoever may not see it, /monitoring
+ * is "Agents". "Agents" (/monitoring/agents) is the running agents with
+ * what each holds, against what they are given together, and what each
+ * keeps on disk. "Events" (/monitoring/events) is everything written
+ * down, by kind and by agent. "Connections" (/monitoring/connections)
+ * is the connections alone, made and refused.
  */
 @Component({
   selector: 'app-monitoring',
@@ -35,11 +38,20 @@ type MonitoringView = 'agents' | 'events' | 'connections';
 })
 export class MonitoringComponent implements OnInit, OnDestroy {
   view: MonitoringView = 'agents';
-  readonly views: Choice<MonitoringView>[] = [
-    { value: 'agents', name: 'Agents' },
-    { value: 'events', name: 'Events' },
-    { value: 'connections', name: 'Connections' },
-  ];
+
+  /** The views this person may open, in the order they are offered:
+   *  worked out once, when the page opens. */
+  views: Choice<MonitoringView>[] = [];
+
+  private offered(): Choice<MonitoringView>[] {
+    return [
+      ...(this.canSeeSummary ? [{ value: 'overview' as const, name: 'Overview' }] : []),
+      { value: 'agents', name: 'Agents' },
+      ...(this.canSeeEvents
+        ? [{ value: 'events' as const, name: 'Events' }, { value: 'connections' as const, name: 'Connections' }]
+        : []),
+    ];
+  }
   error = '';
   private address = new Subscription();
 
@@ -87,8 +99,10 @@ export class MonitoringComponent implements OnInit, OnDestroy {
 
   get canSeeEvents(): boolean { return this.auth.can('agents:monitor:events'); }
   get canSeeFiles(): boolean { return this.auth.can('agents:monitor:files'); }
+  get canSeeSummary(): boolean { return this.auth.can('agents:monitor:summary'); }
 
   async ngOnInit(): Promise<void> {
+    this.views = this.offered();
     // The view is a child route with no component, so this page is not
     // told when it changes: it reads the address after each navigation.
     this.address.add(this.router.events
@@ -104,13 +118,19 @@ export class MonitoringComponent implements OnInit, OnDestroy {
 
   /** Each view has its own address; going there shows it. */
   go(view: MonitoringView): void {
-    void this.router.navigate(view === 'agents' ? ['/monitoring'] : ['/monitoring', view]);
+    void this.router.navigate(view === this.landing ? ['/monitoring'] : ['/monitoring', view]);
+  }
+
+  /** What /monitoring itself shows: the Overview, for whoever may see it. */
+  private get landing(): MonitoringView {
+    return this.canSeeSummary ? 'overview' : 'agents';
   }
 
   private async readView(): Promise<void> {
     const named = this.route.snapshot.firstChild?.url[0]?.path;
-    const view: MonitoringView = named === 'events' || named === 'connections' ? named : 'agents';
-    if (view !== 'agents' && !this.canSeeEvents) {
+    const view: MonitoringView =
+      named === 'events' || named === 'connections' || named === 'agents' ? named : this.landing;
+    if ((view === 'events' || view === 'connections') && !this.canSeeEvents) {
       void this.router.navigate(['/monitoring'], { replaceUrl: true });
       return;
     }
@@ -121,6 +141,7 @@ export class MonitoringComponent implements OnInit, OnDestroy {
     this.view = view;
     this.error = '';
     this.stopWatching();
+    if (view === 'overview') return;
     if (view === 'agents') {
       // One clock, ticking each second: it says how old the numbers
       // are, and asks for new ones when they are old enough.

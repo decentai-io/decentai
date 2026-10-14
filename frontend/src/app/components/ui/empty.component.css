@@ -34,8 +34,14 @@
   line-height: var(--lh-base);
 }
 
+/* The main action first; a second one beside it, apart, and under it
+   where the line is too narrow for both. */
 .empty-action {
-  margin-top: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 16px;
 }
 
 .empty-action:empty {

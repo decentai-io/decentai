@@ -1,6 +1,6 @@
-# MCP servers
+# Tools (MCP servers)
 
-An MCP server is a service on the internet that offers **tools** the assistant can call: search a wiki, look up a ticket, update a tracker. Many products publish one. You add a server once, under **Data → MCP servers**, and your chats can then use the tools you keep on.
+An MCP server is a service on the internet that offers **tools** the assistant can call: search a wiki, look up a ticket, update a tracker. Many products publish one. You add a server once, under **Data → Tools**, and your chats can then use the tools you keep on.
 
 It is not an agent. An agent is code this platform runs after an administrator approved it. An MCP tool runs on its own server: the platform sends a request and reads the answer.
 

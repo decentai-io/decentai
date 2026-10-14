@@ -59,6 +59,7 @@ const routes: Routes = [
     data: { requiredAction: 'agents:monitor:usage' },
     children: [
       { path: '', pathMatch: 'full', children: [] },
+      { path: 'agents', children: [] },
       { path: 'events', children: [] },
       { path: 'connections', children: [] },
     ],

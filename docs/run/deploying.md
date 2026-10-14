@@ -24,10 +24,14 @@ python -c "import secrets; print(secrets.token_urlsafe(48))"   # TOKEN_SECRET_KE
 None of them is written to disk by the scripts.
 
 **2. Write `deploy.env`.** `cp deploy.env.example deploy.env`, replace
-every `change-me` — the three generated values exactly as printed, a
-database password (the same one inside `MONGO_URI`), and the first
-administrator's name, email and password — and set what a server sets
-differently from a computer of one's own:
+every `change-me` — the three generated values exactly as printed, and
+a database password (the same one inside `MONGO_URI`) — and set what a
+server sets differently from a computer of one's own. Leave
+`SETUP_CODE` empty: the first-run page will ask for a code the
+deployment makes and writes to its log, so nobody who finds the address
+first can claim it. (To set the deployment up without the page, name
+the first administrator in `ADMIN_EMAIL`, `ADMIN_PASSWORD` and
+`ADMIN_NAME` instead.)
 
 | Setting | On a server |
 |---|---|
@@ -35,6 +39,7 @@ differently from a computer of one's own:
 | `PUBLIC_APP_URL`, `CORS_ALLOW_ORIGINS` | `https://` and that domain. Links in invitations and password resets use the first |
 | `JWT_COOKIE_SECURE` | `true` |
 | `SMTP_HOST`, `MAIL_FROM` and the server's sign-in | any provider's SMTP server, so invitations and password resets are sent rather than logged ([configuration](configuration.md)) |
+| `ORG_SIGNUP` | `open` to let anybody create an organization of their own from the sign-in page; it needs the mail above. `closed`, the default, keeps organizations to `bootstrap/organizations.py` ([operating it](operating.md#organizations)) |
 
 **3. Start it**, with the file that makes Caddy the server's front
 door laid over the stack:
@@ -51,7 +56,18 @@ container of its own, `agents`, on a network that reaches the
 runtime and nothing else ([the sandbox](../system/sandbox.md)). Every
 `docker compose` line below takes the same two `-f` files on a server.
 
-Sign in at the address with the administrator from `deploy.env`.
+**4. Set it up.** Read the setup code from the log:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.server.yml \
+    --env-file deploy.env logs init | grep "setup code"
+```
+
+Open the address: the first-run page asks for that code, the
+organization's name, and your name, email and password, and makes you
+its administrator. It is there once; after that the address is the
+sign-in page. (Where `deploy.env` names an administrator, there is no
+page: sign in as them.)
 
 ## Behind a load balancer
 

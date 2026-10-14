@@ -1,7 +1,9 @@
-<!-- One agent, read in the order a careful person reads it: what it
-     is, what an update changes, what it needs, where it connects, what
-     it may do, and the code. In a review of several, each agent is a
-     section with its own name and the functions folded. -->
+<!-- One agent, read before approving. Alone, it is two columns: what the
+     agent says of itself and what it may do, wide; and the facts that
+     approving agrees to — what it may do by level, where it connects,
+     what it needs and keeps, and the code — in a column of their own
+     beside it, in view while the rest is read. Among several, each agent
+     is a section of its own in one column, with the functions folded. -->
 <header class="reading-head" *ngIf="brief">
   <app-agent-mark [name]="name" [icon]="manifest.agent?.icon"></app-agent-mark>
   <h2>
@@ -17,71 +19,122 @@
   This cannot be installed: {{ message }}
 </p>
 
-<!-- The package's own account of itself, which the catalog's card has
-     no room for. Folded to its first screen. -->
-<section *ngIf="entry.readme && !brief" [attr.aria-labelledby]="id + '-readme'">
-  <h2 class="agent-section-title" [id]="id + '-readme'">README</h2>
-  <div class="reading-readme" [class.is-folded]="readmeLong && !readmeOpen">
-    <markdown [data]="readme"></markdown>
-  </div>
-  <button class="btn ghost sm" type="button" *ngIf="readmeLong" [attr.aria-expanded]="readmeOpen" (click)="readmeOpen = !readmeOpen">
-    {{ readmeOpen ? "Show less" : "Read more" }}
-  </button>
-</section>
-
 <!-- First on an update: the only part a returning administrator has
      not already read. -->
 <section class="reading-changes" *ngIf="changes.length && !installed" [attr.aria-labelledby]="id + '-changes'">
-  <h2 class="agent-section-title" [id]="id + '-changes'">What this update changes</h2>
+  <h2 class="reading-card-title" [id]="id + '-changes'">
+    <lucide-icon name="refresh-cw" [size]="16" aria-hidden="true"></lucide-icon>
+    What this update changes
+  </h2>
   <ul>
     <li *ngFor="let line of changes">{{ line }}</li>
   </ul>
 </section>
 
-<section [attr.aria-labelledby]="id + '-needs'">
-  <h2 class="agent-section-title" [id]="id + '-needs'">What it needs</h2>
-  <p class="reading-note" *ngIf="!secretSlots.length && !dependencies.length && !keptResources.length">
-    Nothing: no credential, no package, and it keeps nothing of its own.
-  </p>
-  <dl class="reading-needs">
-    <ng-container *ngIf="secretSlots.length">
-      <dt>{{ secretSlots.length === 1 ? "A credential" : secretSlots.length + " credentials" }}</dt>
-      <dd>
-        <ul>
-          <li *ngFor="let slot of secretSlots">
-            <strong>{{ slot.label || slot.id }}</strong>
-            <span *ngIf="slot.description">{{ slot.description }}</span>
-          </li>
-        </ul>
-        <p class="reading-note">Filled in after installing, on the agent's page.</p>
-      </dd>
-    </ng-container>
-    <ng-container *ngIf="dependencies.length">
-      <dt>{{ dependencies.length === 1 ? "A package" : dependencies.length + " packages" }}</dt>
-      <dd>
-        <code *ngFor="let dependency of dependencies">{{ dependency }}</code>
-        <p class="reading-note">Installed with the agent, where it runs.</p>
-      </dd>
-    </ng-container>
-    <ng-container *ngIf="keptResources.length">
-      <dt>Storage</dt>
-      <dd>
-        <ul>
-          <li *ngFor="let group of keptResources">
-            <strong>{{ group.kind === "files" ? "Keeps files of its own" : "Keeps records of its own" }}</strong>
-            <span>{{ kindsOf(group) }}</span>
-          </li>
-        </ul>
-      </dd>
-    </ng-container>
-  </dl>
-</section>
+<!-- ── Alone: two columns ─────────────────────────────────────────── -->
+<div class="reading-grid" *ngIf="!brief">
+  <div class="reading-main">
+    <!-- The package's own account of itself. Folded to its first
+         screen. -->
+    <section class="reading-card" *ngIf="entry.readme" [attr.aria-labelledby]="id + '-readme'">
+      <h2 class="reading-card-title" [id]="id + '-readme'">
+        <lucide-icon name="book-open" [size]="16" aria-hidden="true"></lucide-icon>
+        About
+      </h2>
+      <div class="reading-readme" [class.is-folded]="readmeLong && !readmeOpen">
+        <markdown [data]="readme"></markdown>
+      </div>
+      <button class="btn ghost sm reading-more" type="button" *ngIf="readmeLong" [attr.aria-expanded]="readmeOpen" (click)="readmeOpen = !readmeOpen">
+        <lucide-icon [name]="readmeOpen ? 'chevron-up' : 'chevron-down'" [size]="16" aria-hidden="true"></lucide-icon>
+        {{ readmeOpen ? "Show less" : "Read all of it" }}
+      </button>
+    </section>
 
-<!-- Always here, a manifest that says nothing included: where an agent
+    <section class="reading-card" *ngIf="functions.length" [attr.aria-labelledby]="id + '-does'">
+      <h2 class="reading-card-title" [id]="id + '-does'">
+        <lucide-icon name="list-checks" [size]="16" aria-hidden="true"></lucide-icon>
+        What it may do
+        <span class="reading-count">{{ functions.length }} {{ functions.length === 1 ? "function" : "functions" }}</span>
+      </h2>
+      <app-agent-functions [manifest]="manifest" [expanded]="true"></app-agent-functions>
+    </section>
+  </div>
+
+  <aside class="reading-side" [attr.aria-label]="'What approving ' + name + ' agrees to'">
+    <section class="reading-card reading-facts">
+      <h2 class="reading-card-title">At a glance</h2>
+
+      <div class="fact" *ngIf="functions.length">
+        <h3 class="fact-name">How far it may go</h3>
+        <ng-container *ngTemplateOutlet="levels"></ng-container>
+      </div>
+
+      <div class="fact">
+        <h3 class="fact-name">Where it connects</h3>
+        <ng-container *ngTemplateOutlet="hosts"></ng-container>
+      </div>
+
+      <div class="fact">
+        <h3 class="fact-name">What it needs</h3>
+        <ng-container *ngTemplateOutlet="needs"></ng-container>
+      </div>
+
+      <div class="fact" *ngIf="keptResources.length">
+        <h3 class="fact-name">What it keeps</h3>
+        <ng-container *ngTemplateOutlet="keeps"></ng-container>
+      </div>
+    </section>
+
+    <section class="reading-card" [attr.aria-labelledby]="id + '-code'">
+      <h2 class="reading-card-title" [id]="id + '-code'">
+        <lucide-icon name="file-code" [size]="16" aria-hidden="true"></lucide-icon>
+        The code
+      </h2>
+      <ng-container *ngTemplateOutlet="code"></ng-container>
+    </section>
+  </aside>
+</div>
+
+<!-- ── Among several: one column, the functions folded ────────────── -->
+<ng-container *ngIf="brief">
+  <section [attr.aria-labelledby]="id + '-needs'">
+    <h2 class="agent-section-title" [id]="id + '-needs'">What it needs</h2>
+    <ng-container *ngTemplateOutlet="needs"></ng-container>
+    <ng-container *ngIf="keptResources.length">
+      <ng-container *ngTemplateOutlet="keeps"></ng-container>
+    </ng-container>
+  </section>
+
+  <section [attr.aria-labelledby]="id + '-network'">
+    <h2 class="agent-section-title" [id]="id + '-network'">Where it connects</h2>
+    <ng-container *ngTemplateOutlet="hosts"></ng-container>
+  </section>
+
+  <section *ngIf="functions.length" [attr.aria-labelledby]="id + '-does'">
+    <h2 class="agent-section-title" [id]="id + '-does'">What it may do</h2>
+    <ng-container *ngTemplateOutlet="levels"></ng-container>
+    <details class="fold reading-functions">
+      <summary>{{ functions.length === 1 ? "Its function" : "Its " + functions.length + " functions" }}</summary>
+      <app-agent-functions [manifest]="manifest"></app-agent-functions>
+    </details>
+  </section>
+</ng-container>
+
+<!-- ── The pieces, placed by the layout above ─────────────────────── -->
+
+<!-- How many functions at each level: what approving lets a chat ask
+     for without asking, and what it must ask a person for. -->
+<ng-template #levels>
+  <p class="reading-levels">
+    <span class="lvl" *ngFor="let level of tally" [attr.data-level]="level.name">
+      <span class="lvl-dot"></span>{{ level.count }} {{ level.name }}
+    </span>
+  </p>
+</ng-template>
+
+<!-- Always said, a manifest that says nothing included: where an agent
      connects is part of what approving agrees to. -->
-<section [attr.aria-labelledby]="id + '-network'">
-  <h2 class="agent-section-title" [id]="id + '-network'">Where it connects</h2>
-  <p class="reading-note">{{ networkNote }}</p>
+<ng-template #hosts>
   <div class="host-chips">
     <code class="is-wide" *ngIf="network.any">any website</code>
     <code class="is-none"
@@ -96,34 +149,54 @@
       what you allow on a code card, each run
     </code>
   </div>
-</section>
+  <p class="reading-note">{{ networkNote }}</p>
+</ng-template>
 
-<section *ngIf="functions.length" [attr.aria-labelledby]="id + '-does'">
-  <h2 class="agent-section-title" [id]="id + '-does'">What it may do</h2>
-  <!-- A review is for reading: every function is shown, with what it
-       takes and returns open. Among several agents, the count by level
-       is the summary and the functions are one press away. -->
-  <app-agent-functions *ngIf="!brief" [manifest]="manifest" [expanded]="true"></app-agent-functions>
-  <ng-container *ngIf="brief">
-    <p class="reading-levels">
-      <span class="lvl" *ngFor="let level of tally" [attr.data-level]="level.name">
-        <span class="lvl-dot"></span>{{ level.count }} {{ level.name }}
-      </span>
-    </p>
-    <details class="fold reading-functions">
-      <summary>{{ functions.length === 1 ? "Its function" : "Its " + functions.length + " functions" }}</summary>
-      <app-agent-functions [manifest]="manifest"></app-agent-functions>
-    </details>
-  </ng-container>
-</section>
-
-<section *ngIf="!brief" [attr.aria-labelledby]="id + '-code'">
-  <h2 class="agent-section-title" [id]="id + '-code'">The code</h2>
-  <p class="reading-code">
-    <a *ngIf="codeLink; else plainPlace" [href]="codeLink" target="_blank" rel="noopener">{{ codePlace }}</a>
-    <ng-template #plainPlace>{{ codePlace }}</ng-template>
-    <ng-container *ngIf="source.sha"> at commit <code>{{ source.sha.slice(0, 12) }}</code></ng-container>
+<ng-template #needs>
+  <p class="reading-note" *ngIf="!secretSlots.length && !dependencies.length">
+    Nothing: no credential and no package.
   </p>
+  <ul class="reading-items" *ngIf="secretSlots.length">
+    <li *ngFor="let slot of secretSlots">
+      <lucide-icon name="key-round" [size]="16" aria-hidden="true"></lucide-icon>
+      <span class="reading-item-words">
+        <strong>{{ slot.label || slot.id }}</strong>
+        <span class="reading-item-about" *ngIf="slot.description" [matTooltip]="slot.description">{{ slot.description }}</span>
+      </span>
+    </li>
+  </ul>
+  <p class="reading-note" *ngIf="secretSlots.length">
+    {{ secretSlots.length === 1 ? "The credential is" : "The credentials are" }} filled in after installing, on the agent's page.
+  </p>
+  <div class="reading-packages" *ngIf="dependencies.length">
+    <span class="reading-sub">{{ dependencies.length === 1 ? "A package, installed where it runs" : dependencies.length + " packages, installed where it runs" }}</span>
+    <div class="host-chips">
+      <code *ngFor="let dependency of dependencies">{{ dependency }}</code>
+    </div>
+  </div>
+</ng-template>
+
+<ng-template #keeps>
+  <ul class="reading-items">
+    <li *ngFor="let group of keptResources">
+      <lucide-icon [name]="group.kind === 'files' ? 'folder' : 'database'" [size]="16" aria-hidden="true"></lucide-icon>
+      <span class="reading-item-words">
+        <strong>{{ group.kind === "files" ? "Files of its own" : "Records of its own" }}</strong>
+        <span class="reading-item-about">{{ kindsOf(group) }}</span>
+      </span>
+    </li>
+  </ul>
+</ng-template>
+
+<ng-template #code>
+  <p class="reading-code">
+    <a *ngIf="codeLink; else plainPlace" [href]="codeLink" target="_blank" rel="noopener">
+      {{ codePlace }}
+      <lucide-icon name="external-link" [size]="12" aria-hidden="true"></lucide-icon>
+    </a>
+    <ng-template #plainPlace>{{ codePlace }}</ng-template>
+  </p>
+  <p class="reading-note" *ngIf="source.sha">At commit <code>{{ source.sha.slice(0, 12) }}</code>: approving installs exactly this.</p>
   <p class="reading-note" *ngIf="approved?.package_digest">
     Kept at the last approval as <code>{{ digest }}</code>.
   </p>
@@ -139,4 +212,4 @@
       <li class="reading-note" *ngIf="entry.files_more">and {{ entry.files_more }} more, in the repository.</li>
     </ul>
   </details>
-</section>
+</ng-template>

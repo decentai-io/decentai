@@ -3,7 +3,6 @@
    ones; here are the form's place and the lists it ticks from. */
 :host {
   display: block;
-  max-width: 720px;
 }
 
 .access-intro {

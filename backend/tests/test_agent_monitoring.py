@@ -351,3 +351,98 @@ class TestWhatAnAgentKeeps:
         assert app_call(left.client, "Agents:Monitor:Files",
                         {"agent": "agt_right"}).status_code == 404
         assert runtime.asked == []
+
+
+# ======================================================================
+# What they did, added up (Agents:Monitor:Summary)
+# ======================================================================
+
+def _ran(org_id, agent_id, name, status, ms, hours_ago=1, reached=None,
+         user_id="u1", chat_id="chat_1"):
+    """An execution the runtime recorded, as the audit trail keeps it."""
+    from datetime import timedelta
+
+    from database.stores import AuditStore
+    from util import new_id, utc_now
+
+    details = {"agent_id": agent_id, "agent_name": name, "status": status,
+               "duration_ms": ms}
+    if reached:
+        details["reached"] = reached
+    AuditStore().col.insert_one({
+        "event_id": f"aud_{new_id()}", "event_type": "execution",
+        "org_id": org_id, "user_id": user_id, "actor": "", "chat_id": chat_id,
+        "execution_id": None, "function": f"{name.lower()}.go", "resource_refs": [],
+        "details": details, "timestamp": utc_now() - timedelta(hours=hours_ago),
+    })
+
+
+class TestWhatTheyDidAddedUp:
+    def test_it_is_a_grant_of_its_own(self, app, seed, admin):
+        member, _ = _user(app, seed, "member@test.org")
+        assert app_call(member, "Agents:Monitor:Summary").status_code == 403
+        assert app_call(admin, "Agents:Monitor:Summary").status_code == 200
+
+    def test_calls_are_counted_by_how_they_ended_agent_and_host(self, admin):
+        org = seeded_org()
+        _ran(org, "agt_n", "Notebook", "success", 200, reached=[{"host": "a.test", "connections": 3}])
+        _ran(org, "agt_n", "Notebook", "error", 400, hours_ago=3)
+        _ran(org, "agt_b", "Browser", "denied", 0, hours_ago=2,
+             reached=[{"host": "a.test", "connections": 2}])
+        _ran(org, "agt_n", "Notebook", "success", 600, hours_ago=24 * 10)  # outside 7 days
+
+        said = app_call(admin, "Agents:Monitor:Summary", {"window": "7d"}).json()["data"]
+
+        assert said["calls"] == {"ok": 1, "failed": 1, "refused": 1, "total": 3, "avg_ms": 200}
+        assert said["agents"][0] == {"agent": "agt_n", "name": "Notebook", "calls": 2,
+                                     "failed": 1, "avg_ms": 300}
+        assert said["hosts"] == [{"host": "a.test", "connections": 5, "calls": 2}]
+        assert [p["status"] for p in said["problems"]] == ["denied", "error"]  # latest first
+        assert said["people"] == 1
+
+    def test_every_step_of_the_window_is_there_the_quiet_ones_too(self, admin):
+        _ran(seeded_org(), "agt_n", "Notebook", "success", 10, hours_ago=2)
+        said = app_call(admin, "Agents:Monitor:Summary", {"window": "24h"}).json()["data"]
+        assert said["unit"] == "hour"
+        assert len(said["series"]) in (24, 25)
+        assert sum(step["ok"] for step in said["series"]) == 1
+
+    def test_an_organization_adds_up_its_own_and_no_other(self, app, seed):
+        left, right = _two(app)
+        _ran(left.org_id, "agt_l", "Left", "success", 10)
+        theirs = app_call(right.client, "Agents:Monitor:Summary").json()["data"]
+        assert theirs["calls"]["total"] == 0
+        mine = app_call(left.client, "Agents:Monitor:Summary").json()["data"]
+        assert mine["calls"]["total"] == 1
+
+    def test_approvals_asked_decided_and_waiting(self, admin):
+        from database.stores import AuditStore
+        from database.stores import UserStore
+        from conftest import ADMIN_EMAIL
+
+        user = UserStore().get_by_email(ADMIN_EMAIL)
+        user = {"org_id": user["org_id"], "user_id": user["_id"], "email": ADMIN_EMAIL}
+        store = AuditStore()
+        for ref in ("ap_1", "ap_2", "ap_3"):
+            store.append("approval.requested", user, resource_refs=[ref])
+        store.append("approval.resolved", user, resource_refs=["ap_1"], details={"decision": "allow"})
+        store.append("approval.resolved", user, resource_refs=["ap_2"], details={"decision": "deny"})
+
+        said = app_call(admin, "Agents:Monitor:Summary").json()["data"]
+        assert said["approvals"] == {"asked": 3, "allowed": 1, "denied": 1, "waiting": 1}
+
+    def test_a_window_it_does_not_know_is_refused(self, admin):
+        assert app_call(admin, "Agents:Monitor:Summary", {"window": "1y"}).status_code == 400
+
+
+class TestTheTrailCountedByKind:
+    def test_the_first_page_says_how_many_of_each_kind(self, admin):
+        org = seeded_org()
+        _ran(org, "agt_n", "Notebook", "success", 10)
+        _ran(org, "agt_n", "Notebook", "error", 10)
+        page = app_call(admin, "AI:Audit:List_all", {"counts": True}).json()["data"]
+        assert page["counts"]["execution"] == 2
+        # A later page is the same window: it is not counted again.
+        later = app_call(admin, "AI:Audit:List_all", {
+            "counts": True, "before": {"timestamp": "2100-01-01T00:00:00+00:00", "event_id": "z"}}).json()["data"]
+        assert "counts" not in later

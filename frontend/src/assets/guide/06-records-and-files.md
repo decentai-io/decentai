@@ -1,12 +1,12 @@
-# Saved data and files
+# Records and files
 
-Agents keep things between conversations: a task with its owner and due date, an invoice with its lines, or a purchase request with its requirements. These appear under **Data → Saved data**, where you can find, inspect, share, and delete them whether or not the agent is still installed.
+Agents keep things between conversations: a task with its owner and due date, an invoice with its lines, or a purchase request with its requirements. These appear under **Data → Records**, where you can find, inspect, share, and delete them whether or not the agent is still installed.
 
 ## Kinds and shapes
 
 Every record belongs to a **kind** an agent declared in its manifest: the Tasks agent keeps *tasks* and *proposed actions*, the Invoicing agent keeps *invoices*, *lines*, *payments* and *allocations*. A kind has a **shape** — its fields, their types, which are plain and which encrypted — and every write, the agent's or yours, is validated against it. That is what lets an agent read back what you wrote by hand.
 
-The Saved data page opens on a card for each agent, with the kinds it keeps and how many records of each. Open an agent and choose a kind under **Data type**: its records appear as a table in that shape, sortable by any column. Open a record to see every field by its label.
+The Records page opens on a card for each agent, with the kinds it keeps and how many records of each. Open an agent and choose a kind under **Data type**: its records appear as a table in that shape, sortable by any column. Open a record to see every field by its label.
 
 ## Writing records yourself
 

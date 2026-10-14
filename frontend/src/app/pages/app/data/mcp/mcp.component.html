@@ -1,6 +1,6 @@
 <app-page guide="mcp"
-  title="MCP servers"
-  sentence="Remote tool servers you add for your own chats. You decide which of a server's tools are on, and what each may cost to call."
+  title="Tools"
+  sentence="MCP servers you add for your own chats: services whose tools the assistant can call. You decide which of a server's tools are on, and what each may cost to call."
   [wide]="true"
 >
   <p class="form-notice is-error" role="alert" *ngIf="error">{{ error }}</p>
@@ -13,7 +13,7 @@
     no chat can call their tools, and none can be added until it is allowed again.
   </p>
 
-  <app-list label="MCP servers" [loading]="loading" [foot]="foot">
+  <app-list label="Tools" [loading]="loading" [foot]="foot">
     <ng-container listToolbar *ngIf="servers.length">
       <span class="search-field toolbar-search">
         <lucide-icon name="search" [size]="16" aria-hidden="true"></lucide-icon>
@@ -25,9 +25,10 @@
     <app-row *ngFor="let server of shownServers">
       <lucide-icon rowMark name="server" [size]="20" [strokeWidth]="1.75" aria-hidden="true"></lucide-icon>
       <a rowName class="mcp-row-name" [routerLink]="['/data/mcp', server.resource_ref]">{{ server.keys.name }}</a>
-      <!-- How it stands, from one function: on, off, not reachable,
-           off for the deployment, or not readable. -->
-      <span rowChips class="chip" [ngClass]="status(server).tone" [matTooltip]="status(server).why">{{ status(server).word }}</span>
+      <!-- How it stands, from one function. On or off is the switch's
+           to show; the chip says the rest: not reachable, off for the
+           deployment, or not readable. -->
+      <span rowChips class="chip" *ngIf="needsChip(server)" [ngClass]="status(server).tone" [matTooltip]="status(server).why">{{ status(server).word }}</span>
       <ng-container rowMeta>
         <span class="mcp-row-facts">
           <span>{{ server.keys.host }}</span>
@@ -38,7 +39,18 @@
         </span>
       </ng-container>
 
-      <button rowState class="icon-btn sm" type="button"
+      <!-- Whether the person's chats may call it, as a skill's switch
+           says it: the tooltip in words, the switch's name read out. -->
+      <app-switch
+        rowState
+        label="On for my chats"
+        [labelHidden]="true"
+        [matTooltip]="switchTip(server)"
+        [disabled]="blocked || !!server.unreadable || busy === server.resource_ref"
+        [ngModel]="server.keys.enabled"
+        (ngModelChange)="setEnabled(server, $event)"
+      ></app-switch>
+      <button rowActions class="icon-btn sm" type="button"
               [attr.aria-label]="'More for ' + server.keys.name" [matMenuTriggerFor]="serverMenu"
               [matMenuTriggerData]="{ server: server }">
         <lucide-icon name="ellipsis-vertical" [size]="16" aria-hidden="true"></lucide-icon>
@@ -65,10 +77,11 @@
 </app-page>
 
 <ng-template #addButton>
-  <span class="toolbar-end" [matTooltip]="blocked ? blockedWhy : ''" *ngIf="mayAdd">
-    <button class="btn primary" type="button" [disabled]="blocked" (click)="startAdd()">
-      <lucide-icon name="plus" [size]="16" aria-hidden="true"></lucide-icon>
-      Add a server
+  <!-- The plus alone, its words in the tooltip and read out; why it
+       cannot be pressed, in the same place, while it cannot. -->
+  <span class="toolbar-end" [matTooltip]="blocked ? blockedWhy : 'Add a server'" *ngIf="mayAdd">
+    <button class="icon-btn primary" type="button" aria-label="Add a server" [disabled]="blocked" (click)="startAdd()">
+      <lucide-icon name="plus" [size]="18" aria-hidden="true"></lucide-icon>
     </button>
   </span>
 </ng-template>
@@ -79,10 +92,8 @@
 <mat-menu #serverMenu="matMenu" xPosition="before">
   <ng-template matMenuContent let-server="server">
     <a mat-menu-item [routerLink]="['/data/mcp', server.resource_ref]">Open</a>
+    <!-- On and off is the row's switch. -->
     <span [matTooltip]="blocked ? blockedWhy : ''">
-      <button mat-menu-item [disabled]="blocked || !!busy" (click)="setEnabled(server, !server.keys.enabled)">
-        {{ server.keys.enabled ? "Switch off" : "Switch on" }}
-      </button>
       <button mat-menu-item [disabled]="blocked || !!busy" (click)="readAgain(server)">Read again</button>
     </span>
     <!-- These lead to the server's page, which does them. -->

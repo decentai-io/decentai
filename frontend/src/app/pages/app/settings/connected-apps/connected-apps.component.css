@@ -1,25 +1,14 @@
 /* Connected apps. The list, the rows, the fields and the dialog are the
-   shared ones; here are the block that says what agents are waiting
-   on, the address to copy, and the sentences inside the form. */
-.apps-needed ul {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-top: 8px;
-  list-style: none;
-}
-
-.apps-needed li {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 6px 12px;
-}
-
-.apps-needed,
+   shared ones; here are the address to copy, the rows still waiting,
+   and the sentences inside the form. */
 .apps-redirect {
+  display: block;
   margin-bottom: 24px;
+}
+
+/* A provider not connected yet: its mark quieter than a connected one's. */
+.apps-waiting-mark {
+  color: var(--ink-3);
 }
 
 .apps-address,
