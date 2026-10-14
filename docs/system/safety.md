@@ -24,7 +24,7 @@ package may be installed, and MCP servers are allowed:
 | **A script in a page** | *Ask every time* · *Ask once for a site in a chat* | every time |
 | **A program** | *Ask every time* · *Do not ask again for a correction* · *Ask only when it reaches a site or uses a credential* | every time |
 | **Packages a program may install** | *Any package the card names* · *Only packages on my list* | any |
-| **MCP servers** | *People may add MCP servers* · *No MCP servers* | allowed |
+| **MCP servers** | *People may add* · *Nobody may* | allowed |
 
 Three rules hold under every choice:
 
@@ -128,6 +128,6 @@ what it became.
   that declared its hosts reaches those, less the blocked ones.
 - **It is one setting for the organization**, not one per person.
 - **The record has no page of its own.** It is read in the audit trail.
-- **Where nothing confines agents**, no proxy stands in their way: the
-  blocked names are not enforced and nothing is counted. The agent's
-  page says when that is so.
+- **Where an agent's connections are not fenced to the proxy**, they
+  can go around it: the blocked names are not enforced there and
+  nothing is counted. The agent's page says when that is so.

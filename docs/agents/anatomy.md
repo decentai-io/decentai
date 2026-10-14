@@ -18,6 +18,7 @@ your-repo/
       your_tool.py         one class per tool, one method per function
   tests/
     conftest.py            builds your agent as the platform installs it
+    requirements.txt       what the tests need beside the platform's code
     test_your_agent.py     runs its functions in a real worker
 ```
 
@@ -82,8 +83,8 @@ The platform refuses the whole catalog, with the reason, when:
 - a manifest it points to cannot be read as YAML.
 
 A manifest that reads but breaks a rule of the grammar does not refuse
-the catalog. That one agent is refused when somebody installs it, with
-the reasons.
+the catalog. That one agent is listed with the reasons, on its card in
+the marketplace and in its review, and cannot be approved.
 
 DecentAI reads this file **without running any of the code beneath it**.
 Nothing executes until an administrator approves an agent by name.
@@ -92,7 +93,7 @@ Nothing executes until an administrator approves an agent by name.
 
 The contract, and the only thing the platform trusts. It declares:
 
-- **`agent`** — id, name, version, description, tags, `examples` (three
+- **`agent`** — id, name, version, description, tags, `icon`, `examples` (three
   prompts a person can send as they are) and `instructions` (what the
   model reads once it has opened your agent).
 - **`implementation`** — the entrypoint (`module:Class`) and the pip
@@ -153,8 +154,8 @@ code lacks makes the package broken: approving an agent runs none of
 its code, so the approval goes through, and the platform finds out when
 it first loads the package — it starts the agent in its own
 environment, sees the function is missing, and serves none of the
-agent. The Agents page shows it as **Could not prepare**, with the
-reason. The same
+agent. The Agents page shows it as **Failed**, with the reason on its
+card. The same
 happens when the entrypoint does not import or is not an `AgentBase`.
 
 A function id that is a Python keyword — `import`, `raise` — is written
@@ -209,8 +210,9 @@ there to show. A reviewer reads this before approving; write it for them.
 
 The marketplace shows it in the review of the agent, above what the
 manifest declares: as markdown, without anything it would load from
-elsewhere, and up to 20,000 characters. Put what a reviewer must know
-first.
+elsewhere, up to 20,000 characters, and folded after its opening. A
+review of several agents at once leaves it out. Put what a reviewer
+must know first.
 
 ## What goes into the package
 

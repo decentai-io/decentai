@@ -131,4 +131,4 @@ worth reading for one pattern:
 | Documents, Spreadsheets (`sheets`), Presentations (`slides`) | reading uploads by reference, producing files as bytes and reading them back |
 | Tasks, Expenses | a model reading text with every quote checked, dates only when exact; in Expenses, decimal money |
 | Browser | a person's sign-in asked for on a card (`call.credential`), the live screen (`call.screen`) |
-| Code | a program shown on the code card (`call.propose`) and its packages installed (`call.install`) |
+| Code (`code_runner`) | a program shown on the code card (`call.propose`) and its packages installed (`call.install`) |

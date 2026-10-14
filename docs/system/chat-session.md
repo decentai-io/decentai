@@ -61,11 +61,11 @@ and answered to the runtime's own service token
 | `list_memories` / `add_memory` | `Settings:Memory:List` / `Settings:Memory:Create` | the person's memories |
 | `save_plan` | `AI:Chat:Plan` | `ai_chats.plan` |
 | `title_chat` | `AI:Chat:Title` | `ai_chats.title` from the chat's content — one small call to the chat's model after the first answer and every few turns; kept unless the person named the chat (`title_by: person`, set by `AI:Chat:Update`); the page hears `chat_titled` |
-| `provider` (data, files, secrets) | `Data:Record:List` / `Get` / `Create` / `Update` / `Delete`, `Files:File:Upload` / `Download` / `List` / `Delete`, `Secrets:Secret:Use` / `Instances` — no transfer and no change of owner: what an agent keeps stays whose it is. (The fence also lists `Data:Record:Shapes` and `Files:File:Get`, which the runtime does not call) | [the data layer](data-layer.md) |
+| `resources` (data, files, secrets) | `Data:Record:List` / `Get` / `Create` / `Update` / `Delete`, `Files:File:Upload` / `Download` / `List` / `Delete`, `Secrets:Secret:Use` / `Instances` — no transfer and no change of owner: what an agent keeps stays whose it is. (The fence also lists `Data:Record:Shapes` and `Files:File:Get`, which the runtime does not call) | [the data layer](data-layer.md) |
 | `read_image` / `list_files` | `Files:File:Download` / `Files:File:List` | a file the person attached or chose, encoded, for the model to look at or for `read_file`; and every file the person can see, for `find_files`. Under the chat's delegation, with no agent and no grant in the picture |
-| (a site's login an agent asked for) | `Secrets:Credential:Resolve` | the person's saved login for that site, once they consented ([the live screen](live-screen.md)) |
-| (an MCP server's address and credential, at a call) | `Mcp:Server:Use` | [MCP servers](mcp.md) |
-| `schedules` (`load` / `add` / `ran` / `remove`) | `AI:Schedule:Load` / `Add` / `Ran` / `Remove` | `ai_schedules`: the clock's rows, read per chat and written one row at a time; at most 50 a chat — [below](#the-clocks-rows) |
+| `resolve_credential` (a site's login an agent asked for) | `Secrets:Credential:Resolve` | the person's saved login for that site, once they consented ([the live screen](live-screen.md)) |
+| `mcp_use` (an MCP server's address and credential, at a call) | `Mcp:Server:Use` | [MCP servers](mcp.md) |
+| `load_schedules` / `add_schedule` / `schedule_ran` / `remove_schedule` | `AI:Schedule:Load` / `Add` / `Ran` / `Remove` | `ai_schedules`: the clock's rows, read per chat and written one row at a time; at most 50 a chat — [below](#the-clocks-rows) |
 | (pull) | `Agents:Package:Fetch` (the runtime as itself) | code asked for by its digest, checked against it on arrival ([agent code](agent-code.md)) |
 | (reclaim) | `Agents:Package:List` (the runtime as itself) | every digest any organization still approves, so the runtime deletes only what nobody does |
 
@@ -137,7 +137,8 @@ pending cards in the chat; `unseen` = the chat moved since
 disconnect.
 
 The sidebar counts chats with cards or news; the chats list flags each
-row; the chat header says Working or N waiting.
+row; the chat header says N waiting for you, Working, or Sleeping until a
+time.
 
 ### The kill
 
@@ -167,7 +168,7 @@ and why: said as itself, by digest, and every approval that pins the
 digest hears it. Once per process per version.
 
 The install marks the row `preparing`; the Agents page shows Preparing
-→ Ready / Could not prepare, and a word about a digest the row no
+→ Ready / Failed, and a word about a digest the row no
 longer pins is answered `recorded: false`.
 
 ### The clock's rows
@@ -262,7 +263,7 @@ decision and a stop are not, and reach the relay from the gateway:
 
 | frontend says | relay sends | runtime answers with |
 |---|---|---|
-| `AI:Chat:Input {text, attachments, client_message_id}` (`parts` is taken for `attachments`; the page also sends `protocol_version`. Held to the contract's `ChatInputCommand` before anything is kept: a version that is the contract's, an id of at most 128 characters, at most 20 attachments, each a file part, and words or a file to say; what is not is answered `invalid_input`) | `user_message` | `message_created`, then work; a resend with the same `client_message_id` is the same message |
+| `AI:Chat:Input {text, attachments, client_message_id}` (`parts` is taken for `attachments`; the page also sends `protocol_version`. Held to the contract's `ChatInputCommand` before anything is kept: text of at most 256 KB (`USER_TEXT_MAX_BYTES`), a version that is the contract's, an id of at most 128 characters, at most 20 attachments, each a file part, and words or a file to say; what is not is answered `invalid_input`) | `user_message` | `message_created`, then work; a resend with the same `client_message_id` is the same message |
 | `AI:Chat:Screen {call_id, events}` | `screen_input` | nothing of its own: the events reach the call showing that screen |
 | `AI:Chat:Watch {action}` | `screen_open` | `screen_frame`s from the roster's watch function, or `screen_unavailable` |
 | `AI:Approval:Decide` (via the gateway, recorded first) | `approval_decided` | the job or park resumes |

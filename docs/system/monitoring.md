@@ -176,13 +176,14 @@ away to keep the mind small, and the agents the assistant has open.
   shown to the model is counted and not copied.
 - **No secret is in it**: the model is never shown one.
 
-A person reads it in the chat's **Activity & audit** dialog, under
+A person reads it in the chat's **Activity and audit** dialog, under
 **The assistant**, beside the platform's own record of the chat.
 
 ## Where a person reads it
 
-**Settings → Monitoring**, for whoever holds `agents:monitor:usage`
-(`frontend/src/app/pages/app/monitoring/`). Three views:
+**Monitoring**, under Organization in the sidebar, for whoever holds
+`agents:monitor:usage` (`frontend/src/app/pages/app/monitoring/`).
+Three views:
 
 - **Agents** — where the deployment is one organization's, what each
   part of the platform holds; then what the agents are given, how much

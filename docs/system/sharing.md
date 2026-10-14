@@ -165,6 +165,7 @@ refusals name:
 | Method | Answers |
 | --- | --- |
 | `clean(owner, creator=)` | The normalized owner map, or a ValueError saying what is wrong |
+| `missing_in_org(org_id, owner)` | The named ids that are not this organization's, as labels |
 | `check_exists(org_id, owner)` | Refuses ids that are not this organization's |
 | `beyond_reach(user, owner)` | What this writer may not share to, as labels |
 | `reach_refusal(user, owner)` | The shared 403 wording, for consumers that take it as-is |

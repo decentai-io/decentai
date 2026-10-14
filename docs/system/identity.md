@@ -150,7 +150,7 @@ pass:
 | MCP servers, push subscriptions, the note of which sample data they loaded | deleted; each is the person's alone and is handed to nobody |
 | secrets, records, files, skills | stewardship passes to the successor; whoever they were shared with keeps seeing them; a credential granted to agents keeps working |
 | model connections, agent sources | stewardship passes to the successor |
-| agent grants naming the person | removed |
+| agent grants naming the person | the person is taken out of them; a grant left naming nobody is deleted |
 | audit events | kept, the actor as recorded |
 
 The refusals stay: an organization is never left with nobody able to

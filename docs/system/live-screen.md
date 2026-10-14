@@ -55,6 +55,8 @@ that showed it.
 | `close()` | ends the stream |
 | `inputs()` | drains the events the person sent since last asked; a hand on a tab arrives as `{"type": "tab", "action": "switch" \| "close" \| "new", "index"}` |
 | `taken` | whether the person holds control now |
+| `took()` | whether the person took control since last asked, even if they have handed it back by now — for a function that looks only between its own steps |
+| `wait_input(timeout=1.0)` | `inputs()`, waiting up to `timeout` seconds for any to arrive |
 | `said()` | drains what the person wrote in the chat while this call runs, so an agent hears "only the 20 kg one" at its next step |
 
 **`call.conversation`** is the chat's opaque key. A worker serves every
@@ -77,7 +79,7 @@ the chat the page is told `screen_unavailable`.
 
 - **A live view**, shown whenever a frame arrives: beside the thread on
   a wide screen, above the composer on a narrow one. It carries the
-  agent's name, the agent's latest step in its own words, and how old a
+  agent's name, the agent's last few steps in its own words, and how old a
   still frame is once it passes a few seconds, so a thinking agent and
   a stuck one look different.
 - **Take over and Hand back.** Taking the browser pauses the run: frames

@@ -82,7 +82,8 @@ its user, its folders, its fences, its spawn line, its ending.
   user runs. A runtime that died leaves nothing running.
 - **The agents' container holds no secret of the platform's.** It is
   told where the runtime's proxy is, the port, the folder agents are
-  kept in, the log level and the time zone, and nothing else. What a
+  kept in, whether to filter workers' system calls, the log level and
+  the time zone, and nothing else. What a
   worker is given, the runtime sends with the order to start it.
 
 What this adds to a user of its own and a fence: an agent cannot see
@@ -149,7 +150,7 @@ it.
 ### One user per approved agent
 
 The pool keeps one worker per approval, and each approval is given a
-user of its own from the range; the runtime keeps the table beside the
+user of its own from the range; the spawner keeps the table beside the
 store. The first user of the range is installation's — verifying a
 package imports it, and a package being verified is nobody's approved
 agent yet. The last is the builder's (below).
@@ -218,13 +219,13 @@ What the fence is not:
   and the helper asks for it where it can. A worker is fenced on the
   first version all the same: an agent that cannot move a file says
   so and is fixed, and an agent that is not fenced reads the others.
-- **A kernel without Landlock fences nothing.** The runtime says so at
+- **A kernel without Landlock fences nothing.** The spawner says so at
   start; a worker is still its own user there.
 
 ### What the same fence holds besides files
 
 Landlock grew with the kernel, and the helper asks for what the kernel
-it runs on has. The runtime learns the version at start and asks for
+it runs on has. The spawner learns the version at start and asks for
 no more than that.
 
 | Landlock | Kernel | What a fenced worker is held to |
@@ -301,11 +302,11 @@ pictured under the filter as it is without.
 **It can be turned off**, for an agent whose package needs a call the
 filter refuses, until the package or the filter is mended:
 `AI_RUNTIME_SYSCALL_FILTER=0` ([configuration](../run/configuration.md)).
-The runtime says so at start, every start.
+The spawner says so at start, every start.
 
 **Where it does not hold.** The filter is written for the two kinds of
 machine the image is built for, x86-64 and arm64. On another there is
-none, and the runtime says so.
+none, and the spawner says so.
 
 ## Packages — the builder
 
@@ -340,7 +341,7 @@ to another, which the first version refuses to a fenced program. On
 such a kernel the builder is a user of its own that reaches where
 packages come from and nothing else, and reads what any user may read
 — the platform's code and the agents in the store, not the runtime's
-settings and not an agent's home. The runtime says so at start.
+settings and not an agent's home. The spawner says so at start.
 
 What this costs: every environment downloads its packages again, and a
 declared package that is not on the index — named by an address
@@ -361,8 +362,6 @@ folder on its path. The code that asked never reaches where packages
 come from, and cannot install what its card did not name. Here a
 package is a name and a version and nothing else: an address, a path
 or an option is refused before the card is shown.
-
-Where nothing confines, packages are installed directly.
 
 ## Limits
 
@@ -415,11 +414,10 @@ what each running agent uses now: memory, share of the processor, how
 many processes, and what it keeps on disk (`usage`).
 
 **What an agent keeps on disk is measured by its own user.** Its home
-is its user's alone to read, so nobody else can add it up. The runtime
-hands the spawner, with the order to start a worker, the line that
-measures that agent's home and spool as the agent's user
-(`WorkerPlace.measure_line`), and the spawner runs it every half
-minute while the worker runs. It measures and ends; the worker is left
+is its user's alone to read, so nobody else can add it up. While a
+worker runs, the spawner runs, every half minute, a line that measures
+that agent's home and spool as the agent's user (`Place.measure_line`,
+`ai_runtime/agents_container/places.py`). It measures and ends; the worker is left
 as it is. The number is counted, and held to no limit.
 
 **What an agent left behind is collected.** A process whose parent
@@ -580,7 +578,7 @@ container is given no such right. A shell opened in a container is
 therefore root's.
 
 **Where the right was not given** the stack starts all the same. The
-runtime tries, as a worker would, to reach a port where workers run
+spawner tries, as a worker would, to reach a port where workers run
 that nothing but the rule stands in front of — the spawner's own — and
 says what it found.
 
@@ -604,7 +602,8 @@ The runtime is handed its settings by name (`docker-compose.yml`):
 the database's password, the encryption keys
 and the backend's private key never reach it. The agents' container,
 where agent code runs, is handed no secret at all: where the proxy is,
-its port, the folder, the log level and the time zone. The person still
+its port, the folder, whether to filter system calls, the log level and
+the time zone. The person still
 fills in one file.
 
 ## What the runtime says at start
@@ -669,7 +668,7 @@ enforced in this install; and nothing to configure.
   after: packages for one run it unpacks with its own.
 - **On a kernel before 6.12, it does not keep two agents from a
   socket that has a name and no file.** Both must mean to: one has to
-  open it and the other to connect. The runtime says so at start.
+  open it and the other to connect. The spawner says so at start.
 - **It does not hide that other agents' processes exist.** A worker
   can list the processes of its container — the spawner's and other
   agents', never the runtime's — and read how they were started; a

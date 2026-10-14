@@ -192,7 +192,8 @@ what removes the version an update left behind.
 The runtime's half is a sweep it runs itself (`host.agents.reclaim`),
 because its disk is shared by digest. When the list of approved
 packages changes (`Agents:Package:List`, every digest **any**
-organization still approves) it keeps that set, and what this process
+organization still approves), and after a chat pulled a package, it
+keeps that set, and what this process
 is using, and forgets the rest. The answer is deployment-wide on
 purpose: one folder serves every organization that approved those
 bytes, so a per-organization answer could never authorise a deletion.

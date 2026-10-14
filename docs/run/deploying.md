@@ -45,8 +45,9 @@ docker compose -f docker-compose.yml -f docker-compose.server.yml \
 ```
 
 Only Caddy publishes ports (80 and 443); the backend, runtime and
-database live on the private Compose network. Agent code runs in a
-container of its own, `agents`, on a second network that reaches the
+database live on private Compose networks, the database on one of its
+own that only the backend and the seeder reach. Agent code runs in a
+container of its own, `agents`, on a network that reaches the
 runtime and nothing else ([the sandbox](../system/sandbox.md)). Every
 `docker compose` line below takes the same two `-f` files on a server.
 

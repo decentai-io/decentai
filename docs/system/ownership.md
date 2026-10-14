@@ -55,13 +55,15 @@ audited.
 
 ## What refuses, and why
 
-- **Deleting a secret** is refused while an agent holds a grant on it.
+- **Deleting a secret** is refused while an agent holds a grant on it,
+  unless the delete asks for the grants to be taken back first
+  (`take_back`), which only the steward or an escape-grant holder can.
 - **Deleting a user** is refused when it would leave nobody able to
   manage access, and when the successor is not an active member.
 - **Deleting a source** is refused while agents are installed from it:
   the source holds the map from the repository's ids to the refs the
   agents were approved under. The remove dialog lists those agents and
-  offers **Uninstall N and remove source**, which uninstalls each and
+  offers **Uninstall N and remove**, which uninstalls each and
   then deletes the source.
 - **Uninstalling an agent** is never refused. It withdraws the approval,
   deletes its grants and credential grants, prunes the credential
@@ -101,8 +103,8 @@ counts, so the administrator sees the hand-over before confirming.
 
 ## Disabling a person
 
-Disabling keeps everything the person owns. It drops their browser
-sessions, password resets and API keys, deletes their delegations and
+Disabling keeps everything the person owns. It drops their sessions,
+a browser's and the app's, password resets and API keys, deletes their delegations and
 closes their live runtime sessions, and **pauses their schedules**, so nothing acts unattended for someone who may not
 act. Re-enabling restores the person and leaves the schedules paused;
 they resume what they still want.

@@ -28,7 +28,9 @@ Three pages, in this order. The code keeps their words.
 ## The tree
 
 Read top to bottom, it is the path of one message, then what stands
-beside it. Each package's `__init__.py` is one line and points here.
+beside it. Each package's `__init__.py` is one line saying what the
+package is, and most point here; `prompts/__init__.py` is the
+exception, and is `Prompts` itself.
 
 ```
 ai_runtime/
@@ -106,7 +108,7 @@ files they share, `wire.py` and `events.py`.
 | Read | For |
 |---|---|
 | `main.py` | the parts, built once: `Events.configure`, the `AgentsContainer`, the `Confinement`, the `AgentLibrary`, the backend's services. The only file at the root: everything else is in a package |
-| `door/app.py` `create_app` | the `SessionHost` and the `Scheduler`; the lifespan, which starts the parts on the loop in order (the container waited for, `Confinement.start`, `load_all`, the warm-up task, the clock) and stops them in reverse |
+| `door/app.py` `create_app` | the `SessionHost` and the `Scheduler`; the lifespan, which starts the parts on the loop in order (the container waited for, `Confinement.start`, `load_all`, the warm-up task, the stocking task, the clock) and stops them in reverse |
 | `door/auth.py`, `door/socket.py` | who may dial, and the loop that hands every frame to the host |
 
 Check:
@@ -203,8 +205,8 @@ order:
    a screen, and the browser opened before anything is asked of it,
    are `chat/screen.py` (`Screen.open`, `deliver_input`,
    `quit_browser`).
-5. `ask_to_stop`, `stop`, `kill` — the cooperative stop and the one
-   that does not ask.
+5. `ask_to_stop` and `kill` — the cooperative stop, posted to the mind
+   and honoured between beats, and the one that does not ask.
 6. `chat/helpers.py`: `Helpers.spawn`, `report`, `inherit` — helpers
    ([sub-assistants](../system/sub-assistants.md)).
 
@@ -232,7 +234,7 @@ Check:
   only a card this session holds, and the resumed call is checked
   against the hash, so a yes cannot be spent on different inputs.
 - `Cards.approve` and `Cards.ask_card`: a card whose call is cancelled while it
-  waits is closed (`_close_card`) — expired on the record,
+  waits is closed (`Cards.close_card`) — expired on the record,
   `question_closed` on the page.
 - `kill`: jobs cancelled, helpers killed, cards expired, the browser
   closed, and the counts emitted in `stopped`. Read what it does when
@@ -340,14 +342,15 @@ Tests: `ai_runtime/tests/test_assistant.py`,
 
 `execution/executor.py`, class `FunctionExecutor`. It is built from
 the provider, the grants and the chat's `ChatSinks`. `_gates` is the
-most important sixty lines in the runtime — every call an agent ever
+most important hundred lines in the runtime — every call an agent ever
 runs passes through it, in this order:
 
 1. the function exists in the approved manifest;
 2. the chat's delegation reaches it (`grants.may_reach`);
 3. reference inputs are resolved, defaults applied, the inputs
    validated against the manifest's schema;
-4. what the call acts on is named (`_scope_values`, `_scope_unnamed`)
+4. what the call acts on is named, one value each (`_scope_values`,
+   `_scope_unjudged`, `_scope_unnamed`)
    and the grants allow that (`grants.allows`);
 5. its level against the chat's: above it, a card
    (`_request_approval`), and a no is a denial;

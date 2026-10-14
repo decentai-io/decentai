@@ -325,8 +325,9 @@ named — by the platform, never by your code. Hosts are names
 (`api.example.com`, `db.example.com:5432`), never an address and never
 every host under a name; packages are a name and, if it matters, a
 version (`requests==2.32.3`), with no space inside the name. Anything
-else is refused before the card is shown. A declined card grants nothing. Where nothing confines agents
-(the agent's page says when), the hosts are not held to the card. A deployment's **Safety** setting may let some
+else is refused before the card is shown. A declined card grants nothing. Where a worker's connections are not
+fenced to the proxy (the agent's page says when), the hosts are not
+held to the card. A deployment's **Safety** setting may let some
 code through without a card, or keep a list of packages; your function
 hears `True` either way, and the chat is told what ran.
 
@@ -443,8 +444,9 @@ link = ssl.create_default_context().wrap_socket(raw, server_hostname="imap.examp
 
 `TunnelRefused` carries the proxy's status and reason: `.status` is
 403 for a host or a port your manifest did not declare, and 502 for a
-host that did not answer. Where nothing confines agents, `Tunnel.open`
-connects straight. `Tunnel.proxy()` is the proxy's address, or `None`
+host that did not answer. Where there is no proxy (`DECENTAI_PROXY`
+unset, as in a test on your own machine), `Tunnel.open` connects
+straight. `Tunnel.proxy()` is the proxy's address, or `None`
 where there is none, and `Tunnel.through(proxy, host, port)` opens the
 connection through one you name.
 
@@ -477,7 +479,7 @@ same; most of what `call` offers is awaited, so write `async def`.
 `self.agent` reaches the agent from a tool, and from the agent
 `self.tool("notes")` reaches a tool by its id, `self.manifest` is the
 manifest, and `self.agent_id` its id. Both classes have `self.logger`:
-what it writes is in the worker's log, under **Settings → Monitoring**. The code declares nothing
+what it writes is in the worker's log, on the **Monitoring** page. The code declares nothing
 about itself: the manifest is handed to it, a method the manifest does
 not declare cannot be called, and a package whose code lacks a function
 the manifest declares does not load. Both classes may define

@@ -14,7 +14,7 @@ what a tool does to the world when called.
 
 ## Adding one
 
-**MCP servers**, in the sidebar. A person gives a name, the server's
+**MCP servers**, under Data in the sidebar. A person gives a name, the server's
 address and, where it wants one, a credential — a token, or a header the
 server names. The platform connects once, exchanges the protocol's
 greeting, and reads the tools the server offers. A server that cannot be

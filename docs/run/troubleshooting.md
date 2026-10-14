@@ -78,7 +78,7 @@ and updating. Where to look is at the end.
   ([quickstart](quickstart.md#a-model-on-your-own-computer)).
 - **It answers and does nothing, or says it did something it did
   not.** A small model, again: it did not call the agent. What ran is
-  under the chat's **Activity & audit**, and an answer with no
+  under the chat's **Activity and audit**, and an answer with no
   *Verified* mark under it did nothing.
 - **It stops and asks to continue.** The chat's turn budget was used
   up: **More actions → Turn budget**.
@@ -112,9 +112,9 @@ and updating. Where to look is at the end.
 - **"Manifest validation failed".** The sentences after it are the
   manifest's own faults, each with where it is. They are the agent's
   author's to mend ([the manifest](../agents/manifest.md)).
-- **"Could not prepare", on the agent's row.** The agent was approved
+- **"Failed", on the agent's row.** The agent was approved
   and its code or its packages could not be made ready; the reason is
-  on the agent's page. The usual ones: a package that is not on the
+  under its row. The usual ones: a package that is not on the
   index the deployment uses, and a machine that cannot reach the index
   at all. `docker compose --env-file deploy.env logs ai-runtime agents`
   has the build's own words.
@@ -179,9 +179,9 @@ and updating. Where to look is at the end.
 
 ```bash
 docker compose --env-file deploy.env ps
-docker compose --env-file deploy.env logs -f backend      # or ai-runtime, agents, init, caddy, mongo
+docker compose --env-file deploy.env logs -f backend      # or ai-runtime, agents, speech, init, caddy, mongo
 ```
 
 What agents did — each worker's start and end, its log, every
-connection it made or was refused — is under **Settings → Monitoring**
+connection it made or was refused — is on the **Monitoring** page
 ([what is written down](../system/monitoring.md)).

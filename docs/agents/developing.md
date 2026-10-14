@@ -84,6 +84,7 @@ And on `ChatSinks`:
 | Door | Stands for |
 |---|---|
 | `llm=async def model(messages, max_tokens=None, images=None)` | The chat's model. Return what your prompt asks for — and a wrong answer, to see what your code does with one. |
+| `approve=async def approve(request)` | The person answering an approval card, for a call above the chat's level: `True` or `False`. Without it, such a call is refused. |
 | `ask=async def ask(question, choices, source, expects="")` | The person answering `call.ask`. Return `None` to be nobody. |
 | `propose=async def propose(code, source)` | The person answering a code card: `True`, `False` or `None`. |
 | `credential=async def credential(host, fields, account, site, refresh, source)` | The person answering `call.credential`: the fields by name, or `None`. |
@@ -163,7 +164,7 @@ A source is read **at a commit**, exactly as it would be from anywhere
 else. So the loop is:
 
 1. Change your agent, bump `agent.version`, and `git commit`.
-2. On the source, press the refresh button (**Refresh catalog**).
+2. On the source, press the refresh button (**Refresh**).
 3. On your agent, press **Review update**: it opens what the new version declares and what it changes, and **Approve update** installs it.
 
 Bump the version for every change you want to try, a change to the code

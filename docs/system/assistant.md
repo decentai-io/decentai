@@ -31,9 +31,11 @@ word belongs to the packages it calls.
 - **Waiting is not stopping.** Background jobs run while the assistant
   keeps thinking; an approval asked of a background job parks that job,
   not the mind; a user can interject at any moment and be heard on the
-  next beat. A call made in the foreground (`invoke`) is the one
-  exception: its beat waits for the answer, and what the person says
-  meanwhile is heard when it has one.
+  next beat. A call made in the foreground (`invoke`) holds its beat
+  until it answers, unless the person writes meanwhile: then the beat
+  stops waiting, the call goes on in the background as a job, and the
+  mind reads their words with it still running
+  (`Assistant.person_spoke`).
 - **Work ends when it is done or blocked**, and the assistant says
   which. Limits exist (below) but they are pacing and safety, not a
   counter that discards intent.
@@ -382,9 +384,10 @@ after `seconds` (at most a day) carrying `why` and `slept: true`.
 
 One per chat; a new one replaces the last. A message from the person
 meanwhile is heard at once, as always, and the sleep still wakes the
-chat later. A stop cancels it, and so does the kill of a chat the
-runtime holds a session for. A kill that finds no session — a chat at
-rest that nobody is watching — leaves the sleep on the clock.
+chat later. A stop cancels it, and so does a kill: of a chat the
+runtime holds a session for, and of one it holds none for — a chat at
+rest that nobody is watching — whose sleep the host takes off the
+clock itself (`SessionHost._end_sleep`).
 
 The audience is told with a `sleeping` frame (`until`, `why`; `until`
 null when a stop ended it), and the hello carries the same for one who
@@ -438,7 +441,8 @@ start → running ──────────────→ done / failed / 
   freshly hydrated — arrives as the `approval_decided` frame,
   re-verified by the executor's existing action-hash and grant gates
   before anything runs. The same call made with `invoke` holds its beat
-  until the card is answered (`Cards.approve`).
+  until the card is answered (`Cards.approve`), or until the person
+  writes, when it goes on waiting as a job.
 - **A card nobody will answer is closed.** A call stopped while its
   card waits — a stop, a kill, a cancelled job — has the card expired
   on the record and closed on the page. A process that dies leaves the

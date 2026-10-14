@@ -72,10 +72,11 @@ The first time, it:
    --build`;
 4. waits until it answers, and prints an address.
 
-Six containers come up: MongoDB; a one-shot seeder that creates the
+Seven containers come up: MongoDB; a one-shot seeder that creates the
 organization and the first person and exits; the backend; the private
 AI runtime; the agents' container, where agent code runs and nothing
-else does; and Caddy, which serves the web app and the backend on one
+else does; the speech container, which holds the platform's own speech
+models; and Caddy, which serves the web app and the backend on one
 address. The first build takes a few minutes.
 
 `deploy.env` is the install: keep it. It is not made twice — a database
@@ -139,7 +140,7 @@ administrator grants it to you.
 The assistant opens the agent, calls its save function, and answers.
 Under its words a *Verified: Save Note* mark says the write happened.
 Ask *what notes do I have?* and it lists them, choosing whether the
-answer is worth a table. Open the chat's **Activity & audit** to see the
+answer is worth a table. Open the chat's **Activity and audit** to see the
 two calls as the platform recorded them: agent, function, level, inputs
 in outline, outcome, duration.
 

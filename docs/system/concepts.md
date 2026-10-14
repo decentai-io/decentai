@@ -16,9 +16,11 @@ DecentAI is a **backend**, a private **AI runtime**, a place where
   that talks to the database.
 - The runtime runs the assistant and decides everything about an
   agent: whether a call may be made, what it is handed, when it ends.
-  It has no database and no credentials of its own: every chat, record
-  and credential goes through the backend, under a delegation minted
-  per chat.
+  It has no database and no credential of its own to anybody's things:
+  every chat, record and credential goes through the backend, under a
+  delegation minted per chat. Its own identity opens the package door
+  and nothing else
+  ([architecture](architecture.md#the-two-tokens-between-the-backend-and-the-runtime)).
 - Agent code runs in worker processes with private environments, one
   per approved agent per organization. In the stack this repository
   starts they run in a container of the agents' own, which the runtime
@@ -28,9 +30,10 @@ DecentAI is a **backend**, a private **AI runtime**, a place where
 - The web app is a static Angular application served by Caddy, which
   also proxies the backend's paths so the browser sees one origin.
 
-Started from the repository that is six containers: the database, a
+Started from the repository that is seven containers: the database, a
 seeder that runs once and exits, the backend, the runtime, the agents'
-container, and Caddy ([quickstart](../run/quickstart.md)).
+container, the speech container, and Caddy
+([quickstart](../run/quickstart.md)).
 
 Besides the database, the backend keeps the bytes of stored files and
 each approved agent's code as an archive, on two volumes of its own.
@@ -187,7 +190,7 @@ it can be edited, and it never carries a secret value.
 
 What agents' processes did underneath a call — started, ended, logged,
 connected to, were refused — is a second record, kept beside the
-agents and shown under **Settings → Monitoring**
+agents and shown on the **Monitoring** page
 ([what is written down](monitoring.md)).
 
 ## API keys

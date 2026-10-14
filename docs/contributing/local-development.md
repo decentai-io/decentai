@@ -29,7 +29,7 @@ test's own process.
 ```bash
 cp backend/config.env.example backend/config.env
 cp ai_runtime/config.env.example ai_runtime/config.env
-python bootstrap/generate_service_keys.py     # private line → backend, public line → runtime
+python bootstrap/generate_service_keys.py     # two lines → backend, two → runtime, as it heads them
 python bootstrap/generate_secret_keys.py      # both lines → backend
 python -c "import secrets; print(secrets.token_urlsafe(48))"   # TOKEN_SECRET_KEY → backend
 ```
@@ -122,7 +122,7 @@ of them has a bug, and a test is the place to find out.
 | the schema | `backend/database/schema.json` |
 | the assistant's cycle | `ai_runtime/mind/assistant.py`, prompt in `ai_runtime/prompts/assistant.md` |
 | the executor and its gates | `ai_runtime/execution/executor.py` |
-| agent workers | `ai_runtime/agents/` |
+| agent workers | `ai_runtime/agents/`; what runs in the agents' container in `ai_runtime/agents_container/` |
 | the chat session and door | `ai_runtime/chat/`, `ai_runtime/door/` |
 | the manifest contract | `contracts/`, `decentai_sdk/manifest.py` |
 | pages | `frontend/src/app/pages/`, services in `frontend/src/app/services/` |

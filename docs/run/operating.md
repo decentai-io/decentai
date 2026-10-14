@@ -69,7 +69,7 @@ which are issued again if lost.)
 | `mongo_data` | the database: identities, chats, records, encrypted values |
 | `uploads_data` | file bytes |
 | `agent_packages` | the approved agent packages — the only copy the platform controls |
-| `agents_data` | the runtime's installed environments; rebuildable from the packages |
+| `agents_data` | the runtime's installed environments, rebuildable from the packages; and what was seen of agents, for the **Monitoring** page ([what is written down](../system/monitoring.md)) |
 | `speech_models` | the platform's own speech models; downloaded again when missing, so not worth a backup |
 
 The encryption keys in `deploy.env` are part of the backup: a database

@@ -39,7 +39,8 @@ SessionHost
 ├── sockets           {chat_id: websocket} — at most one audience each
 ├── services          the platform surface (one implementation per
 │                     deployment: the simulator, or the backend's)
-├── library           the AgentLibrary — what code this host has
+├── agents            the AgentRoster — what code this host has, over
+│                     the AgentLibrary, and the stock (roster.py)
 ├── workers           the shared WorkerPool
 └── clock             the Scheduler, beside the host (below)
 ```

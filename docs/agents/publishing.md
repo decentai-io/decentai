@@ -10,9 +10,9 @@
    scopes, secrets, data, files — and **approves the agent by name**.
 4. Approval **pins the agent to the exact commit reviewed**. The runtime
    pulls exactly those bytes, by digest, and installs the declared
-   dependencies into a private environment: right after the approval
-   where whoever approved has a chat, and otherwise when a chat first
-   needs them.
+   dependencies into a private environment, on its own within seconds
+   of the approval; the Agents page says **Preparing** until it is
+   done.
 
 Nothing is discovered, nothing is implicit, and nothing runs before a
 person has said yes to a specific version at a specific commit.

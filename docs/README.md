@@ -5,7 +5,7 @@ contradicts one of these pages changes the page in the same commit.
 
 The pages are in five groups, by what you came to do. How to use
 DecentAI as a person, screen by screen, is not here: it is the in-app
-guide, under **Help → Guide** (its source is
+guide, **Guide** at the foot of the sidebar (its source is
 `frontend/src/assets/guide/`).
 
 ## Run it
@@ -14,7 +14,8 @@ guide, under **Help → Guide** (its source is
   your own computer, with one command.
 - [Operating it](run/operating.md) — starting and stopping, updating,
   what to back up, people and passwords, what the agents are given,
-  rotating the encryption key, several organizations, removing it.
+  speech on this machine, rotating the encryption key, several
+  organizations, removing it.
 - [Configuration](run/configuration.md) — every setting, what it does,
   and its default.
 - [Deploying](run/deploying.md) — a server with an address of its own,
@@ -54,7 +55,8 @@ Agents:
   connection, processes; where it is kept and how it is read.
 - [Safety settings](system/safety.md) — how often the Browser and the
   Code agent ask, sites no agent may open, the packages a program may
-  install, and the record of where each call connected.
+  install, the person's two stops, and the record of where each call
+  connected.
 - [MCP servers](system/mcp.md) — remote tool servers a person adds for
   their own chats: what is read, what each tool costs, and what is not
   taken on trust.
@@ -116,6 +118,6 @@ describe is [`examples/note/`](../examples/note/).
   check at each stop and the tests that hold it.
 - [Open questions](contributing/open-questions.md) — the design
   questions the October 2026 review raised and nobody has decided yet.
-- [The design language](contributing/design-language.md) — the tokens,
-  the rules the interface keeps, and the greps that prove it still
-  keeps them.
+- [The design language](contributing/design-language.md) — the tokens
+  and the shared controls, the rules the interface keeps, and the greps
+  that prove it still keeps them.

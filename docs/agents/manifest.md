@@ -64,6 +64,7 @@ Patterns:
 | `agent.id` | `^[a-z][a-z0-9_]{1,31}$` — lowercase letters, digits and `_`, starting with a letter, 2 to 32 characters |
 | every other id | `^[a-z][a-z0-9_]*$` — the same characters, any length |
 | a secret's `id` | the same, at most 34 characters |
+| a data or file resource's `id` | the same, at most 94 characters |
 | a field's `name` in a secret | the same, 2 to 60 characters, and not `name`: that is every credential's own label |
 | a function's `id` | the same, and not `agent`, `close`, `id` or `logger`: every tool class has those names already |
 
@@ -164,7 +165,7 @@ agent:
 | `version` | yes | `MAJOR.MINOR.PATCH`, digits only, and quoted: `"1.2.0"` — unquoted, YAML may read `1.10` as a number. Bump it with **every** change to the manifest — see "Versions are immutable" below. A label for people: the platform tells one version's code from another's by the hash of the package. |
 | `description` | yes | A sentence or two a person reads on the agent's page. |
 | `tags` | no | A list of strings, none blank: words for what the agent is about. |
-| `icon` | no | The name of an icon for the agent's mark, from [Lucide](https://lucide.dev/icons): lowercase words joined by hyphens, like `calendar-clock`. Where it is left out, or names an icon the app does not carry, the mark shows the agent's initials. A name only: no file, address or markup. |
+| `icon` | no | The name of an icon for the agent's mark, from [Lucide](https://lucide.dev/icons): lowercase words joined by hyphens, like `calendar-clock`, at most 40 characters. Where it is left out, or names an icon the app does not carry, the mark shows the agent's initials. A name only: no file, address or markup. |
 | `examples` | no | At most 6, each `{title, prompt}`; title ≤ 80 characters, prompt ≤ 500. Shown on the agent's page under *Try asking*, each with a **Start a chat** button that opens a new chat with the prompt in the box, for the person to send. |
 | `instructions` | no | A string: what the chat's model reads once it has opened your agent. It advises the model; it does not widen what a function may do. |
 
@@ -209,13 +210,11 @@ A reviewer reads the dependency list before approving, and only that
 list is installed. Pin a range, and list only what the code imports.
 
 Nothing is installed before approval, and your code installs nothing
-itself. Where the platform confines agents, the list is downloaded and
-built by a user of its own that reaches the package index and nothing
-else ([the sandbox](../system/sandbox.md)), so a requirement that names
-an address somewhere else is not fetched. Such a requirement — a direct
-address, a `git+` address, a path — is not refused when the manifest is
-read, and where nothing confines agents the runtime's own pip is handed
-the list as it is. An agent whose dependencies
+itself. The list is downloaded and built by a user of its own that
+reaches the package index and nothing else ([the sandbox](../system/sandbox.md)),
+so a requirement that names an address somewhere else is not fetched.
+Such a requirement — a direct address, a `git+` address, a path — is
+not refused when the manifest is read. An agent whose dependencies
 cannot be installed does not load: the Agents page shows it as failed,
 with the reason.
 
