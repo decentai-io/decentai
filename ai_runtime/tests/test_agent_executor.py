@@ -201,6 +201,32 @@ class TestPermissionLevels:
         assert asked[0]["permission_level"] == 3
         assert asked[0]["chat_level"] == 1
 
+    def test_grants_narrowed_while_the_card_waited_refuse_the_yes(
+            self, notebook):
+        from ai_runtime.execution.grants import FunctionGrants
+
+        executor = None
+        asked = []
+
+        async def approver(request):
+            asked.append(request["function"])
+            # While the card waits, the person loses this function.
+            executor.grants = FunctionGrants([
+                {"effect": "allow", "functions": ["notebook.sync.status"]},
+            ])
+            return True
+
+        executor = make_executor(approve=approver, grants=FunctionGrants([
+            {"effect": "allow", "functions": ["notebook.*.*"]},
+        ]))
+        result, status = run(executor.invoke(
+            notebook, "notebook.sync.push", {"notebook": "personal"},
+            chat_level=1,
+        ))
+        assert asked == ["notebook.sync.push"]
+        assert status == "error"
+        assert result.get("not_permitted") is True
+
     def test_approver_denial_is_an_observation(self, notebook):
         async def approver(request):
             return False

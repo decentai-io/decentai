@@ -427,6 +427,12 @@ class SessionHost:
                 # answers.
                 await self.session(chat_id)
         elif kind == "approval_decided":
+            if frame.get("approved"):
+                # What the chat may do is read again before a yes
+                # releases the call that waited for it, so the call is
+                # held to the grants as they are now, not as they were
+                # when the card was opened (FunctionExecutor._gates).
+                await self.refresh(chat_id)
             await session.deliver_approval(
                 str(frame.get("approval_id") or ""),
                 bool(frame.get("approved")),

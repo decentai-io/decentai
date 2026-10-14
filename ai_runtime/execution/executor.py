@@ -324,6 +324,15 @@ class FunctionExecutor:
                 )}, "error"
             if not approved:
                 return self._denial(canonical_name, level)
+            # The yes is to this call as it was shown; whether the person
+            # may still make it is asked of the grants as they are now.
+            # A card can wait a long time, and an entitlement narrowed
+            # while it waited must not be carried through by an answer
+            # given to the old one — the same rule a resumed call keeps.
+            if self.grants is not None and not (
+                    self.grants.may_reach(canonical_name)
+                    and self.grants.allows(canonical_name, scopes)):
+                return self._out_of_scope(canonical_name, scopes)
 
         return await self._execute(
             agent, function_spec, canonical_name, inputs, call_id, job_id
