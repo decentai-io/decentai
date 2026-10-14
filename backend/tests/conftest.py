@@ -25,6 +25,10 @@ sys.path.insert(0, str(PROJECT_ROOT / "bootstrap"))
 # Environment BEFORE any server import: modules read it at load time.
 os.environ.update({
     "TOKEN_SECRET_KEY": "pytest-secret-of-at-least-thirty-two-bytes",
+    # A fixed key, as a deployment has one: the backend refuses to start
+    # without. 32 zero bytes, url-safe base64.
+    "SECRET_ENCRYPTION_KEYS": "01:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+    "SECRET_ENCRYPTION_ACTIVE": "01",
     "MONGO_DATABASE_NAME": "decentai_test",
     "JWT_COOKIE_SECURE": "false",
     "ORG_NAME": "Test Org",

@@ -279,10 +279,10 @@ package's `AESGCM`:
 
 The same cipher seals a model connection's key, an OAuth app's client
 secret and a source's git token; each store names its fields in
-`ENCRYPTED_FIELDS`. With no keys set, the backend derives one —
-SHA-256 of `TOKEN_SECRET_KEY`, version `dev` — and warns at start; the
-example settings' `01:change-me` decodes to too few bytes and stops the
-backend at start (`SecretCipher.verify`).
+`ENCRYPTED_FIELDS`. With no keys set, the backend does not start; nor
+does it with the example settings' `01:change-me`, which decodes to
+too few bytes (`SecretCipher.verify`). It never derives a key from
+another setting.
 
 **Not sealed**: `keys`, by design; a file's bytes, written as they are
 under the connector's root (`backend/database/file_connectors/local.py`);

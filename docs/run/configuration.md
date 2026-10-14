@@ -104,7 +104,7 @@ start.
 
 | Variable | Meaning |
 |---|---|
-| `SECRET_ENCRYPTION_KEYS` | `version:key` pairs, comma-separated. Every stored credential and record value is encrypted under one of them; a value's version is recorded with it. Unset, the backend derives a development key from `TOKEN_SECRET_KEY` and says so in a warning: a database written that way is moved to real keys with `bootstrap/reencrypt_secrets.py`. |
+| `SECRET_ENCRYPTION_KEYS` | `version:key` pairs, comma-separated. Every stored credential and record value is encrypted under one of them; a value's version is recorded with it. Required: unset, the backend does not start. A database an earlier version wrote under the development key it derived from `TOKEN_SECRET_KEY` is moved to real keys with `bootstrap/reencrypt_secrets.py`. |
 | `SECRET_ENCRYPTION_ACTIVE` | The version new writes use; the highest one when unset. |
 
 A database without these keys is a database whose encrypted values are

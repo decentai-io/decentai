@@ -75,13 +75,10 @@ def main() -> int:
     state.settings = Settings.from_env()
     state.db = MongoDB(state.settings)
 
-    active = SecretCipher.verify()
-    if active == DEV_KEY_VERSION:
-        print(
-            "ERROR: SECRET_ENCRYPTION_KEYS is not set — configure the real "
-            "keys first (bootstrap/generate_secret_keys.py).",
-            file=sys.stderr,
-        )
+    try:
+        active = SecretCipher.verify()
+    except SecretCipherError as missing:
+        print(f"ERROR: {missing}", file=sys.stderr)
         return 1
 
     # The derived dev key decrypts blobs from before real keys existed.

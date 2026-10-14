@@ -197,8 +197,8 @@ machine itself they would find neither the database nor the keys.
 
    When it reports nothing left, drop the old version from the map.
 
-The same tool moves a development database off the derived development
-key once real keys are configured.
+The same tool moves a database an earlier version wrote under a key
+derived from `TOKEN_SECRET_KEY` (stamped `dev`) onto the real keys.
 
 ## Several organizations
 

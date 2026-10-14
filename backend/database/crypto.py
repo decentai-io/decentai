@@ -9,7 +9,6 @@ No fallbacks: unknown version, wrong algorithm, failed tag — all raise.
 from __future__ import annotations
 
 import base64
-import hashlib
 import json
 import os
 from typing import Any, Dict, Optional
@@ -17,13 +16,15 @@ from typing import Any, Dict, Optional
 from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
-from server.custom_logging import CustomLoggerFactory
 
 ALGORITHM = "aes-256-gcm"
 KEY_BYTES = 32
 NONCE_BYTES = 12
 
-# Stamped on blobs encrypted under the TOKEN_SECRET_KEY-derived dev key.
+# Stamped on blobs an earlier version encrypted under a key derived from
+# TOKEN_SECRET_KEY when none was set. Nothing is written under it any
+# more; bootstrap/reencrypt_secrets.py reads it to move such a database
+# onto real keys.
 DEV_KEY_VERSION = "dev"
 
 
@@ -53,9 +54,9 @@ class SecretCipher:
 
     @classmethod
     def verify(cls) -> str:
-        """Load the key map now, at startup, so a misconfiguration (or
-        the dev-key fallback's warning) surfaces at boot instead of on
-        the first secret operation. Returns the active version."""
+        """Load the key map now, at startup, so a misconfiguration —
+        no keys at all among it — stops the backend at boot instead of
+        on the first secret operation. Returns the active version."""
         cls._load()
         return cls._active
 
@@ -94,8 +95,14 @@ class SecretCipher:
 
         raw = (os.getenv("SECRET_ENCRYPTION_KEYS") or "").strip()
         if not raw:
-            cls._keys, cls._active = cls._derived_dev_key(), DEV_KEY_VERSION
-            return
+            # No key is no deployment. A key derived from another setting
+            # would seal every credential under a secret chosen for
+            # something else, and nothing would make anybody notice.
+            raise SecretCipherError(
+                "SECRET_ENCRYPTION_KEYS is not set. Generate keys with "
+                "bootstrap/generate_secret_keys.py and set both lines it "
+                "prints."
+            )
 
         keys: Dict[str, bytes] = {}
         for entry in raw.split(","):
@@ -138,23 +145,6 @@ class SecretCipher:
             )
 
         cls._keys, cls._active = keys, active
-
-    @classmethod
-    def _derived_dev_key(cls) -> Dict[str, bytes]:
-        """Dev fallback derived from TOKEN_SECRET_KEY — loud, never for deployments."""
-        token = (os.getenv("TOKEN_SECRET_KEY") or "").strip()
-        if not token:
-            raise SecretCipherError(
-                "No secret encryption key: set SECRET_ENCRYPTION_KEYS (or "
-                "TOKEN_SECRET_KEY for local development)."
-            )
-        CustomLoggerFactory.get_logger("SecretCipher").warning(
-            "SECRET_ENCRYPTION_KEYS is not set — deriving a development key "
-            "from TOKEN_SECRET_KEY. Secrets written now are stamped key "
-            f"version '{DEV_KEY_VERSION}' and will NOT decrypt once real keys "
-            "are configured. Do not run a deployment this way."
-        )
-        return {DEV_KEY_VERSION: hashlib.sha256(token.encode("utf-8")).digest()}
 
     # ------------------------------------------------------------------
     # The cipher

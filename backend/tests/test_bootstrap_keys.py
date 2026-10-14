@@ -37,6 +37,22 @@ def run_tool(script, *args, env_extra=None):
     )
 
 
+def dev_blob(values, doc_id):
+    """A blob as an earlier version wrote it with no keys set: under a
+    key derived from TOKEN_SECRET_KEY, stamped 'dev'. The cipher no
+    longer derives one, so the map is set by hand for the one write."""
+    from database.crypto import DEV_KEY_VERSION, SecretCipher
+
+    token = os.environ["TOKEN_SECRET_KEY"]
+    SecretCipher.reset()
+    SecretCipher._keys = {
+        DEV_KEY_VERSION: hashlib.sha256(token.encode("utf-8")).digest()}
+    SecretCipher._active = DEV_KEY_VERSION
+    blob = SecretCipher.encrypt(values, doc_id)
+    SecretCipher.reset()
+    return blob
+
+
 def parse_env_lines(output):
     values = {}
     for line in output.splitlines():
@@ -107,10 +123,15 @@ class TestGenerator:
 
 class TestCipherAdditions:
     def test_verify_returns_the_active_version(self, monkeypatch):
-        from database.crypto import DEV_KEY_VERSION, SecretCipher
+        from database.crypto import SecretCipher, SecretCipherError
 
-        # No keys configured: the derived dev key is the active one.
-        assert SecretCipher.verify() == DEV_KEY_VERSION
+        # No keys configured: refused, never a key derived from another
+        # setting (a deployment would seal credentials under it unseen).
+        monkeypatch.delenv("SECRET_ENCRYPTION_KEYS", raising=False)
+        monkeypatch.delenv("SECRET_ENCRYPTION_ACTIVE", raising=False)
+        SecretCipher.reset()
+        with pytest.raises(SecretCipherError, match="not set"):
+            SecretCipher.verify()
 
         values = parse_env_lines(run_tool(GENERATOR).stdout)
         monkeypatch.setenv(
@@ -125,9 +146,9 @@ class TestCipherAdditions:
         blobs still use the configured active key."""
         from database.crypto import SecretCipher, SecretCipherError
 
-        # A blob under the derived dev key (no keys configured).
-        dev_blob = SecretCipher.encrypt({"password": "s3cret"}, "doc-a")
-        assert dev_blob["key_version"] == "dev"
+        # A blob an earlier version wrote under the derived dev key.
+        old = dev_blob({"password": "s3cret"}, "doc-a")
+        assert old["key_version"] == "dev"
 
         values = parse_env_lines(run_tool(GENERATOR).stdout)
         monkeypatch.setenv(
@@ -136,13 +157,13 @@ class TestCipherAdditions:
         monkeypatch.setenv("SECRET_ENCRYPTION_ACTIVE", "01")
         SecretCipher.reset()
         with pytest.raises(SecretCipherError):
-            SecretCipher.decrypt(dev_blob, "doc-a")
+            SecretCipher.decrypt(old, "doc-a")
 
         token = os.environ["TOKEN_SECRET_KEY"]
         SecretCipher.add_key(
             "dev", hashlib.sha256(token.encode("utf-8")).digest()
         )
-        assert SecretCipher.decrypt(dev_blob, "doc-a") == {
+        assert SecretCipher.decrypt(old, "doc-a") == {
             "password": "s3cret"
         }
         assert SecretCipher.encrypt({"a": "b"}, "doc-a")["key_version"] == "01"
@@ -173,11 +194,8 @@ class TestReencryptTool:
     def seed_dev_blob(self, collection, field):
         """A document encrypted under the derived dev key, as a
         deployment before real keys would have written it."""
-        from database.crypto import SecretCipher
-
-        SecretCipher.reset()  # no keys in env, so the dev path is taken
         doc_id = f"reenc-{collection}"
-        blob = SecretCipher.encrypt({"password": "s3cret"}, doc_id)
+        blob = dev_blob({"password": "s3cret"}, doc_id)
         assert blob["key_version"] == "dev"
         db = self.database()
         db[collection].delete_many({})
