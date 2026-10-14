@@ -1,9 +1,9 @@
 # Configuration
 
 Every setting is an environment variable. Compose reads them from
-`deploy.env`; a container platform sets them on the task; local
-development seeds them from `backend/config.env` and
-`ai_runtime/config.env`. The code reads the environment and nothing
+`deploy.env`; a container platform sets them on the task; a backend
+started by hand seeds them from `backend/config.env`, and a runtime
+started from its image by hand from `ai_runtime/config.env`. The code reads the environment and nothing
 else, so moving between platforms changes values, never code.
 
 Three values are generated, never chosen:

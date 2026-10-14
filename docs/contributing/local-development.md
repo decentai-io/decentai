@@ -13,6 +13,13 @@ its own test suite, which stands a double in for the container
 (`ai_runtime/tests/fake_container.py`) and starts real workers in the
 test's own process.
 
+A backend started by hand therefore has no runtime: every page works
+except a chat, which has nothing to answer it, and an approved agent
+stays **Preparing**. What needs a chat — the assistant, an agent seen
+running, the whole path from the composer to an approval — is tried in
+the Compose stack ([quickstart](../run/quickstart.md)), rebuilding the
+service that changed with `docker compose up -d --build <service>`.
+
 ## What you need
 
 - Python 3.11 or later (the images run 3.12), with `pip install -r
@@ -28,15 +35,15 @@ test's own process.
 
 ```bash
 cp backend/config.env.example backend/config.env
-cp ai_runtime/config.env.example ai_runtime/config.env
-python bootstrap/generate_service_keys.py     # two lines → backend, two → runtime, as it heads them
+python bootstrap/generate_service_keys.py     # the two lines it heads backend/config.env → backend
 python bootstrap/generate_secret_keys.py      # both lines → backend
 python -c "import secrets; print(secrets.token_urlsafe(48))"   # TOKEN_SECRET_KEY → backend
 ```
 
 Fill in `ADMIN_EMAIL` and `ADMIN_PASSWORD` in the backend's file. The
-defaults point everything at localhost: the backend on 8000, the runtime
-on 8001, the web app on 4200. Keep `AGENT_PACKAGE_DIR` and
+defaults point everything at localhost: the backend on 8000, the web app
+on 4200; `AI_RUNTIME_URL` names 8001, where nothing answers until a
+runtime does. Keep `AGENT_PACKAGE_DIR` and
 `UPLOADS_DIR` short on Windows; a package's filename is a digest, and a
 long directory overflows the path limit.
 
