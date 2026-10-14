@@ -66,14 +66,16 @@ class AuditController(AIController):
             if isinstance(more, int) and not isinstance(more, bool) and more > 0:
                 details["reached_more"] = more
         storage_ref = str(event.get("storage_ref") or "")
-        AuditStore().append(
+        recorded = AuditStore().append(
             event_type, user, chat_id=chat["chat_id"],
             execution_id=str(event.get("call_id") or "") or None,
             function=function,
             resource_refs=[storage_ref] if storage_ref else [],
             details=details,
         )
-        return self._respond(data, {"recorded": True})
+        # Said back as it is: a line the database would not take is in
+        # the backend's error log, and the runtime is not told otherwise.
+        return self._respond(data, {"recorded": recorded})
 
     #: How many hosts one execution's line names.
     REACHED_MAX = 20

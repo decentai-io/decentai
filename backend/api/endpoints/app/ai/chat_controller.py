@@ -330,6 +330,13 @@ class ChatController(AIController):
         delivered = await get_runtime_clients().send(
             chat["chat_id"], user,
             {"event": "stop", "force": True} if force else {"event": "stop"})
+        from database.stores import AuditStore
+
+        AuditStore().append(
+            "chat.stopped", user, chat_id=chat["chat_id"],
+            details={"force": force, "cards_expired": expired,
+                     "delivered": bool(delivered)},
+        )
         return self._respond(data, {"delivered": bool(delivered), "expired": expired})
 
     def title(self, data, user):

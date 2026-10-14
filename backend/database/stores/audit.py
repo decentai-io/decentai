@@ -1,8 +1,9 @@
 """Append-only security and execution events.
 
-Auditing is a witness, not a gate: a failed append logs and never
-blocks the operation it describes — and nothing here ever carries
-secret values."""
+Auditing is a witness, not a gate: a failed append never blocks the
+operation it describes. It is tried twice, and a line the database
+would not take is written whole to the error log, so it is never only
+lost. Nothing here carries a secret value the platform put there."""
 
 from __future__ import annotations
 
@@ -16,8 +17,8 @@ from util import iso, new_id, utc_now
 
 class AuditStore(MongoStore):
     """Append-only security and execution events. Auditing is a witness,
-    not a gate: a failed append logs and never blocks the operation it
-    describes — and nothing here ever carries secret values."""
+    not a gate: a failed append never blocks the operation it describes,
+    and is kept in the error log whole (``append``)."""
 
     # The collection keeps its first name; it holds the whole platform's
     # trail, not only what agents ran.
@@ -35,9 +36,11 @@ class AuditStore(MongoStore):
         function: Optional[str] = None,
         resource_refs: Optional[list] = None,
         details: Optional[Dict[str, Any]] = None,
-    ) -> None:
-        try:
-            self.col.insert_one({
+    ) -> bool:
+        """Whether the line reached the trail. One the database refused
+        twice is written to the error log as it would have been stored,
+        for an operator to put back; the caller is never stopped."""
+        line = {
                 "event_id": f"aud_{new_id()}",
                 "event_type": str(event_type),
                 "org_id": str(user.get("org_id") or ""),
@@ -49,12 +52,22 @@ class AuditStore(MongoStore):
                 "resource_refs": list(resource_refs or []),
                 "details": dict(details or {}),
                 "timestamp": utc_now(),
-            })
-        except Exception as exc:  # pragma: no cover - defensive
-            from server.custom_logging import CustomLoggerFactory
-            CustomLoggerFactory.get_logger("AuditStore").error(
-                f"Audit append failed ({event_type}): {exc}"
-            )
+        }
+        failure = None
+        for _ in range(2):
+            try:
+                # A copy: the driver adds its _id to what it is given.
+                self.col.insert_one(dict(line))
+                return True
+            except Exception as exc:
+                failure = exc
+        import json
+
+        from server.custom_logging import CustomLoggerFactory
+        CustomLoggerFactory.get_logger("AuditStore").critical(
+            f"Audit line not stored ({failure}); kept here: "
+            + json.dumps(line, default=str))
+        return False
 
     def for_chat(self, chat_id: str, limit: int) -> list:
         """One chat's trail, newest first."""

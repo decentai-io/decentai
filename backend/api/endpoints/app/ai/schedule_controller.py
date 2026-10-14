@@ -60,6 +60,16 @@ class ScheduleController(AIController):
             return self._respond(data, {"added": True})  # told twice
         if not store.add(self._identity(user, chat["chat_id"]), row):
             return self._full(data)
+        # Put on the clock by the assistant, for the person: on the
+        # trail as a row the person made is, and said whose hand it was.
+        AuditStore().append(
+            "schedule.created", user, chat_id=chat["chat_id"],
+            function=str(row.get("function") or "") or None,
+            resource_refs=[row["schedule_id"]],
+            details={"by": "assistant", "mode": row.get("mode"),
+                     "cron": row.get("cron"),
+                     "every_seconds": row.get("every_seconds")},
+        )
         return self._respond(data, {"added": True})
 
     def ran(self, data, user):
@@ -85,8 +95,15 @@ class ScheduleController(AIController):
         chat, refusal = self._runtime_chat(data, user, "remove schedules")
         if refusal is not None:
             return refusal
-        ScheduleStore().remove(
-            chat["chat_id"], str(self._payload(data).get("schedule_id") or ""))
+        schedule_id = str(self._payload(data).get("schedule_id") or "")
+        store = ScheduleStore()
+        held = self._row(store.rows(chat["chat_id"]), schedule_id)
+        store.remove(chat["chat_id"], schedule_id)
+        if held is not None:
+            AuditStore().append(
+                "schedule.deleted", user, chat_id=chat["chat_id"],
+                resource_refs=[schedule_id], details={"by": "assistant"},
+            )
         return self._respond(data, {"removed": True})
 
     def _full(self, data):
