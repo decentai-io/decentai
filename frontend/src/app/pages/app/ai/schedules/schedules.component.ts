@@ -356,6 +356,11 @@ export class SchedulesComponent extends DataPageBase implements OnInit, OnDestro
   async describe(): Promise<void> {
     const text = this.intent.trim();
     if (!text || this.sending) return;
+    // Stopped, nothing runs: a chat made now would hold a refused
+    // message and stay in the list. The words stay in the box.
+    if (this.stopped) {
+      return this.fail('Everything is stopped. Resume first, then ask: your words are still in the box.');
+    }
     this.sending = true;
     try {
       const created = await this.session.createChat(text.substring(0, 80), {});
