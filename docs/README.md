@@ -3,6 +3,10 @@
 Everything here describes the platform as it is. A change that
 contradicts one of these pages changes the page in the same commit.
 
+For the design as one argument, read for its reasons rather than its
+reference, there is the paper: [DecentAI: A Secure Operating System
+for AI Agents](paper/README.md) (a draft).
+
 The pages are in five groups, by what you came to do. How to use
 DecentAI as a person, screen by screen, is not here: it is the in-app
 guide, **Guide** at the foot of the sidebar (its source is

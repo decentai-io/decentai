@@ -6,7 +6,7 @@ does on purpose or by omission, and either answer may be right. The
 bugs, the documentation gaps and the unused code the same review found
 were fixed then; these were left for a decision.
 
-139 questions, in the order the review read the code. To settle
+138 questions, in the order the review read the code. To settle
 one: decide, change the code or the docs if the decision asks for it,
 and delete the row. The review read the code on 7–10 October 2026,
 before the runtime was restructured; every row was re-pointed to the
@@ -166,7 +166,7 @@ section, whose lines move with every edit.
 | CLK-6 | `ai_runtime/chat/clock.py` `ChatClock.schedule` 513–522 | Accepted when set and refused at every fire (run): a level-1 schedulable function in a level-0 chat, inputs that do not fit the schema, a `wake_field` the outputs do not have. A row that fails every time is never paused. |
 | CLK-7 | `ai_runtime/chat/clock.py` `ChatClock._twin` 564–575 | The twin check (run): `mon` against `1` evades it; a paused twin does not count; it wrongly refuses the same note at 09:00 and at 18:00, and the same function with a different `wake_field`. |
 | CLK-8 | `ai_runtime/chat/clock.py` `ChatClock._when` 638–679; `ai_runtime/mind/actions.py` 189 | Saying when (run): a time in the past fires at the next tick; "exactly one of" is not enforced (`cron` with `every_seconds` drops the period silently); the text `"nan"` as a period gives a row that fires every tick while the assistant is told it was not set (in-memory store only). |
-| CLK-9 | `ai_runtime/chat/clock.py` `ChatClock.sleep` 590–591, `asleep` 605; `ai_runtime/door/host.py` `SessionHost._kill` 464–498 | Sleep (run): a new sleep that cannot be added still removes the old one; a fired sleep whose removal fails reads as asleep for good. From reading: a kill with no session, the normal state of an unwatched sleeping chat, leaves the sleep in place, while a plain stop cancels it. |
+| CLK-9 | `ai_runtime/chat/clock.py` `ChatClock.sleep` 590–591, `asleep` 605; `ai_runtime/door/host.py` `SessionHost._kill` 464–498 | Sleep (run): a new sleep that cannot be added still removes the old one; a fired sleep whose removal fails reads as asleep for good. |
 | CLK-11 | `ai_runtime/chat/clock.py` `Schedule.advance` 148, `Scheduler.__init__` 180, `Scheduler._fire` 382 | A period is rounded up to the 30-second tick and drifts: `every_seconds: 70` fired every 90.6 s (run). A function slower than its period runs back to back. |
 | CLK-12 | `ai_runtime/chat/clock.py` `ChatClock.__init__` 507, `schedule` 546, `_when` 665 | A row keeps the zone it was made in; an unresolvable zone silently becomes the server's; with no zone, `at` is read on the server's clock (all run). Settles CRON-6: the zone comes from the contract and is validated by the backend. |
 | CLK-15 | `ai_runtime/chat/clock.py` `ChatClock.MIN_EVERY_SECONDS` 489, `_when` 638; `backend/api/endpoints/app/ai/schedule_controller.py` 33, `_when` 388 | Smaller: the 60-second floor is kept in three places and `_when` in two; spent one-offs stay in memory; a full row's run history is about 18 KB written whole at each fire (run). |
@@ -264,7 +264,6 @@ section, whose lines move with every edit.
 
 | Id | Where | Question |
 |---|---|---|
-| EDGE-1 | `backend/api/services/chat_session/settings/model.py` `ModelChoice.check` 143–168; `ai_runtime/door/platform.py` `Backend.contract` 222 | A chat's model block that names no connection is "carried through as it is", by the backend's own docstring, and the runtime passes it on untouched (run). So the provider, the address and a key can come from the chat's own settings, which any member who can configure their chat can write. This changes LLM-3: the gate is not "who may add a connection". `data-layer.md` line 351 says where a key is sent is never a chat's to say. |
 | EDGE-2 | `ai_runtime/llms/connector/`; `ai_runtime/mind/assistant.py` `Assistant._model_failure` 516–536 | For such an address the connectors use it as given, allow `http://` and honour the environment's proxy. On failure the person is shown a sentence that depends on the status, and the first 300 characters of the error; a closed port, a timeout and an HTTP answer read differently (run). On a platform shared by several organizations, that tells a member what answers inside its network. |
 | EDGE-6 | `ai_runtime/door/platform.py` `Gateway.call` 91–108, `Backend.load_state` 281–284, `persist_message` 309, `record_event` 348, `open_card` 372–386, `store_result` 423 | An answer missing a field becomes a quiet default (run): no saved state reads as a fresh mind, a recorded event's sequence as 0, a storage ref as empty, and a card's id as empty, with a waiter stored under the empty id. |
 | EDGE-8 | `ai_runtime/llms/connector/gemini.py` 169–179; `ai_runtime/llms/connector/bedrock.py` 150–157; `ai_runtime/llms/connector/responses.py` 116–126 | An answer not in the provider's shape is an empty reply with no error on three connectors and a Python `TypeError` on the other two (run). A prompt Gemini blocks is an empty reply with an empty stop reason. |

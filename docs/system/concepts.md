@@ -186,8 +186,11 @@ function the runtime ran with the agent, level, inputs in outline,
 outcome and duration; every approval asked and answered; every
 credential read by name; every install, grant and source change; and
 every other change made through the gateway, refused ones included. A
-person reads their own trail; the organization's is a grant. Nothing in
-it can be edited, and it never carries a secret value.
+person reads their own trail; the organization's is a grant. The
+platform only adds to it: nothing through the gateway edits or deletes
+a line. The platform writes no secret value into it; what an agent's
+error says, and inputs as the model proposed them, are kept as they
+came ([open questions](../contributing/open-questions.md), EXE-11).
 
 What agents' processes did underneath a call — started, ended, logged,
 connected to, were refused — is a second record, kept beside the

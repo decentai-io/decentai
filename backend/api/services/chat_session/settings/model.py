@@ -140,11 +140,10 @@ class ModelChoice(Setting):
         model the provider serves, by its own id, listed in the catalog
         or not.
 
-        A block with no ``secret_ref`` is carried through as it is. The
-        scripted provider needs no key at all and rides with keys of its
-        own (``responses``), and a provider that does need a key and has
-        none fails in the runtime, which is the only place that can say
-        what actually went wrong.
+        A block with no ``secret_ref`` is accepted only for the scripted
+        provider, which needs no key and reaches nothing (``fake``, with
+        its own ``responses``). Any other provider without a connection
+        is refused: a chat must not carry its own address and key.
         """
         if not isinstance(value, dict):
             return None, "llm must be an object."
