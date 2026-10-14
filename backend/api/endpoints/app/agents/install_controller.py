@@ -51,6 +51,20 @@ class AgentInstallMixin:
                     404)
             url = str(doc.get("url") or "")
             payload["ref"] = str(doc.get("ref") or "")
+            # What is approved is the commit whose catalog the page
+            # showed: the one the source was last read at, never where
+            # its branch points by the time of the click. A page that
+            # says which commit it showed is held to it — a source read
+            # again in between (by a colleague, or on its timer) is
+            # reviewed again, not approved unseen.
+            reviewed = str(doc.get("last_resolved_sha") or "")
+            shown = str(payload.get("sha") or "").strip()
+            if shown and shown != reviewed:
+                return self._fail(
+                    data, "source_moved",
+                    "This source was read again since you reviewed it. "
+                    "Review the agent again before approving.", 409)
+            payload["commit"] = reviewed
             # The credential is this organization's own by construction —
             # resolved from the source document, in process, never from
             # the request.
@@ -71,7 +85,8 @@ class AgentInstallMixin:
         try:
             credential = self._inline_credential(payload)
             found = self.acquisition.inspect(GitSource(
-                url, str(payload.get("ref") or "").strip(), credential))
+                url, str(payload.get("commit")
+                         or payload.get("ref") or "").strip(), credential))
         except AcquisitionError as exc:
             return self._fail(data, "fetch_failed", str(exc))
         local_agent_id = str(payload.get("local_agent_id") or "").strip()
@@ -138,8 +153,9 @@ class AgentInstallMixin:
                 )
             # Installing a repository again is a repair rather than a
             # no-op: the approval can stand while the code is gone (a
-            # recreated container), and the ref may now point at a
-            # different commit that carries the same manifest.
+            # recreated container). A repair restores the same code; a
+            # version whose code changed is refused below, once the
+            # package's digest is known.
 
         resource_namespace = platform_agent_id
         try:
@@ -207,6 +223,21 @@ class AgentInstallMixin:
                 local_agent_id or manifest.agent_id,
                 source.get("catalog_path", "."),
             )
+            # A version is immutable in its code as well as its
+            # manifest: the same version with other bytes is a change
+            # nobody reviewed as one.
+            kept = str((previous or {}).get("package_digest") or "")
+            if (previous is not None
+                    and previous.get("version") == manifest.version
+                    and kept and kept != package_digest):
+                self.store.put_back(previous)
+                self.acquisition.reclaim(
+                    self._org(user), self.store.pinned_digests(self._org(user)))
+                return self._fail(
+                    data, "immutable_version",
+                    f"Version {manifest.version} of '{agent_id}' is already "
+                    f"approved with different code — publish a new version.",
+                    409)
             # Stored BEFORE it is served: the store is what answers
             # for this code from now on, and an agent running from a
             # package nobody kept is the situation this replaces.

@@ -128,9 +128,10 @@ flowchart LR
 2. **Each manifest is checked as it is read.** One that breaks the
    rules is listed with the reasons, and approval refuses it.
 3. **An administrator approves one agent at one exact commit**,
-   recorded by its full identifier: the commit the source points to
-   at the moment they click, read again then — which may be newer than
-   the one they reviewed.
+   recorded by its full identifier: the commit the source was read at,
+   whose catalog they were shown — not wherever its branch points by
+   the time they click. If the source was read again in between, the
+   approval is refused and they review it again.
 4. **The platform keeps the code itself**: it packs that agent's folder
    into one archive, named by a fingerprint of its exact bytes. A
    repository later deleted, made private or rewritten changes nothing
@@ -213,11 +214,10 @@ can know what a half-finished call changed.
   the Gmail agent receives carries every permission the catalog's
   Google agents share — Drive, Sheets, Calendar among them. What keeps
   the Gmail agent to mail is that Gmail's is the only host it may reach.
-- **Installing the same version again is a repair.** If the manifest is
-  unchanged, the platform takes the code at the commit the source now
-  points to, even if the code changed. It is still an administrator's
-  act, but a version number does not pin code; the recorded commit and
-  the package's fingerprint do.
+- **Installing the same version again is a repair, and only that.**
+  It restores the same code; the same version number with other code
+  is refused, as other content in the manifest is. A change, to the
+  manifest or the code, is a new version.
 
 [Section 11](11-what-it-does-not-do.md) gathers these with every other limit the paper states.
 
@@ -272,13 +272,16 @@ and attaches up to ten errors, refusing nothing.
 
 `AgentInstallMixin.install`
 (`backend/api/endpoints/app/agents/install_controller.py`), behind
-`agents:agent:install`: re-reads the source at its saved ref and takes
-the SHA it resolves to now; selects the entry by id *and* path;
-validates again, refusing on any error; refuses a version approved with
-a different manifest (`immutable_version`, 409); derives the secret
+`agents:agent:install`: for a saved source, fetches the commit the
+source was last read at (`last_resolved_sha`), whose catalog the page
+showed, and refuses with `source_moved` (409) when the page names
+another; selects the entry by id *and* path; validates again, refusing
+on any error; refuses a version approved with a different manifest
+(`immutable_version`, 409); derives the secret
 shapes, private to the approval; writes the row with `manifest_hash`
 (SHA-256 of canonical JSON); packages the folder from that same SHA and
-stores it, putting the row back if that fails; grants the installer
+stores it, putting the row back if that fails or if the version was
+approved with a package of other bytes (`immutable_version`); grants the installer
 (first install only); reclaims unpinned packages; audits
 `agent.installed`; marks the row *preparing*. No runtime is contacted.
 The ref is minted once per organization, source and catalog id

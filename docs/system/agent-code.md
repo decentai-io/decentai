@@ -55,8 +55,14 @@ twenty random characters, that no other organization can name.
   agent needs when it runs must not sit under one of those names. Of a
   file's permissions one thing is kept: whether its owner may run it.
 - **A version is immutable.** A version, once approved, is never
-  approved again with other content; a changed manifest is a new
-  version.
+  approved again with other content — another manifest, or a package
+  of other bytes; a change is a new version. Installing the same
+  version again restores the same code, and nothing else.
+- **What is approved is what was reviewed.** An install from a saved
+  source takes the commit the source was last read at, whose catalog
+  the page showed, not where its branch points now; a page that names
+  the commit it showed is refused (`source_moved`) when the source was
+  read again since.
 - **An update is a new manifest.** The source moving to a new commit
   offers an update for an agent only when that agent's own manifest
   changed; a catalog holds many agents in one repository.

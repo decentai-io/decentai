@@ -266,11 +266,14 @@ export class AgentsService {
 
   /** Install one entry of a saved source's catalog. Naming the source is
    *  the whole request: where it points, and which credential reads it,
-   *  are the backend's to take from the record. */
+   *  are the backend's to take from the record. The commit the review
+   *  showed goes with it, so a source read again since is reviewed
+   *  again rather than approved unseen. */
   async installCatalogAgent(source: AgentSource, entry: any) {
     return this.ai.ai('Agents:Agent:Install', {
       source_id: source.source_id,
       local_agent_id: entry.id, catalog_path: entry.path,
+      sha: source.sha,
     });
   }
 

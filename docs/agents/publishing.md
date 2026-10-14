@@ -20,10 +20,10 @@ person has said yes to a specific version at a specific commit.
 
 ## Versions are immutable
 
-**Every change to a manifest is a new version.** An installation approves
-a manifest by its `agent.version`, and once approved that version is
-frozen: the platform refuses to re-approve `1.0.0` with different
-content, even if only a sentence changed.
+**Every change is a new version.** An installation approves a
+manifest by its `agent.version`, and once approved that version is
+frozen: the platform refuses to re-approve `1.0.0` with a different
+manifest, even if only a sentence changed, or with different code.
 
 So: **bump `agent.version` with every change**, or nobody can take the
 update. An installation on `1.0.0` is told an update exists and can
