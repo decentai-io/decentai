@@ -107,9 +107,8 @@ Two more things a test often needs:
   the HTTP client under test is the real one. The agents the project
   publishes do this.
 
-The first run builds the environment under your tests folder
-(`.workerenv`). Delete it after changing a manifest's `dependencies`;
-the SDK inside it is refreshed by itself.
+The SDK inside `.workerenv` is refreshed by itself; only a change to
+the dependencies asks for the folder to be deleted.
 
 ### What to test
 

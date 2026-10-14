@@ -263,9 +263,10 @@ connection. A provider that answers a download with a redirect to
 another host has your agent connect there too: name that host as well.
 
 A reviewer reads the list beside your functions and your packages, and
-it stays on the agent's page afterwards. Where the platform confines
-agents, the list is enforced: a host that is not on it is refused, and
-your code is told why.
+it stays on the agent's page afterwards. The list is enforced at the
+proxy every connection of your code goes through: a host that is not
+on it is refused, and your code is told why. Where a worker's
+connections are not held to the proxy, the agent's page says so.
 
 Addresses inside the network the platform runs in — this machine, a
 private network, a cloud's metadata address — are refused to every

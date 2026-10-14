@@ -79,8 +79,7 @@ rest is what goes wrong quietly.
 ## The sample data
 
 - [ ] Every file the sheet ships is a type the agent can actually
-      **read**, and one the file resource's `mime_types` allows. A
-      sample the agent refuses is worse than no sample.
+      **read**, and one the file resource's `mime_types` allows.
 - [ ] You have loaded the samples on a deployment and used every file
       they ship — a sample the agent refuses is worse than no sample.
 - [ ] Every row validates against the manifest — the same check the

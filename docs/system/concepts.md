@@ -153,7 +153,8 @@ grant per domain.
   manifest declared; a person may read and delete always, and create or
   edit where the manifest allows. An agent's update keeps the fields it
   did not send.
-- A **file** is bytes plus a record; immutable once stored.
+- A **file** is bytes plus a record; the bytes are immutable once
+  stored, and the record's name, keys and sharing may change.
 - A **skill** is a short instruction the organization wrote for the
   assistant, pulled into a chat when the task calls for it.
 - An **MCP server** is a remote tool server a person adds for their

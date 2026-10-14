@@ -147,7 +147,7 @@ pass:
 | sessions, resets, API keys, invitations, runtime delegations | dropped |
 | chats, and everything under them: messages, approvals, uploads, schedules | deleted; conversations are personal |
 | memories | deleted; a profile of a person nobody can read is a liability |
-| MCP servers, push subscriptions, the note of which sample data they loaded | deleted; each is the person's alone and is handed to nobody |
+| MCP servers, push subscriptions (a browser's and a phone's), the note of which sample data they loaded | deleted; each is the person's alone and is handed to nobody |
 | secrets, records, files, skills | stewardship passes to the successor; whoever they were shared with keeps seeing them; a credential granted to agents keeps working |
 | model connections, agent sources | stewardship passes to the successor |
 | agent grants naming the person | the person is taken out of them; a grant left naming nobody is deleted |

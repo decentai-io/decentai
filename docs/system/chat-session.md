@@ -165,7 +165,8 @@ so.
 
 The runtime's word that a package is ready on it, or would not build
 and why: said as itself, by digest, and every approval that pins the
-digest hears it. Once per process per version.
+digest hears it. Once per digest and state, and again if the saying
+failed.
 
 The install marks the row `preparing`; the Agents page shows Preparing
 → Ready / Failed, and a word about a digest the row no

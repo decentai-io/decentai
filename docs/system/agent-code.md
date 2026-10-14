@@ -163,7 +163,7 @@ on the runtime, the public half on the backend as
 uses to prove itself to the runtime. The backend reads it as a runtime
 service principal: no person, no organization, no chat, and no policy;
 what it may dispatch is the package door and nothing else
-(`backend/server/authentication/access.py`, `RUNTIME_SERVICE_ENDPOINTS`).
+(`RUNTIME_SERVICE_ENDPOINTS` in `backend/server/authentication/catalog.py`, enforced by `backend/server/authentication/access.py`).
 
 | verb | answers |
 |---|---|
@@ -181,7 +181,7 @@ first reclaims what nobody approves any more. That is what turns *Preparing* int
 page, within seconds of the click and with no chat in the picture;
 several runtimes each keep their own stock. The key is required: a
 runtime without one does not start, since it would have no way to
-code.
+its agents' code.
 
 ## Reclaiming
 

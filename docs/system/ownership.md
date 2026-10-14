@@ -93,7 +93,7 @@ counts, so the administrator sees the hand-over before confirming.
 | schedules | deleted with their chats — nothing keeps acting for a person who is gone |
 | chats and everything under them | deleted, with the chat cascade; conversations are personal |
 | memories | deleted |
-| MCP servers, push subscriptions, the note of which sample data they loaded | deleted |
+| MCP servers, push subscriptions (a browser's and a phone's), the note of which sample data they loaded | deleted |
 | secrets, records, files, skills | stewardship transferred to the successor; the owner map keeps every group and person it named; a credential granted to agents keeps working. A secret whose name the successor already uses for the same kind arrives as *name (transferred)* |
 | LLM connections, agent sources | stewardship transferred to the successor |
 | agent grants naming the person | the person is taken out of them; a grant left naming nobody is deleted |

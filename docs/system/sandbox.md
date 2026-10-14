@@ -616,7 +616,7 @@ writes what it found in its own log — *Workers are confined*;
 *Workers' files are fenced*, or that they are not; *Workers' system
 calls are filtered*, or that they are not and why; on a kernel that
 has Landlock before its sixth version, that agents are not kept from
-each other's sockets — and answers the runtime with the three facts.
+each other's sockets — and answers the runtime with what it found.
 The runtime writes whether *Workers' connections are fenced*. Where
 workers cannot be confined there (the container was not given its
 rights, the install directory is not the one the helper was built
@@ -659,8 +659,6 @@ enforced in this install; and nothing to configure.
 - **What an agent keeps on disk is counted and not limited.** The size
   of one file is limited; how much an agent writes in all is not. The
   count is half a minute old at most.
-- **Disk in total is not limited.** The size of one file is; the total
-  an agent writes is not.
 - **A package's `.pth` file** runs a line of its own whenever the
   environment's interpreter starts — always as a worker or the
   builder, confined. The runtime starts that interpreter once, to

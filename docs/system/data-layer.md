@@ -329,7 +329,9 @@ reconnected.
 The app on a phone has no popup to tell and a browser that carries no
 session. It starts with `client: native`; the callback then spends the
 state and parks the provider's code behind a second one-use, two-minute
-hand-off, sending the browser back into the app (`decentai://oauth`);
+hand-off, sending the browser back into the app (`decentai://oauth`,
+or the address the app gave as `return_to` — Expo Go's in development;
+an address on the web is refused);
 the app spends the hand-off with `Secrets:Oauth:Complete` under its own
 session, where the same-person, same-session check is made, and the
 exchange happens then.

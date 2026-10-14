@@ -10,7 +10,7 @@ credential drift into meaning subtly different things, and the next
 shareable type added is the one that leaks. So the platform has exactly
 one implementation of sharing, and this document describes it.
 
-The implementation lives in `server/governance/sharing.py`. It sits
+The implementation lives in `backend/server/governance/sharing.py`. It sits
 beside `server/authentication` on purpose: authorization answers *"may
 this caller perform this action"*, governance answers *"how far does
 what they make reach"*. Both the API layer and the database layer stand
