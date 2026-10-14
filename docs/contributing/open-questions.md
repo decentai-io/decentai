@@ -6,7 +6,7 @@ does on purpose or by omission, and either answer may be right. The
 bugs, the documentation gaps and the unused code the same review found
 were fixed then; these were left for a decision.
 
-138 questions, in the order the review read the code. To settle
+137 questions, in the order the review read the code. To settle
 one: decide, change the code or the docs if the decision asks for it,
 and delete the row. The review read the code on 7–10 October 2026,
 before the runtime was restructured; every row was re-pointed to the
@@ -148,7 +148,7 @@ section, whose lines move with every edit.
 
 | Id | Where | Question |
 |---|---|---|
-| HOST-4 | `ai_runtime/door/host.py` `SessionHost._hand` 418–422; `ai_runtime/door/socket.py` 73 | The route handles one frame at a time, and a `user_message` awaits the refresh, which may install an agent for a minute. A `stop`, the kill switch, an approval and a renewed credential are not read meanwhile (from reading). |
+| HOST-4 | `ai_runtime/door/host.py` `SessionHost._hand` 418–422; `ai_runtime/door/socket.py` 73 | The route handles one frame at a time, and a `user_message`, like a yes to a card (`approval_decided`, since the approval re-check), awaits the refresh, which may install an agent for a minute. A `stop`, the kill switch, an approval and a renewed credential are not read meanwhile (from reading). |
 | HOST-8 | `ai_runtime/door/host.py` `SessionHost.handle` 373, `_hand` 432–433 | Frame values are read loosely (run): the text `"false"` approves, a missing `action_hash` becomes empty and the session falls back to its own record, any truthy `force` is the kill. Needs a faulty dialer. |
 | HOST-9 | `ai_runtime/door/host.py` `SessionHost._hand` 418–422 | No limit at the door for a message: a million characters of text, a 100,000-character `client_message_id` and 5,000 parts pass through (run). Settles CHAT-1: the 128-character id and 20-attachment cap are held nowhere. |
 | HOST-10 | `ai_runtime/door/host.py` `SessionHost._schedule_reap` 622–629; `ai_runtime/door/roster.py` `AgentRoster._installs` 54 | One 60-second sleeping task per frame that reaches a session (run: 2,000 `screen_input` frames left 2,000 tasks); background tasks are held by nothing; install locks are never dropped. Robustness. |
@@ -250,7 +250,6 @@ section, whose lines move with every edit.
 
 | Id | Where | Question |
 |---|---|---|
-| EXE-7 | `ai_runtime/execution/executor.py` `FunctionExecutor._gates` 300–326 | A grant withdrawn while an approval card waits does not stop the approved call on the live path (run). After a restart, on the resume path, it does. One event, two outcomes. |
 | EXE-8 | `ai_runtime/execution/executor.py` `FunctionExecutor._gates` 286–313 | The resume path does not compare the level again: a call parked under one level resumes under the approval it was given, whatever the chat's level is now (from reading). Hard to reach. |
 | EXE-10 | `ai_runtime/execution/executor.py` `FunctionExecutor._execute` 548–573, `_record` 622–626, 652–653 | The same root as RSN-1: keys the platform owns are taken from the agent's own result. `denied` or `not_permitted` in an ordinary error result sets the audit status to `denied` or `refused` (run with a real worker); an agent's own `displays` and `storage_ref` pass through when the platform has none to write (run). |
 | EXE-11 | `ai_runtime/execution/executor.py` `FunctionExecutor._witnessed` 176–196, `_record` 602–659, `_outline` 660–691 | The audit line's inputs are as the model proposed them, not as run: no defaults, references unresolved. Text up to 200 characters is kept as it is, and an agent's error text up to 500, so a password given as an input, or a secret an agent puts in its error, lands on the trail (run). |

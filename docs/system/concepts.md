@@ -184,8 +184,11 @@ next message works, and the chat's schedules go on firing
 The platform writes an append-only record at its chokepoints: every
 function the runtime ran with the agent, level, inputs in outline,
 outcome and duration; every approval asked and answered; every
-credential read by name; every install, grant and source change; and
-every other change made through the gateway, refused ones included. A
+credential read by name; every install, grant and source change; every
+chat stopped; every schedule set or removed, the assistant's marked as
+its own; and every other change made through the gateway, refused ones
+included. A line the database refuses twice is written whole to the
+backend's error log instead, and the act still happens. A
 person reads their own trail; the organization's is a grant. The
 platform only adds to it: nothing through the gateway edits or deletes
 a line. The platform writes no secret value into it; what an agent's

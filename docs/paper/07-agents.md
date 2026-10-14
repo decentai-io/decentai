@@ -115,10 +115,10 @@ such a function may only be level 0 or 1: `watch.check` is marked so;
 
 ```mermaid
 flowchart LR
-    R["repository<br/>(someone else's)"] -->|"read, nothing run"| C["catalog<br/>manifests checked,<br/>errors shown"]
-    C -->|"administrator approves<br/>one commit"| A["approval<br/>agt_… ref,<br/>manifest fingerprint"]
-    A -->|"one folder packed,<br/>named by its hash"| S["package store<br/>(the platform's own)"]
-    S -->|"fetched by that hash,<br/>checked on arrival"| RT["runtime<br/>builds, tests, serves"]
+    R["repository, someone else's"] -->|"read, nothing run"| C["catalog, manifests checked"]
+    C -->|"one commit approved"| A["approval, agt_ ref and fingerprint"]
+    A -->|"one folder packed, named by hash"| S["package store, the platform's own"]
+    S -->|"fetched by hash, checked"| RT["runtime builds, tests, serves"]
 ```
 
 1. **An organization names a repository**, a source, and **the
@@ -273,8 +273,8 @@ and attaches up to ten errors, refusing nothing.
 `AgentInstallMixin.install`
 (`backend/api/endpoints/app/agents/install_controller.py`), behind
 `agents:agent:install`: for a saved source, fetches the commit the
-source was last read at (`last_resolved_sha`), whose catalog the page
-showed, and refuses with `source_moved` (409) when the page names
+source was last read at (`last_resolved_sha`), whose catalog the app
+showed, and refuses with `source_moved` (409) when the app names
 another; selects the entry by id *and* path; validates again, refusing
 on any error; refuses a version approved with a different manifest
 (`immutable_version`, 409); derives the secret

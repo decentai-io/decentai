@@ -260,9 +260,12 @@ relied upon, instead of a property of how the pieces happen to be ordered.
 Resolution is cached in memory for speed, but the cache is not a second
 source of truth: every change that could affect a decision — group
 membership, a role's policies, a policy's statements, a user disabled,
-an organization disabled — discards what it invalidates at the moment it
-happens. Revocation therefore takes effect on the next request rather
-than at the next login or the next cache expiry.
+an organization disabled — discards what it invalidates on both sides
+of the write, before and after it. A resolution remembers the cache
+generation it began reading at and is not kept if an invalidation came
+in meanwhile, so a request that read the old rows while the write ran
+cannot put them back. Revocation therefore takes effect on the next
+request rather than at the next login or the next cache expiry.
 
 That is so of a change made through the application. The cache is one
 process's own, kept for sixty seconds (`AccessCache`,
@@ -345,7 +348,12 @@ when it expires — seven days by default. Accepting it creates the user and
 signs them in. The address on the new account comes from the invitation
 and never from the request that accepts it: the link proves control of one
 mailbox, and that is the only address it can produce. The organization
-comes from the invitation for the same reason.
+comes from the invitation for the same reason. Its groups are given
+only if whoever sent it may still give them: accepting asks the grant
+boundary ([above](#nobody-can-grant-what-they-do-not-hold)) again, of
+the inviter as they are now. An invitation whose sender has left the
+organization, been disabled, or no longer holds what its groups grant
+is withdrawn, and the person is asked to get a new one.
 
 **A person added by hand.** An install with no mail server sends no
 invitation, so there an administrator adds a person directly

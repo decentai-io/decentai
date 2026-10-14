@@ -47,7 +47,7 @@ request uses:
 ```mermaid
 sequenceDiagram
     autonumber
-    actor P as Person (browser)
+    participant P as Person (app)
     participant C as Caddy
     participant B as Backend
     participant R as Runtime
@@ -79,11 +79,11 @@ sequenceDiagram
 
 ## Step by step
 
-**1. The words leave the page.** The person presses send. The page
+**1. The words leave the app.** The person presses send. The app
 puts the message on a socket — a connection that stays open — to the
 platform's one public door, **Caddy**, which passes it to the
-**backend**. The backend checks who is speaking, that the page asking
-is the platform's own, that the chat is theirs, and that they may send
+**backend**. The backend checks who is speaking, that a browser asking
+was sent by the platform's own web app and not by another site, that the chat is theirs, and that they may send
 messages in it. A message of more than 256 KB is turned away here,
 before anything is kept. *[Section 4](04-who-you-are.md) looks closer.*
 
@@ -103,7 +103,7 @@ a permission taken away this morning is gone from this turn.
 *[Section 4](04-who-you-are.md).*
 
 **4. The message is kept, then heard.** The message is stored, the
-page is told it arrived, and an entry is written in the chat's inbox.
+app is told it arrived, and an entry is written in the chat's inbox.
 Only then is the assistant given it. If the runtime stopped at this
 moment, the message would be found again when it came back.
 *[Section 5](05-the-assistant.md).*
@@ -128,12 +128,24 @@ of them; and its level is at or below the chat's. Read Cells is level
 runs in a separate container, in a process of its own, as a user that
 exists only for that agent, fenced into its own files. *[Section 8](08-the-sandbox.md).*
 
-**8. A password, lent for one call.** To read the sheet, the code
-needs the person's Google access. It asks the runtime; the runtime
-checks that this function declared it would need that credential, then
-asks the backend for it, as the person. The backend hands over a
-short-lived access token — never the long-lived one — and writes down
-that it did. It is never shown to the model. *[Section 9](09-secrets-and-data.md).*
+**8. A credential, handed over for the call.** To read the sheet, the
+code needs the person's Google access. It asks the runtime; the
+runtime checks that this function declared it would need that
+credential, then asks the backend for it, as the person. The backend
+writes down that it did, and hands over what the credential is made
+of. Here it is a connected account, so that is only a short-lived
+access token: the refresh token, which can make new ones, never leaves
+the backend. A credential a person typed — an API key, a password — is
+handed to the agent's code as it is. Either way it is never shown to
+the model.
+
+The agent's code holds what it is handed during the call, and since
+its process is kept running between calls, code that wanted to could
+keep it. For an access token that is bounded by its expiry, about an
+hour; for a typed key it is not. Reading the agent before approving it
+is the control for that. *Sections [7](07-agents.md),
+[8](08-the-sandbox.md), [9](09-secrets-and-data.md) and
+[11](11-what-it-does-not-do.md).*
 
 **9. Out through one door.** The agent's code connects to Google
 through the platform's **proxy**, the only way out of its room. The
@@ -141,9 +153,14 @@ proxy lets it reach the hosts its manifest declared — for Sheets,
 `sheets.googleapis.com` and `www.googleapis.com` — and nowhere else.
 *[Section 8](08-the-sandbox.md).*
 
-**10. The result is kept, checked and recorded.** The rows come back.
-They are checked against the shape the manifest promised, stored in
-the chat's own storage, and the call is written on the audit trail:
+**10. The result is kept, checked and recorded.** The platform never
+sees what passes between the agent's code and Google: the proxy only
+carries the bytes, which between the code and Google are encrypted end
+to end. What it checks is
+the agent's answer to the call — the rows the function returns. Those
+are checked against the outputs the manifest declared, and an answer
+that does not match is refused as an error. Only then are they stored
+in the chat's own storage, and the call is written on the audit trail:
 which agent, which function, with what, how it ended, how long it
 took, and which hosts it reached. Then the assistant is shown the
 rows. Its standing instructions say that what a result carries is
@@ -166,18 +183,27 @@ then reaches the runtime, which runs that exact call. Three sends,
 three cards. *[Section 5](05-the-assistant.md).*
 
 **13. The answer, and what stands behind it.** The assistant writes
-its reply. Beside its words, the page shows only what real calls
+its reply. Beside its words, the app shows only what real calls
 proved: a table it chose to show is drawn from the stored rows, not
 retyped by the model; each successful change is marked as verified.
 If Gmail does not confirm a send, the agent reports the outcome as
 *unknown*, and nothing claims it was sent. *[Section 6](06-nothing-invented.md).*
 
 **14. Friday.** The assistant puts a reminder on the chat's **clock**:
-on Friday morning, wake up and check. The page shows that it is set,
+on Friday morning, wake up and check. The app shows that it is set,
 and the Schedules page lists it. On Friday the clock wakes the
-assistant, which reads the sheet again (level 0, so no card), and
-tells the person which customer has still not paid — by a push or an
-email if nobody has the chat open. *Sections [5](05-the-assistant.md) and [10](10-stopping-and-watching.md).*
+assistant, which reads the sheet again (level 0, so no card) and
+writes in the chat which customer has still not paid. That message is
+posted in the chat like any other. If nobody has the chat open, the
+platform itself — not the mail agent — tells the person, by a push to
+their phone or browser, or by an email from the platform when no
+device was reached. That is no agent call, so there is no card.
+
+The wake runs at the chat's trust level like any turn, even though
+nobody started it. If the assistant decided on Friday to email the
+customers again, Send Draft would still be level 3, and the call
+would wait on a card for the person's yes.
+*Sections [5](05-the-assistant.md) and [10](10-stopping-and-watching.md).*
 
 **15. The record.** Afterwards, the trail holds a line for every call
 — the read, the three drafts, the three sends, Friday's read — each
@@ -193,7 +219,7 @@ That is the point of following it.
 
 | If… | It stops at | And the person sees |
 |---|---|---|
-| the page is another site's | step 1 | nothing reaches the chat |
+| the message is sent by another site | step 1 | nothing reaches the chat |
 | the person may not use Gmail | step 3 or 6 | the assistant says it cannot |
 | the model invents an input the manifest does not allow | step 6 | nothing runs; the model is told why |
 | the agent's code tries to reach another site | step 9 | the connection is refused, and recorded |
@@ -203,7 +229,7 @@ That is the point of following it.
 <details>
 <summary><b>For the specialist</b>: the path in the code, in order</summary>
 
-The page-to-agent path is also described in
+The path from the app to an agent is also described in
 [the architecture page](../system/architecture.md#one-message-from-the-page-to-an-agent-and-back);
 this is that path for the example, checked against the source.
 
@@ -262,13 +288,22 @@ this is that path for the example, checked against the source.
    (`ai_runtime/door/platform.py`) calls `Secrets:Secret:Use` under the
    delegation. The backend decrypts, refreshes the OAuth access token
    if needed and strips the refresh token (`OauthFlow.fresh`,
-   `backend/api/services/oauth.py`), and appends `secret.use` to the
-   trail (`backend/api/services/data_layer/secrets.py`).
+   `backend/api/services/oauth.py`) — that is the branch
+   `_values_for_agent` takes when the secret's definition is OAuth; any
+   other secret's values are returned decrypted, as stored — and
+   appends `secret.use` to the trail
+   (`backend/api/services/data_layer/secrets.py`). The runtime keeps
+   nothing past the call; the worker, kept warm, may.
 9. **Egress.** `ai_runtime/agents/egress.py`, by the worker's pass;
    [section 8](08-the-sandbox.md) has the order of checks.
-10. **Result.** Keys only the platform writes (`storage_ref`,
-    `displays`, `denied`, `not_permitted`) are stripped from what the
-    function returned; the output schema is checked; the result is
+10. **Result.** What is checked is the function's return value, sent
+    back on the worker's line — never the worker's traffic to Google,
+    an HTTPS `CONNECT` tunnel the proxy passes without reading. In
+    `FunctionExecutor._execute`, keys only the platform writes
+    (`storage_ref`, `displays`, `denied`, `not_permitted`) are stripped
+    from it; on success it is validated against the function's
+    `outputs` schema (`_validate`, JSON Schema 2020-12), and a mismatch
+    becomes an error observation, stored nowhere; the result is
     stored (`AI:Storage:Create`); `_record` writes the `execution`
     event through `AI:Audit:Record` whatever the outcome. An
     observation over 16,000 characters is shown to the model as a
@@ -334,11 +369,11 @@ this is that path for the example, checked against the source.
   marked so; Gmail's Check For Replies is, which is how *"remind me if
   they haven't replied"* would be done. "Hasn't paid" lives in the
   sheet, so this is a note that wakes the assistant. The row is
-  written through `AI:Schedule:Add`, at most 50 per chat, and the page
+  written through `AI:Schedule:Add`, at most 50 per chat, and the app
   hears `schedule_set`.
 - **Staying alive until then.** The clock runs in the runtime and
   acts through a delegation, so the backend keeps the dial open for any
-  chat holding schedule rows: closing the page does not close it
+  chat holding schedule rows: closing the app does not close it
   (`RuntimeClientManager.release`), the delegation is renewed over the
   socket every 45 minutes (`renew_due`), and every such chat is dialed
   again at boot and on each renewal tick (`redial_scheduled`).
@@ -347,9 +382,18 @@ this is that path for the example, checked against the source.
   to the chat's session, built if none is live, and the contract is
   read again before the wake is delivered, as it is for a message
   (`SessionHost.deliver_event`).
-- **Telling.** When the assistant writes a message and no browser of
-  the person has the chat open, `backend/server/notifications.py`
-  pushes to their devices, and emails them if no device was reached
-  and they have not turned email off.
+- **The level.** `SessionHost.refresh` re-reads the contract and
+  `_adopt` passes its `chat_level` (`_chat_level`) to
+  `Session.adopt`, which gives it to the assistant; the assistant
+  passes it on every `invoke`, and nothing in the wake path raises it.
+  So a Send Draft proposed on Friday parks on a card exactly as the
+  first sends did (the previous block).
+- **Telling.** The answer is an `AI:Message:Create` like any other.
+  When it is written and no browser of the person has the chat open,
+  `backend/server/notifications.py` (`assistant_said`) pushes to their
+  devices — web push, or Expo's service for the phone app — at most
+  every two minutes per chat, and, if no device was reached and they
+  have not turned email off, sends an email through the platform's own
+  mailer, at most one per chat per ten minutes. No agent is called.
 
 </details>

@@ -45,30 +45,43 @@ invoices are overdue, and remind me on Friday"*:
 | What appears as data beside the model's words is drawn from stored results of real calls; a claim with nothing behind it is shown as a claim. | [6](06-nothing-invented.md) |
 | An agent declares what it does, keeps and reaches before it is approved, and the executor holds it to that on every call. | [7](07-agents.md) |
 | Agent code runs as its own user, fenced by the kernel to its own files, filtered from the system calls escapes are made of, and able to connect only through a proxy to the hosts it declared. The platform will not start where it cannot confine, and says plainly what is not enforced where it runs. | [8](08-the-sandbox.md) |
-| A credential is decrypted by the backend, carried by the runtime for one call, and handed to the agent it was lent to — never to the model or a page. Stored values are sealed with AES-256-GCM bound to their document. | [9](09-secrets-and-data.md) |
+| A credential is decrypted by the backend, carried by the runtime for one call, and handed to the agent it was lent to — never to the model or the app. Stored values are sealed with AES-256-GCM bound to their document. | [9](09-secrets-and-data.md) |
 | A stop ends what runs; stopping everything holds until the person lifts it. The platform only ever adds to the audit trail. | [10](10-stopping-and-watching.md) |
 | Each part holds as little as its job needs, so taking one over gains as little as possible. | [1](01-the-problem.md), [2](02-the-idea.md) |
 | The limits are stated, and the claims are tested — including by an agent written to break out. | [11](11-what-it-does-not-do.md), [12](12-how-we-know.md) |
 
-## For the specialist, in one paragraph
+## For the specialist, in brief
 
-DecentAI separates *proposal* from *authority*. A backend owns identity,
-policy (deny-by-default IAM chains with lockout and grant-boundary
-invariants), the database and every encryption key. A runtime hosts
-the model-driven assistant and a single executor that every function
-call passes: manifest declaration, per-chat grants, storage-reference
-resolution, schema validation, scope narrowing, a permission-level gate
-against a person-chosen trust level with approvals bound to the exact
-call, mediated resources, and output validation. The runtime acts for
-a person only through a short-lived, per-chat delegation it cannot
-read, fenced to a fixed action list; it holds no key that could forge
-the backend. Agent code runs in a separate container as one uid per
-approved agent, entered through a capability-bearing helper that sets
-rlimits, `no_new_privs`, switches uid and drops all capabilities, then
-applies Landlock and a seccomp denylist; egress is only through a
-proxy that resolves names itself, refuses internal addresses and
-admits only manifest-declared hosts, behind an owner-uid nftables rule.
-Package builds run as a separate confined user, and the runtime only
-unpacks wheels. Evidence shown to the person is rendered from stored,
-schema-validated results that the trace proves. Each of these, with
-its source file and its stated limits, is in the sections above.
+DecentAI separates *proposal* from *authority*: the model proposes, and
+code it cannot read or argue with decides. One line per mechanism:
+
+- **The backend** owns identity, policy (deny-by-default IAM chains
+  with lockout and grant-boundary invariants), the database and every
+  encryption key. [§4](04-who-you-are.md), [§9](09-secrets-and-data.md)
+- **The executor** in the runtime is the one path every function call
+  takes. Its gates, in order: declared in the approved manifest;
+  granted to this chat; storage references resolved; inputs valid
+  against the manifest's schema; scopes held to the grant; the
+  function's level against the person-chosen trust level, with an
+  approval bound to the exact call. During the call, resources are
+  mediated per declared operation; after it, the outputs are validated
+  against the manifest. [§5](05-the-assistant.md), [§7](07-agents.md),
+  [§9](09-secrets-and-data.md), [§6](06-nothing-invented.md)
+- **The delegation**: the runtime acts for a person only through a
+  short-lived, per-chat token it cannot read, fenced to a fixed list of
+  actions; it holds no key that could forge the backend.
+  [§2](02-the-idea.md), [§4](04-who-you-are.md)
+- **The agents' container**: one uid per approved agent, entered
+  through a capability-bearing helper (rlimits, `no_new_privs`, uid
+  switch, all capabilities dropped), then Landlock on files and a
+  seccomp denylist on system calls; egress only through a proxy that
+  resolves names itself, refuses internal addresses and admits only
+  manifest-declared hosts, behind an nftables rule on the owner uid.
+  [§8](08-the-sandbox.md)
+- **The builder**: packages are built by a separate confined user; the
+  runtime only unpacks the wheels it leaves. [§8](08-the-sandbox.md)
+- **Evidence**: what is shown beside the model's words is rendered from
+  stored, schema-validated results that the trace proves.
+  [§6](06-nothing-invented.md)
+
+Each section gives the source files and its stated limits.

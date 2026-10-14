@@ -38,11 +38,11 @@ written: *allow these actions*, or *deny these actions*.
 
 ```mermaid
 flowchart LR
-    U["<b>person</b>"] --> G["their <b>groups</b><br/>+ Everyone"]
-    G --> R["<b>roles</b>"]
-    R --> P["<b>policies</b>"]
-    P --> S["<b>statements</b><br/>Allow / Deny"]
-    S --> D{"may they<br/>do this?"}
+    U["person"] --> G["their groups, and Everyone"]
+    G --> R["roles"]
+    R --> P["policies"]
+    P --> S["statements: Allow or Deny"]
+    S --> D{"may they do this?"}
 ```
 
 So "why can this person do that?" always has an answer that can be
@@ -109,15 +109,17 @@ Say the person asking is an employee in Members.
 
 - **They may chat** because Members allows the chat actions.
 - **Their chat can use the mail agent** only because someone decided
-  so. A newly approved agent reaches the administrator who approved it
-  and that administrator's groups, nobody else. Someone allowed to give
-  access must have added Members, or this employee, on the mail agent's
-  page — for the whole agent or only some of its functions. Without
-  that grant the mail agent is simply absent from the chat.
+  so. When an agent is approved for the first time, it reaches only
+  the administrator who approved it and that administrator's groups.
+  Nobody else can use it until someone grants it to them. Here,
+  someone allowed to give access must have added Members, or this
+  employee, on the mail agent's page — for the whole agent or only
+  some of its functions. Without that grant the mail agent is simply
+  absent from the chat.
 - **The assistant acts for them through a delegation**: a permission
   slip for this one chat, issued when the chat connects to the runtime,
   lasting an hour and renewed while the chat stays connected (closing
-  the page does not withdraw it). With it the
+  the app does not withdraw it). With it the
   runtime may put the Friday reminder on the person's clock and read
   their records, because the person may and those actions are on the
   runtime's list. It cannot use the slip in another chat, or to add the
@@ -223,10 +225,13 @@ at most `TTL_SECONDS = 60`:
 Invalidation lives in the store method that writes, and the backend is
 one process (`backend/main.py`), so an in-app change governs the next
 request. Another process's writes (`bootstrap/organizations.py`,
-`bootstrap/reset_password.py`) are seen when entries expire. One narrow
-race remains: `UserStore.set_groups` drops the entry just *before* its
-write, so a request resolved in that instant can re-cache the old
-answer for up to the minute. API keys never enter the session map.
+`bootstrap/reset_password.py`) are seen when entries expire. Every
+write invalidates on both sides of itself (`AccessCache.changing_user`,
+`changing_session`, `changing_permissions`), and a resolution carries
+the cache generation it began reading at: if an invalidation came in
+between, its result is not stored (`put_session` / `put_statements`
+with `since`). So a request that read the old rows while a write ran
+cannot re-cache them. API keys never enter the session map.
 
 </details>
 
@@ -264,8 +269,14 @@ policies it would bring in and asks the same question:
 hand, inviting). The whole proposed set is checked, not only what is
 new. An administrator's password reset of someone else is bounded by
 the target's groups, since taking an account is taking its access. An
-invitation is checked when issued; accepting it later does not ask
-again.
+invitation is checked when issued, and again when accepted
+(`AuthController.accept_invitation`,
+`backend/server/authentication/flows.py`), against the inviter as they
+are then: found by the `invited_by_user_id` recorded at issue (an older
+invitation by `invited_by_email`). An inviter who is gone, in another
+organization, disabled, or no longer holds what the groups grant
+withdraws the invitation: it is revoked and accepting answers 409,
+asking for a new one. An invitation with no groups is not checked.
 
 The boundary covers the IAM chain. **Agent grants are outside it.**
 Who may call an installed agent's functions is a separate allow-only
@@ -274,8 +285,10 @@ list keyed by the agent (`AgentGrantStore`,
 discovered from manifests and would rot inside authored policies.
 Whoever holds `agents:agent:grant` — in the seeded chain, only
 Administrators — may grant any installed agent to anyone in the
-organization; a first install grants it to the installer and their
-groups (`backend/api/endpoints/app/agents/grants_controller.py`).
+organization; a first install grants it to the installer by name and
+to their assigned groups (`_grant_on_install`,
+`backend/api/endpoints/app/agents/grants_controller.py`). A
+re-approval of a version finds a grant already there and adds nothing.
 
 </details>
 

@@ -7,7 +7,8 @@ something false, and you read it. You can check. Nothing has happened
 yet.
 
 An assistant that *does* things is different. Take the request this
-paper follows:
+paper follows, typed into DecentAI's **app** — the web app in a
+browser, or the phone app; the paper calls either one "the app":
 
 > *"Email the three customers whose invoices are overdue, and remind me
 > on Friday if any of them hasn't paid."*
@@ -89,7 +90,8 @@ which of them the design promises to hold. Ours has these.
   they can only hope the model obeys them.
 - **The author of an agent**, and of every library it uses. Once an
   agent is approved, its code runs on our machine, and during a call it
-  holds whatever that call was given — your mail credential, for one.
+  holds whatever that call was given — your mail credential, for one —
+  and, since its process keeps running between calls, could keep it.
 - **Another person.** Someone in your organization who should not see
   your mail, or someone in another organization altogether.
 - **A part of the platform that was taken over.** An agent's process
@@ -148,7 +150,7 @@ these promises are weaker than they sound.
 |---|---|---|
 | database contents, at rest | `mongo`, reachable only on the internal `data` network by `backend` and `init` (`docker-compose.yml`) | the runtime, the agents' container |
 | value-encryption keys, `TOKEN_SECRET_KEY`, the service token's private key | the backend | every other container |
-| a decrypted credential | the backend, which decrypts it; the runtime, for one call; the worker of the agent it was granted to | the model; the page. An OAuth refresh token stays in the backend: the agent receives a short-lived access token (`_values_for_agent`, `backend/api/services/data_layer/secrets.py`; `OauthFlow.fresh`, `backend/api/services/oauth.py`) |
+| a decrypted credential | the backend, which decrypts it; the runtime, for one call; the worker of the agent it was granted to | the model; the app. For a connected account the refresh token stays in the backend and the agent receives only a short-lived access token (`_values_for_agent`, `backend/api/services/data_layer/secrets.py`; `OauthFlow.fresh`, `backend/api/services/oauth.py`); a credential a person typed (an API key, a password) reaches the agent's code as it is. The worker is kept running between calls, so its code could keep what it was handed |
 | a model's API key | the backend; the runtime, in memory, after `Settings:Llm:Use` | agents' code: a function that declares `llm: true` asks the runtime to call the model for it (`Call.llm`, `ai_runtime/execution/call.py`) |
 | the trail | `ai_audit`, appended through `AuditStore.append` (`backend/database/stores/audit.py`); the gateway offers no update or delete of it | anyone through the platform's API. Whoever administers the database can still edit it |
 
@@ -157,7 +159,7 @@ these promises are weaker than they sound.
 | Adversary | Can | Is held by | Section |
 |---|---|---|---|
 | **the model** (wrong, not hostile) | emit any action the vocabulary has, with any inputs; write any prose | every action is validated and gated outside the model; grants deny by default; the level gate; evidence drawn only from the trace | 2, 5, 6 |
-| **an injector** (author of a mail, page, file, or an agent's result) | choose text the model reads, and so steer what it proposes | the same gates; none of grants, level, manifest hosts, approval hash or credential binding derives from model output; a Deny refuses the hosts a call named to the whole agent for the rest of the ask (`Assistant._refused_already`, `ai_runtime/mind/assistant.py`) | 2, 5 |
+| **an injector** (author of a mail, web page, file, or an agent's result) | choose text the model reads, and so steer what it proposes | the same gates; none of grants, level, manifest hosts, approval hash or credential binding derives from model output; a Deny refuses the hosts a call named to the whole agent for the rest of the ask (`Assistant._refused_already`, `ai_runtime/mind/assistant.py`) | 2, 5 |
 | **an agent's author** (code and dependencies) | arbitrary code in the worker during a call: what the call was handed, its home, its declared hosts | an administrator's approval, after which the package is pinned by digest; resource mediation per declared operation; a uid of its own, Landlock, seccomp, limits; egress only through the proxy to declared hosts; dependencies built by a separate confined user | 7, 8, 9 |
 | **another person** | their own session, cookie or API key | sessions resolved per request; policies deny by default; chats and records bound to their owner; a browser socket is checked for `Origin` when it carries a cookie (`AccessController._same_site`, `backend/server/authentication/access.py`) | 4 |
 | **another organization** | its own administrators and approvals | approval refs (`agt_…`) are minted per organization; sources and packages are per organization | 4, 7 |

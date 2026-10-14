@@ -440,7 +440,11 @@ start → running ──────────────→ done / failed / 
   and idles. The decision — seconds or days later, live session or
   freshly hydrated — arrives as the `approval_decided` frame,
   re-verified by the executor's existing action-hash and grant gates
-  before anything runs. The same call made with `invoke` holds its beat
+  before anything runs. Before a yes is delivered the chat's contract
+  is read again (`SessionHost.refresh`), so the call is held to the
+  grants as they are now, not as they were when the card opened; a
+  grant narrowed meanwhile refuses it `not_permitted`. The level is not
+  judged again: the yes is to the call as it was shown. The same call made with `invoke` holds its beat
   until the card is answered (`Cards.approve`), or until the person
   writes, when it goes on waiting as a job.
 - **A card nobody will answer is closed.** A call stopped while its

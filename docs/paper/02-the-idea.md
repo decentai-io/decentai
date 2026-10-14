@@ -61,13 +61,15 @@ more than it needs. Arranged from most trusted to least:
 
 ```mermaid
 flowchart TB
-    B["<b>Backend</b><br/>holds the vault's keys<br/>decides every permission"]
-    R["<b>Runtime</b><br/>runs the assistant<br/>gates every call"]
-    S["<b>Spawner</b><br/>starts agents' processes<br/>decides nothing"]
-    W["<b>Worker</b> (an agent's code)<br/>assumed hostile"]
-    M["<b>The model</b><br/>holds nothing<br/>only proposes"]
-    B --> R --> S --> W
-    M -. "text: a suggested next step" .-> R
+    B["Backend - holds the keys, decides permissions"]
+    R["Runtime - runs the assistant, gates every call"]
+    S["Spawner - starts agents, decides nothing"]
+    W["Worker - an agent's code, assumed hostile"]
+    M["The model - holds nothing, only proposes"]
+    B --> R
+    R --> S
+    S --> W
+    M -.->|"text: a suggested next step"| R
 ```
 
 - **The backend** holds the keys to everything stored, and is the only
@@ -116,9 +118,9 @@ what happens to the proposal:
 - **The mail agent can reach only Google's mail service**, because
   that is the one host its manifest declared. Nothing in it can quietly
   upload the mailbox somewhere else.
-- **The model never had your mail password.** It was lent to the mail
-  agent's code for one call, by the platform, and it never passed
-  through the model.
+- **The model never had your Google access.** The platform handed it
+  to the mail agent's code for the call that needed it, and it never
+  passed through the model.
 
 So the attack, at worst, becomes a strange request on your screen that
 you decline. The model was fooled; the platform was not, because the
@@ -188,11 +190,11 @@ default); a storage reference among the inputs is replaced by the
 stored value, read from this chat's own storage, before anything else
 looks at it; the inputs must validate against the manifest's schema;
 the scopes the call names are held to what the grant narrowed; and
-after the worker answers, the output must validate too. A call
-resumed after a restart runs the gates again against the grants as
-they are now, so an approval does not outlive the entitlement it was
-given under; a call approved while it was still waiting in memory runs
-on the gates it already passed ([section 5](05-the-assistant.md)). None of them reads the
+after the worker answers, the output must validate too. An approved
+call is held to the grants as they are when the yes arrives, not as
+they were when the card opened, whether it waited in memory or was
+resumed after a restart, so an approval does not outlive the
+entitlement it was given under ([section 5](05-the-assistant.md)). None of them reads the
 model's prose.
 
 ### What prompt injection can and cannot reach
@@ -216,7 +218,7 @@ is exactly the person's answer to "how much may run without asking me";
   (`DEFAULT_TTL_SECONDS`, `backend/api/services/chat_session/identity/delegation.py`),
   is renewed while the chat's socket is open, and is withdrawn early
   when the chat is deleted, the person is disabled or presses stop
-  everything; closing the page does not withdraw it. Within those, it
+  everything; closing the app does not withdraw it. Within those, it
   could read what each such person may see and call the actions on
   `RUNTIME_ENDPOINTS` for them — and since the level gate runs in the
   runtime, run their granted functions without opening a card. It

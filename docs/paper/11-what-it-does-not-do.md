@@ -13,7 +13,7 @@ The limits are of three kinds, and it matters which is which.
   does.
 - **Not yet done.** A question the code review of October 2026 raised
   and nobody has decided. The code does something; whether it is the
-  right thing is open. There are 138 of these, written down one per
+  right thing is open. There are 137 of these, written down one per
   row, each with the file it is about.
 - **Where it runs.** What the platform borrows from Linux and the
   container engine, it also inherits the limits of.
@@ -89,7 +89,11 @@ mail agent holds your mail credential, decrypted, and may connect to
 the mail service it declared. What it sends there is its own doing; the
 platform's proxy sees which host and how many bytes, never the
 contents. An agent that writes a credential into its own log has
-written it there. *Chosen*: reading inside encrypted traffic would mean
+written it there, and since its process is kept running between
+calls, code that wanted to could keep what it was handed. For a
+connected account that is an access token, which stops working when it
+expires (about an hour, for Google); a key or password a person typed works until they
+change it. *Chosen*: reading inside encrypted traffic would mean
 the platform impersonating every site. What helps: an administrator
 reads the manifest and the code before approving, and a host the
 manifest did not name cannot be reached at all.
@@ -190,7 +194,7 @@ took over the runtime could use the keys it holds — in practice, those
 of people with a chat open or a schedule running — and nobody else's.
 Not the database, not the encryption keys, not who may do what. A key
 lasts an hour from when it was handed over and is renewed while a chat
-stays connected; closing a page does not withdraw it at once. Deleting
+stays connected; closing the app does not withdraw it at once. Deleting
 the chat, disabling the person, or the person's own stop-everything
 switch does. Since the level is checked in the runtime, it could run
 those people's granted functions without a card; it could not answer a
@@ -240,10 +244,10 @@ reason above.
 keeps a call's inputs as the model proposed them, with short text kept
 whole. So a password someone typed as an input, or a secret an agent
 put in an error message, can land on the trail, which the platform
-only adds to. And not every act leaves a line: a failed write is only
-logged, stopping one chat writes none, and reminders the assistant sets
-are not on it.
-*Not yet done* (EXE-11).
+only adds to. *Not yet done* (EXE-11). And a line the database refuses
+twice is kept in the platform's error log, not on the trail; the act
+it describes still happens. *Chosen*: the trail is a witness, not a
+gate.
 
 **Memory about a person is not shared.** What the assistant was told
 to remember belongs to one person and has no way to be shared with a
@@ -341,7 +345,7 @@ server on the local network is the usual case and adding a connection
 is an administrator's act; and the proxy reads only the address a name
 resolves to, never how it was spelled.
 
-The 138 open questions fall into a few families:
+The 137 open questions fall into a few families:
 
 | Family | What it is | Examples |
 |---|---|---|

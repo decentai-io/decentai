@@ -108,7 +108,7 @@ publishes, run against this version of the platform.
 ## The questions left open, published
 
 The same review found things that were not bugs but choices, where the
-code does one thing and another might be better. There are 138 of
+code does one thing and another might be better. There are 137 of
 them, and they are published, each with the file and function it is
 about and whether the reviewer ran it or only read it. They are not
 hidden in a private list: anyone deciding whether to trust the
@@ -131,7 +131,7 @@ It matters as much to say what is not tested.
   past them, and no test can rule one out.
 - **That the automated checks pass today.** This paper says what they
   run, not what they last reported. That is for the reader to see.
-- **What the open questions describe.** Each of the 138 is behaviour as
+- **What the open questions describe.** Each of the 137 is behaviour as
   it is, and some are limits the paper repeats in [section 11](11-what-it-does-not-do.md).
 
 ## Check it yourself
@@ -278,7 +278,7 @@ it.
 
 [The open questions](../contributing/open-questions.md): the review
 read the code on 7–10 October 2026. Bugs, documentation gaps and
-unused code were fixed then; 138 design questions are left for a
+unused code were fixed then; 137 design questions are left for a
 decision, each with its place and whether it was run or read, and a
 short list of what was left as it is on purpose. The questions are
 behaviour as it stands; several are limits this paper states, among

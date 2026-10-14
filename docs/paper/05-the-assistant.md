@@ -57,7 +57,7 @@ sequenceDiagram
     participant R as Platform
     P->>R: the request
     R->>A: beat: the request arrives
-    A->>R: plan: find overdue · email three · set Friday check
+    A->>R: plan: find overdue, email three, set Friday check
     A->>R: open_agent sheet
     A->>R: invoke sheet: list overdue invoices
     R-->>A: three rows, kept in storage under a reference
@@ -69,8 +69,18 @@ sequenceDiagram
     A->>R: finish, waiting for the sends
     P->>R: yes, yes, yes
     R->>A: beat: three sends finished
-    A->>R: say "Sent all three; I'll check on Friday."
+    A->>R: say: Sent all three, I will check on Friday
 ```
+
+In words: the request reaches the platform, which hands it to the
+assistant as a beat. The assistant answers with a plan, opens the sheet
+agent and asks it for the overdue invoices; the three rows come back
+and are kept in storage under a reference. It opens the mail agent,
+drafts one email per customer, and starts the three sends, which the
+platform turns into three approval cards for the person. It sets the
+Friday check on the clock and finishes, waiting. The person approves
+all three; when the sends finish, the platform wakes the assistant
+again, and it says that all three were sent.
 
 Every arrow from the assistant is a proposal. The sheet agent was
 reached because the person was granted it; the emails waited for the
@@ -118,6 +128,13 @@ and can change neither number.
   the background, and the next beat reads what they wrote. A reply the
   model was still composing is thrown away and asked for again with the
   new words in front of it.
+- **Several messages are read together.** If the person sends three
+  messages while the assistant is busy, all three are taken in, in the
+  order they were sent, before its next step, so that step sees them
+  all.
+- **A message saying "stop" is words, not a switch.** The model reads
+  it and will usually stop, but the platform does not enforce it. The
+  stop that is enforced is the **Stop** button ([section 10](10-stopping-and-watching.md)).
 - **Stop means stop.** The stop button ends the call under way, cancels
   the jobs, and leaves a line saying the person stopped it, so nothing
   picks the work up again unasked.
@@ -250,7 +267,7 @@ evidence. On every successful call, `_record` attaches the result's
 the model names must be in `Acts.proven()` (`ai_runtime/mind/acts.py`):
 storage refs of successful trace entries and ids of jobs that ended
 `done`. `done` without evidence is accepted, and rendered
-`done, UNVERIFIED` to the model and `done · unverified` on the page.
+`done, UNVERIFIED` to the model and `done · unverified` in the app.
 `blocked` needs a blocker; `active` needs its `depends_on` done. When
 the person writes and every item is `done`, the plan is cleared.
 
@@ -273,9 +290,14 @@ person could not be asked — not that they refused.
 The decision returns as `approval_decided` with the backend's copy of
 the hash (`backend/api/endpoints/app/ai/approval_controller.py`, which
 refuses a decision from a runtime principal). `Session.deliver_approval`
-(`ai_runtime/chat/session.py`) routes it. If the asking call is alive in
-this process, its waiter is settled and the executor continues with the
-same in-memory inputs that were put on the card. If the process that
+(`ai_runtime/chat/session.py`) routes it. Before a yes is delivered,
+`SessionHost.refresh` (`ai_runtime/door/host.py`) reads the chat's
+contract again. If the asking call is alive in this process, its waiter
+is settled and the executor continues with the same in-memory inputs
+that were put on the card, but only if the grants as they are now still
+reach the function and allow its scopes; otherwise the call is refused
+`not_permitted`. The level is not judged again: the yes is to the call
+as it was shown. If the process that
 parked it died, the call is rebuilt from the saved park and run through
 `resume_invoke`: every gate again against the *current* grants and
 manifest, and the hash recomputed — any difference blocks execution.
@@ -298,7 +320,13 @@ nothing else. `invoke` runs the call as a task and waits on
 persists the message, records it in the inbox, and calls
 `Assistant.person_spoke`, which sets `spoke` and cancels an in-flight
 model call (its reply dropped, its beat uncounted). If `spoke` wins,
-`_to_background` turns the running call into a job. A stop cancels the
+`_to_background` turns the running call into a job. Every message that
+arrived meanwhile is absorbed by `Assistant._drain`, which empties the
+inbox in sequence order at the top of each cycle of `run`, before the
+next beat — so several messages reach the model together, in order. A
+message reading "stop" is a `user_message` like any other; only
+`AI:Chat:Stop` (the Stop button, [section 10](10-stopping-and-watching.md))
+posts the `stop` event the cycle obeys. A stop cancels the
 model call or foreground call at once (`interrupt`); on absorption the
 jobs are cancelled and awaited for up to 15 s, and `stopped` is saved so
 a rebuilt session rests. A job whose process died is settled at

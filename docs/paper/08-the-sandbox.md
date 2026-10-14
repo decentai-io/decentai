@@ -58,16 +58,21 @@ website, or touch the platform.
 
 Each promise is kept by a separate mechanism, so that a gap in one is
 not a gap in all. They are applied in a fixed order every time an
-agent's process starts:
+agent's process starts. The spawner, running as the platform's own
+user, starts a small spawn helper. The helper (1) sets limits on
+processes, open files and file size; (2) gives up the right to gain
+privileges; (3) becomes the agent's own user; (4) puts up the file
+fence (Landlock); (5) applies the system-call filter (seccomp). Only
+then does the agent's code run.
 
 ```mermaid
 flowchart LR
-    A["spawner<br/>(platform's user)"] -->|starts| H["spawn helper"]
-    H --> L["1 · limits<br/>processes, files, file size"]
-    L --> N["2 · give up the right<br/>to gain privileges"]
-    N --> U["3 · become the<br/>agent's own user"]
-    U --> F["4 · file fence<br/>(Landlock)"]
-    F --> C["5 · system-call filter<br/>(seccomp)"]
+    A["spawner, the platform's user"] -->|"starts"| H["spawn helper"]
+    H --> L["1. limits"]
+    L --> N["2. no new privileges"]
+    N --> U["3. the agent's own user"]
+    U --> F["4. file fence, Landlock"]
+    F --> C["5. system-call filter, seccomp"]
     C --> W["agent's code runs"]
 ```
 
@@ -115,9 +120,10 @@ It is as important to say what it does not do.
   given it. The organization's decision to approve an agent is the line
   the sandbox holds.
 - **It does not stop an agent misusing what it was rightly given.** The
-  mail agent holds your mail credential during a call. What it does
-  with your mailbox is its own doing; reading its manifest and code
-  before approving is the answer to that.
+  mail agent holds your mail credential during a call, and since its
+  process is kept running between calls, code that wanted to could
+  keep it. What it does with your mailbox is its own doing; reading its
+  manifest and code before approving is the answer to that.
 - **It does not replace the container,** and containers on one machine
   share the machine's kernel. A flaw in the kernel itself is a way past
   all of it. The system-call filter exists to make such flaws harder to

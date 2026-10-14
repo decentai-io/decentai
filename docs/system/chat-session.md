@@ -56,7 +56,7 @@ and answered to the runtime's own service token
 | readiness | `Agents:Package:Prepared` (the runtime as itself) | the runtime's word that a package is ready on it, or would not build and why — [below](#readiness) |
 | `pending_cards(kind)` / `expire_card` | `AI:Approval:List` / `AI:Approval:Expire` | every open card on the chat, or those of one kind (the questions a session opening finds left by a dead process; everything a kill expires), and closing one: a question nobody answered in a day, or a card whose call was stopped |
 | `store_result` / `read_result` | `AI:Storage:Create` / `AI:Storage:Get` | `ai_chat_storage` |
-| `record_audit` | `AI:Audit:Record` | `ai_audit`: one `execution` event per call the executor was asked for, whatever its outcome — one the gates refused, one the person denied, one that was cancelled and one the platform failed on included — agent, function, level, the inputs in outline, outcome, duration, the stored result's ref, and the model the chat was thinking with. The person reads their trail with `AI:Audit:List`; the organization's whole trail is `AI:Audit:List_all`, a grant of its own |
+| `record_audit` | `AI:Audit:Record` | `ai_audit`: one `execution` event per call the executor was asked for, whatever its outcome — one the gates refused, one the person denied, one that was cancelled and one the platform failed on included — agent, function, level, the inputs in outline, outcome, duration, the stored result's ref, and the model the chat was thinking with; the answer says whether the line was stored (`recorded`). The person reads their trail with `AI:Audit:List`; the organization's whole trail is `AI:Audit:List_all`, a grant of its own |
 | `list_skills` / `read_skill` | `Skills:Skill:List` / `Skills:Skill:Get` | the data layer's skills |
 | `list_memories` / `add_memory` | `Settings:Memory:List` / `Settings:Memory:Create` | the person's memories |
 | `save_plan` | `AI:Chat:Plan` | `ai_chats.plan` |
@@ -155,6 +155,9 @@ written into the state (`stopped`) and the transcript, state persisted,
 a `stopped {jobs, children, cards}` event relayed — and forgets the
 session. The session built for the next message reads that the chat was
 stopped and rests until something is asked of it; a message is answered.
+A stop, with `force` or without, is on the audit trail as `chat.stopped`:
+whether it was forced, how many cards were expired, and whether the
+runtime was reached.
 
 No runtime serving the chat: the record is still quiet and the page says
 so.
@@ -183,7 +186,9 @@ row it took off.
 
 A chat holds at most 50; one-shots that already ran make room. `Ran`
 answers `gone` for a row the person deleted meanwhile, and the clock
-drops it.
+drops it. A row `Add` puts on the clock and one `Remove` takes off are
+on the audit trail as `schedule.created` and `schedule.deleted`, with
+`by: "assistant"`.
 
 The person's own doors (only a function the person was given, and that
 its manifest calls schedulable) — `AI:Schedule:Create` / `Update`

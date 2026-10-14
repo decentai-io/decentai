@@ -46,10 +46,29 @@ token, so no email it reads can talk it into giving the token away.
 
 ## One shape for everything stored
 
-A credential, a file, a skill and an agent's record could each have
-been built with their own rules — which is how one of them ends up
-missing a check the others make. So every stored thing is the same
-document, and the rules that matter are written once:
+The vault keeps four kinds of thing:
+
+- **credentials** — secrets: a key or password a person typed, and the
+  connected accounts they signed in to. Each is made from a
+  **definition**, a template that says which fields it has and which
+  of them are sealed;
+- **records** — what an agent keeps for a person;
+- **files** — what people upload, and what agents make;
+- **skills** — knowledge a person writes down for the assistant to
+  read.
+
+Each could have been built with its own rules — which is how one of
+them ends up missing a check the others make. So every one of them is
+the same document, and the rules that matter are written once. A
+person's **MCP servers** (tool servers outside the platform) are kept
+in the same document too, but are their own: each is reached with its
+owner's credential and serves only its owner's chats. A few other
+stored things are not documents of this shape but have their secret
+part sealed the same way: the keys of the organization's model
+connections, the client secrets of its registered sign-in apps, and
+the token a source uses to read a private repository.
+
+The shape:
 
 | Part | What it is | The Google account |
 |---|---|---|
@@ -61,8 +80,8 @@ document, and the rules that matter are written once:
 
 Keys can be searched and shown in a list; values cannot be searched at
 all, because they are sealed. A credential puts its account in keys,
-so a person can tell two apart, and its token in values, so no page can
-show it.
+so a person can tell two apart, and its token in values, so the app
+can never show it.
 
 ## Seeing is a filter, not a check
 
@@ -113,30 +132,37 @@ database, with a standard, well-studied cipher (AES-256-GCM).
   which key sealed it. A new key is added, everything is resealed with
   it, and only then is the old one retired.
 
-If a value cannot be opened — its key is missing — a page still shows
+If a value cannot be opened — its key is missing — the app still shows
 everything else and marks that one unreadable, never empty; an agent
 asking for a credential gets an error, never an empty password.
 
-A credential's sealed half is **never shown back to a person**, by any
-page, under any permission. They can see the provider, the host and the
+A credential's sealed half is **never shown back to a person**,
+anywhere in the app, under any permission. They can see the provider, the host and the
 account; to change a password, they type a new one.
 
 ## The path a secret travels
 
 ```mermaid
 flowchart LR
-    DB[("database<br/>sealed")] --> B["<b>backend</b><br/>opens it, refreshes<br/>the access token,<br/>drops the refresh token"]
-    B -->|"for one call,<br/>under the chat's delegation"| R["<b>runtime</b><br/>carries it"]
-    R -->|"through the spawner,<br/>unread"| W["<b>the granted agent's<br/>worker</b>"]
-    M["the model"] -. "never" .- B
-    P["any page"] -. "never" .- B
+    DB[("database, sealed")] --> B["backend opens it"]
+    B -->|"for one call, under the delegation"| R["runtime carries it"]
+    R -->|"through the spawner, unread"| W["the granted agent's worker"]
+    M["the model"] -.-|"never"| B
+    P["the app"] -.-|"never"| B
 ```
 
 A decrypted secret exists in the backend, which opens it; in the
 runtime, which carries it for one call; and in the worker of the agent
 it was granted to. On the way it passes through the spawner of
 [section 8](08-the-sandbox.md), which relays the line without reading it. It is never put in front
-of the model and never sent to a page.
+of the model and never sent to the app.
+
+What reaches the worker depends on the kind of credential. For a
+connected account, the backend first makes sure the access token is
+still good — refreshing it if not — and removes the refresh token, so
+the worker gets only the short-lived access token. A credential a
+person typed — an API key, a password — reaches the worker as it was
+typed.
 
 ## Lending, and taking back
 
@@ -186,9 +212,13 @@ token.
 - **It does not stop an agent misusing a credential it was lent.** And
   an agent that put the token into its result would pass it on: results
   are checked against the manifest's schema, not searched for secrets.
-- **It does not take the token back from the agent's memory.** The
+- **It does not take a credential back from the agent's memory.** The
   runtime forgets it after the call; the agent's process is kept warm
-  between calls, and code that wanted to could keep it.
+  between calls, and code that wanted to could keep it. For a connected
+  account that is an access token, good until it expires (about an
+  hour, for Google); a key or password a person typed stays good until
+  they change it. Reviewing the agent before approving it is the
+  control ([section 7](07-agents.md)).
 - **It does not seal a file's bytes on disk.** Their description is
   sealed; the bytes are stored as they are, where only the backend
   reaches.
@@ -204,7 +234,12 @@ token.
 
 Every data-layer store is a `ResourceStore`
 (`backend/database/stores/data/resources.py`), with controllers in
-`backend/api/services/data_layer/`. `_id` (served as `resource_ref`) is
+`backend/api/services/data_layer/`: `SecretStore` (`type: secret`),
+`AgentDataStore` (`data`), `FileStore` (`file`), `SkillStore`
+(`skill`) and `McpServerStore` (`mcp`, deleted with its person rather
+than handed on). Secret definitions (`DefinitionStore`,
+`secret_definitions`) are versioned templates, not resources, and hold
+nothing sealed. `_id` (served as `resource_ref`) is
 `uuid4().hex`; `resource_id` is the category (a secret's definition
 family; `agt_<ref>__<slot>` for an agent's record; for a file, the
 content id of its bytes, with its slot in `keys.category`). `keys` holds

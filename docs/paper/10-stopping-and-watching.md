@@ -87,7 +87,7 @@ does not carry on by itself.
 
 ## Stopping everything, and staying stopped
 
-At the top of every page is one more stop: **stop everything of
+At the top of every screen of the app is one more stop: **stop everything of
 mine**. It is for the moment you do not know which chat is doing what,
 and you want all of it to end.
 
@@ -130,9 +130,9 @@ organization's administrator sets them for everybody, on one page,
 - **Which packages a program may install**, and **whether anyone may
   add an MCP server** (a tool server outside the platform).
 
-Each row starts where the platform stood before the page existed:
+Each row starts where the platform stood before the Safety page existed:
 code is put to a person every time, any package may be installed, no
-site is blocked, and servers may be added. A change to the page is on the audit
+site is blocked, and servers may be added. A change on the Safety page is on the audit
 trail, with what each row was and what it became.
 
 ## The audit trail
@@ -175,11 +175,10 @@ the oldest lines fall away first.
 - **The trail is append-only by the platform's code, not by the
   database.** Someone holding the database's password could change it,
   and nothing would show that they had.
-- **Not everything leaves a line.** A line that fails to be written is
-  only noted in the platform's log, and the action still happens.
-  Stopping one chat writes no line of its own, and a reminder the
-  assistant sets is not on the trail; changes you make on the
-  Schedules page are.
+- **A line can miss the trail.** A line the database will not take is
+  tried again; refused twice, it is written whole to the platform's
+  error log, for an operator to put back, and the action still
+  happens.
 - **The trail records what was asked, in outline.** If you type a
   password into the chat and the assistant passes it to an agent, the
   first part of it can appear on the trail; so can a secret an agent
@@ -221,7 +220,7 @@ zone when it names none), `delay_seconds`, `every_seconds`.
   An overdue row fires once and advances from now (`Schedule.advance`).
   A row keeps its last 20 runs, each with at most 400 characters of
   result. A **sleep**, the assistant's own one-off wake, is one per
-  chat, at most 24 h, and never on the page.
+  chat, at most 24 h, and never on the Schedules page.
 - **The store.** `ScheduleStore` (`backend/database/stores/chats.py`,
   collection `ai_schedules`): one document per chat, `MAX_ROWS = 50`;
   a full chat first drops one-offs that already ran. The runtime and
@@ -320,7 +319,8 @@ refused in the backend (`backend/api/services/data_layer/mcp.py`).
 | `execution` | the runtime, `FunctionExecutor._record` (`ai_runtime/execution/executor.py`), through `AI:Audit:Record` | agent, function, declared level, chat level, outcome (`success`, `error`, `denied`, `refused`), duration, inputs in outline, error up to 500 characters, up to 20 hosts reached with connection counts, storage ref |
 | `approval.requested`, `approval.resolved` | the backend, at the card | the function, its level and the chat's, the kind of card; then the decision, or that the Safety setting settled it |
 | `secret.use`, `llm.use` | the backend, where a credential or model key is served | the credential's reference, never its value |
-| `agent.*`, `agent_source.*`, `credential.*`, `schedule.*`, `settings.safety`, `mcp.added`, `user.*`, `work.*` | the backend, at each controller | what changed; the Safety setting with each row before and after |
+| `agent.*`, `agent_source.*`, `credential.*`, `schedule.*`, `settings.safety`, `mcp.added`, `user.*`, `work.*` | the backend, at each controller | what changed; the Safety setting with each row before and after; a schedule the assistant added or removed (`AI:Schedule:Add` / `Remove`) has `by: "assistant"` |
+| `chat.stopped` | the backend, `AI:Chat:Stop`, with or without `force` | `force`, how many cards were expired, whether the runtime was reached |
 | `platform.action` | the gateway, `_audit_action` (`backend/api/api_router.py`) | every action that is not a read, outside `ai:` and `agents:package:`: endpoint, outcome (`success`, `denied`, `failed`), status, a reason of at most 300 characters, never the payload |
 
 The runtime may write only `execution` (`AuditController.RUNTIME_TYPES`),
@@ -338,8 +338,10 @@ nothing in the backend calls an update or a delete on the collection
 action exposes one. The collection's validator in
 `backend/database/schema.json` checks only the types of `chat_id` and
 `timestamp`; there is no TTL index, so nothing ages out; there is no
-hash chain. A failed append is logged and the operation goes on:
-auditing is a witness, not a gate.
+hash chain. `AuditStore.append` tries twice; a line refused both times
+is written whole to the error log at CRITICAL and `append` returns
+false (`AI:Audit:Record` answers the runtime `recorded: false`), while
+the operation goes on: auditing is a witness, not a gate.
 
 **Reading.** `ai:audit:list` is in every person's baseline: their own
 lines, across their chats or in one. `ai:audit:list_all`, the

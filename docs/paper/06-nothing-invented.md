@@ -31,14 +31,14 @@ There are four kinds of thing, and each has a rule.
 1. **Tables and charts** appear only when the model asked to show one
    *and* the record proves it is real: it must be the stored result of a
    call that succeeded in this conversation, and the part of it shown
-   must be a list the agent declared it returns. The page then fetches
+   must be a list the agent declared it returns. The app then fetches
    the rows from storage. The model chooses the title and which columns
    to show; it never supplies a value.
 2. **Files** appear when a call in this piece of work created one, as
    the agent's own declaration of its outputs says. The model does not
    name them; it cannot attach a file that was not produced.
 3. **Writes** — a record saved, an email sent — are written down with
-   the message as quiet marks the page keeps but does not draw. They
+   the message as quiet marks the app keeps but does not draw. They
    are there for whoever audits the conversation later, not as a second
    voice in it.
 4. **A line of the platform's own** appears only when the model said
@@ -61,7 +61,7 @@ late."* Beneath that sentence sits a table of the three invoices —
 customer, amount, due date. The model asked for that table by naming
 the stored result and the columns it wanted. The platform checked that
 the result was a real, successful call and that *invoices* is a list
-the sheet agent declares, and the page drew the rows from storage.
+the sheet agent declares, and the app drew the rows from storage.
 
 If the model had misread an amount in its sentence, the table would
 still show the right one, because the table never passed through the
@@ -83,7 +83,7 @@ the coat and get a ticket.
 
 That ticket changes how work flows.
 
-- **The page shows the coat, not a description of it.** A table is
+- **The app shows the coat, not a description of it.** A table is
   drawn by fetching the stored rows by their ticket.
 - **The next call can take the ticket.** If the mail agent needs the
   list of overdue invoices, the model passes the reference, and the
@@ -102,8 +102,14 @@ is paid for twice and is twice as likely to come back changed.
 ## Checked before it is believed
 
 "From a real result" would mean little if the result could be anything.
-So every result is checked against the agent's declaration of what it
-returns **before** it is stored, and before anything is shown from it.
+First, what "result" means here. The platform never sees the traffic
+between an agent's code and the service it talks to — Google, say. The
+proxy carries those bytes without reading them; to Google they are
+encrypted end to end.
+The result is the agent's *answer to the call*: what its function hands
+back to the platform when it is done. That answer is checked against
+the outputs the agent's manifest declared **before** it is stored,
+before the model is shown it, and before anything is shown from it.
 An agent that says it returns a list of invoices and returns something
 else gets an error, not a table. The few fields only the platform may
 write on a result — where it was stored, what it offered to show — are
@@ -143,21 +149,30 @@ Only trace entries with `status: "success"`, a dict result, and a
 function the agent's manifest declares are evidence of anything
 (`Evidence._successes`). The prose is never parsed.
 
+`Evidence.compose` takes a `say` and builds its parts. Each `show` item
+names either a display a successful call offered, or a successful
+call's stored result with a path to a declared array output that has
+rows; either becomes a table or graph part, and anything else becomes a
+reason sent back to the model, never shown to the person. Writes since
+the last say become success parts, files become file parts, and an
+empty text gets one line drawn from the trace (`Evidence._silent`).
+
 ```mermaid
 flowchart TB
-    S["say {text, show?}"] --> C["Evidence.compose"]
+    S["say: text and show"] --> C["Evidence.compose"]
     C --> T{"each show item"}
-    T -->|"display id"| D["a display a successful call offered?"]
-    T -->|"storage_ref"| R["a successful call's stored result?"]
-    R --> P["path a declared array output, with rows?"]
-    D -->|yes| OK["table or graph part"]
-    P -->|yes| OK
-    D -->|no| NO["reason back to the model, never the person"]
-    P -->|no| NO
-    C --> W["writes since last say → success parts"]
-    C --> F["files since last say → file parts"]
+    T -->|"display id"| D{"a display a successful call offered?"}
+    T -->|"storage_ref"| R{"a successful call's stored result?"}
+    R -->|"yes"| P{"path a declared array output, with rows?"}
+    R -->|"no"| NO
+    D -->|"yes"| OK["table or graph part"]
+    P -->|"yes"| OK
+    D -->|"no"| NO["reason back to the model, never the person"]
+    P -->|"no"| NO
+    C --> W["writes since last say become success parts"]
+    C --> F["files since last say become file parts"]
     C --> Q{"text empty?"}
-    Q -->|yes| L["Evidence._silent: one line from the trace"]
+    Q -->|"yes"| L["Evidence._silent: one line from the trace"]
 ```
 
 ### Shows
@@ -175,7 +190,7 @@ source}`. A display (`call.show.table` / `call.show.chart`, see
 result lists it; it becomes a `table` or `graph` part. Each refusal
 reason goes back to the model as `{"said": true, "not_shown": [...]}`.
 
-The page (`frontend/src/app/pages/app/ai/chat/chat-detail/chat-detail.component.ts`,
+The web app (`frontend/src/app/pages/app/ai/chat/chat-detail/chat-detail.component.ts`,
 `hydrateStoragePart`) reads the rows with `AI:Storage:Get` under the
 person's own session, walking `path` as a dot-path, and keeps only the
 model's columns that occur in the rows. The title is the one value in
@@ -186,7 +201,7 @@ the part that the model wrote.
 `Evidence.writes`: every successful entry whose function's
 `permission_level` is not 0 becomes
 `{type: "success", text: "Verified: <function name>", storage_ref?,
-source}`. The page keeps these parts and does not render them
+source}`. The web app keeps these parts and does not render them
 (`frontend/src/app/pages/app/ai/chat/chat-message/chat-message.component.html`
 draws `markdown`, `table`, `graph` and `file`).
 
@@ -228,7 +243,11 @@ After the gates ([section 5](05-the-assistant.md)), `FunctionExecutor._execute`
 1. refuses to run a function whose declared `inputs` or `outputs` is not
    a valid JSON Schema — so a function cannot do its writes and only
    then fail validation;
-2. runs the call in the agent's worker, under its timeout;
+2. runs the call in the agent's worker, under its timeout; what comes
+   back is the function's return value on the worker's line — the
+   worker's own connections out pass through the proxy, which checks
+   the host and does not inspect what is sent (an HTTPS connection is
+   a `CONNECT` tunnel it cannot read);
 3. strips `PLATFORM_KEYS` — `storage_ref`, `displays`, `denied`,
    `not_permitted` — from what the worker returned;
 4. validates the result against the declared `outputs` (Draft 2020-12,

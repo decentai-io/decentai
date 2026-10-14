@@ -31,7 +31,7 @@ closer look at one step of it:
 | 0 | [Summary](00-summary.md) | the claims, each with the section that keeps it |
 | 1 | [The problem](01-the-problem.md) | an assistant that does things can invent, overstep and leave no trace, and its tools are strangers' code |
 | 2 | [The idea](02-the-idea.md) | the model proposes, the platform disposes: an operating system in which the AI holds no authority at all |
-| 3 | [One request, end to end](03-one-request.md) | the example, followed from the page to an agent and back |
+| 3 | [One request, end to end](03-one-request.md) | the example, followed from the app to an agent and back |
 | 4 | [Who you are, and what you may do](04-who-you-are.md) | nothing allowed by default, checked on every request, and two invariants |
 | 5 | [The assistant](05-the-assistant.md) | small steps, a plan that needs proof, and a person's yes for what costs more than the chat allows |
 | 6 | [Nothing invented](06-nothing-invented.md) | what you see beside the AI's words was read from a real result |
