@@ -1,5 +1,6 @@
 # Every suite CONTRIBUTING.md names, and the ones a laptop cannot run:
-# the confinement tests need the runtime's image and a Linux kernel.
+# the confinement tests need the runtime's and the agents' containers
+# on a Linux kernel.
 # On every pull request, and on main when one lands.
 name: tests
 
@@ -63,32 +64,35 @@ jobs:
       - run: python -m pytest tests -q
 
   confinement:
-    name: confinement, in the runtime's image
+    name: confinement, in the runtime's and the agents' containers
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
       LIVE: ai_runtime/tests/spawner-live.compose.yml
     steps:
       - uses: actions/checkout@v4
-      - run: docker build -f ai_runtime/Dockerfile -t decentai-ai-runtime .
+      - run: docker compose -f "$LIVE" up -d --build
       # What the kernel under this run can hold a worker to; the tests
       # of what it cannot are skipped, and say so.
-      - run: docker run --rm decentai-ai-runtime sh -c 'uname -r; cat /sys/kernel/security/lsm 2>/dev/null || true'
-      - name: one container
+      - run: docker compose -f "$LIVE" exec -T agents sh -c 'uname -r; cat /sys/kernel/security/lsm 2>/dev/null || true'
+      # Both files skip everywhere but this stack. A file of which
+      # nothing passed was skipped whole, and that fails the job: a
+      # green run must have run the hostile agent.
+      - name: the hostile agent, in the runtime and the agents' container
         run: |
-          docker run --rm --init --cap-add NET_ADMIN -v "$PWD:/src:ro" -w /src \
-            decentai-ai-runtime sh -c '
-              python -m venv --system-site-packages /tmp/t &&
-              /tmp/t/bin/pip install -q pytest &&
-              /tmp/t/bin/python -m pytest -p no:cacheprovider --tb=short -rs \
-                ai_runtime/tests/test_confinement_live.py -q'
-      - name: the runtime and the agents' container
-        run: |
-          docker compose -f "$LIVE" up -d --build
           docker compose -f "$LIVE" exec -T -u decentai -w /src runtime sh -c '
             pip install -q --target /tmp/pytest pytest &&
             PYTHONPATH=/tmp/pytest python -m pytest -p no:cacheprovider \
-              --tb=short -rs ai_runtime/tests/test_spawner_live.py -q'
+              --tb=short -rsp -q \
+              ai_runtime/tests/test_confinement_live.py \
+              ai_runtime/tests/test_spawner_live.py > /tmp/live.txt 2>&1
+            status=$?
+            cat /tmp/live.txt
+            [ "$status" -eq 0 ] || exit "$status"
+            for f in test_confinement_live.py test_spawner_live.py; do
+              grep -q "^PASSED ai_runtime/tests/$f::" /tmp/live.txt ||
+                { echo "nothing in $f ran: every test was skipped"; exit 1; }
+            done'
       - if: failure()
         run: docker compose -f "$LIVE" logs --tail 200
       - if: always()

@@ -4,17 +4,17 @@ An agent that is hostile on purpose: each thing it tries is one a
 worker could do before it had a user of its own, and the test passes
 when the attempt is refused.
 
-These run where the helper is — the runtime's image — and are skipped
-everywhere else. The image's own first step sets the firewall rule and
-starts what follows as the runtime's user; without NET_ADMIN the tests
-of the network are skipped too:
+These run in the runtime's container of the stack test_spawner_live.py
+runs in, the helper being in the agents' container beside it, and are
+skipped everywhere else (CI runs the two files together):
 
-    docker run --rm --init --cap-add NET_ADMIN \
-        -v <repository>:/src:ro -w /src <runtime image> sh -c '
-            python -m venv --system-site-packages /tmp/t &&
-            /tmp/t/bin/pip install -q pytest &&
-            /tmp/t/bin/python -m pytest -p no:cacheprovider --tb=line \
-                ai_runtime/tests/test_confinement_live.py -q'
+    docker compose -f ai_runtime/tests/spawner-live.compose.yml up -d --build
+    docker compose -f ai_runtime/tests/spawner-live.compose.yml exec \
+        -u decentai -w /src runtime sh -c '
+            pip install -q --target /tmp/pytest pytest &&
+            PYTHONPATH=/tmp/pytest python -m pytest -p no:cacheprovider \
+                --tb=short -rs ai_runtime/tests/test_confinement_live.py -q'
+    docker compose -f ai_runtime/tests/spawner-live.compose.yml down -v
 """
 
 import ast
@@ -84,7 +84,7 @@ def helper_works() -> bool:
 
 pytestmark = pytest.mark.skipif(
     not helper_works(),
-    reason="the spawn helper is not here; it is in the runtime's image")
+    reason="no agents' container to reach; run in spawner-live.compose.yml")
 
 INTRUDER = textwrap.dedent("""\
     import base64

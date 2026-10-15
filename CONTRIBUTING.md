@@ -52,7 +52,7 @@ local one where it names none).
 
 Every pull request is run through all five, and through four things a
 laptop does not do (`.github/workflows/tests.yml`): the confinement
-tests, inside the runtime's image on a Linux kernel; a build of every
+tests, in the runtime's and the agents' containers on a Linux kernel; a build of every
 image, the web app's included; the speech container's real models,
 saying a sentence in each language and writing it back down; and the
 published agents' own suite against the change. New behaviour comes with a test that pins it at the layer that

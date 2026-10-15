@@ -695,8 +695,10 @@ enforced in this install; and nothing to configure.
   A package that is hostile while it is built, from an index on the
   same machine, reads nobody's settings, writes nothing into the
   environment, reaches the index and no other host, and is ended when
-  it does not end. It runs where the helper is — inside the runtime's
-  image — and is skipped everywhere else; the file says how to run it.
+  it does not end. It runs in the stack of the runtime's container and
+  the agents' (`ai_runtime/tests/spawner-live.compose.yml`), where the
+  helper is, and is skipped everywhere else; the file says how to run
+  it.
 - `ai_runtime/tests/test_container.py` — the spawner itself and the
   runtime's client of it, with the helper stood in for: a real worker
   started through them by name, a build, a listing, an ending; runs

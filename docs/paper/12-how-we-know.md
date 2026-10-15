@@ -100,8 +100,8 @@ The repository is set up so that every proposed change, and every
 change that lands on the main line, runs the tests automatically on
 fresh machines: the runtime's suite with the documents' tests and the
 example; the backend's suite and the spanning one against a real
-database; the hostile agent inside the platform's image, then across
-the two containers; the speech service with its real models; the
+database; the hostile agent in the platform's two containers, failing
+if it was skipped instead of run; the speech service with its real models; the
 images of the backend and the web app; and the agents the project
 publishes, run against this version of the platform.
 
@@ -191,7 +191,9 @@ under `frontend/src` (365 `it` blocks).
 ### The hostile agent
 
 `ai_runtime/tests/test_confinement_live.py`, 58 tests, written against
-the real spawn helper and skipped unless it is present (`pytestmark`).
+the real spawn helper and skipped unless the agents' container is
+there to reach (`pytestmark`, on `AI_RUNTIME_AGENTS_SPAWNER`): it runs
+in the same two-container stack as the file below.
 The agent is written by the test itself (`write_agent`, from
 `ai_runtime/tests/fixture_agents.py`). Its attempts, each refused:
 the runtime's settings, signalling the runtime, writing into its
@@ -265,7 +267,7 @@ and whether a sentence is true.
 |---|---|
 | runtime, docs and the example | `ai_runtime/tests` (with the documents' tests), `examples/tests`, Python 3.12 |
 | backend and spanning | `backend/tests`, then `tests`, one after the other, against a `mongo:7` service |
-| confinement | builds the runtime's image, prints the kernel and its security modules, runs `test_confinement_live.py` with `NET_ADMIN`, then `test_spawner_live.py` in the two-container stack |
+| confinement | starts the two-container stack (`spawner-live.compose.yml`), prints the kernel and its security modules, runs `test_confinement_live.py` and `test_spawner_live.py` in it together, and fails if either file had nothing pass |
 | speech | the speech service without its models, then with them: each language spoken and transcribed back |
 | images | builds the backend's image and the web app's (the app must compile) |
 | agents | checks out the published agents' repository and runs its tests against this platform, with a real Chromium |

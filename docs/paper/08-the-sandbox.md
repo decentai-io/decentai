@@ -368,8 +368,8 @@ agent was serving is told why, in words, with the numbers.
 
 ### How it is tested
 
-`ai_runtime/tests/test_confinement_live.py` runs, inside the runtime's
-image, a fixture agent that is hostile on purpose. Each function tries
+`ai_runtime/tests/test_confinement_live.py` runs, in the runtime's
+container with the agents' beside it, a fixture agent that is hostile on purpose. Each function tries
 one escape, and the test passes when it is refused: read the runtime's
 settings; signal the runtime; write into the store; read another
 agent's home; open an unused socket family; `ptrace`; create a

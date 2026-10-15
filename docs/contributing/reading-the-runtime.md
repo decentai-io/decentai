@@ -487,9 +487,11 @@ Tests: `ai_runtime/tests/test_confinement.py`,
 `ai_runtime/tests/test_agent_environments.py`,
 `ai_runtime/tests/test_container.py`, `ai_runtime/tests/test_usage.py`,
 `ai_runtime/tests/test_events.py`, and the two that need the image:
-`ai_runtime/tests/test_confinement_live.py` (one container) and
-`ai_runtime/tests/test_spawner_live.py` (the runtime and the agents in
-two). Both are skipped elsewhere, and each file says how it is run.
+`ai_runtime/tests/test_confinement_live.py` and
+`ai_runtime/tests/test_spawner_live.py`, both run in the stack of the
+runtime's container and the agents'
+(`ai_runtime/tests/spawner-live.compose.yml`). Both are skipped
+elsewhere, and each file says how it is run.
 
 ## 7. The clock
 
