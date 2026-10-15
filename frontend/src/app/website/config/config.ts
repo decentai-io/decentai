@@ -38,6 +38,11 @@ export const settingsPages: SettingsPage[] = [
     sentence: 'A script acting as you, with your permissions and no more.',
   },
   {
+    // Webhooks in are a page of their own, under AI; the address stays.
+    group: 'You', path: 'webhooks', name: 'Notifications out', action: 'settings:outbound:list',
+    sentence: 'Addresses the platform posts to when something happens you would want to know: a line and a link to the chat.',
+  },
+  {
     group: 'Organization', path: 'providers', name: 'Model providers', action: 'settings:llm:list',
     sentence: 'The providers this organization has a key for. One key serves every model its provider has.',
   },
@@ -87,6 +92,16 @@ export const mainRoutes: RouteNode[] = [
         active: true,
         requiredAction: 'ai:activity:list',
         title: 'Schedules',
+        children: [],
+      },
+      {
+        name: 'Webhooks',
+        url: 'ai/webhooks',
+        icon: 'webhook',
+        domain: 'Global',
+        active: true,
+        requiredAction: 'settings:webhook:list',
+        title: 'Webhooks',
         children: [],
       },
     ],

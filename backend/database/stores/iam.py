@@ -116,12 +116,14 @@ class OrganizationStore(MongoStore):
         "packages": "any",
         "allowed_packages": [],
         "mcp": "allowed",
+        "webhooks": "allowed",
     }
     SAFETY_CHOICES = {
         "scripts": ("always", "once_per_site"),
         "programs": ("always", "corrections", "quiet"),
         "packages": ("any", "listed"),
         "mcp": ("allowed", "blocked"),
+        "webhooks": ("allowed", "blocked"),
     }
     SAFETY_LIST_MAX = 300
     _SITE = re.compile(

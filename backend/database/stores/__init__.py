@@ -51,6 +51,8 @@ from database.stores.memory import MemoryStore
 from database.stores.api_keys import ApiKeyStore
 from database.stores.settings import LlmConnectionStore, OauthAppStore, OauthStateStore
 from database.stores.notifications import PushSubscriptionStore
+from database.stores.webhooks import (
+    OutboundDeliveryStore, OutboundStore, WebhookDeliveryStore, WebhookStore)
 from database.stores.iam import (
     FirstRunStore,
     GroupStore,
@@ -103,6 +105,10 @@ __all__ = [
     "SessionStore",
     "SignupStore",
     "McpServerStore",
+    "OutboundDeliveryStore",
+    "OutboundStore",
+    "WebhookDeliveryStore",
+    "WebhookStore",
     "SkillStore",
     "UserStore",
     "access_cache",

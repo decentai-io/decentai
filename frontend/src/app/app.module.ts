@@ -168,6 +168,7 @@ import {
   Upload,
   UserCog,
   X, ArrowRight, ArrowDown, ArrowUp, ArrowRightLeft, UserX, UserPlus,
+  Webhook,
 } from 'lucide-angular';
 import {
   BaseChartDirective,
@@ -260,6 +261,12 @@ import { McpServerComponent } from './pages/app/data/mcp/mcp-server.component';
 import { McpCredentialComponent } from './pages/app/data/mcp/mcp-credential.component';
 import { MemoryComponent } from './pages/app/settings/memory/memory.component';
 import { ApiKeysComponent } from './pages/app/settings/api-keys/api-keys.component';
+import { OutboundComponent } from './pages/app/settings/outbound/outbound.component';
+import { WebhooksComponent } from './pages/app/ai/webhooks/webhooks.component';
+import { WebhookViewComponent } from './pages/app/ai/webhooks/webhook-view.component';
+import { WebhookDialogComponent } from './pages/app/ai/webhooks/webhook-dialog.component';
+import { WebhookTestDialogComponent } from './pages/app/ai/webhooks/webhook-test-dialog.component';
+import { OutboundDialogComponent } from './pages/app/settings/outbound/outbound-dialog.component';
 import { SafetyComponent } from './pages/app/settings/safety/safety.component';
 import { MonitoringComponent } from './pages/app/monitoring/monitoring.component';
 import { ActivityOverviewComponent } from './pages/app/monitoring/activity-overview.component';
@@ -330,6 +337,8 @@ import { AgentCardComponent } from './pages/app/agents/agent-card.component';
     McpCredentialComponent,
     MemoryComponent,
     ApiKeysComponent,
+    OutboundComponent,
+    OutboundDialogComponent,
     SafetyComponent,
     MonitoringComponent,
     ActivityOverviewComponent,
@@ -339,6 +348,10 @@ import { AgentCardComponent } from './pages/app/agents/agent-card.component';
     SchedulesComponent,
     ScheduleViewComponent,
     ScheduleFormComponent,
+    WebhooksComponent,
+    WebhookViewComponent,
+    WebhookDialogComponent,
+    WebhookTestDialogComponent,
     AuditComponent,
     FilesComponent,
     FilePreviewComponent,
@@ -566,7 +579,7 @@ import { AgentCardComponent } from './pages/app/agents/agent-card.component';
       User,
       Upload,
       UserCog,
-      X, ArrowRight, ArrowDown, ArrowUp, ArrowRightLeft, UserX, UserPlus,
+      X, ArrowRight, ArrowDown, ArrowUp, ArrowRightLeft, UserX, UserPlus, Webhook,
     }),
       ServiceWorkerModule.register('ngsw-worker.js', {
         enabled: !isDevMode(),

@@ -10,6 +10,8 @@ from api.endpoints.app.settings.routing_controller import RoutingController
 from api.endpoints.app.settings.safety_controller import SafetyController
 from api.endpoints.app.settings.speech_controller import SpeechController
 from api.endpoints.app.settings.notifications_controller import NotificationsController
+from api.endpoints.app.settings.webhook_controller import (
+    OutboundController, WebhookController)
 
 
 def build_settings_endpoints():
@@ -36,4 +38,9 @@ def build_settings_endpoints():
         # How a person is reached when not looking: their devices, and
         # whether an email may follow.
         "Notifications": NotificationsController(),
+        # A person's doors in from outside systems, each waking a chat
+        # of theirs, and their notifications out to other systems
+        # (docs/system/webhooks.md).
+        "Webhook": WebhookController(),
+        "Outbound": OutboundController(),
     }

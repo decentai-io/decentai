@@ -125,6 +125,12 @@ every two minutes per chat.
 Delivery runs on its own thread; the record is what the person finds
 either way.
 
+The same moments — a card opened, an assistant's message, and a
+schedule's run recorded (`AI:Schedule:Ran`) — are queued for the
+addresses the person subscribed to them (`Notifier._out`,
+`backend/server/outbound.py`), whether or not they are looking
+([webhooks](webhooks.md#outbound)).
+
 ### Attention
 
 `AI:Chat:List` rows carry `attention {working, cards, unseen}`
@@ -265,7 +271,9 @@ frame on the wire, and the call after it carries it.
 
 Over the socket the relay speaks the door's vocabulary and nothing
 else. The first three rows are frames on the browser's socket; a
-decision and a stop are not, and reach the relay from the gateway:
+decision and a stop are not, and reach the relay from the gateway; a
+webhook's event reaches it from the backend's own door for outside
+systems:
 
 | frontend says | relay sends | runtime answers with |
 |---|---|---|
@@ -274,6 +282,7 @@ decision and a stop are not, and reach the relay from the gateway:
 | `AI:Chat:Watch {action}` | `screen_open` | `screen_frame`s from the roster's watch function, or `screen_unavailable` |
 | `AI:Approval:Decide` (via the gateway, recorded first) | `approval_decided` | the job or park resumes |
 | `AI:Approval:Decide {answer}` — a question's (via the gateway, recorded first) | `question_answered` | the asking call continues, or hears it expired |
+| an outside system's `POST /hooks/{webhook_id}` (`backend/server/routes/hooks.py`, checked and recorded first; [webhooks](webhooks.md)) | `webhook_event` — the backend's own, in `FRAMES`, and no browser frame becomes it | the event recorded in the inbox; the person's instruction for the webhook as theirs and the posted fields as an `EVENT`, then work |
 | `AI:Chat:Stop` (via the gateway) | `stop` | the assistant stops between beats, a call it is waiting on being ended at once, and the audience hears `idle`, with no message; with `force`, [the kill](#the-kill) and `stopped` |
 
 Everything the runtime emits reaches the frontend as `AI:Chat:Event`. The `hello` frame on attach carries the present tense
@@ -323,6 +332,13 @@ the fields of an event or a part.
   event, marked as data, at its next beat; a post starts no cycle of
   its own. (A session rebuilt before that beat finds the event past
   its bookmark and runs a cycle to absorb it.)
+- **An outside system may wake a chat** (a webhook's): the backend
+  sends `webhook_event` and the runtime records it in the inbox as a
+  `webhook` event, which the assistant takes in as two `user` lines —
+  the person's standing instruction for the webhook, and `EVENT
+  webhook` with the posted fields, marked as data
+  ([webhooks](webhooks.md#how-the-event-reaches-the-chat)). What the
+  chat then says goes out as any chat's does.
 - **An agent may ask the person** (`call.ask`): `question_asked` puts a
   card in the chat — a card of the approval kind in `ai_approvals`,
   `kind: question` — answered by a choice or in the person's own words

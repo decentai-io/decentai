@@ -95,7 +95,8 @@ It happens in three steps, in this order:
 
 1. **You are marked stopped.** From that moment the platform will not
    start any chat of yours: not for a new message, not for a card, not
-   for a reminder coming round.
+   for a reminder coming round, not for another service's event — your
+   webhooks answer as if they did not exist.
 2. **Every chat of yours is killed**, as above: the ones you have open,
    the ones working with nobody watching, the ones that only hold a
    reminder. Each is given ten seconds to write down what it did.
@@ -127,13 +128,15 @@ organization's administrator sets them for everybody, on one page,
   assistant has read and found to do what it says it does. Code that
   runs without a card is still announced in the chat and still on the
   trail.
-- **Which packages a program may install**, and **whether anyone may
-  add an MCP server** (a tool server outside the platform).
+- **Which packages a program may install**, **whether anyone may
+  add an MCP server** (a tool server outside the platform), and
+  **whether anyone may receive webhooks** (another service's events
+  waking a chat).
 
 Each row starts where the platform stood before the Safety page existed:
 code is put to a person every time, any package may be installed, no
-site is blocked, and servers may be added. A change on the Safety page is on the audit
-trail, with what each row was and what it became.
+site is blocked, and servers may be added and webhooks received. A
+change on the Safety page is on the audit trail, with what each row was and what it became.
 
 ## The audit trail
 
@@ -154,10 +157,27 @@ through the platform, refused ones included. The line for each call an
 agent ran is written by the runtime, which ran it: a runtime taken over
 could leave such lines out, though it cannot write any other kind.
 
+A webhook's calls are on it too: every event another service posted,
+accepted or refused and why, with the names of the fields and never
+their values; and every webhook or subscription made, changed,
+shared, handed over or deleted.
+
 You can read your own trail at any time. Reading the whole
 organization's trail is a permission an administrator gives. The
 platform only ever adds to it: no part of it, and no person using it,
 is given a way to change or delete a line.
+
+## Telling other systems
+
+A person may also have their notifications sent to another service:
+a Slack channel, a Teams chat, or a system of their own. When a card
+is waiting, a chat has answered, or a schedule's run has ended, the
+platform posts a line and a link to each address they chose, from a
+queue, so a slow receiver delays nothing. It never sends a secret or
+the conversation; the reply's text goes only where the person asked
+for it. What it sends to a system of their own is signed, so the
+receiver can tell it came from here. Every send, and what came back,
+is listed on the person's page ([webhooks](../system/webhooks.md#outbound)).
 
 ## The monitoring record
 
@@ -304,7 +324,10 @@ code rules are applied by the backend as a card is opened
 (`backend/api/services/chat_session/code_rules.py`), so the runtime
 opens cards and never decides them; the package list is checked in
 the runtime before the card (`ai_runtime/execution/call.py`); MCP is
-refused in the backend (`backend/api/services/data_layer/mcp.py`).
+refused in the backend (`backend/api/services/data_layer/mcp.py`), and
+blocked webhooks at their door, which answers 404 as for a webhook that
+does not exist, as it does for a stopped person
+(`_owner`, `backend/server/routes/hooks.py`).
 [Safety settings](../system/safety.md) has each rule exactly.
 
 ### The audit trail
@@ -320,6 +343,8 @@ refused in the backend (`backend/api/services/data_layer/mcp.py`).
 | `approval.requested`, `approval.resolved` | the backend, at the card | the function, its level and the chat's, the kind of card; then the decision, or that the Safety setting settled it |
 | `secret.use`, `llm.use` | the backend, where a credential or model key is served | the credential's reference, never its value |
 | `agent.*`, `agent_source.*`, `credential.*`, `schedule.*`, `settings.safety`, `mcp.added`, `user.*`, `work.*` | the backend, at each controller | what changed; the Safety setting with each row before and after; a schedule the assistant added or removed (`AI:Schedule:Add` / `Remove`) has `by: "assistant"` |
+| `webhook.received`, `webhook.refused` | the backend, at `POST /hooks/{id}` (`backend/server/routes/hooks.py`) | the webhook and the delivery; the names of the fields posted, or the status and the reason it was refused. A 404 is recorded nowhere |
+| `webhook.created`, `.changed`, `.rotated`, `.deleted`, `.subscribed`, `.subscription_changed`, `.unsubscribed` | the backend, `Settings:Webhook:*` and `Settings:Outbound:*` (`backend/api/endpoints/app/settings/webhook_controller.py`) | what changed; a subscription's events, format and whether it carries the reply. A notification sent out is in the subscription's own list (`webhook_sends`), not on the trail |
 | `chat.stopped` | the backend, `AI:Chat:Stop`, with or without `force` | `force`, how many cards were expired, whether the runtime was reached |
 | `platform.action` | the gateway, `_audit_action` (`backend/api/api_router.py`) | every action that is not a read, outside `ai:` and `agents:package:`: endpoint, outcome (`success`, `denied`, `failed`), status, a reason of at most 300 characters, never the payload |
 
@@ -356,6 +381,23 @@ the model passed on keeps its first 200 characters there, and so does
 a secret an agent puts in its own error text (EXE-11, open). An agent's
 own result can also set the status to `denied` or `refused` (EXE-10,
 open).
+
+### Telling other systems
+
+`Notifier._out` (`backend/server/notifications.py`) queues
+`approval.waiting` (a card opened), `reply.ready` (an assistant's
+message) and `run.finished` / `run.failed` (a schedule's fire recorded,
+`AI:Schedule:Ran`) for every enabled, unpaused subscription of the
+chat's person, while nobody has the chat open — as a push is. `Sender`
+(`backend/server/outbound.py`), one thread per backend process, posts
+the queue every 15 seconds: JSON signed with `X-DecentAI-Signature`,
+`sha256=` HMAC of `"<timestamp>.<body>"` under the subscription's
+secret, or Slack's and Teams' own shapes. An address must be `https`
+and resolve only to public addresses, checked when subscribed and
+before each send; redirects are not followed. A timeout, a 5xx, a 408
+or a 429 is retried with backoff for a day; twenty failed attempts in a
+row pause the subscription. Tests: `backend/tests/test_webhooks.py`
+(`TestOutbound`).
 
 ### The monitoring record
 

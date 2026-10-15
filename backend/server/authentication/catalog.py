@@ -103,6 +103,28 @@ BASELINE_ACTIONS = (
     "mcp:server:refresh",
     "mcp:server:delete",
     "mcp:server:use",
+    # Their own webhooks: doors in for outside systems, each waking a
+    # chat of theirs that runs with their own permissions, and their
+    # notifications out to addresses they choose. Nothing of anybody
+    # else's is in reach, and an organization can switch inbound
+    # webhooks off (Settings:Safety).
+    "settings:webhook:list",
+    "settings:webhook:get",
+    "settings:webhook:executions",
+    "settings:webhook:share",
+    "settings:webhook:transfer",
+    "settings:webhook:test",
+    "settings:webhook:create",
+    "settings:webhook:update",
+    "settings:webhook:rotate",
+    "settings:webhook:delete",
+    "settings:webhook:deliveries",
+    "settings:outbound:list",
+    "settings:outbound:create",
+    "settings:outbound:update",
+    "settings:outbound:delete",
+    "settings:outbound:test",
+    "settings:outbound:deliveries",
     # Trying an agent on the data it ships: the rows become the person's
     # own records and files, which they may already create and delete.
     "agents:agent:samples",
@@ -154,7 +176,7 @@ BASELINE_ACTIONS = (
 # are expected to edit BaseAccess — unticking an action revokes it for
 # everybody — and a seed that re-asserted the whole list on every run
 # would quietly undo that on the next restart.
-BASELINE_REVISION = 27
+BASELINE_REVISION = 29
 
 
 # What the seeded Members group grants: the platform's everyday use, for
@@ -494,6 +516,40 @@ ACTION_CATALOG: Dict[str, Dict[str, Any]] = {
                 "Share skills organization-wide or with any group or "
                 "user, and maintain skills created by others"
             ),
+        },
+    },
+    "settings:webhook": {
+        "label": "Webhooks",
+        "actions": {
+            "settings:webhook:list": "See your webhooks, and those shared with you",
+            "settings:webhook:get": "See one webhook of yours, or shared with you",
+            "settings:webhook:executions": (
+                "See what a webhook received and what its chat did with it"),
+            "settings:webhook:share": (
+                "Let people you share a group with see one of your webhooks "
+                "and what it did"),
+            "settings:webhook:transfer": "Hand one of your webhooks, and its chat, to a colleague",
+            "settings:webhook:test": "Send a test event to one of your webhooks",
+            "settings:webhook:create": (
+                "Make a webhook: an address an outside system posts to, "
+                "waking a chat of yours"),
+            "settings:webhook:update": (
+                "Change one of your webhooks: its instruction, its fields, "
+                "and how its chat thinks"),
+            "settings:webhook:rotate": "Make a new secret for one of your webhooks",
+            "settings:webhook:delete": "Delete one of your webhooks",
+            "settings:webhook:deliveries": "See what one of your webhooks received",
+        },
+    },
+    "settings:outbound": {
+        "label": "Notifications to other systems",
+        "actions": {
+            "settings:outbound:list": "See where your notifications are also sent",
+            "settings:outbound:create": "Send your notifications to an address too",
+            "settings:outbound:update": "Change where and which notifications are sent",
+            "settings:outbound:delete": "Stop sending notifications to an address",
+            "settings:outbound:test": "Send a test notification",
+            "settings:outbound:deliveries": "See what was sent, and what came back",
         },
     },
     "mcp:server": {

@@ -1,0 +1,117 @@
+/* The webhook dialog, and the outbound one beside it in Settings: the
+   fields editor, and what is shown once. The fields, the checkboxes and
+   the dialog shell are the shared ones. */
+
+/* ── The fields editor ─────────────────────────────────────────────── */
+
+.hook-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.hook-legend {
+  margin-bottom: 2px;
+  color: var(--ink);
+  font-size: var(--t-sm);
+  font-weight: 500;
+  line-height: var(--lh-sm);
+}
+
+.hook-help {
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.hook-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+
+.hook-field-line {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 140px auto auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.hook-error {
+  color: var(--danger-ink);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.hook-add {
+  align-self: flex-start;
+}
+
+@media (max-width: 560px) {
+  .hook-field-line {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .hook-field-line > .input {
+    grid-column: 1 / -1;
+  }
+}
+
+/* ── Shown once ────────────────────────────────────────────────────── */
+
+.hook-once {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 8px 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+}
+
+.hook-code {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+  line-height: var(--lh-sm);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+.hook-inline {
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+  overflow-wrap: anywhere;
+}
+
+.made-note {
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.made-note.is-warning {
+  color: var(--warn-ink);
+}
+
+
+/* ── A test event ──────────────────────────────────────────────────── */
+
+.test-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  list-style: none;
+}

@@ -1,0 +1,66 @@
+<p class="form-notice is-error" role="alert" *ngIf="error">{{ error }}</p>
+<p class="form-notice" role="status" *ngIf="notice">{{ notice }}</p>
+
+<p class="hook-pointer" *ngIf="mayListWebhooks">
+  For events other services send to you, see <a class="hook-link" routerLink="/ai/webhooks">AI › Webhooks</a>.
+</p>
+
+<app-empty *ngIf="loadError" icon="cloud-off" title="Notifications could not be loaded" [line]="loadError">
+  <button class="btn" type="button" (click)="load()">Try again</button>
+</app-empty>
+
+<app-list *ngIf="!loadError" label="Notifications out" [loading]="loading" [foot]="foot">
+  <ng-container listToolbar *ngIf="!loading && mayCreate">
+    <span class="toolbar-end"
+          [matTooltip]="atLimit ? 'Delete one to make another: ' + limit + ' is the most.' : 'Send notifications'">
+      <button class="icon-btn primary" type="button" aria-label="Send notifications" [disabled]="atLimit" (click)="create()">
+        <lucide-icon name="plus" [size]="18" aria-hidden="true"></lucide-icon>
+      </button>
+    </span>
+  </ng-container>
+
+  <app-row *ngFor="let sub of subscriptions" [name]="sub.name">
+    <lucide-icon rowMark name="send" [size]="20" [strokeWidth]="1.75" aria-hidden="true"></lucide-icon>
+    <span rowChips class="chip" *ngIf="state(sub) as said" [ngClass]="said.tone" [matTooltip]="said.why">{{ said.word }}</span>
+    <ng-container rowMeta>
+      <span class="hook-facts">
+        <span class="hook-url" [matTooltip]="sub.url">{{ sub.url }}</span>
+        <span>{{ formatName(sub.format) }}</span>
+        <span [matTooltip]="eventsInFull(sub)">{{ eventsWord(sub) }}</span>
+        <span *ngIf="sub.include_reply">with the reply</span>
+      </span>
+    </ng-container>
+    <app-switch
+      rowState
+      label="On"
+      [labelHidden]="true"
+      [matTooltip]="sub.paused ? 'Paused: turn it on to resume' : sub.enabled ? 'On' : 'Off: nothing is sent'"
+      [disabled]="!mayUpdate || busy === sub.subscription_id"
+      [ngModel]="sub.enabled && !sub.paused"
+      (ngModelChange)="setEnabled(sub, $event)"
+    ></app-switch>
+    <button rowActions class="icon-btn sm" type="button"
+            [attr.aria-label]="'More for ' + sub.name" [disabled]="busy === sub.subscription_id"
+            [matMenuTriggerFor]="outMenu" [matMenuTriggerData]="{ sub: sub }">
+      <lucide-icon name="ellipsis-vertical" [size]="16" aria-hidden="true"></lucide-icon>
+    </button>
+  </app-row>
+
+  <app-empty
+    *ngIf="!subscriptions.length"
+    icon="send"
+    title="No notifications yet"
+    line="Have a channel or a service of yours told when an approval waits for you, a chat answers while you are away, or a schedule’s run ends."
+  >
+    <button class="btn" type="button" *ngIf="mayCreate" (click)="create()">Send notifications</button>
+  </app-empty>
+</app-list>
+
+<mat-menu #outMenu="matMenu" xPosition="before">
+  <ng-template matMenuContent let-sub="sub">
+    <button mat-menu-item *ngIf="mayTest" (click)="test(sub)">Send a test</button>
+    <button mat-menu-item *ngIf="mayReadSends" (click)="deliveries(sub)">Deliveries</button>
+    <button mat-menu-item *ngIf="mayUpdate" (click)="edit(sub)">Edit</button>
+    <button mat-menu-item *ngIf="mayDelete" (click)="remove(sub)">Delete</button>
+  </ng-template>
+</mat-menu>

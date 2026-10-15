@@ -35,6 +35,8 @@ export interface Candidate {
 export class TransferDialogComponent implements OnInit, OnChanges, OnDestroy {
   /** What is being handed over, in words: "the credential “Gmail”". */
   @Input() subject = 'this';
+  /** What handing it over means, where it means more than usual. */
+  @Input() note = 'It becomes theirs to change and delete. Everyone it is shared with keeps seeing it.';
   /** The current steward, never offered. */
   @Input() ownerId = '';
   @Input() busy = false;

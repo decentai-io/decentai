@@ -30,9 +30,13 @@ def _include_routers(app: FastAPI) -> None:
     from server.routes.oauth import router as oauth_router
     from server.routes.health import router as health_router
     from server.routes.status import router as status_router
+    from server.routes.hooks import router as hooks_router
 
     app.include_router(health_router)
     app.include_router(status_router)
+    # Outside systems' events for a person's webhooks: no session,
+    # the webhook's own secret (docs/system/webhooks.md).
+    app.include_router(hooks_router)
 
     # Sign-in, invitations, password resets and the session itself:
     # outside the gateway, since they are how a session is obtained.
@@ -66,9 +70,16 @@ def create_app() -> FastAPI:
         # days: the manager renews each live dial's credential over the
         # socket before it lapses, for as long as the process runs.
         get_runtime_clients().start_renewing()
+        # Notifications to other systems are posted from their queue,
+        # retried as their receivers allow (server/outbound.py).
+        from server.outbound import Sender
+
+        sender = Sender()
+        sender.start()
         try:
             yield
         finally:
+            sender.stop()
             await shutdown_state()
 
     init_state(settings)

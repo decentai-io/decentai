@@ -1,0 +1,141 @@
+<header class="webhook-head">
+  <div class="webhook-words">
+    <h2 class="webhook-title">{{ webhook.name }}</h2>
+    <p class="webhook-kind">
+      <span class="chip" [class.accent]="webhook.enabled">{{ webhook.enabled ? "On" : "Off" }}</span>
+      <span class="chip" *ngIf="webhook.require_signature">Signed</span>
+      <span class="chip warn" *ngIf="isOwner && webhook.chat?.exists === false">No chat</span>
+    </p>
+  </div>
+  <app-switch *ngIf="mayUpdate" label="On" [labelHidden]="true"
+              [matTooltip]="webhook.enabled ? 'On: events are heard' : 'Off: events are refused'"
+              [disabled]="busy" [ngModel]="webhook.enabled" (ngModelChange)="setEnabled.emit($event)"></app-switch>
+  <button class="icon-btn sm" type="button" aria-label="Close the webhook" (click)="closed.emit()">
+    <lucide-icon name="x" [size]="16" aria-hidden="true"></lucide-icon>
+  </button>
+</header>
+
+<p class="webhook-note" *ngIf="!isOwner">
+  Shared with you by {{ ownerName }}. You see the events it hears and what its chat did with them; its settings and its secret stay with them.
+</p>
+
+<div class="webhook-actions" *ngIf="isOwner">
+  <button class="btn sm" type="button" *ngIf="mayUpdate" [disabled]="busy" (click)="edit.emit()">Edit</button>
+  <button class="btn sm" type="button" *ngIf="mayTest" [disabled]="busy || !webhook.enabled"
+          [matTooltip]="webhook.enabled ? '' : 'Turn it on to send a test event'" (click)="test.emit()">Send a test event</button>
+  <button class="btn sm" type="button" *ngIf="mayShare" [disabled]="busy" (click)="share.emit()">Share</button>
+  <button class="btn sm" type="button" *ngIf="mayTransfer" [disabled]="busy" (click)="handOver.emit()">Hand over</button>
+  <button class="btn sm" type="button" *ngIf="mayRotate" [disabled]="busy" (click)="rotate.emit()">Replace the secret</button>
+  <button class="btn ghost danger sm" type="button" *ngIf="mayDelete" [disabled]="busy" (click)="remove.emit()">Delete</button>
+</div>
+
+<app-segmented *ngIf="isOwner" label="What to show" [choices]="tabs" [(ngModel)]="tab"></app-segmented>
+
+<!-- ── Executions ───────────────────────────────────────────────── -->
+<section aria-labelledby="webhook-runs-title" *ngIf="tab === 'executions'">
+  <div class="webhook-runs-head">
+    <h3 class="webhook-section" id="webhook-runs-title">Executions</h3>
+    <span class="webhook-runs-tools">
+      <a class="webhook-link" *ngIf="chatExists" [routerLink]="['/ai/chats', webhook.chat_id]">Open the chat</a>
+      <button class="icon-btn sm" type="button" aria-label="Read the executions again" matTooltip="Refresh"
+              [disabled]="loading" (click)="load()">
+        <lucide-icon name="refresh-cw" [size]="16" aria-hidden="true"></lucide-icon>
+      </button>
+    </span>
+  </div>
+
+  <div *ngIf="loading && !executions.length" aria-busy="true" aria-label="Loading executions">
+    <span class="sk sk-field"></span>
+  </div>
+  <p class="form-notice is-error" role="alert" *ngIf="problem">{{ problem }}</p>
+  <p class="webhook-note" *ngIf="!loading && !problem && !executions.length">
+    Nothing has arrived yet. Events show here as they arrive, refused ones too.
+  </p>
+
+  <ul class="webhook-runs" *ngIf="executions.length">
+    <li *ngFor="let run of executions">
+      <p class="webhook-run">
+        <span class="run-when" [matTooltip]="whenInFull(run)">{{ when(run) }}</span>
+        <span class="chip" *ngIf="run.source === 'test'">Test</span>
+        <span class="chip" [ngClass]="result(run).tone">{{ result(run).word }}</span>
+        <span class="run-took" *ngIf="run.result === 'refused' && run.status">HTTP {{ run.status }}</span>
+        <span class="run-took" *ngIf="took(run)">{{ took(run) }}</span>
+        <a class="webhook-link run-chat" *ngIf="chatExists && run.result !== 'refused'"
+           [routerLink]="['/ai/chats', webhook.chat_id]">In the chat</a>
+      </p>
+      <p class="run-why" *ngIf="run.result === 'refused' && run.reason">{{ run.reason }}</p>
+
+      <details class="fold" *ngIf="posted(run)">
+        <summary><span class="run-label">Posted</span> <span class="run-line">{{ posted(run) }}</span></summary>
+        <pre class="code-tile">{{ postedInFull(run) }}</pre>
+      </details>
+
+      <details class="fold" *ngIf="run.reply">
+        <summary><span class="run-label">Reply</span> <span class="run-line">{{ replyLine(run) }}</span></summary>
+        <p class="run-reply">{{ run.reply }}</p>
+      </details>
+
+      <ul class="run-cards" *ngIf="run.cards?.length">
+        <li *ngFor="let card of run.cards">
+          <lucide-icon name="square-pen" [size]="14" aria-hidden="true"></lucide-icon>
+          <span class="run-card-name">{{ card.function || card.kind || "A card" }}</span>
+          <span class="chip" [class.warn]="card.status === 'pending'" [class.danger]="card.status === 'denied'">{{ cardState(card.status) }}</span>
+        </li>
+      </ul>
+    </li>
+  </ul>
+  <p class="webhook-note" *ngIf="executions.length">
+    The latest {{ executions.length }}, newest first. Events that arrive close together share what the chat did: it shows under the first of them.
+  </p>
+</section>
+
+<!-- ── Settings: the owner's ───────────────────────────────────── -->
+<section aria-labelledby="webhook-settings-title" *ngIf="tab === 'settings' && isOwner">
+  <div class="webhook-runs-head">
+    <h3 class="webhook-section" id="webhook-settings-title">Settings</h3>
+    <button class="btn sm" type="button" *ngIf="mayUpdate" [disabled]="busy" (click)="edit.emit()">Edit</button>
+  </div>
+
+  <dl class="webhook-facts">
+    <dt>Address</dt>
+    <dd class="webhook-copy">
+      <code class="webhook-code">{{ url }}</code>
+      <button class="btn sm" type="button" (click)="copyUrl()">{{ copied ? "Copied" : "Copy" }}</button>
+    </dd>
+
+    <dt>Secret</dt>
+    <dd><code class="webhook-code">{{ webhook.shown }}…</code> <span class="webhook-aside">Shown once, when it was made or replaced.</span></dd>
+
+    <dt>Signature</dt>
+    <dd>{{ webhook.require_signature ? "Required: each body is signed with the secret (HMAC-SHA256)." : "Not required." }}</dd>
+
+    <dt>Instruction</dt>
+    <dd class="webhook-prompt">{{ webhook.prompt }}</dd>
+
+    <dt>Fields</dt>
+    <dd>
+      <span *ngIf="!webhook.fields.length">None: a caller posts an empty object.</span>
+      <ul class="webhook-fields" *ngIf="webhook.fields.length">
+        <li *ngFor="let field of webhook.fields">
+          <code class="webhook-code">{{ field.name }}</code>
+          <span class="webhook-aside">{{ typeWord(field.type) }}{{ field.required ? ", required" : "" }}</span>
+          <span class="webhook-field-what" *ngIf="field.description">{{ field.description }}</span>
+        </li>
+      </ul>
+    </dd>
+
+    <ng-container *ngIf="webhook.chat?.exists !== false">
+      <dt>Trust level</dt>
+      <dd>{{ trustWord }}</dd>
+
+      <dt>Model</dt>
+      <dd>{{ modelWord }}</dd>
+    </ng-container>
+
+    <dt>Chat</dt>
+    <dd>
+      <a class="webhook-link" *ngIf="chatExists" [routerLink]="['/ai/chats', webhook.chat_id]">Open the chat</a>
+      <span *ngIf="!chatExists">Deleted. Delete the webhook and make it again to have one.</span>
+    </dd>
+  </dl>
+</section>

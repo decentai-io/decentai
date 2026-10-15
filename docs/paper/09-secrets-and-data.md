@@ -136,6 +136,12 @@ If a value cannot be opened — its key is missing — the app still shows
 everything else and marks that one unreadable, never empty; an agent
 asking for a credential gets an error, never an empty password.
 
+A webhook's secret, and the secret that signs a person's
+notifications to other systems, are sealed the same way. They are not
+kept as a hash, as an API key is, because checking a signature needs
+the secret itself; each is shown once, when it is made
+([webhooks](../system/webhooks.md)).
+
 A credential's sealed half is **never shown back to a person**,
 anywhere in the app, under any permission. They can see the provider, the host and the
 account; to change a password, they type a new one.
@@ -315,7 +321,8 @@ package's `AESGCM`:
   object. It never returns part of a map.
 
 The same cipher seals a model connection's key, an OAuth app's client
-secret and a source's git token; each store names its fields in
+secret, a source's git token, and a webhook's and an outbound
+subscription's secret (`backend/database/stores/webhooks.py`); each store names its fields in
 `ENCRYPTED_FIELDS`. With no keys set, the backend does not start; nor
 does it with the example settings' `01:change-me`, which decodes to
 too few bytes (`SecretCipher.verify`). It never derives a key from
@@ -341,7 +348,9 @@ the operator activates it and restarts; `bootstrap/reencrypt_secrets.py`
 walks every store's `ENCRYPTED_FIELDS`, re-encrypts each blob whose
 `key_version` is not active with an update conditioned on the old
 version, and reports any it could not open. The old key may go when
-nothing is left. The tool asks for the backend to be stopped or idle.
+nothing is left. It finds the stores by importing `database.stores`,
+the webhooks' secrets among them. The tool asks for the backend to be
+stopped or idle.
 
 ### A secret's road, in order
 

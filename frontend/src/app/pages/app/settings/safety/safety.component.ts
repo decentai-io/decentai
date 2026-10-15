@@ -7,9 +7,10 @@ import { AuthService } from 'src/app/services/auth.service';
 import { SafetySettings, SettingsSafetyService } from 'src/app/services/settings-safety.service';
 
 /** Where the platform stood before this page existed: every script and
- *  program asked about, any package a card names, MCP servers allowed. */
+ *  program asked about, any package a card names, MCP servers and
+ *  webhooks allowed. */
 const STANDARD: SafetySettings = {
-  mcp: 'allowed', blocked_sites: [], scripts: 'always', programs: 'always',
+  mcp: 'allowed', webhooks: 'allowed', blocked_sites: [], scripts: 'always', programs: 'always',
   packages: 'any', allowed_packages: [],
 };
 
@@ -68,6 +69,11 @@ export class SafetyComponent implements OnInit, HasUnsavedChanges {
     { value: 'blocked', name: 'Nobody may' },
   ];
 
+  readonly webhooks: Choice<SafetySettings['webhooks']>[] = [
+    { value: 'allowed', name: 'People may receive webhooks' },
+    { value: 'blocked', name: 'Nobody may' },
+  ];
+
   constructor(
     private service: SettingsSafetyService,
     public auth: AuthService,
@@ -86,6 +92,13 @@ export class SafetyComponent implements OnInit, HasUnsavedChanges {
     return this.draft.value.mcp === 'allowed'
       ? 'Each person adds remote servers for their own chats, and decides which tools are on.'
       : 'Nobody can add one, and no chat can call a tool of one already added; those stay, switched off.';
+  }
+
+  /** What the webhooks choice means, in one line. */
+  get webhooksMeaning(): string {
+    return this.draft.value.webhooks === 'allowed'
+      ? 'Each person makes addresses that other services post events to, each heard in a chat of their own.'
+      : 'No webhook takes an event: each answers as if it did not exist. Those already made are kept.';
   }
 
   ngOnInit(): Promise<void> {

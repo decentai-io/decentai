@@ -8,6 +8,7 @@
     {"id": "records", "section": "Connect & organize", "title": "Records and files", "summary": "Find, manage, and share agent output", "file": "06-records-and-files.md"},
     {"id": "schedules", "section": "Connect & organize", "title": "Schedules", "summary": "What your chats keep on the clock", "file": "07-schedules.md"},
     {"id": "mcp", "section": "Connect & organize", "title": "Tools (MCP servers)", "summary": "Add remote tools and decide what each may do", "file": "08-mcp.md"},
+    {"id": "webhooks", "section": "Connect & organize", "title": "Webhooks", "summary": "Let other services wake a chat, and send your notifications out", "file": "15-webhooks.md"},
     {"id": "audit", "section": "Control & administration", "title": "The audit trail", "summary": "Understand who did what and when", "file": "09-audit.md"},
     {"id": "admin", "section": "Control & administration", "title": "Administration", "summary": "The organization and its people", "file": "10-administration.md"},
     {"id": "access", "section": "Control & administration", "title": "Roles and policies", "summary": "Groups, roles, policies and sharing", "file": "11-roles-and-policies.md"},

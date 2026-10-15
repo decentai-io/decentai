@@ -1,0 +1,127 @@
+<ng-container *ngIf="!made">
+  <h2 mat-dialog-title>{{ editing ? 'Edit ' + editing.name : 'Make a webhook' }}</h2>
+  <form (ngSubmit)="save()">
+    <mat-dialog-content>
+      <p class="dialog-note" *ngIf="!editing">
+        Another service posts events to its address. Each one is heard in a chat of its own, which acts on it with your permissions.
+      </p>
+      <div class="form">
+        <app-field label="Name" help="What sends to it, so you know it in the list." [error]="tried && !name.trim() ? 'Give the webhook a name.' : ''">
+          <input class="input" name="webhook-name" autocomplete="off" maxlength="80" placeholder="New support tickets"
+                 cdkFocusInitial [(ngModel)]="name" />
+        </app-field>
+
+        <app-field label="Instruction" help="What should your assistant do when an event arrives?"
+                   [error]="tried && !prompt.trim() ? 'Say what the assistant should do with an event.' : ''">
+          <textarea class="input" name="webhook-prompt" rows="4" maxlength="4000"
+                    placeholder="Summarize the ticket and file it in the tracker under the right team."
+                    [(ngModel)]="prompt"></textarea>
+        </app-field>
+
+        <fieldset class="hook-fields">
+          <legend class="hook-legend">Fields</legend>
+          <p class="hook-help">What a caller posts, as one JSON object. A body with anything else, or without a required field, is refused.</p>
+          <div class="hook-field" *ngFor="let field of fields; let i = index">
+            <div class="hook-field-line">
+              <input class="input mono" autocomplete="off" maxlength="64" placeholder="ticket_id"
+                     [name]="'field-name-' + i" [attr.aria-label]="'Field ' + (i + 1) + ' name'"
+                     [attr.aria-invalid]="fieldProblem(field) ? 'true' : null" [(ngModel)]="field.name" />
+              <app-select label="Type" [name]="'field-type-' + i" [choices]="types" [(ngModel)]="field.type"></app-select>
+              <mat-checkbox [name]="'field-required-' + i" [(ngModel)]="field.required">Required</mat-checkbox>
+              <button class="icon-btn sm" type="button" [attr.aria-label]="'Remove field ' + (field.name || i + 1)"
+                      matTooltip="Remove" (click)="removeField(i)">
+                <lucide-icon name="x" [size]="16" aria-hidden="true"></lucide-icon>
+              </button>
+            </div>
+            <input class="input" autocomplete="off" maxlength="300" placeholder="What it is, for the assistant"
+                   [name]="'field-description-' + i" [attr.aria-label]="'Field ' + (i + 1) + ' description'"
+                   [(ngModel)]="field.description" />
+            <p class="field-error hook-error" role="alert" *ngIf="fieldProblem(field)">{{ fieldProblem(field) }}</p>
+          </div>
+          <button class="btn sm hook-add" type="button" (click)="addField()">
+            <lucide-icon name="plus" [size]="16" aria-hidden="true"></lucide-icon>
+            Add a field
+          </button>
+        </fieldset>
+
+        <p class="form-notice is-warn" *ngIf="chatGone">
+          This webhook’s chat was deleted, so its trust level and model cannot be changed. Delete the webhook and make it again to have a chat.
+        </p>
+
+        <ng-container *ngIf="!chatGone">
+          <app-field label="Trust level" help="How much its chat may do without asking. Left alone, it is your chat default.">
+            <app-select name="webhook-trust" placeholder="Your chat default" [choices]="trustChoices" [(ngModel)]="trustLevel"></app-select>
+          </app-field>
+
+          <app-field *ngIf="canChooseModel" label="Model" [error]="modelProblem"
+                     [help]="editing ? 'What its chat thinks with.' : 'What its chat thinks with. Left alone, your default model.'">
+            <app-model-select
+              kind="chat"
+              [noneLabel]="editing ? 'Leave as it is' : 'Your default model'"
+              [connections]="connections"
+              [connectionId]="connectionId"
+              [model]="model"
+              (changed)="chooseModel($event)"
+            ></app-model-select>
+          </app-field>
+          <p class="hook-help" *ngIf="!canChooseModel && !editing">Its chat thinks with your default model.</p>
+        </ng-container>
+
+        <mat-checkbox class="check-row" name="webhook-signed" [(ngModel)]="requireSignature">
+          <span class="check-name">Require a signature</span>
+          <span class="check-hint">The caller also signs each body with the secret (HMAC-SHA256), so the secret alone cannot send an event.</span>
+        </mat-checkbox>
+
+        <p class="form-notice is-error" role="alert" *ngIf="error">{{ error }}</p>
+      </div>
+    </mat-dialog-content>
+    <mat-dialog-actions>
+      <button class="btn" type="button" [disabled]="saving" (click)="dialog.close(null)">Cancel</button>
+      <button class="btn primary" type="submit" [disabled]="saving">
+        {{ saving ? 'Saving…' : editing ? 'Save' : 'Make it' }}
+      </button>
+    </mat-dialog-actions>
+  </form>
+</ng-container>
+
+<ng-container *ngIf="made">
+  <h2 mat-dialog-title>{{ made.name }}</h2>
+  <mat-dialog-content>
+    <div class="form">
+      <app-field label="Address" help="Where a service posts its events.">
+        <div class="hook-once">
+          <code class="hook-code">{{ url }}</code>
+          <button class="btn sm" type="button" (click)="copy('url')">{{ copied['url'] ? 'Copied' : 'Copy' }}</button>
+        </div>
+      </app-field>
+
+      <app-field label="Secret" help="Sent as a bearer token in the Authorization header.">
+        <div class="hook-once">
+          <code class="hook-code">{{ secret }}</code>
+          <button class="btn sm" type="button" (click)="copy('secret')">{{ copied['secret'] ? 'Copied' : 'Copy' }}</button>
+        </div>
+      </app-field>
+
+      <app-field label="An example call" help="With every field filled in. Replace the values with real ones.">
+        <div class="hook-once">
+          <pre class="hook-code">{{ curl }}</pre>
+          <button class="btn sm" type="button" (click)="copy('curl')">{{ copied['curl'] ? 'Copied' : 'Copy' }}</button>
+        </div>
+      </app-field>
+
+      <p class="hook-help">
+        {{ made.require_signature ? 'This webhook requires a signature:' : 'A signature is optional here; where one is sent, it is checked:' }}
+        <code class="hook-inline">{{ hmacLine }}</code>
+      </p>
+
+      <p class="made-note" [class.is-warning]="warned" role="status">
+        {{ warned ? 'You have not copied the secret, and it cannot be shown again. Press Done again to close.'
+                  : copyFailed ? 'Could not copy. Select the text and copy it yourself.'
+                  : 'The secret is shown once. Copy it now.' }}
+      </p>
+    </div>
+  </mat-dialog-content>
+  <mat-dialog-actions>
+    <button type="button" class="btn primary" (click)="done()">Done</button>
+  </mat-dialog-actions>
+</ng-container>

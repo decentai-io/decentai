@@ -20,7 +20,8 @@ The limits are of three kinds, and it matters which is which.
 
 Each limit below says what it is, which kind, and what stands in its
 way. They are grouped by what they are about: the model, agents and
-the sandbox, people and organizations, data, and running the platform.
+the sandbox, people and organizations, data, webhooks, and running the
+platform.
 
 ## The model
 
@@ -279,6 +280,70 @@ what it keeps can be listed when asked. *Chosen.*
   statement can be saved is the backend's to answer.
 - Why personal memory and chats sit outside the shared data layer:
   [the data layer](../system/data-layer.md#what-is-not-here).
+
+</details>
+
+## Webhooks
+
+A webhook is a door into a person's chat that is open to the internet
+([webhooks](../system/webhooks.md)). What holds it is the secret, the
+declared fields, and the chat's trust level. Where that stops:
+
+**What was posted can still steer what the model proposes.** The
+posted fields reach the assistant marked as data, beside the person's
+own instruction, and they cannot change the grants, the trust level or
+the card. But in a webhook's chat set to a high trust level, a proposal
+an injected field steered runs without a card when it is within the
+person's grants — the same limit as any chat's, behind a door anyone
+holding the secret can knock on. *Chosen*: the level is the person's
+answer to "how much may run without asking me". What helps: a webhook
+that only needs to read is best left at level 0, with only the agents
+it needs.
+
+**Only DecentAI's signature is read.** Stripe, GitHub and Slack sign in
+their own ways, and v1 does not check them; such a service is reached
+through a relay that can send our bearer token or signature. *Chosen*
+for the first version: each provider's scheme is its own work.
+
+**The rate is counted per process.** Sixty events a minute per webhook,
+held in the memory of one backend process: several backends each allow
+sixty, and a restart forgets the count. *Chosen* for one host, as the
+runtime is.
+
+**An outbound address is checked by name, then reached by name.** The
+host of a notification address is resolved and refused if any answer
+is internal, when the subscription is made and before each send; the
+connection is then made separately. A name that answers differently
+between the two (DNS rebinding) could reach an internal address in
+that moment. *Not yet done*, and newer than the review's list; an MCP server's connection, by contrast,
+is made to the address that was checked.
+
+**An event the chat could not hear is not retried.** The caller has
+had its answer; the delivery is marked *not delivered*, and the person
+sees it in the webhook's list. *Not yet done*, and newer than the
+review's list.
+
+<details>
+<summary><b>For the specialist</b>: the door's checks and where each limit is</summary>
+
+`receive` (`backend/server/routes/hooks.py`): 404 for a webhook that is
+missing, off, or whose person is disabled, stopped, or in an
+organization that is off or has `webhooks: blocked` (one answer, not
+recorded); 413 over 64 KB; 401 for the bearer secret (constant-time)
+or a signature that is required, or sent, and wrong, or more than 300
+seconds off; 429 past `PER_MINUTE` = 60 in a per-process deque; 400 for
+a body that is not an object of exactly the declared fields
+(`WebhookFields.check`, `backend/database/stores/webhooks.py`). The
+idempotency key answers the first delivery for a day. The frame is in
+the relay's `FRAMES` but no browser action builds it
+(`backend/api/services/chat_session/relay.py`), and the runtime's door
+takes it only from a dialer holding the service token.
+
+`refuse_address` (`backend/server/outbound.py`) resolves with
+`getaddrinfo` and refuses private, loopback, link-local, reserved,
+multicast and unspecified answers; `Sender.post` then hands the URL to
+`httpx`, which resolves again. Contrast `contracts/mcp.py`, which
+connects to the address it checked.
 
 </details>
 

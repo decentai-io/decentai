@@ -1,0 +1,251 @@
+/* One webhook, opened: its name and state, what can be done, and its
+   events or its settings. The chips, the buttons, the switch, the
+   segmented control and the fold are the shared ones. */
+:host {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.webhook-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.webhook-words {
+  flex: 1;
+  min-width: 0;
+}
+
+.webhook-title {
+  color: var(--ink);
+  font-size: var(--t-md);
+  font-weight: 600;
+  line-height: var(--lh-md);
+  overflow-wrap: anywhere;
+}
+
+.webhook-kind {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin-top: 2px;
+}
+
+.webhook-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.webhook-section {
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  font-weight: 500;
+  line-height: var(--lh-sm);
+}
+
+.webhook-note,
+.webhook-aside {
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+* + .webhook-note {
+  margin-top: 8px;
+}
+
+.webhook-link {
+  color: inherit;
+  font-size: var(--t-sm);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* The title with its tools at the right. */
+.webhook-runs-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.webhook-runs-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ── The events ────────────────────────────────────────────────────── */
+
+.webhook-runs {
+  display: flex;
+  flex-direction: column;
+  list-style: none;
+}
+
+.webhook-runs > li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 0;
+}
+
+.webhook-runs > li + li {
+  border-top: 1px solid var(--line);
+}
+
+.webhook-run {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.run-when,
+.run-took {
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.run-chat {
+  margin-left: auto;
+}
+
+.run-why {
+  color: var(--danger);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+  overflow-wrap: anywhere;
+}
+
+.webhook-runs summary {
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.run-label {
+  flex: none;
+  color: var(--ink-2);
+}
+
+/* One line in the summary; the whole of it inside the fold. */
+.run-line {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.webhook-runs pre,
+.run-reply {
+  margin: 4px 0 8px;
+  max-height: 240px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.run-reply {
+  color: var(--ink);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.run-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  list-style: none;
+}
+
+.run-cards li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.run-cards lucide-icon {
+  display: flex;
+  color: var(--ink-2);
+}
+
+.run-card-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* ── The settings ──────────────────────────────────────────────────── */
+
+.webhook-facts {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  gap: 10px 12px;
+  margin: 0;
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.webhook-facts dt {
+  color: var(--ink-2);
+}
+
+.webhook-facts dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--ink);
+}
+
+.webhook-copy {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.webhook-code {
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+  overflow-wrap: anywhere;
+}
+
+.webhook-copy .webhook-code {
+  flex: 1;
+}
+
+.webhook-prompt {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.webhook-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  list-style: none;
+}
+
+.webhook-field-what {
+  display: block;
+  color: var(--ink-2);
+}
+
+@media (pointer: coarse) {
+  .webhook-run {
+    min-height: 44px;
+  }
+}

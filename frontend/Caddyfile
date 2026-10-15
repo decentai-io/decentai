@@ -59,7 +59,7 @@
 	# This block is last and unmatched on purpose — the load balancer's
 	# health check arrives without a useful Host header, and /healthz has
 	# to reach the backend for the target to be considered healthy.
-	@backend path /auth/* /app /chats/* /upload /download/* /oauth/* /status /healthz /readyz
+	@backend path /auth/* /app /chats/* /upload /download/* /oauth/* /hooks/* /status /healthz /readyz
 	handle @backend {
 		reverse_proxy {$BACKEND_UPSTREAM:backend:8000}
 	}

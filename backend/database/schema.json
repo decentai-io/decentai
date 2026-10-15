@@ -1,5 +1,5 @@
 {
-  "schema_version": 48,
+  "schema_version": 50,
   "collections": {
     "ai_chats": {
       "description": "Backend-owned chat metadata, configuration, plan, the assistant's state (the mind, one document, per thread), and the runtime block.",
@@ -2137,6 +2137,308 @@
             ]
           ],
           "unique": true
+        }
+      ]
+    },
+    "webhooks": {
+      "description": "A person's webhooks: the instruction read with every event, the fields a caller must post, whether a signature is required, the standing chat the events wake, and the secret, encrypted.",
+      "validator": {
+        "$jsonSchema": {
+          "bsonType": "object",
+          "required": [
+            "org_id",
+            "user_id",
+            "name",
+            "chat_id",
+            "secret",
+            "created_at"
+          ],
+          "properties": {
+            "_id": {
+              "bsonType": "string"
+            },
+            "org_id": {
+              "bsonType": "string"
+            },
+            "user_id": {
+              "bsonType": "string"
+            },
+            "name": {
+              "bsonType": "string"
+            },
+            "prompt": {
+              "bsonType": "string"
+            },
+            "chat_id": {
+              "bsonType": "string"
+            },
+            "fields": {
+              "bsonType": "array"
+            },
+            "enabled": {
+              "bsonType": "bool"
+            },
+            "require_signature": {
+              "bsonType": "bool"
+            },
+            "secret": {
+              "bsonType": "object"
+            },
+            "viewers": {
+              "bsonType": "object"
+            }
+          }
+        }
+      },
+      "indexes": [
+        {
+          "name": "owner",
+          "keys": [
+            [
+              "org_id",
+              1
+            ],
+            [
+              "user_id",
+              1
+            ],
+            [
+              "created_at",
+              1
+            ]
+          ]
+        },
+        {
+          "name": "viewers",
+          "keys": [
+            [
+              "org_id",
+              1
+            ],
+            [
+              "viewers.users",
+              1
+            ]
+          ]
+        }
+      ]
+    },
+    "webhook_deliveries": {
+      "description": "What each webhook received in the last month: accepted or refused, why, and whether the chat heard it.",
+      "validator": {
+        "$jsonSchema": {
+          "bsonType": "object",
+          "required": [
+            "webhook_id",
+            "outcome",
+            "received_at"
+          ],
+          "properties": {
+            "_id": {
+              "bsonType": "string"
+            },
+            "webhook_id": {
+              "bsonType": "string"
+            },
+            "outcome": {
+              "bsonType": "string"
+            },
+            "status": {
+              "bsonType": "int"
+            },
+            "received_at": {
+              "bsonType": "date"
+            }
+          }
+        }
+      },
+      "indexes": [
+        {
+          "name": "by_webhook",
+          "keys": [
+            [
+              "webhook_id",
+              1
+            ],
+            [
+              "received_at",
+              -1
+            ]
+          ]
+        },
+        {
+          "name": "idempotency",
+          "keys": [
+            [
+              "webhook_id",
+              1
+            ],
+            [
+              "idempotency_key",
+              1
+            ]
+          ]
+        },
+        {
+          "name": "expires_at_ttl",
+          "keys": [
+            [
+              "expires_at",
+              1
+            ]
+          ],
+          "expireAfterSeconds": 0
+        }
+      ]
+    },
+    "webhook_subscriptions": {
+      "description": "Where a person's notifications are also sent: an address, a format, the events, whether a reply's text goes too, and the signing secret, encrypted.",
+      "validator": {
+        "$jsonSchema": {
+          "bsonType": "object",
+          "required": [
+            "org_id",
+            "user_id",
+            "url",
+            "format",
+            "events",
+            "secret",
+            "created_at"
+          ],
+          "properties": {
+            "_id": {
+              "bsonType": "string"
+            },
+            "org_id": {
+              "bsonType": "string"
+            },
+            "user_id": {
+              "bsonType": "string"
+            },
+            "url": {
+              "bsonType": "string"
+            },
+            "format": {
+              "bsonType": "string"
+            },
+            "events": {
+              "bsonType": "array"
+            },
+            "include_reply": {
+              "bsonType": "bool"
+            },
+            "enabled": {
+              "bsonType": "bool"
+            },
+            "secret": {
+              "bsonType": "object"
+            }
+          }
+        }
+      },
+      "indexes": [
+        {
+          "name": "owner",
+          "keys": [
+            [
+              "org_id",
+              1
+            ],
+            [
+              "user_id",
+              1
+            ],
+            [
+              "created_at",
+              1
+            ]
+          ]
+        },
+        {
+          "name": "listening",
+          "keys": [
+            [
+              "org_id",
+              1
+            ],
+            [
+              "user_id",
+              1
+            ],
+            [
+              "events",
+              1
+            ]
+          ]
+        }
+      ]
+    },
+    "webhook_sends": {
+      "description": "Each notification sent out in the last month, and what its receiver answered: the sender's queue and the delivery list.",
+      "validator": {
+        "$jsonSchema": {
+          "bsonType": "object",
+          "required": [
+            "subscription_id",
+            "event",
+            "state",
+            "created_at"
+          ],
+          "properties": {
+            "_id": {
+              "bsonType": "string"
+            },
+            "subscription_id": {
+              "bsonType": "string"
+            },
+            "event": {
+              "bsonType": "string"
+            },
+            "state": {
+              "bsonType": "string"
+            },
+            "created_at": {
+              "bsonType": "date"
+            }
+          }
+        }
+      },
+      "indexes": [
+        {
+          "name": "due",
+          "keys": [
+            [
+              "state",
+              1
+            ],
+            [
+              "next_at",
+              1
+            ]
+          ]
+        },
+        {
+          "name": "by_subscription",
+          "keys": [
+            [
+              "subscription_id",
+              1
+            ],
+            [
+              "created_at",
+              -1
+            ]
+          ]
+        },
+        {
+          "name": "expires_at_ttl",
+          "keys": [
+            [
+              "expires_at",
+              1
+            ]
+          ],
+          "expireAfterSeconds": 0
         }
       ]
     }

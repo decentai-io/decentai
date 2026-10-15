@@ -9,7 +9,7 @@ the actions a chat's delegation may call, and nothing else.
 Generated from `backend/server/authentication/catalog.py` by
 `docs/reference/generate.py`; do not edit by hand.
 
-190 actions in 36 services; 51 baseline.
+207 actions in 38 services; 68 baseline.
 
 ## Own account
 
@@ -215,6 +215,33 @@ Generated from `backend/server/authentication/catalog.py` by
 | `skills:skill:delete` | Delete a skill you created |  |  |
 | `skills:skill:transfer` | Hand one of your skills to another member | yes |  |
 | `skills:skill:set_owner_any` | Share skills organization-wide or with any group or user, and maintain skills created by others |  |  |
+
+## Webhooks
+
+| Action | Grants | Baseline | Runtime |
+|---|---|---|---|
+| `settings:webhook:list` | See your webhooks, and those shared with you | yes |  |
+| `settings:webhook:get` | See one webhook of yours, or shared with you | yes |  |
+| `settings:webhook:executions` | See what a webhook received and what its chat did with it | yes |  |
+| `settings:webhook:share` | Let people you share a group with see one of your webhooks and what it did | yes |  |
+| `settings:webhook:transfer` | Hand one of your webhooks, and its chat, to a colleague | yes |  |
+| `settings:webhook:test` | Send a test event to one of your webhooks | yes |  |
+| `settings:webhook:create` | Make a webhook: an address an outside system posts to, waking a chat of yours | yes |  |
+| `settings:webhook:update` | Change one of your webhooks: its instruction, its fields, and how its chat thinks | yes |  |
+| `settings:webhook:rotate` | Make a new secret for one of your webhooks | yes |  |
+| `settings:webhook:delete` | Delete one of your webhooks | yes |  |
+| `settings:webhook:deliveries` | See what one of your webhooks received | yes |  |
+
+## Notifications to other systems
+
+| Action | Grants | Baseline | Runtime |
+|---|---|---|---|
+| `settings:outbound:list` | See where your notifications are also sent | yes |  |
+| `settings:outbound:create` | Send your notifications to an address too | yes |  |
+| `settings:outbound:update` | Change where and which notifications are sent | yes |  |
+| `settings:outbound:delete` | Stop sending notifications to an address | yes |  |
+| `settings:outbound:test` | Send a test notification | yes |  |
+| `settings:outbound:deliveries` | See what was sent, and what came back | yes |  |
 
 ## MCP servers
 

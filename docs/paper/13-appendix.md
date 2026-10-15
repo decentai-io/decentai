@@ -33,6 +33,7 @@ the documentation uses, is in [Concepts](../system/concepts.md#the-words).
 | **storage reference** | the name of a stored result, which a later call can take as an input instead of the data | `storage_ref` |
 | **trace** | what the assistant actually ran in this chat; evidence is checked against it | `state.trace` |
 | **trust level** | 0 to 3 on a chat, chosen by the person: a function above it asks first | `backend/api/services/chat_session/settings/trust.py` |
+| **webhook** | a person's door for another service's events, each waking one standing chat of theirs; and, the other way, an address their notifications are also sent to | `backend/server/routes/hooks.py`; `backend/server/outbound.py` |
 | **valve** | the limit on how many beats one message may take | `max_beats` |
 | **worker** | the process one approved agent's code runs in | `decentai_sdk/worker.py` |
 
@@ -49,5 +50,6 @@ the documentation uses, is in [Concepts](../system/concepts.md#the-words).
 | the agents' container | `ai_runtime/agents_container/` | [the sandbox](../system/sandbox.md) |
 | the manifest's grammar | `contracts/agent_manifest.py` | [the manifest](../agents/manifest.md) |
 | what an agent's code is given | `decentai_sdk/` | [the SDK](../agents/sdk.md) |
+| webhooks in and out | `backend/server/routes/hooks.py`, `backend/server/outbound.py`, `backend/database/stores/webhooks.py` | [webhooks](../system/webhooks.md) |
 | how the containers are started | `docker-compose.yml`, `ai_runtime/start.sh` | [architecture](../system/architecture.md) |
 | the tests | `ai_runtime/tests/`, `backend/tests/`, `tests/`, `examples/tests/` | [local development](../contributing/local-development.md) |

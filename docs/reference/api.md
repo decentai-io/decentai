@@ -64,8 +64,8 @@ chain, or the answer is 403. The full list, with what each grants, is
 
 Four response shapes exist:
 
-- The AI and Agents controllers, and of Settings the memory and API-key
-  ones, answer in an envelope —
+- The AI and Agents controllers, and of Settings the memory, API-key,
+  webhook and outbound ones, answer in an envelope —
   `{"version": …, "request_id": …, "status": "success", "data": {…}, "error": null}`
   — and fail with `"error": {"code": …, "message": …}` in the same
   envelope, the message at most 2048 characters. `request_id` is the
@@ -145,6 +145,99 @@ additionalData={"endpoint": "Files:File:upload", "folder": "uploads"}
 or, for a chat's attachment, `AI:Chat:UploadFile` on the gateway with
 `chat_id`, `filename` and `content_base64`. Download is
 `GET /download/{resource_ref}`, owner-filtered like any read.
+
+## Webhooks
+
+An outside system posts an event to a person's webhook
+([webhooks](../system/webhooks.md)). The door is outside the gateway, as
+`/auth` is: the caller is no person and has no session, and proves
+itself with the webhook's own secret, which fires that webhook and
+nothing else.
+
+```
+POST /hooks/{webhook_id}
+Authorization: Bearer dws_…
+X-DecentAI-Timestamp: 1760518000
+X-DecentAI-Signature: sha256=<hex>
+Idempotency-Key: evt_1043
+Content-Type: application/json
+
+{"customer": "Acme", "amount": 1200, "invoice_id": "INV-1043"}
+```
+
+| Header | |
+|---|---|
+| `Authorization` | `Bearer <secret>` — always |
+| `X-DecentAI-Timestamp` | Unix seconds, within five minutes of the server's clock; with a signature |
+| `X-DecentAI-Signature` | `sha256=` and the hex HMAC-SHA256, keyed with the secret, of `"<timestamp>.<body>"` — the timestamp, a dot, and the body's exact bytes. Required where the webhook requires it; checked wherever it is sent |
+| `Idempotency-Key` | optional, at most 200 characters (a longer one is refused, 400): a key accepted in the last day answers its first delivery again and runs nothing |
+
+The first check that fails is the answer, each `{"error": "…"}` but the
+first:
+
+| Status | Body | When |
+|---|---|---|
+| 202 | `{"delivery_id": "whd_…"}`, and `"repeated": true` for a key seen before | checked and recorded; the chat hears it after |
+| 404 | `{"error": "No such webhook."}` | no such webhook, or it is off, or its person is disabled or stopped, or their organization is off or does not allow webhooks — one answer for all |
+| 413 | | more than 64 KB of body |
+| 401 | | the secret missing or wrong; a required signature missing; a timestamp too far off; a signature that does not match |
+| 429 | | more than 60 events in a minute for this webhook |
+| 400 | | not JSON, not an object, a field not declared, a required one missing, or one of the wrong type — the message names it |
+
+Computing the signature, in a shell:
+
+```
+SECRET='dws_…'; TS=$(date +%s)
+BODY='{"customer":"Acme","amount":1200,"invoice_id":"INV-1043"}'
+SIG=$(printf '%s.%s' "$TS" "$BODY" | openssl dgst -sha256 -hmac "$SECRET" -hex | sed 's/^.* //')
+curl -X POST "https://<deployment>/hooks/whk_…" \
+  -H "Authorization: Bearer $SECRET" \
+  -H "X-DecentAI-Timestamp: $TS" -H "X-DecentAI-Signature: sha256=$SIG" \
+  -H "Content-Type: application/json" --data "$BODY"
+```
+
+and in Python:
+
+```python
+import hashlib, hmac, json, time, urllib.request
+
+secret = "dws_…"
+body = json.dumps({"customer": "Acme", "amount": 1200,
+                   "invoice_id": "INV-1043"}).encode()
+stamp = str(int(time.time()))
+mac = hmac.new(secret.encode(), stamp.encode() + b"." + body, hashlib.sha256)
+request = urllib.request.Request(
+    "https://<deployment>/hooks/whk_…", data=body, method="POST",
+    headers={"Authorization": f"Bearer {secret}",
+             "X-DecentAI-Timestamp": stamp,
+             "X-DecentAI-Signature": f"sha256={mac.hexdigest()}",
+             "Content-Type": "application/json"})
+print(urllib.request.urlopen(request).read())
+```
+
+Sign the bytes you send: a body re-encoded after signing does not match.
+
+**Notifications going out** are signed the same way. A subscription in
+the JSON format receives a POST with `Content-Type: application/json`,
+`X-DecentAI-Event` (`approval.waiting`, `reply.ready`, `run.finished`,
+`run.failed`, or `test`), `X-DecentAI-Timestamp` and
+`X-DecentAI-Signature` over `"<timestamp>.<body>"`, keyed with the
+subscription's secret (`dss_…`, shown once when it was made). A
+receiver computes the same HMAC over the raw body it received, compares
+in constant time, and refuses a timestamp far from its clock. The body
+is `{"event", "chat": {"id", "title"}, "line", "link", "at"}`, with
+`"reply"` where the subscription asked for the reply's text. Answer
+2xx; a 5xx, a 408, a 429 or no answer in ten seconds is tried again for
+a day. Slack and Teams subscriptions are sent in their own shapes,
+unsigned.
+
+The pages' doors, on the gateway, are `Settings:Webhook:*` and
+`Settings:Outbound:*` ([actions](actions.md#webhooks)), answering in
+the envelope. A webhook's own page reads `Settings:Webhook:Get` and
+`:Executions` (each call with the fields posted and what the chat did
+after it), and its owner has `:Test`, `:Share` (view only) and
+`:Transfer` (hand it, and its chat, to a colleague)
+([webhooks](../system/webhooks.md#its-page)).
 
 ## Health
 

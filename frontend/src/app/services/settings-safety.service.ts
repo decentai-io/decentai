@@ -8,6 +8,8 @@ import { RequestService } from './request.service';
 export interface SafetySettings {
   /** Whether people may add MCP servers and their chats may call them. */
   mcp: 'allowed' | 'blocked';
+  /** Whether people may receive webhooks into their chats. */
+  webhooks: 'allowed' | 'blocked';
   /** Names no agent may open; a name covers every host under it. */
   blocked_sites: string[];
   /** A script in a page: a card every time, or once for a site in a chat. */

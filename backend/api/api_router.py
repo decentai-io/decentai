@@ -29,7 +29,7 @@ class APIRouter:
     READ_ONLY_ACTIONS = {
         "list", "get", "peers", "available", "leaving", "shapes",
         "grants", "secretgrants", "secretlendable", "sources", "samples",
-        "instances", "resolve", "download",
+        "instances", "resolve", "download", "deliveries", "executions",
     }
 
     # These successful operations already append a richer, domain-specific

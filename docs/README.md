@@ -67,6 +67,9 @@ Agents:
 - [MCP servers](system/mcp.md) — remote tool servers a person adds for
   their own chats: what is read, what each tool costs, and what is not
   taken on trust.
+- [Webhooks](system/webhooks.md) — an outside system's event waking a
+  person's standing chat, what is checked at the door, and a person's
+  notifications sent out to other systems.
 - [The live screen](system/live-screen.md) — a browser the person
   watches in the chat and takes over; sign-in cards.
 
@@ -103,7 +106,7 @@ describe is [`examples/note/`](../examples/note/).
 ## Integrate
 
 - [The API](reference/api.md) — signing in, API keys, the gateway,
-  uploads and downloads, the chat door.
+  webhooks in and out, uploads and downloads, the chat door.
 - [Actions](reference/actions.md) — every gateway action, what it
   grants, which are baseline for every member, and which the runtime's
   delegation may call. Generated from the catalog by

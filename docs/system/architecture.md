@@ -20,7 +20,7 @@ seeder runs once at every start and exits.
  browser
     │  HTTP and WebSocket, port 4280 on this machine (80/443 on a server)
     ▼
-┌─────────┐   /auth/* /app /chats/* /upload /download/* /oauth/*
+┌─────────┐   /auth/* /app /chats/* /upload /download/* /oauth/* /hooks/*
 │  caddy  │──────────────────────────────────────────┐
 └─────────┘   everything else: the web app's files   │
                                                      ▼
@@ -58,7 +58,7 @@ Three networks (`docker-compose.yml`):
 
 | Network | On it | What it is for |
 |---|---|---|
-| `default` | `caddy`, `backend`, `ai-runtime`, `speech` | the one with a way out. Caddy reaches the backend; the backend reaches the runtime's door and the speech container, and the internet for repositories, mail and OAuth; the runtime reaches the backend's gateway, and the internet for agents' packages and, through its proxy, for agents |
+| `default` | `caddy`, `backend`, `ai-runtime`, `speech` | the one with a way out. Caddy reaches the backend; the backend reaches the runtime's door and the speech container, and the internet for repositories, mail, OAuth and a person's notifications to other systems ([webhooks](webhooks.md)); the runtime reaches the backend's gateway, and the internet for agents' packages and, through its proxy, for agents |
 | `data` | `mongo`, `backend`, `init` | `internal: true`: the database, and the two that speak to it. Nothing else has a route to it, and it has none out |
 | `agents` | `ai-runtime`, `agents` | `internal: true`: the runtime is the only container on it with a way anywhere, so a worker's only way out is the runtime's proxy |
 
@@ -124,6 +124,7 @@ the recordings it was trained on ([operating](../run/operating.md#speech-on-this
 | From → to | Over | Carrying | Says |
 |---|---|---|---|
 | browser → backend | `POST /app`, body `{"endpoint": "Domain:Controller:action", …}` (`backend/server/routes/app.py`) | the session cookie, or `Authorization: Bearer dk_…` (an API key) | who the person is; every call is resolved again from the session row |
+| outside system → backend | `POST /hooks/{webhook_id}` (`backend/server/routes/hooks.py`), outside the gateway | the webhook's own secret as `Bearer`, and a signature where required | an event for one person's webhook, and nothing else; the backend then sends it to that webhook's chat on the runtime as a `webhook_event` frame, over its own dial below ([webhooks](webhooks.md)) |
 | browser → backend | `WS /chats/{chat_id}` (`backend/server/routes/ws.py`) | the session cookie, and an `Origin` the deployment names | the same person, speaking in one chat |
 | backend → runtime | `WS /chats/{chat_id}` on the runtime (`ai_runtime/door/socket.py`) | the **service token** and the chat's **delegation** | "this is the backend", and "act for this person in this chat" |
 | backend → runtime | `GET /internal/monitor/…` (`ai_runtime/door/monitor.py`) | the service token | "this is the backend" |
@@ -299,7 +300,7 @@ without anything being unreadable
 
 ## Where everything is kept
 
-**The database**, 34 collections (`backend/database/schema.json`), by
+**The database**, 40 collections (`backend/database/schema.json`), by
 what they are for:
 
 | For | Collections | Page |
@@ -309,6 +310,7 @@ what they are for:
 | what people and agents keep | `secrets`, `secret_definitions`, `agents_data` (records), `files`, `skills`, `mcp_servers` — one shape | [data layer](data-layer.md) |
 | agents | `ai_agent_sources`, `agent_manifests` (approvals), `agent_grants`, `agent_secret_grants`, `agent_samples` | [agent code](agent-code.md) |
 | settings | `llm_connections`, `oauth_apps`, `oauth_states`, `push_subscriptions` | [data layer](data-layer.md) |
+| webhooks | `webhooks`, `webhook_deliveries` (what each received), `webhook_subscriptions`, `webhook_sends` (the outbound queue and its record) | [webhooks](webhooks.md) |
 
 **Five volumes.**
 

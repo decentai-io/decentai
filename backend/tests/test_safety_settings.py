@@ -11,7 +11,8 @@ from test_runtime_secret_use import (  # noqa: F401
 )
 
 DEFAULTS = {"blocked_sites": [], "scripts": "always", "programs": "always",
-            "packages": "any", "allowed_packages": [], "mcp": "allowed"}
+            "packages": "any", "allowed_packages": [], "mcp": "allowed",
+            "webhooks": "allowed"}
 
 
 class TestTheSetting:
@@ -22,7 +23,8 @@ class TestTheSetting:
             "scripts": ["always", "once_per_site"],
             "programs": ["always", "corrections", "quiet"],
             "packages": ["any", "listed"],
-            "mcp": ["allowed", "blocked"]}
+            "mcp": ["allowed", "blocked"],
+            "webhooks": ["allowed", "blocked"]}
 
     def test_rows_are_changed_one_at_a_time_and_names_are_tidied(self, admin, seed):
         changed = app_call(admin, "Settings:Safety:Update", {

@@ -42,7 +42,11 @@ REPLACED = 4408
 #: is the dialer's own key for the chat, renewed while the socket lives.
 INBOUND_EVENTS = {"user_message", "approval_decided", "question_answered",
                   "stop", "schedules_changed", "credential", "screen_input",
-                  "screen_open"}
+                  "screen_open",
+                  # An outside system's event for a webhook's chat: the
+                  # backend's own frame, which no browser can send
+                  # (docs/system/webhooks.md).
+                  "webhook_event"}
 
 
 class MissingModel:
@@ -404,6 +408,30 @@ class SessionHost:
                     host._busy.pop(chat_id, None)
         return Arriving()
 
+    async def _deliver_webhook(self, chat_id: str, session: Session,
+                               frame: Dict[str, Any]) -> None:
+        """An outside system's event, into the chat as an event of its
+        own (Assistant._absorb): the person's instruction for the
+        webhook, and the fields the caller posted, apart."""
+        hook = frame.get("webhook") if isinstance(frame.get("webhook"), dict) else {}
+        event = {"event": "webhook",
+                 "webhook": {"id": str(hook.get("id") or ""),
+                             "name": str(hook.get("name") or "")[:80],
+                             "prompt": str(hook.get("prompt") or "")[:4000]},
+                 "delivery_id": str(frame.get("delivery_id") or ""),
+                 "data": frame.get("data") if isinstance(frame.get("data"), dict) else {}}
+        try:
+            await self.refresh(chat_id)
+            current = self.sessions.get(chat_id, session)
+            if current.dead:
+                return
+            await current.deliver_event(event)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            self.logger.error(f"Webhook event for {chat_id} not delivered: {exc}",
+                              exc_info=True)
+
     async def _deliver_yes(self, chat_id: str, session: Session,
                            approval_id: str, approved: bool,
                            action_hash: str) -> None:
@@ -468,6 +496,13 @@ class SessionHost:
             else:
                 await session.deliver_approval(
                     decided[0], False, action_hash=decided[2])
+        elif kind == "webhook_event":
+            # As a wakeup is: what the chat may do is read again first,
+            # beside the door, so a stop sent meanwhile is read at once.
+            task = asyncio.get_running_loop().create_task(
+                self._deliver_webhook(chat_id, session, frame))
+            self._deciding.add(task)
+            task.add_done_callback(self._deciding.discard)
         elif kind == "question_answered":
             # Words for an agent's question; a list for the files card;
             # an object for a credential card (the saved row's ref, or

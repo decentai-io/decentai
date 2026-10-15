@@ -87,6 +87,14 @@
     </app-field>
   </section>
 
+  <section class="form-section">
+    <h2 class="form-section-title">Webhooks</h2>
+    <p class="form-section-note">Addresses other services post events to, each answered by the assistant in a chat.</p>
+    <app-field label="Receiving webhooks" [help]="webhooksMeaning">
+      <app-segmented [choices]="webhooks" [disabled]="!canEdit" [(ngModel)]="draft.value.webhooks"></app-segmented>
+    </app-field>
+  </section>
+
   <app-save-bar
     *ngIf="canEdit"
     [dirty]="draft.dirty"
