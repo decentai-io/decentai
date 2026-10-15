@@ -2,8 +2,10 @@
 
     <AGENT_PACKAGE_DIR>/<org_id>/<digest>.tar.gz
 
-A directory, behind a small backend contract (PackageBackend), so a
-deployment that keeps its bytes elsewhere replaces one class.
+A directory, or an object store (database/blob_stores.py) under
+``packages/<org_id>/<digest>.tar.gz`` — the same store and setting as
+uploaded files (FILE_STORAGE_PROVIDER) — behind a small backend
+contract (PackageBackend).
 
 Two decisions are visible in the key, whichever store holds it.
 
@@ -81,15 +83,28 @@ class PackageStore:
     The facade every caller talks to. Validation lives here, once; the
     backend behind it only ever sees clean names. Constructing with a
     `root` uses that folder — which is what every test that hands in a
-    tmp_path expects — and constructing bare reads AGENT_PACKAGE_DIR."""
+    tmp_path expects — and constructing bare follows the deployment's
+    storage: AGENT_PACKAGE_DIR on its own disk, else the object store
+    FILE_STORAGE_PROVIDER names."""
 
-    def __init__(self, root: Optional[Path] = None):
-        if root is None:
-            from server.setup.app_state import get_settings
+    def __init__(self, root: Optional[Path] = None,
+                 provider: Optional[str] = None):
+        if root is not None:
+            self.backend: PackageBackend = LocalPackageBackend(Path(root))
+            return
+        from server.setup.app_state import get_settings
 
-            root = Path(getattr(get_settings(), "agent_package_dir", "")
-                        or "data/agent-packages")
-        self.backend: PackageBackend = LocalPackageBackend(Path(root))
+        settings = get_settings()
+        provider = str(provider or getattr(settings, "file_storage_provider",
+                                           "local") or "local").lower()
+        if provider == "local":
+            self.backend = LocalPackageBackend(Path(
+                getattr(settings, "agent_package_dir", "")
+                or "data/agent-packages"))
+        else:
+            from database.blob_stores import blob_store
+
+            self.backend = BlobPackageBackend(blob_store(provider, settings))
 
     # ------------------------------------------------------------------
     def put(self, org_id: str, digest: str, archive: bytes) -> str:
@@ -190,3 +205,45 @@ class LocalPackageBackend:
             return []
         return [p.name[:-len(ARCHIVE_SUFFIX)]
                 for p in folder.glob(f"*{ARCHIVE_SUFFIX}")]
+
+
+class BlobPackageBackend:
+    """An object store, under ``packages/<org>/``. A put is one object
+    written whole: no store shows a half-written object under its name."""
+
+    PREFIX = "packages/"
+
+    def __init__(self, store):
+        self.store = store
+
+    def _key(self, org: str, name: str) -> str:
+        return f"{self.PREFIX}{org}/{name}{ARCHIVE_SUFFIX}"
+
+    def orgs(self) -> List[str]:
+        found = set()
+        for key in self.store.list(self.PREFIX):
+            org, _, rest = key[len(self.PREFIX):].partition("/")
+            if org and rest:
+                found.add(org)
+        return sorted(found)
+
+    def put(self, org: str, name: str, archive: bytes) -> None:
+        import io
+
+        self.store.put(self._key(org, name), io.BytesIO(archive),
+                       "application/gzip")
+
+    def get(self, org: str, name: str) -> Optional[bytes]:
+        return self.store.get(self._key(org, name))
+
+    def has(self, org: str, name: str) -> bool:
+        return self.store.has(self._key(org, name))
+
+    def delete(self, org: str, name: str) -> bool:
+        return self.store.delete(self._key(org, name))
+
+    def list(self, org: str) -> List[str]:
+        prefix = f"{self.PREFIX}{org}/"
+        return [key[len(prefix):-len(ARCHIVE_SUFFIX)]
+                for key in self.store.list(prefix)
+                if key.endswith(ARCHIVE_SUFFIX) and "/" not in key[len(prefix):]]

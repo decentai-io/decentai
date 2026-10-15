@@ -36,7 +36,8 @@ Installing an agent writes the approval row (`agent_manifests`) with
 the `manifest_hash` and the package's own id, and only then — the
 manifest approved — packages its one folder at the source's commit,
 stores the archive under `(organization, sha256-digest)`
-(`backend/database/agent_packages.py`) and pins the `package_digest`
+(`backend/database/agent_packages.py`), on the volume or in the
+bucket `FILE_STORAGE_PROVIDER` names, and pins the `package_digest`
 on the row. A fetch that fails puts the approval back as it was
 (`backend/api/endpoints/app/agents/install_controller.py`). The
 approval mints a platform ref, `agt_` and

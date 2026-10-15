@@ -219,9 +219,11 @@ token.
   hour, for Google); a key or password a person typed stays good until
   they change it. Reviewing the agent before approving it is the
   control ([section 7](07-agents.md)).
-- **It does not seal a file's bytes on disk.** Their description is
+- **It does not seal a file's bytes itself.** Their description is
   sealed; the bytes are stored as they are, where only the backend
-  reaches.
+  reaches — on its own volume, or in a bucket in S3, Azure or Google
+  Cloud, where the provider encrypts them at rest (and S3 with a key
+  of the organization's own, where one is named).
 - **It does not separate the people of one organization inside one
   agent** ([section 8](08-the-sandbox.md)).
 
@@ -320,7 +322,11 @@ too few bytes (`SecretCipher.verify`). It never derives a key from
 another setting.
 
 **Not sealed**: `keys`, by design; a file's bytes, written as they are
-under the connector's root (`backend/database/file_connectors/local.py`);
+by the connector `FILE_STORAGE_PROVIDER` names — the volume
+(`backend/database/file_connectors/local.py`), or an S3, Azure Blob or
+Google Cloud Storage bucket (`backend/database/blob_stores.py`), whose
+provider encrypts at rest, with a KMS key of one's own on S3
+(`STORAGE_S3_KMS_KEY_ID`);
 the OAuth state rows below.
 
 **Unreadable.** For display, `_readable_values` returns an empty map

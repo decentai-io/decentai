@@ -182,6 +182,24 @@ def _load_settings() -> Dict[str, Any]:
             os.getenv("FILE_STORAGE_PROVIDER", "local").strip().lower()
         ),
         "upload_dir": os.getenv("UPLOADS_DIR", "./uploads"),
+        # The object stores (database/blob_stores.py). Each store's
+        # settings are its own, so one a deployment moved away from can
+        # still be read; FILE_STORAGE_PROVIDER says which one is written.
+        "storage_prefix": os.getenv("STORAGE_PREFIX", ""),
+        "storage_s3_bucket": os.getenv("STORAGE_S3_BUCKET", ""),
+        "storage_s3_region": os.getenv("STORAGE_S3_REGION", ""),
+        "storage_s3_endpoint": os.getenv("STORAGE_S3_ENDPOINT", ""),
+        "storage_s3_access_key_id": os.getenv("STORAGE_S3_ACCESS_KEY_ID", ""),
+        "storage_s3_secret_access_key": os.getenv(
+            "STORAGE_S3_SECRET_ACCESS_KEY", ""),
+        "storage_s3_kms_key_id": os.getenv("STORAGE_S3_KMS_KEY_ID", ""),
+        "storage_azure_container": os.getenv("STORAGE_AZURE_CONTAINER", ""),
+        "storage_azure_account_url": os.getenv("STORAGE_AZURE_ACCOUNT_URL", ""),
+        "storage_azure_connection_string": os.getenv(
+            "STORAGE_AZURE_CONNECTION_STRING", ""),
+        "storage_gcs_bucket": os.getenv("STORAGE_GCS_BUCKET", ""),
+        "storage_gcs_project": os.getenv("STORAGE_GCS_PROJECT", ""),
+        "storage_gcs_endpoint": os.getenv("STORAGE_GCS_ENDPOINT", ""),
         # The largest single upload this deployment accepts. Bytes are
         # held in memory while they are hashed and stored, so this is
         # what stands between an authenticated caller and the process's
@@ -224,6 +242,19 @@ class Settings:
     # file storage
     file_storage_provider: str = "local"
     upload_dir: str = "./uploads"
+    storage_prefix: str = ""
+    storage_s3_bucket: str = ""
+    storage_s3_region: str = ""
+    storage_s3_endpoint: str = ""
+    storage_s3_access_key_id: str = ""
+    storage_s3_secret_access_key: str = ""
+    storage_s3_kms_key_id: str = ""
+    storage_azure_container: str = ""
+    storage_azure_account_url: str = ""
+    storage_azure_connection_string: str = ""
+    storage_gcs_bucket: str = ""
+    storage_gcs_project: str = ""
+    storage_gcs_endpoint: str = ""
     max_upload_mb: int = 25
 
     # email — SMTP

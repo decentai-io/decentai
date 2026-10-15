@@ -32,3 +32,11 @@ tzdata>=2024.1
 
 # Web push to a person's browsers
 pywebpush~=2.5
+
+# Object storage for uploaded files and agent packages, where
+# FILE_STORAGE_PROVIDER names a cloud (database/blob_stores.py). Each
+# is imported only by the store that uses it.
+boto3~=1.43
+azure-storage-blob~=12.31
+azure-identity~=1.26
+google-cloud-storage~=3.17

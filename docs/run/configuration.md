@@ -47,9 +47,21 @@ Three values are generated, never chosen:
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `FILE_STORAGE_PROVIDER` | `local` | Where uploaded bytes go. `local` is the one this platform ships; another store is one connector in `backend/database/file_connectors/`. Reads follow each file's own stamp. |
+| `FILE_STORAGE_PROVIDER` | `local` | Where uploaded files and approved agent packages are kept: `local` (the volumes), `s3`, `azure_blob` or `gcs` (`backend/database/blob_stores.py`). New files are written there; each file is read from the store its record names, so a store moved away from is still read while its settings stay. Moving what a deployment already holds: `bootstrap/move_storage.py` ([operating](operating.md#moving-the-files-to-another-store)). |
 | `UPLOADS_DIR` | `./uploads` | The folder for `local`. Keep it short on Windows. |
-| `AGENT_PACKAGE_DIR` | `data/agent-packages` | Where approved agent packages are kept — the only copy the platform controls. A package's filename is a digest, so keep the path short on Windows. |
+| `AGENT_PACKAGE_DIR` | `data/agent-packages` | Where approved agent packages are kept on `local` — the only copy the platform controls. A package's filename is a digest, so keep the path short on Windows. |
+| `STORAGE_PREFIX` | empty | A folder inside the bucket or container, for every cloud: files go under `<prefix>/files/`, packages under `<prefix>/packages/`. |
+| `STORAGE_S3_BUCKET` | empty | The bucket, for `s3`. Required there. |
+| `STORAGE_S3_REGION` | the SDK's | The bucket's region. |
+| `STORAGE_S3_ENDPOINT` | AWS | Another store that speaks S3's protocol — MinIO, Cloudflare R2 — by its address. |
+| `STORAGE_S3_ACCESS_KEY_ID`, `STORAGE_S3_SECRET_ACCESS_KEY` | empty | A key pair, for a deployment with no role to sign in as. Unset, the SDK's own chain is used: the task's or instance's role, then the usual AWS variables and files. |
+| `STORAGE_S3_KMS_KEY_ID` | empty | A KMS key to encrypt each object with (`aws:kms`). Unset, the bucket's own default encryption applies. |
+| `STORAGE_AZURE_CONTAINER` | empty | The container, for `azure_blob`. Required there. |
+| `STORAGE_AZURE_ACCOUNT_URL` | empty | The storage account's address (`https://<account>.blob.core.windows.net`), signed in to as the deployment: a managed identity, a workload identity, or what `az login` left. |
+| `STORAGE_AZURE_CONNECTION_STRING` | empty | A connection string instead, for a deployment with no identity to sign in as. One of the two is required. |
+| `STORAGE_GCS_BUCKET` | empty | The bucket, for `gcs`. Required there. The deployment signs in with application default credentials: the service account it runs as, or the key file `GOOGLE_APPLICATION_CREDENTIALS` names inside the container. |
+| `STORAGE_GCS_PROJECT` | the credentials' | The project, where the credentials do not say it. |
+| `STORAGE_GCS_ENDPOINT` | Google | An emulator's address, signed in to with no credentials. For tests. |
 | `MAX_UPLOAD_MB` | `25` | The largest single upload accepted, between 1 and 5000; bytes are held in memory while hashed. |
 
 ### The runtime, from the backend's side

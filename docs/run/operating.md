@@ -200,6 +200,41 @@ a provider, or neither, for each of the two.
   organization that kept speech local is told its models are not
   running, with no microphone offered.
 
+## Moving the files to another store
+
+Uploaded files and approved agent packages are kept where
+`FILE_STORAGE_PROVIDER` says ([configuration](configuration.md#files-and-packages)):
+the volumes, or a bucket in S3, Azure Blob Storage or Google Cloud
+Storage. Changing the setting changes where new files are written.
+Each file already stored is read from the store its record names, so
+nothing breaks — while that store's settings stay — but nothing moves
+either. To move what is there:
+
+1. Make the bucket or container, and give the deployment's identity
+   (its role, managed identity or service account) read and write on it.
+2. Set `FILE_STORAGE_PROVIDER` and the new store's settings in
+   `deploy.env`, keep the old store's, and restart the backend.
+3. Count, then move:
+
+   ```bash
+   docker compose exec backend python /opt/decentai/bootstrap/move_storage.py --check
+   docker compose exec backend python /opt/decentai/bootstrap/move_storage.py
+   ```
+
+   Every file is copied, read back, and only then its record pointed
+   at the new store; every package in the old one is copied over
+   (`--packages-from s3` when they were in a cloud, not on the
+   volume). Nothing is deleted where it was, and a second run finds
+   nothing left. A file that could not be moved is named and stays
+   readable where it was.
+4. Once the deployment has been seen working on the new store, empty
+   the old one by hand.
+
+Inside a bucket the bytes are what the cloud keeps them as: encrypted
+at rest by the provider, and in S3 with a key of your own where
+`STORAGE_S3_KMS_KEY_ID` names one. On the volumes they are written as
+they are.
+
 ## Rotating the encryption key
 
 Stored values are encrypted under versioned keys; old versions keep

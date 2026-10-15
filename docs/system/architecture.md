@@ -315,8 +315,8 @@ what they are for:
 | Volume | In | Holds |
 |---|---|---|
 | `mongo_data` | mongo | the database |
-| `uploads_data` | backend | the bytes of every stored file |
-| `agent_packages` | backend | each approved agent's code, as an archive by its digest: the copy the platform controls |
+| `uploads_data` | backend | the bytes of every stored file, where `FILE_STORAGE_PROVIDER` is `local`; otherwise they are in the bucket it names ([configuration](../run/configuration.md#files-and-packages)) |
+| `agent_packages` | backend | each approved agent's code, as an archive by its digest: the copy the platform controls — in the same bucket instead, where one is named |
 | `agents_data` | ai-runtime and agents, at one path | the agents' code unpacked, their environments, each worker's home and spool, the spawner's key, and what is written down of what agents did ([monitoring](monitoring.md)) |
 | `speech_models` | speech | the speech models, as fetched: lost, they are fetched again |
 
