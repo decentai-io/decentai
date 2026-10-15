@@ -80,6 +80,11 @@ class WebhookController(AIController):
         })
 
     def create(self, data, user):
+        from database.stores import OrganizationStore
+
+        if OrganizationStore().safety(self._org(user)).get("webhooks") == "blocked":
+            return self._fail(data, "forbidden",
+                              "Your organization has turned webhooks off.", 403)
         payload = self._payload(data)
         try:
             WebhookStore._clean_text(payload.get("name"), payload.get("prompt"))

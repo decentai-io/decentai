@@ -321,3 +321,51 @@ class TestOutbound:
         card = teams["attachments"][0]["content"]
         assert card["type"] == "AdaptiveCard"
         assert card["actions"][0]["url"] == "https://d/ai/chats/c"
+
+
+class TestWhatTheReadingFound:
+    """Each a fix the documentation of this feature found."""
+
+    def test_a_key_rotation_reaches_the_webhooks_secrets(self):
+        import sys
+        from pathlib import Path
+
+        sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "bootstrap"))
+        from reencrypt_secrets import encrypted_fields
+
+        found = {(collection, field) for collection, field, _ in encrypted_fields()}
+        assert ("webhooks", "secret") in found
+        assert ("webhook_subscriptions", "secret") in found
+
+    def test_an_idempotency_key_too_long_to_keep_is_refused(self, app, admin, seed, frames):
+        webhook, secret = make(admin)
+        answer = post(app, webhook, secret, {"customer": "A", "amount": 1},
+                      **{"Idempotency-Key": "k" * 201})
+        assert answer.status_code == 400 and "Idempotency-Key" in answer.json()["error"]
+        assert frames == []
+
+    def test_an_organization_that_switched_webhooks_off_is_not_offered_new_ones(
+            self, admin, seed):
+        from database.stores import OrganizationStore
+
+        OrganizationStore().set_safety(seed.org["_id"], {"webhooks": "blocked"})
+        refused = app_call(admin, "Settings:Webhook:Create", {
+            "name": "x", "prompt": "y"})
+        assert refused.status_code == 403
+
+    def test_nothing_goes_out_while_the_person_is_looking(
+            self, admin, seed, public_dns, monkeypatch):
+        from database.stores.webhooks import OutboundDeliveryStore
+        from server.notifications import Notifier
+
+        TestOutbound().subscribe(admin)
+        chat = {"chat_id": "chat_seen", "org_id": seed.org["_id"],
+                "user_id": seed.admin["_id"], "title": "T"}
+        message = {"parts": [{"content": "Done."}]}
+        monkeypatch.setattr(Notifier, "_attached", staticmethod(lambda c, u: True))
+        Notifier().assistant_said(chat, message)
+        assert OutboundDeliveryStore().col.count_documents({}) == 0
+        monkeypatch.setattr(Notifier, "_attached", staticmethod(lambda c, u: False))
+        monkeypatch.setattr(Notifier, "_later", lambda self, *a: None)
+        Notifier().assistant_said(chat, message)
+        assert OutboundDeliveryStore().col.count_documents({}) == 1

@@ -158,6 +158,8 @@ async def receive(webhook_id: str, request: Request):
         return refused(400, problem)
 
     key = request.headers.get("idempotency-key", "").strip()
+    if len(key) > 200:
+        return refused(400, "The Idempotency-Key is over 200 characters.")
     earlier = deliveries.earlier(webhook["_id"], key)
     if earlier is not None:
         return _answer(202, delivery_id=earlier["_id"], repeated=True)
