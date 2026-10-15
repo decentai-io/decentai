@@ -152,6 +152,9 @@ class WebhookStore(MongoStore):
             "enabled": bool(doc.get("enabled", True)),
             "chat_id": doc.get("chat_id", ""),
             "shown": doc.get("shown", ""),
+            "owner_id": doc.get("user_id", ""),
+            "viewers": {"groups": list((doc.get("viewers") or {}).get("groups") or []),
+                        "users": list((doc.get("viewers") or {}).get("users") or [])},
             "created_at": iso(doc.get("created_at")),
             "updated_at": iso(doc.get("updated_at")),
             "last_event_at": iso(doc.get("last_event_at")),
@@ -198,12 +201,54 @@ class WebhookStore(MongoStore):
             "name": name, "prompt": prompt, "fields": cleaned,
             "require_signature": bool(require_signature),
             "enabled": True, "chat_id": chat_id,
+            "viewers": {"groups": [], "users": []},
             "secret": _seal(secret, webhook_id),
             "shown": secret[:len(self.SECRET_PREFIX) + 6],
             "created_at": now, "updated_at": now, "last_event_at": None,
         }
         self.col.insert_one(doc)
         return doc, secret
+
+    def shared_with(self, user: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """The webhooks others shared with this person to view: by name,
+        or through a group of theirs. Never their own."""
+        groups = list(user.get("assigned_groups") or [])
+        user_id = str(user.get("user_id") or "")
+        return list(self.col.find({
+            "org_id": str(user.get("org_id") or ""),
+            "user_id": {"$ne": user_id},
+            "$or": [{"viewers.users": user_id},
+                    {"viewers.groups": {"$in": groups}}],
+        }).sort("created_at", 1))
+
+    def visible(self, user: Dict[str, Any], webhook_id: str) -> tuple:
+        """(document, "owner" | "viewer") or (None, "")."""
+        doc = self.get_mine(user, webhook_id)
+        if doc is not None:
+            return doc, "owner"
+        user_id = str(user.get("user_id") or "")
+        doc = self.col.find_one({
+            "_id": str(webhook_id or ""),
+            "org_id": str(user.get("org_id") or ""),
+            "$or": [{"viewers.users": user_id},
+                    {"viewers.groups": {"$in": list(user.get("assigned_groups") or [])}}],
+        })
+        return (doc, "viewer") if doc is not None else (None, "")
+
+    def set_viewers(self, doc: Dict[str, Any], viewers: Dict[str, Any]) -> Dict[str, Any]:
+        self.col.update_one({"_id": doc["_id"]}, {"$set": {
+            "viewers": viewers, "updated_at": utc_now()}})
+        return self.col.find_one({"_id": doc["_id"]})
+
+    def hand_over(self, doc: Dict[str, Any], successor_id: str) -> Dict[str, Any]:
+        """The webhook becomes the successor's: its events run as them
+        from now on. Someone it was shared with stays a viewer; the
+        successor is never a viewer of their own."""
+        viewers = dict(doc.get("viewers") or {})
+        viewers["users"] = [u for u in viewers.get("users") or [] if u != successor_id]
+        self.col.update_one({"_id": doc["_id"]}, {"$set": {
+            "user_id": successor_id, "viewers": viewers, "updated_at": utc_now()}})
+        return self.col.find_one({"_id": doc["_id"]})
 
     def update(self, user: Dict[str, Any], webhook_id: str,
                changes: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -273,7 +318,9 @@ class WebhookDeliveryStore(MongoStore):
         }
 
     def record(self, webhook: Dict[str, Any], outcome: str, status: int,
-               reason: str = "", idempotency_key: str = "") -> Dict[str, Any]:
+               reason: str = "", idempotency_key: str = "",
+               data: Optional[Dict[str, Any]] = None,
+               source: str = "caller") -> Dict[str, Any]:
         now = utc_now()
         doc = {
             "_id": f"whd_{new_id()}",
@@ -283,6 +330,11 @@ class WebhookDeliveryStore(MongoStore):
             "outcome": outcome, "status": int(status),
             "reason": str(reason or "")[:500],
             "idempotency_key": str(idempotency_key or "")[:200],
+            # What was posted, accepted ones only: the executions list
+            # shows it beside what the chat did with it.
+            "data": data if isinstance(data, dict) else None,
+            # "caller", or "test": sent from the page by the owner.
+            "source": source,
             "received_at": now, "expires_at": now + self.KEEP,
         }
         self.col.insert_one(doc)

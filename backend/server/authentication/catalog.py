@@ -109,6 +109,11 @@ BASELINE_ACTIONS = (
     # else's is in reach, and an organization can switch inbound
     # webhooks off (Settings:Safety).
     "settings:webhook:list",
+    "settings:webhook:get",
+    "settings:webhook:executions",
+    "settings:webhook:share",
+    "settings:webhook:transfer",
+    "settings:webhook:test",
     "settings:webhook:create",
     "settings:webhook:update",
     "settings:webhook:rotate",
@@ -171,7 +176,7 @@ BASELINE_ACTIONS = (
 # are expected to edit BaseAccess — unticking an action revokes it for
 # everybody — and a seed that re-asserted the whole list on every run
 # would quietly undo that on the next restart.
-BASELINE_REVISION = 28
+BASELINE_REVISION = 29
 
 
 # What the seeded Members group grants: the platform's everyday use, for
@@ -516,7 +521,15 @@ ACTION_CATALOG: Dict[str, Dict[str, Any]] = {
     "settings:webhook": {
         "label": "Webhooks",
         "actions": {
-            "settings:webhook:list": "See your webhooks",
+            "settings:webhook:list": "See your webhooks, and those shared with you",
+            "settings:webhook:get": "See one webhook of yours, or shared with you",
+            "settings:webhook:executions": (
+                "See what a webhook received and what its chat did with it"),
+            "settings:webhook:share": (
+                "Let people you share a group with see one of your webhooks "
+                "and what it did"),
+            "settings:webhook:transfer": "Hand one of your webhooks, and its chat, to a colleague",
+            "settings:webhook:test": "Send a test event to one of your webhooks",
             "settings:webhook:create": (
                 "Make a webhook: an address an outside system posts to, "
                 "waking a chat of yours"),

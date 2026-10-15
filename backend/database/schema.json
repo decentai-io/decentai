@@ -1,5 +1,5 @@
 {
-  "schema_version": 49,
+  "schema_version": 50,
   "collections": {
     "ai_chats": {
       "description": "Backend-owned chat metadata, configuration, plan, the assistant's state (the mind, one document, per thread), and the runtime block.",
@@ -2183,6 +2183,9 @@
             },
             "secret": {
               "bsonType": "object"
+            },
+            "viewers": {
+              "bsonType": "object"
             }
           }
         }
@@ -2201,6 +2204,19 @@
             ],
             [
               "created_at",
+              1
+            ]
+          ]
+        },
+        {
+          "name": "viewers",
+          "keys": [
+            [
+              "org_id",
+              1
+            ],
+            [
+              "viewers.users",
               1
             ]
           ]

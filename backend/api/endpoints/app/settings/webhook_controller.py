@@ -21,7 +21,7 @@ from database.stores import AuditStore, ChatStore
 from database.stores.webhooks import (
     OutboundDeliveryStore, OutboundStore, WebhookDeliveryStore, WebhookStore)
 from server.custom_logging import CustomLoggerFactory
-from util import new_id, utc_now
+from util import iso, new_id, utc_now
 
 #: The chat settings a webhook's page shows and changes.
 CHAT_SETTINGS = ("trust_level", "llm", "enabled_agents")
@@ -73,11 +73,130 @@ class WebhookController(AIController):
         return chat, ""
 
     # ------------------------------------------------------------------
+    def _shared_view(self, doc) -> Dict[str, Any]:
+        """A webhook as someone it was shared with sees it: what it is and
+        what it did, never its settings' chat or its secret's prefix."""
+        public = WebhookStore.to_public(doc)
+        public.pop("shown", None)
+        public["role"] = "viewer"
+        public["url_path"] = f"/hooks/{doc['_id']}"
+        return public
+
+    def _as_role(self, user, doc, role) -> Dict[str, Any]:
+        if role == "owner":
+            return {**self._with_chat(user, doc), "role": "owner"}
+        return self._shared_view(doc)
+
     def list(self, data, user):
         return self._respond(data, {
-            "webhooks": [self._with_chat(user, doc) for doc in self.store.mine(user)],
+            "webhooks": [{**self._with_chat(user, doc), "role": "owner"}
+                         for doc in self.store.mine(user)],
+            "shared": [self._shared_view(doc) for doc in self.store.shared_with(user)],
             "limit": WebhookStore.MAX_PER_USER,
         })
+
+    def get(self, data, user):
+        doc, role = self.store.visible(user, str(self._payload(data).get("webhook_id") or ""))
+        if doc is None:
+            return self._fail(data, "not_found", "Webhook not found.", 404)
+        return self._respond(data, {"webhook": self._as_role(user, doc, role)})
+
+    def executions(self, data, user):
+        """Each event and what the chat did with it — for the owner and
+        for whoever it was shared with."""
+        payload = self._payload(data)
+        doc, role = self.store.visible(user, str(payload.get("webhook_id") or ""))
+        if doc is None:
+            return self._fail(data, "not_found", "Webhook not found.", 404)
+        rows = self.received.for_webhook(doc["_id"], payload.get("limit") or 50)
+        return self._respond(data, {"executions": WebhookRuns().of(doc, rows),
+                                    "role": role})
+
+    def share(self, data, user):
+        """Who else may see this webhook and what it did: groups of the
+        owner's and people who share a group with them. Viewing only —
+        a webhook acts as its owner, and nobody else changes that."""
+        from server.governance.sharing import PERSONAL, Sharing
+
+        payload = self._payload(data)
+        doc = self.store.get_mine(user, str(payload.get("webhook_id") or ""))
+        if doc is None:
+            return self._fail(data, "not_found", "Webhook not found.", 404)
+        raw = payload.get("viewers") or {}
+        if not isinstance(raw, dict):
+            return self._fail(data, "invalid_request",
+                              "viewers is an object with groups and users.")
+        viewers = {
+            "groups": sorted({str(g) for g in raw.get("groups") or [] if g}),
+            "users": sorted({str(u) for u in raw.get("users") or []
+                             if u and str(u) != str(user.get("user_id") or "")}),
+        }
+        sharing = Sharing(PERSONAL, "webhook")
+        refusal = sharing.reach_refusal(user, viewers)
+        if refusal:
+            body, status = refusal
+            return self._fail(data, "forbidden", body["error"], status)
+        missing = sharing.missing_in_org(self._org(user), viewers)
+        if missing:
+            return self._fail(data, "invalid_request",
+                              "Not in your organization: " + ", ".join(missing))
+        doc = self.store.set_viewers(doc, viewers)
+        AuditStore().append("webhook.shared", user, chat_id=doc.get("chat_id"),
+                            resource_refs=[doc["_id"]], details={"viewers": viewers})
+        return self._respond(data, {"webhook": self._as_role(user, doc, "owner")})
+
+    def transfer(self, data, user):
+        """Hand the webhook, and its chat, to a colleague: its events run
+        as them from now on. The caller sees it no more unless it was
+        shared with them."""
+        from api.services.successor import successor_or_error
+
+        payload = self._payload(data)
+        doc = self.store.get_mine(user, str(payload.get("webhook_id") or ""))
+        if doc is None:
+            return self._fail(data, "not_found", "Webhook not found.", 404)
+        successor, why = successor_or_error(
+            self._org(user), payload.get("user_id"),
+            excluding=str(user.get("user_id") or ""))
+        if successor is None:
+            return self._fail(data, "invalid_request", why)
+        if len(self.store.mine({"org_id": self._org(user),
+                                "user_id": successor["_id"]})) >= WebhookStore.MAX_PER_USER:
+            return self._fail(data, "invalid_request",
+                              f"They already keep {WebhookStore.MAX_PER_USER} webhooks.")
+        doc = self.store.hand_over(doc, successor["_id"])
+        if doc.get("chat_id"):
+            self.chats.col.update_one(
+                {"chat_id": doc["chat_id"], "user_id": str(user.get("user_id") or "")},
+                {"$set": {"user_id": successor["_id"], "updated_at": utc_now()}})
+        AuditStore().append("webhook.transferred", user, chat_id=doc.get("chat_id"),
+                            resource_refs=[doc["_id"]],
+                            details={"to": successor["_id"]})
+        return self._respond(data, {"transferred": True,
+                                    "to": {"user_id": successor["_id"],
+                                           "email": successor.get("email", "")}})
+
+    async def test(self, data, user):
+        """An event from the page, as a caller would post it: checked
+        against the fields, then the same road (``accept``)."""
+        from database.stores.webhooks import WebhookFields
+        from server.routes.hooks import _owner, accept
+
+        payload = self._payload(data)
+        doc = self.store.get_mine(user, str(payload.get("webhook_id") or ""))
+        if doc is None:
+            return self._fail(data, "not_found", "Webhook not found.", 404)
+        body = payload.get("data") if isinstance(payload.get("data"), dict) else {}
+        problem = WebhookFields.check(doc.get("fields") or [], body)
+        if problem:
+            return self._fail(data, "invalid_request", problem)
+        person = _owner(doc) if doc.get("enabled", True) else None
+        if person is None:
+            return self._fail(data, "invalid_request",
+                              "This webhook is off, or you are stopped, or your "
+                              "organization turned webhooks off.")
+        delivery = accept(doc, person, body, source="test")
+        return self._respond(data, {"delivery_id": delivery["_id"]})
 
     def create(self, data, user):
         from database.stores import OrganizationStore
@@ -168,6 +287,82 @@ class WebhookController(AIController):
         rows = self.received.for_webhook(doc["_id"], payload.get("limit") or 50)
         return self._respond(data, {
             "deliveries": [WebhookDeliveryStore.to_public(row) for row in rows]})
+
+
+class WebhookRuns:
+    """What a webhook's events came to, for its page: each event beside
+    what its chat did between it and the next — the assistant's reply,
+    the cards it opened and how they stand.
+
+    Read from the chat's own record rather than tagged as it happens, so
+    an event that arrives while the chat is still answering the one
+    before shares that stretch: what the chat did is shown under the
+    event it followed."""
+
+    LIMIT = 200
+
+    def __init__(self):
+        from database.stores import ApprovalStore, ChatMessageStore
+
+        self.messages = ChatMessageStore()
+        self.approvals = ApprovalStore()
+
+    @staticmethod
+    def _words(message: Dict[str, Any]) -> str:
+        return " ".join(
+            str(part.get("content") or part.get("text") or "")
+            for part in (message.get("parts") or [])
+            if isinstance(part, dict)).strip()
+
+    def of(self, webhook: Dict[str, Any], rows) -> list:
+        accepted = sorted((r for r in rows if r.get("status") == 202),
+                          key=lambda r: r["received_at"])
+        until = {}
+        for here, after in zip(accepted, accepted[1:] + [None]):
+            until[here["_id"]] = after["received_at"] if after else None
+        runs = []
+        for row in rows:
+            run = WebhookDeliveryStore.to_public(row)
+            run["data"] = row.get("data")
+            run["source"] = row.get("source", "caller")
+            if row.get("status") == 202:
+                run.update(self._what_followed(
+                    webhook.get("chat_id", ""), row["received_at"],
+                    until.get(row["_id"]), row.get("outcome")))
+            else:
+                run["result"] = "refused"
+            runs.append(run)
+        return runs
+
+    def _what_followed(self, chat_id, start, end, outcome) -> Dict[str, Any]:
+        window = {"$gte": start, **({"$lt": end} if end else {})}
+        said = list(self.messages.col.find(
+            {"chat_id": chat_id, "actor": "ai", "created_at": window,
+             "thread": None}).sort("sequence", 1))
+        cards = list(self.approvals.col.find(
+            {"chat_id": chat_id, "requested_at": window}))
+        reply = "\n\n".join(w for w in (self._words(m) for m in said) if w)
+        from database.stores import ApprovalStore
+
+        waiting = [c for c in cards if c.get("status") == ApprovalStore.PENDING]
+        if outcome == "not delivered":
+            result = "not delivered"
+        elif waiting:
+            result = "waiting"
+        elif reply:
+            result = "answered"
+        else:
+            result = "working"
+        return {
+            "result": result,
+            "reply": reply[:4000],
+            "answered_at": iso(said[0]["created_at"]) if said else None,
+            "seconds": (round((said[0]["created_at"] - start).total_seconds(), 1)
+                        if said else None),
+            "cards": [{"function": (c.get("request") or {}).get("function", ""),
+                       "kind": c.get("kind", ""), "status": c.get("status", "")}
+                      for c in cards],
+        }
 
 
 class OutboundController(AIController):

@@ -164,13 +164,27 @@ async def receive(webhook_id: str, request: Request):
     if earlier is not None:
         return _answer(202, delivery_id=earlier["_id"], repeated=True)
 
-    delivery = deliveries.record(webhook, "accepted", 202, idempotency_key=key)
-    store.touched(webhook["_id"])
+    delivery = accept(webhook, person, data, idempotency_key=key)
+    return _answer(202, delivery_id=delivery["_id"])
+
+
+def accept(webhook: Dict[str, Any], person: Dict[str, Any], data: Dict[str, Any],
+           *, idempotency_key: str = "", source: str = "caller") -> Dict[str, Any]:
+    """An event that passed every check: recorded, on the trail, and on
+    its way to the chat. Also how the owner's test event from the page
+    goes, so a test is the same road as a call."""
+    from database.stores import AuditStore
+    from database.stores.webhooks import WebhookDeliveryStore, WebhookStore
+
+    delivery = WebhookDeliveryStore().record(
+        webhook, "accepted", 202, idempotency_key=idempotency_key,
+        data=data, source=source)
+    WebhookStore().touched(webhook["_id"])
     AuditStore().append("webhook.received", person, chat_id=webhook["chat_id"],
                         resource_refs=[webhook["_id"], delivery["_id"]],
-                        details={"fields": sorted(data)})
+                        details={"fields": sorted(data), "source": source})
     task = asyncio.get_running_loop().create_task(
         _tell(webhook, person, delivery["_id"], data))
     _telling.add(task)
     task.add_done_callback(_telling.discard)
-    return _answer(202, delivery_id=delivery["_id"])
+    return delivery

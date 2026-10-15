@@ -369,3 +369,114 @@ class TestWhatTheReadingFound:
         monkeypatch.setattr(Notifier, "_later", lambda self, *a: None)
         Notifier().assistant_said(chat, message)
         assert OutboundDeliveryStore().col.count_documents({}) == 1
+
+
+class TestItsPage:
+    """A webhook's own page: what each event came to, who else may watch
+    it, handing it on, and a test event from the page."""
+
+    BODY = {"customer": "Acme", "amount": 1200}
+
+    def colleague(self, app, seed):
+        """A second person, in a group with the owner, so sharing reaches."""
+        from test_files import _user
+
+        client, doc = _user(app, seed, "colleague@test.org",
+                            [seed.admins_group["_id"]])
+        return client, doc
+
+    def test_each_event_shows_what_its_chat_did(self, app, admin, seed, frames):
+        from datetime import timedelta
+
+        from database.stores import ApprovalStore, ChatMessageStore
+        from util import utc_now
+
+        webhook, secret = make(admin)
+        post(app, webhook, secret, self.BODY)
+        later = utc_now() + timedelta(seconds=2)
+        ChatMessageStore().col.insert_one({
+            "chat_id": webhook["chat_id"], "org_id": seed.org["_id"],
+            "user_id": seed.admin["_id"], "message_id": "msg_a", "actor": "ai",
+            "thread": None, "sequence": 1, "created_at": later,
+            "parts": [{"type": "text", "content": "Acme has paid invoice 1043."}]})
+        runs = app_call(admin, "Settings:Webhook:Executions", {
+            "webhook_id": webhook["webhook_id"]}).json()["data"]["executions"]
+        (run,) = runs
+        assert run["data"] == self.BODY
+        assert run["result"] == "answered"
+        assert run["reply"] == "Acme has paid invoice 1043."
+        assert run["seconds"] is not None and run["seconds"] >= 0
+
+        post(app, webhook, secret, {"customer": "Beta", "amount": 5})
+        ApprovalStore().col.insert_one({
+            "chat_id": webhook["chat_id"], "approval_id": "apr_w", "kind": "approval",
+            "org_id": seed.org["_id"], "user_id": seed.admin["_id"],
+            "status": "pending", "requested_at": utc_now() + timedelta(seconds=3),
+            "request": {"function": "gmail.draft.send"}})
+        newest = app_call(admin, "Settings:Webhook:Executions", {
+            "webhook_id": webhook["webhook_id"]}).json()["data"]["executions"][0]
+        assert newest["result"] == "waiting"
+        assert newest["cards"][0]["function"] == "gmail.draft.send"
+
+    def test_a_refused_call_is_an_execution_too(self, app, admin, seed, frames):
+        webhook, secret = make(admin)
+        post(app, webhook, "dws_wrong", self.BODY)
+        (run,) = app_call(admin, "Settings:Webhook:Executions", {
+            "webhook_id": webhook["webhook_id"]}).json()["data"]["executions"]
+        assert run["result"] == "refused" and run["status"] == 401
+
+    def test_shared_to_view_and_nothing_more(self, app, admin, seed, frames):
+        webhook, secret = make(admin)
+        other, doc = self.colleague(app, seed)
+        assert app_call(other, "Settings:Webhook:Executions", {
+            "webhook_id": webhook["webhook_id"]}).status_code == 404
+        shared = app_call(admin, "Settings:Webhook:Share", {
+            "webhook_id": webhook["webhook_id"],
+            "viewers": {"users": [doc["_id"]]}})
+        assert shared.status_code == 200, shared.text
+        listed = app_call(other, "Settings:Webhook:List", {}).json()["data"]
+        assert listed["webhooks"] == []
+        (seen,) = listed["shared"]
+        assert seen["role"] == "viewer" and "shown" not in seen
+        assert app_call(other, "Settings:Webhook:Executions", {
+            "webhook_id": webhook["webhook_id"]}).status_code == 200
+        for action in ("Update", "Rotate", "Delete", "Share", "Transfer", "Test"):
+            answer = app_call(other, f"Settings:Webhook:{action}",
+                              {"webhook_id": webhook["webhook_id"], "data": self.BODY,
+                               "viewers": {"users": []}, "user_id": seed.admin["_id"]})
+            assert answer.status_code == 404, action
+
+    def test_sharing_reaches_no_further_than_its_owner(self, app, admin, seed):
+        webhook, _ = make(admin)
+        refused = app_call(admin, "Settings:Webhook:Share", {
+            "webhook_id": webhook["webhook_id"],
+            "viewers": {"groups": ["grp_not_mine"]}})
+        assert refused.status_code in (400, 403)
+
+    def test_handing_it_over_moves_the_webhook_and_its_chat(
+            self, app, admin, seed, frames):
+        from database.stores import ChatStore
+
+        webhook, secret = make(admin)
+        _, doc = self.colleague(app, seed)
+        moved = app_call(admin, "Settings:Webhook:Transfer", {
+            "webhook_id": webhook["webhook_id"], "user_id": doc["_id"]})
+        assert moved.status_code == 200, moved.text
+        assert ChatStore().col.find_one({"chat_id": webhook["chat_id"]})["user_id"] == doc["_id"]
+        assert app_call(admin, "Settings:Webhook:Get", {
+            "webhook_id": webhook["webhook_id"]}).status_code == 404
+        assert post(app, webhook, secret, self.BODY).status_code == 202
+        assert frames[-1][1] == doc["_id"]
+
+    def test_a_test_event_from_the_page_goes_the_same_road(self, app, admin, seed, frames):
+        webhook, _ = make(admin)
+        bad = app_call(admin, "Settings:Webhook:Test", {
+            "webhook_id": webhook["webhook_id"], "data": {"amount": 1}})
+        assert bad.status_code == 400
+        sent = app_call(admin, "Settings:Webhook:Test", {
+            "webhook_id": webhook["webhook_id"], "data": self.BODY})
+        assert sent.status_code == 200, sent.text
+        assert frames[-1][2]["data"] == self.BODY
+        (run,) = app_call(admin, "Settings:Webhook:Executions", {
+            "webhook_id": webhook["webhook_id"]}).json()["data"]["executions"]
+        assert run["source"] == "test"
