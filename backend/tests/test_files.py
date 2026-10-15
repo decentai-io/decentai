@@ -7,12 +7,20 @@ Service:File surface is gone.
 
 import io
 import json
+import os
 
 import pytest
 from fastapi.testclient import TestClient
 
 from agent_fixtures import control, manifest_doc  # noqa: F401
 from conftest import app_call
+
+#: These two look for the bytes on the volume itself; with the backend
+#: pointed at a bucket (test_object_storage.py says how) they have
+#: nothing to look at.
+ON_THE_VOLUME = pytest.mark.skipif(
+    os.getenv("FILE_STORAGE_PROVIDER", "local").lower() != "local",
+    reason="the bytes are in a bucket, not on the volume")
 
 FILE_ACTIONS = [
     "files:file:list",
@@ -87,6 +95,7 @@ def _isolate_cipher():
 
 
 class TestUpload:
+    @ON_THE_VOLUME
     def test_upload_creates_the_document_and_the_bytes(self, admin, seed):
         response = _upload(admin, b"hello bytes", "report.txt")
         assert response.status_code == 200, response.text
@@ -291,6 +300,7 @@ class TestSharing:
 
 
 class TestDelete:
+    @ON_THE_VOLUME
     def test_delete_removes_the_document_and_the_bytes(self, admin, seed):
         import os
         from server.setup.app_state import get_settings
