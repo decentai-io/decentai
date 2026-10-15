@@ -13,10 +13,10 @@ keeps a record of where each one went.
 ## What a person sets
 
 One page, **Settings → Safety**, which the administrator sets for
-everybody (`Settings:Safety`, kept on the organization). Five rows,
+everybody (`Settings:Safety`, kept on the organization). Six rows,
 each starting where the platform stood before the setting existed: the
 Browser's scripts and the Code agent's programs ask every time, any
-package may be installed, and MCP servers are allowed:
+package may be installed, and MCP servers and webhooks are allowed:
 
 | Row | The choices | The start |
 |---|---|---|
@@ -25,6 +25,7 @@ package may be installed, and MCP servers are allowed:
 | **A program** | *Ask every time* · *Do not ask again for a correction* · *Ask only when it reaches a site or uses a credential* | every time |
 | **Packages a program may install** | *Any package the card names* · *Only packages on my list* | any |
 | **MCP servers** | *People may add* · *Nobody may* | allowed |
+| **Receiving webhooks** | *People may receive webhooks* · *Nobody may* | allowed |
 
 Three rules hold under every choice:
 
@@ -59,6 +60,7 @@ What each looser choice means, exactly:
 | Sites no agent may open | the proxy (`ai_runtime/agents/egress.py`) | a name on the list is refused to every worker, a manifest that says `any` included, and the refusal says the site is on the list. The list is of names, so while it holds any, no worker reaches anything by a bare address — an address says nothing of whose site it is. (An MCP server is called by the runtime and not through the proxy: its name is held to the list in the executor, and an address is not refused there.) The list is told to the worker's pass as each call begins, so a change applies from the next call |
 | A script, a program | the backend, as the card is opened (`backend/api/services/chat_session/code_rules.py`) | the runtime proposes and has the code read; `AI:Approval:Open` then answers the card itself where the rule allows, and says so (`settled`). The runtime opens cards and never decides them, so it cannot loosen itself |
 | MCP servers | the backend (`backend/api/services/data_layer/mcp.py`) | blocked, nobody adds or reads a server, the chat's contract names none, and the runtime's door to a server's address is refused ([MCP servers](mcp.md)) |
+| Receiving webhooks | the backend, at the door (`backend/server/routes/hooks.py`) | blocked, every inbound webhook of the organization answers 404, as one that does not exist would; none is deleted, and no new one can be made (403). Notifications going out are not affected ([webhooks](webhooks.md)) |
 | Packages | the runtime, where a proposal is checked before its card (`ai_runtime/execution/call.py`, `code_problem`) | a package that is not on the list is refused before anybody is asked, and the agent is told which names are. A listed package's own dependencies are installed with it |
 
 None of it is the agent's to decide: an agent proposes, and hears yes
@@ -87,7 +89,9 @@ person's chats at once and holds them stopped (`AI:Switch`,
 
 1. The person is marked stopped. From that moment nothing of theirs is
    dialed and no key is minted for any chat of theirs — a message, a
-   decision on a card, a schedule coming round, a boot's re-dial.
+   decision on a card, a schedule coming round, a boot's re-dial, a
+   webhook's event. Their webhooks answer 404 to every call until they
+   resume ([webhooks](webhooks.md)).
 2. Every chat a runtime may be serving for them is killed as above:
    the ones they have open, the ones working with nobody watching, the
    ones that only keep a clock. Each is given ten seconds to write

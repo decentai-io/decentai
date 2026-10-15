@@ -207,6 +207,19 @@ permissions checked on every request. Only the hash is kept; the key is
 shown once; revoking is the only edit; disabling the person revokes
 theirs.
 
+## Webhooks
+
+A person may give an outside system a door into one of their chats: a
+**webhook**, an address (`/hooks/<id>`) with a secret of its own, the
+fields the caller must post, and the person's instruction for every
+event. Each webhook has one standing chat, which runs as the person
+with its own trust level, model and agents; what was posted reaches the
+assistant as data beside the person's instruction, never as one. The
+other way, a person may **subscribe** an address to their own
+notifications — a card waiting, an answer ready, a schedule's run
+ended — as signed JSON, or for Slack or Teams. An organization may turn
+inbound webhooks off on its Safety page ([webhooks](webhooks.md)).
+
 ## The words
 
 The pages are written in plain words, and several of those words stand
