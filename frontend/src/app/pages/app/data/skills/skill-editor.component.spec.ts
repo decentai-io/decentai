@@ -82,8 +82,10 @@ describe('SkillEditorComponent', () => {
   it('saves, leaves nothing unsaved, and goes to the skill as it now reads', async () => {
     const { component, went } = await create({ example: true });
     expect(component.draft.value.title).toBe('Clear, useful writing');
-    // Starting from the example is not yet a change of the person's own.
-    expect(component.dirty).toBeFalse();
+    // The example is written into the form, not saved: the save bar is
+    // there from the start, and leaving would lose it.
+    expect(component.dirty).toBeTrue();
+    expect(component.unsavedChangesTo()).toBe('this skill');
 
     component.draft.value.title = 'Our writing';
     await component.save();
