@@ -215,7 +215,7 @@ each event came to.
   owner's alone.
 - **Hand over** (`Settings:Webhook:Transfer`, owner only): to an active
   member of the organization (`successor_or_error`), who must have room
-  under the twenty. The webhook and its standing chat become theirs, and
+  under the 25. The webhook and its standing chat become theirs, and
   its events run as them — their access, their Stop everything — from
   the next one on. The secret stays, so the caller need not change. The
   one who handed it over keeps nothing of it, unless it was shared with
