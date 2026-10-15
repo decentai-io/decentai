@@ -261,7 +261,10 @@ export class ModelProvidersComponent extends DataPageBase {
   blankValues: Record<string, string> = {};
 
   /** What a blank is usually filled with, so the common case is no step. */
-  private readonly blankDefaults: Record<string, string> = { 'aws-region': 'us-east-1' };
+  private readonly blankDefaults: Record<string, string> = {
+    'aws-region': 'us-east-1',
+    'google-vertex-location': 'us-central1',
+  };
 
   /** A blank, as its provider's own console calls it, and where there
    *  it is found. One not named here is asked for by its own words. */
@@ -270,6 +273,11 @@ export class ModelProvidersComponent extends DataPageBase {
       label: 'AWS region',
       help: 'The region your Bedrock models are enabled in.',
       example: 'us-east-1',
+    },
+    'google-vertex-location': {
+      label: 'Google Cloud region',
+      help: 'Where the models are called: us-central1, europe-west4, … or global.',
+      example: 'us-central1',
     },
     'cloudflare-account-id': {
       label: 'Cloudflare account ID',
@@ -309,6 +317,10 @@ export class ModelProvidersComponent extends DataPageBase {
                         url: 'https://console.aws.amazon.com/bedrock/home#/api-keys' },
     azure: { where: 'the Azure portal: your resource, then Keys and Endpoint',
              url: 'https://portal.azure.com' },
+    'google-vertex': { where: 'Google Cloud: IAM, Service accounts, a key in JSON — paste the whole file. The account needs the Vertex AI User role',
+                       url: 'https://console.cloud.google.com/iam-admin/serviceaccounts' },
+    'google-vertex-anthropic': { where: 'Google Cloud: IAM, Service accounts, a key in JSON — paste the whole file. The account needs the Vertex AI User role, and Claude enabled in Model Garden',
+                                 url: 'https://console.cloud.google.com/iam-admin/serviceaccounts' },
     groq: { where: 'the Groq console, under API Keys',
             url: 'https://console.groq.com/keys' },
     mistral: { where: 'the Mistral console, under API keys',
@@ -330,6 +342,8 @@ export class ModelProvidersComponent extends DataPageBase {
     gemini: ['gemini-'],
     openrouter: ['anthropic/claude-sonnet', 'openai/gpt-'],
     'amazon-bedrock': [],
+    'google-vertex': ['gemini-'],
+    'google-vertex-anthropic': ['claude-sonnet'],
     groq: ['llama-'],
     mistral: ['mistral-medium', 'mistral-large', 'mistral-'],
     xai: ['grok-'],

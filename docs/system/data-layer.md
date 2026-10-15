@@ -370,11 +370,17 @@ accepts a provider that is on it, the page draws its form from it
 (`Settings:Llm:Providers`), and the runtime builds the connector for
 the protocol the entry names. An entry is an id, a name, a protocol and
 the address the form starts with; the connection keeps its own endpoint,
-so a person may point it at a gateway of theirs. The protocols are five,
+so a person may point it at a gateway of theirs. The protocols are seven,
 each one connector in `ai_runtime/llms/connector/`: OpenAI's chat
 completions (which is also what every OpenAI-compatible server speaks),
-OpenAI's Responses, Anthropic's messages, Google's generateContent and
-Amazon Bedrock's Converse. The few providers most people look for carry
+OpenAI's Responses, Anthropic's messages, Google's generateContent,
+Amazon Bedrock's Converse, and Gemini and Claude on Google's Vertex AI
+(`vertex`, `vertex-anthropic`). A Vertex connection's key is a service
+account's JSON key, pasted whole: the project is the one it names, the
+region is the address's blank, and each call is signed with a token
+made from the key (`contracts/vertex.py`). A partner's model on Vertex
+(Grok, Llama and the like, behind Vertex's OpenAI-compatible address)
+is not offered yet. The few providers most people look for carry
 `popular`, so a page can show them first and the rest behind a search. An
 address that differs per customer — Bedrock's region, an Azure resource,
 a Cloudflare account — carries a `<blank>` for that part, which the
@@ -387,10 +393,9 @@ in the repository rather than a request made while the platform runs: an
 install with no way out lists what any other does, and a new provider
 arrives in a commit somebody read. It is refreshed by running the
 script and committing what it wrote; nothing runs it by itself. A
-provider that speaks one of the five protocols is an entry and no code;
+provider that speaks one of the seven protocols is an entry and no code;
 one with a protocol of its own would be a connector as well. A provider reached
-only by signing in, or by a credential that is not one string a person
-can paste, is not on the list — GitHub Copilot, Google Vertex — and a
+only by a person signing in is not on the list — GitHub Copilot — and a
 model on the person's own machine is the `openai_compatible` entry with
 the address typed.
 

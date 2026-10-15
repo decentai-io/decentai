@@ -162,7 +162,7 @@ class TestValidation:
             assert response.json()["connection"]["keys"]["provider"] == provider
 
     def test_a_provider_outside_the_catalog_is_refused_and_told_the_way_in(self, admin, seed):
-        refused = make_connection(admin, provider="google-vertex")
+        refused = make_connection(admin, provider="github-copilot")
         assert refused.status_code == 400
         assert "openai_compatible" in refused.json()["error"]
 
@@ -618,6 +618,44 @@ class TestAskingTheProvider:
 
         monkeypatch.setattr(ProviderProbe, "_client", lambda self: httpx.Client(
             transport=httpx.MockTransport(handler)))
+
+    def test_vertex_is_signed_in_with_the_service_account_then_asked(
+            self, monkeypatch):
+        import httpx
+        from api.services.llm_probe import ProviderProbe
+        from contracts.vertex import VertexAccount
+        from vertex_key import service_account_key
+
+        seen = []
+        self.answering(monkeypatch, lambda request: httpx.Response(200, json={}), seen)
+        monkeypatch.setattr(VertexAccount, "token", lambda self: "ya29.t")
+        key = service_account_key("p1")
+        gemini = ProviderProbe("google-vertex", "https://us-central1-aiplatform.googleapis.com",
+                               key, "gemini-3.5-flash").check()
+        claude = ProviderProbe("google-vertex-anthropic",
+                               "https://europe-west1-aiplatform.googleapis.com",
+                               key, "claude-sonnet-5-5@default").check()
+        assert gemini["outcome"] == claude["outcome"] == "works"
+        assert str(seen[0].url).endswith(
+            "/v1/projects/p1/locations/us-central1/publishers/google/models/"
+            "gemini-3.5-flash:generateContent")
+        assert str(seen[1].url).startswith("https://europe-west1-aiplatform.googleapis.com/")
+        assert str(seen[1].url).endswith(
+            "/publishers/anthropic/models/claude-sonnet-5-5%40default:rawPredict")
+        assert seen[0].headers["authorization"] == "Bearer ya29.t"
+
+    def test_a_vertex_key_that_is_not_one_is_refused_before_anything_is_asked(
+            self, monkeypatch):
+        import httpx
+        from api.services.llm_probe import ProviderProbe
+
+        seen = []
+        self.answering(monkeypatch, lambda request: httpx.Response(200), seen)
+        checked = ProviderProbe("google-vertex", "https://us-central1-aiplatform.googleapis.com",
+                                "AIza-an-api-key", "gemini-3.5-flash").check()
+        assert checked["outcome"] == "refused"
+        assert "JSON key" in checked["reason"]
+        assert seen == []
 
     def test_each_protocol_is_asked_in_its_own_way(self, monkeypatch):
         import httpx

@@ -57,10 +57,12 @@ class LlmProviders:
     #: The wire formats a provider may name, each spoken by one
     #: connector (ai_runtime/llms/factory.py): OpenAI's chat completions
     #: — which is also what every OpenAI-compatible server speaks — and
-    #: its Responses, Anthropic's messages, Google's generateContent and
-    #: Amazon's Converse.
+    #: its Responses, Anthropic's messages, Google's generateContent,
+    #: Amazon's Converse, and Gemini and Claude on Google's Vertex AI,
+    #: signed in with a service account (contracts/vertex.py).
     PROTOCOLS: ClassVar[Tuple[str, ...]] = (
-        "openai", "openai-responses", "anthropic", "gemini", "bedrock")
+        "openai", "openai-responses", "anthropic", "gemini", "bedrock",
+        "vertex", "vertex-anthropic")
 
     #: ``<aws-region>``: the customer's own part of an address.
     BLANK: ClassVar[re.Pattern] = re.compile(r"<([^<>]+)>")

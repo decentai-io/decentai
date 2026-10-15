@@ -431,6 +431,18 @@
       "popular": 3
     },
     {
+      "id": "google-vertex",
+      "name": "Google Vertex AI",
+      "protocol": "vertex",
+      "endpoint": "https://<google-vertex-location>-aiplatform.googleapis.com"
+    },
+    {
+      "id": "google-vertex-anthropic",
+      "name": "Google Vertex AI (Claude)",
+      "protocol": "vertex-anthropic",
+      "endpoint": "https://<google-vertex-location>-aiplatform.googleapis.com"
+    },
+    {
       "id": "greenpt",
       "name": "GreenPT",
       "protocol": "openai",

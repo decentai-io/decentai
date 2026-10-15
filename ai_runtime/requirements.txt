@@ -35,3 +35,7 @@ jsonschema~=4.25
 # LLM providers
 openai~=2.33.0
 anthropic~=0.40
+# Google Vertex AI (llms/connector/vertex.py, contracts/vertex.py): the
+# token a service account's key signs in for, and its transport.
+google-auth~=2.40
+requests~=2.32

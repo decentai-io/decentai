@@ -109,7 +109,8 @@ Another port, said the first time: `python bootstrap/setup.py --port 4300`.
 **Settings → Model providers → Add a provider.** Choose the provider —
 the well-known ones are listed, the rest are behind the search — and
 paste its key. The address is filled in (Amazon Bedrock asks for your
-region, Azure for your resource name), a model to start with is chosen
+region, Azure for your resource name; Google Vertex AI takes a service
+account's JSON key, and its region), a model to start with is chosen
 for you, and the provider is asked whether the key works before it is
 saved. A model on your own computer, or a service that is not listed and
 speaks OpenAI's protocol, is *Your own server*, with its address typed.

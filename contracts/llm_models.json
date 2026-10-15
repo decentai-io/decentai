@@ -2146,6 +2146,35 @@
 {"id": "zai-org/GLM-5-FP8", "name": "GLM-5", "kind": "chat", "reasoning": true, "context": 202752, "output": 131072},
 {"id": "anthropic/claude-opus-4.6", "name": "Claude Opus 4.6", "kind": "chat", "reasoning": true, "context": 409600, "output": 128000}
 ],
+"google-vertex": [
+{"id": "gemini-4-argon", "name": "Gemini 4 Argon", "kind": "chat", "images": true, "reasoning": true, "efforts": ["low", "medium", "high"], "context": 1048576, "output": 65536},
+{"id": "gemini-3.8-flash", "name": "Gemini 3.8 Flash", "kind": "chat", "images": true, "reasoning": true, "efforts": ["low", "medium", "high"], "context": 1048576, "output": 65536},
+{"id": "gemini-3.7-flash", "name": "Gemini 3.7 Flash", "kind": "chat", "images": true, "reasoning": true, "efforts": ["low", "medium", "high"], "context": 1048576, "output": 65536},
+{"id": "gemini-3.5-flash-lite", "name": "Gemini 3.5 Flash Lite", "kind": "chat", "images": true, "reasoning": true, "efforts": ["minimal", "low", "medium", "high"], "context": 1048576, "output": 65536},
+{"id": "gemini-3.1-flash-lite-image", "name": "Nano Banana 2 Lite", "kind": "chat", "images": true, "reasoning": true, "efforts": ["minimal", "high"], "context": 65536, "output": 4096},
+{"id": "gemini-3.5-flash", "name": "Gemini 3.5 Flash", "kind": "chat", "images": true, "reasoning": true, "efforts": ["minimal", "low", "medium", "high"], "context": 1048576, "output": 65536},
+{"id": "gemini-3.1-flash-lite", "name": "Gemini 3.1 Flash Lite", "kind": "chat", "images": true, "reasoning": true, "efforts": ["minimal", "low", "medium", "high"], "context": 1048576, "output": 65536},
+{"id": "gemini-3.1-pro-preview", "name": "Gemini 3.1 Pro Preview", "kind": "chat", "images": true, "reasoning": true, "efforts": ["low", "medium", "high"], "context": 1048576, "output": 65536},
+{"id": "gemini-3.1-pro-preview-customtools", "name": "Gemini 3.1 Pro Preview Custom Tools", "kind": "chat", "images": true, "reasoning": true, "efforts": ["low", "medium", "high"], "context": 1048576, "output": 65536},
+{"id": "gemini-3-flash-preview", "name": "Gemini 3 Flash Preview", "kind": "chat", "images": true, "reasoning": true, "efforts": ["minimal", "low", "medium", "high"], "context": 1048576, "output": 65536},
+{"id": "gemini-embedding-001", "name": "Gemini Embedding 001", "kind": "embedding", "context": 2048, "output": 1}
+],
+"google-vertex-anthropic": [
+{"id": "claude-haiku-5-5@default", "name": "Claude Haiku 5.5", "kind": "chat", "images": true, "reasoning": true, "efforts": ["low", "medium", "high", "xhigh", "max"], "context": 1000000, "output": 128000},
+{"id": "claude-sonnet-5-5@default", "name": "Claude Sonnet 5.5", "kind": "chat", "images": true, "reasoning": true, "efforts": ["low", "medium", "high", "xhigh", "max"], "context": 1000000, "output": 128000},
+{"id": "claude-opus-5-5@default", "name": "Claude Opus 5.5", "kind": "chat", "images": true, "reasoning": true, "efforts": ["low", "medium", "high", "xhigh", "max"], "context": 1000000, "output": 128000},
+{"id": "claude-fable-5-1@default", "name": "Claude Fable 5.1", "kind": "chat", "images": true, "reasoning": true, "efforts": ["low", "medium", "high", "xhigh", "max"], "context": 1000000, "output": 128000},
+{"id": "claude-opus-5@default", "name": "Claude Opus 5", "kind": "chat", "images": true, "reasoning": true, "efforts": ["low", "medium", "high", "xhigh", "max"], "context": 1000000, "output": 128000},
+{"id": "claude-sonnet-5@default", "name": "Claude Sonnet 5", "kind": "chat", "images": true, "reasoning": true, "efforts": ["low", "medium", "high", "xhigh", "max"], "context": 1000000, "output": 128000},
+{"id": "claude-fable-5@default", "name": "Claude Fable 5", "kind": "chat", "images": true, "reasoning": true, "efforts": ["low", "medium", "high", "xhigh", "max"], "context": 1000000, "output": 128000},
+{"id": "claude-opus-4-8@default", "name": "Claude Opus 4.8", "kind": "chat", "images": true, "reasoning": true, "efforts": ["low", "medium", "high", "xhigh", "max"], "context": 1000000, "output": 128000},
+{"id": "claude-opus-4-7@default", "name": "Claude Opus 4.7", "kind": "chat", "images": true, "reasoning": true, "efforts": ["low", "medium", "high", "xhigh", "max"], "context": 1000000, "output": 128000},
+{"id": "claude-sonnet-4-6@default", "name": "Claude Sonnet 4.6", "kind": "chat", "images": true, "reasoning": true, "efforts": ["low", "medium", "high", "max"], "context": 1000000, "output": 128000},
+{"id": "claude-opus-4-6@default", "name": "Claude Opus 4.6", "kind": "chat", "images": true, "reasoning": true, "efforts": ["low", "medium", "high", "max"], "context": 1000000, "output": 128000},
+{"id": "claude-opus-4-5@20251101", "name": "Claude Opus 4.5", "kind": "chat", "images": true, "reasoning": true, "efforts": ["low", "medium", "high"], "context": 200000, "output": 64000},
+{"id": "claude-haiku-4-5@20251001", "name": "Claude Haiku 4.5", "kind": "chat", "images": true, "reasoning": true, "context": 200000, "output": 64000},
+{"id": "claude-sonnet-4-5@20250929", "name": "Claude Sonnet 4.5", "kind": "chat", "images": true, "reasoning": true, "context": 200000, "output": 64000}
+],
 "greenpt": [
 {"id": "deepseek-v4.1-flash", "name": "DeepSeek V4.1 Flash", "kind": "chat", "images": true, "reasoning": true, "efforts": ["none", "minimal", "low", "medium", "high"], "context": 1000000, "output": 384000},
 {"id": "glm-5.3-flash", "name": "GLM-5.3-Flash", "kind": "chat", "reasoning": true, "efforts": ["none", "minimal", "low", "medium", "high"], "context": 1000000, "output": 131072},

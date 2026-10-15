@@ -518,7 +518,7 @@ The actions are one vocabulary in two forms. The prompt describes them;
 `mind/actions.py` carries the same list as tool schemas, and every
 beat offers those to the connector. A provider that speaks tool
 calling (OpenAI-compatible, OpenAI's Responses, Anthropic, Bedrock,
-Gemini) is asked for exactly one
+Gemini, and Gemini and Claude on Vertex AI) is asked for exactly one
 call per beat and hands it back as the action's JSON — so the model is
 steered away from answering in prose between actions, from gluing two
 together and from misspelling a field. It is steering and not a

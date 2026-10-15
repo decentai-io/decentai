@@ -6,6 +6,8 @@ from ai_runtime.llms.connector.fake import FakeConnector
 from ai_runtime.llms.connector.gemini import GeminiConnector
 from ai_runtime.llms.connector.openai import OpenAIConnector
 from ai_runtime.llms.connector.responses import OpenAIResponsesConnector
+from ai_runtime.llms.connector.vertex import (
+    VertexAnthropicConnector, VertexGeminiConnector)
 from contracts.llm_providers import LlmProviders
 
 
@@ -36,6 +38,8 @@ class LLMConnectorFactory:
         "anthropic": AnthropicConnector,
         "gemini": GeminiConnector,
         "bedrock": BedrockConnector,
+        "vertex": VertexGeminiConnector,
+        "vertex-anthropic": VertexAnthropicConnector,
     }
 
     #: Scripted, no network, and in no catalog: nobody is offered it on

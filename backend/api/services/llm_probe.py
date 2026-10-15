@@ -12,6 +12,11 @@ nothing and which every protocol but one offers. Bedrock's runtime has
 no list a key can read, so it is asked for a reply of a few tokens from
 the model the connection starts with.
 
+Vertex AI is asked the same way: the key is a service account's JSON
+key, signed in with first (contracts/vertex.py) — a key that is not one,
+or that Google will not sign in with, is refused before anything is
+asked — and the model the connection starts with is asked for a reply.
+
 Azure is asked the same way and for the same reason: its list names
 models, and a connection there names a DEPLOYMENT of the customer's own,
 which only a request to it can find. A deployment that is not there is a
@@ -78,6 +83,10 @@ class ProviderProbe:
     def _ask(self) -> Tuple[str, str, List[str]]:
         if not self.protocol or not self.endpoint:
             return self.UNKNOWN, "There is no address to ask.", []
+        if self.protocol.startswith("vertex"):
+            refusal = self._sign_in_to_vertex()
+            if refusal:
+                return self.REFUSED, refusal, []
         try:
             with self._client() as client:
                 response = self._request(client)
@@ -102,7 +111,38 @@ class ProviderProbe:
         """The seam a test stands a stub in."""
         return httpx.Client(timeout=self.TIMEOUT)
 
+    def _sign_in_to_vertex(self) -> str:
+        """The service account read and signed in with, or why not:
+        ``self.vertex`` and ``self.token`` for the request."""
+        from contracts.vertex import VertexAccount, VertexKeyError
+
+        try:
+            self.vertex = VertexAccount(self.api_key, self.endpoint)
+        except VertexKeyError as exc:
+            return str(exc)
+        try:
+            self.token = self.vertex.token()
+        except Exception as exc:
+            return ("Google would not sign in with that service account: "
+                    + self._plain(exc))
+        return ""
+
     def _request(self, client: httpx.Client) -> httpx.Response:
+        if self.protocol == "vertex":
+            return client.post(
+                f"{self.vertex.base}/publishers/google/models/"
+                f"{quote(self.model, safe='')}:generateContent",
+                headers={"Authorization": f"Bearer {self.token}"},
+                json={"contents": [{"role": "user", "parts": [{"text": "Hi"}]}],
+                      "generationConfig": {"maxOutputTokens": 16}})
+        if self.protocol == "vertex-anthropic":
+            return client.post(
+                f"{self.vertex.base}/publishers/anthropic/models/"
+                f"{quote(self.model, safe='')}:rawPredict",
+                headers={"Authorization": f"Bearer {self.token}"},
+                json={"anthropic_version": "vertex-2023-10-16",
+                      "messages": [{"role": "user", "content": "Hi"}],
+                      "max_tokens": 16})
         if self.protocol == "anthropic":
             return client.get(f"{self.endpoint}/v1/models", params={"limit": 1000}, headers={
                 "x-api-key": self.api_key,

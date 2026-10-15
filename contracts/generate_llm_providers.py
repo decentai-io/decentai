@@ -27,9 +27,10 @@ with one still in it is refused rather than tried.
 
 What it deliberately leaves out:
 
-- A provider reached only by signing in, or by a credential that is not
-  one string a person can paste — GitHub Copilot, Google Vertex. Amazon
-  Bedrock is here because it issues an API key.
+- A provider reached only by a person signing in — GitHub Copilot.
+  Amazon Bedrock is here because it issues an API key; Google Vertex AI
+  because a service account's JSON key is one text a person can paste
+  (contracts/vertex.py).
 - A model on the person's own machine. It is reached with
   ``openai_compatible`` and the address typed, since where that machine
   is, as seen from the platform, is nothing a catalog can know.
@@ -93,6 +94,15 @@ class ProviderCatalogWriter:
         "togetherai": ("openai", "https://api.together.xyz/v1"),
         "azure": ("openai", "https://${AZURE_RESOURCE_NAME}.openai.azure.com/openai/v1"),
         "amazon-bedrock": ("bedrock", "https://bedrock-runtime.${AWS_REGION}.amazonaws.com"),
+        # Gemini, and Claude, behind a Google Cloud project: the key is a
+        # service account's JSON key, and the region the one blank.
+        "google-vertex": ("vertex",
+                          "https://${GOOGLE_VERTEX_LOCATION}-aiplatform.googleapis.com",
+                          "google-vertex", "Google Vertex AI"),
+        "google-vertex-anthropic": ("vertex-anthropic",
+                                    "https://${GOOGLE_VERTEX_LOCATION}-aiplatform.googleapis.com",
+                                    "google-vertex-anthropic",
+                                    "Google Vertex AI (Claude)"),
     }
 
     #: The few most people look for, by the id the catalog gives them,
@@ -303,6 +313,11 @@ class ProviderCatalogWriter:
                 if entry["protocol"] in self.SHAPES.values() else None
             protocol = protocol or entry["protocol"]
         if protocol is None:
+            return None
+        if entry["protocol"].startswith("vertex") and protocol != entry["protocol"]:
+            # A partner's model on Vertex (Grok, Llama, …) is reached at
+            # Vertex's OpenAI-compatible address with the account's
+            # token, which no connector here signs with yet.
             return None
         # The provider's address as models.dev wrote it, where it did:
         # an Anthropic model at an OpenAI address loses the version

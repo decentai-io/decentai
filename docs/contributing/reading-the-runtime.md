@@ -92,7 +92,7 @@ ai_runtime/
   llms/                how the runtime reaches a model
     factory.py         LLMConnectorFactory: provider name -> the connector
     connector/         one per provider — anthropic, bedrock, gemini, openai,
-                       responses, fake — behind one interface (tools.py)
+                       responses, vertex, fake — behind one interface (tools.py)
   prompts/             every prompt the runtime speaks, as .md files a person can edit
 ```
 

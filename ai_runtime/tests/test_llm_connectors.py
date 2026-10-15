@@ -12,6 +12,8 @@ from ai_runtime.llms.connector.fake import FakeConnector
 from ai_runtime.llms.connector.gemini import GeminiConnector
 from ai_runtime.llms.connector.openai import OpenAIConnector
 from ai_runtime.llms.connector.responses import OpenAIResponsesConnector
+from ai_runtime.llms.connector.vertex import (
+    VertexAnthropicConnector, VertexGeminiConnector)
 from ai_runtime.llms.factory import LLMConnectorFactory
 from contracts.generate_llm_providers import ProviderCatalogWriter
 from contracts.llm_providers import LlmProviders
@@ -60,15 +62,20 @@ class TestTheCatalog:
               "openai-responses": OpenAIResponsesConnector,
               "anthropic": AnthropicConnector,
               "gemini": GeminiConnector,
-              "bedrock": BedrockConnector}
+              "bedrock": BedrockConnector,
+              "vertex": VertexGeminiConnector,
+              "vertex-anthropic": VertexAnthropicConnector}
 
     def test_every_provider_in_the_catalog_gets_the_connector_of_its_protocol(self):
         assert set(self.SPEAKS) == set(LlmProviders.PROTOCOLS)
         assert LLMConnectorFactory.PROTOCOLS == self.SPEAKS
+        vertex_key = service_account_key()
         for entry in LlmProviders.all():
             filled = entry["endpoint"].replace("<", "").replace(">", "")
+            # A Vertex connection's key is a service account's JSON key.
+            key = vertex_key if entry["protocol"].startswith("vertex") else "k"
             connector = LLMConnectorFactory.create({
-                "provider": entry["id"], "api_key": "k", "model": "m",
+                "provider": entry["id"], "api_key": key, "model": "m",
                 "endpoint": filled or "https://gateway.example.test/v1",
             })
             assert type(connector) is self.SPEAKS[entry["protocol"]], entry["id"]
@@ -1106,3 +1113,128 @@ def test_compatible_provider_request_and_tool_response(monkeypatch, provider, en
     run(exercise())
     with pytest.raises(ValueError, match="requires endpoint"):
         LLMConnectorFactory.create({"provider": provider, "api_key": "k", "model": "m"})
+
+
+def service_account_key(project="vertex-proj"):
+    """A service account's JSON key, as Google Cloud gives one, with a
+    private key made here: nothing is signed in with it."""
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+
+    pem = rsa.generate_private_key(public_exponent=65537, key_size=2048) \
+        .private_bytes(serialization.Encoding.PEM,
+                       serialization.PrivateFormat.PKCS8,
+                       serialization.NoEncryption()).decode("ascii")
+    return json.dumps({
+        "type": "service_account", "project_id": project,
+        "private_key_id": "k1", "private_key": pem,
+        "client_email": f"agent@{project}.iam.gserviceaccount.com",
+        "token_uri": "https://oauth2.googleapis.com/token"})
+
+
+class TestVertex:
+    """Gemini and Claude on Google Cloud: the service account's key
+    pasted whole, the project read from it, the region from the
+    address, and a Bearer token in place of an API key."""
+
+    def test_the_account_says_its_project_and_region(self):
+        from contracts.vertex import VertexAccount
+
+        account = VertexAccount(service_account_key(),
+                                "https://europe-west4-aiplatform.googleapis.com")
+        assert account.project == "vertex-proj"
+        assert account.location == "europe-west4"
+        assert account.base == ("https://europe-west4-aiplatform.googleapis.com"
+                                "/v1/projects/vertex-proj/locations/europe-west4")
+        global_ = VertexAccount(service_account_key(),
+                                "https://global-aiplatform.googleapis.com")
+        assert global_.host == "aiplatform.googleapis.com"
+        assert global_.location == "global"
+
+    def test_a_key_that_is_not_a_service_accounts_is_refused_in_words(self):
+        from contracts.vertex import VertexAccount, VertexKeyError
+
+        for key, said in (("AIza-not-json", "whole JSON key"),
+                          (json.dumps({"type": "authorized_user"}), "not a service account"),
+                          (json.dumps({"type": "service_account"}), "missing project_id")):
+            with pytest.raises(VertexKeyError, match=said):
+                VertexAccount(key, "https://us-central1-aiplatform.googleapis.com")
+        with pytest.raises(VertexKeyError, match="aiplatform"):
+            VertexAccount(service_account_key(), "https://example.com")
+
+    def test_gemini_is_asked_at_the_projects_address_with_a_token(self):
+        import httpx
+
+        from ai_runtime.llms.connector.vertex import VertexGeminiConnector
+
+        seen = []
+
+        def handler(request):
+            seen.append(request)
+            return httpx.Response(200, json={"candidates": [{
+                "content": {"role": "model", "parts": [{"text": "ready"}]},
+                "finishReason": "STOP"}]})
+
+        connector = LLMConnectorFactory.create({
+            "provider": "google-vertex", "model": "gemini-3.5-flash",
+            "endpoint": "https://us-central1-aiplatform.googleapis.com",
+            "api_key": service_account_key()})
+        assert isinstance(connector, VertexGeminiConnector)
+        connector.account.token = lambda: "ya29.test-token"
+        connector._client = lambda: httpx.AsyncClient(
+            transport=httpx.MockTransport(handler))
+        reply = run(connector.chat([{"role": "user", "content": "Say ready."}]))
+        request = seen[0]
+        assert str(request.url) == (
+            "https://us-central1-aiplatform.googleapis.com/v1/projects/vertex-proj"
+            "/locations/us-central1/publishers/google/models/gemini-3.5-flash"
+            ":generateContent")
+        assert request.headers["authorization"] == "Bearer ya29.test-token"
+        assert "x-goog-api-key" not in request.headers
+        assert reply.content == "ready"
+
+    def test_an_embedding_model_is_asked_through_predict(self):
+        import httpx
+
+        from ai_runtime.llms.connector.vertex import VertexGeminiConnector
+
+        seen = []
+
+        def handler(request):
+            seen.append(json.loads(request.content))
+            return httpx.Response(200, json={"predictions": [
+                {"embeddings": {"values": [0.1, 0.2]}},
+                {"embeddings": {"values": [0.3, 0.4]}}]})
+
+        connector = VertexGeminiConnector({
+            "model": "gemini-embedding-001",
+            "endpoint": "https://us-central1-aiplatform.googleapis.com",
+            "api_key": service_account_key()})
+        connector.account.token = lambda: "t"
+        connector._client = lambda: httpx.AsyncClient(
+            transport=httpx.MockTransport(handler))
+        assert run(connector.embed(["a", "b"])) == [[0.1, 0.2], [0.3, 0.4]]
+        assert seen[0] == {"instances": [{"content": "a"}, {"content": "b"}]}
+
+    def test_claude_goes_through_anthropics_own_vertex_client(self):
+        from anthropic import AsyncAnthropicVertex
+
+        from ai_runtime.llms.connector.vertex import VertexAnthropicConnector
+
+        connector = LLMConnectorFactory.create({
+            "provider": "google-vertex-anthropic", "model": "claude-sonnet-5-5@default",
+            "endpoint": "https://europe-west1-aiplatform.googleapis.com",
+            "api_key": service_account_key("claude-proj")})
+        assert isinstance(connector, VertexAnthropicConnector)
+        assert isinstance(connector.client, AsyncAnthropicVertex)
+        assert connector.client.region == "europe-west1"
+        assert connector.client.project_id == "claude-proj"
+        assert connector.model == "claude-sonnet-5-5@default"
+
+    def test_the_catalog_offers_both_with_the_region_as_the_blank(self):
+        for provider in ("google-vertex", "google-vertex-anthropic"):
+            entry = LlmProviders.find(provider)
+            assert entry["endpoint"] == \
+                "https://<google-vertex-location>-aiplatform.googleapis.com"
+            models = LlmProviders.models(provider)
+            assert models and all("/" not in m["id"] for m in models)
