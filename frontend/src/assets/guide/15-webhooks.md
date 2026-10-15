@@ -19,6 +19,8 @@ Each webhook has **one chat of its own**, named after it, which every event wake
 
 When the webhook is made you are shown its **address** and its **secret**. Copy the secret then: it is never shown again. **Replace the secret** makes a new one, also shown once, and the old one stops working at once.
 
+The webhook's page also shows an **example call** to copy and try: set `WEBHOOK_SECRET` to the secret first, or put the secret in its place.
+
 The secret fires this webhook and nothing else. It is not an API key: it cannot act as you anywhere.
 
 ## What the other service sends

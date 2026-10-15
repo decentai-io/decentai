@@ -185,7 +185,9 @@ level 0.
 ### Its page
 
 Each webhook has a page (`/ai/webhooks/<id>`): what it is, and what
-each event came to.
+each event came to. At the top are its address and an **example
+call** to copy — a `curl` with the fields as declared and the secret as
+`$WEBHOOK_SECRET`, since the page never holds the secret itself.
 
 - **Executions** (`Settings:Webhook:Executions`): every call, newest
   first, for 30 days. An accepted one shows the fields posted, whether
@@ -317,7 +319,8 @@ An organization's **Safety** page has *Receiving webhooks* — *People
 may receive webhooks* (the start) or *Nobody may*
 (`webhooks: allowed | blocked`, [safety](safety.md)). Blocked, every
 inbound webhook of the organization answers 404; those already made
-are kept, and may still be made and changed. Outbound subscriptions
+are kept and may still be changed, but no new one is made (403,
+`create`). Outbound subscriptions
 are not affected.
 
 A person removed from the organization takes their webhooks and
