@@ -43,7 +43,12 @@ from server.setup.app_state import get_settings, get_ws_manager
 
 #: what a frontend may say through the relay, and the frame it becomes
 FRAMES = {"user_message", "approval_decided", "question_answered", "stop",
-          "schedules_changed", "screen_input", "screen_open"}
+          "schedules_changed", "screen_input", "screen_open",
+          # The backend's own, never a browser's: an outside system's
+          # event for a webhook's chat (server/routes/hooks.py). The
+          # browser's socket builds only the frames of the actions it
+          # knows, and this is none of them.
+          "webhook_event"}
 
 
 class RuntimeClient:

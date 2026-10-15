@@ -70,6 +70,7 @@ class Notifier:
             title = f"{agent} is waiting for your approval"
             body = str(request.get("function") or "")[:140]
         self._later(chat, "card", title, body)
+        self._out(chat, "approval.waiting", title)
 
     def assistant_said(self, chat: Dict[str, Any], message: Dict[str, Any]) -> None:
         """The assistant wrote to the person."""
@@ -79,6 +80,22 @@ class Notifier:
         if not words:
             return
         self._later(chat, "answer", str(chat.get("title") or "Your chat"), words[:140])
+        self._out(chat, "reply.ready", "Your chat has an answer", reply=words)
+
+    def run_ended(self, chat: Dict[str, Any], what: str, failed: bool) -> None:
+        """A schedule's run came to an end, and how."""
+        self._out(chat, "run.failed" if failed else "run.finished",
+                  f"{what} {'failed' if failed else 'finished'}")
+
+    def _out(self, chat: Dict[str, Any], event: str, line: str, reply: str = "") -> None:
+        """The same moment, for the addresses the person subscribed
+        (server/outbound.py) — whether or not they are looking."""
+        try:
+            from server.outbound import Outbound
+
+            Outbound().notify(chat, event, line, reply)
+        except Exception as exc:
+            self.logger.warning(f"Outbound {event} not queued: {exc}")
 
     # -- delivery ---------------------------------------------------------------
     def _later(self, chat: Dict[str, Any], kind: str, title: str, body: str) -> None:

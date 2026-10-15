@@ -88,6 +88,14 @@ class ScheduleController(AIController):
             fields["enabled"] = False
         kept = ScheduleStore().change(
             chat["chat_id"], str(row.get("schedule_id") or ""), fields)
+        runs = [run for run in (row.get("runs") or []) if isinstance(run, dict)]
+        if kept and runs:
+            # How the fire ended, for the addresses the person subscribed.
+            from server.notifications import Notifier
+
+            what = (str(row.get("function") or "") or "A reminder")[:80]
+            Notifier().run_ended(chat, f"Schedule: {what}",
+                                 str(runs[-1].get("status") or "") == "error")
         return self._respond(data, {"gone": not kept})
 
     def remove(self, data, user):

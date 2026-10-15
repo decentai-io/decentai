@@ -356,6 +356,10 @@ class UserController(IAMController):
         AgentSampleStore().delete_for_user(org_id, target["_id"])
         # Reached with the person's own credential: removed, not handed on.
         McpServerStore().delete_for_user(org_id, target["_id"])
+        from database.stores.webhooks import OutboundStore, WebhookStore
+
+        WebhookStore().delete_for_user(target["_id"])
+        OutboundStore().delete_for_user(target["_id"])
 
         # The organization's, in their keeping: handed over.
         handed = {
