@@ -2,7 +2,7 @@
   "schema_version": "2.0",
   "source": {
     "url": "https://models.dev/api.json",
-    "sha256": "684c2f7a21abc560416a4c89323edfa14f72ead0cce79e8ec62f0aa7d8613679"
+    "sha256": "0a4273a9c5b08fe5dbf4edb7a172c4cfcb66317903bb5ccfbb81bab899904066"
   },
   "providers": [
     {
@@ -52,6 +52,12 @@
       "name": "AI-ROUTER",
       "protocol": "openai",
       "endpoint": "https://api.ai-router.dev/v1"
+    },
+    {
+      "id": "aimlapi",
+      "name": "AI/ML API",
+      "protocol": "openai",
+      "endpoint": "https://api.aimlapi.com/v1"
     },
     {
       "id": "ai21",
@@ -199,6 +205,12 @@
       "name": "Bothub",
       "protocol": "openai",
       "endpoint": "https://openai.bothub.ru/v1"
+    },
+    {
+      "id": "boundless",
+      "name": "Boundless",
+      "protocol": "openai",
+      "endpoint": "https://api.inference.boundless.network/v1"
     },
     {
       "id": "cerebras",
@@ -612,6 +624,12 @@
       "endpoint": "https://api.longcat.chat/openai"
     },
     {
+      "id": "lowrouter",
+      "name": "LowRouter",
+      "protocol": "openai",
+      "endpoint": "https://api.lowrouter.ai/v1"
+    },
+    {
       "id": "lucidquery",
       "name": "LucidQuery",
       "protocol": "openai",
@@ -764,7 +782,7 @@
     },
     {
       "id": "novita-ai",
-      "name": "NovitaAI",
+      "name": "Novita AI",
       "protocol": "openai",
       "endpoint": "https://api.novita.ai/openai"
     },
@@ -800,16 +818,16 @@
       "popular": 2
     },
     {
+      "id": "opencode",
+      "name": "OpenCode",
+      "protocol": "openai",
+      "endpoint": "https://opencode.ai/inference/v1"
+    },
+    {
       "id": "opencode-go",
       "name": "OpenCode Go",
       "protocol": "openai",
-      "endpoint": "https://opencode.ai/zen/go/v1"
-    },
-    {
-      "id": "opencode",
-      "name": "OpenCode Zen",
-      "protocol": "openai",
-      "endpoint": "https://opencode.ai/zen/v1"
+      "endpoint": "https://opencode.ai/inference/go/v1"
     },
     {
       "id": "openreason",
@@ -885,6 +903,12 @@
       "endpoint": "https://inference.poolside.ai/v1"
     },
     {
+      "id": "prime",
+      "name": "Prime Inference",
+      "protocol": "openai",
+      "endpoint": "https://api.pinference.ai/api/v1"
+    },
+    {
       "id": "qihang-ai",
       "name": "QiHang",
       "protocol": "openai",
@@ -925,6 +949,12 @@
       "name": "Sakana AI",
       "protocol": "openai",
       "endpoint": "https://api.sakana.ai/v1"
+    },
+    {
+      "id": "sambanova",
+      "name": "SambaNova",
+      "protocol": "openai",
+      "endpoint": "https://api.sambanova.ai/v1"
     },
     {
       "id": "sarvam",
