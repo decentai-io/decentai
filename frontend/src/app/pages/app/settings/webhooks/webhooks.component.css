@@ -1,0 +1,182 @@
+/* The Webhooks page and its dialogs. The list, the rows, the fields,
+   the switch, the chips and the dialog shell are the shared ones; here
+   is how a row says a webhook or a notification, the fields editor,
+   and what is shown once. */
+
+/* ── A row ─────────────────────────────────────────────────────────── */
+
+.hook-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 6px;
+  min-width: 0;
+}
+
+.hook-facts > * + *::before {
+  content: '·';
+  margin-right: 6px;
+  color: var(--ink-3);
+}
+
+.hook-prefix {
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+}
+
+.hook-url {
+  display: inline-block;
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+
+.hook-link {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* ── The fields editor ─────────────────────────────────────────────── */
+
+.hook-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.hook-legend {
+  margin-bottom: 2px;
+  color: var(--ink);
+  font-size: var(--t-sm);
+  font-weight: 500;
+  line-height: var(--lh-sm);
+}
+
+.hook-help {
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.hook-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+
+.hook-field-line {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 140px auto auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.hook-error {
+  color: var(--danger-ink);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.hook-add {
+  align-self: flex-start;
+}
+
+@media (max-width: 560px) {
+  .hook-field-line {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .hook-field-line > .input {
+    grid-column: 1 / -1;
+  }
+}
+
+/* ── Shown once ────────────────────────────────────────────────────── */
+
+.hook-once {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 8px 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+}
+
+.hook-code {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+  line-height: var(--lh-sm);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+.hook-inline {
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+  overflow-wrap: anywhere;
+}
+
+.made-note {
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.made-note.is-warning {
+  color: var(--warn-ink);
+}
+
+/* ── Deliveries ────────────────────────────────────────────────────── */
+
+.hook-deliveries {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.hook-delivery {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 0;
+}
+
+.hook-delivery + .hook-delivery {
+  border-top: 1px solid var(--line);
+}
+
+.hook-delivery-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.hook-delivery-why {
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+  overflow-wrap: anywhere;
+}

@@ -168,6 +168,7 @@ import {
   Upload,
   UserCog,
   X, ArrowRight, ArrowDown, ArrowUp, ArrowRightLeft, UserX, UserPlus,
+  Webhook,
 } from 'lucide-angular';
 import {
   BaseChartDirective,
@@ -260,6 +261,9 @@ import { McpServerComponent } from './pages/app/data/mcp/mcp-server.component';
 import { McpCredentialComponent } from './pages/app/data/mcp/mcp-credential.component';
 import { MemoryComponent } from './pages/app/settings/memory/memory.component';
 import { ApiKeysComponent } from './pages/app/settings/api-keys/api-keys.component';
+import { WebhooksComponent } from './pages/app/settings/webhooks/webhooks.component';
+import { WebhookDialogComponent } from './pages/app/settings/webhooks/webhook-dialog.component';
+import { OutboundDialogComponent } from './pages/app/settings/webhooks/outbound-dialog.component';
 import { SafetyComponent } from './pages/app/settings/safety/safety.component';
 import { MonitoringComponent } from './pages/app/monitoring/monitoring.component';
 import { ActivityOverviewComponent } from './pages/app/monitoring/activity-overview.component';
@@ -330,6 +334,9 @@ import { AgentCardComponent } from './pages/app/agents/agent-card.component';
     McpCredentialComponent,
     MemoryComponent,
     ApiKeysComponent,
+    WebhooksComponent,
+    WebhookDialogComponent,
+    OutboundDialogComponent,
     SafetyComponent,
     MonitoringComponent,
     ActivityOverviewComponent,
@@ -566,7 +573,7 @@ import { AgentCardComponent } from './pages/app/agents/agent-card.component';
       User,
       Upload,
       UserCog,
-      X, ArrowRight, ArrowDown, ArrowUp, ArrowRightLeft, UserX, UserPlus,
+      X, ArrowRight, ArrowDown, ArrowUp, ArrowRightLeft, UserX, UserPlus, Webhook,
     }),
       ServiceWorkerModule.register('ngsw-worker.js', {
         enabled: !isDevMode(),

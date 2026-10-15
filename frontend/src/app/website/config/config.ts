@@ -38,6 +38,10 @@ export const settingsPages: SettingsPage[] = [
     sentence: 'A script acting as you, with your permissions and no more.',
   },
   {
+    group: 'You', path: 'webhooks', name: 'Webhooks', action: 'settings:webhook:list',
+    sentence: 'Events from other services heard in a chat of yours, and notifications sent where you want them.',
+  },
+  {
     group: 'Organization', path: 'providers', name: 'Model providers', action: 'settings:llm:list',
     sentence: 'The providers this organization has a key for. One key serves every model its provider has.',
   },

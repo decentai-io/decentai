@@ -1,0 +1,73 @@
+<ng-container *ngIf="!made">
+  <h2 mat-dialog-title>{{ editing ? 'Edit ' + editing.name : 'Send notifications' }}</h2>
+  <form (ngSubmit)="save()">
+    <mat-dialog-content>
+      <p class="dialog-note" *ngIf="!editing">
+        When something happens that you would want to know, a short line and a link to the chat are posted to an address you choose.
+      </p>
+      <div class="form">
+        <app-field label="Name" help="So you know it in the list." [error]="tried && !name.trim() ? 'Give it a name.' : ''">
+          <input class="input" name="outbound-name" autocomplete="off" maxlength="80" placeholder="Team channel"
+                 cdkFocusInitial [(ngModel)]="name" />
+        </app-field>
+
+        <app-field label="Address" help="Over https. Addresses inside your own network are refused." [error]="urlProblem">
+          <input class="input" name="outbound-url" type="url" autocomplete="off" maxlength="2000"
+                 placeholder="https://hooks.example.com/decentai" [(ngModel)]="url" />
+        </app-field>
+
+        <app-field label="Format">
+          <app-choice-cards name="outbound-format" label="Format" [choices]="formats" [(ngModel)]="format"></app-choice-cards>
+        </app-field>
+
+        <fieldset class="hook-fields">
+          <legend class="hook-legend">Send when</legend>
+          <mat-checkbox class="check-row" *ngFor="let event of events" [checked]="chosen.has(event.value)"
+                        (change)="toggle(event.value)">
+            <span class="check-name">{{ event.name }}</span>
+            <span class="check-hint" *ngIf="event.hint">{{ event.hint }}</span>
+          </mat-checkbox>
+          <p class="hook-error" role="alert" *ngIf="tried && !chosen.size">Choose at least one.</p>
+        </fieldset>
+
+        <mat-checkbox class="check-row" name="outbound-reply" [(ngModel)]="includeReply">
+          <span class="check-name">Include the assistant’s reply text</span>
+          <span class="check-hint">Otherwise only a line saying what happened and a link to the chat are sent.</span>
+        </mat-checkbox>
+
+        <p class="form-notice is-error" role="alert" *ngIf="error">{{ error }}</p>
+      </div>
+    </mat-dialog-content>
+    <mat-dialog-actions>
+      <button class="btn" type="button" [disabled]="saving" (click)="dialog.close(null)">Cancel</button>
+      <button class="btn primary" type="submit" [disabled]="saving">
+        {{ saving ? 'Saving…' : editing ? 'Save' : 'Make it' }}
+      </button>
+    </mat-dialog-actions>
+  </form>
+</ng-container>
+
+<ng-container *ngIf="made">
+  <h2 mat-dialog-title>{{ made.name }}</h2>
+  <mat-dialog-content>
+    <div class="form">
+      <app-field label="Signing secret" help="Your service checks each body with it.">
+        <div class="hook-once">
+          <code class="hook-code">{{ secret }}</code>
+          <button class="btn sm" type="button" (click)="copy()">{{ copied ? 'Copied' : 'Copy' }}</button>
+        </div>
+      </app-field>
+      <p class="hook-help">
+        Each body is signed: <code class="hook-inline">{{ hmacLine }}</code>
+      </p>
+      <p class="made-note" [class.is-warning]="warned" role="status">
+        {{ warned ? 'You have not copied it, and it cannot be shown again. Press Done again to close.'
+                  : copyFailed ? 'Could not copy. Select the secret and copy it yourself.'
+                  : 'Shown once. Copy it now.' }}
+      </p>
+    </div>
+  </mat-dialog-content>
+  <mat-dialog-actions>
+    <button type="button" class="btn primary" (click)="done()">Done</button>
+  </mat-dialog-actions>
+</ng-container>

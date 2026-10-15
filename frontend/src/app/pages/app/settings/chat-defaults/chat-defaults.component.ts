@@ -8,7 +8,7 @@ import { AuthService } from 'src/app/services/auth.service';
 import { ProfileService } from 'src/app/services/profile.service';
 import { ReadAloudService } from 'src/app/services/read-aloud.service';
 import { LlmConnection, SettingsLlmService } from 'src/app/services/settings-llm.service';
-import { SKILLS_LISTED_OPTIONS, STANDARD_SKILLS_LISTED } from '../../ai/chat/chat-defaults';
+import { SKILLS_LISTED_OPTIONS, STANDARD_SKILLS_LISTED, TRUST_CHOICES } from '../../ai/chat/chat-defaults';
 
 /** What a new chat of this person starts with. */
 interface ChatDefaults {
@@ -52,14 +52,7 @@ export class ChatDefaultsComponent implements OnInit, HasUnsavedChanges {
   /** "Saved", for a moment, beside the read-aloud switch. */
   readAloudNote = '';
 
-  /** A function runs without asking when its level is at or below the
-   *  chat's trust level; each hint says what that leaves to ask about. */
-  readonly trustChoices: Choice<number>[] = [
-    { value: 0, name: 'Ask for every change', hint: 'Reads run; every change asks first.' },
-    { value: 1, name: 'Standard', hint: 'Reads and ordinary changes run; wider changes and outside actions ask first.' },
-    { value: 2, name: 'Trusted', hint: 'Everything inside the platform runs; outside actions ask first.' },
-    { value: 3, name: 'Autonomous', hint: 'Everything runs without asking.' },
-  ];
+  readonly trustChoices: Choice<number>[] = TRUST_CHOICES;
   readonly turnChoices: Choice<number>[] = [
     { value: 20, name: 'Standard', hint: '20 steps' },
     { value: 40, name: 'Long', hint: '40 steps' },

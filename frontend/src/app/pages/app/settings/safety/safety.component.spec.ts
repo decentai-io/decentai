@@ -2,7 +2,7 @@ import { SafetyComponent } from './safety.component';
 
 describe('SafetyComponent', () => {
   const saved = {
-    mcp: 'allowed', blocked_sites: ['tracker.test'], scripts: 'always',
+    mcp: 'allowed', webhooks: 'allowed', blocked_sites: ['tracker.test'], scripts: 'always',
     programs: 'always', packages: 'any', allowed_packages: [],
   };
 
@@ -59,6 +59,18 @@ describe('SafetyComponent', () => {
 
     expect(component.saveError).toBe('Not allowed.');
     expect(component.draft.dirty).toBeTrue();
+  });
+
+  it('saves who may receive webhooks with the rest of the form', async () => {
+    const calls: Record<string, any> = {};
+    const component = create(calls);
+    await component.load();
+
+    component.draft.value.webhooks = 'blocked';
+    expect(component.webhooksMeaning).toContain('Nobody');
+    await component.save();
+
+    expect(calls['saved'].webhooks).toBe('blocked');
   });
 
   it('says so when the settings could not be read, instead of a blank page', async () => {
