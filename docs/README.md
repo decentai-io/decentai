@@ -5,7 +5,8 @@ contradicts one of these pages changes the page in the same commit.
 
 For the design as one argument, read for its reasons rather than its
 reference, there is the paper: [DecentAI: A Secure Operating System
-for AI Agents](paper/README.md) (a draft).
+for AI Agents](paper/README.md) (a draft), and the same design as an
+[academic paper](paper/arxiv/README.md) for arXiv.
 
 The pages are in five groups, by what you came to do. How to use
 DecentAI as a person, screen by screen, is not here: it is the in-app

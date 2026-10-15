@@ -1,0 +1,198 @@
+\section{Evaluation}
+\label{sec:evaluation}
+
+We evaluate whether the mechanisms hold as described, in three ways:
+automated tests that exercise each promise the way a person, an agent,
+or an attacker would (\cref{sec:eval-suites,sec:eval-hostile});
+a structured analysis of what each adversary can reach
+(\cref{sec:eval-analysis}); and a check that the documentation this
+paper is built on matches the code (\cref{sec:eval-docs}). We close
+with what is not evaluated (\cref{sec:eval-not}).
+
+\subsection{Test suites}
+\label{sec:eval-suites}
+
+\Cref{tab:suites} summarizes the suites. Runtime tests run real agent
+code in real processes, with a \emph{scripted model}: a stand-in that
+returns replies written in advance. This is deliberate. The claims
+under test concern what the \emph{platform} does with whatever the
+model proposes (G1), and a test must give the same result on every run.
+The runtime suite runs against in-memory services that answer the
+backend's contract; the cross-component suite includes an end-to-end
+test in which a person's socket reaches the backend, the backend dials
+a real runtime process, and the runtime calls back through the gateway
+under the chat's delegation, with nothing stubbed but the model.
+
+\begin{table}[t]
+\centering\small
+\caption{Automated test suites (test functions; parametrization makes
+the executed count higher). Results from runs on 15~October~2026.}
+\label{tab:suites}
+\begin{tabularx}{\columnwidth}{@{}>{\raggedright\arraybackslash}p{0.28\columnwidth}r>{\raggedright\arraybackslash}X@{}}
+\toprule
+\textbf{Suite} & \textbf{Tests} & \textbf{Exercises} \\
+\midrule
+Runtime & 1{,}031 & assistant loop, executor gates, approvals, clock, stops, proxy, evidence, documentation \\
+Backend & 924 & identity, policy invariants, delegation fence, data layer and encryption, OAuth, webhooks, audit \\
+Cross-component & 180 & approval-to-package path; end-to-end chat across backend and runtime \\
+Example agent & 24 & an agent run as its author would \\
+\midrule
+\textbf{Total} & \textbf{2{,}159} & \\
+\quad of which sandbox, live & 83 & hostile agent in the deployed two-container topology (\cref{sec:eval-hostile}) \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\paragraph{Results}
+On the main branch on 15~October~2026 (Python 3.11, MongoDB~7), every
+suite passed with no failures: runtime, 1{,}056 passed and 85 skipped
+(the 83 live sandbox tests, which need the Linux image and are reported
+in \cref{sec:eval-hostile}, and two others); backend, 969 passed and 6
+skipped; cross-component, 216 passed and 3 skipped; example agent, 24
+passed. Executed counts exceed \cref{tab:suites} because of
+parametrization.
+
+\paragraph{Regression tests from review}
+In October 2026 the entire code base was reviewed line by line. Every
+case found to make the code fail, hang, or answer wrongly was fixed
+together with a test that repeats the attempt; in the runtime these
+are kept in dedicated ``edge'' files---around stops (26 tests), the
+executor (17), contracts and the SDK (31), the clock (8), session
+restarts (6), concurrent stores (8), reasoning budgets (14), and
+services and connectors (24). Design questions the review raised but
+did not settle are published with the code (\cref{sec:limitations}).
+
+\subsection{Confinement against a hostile agent}
+\label{sec:eval-hostile}
+
+The way to test a lock is to try to open it. The live sandbox suites
+(\file{ai\_runtime/tests/test\_confinement\_live.py},
+\file{test\_spawner\_live.py}) install a fixture agent that is
+\emph{hostile on purpose}: each of its functions attempts one escape,
+and the test passes only when the attempt is refused. Beside each
+refusal, positive controls check that legitimate work still functions,
+since a sandbox that refuses everything would pass the first kind of
+test and fail the second. A second hostile package attacks at
+\emph{build} time, from a local package index.
+
+\paragraph{Setup}
+We ran both files in the deployed topology: the runtime's image as the
+runtime, and again as the agents' container beside it on an internal
+network, with \code{NET\_ADMIN} for the egress rule. The host kernel was
+Linux 6.18 (WSL2), which offers every Landlock feature in
+\cref{tab:landlock}, so no test was skipped for want of a kernel
+feature.
+
+\paragraph{Results}
+All 83 tests passed and none was skipped (58 confinement tests and 25
+tests of the spawner across the two containers; 88\,s wall time).
+\Cref{tab:hostile} groups the attempts by the promise they test and
+the layer that refuses them.
+
+\begin{table*}[t]
+\centering\small
+\caption{Escape attempts by the hostile agent, each refused, and the
+legitimate operations verified alongside. All 83 tests passed on Linux
+6.18 with no skips.}
+\label{tab:hostile}
+\begin{tabularx}{\textwidth}{@{}>{\raggedright\arraybackslash}p{0.15\textwidth}>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}p{0.2\textwidth}>{\raggedright\arraybackslash}p{0.24\textwidth}@{}}
+\toprule
+\textbf{Promise} & \textbf{Attempts (all refused)} & \textbf{Refused by} & \textbf{Still works} \\
+\midrule
+P1 own files & read the runtime's settings; write into its own package, environment, or the install directory; read or write another agent's home or package; read the uid table or the platform's code; write where every user may write & uid ownership; Landlock & reads what it runs from; spool shared with the runtime; home emptied each start, even if closed or deeply nested \\
+P2 own user & signal the runtime; use the spawn helper to become another agent's uid; close or deeply nest its home to keep state across restarts & uid separation; \code{no\_new\_privs}; empty capability set; the helper's \code{clear} & runs as its own uid in its own home; stopping it ends everything it started \\
+P3 declared hosts & connect past the proxy; reach the runtime's own door or the spawner; resolve a name directly; reach an undeclared host; reach anything with \code{hosts: []} or no network block; reach a blocked site with \code{hosts: any} & nftables owner rule; proxy; Landlock TCP rule & reaches its declared host; a host its credential names, only for that call; a host a person allowed on a code card, only until the call ends \\
+P4 bounded resources & (verified, not attacked) the worker finds on itself exactly the process, open-file and file-size limits the container set, never a manifest's & \code{setrlimit} & threads and subprocesses start \\
+P5 system calls & open an unused socket family; \code{ptrace}; create a namespace; connect to another agent's abstract Unix socket & seccomp; Landlock scoping (ABI~6) & its own Unix socket; a program it runs is fenced with it \\
+Builds & a hostile build reads settings, writes into the environment, reaches hosts other than the index, fetches packages from elsewhere, or never ends & builder uid; proxy pass; five-minute kill & wheels built and installed by the runtime; only wheels are left \\
+Records & an agent reads the monitoring record & folder mode and Landlock & both containers write one record \\
+\bottomrule
+\end{tabularx}
+\end{table*}
+
+\subsection{Security analysis}
+\label{sec:eval-analysis}
+
+\Cref{tab:matrix} relates each adversary to what it can do and what
+holds it. Two observations follow. First, the defences against A1 and
+A2 are the same set of gates, and none of them reads model output: this
+is what makes the design independent of whether injection is detected.
+Second, the defences sit in components of different trust: compromising
+a less trusted component (a worker, then the runtime) leaves in place
+every defence held by a more trusted one---the backend's keys, its
+database, its decision on approvals, and its ability to withdraw
+delegations.
+
+\begin{table*}[t]
+\centering\small
+\caption{Adversaries, their capabilities, and the mechanisms that hold them.}
+\label{tab:matrix}
+\begin{tabularx}{\textwidth}{@{}>{\raggedright\arraybackslash}p{0.15\textwidth}>{\raggedright\arraybackslash}p{0.27\textwidth}>{\raggedright\arraybackslash}X@{}}
+\toprule
+\textbf{Adversary} & \textbf{Can} & \textbf{Held by} \\
+\midrule
+A1 model & emit any action in the vocabulary, with any inputs; write any prose & every action validated and gated outside the model; grants deny by default; the level gate; evidence drawn only from the trace \\
+A2 injector & choose text the model reads, and so steer its proposals & the same gates; none of grants, level, manifest hosts, approval hash or credential binding derives from model output; a denial refuses the named hosts to the whole agent for the rest of the request \\
+A3 agent author & arbitrary code in the worker during a call & approval pinned to commit and digest; per-operation resource mediation; uid, Landlock, seccomp, limits; egress only to declared hosts; dependencies built by a separate confined user \\
+A4 another person & their own session, cookie, or API key & sessions resolved per request; deny-by-default policy; reads filtered by visibility inside the query; tenant scoping; \code{Origin} check on cookie-bearing sockets \\
+A5 compromised worker & the above, plus attacks on co-tenants of the container & sandbox layers; internal network leading only to the runtime \\
+A6 compromised runtime & every delegation it currently holds & no database route, decryption key, or backend signing key; 40-action fence; cannot decide approvals; stop-everything withdraws its delegations \\
+\bottomrule
+\end{tabularx}
+\end{table*}
+
+\paragraph{Injection reach by trust level}
+Because the gate is a single comparison, the reach of a successful
+injection (A2) inside one chat can be stated exactly: a proposal runs
+without a card if and only if the function is granted to the chat, its
+inputs validate, its scopes fit the grant, and $\ell_f \le \ell_c$.
+At the default $\ell_c = 1$, an injected proposal can at most read and
+make ordinary changes through granted agents; every wider change and
+every action leaving the platform becomes a card. At $\ell_c = 0$,
+only reads run unasked. At $\ell_c = 3$, every granted function runs
+unasked---the case the trust level exists to make a person's explicit
+choice. In every case, egress remains restricted to declared hosts and
+no credential is exposed to the model.
+
+\paragraph{Blast radius}
+A compromised worker holds what its call was handed, its own home, and
+its declared hosts. A compromised runtime can act for the people whose
+delegations it holds---people with a chat open or a schedule
+running---within 40 actions, and, since the level gate runs in the
+runtime, could run their granted functions without opening a card; it
+cannot answer a card, read the database, open a sealed value, obtain a
+refresh token, or act for anyone else. Delegations last at most an hour
+and are withdrawn by the person's stop-everything switch. A
+compromised backend is a compromise of the deployment; it is the one
+component trusted with everything.
+
+\subsection{Documentation held to the code}
+\label{sec:eval-docs}
+
+This paper is distilled from the project's documentation, which names
+the files implementing each mechanism. Five tests hold that
+documentation to the code: every relative link and heading anchor
+resolves; every backticked repository path exists; every setting the
+configuration page describes is read by code, and every setting the
+example files offer is documented; and the published list of actions is
+regenerated from the backend's catalog and must match. These tests
+check what a page \emph{points at}; whether a sentence is true is for a
+reader to verify, which is why each mechanism here names its file.
+
+\subsection{What is not evaluated}
+\label{sec:eval-not}
+
+\begin{itemize}
+\item \textbf{Model behaviour.} No test calls a real model. The tests
+  show that a proposal cannot pass the gates; they do not measure
+  whether a given model resists injected text or chooses well. Neither
+  is a claim of this paper.
+\item \textbf{Performance and scale.} We do not report latency or
+  throughput overheads, nor behaviour with many organizations, chats,
+  or concurrent fires.
+\item \textbf{The kernel.} Confinement results hold on the kernel
+  tested; a kernel flaw is a way past every layer, and no test rules one
+  out.
+\item \textbf{The web app's own tests} exist but were not part of this
+  evaluation.
+\end{itemize}

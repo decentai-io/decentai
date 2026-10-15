@@ -1,0 +1,108 @@
+\section{Control and Accountability}
+\label{sec:control}
+
+\subsection{The clock}
+
+Deferred work is written on the chat's clock rather than kept in the
+model's mind (\file{ai\_runtime/chat/clock.py}). A row is either a
+\emph{note}, which wakes the assistant at the set time as if the person
+had written, or an \emph{unattended function}: one function with inputs
+fixed when the row was made, run \emph{without the model}, waking the
+assistant only when a named result field is non-empty. Only functions
+the manifest marks \code{schedulable} may run this way, and that flag
+is accepted only at level 0 or 1 without model use. At each fire the
+chat's contract is re-read and the call passes every gate against what
+the person is allowed \emph{that day}. A wake runs at the chat's trust
+level like any turn: a send proposed on Friday waits on a card exactly
+as Monday's did. Bounds: 50 rows per chat; repeating rows at least a
+minute apart; a missed row fires once, never as a backlog.
+
+\subsection{Stopping}
+
+\paragraph{One chat}
+\emph{Stop generating} asks the assistant to stop at the next point and
+interrupts the call it awaits. \emph{Stop everything in this chat} is a
+kill: the backend expires the chat's pending cards on the record, then
+the runtime cancels the clock's fires under way, the assistant's cycle
+and every job, and sends each worker call a protocol \code{cancel}; a
+worker that does not answer within five seconds is killed with every
+process of the agent's uid through the spawn helper. The chat's browser
+is closed and its helpers ended. The runtime then records
+\code{stopped} in the state so a rebuilt session rests, and saves.
+
+\paragraph{Everything, and staying stopped}
+The per-person switch acts in three steps (\code{Halt.stop},
+\file{backend/api/services/chat\_session/halt.py}): (1)~mark the person
+stopped, after which the backend neither dials nor mints a delegation
+for them and their webhooks answer as if they did not exist;
+(2)~kill every chat of theirs with a live delegation, schedule, or open
+socket, concurrently, allowing ten seconds each; and (3)~delete every
+delegation row. Because a delegation is accepted only while its row
+exists, a program that ignored its order to end can no longer read a
+credential, record, or file of the person's: the stop does not depend
+on anything agreeing to stop. Only the person can resume; the switch
+action is refused to runtime principals, so what is stopped cannot
+restart itself.
+
+\paragraph{Rules set beforehand}
+Each organization has one Safety setting: sites no agent may open, how
+often agent-written code is put to a person, which packages code may
+install, whether MCP servers may be added and webhooks received, and
+whether notifications may carry content or say only that something
+happened.
+Each rule is enforced where it can be: blocked sites at the proxy, code
+rules in the backend as a card opens, the package list in the runtime
+before a card, MCP and webhooks in the backend.
+
+\subsection{The audit trail}
+
+Nearly everything the platform lets happen leaves a line in an
+append-only collection (\code{AuditStore},
+\file{backend/database/stores/audit.py}), written at chokepoints by two
+writers (\cref{tab:audit}). The runtime may write only lines of type
+\code{execution}, so it cannot forge an approval or a credential read;
+it does decide whether to write one. ``Append-only'' is a property of
+the code, not the database: the store offers \code{append},
+\code{search} and \code{for\_chat}; nothing calls an update or delete on
+the collection, and no action exposes one. A line the database refuses
+twice is written whole to the error log at \code{CRITICAL}, and the
+action proceeds: auditing is a witness, not a gate. Each person may read
+their own trail; the organization's trail is a separate grant.
+
+\begin{table}[t]
+\centering\small
+\caption{Audit-trail writers.}
+\label{tab:audit}
+\begin{tabularx}{\columnwidth}{@{}>{\raggedright\arraybackslash}p{0.33\columnwidth}>{\raggedright\arraybackslash}X@{}}
+\toprule
+\textbf{Line} & \textbf{Writer and content} \\
+\midrule
+\code{execution} & runtime, per call: agent, function, declared and chat level, outcome, duration, inputs in outline, hosts reached \\
+\code{approval.requested}, \code{.resolved} & backend, at the card \\
+\code{secret.use}, \code{llm.use} & backend, where a credential or model key is served (reference only) \\
+\code{agent.*}, \code{user.*}, \code{settings.safety}, \code{work.*}, \ldots & backend, at each controller \\
+\code{webhook.received}, \code{.refused} & backend, at the webhook door (field names, never values) \\
+\code{platform.action} & gateway: every non-read action outside the chat path, with outcome, never the payload \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{The monitoring record}
+
+The audit trail says what the platform \emph{allowed}. A second record,
+kept beside the agents rather than in the database, says what agents'
+programs \emph{did}: processes started and ended, log lines, and every
+connection made or refused with host, resolved address, verdict, bytes,
+and duration---never content. It is a bounded working log (128\,MiB,
+oldest first), readable by administrators through dedicated grants.
+
+\subsection{Notifications out}
+
+A person may have their notifications sent to Slack, Teams, or a system
+of their own. The platform posts a line and a link from a queue, so a
+slow receiver delays nothing; it never sends a secret or the
+conversation, and includes the reply text only on request. JSON
+deliveries are signed with HMAC-SHA256~\cite{rfc2104} over
+\code{"<timestamp>.<body>"}. An address must be HTTPS and resolve only
+to public addresses, checked when subscribed and before each send;
+redirects are not followed.

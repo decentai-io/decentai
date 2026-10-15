@@ -42,3 +42,6 @@ closer look at one step of it:
 | 11 | [What it does not do](11-what-it-does-not-do.md) | the limits, said plainly |
 | 12 | [How we know](12-how-we-know.md) | the claims are tested, including by an agent written to break out |
 | — | [Appendix](13-appendix.md) | the words, and where each part lives in the code |
+
+The same design for researchers, typeset for arXiv, is [the academic
+paper](arxiv/README.md) ([PDF](arxiv/decentai-paper.pdf)).

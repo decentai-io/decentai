@@ -1,0 +1,75 @@
+\section{Evidence by Construction}
+\label{sec:evidence}
+
+No prompting removes fabrication. \sys{} therefore does not try to make
+the model's words trustworthy; it guarantees something narrower that
+code can keep: \emph{anything shown as data was read from a real
+result}. A reply has two voices. The words are the model's and may be
+wrong. What rides beside them---a table, a chart, a file, a
+verification mark---is the platform's, taken from the record of what
+ran, like an exhibit rather than an argument.
+
+\subsection{Results are checked before they are believed}
+
+The platform never sees an agent's traffic with an outside service:
+the proxy relays an HTTPS \code{CONNECT} tunnel it cannot read. The
+\emph{result} is the function's return value on the worker's protocol
+line. Inside the executor, in order (\code{FunctionExecutor.\_execute}):
+a function whose declared input or output schema is not valid JSON
+Schema is refused before it runs, so it cannot perform its writes and
+only then fail validation; the call runs under its timeout; keys only
+the platform may write (\code{storage\_ref}, \code{displays},
+\code{denied}, \code{not\_permitted}) are stripped from what the worker
+returned, so an agent cannot forge them; the result is validated
+against the declared outputs, and a mismatch turns success into an
+error; only then is it stored and given a reference.
+
+\subsection{References instead of copies}
+
+Every successful result is stored in the chat's storage under a
+reference. A later call may take the reference as an input
+(gate~E3), and the platform substitutes the stored value just before
+validation, so the model never retypes a list it could mistype. A large
+result is shown to the model as a bounded preview of whole items plus
+the reference and a note on how to page through the rest. An approval
+card shows, and its hash binds, the inputs \emph{after} substitution:
+the person approves values, not a ticket.
+
+\subsection{What may appear beside the words}
+
+One function, \code{Evidence.compose} (\file{ai\_runtime/mind/evidence.py}),
+decides every part of a message, using only trace entries with status
+\code{success}, a structured result, and a function the manifest
+declares. The prose is never parsed.
+
+\begin{itemize}
+\item \textbf{Tables and charts} appear only when the model names, in
+  its \code{say}, either a display a successful call offered, or a
+  successful call's stored result together with a path to a
+  \emph{declared array output} that holds rows. The app then fetches the
+  rows from storage under the person's own session. The model chooses
+  the title and columns; it never supplies a value.
+\item \textbf{Files} appear when a successful call produced one, as
+  derived from output fields the manifest marks as file resources. The
+  model cannot attach a file that was not produced.
+\item \textbf{Writes} (every successful call above level~0) become
+  ``Verified: \emph{function}'' parts kept with the message.
+\item \textbf{A platform line} appears only when the model said nothing:
+  what was done, how many results came back, or that nothing worked and
+  why.
+\end{itemize}
+
+\noindent A requested part that fails these rules is returned to the
+model as a reason and never shown. The backend validates every part
+against closed schemas (\file{contracts/chat.py}); if parts are
+refused, the words are sent alone and the work remains owed to the next
+message. A claim with nothing behind it is shown as exactly that: the
+model's words, undecorated.
+
+\subsection{What this does not promise}
+
+It does not make the model's sentences true; it makes them easy to tell
+apart from data. It does not make an agent's data true: shape is
+checked, not truth. The model still chooses which result to show and
+its title. An agent may post a message of its own, shown under the
+agent's name, not as data the platform vouches for.

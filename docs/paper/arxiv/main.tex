@@ -1,0 +1,103 @@
+\documentclass[10pt,twocolumn,a4paper]{article}
+
+% ── Page and type ────────────────────────────────────────────────────
+\usepackage[a4paper,margin=0.75in,columnsep=0.3in,top=0.85in,bottom=0.9in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{newtxtext,newtxmath}
+\usepackage[varqu,varl,scaled=0.95]{inconsolata}
+\usepackage[protrusion=true,expansion=true]{microtype}
+\usepackage{xcolor}
+\usepackage{booktabs,multirow,tabularx,colortbl,array}
+\usepackage{enumitem}
+\usepackage{caption}
+\usepackage{float}
+\usepackage{ragged2e}
+\usepackage{listings}
+\usepackage{tikz}
+\usetikzlibrary{positioning,arrows.meta,fit,backgrounds,calc,shapes.geometric}
+\usepackage{titlesec}
+\usepackage{fancyhdr}
+\usepackage[numbers,sort&compress]{natbib}
+\usepackage{xurl}
+\usepackage[hidelinks,pdfusetitle]{hyperref}
+\usepackage[capitalise,noabbrev]{cleveref}
+
+\definecolor{ink}{HTML}{1F2933}
+\definecolor{accent}{HTML}{1B5E8C}
+\definecolor{soft}{HTML}{EEF3F7}
+\definecolor{warn}{HTML}{9C3D10}
+\definecolor{rule}{HTML}{9AA5B1}
+\color{ink}
+
+\hypersetup{colorlinks=true,linkcolor=accent,citecolor=accent,urlcolor=accent}
+
+\titleformat{\section}{\normalfont\large\bfseries\color{accent}}{\thesection}{0.6em}{}
+\titleformat{\subsection}{\normalfont\normalsize\bfseries}{\thesubsection}{0.5em}{}
+\titleformat{\paragraph}[runin]{\normalfont\normalsize\bfseries}{}{0pt}{}[.]
+\titlespacing*{\section}{0pt}{1.4ex plus .4ex minus .2ex}{0.8ex plus .2ex}
+\titlespacing*{\subsection}{0pt}{1.1ex plus .3ex minus .2ex}{0.5ex plus .1ex}
+\titlespacing*{\paragraph}{0pt}{0.7ex plus .2ex minus .1ex}{0.6em}
+
+\captionsetup{font=small,labelfont={bf,color=accent},labelsep=period,skip=4pt}
+\setlist{nosep,leftmargin=1.2em}
+\setlength{\parskip}{0pt}
+\renewcommand{\arraystretch}{1.12}
+
+\lstset{basicstyle=\ttfamily\footnotesize,columns=fullflexible,keepspaces=true,
+  frame=single,rulecolor=\color{rule},backgroundcolor=\color{soft},
+  xleftmargin=3pt,xrightmargin=3pt,aboveskip=6pt,belowskip=4pt,
+  breaklines=true,showstringspaces=false}
+
+\newcommand{\code}[1]{\texttt{\small #1}}
+\newcommand{\file}[1]{\texttt{\small\color{accent!70!ink}#1}}
+\newcommand{\sys}{DecentAI}
+\newcommand{\eg}{e.g.,\ }
+\newcommand{\ie}{i.e.,\ }
+
+\pagestyle{fancy}
+\fancyhf{}
+\renewcommand{\headrulewidth}{0pt}
+\fancyfoot[C]{\small\thepage}
+\fancyhead[R]{\small\color{rule}\sys: A Secure Operating System for AI Agents}
+\fancypagestyle{plain}{\fancyhf{}\fancyfoot[C]{\small\thepage}}
+
+\title{\vspace{-1.2em}\Large\bfseries\color{accent}
+  DecentAI: A Secure Operating System for AI Agents\\[0.35em]
+  \large\mdseries\itshape\color{ink} The model proposes; the platform disposes}
+\author{\normalsize Ahmed Dirir\\[0.1em]
+  \small DecentAI\\
+  \small\href{mailto:ahmed@decentai.io}{\texttt{ahmed@decentai.io}}}
+\date{\small October 2026}
+
+\begin{document}
+
+\twocolumn[
+\begin{@twocolumnfalse}
+\maketitle
+\thispagestyle{plain}
+\input{sections/abstract}
+\vspace{1.4em}
+\end{@twocolumnfalse}
+]
+
+\input{sections/introduction}
+\input{sections/threat-model}
+\input{sections/design}
+\input{sections/authority}
+\input{sections/execution}
+\input{sections/evidence}
+\input{sections/agents}
+\input{sections/sandbox}
+\input{sections/secrets}
+\input{sections/control}
+\input{sections/implementation}
+\input{sections/evaluation}
+\input{sections/limitations}
+\input{sections/conclusion}
+
+\small
+\bibliographystyle{plainnat}
+\bibliography{references}
+
+\end{document}

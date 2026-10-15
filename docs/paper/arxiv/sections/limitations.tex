@@ -1,0 +1,82 @@
+\section{Limitations}
+\label{sec:limitations}
+
+A security paper that lists only what works asks to be taken on faith.
+We classify each known limit as \emph{chosen} (a trade-off made on
+purpose), \emph{open} (raised by the October 2026 code review and not
+yet decided; 137 such questions are published with the code, each
+naming its file), or \emph{inherited} from the environment.
+
+\paragraph{The model}
+The platform does not make the model correct (\emph{chosen}). A yes is
+only as good as the reading of the card. Injection still steers what
+runs without a card at or below the chat's level, all granted functions
+at level~3; there is deliberately no administrator ceiling on the level
+(\emph{chosen}). A plan item counts as ``verified'' when it has
+\emph{some} evidence: one successful call attaches to every active
+item, and the model chooses which reference it cites (\emph{open}).
+
+\paragraph{Agents and the sandbox}
+An agent can misuse what it was rightly given: during a call it holds
+the decrypted credential and may talk to its declared host, and the
+proxy sees host and byte counts, never content (\emph{chosen}: reading
+inside TLS would mean impersonating every site). Because workers are
+kept warm, code that wants to could retain a credential beyond the
+call---an OAuth access token until it expires, a typed key until it is
+changed (\emph{chosen}; review before approval is the control). A
+Google token carries every scope the catalog's Google agents share;
+what keeps the Gmail agent to mail is its single declared host. The
+kernel is shared by all containers (\emph{inherited}); the seccomp
+filter exists only on x86-64 and arm64, and a deployment whose agents
+need a refused call can switch it off---for every agent at once---both
+stated at start. Two colluding
+agents can exchange bytes through a file in \code{/tmp} or
+\code{/dev/shm} on any kernel (\emph{open}), or through an abstract
+socket before Linux 6.12 (\emph{inherited}). Once connected to a
+declared address, an agent can ask that address for another site it
+serves (\emph{open}). Memory is a shared pool sampled once a second, and
+disk use is counted but not capped (\emph{chosen}).
+
+\paragraph{People and organizations}
+The sandbox separates agents, not the people who use one: one worker
+per approved agent serves everyone in the organization granted it, so
+its memory and a host lent for one person's call are shared with a
+concurrent colleague's call (\emph{chosen}, for memory and start-up
+cost). Tenants share the agents' container, so process listings and the
+connection log span organizations, and an agent writing enough to its
+error output can push others' connection records out of the bounded
+log (\emph{open}); the audit trail is a separate store and unaffected.
+A compromised runtime can act, within 40 actions and without opening
+cards, for people whose delegations it holds (\emph{chosen}: a
+scheduled chat must act while its person is away).
+
+\paragraph{Data and records}
+The audit trail is append-only by the code's shape, not by the
+database: an operator with the database password could alter it
+undetectably, as there is no hash chain (\emph{chosen}, consistent with
+the out-of-scope operator). A call's inputs are recorded in outline as
+proposed, so a password a person typed into the chat and the model
+passed on, or a secret an agent placed in its error text, can reach the
+trail (\emph{open}). An agent that returns a credential in its result
+passes it to the model and the trail: results are validated for shape,
+not scanned for secrets. File bytes are not sealed by the platform; they
+rest on the backend's volume or in a cloud bucket encrypted by its
+provider.
+
+\paragraph{Webhooks}
+Only \sys{}'s own signature scheme is verified; providers with their
+own schemes are reached through a relay. The rate limit is counted per
+backend process. An outbound address is checked by name and then
+connected to by name, leaving a DNS-rebinding window (\emph{open}). An
+event the chat could not receive is marked undelivered and not retried.
+
+\paragraph{Operation}
+One runtime serves a deployment, and nothing moves a chat between
+runtimes (\emph{chosen}). A stop sent while a new message is being
+prepared, which may include installing an agent, waits until that
+preparation finishes; the per-person switch does not, since it
+withdraws every delegation (\emph{open}). A one-off reminder whose fire
+fails is spent without notice (\emph{open}). Agent code that writes to
+standard output corrupts its own protocol line, and one blocking call
+stalls a worker's other calls (\emph{open}); a broken worker fails
+honestly and the next call starts a fresh one.

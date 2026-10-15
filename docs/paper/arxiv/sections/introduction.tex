@@ -1,0 +1,118 @@
+\section{Introduction}
+\label{sec:intro}
+
+An assistant that only talks can be wrong in one way: it says
+something false, and a person reads it. An assistant that \emph{acts}
+is different. Consider the request that runs through this paper:
+
+\begin{quote}\itshape
+``Email the three customers whose invoices are overdue, and remind me
+on Friday if any of them hasn't paid.''
+\end{quote}
+
+\noindent Carrying it out means reading a spreadsheet, opening a
+mailbox, writing three messages, sending them under the person's name,
+and acting again on Friday. Each step is an act in the world, and a
+sent email cannot be recalled. The properties that make a language
+model useful for this---it reads anything, writes fluently, and fills
+gaps on its own---are the properties that make it dangerous to hold
+the keys.
+
+Five failures follow. A model \emph{fabricates}: ``I've sent the three
+reminders'' is a sentence it can produce whether or not any mail left.
+It is \emph{steered by what it reads}: text inside a document or an
+email can pose as instructions, and no reliable defence against this
+\emph{prompt injection} exists inside the model
+itself~\cite{greshake2023indirect,perez2022ignore}. Given a person's
+credentials, it \emph{oversteps}, because nothing stands between a
+mistaken idea and its consequence. It \emph{leaves no trace} other than
+its own account of what it did. And its tools are \emph{strangers'
+code}, with their own dependencies, any of which may be careless or
+hostile.
+
+\paragraph{Approach}
+\sys{} does not try to make the model trustworthy. It removes the
+model from every decision that matters:
+
+\begin{center}
+\emph{The model may propose anything. It decides nothing.}
+\end{center}
+
+\noindent The model emits one structured action at a time---call this
+function with these inputs, show this stored result, set this
+reminder. Whether that action happens is decided by the platform: from
+who the person is, what the chat permits, what the agent declared
+before it was approved, and what the person approved, in code the
+model cannot read, change, or argue with. None of these inputs is
+derived from model output, so injected text can steer what the model
+\emph{proposes} but cannot widen what may \emph{run}.
+
+The design is deliberately unoriginal in its parts. It applies the
+oldest ideas in operating systems~\cite{saltzer1975protection,
+anderson1972planning} to a new kind of program: each agent is a
+process running as its own user, its requests are system calls that
+may be refused, its network access passes through a firewall, risky
+actions ask the person first, a scheduler runs deferred work, a kill
+switch ends what runs, and a log records what happened. What is new is
+the component no operating system was designed for: a planner that is
+highly capable and not trusted.
+
+\paragraph{Contributions}
+This paper makes the following contributions.
+
+\begin{enumerate}[label=(\arabic*),leftmargin=1.6em]
+\item A \textbf{separation of proposal from authority} for LLM agents,
+  in which the model holds no permission, credential, or secret, and
+  every proposed action is validated and gated by mechanisms none of
+  whose inputs derive from model output (\cref{sec:design,sec:execution}).
+\item A \textbf{deny-by-default authorization model} with two
+  invariants checked on every change---an organization cannot lock
+  itself out, and nobody can grant what they do not hold---and a
+  \textbf{delegation} scheme under which the agent runtime acts for a
+  person only through a short-lived, chat-bound, opaque token fenced to
+  a fixed list of 40 actions (\cref{sec:authority}).
+\item An \textbf{executor with call-bound approval}: an ordered
+  sequence of gates on every function call, a person-chosen trust
+  level, and approvals bound to the exact call by a hash that survives
+  process restarts and is re-checked against current grants
+  (\cref{sec:execution}).
+\item \textbf{Evidence by construction}: anything displayed as data
+  beside the model's words---tables, charts, files, ``verified''
+  marks---is rendered from stored results of successful, schema-validated
+  calls, never from the model's text (\cref{sec:evidence}).
+\item A \textbf{manifest-first agent model}: each agent declares its
+  functions, schemas, permission levels, resources, credential shapes,
+  and network hosts before approval; approval pins one commit and one
+  content-addressed package; and every call is held to the manifest
+  (\cref{sec:agents}).
+\item A \textbf{layered, self-inspecting sandbox} for untrusted agent
+  code that needs no user namespaces: a capability-bearing spawn helper
+  applies resource limits, \code{no\_new\_privs}, a per-agent uid, a
+  Landlock ruleset and a seccomp denylist, behind an egress proxy and
+  an nftables rule keyed on socket owner; the platform refuses to start
+  where it cannot confine and reports what is not enforced where it
+  runs (\cref{sec:sandbox}).
+\item A \textbf{complete, open implementation} and an evaluation by
+  more than two thousand automated tests, including a deliberately
+  hostile agent, together with an explicit catalogue of limits
+  (\cref{sec:implementation,sec:evaluation,sec:limitations}).
+\end{enumerate}
+
+\paragraph{What this paper does not claim}
+\sys{} does not make a model correct, does not detect prompt injection,
+and does not prevent an agent from misusing what it was rightly given.
+Its claims are about containment and visibility: a mistake can lead
+only to a call the person was already allowed to make, through an
+agent the organization approved, reaching only declared places, with
+anything above the chat's trust level waiting for the person's yes;
+and every such call is recorded. \Cref{sec:limitations} lists where
+these claims are weaker than they sound.
+
+\paragraph{Organization}
+\Cref{sec:threat} states the threat model. \Cref{sec:design} gives the
+design and follows the running example end to end.
+\Cref{sec:authority,sec:execution,sec:evidence,sec:agents,sec:sandbox,sec:secrets,sec:control}
+describe each mechanism, naming the source files that implement it.
+\Cref{sec:implementation} describes the implementation,
+\cref{sec:evaluation} the evaluation, and \cref{sec:limitations} the
+limits.

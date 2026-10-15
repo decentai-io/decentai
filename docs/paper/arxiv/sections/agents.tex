@@ -1,0 +1,116 @@
+\section{Agents: A Contract Before Code}
+\label{sec:agents}
+
+\subsection{The manifest}
+
+An agent is a folder in a git repository: a \code{manifest.yaml} and
+Python code. The manifest declares who the agent is; its tools and
+functions; for each function its input and output schemas and a
+permission level; what it keeps (typed records and files); what
+credentials it needs, by shape, never by value; which hosts it connects
+to; and its dependencies. \Cref{lst:manifest} shows the Gmail agent's
+manifest, trimmed.
+
+\begin{lstlisting}[caption={Excerpt of the Gmail agent's manifest.},label=lst:manifest,captionpos=b,float=t]
+agent: {id: gmail, version: "0.3.2"}
+network:
+  hosts: [gmail.googleapis.com]
+resources:
+  secrets:
+    - id: google            # connected by signing in
+      oauth: {provider: google, ...}
+  data:
+    - id: draft
+      fields:
+        - {name: to, type: string, storage: keys}
+        - {name: status, type: select, storage: keys,
+           options: [prepared, sent, unknown, discarded]}
+tools:
+  - id: draft
+    resources: {secrets: [google], data: [draft]}
+    functions:
+      - id: send
+        permission_level: 3
+        resources: {secrets: {google: use},
+                    data: {draft: [read, update]}}
+        inputs:
+          type: object
+          additionalProperties: false
+          required: [draft_ref]
+          properties:
+            draft_ref: {type: string,
+              x-resource: {type: data, id: draft}}
+\end{lstlisting}
+
+One validator (\file{contracts/agent\_manifest.py}) serves both the
+backend and the runtime, so they cannot disagree. Among its rules:
+\code{network} is required---silence is not an answer, and an agent
+that connects nowhere says \code{hosts: []}; hosts are DNS names,
+optionally wildcarded, a field of a declared credential
+(\code{from\_secret}), or \code{any}, and literal addresses are refused;
+schemas are a JSON Schema subset with a closed keyword list, no
+\code{\$ref} or combinators, and bounded depth; \code{permission\_level}
+is required. Flags an approver sees---\code{llm}, \code{credentials},
+\code{code}, \code{watch}, \code{schedulable}---are constrained:
+\code{schedulable} requires level 0 or 1 and no model use, so nothing
+that runs unattended on a clock can leave the platform.
+
+\subsection{From a repository to an approval}
+
+\begin{enumerate}[leftmargin=1.4em]
+\item An organization names a source repository. The backend fetches
+  it shallowly and \emph{reads it without running anything}, showing an
+  administrator each manifest, its README, its file names and sizes, and
+  any validation errors.
+\item An administrator approves one agent at one exact commit: the
+  commit whose catalog they were shown. If the source was re-read in
+  between, the approval is refused (\code{source\_moved}).
+\item The backend packs that folder into a canonical archive (files
+  sorted, timestamps and owners zeroed, fixed compression) named by the
+  SHA-256 of its bytes, and stores it. A repository later deleted or
+  rewritten changes nothing the organization runs. A version once
+  approved can never be approved again with a different manifest or
+  different bytes.
+\item The runtime fetches the archive by digest, rejects bytes whose
+  digest differs before writing anything, extracts it refusing links
+  and escaping paths, re-validates the manifest against the approved
+  hash, builds the environment (\cref{sec:sandbox}), and starts the
+  agent once to check that it implements every declared function. Only
+  then does it serve the agent.
+\end{enumerate}
+
+\noindent Each approval is named by a reference the platform mints,
+\code{agt\_} plus 20 hex characters (74 random bits), per
+organization. Grants,
+records, and the audit trail speak only this reference; the package's
+own id is translated at the manifest lookup and the worker call and
+nowhere else. This is what stops one organization from naming, and so
+reaching, another's agent; two organizations approving the same bytes
+get two separate worker processes.
+
+\subsection{Held to the manifest on every call}
+
+The agent's code holds no authority of its own. When it needs
+something---a credential, a record, a question to the person---it
+\emph{asks} on its protocol line, and each request is answered from
+the manifest entry of the function now running
+(\code{ResourceAccess}, \file{ai\_runtime/execution/resources.py}).
+Gmail's \code{send} declared \code{draft: [read, update]}; asked to
+delete a draft or read another resource, it is refused however its code
+is written. Every resource id becomes \code{<approval>\_\_<id>}, written
+by the runtime from the agent actually running, so a record in another
+agent's slot answers as if it did not exist. A request is answered only
+if it names a call that was sent to the asking worker.
+
+The worker protocol is newline-delimited JSON with a 2\,MiB line limit;
+a malformed line ends the worker. The runtime treats the process as
+hostile: lying, sending garbage or too much, or acting for a call not
+its own gains nothing.
+
+\subsection{Updates}
+
+A changed manifest at the source is offered as an update, which is a
+new approval checked like the first. When the approval names different
+bytes, the next call ends the old worker and starts one from the new
+code. A call still running in the old worker ends with an error and is
+not retried, since nobody can know what a half-finished call changed.

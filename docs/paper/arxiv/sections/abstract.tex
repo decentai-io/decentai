@@ -1,0 +1,30 @@
+\begin{center}
+\begin{minipage}{0.86\textwidth}
+\small
+\noindent\textbf{\color{accent}Abstract.}
+Large language models are increasingly used not only to answer but to
+act: to send mail, edit records, browse, and run code on a person's
+behalf. The models that plan these actions state falsehoods with
+confidence and follow instructions embedded in what they read, and the
+tools they invoke are third-party code. We present \sys{}, a
+self-hosted platform for AI agents built on a single principle: the
+model may propose any action, but holds no authority to perform one.
+Every proposal is a structured request that passes through gates the
+model cannot read or influence---deny-by-default access control with
+two machine-checked invariants, a per-call executor that holds each
+agent to a manifest approved before its code runs, a person-chosen
+trust level with approvals bound to the exact call by hash, and a
+layered sandbox (a uid per agent, Landlock, a seccomp denylist, and an
+egress proxy that admits only declared hosts). Credentials are
+decrypted by the backend and lent to one agent for one call, never to
+the model; what is displayed as data beside the model's words is
+rendered from stored, schema-validated results of real calls rather
+than from the model's text. The design applies operating-system ideas
+to agents: processes, users, system calls, a firewall, a scheduler,
+kill, and an append-only log. We describe the threat model, each
+mechanism with the code that implements it, and an evaluation through
+more than two thousand automated tests---including a deliberately
+hostile agent that attempts each known escape---and we state every
+limit we know of, including those the design accepts on purpose.
+\end{minipage}
+\end{center}

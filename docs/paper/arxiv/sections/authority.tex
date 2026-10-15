@@ -1,0 +1,144 @@
+\section{Authority: Identity, Policy, Delegation}
+\label{sec:authority}
+
+\subsection{One gate, named by the endpoint}
+
+Every application call is \code{POST /app} with a body
+\code{\{"endpoint": "Domain:Controller:action", "data": \{\ldots\}\}}.
+The router (\file{backend/api/api\_router.py}) lowercases the
+endpoint, refuses an action beginning with an underscore, asks the
+access controller whether the caller may perform it, and only then
+checks that it names a known action---so a controller's other public
+methods are unreachable even under a wildcard grant. The chat socket,
+uploads, and downloads call the same check. An action is the name of
+the request itself (placing a user into groups is
+\code{iam:user:set\_groups}), so there is no second vocabulary to drift
+out of step. The catalog is code
+(\file{backend/server/authentication/catalog.py}, 207 actions), so
+widening it is a code review.
+
+\subsection{Deny-by-default policy}
+
+Nobody holds a permission directly. A person belongs to groups (and,
+implicitly, to the organization's \emph{Everyone} group); groups carry
+roles; roles bundle policies; policies hold statements that allow or
+deny actions by name or wildcard. Evaluation
+(\code{PolicyEngine.evaluate}, \file{backend/server/authentication/policy.py})
+collects the statements reachable from the person and applies three
+rules: an action with no matching \emph{Allow} is refused; a matching
+\emph{Deny} refuses immediately, wherever in the chain it was written;
+otherwise a matching \emph{Allow} permits. The effect is compared
+case-insensitively so that a hand-edited \code{"deny"} cannot fail
+open. Administrators are not a flag: the seeded \emph{Administrators}
+policy is \code{Allow ["*"]}. Policies are validated on save (at most
+50 statements of 100 actions; every pattern must match a real action).
+
+Tenants are separated by construction: stores of organization-owned
+documents read caller-supplied ids only with the caller's
+\code{org\_id} in the query, and the organization is always taken from
+the caller's own record, so naming another organization's record finds
+nothing.
+
+\subsection{Two invariants}
+
+Because authority is data that administrators edit, two properties are
+checked on every edge of the chain.
+
+\paragraph{No lockout}
+Let $\mathit{Active}(o)$ be the active people of organization $o$ and
+$\mathit{allows}(u,a)$ the policy decision. After every change to
+groups, roles, policies or memberships, the platform checks
+\[
+\exists\, u \in \mathit{Active}(o) :\ \mathit{allows}(u,\ \texttt{iam:user:set\_groups}),
+\]
+since whoever may place people into groups can repair everything else.
+If the check fails, the write is undone and the request answered 409
+(\code{PolicyEngine.someone\_can\_manage\_access},
+\code{IAMController.\_lockout\_check}). Disabling or deleting a person
+is checked before the write with the target excluded, and nobody may
+disable or delete themselves.
+
+\paragraph{Grant boundary}
+Otherwise anyone who may write a policy could write themselves a
+better one. For an author $u$ proposing a set of statements $S$,
+\[
+\mathit{ungrantable}(u,S) = \Bigl(\bigcup_{\textit{Allow } p \in S}\mathit{expand}(p)\Bigr) \setminus \mathit{held}(u),
+\]
+where $\mathit{expand}$ expands a pattern over the catalog and
+$\mathit{held}(u)$ applies $u$'s own denies. A change is refused unless
+$\mathit{ungrantable}$ is empty. The check applies to writing a policy,
+attaching a policy to a role, a role to a group, a person to groups,
+adding a person, and inviting one; the whole proposed set is checked,
+not only what is new. \emph{Deny} statements are free: they only take
+away. An invitation is checked when issued and again when accepted,
+against the inviter as they are then.
+
+\subsection{Callers, sessions, and keys}
+
+Sessions live on the server: a browser holds an \code{HttpOnly} cookie
+carrying a signed pointer to a session row, re-read on every request,
+so logout, disabling, or a password reset takes effect on the next
+request. Passwords are hashed with bcrypt (cost~12) over a SHA-256
+pre-hash so the 72-byte limit never truncates; logins are throttled per
+account and per address, and a locked account refuses the right
+password like a wrong one. API keys (\code{dk\_} plus 32 random bytes,
+stored as SHA-256) act as their person on every call but may not create
+or revoke keys, so a leaked key cannot make itself permanent. An
+in-process cache (60\,s) holds sessions and resolved statements; every
+write invalidates on both sides of itself, and a resolution records the
+cache generation it began at so that a request that read old rows
+during a write cannot re-cache them.
+
+\subsection{Delegation: how the runtime acts for a person}
+\label{sec:delegation}
+
+The runtime must act for a person---to store messages, read results,
+use a credential---but must not \emph{be} the person. The backend dials
+the runtime for each chat with two credentials
+(\file{backend/api/services/chat\_session/identity/}):
+
+\begin{itemize}
+\item a \textbf{service token}, RS256-signed with a key only the
+  backend holds, valid 60\,s, verified by the runtime with the public
+  half before it accepts the socket (requiring \code{exp}, \code{iat},
+  \code{nbf}, \code{jti}, issuer, audience and type). The runtime holds
+  nothing that could mint one, so a runtime taken over by an agent
+  cannot impersonate the backend;
+\item a \textbf{delegation}, HS256-signed with a secret the runtime does
+  not have, naming a \code{runtime\_sessions} row for (person, chat).
+  It is opaque to the runtime, which presents it back on every call. It
+  says \emph{who}, never \emph{what they may do}.
+\end{itemize}
+
+\noindent A call under a delegation passes three layers: (1)~a
+\emph{fence}, \code{RUNTIME\_ENDPOINTS}, a fixed list of 40 actions
+checked before any policy is read---identity, accounts, authoring,
+transfers and approval decisions are not on it; (2)~the person's own
+policy; and (3)~the chat: chat-scoped controllers refuse any chat but
+the delegation's, and stored results are read only from that chat. A
+delegation lasts one hour, is renewed over the open socket after
+45~minutes, and is withdrawn by deleting its row when the chat is
+deleted, the person is disabled, or the person presses
+stop-everything. A third credential, the runtime's own RS256 identity,
+opens only three actions: listing and fetching approved agent packages,
+and reporting them prepared.
+
+What agents a chat may use is not on the delegation at all: it is the
+\emph{contract}, computed by the backend as installed agents $\cap$
+grants reaching the person $\cap$ the chat's own narrowing, and re-read
+on every message and clock wake. A permission withdrawn this morning is
+absent from this turn.
+
+\subsection{Agent grants}
+
+Who may call an installed agent's functions is a separate, allow-only
+list keyed by the agent (\code{AgentGrantStore}), because functions are
+discovered from manifests and would rot inside authored policies. A
+grant names groups or people, the whole agent or a list of
+\code{tool.function}, and optional \emph{scope constraints}: a manifest
+may declare that an input names what a call is about (a notebook, a
+project), and a grant may allow the function only for some values. On
+first install an agent is granted only to the installer and their
+groups. A grant to the whole agent follows it to new functions in an
+update; a grant listing functions does not, so access is never silently
+widened.

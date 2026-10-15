@@ -1,0 +1,171 @@
+\section{The Mediated Execution Path}
+\label{sec:execution}
+
+\subsection{The assistant loop}
+
+The assistant is one serializable state object (transcript, summary,
+plan, open agents, trace of calls, jobs, parked calls, inbox cursor)
+saved after every step (\file{ai\_runtime/mind/state.py}). It works in
+\emph{beats}: absorb what has arrived, make one model call, take
+\emph{one} action, record the observation, persist. The model is offered
+a fixed vocabulary of 19 actions as tool schemas
+(\file{ai\_runtime/mind/actions.py})---\code{say}, \code{find\_agents},
+\code{open\_agent}, \code{close\_agent}, \code{invoke}, \code{start},
+\code{spawn}, \code{plan}, \code{schedule}, \code{sleep}, \code{read},
+\code{recall}, \code{remember}, \code{finish}, among others---plus each
+opened agent's functions as tools carrying the manifest's input schema.
+There is no action meaning ``do whatever is needed''. A reply that is
+none of these is not executed; a reply containing several actions has
+only the first executed and the model is told so; a reply cut off at
+the output limit is not acted upon.
+
+\paragraph{Turns end honestly}
+\code{finish} takes a reason: \code{completed}, \code{awaiting\_user},
+\code{awaiting\_events} or \code{blocked}. The platform refuses
+\code{completed} while any plan item is pending or active,
+\code{awaiting\_events} while no job is active and no schedule is set,
+and \code{blocked} with no blocked item. A beat budget (the
+\emph{valve}, 20 by default) bounds one request: at the budget the
+assistant is told to wrap up, and after three more beats the runtime
+stops the turn itself.
+
+\paragraph{Plans that need proof}
+The assistant keeps a plan of at most 12 items visible to the person.
+Whenever a call succeeds, its stored result's reference is attached as
+evidence to every item in progress; evidence the model names must be a
+reference of a successful call or a job that ended done. An item marked
+done with nothing behind it is rendered ``done\,\textperiodcentered\,unverified''.
+
+\paragraph{Concurrency without losing the person}
+\code{start} runs a call as a background \emph{job}; a card a job
+waits on holds that job, not the assistant. If the person writes while
+the assistant waits on a call, the wait ends at once and the call
+continues in the background; an in-flight model call is cancelled and
+its reply discarded. A message reading ``stop'' is words; only the stop
+button is enforced (\cref{sec:control}).
+
+\subsection{The executor's gates}
+
+Every function call takes one path, \code{FunctionExecutor}
+(\file{ai\_runtime/execution/executor.py}). The gates run in a fixed
+order, and none reads the model's prose:
+
+\begin{enumerate}[label=\textbf{E\arabic*},leftmargin=2.1em]
+\item the function is declared in the agent's approved manifest;
+\item the chat's grants reach it (deny by default: a function no grant
+  names does not exist for the chat);
+\item every top-level input of the form \code{\{storage\_ref, path?\}}
+  is replaced by the stored value, read from this chat's own storage;
+\item defaults are applied; NaN and Infinity are refused;
+\item inputs validate against the manifest's JSON Schema (Draft
+  2020-12, empty reference registry, so a schema fetches nothing);
+\item scope values are read from the inputs, normalized, and held to the
+  grant's constraints;
+\item the function's declared \code{permission\_level} $\ell_f \in
+  \{0,1,2,3\}$ is compared with the chat's trust level $\ell_c$: if
+  $\ell_f \le \ell_c$ the call runs; otherwise it parks for approval.
+\end{enumerate}
+
+\noindent During the call, every resource request from the worker is
+mediated against the function's declared operations (\cref{sec:agents});
+after it, the result is checked against the declared output schema
+(\cref{sec:evidence}). Each call ends as a result and an audit line,
+whatever the outcome.
+
+\subsection{Trust levels and call-bound approval}
+
+Levels mean: 0~read, 1~ordinary change, 2~wider change inside the
+platform, 3~action outside it. The trust level is the person's choice
+per chat; the default is~1, and an unreadable stored value resolves
+to~1, never to~3 (\file{backend/api/services/chat\_session/settings/trust.py}).
+The model is told each function's level before it chooses and can
+change neither number.
+
+When $\ell_f > \ell_c$, the runtime builds a parked invocation from the
+inputs \emph{as resolved and defaulted} and computes
+\[
+h = \mathrm{SHA\text{-}256}\bigl(\mathrm{canon}(\{\mathit{agent},\ \mathit{function},\ \mathit{inputs}\})\bigr),
+\]
+where $\mathrm{canon}$ is compact JSON with sorted keys. The park is
+saved into the assistant's state \emph{before} the card is shown; if
+that save fails, the card is withdrawn and the call reports that the
+person could not be asked, not that they refused. The backend stores
+$h$ with the card. Deciding a card is a person's action and is not on
+\code{RUNTIME\_ENDPOINTS}, so the runtime cannot approve its own
+request. The decision is recorded by the backend, then delivered to the
+runtime with the backend's copy of $h$.
+
+Before a yes is delivered the chat's contract is re-read. If the
+parked call is alive in memory, it proceeds with the same inputs that
+were shown, but only if the grants \emph{as they are now} still reach
+the function and allow its scopes. If the process died while the card
+waited, the call is rebuilt from the saved park, every gate runs again
+against current grants and manifest, and the recomputed hash must equal
+$h$ or the call is refused. An approval therefore binds one exact call
+and does not outlive the entitlement it was given under. A denial also
+refuses the hosts named in the denied inputs to every function of that
+agent for the rest of the request.
+
+\subsection{What injection can and cannot reach}
+
+Injected text can change what the model \emph{proposes}. It cannot
+change the grants, the trust level, the manifest's hosts, the approval
+hash, or which credential is lent to which agent, because none of
+these is derived from model output. What remains, stated plainly: a
+call at or below the chat's level runs on the model's word, so in a
+chat set to level~3 an injected proposal within the person's grants
+runs without a card. The level is exactly the person's answer to ``how
+much may run without asking me''.
+
+\subsection{Routing, folding, helpers}
+
+\paragraph{Routing}
+With many agents, the runtime shortlists by meaning: it embeds the
+message, scores each \emph{granted} agent by its closest vector (name,
+description, examples, function descriptions), optionally reranks with
+the chat's model, and lists the closest. An agent's own text can move
+its rank; it cannot make an ungranted agent available or raise what any
+function may do, since ranking only orders the roster and every call
+meets the gates.
+
+\paragraph{Folding}
+Past 120{,}000 characters of transcript, the oldest part is folded
+into a summary in five budgeted sections; dropped lines remain
+searchable. The plan, the trace, saved memories, and stored results are
+never folded, because they are not the model's to remember.
+
+\paragraph{Helpers}
+The assistant may \code{spawn} a helper with one goal. A helper sees
+the parent's goal, its agents, and the platform's records---never the
+parent's transcript or summary, because retold context is where
+invented details come from. It never speaks to the person, inherits
+the chat's grants and trust level without widening them, and cannot
+spawn, schedule, sleep, or save memories. Depth is one by construction:
+a child session is given no spawn door.
+
+\subsection{The inbox: exactly-once absorption}
+
+Everything that arrives---a message, a clock wake, an agent's post, a
+webhook event---is recorded in the chat's inbox with a sequence number
+allocated atomically by the backend \emph{before} the assistant hears
+it. The assistant keeps a cursor saved in the same document as its
+transcript. After a crash, hydration reads the events after the cursor:
+delivery is at least once, absorption into the saved mind exactly once.
+
+\subsection{Webhooks: an internet-facing door, as data}
+
+A person may give an outside system a door into one chat: a webhook
+with its own secret, a declared field schema, and the person's
+standing instruction. The backend checks, in order, that the webhook,
+its person and organization are live (one indistinguishable 404
+otherwise), the body size (64\,KB), the bearer secret in constant time
+and an HMAC-SHA256 signature over \code{"<timestamp>.<body>"} where
+required, a per-webhook rate, and that the body has exactly the
+declared fields of the declared types. The event reaches the runtime
+as a frame only the backend's service token can deliver. The assistant
+receives two separate lines: the person's stored instruction, as the
+person's, and the posted fields as an \code{EVENT} explicitly marked
+as data, never instructions. The chat runs as the person at its own
+trust level, so the webhook inherits every gate above; its secret is
+sealed like a credential (\cref{sec:secrets}), not hashed, because
+checking a signature needs the secret itself.

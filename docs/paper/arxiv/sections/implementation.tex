@@ -1,0 +1,50 @@
+\section{Implementation}
+\label{sec:implementation}
+
+\sys{} is open source.\footnote{\url{https://github.com/decentai-io/decentai};
+the public agent catalog is at
+\url{https://github.com/decentai-io/decentai-agents}.} It is deployed
+with Docker Compose as six services: Caddy (the single public entry,
+also serving the web app), the backend, MongoDB, the runtime, the
+agents' container, and a speech service. Three networks separate them
+(\cref{fig:arch}): \code{default}, the only one with a route out;
+\code{data}, internal, joining only the database, the backend, and a
+one-shot initializer; and \code{agents}, internal, joining only the
+runtime and the agents' container.
+
+\begin{table}[t]
+\centering\small
+\caption{Implementation size (non-test source lines).}
+\label{tab:loc}
+\begin{tabular}{@{}lr@{}}
+\toprule
+\textbf{Component} & \textbf{Lines} \\
+\midrule
+Backend (Python, FastAPI) & 29{,}297 \\
+Runtime and agents' container (Python) & 18{,}466 \\
+Shared contracts: manifest, package, chat parts (Python) & 4{,}138 \\
+Agent SDK (Python, standard library only) & 1{,}543 \\
+Spawn helper (C) & 934 \\
+Web app (TypeScript, Angular; \file{frontend/src/app}) & 33{,}717 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\Cref{tab:loc} gives the size of each part. The backend owns identity,
+policy, the data layer, encryption, OAuth, webhooks, and the audit
+trail, behind one gateway. The runtime holds the assistant loop
+(\file{ai\_runtime/mind/}), chat sessions and the clock
+(\file{ai\_runtime/chat/}), the executor and resource mediation
+(\file{ai\_runtime/execution/}), the worker pool and egress proxy
+(\file{ai\_runtime/agents/}), and the spawner
+(\file{ai\_runtime/agents\_container/}). Contracts shared by backend and
+runtime---the manifest validator, the canonical package format, the
+chat message parts---live in one package so the two sides cannot
+disagree. Agent code imports only the SDK, which speaks the worker
+protocol over standard input and output.
+
+Model access goes through connectors for several provider protocols,
+or a model served on the organization's own machines; the organization
+configures connections and may scope keys per organization, group, or
+person. A mobile client (Expo/React Native) is a thin remote control
+for any instance: chat, approval cards, and notifications.

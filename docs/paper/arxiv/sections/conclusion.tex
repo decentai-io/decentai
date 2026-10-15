@@ -1,0 +1,33 @@
+\section{Conclusion}
+\label{sec:conclusion}
+
+\sys{} takes the language model as it is---capable, fallible, and
+steerable by what it reads---and builds around it a platform in which
+the model holds no authority. Every proposed action meets gates whose
+inputs are identity, grants, a person-chosen trust level, an agent's
+approved manifest, and the person's approval of the exact call; none is
+derived from model output. Untrusted agent code runs as its own user,
+fenced by Landlock and seccomp, reaching only declared hosts through a
+proxy, with credentials lent per call and never shown to the model.
+What appears as data beside the model's words is drawn from stored,
+validated results. A stop withdraws the keys rather than asking for
+cooperation, and an append-only trail records what was allowed.
+
+None of these mechanisms is new on its own; they are the protections
+operating systems have offered programs for half a century. The
+contribution is to place them around a planner that is very capable and
+not trusted, so that when it is wrong---and it will be---the mistake is
+contained to what a person could already do, visible on a card or in a
+record, and stoppable. The implementation is open, the tests that hold
+its claims can be rerun by anyone, and the limits are stated beside
+them.
+
+\section*{Acknowledgements}
+AI tools (Claude, by Anthropic) assisted in drafting the text of this
+paper and in checking its claims against the source code. The author
+reviewed the text and is responsible for its content.
+
+\section*{Availability}
+The source code, documentation, and test suites are available at
+\url{https://github.com/decentai-io/decentai}; the agent catalog used in
+the examples is at \url{https://github.com/decentai-io/decentai-agents}.

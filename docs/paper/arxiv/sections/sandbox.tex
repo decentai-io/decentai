@@ -1,0 +1,195 @@
+\section{Confinement}
+\label{sec:sandbox}
+
+Agent code is the third adversary (A3): written carelessly, written to
+harm, or steered by what it read. The sandbox keeps five promises, each
+by a separate mechanism so that a gap in one is not a gap in all: an
+agent (P1)~reads and writes only its own files, (P2)~runs as its own
+user, (P3)~reaches only the hosts its manifest named, (P4)~uses bounded
+resources, and (P5)~cannot make the system calls escapes are built
+from.
+
+\subsection{Topology}
+
+Agent code runs only in the \emph{agents' container}: the runtime's
+image started with another command (\file{ai\_runtime/agents\_container/}).
+Its one platform process, the \emph{spawner}, accepts structured,
+key-authenticated requests from the runtime---check confinement,
+start a worker, build requirements, read files, stop, report usage---and
+relays worker protocol lines unread. The
+container's network is internal and reaches only the runtime: no route
+to the internet, the database, or the backend. It is handed no platform
+secret. There is no unconfined path: a runtime without a spawner, or
+whose spawner cannot confine, raises \code{ConfinementFailed} and does
+not start. Only the test suite starts agent code without the agents'
+container, through a double that exists in the tests alone.
+
+\subsection{The spawn helper}
+
+Workers are started by a small C program
+(\file{ai\_runtime/agents\_container/spawn\_helper.c}), executable only
+by the runtime's group. It is \emph{not} setuid-root: the file carries
+exactly four capabilities (\code{cap\_setuid}, \code{cap\_setgid},
+\code{cap\_chown}, \code{cap\_fowner}). It is executed in place of the
+worker, on the same pipes, and applies, in order (\cref{fig:layers}):
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[font=\small,
+  st/.style={draw=accent,rounded corners=2pt,fill=white,minimum width=0.86\columnwidth,
+             minimum height=1.55em,align=left,inner sep=3pt,text width=0.82\columnwidth},
+  arr/.style={-{Stealth[length=4pt]},draw=ink!70}]
+  \node[st,fill=soft] (a) {\textbf{0} refuse wrong caller, uid outside the worker range, home not owned by uid};
+  \node[st,below=0.32em of a] (b) {\textbf{1} \code{setrlimit}: processes, open files, file size, no core};
+  \node[st,below=0.32em of b] (c) {\textbf{2} \code{prctl(PR\_SET\_NO\_NEW\_PRIVS)}};
+  \node[st,below=0.32em of c] (d) {\textbf{3} \code{setgroups}, \code{setresgid}, \code{setresuid}; \code{capset} $\emptyset$};
+  \node[st,below=0.32em of d] (e) {\textbf{4} Landlock ruleset at the kernel's ABI};
+  \node[st,below=0.32em of e] (f) {\textbf{5} seccomp filter (\code{prctl(PR\_SET\_SECCOMP, SECCOMP\_MODE\_FILTER)})};
+  \node[st,below=0.32em of f,fill=soft] (g) {\textbf{6} \code{execve} the worker};
+  \foreach \x/\y in {a/b,b/c,c/d,d/e,e/f,f/g} \draw[arr] (\x) -- (\y);
+\end{tikzpicture}
+\caption{The spawn helper's sequence. Each later step can only remove
+access; nothing after step~3 can regain a privilege.}
+\label{fig:layers}
+\end{figure}
+
+\code{no\_new\_privs} is what makes a capability-bearing binary safe to
+leave on the worker's path: under it, an \code{exec} grants no file
+capabilities, so a worker that runs the helper gains nothing. After the
+uid switch the capability set is emptied, so no capability survives
+into the worker. Landlock is applied after the switch and seccomp last,
+so the helper's remaining work needs nothing the filter refuses. CPU
+time is deliberately not limited by \code{RLIMIT\_CPU}, which counts a
+process's whole life while workers are kept warm; each call is bounded
+by the runtime's clock instead. Further subcommands chown, empty, and
+sweep a uid's places, and \code{stop} kills every process of a uid, so
+a browser never outlives the worker that started it.
+
+\paragraph{One uid per approval}
+Each approved agent gets a uid from a reserved range (one is reserved
+for verifying packages, one for the builder). A worker's home is
+emptied before every start, so it holds no state between starts.
+
+\paragraph{Why not namespaces}
+Inside a container's default profile a process cannot create user
+namespaces; permitting it would mean relaxing the container's own
+seccomp profile for everything in it. Separate uids, Landlock and a
+seccomp filter provide the isolation without that cost.
+
+\subsection{Files: Landlock}
+
+The spawner names the paths; the helper hands them to the
+kernel~\cite{landlock}. Read-and-execute: system directories, the
+image's browsers, the agent's own package and environment. Read-write:
+its home and spool. Write where ownership still decides: \code{/dev},
+\code{/proc}, \code{/tmp}. Nothing else---not the platform's code,
+other agents' packages, or the uid table. The helper validates none of
+the paths: a Landlock ruleset can only remove access. The ruleset
+requests what the running kernel supports (\cref{tab:landlock}). ABI~6
+closes a channel that ownership and the firewall both miss: an abstract
+Unix socket has a name but no inode, owner, or mode, and is invisible
+to an address-based rule; from ABI~6 a fenced worker connects only to
+abstract sockets created inside its own Landlock domain.
+
+\begin{table}[t]
+\centering\small
+\caption{Landlock features requested by kernel ABI.}
+\label{tab:landlock}
+\begin{tabular}{@{}cll@{}}
+\toprule
+\textbf{ABI} & \textbf{Linux} & \textbf{Adds} \\
+\midrule
+1 & 5.13 & path-based file access \\
+2 & 5.19 & \code{REFER}: moving files between own folders \\
+3 & 6.2 & \code{TRUNCATE} \\
+4 & 6.7 & TCP connect only to the proxy's port \\
+6 & 6.12 & abstract Unix sockets scoped to own domain \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{System calls: seccomp}
+
+The filter~\cite{seccomp} is a \emph{denylist}, on purpose: an agent may
+bring any Python package, and an allowlist would be a list of what
+somebody forgot. \Cref{tab:seccomp} shows what is refused for the
+worker and all its descendants. \code{clone3} returns \code{ENOSYS}
+rather than \code{EPERM}: its flags sit behind a pointer a BPF filter
+cannot dereference, and glibc, told the call does not exist, falls back
+to \code{clone}, whose flags the filter can inspect. Refusals return
+the error codes programs already handle, so a package that probes a
+call degrades instead of crashing. The filter is independent of the
+container engine's profile and refuses what Docker's default allows,
+\code{ptrace} among it. It is written so that the browser agents rely
+on keeps working under it.
+
+\begin{table}[t]
+\centering\small
+\caption{System calls refused to every worker.}
+\label{tab:seccomp}
+\begin{tabularx}{\columnwidth}{@{}>{\raggedright\arraybackslash}p{0.24\columnwidth}>{\raggedright\arraybackslash}X@{}}
+\toprule
+\textbf{Class} & \textbf{Calls} \\
+\midrule
+namespaces, mounts & \code{unshare}, \code{clone} with namespace flags, \code{setns}, \code{mount}, \code{umount2}, \code{pivot\_root}, the new mount API \\
+cross-process memory & \code{ptrace}, \code{process\_vm\_readv/writev}, \code{pidfd\_getfd} \\
+large kernel surface & \code{bpf}, \code{perf\_event\_open}, \code{userfaultfd}, \code{io\_uring\_*}, module and kexec loading, keyrings, \code{open\_by\_handle\_at} \\
+socket families & all but \code{AF\_UNIX}, \code{AF\_INET}, \code{AF\_INET6}, and netlink for routes and device events \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Network: proxy, rule, hosts}
+
+The egress proxy (\file{ai\_runtime/agents/egress.py}), running in the
+runtime, (1)~identifies the worker by a per-worker pass and serves no
+one else; (2)~refuses a host the manifest does not name; (3)~resolves
+the name itself and refuses the host if \emph{any} answer is internal
+(loopback, private, link-local---where cloud metadata lives), which
+closes DNS rebinding toward the platform; and (4)~connects to the
+address it checked and copies bytes. It terminates no TLS and installs
+no certificate. Connections are bounded per worker and in total, and
+every connection made or refused is recorded with its owner, host,
+bytes each way, and duration. A host named by a credential or allowed
+on a code card is \emph{lent} to the worker's pass only for the call.
+
+The proxy is enforceable only because nothing else is reachable. At
+container start, a root step installs an nftables rule on the output
+hook matching the \emph{socket owner's uid} across the worker range:
+accept TCP to one loopback port---the spawner's, which passes what
+arrives to the runtime's proxy---and reject everything
+else---other ports, other agents, the spawner, DNS. It then drops to
+the platform's user with \code{net\_admin} removed from the bounding
+set, so nothing started later can change the rule. Landlock's TCP rule
+(ABI~4) is a second hold behind it.
+
+\subsection{Dependencies: the builder}
+
+A source distribution's build is arbitrary code. Installation is
+therefore split: a dedicated \emph{builder} uid, under the same limits
+and fences, whose proxy pass opens only the package index, downloads
+and builds the declared requirements into wheels; one build at a time,
+killed after five minutes, nothing persisting between builds. The
+runtime then unpacks the wheels: it is handed files, never the list,
+resolves and downloads nothing, and unpacking a wheel runs none of its
+code.
+
+\subsection{Memory}
+
+A per-process address-space limit breaks browsers, so agents share a
+memory budget. The spawner samples each agent's unique memory every
+second and, at 90\% of the container's limit, ends the largest agent
+with everything it runs, telling the affected call why.
+
+\subsection{The inspector}
+
+A sandbox one cannot see must be taken on faith. At every start,
+before serving anyone, the platform tests its own locks: it starts a
+process as an agent's user, asks the kernel which fences it can
+enforce, prepares a place end to end, and tries to reach the network as
+a worker would. It reports in plain words---\emph{workers are confined},
+\emph{files are fenced}, \emph{system calls are filtered}---or which is
+not, and why. If agents cannot be confined at all, the platform does not
+start. If one lock is weaker on this machine (an older kernel without
+Landlock, say), it runs, and every agent's page says what is not
+enforced where it runs.

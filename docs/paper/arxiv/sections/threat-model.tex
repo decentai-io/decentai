@@ -1,0 +1,90 @@
+\section{Threat Model and Goals}
+\label{sec:threat}
+
+\sys{} is deployed as one instance per organization, on the
+organization's own machines, as a set of containers. One instance may
+host several organizations (tenants). People use it through a web or
+mobile app; scripts use API keys; outside systems may post events to
+webhooks.
+
+\paragraph{Assets}
+\Cref{tab:assets} lists what is protected and where it lives. The
+central decision is that the most valuable assets---the database and
+the keys that decrypt it---are held by one component, the backend, and
+by nothing that runs untrusted code or talks to the model.
+
+\begin{table}[t]
+\centering\small
+\caption{Assets and where they are held.}
+\label{tab:assets}
+\begin{tabularx}{\columnwidth}{@{}>{\raggedright\arraybackslash}p{0.27\columnwidth}>{\raggedright\arraybackslash}X@{}}
+\toprule
+\textbf{Asset} & \textbf{Held by (and never by)} \\
+\midrule
+Database contents & the database container, reachable only by the backend on an internal network (not the runtime, not agents) \\
+Encryption and signing keys & the backend only \\
+A decrypted credential & the backend; the runtime, for one call; the worker of the agent it was lent to (never the model, never the app) \\
+A model provider key & the backend; the runtime in memory (never agent code: an agent asks the runtime to call the model for it) \\
+The audit trail & an append-only store the API exposes no way to edit \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\paragraph{Adversaries}
+We consider six.
+\begin{enumerate}[label=A\arabic*.,leftmargin=2em]
+\item \emph{The model}, not hostile but wrong in unpredictable ways. It
+  can emit any action the vocabulary allows, with any inputs, and write
+  any prose.
+\item \emph{An injector}: anyone who can place text before the
+  model---the author of an email, a web page, an uploaded document, an
+  agent's result, or a webhook's posted fields. The injector cannot
+  touch the platform; it can only hope the model obeys.
+\item \emph{An agent's author}, and the author of every dependency. Once
+  an agent is approved, its code runs on the platform's machine and,
+  during a call, holds what the call was handed; because a worker
+  process is kept warm between calls, it could retain it.
+\item \emph{Another person}, in the same organization or another.
+\item \emph{A compromised worker} that attacks the container's other
+  tenants.
+\item \emph{A compromised runtime}: the component that runs the
+  assistant loop and the agents' executor, taken over through an
+  escape from a worker or a flaw of its own.
+\end{enumerate}
+
+\paragraph{Out of scope}
+We do not defend against (i)~an organization administrator acting in
+bad faith: they are the source of the authority the platform enforces;
+(ii)~the deployment operator, who holds the database and its keys;
+(iii)~the kernel, container engine and hardware, which every container
+shares---the seccomp filter narrows the reachable kernel surface but
+does not remove the dependence; (iv)~the model provider, to which the
+transcript, including function results, is sent when a hosted model is
+used; and (v)~a person approving a call they did not read. Denial of
+service by an authorized person is bounded only where stated.
+
+\paragraph{Goals}
+Against A1--A6 the platform aims to provide:
+\begin{enumerate}[label=G\arabic*.,leftmargin=2em]
+\item \emph{No authority from words.} Whether an action may run is
+  determined from identity, grants, the chat's trust level, the agent's
+  approved manifest, and the person's explicit approval; no input to
+  that decision is derived from model output.
+\item \emph{Containment.} The most a proposal can lead to is a call
+  the person could already make, through an approved agent, reaching
+  only declared hosts; a call above the chat's trust level waits for
+  the person's approval of that exact call.
+\item \emph{Faithful display.} What is shown as data beside the model's
+  words comes from stored results of real calls.
+\item \emph{Confinement.} An agent's code reads and writes only its own
+  files, runs as its own user, reaches only declared hosts, uses bounded
+  resources, and cannot make the system calls container escapes begin
+  with.
+\item \emph{Credential isolation.} A credential reaches only the agent
+  it was lent to, for the call that needs it, and never the model.
+\item \emph{Control and accountability.} A stop ends what runs and
+  holds until the person lifts it; actions are recorded on a trail the
+  platform only appends to.
+\item \emph{Small blast radius.} Each component holds as little as its
+  job needs, so compromising one gains as little as possible.
+\end{enumerate}

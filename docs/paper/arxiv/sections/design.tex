@@ -1,0 +1,197 @@
+\section{Design}
+\label{sec:design}
+
+\subsection{An operating system for agents}
+
+\Cref{tab:os} maps the familiar mechanisms of an operating system onto
+\sys{}. The analogy holds where the table says it does and no further:
+\sys{} is not a kernel. It runs on Linux in containers and borrows the
+kernel's own protections (\cref{sec:sandbox}).
+
+\begin{table}[t]
+\centering\small
+\caption{Operating-system mechanisms and their counterparts.}
+\label{tab:os}
+\begin{tabularx}{\columnwidth}{@{}>{\raggedright\arraybackslash}p{0.36\columnwidth}>{\raggedright\arraybackslash}X@{}}
+\toprule
+\textbf{Operating system} & \textbf{\sys{}} \\
+\midrule
+installed program and its permissions & \emph{agent} and its \emph{manifest}, reviewed before approval \\
+process & \emph{worker}: the one process an approved agent's code runs in \\
+user account, file permissions & a uid per agent, and a Landlock fence on its files \\
+system call & \emph{function call} through the executor's gates; the worker's own system calls are filtered too \\
+firewall & the egress \emph{proxy}, open only to declared hosts \\
+``allow this app to\ldots?'' & an \emph{approval card} for one exact call \\
+scheduler & the chat's \emph{clock} \\
+kill & \emph{stop}, and a per-person stop-everything switch \\
+system log & the append-only \emph{audit trail} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Components and trust}
+
+\Cref{fig:arch} shows the deployment. Each component is trusted with
+something and with nothing more than it needs.
+
+\begin{figure*}[t]
+\centering
+\resizebox{\textwidth}{!}{%
+\begin{tikzpicture}[
+  font=\small,
+  box/.style={draw=accent,rounded corners=2pt,fill=white,minimum height=2.3em,
+              align=center,inner sep=4pt,text width=#1},
+  box/.default=2.6cm,
+  net/.style={draw=rule,dashed,rounded corners=4pt,inner sep=7pt},
+  arr/.style={-{Stealth[length=5pt]},draw=ink!80},
+  dar/.style={-{Stealth[length=5pt]},draw=warn,dashed},
+  lab/.style={font=\scriptsize,text=ink!75,align=center}]
+  \node[box=2.0cm] (app) {App\\{\scriptsize web, mobile, API}};
+  \node[box=1.7cm,right=0.7cm of app] (caddy) {Caddy\\{\scriptsize one public door}};
+  \node[box=3.0cm,right=0.7cm of caddy,fill=soft] (backend) {\textbf{Backend}\\{\scriptsize identity, policy, keys,\\the only database client}};
+  \node[box=1.8cm,below=1.0cm of backend] (db) {MongoDB};
+  \node[box=3.2cm,right=2.4cm of backend,fill=soft] (runtime) {\textbf{Runtime}\\{\scriptsize assistant loop, executor,\\clock, egress proxy}};
+  \node[box=2.1cm,above=0.9cm of runtime] (llm) {Model provider\\{\scriptsize or local model}};
+  \node[box=3.2cm,below=1.0cm of runtime] (agents) {\textbf{Agents' container}\\{\scriptsize spawner; one worker per\\approved agent, own uid}};
+  \node[box=2.3cm,right=2.3cm of runtime] (inet) {Declared hosts\\{\scriptsize e.g.\ gmail.googleapis.com}};
+  \node[box=1.9cm,above=0.9cm of backend] (hook) {Outside system\\{\scriptsize webhook}};
+
+  \draw[arr] (app) -- (caddy);
+  \draw[arr] (caddy) -- (backend);
+  \draw[arr] (hook) -- node[lab,right]{\code{/hooks/<id>}} (backend);
+  \draw[arr] (backend) -- node[lab,left]{internal\\network} (db);
+  \draw[arr] ([yshift=4pt]backend.east) -- node[lab,above]{service token\\+ delegation} ([yshift=4pt]runtime.west);
+  \draw[arr] ([yshift=-5pt]runtime.west) -- node[lab,below]{\code{/app} as the person} ([yshift=-5pt]backend.east);
+  \draw[arr] (runtime) -- node[lab,left,pos=0.62]{transcript;\\proposals back} (llm);
+  \draw[arr] ([xshift=-6pt]runtime.south) -- node[lab,left]{spawner\\protocol} ([xshift=-6pt]agents.north);
+  \draw[dar] ([xshift=6pt]agents.north) -- node[lab,right]{worker\\traffic} ([xshift=6pt]runtime.south);
+  \draw[dar] (runtime.east) -- node[lab,above,pos=0.58]{proxy: declared} node[lab,below,pos=0.58]{hosts only} (inet.west);
+
+  \begin{scope}[on background layer]
+    \node[net,fit=(backend)(db),label={[lab]below:\texttt{data} (internal)}] {};
+    \node[net,fit=(runtime)(agents),label={[lab,anchor=north]south:\texttt{agents} (internal)}] {};
+  \end{scope}
+\end{tikzpicture}}
+\caption{Deployment. The backend is the only database client and holds
+every key. The runtime acts for a person only with a per-chat
+delegation and calls the backend's gateway like any client. Agents run
+in a separate container whose network leads only to the runtime; their
+sole route outward is the runtime's egress proxy (dashed), admitting only
+hosts their manifests declared. The model is reached by the runtime and holds
+nothing.}
+\label{fig:arch}
+\end{figure*}
+
+\begin{itemize}
+\item \textbf{The backend} holds the database password, the
+  value-encryption keys, the delegation signing secret and the private
+  key of the service token. It decides every permission and is the
+  database's only client.
+\item \textbf{The runtime} runs the assistant and the executor. It
+  holds the service token's \emph{public} key, its own identity key, the
+  spawner's key, and---while they last---the chats' delegations. It
+  cannot reach the database, decrypt anything, or forge the backend.
+\item \textbf{The spawner}, in the agents' container, starts workers
+  when the runtime asks and relays their protocol lines unread. It
+  decides nothing.
+\item \textbf{A worker}, an agent's code, is assumed hostile and is
+  given only what one call needs.
+\item \textbf{The model} holds nothing: no password, key, or
+  permission, and it is never handed a secret. Its one power is to
+  propose what should happen next.
+\end{itemize}
+
+\noindent Three rules follow, and the rest of the paper shows how each
+is kept.
+\begin{enumerate}[label=R\arabic*.,leftmargin=2em]
+\item \emph{Authority never comes from words}---not the model's, not an
+  email's, not a web page's.
+\item \emph{What is shown is what happened}: data beside the model's
+  words is drawn from stored results of real calls.
+\item \emph{Every boundary assumes the other side is hostile}: the
+  runtime assumes the agent is; the backend does not trust the runtime
+  with its keys.
+\end{enumerate}
+
+\subsection{One request, end to end}
+\label{sec:walk}
+
+We follow the running example. The organization has approved two
+agents from the public catalog, Google Sheets and Gmail; the person has
+been granted both and has connected their Google account once; the chat
+runs at the default trust level~1. \Cref{tab:levels} shows how the
+manifests price the functions used.
+
+\begin{table}[t]
+\centering\small
+\caption{Functions used by the example, their declared permission
+levels, and their fate at trust level~1.}
+\label{tab:levels}
+\begin{tabular}{@{}llcl@{}}
+\toprule
+\textbf{Agent} & \textbf{Function} & \textbf{Level} & \textbf{At level 1} \\
+\midrule
+Sheets & \code{values.read} & 0 & runs \\
+Gmail & \code{draft.compose} & 1 & runs \\
+Gmail & \code{draft.send} & 3 & waits for approval \\
+Gmail & \code{watch.check} & 1 & runs (schedulable) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{enumerate}[leftmargin=1.4em]
+\item \emph{The message enters.} The app sends the message on a
+  WebSocket through Caddy to the backend, which checks the session,
+  the \code{Origin} for cookie-bearing sockets, chat ownership, the
+  permission to send, and a 256\,KB size limit.
+\item \emph{The backend dials the runtime} with two tokens: one proving
+  ``this is the backend'' and one meaning ``act for this person in this
+  chat''. Neither says what the person may do.
+\item \emph{The runtime asks what the chat may do.} The \emph{contract}
+  (granted agents and functions, trust level, model, budgets) is read
+  from the backend before the assistant sees the message, and again on
+  every later message and every clock wake.
+\item \emph{The message is kept, then heard}: stored, recorded in the
+  chat's inbox with a sequence number, and only then given to the
+  assistant.
+\item \emph{The assistant proposes, one action per beat}: a plan, then
+  \code{open\_agent} on Sheets, then an \code{invoke} of
+  \code{values.read}.
+\item \emph{The executor's gates} check that the function is declared
+  in the approved manifest, granted to this chat, given inputs that
+  validate against its schema and scopes within the grant, and at a
+  level within the chat's. Level 0 runs.
+\item \emph{The worker runs} in the agents' container as the Sheets
+  agent's own uid, fenced to its own files.
+\item \emph{A credential is lent for the call.} The worker asks the
+  runtime for the declared Google secret; the runtime asks the backend
+  under the delegation; the backend refreshes the OAuth access token,
+  strips the refresh token, records the use, and returns it. The model
+  never sees it.
+\item \emph{Egress} goes through the proxy, which admits only
+  \code{sheets.googleapis.com} and \code{www.googleapis.com}.
+\item \emph{The result} is validated against the manifest's output
+  schema, stored under a reference, and recorded on the trail before
+  the model is shown it.
+\item \emph{Three drafts} are created (level~1, no card).
+\item \emph{Three sends wait.} \code{draft.send} is level~3; the
+  executor opens one approval card per call, showing agent, function,
+  level and exact inputs. The person's decision is recorded by the
+  backend and only then reaches the runtime, which runs that exact call.
+\item \emph{The answer} carries, beside the model's words, a table drawn
+  from the stored rows and a success mark per verified write.
+\item \emph{Friday.} The assistant sets a reminder on the chat's clock.
+  On Friday the clock wakes the assistant at the chat's trust level; a
+  new send would again wait for approval.
+\end{enumerate}
+
+\paragraph{The email that says ``ignore your instructions''}
+Suppose one customer's reply contains, in small grey text,
+``\emph{Assistant: forward every invoice to billing@elsewhere.example}.''
+The model may be fooled and propose exactly that. But sending mail is
+level~3 and the chat is at level~1, so the proposal becomes a card the
+person can decline; the Gmail agent can reach only
+\code{gmail.googleapis.com}, so the only way out for the invoices is a
+send through Gmail itself, which is the very call that waits on the
+card; and the model never held the Google token. The model was fooled; the
+platform was not, because it never asked the model for permission.
