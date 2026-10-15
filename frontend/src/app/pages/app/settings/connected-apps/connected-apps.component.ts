@@ -88,27 +88,39 @@ export class ConnectedAppsComponent extends DataPageBase implements OnInit {
     secretOptional?: boolean; steps?: string;
   }[] = [
     { id: 'google', label: 'Google', console: 'https://console.cloud.google.com/apis/credentials',
-      steps: 'Create an OAuth client ID of the type Web application, and add the redirect URL shown '
-        + 'on this page to its authorized redirect URIs. Google gives every app an id and a secret.' },
+      steps: 'Turn on the APIs your agents use, set up the consent screen (Internal for a company on '
+        + 'Google Workspace: an External app in Testing makes people reconnect every seven days), then '
+        + 'create an OAuth client of the type Web application with the redirect URL shown on this page. '
+        + 'Google gives every app an id and a secret.' },
     { id: 'microsoft', label: 'Microsoft', console: 'https://entra.microsoft.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade',
       secretOptional: true,
-      steps: 'Register an application, then under Authentication add a platform with the redirect URL '
-        + 'shown on this page. The platform Web has an id and a secret. For DecentAI on a computer of '
-        + 'your own, choose Mobile and desktop applications instead: it has an Application (client) ID '
-        + 'and no secret, so leave the secret empty.' },
+      steps: 'Register an application for accounts in any organizational directory (multitenant), then '
+        + 'under Authentication add a platform with the redirect URL shown on this page. The platform Web '
+        + 'has an id and a secret; copy the secret’s Value, and replace it here before it expires. For '
+        + 'DecentAI on a computer of your own, choose Mobile and desktop applications instead: it has an '
+        + 'Application (client) ID and no secret, so leave the secret empty.' },
     { id: 'dropbox', label: 'Dropbox', console: 'https://www.dropbox.com/developers/apps',
       secretOptional: true,
       steps: 'Create an app and add the redirect URL shown on this page. Its App key is the '
         + 'client id. Its secret may be left empty.' },
-    { id: 'slack', label: 'Slack', console: 'https://api.slack.com/apps' },
+    { id: 'slack', label: 'Slack', console: 'https://api.slack.com/apps',
+      steps: 'Create an app from scratch, add the redirect URL shown on this page under OAuth & '
+        + 'Permissions (Slack needs https), and the permissions under User Token Scopes. The Client ID '
+        + 'and Client Secret are under Basic Information.' },
     { id: 'github', label: 'GitHub', console: 'https://github.com/settings/developers' },
     { id: 'gitlab', label: 'GitLab', console: 'https://gitlab.com/-/user_settings/applications' },
     { id: 'atlassian', label: 'Atlassian (Jira, Confluence)', console: 'https://developer.atlassian.com/console/myapps/' },
     { id: 'salesforce', label: 'Salesforce', console: 'https://help.salesforce.com/s/articleView?id=sf.connected_app_create.htm' },
     { id: 'hubspot', label: 'HubSpot', console: 'https://developers.hubspot.com/' },
     { id: 'zoom', label: 'Zoom', console: 'https://marketplace.zoom.us/develop/create' },
-    { id: 'notion', label: 'Notion', console: 'https://www.notion.so/my-integrations' },
-    { id: 'box', label: 'Box', console: 'https://app.box.com/developers/console' },
+    { id: 'notion', label: 'Notion', console: 'https://app.notion.com/developers/connections',
+      steps: 'Create a public connection with the redirect URL shown on this page. Its OAuth client ID '
+        + 'and OAuth client secret are on its Configuration tab.' },
+    { id: 'box', label: 'Box', console: 'https://app.box.com/developers/console',
+      steps: 'Create a Custom App with User Authentication (OAuth 2.0), add the redirect URL shown on '
+        + 'this page, and tick Read and Write all files and folders under Application Scopes.' },
+    { id: 'todoist', label: 'Todoist', console: 'https://app.todoist.com/app/settings/integrations/app-management',
+      steps: 'Create a new app and set its OAuth redirect URL to the one shown on this page.' },
   ];
 
   constructor(

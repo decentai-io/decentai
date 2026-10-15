@@ -14,7 +14,7 @@ The platform's own models are downloaded once, when first chosen, and the page s
 
 ## Connected apps
 
-**Settings → Connected apps** holds what the organization registered with providers — Google, Microsoft, Slack — so members can connect their accounts with a click. One registration per provider: register an app in the provider's console with the *OAuth redirect URL* the page shows, and paste the client id and, where the provider issued one, the secret here.
+**Settings → Connected apps** holds what the organization registered with providers — Google, Microsoft, Slack — so members can connect their accounts with a click. One registration per provider: register an app in the provider's console with the *OAuth redirect URL* the page shows, and paste the client id and, where the provider issued one, the secret here. *Connecting apps* has the steps for each provider.
 
 The registration also records where the provider is: its consent, token and account addresses. The page fills them in from what the installed agents name; where agents name different addresses you choose which ones the registration uses, and where no installed agent names the provider you type them.
 

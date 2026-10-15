@@ -24,6 +24,9 @@ guide, **Guide** at the foot of the sidebar (its source is
   and its default.
 - [Deploying](run/deploying.md) — a server with an address of its own,
   and behind a load balancer.
+- [Connecting apps](run/connected-apps.md) — registering Google,
+  Microsoft, Slack, Notion, Dropbox, Box and Todoist once, so people can
+  connect their accounts.
 - [Troubleshooting](run/troubleshooting.md) — what goes wrong at start,
   and where the logs are.
 

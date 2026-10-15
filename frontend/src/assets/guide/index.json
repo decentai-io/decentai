@@ -12,6 +12,7 @@
     {"id": "admin", "section": "Control & administration", "title": "Administration", "summary": "The organization and its people", "file": "10-administration.md"},
     {"id": "access", "section": "Control & administration", "title": "Roles and policies", "summary": "Groups, roles, policies and sharing", "file": "11-roles-and-policies.md"},
     {"id": "organization", "section": "Control & administration", "title": "Providers, safety and monitoring", "summary": "Model providers, connected apps, safety and monitoring", "file": "12-providers-safety-monitoring.md"},
+    {"id": "connected-apps", "section": "Control & administration", "title": "Connecting apps", "summary": "Register Google, Microsoft, Slack and others once, so people can connect", "file": "14-connected-apps.md"},
     {"id": "keys", "section": "For builders", "title": "API keys", "summary": "Let scripts act with your access", "file": "13-api-keys.md"}
   ]
 }
