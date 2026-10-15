@@ -37,6 +37,15 @@
     (ngModelChange)="setEmail($event)"
   ></app-switch>
 
+  <app-switch
+    label="Say what happened"
+    [help]="textHelp"
+    [note]="textNote"
+    [disabled]="known.text.hidden_by_organization"
+    [ngModel]="known.text.shown"
+    (ngModelChange)="setText($event)"
+  ></app-switch>
+
   <div class="notify-test">
     <button class="btn sm" type="button" [disabled]="busy" (click)="sendTest()">Send me a test</button>
     <span class="notify-result" role="status">{{ testResult }}</span>

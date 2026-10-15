@@ -2,7 +2,7 @@ import { SafetyComponent } from './safety.component';
 
 describe('SafetyComponent', () => {
   const saved = {
-    mcp: 'allowed', webhooks: 'allowed', blocked_sites: ['tracker.test'], scripts: 'always',
+    mcp: 'allowed', webhooks: 'allowed', notification_text: 'shown', blocked_sites: ['tracker.test'], scripts: 'always',
     programs: 'always', packages: 'any', allowed_packages: [],
   };
 

@@ -13,10 +13,11 @@ keeps a record of where each one went.
 ## What a person sets
 
 One page, **Settings → Safety**, which the administrator sets for
-everybody (`Settings:Safety`, kept on the organization). Six rows,
+everybody (`Settings:Safety`, kept on the organization). Seven rows,
 each starting where the platform stood before the setting existed: the
 Browser's scripts and the Code agent's programs ask every time, any
-package may be installed, and MCP servers and webhooks are allowed:
+package may be installed, MCP servers and webhooks are allowed, and
+notifications say what happened:
 
 | Row | The choices | The start |
 |---|---|---|
@@ -26,6 +27,7 @@ package may be installed, and MCP servers and webhooks are allowed:
 | **Packages a program may install** | *Any package the card names* · *Only packages on my list* | any |
 | **MCP servers** | *People may add* · *Nobody may* | allowed |
 | **Receiving webhooks** | *People may receive webhooks* · *Nobody may* | allowed |
+| **What a notification says** | *Say what happened* · *Only that something did* | says what happened |
 
 Three rules hold under every choice:
 
@@ -61,6 +63,7 @@ What each looser choice means, exactly:
 | A script, a program | the backend, as the card is opened (`backend/api/services/chat_session/code_rules.py`) | the runtime proposes and has the code read; `AI:Approval:Open` then answers the card itself where the rule allows, and says so (`settled`). The runtime opens cards and never decides them, so it cannot loosen itself |
 | MCP servers | the backend (`backend/api/services/data_layer/mcp.py`) | blocked, nobody adds or reads a server, the chat's contract names none, and the runtime's door to a server's address is refused ([MCP servers](mcp.md)) |
 | Receiving webhooks | the backend, at the door (`backend/server/routes/hooks.py`) | blocked, every inbound webhook of the organization answers 404, as one that does not exist would; none is deleted, and no new one can be made (403). Notifications going out are not affected ([webhooks](webhooks.md)) |
+| What a notification says | the backend, as a notification is delivered (`backend/server/notifications.py`, `Notifier.quiet`) | hidden, every push — to a phone through Expo, Apple or Google, to a browser through its push service — and every email says only *Something is waiting for your decision* or *A chat of yours has an answer*, with the link to the chat; no chat title, agent, function or words of a reply. A person may choose the same for their own (`Settings:Notifications:Update`, `text`), and cannot undo the organization's. Outbound subscriptions are the person's own addresses and are not affected ([webhooks](webhooks.md#outbound)) |
 | Packages | the runtime, where a proposal is checked before its card (`ai_runtime/execution/call.py`, `code_problem`) | a package that is not on the list is refused before anybody is asked, and the agent is told which names are. A listed package's own dependencies are installed with it |
 
 None of it is the agent's to decide: an agent proposes, and hears yes

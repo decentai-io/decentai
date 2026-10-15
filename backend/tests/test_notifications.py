@@ -203,3 +203,48 @@ class TestDelivery:
             {"chat_id": chat_id, "org_id": who["org_id"], "user_id": who["user_id"]},
             {"kind": "question", "request": {"agent_name": "Notebook", "question": "Which?"}})
         assert started == []
+
+
+class TestSayingOnlyThatSomethingHappened:
+    """What a notification says leaves the deployment; a person may ask
+    it to say only that something happened, and an organization may
+    require that of everyone."""
+
+    def test_a_person_hides_the_text_of_their_own(self, admin, seed, monkeypatch):
+        import json
+
+        chat_id = make_chat(admin)
+        app_call(admin, "Settings:Notifications:Subscribe", {"subscription": SUBSCRIPTION})
+        shown = app_call(admin, "Settings:Notifications:Get", {}).json()["text"]
+        assert shown == {"shown": True, "hidden_by_organization": False}
+        assert app_call(admin, "Settings:Notifications:Update", {}).status_code == 400
+        hidden = app_call(admin, "Settings:Notifications:Update", {"text": False}).json()
+        assert hidden["text"]["shown"] is False and hidden["email"]["enabled"] is True
+        fake = FakePush()
+        who = {"org_id": seed.org["_id"], "user_id": seed.admin["_id"]}
+        notifier(monkeypatch, fake)._deliver(
+            chat_id, who, "card", "Gmail is waiting for your approval", "gmail.draft.send")
+        payload = json.loads(fake.sent[0][1])["notification"]
+        assert payload["title"] == "DecentAI"
+        assert payload["body"] == "Something is waiting for your decision."
+        assert "gmail" not in json.dumps(payload).lower()
+        assert payload["data"]["url"].endswith(f"/ai/chats/{chat_id}")
+
+    def test_the_organization_hides_it_for_everyone(self, admin, seed, monkeypatch):
+        from server import notifications
+
+        chat_id = make_chat(admin)
+        app_call(admin, "Settings:Notifications:Subscribe", {"expo_token": EXPO_TOKEN})
+        app_call(admin, "Settings:Safety:Update", {"notification_text": "hidden"})
+        standing = app_call(admin, "Settings:Notifications:Get", {}).json()["text"]
+        assert standing == {"shown": False, "hidden_by_organization": True}
+        expo = FakeExpo()
+        monkeypatch.setattr(notifications.httpx, "post", expo)
+        who = {"org_id": seed.org["_id"], "user_id": seed.admin["_id"]}
+        notifier(monkeypatch, FakePush())._deliver(
+            chat_id, who, "answer", "Payroll questions", "Your March payslip shows 4,200.")
+        sent = expo.sent[0][2]
+        assert (sent["title"], sent["body"]) == ("DecentAI", "A chat of yours has an answer.")
+        # The person's own choice cannot show it again.
+        app_call(admin, "Settings:Notifications:Update", {"text": True})
+        assert app_call(admin, "Settings:Notifications:Get", {}).json()["text"]["shown"] is False

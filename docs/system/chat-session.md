@@ -120,7 +120,10 @@ the person subscribed (browsers by web push, VAPID pair from
 the app through Expo's push service, by the token they registered;
 dead devices dropped) and, when none was reached, emails them unless they turned
 email off — one email per chat per ten minutes, answers pushed at most
-every two minutes per chat.
+every two minutes per chat. What a notification says passes through
+services outside the deployment; where the person asked (`text: false`)
+or the organization requires it ([safety](safety.md), `notification_text`),
+it says only that something happened, with the link to the chat.
 
 Delivery runs on its own thread; the record is what the person finds
 either way.

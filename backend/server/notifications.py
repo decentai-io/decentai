@@ -9,6 +9,12 @@ through Expo's push service), and when none can be reached, an email,
 unless they turned email off. Nothing is sent to a person whose
 browser has the chat open right now; they are looking.
 
+What a notification says leaves the deployment — through Expo, Apple,
+Google, a browser's push service, a mail server. A person may have it
+say only that something happened, and an organization may require it
+of everyone (Safety, `notification_text`); the link still opens the
+chat.
+
 Delivery runs on its own thread: the doors that trigger it are the
 runtime's, in the middle of a turn, and must not wait on a push
 service or a mail server. A failure to deliver is logged and costs
@@ -41,6 +47,11 @@ class Notifier:
     PUSH_TTL_SECONDS = 24 * 3600
     #: where a phone running the app is reached
     EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send"
+    #: what a notification says when it may not say what happened
+    QUIET = {
+        "card": ("DecentAI", "Something is waiting for your decision."),
+        "answer": ("DecentAI", "A chat of yours has an answer."),
+    }
 
     def __init__(self, settings=None):
         self.settings = settings or get_settings()
@@ -143,6 +154,8 @@ class Notifier:
                     return outcome
                 chats.col.update_one({"chat_id": chat_id},
                                      {"$set": {"runtime.last_answer_notified_at": now}})
+            if kind in self.QUIET and self.quiet(user):
+                title, body = self.QUIET[kind]
             base = str(self.settings.public_app_url or "").rstrip("/")
             url = f"{base}/ai/chats/{chat_id}" if chat_id else f"{base}/ai/chats"
             outcome["pushed"], outcome["dropped"] = self._push(user, title, body, url)
@@ -151,6 +164,18 @@ class Notifier:
         except Exception as exc:
             self.logger.warning(f"Notification for {chat_id} not delivered: {exc}")
         return outcome
+
+    @staticmethod
+    def quiet(user: Dict[str, str]) -> bool:
+        """Whether this person's notifications may say only that
+        something happened: their organization requires it, or they
+        asked for it."""
+        from database.stores import OrganizationStore
+
+        if OrganizationStore().safety(user["org_id"]).get("notification_text") == "hidden":
+            return True
+        person = UserStore().get(user["user_id"]) or {}
+        return ((person.get("preferences") or {}).get("notifications") or {}).get("text") is False
 
     def _push(self, user: Dict[str, str], title: str, body: str, url: str):
         """Every device of the person, each by its own service. A device

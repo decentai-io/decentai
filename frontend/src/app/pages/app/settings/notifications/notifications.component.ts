@@ -33,6 +33,9 @@ export class NotificationsComponent implements OnInit, OnDestroy {
   /** "Saved", or why not, beside the email switch. */
   emailNote = '';
   emailError = '';
+  /** "Saved", or why not, beside the text switch. */
+  textNote = '';
+  textError = '';
   /** What the test reached, or why it could not be sent. */
   testResult = '';
 
@@ -184,7 +187,7 @@ export class NotificationsComponent implements OnInit, OnDestroy {
 
   async setEmail(enabled: boolean): Promise<void> {
     this.emailError = '';
-    const result = await this.notifications.update(enabled);
+    const result = await this.notifications.update({ email: enabled });
     if (result.error) {
       this.emailError = result.error;
       return;
@@ -192,6 +195,27 @@ export class NotificationsComponent implements OnInit, OnDestroy {
     this.settings = result;
     this.emailNote = 'Saved';
     setTimeout(() => (this.emailNote = ''), NOTE_FOR_MS);
+  }
+
+  async setText(shown: boolean): Promise<void> {
+    this.textError = '';
+    const result = await this.notifications.update({ text: shown });
+    if (result.error) {
+      this.textError = result.error;
+      return;
+    }
+    this.settings = result;
+    this.textNote = 'Saved';
+    setTimeout(() => (this.textNote = ''), NOTE_FOR_MS);
+  }
+
+  /** The help under the text switch: what is sent instead, or that the
+   *  organization decided. */
+  get textHelp(): string {
+    if (this.textError) return this.textError;
+    return this.settings?.text.hidden_by_organization
+      ? 'Your organization sends only that something happened, with a link to the chat.'
+      : 'The chat and what is waiting or was said. Off, a notification says only that something happened: what reaches it passes through Apple, Google, Expo, your browser or a mail server.';
   }
 
   /** The help under the email switch: its limit, or why it is not offered. */

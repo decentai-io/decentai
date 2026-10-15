@@ -8,10 +8,10 @@ import { SafetySettings, SettingsSafetyService } from 'src/app/services/settings
 
 /** Where the platform stood before this page existed: every script and
  *  program asked about, any package a card names, MCP servers and
- *  webhooks allowed. */
+ *  webhooks allowed, notifications saying what happened. */
 const STANDARD: SafetySettings = {
-  mcp: 'allowed', webhooks: 'allowed', blocked_sites: [], scripts: 'always', programs: 'always',
-  packages: 'any', allowed_packages: [],
+  mcp: 'allowed', webhooks: 'allowed', notification_text: 'shown', blocked_sites: [],
+  scripts: 'always', programs: 'always', packages: 'any', allowed_packages: [],
 };
 
 /**
@@ -74,6 +74,11 @@ export class SafetyComponent implements OnInit, HasUnsavedChanges {
     { value: 'blocked', name: 'Nobody may' },
   ];
 
+  readonly notificationText: Choice<SafetySettings['notification_text']>[] = [
+    { value: 'shown', name: 'Say what happened' },
+    { value: 'hidden', name: 'Only that something did' },
+  ];
+
   constructor(
     private service: SettingsSafetyService,
     public auth: AuthService,
@@ -99,6 +104,13 @@ export class SafetyComponent implements OnInit, HasUnsavedChanges {
     return this.draft.value.webhooks === 'allowed'
       ? 'Each person makes addresses that other services post events to, each heard in a chat of their own.'
       : 'No webhook takes an event: each answers as if it did not exist. Those already made are kept.';
+  }
+
+  /** What the notification choice means, in one line. */
+  get notificationTextMeaning(): string {
+    return this.draft.value.notification_text === 'shown'
+      ? 'A notification names the chat and what is waiting or was said; each person may still hide it for their own.'
+      : 'Every notification says only "Something is waiting for your decision" or "A chat of yours has an answer", with a link to the chat.';
   }
 
   ngOnInit(): Promise<void> {

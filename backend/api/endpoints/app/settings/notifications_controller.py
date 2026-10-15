@@ -1,6 +1,7 @@
 """Settings:Notifications — how a person is reached when they are not
 looking: the push subscriptions their browsers and phones keep here,
-and whether an email may follow when no device can be reached.
+whether an email may follow when no device can be reached, and whether
+a notification says what happened.
 """
 
 from __future__ import annotations
@@ -27,7 +28,12 @@ class NotificationsController:
     def _answer(self, user: dict):
         notifier = Notifier()
         person = self.users.get(str(user.get("user_id") or "")) or {}
-        wants_email = ((person.get("preferences") or {}).get("notifications") or {}).get("email", True)
+        wants = (person.get("preferences") or {}).get("notifications") or {}
+        wants_email = wants.get("email", True)
+        from database.stores import OrganizationStore
+
+        hidden_here = OrganizationStore().safety(
+            str(user.get("org_id") or "")).get("notification_text") == "hidden"
         return {
             "push": {
                 "configured": notifier.push_configured,
@@ -38,6 +44,12 @@ class NotificationsController:
             "email": {
                 "available": notifier.email_configured and bool(person.get("email")),
                 "enabled": wants_email is not False,
+            },
+            # Whether a notification says what happened: the person's
+            # choice, unless the organization hides it for everyone.
+            "text": {
+                "shown": wants.get("text", True) is not False and not hidden_here,
+                "hidden_by_organization": hidden_here,
             },
         }
 
@@ -69,13 +81,14 @@ class NotificationsController:
         return self._answer(user), 200
 
     def update(self, data: dict, user: dict):
-        """The one choice: whether an email may follow when no device
-        can be reached."""
+        """The person's choices: whether an email may follow when no
+        device can be reached (`email`), and whether a notification says
+        what happened (`text`)."""
         payload = self._payload(data)
-        if "email" not in payload:
-            return {"error": "email (true or false) is required."}, 400
-        self.users.set_notification_preferences(
-            str(user.get("user_id") or ""), {"email": bool(payload.get("email"))})
+        chosen = {key: bool(payload[key]) for key in ("email", "text") if key in payload}
+        if not chosen:
+            return {"error": "email or text (true or false) is required."}, 400
+        self.users.set_notification_preferences(str(user.get("user_id") or ""), chosen)
         return self._answer(user), 200
 
     def test(self, data: dict, user: dict):
@@ -84,6 +97,6 @@ class NotificationsController:
         notifier = Notifier()
         outcome = notifier._deliver(
             "", {"org_id": str(user.get("org_id") or ""), "user_id": str(user.get("user_id") or "")},
-            "card", "DecentAI notifications work",
+            "test", "DecentAI notifications work",
             "This is the test you asked for from Settings.")
         return {"outcome": outcome}, 200

@@ -117,6 +117,10 @@ class OrganizationStore(MongoStore):
         "allowed_packages": [],
         "mcp": "allowed",
         "webhooks": "allowed",
+        # What a notification says outside the deployment — through
+        # Expo, Apple, Google, a browser's push service, a mail server:
+        # what happened ("shown"), or only that something did ("hidden").
+        "notification_text": "shown",
     }
     SAFETY_CHOICES = {
         "scripts": ("always", "once_per_site"),
@@ -124,6 +128,7 @@ class OrganizationStore(MongoStore):
         "packages": ("any", "listed"),
         "mcp": ("allowed", "blocked"),
         "webhooks": ("allowed", "blocked"),
+        "notification_text": ("shown", "hidden"),
     }
     SAFETY_LIST_MAX = 300
     _SITE = re.compile(
@@ -479,12 +484,12 @@ class UserStore(OrgScopedStore):
     def set_notification_preferences(
         self, user_id: str, values: Dict[str, Any]
     ) -> Optional[Dict[str, Any]]:
-        """How this person wants to be reached when not looking — today
-        one choice: whether an email may follow when no device can be
-        pushed to."""
+        """How this person wants to be reached when not looking: whether
+        an email may follow when no device can be pushed to, and whether
+        a notification says what happened (`text`)."""
         assign: Dict[str, Any] = {"updated_at": utc_now()}
         for key, value in (values or {}).items():
-            if key in ("email",):
+            if key in ("email", "text"):
                 assign[f"preferences.notifications.{key}"] = bool(value)
         self.col.update_one({"_id": user_id}, {"$set": assign})
         return self.get(user_id)

@@ -26,13 +26,15 @@ A secret is the provider's to issue. An app registered for a server is given one
 
 ## Safety
 
-**Settings → Safety** says what agents may do without asking. Five rows, and each starts where the platform stood before the setting existed: no site blocked, every script and program asked about, any package a card names, MCP servers allowed.
+**Settings → Safety** says what agents may do without asking, and what may leave the deployment. Seven rows, and each starts where the platform stood before the setting existed: no site blocked, every script and program asked about, any package a card names, MCP servers and webhooks allowed, notifications saying what happened.
 
 - **Sites no agent may open.** A name on the list is refused to every agent, the Browser included, with every address under it.
 - **A script in a page.** Asked every time, or once for a site in a chat.
 - **A program.** Asked every time; not asked again for a correction that needs nothing new; or asked only when the program reaches a site or uses a credential.
 - **Packages a program may install.** Any the card names, or only the ones on your list.
 - **MCP servers.** People may add them for their own chats, or nobody can add one and no chat can call one already added.
+- **Receiving webhooks.** People may make webhooks that other services post events to, or every webhook answers as if it did not exist.
+- **What a notification says.** What happened — the chat, the agent, the first words of a reply — or only that something did, with a link to the chat. A notification passes through Apple, Google, Expo, a browser's push service or a mail server on its way; choose *Only that something did* when none of your chats' words should. Each person can choose the same for their own notifications under **Settings → Notifications**.
 
 A looser choice applies only to code the assistant read and found to do what it says: code that does more, or that it could not read, is always shown. What ran without a card is said in the chat with its code, and the **Audit** trail says the setting allowed it.
 

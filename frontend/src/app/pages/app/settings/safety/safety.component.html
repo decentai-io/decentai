@@ -95,6 +95,16 @@
     </app-field>
   </section>
 
+  <section class="form-section">
+    <h2 class="form-section-title">Notifications</h2>
+    <p class="form-section-note">
+      What reaches a phone, a browser or a mailbox passes through services outside this deployment: Apple, Google, Expo, a browser's push service, the mail server.
+    </p>
+    <app-field label="What a notification says" [help]="notificationTextMeaning">
+      <app-segmented [choices]="notificationText" [disabled]="!canEdit" [(ngModel)]="draft.value.notification_text"></app-segmented>
+    </app-field>
+  </section>
+
   <app-save-bar
     *ngIf="canEdit"
     [dirty]="draft.dirty"

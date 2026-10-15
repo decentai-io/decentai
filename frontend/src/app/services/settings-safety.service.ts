@@ -10,6 +10,9 @@ export interface SafetySettings {
   mcp: 'allowed' | 'blocked';
   /** Whether people may receive webhooks into their chats. */
   webhooks: 'allowed' | 'blocked';
+  /** What a notification says outside the deployment: what happened,
+   *  or only that something did. */
+  notification_text: 'shown' | 'hidden';
   /** Names no agent may open; a name covers every host under it. */
   blocked_sites: string[];
   /** A script in a page: a card every time, or once for a site in a chat. */

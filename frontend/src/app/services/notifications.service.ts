@@ -6,6 +6,9 @@ import { RequestService } from './request.service';
 export interface NotificationSettings {
   push: { configured: boolean; public_key: string; devices: number };
   email: { available: boolean; enabled: boolean };
+  /** Whether a notification says what happened: the person's choice,
+   *  unless the organization hides it for everyone. */
+  text: { shown: boolean; hidden_by_organization: boolean };
 }
 
 /** Client for Settings:Notifications. */
@@ -27,8 +30,8 @@ export class NotificationsService {
     return this.request.gateway('Settings:Notifications:unsubscribe', { endpoint });
   }
 
-  async update(email: boolean): Promise<NotificationSettings & { error?: string }> {
-    return this.request.gateway('Settings:Notifications:update', { email });
+  async update(choice: { email?: boolean; text?: boolean }): Promise<NotificationSettings & { error?: string }> {
+    return this.request.gateway('Settings:Notifications:update', choice);
   }
 
   async test(): Promise<{ outcome?: any; error?: string }> {
