@@ -77,11 +77,12 @@ export function postedLine(data: Record<string, unknown> | null | undefined): st
 }
 
 /** A call a person can paste into a terminal. A webhook that requires
- *  a signature takes two more headers, made as the HMAC line says. */
+ *  a signature takes two more headers, made as the HMAC line says. The
+ *  secret is in double quotes, so `$WEBHOOK_SECRET` may stand for it. */
 export function curlExample(url: string, secret: string, fields: WebhookField[], signed: boolean): string {
   const lines = [
     `curl -X POST '${url}'`,
-    `  -H 'Authorization: Bearer ${secret}'`,
+    `  -H "Authorization: Bearer ${secret}"`,
     `  -H 'Content-Type: application/json'`,
   ];
   if (signed) {

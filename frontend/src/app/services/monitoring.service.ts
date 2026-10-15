@@ -59,9 +59,50 @@ export interface MonitorEvent {
   [said: string]: any;
 }
 
+/** How a thing went, as a person narrows to it: "trouble" is any of
+ *  refused, unreached and failed. */
+export type MonitorOutcome = 'ok' | 'trouble' | 'refused' | 'unreached' | 'failed';
+
+/** What the filters leave, added up over the latest events read. Each
+ *  count of a kind, an outcome, an agent or a host is what choosing it
+ *  would show, the other filters kept. */
+export interface MonitorTally {
+  matching: number;
+  /** False where only the latest were read: back to `reached`. */
+  complete: boolean;
+  reached: number | null;
+  kinds: Record<string, number>;
+  outcomes: Partial<Record<'ok' | 'refused' | 'unreached' | 'failed', number>>;
+  agents: { agent: string; name: string; count: number }[];
+  hosts: { host: string; count: number }[];
+  /** Bytes the connections among them carried. */
+  sent: number;
+  received: number;
+}
+
+export interface MonitorQuery {
+  /** What the runtime reads: the connections view reads only those. */
+  kinds?: string[];
+  kind?: string;
+  agent?: string;
+  outcome?: MonitorOutcome | '';
+  host?: string;
+  /** Words looked for in an event's words, whatever their case. */
+  text?: string;
+  before?: number | null;
+  limit?: number;
+  /** The days asked for, in seconds: nothing from before `since`,
+   *  nothing from `until` on. */
+  since?: number | null;
+  until?: number | null;
+  /** Add up what the filters leave, with this page. */
+  tally?: boolean;
+}
+
 export interface MonitorPage {
   events: MonitorEvent[];
   next_before: number | null;
+  tally?: MonitorTally;
   error?: string;
 }
 
@@ -121,22 +162,21 @@ export class MonitoringService {
     };
   }
 
-  async events(query: {
-    kinds?: string[]; agent?: string; before?: number | null; limit?: number;
-    /** The days asked for, in seconds: nothing from before `since`,
-     *  nothing from `until` on. */
-    since?: number | null; until?: number | null;
-  }): Promise<MonitorPage> {
+  async events(query: MonitorQuery): Promise<MonitorPage> {
     const data: any = { limit: query.limit || 100 };
     if (query.kinds?.length) data.kinds = query.kinds;
-    if (query.agent) data.agent = query.agent;
-    if (query.before != null) data.before = query.before;
-    if (query.since != null) data.since = query.since;
-    if (query.until != null) data.until = query.until;
+    for (const key of ['kind', 'agent', 'outcome', 'host', 'text'] as const) {
+      if (query[key]) data[key] = query[key];
+    }
+    for (const key of ['before', 'since', 'until'] as const) {
+      if (query[key] != null) data[key] = query[key];
+    }
+    if (query.tally) data.tally = true;
     const res = await this.session.ai('Agents:Monitor:Events', data);
     return {
       events: res.data?.events || [],
       next_before: res.data?.next_before ?? null,
+      tally: res.data?.tally,
       error: res.error,
     };
   }

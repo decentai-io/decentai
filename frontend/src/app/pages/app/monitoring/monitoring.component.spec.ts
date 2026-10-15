@@ -1,14 +1,16 @@
+import { convertToParamMap } from '@angular/router';
 import { EMPTY } from 'rxjs';
 
 import { MonitoringComponent } from './monitoring.component';
 import {
-  bytesLabel, monitorChip, monitorKind, monitorLabel, monitorSummary, monitorTone,
+  bytesLabel, groupMonitor, monitorChip, monitorFields, monitorKind, monitorLabel, monitorSummary,
+  monitorTone,
 } from './monitor-words';
 
 describe('MonitoringComponent', () => {
   function create(
     answers: any = {}, asked: any[] = [], can = (_: string) => true,
-    address: { view?: string; went?: any[][] } = {},
+    address: { view?: string; went?: any[][]; query?: Record<string, string> } = {},
   ) {
     return new MonitoringComponent(
       {
@@ -27,9 +29,17 @@ describe('MonitoringComponent', () => {
       { can } as any,
       {
         events: EMPTY,
-        navigate: async (to: any[]) => { address.went?.push(to); return true; },
+        navigate: async (to: any[], extras?: any) => {
+          address.went?.push(extras?.queryParams ? [...to, extras.queryParams] : to);
+          return true;
+        },
       } as any,
-      { snapshot: { firstChild: { url: address.view ? [{ path: address.view }] : [] } } } as any,
+      {
+        snapshot: {
+          firstChild: { url: address.view ? [{ path: address.view }] : [] },
+          queryParamMap: convertToParamMap(address.query || {}),
+        },
+      } as any,
     );
   }
 
@@ -83,67 +93,121 @@ describe('MonitoringComponent', () => {
   it('asks for connections alone on the connections view', async () => {
     const asked: any[] = [];
     const component = create({}, asked);
-    component.kind = 'log';
     await component.select('connections');
 
     expect(asked[0].kinds).toEqual(['connection']);
+    expect(asked[0].tally).toBeTrue();
     component.ngOnDestroy();
   });
 
-  it('asks for the kind and the agent that were chosen', async () => {
+  it('asks for what the filters narrow it to, the first page added up', async () => {
     const asked: any[] = [];
     const component = create({}, asked);
-    component.kind = 'log';
-    component.agent = 'agt_a';
+    component.filters = {
+      kind: 'log', agent: 'agt_a', outcome: 'trouble', host: '', q: 'timeout', from: '', to: '',
+    };
     await component.select('events');
 
     expect(asked[0]).toEqual({
-      kinds: ['log'], agent: 'agt_a', before: undefined, limit: 100, since: null, until: null,
+      kinds: [], kind: 'log', agent: 'agt_a', outcome: 'trouble', host: '', text: 'timeout',
+      before: null, limit: 100, tally: true, since: null, until: null,
     });
   });
 
   it('asks for the whole of the days chosen', async () => {
     const asked: any[] = [];
     const component = create({}, asked);
-    component.since = '2026-10-01';
-    component.until = '2026-10-02';
+    component.filters = { ...component.filters, from: '2026-10-01', to: '2026-10-02' };
     await component.select('events');
 
     expect(asked[0].since).toBe(new Date(2026, 9, 1).getTime() / 1000);
     expect(asked[0].until).toBe(new Date(2026, 9, 3).getTime() / 1000);
   });
 
-  it('reads the page after the one it has, from where that one ended', async () => {
+  it('reads the filters from its address, and opens on them', async () => {
     const asked: any[] = [];
-    const component = create({
-      events: { events: [{ at: 9, kind: 'log', agent: 'agt_a', name: 'Notes' }], next_before: 9 },
-    }, asked);
-    await component.select('events');
-    await component.loadMore();
+    const component = create({}, asked, () => true, {
+      view: 'connections',
+      query: { host: 'api.example.com', outcome: 'refused', kind: 'log', from: 'not a day', q: 'gmail' },
+    });
+    await component.ngOnInit();
 
-    expect(asked[1].before).toBe(9);
-    expect(component.events.length).toBe(2);
-    expect(component.agentChoices).toEqual([
-      { value: '', name: 'Every agent' }, { value: 'agt_a', name: 'Notes' },
-    ]);
+    // A kind is not the connections' to narrow, nor a day that is not one.
+    expect(component.filters).toEqual({
+      kind: '', agent: '', outcome: 'refused', host: 'api.example.com', q: 'gmail', from: '', to: '',
+    });
+    expect(component.text).toBe('gmail');
+    expect(asked[0].host).toBe('api.example.com');
+    component.ngOnDestroy();
   });
 
-  it('shows of the connections only those refused or not reached, when asked', async () => {
+  it('puts a filter chosen in the address, keeping the others', async () => {
+    const went: any[][] = [];
+    const component = create({}, [], () => true, { view: 'events', went, query: { q: 'pip' } });
+    await component.ngOnInit();
+    component.choose({ key: 'outcome', value: 'trouble' });
+    component.text = '  pandas ';
+    component.applyTyped();
+    component.clearFilters();
+
+    expect(went).toEqual([
+      ['/monitoring', 'events', { outcome: 'trouble', q: 'pip' }],
+      ['/monitoring', 'events', { q: 'pandas' }],
+      ['/monitoring', 'events', {}],
+    ]);
+    component.ngOnDestroy();
+  });
+
+  it('turns to the older page from where this one ended, and back', async () => {
+    const asked: any[] = [];
     const component = create({
       events: {
-        next_before: null,
-        events: [
-          { at: 3, kind: 'connection', allowed: true, reached: true },
-          { at: 2, kind: 'connection', allowed: false, why: 'not declared' },
-          { at: 1, kind: 'connection', allowed: true, reached: false },
-        ],
+        events: [{ at: 9, kind: 'log', agent: 'agt_a', name: 'Notes' }],
+        next_before: 9,
+        tally: {
+          matching: 250, complete: true, reached: null, kinds: {}, outcomes: {},
+          agents: [], hosts: [], sent: 0, received: 0,
+        },
+      },
+    }, asked);
+    await component.select('events');
+    expect(component.range).toBe('1–1 of 250');
+
+    await component.older();
+    expect(asked[1].before).toBe(9);
+    expect(asked[1].tally).toBeFalse();
+    expect(component.page).toBe(1);
+    expect(component.range).toBe('2–2 of 250');
+
+    await component.newer();
+    expect(asked[2].before).toBeNull();
+    expect(component.page).toBe(0);
+  });
+
+  it('offers each choice with what choosing it would show', async () => {
+    const component = create({
+      events: {
+        events: [], next_before: null,
+        tally: {
+          matching: 10, complete: false, reached: 5, kinds: { connection: 10 },
+          outcomes: { ok: 7, refused: 2, unreached: 1 },
+          agents: [{ agent: 'agt_a', name: 'Gmail', count: 10 }],
+          hosts: [{ host: 'api.example.com', count: 6 }],
+          sent: 1, received: 2,
+        },
       },
     });
     await component.select('connections');
-    component.showRefusedOnly(true);
+    const [outcome, agents, hosts] = component.columns;
 
-    expect(component.shown.map(e => e.at)).toEqual([2, 1]);
-    expect(component.days.flatMap(day => day.items).map(e => e.at)).toEqual([2, 1]);
+    expect(outcome.items.map((item) => [item.name, item.count])).toEqual([
+      ['Every connection', 10], ['Made', 7], ['Refused or not reached', 3],
+    ]);
+    expect(outcome.items[2].children!.map((item) => item.value)).toEqual(['refused', 'unreached']);
+    expect(agents.items[0]).toEqual(jasmine.objectContaining({ value: 'agt_a', count: 10 }));
+    expect(hosts.items[0]).toEqual(jasmine.objectContaining({ value: 'api.example.com', count: 6 }));
+    expect(component.troubleLine).toBe('3 refused or not reached (30%)');
+    expect(component.range).toBe('');
   });
 
   it('lists what an agent keeps, and closes it on a second press', async () => {
@@ -271,6 +335,25 @@ describe('what was written down, in words', () => {
   it('tells an agent asked to leave from one that ended otherwise', () => {
     expect(monitorTone({ at: 1, kind: 'worker.ended', why: 'it was asked to leave' })).toBe('muted');
     expect(monitorTone({ at: 1, kind: 'worker.ended', why: 'the worker died' })).toBe('live');
+  });
+
+  it('makes one row of alike events next to each other, within a minute', () => {
+    const groups = groupMonitor([
+      { at: 100, kind: 'log', agent: 'agt_a', line: 'three' },
+      { at: 99, kind: 'log', agent: 'agt_a', line: 'two' },
+      { at: 98, kind: 'connection', agent: 'agt_a', host: 'a.example', allowed: true },
+      { at: 97, kind: 'log', agent: 'agt_a', line: 'one' },
+      { at: 10, kind: 'log', agent: 'agt_a', line: 'long ago' },
+    ]);
+    expect(groups.map((group) => group.events.length)).toEqual([2, 1, 1, 1]);
+  });
+
+  it('lists what a line holds, field by field', () => {
+    expect(monitorFields({ at: 1, kind: 'program', asked: ['a', 'b'], code: 0 })).toEqual([
+      { name: 'kind', value: 'program' },
+      { name: 'asked', value: '["a","b"]' },
+      { name: 'code', value: '0' },
+    ]);
   });
 
   it('reads bytes as a person does', () => {

@@ -1,7 +1,8 @@
 /* Monitoring. The page frame, the sections, the tables, the list and
    the rows of what was seen are the shared ones; here are the line
    that says how old the numbers are, the three tiles, the meter beside
-   a memory, and what an agent keeps on disk. */
+   a memory, what an agent keeps on disk, and the head, tally, pages
+   and details of the events. */
 .mon-updated {
   color: var(--ink-3);
   font-size: var(--t-xs);
@@ -116,12 +117,109 @@
   overflow-wrap: anywhere;
 }
 
+/* Events and connections: the column of choices at the left (the
+   shared filter column), and beside it the words and days, the tally,
+   the rows and the way between pages. */
+.mon-listed {
+  min-width: 0;
+}
+
+/* The words, the days and the tally stay in sight while the rows
+   scroll under them. */
+.mon-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 8px 0;
+  background: var(--bg);
+}
+
 .mon-filters {
   display: flex;
-  flex: 1;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px 12px;
+}
+
+/* The search gives way first, so the dates stay on one line. */
+.mon-filters .toolbar-search {
+  flex: 1 1 160px;
+  min-width: 0;
+  max-width: none;
+}
+
+.mon-tally {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 0;
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.mon-tally > span + span::before {
+  content: '·';
+  margin: 0 8px;
+  color: var(--ink-3);
+}
+
+.mon-tally strong {
+  color: var(--ink);
+  font-size: var(--t-md);
+  font-weight: 600;
+}
+
+.mon-reach {
+  color: var(--ink-3);
+}
+
+.mon-pages {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.mon-range {
+  margin-right: auto;
+  color: var(--ink-3);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+/* What a row opens to: each field as it was written down. */
+.mon-fields {
+  display: grid;
+  gap: 2px;
+  font-size: var(--t-xs);
+  line-height: var(--lh-xs);
+}
+
+.mon-fields > div {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  gap: 12px;
+}
+
+.mon-fields dt {
+  color: var(--ink-3);
+  font-family: var(--font-mono);
+}
+
+.mon-fields dd {
+  color: var(--ink);
+  font-family: var(--font-mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 @media (max-width: 700px) {

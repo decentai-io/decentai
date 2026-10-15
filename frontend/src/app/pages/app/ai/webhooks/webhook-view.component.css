@@ -227,6 +227,16 @@
   flex: 1;
 }
 
+.webhook-curl {
+  min-width: 0;
+  margin: 0 0 6px;
+  padding: 10px 12px;
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  line-height: var(--lh-sm);
+  white-space: pre-wrap;
+}
+
 .webhook-prompt {
   white-space: pre-wrap;
   overflow-wrap: anywhere;

@@ -188,73 +188,130 @@
   </ng-container>
 
   <!-- ── What was seen of them ───────────────────────────────────── -->
-  <app-list
-    *ngIf="view === 'events' || view === 'connections'"
-    rows="groups"
-    [label]="view === 'connections' ? 'Connections' : 'Events'"
-    [loading]="loading"
-  >
-    <form listToolbar class="mon-filters" (ngSubmit)="reload()">
-      <app-select class="toolbar-sort" label="Agent" name="agent" [choices]="agentChoices" [(ngModel)]="agent"></app-select>
-      <app-select
-        *ngIf="view === 'events'"
-        class="toolbar-sort"
-        label="Kind of event"
-        name="kind"
-        [choices]="kinds"
-        [(ngModel)]="kind"
-      ></app-select>
-      <app-switch
-        *ngIf="view === 'connections'"
-        label="Refused or not reached only"
-        name="refusedOnly"
-        [ngModel]="refusedOnly"
-        (ngModelChange)="showRefusedOnly($event)"
-      ></app-switch>
-      <label class="toolbar-date">
-        From
-        <input class="input" type="date" name="since" [(ngModel)]="since" />
-      </label>
-      <label class="toolbar-date">
-        To
-        <input class="input" type="date" name="until" [(ngModel)]="until" />
-      </label>
-      <button class="btn" type="submit" [disabled]="loading">Apply</button>
-      <button class="btn ghost" type="button" *ngIf="filtered" [disabled]="loading" (click)="clearFilters()">Clear</button>
-    </form>
+  <div class="side-layout" *ngIf="view === 'events' || view === 'connections'">
+    <app-filter-column
+      [label]="view === 'connections' ? 'Filter connections' : 'Filter events'"
+      [groups]="columns"
+      [chosen]="chosen"
+      (choose)="choose($event)"
+    ></app-filter-column>
 
-    <app-empty
-      *ngIf="!days.length"
-      [icon]="view === 'connections' ? 'network' : 'scroll-text'"
-      [title]="filtered ? 'Nothing matches' : 'Nothing written down yet'"
-      [line]="view === 'connections'
-        ? 'Every connection an agent asks for is listed here, made or refused. What it carried is never read.'
-        : 'What the platform does to an agent, and what the agent does, appears here as it happens.'"
-    ></app-empty>
+    <div class="mon-listed">
+      <span #top></span>
+      <!-- Stays in sight while the rows scroll: the words and days, and
+           what they leave, added up. -->
+      <div class="mon-head">
+        <form class="mon-filters" (ngSubmit)="applyTyped()">
+          <span class="search-field toolbar-search">
+            <lucide-icon name="search" [size]="16" aria-hidden="true"></lucide-icon>
+            <input
+              class="input"
+              type="search"
+              name="text"
+              [placeholder]="view === 'connections' ? 'Host, agent or reason' : 'Agent, host, log line, command or reason'"
+              [attr.aria-label]="view === 'connections' ? 'Search the connections' : 'Search the events'"
+              [(ngModel)]="text"
+            />
+          </span>
+          <label class="toolbar-date">
+            From
+            <input class="input" type="date" name="since" [(ngModel)]="since" />
+          </label>
+          <label class="toolbar-date">
+            To
+            <input class="input" type="date" name="until" [(ngModel)]="until" />
+          </label>
+          <button class="btn" type="submit" [disabled]="loading">Apply</button>
+          <button class="btn ghost" type="button" *ngIf="filtered" [disabled]="loading" (click)="clearFilters()">Clear</button>
+        </form>
 
-    <section *ngFor="let day of days">
-      <h2 class="record-day">{{ day.day }}</h2>
-      <div role="list" [attr.aria-label]="day.day">
-        <app-record-row
-          *ngFor="let event of day.items"
-          [time]="time(event)"
-          [tone]="tone(event)"
-          [outcome]="outcome(event)"
-          [words]="label(event)"
-          [more]="summary(event)"
-          [chip]="kindOf(event)"
-          [open]="isOpen(event)"
-          (toggle)="toggle(event)"
-        >
-          <pre class="record-json" *ngIf="isOpen(event)">{{ details(event) }}</pre>
-        </app-record-row>
+        <p class="mon-tally" *ngIf="tally as t" role="status">
+          <span><strong>{{ t.matching.toLocaleString() }}</strong> {{ view === "connections" ? (t.matching === 1 ? "connection" : "connections") : (t.matching === 1 ? "event" : "events") }}</span>
+          <span *ngIf="troubleLine">{{ troubleLine }}</span>
+          <span *ngIf="view === 'connections' && t.matching">{{ bytes(t.sent) }} sent, {{ bytes(t.received) }} received</span>
+          <span class="mon-reach" *ngIf="!t.complete" [title]="fullWhen(t.reached)">counted back to {{ when(t.reached) }}; older ones are not added up</span>
+        </p>
       </div>
-    </section>
 
-    <div class="record-older" *ngIf="nextBefore != null">
-      <button class="btn" type="button" [disabled]="loadingMore" (click)="loadMore()">
-        {{ loadingMore ? "Loading…" : "Load older" }}
-      </button>
+      <app-list rows="groups" [label]="view === 'connections' ? 'Connections' : 'Events'" [loading]="loading">
+        <app-empty
+          *ngIf="!days.length"
+          [icon]="view === 'connections' ? 'network' : 'scroll-text'"
+          [title]="filtered ? 'Nothing matches' : 'Nothing written down yet'"
+          [line]="nextBefore != null
+            ? 'Nothing in the latest events read matches; older ones may.'
+            : filtered
+              ? 'Widen the dates, choose another filter or clear the search.'
+              : view === 'connections'
+                ? 'Every connection an agent asks for is listed here, made or refused. What it carried is never read.'
+                : 'What the platform does to an agent, and what the agent does, appears here as it happens.'"
+        ></app-empty>
+
+        <section *ngFor="let day of days">
+          <h2 class="record-day">{{ day.day }}</h2>
+          <div role="list" [attr.aria-label]="day.day">
+            <app-record-row
+              *ngFor="let group of day.items"
+              [time]="time(group.first)"
+              [tone]="tone(group.first)"
+              [outcome]="outcome(group.first)"
+              [words]="label(group.first)"
+              [more]="summary(group.first)"
+              [chip]="kindOf(group.first)"
+              [count]="group.events.length"
+              [open]="isOpen(groupKey(group))"
+              (toggle)="toggle(groupKey(group))"
+            >
+              <ng-container *ngIf="isOpen(groupKey(group))">
+                <ng-container *ngIf="group.events.length === 1">
+                  <ng-container *ngTemplateOutlet="written; context: { $implicit: group.first }"></ng-container>
+                </ng-container>
+
+                <!-- Several alike: each of them, with its own time and details. -->
+                <div role="list" *ngIf="group.events.length > 1" [attr.aria-label]="label(group.first)">
+                  <app-record-row
+                    *ngFor="let event of group.events"
+                    [time]="time(event)"
+                    [tone]="tone(event)"
+                    [outcome]="outcome(event)"
+                    [words]="label(event)"
+                    [more]="summary(event)"
+                    [open]="isOpen(key(event))"
+                    (toggle)="toggle(key(event))"
+                  >
+                    <ng-container *ngIf="isOpen(key(event))">
+                      <ng-container *ngTemplateOutlet="written; context: { $implicit: event }"></ng-container>
+                    </ng-container>
+                  </app-record-row>
+                </div>
+              </ng-container>
+            </app-record-row>
+          </div>
+        </section>
+      </app-list>
+
+      <nav class="mon-pages" aria-label="Pages" *ngIf="!loading && (page > 0 || nextBefore != null || events.length)">
+        <span class="mon-range">{{ range }}</span>
+        <button class="btn sm" type="button" [disabled]="page === 0 || turning" (click)="newer(top)">
+          <lucide-icon name="chevron-left" [size]="16" aria-hidden="true"></lucide-icon>
+          Newer
+        </button>
+        <button class="btn sm" type="button" [disabled]="nextBefore == null || turning" (click)="older(top)">
+          Older
+          <lucide-icon name="chevron-right" [size]="16" aria-hidden="true"></lucide-icon>
+        </button>
+      </nav>
     </div>
-  </app-list>
+  </div>
 </app-page>
+
+<!-- One line as it was written down, field by field. -->
+<ng-template #written let-event>
+  <dl class="mon-fields">
+    <div><dt>at</dt><dd>{{ fullWhen(event.at) }}</dd></div>
+    <div *ngFor="let field of fields(event)">
+      <dt>{{ field.name }}</dt>
+      <dd>{{ field.value }}</dd>
+    </div>
+  </dl>
+</ng-template>

@@ -1081,6 +1081,12 @@ div.mat-mdc-select-panel {
   transition: background var(--dur-1) var(--ease);
 }
 
+/* The frame (components/ui/list) draws the bottom edge; a line under
+   the last row too would show as two. */
+.table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
 .table tbody tr:hover {
   background: var(--accent-wash);
 }
@@ -1187,6 +1193,10 @@ div.mat-mdc-select-panel {
     gap: 2px 8px;
     padding: 10px 0;
     border-bottom: 1px solid var(--line);
+  }
+
+  .table tbody tr:last-child {
+    border-bottom: 0;
   }
 
   .table td {

@@ -317,6 +317,105 @@ class TestWhatHappened:
                         {"before": "yesterday"}).status_code == 400
         assert app_call(admin, "Agents:Monitor:Events",
                         {"since": "2026-10-01"}).status_code == 400
+        assert app_call(admin, "Agents:Monitor:Events",
+                        {"kind": "no-such-kind"}).status_code == 400
+        assert app_call(admin, "Agents:Monitor:Events",
+                        {"outcome": "meh"}).status_code == 400
+        assert app_call(admin, "Agents:Monitor:Events",
+                        {"text": ["a"]}).status_code == 400
+
+
+class TestWhatHappenedNarrowed:
+    def written(self):
+        return [
+            {"at": 1.0, "kind": "helper", "job": "check", "code": 0},
+            {"at": 2.0, "kind": "worker.started", "agent": "agt_left"},
+            {"at": 3.0, "kind": "connection", "agent": "agt_left",
+             "host": "API.example.com", "allowed": True, "reached": True,
+             "sent": 100, "received": 1000},
+            {"at": 4.0, "kind": "connection", "agent": "agt_left",
+             "host": "evil.example", "allowed": False, "why": "not declared"},
+            {"at": 5.0, "kind": "connection", "agent": "agt_mail",
+             "host": "api.example.com", "allowed": True, "reached": False,
+             "why": "timed out"},
+            {"at": 6.0, "kind": "log", "agent": "agt_mail",
+             "line": "Fetched 3 messages from the INBOX"},
+            {"at": 7.0, "kind": "program", "agent": "agt_left",
+             "program": "python run.py", "code": 2},
+            {"at": 8.0, "kind": "connection", "agent": "agt_other",
+             "host": "api.example.com", "allowed": True},
+        ]
+
+    @pytest.fixture()
+    def installed(self, seed, runtime):
+        install(seeded_org(), "agt_left", "Notes")
+        install(seeded_org(), "agt_mail", "Mail")
+        runtime.events = self.written()
+
+    def shown(self, admin, **asked):
+        said = app_call(admin, "Agents:Monitor:Events", asked).json()["data"]
+        return [event["at"] for event in said["events"]]
+
+    def test_only_what_went_as_asked(self, admin, installed):
+        assert self.shown(admin, outcome="trouble") == [7.0, 5.0, 4.0]
+        assert self.shown(admin, outcome="refused") == [4.0]
+        assert self.shown(admin, outcome="unreached") == [5.0]
+        assert self.shown(admin, outcome="failed") == [7.0]
+        assert self.shown(admin, outcome="ok") == [6.0, 3.0, 2.0, 1.0]
+
+    def test_one_host_whatever_its_case(self, admin, installed):
+        assert self.shown(admin, host="api.example.com") == [5.0, 3.0]
+
+    def test_a_search_reads_the_words_whatever_their_case(self, admin, installed):
+        assert self.shown(admin, text="inbox") == [6.0]
+        assert self.shown(admin, text="NOT DECLARED") == [4.0]
+        assert self.shown(admin, text="mail") == [6.0, 5.0]
+        # A search is words, never a pattern.
+        assert self.shown(admin, text=".*") == []
+
+    def test_one_kind_is_read_alone_from_the_runtime(self, admin, installed, runtime):
+        assert self.shown(admin, kind="connection", agent="agt_left") == [4.0, 3.0]
+        _, asked, _ = runtime.asked[-1]
+        assert asked["kinds"] == "connection" and asked["agent"] == "agt_left"
+
+    def test_the_first_page_comes_added_up(self, admin, installed, runtime):
+        said = app_call(admin, "Agents:Monitor:Events", {
+            "kinds": ["connection"], "tally": True,
+        }).json()["data"]
+        tally = said["tally"]
+        assert [event["at"] for event in said["events"]] == [5.0, 4.0, 3.0]
+        assert tally["matching"] == 3 and tally["complete"] is True
+        assert tally["outcomes"] == {"ok": 1, "refused": 1, "unreached": 1}
+        assert tally["hosts"][0] == {"host": "api.example.com", "count": 2}
+        assert {a["name"]: a["count"] for a in tally["agents"]} == {"Notes": 2, "Mail": 1}
+        assert tally["sent"] == 100 and tally["received"] == 1000
+        # Another organization's agent is neither shown nor counted.
+        assert "agt_other" not in str(said)
+
+    def test_each_count_is_of_what_choosing_it_would_show(self, admin, installed):
+        tally = app_call(admin, "Agents:Monitor:Events", {
+            "kind": "connection", "agent": "agt_left", "tally": True,
+        }).json()["data"]["tally"]
+        assert tally["matching"] == 2
+        # Every kind of this agent's, every agent's connections.
+        assert tally["kinds"] == {"worker.started": 1, "connection": 2, "program": 1}
+        assert {a["name"]: a["count"] for a in tally["agents"]} == {"Notes": 2, "Mail": 1}
+        assert tally["outcomes"] == {"ok": 1, "refused": 1}
+
+    def test_a_count_says_how_far_back_it_read(
+            self, admin, installed, monkeypatch):
+        from api.endpoints.app.agents.monitor_controller import MonitorController
+
+        monkeypatch.setattr(MonitorController, "ASKED", 2)
+        monkeypatch.setattr(MonitorController, "TALLY_ROUNDS", 2)
+        said = app_call(admin, "Agents:Monitor:Events", {
+            "limit": 1, "tally": True}).json()["data"]
+        assert [event["at"] for event in said["events"]] == [7.0]
+        assert said["next_before"] == 7.0
+        assert said["tally"]["complete"] is False
+        assert said["tally"]["reached"] == 5.0
+        # 8, 7, 6 and 5 were read; 8 is another organization's.
+        assert said["tally"]["matching"] == 3
 
 
 class TestWhatAnAgentKeeps:

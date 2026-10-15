@@ -100,7 +100,19 @@
     <dt>Address</dt>
     <dd class="webhook-copy">
       <code class="webhook-code">{{ url }}</code>
-      <button class="btn sm" type="button" (click)="copyUrl()">{{ copied ? "Copied" : "Copy" }}</button>
+      <button class="btn sm" type="button" (click)="copy('url')">{{ copied === "url" ? "Copied" : "Copy" }}</button>
+    </dd>
+
+    <dt>Example call</dt>
+    <dd>
+      <div class="webhook-copy">
+        <pre class="webhook-code webhook-curl">{{ curl }}</pre>
+        <button class="btn sm" type="button" (click)="copy('curl')">{{ copied === "curl" ? "Copied" : "Copy" }}</button>
+      </div>
+      <span class="webhook-aside">
+        Set <code class="webhook-code">WEBHOOK_SECRET</code> to the secret first, or put the secret in its place.
+        Lost it? Replace the secret to get a new one.
+      </span>
     </dd>
 
     <dt>Secret</dt>

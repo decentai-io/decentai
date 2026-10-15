@@ -4,17 +4,37 @@ import { Subscription } from 'rxjs';
 import { filter } from 'rxjs/operators';
 
 import { byDay, clockTime, fullDate, localDay, relativeDate } from 'src/app/components/ui/dates';
+import { FilterGroup, FilterItem } from 'src/app/components/ui/filter-column.component';
 import { Choice } from 'src/app/components/ui/radio-keys';
 import { RecordTone } from 'src/app/components/ui/record-row.component';
 import { AuthService } from 'src/app/services/auth.service';
 import {
-  AgentFiles, AgentUsage, MonitorEvent, MonitoringService, ServiceUsage, UsageNow,
+  AgentFiles, AgentUsage, MonitorEvent, MonitorOutcome, MonitorQuery, MonitorTally,
+  MonitoringService, ServiceUsage, UsageNow,
 } from 'src/app/services/monitoring.service';
 import {
-  MONITOR_KINDS, bytesLabel, monitorChip, monitorKind, monitorLabel, monitorSummary, monitorTone,
+  MONITOR_KINDS, MonitorGroup, bytesLabel, groupMonitor, monitorChip, monitorFields, monitorKind,
+  monitorLabel, monitorSummary, monitorTone,
 } from './monitor-words';
 
 type MonitoringView = 'overview' | 'agents' | 'events' | 'connections';
+
+/** What the events and the connections are narrowed to, each under the
+ *  name the address gives it; '' is not narrowed. */
+export interface MonitorFilters {
+  kind: string;
+  agent: string;
+  outcome: MonitorOutcome | '';
+  host: string;
+  /** The words looked for. */
+  q: string;
+  /** The first and the last day, as a date box gives them. */
+  from: string;
+  to: string;
+}
+
+const NO_FILTERS: MonitorFilters = { kind: '', agent: '', outcome: '', host: '', q: '', from: '', to: '' };
+const OUTCOMES: MonitorOutcome[] = ['ok', 'trouble', 'refused', 'unreached', 'failed'];
 
 /**
  * Monitoring: what agents did, use now, and what was seen of them
@@ -27,8 +47,11 @@ type MonitoringView = 'overview' | 'agents' | 'events' | 'connections';
  * is "Agents". "Agents" (/monitoring/agents) is the running agents with
  * what each holds, against what they are given together, and what each
  * keeps on disk. "Events" (/monitoring/events) is everything written
- * down, by kind and by agent. "Connections" (/monitoring/connections)
- * is the connections alone, made and refused.
+ * down; "Connections" (/monitoring/connections) is the connections
+ * alone, made and refused. Both are read a page at a time, narrowed by
+ * a column of choices — how it went, the kind, the agent, the host —
+ * each with what choosing it would show, and by words and days; the
+ * address holds the filters. Alike rows next to each other are one.
  */
 @Component({
   selector: 'app-monitoring',
@@ -73,22 +96,30 @@ export class MonitoringComponent implements OnInit, OnDestroy {
   loadingFiles = false;
 
   // ── What happened ───────────────────────────────────────────────
-  readonly kinds = MONITOR_KINDS;
-  events: MonitorEvent[] = [];
-  /** What is listed, under the day it happened on. */
-  days: { day: string; items: MonitorEvent[] }[] = [];
-  nextBefore: number | null = null;
-  loading = false;
-  loadingMore = false;
-  kind = '';
-  agent = '';
-  /** The days asked for, as the date boxes give them. */
+  /** How many events a page holds. */
+  static readonly PAGE = 100;
+  /** The filters, as the address says them. */
+  filters: MonitorFilters = { ...NO_FILTERS };
+  /** What the toolbar's boxes hold until they are applied: the words
+   *  looked for, and the days, as the date boxes give them. */
+  text = '';
   since = '';
   until = '';
-  refusedOnly = false;
-  expanded = new Set<MonitorEvent>();
-  /** The agents the log has named, for the filter: ref -> name. */
-  named = new Map<string, string>();
+  events: MonitorEvent[] = [];
+  /** What is listed, alike rows together, under the day it happened on. */
+  days: { day: string; items: MonitorGroup[] }[] = [];
+  /** What the filters leave, added up with the first page. */
+  tally: MonitorTally | null = null;
+  /** The column of choices, with what each would show. */
+  columns: FilterGroup[] = [];
+  /** Where each page read so far began, and how many came before it. */
+  private pages: { before: number | null; offset: number }[] = [{ before: null, offset: 0 }];
+  page = 0;
+  nextBefore: number | null = null;
+  loading = false;
+  turning = false;
+  /** What is open: an event by `key`, a group by `groupKey`. */
+  expanded = new Set<string>();
 
   constructor(
     private monitoring: MonitoringService,
@@ -130,11 +161,41 @@ export class MonitoringComponent implements OnInit, OnDestroy {
     const named = this.route.snapshot.firstChild?.url[0]?.path;
     const view: MonitoringView =
       named === 'events' || named === 'connections' || named === 'agents' ? named : this.landing;
-    if ((view === 'events' || view === 'connections') && !this.canSeeEvents) {
+    const listed = view === 'events' || view === 'connections';
+    if (listed && !this.canSeeEvents) {
       void this.router.navigate(['/monitoring'], { replaceUrl: true });
       return;
     }
-    if (view !== this.view || !this.timer && view === 'agents') await this.select(view);
+    // The filters are in the address too, so a narrowed list can be
+    // sent to somebody or read again.
+    let refiltered = false;
+    if (listed) {
+      const filters = this.filtersOf(view);
+      refiltered = JSON.stringify(filters) !== JSON.stringify(this.filters);
+      this.filters = filters;
+      this.text = filters.q;
+      this.since = filters.from;
+      this.until = filters.to;
+    }
+    if (view !== this.view || refiltered || !this.timer && view === 'agents') await this.select(view);
+  }
+
+  /** The filters the address names, of those the view has. */
+  private filtersOf(view: MonitoringView): MonitorFilters {
+    const params = this.route.snapshot.queryParamMap;
+    const word = (key: string) => params?.get(key) ?? '';
+    const day = (key: string) => (/^\d{4}-\d{2}-\d{2}$/.test(word(key)) ? word(key) : '');
+    const kind = word('kind');
+    const outcome = word('outcome') as MonitorOutcome;
+    return {
+      kind: view === 'events' && MONITOR_KINDS.some((known) => known.value === kind) ? kind : '',
+      agent: word('agent'),
+      outcome: OUTCOMES.includes(outcome) ? outcome : '',
+      host: view === 'connections' ? word('host') : '',
+      q: word('q'),
+      from: day('from'),
+      to: day('to'),
+    };
   }
 
   async select(view: MonitoringView): Promise<void> {
@@ -180,7 +241,6 @@ export class MonitoringComponent implements OnInit, OnDestroy {
     this.usage = found;
     this.updatedAt = Date.now();
     this.sayUpdated();
-    for (const agent of found.agents) this.named.set(agent.agent, agent.name);
   }
 
   /** How full the agents' container is, 0 to 100, or null where no
@@ -236,98 +296,204 @@ export class MonitoringComponent implements OnInit, OnDestroy {
 
   // ── Events and connections ──────────────────────────────────────
 
-  private query(before?: number | null) {
-    const kinds = this.view === 'connections' ? ['connection']
-      : this.kind ? [this.kind] : [];
+  private query(before: number | null, tally: boolean): MonitorQuery {
+    const filters = this.filters;
     // The server reads `until` as the first moment not asked for.
-    const since = localDay(this.since, false);
-    const until = localDay(this.until, true);
+    const since = localDay(filters.from, false);
+    const until = localDay(filters.to, true);
     return {
-      kinds, agent: this.agent, before, limit: 100,
+      kinds: this.view === 'connections' ? ['connection'] : [],
+      kind: filters.kind, agent: filters.agent, outcome: filters.outcome,
+      host: filters.host, text: filters.q,
+      before, limit: MonitoringComponent.PAGE, tally,
       since: since ? since.getTime() / 1000 : null,
       until: until ? (until.getTime() + 1) / 1000 : null,
     };
   }
 
+  /** The first page, and what the filters leave added up. */
   async reload(): Promise<void> {
     this.loading = true;
     this.error = '';
     try {
-      const page = await this.monitoring.events(this.query());
+      const page = await this.monitoring.events(this.query(null, true));
       if (page.error) { this.error = page.error; return; }
-      this.expanded.clear();
-      this.take(page.events, page.next_before);
+      this.tally = page.tally ?? null;
+      this.pages = [{ before: null, offset: 0 }];
+      this.take(0, page.events, page.next_before);
     } finally {
       this.loading = false;
     }
   }
 
-  async loadMore(): Promise<void> {
-    if (this.nextBefore == null || this.loadingMore) return;
-    this.loadingMore = true;
+  /** The page after this one, read from where this one ended. */
+  async older(top?: HTMLElement): Promise<void> {
+    if (this.nextBefore == null) return;
+    this.pages[this.page + 1] = {
+      before: this.nextBefore, offset: this.pages[this.page].offset + this.events.length,
+    };
+    await this.turnTo(this.page + 1, top);
+  }
+
+  async newer(top?: HTMLElement): Promise<void> {
+    if (this.page > 0) await this.turnTo(this.page - 1, top);
+  }
+
+  private async turnTo(page: number, top?: HTMLElement): Promise<void> {
+    if (this.turning) return;
+    this.turning = true;
     try {
-      const page = await this.monitoring.events(this.query(this.nextBefore));
-      if (page.error) { this.error = page.error; return; }
-      this.take([...this.events, ...page.events], page.next_before);
+      const read = await this.monitoring.events(this.query(this.pages[page].before, false));
+      if (read.error) { this.error = read.error; return; }
+      this.take(page, read.events, read.next_before);
+      top?.scrollIntoView?.({ block: 'nearest' });
     } finally {
-      this.loadingMore = false;
+      this.turning = false;
     }
   }
 
-  private take(events: MonitorEvent[], nextBefore: number | null): void {
+  private take(page: number, events: MonitorEvent[], nextBefore: number | null): void {
+    this.page = page;
     this.events = events;
     this.nextBefore = nextBefore;
-    for (const event of events) {
-      if (event.agent?.startsWith('agt_')) {
-        this.named.set(event.agent, event.name || event.agent);
-      }
-    }
-    this.arrange();
+    this.expanded.clear();
+    this.days = byDay(groupMonitor(events), (group) => group.first.at * 1000);
+    this.columns = this.columnsOf();
   }
 
-  private arrange(): void {
-    this.days = byDay(this.shown, (event) => event.at * 1000);
+  /** Which events of how many this page is: "101–200 of 2,345". Where
+   *  only the latest were added up, the count is at least that. */
+  get range(): string {
+    if (!this.events.length) return '';
+    const first = this.pages[this.page].offset + 1;
+    const last = first + this.events.length - 1;
+    const shown = `${first.toLocaleString()}–${last.toLocaleString()}`;
+    if (!this.tally) return shown;
+    const counted = Math.max(this.tally.matching, last);
+    return `${shown} of ${counted.toLocaleString()}${this.tally.complete ? '' : '+'}`;
   }
 
-  get agentChoices(): Choice<string>[] {
-    const agents = [...this.named.entries()]
-      .map(([value, name]) => ({ value, name }))
-      .sort((a, b) => a.name.localeCompare(b.name));
-    return [{ value: '', name: 'Every agent' }, ...agents];
+  // ── The filters ─────────────────────────────────────────────────
+
+  /** Narrow the list: the address changes, and the page follows it. */
+  apply(changes: Partial<MonitorFilters>): void {
+    const filters = { ...this.filters, ...changes };
+    const queryParams: Record<string, string> = {};
+    for (const [key, value] of Object.entries(filters)) if (value) queryParams[key] = value;
+    void this.router.navigate(['/monitoring', this.view], { queryParams, replaceUrl: true });
   }
 
-  /** What is listed: all that was read, or of the connections only
-   *  the ones refused or not reached. */
-  get shown(): MonitorEvent[] {
-    if (this.view !== 'connections' || !this.refusedOnly) return this.events;
-    return this.events.filter(e => e['allowed'] === false || e['reached'] === false);
+  /** What the toolbar's boxes hold, applied. */
+  applyTyped(): void {
+    this.apply({ q: this.text.trim(), from: this.since, to: this.until });
   }
 
-  /** Narrows what was already read, so it needs no asking again. */
-  showRefusedOnly(only: boolean): void {
-    this.refusedOnly = only;
-    this.arrange();
-  }
+  clearFilters(): void { this.apply({ ...NO_FILTERS }); }
 
   get filtered(): boolean {
-    return !!(this.kind || this.agent || this.since || this.until || this.refusedOnly);
+    return Object.values(this.filters).some(Boolean);
   }
 
-  clearFilters(): void {
-    this.kind = '';
-    this.agent = '';
-    this.since = '';
-    this.until = '';
-    this.refusedOnly = false;
-    void this.reload();
+  /** The column's choices, each with what choosing it would show. */
+  get chosen(): Record<string, string> {
+    const { outcome, kind, agent, host } = this.filters;
+    return { outcome, kind, agent, host };
   }
 
-  toggle(event: MonitorEvent): void {
-    if (this.expanded.has(event)) this.expanded.delete(event);
-    else this.expanded.add(event);
+  choose(choice: { key: string; value: string }): void {
+    this.apply({ [choice.key]: choice.value });
   }
 
-  isOpen(event: MonitorEvent): boolean { return this.expanded.has(event); }
+  /** How it went, the kinds, the agents and, of connections, the hosts:
+   *  each with its count from the tally. A choice with none is left out
+   *  unless it is the one chosen. Worked out with each page read, so the
+   *  column is the same column between two. */
+  private columnsOf(): FilterGroup[] {
+    const tally = this.tally;
+    const outcomes = tally?.outcomes || {};
+    const count = (value?: number) => (tally ? value || 0 : undefined);
+    const connections = this.view === 'connections';
+    const kept = (item: FilterItem, key: keyof MonitorFilters) =>
+      !tally || !!item.count || this.filters[key] === item.value;
+
+    const wrong: FilterItem[] = [
+      { value: 'refused', name: 'Refused', count: count(outcomes.refused) },
+      { value: 'unreached', name: 'Not reached', count: count(outcomes.unreached) },
+      ...(connections ? [] : [{ value: 'failed', name: 'Failed', count: count(outcomes.failed) }]),
+    ].filter((item) => kept(item, 'outcome'));
+    const trouble = (outcomes.refused || 0) + (outcomes.unreached || 0) + (outcomes.failed || 0);
+    const groups: FilterGroup[] = [{
+      key: 'outcome',
+      required: true,
+      items: [
+        { value: '', name: connections ? 'Every connection' : 'Every event', count: count((outcomes.ok || 0) + trouble) },
+        { value: 'ok', name: connections ? 'Made' : 'Went fine', count: count(outcomes.ok) },
+        { value: 'trouble', name: connections ? 'Refused or not reached' : 'Went wrong', count: count(trouble), children: wrong },
+      ],
+    }];
+
+    if (!connections) {
+      groups.push({
+        key: 'kind', label: 'By kind',
+        items: MONITOR_KINDS.filter((kind) => kind.value)
+          .map((kind) => ({ value: kind.value, name: kind.name, count: count(tally?.kinds[kind.value]) }))
+          .filter((item) => kept(item, 'kind')),
+      });
+    }
+
+    const agents: FilterItem[] = (tally?.agents || []).map((agent) => ({
+      value: agent.agent, name: agent.name, count: agent.count, agent: { name: agent.name },
+    }));
+    const chosenAgent = this.filters.agent;
+    if (chosenAgent && !agents.some((item) => item.value === chosenAgent)) {
+      const name = this.events.find((event) => event.agent === chosenAgent)?.name || chosenAgent;
+      agents.push({ value: chosenAgent, name, count: count(0), agent: { name } });
+    }
+    if (agents.length) groups.push({ key: 'agent', label: 'By agent', items: agents });
+
+    if (connections) {
+      const hosts: FilterItem[] = (tally?.hosts || []).map((host) => ({
+        value: host.host, name: host.host, count: host.count,
+      }));
+      if (this.filters.host && !hosts.some((item) => item.value === this.filters.host)) {
+        hosts.push({ value: this.filters.host, name: this.filters.host, count: count(0) });
+      }
+      if (hosts.length) groups.push({ key: 'host', label: 'By destination', items: hosts });
+    }
+    return groups;
+  }
+
+  /** Of what is listed, how many went wrong, when the outcome is not
+   *  already chosen: "41 went wrong (1.7%)". */
+  get troubleLine(): string {
+    const tally = this.tally;
+    if (!tally || this.filters.outcome || !tally.matching) return '';
+    const outcomes = tally.outcomes;
+    const trouble = (outcomes.refused || 0) + (outcomes.unreached || 0) + (outcomes.failed || 0);
+    if (!trouble) return this.view === 'connections' ? 'none refused' : 'none went wrong';
+    const share = (trouble / tally.matching) * 100;
+    const percent = share < 1 ? share.toFixed(1) : Math.round(share).toString();
+    return `${trouble.toLocaleString()} ${this.view === 'connections' ? 'refused or not reached' : 'went wrong'} (${percent}%)`;
+  }
+
+  // ── Rows ────────────────────────────────────────────────────────
+
+  /** An event's own key: its time, which the runtime keeps apart for
+   *  each writer, and its kind. */
+  key(event: MonitorEvent): string { return `${event.at}|${event.kind}`; }
+
+  /** A group of several opens to its events; a group of one is that
+   *  event, and opens to its details. */
+  groupKey(group: MonitorGroup): string {
+    return group.events.length > 1 ? `group:${this.key(group.first)}` : this.key(group.first);
+  }
+
+  toggle(key: string): void {
+    if (this.expanded.has(key)) this.expanded.delete(key);
+    else this.expanded.add(key);
+  }
+
+  isOpen(key: string): boolean { return this.expanded.has(key); }
 
   // ── Words ───────────────────────────────────────────────────────
 
@@ -347,5 +513,5 @@ export class MonitoringComponent implements OnInit, OnDestroy {
     return `${Math.round((Number(value) || 0) * 100)}%`;
   }
 
-  details(event: MonitorEvent): string { return JSON.stringify(event, null, 2); }
+  fields(event: MonitorEvent): { name: string; value: string }[] { return monitorFields(event); }
 }

@@ -133,3 +133,52 @@ export function monitorTone(event: MonitorEvent): RecordTone {
     default: return 'muted';
   }
 }
+
+/** Rows alike and next to each other, newest first: what the row
+ *  shows is the newest of them. */
+export interface MonitorGroup {
+  first: MonitorEvent;
+  events: MonitorEvent[];
+}
+
+/** How long after its newest event a group still takes another, in
+ *  seconds. */
+const WITHIN_S = 60;
+
+/** What makes two events the same thing again: one agent's lines of
+ *  log, the same connection made or refused, the same job or program
+ *  ending the same way. */
+function sameness(event: MonitorEvent): string {
+  return [
+    event.kind, event.agent, monitorChip(event),
+    event['host'], event['port'], event['job'], event['program'],
+  ].join('|');
+}
+
+/** Events newest first, in groups: one joins the group before it when
+ *  it is the same thing, at most a minute older than the group's
+ *  newest. A burst of log lines is one row, opening to each line. */
+export function groupMonitor(events: MonitorEvent[]): MonitorGroup[] {
+  const groups: MonitorGroup[] = [];
+  for (const event of events) {
+    const last = groups[groups.length - 1];
+    const gap = last ? last.first.at - event.at : NaN;
+    if (last && sameness(last.first) === sameness(event) && gap >= 0 && gap <= WITHIN_S) {
+      last.events.push(event);
+    } else {
+      groups.push({ first: event, events: [event] });
+    }
+  }
+  return groups;
+}
+
+/** What a line holds, field by field, as it was written down: for its
+ *  details, under the time in full. */
+export function monitorFields(event: MonitorEvent): { name: string; value: string }[] {
+  return Object.entries(event)
+    .filter(([name]) => name !== 'at')
+    .map(([name, value]) => ({
+      name,
+      value: value !== null && typeof value === 'object' ? JSON.stringify(value) : String(value),
+    }));
+}

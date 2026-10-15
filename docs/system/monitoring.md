@@ -105,7 +105,7 @@ person through three actions of its own
 | Action | Answers |
 |---|---|
 | `Agents:Monitor:Usage` | what the agents are given, how much the agents' container holds, and what each of this organization's running agents uses; where the deployment has one organization, what each part of the platform holds too |
-| `Agents:Monitor:Events` | what happened, by kind and by agent, a page at a time; `since` and `until`, in seconds, keep it to the days asked for |
+| `Agents:Monitor:Events` | what happened, a page at a time: `kinds` is what the runtime reads; `kind`, `agent`, `outcome` (`ok`, `trouble`, `refused`, `unreached`, `failed`), `host` and `text` narrow what is shown; `since` and `until`, in seconds, keep it to the days asked for. With `tally`, the page comes with what the filters leave added up — how many, and of each kind, outcome, agent and host, each counted as if its own filter were not chosen — over the latest ten thousand events read, and says whether that was all |
 | `Agents:Monitor:Files` | what one of this organization's agents keeps |
 
 - **Each is a grant of its own.** No member holds one by default.
@@ -193,11 +193,20 @@ Three views:
   measured every half minute. A line says
   what agents are not held to in this install, where something is not.
   **Files** on an agent's row lists what it keeps.
-- **Events** — everything written down, by agent and by kind, each row
-  opening to the whole line.
-- **Connections** — the connections alone, made and refused, with what
-  passed and why one was refused; a box narrows to those refused or
-  not reached.
+- **Events** — everything written down, a hundred at a time, newer
+  and older. A column at the left narrows it by how it went, by kind
+  and by agent, each choice with how many it would show; a search
+  reads the words of a line (its agent, host, log line, command,
+  reason) whatever their case, and two dates keep it to days. Over the
+  rows, how many the filters leave and how many of those went wrong.
+  Alike lines next to each other — one agent's burst of log, the same
+  connection again — are one row with a count, opening to each; a line
+  opens to its fields as written down. The filters are in the address,
+  so a narrowed list can be sent or read again.
+- **Connections** — the connections alone, the same way: narrowed by
+  made, refused or not reached, by agent and by destination host, and
+  added up with the share refused or not reached and the bytes sent and
+  received.
 
 Nothing on the page changes an agent or what it is given.
 
@@ -210,7 +219,8 @@ Nothing on the page changes an agent or what it is given.
   refused the folder; in the stack of two containers.
 - `backend/tests/test_agent_monitoring.py` — the three actions against
   a stand-in for the runtime: who may look, two organizations kept
-  apart, pages, paths, and the platform's own parts.
+  apart, pages, filters, search and the tally, paths, and the
+  platform's own parts.
 - `backend/tests/test_assistant_transcript.py` — a person reading
   their own chat's assistant, and nobody reading another's.
 - `ai_runtime/tests/test_usage.py` — a container's own numbers.

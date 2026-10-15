@@ -7,7 +7,7 @@ import { Choice } from 'src/app/components/ui/radio-keys';
 import { AuthService } from 'src/app/services/auth.service';
 import { Webhook, WebhookExecution, WebhooksService } from 'src/app/services/webhooks.service';
 import { TRUST_CHOICES } from '../chat/chat-defaults';
-import { FIELD_TYPES, cardWord, copyText, postedLine, resultWord } from './webhooks-shared';
+import { FIELD_TYPES, cardWord, copyText, curlExample, postedLine, resultWord } from './webhooks-shared';
 
 type Tab = 'executions' | 'settings';
 
@@ -57,7 +57,7 @@ export class WebhookViewComponent implements OnChanges, OnDestroy {
   executions: WebhookExecution[] = [];
   private poll: ReturnType<typeof setTimeout> | null = null;
 
-  copied = false;
+  copied: '' | 'url' | 'curl' = '';
 
   constructor(private service: WebhooksService, private auth: AuthService) {}
 
@@ -67,7 +67,7 @@ export class WebhookViewComponent implements OnChanges, OnDestroy {
     if (before?.webhook_id !== this.webhook.webhook_id) {
       this.tab = 'executions';
       this.executions = [];
-      this.copied = false;
+      this.copied = '';
       void this.load();
     }
   }
@@ -150,7 +150,13 @@ export class WebhookViewComponent implements OnChanges, OnDestroy {
     return FIELD_TYPES.find((choice) => choice.value === type)?.name || type;
   }
 
-  async copyUrl(): Promise<void> {
-    this.copied = await copyText(this.url);
+  /** The whole call, as shown when the webhook was made, the secret
+   *  aside: that is shown once, so the command reads it from the shell. */
+  get curl(): string {
+    return curlExample(this.url, '$WEBHOOK_SECRET', this.webhook.fields || [], this.webhook.require_signature);
+  }
+
+  async copy(what: 'url' | 'curl'): Promise<void> {
+    this.copied = (await copyText(what === 'url' ? this.url : this.curl)) ? what : '';
   }
 }

@@ -11,7 +11,8 @@ where that is decided.
                             where the deployment is one organization's,
                             what each part of the platform holds too
     Agents:Monitor:Events   what happened: workers' lives, the helper's
-                            jobs, logs, connections, processes
+                            jobs, logs, connections, processes —
+                            narrowed, searched, and added up
     Agents:Monitor:Files    what one of this organization's agents keeps
     Agents:Monitor:Summary  what this organization's agents did in a
                             window, added up from the audit trail
@@ -29,6 +30,7 @@ organization did through it.
 
 from __future__ import annotations
 
+from collections import Counter
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
@@ -214,70 +216,115 @@ class MonitorController(AIController):
     # What happened
     # ------------------------------------------------------------------
 
+    #: How a thing went, as a person narrows to it: "trouble" is any of
+    #: the three that did not go well.
+    OUTCOMES = ("ok", "trouble", "refused", "unreached", "failed")
+    #: The longest search, in characters.
+    LONGEST_TEXT = 200
+    #: How many times the runtime is asked when the first page is added
+    #: up too: the latest this many thousand events are counted.
+    TALLY_ROUNDS = 10
+
     async def events(self, data, user):
+        """What happened, the latest first, a page at a time. `kinds`
+        is what the runtime reads; `kind`, `agent`, `outcome`, `host`
+        and `text` narrow what is shown; `since` and `until`, in
+        seconds, keep it to the days asked for. With `tally`, the first
+        page comes with what the filters leave, added up."""
         payload = self._payload(data)
-        kinds = payload.get("kinds")
-        if kinds is not None and not (
-                isinstance(kinds, list)
-                and all(isinstance(kind, str) for kind in kinds)):
-            return self._fail(data, "invalid_request",
-                              "kinds must be a list of names.")
-        kinds = [kind for kind in kinds or [] if kind in self.KINDS]
-        agent = str(payload.get("agent") or "")
         mine = self._mine(user)
-        if agent and agent not in mine:
-            return self._fail(data, "not_found",
-                              "That agent is not installed here.", 404)
-        before = payload.get("before")
-        if not self._is_time(before):
-            return self._fail(data, "invalid_request",
-                              "before is the time a previous page ended at.")
-        # The days asked for: nothing from before `since`, nothing from
-        # `until` on. The log is read the latest first, so `until` is
-        # where the reading starts and `since` is where it ends.
-        since, until = payload.get("since"), payload.get("until")
-        if not (self._is_time(since) and self._is_time(until)):
-            return self._fail(data, "invalid_request",
-                              "since and until are times, in seconds.")
+        asked = self._filters(payload, mine)
+        if isinstance(asked, tuple):
+            return self._fail(data, *asked)
+        before, since, until = asked["before"], asked["since"], asked["until"]
         if until is not None and (before is None or before > until):
             before = until
         limit = self._limit(data, self.DEFAULT_LIMIT, self.MAX_LIMIT)
         alone = self._alone()
+        tally = _Tally() if payload.get("tally") is True else None
+        # Adding up reads every kind and agent the counts choose among;
+        # a page alone has the runtime read only what it shows.
+        kinds = asked["kinds"] if tally or not asked["kind"] else [asked["kind"]]
+        agent = "" if tally else asked["agent"]
 
         found: List[Dict[str, Any]] = []
         more = True
         try:
-            for _ in range(self.ROUNDS):
-                asked = await self.runtime.events(
-                    self.ASKED, kinds, agent, before)
-                more = len(asked) >= self.ASKED
+            for _ in range(self.TALLY_ROUNDS if tally else self.ROUNDS):
+                read = await self.runtime.events(self.ASKED, kinds, agent, before)
+                more = len(read) >= self.ASKED
                 if since is not None:
-                    recent = [event for event in asked
+                    recent = [event for event in read
                               if not isinstance(event, dict)
                               or (event.get("at") or 0) >= since]
                     # An event from before `since`: all after it are older.
-                    more = more and len(recent) == len(asked)
-                    asked = recent
-                for event in asked:
-                    if isinstance(event, dict) and self._shown(event, mine, alone):
-                        found.append(self._named(event, mine))
-                if asked:
+                    more = more and len(recent) == len(read)
+                    read = recent
+                for event in read:
+                    if not (isinstance(event, dict) and self._shown(event, mine, alone)):
+                        continue
+                    event = self._named(event, mine)
+                    if tally:
+                        tally.add(event, asked, mine)
+                    if len(found) <= limit and _matches(event, asked):
+                        found.append(event)
+                if read:
                     # How far back was read: where the next asking of
                     # the runtime, or the next page, goes on from.
-                    before = asked[-1].get("at")
-                if not more or len(found) >= limit:
+                    before = read[-1].get("at")
+                if not more or (not tally and len(found) >= limit):
                     break
         except MonitorError as exc:
             return self._fail(data, "runtime_unavailable", str(exc), 503)
         page = found[:limit]
-        return self._respond(data, {
+        said: Dict[str, Any] = {
             "events": page,
             # Where the next page begins: after the last one shown, or
-            # — nothing of this organization's in what was read — after
+            # — nothing more of what was asked in what was read — after
             # the last one read.
             "next_before": (page[-1].get("at") if len(found) > limit
                             else before if more else None),
-        })
+        }
+        if tally:
+            said["tally"] = tally.said(mine, complete=not more, reached=before)
+        return self._respond(data, said)
+
+    def _filters(self, payload: Dict[str, Any], mine: Dict[str, str]):
+        """What a person asked to be shown, checked; or why it cannot
+        be, as (code, message, status)."""
+        kinds = payload.get("kinds")
+        if kinds is not None and not (
+                isinstance(kinds, list)
+                and all(isinstance(kind, str) for kind in kinds)):
+            return "invalid_request", "kinds must be a list of names.", 400
+        words = {name: payload.get(name) or "" for name in
+                 ("kind", "agent", "outcome", "host", "text")}
+        if not all(isinstance(value, str) for value in words.values()):
+            return ("invalid_request",
+                    "kind, agent, outcome, host and text are words.", 400)
+        if words["kind"] and words["kind"] not in self.KINDS:
+            return ("invalid_request",
+                    f"kind is one of {', '.join(self.KINDS)}.", 400)
+        if words["agent"] and words["agent"] not in mine:
+            return "not_found", "That agent is not installed here.", 404
+        if words["outcome"] and words["outcome"] not in self.OUTCOMES:
+            return ("invalid_request",
+                    f"outcome is one of {', '.join(self.OUTCOMES)}.", 400)
+        if not self._is_time(payload.get("before")):
+            return ("invalid_request",
+                    "before is the time a previous page ended at.", 400)
+        if not (self._is_time(payload.get("since"))
+                and self._is_time(payload.get("until"))):
+            return "invalid_request", "since and until are times, in seconds.", 400
+        return {
+            "kinds": [kind for kind in kinds or [] if kind in self.KINDS],
+            "kind": words["kind"], "agent": words["agent"],
+            "outcome": words["outcome"],
+            "host": words["host"].strip().lower(),
+            "text": words["text"].strip().lower()[: self.LONGEST_TEXT],
+            "before": payload.get("before"),
+            "since": payload.get("since"), "until": payload.get("until"),
+        }
 
     @staticmethod
     def _is_time(value: Any) -> bool:
@@ -339,3 +386,103 @@ class MonitorController(AIController):
                 break
         return {"path": path, "bytes": int(entry.get("bytes") or 0),
                 "modified": entry.get("modified")}
+
+
+# ----------------------------------------------------------------------
+# What happened, narrowed and added up
+# ----------------------------------------------------------------------
+
+#: What a search reads of an event: its words, never its numbers.
+SEARCHED = ("kind", "agent", "name", "host", "why", "line", "command",
+            "program", "job", "where", "refused")
+
+
+def _outcome(event: Dict[str, Any]) -> str:
+    """How it went: ok, or refused, unreached or failed."""
+    kind = event.get("kind")
+    if kind == "connection":
+        if event.get("allowed") is False:
+            return "refused"
+        return "unreached" if event.get("reached") is False else "ok"
+    if kind in ("helper", "program"):
+        return "ok" if event.get("code") == 0 else "failed"
+    return "failed" if kind in ("worker.failed", "memory") else "ok"
+
+
+def _matches(event: Dict[str, Any], asked: Dict[str, Any], but: str = "") -> bool:
+    """Whether the filters leave an event. `but` names the one not
+    applied, to count what choosing another of it would show."""
+    if asked["kinds"] and event.get("kind") not in asked["kinds"]:
+        return False
+    if but != "kind" and asked["kind"] and event.get("kind") != asked["kind"]:
+        return False
+    if but != "agent" and asked["agent"] and str(event.get("agent") or "") != asked["agent"]:
+        return False
+    if but != "outcome" and asked["outcome"]:
+        outcome = _outcome(event)
+        wanted = asked["outcome"]
+        if outcome != wanted and not (wanted == "trouble" and outcome != "ok"):
+            return False
+    if but != "host" and asked["host"] and str(event.get("host") or "").lower() != asked["host"]:
+        return False
+    if asked["text"]:
+        words = " ".join(str(event.get(field) or "") for field in SEARCHED)
+        return asked["text"] in words.lower()
+    return True
+
+
+class _Tally:
+    """What the filters leave, added up as the log is read: how many,
+    and of each kind, outcome, agent and host — each counted as if its
+    own filter were not chosen, so the other choices stay in sight —
+    and what the connections among them carried."""
+
+    FACETS = ("kind", "outcome", "agent", "host")
+    #: The agents and hosts named, the most first.
+    TOP = 12
+
+    def __init__(self):
+        self.matching = 0
+        self.counts: Dict[str, Counter] = {facet: Counter() for facet in self.FACETS}
+        self.sent = self.received = 0
+
+    def add(self, event: Dict[str, Any], asked: Dict[str, Any],
+            mine: Dict[str, str]) -> None:
+        agent = str(event.get("agent") or "")
+        facets = {
+            "kind": event.get("kind"),
+            "outcome": _outcome(event),
+            # Only an agent a person can choose: never the platform's.
+            "agent": agent if agent in mine else "",
+            "host": (str(event.get("host") or "").lower()
+                     if event.get("kind") == "connection" else ""),
+        }
+        for facet, value in facets.items():
+            if value and _matches(event, asked, but=facet):
+                self.counts[facet][value] += 1
+        if _matches(event, asked):
+            self.matching += 1
+            if event.get("kind") == "connection":
+                self.sent += _number(event.get("sent"))
+                self.received += _number(event.get("received"))
+
+    def said(self, mine: Dict[str, str], complete: bool,
+             reached: Optional[float]) -> Dict[str, Any]:
+        return {
+            "matching": self.matching,
+            # Whether all that was asked was read, or only back to
+            # `reached`: the counts are then of the latest.
+            "complete": complete,
+            "reached": None if complete else reached,
+            "kinds": dict(self.counts["kind"]),
+            "outcomes": dict(self.counts["outcome"]),
+            "agents": [{"agent": agent, "name": mine.get(agent, agent), "count": count}
+                       for agent, count in self.counts["agent"].most_common(self.TOP)],
+            "hosts": [{"host": host, "count": count}
+                      for host, count in self.counts["host"].most_common(self.TOP)],
+            "sent": self.sent, "received": self.received,
+        }
+
+
+def _number(value: Any) -> int:
+    return int(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else 0
