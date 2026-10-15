@@ -2,6 +2,7 @@ import { Routes } from '@angular/router';
 import { ChatHomeComponent } from '../../pages/app/ai/chat/chat-home/chat-home.component';
 import { ChatDetailComponent } from '../../pages/app/ai/chat/chat-detail/chat-detail.component';
 import { SchedulesComponent } from '../../pages/app/ai/schedules/schedules.component';
+import { WebhooksComponent } from '../../pages/app/ai/webhooks/webhooks.component';
 import { permissionGuard } from '../../guards/permission.guard';
 
 export const AIRoutes: Routes = [
@@ -39,6 +40,20 @@ export const AIRoutes: Routes = [
     canActivate: [permissionGuard],
     data: { requiredAction: 'ai:activity:list' },
     // One schedule, opened, is a view of the list's page.
+    children: [
+      { path: '', pathMatch: 'full', children: [] },
+      { path: ':id', children: [] },
+    ],
+  },
+  // Webhooks: the doors other services post events to, each heard in
+  // a standing chat; and those colleagues shared, to watch.
+  {
+    path: 'webhooks',
+    title: 'Webhooks',
+    component: WebhooksComponent,
+    canActivate: [permissionGuard],
+    data: { requiredAction: 'settings:webhook:list' },
+    // One webhook, opened, is a view of the list's page.
     children: [
       { path: '', pathMatch: 'full', children: [] },
       { path: ':id', children: [] },

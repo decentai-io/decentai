@@ -1,0 +1,78 @@
+/* Settings › Notifications out, and the dialog of what was sent. The
+   list, the rows, the switch, the chips and the dialog shell are the
+   shared ones; here is how a row says a notification, and a send. */
+
+/* ── A row ─────────────────────────────────────────────────────────── */
+
+.hook-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 6px;
+  min-width: 0;
+}
+
+.hook-facts > * + *::before {
+  content: '·';
+  margin-right: 6px;
+  color: var(--ink-3);
+}
+
+.hook-url {
+  display: inline-block;
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+
+.hook-link {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.hook-pointer {
+  margin-bottom: 16px;
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+/* ── Deliveries ────────────────────────────────────────────────────── */
+
+.hook-deliveries {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.hook-delivery {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 0;
+}
+
+.hook-delivery + .hook-delivery {
+  border-top: 1px solid var(--line);
+}
+
+.hook-delivery-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.hook-delivery-why {
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+  overflow-wrap: anywhere;
+}

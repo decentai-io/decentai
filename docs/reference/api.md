@@ -233,7 +233,11 @@ unsigned.
 
 The pages' doors, on the gateway, are `Settings:Webhook:*` and
 `Settings:Outbound:*` ([actions](actions.md#webhooks)), answering in
-the envelope.
+the envelope. A webhook's own page reads `Settings:Webhook:Get` and
+`:Executions` (each call with the fields posted and what the chat did
+after it), and its owner has `:Test`, `:Share` (view only) and
+`:Transfer` (hand it, and its chat, to a colleague)
+([webhooks](../system/webhooks.md#its-page)).
 
 ## Health
 

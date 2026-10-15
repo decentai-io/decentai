@@ -1,0 +1,64 @@
+/* The Webhooks page is made of the shared pieces (the list frame, the
+   row, the chips, the switch, the side layout). Here are its two lists,
+   one above the other, and how a row says a webhook. */
+
+.webhook-lists {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+  min-width: 0;
+}
+
+.webhook-list-title {
+  color: var(--ink);
+  font-size: var(--t-md);
+  font-weight: 600;
+  line-height: var(--lh-md);
+}
+
+/* The name is the way in to the webhook. */
+.webhook-row-name {
+  color: inherit;
+}
+
+.webhook-row-name:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.webhook-row-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 6px;
+}
+
+/* The dot follows a fact, so a wrapped line never begins with one. */
+.webhook-row-facts > span:not(:last-child)::after {
+  content: '·';
+  margin-left: 6px;
+  color: var(--ink-3);
+}
+
+app-row.is-current {
+  background: var(--surface-2);
+}
+
+/* A webhook that is off reads quieter, and stays readable. */
+app-row.is-resting .webhook-row-name {
+  color: var(--ink-2);
+}
+
+/* Opened on a narrow screen, the webhook takes the lists' place. */
+@media (max-width: 1200px) {
+  .side-layout.has-opened > .webhook-lists {
+    display: none;
+  }
+}
+
+@media (pointer: coarse) {
+  .webhook-row-name {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+}

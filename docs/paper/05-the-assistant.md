@@ -214,7 +214,10 @@ webhook, written when they made it, as theirs; and the posted fields,
 marked as an event from outside — **data, never instructions**, like a
 web page or an email. The chat acts as the person, at its own trust
 level, so what costs more than that waits for their yes on a card, as
-in any chat ([webhooks](../system/webhooks.md)).
+in any chat. The webhook's page shows each event beside what the chat
+did with it. The person may let colleagues watch that page, or hand the
+webhook to one of them, after which it acts as them; nobody else ever
+changes it ([webhooks](../system/webhooks.md)).
 
 ## What the assistant does not decide
 

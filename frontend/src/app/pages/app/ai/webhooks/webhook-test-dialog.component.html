@@ -1,0 +1,28 @@
+<h2 mat-dialog-title>Send a test event to {{ webhook.name }}</h2>
+<form (ngSubmit)="send()">
+  <mat-dialog-content>
+    <p class="dialog-note">
+      It goes the way a caller’s event does: its chat hears it with the instruction and acts on it, for real. It is marked Test in the executions.
+    </p>
+    <div class="form">
+      <app-field label="Body" help="One JSON object. Replace the values with ones its chat can act on.">
+        <textarea class="input mono" name="test-body" rows="10" spellcheck="false" cdkFocusInitial
+                  [attr.aria-invalid]="error ? 'true' : null" [(ngModel)]="body"></textarea>
+      </app-field>
+
+      <p class="hook-help" *ngIf="!webhook.fields.length">It has no fields, so the body is an empty object.</p>
+      <ul class="hook-help test-fields" *ngIf="webhook.fields.length">
+        <li *ngFor="let field of webhook.fields">
+          <code class="hook-inline">{{ field.name }}</code>
+          {{ typeWord(field.type) }}{{ field.required ? ", required" : "" }}<ng-container *ngIf="field.description">: {{ field.description }}</ng-container>
+        </li>
+      </ul>
+
+      <p class="form-notice is-error" role="alert" *ngIf="error">{{ error }}</p>
+    </div>
+  </mat-dialog-content>
+  <mat-dialog-actions>
+    <button class="btn" type="button" [disabled]="sending" (click)="dialog.close(false)">Cancel</button>
+    <button class="btn primary" type="submit" [disabled]="sending">{{ sending ? "Sending…" : "Send" }}</button>
+  </mat-dialog-actions>
+</form>

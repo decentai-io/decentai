@@ -11,7 +11,7 @@ import { MemoryComponent } from '../../pages/app/settings/memory/memory.componen
 import { NotificationsComponent } from '../../pages/app/settings/notifications/notifications.component';
 import { RoutingComponent } from '../../pages/app/settings/routing/routing.component';
 import { SafetyComponent } from '../../pages/app/settings/safety/safety.component';
-import { WebhooksComponent } from '../../pages/app/settings/webhooks/webhooks.component';
+import { OutboundComponent } from '../../pages/app/settings/outbound/outbound.component';
 import { SpeechComponent } from '../../pages/app/settings/speech/speech.component';
 import { SettingsComponent } from '../../pages/app/settings/settings.component';
 import { SettingsShellComponent } from '../../pages/app/settings/settings-shell.component';
@@ -43,7 +43,7 @@ const pageComponents: Record<string, Type<unknown>> = {
   notifications: NotificationsComponent,
   memory: MemoryComponent,
   keys: ApiKeysComponent,
-  webhooks: WebhooksComponent,
+  webhooks: OutboundComponent,
   providers: SettingsComponent,
   speech: SpeechComponent,
   routing: RoutingComponent,

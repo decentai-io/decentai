@@ -1,12 +1,12 @@
 import { Choice } from 'src/app/components/ui/radio-keys';
 import {
-  OutboundFormat, SendState, WebhookField, WebhookFieldType, WebhookOutcome,
+  OutboundFormat, SendState, WebhookExecution, WebhookField, WebhookFieldType,
 } from 'src/app/services/webhooks.service';
 
 /**
- * What the Webhooks page and its dialogs say, kept in one place: the
- * field types, the events and formats in words, how a delivery went,
- * and the examples a caller copies.
+ * What the Webhooks page, its dialogs and Settings › Notifications out
+ * say, kept in one place: the field types, what an event came to, the
+ * events and formats out in words, and the examples a caller copies.
  */
 
 /** A field's name, as the backend takes it. */
@@ -42,11 +42,38 @@ function exampleValue(type: WebhookFieldType): unknown {
   }
 }
 
-/** A body that fits the fields: every one of them, with a value of its type. */
-export function exampleBody(fields: WebhookField[]): string {
+/** A body that fits the fields: every one of them, with a value of its
+ *  type; laid out over lines when `indent` is given. */
+export function exampleBody(fields: WebhookField[], indent?: number): string {
   const body: Record<string, unknown> = {};
   for (const field of fields) body[field.name] = exampleValue(field.type);
-  return JSON.stringify(body);
+  return JSON.stringify(body, null, indent);
+}
+
+// ── What an event came to ────────────────────────────────────────────
+
+/** What the chat did with an event, in words and the chip's tone. */
+export function resultWord(execution: WebhookExecution): { word: string; tone: string } {
+  switch (execution.result) {
+    case 'answered': return { word: 'Answered', tone: 'accent' };
+    case 'waiting': return { word: 'Waiting for approval', tone: 'warn' };
+    case 'working': return { word: 'Working', tone: '' };
+    case 'not delivered': return { word: 'Not delivered', tone: 'warn' };
+    default: return { word: 'Refused', tone: 'danger' };
+  }
+}
+
+/** A card's state in a word: approved, denied, answered, expired, or
+ *  waiting while nobody has decided it. */
+export function cardWord(status: string): string {
+  return status === 'pending' ? 'waiting' : status || 'unknown';
+}
+
+/** What was posted, one line: "ticket_id: 42 · title: Printer down". */
+export function postedLine(data: Record<string, unknown> | null | undefined): string {
+  return Object.entries(data || {})
+    .map(([name, value]) => `${name}: ${typeof value === 'string' ? value : JSON.stringify(value)}`)
+    .join(' · ');
 }
 
 /** A call a person can paste into a terminal. A webhook that requires
@@ -92,16 +119,6 @@ export const FORMAT_WORDS: Record<OutboundFormat, { name: string; hint: string }
 
 export function formatName(format: string): string {
   return FORMAT_WORDS[format as OutboundFormat]?.name ?? format;
-}
-
-/** A delivery in, in words and the chip's tone. */
-export function outcomeWord(outcome: WebhookOutcome): { word: string; tone: string } {
-  switch (outcome) {
-    case 'delivered': return { word: 'Delivered', tone: 'accent' };
-    case 'accepted': return { word: 'Accepted', tone: '' };
-    case 'not delivered': return { word: 'Not delivered', tone: 'warn' };
-    default: return { word: 'Refused', tone: 'danger' };
-  }
 }
 
 /** A send out, in words and the chip's tone. */

@@ -1,43 +1,6 @@
-/* The Webhooks page and its dialogs. The list, the rows, the fields,
-   the switch, the chips and the dialog shell are the shared ones; here
-   is how a row says a webhook or a notification, the fields editor,
-   and what is shown once. */
-
-/* ── A row ─────────────────────────────────────────────────────────── */
-
-.hook-facts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0 6px;
-  min-width: 0;
-}
-
-.hook-facts > * + *::before {
-  content: '·';
-  margin-right: 6px;
-  color: var(--ink-3);
-}
-
-.hook-prefix {
-  color: var(--ink);
-  font-family: var(--font-mono);
-  font-size: var(--t-xs);
-}
-
-.hook-url {
-  display: inline-block;
-  max-width: 320px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  vertical-align: bottom;
-}
-
-.hook-link {
-  color: inherit;
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
+/* The webhook dialog, and the outbound one beside it in Settings: the
+   fields editor, and what is shown once. The fields, the checkboxes and
+   the dialog shell are the shared ones. */
 
 /* ── The fields editor ─────────────────────────────────────────────── */
 
@@ -143,40 +106,12 @@
   color: var(--warn-ink);
 }
 
-/* ── Deliveries ────────────────────────────────────────────────────── */
 
-.hook-deliveries {
+/* ── A test event ──────────────────────────────────────────────────── */
+
+.test-fields {
   display: flex;
   flex-direction: column;
-  margin: 0;
-  padding: 0;
+  gap: 4px;
   list-style: none;
-}
-
-.hook-delivery {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 10px 0;
-}
-
-.hook-delivery + .hook-delivery {
-  border-top: 1px solid var(--line);
-}
-
-.hook-delivery-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  color: var(--ink);
-  font-size: var(--t-sm);
-  line-height: var(--lh-sm);
-}
-
-.hook-delivery-why {
-  color: var(--ink-2);
-  font-size: var(--t-sm);
-  line-height: var(--lh-sm);
-  overflow-wrap: anywhere;
 }

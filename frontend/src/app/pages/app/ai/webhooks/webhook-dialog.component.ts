@@ -8,8 +8,8 @@ import { LlmConnection, SettingsLlmService } from 'src/app/services/settings-llm
 import {
   Webhook, WebhookDraft, WebhookField, WebhooksService,
 } from 'src/app/services/webhooks.service';
-import { ChatModel } from '../../ai/chat/chat-model-picker/chat-model-picker.component';
-import { TRUST_CHOICES } from '../../ai/chat/chat-defaults';
+import { ChatModel } from '../chat/chat-model-picker/chat-model-picker.component';
+import { TRUST_CHOICES } from '../chat/chat-defaults';
 import {
   FIELD_TYPES, HMAC_LINE, copyText, curlExample, fieldNameProblem,
 } from './webhooks-shared';
@@ -39,7 +39,7 @@ export interface WebhookDialogData {
   selector: 'app-webhook-dialog',
   standalone: false,
   templateUrl: './webhook-dialog.component.html',
-  styleUrl: './webhooks.component.css',
+  styleUrl: './webhook-dialog.component.css',
 })
 export class WebhookDialogComponent implements OnInit {
   readonly types = FIELD_TYPES;
@@ -89,7 +89,7 @@ export class WebhookDialogComponent implements OnInit {
       this.prompt = from.prompt;
       this.fields = (from.fields || []).map((field) => ({ ...field }));
       this.requireSignature = from.require_signature;
-      this.trustLevel = Number.isInteger(from.chat?.trust_level) ? from.chat.trust_level as number : null;
+      this.trustLevel = Number.isInteger(from.chat?.trust_level) ? from.chat?.trust_level as number : null;
       this.connectionId = from.chat?.llm?.secret_ref || '';
       this.model = from.chat?.llm?.model || '';
     }

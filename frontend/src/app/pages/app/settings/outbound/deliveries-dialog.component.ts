@@ -6,16 +6,15 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { EmptyComponent } from 'src/app/components/ui/empty.component';
 import { fullDate, relativeDate } from 'src/app/components/ui/dates';
 import { WebhooksService } from 'src/app/services/webhooks.service';
-import { eventName, outcomeWord, stateWord } from './webhooks-shared';
+import { eventName, stateWord } from '../../ai/webhooks/webhooks-shared';
 
-/** Whose deliveries: a webhook's events in, or a notification's sends out. */
+/** Whose sends: one notification out. */
 export interface DeliveriesDialogData {
-  kind: 'in' | 'out';
   id: string;
   name: string;
 }
 
-/** One line of the list, in words, whichever way it went. */
+/** One line of the list, in words. */
 interface DeliveryLine {
   id: string;
   word: string;
@@ -27,15 +26,15 @@ interface DeliveryLine {
 }
 
 /**
- * The latest deliveries of a webhook in (what arrived, and whether its
- * chat heard it or the door refused it, and why) or of a notification
- * out (what was sent, how many tries, what the receiver answered).
+ * The latest sends of a notification out: what was sent, how many
+ * tries, what the receiver answered. (What a webhook in heard is its
+ * own page's, under AI › Webhooks.)
  */
 @Component({
   selector: 'app-deliveries-dialog',
   standalone: true,
   imports: [NgIf, NgFor, NgClass, MatDialogModule, MatTooltipModule, EmptyComponent],
-  styleUrl: './webhooks.component.css',
+  styleUrl: './outbound.component.css',
   template: `
     <h2 mat-dialog-title>Deliveries of {{ data.name }}</h2>
     <mat-dialog-content>
@@ -46,9 +45,8 @@ interface DeliveryLine {
       <app-empty *ngIf="!loading && problem" icon="triangle-alert" title="The deliveries could not be read" [line]="problem">
         <button class="btn" type="button" (click)="load()">Try again</button>
       </app-empty>
-      <app-empty *ngIf="!loading && !problem && !lines.length" [icon]="data.kind === 'in' ? 'inbox' : 'send'"
-                 [title]="data.kind === 'in' ? 'Nothing has arrived yet' : 'Nothing has been sent yet'"
-                 [line]="data.kind === 'in' ? 'Events show here as they arrive, refused ones too.' : 'Notifications show here as they are sent.'"></app-empty>
+      <app-empty *ngIf="!loading && !problem && !lines.length" icon="send"
+                 title="Nothing has been sent yet" line="Notifications show here as they are sent."></app-empty>
       <ul class="hook-deliveries" *ngIf="!loading && lines.length">
         <li class="hook-delivery" *ngFor="let line of lines">
           <span class="hook-delivery-head">
@@ -84,43 +82,23 @@ export class DeliveriesDialogComponent implements OnInit {
     this.loading = true;
     this.problem = '';
     try {
-      this.lines = this.data.kind === 'in' ? await this.received() : await this.sent();
+      const page = await this.service.sends(this.data.id);
+      if (page.error) this.problem = page.error;
+      this.lines = page.deliveries.map((one) => {
+        const said = stateWord(one.state);
+        const tries = one.attempts === 1 ? '1 try' : `${one.attempts || 0} tries`;
+        const answered = one.last_status ? `, answered ${one.last_status}` : '';
+        return {
+          id: one.send_id, word: said.word, tone: said.tone,
+          what: `${eventName(one.event)} · ${tries}${answered}`,
+          at: relativeDate(one.created_at), atInFull: fullDate(one.created_at),
+          why: one.last_error || '',
+        };
+      });
     } catch {
       this.problem = 'Could not reach the server. Check your connection.';
     } finally {
       this.loading = false;
     }
-  }
-
-  private async received(): Promise<DeliveryLine[]> {
-    const page = await this.service.deliveries(this.data.id);
-    if (page.error) this.problem = page.error;
-    return page.deliveries.map((one) => {
-      const said = outcomeWord(one.outcome);
-      const status = one.status ? `answered ${one.status}` : '';
-      const key = one.idempotency_key ? `key ${one.idempotency_key}` : '';
-      return {
-        id: one.delivery_id, word: said.word, tone: said.tone,
-        what: [status, key].filter(Boolean).join(' · '),
-        at: relativeDate(one.received_at), atInFull: fullDate(one.received_at),
-        why: one.reason || '',
-      };
-    });
-  }
-
-  private async sent(): Promise<DeliveryLine[]> {
-    const page = await this.service.sends(this.data.id);
-    if (page.error) this.problem = page.error;
-    return page.deliveries.map((one) => {
-      const said = stateWord(one.state);
-      const tries = one.attempts === 1 ? '1 try' : `${one.attempts || 0} tries`;
-      const answered = one.last_status ? `, answered ${one.last_status}` : '';
-      return {
-        id: one.send_id, word: said.word, tone: said.tone,
-        what: `${eventName(one.event)} · ${tries}${answered}`,
-        at: relativeDate(one.created_at), atInFull: fullDate(one.created_at),
-        why: one.last_error || '',
-      };
-    });
   }
 }

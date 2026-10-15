@@ -67,7 +67,7 @@ describe('SafetyComponent', () => {
     await component.load();
 
     component.draft.value.webhooks = 'blocked';
-    expect(component.webhooksMeaning).toContain('Nobody');
+    expect(component.webhooksMeaning).toContain('No webhook takes an event');
     await component.save();
 
     expect(calls['saved'].webhooks).toBe('blocked');

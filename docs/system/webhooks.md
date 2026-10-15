@@ -1,6 +1,8 @@
 # Webhooks
 
-Two directions, one page (**Settings → Webhooks**, a person's own):
+Two directions, on two pages of a person's own — inbound under
+**AI → Webhooks**, beside Schedules; outbound under **Settings →
+Notifications out**:
 
 - **Inbound** — an outside system posts an event, and a chat of the
   person's wakes and acts on it: a payment arrived, a ticket opened, a
@@ -11,7 +13,9 @@ Two directions, one page (**Settings → Webhooks**, a person's own):
 
 Both are a person's own. Any member may make them, for themselves; the
 actions are in the baseline (below), and nothing of anybody else's is in
-reach. An organization may turn inbound webhooks off on its Safety page.
+reach. An inbound webhook may be shown to colleagues, to watch what it
+does, and handed to one of them; it is never changed by two people. An
+organization may turn inbound webhooks off on its Safety page.
 
 ## Inbound
 
@@ -178,6 +182,45 @@ level runs such a proposal without a card when it is within the
 person's grants. A webhook that only needs to read is best left at
 level 0.
 
+### Its page
+
+Each webhook has a page (`/ai/webhooks/<id>`): what it is, and what
+each event came to.
+
+- **Executions** (`Settings:Webhook:Executions`): every call, newest
+  first, for 30 days. An accepted one shows the fields posted, whether
+  it came from a caller or was a test from the page, and what its chat
+  did after it — the assistant's reply, how long it took, and the cards
+  it opened and how they stand. Its result is *answered*, *waiting* (a
+  card is still pending), *working* (nothing said yet) or *not
+  delivered*. A refused call shows its status and why.
+
+  What the chat did is read from the chat's own record — its messages
+  and cards between this event and the next accepted one
+  (`WebhookRuns`, `webhook_controller.py`) — not tagged as it happens.
+  So two events that arrive while the chat is still on the first share
+  that stretch: the reply shows under the event it followed.
+- **Send a test event** (`Settings:Webhook:Test`, owner only): fields
+  given on the page, checked against the webhook's fields, then the
+  same road as a call (`accept`, `backend/server/routes/hooks.py`) —
+  recorded with source `test`, on the trail as `webhook.received`, and
+  into the chat. A webhook that is off, an owner who pressed Stop
+  everything, or an organization that blocked webhooks refuses it.
+- **Share** (`Settings:Webhook:Share`, owner only): groups of the
+  owner's and people who share a group with them (the same reach as a
+  personal agent, `Sharing(PERSONAL, …)` in
+  `backend/server/governance/sharing.py`). They see the webhook and its
+  executions — never its secret's prefix or its chat's settings — and
+  change nothing. The chat itself is not shared: its link is the
+  owner's alone.
+- **Hand over** (`Settings:Webhook:Transfer`, owner only): to an active
+  member of the organization (`successor_or_error`), who must have room
+  under the twenty. The webhook and its standing chat become theirs, and
+  its events run as them — their access, their Stop everything — from
+  the next one on. The secret stays, so the caller need not change. The
+  one who handed it over keeps nothing of it, unless it was shared with
+  a group of theirs.
+
 ## Outbound
 
 ### A subscription
@@ -255,16 +298,19 @@ it:
 
 ## Who may do what
 
-Twelve actions, `settings:webhook:*` (list, create, update, rotate,
-delete, deliveries) and `settings:outbound:*` (list, create, update,
-delete, test, deliveries), in the **baseline** every member holds
-(`BASELINE_ACTIONS`, revision 28, `backend/server/authentication/catalog.py`;
+Seventeen actions, `settings:webhook:*` (list, get, create, update,
+rotate, delete, deliveries, executions, test, share, transfer) and
+`settings:outbound:*` (list, create, update, delete, test, deliveries),
+in the **baseline** every member holds (`BASELINE_ACTIONS`, revision
+29, `backend/server/authentication/catalog.py`;
 [actions](../reference/actions.md#webhooks)). Like every baseline
 action they are offered once: an organization that unticks one keeps
 it unticked. Every read and write names the caller, so another
-person's webhook is indistinguishable from one that does not exist.
-The trail carries `webhook.created`, `.changed`, `.rotated`,
-`.deleted`, `.received`, `.refused`, `.subscribed`,
+person's webhook is indistinguishable from one that does not exist;
+one shared with the caller answers `list`, `get` and `executions`, and
+every other action 404s. The trail carries `webhook.created`,
+`.changed`, `.rotated`, `.deleted`, `.received`, `.refused`, `.shared`,
+`.transferred`, `.subscribed`,
 `.subscription_changed` and `.unsubscribed`.
 
 An organization's **Safety** page has *Receiving webhooks* — *People
@@ -296,6 +342,11 @@ chats ([ownership](ownership.md)).
 - **Try a chat again.** An event the chat could not be reached for is
   `not delivered`, and stays so; the caller has had its 202.
 - **Many chats per webhook.** One standing chat each.
+- **Tie a reply to its event.** Executions are read from the chat's
+  record between events, so events close together share what the chat
+  did (above).
+- **Share to change.** A shared webhook is watched, not edited; to give
+  someone the say, hand it over.
 - **Organization-wide outbound events.** Per person only.
 - **Agents receiving webhooks themselves.** An agent declaring in its
   manifest that it accepts events is a later step.
@@ -308,9 +359,10 @@ chats ([ownership](ownership.md)).
 |---|---|
 | the door, `POST /hooks/<id>` | `backend/server/routes/hooks.py`; Caddy passes `/hooks/*` to the backend (`frontend/Caddyfile`) |
 | the stores, the field check and the signature | `backend/database/stores/webhooks.py` — `webhooks`, `webhook_deliveries`, `webhook_subscriptions`, `webhook_sends` |
-| the page's doors, `Settings:Webhook:*`, `Settings:Outbound:*` | `backend/api/endpoints/app/settings/webhook_controller.py` |
+| the page's doors, `Settings:Webhook:*`, `Settings:Outbound:*`; executions (`WebhookRuns`) | `backend/api/endpoints/app/settings/webhook_controller.py` |
 | the queue and the sender | `backend/server/outbound.py` |
 | where events are queued | `backend/server/notifications.py`; a schedule's run, `backend/api/endpoints/app/ai/schedule_controller.py` |
 | the frame | `backend/api/services/chat_session/relay.py` (`FRAMES`); `ai_runtime/door/host.py` (`_deliver_webhook`); `ai_runtime/mind/assistant.py` (`_absorb`) |
+| the pages | `frontend/src/app/pages/app/ai/webhooks/` (the list, a webhook's page, the test event); `frontend/src/app/pages/app/settings/outbound/` |
 | the Safety row | `backend/database/stores/iam.py` (`SAFETY_DEFAULTS`) |
-| tests | `backend/tests/test_webhooks.py` (making one, every check and refusal, the trail, outbound shapes, signing, retries and pausing); `ai_runtime/tests/test_session_door.py` (`TestAWebhookEvent`: the instruction is the person's and the fields are data) |
+| tests | `backend/tests/test_webhooks.py` (making one, every check and refusal, the trail, outbound shapes, signing, retries and pausing; executions, sharing to view, handing over, test events); `ai_runtime/tests/test_session_door.py` (`TestAWebhookEvent`: the instruction is the person's and the fields are data) |

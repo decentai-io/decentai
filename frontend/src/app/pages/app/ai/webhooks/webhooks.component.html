@@ -1,0 +1,118 @@
+<app-page guide="webhooks"
+  title="Webhooks"
+  sentence="Addresses other services post events to. Each event is heard in a chat of its own, which acts on it with your permissions."
+  [wide]="true"
+>
+  <p class="form-notice is-error" role="alert" *ngIf="error">{{ error }}</p>
+  <p class="form-notice" role="status" *ngIf="notice">{{ notice }}</p>
+
+  <app-empty *ngIf="loadError && !webhooks.length && !shared.length" icon="cloud-off"
+             title="Webhooks could not be loaded" [line]="loadError">
+    <button class="btn" type="button" (click)="reload()">Try again</button>
+  </app-empty>
+
+  <div class="side-layout" [class.has-opened]="opened" *ngIf="!loadError || webhooks.length || shared.length">
+    <div class="webhook-lists side-alone">
+      <app-list label="Your webhooks" [loading]="loading" [foot]="foot">
+        <ng-container listToolbar>
+          <h2 class="webhook-list-title">Your webhooks</h2>
+          <ng-container *ngIf="!loading"><ng-container *ngTemplateOutlet="addButton"></ng-container></ng-container>
+        </ng-container>
+
+        <app-row *ngFor="let hook of webhooks" [class.is-current]="hook.webhook_id === openId" [class.is-resting]="!hook.enabled">
+          <lucide-icon rowMark name="webhook" [size]="20" [strokeWidth]="1.75" aria-hidden="true"></lucide-icon>
+          <a rowName class="webhook-row-name" [routerLink]="['/ai/webhooks', hook.webhook_id]"
+             [attr.aria-current]="hook.webhook_id === openId ? 'true' : null">{{ hook.name }}</a>
+          <span rowChips class="chip" *ngIf="!hook.enabled">Off</span>
+          <span rowChips class="chip" *ngIf="hook.require_signature">Signed</span>
+          <span rowChips class="chip warn" *ngIf="hook.chat && !hook.chat.exists"
+                matTooltip="Its chat was deleted. Delete the webhook and make it again to have one.">No chat</span>
+          <ng-container rowMeta>
+            <span class="webhook-row-facts">
+              <span [matTooltip]="lastEventInFull(hook)">{{ lastEvent(hook) }}</span>
+              <span *ngIf="sharedWith(hook)">Shared</span>
+            </span>
+          </ng-container>
+          <app-switch
+            rowState
+            [label]="'On: ' + hook.name"
+            [labelHidden]="true"
+            [matTooltip]="hook.enabled ? 'On: events are heard' : 'Off: events are refused'"
+            [disabled]="!mayUpdate || busyId === hook.webhook_id"
+            [ngModel]="hook.enabled"
+            (ngModelChange)="setEnabled(hook, $event)"
+          ></app-switch>
+        </app-row>
+
+        <app-empty
+          *ngIf="!webhooks.length"
+          icon="webhook"
+          title="No webhooks yet"
+          line="Make one when another service should tell your assistant something: a new ticket, a failed build, a form sent in."
+        >
+          <button class="btn" type="button" *ngIf="mayCreate" (click)="create()">Make a webhook</button>
+        </app-empty>
+      </app-list>
+
+      <app-list label="Shared with you" *ngIf="!loading && shared.length">
+        <ng-container listToolbar>
+          <h2 class="webhook-list-title">Shared with you</h2>
+        </ng-container>
+        <app-row *ngFor="let hook of shared" [class.is-current]="hook.webhook_id === openId" [class.is-resting]="!hook.enabled">
+          <lucide-icon rowMark name="webhook" [size]="20" [strokeWidth]="1.75" aria-hidden="true"></lucide-icon>
+          <a rowName class="webhook-row-name" [routerLink]="['/ai/webhooks', hook.webhook_id]"
+             [attr.aria-current]="hook.webhook_id === openId ? 'true' : null">{{ hook.name }}</a>
+          <span rowChips class="chip" *ngIf="!hook.enabled">Off</span>
+          <ng-container rowMeta>
+            <span class="webhook-row-facts">
+              <span>{{ ownerName(hook) }}’s</span>
+              <span [matTooltip]="lastEventInFull(hook)">{{ lastEvent(hook) }}</span>
+            </span>
+          </ng-container>
+        </app-row>
+      </app-list>
+    </div>
+
+    <!-- The webhook the address names: beside the list on a wide
+         screen, in its place on a narrow one. -->
+    <app-webhook-view
+      class="side-opened"
+      *ngIf="opened as hook"
+      [webhook]="hook"
+      [ownerName]="ownerName(hook)"
+      [busy]="busyId === hook.webhook_id"
+      (closed)="closeOpened()"
+      (edit)="edit(hook)"
+      (setEnabled)="setEnabled(hook, $event)"
+      (test)="sendTest(hook)"
+      (share)="openShare(hook)"
+      (handOver)="requestTransfer(hook)"
+      (rotate)="rotate(hook)"
+      (remove)="remove(hook)"
+    ></app-webhook-view>
+  </div>
+
+  <!-- The plus alone, as on Schedules; its words in the tooltip. -->
+  <ng-template #addButton>
+    <span class="toolbar-end" *ngIf="mayCreate"
+          [matTooltip]="atLimit ? 'Delete a webhook to make another: ' + limit + ' is the most.' : 'New webhook'">
+      <button class="icon-btn primary" type="button" aria-label="New webhook" [disabled]="atLimit" (click)="create()">
+        <lucide-icon name="plus" [size]="18" aria-hidden="true"></lucide-icon>
+      </button>
+    </span>
+  </ng-template>
+
+  <app-share-dialog *ngIf="share.ref"
+                    [share]="share"
+                    heading="Who can watch this webhook"
+                    note="They see the events it hears and what its chat did with them. Never its secret or its settings, and they cannot change anything."
+                    [problem]="shareProblem"
+                    (save)="saveShare()" (closed)="share.close()">
+  </app-share-dialog>
+
+  <app-transfer-dialog *ngIf="transferTarget as hook"
+                       [subject]="'the webhook “' + hook.name + '”'" [ownerId]="hook.owner_id"
+                       note="It and its chat become theirs: its events run as them, with their permissions, from now on."
+                       [busy]="transferring" (chosen)="transfer($event)" (closed)="closeTransfer()">
+  </app-transfer-dialog>
+</app-page>

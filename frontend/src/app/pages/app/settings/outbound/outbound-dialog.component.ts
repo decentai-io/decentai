@@ -5,7 +5,7 @@ import { Choice } from 'src/app/components/ui/radio-keys';
 import {
   OutboundFormat, Subscription, SubscriptionDraft, WebhooksService,
 } from 'src/app/services/webhooks.service';
-import { EVENT_WORDS, FORMAT_WORDS, HMAC_LINE, copyText } from './webhooks-shared';
+import { EVENT_WORDS, FORMAT_WORDS, HMAC_LINE, copyText } from '../../ai/webhooks/webhooks-shared';
 
 /** The subscription being changed, if any, and what the server offers. */
 export interface OutboundDialogData {
@@ -26,7 +26,7 @@ export interface OutboundDialogData {
   selector: 'app-outbound-dialog',
   standalone: false,
   templateUrl: './outbound-dialog.component.html',
-  styleUrl: './webhooks.component.css',
+  styleUrl: '../../ai/webhooks/webhook-dialog.component.css',
 })
 export class OutboundDialogComponent {
   readonly editing: Subscription | null;

@@ -159,8 +159,8 @@ could leave such lines out, though it cannot write any other kind.
 
 A webhook's calls are on it too: every event another service posted,
 accepted or refused and why, with the names of the fields and never
-their values; and every webhook or subscription made, changed or
-deleted.
+their values; and every webhook or subscription made, changed,
+shared, handed over or deleted.
 
 You can read your own trail at any time. Reading the whole
 organization's trail is a permission an administrator gives. The

@@ -2,7 +2,7 @@
 
 A webhook lets another service tell one of your chats that something happened — a payment arrived, a ticket was opened, a form was sent — and the assistant acts on it as you asked. The other way, your notifications can be sent to another service too: a Slack channel, a Teams chat, or a system of your own.
 
-Both are yours alone, under **Settings → Webhooks**: **Incoming** and **Outgoing**.
+Your webhooks are under **AI → Webhooks**, beside Schedules. Notifications to other services are under **Settings → Notifications out**.
 
 ## Making a webhook
 
@@ -27,7 +27,16 @@ A `POST` to the address, with the secret as `Authorization: Bearer …` and the 
 
 For more safety, turn on **Require a signature**. The service then also sends the time and a signature of the body, made with the secret (`X-DecentAI-Timestamp`, `X-DecentAI-Signature`), so a changed body or a replayed call is refused. Services that sign in their own way (Stripe, GitHub) are not read yet; a relay such as Zapier, n8n or Make can sit in between.
 
-The service is answered at once; the chat works after. Every call — accepted or refused, and why — is in the webhook's **Deliveries** and on your audit trail.
+The service is answered at once; the chat works after. Every call — accepted or refused, and why — is on the webhook's page and on your audit trail.
+
+## A webhook's page
+
+Open a webhook to see its **Executions**: each event, newest first, with the fields that were posted and what its chat did — the reply, how long it took, and any card it is waiting on. A refused call shows why. Two events that arrive while the chat is still on the first share what it did.
+
+- **Send a test event** fills in the fields yourself and sends them the way the other service would, so you can see what the assistant does before anything real arrives.
+- **Share** lets people in your groups watch it: they see the webhook and its executions, never its secret or its settings, and cannot change it. They do not get into its chat.
+- **Hand over** gives the webhook and its chat to a colleague — when you change teams, say. From the next event on it acts as them, with their access. The secret stays the same, so the other service needs no change.
+- **Turn it off** and on again without losing anything.
 
 ## What the assistant does with it
 
@@ -39,7 +48,7 @@ If you press **Stop everything**, your webhooks stop answering until you resume.
 
 ## Notifications to other services
 
-Under **Outgoing**, press **Send notifications** and give an `https://` address outside your organization's network, a format — **JSON**, **Slack** (an incoming-webhook address) or **Microsoft Teams** (a workflow's address) — and the events to send:
+Under **Settings → Notifications out**, press **Send notifications** and give an `https://` address outside your organization's network, a format — **JSON**, **Slack** (an incoming-webhook address) or **Microsoft Teams** (a workflow's address) — and the events to send:
 
 - **Approval waiting** — a card or a question is waiting for you.
 - **Reply ready** — a chat of yours answered.
