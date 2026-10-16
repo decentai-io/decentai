@@ -43,6 +43,27 @@
   </div>
 
   <!-- Not one of the saved defaults: this device's own, kept as it is set. -->
+  <div class="form-section" *ngIf="dictationChoices.length || readingChoices.length">
+    <h2 class="form-section-title">Speech on this device</h2>
+    <p class="form-section-note">Kept in this browser. {{ speechNote }}</p>
+    <app-field label="Writing down what you say" [help]="dictationHelp" *ngIf="dictationChoices.length">
+      <app-segmented
+        label="Writing down what you say"
+        [choices]="dictationChoices"
+        [ngModel]="dictationBy"
+        (ngModelChange)="setDictation($event)"
+      ></app-segmented>
+    </app-field>
+    <app-field label="Reading replies aloud" [help]="readingHelp" *ngIf="readingChoices.length">
+      <app-segmented
+        label="Reading replies aloud"
+        [choices]="readingChoices"
+        [ngModel]="readingBy"
+        (ngModelChange)="setReading($event)"
+      ></app-segmented>
+    </app-field>
+  </div>
+
   <div class="form-section" *ngIf="readAloud.available">
     <app-switch
       label="Read replies aloud"

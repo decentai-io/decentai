@@ -1,14 +1,16 @@
 import { Injectable, NgZone } from '@angular/core';
 
+import { DeviceSpeechService, SpeechBy } from './device-speech.service';
 import { SettingsSpeechService } from './settings-speech.service';
 
 /** A reply said aloud: one at a time, in pieces, so the first sentence
  *  is heard while the rest is still being made.
  *
- *  The organization decides whether replies can be said at all
- *  (Settings:Speech). Whether they are said without being asked is the
- *  person's, and this device's: a phone in a meeting and a desk at home
- *  want different answers, so the choice is kept in this browser. */
+ *  Said by the computer's own voices where it has one, or by the
+ *  platform where the organization has a voice (Settings:Speech) —
+ *  this browser's choice (DeviceSpeechService). Whether replies are
+ *  said without being asked is the person's, and this device's too: a
+ *  phone in a meeting and a desk at home want different answers. */
 @Injectable({ providedIn: 'root' })
 export class ReadAloudService {
   /** About a sentence or two a piece: short enough that the first is
@@ -19,8 +21,10 @@ export class ReadAloudService {
   static readonly MOST = 6000;
   private static readonly KEY = 'decentai.read_aloud';
 
-  /** Whether this organization says replies at all. */
+  /** Whether replies can be said here at all. */
   available = false;
+  /** Who says them: the computer's voices, or the platform. */
+  by: SpeechBy | null = null;
   /** The reply being said, by its key; '' for none. */
   speaking = '';
   /** True from the request until the first piece is heard. */
@@ -37,11 +41,16 @@ export class ReadAloudService {
   private turn = 0;
   private heard = new Set<string>();
 
-  constructor(private speech: SettingsSpeechService, private zone: NgZone) {}
+  constructor(
+    private speech: SettingsSpeechService,
+    private device: DeviceSpeechService,
+    private zone: NgZone,
+  ) {}
 
   /** Asked as a chat opens: whether to show the control at all. */
   async refresh(): Promise<boolean> {
-    this.available = (await this.speech.offered()).speech.configured;
+    this.by = await this.device.reading((await this.speech.offered()).speech.configured);
+    this.available = this.by !== null;
     return this.available;
   }
 
@@ -89,6 +98,7 @@ export class ReadAloudService {
   }
 
   private silence(): void {
+    this.device.silence();
     if (this.audio) {
       this.audio.onended = null;
       this.audio.onerror = null;
@@ -109,6 +119,22 @@ export class ReadAloudService {
     this.problem = '';
     this.problemAt = '';
     this.heard.add(key);
+
+    if (this.by === 'device') {
+      this.preparing = false;
+      for (const piece of pieces) {
+        const said = await this.device.say(piece);
+        if (turn !== this.turn) return;
+        if (!said) {
+          this.problem = 'This computer could not say it.';
+          this.problemAt = key;
+          this.stop();
+          return;
+        }
+      }
+      if (turn === this.turn) this.stop();
+      return;
+    }
 
     // The next piece is asked for while this one plays, never more
     // than one ahead: a reply stopped early has cost one piece.

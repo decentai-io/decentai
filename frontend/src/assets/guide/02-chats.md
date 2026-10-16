@@ -46,9 +46,16 @@ For a model that thinks before answering, how hard it thinks is chosen beside it
 
 The chat's **trust level** is the shield beside it in the header, and **Refresh and reconnect**, for a chat that seems stuck, the button next to that; on a narrow screen both are inside More actions. What a new chat starts with is under **Settings → Notifications**, as *Your chat defaults*.
 
-The box you write in also has a camera, to take a photo and attach it, and a microphone, to speak a message: press it, speak, press the square, and what you said is written into the box for you to send or change. The recording is not kept. The microphone is there unless the organization turned speech to text off.
+The box you write in also has a camera, to take a photo and attach it, and a microphone, to speak a message: press it, speak, press the square, and what you said is written into the box for you to send or change. The recording is not kept.
 
-Where the organization turned text to speech on, each reply has a **Read aloud** control beside *Copy*: the reply is said, a sentence or two at a time, and the same control stops it. To have every reply said as it arrives, turn on *Read replies aloud* under **Settings → Chat defaults**; that choice is this device's alone.
+Each reply has a **Read aloud** control beside *Copy*: the reply is said, a sentence or two at a time, and the same control stops it. To have every reply said as it arrives, turn on *Read replies aloud* under **Settings → Chat defaults**.
+
+Who does the speech is this device's choice, under **Settings → Chat defaults → Speech on this device**:
+
+- **Reading aloud** — *This computer's voices*, the voices that come with Windows, macOS or the phone, on the computer itself; or *The server*, your organization's voice, where it turned text to speech on. A computer with a voice of its own uses it unless you choose the server.
+- **Writing down what you say** — *This computer*, where the browser can hear on the computer itself, so your voice stays on it; *This browser's service*, where it can only send what you say to its maker — Google for Chrome, Microsoft for Edge, Apple for Safari — which is used only if you choose it; or *The server*, where your organization turned speech to text on. A browser that hears on its own is used first.
+
+You can also always dictate with the computer itself, into any box: **Win + H** on Windows, the **Globe or Fn key twice** on a Mac.
 
 ## Stopping
 

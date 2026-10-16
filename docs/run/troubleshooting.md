@@ -88,11 +88,13 @@ and updating. Where to look is at the end.
   resume.*** The bar at the top of every page says so, and has the
   button that resumes.
 
-- **The microphone is missing from the box you write in.** Speech to
-  text is off, or it is set to the platform's own model and the
-  `speech` container is not running: `docker compose --env-file
-  deploy.env ps speech`. A browser that cannot record offers none
-  either.
+- **The microphone is missing from the box you write in.** Nothing
+  here can write speech down: the browser cannot hear on the computer
+  itself, and speech to text is off, or set to the platform's own model
+  with the `speech` container not running (`docker compose --env-file
+  deploy.env ps speech`). A browser that can only send the voice to its
+  maker's service offers the microphone once the person chooses that,
+  under **Settings → Chat defaults → Speech on this device**.
 - ***The speech to text model is still being fetched.*** It is
   downloaded once, about 490 MB; **Settings → Chat configuration →
   Speech** says how far it is. *The download did not finish* there
@@ -100,8 +102,9 @@ and updating. Where to look is at the end.
   when somebody next speaks, and `docker compose --env-file deploy.env
   logs speech` says what was in the way
   ([operating](operating.md#speech-on-this-machine)).
-- **A reply has no *Read aloud* control.** Text to speech is off until
-  an administrator turns it on, on the same page.
+- **A reply has no *Read aloud* control.** The computer has no voice
+  of its own for the browser's language, and text to speech is off
+  until an administrator turns it on, on the same page.
 
 ## An agent does not install, or does not work
 

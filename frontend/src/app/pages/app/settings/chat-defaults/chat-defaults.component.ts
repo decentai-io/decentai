@@ -6,7 +6,10 @@ import { Choice } from 'src/app/components/ui/radio-keys';
 import { HasUnsavedChanges } from 'src/app/guards/unsaved-changes.guard';
 import { AuthService } from 'src/app/services/auth.service';
 import { ProfileService } from 'src/app/services/profile.service';
+import { DeviceSpeechService, Hearing, SpeechBy } from 'src/app/services/device-speech.service';
+import { MicrophoneService } from 'src/app/services/microphone.service';
 import { ReadAloudService } from 'src/app/services/read-aloud.service';
+import { SettingsSpeechService } from 'src/app/services/settings-speech.service';
 import { LlmConnection, SettingsLlmService } from 'src/app/services/settings-llm.service';
 import { SKILLS_LISTED_OPTIONS, STANDARD_SKILLS_LISTED, TRUST_CHOICES } from '../../ai/chat/chat-defaults';
 
@@ -31,8 +34,9 @@ const NOTE_FOR_MS = 2000;
  * Settings › Chat defaults: the model, the trust level, the turn budget
  * and the number of skills listed that a new chat of this person starts
  * with. Any chat can still change each from its own menu. One form,
- * saved with the save bar; reading replies aloud is this device's alone
- * and saves itself.
+ * saved with the save bar; speech — who writes down what is said, who
+ * reads replies aloud, and whether they are read unasked — is this
+ * device's alone and saves itself.
  */
 @Component({
   selector: 'app-chat-defaults',
@@ -51,6 +55,17 @@ export class ChatDefaultsComponent implements OnInit, HasUnsavedChanges {
   connections: LlmConnection[] = [];
   /** "Saved", for a moment, beside the read-aloud switch. */
   readAloudNote = '';
+  /** "Saved", for a moment, beside the speech choices. */
+  speechNote = '';
+
+  /** Who may write down what is said here, and who does. */
+  dictationChoices: Choice<SpeechBy>[] = [];
+  dictationBy: SpeechBy | null = null;
+  /** Whether this browser's own recognizer hears on the computer. */
+  hearing: Hearing = 'none';
+  /** Who may read replies aloud here, and who does. */
+  readingChoices: Choice<SpeechBy>[] = [];
+  readingBy: SpeechBy | null = null;
 
   readonly trustChoices: Choice<number>[] = TRUST_CHOICES;
   readonly turnChoices: Choice<number>[] = [
@@ -68,6 +83,9 @@ export class ChatDefaultsComponent implements OnInit, HasUnsavedChanges {
     private llm: SettingsLlmService,
     public auth: AuthService,
     public readAloud: ReadAloudService,
+    private device: DeviceSpeechService,
+    private speech: SettingsSpeechService,
+    private microphone: MicrophoneService,
   ) {}
 
   /** The model is chosen among providers, which not everyone may list. */
@@ -92,6 +110,7 @@ export class ChatDefaultsComponent implements OnInit, HasUnsavedChanges {
       this.connections = connections;
       this.draft.take(this.read(profile?.preferences?.chat ?? {}));
       void this.readAloud.refresh();
+      void this.loadSpeech();
     } catch {
       this.loadError = 'Could not reach the server. Check your connection.';
     } finally {
@@ -142,6 +161,63 @@ export class ChatDefaultsComponent implements OnInit, HasUnsavedChanges {
     } finally {
       this.saving = false;
     }
+  }
+
+  /** What can write down speech and read it aloud on this device, and
+   *  which of them does. */
+  private async loadSpeech(): Promise<void> {
+    const offered = await this.speech.offered();
+    const serverHears = this.microphone.available && offered.configured;
+    this.hearing = await this.device.hearing();
+    this.dictationChoices = [
+      ...(this.hearing !== 'none'
+        ? [{ value: 'device' as const, name: this.hearing === 'local' ? 'This computer' : 'This browser’s service' }]
+        : []),
+      ...(serverHears ? [{ value: 'server' as const, name: 'The server' }] : []),
+    ];
+    this.dictationBy = await this.device.dictation(serverHears);
+    const ownVoice = !!(await this.device.voice());
+    this.readingChoices = [
+      ...(ownVoice ? [{ value: 'device' as const, name: 'This computer’s voices' }] : []),
+      ...(offered.speech.configured ? [{ value: 'server' as const, name: 'The server' }] : []),
+    ];
+    this.readingBy = await this.device.reading(offered.speech.configured);
+  }
+
+  /** Where what is said goes to be written down, in one line. */
+  get dictationHelp(): string {
+    if (this.dictationBy === 'server') {
+      return 'Your recording goes to your DecentAI server, which writes it down.';
+    }
+    if (this.hearing === 'local') return 'On this computer: what you say stays on it.';
+    const away = 'your browser sends what you say to its maker’s service — Google for Chrome, Microsoft for Edge, Apple for Safari — to write it down.';
+    return this.dictationBy === 'device'
+      ? `On: ${away}`
+      : `Off. Choose it to dictate here: ${away}`;
+  }
+
+  get readingHelp(): string {
+    return this.readingBy === 'server'
+      ? 'Your DecentAI server makes the audio.'
+      : 'On this computer, with a voice of its own: nothing is sent.';
+  }
+
+  setDictation(by: SpeechBy): void {
+    this.device.choose({ dictation: by });
+    this.dictationBy = by;
+    this.saidSpeech();
+  }
+
+  async setReading(by: SpeechBy): Promise<void> {
+    this.device.choose({ reading: by });
+    this.readingBy = by;
+    await this.readAloud.refresh();
+    this.saidSpeech();
+  }
+
+  private saidSpeech(): void {
+    this.speechNote = 'Saved';
+    setTimeout(() => (this.speechNote = ''), NOTE_FOR_MS);
   }
 
   /** Kept on this device, with nothing to save: said so for a moment. */

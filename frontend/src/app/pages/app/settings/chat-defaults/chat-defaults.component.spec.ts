@@ -13,6 +13,10 @@ describe('ChatDefaultsComponent', () => {
       { list: async () => [] } as any,
       { can: () => true } as any,
       { available: false, automatic: false, refresh: async () => false } as any,
+      { hearing: async () => 'none', dictation: async () => null, voice: async () => null,
+        reading: async () => null, choose: () => undefined } as any,
+      { offered: async () => ({ configured: false, ready: false, speech: { configured: false, ready: false } }) } as any,
+      { available: false } as any,
     );
   }
 

@@ -30,6 +30,8 @@ guide, **Guide** at the foot of the sidebar (its source is
   connect their accounts.
 - [Troubleshooting](run/troubleshooting.md) — what goes wrong at start,
   and where the logs are.
+- [What leaves your deployment](run/privacy.md) — every way data goes
+  out (models, agents, notifications, speech), and who decides.
 
 ## Understand it
 

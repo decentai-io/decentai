@@ -19,6 +19,7 @@ import { RequestService } from 'src/app/services/request.service';
 import { AiSessionService } from 'src/app/services/ai-session.service';
 import { SettingsSpeechService } from 'src/app/services/settings-speech.service';
 import { MicrophoneService } from 'src/app/services/microphone.service';
+import { DeviceSpeechService, SpeechBy } from 'src/app/services/device-speech.service';
 import { sizeLabel } from 'src/app/components/ui/file-types';
 import { ChatFilePickerDialogComponent } from '../chat-file-picker-dialog/chat-file-picker-dialog.component';
 import { ChatModel } from '../chat-model-picker/chat-model-picker.component';
@@ -127,13 +128,18 @@ export class ChatComposerComponent implements OnChanges, OnInit, OnDestroy {
     private speech: SettingsSpeechService,
     private zone: NgZone,
     private microphone: MicrophoneService,
+    private device: DeviceSpeechService,
   ) {}
 
   // ── Speaking a message ──────────────────────────────────────────────
 
-  /** The microphone is offered only when the organization has a
-   *  transcription model and this browser can record. */
+  /** The microphone is offered when something here can write speech
+   *  down: the computer's own recognizer, or the organization's
+   *  transcription model and a browser that can record. */
   canSpeak = false;
+  /** Who writes it down (DeviceSpeechService). */
+  private hearingBy: SpeechBy | null = null;
+  private listening: { stop: () => void } | null = null;
   recording = false;
   transcribing = false;
   /** What the composer itself has to say under the box — the
@@ -145,11 +151,14 @@ export class ChatComposerComponent implements OnChanges, OnInit, OnDestroy {
   private destroyed = false;
 
   async ngOnInit(): Promise<void> {
-    this.canSpeak = this.microphone.available && await this.speech.configured();
+    const serverCan = this.microphone.available && await this.speech.configured();
+    this.hearingBy = await this.device.dictation(serverCan);
+    this.canSpeak = this.hearingBy !== null;
   }
 
   ngOnDestroy(): void {
     this.destroyed = true;
+    this.listening?.stop();
     if (this.dropTimer) clearTimeout(this.dropTimer);
     // A recording under way ends with the composer: nothing would read
     // it, and a recorder left running keeps the microphone's stream.
@@ -176,11 +185,22 @@ export class ChatComposerComponent implements OnChanges, OnInit, OnDestroy {
    *  in the box for the person to read and send, never sent unseen. */
   async toggleRecording(): Promise<void> {
     if (this.recording) {
-      this.recorder?.stop();
+      this.listening ? this.listening.stop() : this.recorder?.stop();
       return;
     }
     if (this.disabled || this.transcribing) return;
     this.notice = '';
+    if (this.hearingBy === 'device') {
+      try {
+        this.listening = await this.device.listen(
+          (text) => { this.recording = false; this.listening = null; if (text) this.put(text); },
+          (why) => { this.notice = why; });
+        this.recording = true;
+      } catch (error) {
+        this.notice = error instanceof Error ? error.message : 'This browser could not listen.';
+      }
+      return;
+    }
     let stream: MediaStream;
     try {
       stream = await this.microphone.acquire();
@@ -221,23 +241,27 @@ export class ChatComposerComponent implements OnChanges, OnInit, OnDestroy {
         this.notice = result.error || 'Nothing was heard.';
         return;
       }
-      const spoken = result.text.trim();
-      this.userInput = this.userInput.trim()
-        ? `${this.userInput.trimEnd()} ${spoken}`
-        : spoken;
-      queueMicrotask(() => {
-        const el = this.messageInput?.nativeElement;
-        if (!el) return;
-        el.focus();
-        // The binding writes the new words into the box only on the next
-        // change detection; measured now, the box would size itself to
-        // the old text. Put the words in first, then measure.
-        el.value = this.userInput;
-        this.grow(el);
-      });
+      this.put(result.text.trim());
     } finally {
       this.transcribing = false;
     }
+  }
+
+  /** Words heard, added to what is in the box. */
+  private put(spoken: string): void {
+    this.userInput = this.userInput.trim()
+      ? `${this.userInput.trimEnd()} ${spoken}`
+      : spoken;
+    queueMicrotask(() => {
+      const el = this.messageInput?.nativeElement;
+      if (!el) return;
+      el.focus();
+      // The binding writes the new words into the box only on the next
+      // change detection; measured now, the box would size itself to
+      // the old text. Put the words in first, then measure.
+      el.value = this.userInput;
+      this.grow(el);
+    });
   }
 
   private stopTracks(): void {
