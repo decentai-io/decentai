@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>DecentAI — White Paper</title>
+<meta name="description" content="DecentAI: AI agents you can let act, because the model decides nothing.">
+<style>
+/* The DecentAI white paper. It wears the website's palette — paper and
+   ink with one deep green — and its type, IBM Plex: Serif for what a
+   reader meets first, Sans for what they read afterwards. One column,
+   printed to A4 by build.ps1. */
+
+@font-face { font-family: "Plex Serif"; font-weight: 400; src: url(fonts/ibm-plex-serif-latin-400-normal.woff2); }
+@font-face { font-family: "Plex Serif"; font-weight: 400; font-style: italic; src: url(fonts/ibm-plex-serif-latin-400-italic.woff2); }
+@font-face { font-family: "Plex Serif"; font-weight: 500; src: url(fonts/ibm-plex-serif-latin-500-normal.woff2); }
+@font-face { font-family: "Plex Serif"; font-weight: 600; src: url(fonts/ibm-plex-serif-latin-600-normal.woff2); }
+@font-face { font-family: "Plex Sans"; font-weight: 400; src: url(fonts/ibm-plex-sans-latin-400-normal.woff2); }
+@font-face { font-family: "Plex Sans"; font-weight: 400; font-style: italic; src: url(fonts/ibm-plex-sans-latin-400-italic.woff2); }
+@font-face { font-family: "Plex Sans"; font-weight: 500; src: url(fonts/ibm-plex-sans-latin-500-normal.woff2); }
+@font-face { font-family: "Plex Sans"; font-weight: 600; src: url(fonts/ibm-plex-sans-latin-600-normal.woff2); }
+
+:root {
+  --paper: #f7f6f2;
+  --paper-sunk: #f1efe9;
+  --sheet: #ffffff;
+  --ink: #14161a;
+  --ink-soft: #4c525b;
+  --ink-faint: #6e747e;
+  --rule: #e5e1d8;
+  --rule-soft: #eeebe4;
+  --seal: #0e7c5b;
+  --seal-ink: #0b6a4e;
+  --seal-wash: #e9f3ef;
+  --seal-edge: #bcdcd0;
+  --ask: #a5620f;
+  --ask-wash: #f8eedd;
+  --stop: #a8321f;
+  --stop-wash: #f8e6e2;
+  --display: "Plex Serif", Georgia, serif;
+  --body: "Plex Sans", "Segoe UI", sans-serif;
+}
+
+@page {
+  size: A4;
+  margin: 19mm 20mm 21mm;
+  @bottom-left { content: "DecentAI · White paper"; font: 8.5pt var(--body); color: #6e747e; }
+  @bottom-right { content: counter(page); font: 8.5pt var(--body); color: #6e747e; }
+}
+@page cover { margin: 0; @bottom-left { content: none; } @bottom-right { content: none; } }
+
+* { box-sizing: border-box; }
+html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+body {
+  margin: 0; color: var(--ink); background: #fff;
+  font-family: var(--body); font-size: 10.4pt; line-height: 1.6;
+  text-rendering: optimizeLegibility; hyphens: manual;
+}
+h1, h2, h3, h4 { font-family: var(--display); font-weight: 500; line-height: 1.2; margin: 0; }
+p { margin: 0 0 .75em; orphans: 3; widows: 3; }
+strong { font-weight: 600; }
+em { font-style: italic; }
+a { color: var(--seal-ink); text-decoration: none; }
+svg text { font-family: var(--body); }
+
+/* ── Cover ─────────────────────────────────────────────────────── */
+.cover {
+  page: cover; height: 297mm; width: 210mm; position: relative;
+  background: var(--paper); overflow: hidden; break-after: page;
+}
+.cover .art { position: absolute; right: -26mm; top: 30mm; width: 128mm; }
+.cover .brand { position: absolute; left: 22mm; top: 22mm; display: flex; align-items: center; gap: 10px;
+  font: 600 13pt var(--body); letter-spacing: .01em; }
+.cover .brand svg { width: 26px; height: 26px; }
+.cover .words { position: absolute; left: 22mm; bottom: 46mm; width: 140mm; }
+.cover .kicker { margin-bottom: 7mm; }
+.cover h1 { font-size: 34pt; font-weight: 500; letter-spacing: -.01em; line-height: 1.08; }
+.cover h1 em { color: var(--seal); font-style: normal; }
+.cover .sub { margin-top: 7mm; font-size: 13pt; line-height: 1.5; color: var(--ink-soft); width: 125mm; }
+.cover .meta { position: absolute; left: 22mm; bottom: 22mm; font-size: 9pt; color: var(--ink-faint); }
+.cover .meta b { color: var(--ink); font-weight: 500; }
+
+.kicker { font-size: 8pt; font-weight: 600; letter-spacing: .16em; text-transform: uppercase; color: var(--seal-ink); }
+
+/* ── Chapters ──────────────────────────────────────────────────── */
+/* Chapters flow on, each opened by a rule; a heading never ends a page. */
+.chapter { margin-top: 13mm; padding-top: 7mm; border-top: 1px solid var(--rule); }
+.chapter.page { break-before: page; margin-top: 0; padding-top: 0; border-top: none; }
+.chapter-head { margin-bottom: 6mm; break-inside: avoid; break-after: avoid; }
+.chapter-head .kicker { margin-bottom: 3mm; }
+.chapter-head h2 { font-size: 24pt; letter-spacing: -.005em; }
+.chapter-head .lead { margin-top: 4mm; font-size: 12.2pt; line-height: 1.55; color: var(--ink-soft); }
+h3 { font-size: 13.5pt; margin: 7mm 0 2.5mm; break-after: avoid; }
+h4 { font: 600 10.4pt var(--body); margin: 4mm 0 1.5mm; break-after: avoid; }
+ul, ol { margin: 0 0 .8em; padding-left: 1.25em; }
+li { margin: .18em 0; }
+li::marker { color: var(--seal); }
+
+.quote {
+  font-family: var(--display); font-size: 14.5pt; line-height: 1.4; color: var(--ink);
+  border-left: 3px solid var(--seal); padding: 1mm 0 1mm 6mm; margin: 5mm 0 6mm;
+}
+.quote small { display: block; margin-top: 2mm; font: 9.5pt var(--body); color: var(--ink-faint); }
+
+.note {
+  background: var(--seal-wash); border: 1px solid var(--seal-edge); border-radius: 10px;
+  padding: 4mm 5mm; margin: 4mm 0 5mm; break-inside: avoid;
+}
+.note .kicker { margin-bottom: 1.5mm; }
+.note p:last-child { margin-bottom: 0; }
+.note.plain { background: var(--paper); border-color: var(--rule); }
+.note.plain .kicker { color: var(--ink-faint); }
+
+/* ── Figures ───────────────────────────────────────────────────── */
+figure { margin: 5mm 0 6mm; break-inside: avoid; }
+figure svg { width: 100%; height: auto; display: block; }
+figcaption { margin-top: 2.5mm; font-size: 8.8pt; color: var(--ink-faint); line-height: 1.45; }
+figcaption b { color: var(--ink-soft); font-weight: 600; }
+
+/* ── Tables ────────────────────────────────────────────────────── */
+table { width: 100%; border-collapse: collapse; margin: 3mm 0 5mm; font-size: 9.4pt; break-inside: avoid; }
+th { text-align: left; font-weight: 600; font-size: 8pt; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--ink-faint); border-bottom: 1.5px solid var(--ink); padding: 0 3mm 2mm 0; }
+td { border-bottom: 1px solid var(--rule); padding: 2.2mm 3mm 2.2mm 0; vertical-align: top; }
+td:first-child { font-weight: 500; }
+tr:last-child td { border-bottom: none; }
+.tag { display: inline-block; font-size: 7.8pt; font-weight: 600; letter-spacing: .05em; text-transform: uppercase;
+  padding: .3mm 2mm; border-radius: 99px; white-space: nowrap; }
+.tag.run { background: var(--seal-wash); color: var(--seal-ink); }
+.tag.ask { background: var(--ask-wash); color: var(--ask); }
+.tag.no { background: var(--stop-wash); color: var(--stop); }
+
+/* ── Grids and cards ───────────────────────────────────────────── */
+.grid { display: grid; gap: 4mm; margin: 4mm 0 5mm; }
+.grid.two { grid-template-columns: 1fr 1fr; }
+.grid.three { grid-template-columns: 1fr 1fr 1fr; }
+.card { border: 1px solid var(--rule); border-radius: 10px; padding: 4mm 4.5mm; background: #fff; break-inside: avoid; }
+.card.sunk { background: var(--paper); }
+.card h4 { margin: 0 0 1.5mm; }
+.card p { font-size: 9.4pt; color: var(--ink-soft); margin: 0; }
+.card .num { font: 500 20pt var(--display); color: var(--seal); line-height: 1; margin-bottom: 2mm; }
+
+.glance { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 3.5mm; }
+.glance .card { padding: 3.5mm 4mm; }
+.glance .card h4 { font-size: 9.8pt; }
+.glance .card p { font-size: 8.9pt; }
+
+/* ── Contents ──────────────────────────────────────────────────── */
+.toc { list-style: none; padding: 0; margin: 1mm 0 0; columns: 3; column-gap: 7mm; }
+.toc li { display: flex; gap: 2mm; padding: 1mm 0; border-bottom: 1px solid var(--rule-soft); break-inside: avoid; font-size: 8.8pt; }
+.toc li span { color: var(--seal); font-weight: 600; width: 5mm; }
+</style>
+</head>
+<body>

@@ -1,0 +1,171 @@
+<!-- ── 9. Nothing invented ───────────────────────────────────────── -->
+<section class="chapter">
+  <div class="chapter-head">
+    <div class="kicker">9 · Nothing invented</div>
+    <h2>Two voices, kept apart</h2>
+    <p class="lead">A model can write <em>"Done — I've sent all three emails"</em> whether or not it did. So DecentAI keeps two voices on the screen: the model's words, which are a claim, and the platform's records, which are evidence.</p>
+  </div>
+
+  <figure>
+    <svg viewBox="0 0 680 220">
+      <defs><marker id="a9" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto"><path d="M0 0L10 5L0 10z" fill="#0e7c5b"/></marker></defs>
+      <rect x="0" y="20" width="150" height="70" rx="12" fill="#fff" stroke="#0e7c5b"/>
+      <text x="75" y="50" text-anchor="middle" font-size="11.5" font-weight="600" fill="#14161a">A real call</text>
+      <text x="75" y="68" text-anchor="middle" font-size="10" fill="#4c525b">Read Cells</text>
+      <path d="M152 55H226" stroke="#0e7c5b" stroke-width="1.8" marker-end="url(#a9)"/>
+      <rect x="230" y="20" width="170" height="70" rx="12" fill="#e9f3ef" stroke="#0e7c5b"/>
+      <text x="315" y="44" text-anchor="middle" font-size="11.5" font-weight="600" fill="#14161a">Checked and stored</text>
+      <text x="315" y="62" text-anchor="middle" font-size="10" fill="#4c525b">against the manifest,</text>
+      <text x="315" y="76" text-anchor="middle" font-size="10" fill="#4c525b">under a ticket number</text>
+      <path d="M402 55H476" stroke="#0e7c5b" stroke-width="1.8" marker-end="url(#a9)"/>
+      <text x="439" y="46" text-anchor="middle" font-size="9.5" fill="#4c525b">ticket</text>
+      <!-- screen -->
+      <rect x="480" y="0" width="200" height="214" rx="14" fill="#f7f6f2" stroke="#e5e1d8"/>
+      <text x="496" y="24" font-size="9.5" font-weight="600" letter-spacing="1.2" fill="#6e747e">WHAT YOU SEE</text>
+      <rect x="496" y="34" width="168" height="44" rx="8" fill="#fff" stroke="#e5e1d8"/>
+      <text x="506" y="52" font-size="10" fill="#14161a">"Three invoices are overdue.</text>
+      <text x="506" y="67" font-size="10" fill="#14161a">I've drafted reminders."</text>
+      <text x="496" y="94" font-size="9" fill="#6e747e">the model's words — a claim</text>
+      <rect x="496" y="102" width="168" height="76" rx="8" fill="#fff" stroke="#0e7c5b"/>
+      <g font-size="9.5" fill="#14161a">
+        <text x="506" y="120" font-weight="600">Invoices · overdue</text>
+        <line x1="506" y1="126" x2="654" y2="126" stroke="#eeebe4"/>
+        <text x="506" y="140">Northwind</text><text x="654" y="140" text-anchor="end">1,240</text>
+        <text x="506" y="154">Fabrikam</text><text x="654" y="154" text-anchor="end">860</text>
+        <text x="506" y="168">Contoso</text><text x="654" y="168" text-anchor="end">2,015</text>
+      </g>
+      <text x="496" y="196" font-size="9" fill="#0b6a4e">✓ drawn from the record — evidence</text>
+    </svg>
+    <figcaption><b>A ticket, not a copy.</b> The model points at a stored result by its ticket; the screen fetches the real thing and checks that it belongs to this call and this chat. The model cannot retype a table into existence.</figcaption>
+  </figure>
+
+  <ul>
+    <li><b>What may appear beside the words</b> — tables, charts, files, "verified" marks — is drawn only from stored results of calls that really ran.</li>
+    <li><b>Results are checked before they are believed.</b> Each answer must match what the agent's manifest said it would return; one that does not is refused as an error.</li>
+    <li><b>Unknown stays unknown.</b> If an agent cannot confirm that a send went through, it reports the outcome as unknown, and nothing on the screen claims otherwise.</li>
+    <li><b>What a result says is data, not orders.</b> The assistant is told, standing, that instructions come only from your own messages — never from what a tool returned.</li>
+  </ul>
+  <div class="note plain">
+    <div class="kicker">What this does not promise</div>
+    <p>It proves that what is shown was recorded — not that everything recorded is shown, and not that a remote service did what it answered. The model still chooses which result to show and how to title it.</p>
+  </div>
+</section>
+
+<!-- ── 10. Stopping and watching ─────────────────────────────────── -->
+<section class="chapter">
+  <div class="chapter-head">
+    <div class="kicker">10 · Stopping and watching</div>
+    <h2>Make it stop. See what it did.</h2>
+    <p class="lead">Three things you would want from any assistant you leave working: that it can do things later on its own, that you can make it stop — now, whether or not it agrees — and that you can find out afterwards what it did, from a record it could not write to its advantage.</p>
+  </div>
+
+  <h3>Two stops for a chat, one for everything</h3>
+  <div class="grid three">
+    <div class="card"><h4>Stop generating</h4><p>A polite request beside the message box. The assistant stops at the next point it can; everything else stays as it was.</p></div>
+    <div class="card"><h4>Stop this chat</h4><p>The kill. Work in progress is cancelled; an agent's program mid-task gets five seconds, then is ended with everything it started. Waiting cards close. What was already done stays done.</p></div>
+    <div class="card" style="border-color:#0e7c5b"><h4>Stop everything of mine</h4><p>At the top of every screen, for when you do not know which chat is doing what. It holds until you — and only you — press resume.</p></div>
+  </div>
+
+  <figure>
+    <svg viewBox="0 0 680 120">
+      <defs><marker id="a10" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto"><path d="M0 0L10 5L0 10z" fill="#4c525b"/></marker></defs>
+      <g font-size="10.5">
+        <rect x="0" y="10" width="206" height="100" rx="14" fill="#f8e6e2"/>
+        <text x="18" y="38" font-family="Plex Serif" font-size="20" fill="#a8321f">1</text>
+        <text x="40" y="37" font-weight="600" fill="#14161a">You are marked stopped</text>
+        <text x="18" y="60" fill="#4c525b">No chat of yours may start —</text><text x="18" y="75" fill="#4c525b">not for a message, a card, a</text><text x="18" y="90" fill="#4c525b">reminder or another system's event.</text>
+        <rect x="237" y="10" width="206" height="100" rx="14" fill="#f8e6e2"/>
+        <text x="255" y="38" font-family="Plex Serif" font-size="20" fill="#a8321f">2</text>
+        <text x="277" y="37" font-weight="600" fill="#14161a">Every chat is killed</text>
+        <text x="255" y="60" fill="#4c525b">Open ones, ones working with</text><text x="255" y="75" fill="#4c525b">nobody watching, ones holding</text><text x="255" y="90" fill="#4c525b">only a reminder.</text>
+        <rect x="474" y="10" width="206" height="100" rx="14" fill="#a8321f"/>
+        <text x="492" y="38" font-family="Plex Serif" font-size="20" fill="#fff">3</text>
+        <text x="514" y="37" font-weight="600" fill="#fff">Every pass is withdrawn</text>
+        <text x="492" y="60" fill="#fbe9e5">A program that ignored its order</text><text x="492" y="75" fill="#fbe9e5">to end can no longer read a password,</text><text x="492" y="90" fill="#fbe9e5">a record or a file of yours.</text>
+      </g>
+      <path d="M208 60H233M445 60H470" stroke="#4c525b" stroke-width="1.5" marker-end="url(#a10)"/>
+    </svg>
+    <figcaption><b>Stopping everything, in three steps.</b> The third is why the stop does not depend on anything agreeing to stop: a misbehaving program is not asked — it is cut off.</figcaption>
+  </figure>
+
+  <h3>Rules set beforehand</h3>
+  <p>An administrator sets some limits once, for everybody, on the <b>Safety</b> page: sites no agent may open, how often code is shown to a person before it runs (and only code the assistant read and found to do what it says may be asked about less often), which packages a program may install, whether anyone may add outside tool servers (MCP) or receive webhooks, and whether notifications may say what happened or only that something did. Every row starts where the platform stood before the page existed, so an update never loosens anything.</p>
+
+  <h3>The audit trail, and the monitoring record</h3>
+  <div class="grid two">
+    <div class="card"><h4>The audit trail: what was allowed</h4><p>Nearly everything the platform lets happen leaves a line: each call, with what it was given, how it ended, how long it took and which sites it reached; each card and your answer; each credential lent — by name, never by value; each change to permissions or settings, refused ones included. The platform only ever adds to it: no part of it, and no person using it, can change or delete a line.</p></div>
+    <div class="card"><h4>The monitoring record: what the programs did</h4><p>Beside the agents, a second record keeps what their programs actually did: started, ended, logged a line, made or was refused a connection and how much went through. Administrators see it on the Monitoring page, filtered, searched and added up. It is a working log of fixed size, not an archive.</p></div>
+  </div>
+  <p>Outside systems can be told too: when a card is waiting, an answer is ready or a scheduled run ends, a person's notifications can go to Slack, Teams or a system of their own — a line and a link, never a secret, and the reply's text only if they asked for it.</p>
+</section>
+
+<!-- ── 11. How it is built ───────────────────────────────────────── -->
+<section class="chapter">
+  <div class="chapter-head">
+    <div class="kicker">11 · How it is built</div>
+    <h2>Three parts, and what each one holds</h2>
+    <p class="lead">DecentAI runs as a few containers on machines the organization controls — one laptop, one server, or several. Authority is split between them so that the parts that meet model output and strangers' code hold the least.</p>
+  </div>
+
+  <figure>
+    <svg viewBox="0 0 680 300">
+      <defs><marker id="a11" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto"><path d="M0 0L10 5L0 10z" fill="#4c525b"/></marker></defs>
+      <!-- clients -->
+      <g font-size="10.5" text-anchor="middle">
+        <rect x="0" y="20" width="118" height="44" rx="10" fill="#fff" stroke="#e5e1d8"/><text x="59" y="47" fill="#14161a" font-weight="600">Web app</text>
+        <rect x="0" y="74" width="118" height="44" rx="10" fill="#fff" stroke="#e5e1d8"/><text x="59" y="101" fill="#14161a" font-weight="600">Phone app</text>
+        <rect x="0" y="128" width="118" height="44" rx="10" fill="#fff" stroke="#e5e1d8"/><text x="59" y="149" fill="#14161a" font-weight="600">Scripts · API</text><text x="59" y="163" fill="#6e747e" font-size="9.5">and webhooks</text>
+      </g>
+      <path d="M120 96H160" stroke="#4c525b" stroke-width="1.5" marker-end="url(#a11)"/>
+      <!-- your machines frame -->
+      <rect x="164" y="0" width="516" height="300" rx="16" fill="#f7f6f2" stroke="#e5e1d8"/>
+      <text x="180" y="22" font-size="9.5" font-weight="600" letter-spacing="1.3" fill="#6e747e">YOUR MACHINES</text>
+      <!-- backend -->
+      <rect x="180" y="36" width="170" height="120" rx="14" fill="#0e7c5b"/>
+      <text x="265" y="62" text-anchor="middle" font-size="12.5" font-weight="600" fill="#fff">Backend</text>
+      <g font-size="10" fill="#e9f3ef" text-anchor="middle"><text x="265" y="84">identity and permissions</text><text x="265" y="99">the vault and its keys</text><text x="265" y="114">approvals · the audit trail</text><text x="265" y="129">the only way to the database</text></g>
+      <rect x="180" y="190" width="170" height="54" rx="12" fill="#fff" stroke="#e5e1d8"/>
+      <text x="265" y="213" text-anchor="middle" font-size="11" font-weight="600" fill="#14161a">Database · files</text>
+      <text x="265" y="230" text-anchor="middle" font-size="9.5" fill="#6e747e">local, or your cloud storage</text>
+      <path d="M265 158V186" stroke="#4c525b" stroke-width="1.5" marker-end="url(#a11)"/>
+      <!-- runtime -->
+      <path d="M352 96H396" stroke="#4c525b" stroke-width="1.5" marker-end="url(#a11)"/>
+      <text x="374" y="86" text-anchor="middle" font-size="9" fill="#6e747e">a pass</text>
+      <rect x="400" y="36" width="140" height="120" rx="14" fill="#3d9677"/>
+      <text x="470" y="62" text-anchor="middle" font-size="12.5" font-weight="600" fill="#fff">Runtime</text>
+      <g font-size="10" fill="#eef7f3" text-anchor="middle"><text x="470" y="84">the assistant</text><text x="470" y="99">the gate</text><text x="470" y="114">the clock</text><text x="470" y="129">the proxy</text></g>
+      <!-- agents -->
+      <rect x="400" y="190" width="140" height="94" rx="14" fill="#d6ebe3" stroke="#8fc5b1"/>
+      <text x="470" y="214" text-anchor="middle" font-size="11.5" font-weight="600" fill="#14161a">Agents' container</text>
+      <g font-size="9.5" fill="#4c525b" text-anchor="middle"><text x="470" y="232">one room per agent</text><text x="470" y="247">no way to the database</text><text x="470" y="262">out only via the proxy</text></g>
+      <path d="M470 158V186" stroke="#4c525b" stroke-width="1.5" marker-end="url(#a11)"/>
+      <!-- outside -->
+      <rect x="560" y="36" width="108" height="56" rx="12" fill="#fff" stroke="#e5e1d8"/>
+      <text x="614" y="59" text-anchor="middle" font-size="10.5" font-weight="600" fill="#14161a">Model</text>
+      <text x="614" y="75" text-anchor="middle" font-size="9" fill="#6e747e">a provider, or local</text>
+      <path d="M542 64H556" stroke="#4c525b" stroke-width="1.5" marker-end="url(#a11)"/>
+      <rect x="560" y="206" width="108" height="56" rx="12" fill="#fff" stroke="#e5e1d8"/>
+      <text x="614" y="229" text-anchor="middle" font-size="10.5" font-weight="600" fill="#14161a">Declared sites</text>
+      <text x="614" y="245" text-anchor="middle" font-size="9" fill="#6e747e">Gmail, Sheets, …</text>
+      <path d="M542 234H556" stroke="#4c525b" stroke-width="1.5" stroke-dasharray="3 3" marker-end="url(#a11)"/>
+    </svg>
+    <figcaption><b>The parts, and where authority sits.</b> Only the backend reaches the database and holds the keys. The runtime acts for a person only with a pass for one chat. Agents' code runs in a separate container with one way out.</figcaption>
+  </figure>
+
+  <h3>If a part is taken over</h3>
+  <p>Security that assumes nothing will ever break is not security. So the question for each part is: what would an attacker who took it over get — and what would still be out of reach?</p>
+  <table>
+    <tr><th style="width:20%">Taken over</th><th style="width:40%">They get</th><th>They still cannot</th></tr>
+    <tr><td>An agent's code</td><td>what its call was handed, its own room, its declared sites</td><td>read another agent's files, reach other sites, touch the platform or the database</td></tr>
+    <tr><td>The runtime</td><td>the passes it currently holds — people with a chat open or a schedule running — each for at most an hour, within a fixed list of 40 actions; it could run their granted functions without a card</td><td>decide a card, read the database, open a sealed value, obtain a refresh token, or act for anyone else — and stop-everything withdraws its passes</td></tr>
+    <tr><td>The backend</td><td colspan="2">everything: it is the one part trusted with everything, which is why it is the one part that never runs model output or agents' code</td></tr>
+  </table>
+
+  <h3>What it is made of</h3>
+  <div class="grid three">
+    <div class="card sunk"><div class="num">25k</div><h4>Backend</h4><p>lines of Python: identity, permissions, the vault, approvals, the audit trail.</p></div>
+    <div class="card sunk"><div class="num">17k</div><h4>Runtime and agents</h4><p>lines of Python: the assistant, the gate, the clock, the proxy, the sandbox — plus a small C starter program.</p></div>
+    <div class="card sunk"><div class="num">3</div><h4>Ways in</h4><p>a web app, a phone app for iOS and Android, and an API for scripts and webhooks.</p></div>
+  </div>
+  <p>Models are reached through their providers — the major clouds and model companies, or a model running on your own machine — and nothing in the gate depends on which. Agents are Python packages written against a small toolkit that asks for files, records and credentials by the names their manifest declares. The whole platform is open source under the Apache 2.0 license.</p>
+</section>

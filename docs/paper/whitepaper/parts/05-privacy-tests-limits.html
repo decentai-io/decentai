@@ -1,0 +1,162 @@
+<!-- ── 12. What leaves your deployment ───────────────────────────── -->
+<section class="chapter">
+  <div class="chapter-head">
+    <div class="kicker">12 · What leaves your deployment</div>
+    <h2>Your data stays where you put it — and here is every exception</h2>
+    <p class="lead">DecentAI keeps its database, files, vault and audit trail on the machines you run it on. Some of what a chat does has to leave to work — a model has to read a message to answer it. This is every way something leaves, and who decides. Nothing is ever sent to DecentAI's makers.</p>
+  </div>
+
+  <table>
+    <tr><th style="width:22%">What</th><th style="width:46%">Where it goes</th><th>Who decides</th></tr>
+    <tr><td>A chat's messages</td><td>The model provider the chat uses — or nowhere, with a model on your own machine</td><td>The administrator adds providers; each person picks a model</td></tr>
+    <tr><td>What an agent sends</td><td>Only the sites its manifest declared, through the proxy</td><td>The administrator approves agents and blocks sites</td></tr>
+    <tr><td>A connected account's sign-in</td><td>The provider (Google, Microsoft…), through the app your organization registered</td><td>Each person, when they connect</td></tr>
+    <tr><td>Outside tool servers (MCP)</td><td>The server's address</td><td>Each person, where Safety allows them</td></tr>
+    <tr><td>Notifications</td><td>A phone through Expo and Apple or Google; a browser through its push service; email through your mail server</td><td>Each person — and the organization can require that they say only that something happened</td></tr>
+    <tr><td>Outgoing webhooks</td><td>Addresses a person subscribed: a line and a link; the reply only if asked</td><td>Each person</td></tr>
+  </table>
+
+  <h3>Speech, on every device</h3>
+  <p>Talking to the assistant and hearing it read replies aloud can happen in four places. Only two of them send a voice anywhere, and both are a choice somebody made knowingly.</p>
+  <figure>
+    <svg viewBox="0 0 680 232">
+      <g font-size="10.5">
+        <g>
+          <rect x="0" y="0" width="160" height="232" rx="14" fill="#e9f3ef" stroke="#bcdcd0"/>
+          <text x="16" y="28" font-weight="600" fill="#14161a">The phone</text>
+          <text x="16" y="46" font-size="9.5" fill="#0b6a4e" font-weight="600">THE DEFAULT ON PHONES</text>
+          <text x="16" y="74" fill="#4c525b">its own recognizer,</text><text x="16" y="89" fill="#4c525b">on the device only;</text><text x="16" y="104" fill="#4c525b">its own voices</text>
+          <rect x="16" y="190" width="128" height="26" rx="13" fill="#fff"/><text x="80" y="207" text-anchor="middle" font-weight="600" fill="#0b6a4e">nothing leaves</text>
+        </g>
+        <g>
+          <rect x="173" y="0" width="160" height="232" rx="14" fill="#e9f3ef" stroke="#bcdcd0"/>
+          <text x="189" y="28" font-weight="600" fill="#14161a">The computer</text>
+          <text x="189" y="46" font-size="9.5" fill="#0b6a4e" font-weight="600">THE DEFAULT IN BROWSERS</text>
+          <text x="189" y="74" fill="#4c525b">its own voices;</text><text x="189" y="89" fill="#4c525b">the browser's recognizer</text><text x="189" y="104" fill="#4c525b">where it hears locally</text>
+          <rect x="189" y="190" width="128" height="26" rx="13" fill="#fff"/><text x="253" y="207" text-anchor="middle" font-weight="600" fill="#0b6a4e">nothing leaves</text>
+        </g>
+        <g>
+          <rect x="346" y="0" width="160" height="232" rx="14" fill="#fff" stroke="#e5e1d8"/>
+          <text x="362" y="28" font-weight="600" fill="#14161a">Your server</text>
+          <text x="362" y="46" font-size="9.5" fill="#6e747e" font-weight="600">WHERE THE ADMIN SETS IT</text>
+          <text x="362" y="74" fill="#4c525b">speech models running</text><text x="362" y="89" fill="#4c525b">on your own machines</text>
+          <rect x="362" y="190" width="128" height="26" rx="13" fill="#f7f6f2"/><text x="426" y="207" text-anchor="middle" font-weight="600" fill="#4c525b">stays inside</text>
+        </g>
+        <g>
+          <rect x="519" y="0" width="161" height="232" rx="14" fill="#fff" stroke="#e7cfa6"/>
+          <text x="535" y="28" font-weight="600" fill="#14161a">Somebody else's</text>
+          <text x="535" y="46" font-size="9.5" fill="#a5620f" font-weight="600">ONLY WHEN CHOSEN</text>
+          <text x="535" y="74" fill="#4c525b">a speech provider the</text><text x="535" y="89" fill="#4c525b">admin chose; or a browser</text><text x="535" y="104" fill="#4c525b">that can only send voice</text><text x="535" y="119" fill="#4c525b">to its maker — used only</text><text x="535" y="134" fill="#4c525b">if the person picks it,</text><text x="535" y="149" fill="#4c525b">and the choice says so</text>
+          <rect x="535" y="190" width="129" height="26" rx="13" fill="#f8eedd"/><text x="599" y="207" text-anchor="middle" font-weight="600" fill="#a5620f">leaves, knowingly</text>
+        </g>
+      </g>
+    </svg>
+    <figcaption><b>Where speech happens.</b> A voice stays on the device unless a person or their administrator chose otherwise — and wherever it goes online, the setting says so beside the choice.</figcaption>
+  </figure>
+</section>
+
+<!-- ── 13. How we know ───────────────────────────────────────────── -->
+<section class="chapter">
+  <div class="chapter-head">
+    <div class="kicker">13 · How we know</div>
+    <h2>Saying is not enough. Every promise is tested.</h2>
+    <p class="lead">A lock's maker can describe it and say it is strong. What convinces you is a locksmith who tried to open it, wrote down every way they tried, and failed each time — and who repeats the attempts every time the lock changes.</p>
+  </div>
+
+  <div class="grid two" style="align-items:center">
+    <figure style="margin:0">
+      <svg viewBox="0 0 330 210">
+        <text x="0" y="14" font-size="10" font-weight="600" letter-spacing="1.2" fill="#6e747e">AUTOMATED TESTS, BY SUITE</text>
+        <g font-size="10.5">
+          <text x="0" y="48" fill="#14161a">Runtime</text>
+          <rect x="104" y="34" width="190" height="20" rx="4" fill="#0e7c5b"/><text x="300" y="49" fill="#14161a" font-weight="600">1,031</text>
+          <text x="0" y="86" fill="#14161a">Backend</text>
+          <rect x="104" y="72" width="170" height="20" rx="4" fill="#0e7c5b"/><text x="280" y="87" fill="#14161a" font-weight="600">924</text>
+          <text x="0" y="124" fill="#14161a">Spanning both</text>
+          <rect x="104" y="110" width="33" height="20" rx="4" fill="#0e7c5b"/><text x="143" y="125" fill="#14161a" font-weight="600">180</text>
+          <text x="0" y="162" fill="#14161a">Example agent</text>
+          <rect x="104" y="148" width="5" height="20" rx="2" fill="#0e7c5b"/><text x="115" y="163" fill="#14161a" font-weight="600">24</text>
+          <line x1="104" y1="26" x2="104" y2="176" stroke="#14161a" stroke-width="1"/>
+          <text x="0" y="200" fill="#6e747e" font-size="9.5">2,159 in all · every suite passing · runs of 15 October 2026</text>
+        </g>
+      </svg>
+    </figure>
+    <div>
+      <div class="card sunk" style="margin-bottom:4mm"><div class="num">2,159</div><h4>automated tests</h4><p>that use the platform the way a person, an agent or an attacker would — and check that what happens is what this paper says.</p></div>
+      <div class="card sunk"><div class="num">83 / 83</div><h4>live sandbox tests passed</h4><p>in the deployed two-container setup, with a hostile agent — none skipped, in 88 seconds.</p></div>
+    </div>
+  </div>
+
+  <p>The tests use a <b>scripted model</b>: a stand-in that gives answers written in advance. That is deliberate. A test must give the same result every time, and a real model does not — and the claims here are about what the <em>platform</em> does with whatever a model proposes. One suite runs the whole path for real: a person's connection reaches the backend, the backend calls a real runtime, and the runtime calls back with the chat's pass, with only the model replaced.</p>
+
+  <h3>An agent written to break out</h3>
+  <p>One test agent is hostile on purpose: each of its functions attempts one escape, and the test passes only if it is refused. Beside each refusal, a second check makes sure ordinary work still functions — a sandbox that refuses everything would pass the first kind of test and fail the second.</p>
+  <table>
+    <tr><th style="width:17%">Promise</th><th style="width:47%">Escape attempts</th><th style="width:12%">Result</th><th>Still works</th></tr>
+    <tr><td>Own files</td><td>read the platform's settings; write into its own installed code; read or write another agent's room; read the platform's code; keep state across restarts</td><td><span class="tag no">refused</span></td><td>reading what it runs from; its home, emptied each start</td></tr>
+    <tr><td>Own user</td><td>signal the platform's process; use the starter program to become another agent</td><td><span class="tag no">refused</span></td><td>running as itself; stopping it ends all it started</td></tr>
+    <tr><td>Declared sites</td><td>connect around the proxy; reach the platform's own services; look a name up directly; reach an undeclared or blocked site</td><td><span class="tag no">refused</span></td><td>its declared site; a credential's host, for that call only</td></tr>
+    <tr><td>System calls</td><td>open unusual network sockets; trace another process; create a namespace; talk to another agent's private socket</td><td><span class="tag no">refused</span></td><td>its own sockets; programs it runs are fenced with it</td></tr>
+    <tr><td>Building</td><td>a hostile package reads settings, writes the environment, reaches sites other than the package index, or never ends</td><td><span class="tag no">refused</span></td><td>finished packages are built and installed</td></tr>
+  </table>
+
+  <h3>And around the tests</h3>
+  <div class="grid three">
+    <div class="card"><h4>Every bug leaves a test</h4><p>In October 2026 the whole code base was read line by line. Every way it was found to fail was fixed with a test that repeats the attempt.</p></div>
+    <div class="card"><h4>The documents are tested</h4><p>Every link must lead somewhere, every setting described must exist, and the list of permissions is generated from the code itself.</p></div>
+    <div class="card"><h4>Open questions, published</h4><p>137 design questions the review raised and nobody has settled yet are published with the code, for anyone deciding whether to trust it.</p></div>
+  </div>
+  <div class="note plain">
+    <div class="kicker">What the tests do not show</div>
+    <p>How well a real model resists a cleverly written email — no test asks a real model anything. Speed and behaviour at large scale. And a flaw in the Linux kernel itself, which is a way past every lock and which no test can rule out.</p>
+  </div>
+</section>
+
+<!-- ── 14. What it does not do ───────────────────────────────────── -->
+<section class="chapter">
+  <div class="chapter-head">
+    <div class="kicker">14 · What it does not do</div>
+    <h2>The limits, in one place</h2>
+    <p class="lead">A reader deciding whether to trust everything before this page should be able to find, in one place, every gap we know of. Some are trade-offs made on purpose; some are not yet done; some come from what the platform runs on.</p>
+  </div>
+
+  <div class="grid two">
+    <div class="card"><h4>It does not make the model correct</h4><p>The model can still choose the wrong customer or write something untrue. The platform keeps the mistake small, visible and, where it matters, waiting for you.</p></div>
+    <div class="card"><h4>Below your trust level, the model's word is enough</h4><p>A granted function at or below the chat's level runs without a card — at level 3, every granted function does. Trust levels and grants are security decisions.</p></div>
+    <div class="card"><h4>An approved agent can misuse what it is lent</h4><p>It can use a mailbox it was given against the sites it declared, and keep a value in memory between calls. Reading an agent before approving it is the answer.</p></div>
+    <div class="card"><h4>Rooms are per agent, not per person</h4><p>One running copy of an agent serves everyone in the organization who was given it, so people using the same agent share its process.</p></div>
+    <div class="card"><h4>The runtime is trusted to apply the level</h4><p>A taken-over runtime could skip cards for the people whose passes it holds, for up to an hour — though it still cannot decide a card, open the vault or reach the database.</p></div>
+    <div class="card"><h4>The trail is append-only by code, not by mathematics</h4><p>Nobody using the platform can change it, but someone holding the database's password could, and nothing would show it. It is not cryptographically chained.</p></div>
+    <div class="card"><h4>The sandbox borrows the kernel</h4><p>Some locks need a recent Linux kernel or permissions the operator must give; where they are missing the platform runs and says so. A kernel flaw is a way past all of it.</p></div>
+    <div class="card"><h4>Content can still carry a secret</h4><p>A password you paste into a message, or one an agent returns as ordinary output, is ordinary data to the platform.</p></div>
+  </div>
+</section>
+
+<!-- ── Closing ───────────────────────────────────────────────────── -->
+<section class="chapter">
+  <div class="chapter-head">
+    <div class="kicker">In closing</div>
+    <h2>The model may never be safe. The system around it can be.</h2>
+  </div>
+  <p class="lead" style="font-size:12.2pt;color:var(--ink-soft)">Making models resistant to every trick hidden in what they read may never be finished. Deciding what a model's suggestion is allowed to do is a different problem — and that one can be engineered, audited and tested with tools security has trusted for fifty years.</p>
+  <p>DecentAI is that engineering: identity and permissions that start from no; one gate every action passes; a person's yes for anything that leaves; strangers' code in rooms of its own with one door out; secrets lent a call at a time; results drawn from records, not retyped; a stop that does not ask; and a trail that only grows. The model is still fooled sometimes. When it is, the consequence is small, visible and — where it counts — waiting for you.</p>
+
+  <div class="grid three" style="margin-top:8mm">
+    <div class="card sunk"><h4>Run it</h4><p>On your own computer in minutes, or on your organization's servers. Open source, Apache 2.0.</p></div>
+    <div class="card sunk"><h4>Read the code</h4><p>github.com/decentai-io — the platform, the agents, and the phone app.</p></div>
+    <div class="card sunk"><h4>Go deeper</h4><p>A longer technical paper describes every mechanism in full, for engineers and researchers who want to check us.</p></div>
+  </div>
+
+  <h3>The words used here</h3>
+  <table>
+    <tr><td style="width:24%">Agent</td><td>A tool the assistant can use, such as Gmail or a browser, with a manifest an administrator approved.</td></tr>
+    <tr><td>Manifest</td><td>An agent's contract: its functions and their levels, inputs and outputs, credentials by kind, storage, sites and libraries.</td></tr>
+    <tr><td>Level</td><td>How far a function reaches: 0 reads, 1 makes an ordinary change, 2 a broad one, 3 leaves the platform or cannot be undone.</td></tr>
+    <tr><td>Trust level</td><td>Per chat, chosen by the person: functions at or below it run alone; above it, they wait for a yes.</td></tr>
+    <tr><td>Card</td><td>A request for your decision on one exact call, or for an answer, a login or a code.</td></tr>
+    <tr><td>Backend</td><td>The part that holds identity, permissions, the vault and the database.</td></tr>
+    <tr><td>Runtime</td><td>The part that runs the assistant, the gate, the clock and the proxy.</td></tr>
+    <tr><td>Proxy</td><td>An agent's only way to the internet, open to its declared sites.</td></tr>
+    <tr><td>Audit trail</td><td>The record of what the platform allowed, which it only ever adds to.</td></tr>
+  </table>
+</section>
