@@ -164,6 +164,24 @@ describe('ChatDetailComponent approval lifecycle', () => {
       'approval', 'approval_closed', 'Approval is already approved.', false,
     );
   });
+
+  it('answers a skill card with save, and keeps the skill on the card', async () => {
+    const answerQuestion = jasmine.createSpy('answerQuestion').and.resolveTo({
+      data: { status: 'answered', skill: { ref: 'sk_1', title: 'Jira bulk' } },
+    });
+    const component = componentWith(jasmine.createSpy('resolveApproval'), { answerQuestion });
+    const skill = { title: 'Jira bulk', summary: 'When many tickets.', body: '```js\nrun()\n```' };
+    (component as any).addApproval({
+      approval_id: 'appr_6', kind: 'question', expects: 'skill',
+      function: 'save_skill', question: 'Save “Jira bulk” as a skill?', skill,
+    });
+    expect(component.pendingApprovals[0].skill).toEqual(skill);
+
+    await component.onApprovalDecision({ approval_id: 'appr_6', decision: 'answer', skill: 'save' });
+
+    expect(answerQuestion).toHaveBeenCalledWith('appr_6', 'save');
+    expect(component.pendingApprovals[0].status).toBe('answered');
+  });
 });
 
 describe('ChatDetailComponent title', () => {

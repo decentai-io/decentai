@@ -67,6 +67,53 @@
     </div>
   }
 </div>
+} @else if (isSkill) {
+<!-- A skill the assistant offers to save (save_skill): the skill whole,
+     as plain text — interpolated, so nothing in it is rendered or run. -->
+<div class="approval-card question-card skill-card" [class.is-resolved]="!isPending" role="group" [attr.aria-label]="'Save ' + skill.title + ' as a skill'">
+  <div class="approval-head">
+    <lucide-icon class="approval-icon" name="book-open" [size]="20" aria-hidden="true"></lucide-icon>
+    <div class="approval-title-wrap">
+      <span class="approval-title">The assistant offers to save a skill</span>
+      <span class="question-text">Saved as your own skill, visible only to you until you share it on the Skills page. Later chats can read it.</span>
+    </div>
+    @if (!isPending) {
+      <span class="chip">{{ skillStatusLabel }}</span>
+    }
+  </div>
+
+  <div class="approval-body">
+    <div class="approval-row">
+      <span class="approval-label">Title</span>
+      <span class="approval-value">{{ skill.title }}</span>
+    </div>
+    <div class="approval-row">
+      <span class="approval-label">When to use</span>
+      <span class="approval-value">{{ skill.summary }}</span>
+    </div>
+  </div>
+
+  <button type="button" class="btn ghost sm approval-more" (click)="toggleSkill()" [attr.aria-expanded]="skillShown">
+    <lucide-icon [name]="skillShown ? 'chevron-up' : 'chevron-down'" [size]="16" aria-hidden="true"></lucide-icon>
+    {{ skillShown ? 'Hide the skill' : 'Show the skill' }} · {{ skillLines }} {{ skillLines === 1 ? 'line' : 'lines' }}
+  </button>
+  @if (skillShown) {
+    <pre class="record-json code-text skill-text" tabindex="0" aria-label="The skill's instructions">{{ skill.body }}</pre>
+  }
+
+  @if (isPending) {
+    <div class="approval-actions">
+      <button type="button" class="btn" (click)="decideSkill('decline')">
+        <lucide-icon name="x" [size]="16" aria-hidden="true"></lucide-icon>
+        Don't save
+      </button>
+      <button type="button" class="btn primary" (click)="decideSkill('save')">
+        <lucide-icon name="check" [size]="16" aria-hidden="true"></lucide-icon>
+        Save skill
+      </button>
+    </div>
+  }
+</div>
 } @else if (isQuestion) {
 <div class="approval-card question-card" [class.is-resolved]="!isPending" role="group" [attr.aria-label]="'Question from ' + agentName">
   <div class="approval-head">
