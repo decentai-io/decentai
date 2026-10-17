@@ -17,7 +17,7 @@ import {
   monitorLabel, monitorSummary, monitorTone,
 } from './monitor-words';
 
-type MonitoringView = 'overview' | 'agents' | 'events' | 'connections';
+type MonitoringView = 'overview' | 'tokens' | 'agents' | 'events' | 'connections';
 
 /** What the events and the connections are narrowed to, each under the
  *  name the address gives it; '' is not narrowed. */
@@ -44,7 +44,9 @@ const OUTCOMES: MonitorOutcome[] = ['ok', 'trouble', 'refused', 'unreached', 'fa
  * Four views, each with its own address. "Overview" (/monitoring) is
  * what the agents did in a window, added up from the audit trail
  * (activity-overview.component); for whoever may not see it, /monitoring
- * is "Agents". "Agents" (/monitoring/agents) is the running agents with
+ * is "Agents". "Tokens" (/monitoring/tokens) is what the chats and agents
+ * had models use, and its estimated cost (token-usage.component), for
+ * whoever holds agents:monitor:tokens. "Agents" (/monitoring/agents) is the running agents with
  * what each holds, against what they are given together, and what each
  * keeps on disk. "Events" (/monitoring/events) is everything written
  * down; "Connections" (/monitoring/connections) is the connections
@@ -69,6 +71,7 @@ export class MonitoringComponent implements OnInit, OnDestroy {
   private offered(): Choice<MonitoringView>[] {
     return [
       ...(this.canSeeSummary ? [{ value: 'overview' as const, name: 'Overview' }] : []),
+      ...(this.canSeeTokens ? [{ value: 'tokens' as const, name: 'Tokens' }] : []),
       { value: 'agents', name: 'Agents' },
       ...(this.canSeeEvents
         ? [{ value: 'events' as const, name: 'Events' }, { value: 'connections' as const, name: 'Connections' }]
@@ -131,6 +134,7 @@ export class MonitoringComponent implements OnInit, OnDestroy {
   get canSeeEvents(): boolean { return this.auth.can('agents:monitor:events'); }
   get canSeeFiles(): boolean { return this.auth.can('agents:monitor:files'); }
   get canSeeSummary(): boolean { return this.auth.can('agents:monitor:summary'); }
+  get canSeeTokens(): boolean { return this.auth.can('agents:monitor:tokens'); }
 
   async ngOnInit(): Promise<void> {
     this.views = this.offered();
@@ -160,9 +164,10 @@ export class MonitoringComponent implements OnInit, OnDestroy {
   private async readView(): Promise<void> {
     const named = this.route.snapshot.firstChild?.url[0]?.path;
     const view: MonitoringView =
-      named === 'events' || named === 'connections' || named === 'agents' ? named : this.landing;
+      named === 'events' || named === 'connections' || named === 'agents' || named === 'tokens'
+        ? named : this.landing;
     const listed = view === 'events' || view === 'connections';
-    if (listed && !this.canSeeEvents) {
+    if ((listed && !this.canSeeEvents) || (view === 'tokens' && !this.canSeeTokens)) {
       void this.router.navigate(['/monitoring'], { replaceUrl: true });
       return;
     }
@@ -202,7 +207,7 @@ export class MonitoringComponent implements OnInit, OnDestroy {
     this.view = view;
     this.error = '';
     this.stopWatching();
-    if (view === 'overview') return;
+    if (view === 'overview' || view === 'tokens') return;
     if (view === 'agents') {
       // One clock, ticking each second: it says how old the numbers
       // are, and asks for new ones when they are old enough.

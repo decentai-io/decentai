@@ -14,6 +14,9 @@
   <!-- ── What the agents did, added up ───────────────────────────── -->
   <app-activity-overview *ngIf="view === 'overview'"></app-activity-overview>
 
+  <!-- ── The tokens models used, and their estimated cost ────────── -->
+  <app-token-usage *ngIf="view === 'tokens'"></app-token-usage>
+
   <!-- ── What the agents use now ─────────────────────────────────── -->
   <ng-container *ngIf="view === 'agents'">
     <div class="form" *ngIf="loadingUsage" aria-busy="true" aria-label="Loading what the agents use">

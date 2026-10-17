@@ -1,0 +1,29 @@
+/* Monitoring's Tokens: the Overview's tiles, cards and chart
+   (activity-overview.component.css, loaded first), and the little that
+   is its own. The chart's pair: the tokens read from the cache in the
+   Overview's quiet neutral, everything else in the accent — the bar
+   lists' own hue, so nothing here reads as trouble. */
+.ov-swatch.is-rest,
+.ov-seg.is-rest {
+  background: var(--accent);
+}
+
+/* A model by its id, its provider beneath; a person by name, their
+   address beneath. */
+.tk-model {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.tk-model code {
+  overflow: hidden;
+  font-size: var(--t-xs);
+  text-overflow: ellipsis;
+}
+
+.tk-provider {
+  color: var(--ink-3);
+  font-size: var(--t-xs);
+  line-height: var(--lh-xs);
+}

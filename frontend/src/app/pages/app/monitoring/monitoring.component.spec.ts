@@ -251,17 +251,34 @@ describe('MonitoringComponent', () => {
     await component.ngOnInit();
 
     expect(component.view).toBe('overview');
-    expect(component.views.map((view) => view.value)).toEqual(['overview', 'agents', 'events', 'connections']);
+    expect(component.views.map((view) => view.value)).toEqual(['overview', 'tokens', 'agents', 'events', 'connections']);
     component.ngOnDestroy();
   });
 
   it('opens on the agents, and offers no overview, without the summary', async () => {
-    const component = create({}, [], (action) => action !== 'agents:monitor:summary', {});
+    const component = create({}, [], (action) => action !== 'agents:monitor:summary'
+      && action !== 'agents:monitor:tokens', {});
     await component.ngOnInit();
 
     expect(component.view).toBe('agents');
     expect(component.views.map((view) => view.value)).toEqual(['agents', 'events', 'connections']);
     component.ngOnDestroy();
+  });
+
+  it('offers the tokens only to whoever may see them, and sends anyone else back', async () => {
+    const went: any[][] = [];
+    const component = create({}, [], (action) => action !== 'agents:monitor:tokens',
+      { view: 'tokens', went });
+    await component.ngOnInit();
+
+    expect(component.views.map((view) => view.value)).not.toContain('tokens');
+    expect(went).toEqual([['/monitoring']]);
+    component.ngOnDestroy();
+
+    const allowed = create({}, [], () => true, { view: 'tokens' });
+    await allowed.ngOnInit();
+    expect(allowed.view).toBe('tokens');
+    allowed.ngOnDestroy();
   });
 
   it('says how old the numbers are', async () => {

@@ -60,6 +60,7 @@ const routes: Routes = [
     children: [
       { path: '', pathMatch: 'full', children: [] },
       { path: 'agents', children: [] },
+      { path: 'tokens', children: [] },
       { path: 'events', children: [] },
       { path: 'connections', children: [] },
     ],
