@@ -189,8 +189,11 @@ pre.code-tile * {
   font-family: inherit;
 }
 
+markdown pre.code-wrap,
 markdown pre.code-wrap code {
   white-space: pre-wrap;
+  /* A long word — a URL, a hash, a line of base64 — breaks too. */
+  overflow-wrap: anywhere;
 }
 
 /* The block's header row: its language at the left, Wrap and Copy at

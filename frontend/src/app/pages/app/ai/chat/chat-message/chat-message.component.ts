@@ -1,4 +1,4 @@
-import { AfterViewChecked, Component, ElementRef, Input, OnChanges, OnDestroy, Renderer2 } from '@angular/core';
+import { AfterViewChecked, Component, ElementRef, Input, OnChanges, OnDestroy, Renderer2, SimpleChanges } from '@angular/core';
 import { Clipboard } from '@angular/cdk/clipboard';
 import { MarkdownService } from 'ngx-markdown';
 import * as Prism from 'prismjs';
@@ -39,6 +39,11 @@ export class ChatMessageComponent implements OnChanges, AfterViewChecked, OnDest
   contentExpanded = false;
   fileError = '';
   private enhancedBlocks = new WeakSet<HTMLElement>();
+  /** Which of the message's code blocks, counted from the top, the
+   *  person set to wrap. The markdown is drawn again while an answer is
+   *  written and when the thread hands in the message anew, and each
+   *  drawing is new elements: the choice is kept here, not on them. */
+  private wrapped = new Set<number>();
   private cleanups: Array<() => void> = [];
 
   /** When the message happened — time alone for today, date + time
@@ -79,13 +84,22 @@ export class ChatMessageComponent implements OnChanges, AfterViewChecked, OnDest
     return !!this.speechKey && this.readAloud.speaking === this.speechKey;
   }
 
-  ngOnChanges(): void {
-    this.contentExpanded = false;
-    this.fileError = '';
+  ngOnChanges(changes: SimpleChanges): void {
+    // Only another message starts folded again. The same message handed
+    // in anew — words still arriving, the turn ending, the thread
+    // refreshed — keeps what the person opened and wrapped.
+    const change = changes['message'];
+    const before = change?.previousValue?.message_id;
+    const now = change?.currentValue?.message_id;
+    if (change && (change.firstChange || !now || before !== now)) {
+      this.contentExpanded = false;
+      this.fileError = '';
+      this.wrapped.clear();
+    }
   }
 
   ngAfterViewChecked(): void {
-    this.host.nativeElement.querySelectorAll<HTMLElement>('pre').forEach((pre) => {
+    this.host.nativeElement.querySelectorAll<HTMLElement>('pre').forEach((pre, index) => {
       if (this.enhancedBlocks.has(pre)) return;
       this.enhancedBlocks.add(pre);
       const code = pre.querySelector('code');
@@ -102,7 +116,9 @@ export class ChatMessageComponent implements OnChanges, AfterViewChecked, OnDest
       this.renderer.appendChild(label, this.renderer.createText(language));
       const wrap = this.renderer.createElement('button');
       this.renderer.setAttribute(wrap, 'type', 'button');
-      this.renderer.setAttribute(wrap, 'aria-pressed', 'false');
+      const wraps = this.wrapped.has(index);
+      if (wraps) this.renderer.addClass(pre, 'code-wrap');
+      this.renderer.setAttribute(wrap, 'aria-pressed', String(wraps));
       this.renderer.appendChild(wrap, this.renderer.createText('Wrap'));
       const copy = this.renderer.createElement('button');
       this.renderer.setAttribute(copy, 'type', 'button');
@@ -113,8 +129,11 @@ export class ChatMessageComponent implements OnChanges, AfterViewChecked, OnDest
       this.renderer.appendChild(toolbar, wrap);
       this.renderer.appendChild(toolbar, copy);
       this.renderer.insertBefore(pre, toolbar, code);
-      this.cleanups.push(this.renderer.listen(wrap, 'click', () =>
-        wrap.setAttribute('aria-pressed', String(pre.classList.toggle('code-wrap')))));
+      this.cleanups.push(this.renderer.listen(wrap, 'click', () => {
+        const on = pre.classList.toggle('code-wrap');
+        wrap.setAttribute('aria-pressed', String(on));
+        if (on) this.wrapped.add(index); else this.wrapped.delete(index);
+      }));
       if (language === 'mermaid') this.drawInto(pre, toolbar, code);
       this.cleanups.push(this.renderer.listen(copy, 'click', () => {
         this.clipboard.copy(code.textContent || '');
@@ -171,7 +190,15 @@ export class ChatMessageComponent implements OnChanges, AfterViewChecked, OnDest
   get wordCount(): string {
     return this.getFullText().split(/\s+/).filter(Boolean).length.toLocaleString();
   }
-  toggleContent(): void { this.contentExpanded = !this.contentExpanded; }
+  toggleContent(): void {
+    this.contentExpanded = !this.contentExpanded;
+    if (this.contentExpanded) return;
+    // Folding takes away the height the person had scrolled through,
+    // and the thread would show what comes after: the answer's own
+    // words below the fold seemed gone. Keep its button in sight.
+    setTimeout(() => this.host.nativeElement.querySelector('.msg-fold')
+      ?.scrollIntoView({ block: 'nearest' }));
+  }
   isFilePart(part: any): boolean { return part?.type === 'file'; }
 
   /** From this many files in a row, they become one scrollable strip
