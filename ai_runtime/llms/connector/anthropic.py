@@ -7,7 +7,7 @@ from anthropic import AsyncAnthropic
 
 from ai_runtime.llms.connector import cache
 from ai_runtime.llms.connector.tools import (
-    ModelReply, anthropic_tools, setting)
+    TIMEOUT_SECONDS, ModelReply, anthropic_tools, setting)
 from ai_runtime.llms.connector.usage import Usage
 
 
@@ -34,7 +34,7 @@ class AnthropicConnector:
             api_key=api_key,
             # Optional override for gateways/proxies; SDK default otherwise.
             base_url=str(config.get("endpoint") or "") or None,
-            timeout=setting(config, "timeout_seconds", 60, 1, 600),
+            timeout=setting(config, "timeout_seconds", TIMEOUT_SECONDS, 1, 600),
             max_retries=int(setting(config, "max_retries", 2, 0, 10)),
             # A redirect is not followed: followed to another origin,
             # the key in this client's headers would go there with it.

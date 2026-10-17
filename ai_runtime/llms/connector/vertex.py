@@ -23,7 +23,7 @@ import httpx
 
 from ai_runtime.llms.connector.anthropic import AnthropicConnector
 from ai_runtime.llms.connector.gemini import GeminiConnector
-from ai_runtime.llms.connector.tools import setting
+from ai_runtime.llms.connector.tools import TIMEOUT_SECONDS, setting
 from ai_runtime.llms.connector.usage import Embeddings, Usage
 from contracts.vertex import VertexAccount
 
@@ -76,7 +76,7 @@ class VertexAnthropicConnector(AnthropicConnector):
             region=self.account.location,
             project_id=self.account.project,
             credentials=self.account.credentials(),
-            timeout=setting(config, "timeout_seconds", 60, 1, 600),
+            timeout=setting(config, "timeout_seconds", TIMEOUT_SECONDS, 1, 600),
             max_retries=int(setting(config, "max_retries", 2, 0, 10)),
             # As the Anthropic connector: a redirect is not followed, so
             # the token in this client's headers goes nowhere else.
