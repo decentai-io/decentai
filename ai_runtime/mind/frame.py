@@ -1,11 +1,17 @@
 """Everything the model is told, and how its reply is read.
 
-The frame is the system message the mind thinks under: the agents
-installed (one line each, or a shortlist when there are many), the
-skills written, what is remembered, the plan, and the summary of what
-has been folded away — rendered through ``prompts/assistant.md``. An
-opened agent's catalog is the same kind of text, priced by the chat's
-trust level. ``parse_actions`` reads the reply back: every JSON object
+The frame is the system message the mind thinks under, in the order
+its parts change, so that a provider's prompt cache keeps as much of it
+as it can: the instructions (``prompts/assistant.md``) and the
+organization's own rules, which change only when somebody edits them;
+then the skills written, what is remembered, the summary of what has
+been folded away, and last the agents installed (one line each, or a
+shortlist that follows the latest message) —
+``prompts/assistant_context.md``. The plan is not in it: it changes
+beat to beat, so it travels after the conversation, in a message of
+its own built for each model call and never kept
+(``plan_message``; docs/system/assistant.md). An opened agent's
+catalog is the same kind of text, priced by the chat's trust level. ``parse_actions`` reads the reply back: every JSON object
 that names an action, fenced or bare.
 
 Everything here is a function of what it is given. The assistant
@@ -42,23 +48,44 @@ def system_prompt(state: AssistantState, agents: Dict[str, InstalledAgent],
                   shortlist: Optional[Tuple[List[str], int]], skills: list,
                   max_skills: int, memories: List[str],
                   guardrail: str = "") -> str:
-    return Prompts.render(
-        "assistant",
-        guardrail=guardrail_block(guardrail),
-        roster=roster_block(agents, shortlist),
+    """The whole frame: ``stable_prompt`` and, after it, what changes
+    more often, least often first."""
+    return stable_prompt(guardrail) + "\n\n" + Prompts.render(
+        "assistant_context",
         skills=skills_block(skills, max_skills),
         memories="\n".join(f"- {text}" for text in memories)
         or "(nothing remembered yet)",
-        plan=state.plan.render(),
+        # Changes only when the conversation folds, and a fold rewrites
+        # the transcript beneath it anyway.
         summary=summary_block(state),
+        # Last: with routing on, the shortlist follows every message.
+        roster=roster_block(agents, shortlist),
     )
+
+
+def stable_prompt(guardrail: str = "") -> str:
+    """The front of the frame that stays the same from beat to beat and
+    chat to chat in one organization: the instructions, then its own
+    rules. What a provider's cache keeps even when the rest changes."""
+    return Prompts.render("assistant", guardrail=guardrail_block(guardrail))
+
+
+def plan_message(state: AssistantState) -> Dict[str, str]:
+    """The plan as the model reads it on one call: a message after the
+    conversation, built for that request and never kept in the
+    transcript, so a plan that changes every beat costs the cache
+    nothing before it."""
+    return {"role": "user",
+            "content": Prompts.render("assistant_plan",
+                                      plan=state.plan.render())}
 
 
 def guardrail_block(text: str) -> str:
     """The organization's own rules as written, or one word saying
-    there are none. Placed after the instructions and before the plan:
-    it changes when an administrator edits it, not turn to turn, so
-    the part of the frame a provider caches stays the same."""
+    there are none. Placed right after the instructions, in the frame's
+    stable front: it changes when an administrator edits it, not turn
+    to turn, so the part of the frame a provider caches stays the
+    same."""
     return str(text or "").strip() or "(none)"
 
 

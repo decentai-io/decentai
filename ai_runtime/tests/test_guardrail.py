@@ -26,7 +26,7 @@ HEADING = "ORGANIZATION'S OWN RULES"
 def block_of(prompt: str) -> str:
     """What stands between the rules' heading and the next block."""
     start = prompt.index(HEADING)
-    return prompt[start:prompt.index("\nPLAN\n", start)]
+    return prompt[start:prompt.index("\nSKILLS\n", start)]
 
 
 class TestTheFrame:
@@ -38,10 +38,13 @@ class TestTheFrame:
         assert prompt.index("A standing instruction") < prompt.index(HEADING) < at
         # ...and before the blocks that change from turn to turn, so the
         # part of the frame a provider caches is the same every turn.
-        for volatile in ("\nPLAN\n", "\nCONVERSATION SO FAR\n", "\nAGENTS\n",
+        for volatile in ("\nCONVERSATION SO FAR\n", "\nAGENTS\n",
                          "\nSKILLS\n", "\nMEMORY\n"):
             assert at < prompt.index(volatile)
         assert "never widen it" in block_of(prompt)
+        # They are where the frame's stable front ends.
+        stable = frame.stable_prompt(RULES)
+        assert prompt.startswith(stable) and stable.endswith(RULES)
 
     def test_no_rules_is_one_word(self):
         prompt = frame.system_prompt(AssistantState(), {}, None, [], 40, [])

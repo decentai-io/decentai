@@ -38,6 +38,7 @@ from ai_runtime.agents.library import InstalledAgent
 from contracts.chat import agent_source
 from contracts.cron import zone
 from ai_runtime.execution.executor import FunctionExecutor
+from ai_runtime.llms.connector import cache
 from ai_runtime.llms.connector.tools import (
     NoModel, is_context_overflow, is_image_refusal)
 from ai_runtime.llms.meter import Meter
@@ -804,8 +805,7 @@ class Assistant:
         tools = ACTION_TOOLS + offered.tools
         started = time.monotonic()
         try:
-            reply = await self.connector.chat(
-                await self.pictures.for_model(self.state.messages), tools=tools)
+            reply = await self.connector.chat(await self._request(), tools=tools)
             self.meter.record("assistant", self.connector, reply, started)
             # What a beat costs in wall time, and how much the model was
             # handed — the line to read when a chat feels slow.
@@ -837,10 +837,39 @@ class Assistant:
         """The beat's call once more, after what refused the first was
         put right — a call of its own, recorded as one."""
         started = time.monotonic()
-        reply = await self.connector.chat(
-            await self.pictures.for_model(self.state.messages), tools=tools)
+        reply = await self.connector.chat(await self._request(), tools=tools)
         self.meter.record("assistant", self.connector, reply, started)
         return reply
+
+    async def _request(self) -> List[Dict[str, Any]]:
+        """What one beat sends: the transcript as the provider takes it
+        (pictures.py), with where its prompt cache may keep it, and the
+        plan after it.
+
+        A provider caches a request's front. So the frame's stable
+        front is marked (``cache.STABLE``: the instructions and the
+        organization's rules, the same every beat), and so is the last
+        message of the transcript (``cache.THROUGH``): the transcript
+        only grows, and the next beat's request begins with all of
+        this one's. The plan changes nearly every beat and goes after
+        the mark, in a message made here and never kept
+        (``cache.TRANSIENT``) — the model reads it, the transcript and
+        every save never hold it, and a connector joins it to the
+        user's turn before it. A connector that marks nothing sends
+        none of the hints (llms/connector/cache.py)."""
+        sent = list(await self.pictures.for_model(self.state.messages))
+        if sent and sent[0].get("role") == "system":
+            stable = frame.stable_prompt(self.guardrail)
+            content = sent[0].get("content")
+            # Only a frame that begins with it now: one saved before the
+            # rules changed is rewritten at the next reframe, and until
+            # then it is not said to be what it is not.
+            if isinstance(content, str) and content.startswith(stable):
+                sent[0] = {**sent[0], cache.STABLE: len(stable)}
+        if sent and sent[-1].get("role") != "system":
+            sent[-1] = {**sent[-1], cache.THROUGH: True}
+        sent.append({**frame.plan_message(self.state), cache.TRANSIENT: True})
+        return sent
 
     # -- say ------------------------------------------------------------
     @staticmethod
@@ -1504,7 +1533,11 @@ class Assistant:
 
     def reframe(self) -> None:
         """Rewrite the system frame from the current state — after the
-        summary changed, so the mind reads what was folded away."""
+        summary changed, so the mind reads what was folded away; after
+        the shortlist, the skills, the memories, the roster or the
+        rules changed. Not after the plan: that is not in the frame
+        (``_request``), so a plan's change leaves the frame and every
+        cached prefix of it as they were."""
         if self.state.messages and self.state.messages[0].get(
                 "role") == "system":
             self.state.messages[0] = {

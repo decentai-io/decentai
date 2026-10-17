@@ -28,6 +28,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Tuple
 from urllib.parse import quote
 
+from ai_runtime.llms.connector import cache
 from ai_runtime.llms.connector.http import HttpConnector
 from ai_runtime.llms.connector.tools import ModelReply, is_tool_choice_refusal
 from ai_runtime.llms.connector.usage import Usage
@@ -53,6 +54,10 @@ class BedrockConnector(HttpConnector):
         #: Bedrock refuse it. One that does is asked with ``auto`` from
         #: then on, and the cycle's prose path covers a reply with no call.
         self.tool_choice = "any"
+        #: Whether cache points are sent at all: only for a model known
+        #: to take them (``caches``), and never again on this connection
+        #: once Bedrock refused a request over one (``chat``).
+        self.cache_points = self.caches(self.model)
 
     @classmethod
     def image_block(cls, mime: str, encoded: str) -> dict:
@@ -102,6 +107,85 @@ class BedrockConnector(HttpConnector):
                 converted.append({"role": role, "content": list(blocks)})
         return system, converted
 
+    #: Converse's mark for "cache the prompt through here".
+    CACHE_POINT = {"cachePoint": {"type": "default"}}
+
+    #: The model families Bedrock caches a prompt for, by the maker's
+    #: part of the id (an inference profile's ``us.``/``eu.``/``global.``
+    #: prefix, or an ARN around it, changes nothing): Anthropic's Claude
+    #: and Amazon's Nova. Anything else — Llama, Mistral, an
+    #: application inference profile whose ARN does not name its model
+    #: — is sent no cache point, since a model that does not cache may
+    #: refuse the block outright.
+    CACHING_FAMILIES = ("anthropic.claude", "amazon.nova")
+    #: Of those, the ones that cache their tools as well; Nova caches
+    #: the system prompt and the messages only.
+    TOOL_CACHING_FAMILIES = ("anthropic.claude",)
+
+    @classmethod
+    def caches(cls, model: str) -> bool:
+        """Whether this model id is one Bedrock caches prompts for."""
+        named = str(model or "").lower()
+        return any(family in named for family in cls.CACHING_FAMILIES)
+
+    @classmethod
+    def caches_tools(cls, model: str) -> bool:
+        named = str(model or "").lower()
+        return any(family in named for family in cls.TOOL_CACHING_FAMILIES)
+
+    @staticmethod
+    def is_cache_refusal(exc: Exception) -> bool:
+        """Whether Bedrock refused a request over its cache points — a
+        model, version or region that does not cache, or a block it
+        does not know — in its words: ``cachePoint``, "prompt caching",
+        or a key it calls extraneous."""
+        reason = str(exc).lower()
+        return "cach" in reason or "extraneous" in reason
+
+    @classmethod
+    def cached(cls, messages: list,
+               with_tools: bool) -> Tuple[List[dict], List[dict], bool]:
+        """The conversation split as ``split_messages`` splits it, with a
+        cache point after the system prompt's stable part and after the
+        latest messages the caller marked (llms/connector/cache.py) — as
+        many as the four a request may carry leave room for once the
+        tools have theirs. The last value says whether they do."""
+        budget = cache.MAX_BREAKPOINTS
+        system: List[dict] = []
+        converted: List[dict] = []
+        marked: List[Tuple[int, int]] = []
+        for message in messages or []:
+            if message.get("role") == "system":
+                stable, rest = cache.system_parts(message)
+                if stable and budget > 0 and cls.CACHE_POINT not in system:
+                    system.extend([{"text": stable}, dict(cls.CACHE_POINT)])
+                    budget -= 1
+                elif stable:
+                    rest = f"{stable}\n\n{rest}".strip()
+                if rest:
+                    system.append({"text": rest})
+                continue
+            blocks = cls._blocks(message.get("content", ""))
+            if not blocks:
+                continue
+            role = "assistant" if message.get("role") == "assistant" else "user"
+            if converted and converted[-1]["role"] == role:
+                converted[-1]["content"].extend(blocks)
+            else:
+                converted.append({"role": role, "content": list(blocks)})
+            if message.get(cache.THROUGH):
+                # Where this message's blocks end, in the turn it joined:
+                # what follows it in the same turn comes after the point.
+                marked.append((len(converted) - 1, len(converted[-1]["content"])))
+        tools_marked = with_tools and budget > 0
+        if tools_marked:
+            budget -= 1
+        # The latest first, so that inserting one never moves the place
+        # an earlier one goes.
+        for turn, end in sorted(marked, reverse=True)[:max(budget, 0)]:
+            converted[turn]["content"].insert(end, dict(cls.CACHE_POINT))
+        return system, converted, tools_marked
+
     @staticmethod
     def tools(tools: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """OpenAI's tool shape → Converse's ``toolSpec``."""
@@ -125,9 +209,13 @@ class BedrockConnector(HttpConnector):
         return await self._post(self._url(), body, {
             "Authorization": f"Bearer {self.api_key}"})
 
-    async def chat(self, messages: list, max_tokens: int | None = None,
-                   tools: list | None = None) -> ModelReply:
-        system, converted = self.split_messages(messages)
+    def _body(self, messages: list, max_tokens: int | None,
+              tools: list | None, caching: bool) -> Dict[str, Any]:
+        if caching:
+            system, converted, tools_marked = self.cached(
+                messages, bool(tools) and self.caches_tools(self.model))
+        else:
+            (system, converted), tools_marked = self.split_messages(messages), False
         body: Dict[str, Any] = {
             "messages": converted,
             "inferenceConfig": {
@@ -136,18 +224,34 @@ class BedrockConnector(HttpConnector):
         if system:
             body["system"] = system
         if tools:
+            declared = self.tools(tools)
+            if tools_marked:
+                declared.append(dict(self.CACHE_POINT))
             body["toolConfig"] = {
-                "tools": self.tools(tools), "toolChoice": {self.tool_choice: {}}}
+                "tools": declared, "toolChoice": {self.tool_choice: {}}}
+        return body
 
-        try:
-            answer = await self._converse(body)
-        except Exception as exc:
-            if (not tools or self.tool_choice == "auto"
-                    or not is_tool_choice_refusal(exc)):
-                raise
-            self.tool_choice = "auto"
-            body["toolConfig"]["toolChoice"] = {"auto": {}}
-            answer = await self._converse(body)
+    async def chat(self, messages: list, max_tokens: int | None = None,
+                   tools: list | None = None) -> ModelReply:
+        caching = self.cache_points and cache.hinted(messages)
+        body = self._body(messages, max_tokens, tools, caching)
+        while True:
+            try:
+                answer = await self._converse(body)
+                break
+            except Exception as exc:
+                if caching and self.is_cache_refusal(exc):
+                    # Caching saves money; it never costs a chat. The
+                    # request goes again without a cache point, and so
+                    # does every later one on this connection.
+                    self.cache_points = caching = False
+                    body = self._body(messages, max_tokens, tools, False)
+                    continue
+                if (not tools or self.tool_choice == "auto"
+                        or not is_tool_choice_refusal(exc)):
+                    raise
+                self.tool_choice = "auto"
+                body["toolConfig"]["toolChoice"] = {"auto": {}}
         blocks = ((answer.get("output") or {}).get("message") or {}).get("content") or []
         calls = [
             {"name": block["toolUse"].get("name"),

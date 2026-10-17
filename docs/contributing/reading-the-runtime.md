@@ -293,10 +293,12 @@ is told (`mind/frame.py`).
    the trace keeps.
 7. `_say`, `_already_said`, with `mind/evidence.py` `Evidence` —
    what may be shown under an answer.
-8. `mind/frame.py` (`system_prompt`, `roster_block`,
-   `render_catalog`, `parse_actions`), with `prompts/assistant.md` and
-   `mind/actions.py` — everything the model is told, and how its
-   reply is read.
+8. `mind/frame.py` (`system_prompt`, `stable_prompt`,
+   `plan_message`, `roster_block`, `render_catalog`, `parse_actions`),
+   with `prompts/assistant.md`, `prompts/assistant_context.md`,
+   `prompts/assistant_plan.md` and `mind/actions.py` — everything the
+   model is told, and how its reply is read; `Assistant._request` —
+   what one beat sends.
 9. `mind/children.py`: `Children.spawn`, `_run`, `_settle_owned` — a
    helper's job, its report, and the plan items it was given.
 10. `mind/pictures.py`: `TranscriptPictures.for_model`, `_picture` —
@@ -555,7 +557,17 @@ Tests: the schedule classes in `ai_runtime/tests/test_session.py`,
   the tokens the call used, read into one meaning for every provider
   (`llms/connector/usage.py`) and recorded by whoever made the call
   on the session's meter (`llms/meter.py`,
-  [monitoring](../system/monitoring.md#what-the-models-used)). The assistant's
+  [monitoring](../system/monitoring.md#what-the-models-used)). A caller
+  may add cache hints to its messages (`llms/connector/cache.py`):
+  the stable front of a system message, "cache through here" on a
+  message, and "made for this request alone" on one after it, which a
+  connector joins to the user's turn before it. Anthropic's connector (and Claude on Vertex) turns them into
+  `cache_control` marks, at most four with the last tool's, and
+  Bedrock's into `cachePoint` blocks for the models it caches,
+  retrying once without them if Bedrock refuses one; every other
+  connector sends the messages without them, and only OpenAI's own
+  address is sent the chat's hashed `prompt_cache_key`
+  ([the frame](../system/assistant.md#the-frame)). The assistant's
   actions are offered as tools (`mind/actions.py`) and a call comes
   back as the action's JSON text, so native tool calling changes how
   the model is asked, not what the runtime does with the answer.

@@ -256,7 +256,10 @@ class TestTheOrganizationsRules:
             first = frame("Answer in French.")
             assert "ORGANIZATION'S OWN RULES" in first
             assert "Answer in French." in first
-            assert first.index("Answer in French.") < first.index("\nPLAN\n")
+            # In the frame's stable front: before the first block that
+            # changes; the plan is no part of the saved frame at all.
+            assert first.index("Answer in French.") < first.index("\nSKILLS\n")
+            assert "\nPLAN\n" not in first
 
             # Edited while the chat is open: its next turn reads the new.
             app_call(admin, "Settings:Guardrail:Update", {"text": "Answer in English."})

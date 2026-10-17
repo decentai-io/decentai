@@ -86,7 +86,7 @@ the budget sheet before ordering anything*.
 | **The text** | at most 4,000 characters (`OrganizationStore.GUARDRAIL_MAX`), kept trimmed, line ends made one kind. Newlines and tabs are allowed; any other control character is refused, since it is invisible on the page and only a surprise in a prompt. Empty is none |
 | **Who may read it** | whoever holds `settings:guardrail:get` |
 | **Who may change it** | whoever holds `settings:guardrail:update` |
-| **Where it goes** | into the assistant's frame, in a block of its own, `ORGANIZATION'S OWN RULES`, after every instruction the platform gives and before the plan, the summary, the agents, the skills and the memories ([the assistant](assistant.md#the-frame)); a sub-assistant's frame carries the same. And into the code reviewer's instructions: code that would break a rule is said to, and never *agrees* |
+| **Where it goes** | into the assistant's frame, in a block of its own, `ORGANIZATION'S OWN RULES`, after every instruction the platform gives and before the skills, the memories, the summary and the agents — the end of the frame's stable front, which a provider's prompt cache keeps from turn to turn ([the assistant](assistant.md#the-frame)); a sub-assistant's frame carries the same. And into the code reviewer's instructions: code that would break a rule is said to, and never *agrees* |
 | **When a change applies** | at the next turn of every chat, an open one included: the runtime reads it with the contract as each turn begins ([chat session](chat-session.md)) |
 
 Neither action is in the baseline or a member's: an administrator holds

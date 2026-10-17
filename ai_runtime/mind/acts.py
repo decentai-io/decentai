@@ -370,11 +370,10 @@ class Acts:
                 "plan": self.mind.state.plan.to_steps()}
 
     async def show_plan(self) -> Optional[str]:
-        """The plan as it now stands, to the frame and the audience.
-        The frame carries it under PLAN: rewritten now, or the next
-        beat reads a list that contradicts the observation beneath it
-        until something else happens to reframe."""
-        self.mind.reframe()
+        """The plan as it now stands, to the audience. The model reads
+        it on its next call without anything rewritten: the plan is
+        put after the conversation for every request
+        (Assistant._request), never kept in the frame."""
         if self.mind.sinks.plan is not None:
             try:
                 await self.mind.sinks.plan(self.mind.state.plan.to_steps())
