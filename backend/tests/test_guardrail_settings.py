@@ -3,8 +3,6 @@ the text and its checks, the trail that says it changed without saying
 what it says, who may read it and who may change it, and the runtime's
 contract carrying it where the page's does not."""
 
-import hashlib
-
 from conftest import app_call
 from test_ai_messages import make_chat
 from test_data_layer import _group, _user
@@ -13,10 +11,6 @@ from test_runtime_secret_use import (  # noqa: F401
 )
 
 RULES = "Never write to the Finance notebook.\n\tAnswer in French."
-
-
-def fingerprint(text):
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:12]
 
 
 class TestTheText:
@@ -65,10 +59,9 @@ class TestTheText:
                       .sort("timestamp", 1))
         assert len(events) == 2, "saying the same again changes nothing"
         assert events[0]["details"] == {"text": {
-            "from": {"length": 0, "sha256": ""},
-            "to": {"length": len(RULES), "sha256": fingerprint(RULES)}}}
-        assert events[1]["details"]["text"]["to"] == {
-            "length": 9, "sha256": fingerprint("Be brief.")}
+            "from": {"length": 0},
+            "to": {"length": len(RULES)}}}
+        assert events[1]["details"]["text"]["to"] == {"length": 9}
         assert events[0]["actor"] == "admin@test.org"
         assert not any("French" in str(event) for event in AuditStore().col.find({}))
 

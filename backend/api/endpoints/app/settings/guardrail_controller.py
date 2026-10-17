@@ -13,8 +13,6 @@ the baseline, and an administrator gives them to the few who need them.
 
 from __future__ import annotations
 
-import hashlib
-
 from database.stores import AuditStore, OrganizationStore
 from server.custom_logging import CustomLoggerFactory
 
@@ -42,12 +40,10 @@ class GuardrailController:
     @staticmethod
     def _witness(text: str) -> dict:
         # The trail is read by more people than may read the rules, so
-        # it says that they changed and how much, not what they say: a
-        # length and a short fingerprint, which tells two versions
-        # apart and matches a version someone holds, without the text.
-        return {"length": len(text),
-                "sha256": hashlib.sha256(text.encode("utf-8")).hexdigest()[:12]
-                if text else ""}
+        # it says that they changed and how much, not what they say:
+        # the length alone. A fingerprint would let a short, guessable
+        # text be found by trying candidates against it.
+        return {"length": len(text)}
 
     def get(self, data: dict, user: dict):
         return self._answer(user)

@@ -121,11 +121,11 @@ fold it into a summary or rerank agents: those choose words, not what
 is done.
 
 A change is on the trail as `settings.guardrail`, with the length of
-the text before and after and the first twelve hex digits of each
-one's SHA-256 — not the text. More people read the trail than may
-read the rules: the length says how much changed and the fingerprint
-tells two versions apart, or matches one someone holds, without
-repeating what either says. Saving the same text again writes nothing
+the text before and after — not the text, and no fingerprint of it.
+More people read the trail than may read the rules: the length says
+how much changed without saying what either version says, where even
+a short hash of a short rule could be found by trying likely texts
+against it. Saving the same text again writes nothing
 and leaves who last wrote it as it was.
 
 ## Stopping
