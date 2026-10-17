@@ -34,6 +34,7 @@ const LABELS: Record<string, string> = {
   'mcp.added': 'MCP server added',
   'platform.action': 'Platform action',
   'settings.safety': 'Safety setting changed',
+  'settings.guardrail': "Organization's rules changed",
 };
 
 const STATUS_WORDS: Record<string, string> = {
@@ -109,6 +110,14 @@ export function auditSummary(event: any): string {
   }
   if (type === 'settings.safety') {
     return Object.keys(details).map((row) => SAFETY_ROWS[row] || row).join(', ');
+  }
+  if (type === 'settings.guardrail') {
+    // The trail holds how long the rules were and are, never what they say.
+    const text = details.text || {};
+    const from = Number(text.from?.length ?? 0);
+    const to = Number(text.to?.length ?? 0);
+    if (!to) return 'cleared';
+    return from ? `${from} → ${to} characters` : `${to} characters, first written`;
   }
   if (type === 'secret.use' || type === 'llm.use') {
     return (event?.resource_refs || []).join(', ');

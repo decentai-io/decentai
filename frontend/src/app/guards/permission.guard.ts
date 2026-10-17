@@ -6,7 +6,7 @@ import { firstVisiblePage } from '../website/config/config';
 
 /**
  * Blocks a route when the session's policy does not grant its
- * `data.requiredAction`, sending the user to the first page they may
+ * `data.requiredAction` (or any one of `data.anyAction`), sending the user to the first page they may
  * actually open instead.
  *
  * Every page declares an action — there is no "public by omission". A route
@@ -32,6 +32,11 @@ export const permissionGuard: CanActivateFn = async (route) => {
 
   const required = route.data?.['requiredAction'] as string | undefined;
   if (required && auth.can(required)) {
+    return true;
+  }
+  // A page of sections, each a grant of its own: holding any one opens it.
+  const anyOf = route.data?.['anyAction'] as string[] | undefined;
+  if (anyOf?.some((action) => auth.can(action))) {
     return true;
   }
 

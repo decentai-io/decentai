@@ -9,105 +9,133 @@
 </app-empty>
 
 <ng-container *ngIf="!loading && !loadError">
-  <p class="form-notice" *ngIf="!canEdit">Only an administrator changes this.</p>
+  <ng-container *ngIf="canSee">
+    <p class="form-notice" *ngIf="!canEdit">Only an administrator changes this.</p>
 
-  <section class="form-section">
-    <h2 class="form-section-title">Sites no agent may open</h2>
-    <app-field
-      label="Blocked sites"
-      help="A name is refused to every agent, with every address under it: example.com also blocks shop.example.com."
-    >
-      <app-token-list
-        placeholder="example.com"
-        addLabel="Block"
-        listLabel="Blocked sites"
-        [normalize]="siteName"
+    <section class="form-section">
+      <h2 class="form-section-title">Sites no agent may open</h2>
+      <app-field
+        label="Blocked sites"
+        help="A name is refused to every agent, with every address under it: example.com also blocks shop.example.com."
+      >
+        <app-token-list
+          placeholder="example.com"
+          addLabel="Block"
+          listLabel="Blocked sites"
+          [normalize]="siteName"
+          [disabled]="!canEdit"
+          [(ngModel)]="draft.value.blocked_sites"
+        ></app-token-list>
+      </app-field>
+    </section>
+
+    <section class="form-section">
+      <h2 class="form-section-title">A script in a page</h2>
+      <p class="form-section-note">The Browser may want to run a script in a page it has open.</p>
+      <app-choice-cards
+        label="A script in a page"
+        [choices]="scripts"
         [disabled]="!canEdit"
-        [(ngModel)]="draft.value.blocked_sites"
-      ></app-token-list>
-    </app-field>
-  </section>
+        [(ngModel)]="draft.value.scripts"
+      ></app-choice-cards>
+    </section>
 
-  <section class="form-section">
-    <h2 class="form-section-title">A script in a page</h2>
-    <p class="form-section-note">The Browser may want to run a script in a page it has open.</p>
-    <app-choice-cards
-      label="A script in a page"
-      [choices]="scripts"
-      [disabled]="!canEdit"
-      [(ngModel)]="draft.value.scripts"
-    ></app-choice-cards>
-  </section>
-
-  <section class="form-section">
-    <h2 class="form-section-title">A program</h2>
-    <p class="form-section-note">The Code agent writes a program for what you ask.</p>
-    <app-choice-cards
-      label="A program"
-      [choices]="programs"
-      [disabled]="!canEdit"
-      [(ngModel)]="draft.value.programs"
-    ></app-choice-cards>
-    <p class="form-notice" *ngIf="loosened">
-      Code runs without a card only when the assistant read it and found that it does what it says; what ran is still said in the chat.
-    </p>
-  </section>
-
-  <section class="form-section">
-    <h2 class="form-section-title">Packages a program may install</h2>
-    <app-choice-cards
-      label="Packages a program may install"
-      [choices]="packages"
-      [disabled]="!canEdit"
-      [(ngModel)]="draft.value.packages"
-    ></app-choice-cards>
-    <app-field
-      *ngIf="draft.value.packages === 'listed'"
-      label="Allowed packages"
-      [help]="draft.value.allowed_packages.length
-        ? 'What a listed package itself depends on is installed with it.'
-        : 'The list is empty: no program may install a package.'"
-    >
-      <app-token-list
-        placeholder="pandas"
-        addLabel="Allow"
-        listLabel="Allowed packages"
-        [normalize]="packageName"
+    <section class="form-section">
+      <h2 class="form-section-title">A program</h2>
+      <p class="form-section-note">The Code agent writes a program for what you ask.</p>
+      <app-choice-cards
+        label="A program"
+        [choices]="programs"
         [disabled]="!canEdit"
-        [(ngModel)]="draft.value.allowed_packages"
-      ></app-token-list>
-    </app-field>
-  </section>
+        [(ngModel)]="draft.value.programs"
+      ></app-choice-cards>
+      <p class="form-notice" *ngIf="loosened">
+        Code runs without a card only when the assistant read it and found that it does what it says; what ran is still said in the chat.
+      </p>
+    </section>
 
-  <section class="form-section">
-    <h2 class="form-section-title">MCP servers</h2>
-    <p class="form-section-note">Remote tool servers people add for their own chats. A tool runs on its server, not here.</p>
-    <app-field label="Adding servers" [help]="mcpMeaning">
-      <app-segmented [choices]="mcp" [disabled]="!canEdit" [(ngModel)]="draft.value.mcp"></app-segmented>
-    </app-field>
-  </section>
+    <section class="form-section">
+      <h2 class="form-section-title">Packages a program may install</h2>
+      <app-choice-cards
+        label="Packages a program may install"
+        [choices]="packages"
+        [disabled]="!canEdit"
+        [(ngModel)]="draft.value.packages"
+      ></app-choice-cards>
+      <app-field
+        *ngIf="draft.value.packages === 'listed'"
+        label="Allowed packages"
+        [help]="draft.value.allowed_packages.length
+          ? 'What a listed package itself depends on is installed with it.'
+          : 'The list is empty: no program may install a package.'"
+      >
+        <app-token-list
+          placeholder="pandas"
+          addLabel="Allow"
+          listLabel="Allowed packages"
+          [normalize]="packageName"
+          [disabled]="!canEdit"
+          [(ngModel)]="draft.value.allowed_packages"
+        ></app-token-list>
+      </app-field>
+    </section>
 
-  <section class="form-section">
-    <h2 class="form-section-title">Webhooks</h2>
-    <p class="form-section-note">Addresses other services post events to, each answered by the assistant in a chat.</p>
-    <app-field label="Receiving webhooks" [help]="webhooksMeaning">
-      <app-segmented [choices]="webhooks" [disabled]="!canEdit" [(ngModel)]="draft.value.webhooks"></app-segmented>
-    </app-field>
-  </section>
+    <section class="form-section">
+      <h2 class="form-section-title">MCP servers</h2>
+      <p class="form-section-note">Remote tool servers people add for their own chats. A tool runs on its server, not here.</p>
+      <app-field label="Adding servers" [help]="mcpMeaning">
+        <app-segmented [choices]="mcp" [disabled]="!canEdit" [(ngModel)]="draft.value.mcp"></app-segmented>
+      </app-field>
+    </section>
 
-  <section class="form-section">
-    <h2 class="form-section-title">Notifications</h2>
+    <section class="form-section">
+      <h2 class="form-section-title">Webhooks</h2>
+      <p class="form-section-note">Addresses other services post events to, each answered by the assistant in a chat.</p>
+      <app-field label="Receiving webhooks" [help]="webhooksMeaning">
+        <app-segmented [choices]="webhooks" [disabled]="!canEdit" [(ngModel)]="draft.value.webhooks"></app-segmented>
+      </app-field>
+    </section>
+
+    <section class="form-section">
+      <h2 class="form-section-title">Notifications</h2>
+      <p class="form-section-note">
+        What reaches a phone, a browser or a mailbox passes through services outside this deployment: Apple, Google, Expo, a browser's push service, the mail server.
+      </p>
+      <app-field label="What a notification says" [help]="notificationTextMeaning">
+        <app-segmented [choices]="notificationText" [disabled]="!canEdit" [(ngModel)]="draft.value.notification_text"></app-segmented>
+      </app-field>
+    </section>
+  </ng-container>
+
+  <section class="form-section" *ngIf="canSeeRules">
+    <h2 class="form-section-title">Your organization's rules for the assistant</h2>
     <p class="form-section-note">
-      What reaches a phone, a browser or a mailbox passes through services outside this deployment: Apple, Google, Expo, a browser's push service, the mail server.
+      Added to what the assistant is told in every chat, and to what it is told when it reads an agent's code. They can narrow what it does, never widen it: nothing here turns off a card or a setting above.
     </p>
-    <app-field label="What a notification says" [help]="notificationTextMeaning">
-      <app-segmented [choices]="notificationText" [disabled]="!canEdit" [(ngModel)]="draft.value.notification_text"></app-segmented>
+    <p class="form-notice" *ngIf="!canEditRules">You may read these rules; someone else changes them.</p>
+    <app-field
+      label="Rules"
+      help="Plain sentences, one rule to a line: what to avoid, how to answer, what to check first. The assistant follows them; it is not stopped by them, so keep what must never happen in the settings above or in people's permissions."
+    >
+      <textarea
+        class="input rules-text"
+        name="guardrail"
+        rows="8"
+        placeholder="Never write to the Finance notebook.&#10;Answer customers in the language they wrote in."
+        [maxlength]="rulesSaved.limit"
+        [readonly]="!canEditRules"
+        [(ngModel)]="rules.value.text"
+      ></textarea>
+      <span class="rules-count" [class.is-near]="rulesNearLimit">{{ rules.value.text.length }}/{{ rulesSaved.limit }}</span>
     </app-field>
+    <p class="form-section-note" *ngIf="rulesSaved.updated_by">
+      Last changed by {{ rulesSaved.updated_by }}<ng-container *ngIf="rulesSaved.updated_at">, {{ rulesSaved.updated_at | date: 'medium' }}</ng-container>.
+    </p>
   </section>
 
   <app-save-bar
-    *ngIf="canEdit"
-    [dirty]="draft.dirty"
+    *ngIf="canEdit || canEditRules"
+    [dirty]="dirty"
     [saving]="saving"
     [error]="saveError"
     (save)="save()"

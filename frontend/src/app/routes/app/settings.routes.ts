@@ -18,7 +18,9 @@ import { SettingsShellComponent } from '../../pages/app/settings/settings-shell.
 import { permissionGuard } from '../../guards/permission.guard';
 import { unsavedChangesGuard } from '../../guards/unsaved-changes.guard';
 import { AuthService } from '../../services/auth.service';
-import { firstVisiblePage, settingsPages } from '../../website/config/config';
+import {
+  firstVisiblePage, settingsPageActions, settingsPageOpen, settingsPages,
+} from '../../website/config/config';
 
 /**
  * /settings itself is no page: it opens the first page the person may
@@ -30,7 +32,7 @@ const settingsLandingGuard: CanActivateFn = async () => {
 
   await auth.ensureLoaded();
 
-  const page = settingsPages.find((candidate) => auth.can(candidate.action));
+  const page = settingsPages.find((candidate) => settingsPageOpen(candidate, (action) => auth.can(action)));
   if (page) {
     return router.parseUrl(`/settings/${page.path}`);
   }
@@ -67,7 +69,7 @@ export const SettingsRoutes: Routes = [
         component: pageComponents[page.path],
         canActivate: [permissionGuard],
         canDeactivate: [unsavedChangesGuard],
-        data: { requiredAction: page.action },
+        data: { anyAction: settingsPageActions(page) },
       })),
     ],
   },
