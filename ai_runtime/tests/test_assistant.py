@@ -518,11 +518,16 @@ class TestTheCycle:
         assert first["status"] == "done" and first["id"] == "w1"
         assert first["verified"] is False           # done by word alone
         assert harness.state.plan.outstanding()
-        # The frame's PLAN is the plan as it now stands, not the one
-        # the mind was framed with: rewritten on every plan action.
-        frame = harness.state.messages[0]["content"]
-        assert "(no plan yet)" not in frame
-        assert "Save the note" in frame and "Confirm" in frame
+        # The model reads the plan as it now stands, after the
+        # conversation, on the very next call — and the frame is not
+        # rewritten for it: the plan is not in the frame at all.
+        last = harness.connector.calls[-1]["messages"]
+        assert last[-1]["role"] == "user"
+        assert last[-1]["content"].startswith("PLAN\n")
+        assert "Save the note" in last[-1]["content"]
+        assert "[done" in last[-1]["content"]
+        assert "Save the note" not in harness.state.messages[0]["content"]
+        assert "\nPLAN\n" not in harness.state.messages[0]["content"]
 
 
 class TestPlanLifecycle:
@@ -553,7 +558,8 @@ class TestPlanLifecycle:
         run(harness.user("something else").assistant.run())
         assert shown[-1] == []                          # the page was told
         assert harness.state.plan.to_steps() == []
-        assert "(no plan yet)" in harness.state.messages[0]["content"]
+        # and so was the model, on the call that answered
+        assert "(no plan yet)" in harness.connector.calls[-1]["messages"][-1]["content"]
 
     def test_a_blocked_plan_survives_the_answer(self):
         harness, shown = self.harness([
@@ -614,7 +620,8 @@ class TestWorkItems:
         assert saved["status"] == "done" and saved["verified"] is True
         assert saved["evidence"] == ["stg_saved"]
         assert telling["evidence"] == []               # not active then
-        assert f"w1 [done, 1 evidence]" in harness.state.messages[0]["content"]
+        # the model read it so on the call after the item was done
+        assert "w1 [done, 1 evidence]" in harness.connector.calls[-1]["messages"][-1]["content"]
 
     def test_completed_is_refused_while_items_are_owed(self):
         harness = Harness([

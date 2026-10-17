@@ -5,6 +5,7 @@ import re
 import httpx
 from anthropic import AsyncAnthropic
 
+from ai_runtime.llms.connector import cache
 from ai_runtime.llms.connector.tools import (
     ModelReply, anthropic_tools, setting)
 from ai_runtime.llms.connector.usage import Usage
@@ -85,9 +86,94 @@ class AnthropicConnector:
 
         return "\n\n".join(system_parts), converted
 
+    #: Anthropic caches only where a request says so, with this mark on
+    #: the block a cached prefix ends at (llms/connector/cache.py).
+    EPHEMERAL = {"type": "ephemeral"}
+
+    @classmethod
+    def cached(cls, messages: list, tools: list) -> tuple[list, list, list]:
+        """The request as the caller's cache hints mark it: the system
+        prompt as blocks, its stable part marked; the last tool marked,
+        so the tools are kept on their own when the system changes; and
+        the latest messages the caller marked, as many as the four
+        breakpoints a request may carry leave room for. Anything after
+        the last mark — the plan the assistant adds for this request —
+        is read fresh and keeps nothing before it from being reused."""
+        budget = cache.MAX_BREAKPOINTS
+        system: list = []
+        converted: list = []
+        through: list = []
+        transient: set = set()
+        for message in messages or []:
+            if message.get("role") == "system":
+                stable, rest = cache.system_parts(message)
+                if stable and budget > 0 and not any(
+                        "cache_control" in block for block in system):
+                    system.append({"type": "text", "text": stable,
+                                   "cache_control": dict(cls.EPHEMERAL)})
+                    budget -= 1
+                elif stable:
+                    rest = f"{stable}\n\n{rest}".strip()
+                if rest:
+                    system.append({"type": "text", "text": rest})
+                continue
+            if message.get(cache.THROUGH):
+                through.append(len(converted))
+            if message.get(cache.TRANSIENT):
+                transient.add(len(converted))
+            converted.append({
+                "role": "assistant" if message.get("role") == "assistant"
+                else "user",
+                "content": message.get("content", ""),
+            })
+        declared = anthropic_tools(tools) if tools else []
+        if declared and budget > 0:
+            declared[-1] = {**declared[-1], "cache_control": dict(cls.EPHEMERAL)}
+            budget -= 1
+        for index in reversed(through):
+            if budget <= 0:
+                break
+            marked = cls._marked(converted[index]["content"])
+            if marked is not None:
+                converted[index] = {**converted[index], "content": marked}
+                budget -= 1
+        # A message made for this request alone (the plan) joins the
+        # user's turn before it, after that turn's mark: a block of its
+        # own, read fresh, and no two turns of the user's in a row.
+        joined: list = []
+        for index, message in enumerate(converted):
+            if index in transient and cache.joinable(joined, message):
+                joined[-1] = {**joined[-1], "content": cache.joined(
+                    joined[-1]["content"], message["content"])}
+            else:
+                joined.append(message)
+        return system, joined, declared
+
+    @classmethod
+    def _marked(cls, content):
+        """One message's content with its last block marked, or None
+        when it has nothing a mark can sit on. Words become one text
+        block; blocks are copied, never changed where the caller holds
+        them."""
+        if isinstance(content, str):
+            if not content:
+                return None
+            return [{"type": "text", "text": content,
+                     "cache_control": dict(cls.EPHEMERAL)}]
+        blocks = [dict(block) for block in content or []
+                  if isinstance(block, dict)]
+        if not blocks:
+            return None
+        blocks[-1]["cache_control"] = dict(cls.EPHEMERAL)
+        return blocks
+
     async def chat(self, messages: list, max_tokens: int | None = None,
                    tools: list | None = None) -> ModelReply:
-        system_prompt, converted = self.split_messages(messages)
+        if cache.hinted(messages):
+            system_prompt, converted, declared = self.cached(messages, tools or [])
+        else:
+            system_prompt, converted = self.split_messages(messages)
+            declared = anthropic_tools(tools) if tools else []
 
         asked = int(max_tokens or self.DEFAULT_MAX_TOKENS)
         kwargs = {
@@ -97,8 +183,8 @@ class AnthropicConnector:
         }
         if system_prompt:
             kwargs["system"] = system_prompt
-        if tools:
-            kwargs["tools"] = anthropic_tools(tools)
+        if declared:
+            kwargs["tools"] = declared
             kwargs["tool_choice"] = {"type": "any"}
 
         try:

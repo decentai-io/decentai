@@ -217,8 +217,13 @@ the tool menu.
 At most `routing.open_max` (the organization's number, 8 by default)
 stay open; opening one more closes the least recently used, and the
 observation says which. `invoke` marks an agent used, so the open set is
-ordered by recency and `FunctionTools` offers the most recently used
-first.
+ordered by recency, and past the 128 tools a provider takes the most
+recently used agents' functions are the ones offered (the rest stay
+callable by name, and the model is told which). They are offered in
+the order the agents were opened (`AssistantState.opened_in_order`),
+which using one does not change: the tools are the front of every
+request, and a list that only grows at its end when an agent is
+opened leaves the provider's cached prefix whole ([the frame](#the-frame)).
 
 ### `find_agents`
 
@@ -330,6 +335,9 @@ names an item by its place instead.
 While an item is active, every successful invocation's storage ref and
 every finished job's id land on it as evidence; the model may name
 evidence too, but only refs the trace holds — anything else is refused.
+
+The model reads the plan after the latest message on every beat, not
+in the frame ([the frame](#the-frame)).
 
 Done with no evidence is kept and shown as unverified, never refused:
 "answer the question" has no trace. Blocked needs a blocker; active
@@ -514,26 +522,61 @@ the next one from exactly where it was.
 
 ## The frame
 
-The system message the mind thinks under is `prompts/assistant.md`,
-rendered by `mind/frame.py` (`system_prompt`) and rewritten whenever
-what it is made of moves (`reframe`). In order:
+The system message the mind thinks under is rendered by `mind/frame.py`
+(`system_prompt`) and rewritten whenever what it is made of moves
+(`reframe`): after a fold, a rehydration, a routing shortlist that
+changed, and new skills, memories, roster or rules from the contract.
+In order of how often each part changes, least often first:
 
-1. **The instructions**: the actions, how to work, what is never done.
-   The same for every chat.
-2. **ORGANIZATION'S OWN RULES**: the text the organization's
-   administrators wrote on the Safety page (`Settings:Guardrail`,
-   [safety](safety.md#the-organizations-own-rules)), from the contract,
-   under a line saying they are followed in addition to everything
-   above and can narrow what the assistant does but never widen it.
-   `(none)` when there are none. A sub-assistant's frame has the same.
-3. **PLAN**, **CONVERSATION SO FAR** (the summary), **AGENTS**,
-   **SKILLS**, **MEMORY**: what changes from turn to turn.
+1. **The instructions** (`prompts/assistant.md`): the actions, how to
+   work, what is never done. The same for every chat.
+2. **ORGANIZATION'S OWN RULES** (the end of `prompts/assistant.md`):
+   the text the organization's administrators wrote on the Safety page
+   (`Settings:Guardrail`, [safety](safety.md#the-organizations-own-rules)),
+   from the contract, under a line saying they are followed in addition
+   to everything above and can narrow what the assistant does but never
+   widen it. `(none)` when there are none. A sub-assistant's frame has
+   the same. These two are the frame's **stable front**
+   (`frame.stable_prompt`).
+3. **SKILLS**, **MEMORY**, **CONVERSATION SO FAR** (the summary), then
+   **AGENTS** (`prompts/assistant_context.md`). The summary changes only
+   on a fold, which rewrites the transcript beneath it anyway; the
+   agents come last because, with routing on, the shortlist follows
+   every message the person sends.
 
-The order is for the provider's prompt cache: what is the same for
-every turn of every chat of the organization comes first, so a cached
-prefix holds until the plan moves. The rules change when somebody
-edits them, and then the next turn of every chat reads the new text.
-What fills a block is text: a brace in the rules or a memory is not a
+**The plan is not in the frame.** It changes nearly every beat, so it
+travels after the conversation, as a message of its own
+(`prompts/assistant_plan.md`, `frame.plan_message`) that
+`Assistant._request` adds to each model call and that is never kept:
+not in the transcript, not in a save, not in a fold. The model reads
+the plan as it stands on every beat, and a plan's change rewrites
+nothing before it. A connector puts it in the person's last turn when
+the transcript ends on one, after that turn's cache mark, so the turns
+still alternate for a server that holds a conversation to them.
+
+The order is for the provider's prompt cache, which keeps a request's
+front: the tools, then the system prompt, then the conversation, which
+only grows. So each beat's request begins with the last one's, up to
+the plan. `_request` also says so, in hints a connector may use
+(`llms/connector/cache.py`): `cache_stable` on the frame, the length of
+its stable front; `cache_through` on the transcript's last message; and
+`cache_transient` on the plan's message.
+Anthropic and Claude on Vertex mark the request with `cache_control`
+there and on the last tool; Bedrock writes `cachePoint` blocks for the
+models it caches; OpenAI and Gemini cache a repeated prefix on their
+own, and OpenAI's own API is told which chat a request is of
+(`prompt_cache_key`, a hash of it, and only at OpenAI's own address:
+a server that copied the protocol may refuse a parameter it does not
+know). No hint is ever sent to a provider, and a caller that gives none
+— an agent's `call.llm`, a title, a summary, a rerank, a code review —
+is asked exactly as before (`ai_runtime/llms/connector/cache.py`). What
+the cache saved is measured, not assumed: Monitoring's Tokens view
+shows the share of input read from the cache
+([monitoring](monitoring.md#what-the-models-used)).
+
+The rules change when somebody edits them, and then the next turn of
+every chat reads the new text (and the cache starts over once). What
+fills a block is text: a brace in the rules or a memory is not a
 blank, since `Prompts.render` replaces only the names it is given, in
 one pass.
 

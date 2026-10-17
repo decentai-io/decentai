@@ -6,9 +6,12 @@ speaking the OpenAI chat-completions protocol plugs in here.
 
 from __future__ import annotations
 
+import hashlib
+
 import httpx
 from openai import AsyncOpenAI
 
+from ai_runtime.llms.connector import cache
 from ai_runtime.llms.connector.tools import (
     setting,
     ModelReply, is_tool_choice_refusal,
@@ -47,6 +50,34 @@ class OpenAIConnector:
         #: connection set it, so a model that does not reason is never
         #: handed a parameter it would refuse.
         self.reasoning_effort = str(config.get("reasoning_effort") or "").strip().lower()
+        #: What OpenAI is told to keep this chat's prompts together by
+        #: (``prompt_cache_key``): a hash of the chat, set by the host
+        #: that builds the connector for one (``cache_for``). Empty —
+        #: an agent's own model call, a test — sends nothing.
+        self.cache_key = ""
+
+    #: Where OpenAI's own API answers. Only there is ``prompt_cache_key``
+    #: sent: a server that copied the protocol (vLLM, Ollama, LiteLLM,
+    #: a gateway) may refuse a parameter it does not know.
+    OPENAI_HOST = "api.openai.com"
+
+    def cache_for(self, session: str) -> None:
+        """Group this connector's requests for OpenAI's prompt cache by
+        one chat: a short hash of its id, never the id itself."""
+        self.cache_key = (hashlib.sha256(str(session).encode("utf-8"))
+                          .hexdigest()[:16] if session else "")
+
+    @property
+    def official(self) -> bool:
+        """Whether this connector talks to OpenAI's own API — the address
+        its client actually uses, which an environment's OPENAI_BASE_URL
+        may have set where the connection named none."""
+        return getattr(getattr(self.client, "base_url", None), "host",
+                       "") == self.OPENAI_HOST
+
+    def _cache_key(self, kwargs: dict) -> None:
+        if self.cache_key and self.official:
+            kwargs["prompt_cache_key"] = self.cache_key
 
     @staticmethod
     def image_block(mime: str, encoded: str) -> dict:
@@ -78,8 +109,12 @@ class OpenAIConnector:
 
     async def chat(self, messages: list, max_tokens: int | None = None,
                    tools: list | None = None) -> ModelReply:
-        kwargs = {"model": self.model, "messages": messages}
+        # A caller's cache hints are for the connectors that mark a
+        # prompt; this protocol refuses a key it does not know, and
+        # caches a repeated prefix on its own.
+        kwargs = {"model": self.model, "messages": cache.plain(messages)}
         self._token_cap(kwargs, max_tokens)
+        self._cache_key(kwargs)
         if self.reasoning_effort:
             # A reasoning model thinks before every beat; the connection
             # says how hard. Low is what makes a chat feel quick.

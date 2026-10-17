@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Tuple
 
+from ai_runtime.llms.connector import cache
 from ai_runtime.llms.connector.openai import OpenAIConnector
 from ai_runtime.llms.connector.tools import ModelReply, is_tool_choice_refusal
 from ai_runtime.llms.connector.usage import Usage
@@ -93,7 +94,7 @@ class OpenAIResponsesConnector(OpenAIConnector):
 
     async def chat(self, messages: list, max_tokens: int | None = None,
                    tools: list | None = None) -> ModelReply:
-        instructions, converted = self.split_messages(messages)
+        instructions, converted = self.split_messages(cache.plain(messages))
         kwargs: Dict[str, Any] = {"model": self.model, "input": converted}
         if instructions:
             kwargs["instructions"] = instructions
@@ -101,6 +102,7 @@ class OpenAIResponsesConnector(OpenAIConnector):
             kwargs["max_output_tokens"] = max(int(max_tokens), self.LEAST_MAX_TOKENS)
         if self.reasoning_effort:
             kwargs["reasoning"] = {"effort": self.reasoning_effort}
+        self._cache_key(kwargs)
         if tools:
             kwargs["tools"] = self.tools(tools)
             kwargs["tool_choice"] = self.tool_choice

@@ -98,6 +98,7 @@ class AssistantState:
                  messages: Optional[List[Dict[str, Any]]] = None,
                  plan: Optional[Plan] = None,
                  opened: Optional[List[str]] = None,
+                 opened_at: Optional[List[str]] = None,
                  trace: Optional[List[Dict[str, Any]]] = None,
                  jobs: Optional[Dict[str, Job]] = None,
                  cursor: int = 0,
@@ -126,6 +127,8 @@ class AssistantState:
         self.archive = list(archive or [])
         self.plan = plan if plan is not None else Plan()
         self.opened = list(opened or [])
+        #: the same agents in the order each was opened (``opened_in_order``)
+        self.opened_at = [a for a in (opened_at or []) if a in self.opened]
         self.trace = trace if trace is not None else []
         self.jobs = jobs if jobs is not None else {}
         #: how far the durable event stream has been absorbed —
@@ -145,13 +148,32 @@ class AssistantState:
     def open_agent(self, agent_id: str) -> None:
         if agent_id not in self.opened:
             self.opened.append(agent_id)
+            # One closed or pushed out since goes to the end again.
+            self.opened_at = [a for a in self.opened_at
+                              if a in self.opened and a != agent_id]
+            self.opened_at.append(agent_id)
 
     def touch_agent(self, agent_id: str) -> None:
         """Most recently used last: the order the open set is bounded
-        by, and the order its functions are offered as tools in."""
+        by, and the order that says which functions are offered as
+        tools when not all of them fit (actions.FunctionTools)."""
         if agent_id in self.opened:
             self.opened.remove(agent_id)
             self.opened.append(agent_id)
+
+    def opened_in_order(self) -> List[str]:
+        """The open agents in the order they were opened, which using
+        one does not change: the order their functions are offered in,
+        so that the tool list a provider caches as the front of every
+        request only grows at its end when an agent is opened. The
+        open list is kept most recently used last (``touch_agent``);
+        sorted by when each was first opened instead, where that is
+        known, and in its own order for the rest (a state saved before
+        this was kept)."""
+        known = {agent_id: number for number, agent_id
+                 in enumerate(self.opened_at)}
+        return sorted(self.opened, key=lambda agent_id: (
+            known.get(agent_id, len(known)), self.opened.index(agent_id)))
 
     def close_agent(self, agent_id: str) -> bool:
         if agent_id not in self.opened:
@@ -182,6 +204,7 @@ class AssistantState:
             "messages": self.messages,
             "plan": self.plan.to_steps(),
             "opened": list(self.opened),
+            "opened_at": [a for a in self.opened_at if a in self.opened],
             "trace": self.trace,
             "jobs": {job_id: job.to_dict()
                      for job_id, job in self.jobs.items()},
@@ -200,6 +223,7 @@ class AssistantState:
             messages=list(data.get("messages") or []),
             plan=Plan(data.get("plan")),
             opened=[str(a) for a in (data.get("opened") or [])],
+            opened_at=[str(a) for a in (data.get("opened_at") or [])],
             trace=list(data.get("trace") or []),
             jobs={
                 str(job_id): Job.from_dict(job)

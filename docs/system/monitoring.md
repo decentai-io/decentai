@@ -186,6 +186,16 @@ Everything a model was shown is `input + cache_read + cache_write`
 
     cache share = cache_read / (input + cache_read + cache_write)
 
+The cache share is how prompt caching is measured. The assistant lays
+out every beat so a provider's cache can keep its front — the tools,
+the instructions and the organization's rules, the transcript so far —
+and marks it where a provider caches only when told
+([the frame](assistant.md#the-frame)); the share, by model and by
+purpose, says how much of that a provider actually read back, and
+`cache_write` what it cost to write. A model whose share stays near
+zero on `assistant` calls is one whose prompts are below its
+provider's minimum, or one that does not cache.
+
 A provider that says nothing of a call's tokens — some OpenAI-compatible
 servers, Gemini's embeddings — leaves it at zero and marks it
 (`reported: false`): the call is counted, and its tokens are not

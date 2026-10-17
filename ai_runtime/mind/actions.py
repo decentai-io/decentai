@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import hashlib
 import re
-from typing import Any, Dict, Iterable, List
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from ai_runtime.llms.connector.tools import CARRIED_ACTION
 
@@ -292,8 +292,8 @@ class FunctionTools:
     instructions read before a call is made — does not move.
     """
 
-    #: The most function tools one beat offers, newest opened agent
-    #: first. OpenAI-compatible providers (Azure included) refuse a
+    #: The most function tools one beat offers, the most recently opened
+    #: agents' kept first when not all fit. OpenAI-compatible providers (Azure included) refuse a
     #: request with more than 128 tools, and the actions themselves take
     #: their share, so this is as many as a provider will accept. Past
     #: it the rest stay reachable through ``invoke`` by name, and the
@@ -301,7 +301,7 @@ class FunctionTools:
     MAX_FUNCTIONS = 128 - len(ACTION_TOOLS)
 
     def __init__(self, agents: Dict[str, Any], opened: Iterable[str],
-                 chat_level: int):
+                 chat_level: int, order: Optional[Iterable[str]] = None):
         self.tools: List[Dict[str, Any]] = []
         #: tool name -> canonical function name
         self.names: Dict[str, str] = {}
@@ -310,9 +310,14 @@ class FunctionTools:
         #: in silence, they would have the model conclude that an agent
         #: has no such function.
         self.omitted: List[str] = []
-        # Most recently opened first: the agent the model just read the
-        # instructions of is the one it is about to call.
-        for agent_id in reversed(list(opened)):
+        opened = list(opened)
+        # WHICH functions are offered past the cap: the most recently
+        # opened agent's first (``opened`` is most recently used last)
+        # — the agent the model just read the instructions of is the
+        # one it is about to call.
+        offered: Dict[str, List[Tuple[str, Dict[str, Any]]]] = {}
+        count = 0
+        for agent_id in reversed(opened):
             agent = agents.get(agent_id)
             if agent is None:
                 continue
@@ -322,9 +327,22 @@ class FunctionTools:
                     # platform's to call, never a step of the model's.
                     continue
                 canonical = agent.granted(declared)
-                if len(self.tools) >= self.MAX_FUNCTIONS:
+                if count >= self.MAX_FUNCTIONS:
                     self.omitted.append(canonical)
                     continue
+                offered.setdefault(agent_id, []).append((canonical, function))
+                count += 1
+        # The ORDER they are offered in: the order the agents were
+        # opened (``order``, AssistantState.opened_in_order), which using
+        # one does not change. A provider caches the front of every
+        # request and the tools come first in it, so a list that is
+        # only ever added to at its end keeps that front the same.
+        order = [agent_id for agent_id in (opened if order is None else order)
+                 if agent_id in offered]
+        order += [agent_id for agent_id in opened
+                  if agent_id in offered and agent_id not in order]
+        for agent_id in order:
+            for canonical, function in offered[agent_id]:
                 name = self.encode(canonical)
                 if self.names.get(name, canonical) != canonical:
                     # `a__b.c` and `a.b__c` are written the same once

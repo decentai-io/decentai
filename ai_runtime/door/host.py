@@ -169,7 +169,8 @@ class SessionHost:
         session = Session(
             chat_id,
             roster,
-            self._connector(contract.get("llm"), contract.get("llm_missing")),
+            self._connector(contract.get("llm"), contract.get("llm_missing"),
+                            chat_id),
             self.services,
             emit=partial(self._emit, chat_id),
             relay=partial(self._relay, chat_id),
@@ -285,7 +286,8 @@ class SessionHost:
             grants=FunctionGrants(contract.get("grants")),
             # A model picked on the page since the build: the next turn
             # thinks with it, no refresh and no new chat needed.
-            connector=(self._connector(llm, contract.get("llm_missing"))
+            connector=(self._connector(llm, contract.get("llm_missing"),
+                                       chat_id)
                        if changed_model else None),
             llm_config=llm if changed_model else None,
             # A budget raised on the page reaches the chat that is
@@ -302,11 +304,18 @@ class SessionHost:
         )
 
     @staticmethod
-    def _connector(llm, missing=""):
+    def _connector(llm, missing="", chat_id=""):
         if not llm:
             return MissingModel(str(missing or "") or (
                 "No model connection is configured for this chat."))
-        return LLMConnectorFactory.create(dict(llm))
+        connector = LLMConnectorFactory.create(dict(llm))
+        # One chat's beats share a prefix, and a provider that routes
+        # requests to its cache by a key (OpenAI's prompt_cache_key) is
+        # told which chat they are of — hashed, by the connector.
+        cache_for = getattr(connector, "cache_for", None)
+        if chat_id and callable(cache_for):
+            cache_for(chat_id)
+        return connector
 
     # ------------------------------------------------------------------
     # The socket: an audience, not a lifeline
