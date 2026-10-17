@@ -40,9 +40,11 @@ LEVELS = {
 
 def system_prompt(state: AssistantState, agents: Dict[str, InstalledAgent],
                   shortlist: Optional[Tuple[List[str], int]], skills: list,
-                  max_skills: int, memories: List[str]) -> str:
+                  max_skills: int, memories: List[str],
+                  guardrail: str = "") -> str:
     return Prompts.render(
         "assistant",
+        guardrail=guardrail_block(guardrail),
         roster=roster_block(agents, shortlist),
         skills=skills_block(skills, max_skills),
         memories="\n".join(f"- {text}" for text in memories)
@@ -50,6 +52,14 @@ def system_prompt(state: AssistantState, agents: Dict[str, InstalledAgent],
         plan=state.plan.render(),
         summary=summary_block(state),
     )
+
+
+def guardrail_block(text: str) -> str:
+    """The organization's own rules as written, or one word saying
+    there are none. Placed after the instructions and before the plan:
+    it changes when an administrator edits it, not turn to turn, so
+    the part of the frame a provider caches stays the same."""
+    return str(text or "").strip() or "(none)"
 
 
 def summary_block(state: AssistantState) -> str:

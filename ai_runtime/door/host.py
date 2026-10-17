@@ -184,6 +184,7 @@ class SessionHost:
             clock=self.clock,
             timezone=str(contract.get("timezone") or ""),
             safety=contract.get("safety"),
+            guardrail=str(contract.get("guardrail") or ""),
         )
         # Remembered so a later contract can say whether the model moved.
         session.llm_config = contract.get("llm") or None
@@ -295,6 +296,9 @@ class SessionHost:
             skills=contract.get("skills"),
             routing=contract.get("routing"),
             safety=contract.get("safety") or {},
+            # The organization's own rules, edited on the Safety page:
+            # the next turn's instructions carry the new text.
+            guardrail=str(contract.get("guardrail") or ""),
         )
 
     @staticmethod

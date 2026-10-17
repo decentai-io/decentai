@@ -40,6 +40,14 @@ A looser choice applies only to code the assistant read and found to do what it 
 
 The trail also says where each call connected: an entry for a function that ran names the sites its agent reached, and how many more. The platform sees names, never what was sent.
 
+### Your organization's rules for the assistant
+
+Below the rows, the organization can write its own rules for the assistant, up to 4,000 characters: what to avoid, how to answer, what to check first. They are added to what the assistant is told in every chat, from its next message on, and to what it is told when it reads an agent's code before you are asked about it.
+
+The rules can make the assistant more careful, never less: they cannot turn off a card or a row above. The assistant follows them, but nothing stops it on their account, so keep what must never happen in the rows above and in people's permissions. Do not write a secret in them: someone in a chat may get the assistant to repeat them.
+
+Reading the rules and changing them are permissions of their own, **Guardrail** in a policy, which administrators hold and can give to a few people. Someone who may read the rules but not the rows sees the page with the rules alone. The **Audit** trail says when they changed, and how long they were and became, but not what they say.
+
 ## Monitoring
 
 **Organization → Monitoring** shows what your organization's agents use and what was seen of them. Administrators see it; anyone else needs the `agents:monitor` actions. Nothing on the page changes anything.

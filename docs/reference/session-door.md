@@ -75,6 +75,8 @@ await services.contract(chat_id) -> {
                   tools, resources}],        # are on (../system/mcp.md)
   "routing":    {...},             # finding the right agent among many
   "safety":     {...},             # blocked sites, the package list
+  "guardrail":  "...",             # the organization's own rules, into the
+                                   # frame and the code reviewer's; "" is none
 }
 ```
 
@@ -119,7 +121,8 @@ turns that into an honest reply on the first event that needs a model
   turn — a person's message, or a wakeup through the inside door — and
   the session adopts the answer: roster, trust level, grants, the
   model where it changed, the turn budget, how many and which skills
-  are listed, the routing numbers and the safety settings. The
+  are listed, the routing numbers, the safety settings and the
+  organization's own rules. The
   transcript is untouched and the frame is rewritten, so the mind reads
   the agents it now has. Work already in flight keeps the level it
   began with; a services call that fails leaves the session serving

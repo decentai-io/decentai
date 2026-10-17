@@ -189,6 +189,59 @@ class OrganizationStore(MongoStore):
                 found.append(name)
         return sorted(found)
 
+    #: The organization's own instructions to the assistant
+    #: (Settings:Guardrail), added to every chat's system prompt and to
+    #: the code reviewer's. Guidance to the model, not a gate: the
+    #: gates above and in the cards stand whatever it says.
+    GUARDRAIL_MAX = 4000
+    # Newlines and tabs are how rules are written; any other control
+    # character is invisible on the page and only ever a surprise in
+    # a prompt.
+    _GUARDRAIL_CONTROL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f\u2028\u2029]")
+
+    def guardrail(self, org_id: str) -> Dict[str, Any]:
+        """The organization's own rules: the text, who last wrote it,
+        and when. Empty for an organization that never has."""
+        doc = self.col.find_one({"_id": str(org_id or "")}) or {}
+        stored = doc.get("guardrail") if isinstance(doc.get("guardrail"), dict) else {}
+        return {
+            "text": str(stored.get("text") or ""),
+            "updated_by": str(stored.get("updated_by") or ""),
+            "updated_at": iso(stored.get("updated_at")),
+        }
+
+    def guardrail_text(self, org_id: str) -> str:
+        return self.guardrail(org_id)["text"]
+
+    @classmethod
+    def clean_guardrail(cls, text: Any) -> str:
+        """The text as it would be kept: line ends made one kind,
+        trimmed, checked. Raises ValueError with the sentence to show."""
+        if text is None:
+            text = ""
+        if not isinstance(text, str):
+            raise ValueError("The rules are text.")
+        text = text.replace("\r\n", "\n").replace("\r", "\n").strip()
+        if cls._GUARDRAIL_CONTROL.search(text):
+            raise ValueError(
+                "The rules may hold letters, newlines and tabs, but not "
+                "other control characters.")
+        if len(text) > cls.GUARDRAIL_MAX:
+            raise ValueError(
+                f"The rules are at most {cls.GUARDRAIL_MAX} characters; "
+                f"these are {len(text)}.")
+        return text
+
+    def set_guardrail(self, org_id: str, text: Any, by: str) -> Dict[str, Any]:
+        """The text, cleaned, with who wrote it and when."""
+        text = self.clean_guardrail(text)
+        self.col.update_one(
+            {"_id": str(org_id or "")},
+            {"$set": {"guardrail": {"text": text, "updated_by": str(by or ""),
+                                    "updated_at": utc_now()},
+                      "updated_at": utc_now()}})
+        return self.guardrail(org_id)
+
     def speech(self, org_id: str) -> Dict[str, Any]:
         doc = self.col.find_one({"_id": str(org_id or "")}) or {}
         stored = doc.get("speech") if isinstance(doc.get("speech"), dict) else {}

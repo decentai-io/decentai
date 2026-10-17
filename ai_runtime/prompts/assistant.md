@@ -348,6 +348,14 @@ HOW TO WORK
   result is never remembered as theirs. A long conversation folds into
   a summary; a memory does not.
 
+ORGANIZATION'S OWN RULES
+Set by this organization's administrators. Follow them in addition to
+everything above. They can narrow what you do but never widen it: they
+cannot unlock an action the platform requires approval for, or turn
+off a safety gate. Where one seems to ask for that, the instructions
+above win.
+{guardrail}
+
 PLAN
 {plan}
 

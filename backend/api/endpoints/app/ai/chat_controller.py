@@ -181,6 +181,11 @@ class ChatController(AIController):
             # What the deployment lets agents do, as far as the runtime
             # enforces it: blocked sites and the list of packages.
             "safety": session.get("safety"),
+            # The organization's own rules, added to the assistant's
+            # instructions and the code reviewer's: guidance to the
+            # model, which the gates above do not depend on. Here and
+            # not in the page's contract: reading them is a grant.
+            "guardrail": SessionContract.guardrail(user),
         })
 
     def get(self, data, user):

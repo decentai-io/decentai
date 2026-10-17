@@ -8,7 +8,7 @@ import { filter } from 'rxjs/operators';
 import { PageComponent } from 'src/app/components/ui/page.component';
 import { AuthService } from 'src/app/services/auth.service';
 import { SettingsLlmService } from 'src/app/services/settings-llm.service';
-import { SettingsPage, settingsPages } from 'src/app/website/config/config';
+import { SettingsPage, settingsPageOpen, settingsPages } from 'src/app/website/config/config';
 
 /** A group of the nav with the pages this person may open. */
 interface NavGroup {
@@ -44,7 +44,7 @@ export class SettingsShellComponent implements OnDestroy {
   private readonly navigation: Subscription;
 
   constructor(auth: AuthService, private router: Router, readonly llm: SettingsLlmService) {
-    const allowed = settingsPages.filter((page) => auth.can(page.action));
+    const allowed = settingsPages.filter((page) => settingsPageOpen(page, (action) => auth.can(action)));
     if (auth.can('settings:llm:list') && llm.count$.value === null) void llm.list();
     this.groups = (['You', 'Organization'] as const)
       .map((name) => ({ name, pages: allowed.filter((page) => page.group === name) }))

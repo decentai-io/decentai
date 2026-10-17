@@ -1,0 +1,21 @@
+/* The Safety page: the rows are the shared form system; the box the
+   organization's rules are written in runs as wide as a form reads,
+   with its counter under it at the right, quiet until the last tenth. */
+.rules-text {
+  min-height: 160px;
+  resize: vertical;
+}
+
+.rules-count {
+  display: block;
+  margin-top: 4px;
+  color: var(--ink-3);
+  font-size: var(--t-xs);
+  line-height: var(--lh-xs);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.rules-count.is-near {
+  color: var(--warn-ink);
+}

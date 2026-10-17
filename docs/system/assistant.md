@@ -512,6 +512,31 @@ What actually bounds the assistant, in order of authority:
 The state is saved on every beat, so a session that dies is resumed by
 the next one from exactly where it was.
 
+## The frame
+
+The system message the mind thinks under is `prompts/assistant.md`,
+rendered by `mind/frame.py` (`system_prompt`) and rewritten whenever
+what it is made of moves (`reframe`). In order:
+
+1. **The instructions**: the actions, how to work, what is never done.
+   The same for every chat.
+2. **ORGANIZATION'S OWN RULES**: the text the organization's
+   administrators wrote on the Safety page (`Settings:Guardrail`,
+   [safety](safety.md#the-organizations-own-rules)), from the contract,
+   under a line saying they are followed in addition to everything
+   above and can narrow what the assistant does but never widen it.
+   `(none)` when there are none. A sub-assistant's frame has the same.
+3. **PLAN**, **CONVERSATION SO FAR** (the summary), **AGENTS**,
+   **SKILLS**, **MEMORY**: what changes from turn to turn.
+
+The order is for the provider's prompt cache: what is the same for
+every turn of every chat of the organization comes first, so a cached
+prefix holds until the plan moves. The rules change when somebody
+edits them, and then the next turn of every chat reads the new text.
+What fills a block is text: a brace in the rules or a memory is not a
+blank, since `Prompts.render` replaces only the names it is given, in
+one pass.
+
 ## How the model is asked, and how much it is shown
 
 The actions are one vocabulary in two forms. The prompt describes them;

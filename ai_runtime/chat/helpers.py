@@ -30,15 +30,22 @@ class Helpers:
         #: The session this is a part of; what is not here is its.
         self.session = session
 
-    def inherit(self, grants, chat_level: int, safety: Dict[str, Any]) -> None:
-        """A helper taking its parent's authority as it now stands."""
+    def inherit(self, grants, chat_level: int, safety: Dict[str, Any],
+                guardrail: str = "") -> None:
+        """A helper taking its parent's authority as it now stands, and
+        the organization's rules with it."""
         self.session.grants = grants
         self.session.chat_level = chat_level
         self.session.safety = dict(safety)
+        self.session.guardrail = str(guardrail or "")
+        self.session.cards.reviewer.guardrail = self.session.guardrail
         if self.session.assistant is not None:
             self.session.assistant.chat_level = chat_level
             self.session.assistant.executor.grants = grants
             self.session.assistant.executor.safety = dict(safety)
+            if self.session.assistant.guardrail != self.session.guardrail:
+                self.session.assistant.guardrail = self.session.guardrail
+                self.session.assistant.reframe()
 
     async def spawn(self, job: Job, resuming: bool = False):
         """Run one child to its report: ``(result, status, trace)``.
@@ -59,6 +66,7 @@ class Helpers:
             router=parent.router, routing=parent.routing,
             clock=parent.clock, parent=parent.chat_id,
             timezone=parent.timezone, safety=parent.safety,
+            guardrail=parent.guardrail,
             # Its emissions are this chat's, tagged as the helper's; its
             # cards park this chat's job.
             emit=partial(parent.emit_for, child_id),

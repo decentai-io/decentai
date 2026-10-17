@@ -20,6 +20,7 @@ import time
 from typing import Any, Dict
 
 from ai_runtime.llms.meter import Meter
+from ai_runtime.mind import frame
 from ai_runtime.prompts import Prompts
 from contracts.chat import CODE_REVIEW_MAX_CHARS
 
@@ -29,10 +30,13 @@ class CodeReviewer:
     SECONDS = 60
     VERDICTS = ("agrees", "differs")
 
-    def __init__(self, connector, meter=None):
+    def __init__(self, connector, meter=None, guardrail: str = ""):
         self.connector = connector
         #: where the review's model call is recorded (llms/meter.py)
         self.meter = meter or Meter()
+        #: The organization's own rules (Settings:Guardrail): code that
+        #: would break one is worth saying so, and never agrees.
+        self.guardrail = str(guardrail or "")
         self.logger = logging.getLogger(self.__class__.__name__)
 
     async def review(self, code: Dict[str, Any]) -> Dict[str, str]:
@@ -43,7 +47,9 @@ class CodeReviewer:
         try:
             started = time.monotonic()
             reply = await asyncio.wait_for(self.connector.chat([
-                {"role": "system", "content": Prompts.text("code_review")},
+                {"role": "system", "content": Prompts.render(
+                    "code_review",
+                    guardrail=frame.guardrail_block(self.guardrail))},
                 {"role": "user", "content": Prompts.render(
                     "code_review_ask",
                     language=code.get("language") or "",

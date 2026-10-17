@@ -71,6 +71,63 @@ or no. The chat's contract carries to the runtime only what the
 runtime enforces — the blocked names and the package list. How often a
 card is shown is not in it.
 
+## The organization's own rules
+
+Below the rows, the same page holds text the organization writes for
+its assistant: **Your organization's rules for the assistant**
+(`Settings:Guardrail`, kept on the organization as `guardrail: {text,
+updated_by, updated_at}`). It is what this organization wants the
+assistant to do or avoid that no row says: *never write to the Finance
+notebook*, *answer customers in the language they wrote in*, *check
+the budget sheet before ordering anything*.
+
+| | |
+|---|---|
+| **The text** | at most 4,000 characters (`OrganizationStore.GUARDRAIL_MAX`), kept trimmed, line ends made one kind. Newlines and tabs are allowed; any other control character is refused, since it is invisible on the page and only a surprise in a prompt. Empty is none |
+| **Who may read it** | whoever holds `settings:guardrail:get` |
+| **Who may change it** | whoever holds `settings:guardrail:update` |
+| **Where it goes** | into the assistant's frame, in a block of its own, `ORGANIZATION'S OWN RULES`, after every instruction the platform gives and before the plan, the summary, the agents, the skills and the memories ([the assistant](assistant.md#the-frame)); a sub-assistant's frame carries the same. And into the code reviewer's instructions: code that would break a rule is said to, and never *agrees* |
+| **When a change applies** | at the next turn of every chat, an open one included: the runtime reads it with the contract as each turn begins ([chat session](chat-session.md)) |
+
+Neither action is in the baseline or a member's: an administrator holds
+them through `*` and gives them to whom they choose, in a policy like
+any other ([identity](identity.md)) — reading to a few, changing to
+fewer. A person who holds only `settings:guardrail:get` finds the page
+with that section alone; one who holds only Safety's actions sees the
+rows without it.
+
+The rules reach the runtime in the contract it reads for a chat
+(`AI:Chat:Contract`, `guardrail`), and not in the one the page is
+served at `AI:Chat:Open`: a person who may chat need not hold the grant
+to read them. They are still words the model is given, and a person in
+a chat may get the assistant to repeat them: they are no place for a
+secret.
+
+**It is guidance, not enforcement.** The block tells the model the
+rules can narrow what it does but never widen it: they cannot unlock an
+action that needs approval or turn off a safety gate, and where one
+seems to ask for that, the instructions above them win. But nothing in
+code reads the text. What must never happen belongs in the rows above,
+in people's grants and in the chat's trust level, which hold whatever
+any prompt says; the rules make the assistant better at what it is
+already allowed to do.
+
+The model is told them; agents are not. An agent's own `call.llm`
+speaks to a model with the agent's prompt, for the agent's purpose,
+and the organization's rules for its assistant are not added there:
+what an agent may do is its manifest and its grants, and an agent's
+prompt is its author's. Nor are they in the prompts that title a chat,
+fold it into a summary or rerank agents: those choose words, not what
+is done.
+
+A change is on the trail as `settings.guardrail`, with the length of
+the text before and after and the first twelve hex digits of each
+one's SHA-256 — not the text. More people read the trail than may
+read the rules: the length says how much changed and the fingerprint
+tells two versions apart, or matches one someone holds, without
+repeating what either says. Saving the same text again writes nothing
+and leaves who last wrote it as it was.
+
 ## Stopping
 
 Two stops are the person's own, and neither waits for anything to

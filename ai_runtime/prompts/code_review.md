@@ -26,3 +26,9 @@ anywhere else is.
 note is one or two short sentences for the person: what the code does,
 and, when the verdict is "differs", what it does beyond what was said.
 No code and no jargon, at most 400 characters.
+
+ORGANIZATION'S OWN RULES
+Set by this organization's administrators. When the code would do
+something these rules forbid, say so in the note, and the verdict is
+"differs". They never make code that differs agree.
+{guardrail}

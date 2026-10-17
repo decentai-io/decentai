@@ -12,6 +12,20 @@ export interface SettingsPage {
   sentence: string;
   /** The action that opens it. */
   action: string;
+  /** Further actions, any one of which opens it as well: a page of
+   *  sections that are each a grant of their own, where a person may
+   *  hold one section's and not the page's first. */
+  alsoOpenedBy?: string[];
+}
+
+/** Every action that opens a settings page. */
+export function settingsPageActions(page: SettingsPage): string[] {
+  return [page.action, ...(page.alsoOpenedBy ?? [])];
+}
+
+/** Whether a person may open a settings page. */
+export function settingsPageOpen(page: SettingsPage, can: (action: string) => boolean): boolean {
+  return settingsPageActions(page).some((action) => can(action));
 }
 
 /**
@@ -60,6 +74,9 @@ export const settingsPages: SettingsPage[] = [
   },
   {
     group: 'Organization', path: 'safety', name: 'Safety', action: 'settings:safety:get',
+    // The organization's own rules for the assistant are a section of
+    // this page, read by a grant of their own.
+    alsoOpenedBy: ['settings:guardrail:get'],
     sentence: 'What no agent may do, and what is always shown to you before it runs.',
   },
 ];
@@ -227,7 +244,7 @@ export const mainRoutes: RouteNode[] = [
         icon: 'settings',
         domain: 'Global',
         active: true,
-        anyAction: settingsPages.map((page) => page.action),
+        anyAction: settingsPages.flatMap(settingsPageActions),
         title: 'Settings',
         children: [],
       },

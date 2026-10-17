@@ -4,6 +4,7 @@ import { Draft } from 'src/app/components/ui/draft';
 import { Choice } from 'src/app/components/ui/radio-keys';
 import { HasUnsavedChanges } from 'src/app/guards/unsaved-changes.guard';
 import { AuthService } from 'src/app/services/auth.service';
+import { GuardrailSettings, SettingsGuardrailService } from 'src/app/services/settings-guardrail.service';
 import { SafetySettings, SettingsSafetyService } from 'src/app/services/settings-safety.service';
 
 /** Where the platform stood before this page existed: every script and
@@ -26,12 +27,18 @@ const STANDARD: SafetySettings = {
  *
  * A looser choice about asking applies only to code the assistant read
  * and found to do what it says, and the chat is still told what ran.
- * One form, saved with the save bar.
+ *
+ * Below them, the organization's own rules for the assistant
+ * (Settings:Guardrail): a grant of their own to read and to change,
+ * so a person may see this page for them alone, or for the rest
+ * without them. One form, saved with the save bar: each part that
+ * changed is saved by its own door.
  */
 @Component({
   selector: 'app-safety',
   standalone: false,
   templateUrl: './safety.component.html',
+  styleUrl: './safety.component.css',
 })
 export class SafetyComponent implements OnInit, HasUnsavedChanges {
   loading = true;
@@ -40,6 +47,12 @@ export class SafetyComponent implements OnInit, HasUnsavedChanges {
   saveError = '';
 
   readonly draft = new Draft<SafetySettings>(STANDARD);
+  /** The organization's own rules, as the form edits them. */
+  readonly rules = new Draft<{ text: string }>({ text: '' });
+  /** Who last wrote them and when, and how long they may be. */
+  rulesSaved: Pick<GuardrailSettings, 'updated_by' | 'updated_at' | 'limit'> = {
+    updated_by: '', updated_at: null, limit: 4000,
+  };
 
   readonly scripts: Choice<SafetySettings['scripts']>[] = [
     { value: 'always', name: 'Ask every time',
@@ -82,9 +95,26 @@ export class SafetyComponent implements OnInit, HasUnsavedChanges {
   constructor(
     private service: SettingsSafetyService,
     public auth: AuthService,
+    private guardrail: SettingsGuardrailService,
   ) {}
 
-  get canEdit(): boolean { return this.auth.can('settings:safety:update'); }
+  /** The Safety rows: who may read them, who may change them. */
+  get canSee(): boolean { return this.auth.can('settings:safety:get'); }
+  get canEdit(): boolean { return this.canSee && this.auth.can('settings:safety:update'); }
+  /** The organization's rules: a grant of their own. */
+  get canSeeRules(): boolean { return this.auth.can('settings:guardrail:get'); }
+  get canEditRules(): boolean { return this.canSeeRules && this.auth.can('settings:guardrail:update'); }
+
+  /** Whether the save bar has anything to save: a part this person may
+   *  change, changed. */
+  get dirty(): boolean {
+    return (this.canEdit && this.draft.dirty) || (this.canEditRules && this.rules.dirty);
+  }
+
+  /** The counter under the rules turns to a warning in the last tenth. */
+  get rulesNearLimit(): boolean {
+    return this.rules.value.text.length > this.rulesSaved.limit * 0.9;
+  }
 
   /** Whether anything is looser than the platform's own start. */
   get loosened(): boolean {
@@ -121,9 +151,13 @@ export class SafetyComponent implements OnInit, HasUnsavedChanges {
     this.loading = true;
     this.loadError = '';
     try {
-      const saved = await this.service.get();
-      if (!saved) throw new Error('no settings');
+      const [saved, rules] = await Promise.all([
+        this.canSee ? this.service.get() : Promise.resolve(STANDARD),
+        this.canSeeRules ? this.guardrail.get() : Promise.resolve(undefined),
+      ]);
+      if (!saved || rules === null) throw new Error('no settings');
       this.draft.take(saved);
+      if (rules) this.takeRules(rules);
     } catch {
       this.loadError = 'Could not reach the server. Check your connection.';
     } finally {
@@ -144,17 +178,43 @@ export class SafetyComponent implements OnInit, HasUnsavedChanges {
   readonly packageName = (typed: string): string =>
     typed.toLowerCase().split(/[=<>!~\[\s]/)[0];
 
+  private takeRules(saved: Partial<GuardrailSettings>): void {
+    this.rules.take({ text: saved.text ?? '' });
+    this.rulesSaved = {
+      updated_by: saved.updated_by ?? '',
+      updated_at: saved.updated_at ?? null,
+      limit: saved.limit || this.rulesSaved.limit,
+    };
+  }
+
+  /** Each part that changed, by its own door. One refused leaves its
+   *  changes in the form, and the other's saved. */
   async save(): Promise<void> {
     if (this.saving) return;
     this.saving = true;
     this.saveError = '';
+    const errors: string[] = [];
     try {
-      const result = await this.service.update(this.draft.value);
-      if (result.error || !result.safety) {
-        this.saveError = result.error || 'The setting could not be saved.';
-        return;
+      const safety = this.canEdit && this.draft.dirty
+        ? this.service.update(this.draft.value) : null;
+      const rules = this.canEditRules && this.rules.dirty
+        ? this.guardrail.update(this.rules.value.text) : null;
+      const [safetySaved, rulesSaved] = await Promise.all([safety, rules]);
+      if (safetySaved) {
+        if (safetySaved.error || !safetySaved.safety) {
+          errors.push(safetySaved.error || 'The setting could not be saved.');
+        } else {
+          this.draft.take(safetySaved.safety);
+        }
       }
-      this.draft.take(result.safety);
+      if (rulesSaved) {
+        if (rulesSaved.error || typeof rulesSaved.text !== 'string') {
+          errors.push(rulesSaved.error || 'The rules could not be saved.');
+        } else {
+          this.takeRules(rulesSaved);
+        }
+      }
+      this.saveError = errors.join(' ');
     } finally {
       this.saving = false;
     }
@@ -162,10 +222,11 @@ export class SafetyComponent implements OnInit, HasUnsavedChanges {
 
   discard(): void {
     this.draft.discard();
+    this.rules.discard();
     this.saveError = '';
   }
 
   unsavedChangesTo(): string {
-    return this.draft.dirty ? 'Safety' : '';
+    return this.dirty ? 'Safety' : '';
   }
 }
