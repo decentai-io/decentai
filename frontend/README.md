@@ -35,7 +35,7 @@ The container image is built from the repository root, not from this
 folder:
 
 ```
-docker build -t decentai-caddy:local -f frontend/Dockerfile .
+docker build -t decentai-web:local -f frontend/Dockerfile .
 ```
 
 It builds the app and serves it with Caddy, which also proxies the

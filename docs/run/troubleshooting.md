@@ -182,7 +182,7 @@ and updating. Where to look is at the end.
 
 ```bash
 docker compose --env-file deploy.env ps
-docker compose --env-file deploy.env logs -f backend      # or ai-runtime, agents, speech, init, caddy, mongo
+docker compose --env-file deploy.env logs -f backend      # or ai-runtime, agents, speech, init, web, mongo
 ```
 
 What agents did — each worker's start and end, its log, every

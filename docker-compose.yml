@@ -1,6 +1,6 @@
 # The whole platform on one machine: MongoDB, the one-shot seeder, the
 # backend, the private AI runtime, the agents' container, the speech
-# container, and Caddy as
+# container, and web (Caddy) as
 # the one door (the web app and the backend on one origin). Every
 # setting comes from one file, deploy.env:
 #
@@ -16,7 +16,7 @@
 #
 # Three networks, and who is on which (docs/system/architecture.md):
 #
-#   default   the one with a way out to the internet: caddy, backend,
+#   default   the one with a way out to the internet: web, backend,
 #             ai-runtime, speech. Caddy reaches the backend here; the
 #             backend reaches the runtime's door and the speech
 #             container, and the internet for repositories, mail and
@@ -234,7 +234,7 @@ services:
 
   # The one door: plain HTTP on one port, from this computer only
   # unless deploy.env says otherwise (LISTEN, PORT).
-  caddy:
+  web:
     build:
       context: .
       dockerfile: frontend/Dockerfile
