@@ -14,10 +14,19 @@ import itertools
 import json
 from typing import Any, Callable, Dict, List, Optional
 
-from contracts.chat import ACTORS, event_error, part_error
+from contracts.chat import ACTORS, event_error, part_error, skill_asked
 
 from sim.resources import InMemoryResourceProvider
 from sim.schedules import MemoryScheduleStore
+
+
+class Refused(RuntimeError):
+    """The platform said no, as the gateway's refusal says it: the
+    sentence, and the HTTP status it came with."""
+
+    def __init__(self, message: str, status: int):
+        super().__init__(message)
+        self.status = status
 
 
 class SimSessionServices:
@@ -75,6 +84,12 @@ class SimSessionServices:
         self.pulls_by_digest: list = []
         self.skills_rows: List[dict] = []
         self.skill_bodies: Dict[str, dict] = {}
+        #: whether the person holds skills:skill:create — what a skill
+        #: card (save_skill) is opened and decided under
+        self.may_create_skills = True
+        #: the skills a card's save created, with the chat and card each
+        #: came from — the trail's skill.created, here
+        self.skills_created: List[dict] = []
         #: per-chat contract overrides — a test (or a dev config) sets
         #: only what it means to change.
         self.contracts: Dict[str, dict] = {}
@@ -242,6 +257,10 @@ class SimSessionServices:
         test's ``decider`` answers any card as the person would, at
         once (``by`` is ``person``); else ``answer`` is None and the
         card waits for the door."""
+        if request.get("expects") == "skill":
+            # The backend's checks on a skill card, before anything is
+            # shown (approval_controller.py, _skill_card).
+            request = {**request, "skill": self._skill_card(chat_id, request)}
         approval_id = f"apr_{next(self._ids)}"
         record = {"chat_id": chat_id, "request": dict(request),
                   "status": "pending", "answer": None}
@@ -256,9 +275,56 @@ class SimSessionServices:
             if decided is not None:
                 answer, by = decided, "person"
         if answer is not None:
+            if request.get("expects") == "skill" and by == "person":
+                # The person's save creates the skill, as the backend's
+                # decision does; the answer is what its frame carries.
+                answer = self.decide_skill(approval_id, answer)
             record["answer"] = answer
             record["status"] = "answered"
         return {"approval_id": approval_id, "answer": answer, "by": by}
+
+    def _skill_card(self, chat_id: str, request: dict) -> dict:
+        if "/" in str(chat_id):
+            raise Refused("A skill is saved from the chat itself, not a "
+                          "helper.", 400)
+        skill, why = skill_asked(request.get("skill") or {})
+        if skill is None:
+            raise Refused(f"skill is not a skill card: {why}", 400)
+        if not self.may_create_skills:
+            raise Refused("You do not have permission to create skills "
+                          "(Skills: \"Create skills\", "
+                          "skills:skill:create). An administrator can "
+                          "grant it.", 403)
+        if self._skill_titled(skill["title"]):
+            raise Refused("A skill with this title already exists. "
+                          "Choose a different title.", 409)
+        return skill
+
+    def _skill_titled(self, title: str) -> bool:
+        wanted = " ".join(title.split()).lower()
+        return any(" ".join(str(row.get("title") or "").split()).lower()
+                   == wanted for row in self.skills_rows)
+
+    def decide_skill(self, approval_id: str, answer: Any) -> dict:
+        """A skill card's decision, as AI:Approval:Decide makes it: a
+        save creates the skill from the card's own words and answers
+        with its row; anything else is a decline. What the door then
+        carries to the runtime."""
+        record = self.approvals[approval_id]
+        if str(answer) != "save":
+            return {"status": "declined"}
+        skill = dict(record["request"].get("skill") or {})
+        if not self.may_create_skills or self._skill_titled(skill["title"]):
+            return {"status": "failed",
+                    "error": "The skill could not be saved."}
+        ref = f"skl_{next(self._ids)}"
+        row = {"ref": ref, "title": skill["title"],
+               "summary": skill["summary"]}
+        self.skills_rows.append(row)
+        self.skill_bodies[ref] = dict(skill)
+        self.skills_created.append({"ref": ref, "chat_id": record["chat_id"],
+                                    "approval_id": approval_id, **skill})
+        return {"status": "saved", "skill": row}
 
     def answered(self, approval_id: str, answer: Any) -> None:
         """What the door delivered for a card, written on its record —

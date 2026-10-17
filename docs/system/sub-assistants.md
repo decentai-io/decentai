@@ -83,6 +83,7 @@ for:
 | state, messages, inbox, plan | the child's own id — its thread is a real record |
 | storage (`store_result`, `read_result`) | the parent's chat — the results are this conversation's, and the goal may name refs |
 | memories | the parent's chat, read at open; `remember` is refused ("Durable facts are the parent's to save, visibly — put it in your report.") |
+| a skill to save | `save_skill` is refused — a skill is the person's, offered from the chat itself — and the platform refuses a skill card on a helper's thread |
 | skills, secrets, data, files | the same services and provider — the same gates |
 | approvals | opened under the child's id, so the host knows whose job parked |
 | emissions | the parent's audience, each frame tagged `"child": "<id>"` so a client may thread them |

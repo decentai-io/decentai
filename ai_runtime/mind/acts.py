@@ -20,6 +20,10 @@ import base64
 import json
 from typing import Any, Dict, Optional
 
+from contracts.chat import (
+    SKILL_BODY_MAX_CHARS, SKILL_SUMMARY_MAX_CHARS, SKILL_TITLE_MAX_CHARS,
+    skill_asked,
+)
 from ai_runtime.mind import observations
 from ai_runtime.mind.documents import DocumentPage, DocumentText, Unreadable
 from ai_runtime.mind.state import DONE
@@ -336,6 +340,85 @@ class Acts:
             return {"error": f"The memory could not be saved: {exc}"}
         self.mind.memories.append(text)
         return {"text": f"Remembered, and the user can see it: {text}"}
+
+    #: What a helper is told when it tries to save a skill.
+    NOT_A_HELPERS_SKILL = ("A skill is saved by the person, from the chat, "
+                           "and not a helper's to offer. Say in your report "
+                           "what is worth saving; the assistant you work "
+                           "for can offer it.")
+
+    async def save_skill(self, action: Dict[str, Any]) -> Dict[str, Any]:
+        """A skill offered to the person, never saved by the assistant:
+        the card shows it whole and the person decides
+        (chat/cards.py, ``save_skill``); the platform creates it as
+        them on their save. Checked here first against the store's own
+        bounds and the titles under SKILLS, so the person is not shown
+        a card that could not be saved. One saved joins SKILLS at
+        once — the frame is rewritten — so use_skill reads it from the
+        next beat on, in this chat and the next."""
+        if self.mind.sinks.save_skill is None:
+            if self.mind.sinks.finish is not None:
+                return {"error": self.NOT_A_HELPERS_SKILL}
+            return {"error": "Skills cannot be saved in this chat."}
+        skill, why = skill_asked({name: action.get(name)
+                                  for name in ("title", "summary", "body")})
+        if skill is None:
+            return {"error": f"save_skill needs a title (at most "
+                             f"{SKILL_TITLE_MAX_CHARS} characters), a "
+                             f"one-line summary (at most "
+                             f"{SKILL_SUMMARY_MAX_CHARS}) and a body (at "
+                             f"most {SKILL_BODY_MAX_CHARS}) — {why}."}
+        wanted = " ".join(skill["title"].split()).lower()
+        taken = next((row for row in self.mind.skills
+                      if " ".join(str(row.get("title") or "").split()).lower()
+                      == wanted), None)
+        if taken is not None:
+            return {"error": f"A skill titled '{taken.get('title')}' already "
+                             f"exists ({taken.get('ref')}). Offer it under a "
+                             f"distinct title, or tell the user they can "
+                             f"edit that one on the Skills page."}
+        try:
+            outcome = await self.mind.sinks.save_skill(skill) or {}
+        except Exception as exc:
+            return {"error": f"The skill could not be offered: {exc}"}
+        status = str(outcome.get("status") or "")
+        if status == "saved":
+            row = dict(outcome.get("skill") or {})
+            row = {"ref": str(row.get("ref") or ""),
+                   "title": str(row.get("title") or skill["title"]),
+                   "summary": str(row.get("summary") or skill["summary"])}
+            # First, so a long catalog's cap never hides the one the
+            # person just saved.
+            self.mind.skills = [row] + [
+                other for other in self.mind.skills
+                if other.get("ref") != row["ref"]]
+            self.mind.reframe()
+            return {"saved": True, "skill": row["ref"],
+                    "title": row["title"],
+                    "note": "The user saved it as their own skill, "
+                            "private to them until they share it on the "
+                            "Skills page. It is listed under SKILLS now, "
+                            "for use_skill in this chat and the next."}
+        if status == "declined":
+            return {"saved": False,
+                    "note": "The user chose not to save it. Nothing was "
+                            "saved; do not offer it again unless they ask."}
+        if status == "expired":
+            return {"saved": False,
+                    "note": "Nobody answered the card; nothing was saved."}
+        error = str(outcome.get("error") or "The skill was not saved.")
+        if status == "refused" and outcome.get("code") == 403:
+            return {"saved": False, "error": error,
+                    "note": "Nothing was saved. Tell the user plainly that "
+                            "saving skills needs the 'Create skills' "
+                            "permission, which an administrator can grant."}
+        if status == "refused" and outcome.get("code") == 409:
+            return {"saved": False, "error": error,
+                    "note": "Nothing was saved. Offer it under a distinct "
+                            "title, or tell the user they can edit the "
+                            "existing skill on the Skills page."}
+        return {"saved": False, "error": error,
+                "note": "Nothing was saved."}
 
     async def plan(self, action: Dict[str, Any]) -> Dict[str, Any]:
         """Set the work items, or update one of them."""

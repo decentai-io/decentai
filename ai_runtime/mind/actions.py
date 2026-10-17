@@ -22,6 +22,9 @@ import re
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from ai_runtime.llms.connector.tools import CARRIED_ACTION
+from contracts.chat import (
+    SKILL_BODY_MAX_CHARS, SKILL_SUMMARY_MAX_CHARS, SKILL_TITLE_MAX_CHARS,
+)
 
 
 def _tool(name: str, description: str, properties: Dict[str, Any],
@@ -165,6 +168,26 @@ ACTION_TOOLS: List[Dict[str, Any]] = [
     _tool("remember",
           "Save one lasting fact about this user, which they will see.",
           {"text": {"type": "string"}}, ["text"]),
+    _tool("save_skill",
+          "Offer to save a skill — knowledge for later chats, such as "
+          "the exact script that worked and the steps around it — "
+          "ONLY when the user asked for one in their own words. The "
+          "user sees it whole on a card and decides; nothing is saved "
+          "unless they choose to.",
+          {"title": {"type": "string",
+                     "description": f"A short name for the skill, at most "
+                                    f"{SKILL_TITLE_MAX_CHARS} characters."},
+           "summary": {"type": "string",
+                       "description": f"One line saying when to use it, at "
+                                      f"most {SKILL_SUMMARY_MAX_CHARS} "
+                                      f"characters."},
+           "body": {"type": "string",
+                    "description": f"Markdown instructions: the steps, the "
+                                   f"IDs and inputs, the checks, and the "
+                                   f"exact code that worked, in code "
+                                   f"blocks; at most {SKILL_BODY_MAX_CHARS} "
+                                   f"characters."}},
+          ["title", "summary", "body"]),
     _tool("plan",
           "Keep the visible plan: set its items, or update one by id — "
           "its status, evidence the trace holds, what blocks it, what "

@@ -105,6 +105,10 @@ class ChatSinks:
     find_files: Optional[Callable] = None
     #: async (text) -> None — a memory kept for the person (remember).
     remember: Optional[Callable] = None
+    #: async ({title, summary, body}) -> {status, skill?, error?} — a
+    #: skill put before the person on a card, and saved by them or not
+    #: (save_skill). None in a helper: a skill is the person's word.
+    save_skill: Optional[Callable] = None
 
     @classmethod
     def names(cls) -> frozenset:

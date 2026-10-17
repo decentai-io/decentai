@@ -279,6 +279,7 @@ class Session:
             read_file=self._read_image,
             find_files=self.cards.find_files,
             remember=self.helper.refuse_memory if child else self._remember,
+            save_skill=None if child else self._save_skill,
         )
         executor = FunctionExecutor(
             # An agent's records are the conversation's: a helper's
@@ -1067,6 +1068,19 @@ class Session:
         memory = await self.services.add_memory(self.chat_id, text)
         await self._emit({"event": "memory_saved",
                           "text": (memory or {}).get("text", text)})
+
+    async def _save_skill(self, skill: Dict[str, str]) -> Dict[str, Any]:
+        """A skill put before the person, and what they decided. One they
+        saved in a chat narrowed to some skills is this chat's too — the
+        platform added it to the chat's list as it saved it — so the
+        list here follows, and the next contract changes nothing."""
+        outcome = await self.cards.save_skill(skill)
+        ref = str((outcome.get("skill") or {}).get("ref") or "")
+        if (outcome.get("status") == "saved" and ref
+                and self.enabled_skills is not None
+                and ref not in self.enabled_skills):
+            self.enabled_skills.append(ref)
+        return outcome
 
     async def _read_skill(self, ref: str):
         return await self.services.read_skill(self.chat_id, ref)

@@ -270,6 +270,63 @@ class TestTheOrganizationsRules:
         assert "Answer in English." in second and "French" not in second
 
 
+class TestASkillFromTheChat:
+    def test_the_person_saves_what_the_card_shows_and_the_next_frame_lists_it(
+        self, admin, full_stack
+    ):
+        """save_skill end to end: the runtime opens the card under the
+        chat's delegation, the person's own Decide creates the skill as
+        them, the door carries its row back, and the mind lists it."""
+        from database.stores import AuditStore, ChatStore
+        from database.stores.data.skills import SkillStore
+
+        skill = {"title": "Jira bulk resolve",
+                 "summary": "When many Jira tickets are to be resolved at once.",
+                 "body": "Run in the board's page:\n\n```javascript\n"
+                         "await fetch('/rest/api/2/issue/X-1/transitions', "
+                         "{method: 'POST'});\n```"}
+        chat_id = app_call(admin, "AI:Chat:Open", {"title": "Skill"}).json()["data"]["chat"]["chat_id"]
+        assert app_call(admin, "AI:Chat:Update", {
+            "chat_id": chat_id, "config": {"llm": {
+                "provider": "fake", "responses": [
+                    action(action="save_skill", **skill),
+                    action(action="say", text="Saved it.", final=True),
+                ]}}}).status_code == 200
+
+        with admin.websocket_connect(
+            f"/chats/{chat_id}", headers=cookie_header(admin)
+        ) as frontend:
+            assert receive(frontend)["event"] == "hello"
+            frontend.send_json({"endpoint": "AI:Chat:Input", "data": {
+                "text": "save that script as a skill", "parts": []}})
+            frame = receive(frontend)
+            while frame.get("event") != "question_asked":
+                frame = receive(frontend)
+            assert frame["expects"] == "skill" and frame["skill"] == skill
+            assert SkillStore().col.count_documents({"type": "skill"}) == 0
+            decided = app_call(admin, "AI:Approval:Decide", {
+                "approval_id": frame["approval_id"], "answer": "save"})
+            assert decided.status_code == 200, decided.text
+            assert decided.json()["data"]["delivered"] is True
+            seen = until_ai_message(frontend)
+            assert seen[-1]["message"]["parts"][0]["content"] == "Saved it."
+
+        ref = decided.json()["data"]["skill"]["ref"]
+        stored = SkillStore().col.find_one({"_id": ref})
+        assert stored["owner"]["users"] == [stored["created_by"]]
+        [line] = list(AuditStore().col.find({"event_type": "skill.created"}))
+        assert line["chat_id"] == chat_id and line["details"]["source"] == "chat"
+        deadline = time.monotonic() + 15
+        while time.monotonic() < deadline:
+            state = ChatStore().by_chat_id(chat_id).get("state") or {}
+            framed = (state.get("messages") or [{}])[0].get("content", "")
+            if f"{ref}: Jira bulk resolve" in framed:
+                break
+            time.sleep(0.1)
+        else:
+            raise AssertionError("the saved frame never listed the skill")
+
+
 class TestThePull:
     def test_a_chat_pulls_the_code_its_organization_approved(
         self, admin, full_stack, control, manifest_doc
