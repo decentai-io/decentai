@@ -217,8 +217,13 @@ the tool menu.
 At most `routing.open_max` (the organization's number, 8 by default)
 stay open; opening one more closes the least recently used, and the
 observation says which. `invoke` marks an agent used, so the open set is
-ordered by recency and `FunctionTools` offers the most recently used
-first.
+ordered by recency, and past the 128 tools a provider takes the most
+recently used agents' functions are the ones offered (the rest stay
+callable by name, and the model is told which). They are offered in
+the order the agents were opened (`AssistantState.opened_in_order`),
+which using one does not change: the tools are the front of every
+request, and a list that only grows at its end when an agent is
+opened leaves the provider's cached prefix whole ([the frame](#the-frame)).
 
 ### `find_agents`
 

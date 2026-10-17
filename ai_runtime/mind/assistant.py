@@ -423,7 +423,8 @@ class Assistant:
         # connector that speaks tool calling asks the model for exactly
         # one call and hands it back as the JSON the parser reads. A
         # call by function name is rewritten to the invoke it is.
-        offered = FunctionTools(self.agents, self.state.opened, self.chat_level)
+        offered = FunctionTools(self.agents, self.state.opened, self.chat_level,
+                                order=self.state.opened_in_order())
         if offered.omitted != self._last_omitted:
             # Past the cap the rest are callable by name; said once, so
             # the model never concludes an agent lacks a function that
