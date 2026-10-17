@@ -215,6 +215,51 @@ class TestTheTwoHalves:
             "message_created") == 4
 
 
+class TestTheOrganizationsRules:
+    def test_the_rules_written_on_the_page_are_in_the_frame_and_an_edit_in_the_next(
+        self, admin, full_stack
+    ):
+        from database.stores import ChatStore
+
+        written = app_call(admin, "Settings:Guardrail:Update",
+                           {"text": "Answer in French."})
+        assert written.status_code == 200, written.text
+        chat_id = app_call(admin, "AI:Chat:Open", {"title": "Rules"})             .json()["data"]["chat"]["chat_id"]
+        assert app_call(admin, "AI:Chat:Update", {
+            "chat_id": chat_id, "config": {"llm": {
+                "provider": "fake", "responses": [
+                    action(action="say", text="Bonjour."),
+                    action(action="finish"),
+                    action(action="say", text="Hello."),
+                    action(action="finish"),
+                ]}}}).status_code == 200
+
+        def frame():
+            return ChatStore().by_chat_id(chat_id)["state"]["messages"][0]["content"]
+
+        with admin.websocket_connect(
+            f"/chats/{chat_id}", headers=cookie_header(admin)
+        ) as frontend:
+            assert receive(frontend)["event"] == "hello"
+            frontend.send_json({"endpoint": "AI:Chat:Input",
+                                "data": {"text": "hi", "parts": []}})
+            until_ai_message(frontend)
+            first = frame()
+            assert "ORGANIZATION'S OWN RULES" in first
+            assert "Answer in French." in first
+            assert first.index("Answer in French.") < first.index("
+PLAN
+")
+
+            # Edited while the chat is open: its next turn reads the new.
+            app_call(admin, "Settings:Guardrail:Update", {"text": "Answer in English."})
+            frontend.send_json({"endpoint": "AI:Chat:Input",
+                                "data": {"text": "again", "parts": []}})
+            until_ai_message(frontend)
+        second = frame()
+        assert "Answer in English." in second and "French" not in second
+
+
 class TestThePull:
     def test_a_chat_pulls_the_code_its_organization_approved(
         self, admin, full_stack, control, manifest_doc

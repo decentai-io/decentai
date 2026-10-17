@@ -107,6 +107,7 @@ class Assistant:
         now: Optional[Callable[[], float]] = None,
         timezone: str = "",
         meter: Optional[Meter] = None,
+        guardrail: str = "",
     ):
         self.state = state
         self.agents = agents
@@ -174,6 +175,10 @@ class Assistant:
         #: contract, so "tomorrow at nine" means their nine. Empty: the
         #: server's.
         self.zone = zone(timezone)
+        #: The organization's own rules (Settings:Guardrail), from the
+        #: contract: written into the frame after the instructions and
+        #: before what changes turn to turn.
+        self.guardrail = str(guardrail or "")
 
         self.inbox: asyncio.Queue = asyncio.Queue()
         self.job_tasks: Dict[str, asyncio.Task] = {}
@@ -1482,7 +1487,8 @@ class Assistant:
 
     def _system_prompt(self) -> str:
         return frame.system_prompt(self.state, self.agents, self._shortlist,
-                                   self.skills, self.max_skills, self.memories)
+                                   self.skills, self.max_skills, self.memories,
+                                   guardrail=self.guardrail)
 
     def _roster_block(self) -> str:
         return frame.roster_block(self.agents, self._shortlist)

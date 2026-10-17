@@ -40,7 +40,7 @@ and answered to the runtime's own service token
 
 | services method | runtime verb | record |
 |---|---|---|
-| `contract(chat_id)` | `AI:Chat:Contract`, then `Settings:Llm:Use` for the key of the chat's model and of the embedding model | what this chat may do, in twelve fields — [below](#the-contract) |
+| `contract(chat_id)` | `AI:Chat:Contract`, then `Settings:Llm:Use` for the key of the chat's model and of the embedding model | what this chat may do, in thirteen fields — [below](#the-contract) |
 | `load_state` / `save_state` | `AI:State:Get` / `AI:State:Save` | `ai_chats.state` — the mind, one document, replaced whole on every beat; size-capped, version stamped by the runtime |
 | `persist_message` / `history` | `AI:Message:Create` / `AI:Message:List` | `ai_messages`; the actor may carry `parent` for a child's goal |
 | `record_event` / `events_since` | `AI:Event:Record` / `AI:Event:Since` | `ai_chat_events` with `direction: "in"` — the inbox: per-chat sequence, durable before absorbed |
@@ -92,6 +92,7 @@ that carries authority.
 | `skills` | *which* skills, when the chat narrowed them: the `enabled_skills` refs, or None for every visible one; the runtime lists only those and cuts the list down when the choice changes mid-chat |
 | `routing` | how the runtime finds the right agent among many — the organization's `Settings:Routing` numbers: threshold, shortlist, candidates, rerank, open_max — and inside it `embedding`, the embedding connection as a block with `secret_ref`, resolved at `Settings:Llm:Use` like the chat's model, or None when none is chosen |
 | `safety` | the organization's blocked sites and package list, which the runtime holds agents to |
+| `guardrail` | the organization's own rules for the assistant (`Settings:Guardrail`), text the runtime writes into the frame and the code reviewer's instructions; empty is none. In this contract only, not in the one `AI:Chat:Open` serves the page: reading them is a grant of its own ([safety](safety.md#the-organizations-own-rules)) |
 | `mcp` | the person's MCP servers with the tools they left on, each of which also adds one allow statement to `grants` (`<server ref>.*.*`) ([MCP servers](mcp.md)); a chat that names some in its `enabled_mcp` is served those and no others, and an empty list is none |
 
 ### The Schedules page
@@ -362,7 +363,10 @@ the fields of an event or a part.
   has the chat's model read it (`ai_runtime/chat/code_review.py`): the
   `review` on the card says whether the code does what its purpose
   says (`agrees`), does something else or more (`differs`), or could
-  not be read (`unread`), with a note in plain words. A review advises
+  not be read (`unread`), with a note in plain words. The reader is
+  told the organization's own rules too
+  ([safety](safety.md#the-organizations-own-rules)): code that would
+  break one is said to, and does not agree. A review advises
   the person and never decides; one an agent sends along is dropped.
   The card is answered `allow` or `deny` through `AI:Approval:Decide
   {answer}`, and the function hears `True`, `False`, or `None` when

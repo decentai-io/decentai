@@ -89,7 +89,7 @@ class SimSessionServices:
             "agents": None, "grants": list(self.GRANTS), "chat_level": 1,
             "llm": None, "max_beats": None, "max_skills": None,
             "skills": None, "routing": None,
-            "timezone": "", "safety": {},
+            "timezone": "", "safety": {}, "guardrail": "",
         }
         answer.update(self.contracts.get(chat_id) or {})
         return answer

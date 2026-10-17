@@ -254,6 +254,9 @@ class Backend:
             "skills": answer.get("skills"),
             "timezone": str(answer.get("timezone") or ""),
             "safety": answer.get("safety") if isinstance(answer.get("safety"), dict) else {},
+            # The organization's own rules, added to the assistant's
+            # instructions: text, and only text.
+            "guardrail": answer.get("guardrail") if isinstance(answer.get("guardrail"), str) else "",
         }
 
     @staticmethod

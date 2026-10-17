@@ -423,6 +423,21 @@ ACTION_CATALOG: Dict[str, Dict[str, Any]] = {
             ),
         },
     },
+    # Explicit grants only, apart from administrators' `*`: the
+    # organization's own instructions to the assistant may say things
+    # an administrator would rather few people read, and fewer change.
+    "settings:guardrail": {
+        "label": "Guardrail",
+        "actions": {
+            "settings:guardrail:get": (
+                "See the organization's own instructions to the assistant"
+            ),
+            "settings:guardrail:update": (
+                "Write the organization's own instructions to the "
+                "assistant, added to every chat's instructions"
+            ),
+        },
+    },
     "settings:routing": {
         "label": "Agent routing",
         "actions": {

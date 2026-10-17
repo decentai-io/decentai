@@ -101,6 +101,18 @@ class SessionContract:
         return {key: safety[key]
                 for key in ("blocked_sites", "packages", "allowed_packages")}
 
+    @staticmethod
+    def guardrail(user: Dict[str, Any]) -> str:
+        """The organization's own rules for the assistant
+        (Settings:Guardrail), for the runtime to add to its
+        instructions. Not part of ``of``: that is also what the page is
+        served at Open, and reading the rules is a grant of its own
+        (``settings:guardrail:get``), which a person who may chat need
+        not hold."""
+        from database.stores import OrganizationStore
+
+        return OrganizationStore().guardrail_text(str(user.get("org_id") or ""))
+
     def _routing(self, user: Dict[str, Any]) -> Dict[str, Any]:
         """The organization's routing numbers, and the embedding model
         as a block the runtime resolves the way it resolves the chat's

@@ -113,6 +113,7 @@ class Session:
         parent: Optional[str] = None,
         timezone: str = "",
         safety: Optional[dict] = None,
+        guardrail: str = "",
         emit: Optional[Callable] = None,
         relay: Optional[Callable] = None,
         job_id: str = "",
@@ -138,6 +139,10 @@ class Session:
         #: What the deployment lets agents do (Settings:Safety), from
         #: the contract: handed to the executor, and re-read each turn.
         self.safety = dict(safety or {})
+        #: The organization's own rules for the assistant
+        #: (Settings:Guardrail), from the contract: written into the
+        #: frame and the code reviewer's instructions, re-read each turn.
+        self.guardrail = str(guardrail or "")
         #: the person's time zone, from the contract; the mind stamps
         #: and the clock counts in it.
         self.timezone = timezone
@@ -207,7 +212,8 @@ class Session:
         #: by are its methods.
         self.cards = Cards(
             services, chat_id, parent=parent,
-            reviewer=CodeReviewer(connector, meter=self.usage),
+            reviewer=CodeReviewer(connector, meter=self.usage,
+                                  guardrail=self.guardrail),
             emit=self._emit, relay=self.relay, activity=self._activity,
             save_state=self._save_state,
             state=lambda: self.assistant.state,
@@ -309,6 +315,7 @@ class Session:
             now=self.clock.clock if self.clock is not None else None,
             timezone=self.timezone,
             meter=self.usage,
+            guardrail=self.guardrail,
         )
         # A rehydrated mind carries the frame it was saved with, and
         # the world moved on since: agents installed, skills written,
@@ -402,7 +409,7 @@ class Session:
     def adopt(self, roster: Dict[str, InstalledAgent], chat_level: int,
               grants=None, connector=None, llm_config=None,
               max_beats=None, max_skills=None, skills=None,
-              routing=None, safety=None) -> None:
+              routing=None, safety=None, guardrail=None) -> None:
         """Take the contract's current word without losing the mind.
 
         The transcript, the plan, the jobs and the questions belong to
@@ -420,11 +427,17 @@ class Session:
             # A site blocked on the page, or a list of packages changed:
             # the next call is held to the new word.
             self.safety = dict(safety)
+        if guardrail is not None:
+            # The organization's rules, edited on the Safety page: the
+            # next turn's frame and the next review read the new text.
+            self.guardrail = str(guardrail)
+            self.cards.reviewer.guardrail = self.guardrail
         for child in self.helpers():
             # Authority is inherited, never widened — and never kept
             # after it was withdrawn: a helper still running is held to
             # the same new word.
-            child.helper.inherit(grants, chat_level, self.safety)
+            child.helper.inherit(grants, chat_level, self.safety,
+                                 self.guardrail)
         if max_beats is not None:
             # Raised in the middle of a long piece of work — usually by
             # somebody who just watched it stop and say so. It takes
@@ -461,6 +474,8 @@ class Session:
         assistant.chat_level = chat_level
         assistant.executor.grants = grants
         assistant.executor.safety = dict(self.safety)
+        # Read by the reframe that ends this adoption.
+        assistant.guardrail = self.guardrail
         if max_beats is not None:
             assistant.max_beats = int(max_beats)
         reframe = False
