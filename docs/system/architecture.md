@@ -306,7 +306,7 @@ what they are for:
 | For | Collections | Page |
 |---|---|---|
 | people and access | `organizations`, `users`, `groups`, `roles`, `policies`, `sessions`, `runtime_sessions` (delegations), `api_keys`, `invitations`, `password_resets`, `auth_throttle`, `first_run`, `signups` | [identity](identity.md) |
-| a chat | `ai_chats` (its settings, plan and the assistant's state), `ai_messages`, `ai_chat_events` (in: the inbox; out: what the page replays), `ai_chat_storage` (results), `ai_approvals` (cards), `ai_schedules`, `ai_audit`, `ai_memories` | [chat session](chat-session.md), [assistant](assistant.md) |
+| a chat | `ai_chats` (its settings, plan and the assistant's state), `ai_messages`, `ai_chat_events` (in: the inbox; out: what the page replays), `ai_chat_storage` (results), `ai_approvals` (cards), `ai_schedules`, `ai_audit`, `ai_memories`, `llm_usage` (what each model call used) | [chat session](chat-session.md), [assistant](assistant.md), [monitoring](monitoring.md#what-the-models-used) |
 | what people and agents keep | `secrets`, `secret_definitions`, `agents_data` (records), `files`, `skills`, `mcp_servers` — one shape | [data layer](data-layer.md) |
 | agents | `ai_agent_sources`, `agent_manifests` (approvals), `agent_grants`, `agent_secret_grants`, `agent_samples` | [agent code](agent-code.md) |
 | settings | `llm_connections`, `oauth_apps`, `oauth_states`, `push_subscriptions` | [data layer](data-layer.md) |

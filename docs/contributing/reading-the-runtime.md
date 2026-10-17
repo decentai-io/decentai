@@ -551,7 +551,11 @@ Tests: the schedule classes in `ai_runtime/tests/test_session.py`,
   max_tokens, tools) -> ModelReply` (`llms/connector/tools.py`): the
   reply as the cycle reads it, the calls, the prose and the provider's
   `stop_reason`, which is how a reply cut at the length cap is told
-  apart from a finished one (`Assistant._cut_off`). The assistant's
+  apart from a finished one (`Assistant._cut_off`), and its `usage`:
+  the tokens the call used, read into one meaning for every provider
+  (`llms/connector/usage.py`) and recorded by whoever made the call
+  on the session's meter (`llms/meter.py`,
+  [monitoring](../system/monitoring.md#what-the-models-used)). The assistant's
   actions are offered as tools (`mind/actions.py`) and a call comes
   back as the action's JSON text, so native tool calling changes how
   the model is asked, not what the runtime does with the answer.

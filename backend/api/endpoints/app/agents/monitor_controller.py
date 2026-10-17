@@ -16,6 +16,9 @@ where that is decided.
     Agents:Monitor:Files    what one of this organization's agents keeps
     Agents:Monitor:Summary  what this organization's agents did in a
                             window, added up from the audit trail
+    Agents:Monitor:Tokens   the tokens this organization's chats and
+                            agents had models use in a window, and what
+                            that is estimated to have cost
 
 **An organization is shown its own agents and no other's.** Everything
 an agent did carries its approval's ref, which is this organization's
@@ -37,7 +40,10 @@ from typing import Any, Dict, List, Optional
 from api.endpoints.app.ai.base import AIController
 from api.services.agents.monitoring import MonitorError, RuntimeMonitor
 from contracts.container import ContainerUsage
-from database.stores import AgentManifestStore, AuditStore, OrganizationStore
+from contracts.llm_providers import LlmProviders
+from database.stores import (
+    AgentManifestStore, AuditStore, OrganizationStore, UsageStore, UserStore)
+from database.stores.usage import COUNTS
 from server.setup.app_state import get_db
 from util import iso, utc_now
 
@@ -182,14 +188,16 @@ class MonitorController(AIController):
         agents called most and how they fared, the hosts reached,
         approvals, model calls and who was active, and the latest calls
         that did not succeed. Counts, never a call's inputs."""
-        window = str(self._payload(data).get("window") or "7d")
-        if window not in self.WINDOWS:
-            return self._fail(data, "invalid_request",
-                              f"window is one of {', '.join(self.WINDOWS)}.")
-        span, unit = self.WINDOWS[window]
-        now = utc_now()
-        since = self._step_down(now - span, unit)
+        asked, refusal = self._window(data)
+        if refusal is not None:
+            return refusal
+        window, unit, since, now = asked
         found = AuditStore().activity(self._org(user), since, unit)
+        # A model call is one the runtime made (llm_usage). What the
+        # trail counts as llm.use is a model key being read — once for
+        # each chat opened, not once for each call — and is said apart.
+        found["key_reads"] = found.pop("model_calls", 0)
+        found["model_calls"] = UsageStore().count(self._org(user), since)
 
         # Every step of the window, the quiet ones too: a chart of
         # only the busy hours draws a line through the silence.
@@ -202,6 +210,119 @@ class MonitorController(AIController):
             at += step
         return self._respond(data, {**found, "series": series, "window": window,
                                     "unit": unit, "since": iso(since), "until": iso(now)})
+
+    def _window(self, data):
+        """((window, unit, since, now), None), or (None, the refusal):
+        the window asked for, starting at the top of its first step."""
+        window = str(self._payload(data).get("window") or "7d")
+        if window not in self.WINDOWS:
+            return None, self._fail(data, "invalid_request",
+                                    f"window is one of {', '.join(self.WINDOWS)}.")
+        span, unit = self.WINDOWS[window]
+        now = utc_now()
+        return (window, unit, self._step_down(now - span, unit), now), None
+
+    # ------------------------------------------------------------------
+    # The tokens models used, and what they cost
+    # ------------------------------------------------------------------
+
+    #: How many agents, people and unpriced models are named, the most first.
+    TOP = 10
+
+    def tokens(self, data, user):
+        """The tokens this organization's chats had models use in a
+        window (docs/system/monitoring.md, token usage): in total, over
+        time, by model, by what each call was for, by agent and by
+        person — with the estimated cost at the catalog's prices, and
+        the share of tokens no price is known for, so the estimate
+        never passes for more than it is. Counts, never a prompt."""
+        asked, refusal = self._window(data)
+        if refusal is not None:
+            return refusal
+        window, unit, since, now = asked
+        org = self._org(user)
+        store = UsageStore()
+        prices = _Prices()
+
+        totals = _Sum()
+        models: Dict[tuple, _Sum] = {}
+        steps: Dict[str, _Sum] = {}
+        for row in store.by_time_and_model(org, since, unit):
+            totals.add(row, prices)
+            models.setdefault((row["provider"], row["model"]), _Sum()).add(row, prices)
+            steps.setdefault(iso(row["at"]), _Sum()).add(row, prices)
+
+        purposes: Dict[str, _Sum] = {}
+        agents: Dict[str, _Sum] = {}
+        people: Dict[str, _Sum] = {}
+        for row in store.by_whom(org, since):
+            purposes.setdefault(row["purpose"], _Sum()).add(row, prices)
+            if row["agent"]:
+                agents.setdefault(row["agent"], _Sum()).add(row, prices)
+            people.setdefault(row["user_id"], _Sum()).add(row, prices)
+
+        # Every step of the window, the quiet ones too.
+        step = timedelta(hours=1) if unit == "hour" else timedelta(days=1)
+        series, at = [], since
+        while at <= now:
+            key = iso(at)
+            series.append({"at": key, **steps.get(key, _Sum()).said()})
+            at += step
+
+        def most(found: Dict[Any, "_Sum"]) -> List[tuple]:
+            return sorted(found.items(), key=lambda item: -item[1].tokens)
+
+        mine = self._mine(user)
+        top_people = most(people)[: self.TOP]
+        names = self._names(org, [user_id for user_id, _ in top_people])
+        unpriced = sorted(((key, found) for key, found in models.items() if found.unpriced),
+                          key=lambda item: -item[1].unpriced)[: self.TOP]
+        return self._respond(data, {
+            "window": window, "unit": unit, "since": iso(since), "until": iso(now),
+            "totals": totals.said(),
+            "cost": {
+                # An estimate, always: today's catalog prices, the base
+                # tier, and none at all for the tokens counted below.
+                "estimated": round(totals.cost, 6),
+                "currency": "USD",
+                "priced_tokens": totals.tokens - totals.unpriced,
+                "unpriced_tokens": totals.unpriced,
+                "unpriced_share": (round(totals.unpriced / totals.tokens, 4)
+                                   if totals.tokens else 0.0),
+                "unpriced_models": [
+                    {"provider": provider, "model": model, "tokens": found.unpriced}
+                    for (provider, model), found in unpriced],
+            },
+            "series": series,
+            "models": [
+                {"provider": provider, "model": model, **found.said(),
+                 "price": prices.of(provider, model)}
+                for (provider, model), found in most(models)],
+            "purposes": [{"purpose": purpose, **found.said()}
+                         for purpose, found in most(purposes)],
+            "agents": [{"agent": agent, "name": mine.get(agent, agent), **found.said()}
+                       for agent, found in most(agents)[: self.TOP]],
+            "people": [
+                {"user_id": user_id,
+                 **names.get(user_id, {"name": user_id, "email": ""}),
+                 **found.said()}
+                for user_id, found in top_people],
+        })
+
+    @staticmethod
+    def _names(org: str, user_ids: List[str]) -> Dict[str, Dict[str, str]]:
+        """This organization's people by id: the name they go by, and
+        their address."""
+        if not user_ids:
+            return {}
+        return {
+            str(doc["_id"]): {
+                "name": str(doc.get("user_name") or doc.get("email") or doc["_id"]),
+                "email": str(doc.get("email") or "")}
+            for doc in UserStore().col.find(
+                {"_id": {"$in": list(user_ids)}, "org_id": org},
+                {"user_name": 1, "email": 1})
+        }
 
     @staticmethod
     def _step_down(moment: datetime, unit: str) -> datetime:
@@ -481,6 +602,77 @@ class _Tally:
             "hosts": [{"host": host, "count": count}
                       for host, count in self.counts["host"].most_common(self.TOP)],
             "sent": self.sent, "received": self.received,
+        }
+
+
+class _Prices:
+    """What each model costs per million tokens, as the catalog says
+    (contracts/llm_models.json, from models.dev): read once a request."""
+
+    def __init__(self):
+        self._known: Dict[tuple, Optional[Dict[str, float]]] = {}
+
+    def of(self, provider: str, model: str) -> Optional[Dict[str, float]]:
+        key = (provider, model)
+        if key not in self._known:
+            self._known[key] = (LlmProviders.price(provider, model)
+                                if provider and model else None)
+        return self._known[key]
+
+
+class _Sum:
+    """Calls and tokens added up, and their estimated cost.
+
+    A row costs its tokens at its model's price per million: ``input``
+    at the input price, ``cache_read`` and ``cache_write`` at theirs —
+    or at the input price where the catalog names none — and ``output``
+    at the output price (``reasoning`` is part of ``output``, and is not
+    counted again). A row whose model has no price adds its tokens to
+    ``unpriced`` and nothing to the cost."""
+
+    def __init__(self):
+        self.calls = self.unreported = 0
+        self.counts = {name: 0 for name in COUNTS}
+        self.cost = 0.0
+        self.unpriced = 0
+
+    @property
+    def prompt(self) -> int:
+        return self.counts["input"] + self.counts["cache_read"] + self.counts["cache_write"]
+
+    @property
+    def tokens(self) -> int:
+        return self.prompt + self.counts["output"]
+
+    def add(self, row: Dict[str, Any], prices: _Prices) -> None:
+        got = {name: int(row.get(name) or 0) for name in COUNTS}
+        self.calls += int(row.get("calls") or 0)
+        self.unreported += int(row.get("unreported") or 0)
+        for name in COUNTS:
+            self.counts[name] += got[name]
+        price = prices.of(row.get("provider") or "", row.get("model") or "")
+        if price is None:
+            self.unpriced += (got["input"] + got["cache_read"]
+                              + got["cache_write"] + got["output"])
+            return
+        self.cost += (
+            got["input"] * price["input"]
+            + got["cache_read"] * price.get("cache_read", price["input"])
+            + got["cache_write"] * price.get("cache_write", price["input"])
+            + got["output"] * price["output"]) / 1_000_000
+
+    def said(self) -> Dict[str, Any]:
+        prompt = self.prompt
+        return {
+            "calls": self.calls, **self.counts,
+            "prompt": prompt, "tokens": self.tokens,
+            # Of everything the models were shown, how much was read
+            # from the cache: cache_read / (input + cache_read + cache_write).
+            "cache_share": round(self.counts["cache_read"] / prompt, 4) if prompt else 0.0,
+            "cost": round(self.cost, 6),
+            "unpriced_tokens": self.unpriced,
+            # Calls whose provider said nothing of what they used.
+            "unreported": self.unreported,
         }
 
 

@@ -31,6 +31,10 @@ named. A model there is data too:
                what it can do, where models.dev says: read a picture,
                think before answering and how hard it may be asked to,
                and the sizes of its window and of one reply
+    cost       what it costs, in US dollars per million tokens, where
+               models.dev says: ``input`` and ``output``, and
+               ``cache_read`` and ``cache_write`` where they are priced
+               apart — what monitoring's estimate is made from (``price``)
     protocol, endpoint
                set only where this model is reached differently from
                its provider's others — a gateway that serves Claude
@@ -103,6 +107,21 @@ class LlmProviders:
         wanted = str(model_id or "").strip()
         return next((model for model in cls.models(provider)
                      if model["id"] == wanted), None)
+
+    @classmethod
+    def price(cls, provider: Any, model_id: Any) -> Optional[Dict[str, float]]:
+        """What a model of a provider costs per million tokens, as the
+        catalog says (``cost``), or None where it says nothing — a
+        model it does not list, a provider of the person's own, a
+        catalog written before prices were kept."""
+        model = cls.model(provider, model_id)
+        cost = (model or {}).get("cost")
+        if not isinstance(cost, dict) or not all(
+                isinstance(cost.get(name), (int, float)) for name in ("input", "output")):
+            return None
+        return {name: float(cost[name]) for name in
+                ("input", "output", "cache_read", "cache_write")
+                if isinstance(cost.get(name), (int, float))}
 
     @classmethod
     def route(cls, provider: Any, model_id: Any, endpoint: Any) -> Optional[Dict[str, str]]:

@@ -309,7 +309,10 @@ make and revoke their own API keys, add and remove their own MCP
 servers, set and pause their own schedules, stop and resume all of their
 own work, hand on what they made, start a connected account's sign-in,
 see which model providers exist, load and remove an agent's sample data,
-read their own audit trail, and manage their own notifications. These
+read their own audit trail, and manage their own notifications; and
+their chats' model calls are counted (`ai:usage:record`, a write only a
+runtime may make, held by everyone so that nobody's calls go uncounted
+— [monitoring](monitoring.md#what-the-models-used)). These
 are granted by a baseline policy attached to Everyone; the list itself
 is `BASELINE_ACTIONS`, beside the catalog. Chatting is not in it: that
 is Members'.

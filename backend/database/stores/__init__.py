@@ -11,6 +11,7 @@
     settings/         what an organization configures once: model
                       connections, connected apps
     audit.py          the append-only event trail
+    usage.py          every model call a chat made, and the tokens it used
     memory.py         what the assistant remembers about a person
     delegations.py    runtime sessions — revocable delegations
     api_keys.py       a person's keys, for scripts
@@ -28,6 +29,7 @@ from database.stores.agents import (
     AgentSourceStore,
 )
 from database.stores.audit import AuditStore
+from database.stores.usage import UsageStore
 from database.stores.base import AccessCache, MongoStore, access_cache
 from database.stores.chats import (
     ApprovalStore,
@@ -110,6 +112,7 @@ __all__ = [
     "WebhookDeliveryStore",
     "WebhookStore",
     "SkillStore",
+    "UsageStore",
     "UserStore",
     "access_cache",
 ]

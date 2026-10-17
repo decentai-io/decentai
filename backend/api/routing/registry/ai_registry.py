@@ -8,6 +8,7 @@ from api.endpoints.app.ai.schedule_controller import ScheduleController
 from api.endpoints.app.ai.state_controller import StateController
 from api.endpoints.app.ai.storage_controller import StorageController
 from api.endpoints.app.ai.switch_controller import SwitchController
+from api.endpoints.app.ai.usage_controller import UsageController
 
 
 def build_ai_endpoints():
@@ -24,4 +25,6 @@ def build_ai_endpoints():
         "Message": MessageController(),
         "Storage": StorageController(),
         "Switch": SwitchController(),
+        # What each model call a chat made used (docs/system/monitoring.md).
+        "Usage": UsageController(),
     }

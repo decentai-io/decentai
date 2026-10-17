@@ -300,6 +300,20 @@ class TestWritingTheCatalog:
             {"id": "old", "name": "Old", "kind": "chat", "context": 1000, "output": 100},
         ]}
 
+    def test_a_models_price_is_kept_where_both_halves_are_said(self):
+        _, models = self.written(google={"name": "Google", "npm": "@ai-sdk/google", "models": {
+            "full": self.model("full", cost={
+                "input": 1.25, "output": 10, "cache_read": 0.125, "cache_write": 1.5,
+                "input_audio": 3, "context_over_200k": {"input": 2.5, "output": 15}}),
+            "half": self.model("half", cost={"input": 1}),
+            "free": self.model("free", cost={"input": 0, "output": 0}),
+            "odd": self.model("odd", cost={"input": "1", "output": -2}),
+        }})
+        cost = {row["id"]: row.get("cost") for row in models["gemini"]}
+        assert cost == {
+            "full": {"input": 1.25, "output": 10, "cache_read": 0.125, "cache_write": 1.5},
+            "half": None, "free": {"input": 0, "output": 0}, "odd": None}
+
     def test_a_model_reached_differently_says_how(self):
         _, models = self.written(acme={
             "name": "Acme", "npm": "@ai-sdk/openai-compatible",
