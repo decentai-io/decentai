@@ -22,6 +22,7 @@ from urllib.parse import quote
 
 from ai_runtime.llms.connector.http import HttpConnector
 from ai_runtime.llms.connector.tools import ModelReply, is_tool_choice_refusal
+from ai_runtime.llms.connector.usage import Embeddings, Usage
 
 
 class GeminiConnector(HttpConnector):
@@ -176,7 +177,8 @@ class GeminiConnector(HttpConnector):
         # A part marked ``thought`` is the model's reasoning, not its reply.
         text = "".join(str(part["text"]) for part in parts
                        if "text" in part and not part.get("thought"))
-        return ModelReply(calls, text, stop_reason=self.stop_reason(candidate))
+        return ModelReply(calls, text, stop_reason=self.stop_reason(candidate),
+                          usage=Usage.gemini(answer.get("usageMetadata")))
 
     @staticmethod
     def stop_reason(candidate: dict) -> str:
@@ -187,10 +189,11 @@ class GeminiConnector(HttpConnector):
 
     async def embed(self, texts: list) -> list:
         """Vectors for the texts, in order, from a Gemini embedding
-        model — what agent routing asks of a connection that embeds."""
+        model — what agent routing asks of a connection that embeds.
+        This API says nothing of the tokens an embedding took."""
         answer = await self._ask("batchEmbedContents", {"requests": [
             {"model": f"models/{self.model}",
              "content": {"parts": [{"text": str(text)}]}}
             for text in texts]})
-        return [list(item.get("values") or [])
-                for item in answer.get("embeddings") or []]
+        return Embeddings([list(item.get("values") or [])
+                           for item in answer.get("embeddings") or []])

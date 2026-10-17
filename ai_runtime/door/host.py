@@ -111,11 +111,12 @@ class SessionHost:
             base = Path(tempfile.gettempdir()) / "decentai-runtime"
         return Path(base) / "embeddings"
 
-    def _prepare_routing(self, roster, contract: dict) -> None:
+    def _prepare_routing(self, roster, contract: dict, meter=None) -> None:
         """Vectors for this chat's agents, in the background, when the
         organization routes by meaning and there are more agents than
         its threshold: the first turn then finds the index ready, and
-        one that does not waits for it (AgentRouter.scores)."""
+        one that does not waits for it (AgentRouter.scores). The
+        embedding calls are this chat's (``meter``)."""
         routing = contract.get("routing") or {}
         embedding = routing.get("embedding") if isinstance(routing, dict) else None
         if not isinstance(embedding, dict):
@@ -129,7 +130,8 @@ class SessionHost:
         agents = dict(roster)
         if self.router.indexed(agents, embedding):
             return
-        asyncio.get_running_loop().create_task(self.router.index(agents, embedding))
+        asyncio.get_running_loop().create_task(
+            self.router.index(agents, embedding, meter))
 
     # ------------------------------------------------------------------
     # Sessions: build on demand, find by chat
@@ -164,7 +166,6 @@ class SessionHost:
     async def _build(self, chat_id: str) -> Session:
         contract = dict(await self.services.contract(chat_id) or {})
         roster = await self.agents.for_chat(chat_id, contract)
-        self._prepare_routing(roster, contract)
         session = Session(
             chat_id,
             roster,
@@ -186,6 +187,7 @@ class SessionHost:
         )
         # Remembered so a later contract can say whether the model moved.
         session.llm_config = contract.get("llm") or None
+        self._prepare_routing(roster, contract, session.usage)
         return await session.open()
 
     # ------------------------------------------------------------------
@@ -275,7 +277,7 @@ class SessionHost:
         llm = contract.get("llm") or None
         changed_model = llm != getattr(session, "llm_config", None)
         roster = await self.agents.for_chat(chat_id, contract)
-        self._prepare_routing(roster, contract)
+        self._prepare_routing(roster, contract, session.usage)
         session.adopt(
             roster=roster,
             chat_level=self._chat_level(contract),

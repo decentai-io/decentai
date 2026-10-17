@@ -29,10 +29,12 @@ import hashlib
 import json
 import math
 import re
+import time
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from ai_runtime.llms.factory import LLMConnectorFactory
+from ai_runtime.llms.meter import Meter
 from ai_runtime.prompts import Prompts
 
 
@@ -141,11 +143,14 @@ class AgentRouter:
         return all(self.vectors(key, self.digest_of(agent_id, agent)) is not None
                    for agent_id, agent in agents.items())
 
-    async def index(self, agents: Dict[str, Any], embedding: Dict[str, Any]) -> bool:
+    async def index(self, agents: Dict[str, Any], embedding: Dict[str, Any],
+                    meter: Optional[Meter] = None) -> bool:
         """Vectors for every agent that has none yet, in batches, kept
         on disk. True when every agent is indexed afterwards. Nothing
         is kept until every batch has answered: a failure is logged and
-        leaves all of them for next time."""
+        leaves all of them for next time. Each batch is a call recorded
+        on ``meter``: the chat whose agents needed the index."""
+        meter = meter or Meter()
         key = self.model_key(embedding)
         lock = self._locks.setdefault(key, asyncio.Lock())
         async with lock:
@@ -163,7 +168,10 @@ class AgentRouter:
                     texts.extend(own)
                 vectors: List[List[float]] = []
                 for start in range(0, len(texts), self.BATCH):
-                    vectors.extend(await connector.embed(texts[start: start + self.BATCH]))
+                    asked = time.monotonic()
+                    answer = await connector.embed(texts[start: start + self.BATCH])
+                    meter.record("embed", connector, answer, asked, connection=embedding)
+                    vectors.extend(answer)
                 if len(vectors) != len(texts):
                     raise RuntimeError(
                         f"the embedding model answered {len(vectors)} vectors for {len(texts)} texts")
@@ -188,7 +196,8 @@ class AgentRouter:
         return dot / (na * nb) if na and nb else 0.0
 
     async def scores(self, agents: Dict[str, Any], text: str,
-                     embedding: Dict[str, Any]) -> Optional[Dict[str, float]]:
+                     embedding: Dict[str, Any],
+                     meter: Optional[Meter] = None) -> Optional[Dict[str, float]]:
         """Each agent's closeness to the words, by its closest vector.
         An index that is not whole is built first and the turn waits
         for it, behind any indexing already under way. None when that
@@ -197,11 +206,16 @@ class AgentRouter:
         if not agents:
             return {}
         key = self.model_key(embedding)
+        meter = meter or Meter()
         if not self.indexed(agents, embedding):
-            if not await self.index(agents, embedding):
+            if not await self.index(agents, embedding, meter):
                 return None
         try:
-            query = (await self.connector(embedding).embed([str(text or "")]))[0]
+            connector = self.connector(embedding)
+            asked = time.monotonic()
+            answer = await connector.embed([str(text or "")])
+            meter.record("embed", connector, answer, asked, connection=embedding)
+            query = answer[0]
         except Exception as exc:
             self.logger.warning(f"Agent routing skipped this turn: {exc}")
             return None
@@ -213,7 +227,8 @@ class AgentRouter:
 
     async def shortlist(self, agents: Dict[str, Any], text: str,
                         opened: Iterable[str], routing: Dict[str, Any],
-                        reranker=None) -> Optional[Tuple[List[str], int]]:
+                        reranker=None,
+                        meter: Optional[Meter] = None) -> Optional[Tuple[List[str], int]]:
         """(ids to list, how many were left off), or None when every
         agent should be listed: under the threshold, or when the
         embedding model could not answer."""
@@ -222,7 +237,7 @@ class AgentRouter:
         threshold = int(routing.get("threshold") or 15)
         if not isinstance(embedding, dict) or len(agents) <= threshold:
             return None
-        scored = await self.scores(agents, text, embedding)
+        scored = await self.scores(agents, text, embedding, meter)
         if scored is None:
             return None
         limit = max(1, int(routing.get("shortlist") or 15))
@@ -231,7 +246,8 @@ class AgentRouter:
         candidates = ranked[:pool]
         order = candidates
         if reranker is not None and routing.get("rerank", True):
-            order = await self.rerank(reranker, text, agents, candidates, limit)
+            order = await self.rerank(reranker, text, agents, candidates, limit,
+                                      meter=meter)
         # The open ones first, always; then the shortlist's worth of
         # the ranked ones that are not already among them.
         listed = [agent_id for agent_id in opened if agent_id in agents]
@@ -245,7 +261,8 @@ class AgentRouter:
         return listed, len(agents) - len(listed)
 
     async def rerank(self, connector, text: str, agents: Dict[str, Any],
-                     candidates: List[str], limit: int) -> List[str]:
+                     candidates: List[str], limit: int,
+                     meter: Optional[Meter] = None) -> List[str]:
         """The candidates in the order the chat's model puts them for
         this message, the rest after. On any failure, as they came."""
         if not getattr(connector, "reranks", True) or len(candidates) <= 1:
@@ -257,6 +274,7 @@ class AgentRouter:
             description = str(block.get("description") or "")[:160]
             lines.append(f"{agent_id} — {name}: {description}")
         try:
+            asked = time.monotonic()
             reply = await connector.chat([
                 {"role": "system", "content": Prompts.text("rerank")},
                 {"role": "user", "content": Prompts.render(
@@ -264,6 +282,7 @@ class AgentRouter:
                     agents="\n".join(lines))},
             ])  # no cap: a reasoning model spends its reply thinking,
                 # and a capped one comes back cut, naming nobody
+            (meter or Meter()).record("rerank", connector, reply, asked)
             chosen = self.parse_ids(str(getattr(reply, "content", "") or ""), candidates)
         except Exception as exc:
             self.logger.warning(f"Agent rerank skipped: {exc}")
@@ -292,7 +311,8 @@ class AgentRouter:
         return found
 
     async def find(self, agents: Dict[str, Any], query: str,
-                   embedding: Dict[str, Any]) -> Optional[List[Dict[str, Any]]]:
+                   embedding: Dict[str, Any],
+                   meter: Optional[Meter] = None) -> Optional[List[Dict[str, Any]]]:
         """The agents closest to the words, best first — id, name,
         description and closeness — or None when the model will not
         answer. With no words, all of them by name."""
@@ -306,7 +326,7 @@ class AgentRouter:
             })
         if not str(query or "").strip():
             return sorted(described, key=lambda d: d["name"].lower())
-        scored = await self.scores(agents, query, embedding)
+        scored = await self.scores(agents, query, embedding, meter)
         if scored is None:
             return None
         for item in described:

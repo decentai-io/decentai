@@ -36,9 +36,11 @@ from __future__ import annotations
 import logging
 import json
 import re
+import time
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
+from ai_runtime.llms.meter import Meter
 from ai_runtime.prompts import Prompts
 from ai_runtime.mind.assistant import Assistant
 
@@ -71,8 +73,10 @@ class Summarizer:
         "OPEN THREADS": 1_400,
     }
 
-    def __init__(self, connector):
+    def __init__(self, connector, meter=None):
         self.connector = connector
+        #: where the fold's own model call is recorded (llms/meter.py)
+        self.meter = meter or Meter()
         self.logger = logging.getLogger(self.__class__.__name__)
 
     # -- measuring ----------------------------------------------------------
@@ -161,6 +165,7 @@ class Summarizer:
             return False
         try:
             lines = self._for_summary(folding)
+            started = time.monotonic()
             reply = await self.connector.chat([
                 {"role": "system", "content": Prompts.text("summary")},
                 {"role": "user", "content":
@@ -170,6 +175,7 @@ class Summarizer:
         except Exception as exc:
             self.logger.warning(f"Summary skipped: {exc}")
             return False
+        self.meter.record("summary", self.connector, reply, started)
         # A model that answered nothing wrote no summary. Shaped, its
         # nothing is five headings with "(none)" under each — which is
         # something, and would replace the transcript it was asked to

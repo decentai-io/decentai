@@ -13,6 +13,7 @@ from ai_runtime.llms.connector.tools import (
     setting,
     ModelReply, is_tool_choice_refusal,
 )
+from ai_runtime.llms.connector.usage import Embeddings, Usage
 
 
 class OpenAIConnector:
@@ -113,6 +114,7 @@ class OpenAIConnector:
         return ModelReply(
             calls, message.content or "",
             stop_reason=getattr(choice, "finish_reason", ""),
+            usage=Usage.openai(getattr(completion, "usage", None)),
         )
 
     async def embed(self, texts: list) -> list:
@@ -122,4 +124,8 @@ class OpenAIConnector:
         the router a connection can embed at all."""
         response = await self.client.embeddings.create(
             model=self.model, input=[str(t) for t in texts])
-        return [list(item.embedding) for item in response.data]
+        usage = getattr(response, "usage", None)
+        return Embeddings(
+            [list(item.embedding) for item in response.data],
+            Usage(input=getattr(usage, "prompt_tokens", 0), reported=True)
+            if usage is not None else None)

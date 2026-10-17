@@ -71,6 +71,7 @@ from ai_runtime.agents.library import InstalledAgent
 from ai_runtime.agents.workers import WorkerError
 from ai_runtime.agents.pool import WorkerPool
 from ai_runtime.llms.connector.tools import text_block
+from ai_runtime.llms.meter import Meter
 from ai_runtime.chat.cards import Cards
 from ai_runtime.chat.clock import ChatClock, Scheduler
 from ai_runtime.chat.code_review import CodeReviewer
@@ -176,8 +177,15 @@ class Session:
         #: from — so a later contract can say whether the model moved
         self.llm_config = None
 
+        #: Every model call this chat makes, sent to the platform a
+        #: batch at a time when the cycle rests (llms/meter.py). A
+        #: helper's goes under its own thread: its chat id is the
+        #: parent's and the thread's (door/platform.py).
+        self.usage = Meter(send=self._send_usage,
+                           connection=lambda: self.llm_config)
+
         self.assistant: Optional[Assistant] = None
-        self.summarizer = Summarizer(connector)
+        self.summarizer = Summarizer(connector, meter=self.usage)
         self.fresh = True
         self.report_summary = ""
         self.report_reason = ""
@@ -199,7 +207,7 @@ class Session:
         #: by are its methods.
         self.cards = Cards(
             services, chat_id, parent=parent,
-            reviewer=CodeReviewer(connector),
+            reviewer=CodeReviewer(connector, meter=self.usage),
             emit=self._emit, relay=self.relay, activity=self._activity,
             save_state=self._save_state,
             state=lambda: self.assistant.state,
@@ -300,6 +308,7 @@ class Session:
             # schedules fire by.
             now=self.clock.clock if self.clock is not None else None,
             timezone=self.timezone,
+            meter=self.usage,
         )
         # A rehydrated mind carries the frame it was saved with, and
         # the world moved on since: agents installed, skills written,
@@ -840,6 +849,7 @@ class Session:
         except Exception as exc:
             self.logger.warning(f"State of {self.chat_id} not saved at kill: {exc}")
         await self._emit({"event": "stopped", **counts})
+        self.usage.send_soon()
         self.assistant._stopping = False
         self.logger.info(f"Killed {self.chat_id}: {counts}")
         return counts
@@ -852,6 +862,9 @@ class Session:
         self.abandoned = True
         if self._running is not None and not self._running.done():
             self._running.cancel()
+        # What the models were asked is not the mind's state: it is
+        # sent while the loop still runs, and lost with a real crash.
+        self.usage.send_soon()
         if self.assistant is None:
             return
         for task in list(self.assistant.job_tasks.values()):
@@ -908,7 +921,16 @@ class Session:
         while maintenance ran found this task alive and did not start
         another — it is this task's to run, and it runs it before
         returning. The check is the last thing before the return, with
-        no suspension between, so nothing can slip in behind it."""
+        no suspension between, so nothing can slip in behind it.
+
+        However it ends, what the models were asked meanwhile is sent
+        to the platform's record, in the background (``usage``)."""
+        try:
+            await self._advance_to_rest()
+        finally:
+            self.usage.send_soon()
+
+    async def _advance_to_rest(self) -> None:
         while True:
             # The audience's honest spinner: the mind is advancing, then
             # it is not. A reply is not the end of anything (a say does
@@ -1113,8 +1135,19 @@ class Session:
                 maker(str(i.get("mime") or "image/png"),
                       str(i.get("content_base64") or "")) for i in images)]
             messages = messages[:-1] + [last] if len(messages) else [last]
+        started = time.monotonic()
         reply = await self.connector.chat(messages, max_tokens)
+        # In the name of the agent whose call asked (execution/call.py).
+        self.usage.record("agent", self.connector, reply, started)
         return Completion(reply.content, reply.stop_reason)
+
+    async def _send_usage(self, calls: list) -> None:
+        """A batch of this chat's model calls, to the platform's record
+        of what they used (AI:Usage:Record). Services that keep no such
+        record are told nothing."""
+        record = getattr(self.services, "record_usage", None)
+        if record is not None:
+            await record(self.chat_id, calls)
 
     #: The chat is named after the first answer, and again every this
     #: many of the person's messages, so the name follows the content.
@@ -1156,10 +1189,12 @@ class Session:
             f"{'Person' if m.get('role') == 'user' else 'Assistant'}: "
             f"{str(m.get('content') or '')[:500]}" for m in messages[-6:])
         try:
+            started = time.monotonic()
             reply = await asyncio.wait_for(self.connector.chat(
                 [{"role": "system", "content": self.TITLE_PROMPT},
                  {"role": "user", "content": excerpt[:3000]}], max_tokens=24),
                 self.TITLE_SECONDS)
+            self.usage.record("title", self.connector, reply, started)
             # A model may answer with nothing, or with blank lines first;
             # the first line with words is the name, and none is no name.
             lines = [line for line in str(getattr(reply, "content", "") or "").splitlines()
