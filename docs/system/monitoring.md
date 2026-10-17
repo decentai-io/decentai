@@ -99,7 +99,7 @@ ends; the worker is left running.
 The runtime does not know the platform's people or their
 organizations: one runtime serves them all and writes one log. That is
 decided by the backend, which asks the doors above and answers a
-person through three actions of its own
+person through actions of its own
 (`backend/api/endpoints/app/agents/monitor_controller.py`):
 
 | Action | Answers |
@@ -107,6 +107,8 @@ person through three actions of its own
 | `Agents:Monitor:Usage` | what the agents are given, how much the agents' container holds, and what each of this organization's running agents uses; where the deployment has one organization, what each part of the platform holds too |
 | `Agents:Monitor:Events` | what happened, a page at a time: `kinds` is what the runtime reads; `kind`, `agent`, `outcome` (`ok`, `trouble`, `refused`, `unreached`, `failed`), `host` and `text` narrow what is shown; `since` and `until`, in seconds, keep it to the days asked for. With `tally`, the page comes with what the filters leave added up — how many, and of each kind, outcome, agent and host, each counted as if its own filter were not chosen — over the latest ten thousand events read, and says whether that was all |
 | `Agents:Monitor:Files` | what one of this organization's agents keeps |
+| `Agents:Monitor:Summary` | what this organization's agents did in a window, added up from the audit trail, and the model calls its chats made |
+| `Agents:Monitor:Tokens` | the tokens this organization's chats had models use in a window, and their estimated cost — [below](#what-the-models-used) |
 
 - **Each is a grant of its own.** No member holds one by default.
   Administrators do, and whoever they give one to. What an agent did
@@ -131,6 +133,126 @@ person through three actions of its own
 - **A page is filled from this organization's part of the log.** The
   backend reads further back than one answer of the runtime when what
   it read was another organization's.
+
+## What the models used
+
+Every call a chat makes to a model is written down with what it used,
+so that an organization can see how many tokens its chats and agents
+spend and what that is estimated to cost. It is the platform's own
+accounting, not something an agent sees, and it never holds a prompt
+or a reply.
+
+**What is a call.** Each answer the runtime has from a model, under
+what it was for (`purpose`):
+
+| Purpose | The call |
+|---|---|
+| `assistant` | one beat of the assistant's own thinking — a sub-assistant's too, under its thread; a beat asked again (without its pictures, or after a fold) is a second call |
+| `agent` | an agent's function asking the chat's model (`call.llm`), with the agent's approval ref and the function |
+| `title` | the chat named from its content |
+| `summary` | the oldest part of a long transcript folded into its summary |
+| `code_review` | the model's reading of code an agent proposes to run |
+| `rerank` | the chat's model putting the agents closest to a message in order |
+| `embed` | the embedding model, placing agents and a message for [routing](assistant.md#routing-among-many-agents); the agents' vectors are made once, and the chat whose agents needed them is the one they are counted to |
+
+A call that failed is not one: the provider answered nothing to count.
+
+**What is kept of it** (`llm_usage`, `backend/database/stores/usage.py`):
+the organization, the person and the chat, taken from the chat's
+delegation and never from what the runtime sent; the sub-assistant's
+thread where it was one; the purpose, and the agent and function for
+an `agent` call; the connection's id, its provider and the model; the
+tokens, the time it took, and when. Kept for 396 days, then gone.
+
+**The tokens mean one thing whatever the provider.** Each provider
+counts its own way, and the difference that matters is the cache:
+OpenAI's `prompt_tokens` (and its Responses' `input_tokens`) and
+Gemini's `promptTokenCount` *include* what was read from the cache,
+while Anthropic's `input_tokens` and Bedrock's `inputTokens` *leave it
+out* and count what was read from and written to the cache beside it.
+So the runtime normalises every answer as it reads it
+(`ai_runtime/llms/connector/usage.py`), and here:
+
+| Count | Means |
+|---|---|
+| `input` | input tokens neither read from nor written to the cache. OpenAI and Gemini: their prompt count less their cached count; Anthropic and Bedrock: their input count as it is |
+| `cache_read` | input tokens read from the cache |
+| `cache_write` | input tokens written to the cache (Anthropic, Bedrock); zero where a provider caches without saying so |
+| `output` | every output token billed, thinking included: Gemini's thoughts are added to its candidates |
+| `reasoning` | how many of `output` were thinking, where the provider says; never added again |
+
+Everything a model was shown is `input + cache_read + cache_write`
+(`prompt`), and the share read from the cache is
+
+    cache share = cache_read / (input + cache_read + cache_write)
+
+A provider that says nothing of a call's tokens — some OpenAI-compatible
+servers, Gemini's embeddings — leaves it at zero and marks it
+(`reported: false`): the call is counted, and its tokens are not
+known.
+
+**How it reaches the platform.** The session keeps what its calls used
+(`ai_runtime/llms/meter.py`) and sends it with `AI:Usage:Record`
+([the chat session](chat-session.md)), at most fifty calls at a time,
+when the cycle comes to rest, when fifty are waiting or the oldest has
+waited a minute, and when the session is stopped or put down. Nothing
+a beat does waits for it: a send that fails is a line in the runtime's
+log and the calls in it are let go, and a crash loses what was not yet
+sent. The backend takes a batch whole or not at all — a purpose it does
+not know, a count that is not a whole number from zero to a billion, a
+word longer than 200 characters refuses it — and keeps the runtime's
+time for a call only where it is within a day of its own.
+
+Recording is every person's (`ai:usage:record`, in the
+[baseline](identity.md#the-baseline)), because a chat's delegation
+carries its person's grants and a call nobody may record is a call
+nobody counts; only a runtime may make it, and reading it is not
+theirs.
+
+**How it is read.** `Agents:Monitor:Tokens`, a grant of its own
+(`agents:monitor:tokens`) like the others, adds up the organization's
+calls in a window — `24h` in hours, `7d` and `30d` in days, as the
+summary is: in total, every step of the window, by model, by purpose,
+by agent (the ten that used most, under the name their approval has
+now) and by person (the ten whose chats used most), each with its
+calls, its counts, its cache share and its estimated cost.
+
+**The cost is an estimate, and says what it left out.** A model's price
+is the catalog's (`contracts/llm_models.json`, copied from
+[models.dev](https://models.dev) by `contracts/generate_llm_providers.py`):
+US dollars per million tokens for input and output, and for reading
+from and writing to the cache where models.dev prices them apart. A
+call costs
+
+    (input × input price
+     + cache_read × cache-read price
+     + cache_write × cache-write price
+     + output × output price) / 1,000,000
+
+with the input price standing in for a cache price the catalog does
+not give. What this does not know:
+
+- **A model the catalog has no price for** — a provider of one's own,
+  a self-hosted model, a model named by an id the catalog lists
+  differently (an inference profile on Bedrock), a model newer than the
+  catalog — is counted and not priced. The answer says how many tokens
+  that is, their share of all of them, and which models
+  (`unpriced_tokens`, `unpriced_share`, `unpriced_models`); the page
+  says so beside the cost. A cost is never shown for tokens nobody
+  priced.
+- **Today's price, not the day's.** The estimate is worked out when it
+  is asked for, at the catalog's prices now: a price that changed since
+  changes the past with it, and refreshing the catalog changes the
+  estimate.
+- **The base price only.** Some models charge more past a size of
+  prompt, for a batch, for audio, or by region; the catalog's tiers are
+  not kept, and none of that is in the estimate. Neither is what a
+  provider charges beside the tokens (a search, a tool), nor a
+  discount of one's own contract.
+
+The Overview's **Model calls** are these calls too: the count of what
+was recorded in the window. The trail's `llm.use` — a model key read,
+once for each chat that opens — is said apart (`key_reads`).
 
 ## What each part of the platform holds
 
@@ -183,7 +305,16 @@ A person reads it in the chat's **Activity and audit** dialog, under
 
 **Monitoring**, under Organization in the sidebar, for whoever holds
 `agents:monitor:usage` (`frontend/src/app/pages/app/monitoring/`).
-Three views:
+Its views, each for whoever holds its grant:
+
+- **Overview** — what the agents did in a window, added up
+  (`agents:monitor:summary`).
+- **Tokens** — what the chats and agents had models use in a window
+  (`agents:monitor:tokens`): tokens in and out, the share read from the
+  cache, the estimated cost and how many calls; the tokens over time,
+  read from the cache and not, as a chart or a table; and tables by
+  model, by purpose, by agent and by person. The cost is called an
+  estimate wherever it is shown, and a model with no price says so.
 
 - **Agents** — where the deployment is one organization's, what each
   part of the platform holds; then what the agents are given, how much
@@ -221,8 +352,18 @@ Nothing on the page changes an agent or what it is given.
   a stand-in for the runtime: who may look, two organizations kept
   apart, pages, filters, search and the tally, paths, and the
   platform's own parts.
+- `backend/tests/test_llm_usage.py` — the runtime's record of each
+  model call (only a runtime, whose it is from the delegation, the
+  bounds) and the tokens added up: who may look, two organizations
+  apart, the window, the cache share and the cost across models, the
+  unpriced share, by purpose, agent and person.
+- `ai_runtime/tests/test_llm_usage.py` — each provider's count read
+  into one meaning, each connector reading its answer, the meter (sent
+  in batches, in the background, a failure let go), and a chat's calls
+  reaching the platform, a helper's under its thread.
 - `backend/tests/test_assistant_transcript.py` — a person reading
   their own chat's assistant, and nobody reading another's.
 - `ai_runtime/tests/test_usage.py` — a container's own numbers.
 - `frontend/src/app/pages/app/monitoring/monitoring.component.spec.ts`
-  — the page, and each kind of line in words.
+  — the page, and each kind of line in words;
+  `token-usage.component.spec.ts` — the tokens view.

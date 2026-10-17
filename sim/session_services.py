@@ -58,6 +58,8 @@ class SimSessionServices:
         self.storage: Dict[str, dict] = {}
         #: the trail: every execution the runtime recorded, in order
         self.audit: List[dict] = []
+        #: every model call a chat recorded (record_usage)
+        self.usage: List[dict] = []
         self.memories: Dict[str, List[str]] = {}
         self.plans: Dict[str, list] = {}
         self.titles: Dict[str, str] = {}
@@ -281,6 +283,13 @@ class SimSessionServices:
     # -- the trail -------------------------------------------------------
     async def record_audit(self, chat_id: str, event: dict) -> None:
         self.audit.append({"chat_id": chat_id, **dict(event)})
+
+    async def record_usage(self, chat_id: str, calls: list) -> None:
+        """The chat's model calls, as AI:Usage:Record keeps them: under
+        the chat, and a helper's under its thread."""
+        root, _, thread = str(chat_id).partition("/")
+        for call in calls:
+            self.usage.append({"chat_id": root, "thread": thread, **dict(call)})
 
     # -- storage ---------------------------------------------------------
     async def store_result(self, chat_id: str, source: str,

@@ -49,6 +49,7 @@ from ai_runtime.agents.environments import AgentEnvironment
 from ai_runtime.agents.workers import WorkerError
 from ai_runtime.execution.pictures import Pictures
 from ai_runtime.execution.sinks import ChatSinks
+from ai_runtime.llms.meter import ON_BEHALF
 
 #: The one refusal call.llm() can meet — same wording as the SDK's own,
 #: so the function's author reads one message wherever it runs.
@@ -252,10 +253,18 @@ class Call:
                 mimetypes.guess_type(str(record.get("filename") or ""))[0] or "")
             pictures.append(self._picture(
                 f"'{named.get('ref')}'", mime, str(record.get("content_base64") or "")))
-        if pictures:
-            text = await self.sinks.llm(messages or [], max_tokens, pictures)
-        else:
-            text = await self.sinks.llm(messages or [], max_tokens)
+        # The model call is this agent's, and is recorded as such
+        # (llms/meter.py): whose function asked is said beside it.
+        behalf = ON_BEHALF.set({
+            "agent": str(getattr(self.agent, "agent_id", "") or ""),
+            "function": self.name})
+        try:
+            if pictures:
+                text = await self.sinks.llm(messages or [], max_tokens, pictures)
+            else:
+                text = await self.sinks.llm(messages or [], max_tokens)
+        finally:
+            ON_BEHALF.reset(behalf)
         return {"text": str(text),
                 "stop_reason": str(getattr(text, "stop_reason", "") or "")}
 

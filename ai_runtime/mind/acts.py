@@ -72,7 +72,8 @@ class Acts:
                     "note": "No embedding model is configured for agent routing, "
                             "so every agent is listed under AGENTS."}
         try:
-            found = await self.mind.router.find(self.mind.agents, query, embedding)
+            found = await self.mind.router.find(self.mind.agents, query, embedding,
+                                                meter=self.mind.meter)
         except Exception as exc:
             found = None
             self.mind.logger.warning(f"find_agents failed: {exc}")

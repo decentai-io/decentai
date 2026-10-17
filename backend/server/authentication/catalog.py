@@ -169,6 +169,13 @@ BASELINE_ACTIONS = (
     "settings:notifications:unsubscribe",
     "settings:notifications:update",
     "settings:notifications:test",
+    # What the models of a person's chats used, written down by the
+    # runtime for each call (docs/system/monitoring.md). Only a runtime
+    # may write it (AI:Usage:Record says so itself), and a chat's
+    # delegation carries its person's grants: held by everyone, so that
+    # nobody's model calls go uncounted. Reading it is an
+    # administrator's (agents:monitor:tokens).
+    "ai:usage:record",
 )
 
 # Bump when BASELINE_ACTIONS gains an entry. The revision recorded on the
@@ -176,7 +183,7 @@ BASELINE_ACTIONS = (
 # are expected to edit BaseAccess — unticking an action revokes it for
 # everybody — and a seed that re-asserted the whole list on every run
 # would quietly undo that on the next restart.
-BASELINE_REVISION = 29
+BASELINE_REVISION = 30
 
 
 # What the seeded Members group grants: the platform's everyday use, for
@@ -801,6 +808,11 @@ ACTION_CATALOG: Dict[str, Dict[str, Any]] = {
                 "and how they ended, the agents called most, the hosts "
                 "they reached, approvals and model calls"
             ),
+            "agents:monitor:tokens": (
+                "See the tokens the organization's chats and agents had "
+                "models use — by model, by purpose, by agent and by "
+                "person — and what they are estimated to have cost"
+            ),
         },
     },
     "ai:audit": {
@@ -814,6 +826,16 @@ ACTION_CATALOG: Dict[str, Dict[str, Any]] = {
             "ai:audit:record": (
                 "The runtime's own write: every function it ran, its "
                 "inputs in outline, its outcome and duration"
+            ),
+        },
+    },
+    "ai:usage": {
+        "label": "Model usage",
+        "actions": {
+            "ai:usage:record": (
+                "The runtime's own write: each model call a chat made — "
+                "what it was for, the model, the tokens it used — never "
+                "what was said"
             ),
         },
     },
@@ -857,6 +879,9 @@ RUNTIME_ENDPOINTS = (
     # The trail: the runtime records every function it ran — reading
     # the trail stays the person's.
     "ai:audit:record",
+    # What each model call used, for the organization's monitoring;
+    # reading it is an administrator's, never a delegation's.
+    "ai:usage:record",
     "ai:message:create", "ai:message:list",
     # Storage: the runtime records results and resolves reference
     # inputs against its own chat's results.

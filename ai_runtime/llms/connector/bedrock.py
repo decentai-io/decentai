@@ -30,6 +30,7 @@ from urllib.parse import quote
 
 from ai_runtime.llms.connector.http import HttpConnector
 from ai_runtime.llms.connector.tools import ModelReply, is_tool_choice_refusal
+from ai_runtime.llms.connector.usage import Usage
 
 
 class BedrockConnector(HttpConnector):
@@ -154,4 +155,5 @@ class BedrockConnector(HttpConnector):
             for block in blocks if isinstance(block.get("toolUse"), dict)
         ]
         text = "".join(str(block["text"]) for block in blocks if "text" in block)
-        return ModelReply(calls, text, stop_reason=answer.get("stopReason", ""))
+        return ModelReply(calls, text, stop_reason=answer.get("stopReason", ""),
+                          usage=Usage.bedrock(answer.get("usage")))

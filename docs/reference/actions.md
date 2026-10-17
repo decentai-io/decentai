@@ -9,7 +9,7 @@ the actions a chat's delegation may call, and nothing else.
 Generated from `backend/server/authentication/catalog.py` by
 `docs/reference/generate.py`; do not edit by hand.
 
-207 actions in 38 services; 68 baseline.
+209 actions in 39 services; 69 baseline.
 
 ## Own account
 
@@ -399,6 +399,7 @@ Generated from `backend/server/authentication/catalog.py` by
 | `agents:monitor:events` | Read what was seen of agents' processes: when each started and ended, its log, every connection it made or was refused, the processes it started |  |  |
 | `agents:monitor:files` | See the files an agent keeps |  |  |
 | `agents:monitor:summary` | See what the organization's agents did, added up: calls and how they ended, the agents called most, the hosts they reached, approvals and model calls |  |  |
+| `agents:monitor:tokens` | See the tokens the organization's chats and agents had models use — by model, by purpose, by agent and by person — and what they are estimated to have cost |  |  |
 
 ## AI audit trail
 
@@ -407,4 +408,10 @@ Generated from `backend/server/authentication/catalog.py` by
 | `ai:audit:list` | Read the record of what agents did for you | yes |  |
 | `ai:audit:list_all` | Read the organization's whole audit trail — everyone's chats, installs, grants and credential reads |  |  |
 | `ai:audit:record` | The runtime's own write: every function it ran, its inputs in outline, its outcome and duration |  | yes |
+
+## Model usage
+
+| Action | Grants | Baseline | Runtime |
+|---|---|---|---|
+| `ai:usage:record` | The runtime's own write: each model call a chat made — what it was for, the model, the tokens it used — never what was said | yes | yes |
 

@@ -1,0 +1,271 @@
+<!-- One filter row above everything it scopes. -->
+<div class="ov-bar">
+  <app-segmented label="Time window" [choices]="windows" [ngModel]="window" (ngModelChange)="choose($event)"></app-segmented>
+  <span class="ov-window" *ngIf="usage">Counted from every model call {{ inWindow }}. Costs are estimates.</span>
+</div>
+
+<p class="form-notice is-error" role="alert" *ngIf="error">{{ error }}</p>
+
+<div class="ov-tiles ov-loading" *ngIf="loading && !usage" aria-busy="true" aria-label="Adding up the tokens">
+  <span class="sk ov-tile-sk" *ngFor="let n of [1, 2, 3, 4, 5]"></span>
+</div>
+
+<!-- Held at reduced opacity while a new window is read: no jump. -->
+<div class="ov" *ngIf="usage as u" [class.is-stale]="loading">
+  <!-- ── The numbers ─────────────────────────────────────────────── -->
+  <dl class="ov-tiles">
+    <div class="ov-tile">
+      <dt>Tokens in</dt>
+      <dd class="ov-value">{{ number(totals.prompt) }}</dd>
+      <dd class="ov-sub">{{ number(totals.input) }} new · {{ number(totals.cache_read) }} cached · {{ number(totals.cache_write) }} written to the cache</dd>
+    </div>
+    <div class="ov-tile">
+      <dt>Tokens out</dt>
+      <dd class="ov-value">{{ number(totals.output) }}</dd>
+      <dd class="ov-sub">{{ totals.reasoning ? number(totals.reasoning) + " of them thinking" : "Written by the models" }}</dd>
+    </div>
+    <div class="ov-tile">
+      <dt>Read from the cache</dt>
+      <dd class="ov-value">{{ percent(totals.cache_share) }}</dd>
+      <dd class="ov-sub">Of every token the models were shown</dd>
+    </div>
+    <div class="ov-tile" [class.is-warn]="partlyPriced">
+      <dt>
+        <lucide-icon *ngIf="partlyPriced" name="triangle-alert" [size]="14" aria-hidden="true"></lucide-icon>
+        Estimated cost
+      </dt>
+      <dd class="ov-value">{{ money(u.cost.estimated) }}</dd>
+      <dd class="ov-sub">
+        {{ partlyPriced ? percent(u.cost.unpriced_share) + " of tokens have no known price" : "At the model catalog's prices" }}
+      </dd>
+    </div>
+    <div class="ov-tile">
+      <dt>Model calls</dt>
+      <dd class="ov-value">{{ number(totals.calls) }}</dd>
+      <dd class="ov-sub">{{ totals.unreported ? totals.unreported + " said nothing of their tokens" : "Each one counted" }}</dd>
+    </div>
+  </dl>
+
+  <app-empty
+    *ngIf="!totals.calls"
+    icon="activity"
+    [title]="'No model was called ' + inWindow"
+    line="Tokens appear here as chats think, name themselves, fold long transcripts and let agents ask the model."
+  ></app-empty>
+
+  <ng-container *ngIf="totals.calls">
+    <!-- ── Tokens over time ──────────────────────────────────────── -->
+    <section class="ov-card" aria-labelledby="tk-series-title">
+      <header class="ov-card-head">
+        <div>
+          <h2 class="ov-card-title" id="tk-series-title">Tokens over time</h2>
+          <p class="ov-card-note">Each {{ u.unit }}, in and out, by whether they were read from the cache.</p>
+        </div>
+        <div class="ov-legend" aria-label="Legend">
+          <span class="ov-key"><span class="ov-swatch is-ok" aria-hidden="true"></span>Read from the cache</span>
+          <span class="ov-key"><span class="ov-swatch is-rest" aria-hidden="true"></span>Everything else</span>
+          <button class="btn ghost sm" type="button" [attr.aria-pressed]="asTable" (click)="asTable = !asTable">
+            <lucide-icon [name]="asTable ? 'chart-column' : 'table'" [size]="16" aria-hidden="true"></lucide-icon>
+            {{ asTable ? "Chart" : "Table" }}
+          </button>
+        </div>
+      </header>
+
+      <div class="ov-chart" *ngIf="!asTable" role="img"
+           [attr.aria-label]="'Tokens ' + inWindow + ': ' + totals.tokens + ' in all, ' + percent(totals.cache_share) + ' of the input read from the cache. The table view lists each ' + u.unit + '.'">
+        <div class="ov-axis" aria-hidden="true">
+          <span *ngFor="let tick of ticks">{{ number(tick) }}</span>
+        </div>
+        <div class="ov-plot">
+          <div class="ov-grid" aria-hidden="true"><span></span><span></span><span></span></div>
+          <div class="ov-columns">
+            <div class="ov-column" *ngFor="let column of columns; trackBy: byStep"
+                 [matTooltip]="column.tip" matTooltipClass="tooltip-lines" tabindex="0" [attr.aria-label]="column.tip">
+              <span class="ov-stack">
+                <span class="ov-seg is-rest" *ngIf="column.restHeight" [style.height.%]="column.restHeight"></span>
+                <span class="ov-seg is-ok" *ngIf="column.cachedHeight" [style.height.%]="column.cachedHeight"></span>
+              </span>
+              <span class="ov-tick">{{ column.label }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="ov-table-wrap" *ngIf="asTable">
+        <table class="table">
+          <thead>
+            <tr>
+              <th scope="col">{{ u.unit === "hour" ? "Hour" : "Day" }}</th>
+              <th scope="col" class="num">Calls</th>
+              <th scope="col" class="num">New in</th>
+              <th scope="col" class="num">Cached</th>
+              <th scope="col" class="num">To the cache</th>
+              <th scope="col" class="num">Out</th>
+              <th scope="col" class="num">Est. cost</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let column of columns; trackBy: byStep">
+              <td>{{ stepTitle(column.step.at) }}</td>
+              <td class="num">{{ column.step.calls }}</td>
+              <td class="num">{{ column.step.input.toLocaleString() }}</td>
+              <td class="num">{{ column.step.cache_read.toLocaleString() }}</td>
+              <td class="num">{{ column.step.cache_write.toLocaleString() }}</td>
+              <td class="num">{{ column.step.output.toLocaleString() }}</td>
+              <td class="num">{{ money(column.step.cost) }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ── By model ──────────────────────────────────────────────── -->
+    <section class="ov-card" aria-labelledby="tk-models-title">
+      <header class="ov-card-head">
+        <div>
+          <h2 class="ov-card-title" id="tk-models-title">By model</h2>
+          <p class="ov-card-note">
+            Estimated at the catalog's price per million tokens; a model it has no price for is counted, and not priced.
+          </p>
+        </div>
+      </header>
+      <div class="ov-table-wrap">
+        <table class="table">
+          <thead>
+            <tr>
+              <th scope="col">Model</th>
+              <th scope="col" class="num">Calls</th>
+              <th scope="col" class="num">In</th>
+              <th scope="col" class="num">Cached</th>
+              <th scope="col" class="num">Out</th>
+              <th scope="col" class="num">Est. cost</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let row of u.models">
+              <td>
+                <span class="tk-model">
+                  <code>{{ row.model || "(unnamed)" }}</code>
+                  <span class="tk-provider">{{ row.provider || "unknown provider" }}</span>
+                </span>
+              </td>
+              <td class="num">{{ number(row.calls) }}</td>
+              <td class="num">{{ number(row.prompt) }}</td>
+              <td class="num">{{ percent(row.cache_share) }}</td>
+              <td class="num">{{ number(row.output) }}</td>
+              <td class="num">
+                <span *ngIf="row.price; else unpriced">{{ money(row.cost) }}</span>
+                <ng-template #unpriced><span class="chip warn" matTooltip="The model catalog has no price for this model">No price</span></ng-template>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <div class="ov-pair">
+      <!-- ── By what the calls were for ───────────────────────────── -->
+      <section class="ov-card" aria-labelledby="tk-purposes-title">
+        <header class="ov-card-head">
+          <div>
+            <h2 class="ov-card-title" id="tk-purposes-title">By purpose</h2>
+            <p class="ov-card-note">What each model call was made for.</p>
+          </div>
+        </header>
+        <div class="ov-table-wrap">
+          <table class="table">
+            <thead>
+              <tr>
+                <th scope="col">Purpose</th>
+                <th scope="col" class="num">Calls</th>
+                <th scope="col" class="num">Tokens</th>
+                <th scope="col" class="num">Est. cost</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let row of u.purposes">
+                <td>{{ purpose(row.purpose) }}</td>
+                <td class="num">{{ number(row.calls) }}</td>
+                <td class="num">{{ number(row.tokens) }}</td>
+                <td class="num">{{ rowCost(row) }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ── By agent ─────────────────────────────────────────────── -->
+      <section class="ov-card" aria-labelledby="tk-agents-title">
+        <header class="ov-card-head">
+          <div>
+            <h2 class="ov-card-title" id="tk-agents-title">By agent</h2>
+            <p class="ov-card-note">The model calls agents' functions made themselves.</p>
+          </div>
+        </header>
+        <div class="ov-table-wrap" *ngIf="u.agents.length">
+          <table class="table">
+            <thead>
+              <tr>
+                <th scope="col">Agent</th>
+                <th scope="col" class="num">Calls</th>
+                <th scope="col" class="num">Tokens</th>
+                <th scope="col" class="num">Est. cost</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let row of u.agents">
+                <td>
+                  <span class="ov-bar-name">
+                    <app-agent-mark size="sm" [name]="row.name" aria-hidden="true"></app-agent-mark>
+                    {{ row.name }}
+                  </span>
+                </td>
+                <td class="num">{{ number(row.calls) }}</td>
+                <td class="num">{{ number(row.tokens) }}</td>
+                <td class="num">{{ rowCost(row) }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="ov-quiet" *ngIf="!u.agents.length">No agent asked the model itself {{ inWindow }}.</p>
+      </section>
+    </div>
+
+    <!-- ── By person ───────────────────────────────────────────────── -->
+    <section class="ov-card" aria-labelledby="tk-people-title">
+      <header class="ov-card-head">
+        <div>
+          <h2 class="ov-card-title" id="tk-people-title">By person</h2>
+          <p class="ov-card-note">Whose chats the calls were made in, the most first.</p>
+        </div>
+      </header>
+      <div class="ov-table-wrap">
+        <table class="table">
+          <thead>
+            <tr>
+              <th scope="col">Person</th>
+              <th scope="col" class="num">Calls</th>
+              <th scope="col" class="num">In</th>
+              <th scope="col" class="num">Out</th>
+              <th scope="col" class="num">Est. cost</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let row of u.people">
+              <td>
+                <span class="tk-model">
+                  {{ row.name }}
+                  <span class="tk-provider" *ngIf="row.email && row.email !== row.name">{{ row.email }}</span>
+                </span>
+              </td>
+              <td class="num">{{ number(row.calls) }}</td>
+              <td class="num">{{ number(row.prompt) }}</td>
+              <td class="num">{{ number(row.output) }}</td>
+              <td class="num">{{ rowCost(row) }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </ng-container>
+</div>

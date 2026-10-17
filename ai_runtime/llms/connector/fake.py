@@ -25,6 +25,7 @@ as it would from a real model.
 from __future__ import annotations
 
 from ai_runtime.llms.connector.tools import ModelReply
+from ai_runtime.llms.connector.usage import Embeddings
 
 
 class FakeConnector:
@@ -72,7 +73,7 @@ class FakeConnector:
                 place = zlib.crc32(word.encode("utf-8")) % self.EMBED_DIMENSIONS
                 vector[place] += 1.0
             vectors.append(vector)
-        return vectors
+        return Embeddings(vectors)
 
     async def chat(self, messages: list, max_tokens: int | None = None,
                    tools: list | None = None) -> ModelReply:

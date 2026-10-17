@@ -65,6 +65,9 @@ class Helpers:
             relay=partial(parent.relay_for, child_id),
             job_id=job.job_id,
         )
+        # Its model is the parent's, and so is the connection its
+        # calls are recorded against (Session.usage).
+        child.llm_config = parent.llm_config
         parent.children[job.job_id] = child
         try:
             await child.open()

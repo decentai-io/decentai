@@ -20,6 +20,7 @@ from typing import Any, Dict, List, Tuple
 
 from ai_runtime.llms.connector.openai import OpenAIConnector
 from ai_runtime.llms.connector.tools import ModelReply, is_tool_choice_refusal
+from ai_runtime.llms.connector.usage import Usage
 
 
 class OpenAIResponsesConnector(OpenAIConnector):
@@ -123,7 +124,8 @@ class OpenAIResponsesConnector(OpenAIConnector):
                     part.text for part in getattr(item, "content", None) or []
                     if getattr(part, "type", None) == "output_text")
         return ModelReply(calls, "".join(words),
-                          stop_reason=self.stop_reason(response))
+                          stop_reason=self.stop_reason(response),
+                          usage=Usage.responses(getattr(response, "usage", None)))
 
     @staticmethod
     def stop_reason(response: Any) -> str:

@@ -416,6 +416,13 @@ class Backend:
         except Exception as exc:
             self.logger.warning(f"Execution not audited: {exc}")
 
+    async def record_usage(self, chat_id: str, calls: list) -> None:
+        """A batch of the chat's model calls — what each was for, the
+        model, the tokens it used, how long it took — for the
+        organization's monitoring (docs/system/monitoring.md). The
+        caller (llms/meter.py) logs a refusal and lets the batch go."""
+        await self.call(chat_id, "AI:Usage:Record", {"calls": list(calls)})
+
     async def store_result(self, chat_id: str, source: str,
                            result: dict) -> str:
         answer = await self.call(chat_id, "AI:Storage:Create",

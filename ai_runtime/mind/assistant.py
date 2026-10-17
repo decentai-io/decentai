@@ -40,6 +40,7 @@ from contracts.cron import zone
 from ai_runtime.execution.executor import FunctionExecutor
 from ai_runtime.llms.connector.tools import (
     NoModel, is_context_overflow, is_image_refusal)
+from ai_runtime.llms.meter import Meter
 from ai_runtime.mind.actions import (
     ACTION_TOOLS, FINISH_REASONS, OUT_OF_BEATS, FunctionTools,
 )
@@ -105,10 +106,15 @@ class Assistant:
         routing: Optional[Dict[str, Any]] = None,
         now: Optional[Callable[[], float]] = None,
         timezone: str = "",
+        meter: Optional[Meter] = None,
     ):
         self.state = state
         self.agents = agents
         self.connector = connector
+        #: Where every model call this mind makes is recorded — its
+        #: beats, and the routing it asks for (llms/meter.py). The
+        #: session's; a mind built alone keeps its own and sends nothing.
+        self.meter = meter or Meter()
         self.executor = executor
         self.chat_level = chat_level
         #: The chat's doors, by name (ai_runtime/execution/sinks.py): how a
@@ -794,6 +800,7 @@ class Assistant:
         try:
             reply = await self.connector.chat(
                 await self.pictures.for_model(self.state.messages), tools=tools)
+            self.meter.record("assistant", self.connector, reply, started)
             # What a beat costs in wall time, and how much the model was
             # handed — the line to read when a chat feels slow.
             self.logger.info(
@@ -808,8 +815,7 @@ class Assistant:
                 self.logger.warning(
                     f"This model will not be shown pictures; continuing on "
                     f"the words alone: {exc}")
-                return await self.connector.chat(
-                    await self.pictures.for_model(self.state.messages), tools=tools)
+                return await self._ask_again(tools)
             if self.sinks.fold is not None and is_context_overflow(exc):
                 # The transcript outgrew the window between folds: fold
                 # now, keeping less, and ask once more. A beat that dies
@@ -818,9 +824,17 @@ class Assistant:
                     f"The transcript outgrew the model's window; folding "
                     f"and asking again: {exc}")
                 if await self.sinks.fold(force=True):
-                    return await self.connector.chat(
-                        await self.pictures.for_model(self.state.messages), tools=tools)
+                    return await self._ask_again(tools)
             raise
+
+    async def _ask_again(self, tools: list):
+        """The beat's call once more, after what refused the first was
+        put right — a call of its own, recorded as one."""
+        started = time.monotonic()
+        reply = await self.connector.chat(
+            await self.pictures.for_model(self.state.messages), tools=tools)
+        self.meter.record("assistant", self.connector, reply, started)
+        return reply
 
     # -- say ------------------------------------------------------------
     @staticmethod
@@ -982,7 +996,8 @@ class Assistant:
                 result = await self.router.shortlist(
                     self.agents, self._latest_words, self.state.opened,
                     self.routing,
-                    reranker=self.connector if self.routing.get("rerank", True) else None)
+                    reranker=self.connector if self.routing.get("rerank", True) else None,
+                    meter=self.meter)
             except Exception as exc:
                 self.logger.warning(f"Agent routing failed; every agent listed: {exc}")
                 result = None

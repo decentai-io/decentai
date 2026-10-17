@@ -270,6 +270,7 @@ import { OutboundDialogComponent } from './pages/app/settings/outbound/outbound-
 import { SafetyComponent } from './pages/app/settings/safety/safety.component';
 import { MonitoringComponent } from './pages/app/monitoring/monitoring.component';
 import { ActivityOverviewComponent } from './pages/app/monitoring/activity-overview.component';
+import { TokenUsageComponent } from './pages/app/monitoring/token-usage.component';
 import { ModelProvidersComponent } from './pages/app/settings/model-providers/model-providers.component';
 import { ModelSelectComponent } from './components/model-select/model-select.component';
 import { ConnectedAppsComponent } from './pages/app/settings/connected-apps/connected-apps.component';
@@ -342,6 +343,7 @@ import { AgentCardComponent } from './pages/app/agents/agent-card.component';
     SafetyComponent,
     MonitoringComponent,
     ActivityOverviewComponent,
+    TokenUsageComponent,
     ModelProvidersComponent,
     ModelSelectComponent,
     ConnectedAppsComponent,

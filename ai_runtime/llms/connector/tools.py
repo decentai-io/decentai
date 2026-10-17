@@ -8,7 +8,9 @@ read: the action as JSON text, one per line, else the words as written.
 The cycle's parser takes the first and says so if there were more;
 prose still travels as prose. Beside the content ride its parts — the
 calls, the prose — and the provider's word for why it stopped, which
-is how the cycle knows a reply that was cut off from one that ended.
+is how the cycle knows a reply that was cut off from one that ended —
+and what the call used, in tokens (usage.py), which is how the platform
+knows what a chat costs.
 """
 
 from __future__ import annotations
@@ -17,6 +19,8 @@ import json
 import re
 from typing import Any, Dict, List, Optional
 
+from ai_runtime.llms.connector.usage import Usage
+
 
 class ModelReply:
     """One model call, answered whole.
@@ -24,13 +28,16 @@ class ModelReply:
     ``content`` is the reply as the cycle reads it. ``calls`` are the
     tool calls as ``{name, arguments}``; ``prose`` the text beside or
     instead of them. ``stop_reason`` is the provider's own word for
-    why it stopped, or empty."""
+    why it stopped, or empty. ``usage`` is what the call used, the same
+    way for every provider (usage.py); all zeros where it said nothing."""
 
     def __init__(self, calls: Optional[List[Dict[str, Any]]] = None,
-                 prose: Any = "", stop_reason: Any = ""):
+                 prose: Any = "", stop_reason: Any = "",
+                 usage: Optional[Usage] = None):
         self.calls = list(calls or [])
         self.prose = str(prose or "")
         self.stop_reason = str(stop_reason or "")
+        self.usage = usage if isinstance(usage, Usage) else Usage()
         self.content = actions_text(self.calls, self.prose)
 
 

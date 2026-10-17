@@ -283,12 +283,34 @@ class ProviderCatalogWriter:
         for size in ("context", "output"):
             if int((declared.get("limit") or {}).get(size) or 0) > 0:
                 row[size] = int(declared["limit"][size])
+        price = self._price(declared.get("cost"))
+        if price is not None:
+            row["cost"] = price
         if isinstance(declared.get("provider"), dict) and declared["provider"]:
             reached = self._reached(entry, provider, declared["provider"])
             if reached is None:
                 return None
             row.update(reached)
         return row
+
+    #: What models.dev says a model costs, in US dollars per million
+    #: tokens, that the platform's estimate reads (monitoring.md).
+    PRICES = ("input", "output", "cache_read", "cache_write")
+
+    @classmethod
+    def _price(cls, cost: Any) -> Optional[Dict[str, float]]:
+        """The model's price per million tokens: input and output at
+        least, and what reading and writing the cache cost where
+        models.dev says. None where it says less — an estimate made
+        from half a price would be wrong without saying so. The
+        higher tiers some models charge past a size of prompt are
+        not kept: the estimate is at the base price."""
+        if not isinstance(cost, dict):
+            return None
+        price = {name: cost[name] for name in cls.PRICES
+                 if isinstance(cost.get(name), (int, float))
+                 and not isinstance(cost.get(name), bool) and cost[name] >= 0}
+        return price if "input" in price and "output" in price else None
 
     @staticmethod
     def _kind(declared: Dict[str, Any]) -> Optional[str]:

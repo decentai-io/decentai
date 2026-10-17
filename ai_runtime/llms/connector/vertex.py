@@ -24,6 +24,7 @@ import httpx
 from ai_runtime.llms.connector.anthropic import AnthropicConnector
 from ai_runtime.llms.connector.gemini import GeminiConnector
 from ai_runtime.llms.connector.tools import setting
+from ai_runtime.llms.connector.usage import Embeddings, Usage
 from contracts.vertex import VertexAccount
 
 
@@ -44,11 +45,19 @@ class VertexGeminiConnector(GeminiConnector):
                                 {"Authorization": f"Bearer {token}"})
 
     async def embed(self, texts: list) -> list:
-        """Vectors from a Vertex embedding model, in order."""
+        """Vectors from a Vertex embedding model, in order, and the
+        tokens each text took (``statistics.token_count``), added up."""
         answer = await self._ask("predict", {
             "instances": [{"content": str(text)} for text in texts]})
-        return [list(((item or {}).get("embeddings") or {}).get("values") or [])
-                for item in answer.get("predictions") or []]
+        found = [((item or {}).get("embeddings") or {})
+                 for item in answer.get("predictions") or []]
+        counted = [(each.get("statistics") or {}).get("token_count")
+                   for each in found]
+        said = [count for count in counted
+                if isinstance(count, (int, float)) and not isinstance(count, bool)]
+        return Embeddings(
+            [list(each.get("values") or []) for each in found],
+            Usage(input=sum(said), reported=True) if said else None)
 
 
 class VertexAnthropicConnector(AnthropicConnector):

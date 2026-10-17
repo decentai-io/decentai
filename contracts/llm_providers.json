@@ -2,7 +2,7 @@
   "schema_version": "2.0",
   "source": {
     "url": "https://models.dev/api.json",
-    "sha256": "0a4273a9c5b08fe5dbf4edb7a172c4cfcb66317903bb5ccfbb81bab899904066"
+    "sha256": "b6d2d9aeb699ca1e04facfaa894c715a6cae448f963bb835e431d64cf1aff75d"
   },
   "providers": [
     {
@@ -265,6 +265,12 @@
       "name": "Cohere",
       "protocol": "openai",
       "endpoint": "https://api.cohere.ai/compatibility/v1"
+    },
+    {
+      "id": "commandcode",
+      "name": "CommandCode",
+      "protocol": "openai",
+      "endpoint": "https://api.commandcode.ai/provider/v1"
     },
     {
       "id": "coralbricks",
@@ -833,13 +839,13 @@
       "id": "opencode",
       "name": "OpenCode",
       "protocol": "openai",
-      "endpoint": "https://opencode.ai/inference/v1"
+      "endpoint": "https://opencode.ai/inference/openai/v1"
     },
     {
       "id": "opencode-go",
       "name": "OpenCode Go",
       "protocol": "openai",
-      "endpoint": "https://opencode.ai/inference/go/v1"
+      "endpoint": "https://opencode.ai/inference/go/openai/v1"
     },
     {
       "id": "openreason",
@@ -931,6 +937,12 @@
       "name": "Qiniu",
       "protocol": "openai",
       "endpoint": "https://api.qnaigc.com/v1"
+    },
+    {
+      "id": "reflection",
+      "name": "Reflection",
+      "protocol": "openai",
+      "endpoint": "https://api.reflection.ai/openai/v1"
     },
     {
       "id": "regolo-ai",

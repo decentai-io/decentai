@@ -7,6 +7,7 @@ from anthropic import AsyncAnthropic
 
 from ai_runtime.llms.connector.tools import (
     ModelReply, anthropic_tools, setting)
+from ai_runtime.llms.connector.usage import Usage
 
 
 class AnthropicConnector:
@@ -124,4 +125,5 @@ class AnthropicConnector:
         return ModelReply(
             calls, text,
             stop_reason=getattr(response, "stop_reason", ""),
+            usage=Usage.anthropic(getattr(response, "usage", None)),
         )

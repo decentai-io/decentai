@@ -2441,6 +2441,135 @@
           "expireAfterSeconds": 0
         }
       ]
+    },
+    "llm_usage": {
+      "description": "Each model call a chat made: what it was for, the connection and model, the tokens it used (uncached input, cache reads, cache writes, output) and how long it took. Never a prompt or a reply.",
+      "validator": {
+        "$jsonSchema": {
+          "bsonType": "object",
+          "required": [
+            "org_id",
+            "user_id",
+            "chat_id",
+            "purpose",
+            "timestamp"
+          ],
+          "properties": {
+            "_id": {
+              "bsonType": "string"
+            },
+            "org_id": {
+              "bsonType": "string"
+            },
+            "user_id": {
+              "bsonType": "string"
+            },
+            "chat_id": {
+              "bsonType": "string"
+            },
+            "thread": {
+              "bsonType": "string"
+            },
+            "purpose": {
+              "enum": [
+                "assistant",
+                "agent",
+                "title",
+                "summary",
+                "code_review",
+                "rerank",
+                "embed"
+              ]
+            },
+            "input": {
+              "bsonType": [
+                "int",
+                "long"
+              ],
+              "minimum": 0
+            },
+            "output": {
+              "bsonType": [
+                "int",
+                "long"
+              ],
+              "minimum": 0
+            },
+            "cache_read": {
+              "bsonType": [
+                "int",
+                "long"
+              ],
+              "minimum": 0
+            },
+            "cache_write": {
+              "bsonType": [
+                "int",
+                "long"
+              ],
+              "minimum": 0
+            },
+            "reasoning": {
+              "bsonType": [
+                "int",
+                "long"
+              ],
+              "minimum": 0
+            },
+            "duration_ms": {
+              "bsonType": [
+                "int",
+                "long"
+              ],
+              "minimum": 0
+            },
+            "reported": {
+              "bsonType": "bool"
+            },
+            "timestamp": {
+              "bsonType": "date"
+            }
+          }
+        }
+      },
+      "indexes": [
+        {
+          "name": "org_timestamp",
+          "keys": [
+            [
+              "org_id",
+              1
+            ],
+            [
+              "timestamp",
+              -1
+            ]
+          ]
+        },
+        {
+          "name": "chat_timestamp",
+          "keys": [
+            [
+              "chat_id",
+              1
+            ],
+            [
+              "timestamp",
+              -1
+            ]
+          ]
+        },
+        {
+          "name": "timestamp_ttl",
+          "keys": [
+            [
+              "timestamp",
+              1
+            ]
+          ],
+          "expireAfterSeconds": 34214400
+        }
+      ]
     }
   }
 }

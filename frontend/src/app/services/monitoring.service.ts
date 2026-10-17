@@ -135,7 +135,11 @@ export interface ActivitySummary {
   agents: { agent: string; name: string; calls: number; failed: number; avg_ms: number }[];
   hosts: { host: string; connections: number; calls: number }[];
   approvals: { asked: number; allowed: number; denied: number; waiting: number };
+  /** The model calls chats made in the window, as each was recorded
+   *  (AI:Usage:Record). */
   model_calls: number;
+  /** How often a model key was read: once a chat opens, not a call. */
+  key_reads?: number;
   secret_uses: number;
   people: number;
   problems: { at: string; chat_id?: string | null; function?: string; agent: string; status: string; error: string }[];
@@ -143,6 +147,64 @@ export interface ActivitySummary {
 }
 
 export type SummaryWindow = '24h' | '7d' | '30d';
+
+/** Calls and tokens added up, and what they are estimated to cost.
+ *  `input` is the input neither read from nor written to the cache;
+ *  `prompt` is everything the model was shown (input + cache_read +
+ *  cache_write); `output` includes thinking (`reasoning`). */
+export interface TokenCounts {
+  calls: number;
+  input: number;
+  output: number;
+  cache_read: number;
+  cache_write: number;
+  reasoning: number;
+  prompt: number;
+  tokens: number;
+  /** cache_read / prompt, 0 to 1. */
+  cache_share: number;
+  /** In US dollars, at the catalog's prices, of the priced tokens only. */
+  cost: number;
+  unpriced_tokens: number;
+  /** Calls whose provider said nothing of what they used. */
+  unreported: number;
+}
+
+/** What a chat's model call was for. */
+export type TokenPurpose = 'assistant' | 'agent' | 'title' | 'summary' | 'code_review' | 'rerank' | 'embed';
+
+/** A model's price per million tokens, as the catalog says. */
+export interface TokenPrice {
+  input: number;
+  output: number;
+  cache_read?: number;
+  cache_write?: number;
+}
+
+/** The tokens an organization's chats had models use in a window
+ *  (Agents:Monitor:Tokens). */
+export interface TokenUsage {
+  window: SummaryWindow;
+  unit: 'hour' | 'day';
+  since: string;
+  until: string;
+  totals: TokenCounts;
+  cost: {
+    estimated: number;
+    currency: string;
+    priced_tokens: number;
+    unpriced_tokens: number;
+    /** 0 to 1: of all the tokens, those no price is known for. */
+    unpriced_share: number;
+    unpriced_models: { provider: string; model: string; tokens: number }[];
+  };
+  series: (TokenCounts & { at: string })[];
+  models: (TokenCounts & { provider: string; model: string; price: TokenPrice | null })[];
+  purposes: (TokenCounts & { purpose: TokenPurpose })[];
+  agents: (TokenCounts & { agent: string; name: string })[];
+  people: (TokenCounts & { user_id: string; name: string; email: string })[];
+  error?: string;
+}
 
 /** Client for Agents:Monitor — what agents use and did. Read-only. */
 @Injectable({ providedIn: 'root' })
@@ -185,6 +247,12 @@ export class MonitoringService {
     const res = await this.session.ai('Agents:Monitor:Summary', { window });
     if (res.error || !res.data) return null;
     return res.data as ActivitySummary;
+  }
+
+  async tokens(window: SummaryWindow): Promise<TokenUsage | null> {
+    const res = await this.session.ai('Agents:Monitor:Tokens', { window });
+    if (res.error || !res.data) return null;
+    return res.data as TokenUsage;
   }
 
   async files(agent: string): Promise<AgentFiles> {

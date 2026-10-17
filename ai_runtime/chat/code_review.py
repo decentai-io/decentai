@@ -16,8 +16,10 @@ import logging
 import asyncio
 import json
 import re
+import time
 from typing import Any, Dict
 
+from ai_runtime.llms.meter import Meter
 from ai_runtime.prompts import Prompts
 from contracts.chat import CODE_REVIEW_MAX_CHARS
 
@@ -27,8 +29,10 @@ class CodeReviewer:
     SECONDS = 60
     VERDICTS = ("agrees", "differs")
 
-    def __init__(self, connector):
+    def __init__(self, connector, meter=None):
         self.connector = connector
+        #: where the review's model call is recorded (llms/meter.py)
+        self.meter = meter or Meter()
         self.logger = logging.getLogger(self.__class__.__name__)
 
     async def review(self, code: Dict[str, Any]) -> Dict[str, str]:
@@ -37,6 +41,7 @@ class CodeReviewer:
         if self.connector is None:
             return self.unread()
         try:
+            started = time.monotonic()
             reply = await asyncio.wait_for(self.connector.chat([
                 {"role": "system", "content": Prompts.text("code_review")},
                 {"role": "user", "content": Prompts.render(
@@ -52,6 +57,7 @@ class CodeReviewer:
                     # for one of the fields above it.
                     code=code.get("code") or "")},
             ]), self.SECONDS)
+            self.meter.record("code_review", self.connector, reply, started)
         except Exception as exc:
             self.logger.warning(f"Code review skipped: {exc}")
             return self.unread()
