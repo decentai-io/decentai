@@ -21,7 +21,7 @@ seeder runs once at every start and exits.
     │  HTTP and WebSocket, port 4280 on this machine (80/443 on a server)
     ▼
 ┌─────────┐   /auth/* /app /chats/* /upload /download/* /oauth/* /hooks/*
-│  caddy  │──────────────────────────────────────────┐
+│   web   │──────────────────────────────────────────┐
 └─────────┘   everything else: the web app's files   │
                                                      ▼
 ┌─────────┐  seeds, then exits        ┌──────────────────────┐      ┌─────────┐
@@ -46,7 +46,7 @@ seeder runs once at every start and exits.
 
 | Container | Image | What it is | Listens on |
 |---|---|---|---|
-| `caddy` | `frontend/` | serves the web app's files and passes the backend's paths on (`frontend/Caddyfile`) | 80, published as `LISTEN:PORT` — the only published port |
+| `web` | `frontend/` | Caddy, which serves the web app's files and passes the backend's paths on (`frontend/Caddyfile`) | 80, published as `LISTEN:PORT` — the only published port |
 | `backend` | `backend/` | the platform's API: identity and access, the data layer, the gateway, chat sessions as the runtime's services | 8000 |
 | `init` | the backend's | `bootstrap/init_db.py`: the schema, the access chains, the first administrator | — |
 | `mongo` | `mongo:7` | the database | 27017, on the `data` network only |
@@ -58,7 +58,7 @@ Three networks (`docker-compose.yml`):
 
 | Network | On it | What it is for |
 |---|---|---|
-| `default` | `caddy`, `backend`, `ai-runtime`, `speech` | the one with a way out. Caddy reaches the backend; the backend reaches the runtime's door and the speech container, and the internet for repositories, mail, OAuth and a person's notifications to other systems ([webhooks](webhooks.md)); the runtime reaches the backend's gateway, and the internet for agents' packages and, through its proxy, for agents |
+| `default` | `web`, `backend`, `ai-runtime`, `speech` | the one with a way out. Caddy reaches the backend; the backend reaches the runtime's door and the speech container, and the internet for repositories, mail, OAuth and a person's notifications to other systems ([webhooks](webhooks.md)); the runtime reaches the backend's gateway, and the internet for agents' packages and, through its proxy, for agents |
 | `data` | `mongo`, `backend`, `init` | `internal: true`: the database, and the two that speak to it. Nothing else has a route to it, and it has none out |
 | `agents` | `ai-runtime`, `agents` | `internal: true`: the runtime is the only container on it with a way anywhere, so a worker's only way out is the runtime's proxy |
 

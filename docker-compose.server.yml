@@ -5,7 +5,7 @@
 #   docker compose -f docker-compose.yml -f docker-compose.server.yml \
 #       --env-file deploy.env up -d --build
 services:
-  caddy:
+  web:
     environment:
       SITE_ADDRESS: ${SITE_ADDRESS:?the address people open, in deploy.env}
     ports: !override
