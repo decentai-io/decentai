@@ -196,9 +196,25 @@ markdown pre.code-wrap code {
   overflow-wrap: anywhere;
 }
 
+/* A long block scrolls inside itself rather than pushing the answer's
+   own words a page away, and its row of buttons stays at its top. */
+markdown pre {
+  max-height: 480px;
+  overflow: auto;
+}
+
+markdown pre.has-diagram {
+  max-height: none;
+}
+
 /* The block's header row: its language at the left, Wrap and Copy at
    the right. */
 markdown pre .code-toolbar {
+  position: sticky;
+  top: -16px;
+  left: -16px;
+  z-index: 1;
+  background: inherit;
   display: flex;
   align-items: center;
   gap: 4px;
