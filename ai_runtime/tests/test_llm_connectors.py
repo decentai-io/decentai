@@ -144,7 +144,12 @@ class TestTheCatalog:
                 assert model.get("protocol") in (None, *LlmProviders.PROTOCOLS)
                 assert set(model) <= {"id", "name", "kind", "images", "reasoning",
                                       "efforts", "context", "output",
-                                      "protocol", "endpoint"}
+                                      "protocol", "endpoint", "cost"}
+                cost = model.get("cost")
+                if cost is not None:
+                    assert {"input", "output"} <= set(cost) <= {
+                        "input", "output", "cache_read", "cache_write"}
+                    assert all(price >= 0 for price in cost.values())
         # The list is kept under the id connections store, not models.dev's.
         assert LlmProviders.models("gemini") and not LlmProviders.models("google")
         # An offer, never a gate: a provider with none listed is still one.
