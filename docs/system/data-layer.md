@@ -485,6 +485,20 @@ possible: a chat carries one line per skill, up to the number the chat
 lists (40 unless changed, with the rest counted), and reads a body only
 when the assistant judges it relevant.
 
+A skill is written on the Skills page or **saved from a chat**: the
+person asks the assistant to keep what worked — a script, the steps
+around it — and the assistant puts the skill before them on a card
+(`save_skill`, [assistant](assistant.md#save_skill)). Either way it is
+the person's own write, under the same grant (`skills:skill:create`)
+and the same rules: the bounds, a title nobody they see has taken, and
+owned by them alone unless they share it. From a chat the card is the
+only way in — the runtime may read skills but never write one — and
+the save, made by the person's own click (`AI:Approval:Decide`),
+creates exactly what the card showed. Every skill created is on the
+trail as `skill.created`, saying where it was made (`source`: `page`
+or `chat`, with the chat and the card) and how long its body is, never
+what it says.
+
 ---
 
 ## What is not here

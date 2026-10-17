@@ -424,6 +424,20 @@ the fields of an event or a part.
   carries name, type and size to the runtime, which records the choice
   as a `user` message of file parts, the composer's shape, so the page
   shows it and any agent reads it by ref.
+- **The assistant may offer to save a skill** (`save_skill`): the same
+  card, `expects: skill`, carrying a `skill` block — `title`, `summary`,
+  `body`, the contract's `SkillAsk`, bounded by the skill store's own
+  limits — which the page shows as plain text, never rendered or run.
+  `AI:Approval:Open` refuses it (403) when the person lacks
+  `skills:skill:create`, (409) when they can already see a skill of
+  that title, and on a helper's thread. It is answered `save` or
+  `decline` through `AI:Approval:Decide {answer}`; a save asks the
+  grant and the title again and then creates the skill there, as the
+  person, from the card's own words (`skill.created` on the trail, with
+  the chat and the card), and the frame carries `{status: saved, skill:
+  {ref, title, summary}}` — or `{status: declined}` — to the runtime,
+  which lists it under SKILLS. The runtime writes no skill: no skill
+  endpoint but list and get is in its fence.
 - **Every event and part may carry a `source`**: the assistant, an
   installed agent (its ref, its name, the function, and the call and
   job it spoke on), or a helper. The page

@@ -217,7 +217,7 @@ Generated from `backend/server/authentication/catalog.py` by
 |---|---|---|---|
 | `skills:skill:list` | View the skills shared with you | yes | yes |
 | `skills:skill:get` | Read one skill's full body | yes | yes |
-| `skills:skill:create` | Create skills |  |  |
+| `skills:skill:create` | Create skills, on the Skills page or by saving one from a chat |  |  |
 | `skills:skill:update` | Edit a skill you created |  |  |
 | `skills:skill:delete` | Delete a skill you created |  |  |
 | `skills:skill:transfer` | Hand one of your skills to another member | yes |  |
