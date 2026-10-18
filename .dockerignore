@@ -5,7 +5,10 @@ docs
 **/.claude
 
 # Settings and secrets
+config/*.env
 deploy.env
+sandbox.env
+node-authority.env
 **/config.env
 **/.env
 **/*.pem

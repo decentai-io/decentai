@@ -2,7 +2,7 @@
 web push notifications to browsers that subscribed.
 
 Run once per deployment and put the three lines it prints into the
-backend's environment (config.env locally, deploy.env on a server).
+backend's environment (config.env locally, config/deploy.env on a server).
 The private key is a secret: treat it like the signing key.
 
     python bootstrap/generate_vapid_keys.py

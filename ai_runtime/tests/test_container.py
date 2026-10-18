@@ -543,7 +543,7 @@ class TestTheWayOut:
 
 class TestTheProxyPort:
     """The spawner reads the proxy's port as start.sh and the runtime
-    do, so a setting left blank or mistyped in deploy.env does not stop
+    do, so a setting left blank or mistyped in config/deploy.env does not stop
     the container: every side falls back to 8002 together."""
 
     @pytest.mark.parametrize("said, read", [

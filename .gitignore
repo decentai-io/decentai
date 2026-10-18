@@ -1,5 +1,14 @@
-# Settings and secrets, kept on the machine that made them
-deploy.env
+# Settings and secrets, kept on the machine that made them: the
+# install's own files in config/, beside the templates that are kept.
+config/deploy.env
+config/sandbox.env
+config/node-authority.env
+config/.*.incoming
+# Where an install from before config/ kept them, until
+# bootstrap/setup.py moves them in.
+/deploy.env
+/sandbox.env
+/node-authority.env
 # What one person lays over the stack on their own computer: a folder
 # of agents they write (docs/agents/developing.md).
 docker-compose.override.yml
@@ -36,8 +45,6 @@ state.json
 ai_runtime/installed_agents/
 ai_runtime/tests/.workerenv/
 
-# Frontend
-
 # Editors and operating systems
 .idea/
 .vscode/
@@ -45,8 +52,4 @@ ai_runtime/tests/.workerenv/
 .claude/
 .DS_Store
 Thumbs.db
-sandbox.env
-node-authority.env
-!sandbox.env.example
-!node-authority.env.example
 **/.workerenv-build/

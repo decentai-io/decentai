@@ -338,8 +338,8 @@ operates the nodes, not for the engine.
 `python bootstrap/setup.py` still asks nothing of the person:
 
 1. it makes one authority key pair (`bootstrap/generate_node_authority.py`,
-   `NODE_AUTHORITY_PUBLIC_KEY` in `deploy.env`, and
-   `NODE_AUTHORITY_PRIVATE_KEY` in `node-authority.env`, which Compose
+   `NODE_AUTHORITY_PUBLIC_KEY` in `config/deploy.env`, and
+   `NODE_AUTHORITY_PRIVATE_KEY` in `config/node-authority.env`, which Compose
    gives to `node-issuer` alone — never the Data Core or the seeder),
    once, as it makes every key;
 2. the seeder registers the public half as a shared authority, *This

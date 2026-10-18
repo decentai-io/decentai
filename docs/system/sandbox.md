@@ -82,7 +82,7 @@ its user, its folders, its fences, its spawn line, its ending.
   pieces ([worker protocol](../reference/worker-protocol.md)).
 - **Only its runtime commands the spawner.** The runtime and its
   sandboxes hold one secret, set for the execution node
-  (`AI_RUNTIME_SANDBOX_SECRET`, in `sandbox.env`, which Compose gives
+  (`AI_RUNTIME_SANDBOX_SECRET`, in `config/sandbox.env`, which Compose gives
   to them and to nothing else — never the Data Core). It never travels: whoever is spoken to
   first sends a challenge, and the other answers it with an HMAC made
   with the secret, its role written in front, so a proof one side made
@@ -173,12 +173,12 @@ door reads many as it read one, and each agent and each event says
 which sandbox it is in. What the runtime reports it holds an agent to
 is what the weakest eligible sandbox proved.
 
-**Two on one machine.** `docker-compose.sandboxes.yml`, laid over
+**Two on one machine.** `compose/sandboxes.yml`, laid over
 `docker-compose.yml`, starts a second sandbox, `agents-2`, with a
 folder of its own:
 
-    docker compose --env-file deploy.env \
-        -f docker-compose.yml -f docker-compose.sandboxes.yml up -d --build
+    docker compose --env-file config/deploy.env \
+        -f docker-compose.yml -f compose/sandboxes.yml up -d --build
 
 ## A user of its own — the spawn helper
 
@@ -468,7 +468,7 @@ call.
 ### What the agents are given together
 
 Each Execution Sandbox is given so much memory and so much processor by
-whoever starts it: `AGENTS_MEMORY` and `AGENTS_CPUS` in `deploy.env`.
+whoever starts it: `AGENTS_MEMORY` and `AGENTS_CPUS` in `config/deploy.env`.
 Unset is no limit. The
 engine holds the container to both, and neither is a manifest's to ask
 for.

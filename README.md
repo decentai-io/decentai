@@ -84,6 +84,10 @@ decentai_sdk/  what agent code imports: AgentBase, ToolBase, the manifest
 contracts/     the manifest schema and validator, shared by all of the above
 bootstrap/     setting it up on a computer (setup.py), first-run seeding,
                key generation, organizations, rotation
+config/        the install's settings and secrets (deploy.env, sandbox.env,
+               node-authority.env), beside the templates they come from
+compose/       what is laid over docker-compose.yml: a server's front door
+               (server.yml), a second Execution Sandbox (sandboxes.yml)
 tests/         the suite that spans backend and runtime
 docs/          guides, how each part works, and the reference
 ```
@@ -98,7 +102,7 @@ cd decentai
 python bootstrap/setup.py
 ```
 
-The first time, this writes `deploy.env` — the keys and the database's
+The first time, this writes `config/deploy.env` — the keys and the database's
 password, all generated, none of them yours to think up — builds the
 images, starts the stack, and prints the address: `http://localhost:4280`,
 served to this computer only. Open it, and the first-run page asks you
@@ -106,9 +110,9 @@ to name your organization and choose your own email and password; you
 are its administrator. After that it is the sign-in page.
 
 ```bash
-python bootstrap/setup.py --link                # the address again
-docker compose --env-file deploy.env stop       # stop it; nothing is removed
-python bootstrap/setup.py                       # start it again
+python bootstrap/setup.py --link                       # the address again
+docker compose --env-file config/deploy.env stop       # stop it; nothing is removed
+python bootstrap/setup.py                              # start it again
 ```
 
 The rest — a language model, an agent source, the first agent, the

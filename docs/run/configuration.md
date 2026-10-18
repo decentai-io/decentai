@@ -1,7 +1,7 @@
 # Configuration
 
 Every setting is an environment variable. Compose reads them from
-`deploy.env`; a container platform sets them on the task; a Data Core
+`config/deploy.env`; a container platform sets them on the task; a Data Core
 started by hand seeds them from `backend/config.env`, and a runtime
 started from its image by hand from `ai_runtime/config.env`. The code reads the environment and nothing
 else, so moving between platforms changes values, never code.
@@ -16,15 +16,15 @@ These values are generated, never chosen:
 | `python -c "import secrets; print(secrets.token_urlsafe(48))"` | `TOKEN_SECRET_KEY` |
 | `python -c "import secrets; print(secrets.token_urlsafe(32))"` | `AI_RUNTIME_SANDBOX_SECRET` |
 
-Two of them are not in `deploy.env`, because Compose hands that file
+Two of them are not in `config/deploy.env`, because Compose hands that file
 whole to the Data Core and the seeder, which need neither. Each is in
 a file of its own beside it, given only to what uses it:
-`AI_RUNTIME_SANDBOX_SECRET` in `sandbox.env`, given to the AI Runtime
+`AI_RUNTIME_SANDBOX_SECRET` in `config/sandbox.env`, given to the AI Runtime
 and its Execution Sandboxes; and `NODE_AUTHORITY_PRIVATE_KEY` in
-`node-authority.env`, given to `node-issuer` alone. `bootstrap/setup.py`
-writes both, and moves either out of a `deploy.env` from before that
-still holds it; by hand, copy `sandbox.env.example` and
-`node-authority.env.example`.
+`config/node-authority.env`, given to `node-issuer` alone. `bootstrap/setup.py`
+writes both, and moves either out of a `config/deploy.env` from before that
+still holds it; by hand, copy `config/sandbox.env.example` and
+`config/node-authority.env.example`.
 
 ## The Data Core
 
@@ -121,11 +121,11 @@ seeding variables below.
 
 | Variable | Meaning |
 |---|---|
-| `SETUP_CODE` | What the first-run page asks for before it sets anything up. Empty (the default): the deployment makes one and writes it to the log — `docker compose --env-file deploy.env logs init`, and the Data Core's log. `none`: nothing is asked, for an address no other computer reaches; `bootstrap/setup.py` writes it. Anything else is the code. Wrong codes count against the address's sign-in budget. |
+| `SETUP_CODE` | What the first-run page asks for before it sets anything up. Empty (the default): the deployment makes one and writes it to the log — `docker compose --env-file config/deploy.env logs init`, and the Data Core's log. `none`: nothing is asked, for an address no other computer reaches; `bootstrap/setup.py` writes it. Anything else is the code. Wrong codes count against the address's sign-in budget. |
 | `ORG_SIGNUP` | `closed` (the default) or `open`. Open, the sign-in page offers **create an organization**: anybody may make one of their own, as its administrator, once a link sent to their address is followed. It stays shut where outbound email is not set up. Closing it shuts links already sent. ([Operating it](operating.md#organizations)) |
 | `ORG_NAME` | With `ADMIN_EMAIL`, the organization the seeder makes. |
 | `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_NAME` | Optional: a first administrator for the seeder to make, in place of the first-run page — for a deployment set up by automation. Once they exist nothing of theirs is changed, except that an administrator found disabled or out of the Administrators group is put back: the seeder never leaves an organization nobody can manage. Where people are in a deployment and none of them administers, these are required: the first-run page does not come back. |
-| `RESET_EMAIL`, `RESET_PASSWORD`, `RESET_NEW_EMAIL` | Read by `bootstrap/reset_password.py` alone, for the one run that sets a password ([operating it](operating.md#a-forgotten-password-without-email)). Never kept in `deploy.env`. |
+| `RESET_EMAIL`, `RESET_PASSWORD`, `RESET_NEW_EMAIL` | Read by `bootstrap/reset_password.py` alone, for the one run that sets a password ([operating it](operating.md#a-forgotten-password-without-email)). Never kept in `config/deploy.env`. |
 | `INIT_DB_FRESH` | `true` drops the whole database before seeding. Never set by accident; say it out loud. |
 
 ### Encryption
@@ -152,7 +152,7 @@ gone. Back them up with it.
 | `LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING` or `ERROR`. |
 | `AI_RUNTIME_EGRESS_PORT` | `8002` | Where the proxy that agents connect through listens, on the runtime's container, reached over the network it shares with its Execution Sandboxes and nothing else. The firewall rule of each sandbox is written for the same port when it starts. A value that is blank or not a port is read as `8002` by every container, so the rule, the proxy and the workers agree. |
 | `AI_RUNTIME_PACKAGE_HOSTS` | `pypi.org, files.pythonhosted.org` | Where packages come from: the hosts the builder of an agent's declared packages may reach, and the whole of them. Separated by commas. |
-| `AI_RUNTIME_SANDBOX_SECRET` | required, in `sandbox.env` | The secret set for the execution node: what an Execution Sandbox proves when it registers with the runtime, and what the runtime proves on every request to one ([the sandbox](../system/sandbox.md#many-sandboxes)). It never travels. `bootstrap/setup.py` writes one into `deploy.env`; `docker-compose.yml` hands it to the runtime and to every sandbox. A runtime without it does not start. |
+| `AI_RUNTIME_SANDBOX_SECRET` | required, in `config/sandbox.env` | The secret set for the execution node: what an Execution Sandbox proves when it registers with the runtime, and what the runtime proves on every request to one ([the sandbox](../system/sandbox.md#many-sandboxes)). It never travels. `bootstrap/setup.py` writes one into `config/deploy.env`; `docker-compose.yml` hands it to the runtime and to every sandbox. A runtime without it does not start. |
 | `AI_RUNTIME_SANDBOX_PORT` | `8005` | Where Execution Sandboxes register with the runtime. Every process of an agent's is started in a sandbox that registered; a runtime with none that can confine a worker does not start. |
 | `AI_RUNTIME_AGENTS_SPAWNER` | empty | An Execution Sandbox the runtime knows by its address, as `host:port`, besides those that register. Optional, and not set by `docker-compose.yml`: sandboxes register themselves. |
 
@@ -162,7 +162,7 @@ reads:
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `NODE_AUTHORITY_PRIVATE_KEY` | required, in `node-authority.env` | The install's authority's private key, which signs the bundled node's credentials. The node never holds it. |
+| `NODE_AUTHORITY_PRIVATE_KEY` | required, in `config/node-authority.env` | The install's authority's private key, which signs the bundled node's credentials. The node never holds it. |
 | `NODE_NAME` | `bundled` | The name the bundled node's credential gives it. |
 | `NODE_CREDENTIAL_FILE` | `/run/decentai/node/credential` | Where the credential is written, every few minutes, for the node to read. |
 
@@ -174,9 +174,9 @@ An Execution Sandbox is the runtime's image started as the spawner
 | `AI_AGENTS_PROXY` | empty | Where the runtime's proxy answers, as `host:port` (`ai-runtime:8002` in Compose). What a worker sends to the proxy's port in its own container is passed on to here. |
 | `AI_AGENTS_SPAWNER_PORT` | `8003` | Where the spawner answers the runtime. Fixed at 8003 in the Compose stack, which does not pass it on. |
 | `AI_SANDBOX_RUNTIME` | empty | Where its runtime takes registrations, as `host:port` (`ai-runtime:8005` in Compose). The sandbox connects there, registers, and connects again when the connection is lost. |
-| `AI_RUNTIME_SANDBOX_SECRET` | required, in `sandbox.env` | The execution node's secret, the same as the runtime's. The spawner takes it out of its own environment as it reads it. |
-| `AI_SANDBOX_ID` | the container's name | Who the sandbox is, to its runtime; `agents` in Compose, `agents-2` for the second of `docker-compose.sandboxes.yml`. |
-| `AI_SANDBOX_LABELS` | empty | What it says of itself, for a placement to ask for: `gpu`, separated by commas. In Compose, `AGENTS_LABELS` in `deploy.env`, and `AGENTS_2_LABELS` for the second sandbox. |
+| `AI_RUNTIME_SANDBOX_SECRET` | required, in `config/sandbox.env` | The execution node's secret, the same as the runtime's. The spawner takes it out of its own environment as it reads it. |
+| `AI_SANDBOX_ID` | the container's name | Who the sandbox is, to its runtime; `agents` in Compose, `agents-2` for the second of `compose/sandboxes.yml`. |
+| `AI_SANDBOX_LABELS` | empty | What it says of itself, for a placement to ask for: `gpu`, separated by commas. In Compose, `AGENTS_LABELS` in `config/deploy.env`, and `AGENTS_2_LABELS` for the second sandbox. |
 | `AI_SANDBOX_ADDRESS` | the address it registered from | Where the runtime reaches it, as `host:port`, where that is not the address its registration came from. |
 | `AI_SANDBOX_DRAIN_SECONDS` | `60` | How long a sandbox that was stopped waits for its workers to finish before it goes. |
 | `AI_SANDBOX_BUILD_SECONDS` | `300` | How long one build of an agent's declared packages may take there. |
@@ -193,9 +193,9 @@ and is set where the container is started:
 | `AGENTS_MEMORY` | no limit | Memory the agents are given together, as the engine reads it: `2g`, `1500m`. |
 | `AGENTS_CPUS` | no limit | Processors the agents are given together: `2`, `1.5`. |
 
-`docker-compose.yml` reads both from `deploy.env`; a change takes
+`docker-compose.yml` reads both from `config/deploy.env`; a change takes
 effect when the Execution Sandbox is started again (`docker compose
---env-file deploy.env up -d agents`). The spawner reads what was set from the kernel
+--env-file config/deploy.env up -d agents`). The spawner reads what was set from the kernel
 and ends the agent using most memory before the engine would have to
 ([the sandbox](../system/sandbox.md)).
 
@@ -243,15 +243,15 @@ AI_RUNTIME_PACKAGE_HOSTS=packages.example.com
 The runtime's container holds the runtime's own settings and nothing
 else, and the Execution Sandbox, where agent code runs, holds none of
 the platform's. In Compose the Data Core and the
-seeder are handed `deploy.env` whole; the runtime is handed
-`sandbox.env`, which holds the node's secret and nothing else, and the
+seeder are handed `config/deploy.env` whole; the runtime is handed
+`config/sandbox.env`, which holds the node's secret and nothing else, and the
 variables `docker-compose.yml` names for it — the table above, the
 knobs below, where packages come from, and how the machine reaches
 the internet (`HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`, `SSL_CERT_FILE`,
 `REQUESTS_CA_BUNDLE`, `TZ`).
 The database's password, the encryption keys and the Data Core's private
 key never reach it. A new setting for the runtime is named in
-`docker-compose.yml` as well as set in `deploy.env`.
+`docker-compose.yml` as well as set in `config/deploy.env`.
 
 ### Knobs for agents
 
@@ -298,11 +298,11 @@ the internet.
 
 | Variable | Meaning |
 |---|---|
-| `PORT` | The port DecentAI is opened at on the machine; `4280` unless said. `PUBLIC_APP_URL` and `CORS_ALLOW_ORIGINS` carry the same number. Not read under `docker-compose.server.yml`, which publishes 80 and 443. |
+| `PORT` | The port DecentAI is opened at on the machine; `4280` unless said. `PUBLIC_APP_URL` and `CORS_ALLOW_ORIGINS` carry the same number. Not read under `compose/server.yml`, which publishes 80 and 443. |
 | `TRUSTED_PROXIES` | Whose word Caddy takes for a client's address (`X-Forwarded-For`): the load balancer in front, by its address range, several with spaces between. Unset, nobody's (the default, `127.0.0.1/32`, is Caddy's own address) — right for a computer of one's own and for a server Caddy faces the internet on, and wrong behind a balancer, where every client would be the balancer ([deploying](deploying.md)). |
-| `LISTEN` | Who may reach that port: `127.0.0.1`, this machine alone, unless said; `0.0.0.0` behind a load balancer. Not read under `docker-compose.server.yml` either. |
+| `LISTEN` | Who may reach that port: `127.0.0.1`, this machine alone, unless said; `0.0.0.0` behind a load balancer. Not read under `compose/server.yml` either. |
 | `WEB_CLIENT_UPSTREAM` | Where the gateway finds the web client, a repository of its own (`decentai-web-client`), as `host:port`. Unset, the gateway finds it by itself: the web client's container, which joins the engine's network as `web-client`, or its development server (`npm start`) on this computer's port 4200. Set it only where the web client runs somewhere else. The gateway sends it every path that is not the Data Core's. |
-| `SITE_ADDRESS` | What Caddy answers for: `:80`, plain HTTP on any name, unless said — a computer of one's own, or a load balancer that terminates TLS. With `docker-compose.server.yml`, a domain, which gets automatic certificates. |
+| `SITE_ADDRESS` | What Caddy answers for: `:80`, plain HTTP on any name, unless said — a computer of one's own, or a load balancer that terminates TLS. With `compose/server.yml`, a domain, which gets automatic certificates. |
 | `MONGO_ROOT_USERNAME`, `MONGO_ROOT_PASSWORD` | The database's root account, which `MONGO_URI` must carry too. |
 
 The gateway's configuration (`gateway/Caddyfile`) reads one more,

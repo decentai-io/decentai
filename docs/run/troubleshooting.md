@@ -11,37 +11,37 @@ and updating. Where to look is at the end.
 - **The script says Docker is not running.** Start Docker Desktop, or
   the Docker service on Linux, and run the script again.
 - **The port is taken.** `docker compose` says the address is already in
-  use: delete `deploy.env` if nothing was started with it yet and run
+  use: delete `config/deploy.env` if nothing was started with it yet and run
   the script with `--port`, or change `PORT`, `PUBLIC_APP_URL` and
   `CORS_ALLOW_ORIGINS` in it together.
-- **The seeder failed.** `docker compose --env-file deploy.env logs init`.
+- **The seeder failed.** `docker compose --env-file config/deploy.env logs init`.
   A wrong `MONGO_URI` password shows here, as an authentication error:
   the seeder is the first to connect, and the Data Core does not start
   until it has finished.
-- **The Data Core restarts.** `docker compose --env-file deploy.env logs
+- **The Data Core restarts.** `docker compose --env-file config/deploy.env logs
   Data Core`. A missing `TOKEN_SECRET_KEY` says so in the first lines.
 - **Chats say the runtime is unavailable.** `docker compose --env-file
-  deploy.env logs ai-runtime`. The runtime refuses connections whose
+  config/deploy.env logs ai-runtime`. The runtime refuses connections whose
   signature does not verify: `BACKEND_SERVICE_PUBLIC_KEY` must be the
   pair of the Data Core's private key. A runtime that restarts says in
   its first lines which setting it is missing:
   `AI_RUNTIME_NODE_CREDENTIAL_FILE` (where its credential is),
   `BACKEND_INTERNAL_URL` or `AI_RUNTIME_SANDBOX_SECRET`.
 - **The runtime says no Execution Sandbox can confine a worker.**
-  `docker compose --env-file deploy.env logs agents` says what the
+  `docker compose --env-file config/deploy.env logs agents` says what the
   sandbox proved at its start, or what to mend; a sandbox whose
   registration was refused says why (the node's secret differs, or the
   two are of different releases: the sandbox link's version).
 - **Agents stay Preparing.** The runtime stocks itself every ten
   seconds and reports each package ready; one that is not admitted as
-  an execution node cannot. `docker compose --env-file deploy.env logs
+  an execution node cannot. `docker compose --env-file config/deploy.env logs
   ai-runtime` says *The stock was not taken* with the Data Core's
   refusal, and `logs backend` says why the node was refused: no
   credential (`logs node-issuer`), an expired one, or one signed by an
   authority that is not registered or was revoked
   ([execution nodes](../system/execution-nodes.md#revoking)).
 - **The address opens the sign-in page with a refusal.** The first
-  person's password was changed since `deploy.env` was written: sign in
+  person's password was changed since `config/deploy.env` was written: sign in
   with the one it was changed to.
 
 ## Signing in
@@ -100,14 +100,14 @@ and updating. Where to look is at the end.
   here can write speech down: the browser cannot hear on the computer
   itself, and speech to text is off, or set to the platform's own model
   with the `speech` container not running (`docker compose --env-file
-  deploy.env ps speech`). A browser that can only send the voice to its
+  config/deploy.env ps speech`). A browser that can only send the voice to its
   maker's service offers the microphone once the person chooses that,
   under **Settings → Chat defaults → Speech on this device**.
 - ***The speech to text model is still being fetched.*** It is
   downloaded once, about 490 MB; **Settings → Chat configuration →
   Speech** says how far it is. *The download did not finish* there
   means the machine could not reach the publisher: it is tried again
-  when somebody next speaks, and `docker compose --env-file deploy.env
+  when somebody next speaks, and `docker compose --env-file config/deploy.env
   logs speech` says what was in the way
   ([operating](operating.md#speech-on-this-machine)).
 - **A reply has no *Read aloud* control.** The computer has no voice
@@ -127,7 +127,7 @@ and updating. Where to look is at the end.
   and its code or its packages could not be made ready; the reason is
   under its row. The usual ones: a package that is not on the
   index the deployment uses, and a machine that cannot reach the index
-  at all. `docker compose --env-file deploy.env logs ai-runtime agents`
+  at all. `docker compose --env-file config/deploy.env logs ai-runtime agents`
   has the build's own words.
 - **Its sample data will not load.** The sheet has an error, shown on
   the agent's card in the marketplace: a row that is not what the
@@ -169,13 +169,13 @@ and updating. Where to look is at the end.
 ## Updating
 
 - **Pull, then `python bootstrap/setup.py`.** It builds what changed
-  and starts it; your data and `deploy.env` are kept, and a setting the
+  and starts it; your data and `config/deploy.env` are kept, and a setting the
   platform gained since the file was written is added to it first, and
   said.
 - **Compose says *required variable … is missing a value*.**
-  `deploy.env` predates that setting. On your own computer
+  `config/deploy.env` predates that setting. On your own computer
   `python bootstrap/setup.py` adds it; on a server, set it by hand as
-  `deploy.env.example` says ([operating](operating.md#updating)).
+  `config/deploy.env.example` says ([operating](operating.md#updating)).
 - **An agent says *Preparing* after an update.** A version that
   changes the interpreter agents run on leaves their environments
   built for the old one: each is built again the first time it is
@@ -189,8 +189,8 @@ and updating. Where to look is at the end.
 ## Where the logs are
 
 ```bash
-docker compose --env-file deploy.env ps
-docker compose --env-file deploy.env logs -f backend      # or ai-runtime, agents, speech, init, web, mongo
+docker compose --env-file config/deploy.env ps
+docker compose --env-file config/deploy.env logs -f backend      # or ai-runtime, agents, speech, init, web, mongo
 ```
 
 What agents did — each worker's start and end, its log, every

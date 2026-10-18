@@ -1,8 +1,8 @@
 # A second Execution Sandbox beside the first, for trying many
 # sandboxes on one machine (docs/system/sandbox.md, many sandboxes):
 #
-#   docker compose --env-file deploy.env \
-#       -f docker-compose.yml -f docker-compose.sandboxes.yml up -d --build
+#   docker compose --env-file config/deploy.env \
+#       -f docker-compose.yml -f compose/sandboxes.yml up -d --build
 #
 # It is the first one again, with a name and a folder of its own: it
 # registers with the same AI Runtime, proving the same node secret, and
@@ -12,6 +12,8 @@
 services:
   agents-2:
     extends:
+      # As every path in a file laid over another: from the project's
+      # folder, the first file's (the repository root), not this one's.
       file: docker-compose.yml
       service: agents
     environment:

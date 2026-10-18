@@ -131,4 +131,4 @@ of them has a bug, and a test is the place to find out.
 | agent workers | `ai_runtime/agents/`; what runs in the Execution Sandbox in `ai_runtime/agents_container/` |
 | the chat session and door | `ai_runtime/chat/`, `ai_runtime/door/` |
 | the manifest contract | `contracts/`, `decentai_sdk/manifest.py` |
-| setting it up on a computer | `bootstrap/setup.py`, `docker-compose.yml`, `deploy.env.example` |
+| setting it up on a computer | `bootstrap/setup.py`, `docker-compose.yml`, `config/deploy.env.example` |

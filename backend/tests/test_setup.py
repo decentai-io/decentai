@@ -56,7 +56,9 @@ def docker():
 
 @pytest.fixture
 def setup(docker, tmp_path):
-    shutil.copy(ROOT / "deploy.env.example", tmp_path / "deploy.env.example")
+    (tmp_path / "config").mkdir()
+    shutil.copy(ROOT / "config" / "deploy.env.example",
+                tmp_path / "config" / "deploy.env.example")
     said = []
     found = module.Setup(tmp_path, say=said.append)
     found.pause = 0
@@ -80,7 +82,7 @@ class TestTheFirstTime:
             "/opt/decentai/bootstrap/generate_node_authority.py",
             "run --rm sha256:the-backend-image python "
             "/opt/decentai/bootstrap/generate_secret_keys.py",
-            "compose --env-file deploy.env up -d --build --remove-orphans",
+            "compose --env-file config/deploy.env up -d --build --remove-orphans",
         ]
 
     def test_nothing_is_left_for_a_person_to_fill_in(self, setup):
@@ -104,17 +106,17 @@ class TestTheFirstTime:
         said = setup.settings.values()
         assert "AI_RUNTIME_SANDBOX_SECRET" not in said
         assert "NODE_AUTHORITY_PRIVATE_KEY" not in said
-        sandbox = module.Settings._read(setup.folder / "sandbox.env")
-        authority = module.Settings._read(setup.folder / "node-authority.env")
+        sandbox = module.Settings._read(setup.folder / "config" / "sandbox.env")
+        authority = module.Settings._read(setup.folder / "config" / "node-authority.env")
         assert set(sandbox) == {"AI_RUNTIME_SANDBOX_SECRET"}
         assert len(sandbox["AI_RUNTIME_SANDBOX_SECRET"]) >= 32
         assert authority == {"NODE_AUTHORITY_PRIVATE_KEY": PRIVATE + "-of-the-authority"}
 
     def test_the_secret_files_are_made_once(self, setup):
         setup.run()
-        first = (setup.folder / "sandbox.env").read_text(encoding="utf-8")
+        first = (setup.folder / "config" / "sandbox.env").read_text(encoding="utf-8")
         setup.run()
-        assert (setup.folder / "sandbox.env").read_text(encoding="utf-8") == first
+        assert (setup.folder / "config" / "sandbox.env").read_text(encoding="utf-8") == first
 
     def test_the_database_and_the_backend_agree_on_the_password(self, setup):
         setup.run()
@@ -142,7 +144,7 @@ class TestTheFirstTime:
     def test_every_setting_of_the_template_is_still_there(self, setup):
         setup.run()
         template = module.Settings(setup.folder)
-        template.path = setup.folder / "deploy.env.example"
+        template.path = setup.folder / "config" / "deploy.env.example"
         assert set(setup.settings.values()) == set(template.values())
 
     def test_nobody_is_made_for_the_person_at_the_keyboard(self, setup):
@@ -214,7 +216,7 @@ class TestWhatCanGoWrong:
         assert setup.settings.written
 
     def test_a_template_that_is_not_the_one_it_was_written_for(self, setup):
-        template = setup.folder / "deploy.env.example"
+        template = setup.folder / "config" / "deploy.env.example"
         template.write_text(
             template.read_text(encoding="utf-8").replace("TOKEN_SECRET_KEY=", "TOKEN="),
             encoding="utf-8")
@@ -232,7 +234,7 @@ class TestRunAgain:
         assert setup.settings.path.read_text(encoding="utf-8") == before
         assert docker.asked == ["compose version",
                                 "info --format {{.ServerVersion}}",
-                                "compose --env-file deploy.env up -d --build --remove-orphans"]
+                                "compose --env-file config/deploy.env up -d --build --remove-orphans"]
         assert link == "http://localhost:4280"
 
     @staticmethod
@@ -258,7 +260,7 @@ class TestRunAgain:
         assert said["NODE_AUTHORITY_PUBLIC_KEY"] == PUBLIC + "-of-the-authority"
         assert "NODE_AUTHORITY_PRIVATE_KEY" not in said
         # The private half just made is beside it, in its own file.
-        assert module.Settings._read(setup.folder / "node-authority.env") == {
+        assert module.Settings._read(setup.folder / "config" / "node-authority.env") == {
             "NODE_AUTHORITY_PRIVATE_KEY": PRIVATE + "-of-the-authority"}
         kept = {name: value for name, value in before.items()
                 if not name.startswith("NODE_AUTHORITY_")}
@@ -270,7 +272,7 @@ class TestRunAgain:
             "build -q -f backend/Dockerfile .",
             "run --rm sha256:the-backend-image python "
             "/opt/decentai/bootstrap/generate_node_authority.py",
-            "compose --env-file deploy.env up -d --build --remove-orphans",
+            "compose --env-file config/deploy.env up -d --build --remove-orphans",
         ]
         assert any("gained NODE_AUTHORITY_PUBLIC_KEY" in line
                    for line in setup.said)
@@ -282,7 +284,7 @@ class TestRunAgain:
         as they were, and their lines say where they went."""
         setup.run()
         for name in ("sandbox.env", "node-authority.env"):
-            (setup.folder / name).unlink()
+            (setup.folder / "config" / name).unlink()
         with setup.settings.path.open("a", encoding="utf-8") as older:
             older.write("AI_RUNTIME_SANDBOX_SECRET=the-older-secret\n"
                         f"NODE_AUTHORITY_PRIVATE_KEY={PRIVATE}-older\n")
@@ -292,18 +294,18 @@ class TestRunAgain:
         assert "AI_RUNTIME_SANDBOX_SECRET" not in said
         assert "NODE_AUTHORITY_PRIVATE_KEY" not in said
         text = setup.settings.path.read_text(encoding="utf-8")
-        assert "# AI_RUNTIME_SANDBOX_SECRET moved to sandbox.env" in text
-        assert "# NODE_AUTHORITY_PRIVATE_KEY moved to node-authority.env" in text
-        assert module.Settings._read(setup.folder / "sandbox.env") == {
+        assert "# AI_RUNTIME_SANDBOX_SECRET moved to config/sandbox.env" in text
+        assert "# NODE_AUTHORITY_PRIVATE_KEY moved to config/node-authority.env" in text
+        assert module.Settings._read(setup.folder / "config" / "sandbox.env") == {
             "AI_RUNTIME_SANDBOX_SECRET": "the-older-secret"}
-        assert module.Settings._read(setup.folder / "node-authority.env") == {
+        assert module.Settings._read(setup.folder / "config" / "node-authority.env") == {
             "NODE_AUTHORITY_PRIVATE_KEY": PRIVATE + "-older"}
         # Nothing was made: no generator ran.
         assert not any("generate_" in asked for asked in docker.asked)
 
     def test_a_lost_authority_file_is_said_not_quietly_replaced(self, setup):
         setup.run()
-        (setup.folder / "node-authority.env").unlink()
+        (setup.folder / "config" / "node-authority.env").unlink()
         with pytest.raises(module.SetupError, match="node-authority.env is missing"):
             setup.run()
 
@@ -320,7 +322,7 @@ class TestRunAgain:
         # No key was lacking, so no image is built and no generator run.
         assert docker.asked == ["compose version",
                                 "info --format {{.ServerVersion}}",
-                                "compose --env-file deploy.env up -d --build --remove-orphans"]
+                                "compose --env-file config/deploy.env up -d --build --remove-orphans"]
 
     def test_a_computers_file_from_before_the_first_run_page_asks_for_no_code(
             self, setup, docker):
@@ -353,14 +355,81 @@ class TestRunAgain:
             setup.link()
 
 
+class TestAnInstallFromBeforeConfig:
+    """An install from before config/ kept its three files at the
+    repository's root. They are the install — its keys are made once —
+    so they are moved into config/ as they are, and never over a file
+    config/ already holds."""
+
+    NAMES = ("deploy.env", "sandbox.env", "node-authority.env")
+
+    @pytest.fixture
+    def older(self, setup):
+        """An install set up, and its files put back where an older
+        checkout kept them."""
+        setup.run()
+        for name in self.NAMES:
+            (setup.folder / "config" / name).replace(setup.folder / name)
+        setup.said.clear()
+        return setup
+
+    def test_its_files_are_moved_into_config_as_they_are(self, older, docker):
+        before = {name: (older.folder / name).read_bytes() for name in self.NAMES}
+        docker.asked.clear()
+        assert older.run() == "http://localhost:4280"
+        for name in self.NAMES:
+            assert not (older.folder / name).exists()
+            assert (older.folder / "config" / name).read_bytes() == before[name]
+        # Nothing is made again: the keys are the ones the files held.
+        assert not any("generate_" in asked for asked in docker.asked)
+        assert docker.asked[-1] == (
+            "compose --env-file config/deploy.env up -d --build --remove-orphans")
+
+    def test_the_move_is_said(self, older):
+        older.run()
+        assert any(line.startswith("Moved deploy.env, sandbox.env, "
+                                   "node-authority.env from the repository's "
+                                   "root into config/")
+                   for line in older.said)
+
+    def test_a_file_config_already_holds_is_never_overwritten(self, older):
+        (older.folder / "config").mkdir(exist_ok=True)
+        (older.folder / "deploy.env").replace(older.folder / "config" / "deploy.env")
+        (older.folder / "deploy.env").write_text("PORT=1\n", encoding="utf-8")
+        kept = (older.folder / "config" / "deploy.env").read_bytes()
+        older.run()
+        assert (older.folder / "config" / "deploy.env").read_bytes() == kept
+        assert (older.folder / "deploy.env").read_text(encoding="utf-8") == "PORT=1\n"
+        assert any(line.startswith("Left deploy.env at the repository's root")
+                   for line in older.said)
+        # The two the root alone held are moved all the same.
+        assert not (older.folder / "sandbox.env").exists()
+        assert (older.folder / "config" / "sandbox.env").is_file()
+
+    def test_asking_for_the_address_moves_them_too(self, older, docker):
+        docker.asked.clear()
+        assert older.link() == "http://localhost:4280"
+        assert (older.folder / "config" / "deploy.env").is_file()
+        assert not (older.folder / "deploy.env").exists()
+        assert docker.asked == []
+
+    def test_an_install_already_in_config_is_not_touched(self, setup):
+        setup.run()
+        before = setup.settings.path.stat().st_mtime_ns
+        setup.said.clear()
+        setup.run()
+        assert setup.settings.path.stat().st_mtime_ns == before
+        assert not any(line.startswith(("Moved", "Left")) for line in setup.said)
+
+
 class TestAServersSettings:
     """A deploy.env written by hand for a server is somebody's own: it
     is not started as a computer of one's own, nor said as one."""
 
     @pytest.fixture
     def server(self, setup):
-        text = (setup.folder / "deploy.env.example").read_text(encoding="utf-8")
-        (setup.folder / "deploy.env").write_text(
+        text = (setup.folder / "config" / "deploy.env.example").read_text(encoding="utf-8")
+        (setup.folder / "config" / "deploy.env").write_text(
             text.replace("PUBLIC_APP_URL=http://localhost:4280",
                          "PUBLIC_APP_URL=https://ai.example.com"),
             encoding="utf-8")

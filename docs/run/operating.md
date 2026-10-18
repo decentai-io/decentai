@@ -9,39 +9,47 @@ takes the two `-f` files [Deploying](deploying.md) starts it with.
 ## Starting, stopping, looking
 
 ```bash
-docker compose --env-file deploy.env stop     # stop it; nothing is removed
-python bootstrap/setup.py                     # start it, and say the address
-docker compose --env-file deploy.env logs -f backend
+docker compose --env-file config/deploy.env stop     # stop it; nothing is removed
+python bootstrap/setup.py                            # start it, and say the address
+docker compose --env-file config/deploy.env logs -f backend
 ```
 
 ## Updating
 
 After pulling newer code, `python bootstrap/setup.py` builds and starts
 it: the seeder runs first and brings the database's schema up to date.
-A setting the platform gained since `deploy.env` was written is added
+A setting the platform gained since `config/deploy.env` was written is added
 to the file before anything starts — a key, made by the platform's
-generator; anything else, as `deploy.env.example` says it — and the
+generator; anything else, as `config/deploy.env.example` says it — and the
 script says which. Nothing the file already says is changed.
 
 On a server, the same in steps, so that the old code serves until the
 new is ready:
 
-1. Pull the new code, and compare `deploy.env` with
-   `deploy.env.example`: a name the template has and your file lacks is
+1. Pull the new code, and compare `config/deploy.env` with
+   `config/deploy.env.example`: a name the template has and your file lacks is
    set by hand, or Compose refuses to start saying *required variable …
    is missing a value*. A key comes from
    `python bootstrap/generate_service_keys.py` — take only the pair you
    lack and keep the one you have, since a database is readable with the
    keys it was written with and no others; anything else, as the
    template says it.
-2. **Seed first.** `docker compose --env-file deploy.env run --rm --build init`
+2. **Seed first.** `docker compose --env-file config/deploy.env run --rm --build init`
    applies the schema and grants any new baseline actions while the old
    code still serves. `--build` is what makes it the new seeder: without
    it `run` uses the image built last time. It drops no data unless
    `INIT_DB_FRESH=true` is set, which drops the database and is never
    set by accident.
-3. `docker compose --env-file deploy.env up -d --build --remove-orphans`
+3. `docker compose --env-file config/deploy.env up -d --build --remove-orphans`
    rolls the services, and removes any the update no longer defines.
+
+**An install from before `config/`** kept `deploy.env`, `sandbox.env`
+and `node-authority.env` at the repository's root. `python
+bootstrap/setup.py` moves them into `config/` as they are, the first
+time it runs after the pull, and says so; it never moves one over a
+file `config/` already holds. On a server, move them by hand before
+step 2 (`mkdir -p config && mv deploy.env sandbox.env node-authority.env
+config/`); the server's overlay is `compose/server.yml` now.
 
 Deploy by commit: note the commit a deployment was built from, so that
 going back is a matter of naming it.
@@ -60,7 +68,7 @@ again puts its own indexes back the same way.
 ## What to back up
 
 Four volumes hold everything durable; two more hold caches. (A server started with
-`docker-compose.server.yml` has two more, `caddy_data` and
+`compose/server.yml` has two more, `caddy_data` and
 `caddy_config`: the certificates and the account they were issued to,
 which are issued again if lost.)
 
@@ -70,10 +78,10 @@ which are issued again if lost.)
 | `uploads_data` | file bytes |
 | `agent_packages` | the approved agent packages — the only copy the platform controls |
 | `runtime_agents` | the AI Runtime's cache of the approved packages, pulled again by digest when lost; and what the runtime saw of agents, for the **Monitoring** page ([what is written down](../system/monitoring.md)) |
-| `sandbox_data` | the Execution Sandbox's own copy of the code it runs and its environments, rebuilt from the packages when lost; and what it saw of agents. Each sandbox has one of its own (`sandbox_2_data` for the second of `docker-compose.sandboxes.yml`) |
+| `sandbox_data` | the Execution Sandbox's own copy of the code it runs and its environments, rebuilt from the packages when lost; and what it saw of agents. Each sandbox has one of its own (`sandbox_2_data` for the second of `compose/sandboxes.yml`) |
 | `speech_models` | the platform's own speech models; downloaded again when missing, so not worth a backup |
 
-The encryption keys in `deploy.env` are part of the backup: a database
+The encryption keys in `config/deploy.env` are part of the backup: a database
 without `SECRET_ENCRYPTION_KEYS` is a database whose every credential
 and record value is unreadable.
 
@@ -86,7 +94,7 @@ temporary password once, to hand over, and they choose their own at
 their first sign-in.
 
 An install set up before the first-run page existed made its first
-person for you: their address and password are in `deploy.env`
+person for you: their address and password are in `config/deploy.env`
 (`ADMIN_EMAIL`, `ADMIN_PASSWORD`, `me@decentai.local` unless changed).
 To sign in by an address and a password of your own instead, see *A
 forgotten password, without email* below: the same line, with
@@ -101,7 +109,7 @@ The first is made on the first-run page. More are made two ways:
 - **On the machine**, by whoever runs it — the default:
 
   ```bash
-  docker compose --env-file deploy.env run --rm init \
+  docker compose --env-file config/deploy.env run --rm init \
     python /opt/decentai/bootstrap/organizations.py create \
     --name "Acme" --admin ada@acme.example
   ```
@@ -133,7 +141,7 @@ on the machine DecentAI runs on — what a reset link does, ending every
 session of the account and revoking its API keys:
 
 ```bash
-docker compose --env-file deploy.env run --rm \
+docker compose --env-file config/deploy.env run --rm \
   -e RESET_EMAIL=dana@example.com -e RESET_PASSWORD \
   init python /opt/decentai/bootstrap/reset_password.py
 ```
@@ -151,11 +159,11 @@ signs anybody in after that, and the sign-in page is used.
 
 All agents share one container, and it is given so much memory and so
 much processor by whoever starts it: `AGENTS_MEMORY` (`2g`, `1500m`) and
-`AGENTS_CPUS` (`2`, `1.5`) in `deploy.env`. Unset is no limit. A change
+`AGENTS_CPUS` (`2`, `1.5`) in `config/deploy.env`. Unset is no limit. A change
 takes effect when the Execution Sandbox is started again:
 
 ```bash
-docker compose --env-file deploy.env up -d agents
+docker compose --env-file config/deploy.env up -d agents
 ```
 
 An agent that takes more memory than they are given together is ended,
@@ -179,7 +187,7 @@ a provider, or neither, for each of the two.
   the `speech_models` volume, across updates. The settings page says
   how far a download is.
 - **A machine that is to download nothing** sets `SPEECH_FETCH=` in
-  `deploy.env`; one that cannot reach the publisher names a mirror
+  `config/deploy.env`; one that cannot reach the publisher names a mirror
   ([configuration](configuration.md#the-speech-container)).
 - **What it costs.** About a gigabyte of memory with both loaded,
   given back after a quarter of an hour unused. On a laptop's
@@ -197,7 +205,7 @@ a provider, or neither, for each of the two.
   regulated buyer — use a provider for text to speech in Arabic, or
   leave it off.
 - **Without it.** The stack runs without the container: stop it
-  (`docker compose --env-file deploy.env stop speech`) and an
+  (`docker compose --env-file config/deploy.env stop speech`) and an
   organization that kept speech local is told its models are not
   running, with no microphone offered.
 
@@ -214,7 +222,7 @@ either. To move what is there:
 1. Make the bucket or container, and give the deployment's identity
    (its role, managed identity or service account) read and write on it.
 2. Set `FILE_STORAGE_PROVIDER` and the new store's settings in
-   `deploy.env`, keep the old store's, and restart the Data Core.
+   `config/deploy.env`, keep the old store's, and restart the Data Core.
 3. Count, then move:
 
    ```bash
@@ -242,25 +250,25 @@ Stored values are encrypted under versioned keys; old versions keep
 decrypting, so rotation is non-destructive:
 
 The tools are run in the Data Core's image, where the platform's code and
-the settings in `deploy.env` are, as the password line above is: on the
+the settings in `config/deploy.env` are, as the password line above is: on the
 machine itself they would find neither the database nor the keys.
 
 1. Make the new key:
 
    ```bash
-   docker compose --env-file deploy.env run --rm init \
+   docker compose --env-file config/deploy.env run --rm init \
      python /opt/decentai/bootstrap/generate_secret_keys.py \
      --rotate "<current SECRET_ENCRYPTION_KEYS>"
    ```
 
    It prints the map with a new active version appended.
 2. Update `SECRET_ENCRYPTION_KEYS` and `SECRET_ENCRYPTION_ACTIVE` in
-   `deploy.env`, and restart the Data Core. New writes use the new key.
+   `config/deploy.env`, and restart the Data Core. New writes use the new key.
 3. Rewrite every stored value under the active key (`--check` first
    shows the counts):
 
    ```bash
-   docker compose --env-file deploy.env run --rm init \
+   docker compose --env-file config/deploy.env run --rm init \
      python /opt/decentai/bootstrap/reencrypt_secrets.py
    ```
 
@@ -275,11 +283,11 @@ One deployment may host many, each fully separated from the others.
 They are created, paused and resumed from the command line:
 
 ```bash
-docker compose --env-file deploy.env run --rm init \
+docker compose --env-file config/deploy.env run --rm init \
   python /opt/decentai/bootstrap/organizations.py list
-docker compose --env-file deploy.env run --rm init \
+docker compose --env-file config/deploy.env run --rm init \
   python /opt/decentai/bootstrap/organizations.py create --name "Acme" --admin ada@acme.example
-docker compose --env-file deploy.env run --rm init \
+docker compose --env-file config/deploy.env run --rm init \
   python /opt/decentai/bootstrap/organizations.py disable --org <org_id>
 ```
 
@@ -330,5 +338,5 @@ The sandboxes a node has are in what `Nodes:Node:List` shows of it.
 ## Removing it
 
 To remove it altogether, its data with it:
-`docker compose --env-file deploy.env down --volumes`, then delete
-`deploy.env`.
+`docker compose --env-file config/deploy.env down --volumes`, then delete
+`config/deploy.env`.

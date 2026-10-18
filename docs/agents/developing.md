@@ -149,7 +149,7 @@ services:
 ```
 
 ```bash
-docker compose --env-file deploy.env up -d backend
+docker compose --env-file config/deploy.env up -d backend
 ```
 
 DecentAI now reads that folder, and only that folder, as `/develop`.

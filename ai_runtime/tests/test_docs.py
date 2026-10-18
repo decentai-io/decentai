@@ -29,18 +29,20 @@ NOT_OURS = {".git", "node_modules", "dist", ".angular", ".venv", "venv",
 
 #: The top of every path the repository keeps, so that a path in a page
 #: is told from any other words with a slash between them.
-TOPS = ("ai_runtime", "backend", "bootstrap", "contracts",
-        "decentai_sdk", "docs", "gateway", "speech",
+TOPS = ("ai_runtime", "backend", "bootstrap", "compose", "config",
+        "contracts", "decentai_sdk", "docs", "gateway", "speech",
         "tests")
 
 #: Paths a page names that are made where the platform runs, and are
 #: not kept: a person's own settings, and the agents they installed.
 MADE_NOT_KEPT = {"backend/config.env", "ai_runtime/config.env",
-                 "ai_runtime/installed_agents"}
+                 "ai_runtime/installed_agents", "config/deploy.env",
+                 "config/sandbox.env", "config/node-authority.env"}
 
 #: Where settings are offered to whoever sets the platform up.
-EXAMPLES = ("deploy.env.example", "backend/config.env.example",
-            "ai_runtime/config.env.example")
+EXAMPLES = ("config/deploy.env.example", "config/sandbox.env.example",
+            "config/node-authority.env.example",
+            "backend/config.env.example", "ai_runtime/config.env.example")
 
 SETTINGS_PAGE = "docs/run/configuration.md"
 

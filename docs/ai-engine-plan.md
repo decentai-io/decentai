@@ -68,7 +68,7 @@ the clients and the white paper.*
 |---|---|
 | The Data Core knows one Runtime address (`AI_RUNTIME_URL`) and dials it once per person and chat (`backend/api/services/chat_session/relay.py`). | Replaced by nodes connecting in, with chats multiplexed over each node's link. |
 | At boot the Data Core re-dials every chat with schedules, so the Runtime's clock can load them; the clock runs in the Runtime (`ai_runtime/chat/clock.py`). | The clock moves to the Data Core; the Runtime only runs firings it is handed. |
-| Keys are fixed in `deploy.env`: the Data Core's public key on the Runtime, the Runtime's public key on the Data Core. | Replaced by registered authorities and node credentials they sign. |
+| Keys are fixed in `config/deploy.env`: the Data Core's public key on the Runtime, the Runtime's public key on the Data Core. | Replaced by registered authorities and node credentials they sign. |
 | The Data Core reads monitoring by calling the Runtime over HTTP (`backend/api/services/agents/monitoring.py` to `/internal/monitor/*`). | Moves onto the node link, since the Data Core can no longer reach nodes. |
 | The Runtime reaches one Sandbox at `agents:8003`, using a key read from a shared volume. | Sandboxes register with their Runtime instead. |
 | Runtime and Sandbox share `/data/agents`: packages, environments, homes, the spool for large files, the event log, the key. | Each Sandbox keeps its own; large files travel over the connection. |

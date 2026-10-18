@@ -3,16 +3,16 @@
 # speech container, and the gateway (Caddy) as the one door: the Data
 # Core's paths to the Data Core, and every other to the web client, which
 # is a repository of its own (decentai-web-client) and runs beside this
-# one. Every setting comes from one file, deploy.env:
+# one. Every setting comes from one file, config/deploy.env:
 #
-#   python bootstrap/setup.py      # writes deploy.env, starts this, says where
+#   python bootstrap/setup.py      # writes config/deploy.env, starts this, says where
 #
-# or, with a deploy.env written by hand from deploy.env.example:
+# or, with a config/deploy.env written by hand from config/deploy.env.example:
 #
-#   docker compose --env-file deploy.env up -d --build
+#   docker compose --env-file config/deploy.env up -d --build
 #
 # As written it serves this computer only, in plain HTTP. A server with
-# an address of its own lays docker-compose.server.yml over it
+# an address of its own lays compose/server.yml over it
 # (docs/run/deploying.md). Only the gateway publishes a port.
 #
 # Three networks, and who is on which (docs/system/architecture.md):
@@ -32,7 +32,7 @@
 #   agents    internal: ai-runtime and agents, the AI Runtime and its
 #             Execution Sandbox. A worker's only way anywhere is the
 #             runtime's proxy. A second sandbox, for testing, is laid
-#             over this file by docker-compose.sandboxes.yml.
+#             over this file by compose/sandboxes.yml.
 #
 # A container on two networks keeps the reach of each: the backend on
 # default and data reaches GitHub and the database both; mongo on data
@@ -42,8 +42,8 @@ services:
     image: mongo:7
     restart: unless-stopped
     environment:
-      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME:?set in deploy.env}
-      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:?set in deploy.env}
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME:?set in config/deploy.env}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:?set in config/deploy.env}
     networks:
       - data
     volumes:
@@ -60,7 +60,7 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile
-    env_file: deploy.env
+    env_file: config/deploy.env
     command: ["python", "/opt/decentai/bootstrap/init_db.py"]
     restart: "no"
     networks:
@@ -74,7 +74,7 @@ services:
       context: .
       dockerfile: backend/Dockerfile
     restart: unless-stopped
-    env_file: deploy.env
+    env_file: config/deploy.env
     networks:
       - default
       - data
@@ -147,7 +147,7 @@ services:
   # settings by name, never the file: the database's password, the
   # encryption keys and the backend's private key are not this
   # container's to hold. A name with no value is passed on when
-  # deploy.env (or the shell) sets it, and is absent when neither does.
+  # config/deploy.env (or the shell) sets it, and is absent when neither does.
   ai-runtime:
     build:
       context: .
@@ -164,11 +164,11 @@ services:
     # The node's secret, which its Execution Sandboxes prove when they
     # register: in a file of its own (bootstrap/setup.py writes it),
     # given to the AI Runtime and its sandboxes and to nothing else.
-    env_file: sandbox.env
+    env_file: config/sandbox.env
     environment:
       AI_RUNTIME_SANDBOX_PORT:
       # Who the Data Core is: nothing it did not sign is believed.
-      BACKEND_SERVICE_PUBLIC_KEY: ${BACKEND_SERVICE_PUBLIC_KEY:?set in deploy.env}
+      BACKEND_SERVICE_PUBLIC_KEY: ${BACKEND_SERVICE_PUBLIC_KEY:?set in config/deploy.env}
       # Who this execution node is: a credential the install's authority
       # signed, which node-issuer writes and keeps fresh. The node reads
       # it and never holds the authority's key.
@@ -222,7 +222,7 @@ services:
     # The install's authority's private key, in a file of its own
     # (bootstrap/setup.py writes it), given to this service alone: the
     # Data Core and the seeder hold only its public half.
-    env_file: node-authority.env
+    env_file: config/node-authority.env
     environment:
       NODE_NAME: ${NODE_NAME:-bundled}
       NODE_CREDENTIAL_FILE: /run/decentai/node/credential
@@ -269,7 +269,7 @@ services:
     # The node's secret, which its Execution Sandboxes prove when they
     # register: in a file of its own (bootstrap/setup.py writes it),
     # given to the AI Runtime and its sandboxes and to nothing else.
-    env_file: sandbox.env
+    env_file: config/sandbox.env
     environment:
       AI_AGENTS_PROXY: ai-runtime:${AI_RUNTIME_EGRESS_PORT:-8002}
       AI_RUNTIME_EGRESS_PORT:
@@ -296,7 +296,7 @@ services:
       start_period: 10s
 
   # The one door: plain HTTP on one port, from this computer only
-  # unless deploy.env says otherwise (LISTEN, PORT). It sends the Data
+  # unless config/deploy.env says otherwise (LISTEN, PORT). It sends the Data
   # Core's paths to the Data Core and every other path to the web client,
   # a repository of its own (decentai-web-client), wherever it runs
   # (gateway/Caddyfile).

@@ -64,10 +64,10 @@ The first time, it:
    make this install's keys inside it: the two pairs the Data Core and
    the runtime know each other by, and the key that encrypts every
    stored credential and record value;
-2. writes `deploy.env` from `deploy.env.example`, with those keys, a
+2. writes `config/deploy.env` from `config/deploy.env.example`, with those keys, a
    password for the database and the session secret. Nobody is made
    for you: you name yourself on the first-run page;
-3. starts the stack — `docker compose --env-file deploy.env up -d
+3. starts the stack — `docker compose --env-file config/deploy.env up -d
    --build --remove-orphans`, which also removes a container the stack
    no longer defines, such as an older install's `web`;
 4. waits until it answers, and prints an address.
@@ -79,7 +79,7 @@ else does; the speech container, which holds the platform's own speech
 models; and the gateway (Caddy), which serves the Data Core and the web
 client on one address. The first build takes a few minutes.
 
-`deploy.env` is the install: keep it. It is not made twice — a database
+`config/deploy.env` is the install: keep it. It is not made twice — a database
 is readable with the keys it was written with and no others — and it is
 not in git.
 
@@ -107,7 +107,7 @@ page, and you sign in with what you chose.
 
 DecentAI is served to this computer only, in plain HTTP: nobody else on
 the network reaches the page, which is why the first-run page here asks
-for no setup code (`SETUP_CODE=none` in `deploy.env`; a server's asks
+for no setup code (`SETUP_CODE=none` in `config/deploy.env`; a server's asks
 for one, [Deploying](deploying.md)). The address is said again by
 
 ```bash
@@ -136,7 +136,7 @@ Keys are write-only: nobody reads one back.
 
 
 **Agents → Marketplace.** Add the [`decentai-agents`](https://github.com/decentai-io/decentai-agents) repository as a
-source, by its address — or set `REFERENCE_CATALOG_URL` in `deploy.env`
+source, by its address — or set `REFERENCE_CATALOG_URL` in `config/deploy.env`
 to that address first, and the marketplace offers it with one click.
 Its catalog is read without running any of its code. Open the source
 and press **Review and install** on **Notebook**: read what it declares

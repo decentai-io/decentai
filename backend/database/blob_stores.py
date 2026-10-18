@@ -3,7 +3,7 @@
 Two things the backend keeps as bytes — uploaded files
 (database/file_connectors) and approved agent code
 (database/agent_packages.py) — are kept on a local volume, or in one of
-three object stores, chosen in deploy.env (FILE_STORAGE_PROVIDER):
+three object stores, chosen in config/deploy.env (FILE_STORAGE_PROVIDER):
 
     s3          Amazon S3, and anything that speaks its protocol
                 (MinIO, Cloudflare R2, …) with STORAGE_S3_ENDPOINT
@@ -15,7 +15,7 @@ What a key means — a file under a person's folder, a package under its
 organization — is the caller's; a store only moves bytes.
 
 Credentials come from where the deployment runs, first: an AWS role, an
-Azure managed identity, a Google service account. A key in deploy.env is
+Azure managed identity, a Google service account. A key in config/deploy.env is
 the fallback for a deployment that has none of those. Each store's
 settings are its own, so a deployment that moved from one to another
 can still read what the first one holds (a file names the store its

@@ -25,7 +25,7 @@ python -c "import secrets; print(secrets.token_urlsafe(32))"   # AI_RUNTIME_SAND
 
 None of them is written to disk by the scripts.
 
-**2. Write `deploy.env`.** `cp deploy.env.example deploy.env`, replace
+**2. Write `config/deploy.env`.** `cp config/deploy.env.example config/deploy.env`, replace
 every `change-me` — the three generated values exactly as printed, and
 a database password (the same one inside `MONGO_URI`) — and set what a
 server sets differently from a computer of one's own. Leave
@@ -43,12 +43,12 @@ the first administrator in `ADMIN_EMAIL`, `ADMIN_PASSWORD` and
 | `SMTP_HOST`, `MAIL_FROM` and the server's sign-in | any provider's SMTP server, so invitations and password resets are sent rather than logged ([configuration](configuration.md)) |
 | `ORG_SIGNUP` | `open` to let anybody create an organization of their own from the sign-in page; it needs the mail above. `closed`, the default, keeps organizations to `bootstrap/organizations.py` ([operating it](operating.md#organizations)) |
 
-**Write `sandbox.env` and `node-authority.env`** beside it, from
-`sandbox.env.example` and `node-authority.env.example`:
+**Write `config/sandbox.env` and `config/node-authority.env`** beside it, from
+`config/sandbox.env.example` and `config/node-authority.env.example`:
 `AI_RUNTIME_SANDBOX_SECRET` in the first and the authority's
 `NODE_AUTHORITY_PRIVATE_KEY` in the second, with its public half in
-`deploy.env` as `NODE_AUTHORITY_PUBLIC_KEY`. They are kept out of
-`deploy.env` because the Data Core is given that file whole and needs
+`config/deploy.env` as `NODE_AUTHORITY_PUBLIC_KEY`. They are kept out of
+`config/deploy.env` because the Data Core is given that file whole and needs
 neither; Compose gives each only to what uses it
 ([configuration](configuration.md)). Keep all three files readable by
 their owner only.
@@ -57,8 +57,8 @@ their owner only.
 server's front door laid over the stack:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.server.yml \
-    --env-file deploy.env up -d --build --remove-orphans
+docker compose -f docker-compose.yml -f compose/server.yml \
+    --env-file config/deploy.env up -d --build --remove-orphans
 ```
 
 Only the gateway publishes ports (80 and 443); the Data Core, runtime and
@@ -71,19 +71,19 @@ runtime and nothing else ([the sandbox](../system/sandbox.md)). Every
 **4. Start the web client** on the same host, from its own repository
 (`decentai-web-client`): `docker compose up -d --build` there joins the
 engine's network, where the gateway finds it. Where it runs somewhere
-else, set `WEB_CLIENT_UPSTREAM` in `deploy.env` to its `host:port`.
+else, set `WEB_CLIENT_UPSTREAM` in `config/deploy.env` to its `host:port`.
 
 **4. Set it up.** Read the setup code from the log:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.server.yml \
-    --env-file deploy.env logs init | grep "setup code"
+docker compose -f docker-compose.yml -f compose/server.yml \
+    --env-file config/deploy.env logs init | grep "setup code"
 ```
 
 Open the address: the first-run page asks for that code, the
 organization's name, and your name, email and password, and makes you
 its administrator. It is there once; after that the address is the
-sign-in page. (Where `deploy.env` names an administrator, there is no
+sign-in page. (Where `config/deploy.env` names an administrator, there is no
 page: sign in as them.)
 
 ## Behind a load balancer

@@ -8,9 +8,10 @@
 It needs Docker with Compose and this Python, and imports nothing but
 the standard library.
 
-The first time, it writes `deploy.env` from `deploy.env.example`: the
-keys, made by the platform's own generators inside the backend's
-image, and a password for the database. Then it starts the stack and
+Its files are in `config/`. The first time, it writes
+`config/deploy.env` from `config/deploy.env.example`: the keys, made
+by the platform's own generators inside the backend's image, and a
+password for the database. Then it starts the stack and
 prints the address. Nobody is made for you: the address opens on the
 app's first-run page, where you name your organization and choose your
 own email and password, once. After that it is the sign-in page.
@@ -22,20 +23,25 @@ The first-run page asks this install for no setup code
 Run again, it starts what is there and prints the address: the keys
 are made once, because a database is readable with the keys it was
 written with and no others. What the platform gained since the file
-was written — a setting `deploy.env.example` names and the file does
-not — is added to the file first: a key, made now by the generator;
-anything else, as the template says it. Nothing the file says is
-changed. A `deploy.env` written by hand for a server is left alone
-(docs/run/deploying.md says how that one is started, and updated).
+was written — a setting `config/deploy.env.example` names and the file
+does not — is added to the file first: a key, made now by the
+generator; anything else, as the template says it. Nothing the file
+says is changed. A `config/deploy.env` written by hand for a server is
+left alone (docs/run/deploying.md says how that one is started, and
+updated).
 
-Two secrets are not in `deploy.env`, because Compose gives that file
-whole to the Data Core and the seeder, which need neither: the
-execution node's secret, in `sandbox.env`, given to the AI Runtime and
-its Execution Sandboxes alone; and the install's authority's private
-key, in `node-authority.env`, given to node-issuer alone. They are
-written beside it, made once, as the keys are. A `deploy.env` from
-before that holds either has it moved out into its file, and the line
-it was on says where it went.
+Two secrets are not in `config/deploy.env`, because Compose gives that
+file whole to the Data Core and the seeder, which need neither: the
+execution node's secret, in `config/sandbox.env`, given to the AI
+Runtime and its Execution Sandboxes alone; and the install's
+authority's private key, in `config/node-authority.env`, given to
+node-issuer alone. They are written beside it, made once, as the keys
+are. A `deploy.env` from before that holds either has it moved out into
+its file, and the line it was on says where it went.
+
+An install from before `config/` kept the three files at the
+repository's root. Each is moved into `config/` as it is, the first
+time this runs, and never over a file `config/` already holds.
 """
 
 from __future__ import annotations
@@ -52,6 +58,9 @@ from pathlib import Path
 from typing import Callable, ClassVar, Dict, List, Optional, Sequence, Tuple
 
 HERE = Path(__file__).resolve().parent.parent
+#: The folder, under the repository's root, that holds the install's
+#: settings and secrets beside their templates.
+CONFIG = "config"
 
 
 class SetupError(RuntimeError):
@@ -98,10 +107,10 @@ class Engine:
 
 
 class Settings:
-    """`deploy.env`: the one file the stack is configured by."""
+    """`config/deploy.env`: the one file the stack is configured by."""
 
-    TEMPLATE = "deploy.env.example"
-    FILE = "deploy.env"
+    TEMPLATE = f"{CONFIG}/deploy.env.example"
+    FILE = f"{CONFIG}/deploy.env"
     DEFAULT_PORT = 4280
 
     def __init__(self, folder: Path):
@@ -222,24 +231,27 @@ class Settings:
 
     def _put(self, text: str) -> None:
         """The whole file, in one move: nobody reads it half written."""
-        _put(self.folder, self.FILE, text)
+        _put(self.path, text)
 
 
-def _put(folder: Path, name: str, text: str) -> None:
+def _put(path: Path, text: str) -> None:
     """A file holding secrets, in one move and readable by its owner
     only: nobody reads it half written."""
-    staging = Path(folder) / f".{name}.incoming"
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    staging = path.parent / f".{path.name}.incoming"
     staging.write_text(text, encoding="utf-8", newline="\n")
     try:
         os.chmod(staging, 0o600)
     except OSError:
         pass
-    staging.replace(Path(folder) / name)
+    staging.replace(path)
 
 
 class SecretFile:
     """A file of secrets Compose gives to some services only
-    (docker-compose.yml, ``env_file``): never to the Data Core."""
+    (docker-compose.yml, ``env_file``): never to the Data Core.
+    ``name`` is its path under the repository's root."""
 
     def __init__(self, folder: Path, name: str, why: str):
         self.folder = Path(folder)
@@ -258,9 +270,9 @@ class SecretFile:
         for name, value in values.items():
             if not value or "\n" in value or "\r" in value:
                 raise SetupError(f"{name} does not fit on one line.")
-        _put(self.folder, self.name, "\n".join([
+        _put(self.path, "\n".join([
             f"# Written by bootstrap/setup.py: {self.why}",
-            "# Made once, like the keys in deploy.env; keep it.",
+            f"# Made once, like the keys in {Settings.FILE}; keep it.",
             *(f"{name}={value}" for name, value in values.items()),
         ]) + "\n")
 
@@ -306,10 +318,10 @@ class Setup:
     SANDBOX_SECRET = "AI_RUNTIME_SANDBOX_SECRET"
     AUTHORITY_KEY = "NODE_AUTHORITY_PRIVATE_KEY"
     SECRET_FILES = {
-        SANDBOX_SECRET: ("sandbox.env",
+        SANDBOX_SECRET: (f"{CONFIG}/sandbox.env",
                          "the execution node's secret, which the AI Runtime "
                          "and its Execution Sandboxes prove to each other."),
-        AUTHORITY_KEY: ("node-authority.env",
+        AUTHORITY_KEY: (f"{CONFIG}/node-authority.env",
                         "the install's node authority's private key, which "
                         "node-issuer alone signs the bundled node's "
                         "credentials with."),
@@ -319,6 +331,7 @@ class Setup:
     def run(self, port: Optional[int] = None) -> str:
         """Set up if nothing is, start, and return DecentAI's address."""
         self._must_reach_docker()
+        self._move_into_config()
         if self.settings.written:
             if port is not None:
                 raise SetupError(
@@ -337,7 +350,7 @@ class Setup:
             self.say(f"{Settings.FILE} is written: the keys and the "
                      f"database's password; and beside it sandbox.env and "
                      f"node-authority.env, each given only to what uses it. "
-                     f"Keep them; they are not made twice.")
+                     f"Keep the three; they are not made twice.")
         self.say("Starting DecentAI (the first build takes a few minutes)...")
         # --remove-orphans: a container the stack no longer defines (the
         # web app's, before it became a repository of its own) would keep
@@ -354,6 +367,7 @@ class Setup:
         """DecentAI's address: the first-run page the first time, and
         the sign-in page after. It carries nothing — no password is
         written for anybody to be signed in with."""
+        self._move_into_config()
         if not self.settings.written:
             raise SetupError(
                 "Nothing is set up here yet: `python bootstrap/setup.py` "
@@ -361,7 +375,40 @@ class Setup:
         self._must_be_local()
         return self._address()
 
+    #: The files an install from before config/ kept at the
+    #: repository's root.
+    MOVED_IN = ("deploy.env", "sandbox.env", "node-authority.env")
+
     # ------------------------------------------------------------------
+    def _move_into_config(self) -> None:
+        """An install from before config/ kept its files at the root:
+        each is moved into config/ as it is — its keys are the install —
+        and never over a file config/ already holds, which is the one
+        the stack is started with."""
+        moved: List[str] = []
+        kept: List[str] = []
+        for name in self.MOVED_IN:
+            old = self.folder / name
+            new = self.folder / CONFIG / name
+            if not old.is_file():
+                continue
+            if new.exists():
+                kept.append(name)
+                continue
+            new.parent.mkdir(parents=True, exist_ok=True)
+            os.replace(old, new)
+            moved.append(name)
+        if moved:
+            self.say(f"Moved {', '.join(moved)} from the repository's root "
+                     f"into {CONFIG}/, where the stack now reads them. "
+                     f"Nothing in them changed.")
+        if kept:
+            self.say(f"Left {', '.join(kept)} at the repository's root as "
+                     f"found: {CONFIG}/ already holds a file of the same "
+                     f"name, and that is the one the stack is started with. "
+                     f"Remove the old one once you are sure nothing in it "
+                     f"is needed.")
+
     def _compose(self, *arguments: str) -> List[str]:
         return ["compose", "--env-file", Settings.FILE, *arguments]
 
