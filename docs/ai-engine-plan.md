@@ -30,20 +30,26 @@ the clients and the white paper.*
 2. **Execution nodes connect to the Data Core**, never the other way
    round. A node can run anywhere, including behind a customer's
    firewall.
-3. **Admission is the trust decision.** An administrator admits a node
-   with a single-use enrollment token; the node registers its own public
-   key; every connection after that is signed with it. A node's report
-   about its own locks is shown, never used as a gate, because a node can
-   lie about it.
+3. **Nodes are admitted by trusted authorities, not one by one.** An
+   administrator registers **authorities**: public keys, or an issuer's
+   published key set. A node presents a short-lived credential signed by
+   one of them, which it gets from its own secret manager or issuer (for
+   example Vault or a cluster's workload identity). The Data Core accepts
+   any unexpired credential signed by a registered authority and naming
+   the node. Nodes never hold an authority's private key, so one
+   compromised node cannot sign for others. Thousands of nodes need no
+   administrator step each. A node's report about its own locks is shown,
+   never used as a gate, because a node can lie about it.
 4. **Chats are placed on nodes with leases.** A lease is time-bound,
    renewed while the node lives, and numbered; the Data Core refuses
    writes carrying an old number, so two nodes can never act on one chat.
 5. **The clock lives in the Data Core.** It decides when schedules fire
    and hands each firing to the node holding the chat, so nothing fires
    twice.
-6. **Organizations can own nodes.** A token made by an organization's
-   administrator admits a node for that organization only; an operator's
-   token admits a shared node. Placement prefers, or requires, the
+6. **Organizations can own nodes.** An authority registered by an
+   organization's administrator admits nodes for that organization only;
+   one registered by the operator admits shared nodes. Placement prefers,
+   or requires, the
    organization's own nodes. Autoscaling, quotas and cloud placement are
    for operators, not the engine.
 7. **Each Sandbox installs agent code itself**, as a local cache named by
@@ -62,7 +68,7 @@ the clients and the white paper.*
 |---|---|
 | The Data Core knows one Runtime address (`AI_RUNTIME_URL`) and dials it once per person and chat (`backend/api/services/chat_session/relay.py`). | Replaced by nodes connecting in, with chats multiplexed over each node's link. |
 | At boot the Data Core re-dials every chat with schedules, so the Runtime's clock can load them; the clock runs in the Runtime (`ai_runtime/chat/clock.py`). | The clock moves to the Data Core; the Runtime only runs firings it is handed. |
-| Keys are fixed in `deploy.env`: the Data Core's public key on the Runtime, the Runtime's public key on the Data Core. | Replaced by enrollment and registered node keys. |
+| Keys are fixed in `deploy.env`: the Data Core's public key on the Runtime, the Runtime's public key on the Data Core. | Replaced by registered authorities and node credentials they sign. |
 | The Data Core reads monitoring by calling the Runtime over HTTP (`backend/api/services/agents/monitoring.py` to `/internal/monitor/*`). | Moves onto the node link, since the Data Core can no longer reach nodes. |
 | The Runtime reaches one Sandbox at `agents:8003`, using a key read from a shared volume. | Sandboxes register with their Runtime instead. |
 | Runtime and Sandbox share `/data/agents`: packages, environments, homes, the spool for large files, the event log, the key. | Each Sandbox keeps its own; large files travel over the connection. |
@@ -90,33 +96,45 @@ the Data Core, the AI Runtime, the Execution Sandbox and execution nodes.
 
 ### Phase 1 — Node identity and admission
 
+No administrator step per node. Trust is given to **authorities**, once,
+and any node holding a credential one of them signed is admitted.
+
 **Data Core**
-- A **nodes** record: id, name, public key, admitted by, admitted at,
-  scope (`shared` or one organization), labels, last seen, revoked.
-- **Enrollment tokens**: single-use, short expiry, scope fixed when made.
-  Operators make shared ones; an organization's administrators make
-  ones for their organization only. New permission actions for both.
-- **Enrollment endpoint**: takes a token and a public key, records the
-  node, spends the token, returns the node id and the Data Core's public
-  key.
-- **Node authentication**: every request and connection from a node is a
-  short-lived token signed with its registered key, checked against the
-  nodes record. This replaces the fixed `AI_RUNTIME_SERVICE_PUBLIC_KEY`.
-- **Revoke**: one action; the key is refused at once.
+- An **authorities** record: id, name, the public key or the address of
+  an issuer's published key set, scope (`shared` or one organization),
+  registered by, registered at, revoked. Operators register shared
+  authorities; an organization's administrators register authorities for
+  their organization only. New permission actions for both.
+- **Node credentials**: a short-lived signed token naming the node (and,
+  where the authority gives one, its organization), with an expiry of
+  minutes. The Data Core accepts it when it is signed by an unrevoked
+  authority, unexpired, and its scope fits the authority's. This replaces
+  the fixed `AI_RUNTIME_SERVICE_PUBLIC_KEY`.
+- A **nodes** record kept automatically from what admitted nodes present:
+  id, authority, scope, labels, first and last seen, what they report.
+  It is a view for administrators, not a list anyone has to fill in.
+- **Revoke**: removing an authority refuses every node it vouches for on
+  their next request. Single nodes drop out when their credential
+  expires; a list of refused node ids covers the urgent case.
+- The Data Core's own public key is published to nodes, so a node can
+  tell it is speaking to the real Data Core.
 
 **AI Runtime**
-- Generates its key pair on first start and keeps the private half in its
-  own volume.
-- An enroll step that takes the token and the Data Core's address, and
-  stores the returned node id and the Data Core's public key, which it
-  then requires on every reply.
+- Reads its credential from where the operator puts it (a file mounted
+  by a secret manager, or an issuer it asks), and reads it again as it
+  nears expiry. It never holds an authority's private key.
+- Is configured with the Data Core's address and public key, and requires
+  that key on every reply.
 
 **Single-machine install**
-- Setup makes a shared enrollment token and hands it to the bundled node,
-  so a fresh install still needs nothing from the person.
+- Setup generates one authority key pair, registers its public half as a
+  shared authority, and gives the bundled node credentials it signs, so a
+  fresh install still needs nothing from the person.
 
-**Done when:** a node with no token cannot register; a revoked node is
-refused on its next request; the one-command install still works.
+**Done when:** a node with no credential, an expired one, or one signed
+by an unregistered or revoked authority is refused; an organization's
+authority cannot admit a shared node; the one-command install still
+works.
 
 ### Phase 2 — Nodes connect to the Data Core
 
@@ -259,17 +277,24 @@ Phases 1 to 5, which touch the Data Core and the Runtime's door.
 
 ---
 
-## 5. Open questions
+## 5. Decided, and still open
 
-1. **Scaling the Data Core itself.** It assumes one process today. Options:
-   one Data Core per organization, or moving its cache, rate counters and
-   node links into a shared store. Not needed for this plan.
-2. **Signed tokens or mutual TLS** for node connections. Signed tokens reuse
-   what exists; mutual TLS also protects the connection itself.
-3. **Lease length and renewal**: short enough to fail over quickly, long
-   enough to ride out a brief network drop.
-4. **Trust in a node's operator.** A node sees the model key and every
-   credential lent during a call. Admission is trusting its operator with
-   that; the paper must say so.
-5. **Hardware needs.** Placing an agent on a GPU Sandbox needs the manifest
-   to say so; today a manifest cannot ask for resources.
+**Decided (18 October 2026)**
+
+- **Node credentials are signed tokens**, short-lived and signed by a
+  registered authority, not mutual TLS.
+- **Leases last 60 seconds and are renewed every 20.**
+- **The Data Core stays one process** for these phases. Its permission
+  cache, webhook rate counter and live connections live in its memory, so
+  two copies behind a load balancer would not share them.
+- **Hardware needs are labels on Sandboxes for now**; a manifest cannot yet
+  ask for them.
+
+**Still open**
+
+1. **Running several Data Cores.** Either one Data Core per organization,
+   or its cache, rate counters and node connections moved into a shared
+   store.
+2. **Trust in a node's operator.** A node sees the model key and every
+   credential lent during a call. Registering an authority is trusting
+   whoever runs its nodes with that; the paper must say so.
