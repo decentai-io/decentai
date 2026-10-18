@@ -339,7 +339,11 @@ class Setup:
                      f"node-authority.env, each given only to what uses it. "
                      f"Keep them; they are not made twice.")
         self.say("Starting DecentAI (the first build takes a few minutes)...")
-        if self.engine.show(self._compose("up", "-d", "--build")) != 0:
+        # --remove-orphans: a container the stack no longer defines (the
+        # web app's, before it became a repository of its own) would keep
+        # the port the gateway is to take, and the gateway would not start.
+        if self.engine.show(self._compose(
+                "up", "-d", "--build", "--remove-orphans")) != 0:
             raise SetupError(
                 "The stack did not start. What Docker said is above; "
                 f"`docker compose --env-file {Settings.FILE} logs` says more.")

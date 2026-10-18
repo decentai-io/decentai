@@ -80,7 +80,7 @@ class TestTheFirstTime:
             "/opt/decentai/bootstrap/generate_node_authority.py",
             "run --rm sha256:the-backend-image python "
             "/opt/decentai/bootstrap/generate_secret_keys.py",
-            "compose --env-file deploy.env up -d --build",
+            "compose --env-file deploy.env up -d --build --remove-orphans",
         ]
 
     def test_nothing_is_left_for_a_person_to_fill_in(self, setup):
@@ -232,7 +232,7 @@ class TestRunAgain:
         assert setup.settings.path.read_text(encoding="utf-8") == before
         assert docker.asked == ["compose version",
                                 "info --format {{.ServerVersion}}",
-                                "compose --env-file deploy.env up -d --build"]
+                                "compose --env-file deploy.env up -d --build --remove-orphans"]
         assert link == "http://localhost:4280"
 
     @staticmethod
@@ -270,7 +270,7 @@ class TestRunAgain:
             "build -q -f backend/Dockerfile .",
             "run --rm sha256:the-backend-image python "
             "/opt/decentai/bootstrap/generate_node_authority.py",
-            "compose --env-file deploy.env up -d --build",
+            "compose --env-file deploy.env up -d --build --remove-orphans",
         ]
         assert any("gained NODE_AUTHORITY_PUBLIC_KEY" in line
                    for line in setup.said)
@@ -320,7 +320,7 @@ class TestRunAgain:
         # No key was lacking, so no image is built and no generator run.
         assert docker.asked == ["compose version",
                                 "info --format {{.ServerVersion}}",
-                                "compose --env-file deploy.env up -d --build"]
+                                "compose --env-file deploy.env up -d --build --remove-orphans"]
 
     def test_a_computers_file_from_before_the_first_run_page_asks_for_no_code(
             self, setup, docker):

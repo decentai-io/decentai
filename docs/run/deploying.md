@@ -58,7 +58,7 @@ server's front door laid over the stack:
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.server.yml \
-    --env-file deploy.env up -d --build
+    --env-file deploy.env up -d --build --remove-orphans
 ```
 
 Only the gateway publishes ports (80 and 443); the Data Core, runtime and

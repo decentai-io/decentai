@@ -40,15 +40,15 @@ new is ready:
    it `run` uses the image built last time. It drops no data unless
    `INIT_DB_FRESH=true` is set, which drops the database and is never
    set by accident.
-3. `docker compose --env-file deploy.env up -d --build` rolls the
-   services.
+3. `docker compose --env-file deploy.env up -d --build --remove-orphans`
+   rolls the services, and removes any the update no longer defines.
 
 Deploy by commit: note the commit a deployment was built from, so that
 going back is a matter of naming it.
 
 ### Going back
 
-Check out the commit that was running and `up -d --build` again. The
+Check out the commit that was running and `up -d --build --remove-orphans` again. The
 images are built here and have no names of their own to go back to.
 
 A newer seed adds collections and actions and drops no data, so older

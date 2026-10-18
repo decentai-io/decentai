@@ -68,7 +68,8 @@ The first time, it:
    password for the database and the session secret. Nobody is made
    for you: you name yourself on the first-run page;
 3. starts the stack — `docker compose --env-file deploy.env up -d
-   --build`;
+   --build --remove-orphans`, which also removes a container the stack
+   no longer defines, such as an older install's `web`;
 4. waits until it answers, and prints an address.
 
 Seven containers come up: MongoDB; a one-shot seeder that creates the
