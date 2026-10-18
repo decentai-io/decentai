@@ -26,6 +26,12 @@
       (changed)="chooseEmbedding($event)"
     ></app-model-select>
   </app-field>
+  <!-- Only a provider shared with everyone is offered: every chat
+       routes with it. Say so, rather than show an empty choice. -->
+  <p class="form-notice" *ngIf="!shared.length">
+    No model provider is shared with the whole organization yet, so there is nothing to choose
+    from. <a routerLink="/settings/providers">Share one on Model providers</a>.
+  </p>
 
   <!-- The four numbers read as one policy: two by two. -->
   <div class="form-pair">

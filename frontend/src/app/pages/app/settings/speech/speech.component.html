@@ -10,6 +10,12 @@
 <ng-container *ngIf="!loading && !loadError">
   <p class="form-notice" *ngIf="!canEdit">Only an administrator changes this.</p>
 
+  <!-- Only a provider shared with everyone is offered: everyone's
+       chats speak through it. Say so, rather than show an empty choice. -->
+  <p class="form-notice" *ngIf="!shared.length && (draft.value.transcription_source === 'connection' || draft.value.speech_source === 'connection')">
+    No model provider is shared with the whole organization yet, so there is no provider to choose
+    from. <a routerLink="/settings/providers">Share one on Model providers</a>.
+  </p>
   <div class="form-section">
     <app-field
       label="Speech to text"

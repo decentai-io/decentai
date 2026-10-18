@@ -62,6 +62,10 @@ export class AgentAccessComponent implements OnChanges {
   draftScopes: Record<string, string[]> = {};
   /** Give access was pressed: what is missing is said under its field. */
   tried = false;
+  /** The grant the form is changing, when Edit was pressed. A grant is
+   *  given or revoked, never rewritten: saving gives the new one, then
+   *  revokes this one, so nobody is without access in between. */
+  editing: AgentGrant | null = null;
 
   readonly audiences: Choice<Audience>[] = [
     { value: 'everyone', name: 'Everyone', hint: 'Every person in this organization, now and later.' },
@@ -113,6 +117,7 @@ export class AgentAccessComponent implements OnChanges {
   }
 
   private resetDraft(): void {
+    this.editing = null;
     this.draftAudience = null;
     this.draftGroups = new Set<string>();
     this.draftUsers = new Set<string>();
@@ -143,10 +148,52 @@ export class AgentAccessComponent implements OnChanges {
     return list.length === 1 ? list[0] : `${list.length} functions`;
   }
 
+  /** The functions a grant names, when it names them. */
+  namedFunctions(grant: AgentGrant): string[] {
+    return grant.functions === '*' ? [] : [...(grant.functions as string[])];
+  }
+
   limits(grant: AgentGrant): string {
     return Object.entries(grant.constraints || {})
       .map(([scope, values]) => `${scope}: ${values.join(', ')}`)
       .join(' · ');
+  }
+
+  // ── Changing one ────────────────────────────────────────────────────
+
+  /** A grant the form can say again: one kind of audience. A grant
+   *  that names groups and people at once (made elsewhere) cannot be
+   *  put in the form without dropping one of them. */
+  editable(grant: AgentGrant): boolean {
+    return !((grant.owner.groups || []).length && (grant.owner.users || []).length);
+  }
+
+  /** The form, filled in with this grant, to be changed and saved. */
+  edit(grant: AgentGrant): void {
+    this.resetDraft();
+    const groups = grant.owner.groups || [];
+    const users = grant.owner.users || [];
+    if (groups.includes(this.EVERYONE)) {
+      this.draftAudience = 'everyone';
+    } else if (groups.length) {
+      this.draftAudience = 'groups';
+      this.draftGroups = new Set(groups);
+    } else {
+      this.draftAudience = 'people';
+      this.draftUsers = new Set(users);
+    }
+    this.draftWhole = grant.functions === '*';
+    this.draftFunctions = new Set(this.namedFunctions(grant));
+    for (const [scope, values] of Object.entries(grant.constraints || {})) {
+      this.draftScopes[scope] = [...values];
+    }
+    this.editing = grant;
+    setTimeout(() => document.querySelector('.access-form')
+      ?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  }
+
+  cancelEdit(): void {
+    this.resetDraft();
   }
 
   // ── Composing one ───────────────────────────────────────────────────
@@ -237,9 +284,19 @@ export class AgentAccessComponent implements OnChanges {
         constraints,
       );
       if (result.error) return this.failed.emit(result.error);
+      const replaced = this.editing;
+      if (replaced) {
+        const removed = await this.service.revoke(this.agent.agent_id, replaced.grant_id);
+        if (removed.error) {
+          // The new grant stands; the old one does too, until revoked.
+          this.grants = await this.service.grants(this.agent.agent_id);
+          this.resetDraft();
+          return this.failed.emit(`The new access was given, but the old grant could not be removed: ${removed.error}`);
+        }
+      }
       this.grants = await this.service.grants(this.agent.agent_id);
       this.resetDraft();
-      this.flashed.emit('Access granted.');
+      this.flashed.emit(replaced ? 'Access changed.' : 'Access granted.');
     } finally {
       this.busyId = '';
     }
