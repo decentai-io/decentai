@@ -39,12 +39,20 @@ def cookie_header(client):
 
 def serve(app, port):
     """One uvicorn server in a thread, lifespan off: the backend's app
-    state is the test session's, and must not be reset by a shutdown."""
+    state is the test session's, and must not be reset by a shutdown.
+    Its loop is kept on the server (``server.loop``), so a test can run
+    what the lifespan would have on it — the relay's lease tick."""
     server = uvicorn.Server(uvicorn.Config(
         app, host="127.0.0.1", port=port, log_level="critical",
         lifespan="off",
     ))
-    thread = threading.Thread(target=server.run, daemon=True)
+    server.loop = asyncio.new_event_loop()
+
+    def run():
+        asyncio.set_event_loop(server.loop)
+        server.loop.run_until_complete(server.serve())
+
+    thread = threading.Thread(target=run, daemon=True)
     thread.start()
     return server, thread
 
@@ -82,6 +90,8 @@ class ServedNode:
         )
         self.link = self.app.state.link
         self.link.BACKOFF_SECONDS = (0.2,)
+        # Beats often enough for a test's short leases.
+        self.link.HEARTBEAT_SECONDS = 0.5
         self.loop = asyncio.new_event_loop()
         self.thread = threading.Thread(target=self.loop.run_forever, daemon=True)
         self.thread.start()
@@ -167,9 +177,17 @@ def full_stack(app, seed, tmp_path, monkeypatch):
 
     first = node()
     try:
+        def on_data_core(make, timeout=30):
+            """Run one of the Data Core's own coroutines on its loop."""
+            async def call():
+                return await make()
+            return asyncio.run_coroutine_threadsafe(
+                call(), backend_server.loop).result(timeout)
+
         yield SimpleNamespace(backend_url=backend_url, runtime_app=first.app,
                               node=first, add_node=node,
-                              authority_private=authority_private)
+                              authority_private=authority_private,
+                              on_data_core=on_data_core)
     finally:
         for made in nodes:
             made.close()
@@ -630,3 +648,46 @@ class TestTheNodeLink:
             "endpoint": "AI:State:Get", "data": {"chat_id": chat_id}},
             headers={"Authorization": f"Bearer {stolen}"})
         assert bare.status_code == 401
+
+
+class TestLeases:
+    """Chats are placed on nodes under numbered leases
+    (docs/system/execution-nodes.md#leases)."""
+
+    def test_with_two_nodes_killing_one_moves_its_chats_to_the_other(
+            self, admin, full_stack, monkeypatch):
+        from database.stores import LeaseStore
+        from server.setup.app_state import get_runtime_clients
+
+        monkeypatch.setattr(LeaseStore, "SECONDS", 3)
+        second = full_stack.add_node("second")
+        chat_id = open_scripted(
+            admin, "Moving",
+            action(action="say", text="On the first."), action(action="finish"),
+            action(action="say", text="On the second."), action(action="finish"))
+        with ServedSocket(full_stack.backend_url, admin,
+                          f"/chats/{chat_id}") as frontend:
+            until_hello(frontend)
+            first_holder = LeaseStore().current(chat_id)
+            frontend.send_json({"endpoint": "AI:Chat:Input",
+                                "data": {"text": "one", "parts": []}})
+            until_ai_message(frontend)
+            dying = (full_stack.node if first_holder["node_id"].endswith("/stack")
+                     else second)
+            surviving = second if dying is full_stack.node else full_stack.node
+            # The holder dies: no word, no release — its lease lapses.
+            dying.stop()
+            deadline = time.monotonic() + 20
+            moved = 0
+            while not moved:
+                assert time.monotonic() < deadline, "the chat never moved"
+                time.sleep(0.5)
+                moved = full_stack.on_data_core(get_runtime_clients().fail_over)
+            until_hello(frontend)
+            now_held = LeaseStore().current(chat_id)
+            assert now_held["node_id"].endswith("/" + surviving.name)
+            assert now_held["number"] == first_holder["number"] + 1
+            frontend.send_json({"endpoint": "AI:Chat:Input",
+                                "data": {"text": "two", "parts": []}})
+            reply = until_ai_message(frontend)[-1]
+        assert reply["message"]["parts"][0]["content"] == "On the second."

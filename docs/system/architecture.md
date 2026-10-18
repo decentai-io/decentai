@@ -321,7 +321,7 @@ without anything being unreadable
 
 ## Where everything is kept
 
-**The database**, 43 collections (`backend/database/schema.json`), by
+**The database**, 44 collections (`backend/database/schema.json`), by
 what they are for:
 
 | For | Collections | Page |
@@ -332,7 +332,7 @@ what they are for:
 | agents | `ai_agent_sources`, `agent_manifests` (approvals), `agent_grants`, `agent_secret_grants`, `agent_samples` | [agent code](agent-code.md) |
 | settings | `llm_connections`, `oauth_apps`, `oauth_states`, `push_subscriptions` | [data layer](data-layer.md) |
 | webhooks | `webhooks`, `webhook_deliveries` (what each received), `webhook_subscriptions`, `webhook_sends` (the outbound queue and its record) | [webhooks](webhooks.md) |
-| execution nodes | `node_authorities` (who may vouch for a node), `execution_nodes` (the nodes admitted: a view), `refused_nodes` | [execution nodes](execution-nodes.md) |
+| execution nodes | `node_authorities` (who may vouch for a node), `execution_nodes` (the nodes admitted: a view), `refused_nodes`, `chat_leases` (which node holds each active chat, numbered) | [execution nodes](execution-nodes.md) |
 
 **Six volumes.**
 

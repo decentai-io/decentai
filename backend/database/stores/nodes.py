@@ -186,6 +186,125 @@ class NodeStore(MongoStore):
         }
 
 
+class LeaseStore(MongoStore):
+    """Which execution node holds each active chat
+    (docs/system/execution-nodes.md#leases).
+
+    One document per chat: the node, a number, an expiry. The number
+    goes up every time the chat is given to a node anew, and never down,
+    so a write that carries an older number is from a node that no
+    longer holds the chat, and is refused (server/routes/app.py). The
+    expiry is what a node that stops answering loses the chat by:
+    renewed while it lives, gone a minute after it does not.
+
+    Durable, so a Data Core that restarts still refuses an old number."""
+
+    COLLECTION = "chat_leases"
+    #: How long a lease lasts unless it is renewed, and how often a node
+    #: renews (decided: 60 and 20).
+    SECONDS = 60
+    RENEW_SECONDS = 20
+
+    @staticmethod
+    def live(doc: Optional[Dict[str, Any]], now=None) -> bool:
+        if not doc or doc.get("released"):
+            return False
+        expires = doc.get("expires_at")
+        return expires is not None and expires > (now or utc_now())
+
+    def current(self, chat_id: str) -> Optional[Dict[str, Any]]:
+        return self.col.find_one({"_id": str(chat_id)})
+
+    def grant(self, chat_id: str, node_id: str, owner: Dict[str, Any],
+              seconds: Optional[int] = None) -> Optional[Dict[str, Any]]:
+        """The chat for this node: the lease it already holds, renewed,
+        or a new one numbered past every lease before — or None while
+        another node's lease is live."""
+        from datetime import timedelta
+
+        from pymongo import ReturnDocument
+        from pymongo.errors import DuplicateKeyError
+
+        now = utc_now()
+        until = now + timedelta(seconds=seconds or self.SECONDS)
+        chat_id, node_id = str(chat_id), str(node_id)
+        held = self.col.find_one_and_update(
+            {"_id": chat_id, "node_id": node_id, "released": False,
+             "expires_at": {"$gt": now}},
+            {"$set": {"expires_at": until}},
+            return_document=ReturnDocument.AFTER)
+        if held is not None:
+            return held
+        fresh = {"node_id": node_id, "expires_at": until, "granted_at": now,
+                 "released": False,
+                 "org_id": str(owner.get("org_id") or ""),
+                 "user_id": str(owner.get("user_id") or "")}
+        taken = self.col.find_one_and_update(
+            {"_id": chat_id, "$or": [{"released": True},
+                                     {"expires_at": {"$lte": now}}]},
+            {"$set": fresh, "$inc": {"number": 1}},
+            return_document=ReturnDocument.AFTER)
+        if taken is not None:
+            return taken
+        if self.col.find_one({"_id": chat_id}, {"_id": 1}) is not None:
+            return None  # another node holds it, and lives
+        try:
+            doc = {"_id": chat_id, "number": 1, **fresh}
+            self.col.insert_one(doc)
+            return doc
+        except DuplicateKeyError:
+            return None
+
+    def renew(self, node_id: str, chats) -> int:
+        """A node's heartbeat: every lease it says it holds and does
+        hold, live again for a minute."""
+        from datetime import timedelta
+
+        now = utc_now()
+        ids = [str(chat_id) for chat_id in chats or []]
+        if not ids:
+            return 0
+        return self.col.update_many(
+            {"_id": {"$in": ids}, "node_id": str(node_id), "released": False,
+             "expires_at": {"$gt": now}},
+            {"$set": {"expires_at": now + timedelta(seconds=self.SECONDS)}},
+        ).modified_count
+
+    def holds(self, chat_id: str, node_id: str, number: Any) -> bool:
+        """Whether this node holds this chat under this number now."""
+        try:
+            number = int(number)
+        except (TypeError, ValueError):
+            return False
+        doc = self.current(chat_id)
+        return (self.live(doc) and doc.get("node_id") == str(node_id)
+                and int(doc.get("number") or 0) == number)
+
+    def release(self, chat_id: str, node_id: str = "",
+                number: Optional[int] = None) -> bool:
+        """The chat is no node's now. The node and the number stay on
+        the record: the next placement prefers the last holder, and
+        the next number is past this one."""
+        query: Dict[str, Any] = {"_id": str(chat_id), "released": False}
+        if node_id:
+            query["node_id"] = str(node_id)
+        if number is not None:
+            query["number"] = int(number)
+        return self.col.update_one(
+            query, {"$set": {"released": True, "expires_at": utc_now()}}
+        ).modified_count == 1
+
+    def lapsed(self) -> List[Dict[str, Any]]:
+        """Leases whose node stopped renewing them and never said it let
+        go: the chats to place again."""
+        return list(self.col.find({"released": False,
+                                   "expires_at": {"$lte": utc_now()}}))
+
+    def of_node(self, node_id: str) -> List[Dict[str, Any]]:
+        return [doc for doc in self.col.find({"node_id": str(node_id)})
+                if self.live(doc)]
+
+
 class RefusedNodeStore(MongoStore):
     """Nodes refused by name: the urgent case. The usual way out is the
     credential's own expiry, or revoking the authority that vouches."""

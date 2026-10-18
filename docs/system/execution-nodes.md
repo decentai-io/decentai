@@ -152,16 +152,18 @@ node, and nothing it said is acted on.
 | Data Core → node | |
 |---|---|
 | `welcome` | the handshake's answer |
-| `attach {chat_id, credential}` | serve this chat, with this delegation; the node's host greets with `hello` |
+| `attach {chat_id, lease, credential, watched, standing}` | hold this chat under this lease, with this delegation; the node's host greets with `hello` |
+| `watch {chat_id, watched}` | whether a person has the chat open |
 | `chat {chat_id, frame}` | one of the door's frames for that chat: `user_message`, `approval_decided`, `question_answered`, `stop`, `schedules_changed`, `screen_input`, `screen_open`, `webhook_event`, `credential` ([the chat session](chat-session.md#the-node-link)) |
-| `detach {chat_id}` | the chat is no longer needed here |
+| `detach {chat_id}` | the chat is no longer this node's: it is forgotten where it stands, its key and lease let go |
 | `monitor {request_id, what, asked}` | a question about agents: `events`, `usage`, `files` ([monitoring](monitoring.md#how-it-is-read)) |
 
 | Node → Data Core | |
 |---|---|
 | `hello {protocol_version, reports}` | first, once |
 | `event {chat_id, frame}` | what one chat emits for its audience |
-| `heartbeat {chats, reports}` | every 20 seconds: still here, its load |
+| `heartbeat {chats, reports}` | every 20 seconds: still here, the chats it holds by lease number — which renews those leases — and its load |
+| `released {chat_id, lease}` | a chat went idle with nobody watching: its lease is let go |
 | `credential {token}` | a fresh credential, before the last lapses |
 | `monitor_result {request_id, result \| error}` | the answer to one question |
 
@@ -182,17 +184,62 @@ gateway accepts it only on a request that node presents its own
 credential with (`X-DecentAI-Node`); from any other node, or with none,
 it opens nothing (`backend/server/routes/app.py`).
 
-**Which node.** Among those connected, admitted and unrevoked that may
-serve the chat's organization — a shared node, or one of the
-organization's own — the least loaded, by what nodes report and what
-they were given. A node one organization owns never serves another
-organization's chat.
-
 **A node that goes.** Its chats are attached nowhere, and the people
-watching them are told (`runtime_disconnected`). When a node connects,
-the chats waiting for one are attached to it, and each rebuilds from
-the Data Core's record, as a restart always has: a node restart loses no
-chat.
+watching them are told (`runtime_disconnected`). When it comes back
+before its leases lapse, its chats are attached to it again under the
+same numbers; when they lapse, the chats move ([leases](#leases)). Each
+rebuilds from the Data Core's record, as a restart always has: a node
+restart loses no chat.
+
+## Leases
+
+Every active chat is held by one node under a **lease**
+(`chat_leases`, `LeaseStore` in `backend/database/stores/nodes.py`): the
+node, a **number**, an expiry.
+
+- **Granted** when a chat needs a node — a person opens it, a frame for
+  it arrives, a schedule comes due. The number goes up every time the
+  chat is given to a node anew, and never down; the record outlives a
+  Data Core restart.
+- **Renewed** by the node's heartbeat, every 20 seconds, for 60 (decided
+  in [the plan](../ai-engine-plan.md)): three missed beats and it lapses.
+- **Released** by the node when the chat goes idle with nobody watching
+  (`released`). The Data Core tells a node whether a person watches
+  (`watch`); a chat holding schedule rows is kept however idle
+  (`standing`), since the node's clock fires only what it holds.
+- **Fencing.** Every call a node makes for a chat — state, events,
+  messages, approvals, results, schedules, everything a delegation opens
+  — carries its lease number (`X-DecentAI-Lease`), and the gateway
+  accepts only the live lease's, from its node (`backend/server/routes/app.py`).
+  An old number is refused (409, `stale_lease`), and the node that hears
+  that lets the chat go (`Backend.on_stale`). Two nodes can never both
+  act for one chat, whatever either of them believes.
+- **Failover.** A lease whose node stopped renewing it and never let it
+  go is looked for every five seconds (`RuntimeClientManager.fail_over`):
+  the chat is placed again, under the next number, and its new node
+  rebuilds it from the record. A call that was running on the old node
+  is reported as unknown, and never run again by itself, as after any
+  restart. A chat whose node stopped answering waits for its lease to
+  lapse, never less: a node that is only slow must not find another
+  acting for its chat. Its person is told it is moving.
+- **Stop and kill** go to the lease holder. Stopping everything of a
+  person's still deletes their delegations, so a node that ignores the
+  kill can read nothing.
+
+## Placement
+
+Which node a chat is given to (`backend/api/services/nodes/placement.py`):
+the one holding its live lease, if it is connected. Otherwise, among the
+nodes connected — each admitted, its authority unrevoked — that may
+serve the chat's organization (a shared node, or one of the
+organization's own; never another organization's):
+
+1. the organization's own nodes, where it has any connected;
+2. among those, the node that last held the chat;
+3. the least loaded, by what the node says and what it was given — the
+   larger of the two — then the longest connected.
+
+What a node says of its load places a chat and never admits a node.
 
 ## One computer's install
 

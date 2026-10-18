@@ -51,7 +51,8 @@ from database.stores.data import (
     SkillStore,
 )
 from database.stores.delegations import RuntimeSessionStore
-from database.stores.nodes import AuthorityStore, NodeStore, RefusedNodeStore
+from database.stores.nodes import (
+    AuthorityStore, LeaseStore, NodeStore, RefusedNodeStore)
 from database.stores.memory import MemoryStore
 from database.stores.api_keys import ApiKeyStore
 from database.stores.settings import LlmConnectionStore, OauthAppStore, OauthStateStore
@@ -75,6 +76,7 @@ from database.stores.iam import (
 __all__ = [
     "AccessCache",
     "AuthorityStore",
+    "LeaseStore",
     "NodeStore",
     "RefusedNodeStore",
     "AgentDataStore",

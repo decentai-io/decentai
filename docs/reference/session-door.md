@@ -138,8 +138,9 @@ turns that into an honest reply on the first event that needs a model
   next process hydrates exactly what a crash would have left. There
   is no drain choreography to get wrong.
 - **One host per assistant.** Within a process the sessions dict
-  enforces it. Across processes it would be a lease's job; the
-  platform runs one host.
+  enforces it. Across nodes a numbered lease does: the node holding
+  the chat's lease is the only one whose calls for it are accepted
+  ([execution nodes](../system/execution-nodes.md#leases)).
 
 ## The wire
 

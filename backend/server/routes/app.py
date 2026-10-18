@@ -6,7 +6,9 @@ A request an execution node makes carries its credential
 is signed with the Data Core's key over its exact bytes and the request
 it answers (api/services/nodes/signing.py), because a node believes
 nothing that key did not sign. A credential the Data Core does not
-admit is refused before anything else is read.
+admit is refused before anything else is read. A chat's delegation is
+accepted only from the node it was handed to, and only with the number
+of the lease that node holds the chat under now (``X-DecentAI-Lease``).
 """
 
 import json
@@ -16,7 +18,8 @@ from fastapi import APIRouter, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse, Response
 
-from contracts.node import HEADER_NODE, HEADER_REQUEST, HEADER_SIGNATURE
+from contracts.node import (
+    HEADER_LEASE, HEADER_NODE, HEADER_REQUEST, HEADER_SIGNATURE)
 from server.setup.app_state import get_access_controller, get_api_router
 from server.custom_logging import CustomLoggerFactory
 
@@ -74,6 +77,18 @@ async def application(request: Request):
             # with no node's credential at all — it opens nothing.
             return _answer({"error": "This delegation is bound to another "
                                      "execution node."}, 401, node, request_id)
+
+        if user.get("principal_type") == "runtime":
+            # Fencing: every call a node makes for a chat carries the
+            # number of the lease it holds the chat under, and only the
+            # live lease's number is accepted — so two nodes can never
+            # both act for one chat, whatever either believes.
+            from database.stores import LeaseStore
+
+            said = request.headers.get(HEADER_LEASE)
+            if not LeaseStore().holds(str(user.get("chat_id") or ""), node, said):
+                return _answer({"error": "stale_lease: this node no longer "
+                                         "holds the chat."}, 409, node, request_id)
 
         try:
             data = await request.json()

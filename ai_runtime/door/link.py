@@ -9,17 +9,22 @@ reconnecting with backoff, carries every chat this node serves:
     Data Core → node     (each a token the Data Core signed, for this
                           node and this connection, in sequence)
       welcome            the handshake's answer
-      attach             serve this chat, with this credential
+      attach             serve this chat, under this lease, with this
+                         credential
+      watch              whether a person is watching the chat
       chat               one of the door's frames for one chat
                          (user_message, approval_decided, stop, …)
-      detach             nobody needs this chat here any more
+      detach             the chat is no longer this node's: forget it
       monitor            a question about agents (door/monitor.py)
 
     node → Data Core
       hello              who is speaking, the protocol it speaks, and
                          what it says of itself (shown, never a gate)
       event              what one chat emits, for its audience
-      heartbeat          still here: the chats it serves, its load
+      heartbeat          still here: the chats it holds, by lease —
+                         which renews them — and its load
+      released           a chat went idle with nobody watching: its
+                         lease is let go
       credential         a fresh credential, before the last lapses
       monitor_result     the answer to one question
 
@@ -55,6 +60,13 @@ class ChatChannel:
         self.chat_id = chat_id
         self.inbox: asyncio.Queue = asyncio.Queue()
         self.pump: Optional[asyncio.Task] = None
+        #: the lease this node holds the chat under
+        self.lease: Optional[int] = None
+        #: whether a person is watching: an unwatched chat is let go
+        #: once it is idle
+        self.watched = True
+        #: a chat the Data Core keeps here whether or not it is idle
+        self.standing = False
 
     async def send_json(self, frame: Dict[str, Any]) -> None:
         await self.link.send({"type": "event", "chat_id": self.chat_id,
@@ -93,6 +105,11 @@ class NodeLink:
         self._stopping = False
         self._sent_credential = ""
         self.logger = logging.getLogger(self.__class__.__name__)
+        if host is not None:
+            host.forgotten = self._forgotten
+            services = getattr(host, "services", None)
+            if services is not None and hasattr(services, "on_stale"):
+                services.on_stale = self._stale
 
     @staticmethod
     def link_url(base: str) -> str:
@@ -252,7 +269,8 @@ class NodeLink:
             if await self.send({"type": "credential", "token": credential}):
                 self._sent_credential = credential
         await self.send({"type": "heartbeat",
-                         "chats": sorted(self.channels),
+                         "chats": {chat_id: channel.lease
+                                   for chat_id, channel in self.channels.items()},
                          "reports": self._reports(), "at": time.time()})
 
     # ------------------------------------------------------------------
@@ -262,6 +280,12 @@ class NodeLink:
             asyncio.get_running_loop().create_task(self._answer(frame))
             return
         chat_id = str(frame.get("chat_id") or "")
+        if kind == "watch" and chat_id in self.channels:
+            channel = self.channels[chat_id]
+            channel.watched = bool(frame.get("watched"))
+            if not channel.watched:
+                self.host.unwatched(chat_id)
+            return
         if kind not in ("attach", "chat", "detach") or not chat_id:
             self.logger.warning(f"A frame of no known kind: {kind!r}")
             return
@@ -289,16 +313,24 @@ class NodeLink:
             kind, frame = await channel.inbox.get()
             try:
                 if kind == "attach":
+                    channel.lease = frame.get("lease")
+                    channel.watched = bool(frame.get("watched", True))
+                    channel.standing = bool(frame.get("standing"))
+                    hold = getattr(self.host.services, "hold", None)
+                    if hold is not None:
+                        hold(chat_id, channel.lease)
                     await self.host.attach(
                         channel, chat_id, str(frame.get("credential") or ""))
+                    if not channel.watched:
+                        self.host.unwatched(chat_id)
                 elif kind == "chat":
                     inner = frame.get("frame")
                     if isinstance(inner, dict):
                         await self.host.handle(chat_id, inner)
                 elif kind == "detach":
-                    if self.channels.get(chat_id) is channel:
-                        del self.channels[chat_id]
-                    await self.host.detach(channel, chat_id)
+                    # Not this node's any more: forgotten where it
+                    # stands, its key and its lease let go.
+                    await self._drop(channel)
                     return
             except asyncio.CancelledError:
                 raise
@@ -312,6 +344,53 @@ class NodeLink:
                     "event": "error",
                     "detail": (f"Session not opened: {exc}" if kind == "attach"
                                else f"That could not be handled: {exc}")})
+
+    async def _drop(self, channel: ChatChannel) -> None:
+        chat_id = channel.chat_id
+        if self.channels.get(chat_id) is channel:
+            del self.channels[chat_id]
+        self.host.forget(chat_id)
+        await self.host.detach(channel, chat_id)
+        self._let_go(chat_id)
+
+    def _let_go(self, chat_id: str) -> None:
+        """The chat's key and lease, gone from this node's services."""
+        services = getattr(self.host, "services", None)
+        revoke = getattr(services, "revoke", None)
+        if revoke is not None:
+            revoke(chat_id)
+        hold = getattr(services, "hold", None)
+        if hold is not None:
+            hold(chat_id, None)
+
+    def _forgotten(self, chat_id: str) -> None:
+        """The host forgot an idle chat nobody watches: its lease is let
+        go, so the Data Core may place it anywhere when it is next
+        needed. A standing chat is kept."""
+        channel = self.channels.get(chat_id)
+        if channel is None or channel.watched or channel.standing:
+            return
+        del self.channels[chat_id]
+        if channel.pump is not None:
+            channel.pump.cancel()
+        self._let_go(chat_id)
+        asyncio.get_running_loop().create_task(self.send(
+            {"type": "released", "chat_id": chat_id, "lease": channel.lease}))
+        asyncio.get_running_loop().create_task(
+            self.host.detach(channel, chat_id))
+
+    def _stale(self, chat_id: str) -> None:
+        """The Data Core refused a call as this chat's lease being old:
+        another node holds it. Let it go at once."""
+        channel = self.channels.get(chat_id)
+        self.logger.warning(f"Chat {chat_id} is held by another node now; "
+                            f"let go here")
+        if channel is not None:
+            if channel.pump is not None and channel.pump is not asyncio.current_task():
+                channel.pump.cancel()
+            asyncio.get_running_loop().create_task(self._drop(channel))
+        else:
+            self.host.forget(chat_id)
 
     async def _answer(self, frame: Dict[str, Any]) -> None:
         request_id = str(frame.get("request_id") or "")

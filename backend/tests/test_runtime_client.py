@@ -77,10 +77,13 @@ def link(node):
 
 @pytest.fixture()
 def fake_node(app, seed, signing_key):
-    """One shared node, connected."""
+    """One shared node, connected: the tests' own node
+    (conftest.node_for_tests), which the records a test writes as a
+    node are written as."""
+    from conftest import node_for_tests
     from server.setup.app_state import get_node_links
 
-    node = link(FakeNode())
+    node = link(FakeNode(node_for_tests().key))
     yield node
     get_node_links().links.clear()
 
@@ -124,9 +127,14 @@ class TestAttaching:
             assert acting["token_type"] == "RUNTIME"
             assert acting["chat_id"] == chat_id
             assert acting["node_id"] == fake_node.key
+            # Under a lease, numbered: what every call the node makes
+            # for the chat must carry.
+            assert attached[0]["lease"] == 1 and attached[0]["watched"] is True
             frontend.close()
-        # The person leaves, and the chat leaves the node with them.
-        assert fake_node.frames("detach", chat_id)
+        # The person leaves: the node is told nobody watches, and lets
+        # the chat go once it is idle.
+        assert {"type": "watch", "chat_id": chat_id, "watched": False} \
+            in fake_node.frames("watch", chat_id)
 
     def test_input_becomes_the_doors_user_message_naming_its_chat(
             self, admin, fake_node):
@@ -277,13 +285,18 @@ class TestALinkThatEnds:
                 assert manager.chats_of(principal(seed)) == set()
                 second = link(FakeNode("auth_a/second", greet=False))
                 await manager.on_link(second)
+                # The first node's lease is live: the chat does not
+                # move yet — the node may only be slow.
+                assert not second.frames("attach", chat_id)
+                lapse(chat_id)
+                assert await manager.fail_over() == 1
                 return second
 
             second = asyncio.run(scenario())
         finally:
             ws.send_frontend = original
         assert told == ["runtime_disconnected"]
-        assert second.frames("attach", chat_id)
+        assert second.frames("attach", chat_id)[-1]["lease"] == 2
 
 
 class TestScheduledChats:
@@ -302,8 +315,11 @@ class TestScheduledChats:
                     f"/chats/{chat_id}", headers=cookie_header(admin)) as frontend:
                 assert frontend.receive_json()["data"]["event"] == "hello"
                 frontend.close()
-        assert not fake_node.frames("detach", scheduled)
-        assert fake_node.frames("detach", quiet)
+        # Both are told nobody watches; only the chat with a clock is
+        # kept by the node however idle it is.
+        assert fake_node.frames("attach", scheduled)[-1]["standing"] is True
+        assert fake_node.frames("attach", quiet)[-1]["standing"] is False
+        assert not fake_node.frames("detach")
 
     def test_a_node_connecting_is_given_the_chats_holding_schedules(
             self, anon, admin, seed, signing_key):
@@ -315,7 +331,9 @@ class TestScheduledChats:
             {"schedule_id": "sch_1", "chat_id": scheduled, "mode": "wake",
              "note": "rent", "every_seconds": 86400, "next_run_at": 1.0,
              "enabled": True}})
-        node = link(FakeNode())
+        from conftest import node_for_tests
+
+        node = link(FakeNode(node_for_tests().key))
         asyncio.run(get_runtime_clients().on_link(node))
         assert node.frames("attach", scheduled)
         assert not node.frames("attach", quiet)
@@ -346,3 +364,178 @@ class TestRenewal:
             assert await manager.renew_due() == 0
 
         asyncio.run(scenario())
+
+
+def lapse(chat_id):
+    """The chat's lease, as a node that stopped renewing it leaves it."""
+    from datetime import timedelta
+
+    from database.stores import LeaseStore
+    from util import utc_now
+
+    LeaseStore().col.update_one(
+        {"_id": chat_id},
+        {"$set": {"expires_at": utc_now() - timedelta(seconds=1)}})
+
+
+class TestLeases:
+    def test_two_nodes_can_never_both_write_for_one_chat(
+            self, app, anon, admin, seed, signing_key):
+        """The node that held the chat is fenced off by its number the
+        moment another is given the chat: its writes are refused, the
+        new holder's are taken."""
+        from conftest import delegated_headers, node_for_tests
+        from server.setup.app_state import get_runtime_clients
+
+        chat_id = create_chat(admin)
+        user = {"user_id": seed.admin["_id"], "org_id": seed.org["_id"],
+                "email": seed.admin["email"]}
+        old = node_for_tests("node-a")
+        new = node_for_tests("node-b")
+        stale = delegated_headers(user, chat_id, node=old)
+        assert stale["X-DecentAI-Lease"] == "1"
+
+        def write(headers):
+            return anon.post("/app", json={
+                "endpoint": "AI:Message:Create",
+                "data": {"chat_id": chat_id, "actor": "ai",
+                         "parts": [{"type": "markdown", "content": "hi"}]}},
+                headers=headers)
+
+        assert write(stale).status_code == 200
+        # node-a stops renewing; node-b is placed and holds number 2.
+        lapse(chat_id)
+        link(FakeNode(new.key, greet=False))
+        assert asyncio.run(get_runtime_clients().fail_over()) == 1
+        fresh = delegated_headers(user, chat_id, node=new)
+        assert fresh["X-DecentAI-Lease"] == "2"
+        assert write(fresh).status_code == 200
+        # node-a's own key died with node-b's minting; and even with a
+        # key bound to it — the second wall — its number is refused.
+        assert write(stale).status_code == 401
+        from api.services.chat_session.identity import Delegation
+
+        rekeyed = {**stale, "Authorization": "Bearer " + Delegation().for_chat(
+            {"session_id": "", **user}, chat_id, node=old.key)}
+        refused = write({**rekeyed, "X-DecentAI-Lease": "1"})
+        assert refused.status_code == 409 and "stale_lease" in refused.text
+        # Nor may node-a claim the new number: it is node-b's.
+        assert write({**rekeyed, "X-DecentAI-Lease": "2"}).status_code == 409
+
+    def test_a_call_with_no_lease_number_is_refused(
+            self, app, anon, seed, signing_key):
+        from conftest import delegated_headers
+
+        user = {"user_id": seed.admin["_id"], "org_id": seed.org["_id"],
+                "email": seed.admin["email"]}
+        headers = delegated_headers(user, "chat_x")
+        headers.pop("X-DecentAI-Lease")
+        refused = anon.post("/app", json={"endpoint": "AI:State:Get",
+                                          "data": {"chat_id": "chat_x"}},
+                            headers=headers)
+        assert refused.status_code == 409
+
+    def test_a_heartbeat_renews_and_a_release_lets_go(
+            self, app, admin, seed, signing_key):
+        from database.stores import LeaseStore
+        from server.setup.app_state import get_runtime_clients
+
+        manager = get_runtime_clients()
+        node = link(FakeNode("auth_a/n1", greet=False))
+        chat_id = create_chat(admin)
+
+        async def scenario():
+            assert await manager.ensure(chat_id, principal(seed))
+            before = LeaseStore().current(chat_id)["expires_at"]
+            await asyncio.sleep(0.05)
+            await manager.on_beat(node, {"chats": {chat_id: 1}})
+            after = LeaseStore().current(chat_id)["expires_at"]
+            assert after > before
+            # A node renews only what it holds.
+            await manager.on_beat(link(FakeNode("auth_a/n2")),
+                                  {"chats": {chat_id: 1}})
+            assert LeaseStore().current(chat_id)["node_id"] == node.key
+            await manager.release(chat_id, principal(seed))
+            await manager.on_released(node, {"chat_id": chat_id, "lease": 1})
+
+        asyncio.run(scenario())
+        doc = LeaseStore().current(chat_id)
+        assert doc["released"] is True and doc["node_id"] == node.key
+        assert chat_id not in manager.chats
+
+    def test_a_chat_whose_node_went_waits_for_its_lease_and_says_why(
+            self, app, admin, seed, signing_key):
+        from server.setup.app_state import get_runtime_clients
+
+        manager = get_runtime_clients()
+        gone = link(FakeNode("auth_a/gone", greet=False))
+        chat_id = create_chat(admin)
+
+        async def scenario():
+            assert await manager.ensure(chat_id, principal(seed))
+            gone.open = False
+            await manager.on_lost(gone)
+            link(FakeNode("auth_a/other", greet=False))
+            return await manager.ensure(chat_id, principal(seed))
+
+        assert asyncio.run(scenario()) is False
+        assert "stopped answering" in manager.why_waiting(chat_id)
+
+    def test_a_stop_goes_to_the_lease_holder(
+            self, app, admin, seed, signing_key):
+        """Even when the Data Core forgot which node it attached the
+        chat to — it restarted — the lease says, and the stop goes
+        there and nowhere else."""
+        from server.setup.app_state import get_runtime_clients
+
+        manager = get_runtime_clients()
+        holder = link(FakeNode("auth_a/holder", greet=False))
+        chat_id = create_chat(admin)
+        asyncio.run(manager.ensure(chat_id, principal(seed)))
+        manager.chats.clear()
+        idle = link(FakeNode("auth_a/idle", greet=False))
+        stopped = app_call(admin, "AI:Chat:Stop", {"chat_id": chat_id})
+        assert stopped.json()["data"]["delivered"] is True
+        assert holder.said(chat_id) == [{"event": "stop"}]
+        assert idle.received == []
+
+    def test_closing_a_chat_detaches_it_and_lets_the_lease_go(
+            self, app, admin, seed, signing_key):
+        from database.stores import LeaseStore
+        from server.setup.app_state import get_runtime_clients
+
+        manager = get_runtime_clients()
+        node = link(FakeNode("auth_a/n1", greet=False))
+        chat_id = create_chat(admin)
+        asyncio.run(manager.ensure(chat_id, principal(seed)))
+        asyncio.run(manager.close(chat_id, principal(seed)))
+        assert node.frames("detach", chat_id)
+        assert LeaseStore().current(chat_id)["released"] is True
+
+
+class TestPlacement:
+    def test_the_organizations_own_nodes_come_first(
+            self, app, admin, seed, signing_key):
+        from server.setup.app_state import get_runtime_clients
+
+        shared = link(FakeNode("auth_s/shared"))
+        own = link(FakeNode("auth_o/ours", scope=seed.org["_id"]))
+        own.chats.update({"a", "b", "c"})        # busier, and still first
+        chat_id = create_chat(admin)
+        assert asyncio.run(get_runtime_clients().ensure(chat_id, principal(seed)))
+        assert own.frames("attach", chat_id) and not shared.received
+
+    def test_then_the_node_that_last_held_the_chat(
+            self, app, admin, seed, signing_key):
+        from server.setup.app_state import get_runtime_clients
+
+        manager = get_runtime_clients()
+        last = link(FakeNode("auth_s/last", greet=False))
+        chat_id = create_chat(admin)
+        asyncio.run(manager.ensure(chat_id, principal(seed)))
+        asyncio.run(manager.on_released(last, {"chat_id": chat_id, "lease": 1}))
+        manager.chats.clear()
+        last.chats.update({"x", "y"})            # busier than the newcomer
+        link(FakeNode("auth_s/newcomer"))
+        assert asyncio.run(manager.ensure(chat_id, principal(seed)))
+        assert last.frames("attach", chat_id)[-1]["lease"] == 2

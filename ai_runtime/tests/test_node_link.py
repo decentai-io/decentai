@@ -261,12 +261,93 @@ class TestChatsOverTheLink:
             assert "chat_1" in host.sockets
             await data_core.say({"type": "detach", "chat_id": "chat_1"})
             await data_core.until(lambda: "chat_1" not in link.channels)
-            gone = "chat_1" not in host.sockets
+            # Not this node's any more: its session is forgotten too.
+            gone = "chat_1" not in host.sockets and "chat_1" not in host.sessions
             await link.stop()
             await data_core.stop()
             return gone
 
         assert run(scenario()) is True
+
+
+class TestLeasesOnTheNode:
+    """A node holds a chat under a numbered lease (docs/system/
+    execution-nodes.md#leases): it says which it holds as it beats,
+    and lets one go when the chat is idle with nobody watching."""
+
+    def linked(self, host):
+        async def begin():
+            data_core = await FakeDataCore().start()
+            link = node_link(data_core, host)
+            link.start()
+            await data_core.until(lambda: data_core.heard)
+            await data_core.welcome()
+            await asyncio.wait_for(link.connected.wait(), 5)
+            return data_core, link
+        return begin()
+
+    def test_a_heartbeat_names_each_chat_by_the_lease_it_is_held_under(self):
+        host, _ = build()
+
+        async def scenario():
+            data_core, link = await self.linked(host)
+            await data_core.say({"type": "attach", "chat_id": "chat_1",
+                                 "lease": 3, "credential": "k"})
+            await data_core.until(lambda: data_core.events("chat_1", "hello"))
+            await link.beat()
+            await data_core.until(lambda: any(
+                h.get("type") == "heartbeat" for h in data_core.heard))
+            await link.stop()
+            await data_core.stop()
+            return [h for h in data_core.heard if h.get("type") == "heartbeat"]
+
+        beats = run(scenario())
+        assert beats[-1]["chats"] == {"chat_1": 3}
+
+    def test_a_chat_nobody_watches_is_let_go_once_it_is_idle(self):
+        host, _ = build()
+        host.REAP_GRACE_SECONDS = 0.1
+
+        async def scenario():
+            data_core, link = await self.linked(host)
+            await data_core.say({"type": "attach", "chat_id": "chat_1",
+                                 "lease": 2, "credential": "k",
+                                 "watched": True})
+            await data_core.until(lambda: data_core.events("chat_1", "hello"))
+            await asyncio.sleep(0.3)
+            # Watched: kept, however idle.
+            assert "chat_1" in link.channels
+            await data_core.say({"type": "watch", "chat_id": "chat_1",
+                                 "watched": False})
+            await data_core.until(lambda: any(
+                h.get("type") == "released" for h in data_core.heard))
+            await link.stop()
+            await data_core.stop()
+            return [h for h in data_core.heard if h.get("type") == "released"], link
+
+        released, link = run(scenario())
+        assert released == [{"type": "released", "chat_id": "chat_1", "lease": 2}]
+        assert "chat_1" not in link.channels and "chat_1" not in host.sessions
+
+    def test_a_standing_chat_is_kept_however_idle(self):
+        host, _ = build()
+        host.REAP_GRACE_SECONDS = 0.1
+
+        async def scenario():
+            data_core, link = await self.linked(host)
+            await data_core.say({"type": "attach", "chat_id": "chat_1",
+                                 "lease": 1, "credential": "k",
+                                 "watched": False, "standing": True})
+            await data_core.until(lambda: data_core.events("chat_1", "hello"))
+            await asyncio.sleep(0.4)
+            kept = "chat_1" in link.channels
+            await link.stop()
+            await data_core.stop()
+            return kept, data_core
+
+        kept, data_core = run(scenario())
+        assert kept is True
+        assert not any(h.get("type") == "released" for h in data_core.heard)
 
 
 class TestMonitoringOverTheLink:

@@ -476,8 +476,10 @@ the same way, so a malformed event fails the runtime's own tests first.
 
 ## What it does not do
 
-- **More than one runtime host.** A chat's turn lives in one process;
-  nothing keeps a chat on one host of several.
+- **Run one chat on two nodes.** A chat's turn lives in one process,
+  and a numbered lease keeps it on one execution node of many: the
+  gateway refuses any other node's calls for it
+  ([execution nodes](execution-nodes.md#leases)).
 - **Stream the state.** Every beat replaces the state document whole.
 - **Assume the Data Core is the only caller.** The same two contracts
   would serve another consumer, a command line for instance.

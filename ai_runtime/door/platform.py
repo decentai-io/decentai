@@ -154,8 +154,15 @@ class Gateway:
 class Backend:
     def __init__(self, gateway, identity=None):
         self.gateway = gateway
-        #: chat_id -> the delegation to call as, granted by the dial
+        #: chat_id -> the delegation to call as, granted by attaching
         self.credentials: Dict[str, str] = {}
+        #: chat_id -> the number of the lease this node holds the chat
+        #: under: every call made for the chat carries it, and the Data
+        #: Core refuses an old one (docs/system/execution-nodes.md#leases)
+        self.leases: Dict[str, int] = {}
+        #: called with a chat's id when the Data Core says this node no
+        #: longer holds it (a stale lease): the node link lets it go
+        self.on_stale = None
         #: What this node is as itself: its credential
         #: (ai_runtime/door/node.py, NodeCredential). None only in a
         #: test that asks nothing of the package door.
@@ -213,6 +220,15 @@ class Backend:
     def revoke(self, chat_id: str) -> None:
         self.credentials.pop(self._split(chat_id)[0], None)
 
+    def hold(self, chat_id: str, lease: Optional[int]) -> None:
+        """The lease this node holds the chat under, from its attaching;
+        None lets it go."""
+        root = self._split(chat_id)[0]
+        if lease is None:
+            self.leases.pop(root, None)
+        else:
+            self.leases[root] = int(lease)
+
     @staticmethod
     def _split(chat_id: str) -> Tuple[str, str]:
         """``chat_1/sub_xxxx`` → (chat_1, sub_xxxx); a chat → (chat, "")."""
@@ -228,7 +244,18 @@ class Backend:
         payload = {"chat_id": root, **(data or {})}
         if thread:
             payload["thread"] = thread
-        return await self.gateway.call(endpoint, payload, token)
+        lease = self.leases.get(root)
+        try:
+            if lease is None:
+                return await self.gateway.call(endpoint, payload, token)
+            return await self.gateway.call(endpoint, payload, token, lease=lease)
+        except GatewayError as exc:
+            if exc.status == 409 and self.on_stale is not None \
+                    and self.leases.get(root) == lease:
+                # Another node holds the chat now: nothing more is
+                # written for it from here.
+                self.on_stale(root)
+            raise
 
     # -- the contract ----------------------------------------------------
     async def contract(self, chat_id: str) -> dict:

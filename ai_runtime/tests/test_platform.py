@@ -78,6 +78,42 @@ class TestCredentials:
             run(backend.resources("chat_9").use_secret("x"))   # no credential
 
 
+class TestTheLease:
+    """Every call a node makes for a chat carries the number of the
+    lease it holds the chat under (docs/system/execution-nodes.md#leases)."""
+
+    def test_every_call_carries_the_lease_once_one_is_held(self):
+        seen = []
+
+        class Gateway(StubGateway):
+            async def call(self, endpoint, data, token, lease=None):
+                seen.append(lease)
+                return {}
+
+        backend = Backend(Gateway())
+        backend.grant("chat_1", "tok-1")
+        backend.hold("chat_1", 4)
+        run(backend.load_state("chat_1"))
+        run(backend.load_state("chat_1/sub_00000001"))
+        backend.hold("chat_1", None)
+        backend.leases.clear()
+        assert seen == [4, 4]
+
+    def test_a_refusal_as_stale_lets_the_chat_go(self):
+        class Gateway(StubGateway):
+            async def call(self, endpoint, data, token, lease=None):
+                raise GatewayError("stale_lease", 409)
+
+        dropped = []
+        backend = Backend(Gateway())
+        backend.on_stale = dropped.append
+        backend.grant("chat_1", "tok-1")
+        backend.hold("chat_1", 1)
+        with pytest.raises(GatewayError):
+            run(backend.load_state("chat_1"))
+        assert dropped == ["chat_1"]
+
+
 class TestTheContract:
     def test_a_named_connection_is_resolved_into_the_block(self):
         backend, gateway = build({

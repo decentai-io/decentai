@@ -336,15 +336,19 @@ def node_for_tests(name: str = "test-node"):
 
 def delegated_headers(user: dict, chat_id: str, node=None) -> dict:
     """What a node presents to act for ``user`` in ``chat_id``: the
-    chat's delegation, bound to the node, and the node's own
-    credential beside it (docs/system/execution-nodes.md)."""
+    chat's delegation, bound to the node, the node's own credential
+    beside it, and the number of the lease it holds the chat under
+    (docs/system/execution-nodes.md)."""
     from api.services.chat_session.identity import Delegation
-    from contracts.node import HEADER_NODE
+    from contracts.node import HEADER_LEASE, HEADER_NODE
+    from database.stores import LeaseStore
 
     node = node or node_for_tests()
+    lease = LeaseStore().grant(chat_id, node.key, user)
     token = Delegation().for_chat({"session_id": "", **user}, chat_id,
                                   node=node.key)
-    return {"Authorization": f"Bearer {token}", HEADER_NODE: node.token}
+    return {"Authorization": f"Bearer {token}", HEADER_NODE: node.token,
+            HEADER_LEASE: str(lease["number"])}
 
 
 #: The Data Core's own key, as a deployment has one: it signs every
