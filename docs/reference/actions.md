@@ -9,7 +9,7 @@ the actions a chat's delegation may call, and nothing else.
 Generated from `backend/server/authentication/catalog.py` by
 `docs/reference/generate.py`; do not edit by hand.
 
-211 actions in 40 services; 69 baseline.
+218 actions in 42 services; 69 baseline.
 
 ## Own account
 
@@ -397,6 +397,23 @@ Generated from `backend/server/authentication/catalog.py` by
 | `agents:agent:secretrevoke` | Take a credential away from an installed agent |  |  |
 | `agents:agent:secretlendable` | See which other installed agents a connected account could be lent to |  |  |
 | `agents:agent:secretlendmany` | Let several installed agents use one of your credentials at once |  |  |
+
+## Execution node authorities
+
+| Action | Grants | Baseline | Runtime |
+|---|---|---|---|
+| `nodes:authority:list` | See the authorities that admit execution nodes for your organization, and the shared ones |  |  |
+| `nodes:authority:create` | Register an authority whose credentials admit execution nodes for your organization only |  |  |
+| `nodes:authority:revoke` | Revoke one of your organization's authorities, refusing every node it vouches for at its next request |  |  |
+| `nodes:authority:shared` | As the deployment's operator: register and revoke shared authorities, whose nodes may serve every organization that does not keep to its own |  |  |
+
+## Execution nodes
+
+| Action | Grants | Baseline | Runtime |
+|---|---|---|---|
+| `nodes:node:list` | See the execution nodes that were admitted for your organization, who admitted them and what each reports |  |  |
+| `nodes:node:refuse` | Refuse one execution node by name at once, whatever its credential says |  |  |
+| `nodes:node:allow` | Let a node refused by name be admitted again |  |  |
 
 ## Monitoring agents
 

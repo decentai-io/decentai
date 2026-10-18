@@ -148,11 +148,15 @@ class Seed:
 @pytest.fixture()
 def seed(app):
     """Wipe the IAM collections and lay down the baseline."""
+    from api.services.nodes.admission import Admission
     from server.setup.app_state import get_db
 
     db = get_db()
     for name in COLLECTIONS:
         db.collection(name).delete_many({})
+    # Admissions remembered from a test before are of authorities just
+    # wiped.
+    Admission.changed()
     return Seed()
 
 
@@ -270,37 +274,58 @@ def service_keys():
     )
 
 
-def runtime_service_token(private_pem: str) -> str:
-    """What a runtime signs to speak as itself (the mirror of
-    ServiceToken, minted on the runtime's side in production)."""
-    import uuid
-    from datetime import datetime, timedelta, timezone
+def runtime_service_token(private_pem: str, node: str = "test-node",
+                          **said) -> str:
+    """A node credential an authority's private key signed: what an
+    execution node presents to speak as itself (contracts/node.py)."""
+    from contracts.node import mint
 
-    import jwt
+    return mint(private_pem, node, **said)
 
-    now = datetime.now(timezone.utc)
-    return jwt.encode({
-        "typ": "runtime_service", "iss": "decentai-ai-runtime",
-        "sub": "decentai-ai-runtime", "aud": "decentai-backend",
-        "jti": f"rst_{uuid.uuid4().hex}", "iat": now, "nbf": now,
-        "exp": now + timedelta(seconds=60),
-    }, private_pem, algorithm="RS256", headers={"kid": "ai-runtime-service-v1"})
+
+def register_authority(scope: str = "shared", public_pem: str = "",
+                       name: str = "Test authority"):
+    """An authority registered as the operator or an organization's
+    administrator would: its public key, its scope."""
+    from api.services.nodes.admission import Admission
+    from database.stores import AuthorityStore
+
+    doc = AuthorityStore().register(
+        name=name, scope=scope, by={"email": "test"}, public_key=public_pem)
+    Admission.changed()
+    return doc
 
 
 @pytest.fixture()
-def runtime_identity(app):
-    """A runtime's own key pair: the backend holds the public half, and
-    the test gets the private half to sign with."""
+def runtime_identity(app, seed):
+    """A shared node authority registered with the Data Core, its
+    private half handed to the test to sign node credentials with —
+    what an operator's issuer holds; never a node."""
+    private_pem, public_pem = service_keys()
+    register_authority("shared", public_pem)
+    yield private_pem
+
+
+#: The Data Core's own key, as a deployment has one: it signs every
+#: reply to an execution node (api/services/nodes/signing.py). Set
+#: before the app is made, which reads it from the environment.
+DATA_CORE_KEYS = service_keys()
+os.environ["DATA_CORE_PRIVATE_KEY"] = DATA_CORE_KEYS[0]
+
+
+@pytest.fixture()
+def signing_key_pair(app):
+    """The Data Core's key pair, as the app holds it: the public half
+    is what an execution node is configured with."""
     import dataclasses
 
     from server.setup.app_state import get_state
 
-    private_pem, public_pem = service_keys()
     state = get_state()
     original = state.settings
     state.settings = dataclasses.replace(
-        original, ai_runtime_service_public_key=public_pem)
-    yield private_pem
+        original, backend_service_private_key=DATA_CORE_KEYS[0])
+    yield DATA_CORE_KEYS
     state.settings = original
 
 

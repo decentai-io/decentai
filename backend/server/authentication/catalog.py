@@ -808,6 +808,47 @@ ACTION_CATALOG: Dict[str, Dict[str, Any]] = {
             ),
         },
     },
+    # Execution nodes (docs/system/execution-nodes.md). Trust is given
+    # to authorities, once, and never to one node at a time: any node
+    # holding a credential an authority signed is admitted. An
+    # organization's administrators vouch for their own organization's
+    # nodes; the deployment's operator, for the shared ones.
+    "nodes:authority": {
+        "label": "Execution node authorities",
+        "actions": {
+            "nodes:authority:list": (
+                "See the authorities that admit execution nodes for your "
+                "organization, and the shared ones"
+            ),
+            "nodes:authority:create": (
+                "Register an authority whose credentials admit execution "
+                "nodes for your organization only"
+            ),
+            "nodes:authority:revoke": (
+                "Revoke one of your organization's authorities, refusing "
+                "every node it vouches for at its next request"
+            ),
+            "nodes:authority:shared": (
+                "As the deployment's operator: register and revoke shared "
+                "authorities, whose nodes may serve every organization "
+                "that does not keep to its own"
+            ),
+        },
+    },
+    "nodes:node": {
+        "label": "Execution nodes",
+        "actions": {
+            "nodes:node:list": (
+                "See the execution nodes that were admitted for your "
+                "organization, who admitted them and what each reports"
+            ),
+            "nodes:node:refuse": (
+                "Refuse one execution node by name at once, whatever its "
+                "credential says"
+            ),
+            "nodes:node:allow": "Let a node refused by name be admitted again",
+        },
+    },
     "agents:monitor": {
         "label": "Monitoring agents",
         "actions": {
@@ -868,11 +909,12 @@ ACTION_CATALOG: Dict[str, Dict[str, Any]] = {
 # This is a FENCE, not a grant: passing it only means the endpoint is not
 # forbidden to a delegation, and the user's own policy is still consulted
 # afterwards. Patterns are matched with fnmatchcase.
-#: What a runtime may dispatch AS ITSELF — the runtime service
-#: principal (access.py), which no person's policy governs: the package
-#: door, and nothing else. A runtime stocks itself with every approved
-#: package and says when one is ready (docs/system/agent-code.md).
-RUNTIME_SERVICE_ENDPOINTS = (
+#: What an execution node may dispatch AS ITSELF — the node principal
+#: (access.py), admitted by a credential an authority signed, which no
+#: person's policy governs: the package door, and nothing else. A node
+#: stocks itself with every approved package and says when one is
+#: ready (docs/system/agent-code.md).
+NODE_ENDPOINTS = (
     "agents:package:list",
     "agents:package:fetch",
     "agents:package:prepared",

@@ -36,6 +36,7 @@ version_secret = _harness.version_secret
 service_keys = _harness.service_keys
 runtime_identity = _harness.runtime_identity
 runtime_service_token = _harness.runtime_service_token
+register_authority = _harness.register_authority
 signing_key = _harness.signing_key
 pytest_collection_modifyitems = _harness.pytest_collection_modifyitems
 app = _harness.app

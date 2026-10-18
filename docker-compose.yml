@@ -152,10 +152,16 @@ services:
     depends_on:
       agents:
         condition: service_healthy
+      node-issuer:
+        condition: service_healthy
     environment:
       AI_RUNTIME_AGENTS_SPAWNER: agents:8003
+      # Who the Data Core is: nothing it did not sign is believed.
       BACKEND_SERVICE_PUBLIC_KEY: ${BACKEND_SERVICE_PUBLIC_KEY:?set in deploy.env}
-      AI_RUNTIME_SERVICE_PRIVATE_KEY: ${AI_RUNTIME_SERVICE_PRIVATE_KEY:?set in deploy.env}
+      # Who this execution node is: a credential the install's authority
+      # signed, which node-issuer writes and keeps fresh. The node reads
+      # it and never holds the authority's key.
+      AI_RUNTIME_NODE_CREDENTIAL_FILE: /run/decentai/node/credential
       BACKEND_INTERNAL_URL: ${BACKEND_INTERNAL_URL:-http://backend:8000}
       AI_RUNTIME_AGENTS_INSTALL_DIR: ${AI_RUNTIME_AGENTS_INSTALL_DIR:-/data/agents}
       AI_RUNTIME_HOST:
@@ -187,6 +193,35 @@ services:
       DECENTAI_CODE_RUN_SECONDS:
     volumes:
       - agents_data:/data/agents
+      - node_credential:/run/decentai/node:ro
+
+  # The install's own issuer of node credentials — what a secret
+  # manager or a cluster's workload identity is for a larger deployment
+  # (docs/system/execution-nodes.md). It holds the authority's private
+  # key, which the seeder registered as a shared authority, signs a
+  # credential naming the bundled node that lives ten minutes, and
+  # writes it again every few. It reaches no network; the node mounts
+  # what it writes read-only.
+  node-issuer:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    command: ["python", "/opt/decentai/bootstrap/node_issuer.py"]
+    network_mode: none
+    environment:
+      NODE_AUTHORITY_PRIVATE_KEY: ${NODE_AUTHORITY_PRIVATE_KEY:?set in deploy.env}
+      NODE_NAME: ${NODE_NAME:-bundled}
+      NODE_CREDENTIAL_FILE: /run/decentai/node/credential
+      LOG_LEVEL:
+    volumes:
+      - node_credential:/run/decentai/node
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os, sys; sys.exit(0 if os.path.isfile('/run/decentai/node/credential') else 1)"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 5s
 
   # Agent code runs here, and nothing else does: the runtime's image,
   # started as the spawner, holding no setting of the platform's. What
@@ -270,5 +305,6 @@ volumes:
   agents_data:
   agent_packages:
   mongo_data:
+  node_credential:
   speech_models:
   uploads_data:

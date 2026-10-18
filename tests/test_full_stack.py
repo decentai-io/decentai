@@ -49,7 +49,7 @@ def serve(app, port):
 
 
 @pytest.fixture()
-def full_stack(app, tmp_path, monkeypatch):
+def full_stack(app, seed, tmp_path, monkeypatch):
     """The backend served over HTTP, a real runtime served beside it and
     pointed at the backend, and the backend pointed at the runtime.
 
@@ -60,15 +60,20 @@ def full_stack(app, tmp_path, monkeypatch):
     from ai_runtime.agents.library import AgentLibrary
     from ai_runtime.door.app import create_app as create_runtime_app
     from ai_runtime.door.settings import RuntimeSettings
-    from ai_runtime.door.platform import Backend, Gateway, RuntimeIdentity
+    from ai_runtime.door.node import DataCoreKey, NodeCredential
+    from ai_runtime.door.platform import Backend, Gateway
     from ai_runtime.tests.fake_container import confinement, container
     from ai_runtime.tests.fixture_agents import worker_environment
+    from conftest import register_authority, runtime_service_token
     from server.setup.app_state import get_state
 
     private_pem, public_pem = service_keys()
-    # And the runtime's own identity toward the backend, for the code it
-    # pulls as itself (the package door).
-    runtime_private, runtime_public = service_keys()
+    # The node's identity: a credential a registered authority signed,
+    # as the install's issuer signs the bundled node's. The node holds
+    # the credential and never the authority's key.
+    authority_private, authority_public = service_keys()
+    register_authority("shared", authority_public)
+    node = NodeCredential.fixed(runtime_service_token(authority_private, "stack"))
 
     backend_port = free_port()
     backend_url = f"http://127.0.0.1:{backend_port}"
@@ -81,7 +86,8 @@ def full_stack(app, tmp_path, monkeypatch):
     runtime_app = create_runtime_app(
         RuntimeSettings(backend_service_public_key=public_pem,
                         backend_url=backend_url),
-        services=Backend(Gateway(backend_url), RuntimeIdentity(runtime_private)),
+        services=Backend(Gateway(backend_url, node=node,
+                                 key=DataCoreKey(public_pem)), node),
         library=AgentLibrary(tmp_path / "runtime", confinement()),
         container=container(), confinement=confinement(),
     )
@@ -98,7 +104,6 @@ def full_stack(app, tmp_path, monkeypatch):
         original,
         ai_runtime_url=f"http://127.0.0.1:{runtime_port}",
         backend_service_private_key=private_pem,
-        ai_runtime_service_public_key=runtime_public,
     )
     try:
         yield SimpleNamespace(backend_url=backend_url, runtime_app=runtime_app)

@@ -31,8 +31,8 @@ Runtime.
 
 ## What runs
 
-Seven containers, as `docker-compose.yml` starts them. Six stay up; the
-seeder runs once at every start and exits.
+Eight containers, as `docker-compose.yml` starts them. Seven stay up;
+the seeder runs once at every start and exits.
 
 ```
  browser
@@ -71,6 +71,7 @@ seeder runs once at every start and exits.
 | `ai-runtime` | `ai_runtime/` | one assistant per chat, the executor and its gates, the clock, the agents' proxy | 8001 (the door), 8002 (the proxy) |
 | `agents` | the runtime's, started as `python -m ai_runtime.agents_container.service` | the spawner, and every agent's worker | 8003 |
 | `speech` | `speech/` | speech to text and text to speech, from models that run here ([below](#speech)) | 8004 |
+| `node-issuer` | the Data Core's, started as `bootstrap/node_issuer.py` | the install's issuer of node credentials: it holds the install's authority key and writes the bundled node a fresh credential every few minutes ([execution nodes](execution-nodes.md#one-computers-install)) | nothing; on no network |
 
 Three networks (`docker-compose.yml`):
 
@@ -148,7 +149,7 @@ the recordings it was trained on ([operating](../run/operating.md#speech-on-this
 | Data Core → runtime | `GET /internal/monitor/…` (`ai_runtime/door/monitor.py`) | the service token | "this is the Data Core" |
 | Data Core → speech | `POST /v1/audio/…`, `GET /status`, `POST /prepare` (`speech/service.py`) | nothing: the private network is the only way to it | a recording to write down, or words to say |
 | runtime → Data Core | `POST /app` (`Gateway`, `ai_runtime/door/platform.py`) | the delegation, as `Bearer` | the person's own permissions, fenced (below) |
-| runtime → Data Core | `POST /app`, the package door (`Agents:Package:*`) | the runtime's **own service token**, as `Bearer` | "this is a runtime": which packages are approved anywhere, their bytes by digest, and that one is ready — nothing of anybody's ([agent code](agent-code.md#the-package-door)) |
+| runtime → Data Core | `POST /app`, the package door (`Agents:Package:*`) | its execution node's **credential**, as `Bearer` | "this is that node": which packages are approved, their bytes by digest, and that one is ready — nothing of anybody's ([agent code](agent-code.md#the-package-door), [execution nodes](execution-nodes.md)) |
 | runtime → agents | TCP, port 8003 (`ai_runtime/agents/container.py`, `agents_container/wire.py`) | the spawner's key, from `<install_dir>/spawner.key` | "start this agent's worker from this environment", "build these requirements", "what does this agent keep", "end this agent's processes"; one connection per worker carries its lines |
 | worker → proxy | the proxy's port on the worker's own container, passed on to `ai-runtime:8002` | the worker's pass, a token in the proxy's address | which agent's worker this is, and so which hosts it may reach |
 
@@ -186,11 +187,15 @@ action is in `RUNTIME_ENDPOINTS`
 (`backend/server/authentication/catalog.py`), the fixed list of what a
 runtime has any business asking ([identity](identity.md)).
 
-A third token is the mirror of the first: the runtime's **own service
-token**, signed with `AI_RUNTIME_SERVICE_PRIVATE_KEY` and checked by
-the Data Core with the public half. It says *this is a runtime* and
-nothing about a person, and it opens the package door and nothing
-else (`RUNTIME_SERVICE_ENDPOINTS`; [agent code](agent-code.md#the-package-door)).
+A third token is the runtime's own: its execution node's
+**credential**, short-lived and signed by an authority the Data Core
+registered — never by the node, which holds no authority's key
+([execution nodes](execution-nodes.md)). It says *this is that node*
+and nothing about a person; it rides beside every request the node
+makes, and on its own it opens the package door and nothing else
+(`NODE_ENDPOINTS`; [agent code](agent-code.md#the-package-door)).
+Every reply to a node carries the Data Core's signature, and the node
+believes no other.
 
 ## One message, from the page to an agent and back
 
@@ -284,7 +289,7 @@ From most to least.
 | Part | Holds | Is trusted to | Is not trusted to |
 |---|---|---|---|
 | **Data Core** | the database's password, the encryption keys (`SECRET_ENCRYPTION_KEYS`), `TOKEN_SECRET_KEY`, the service token's private key | decide every permission; decrypt; be the only writer of the database | — |
-| **runtime** | the service token's *public* key, its own identity's *private* key, the spawner's key, and — while a chat is open — that chat's delegation | act for a person with a live chat, within `RUNTIME_ENDPOINTS`; as itself, ask the package door and nothing else; keep each agent to its own slots; hold a secret or a model key in memory for one call | reach the database; decrypt; forge the Data Core; do anything for a person with no live chat; reach identity and access at all |
+| **runtime** | the Data Core's *public* key, its node's short-lived credential (and no authority's key), the spawner's key, and — while a chat is open — that chat's delegation | act for a person with a live chat, within `RUNTIME_ENDPOINTS`; as itself, ask the package door and nothing else; keep each agent to its own slots; hold a secret or a model key in memory for one call | reach the database; decrypt; forge the Data Core; do anything for a person with no live chat; reach identity and access at all |
 | **spawner** (Execution Sandbox) | its own key; no setting of the platform's but where the proxy is | start what the runtime orders, and carry lines | decide anything: a worker's asks pass through it unread |
 | **worker** (an agent's code) | what one call was handed | nothing | everything: it is assumed hostile ([worker protocol](../reference/worker-protocol.md)) |
 | **browser** | a session cookie | nothing beyond the person it names | — |
@@ -318,7 +323,7 @@ without anything being unreadable
 
 ## Where everything is kept
 
-**The database**, 40 collections (`backend/database/schema.json`), by
+**The database**, 43 collections (`backend/database/schema.json`), by
 what they are for:
 
 | For | Collections | Page |
@@ -329,8 +334,9 @@ what they are for:
 | agents | `ai_agent_sources`, `agent_manifests` (approvals), `agent_grants`, `agent_secret_grants`, `agent_samples` | [agent code](agent-code.md) |
 | settings | `llm_connections`, `oauth_apps`, `oauth_states`, `push_subscriptions` | [data layer](data-layer.md) |
 | webhooks | `webhooks`, `webhook_deliveries` (what each received), `webhook_subscriptions`, `webhook_sends` (the outbound queue and its record) | [webhooks](webhooks.md) |
+| execution nodes | `node_authorities` (who may vouch for a node), `execution_nodes` (the nodes admitted: a view), `refused_nodes` | [execution nodes](execution-nodes.md) |
 
-**Five volumes.**
+**Six volumes.**
 
 | Volume | In | Holds |
 |---|---|---|
@@ -339,6 +345,7 @@ what they are for:
 | `agent_packages` | Data Core | each approved agent's code, as an archive by its digest: the copy the platform controls — in the same bucket instead, where one is named |
 | `agents_data` | ai-runtime and agents, at one path | the agents' code unpacked, their environments, each worker's home and spool, the spawner's key, and what is written down of what agents did ([monitoring](monitoring.md)) |
 | `speech_models` | speech | the speech models, as fetched: lost, they are fetched again |
+| `node_credential` | node-issuer, and ai-runtime read-only | the bundled node's current credential, minutes long: lost, the issuer writes another |
 
 **Memory, and what a restart loses.**
 

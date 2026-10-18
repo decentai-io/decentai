@@ -3,6 +3,7 @@ from api.routing.registry.agents_registry import build_agents_endpoints
 from api.routing.registry.ai_registry import build_ai_endpoints
 from api.routing.registry.data_layer_registry import build_data_layer_endpoints
 from api.routing.registry.iam_registry import build_iam_endpoints
+from api.routing.registry.nodes_registry import build_nodes_endpoints
 from api.routing.registry.settings_registry import build_settings_endpoints
 
 
@@ -12,6 +13,7 @@ def build_endpoints():
         "AI": build_ai_endpoints(),
         "Agents": build_agents_endpoints(),
         "IAM": build_iam_endpoints(),
+        "Nodes": build_nodes_endpoints(),
         "Settings": build_settings_endpoints(),
         **build_data_layer_endpoints(),
     }

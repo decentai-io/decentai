@@ -21,12 +21,15 @@ def _default_install_dir() -> str:
 
 @dataclass(frozen=True)
 class RuntimeSettings:
+    #: The Data Core's public key: nothing it did not sign is believed
+    #: (door/node.py, docs/system/execution-nodes.md).
     backend_service_public_key: str = ""
-    #: The runtime's own identity toward the backend (RS256 private
-    #: key, PEM): what it asks as itself — the approved packages, to
-    #: stock itself with (docs/system/agent-code.md). Required: a
-    #: runtime has no other way to code.
-    runtime_service_private_key: str = ""
+    #: Where this execution node's credential is: a file its operator's
+    #: secret manager mounts and keeps fresh, or an issuer it asks. One
+    #: of the two is required — a node with no credential is admitted
+    #: nowhere. The node never holds an authority's private key.
+    node_credential_file: str = ""
+    node_credential_url: str = ""
     backend_token_issuer: str = "decentai-backend"
     backend_service_audience: str = "decentai-ai-runtime"
     #: where the platform answers the services contract over /app
@@ -52,23 +55,28 @@ class RuntimeSettings:
 
     @classmethod
     def from_env(cls) -> "RuntimeSettings":
-        public_key = _env_pem("BACKEND_SERVICE_PUBLIC_KEY")
+        # The newer names first, the older ones beside them.
+        public_key = (_env_pem("DATA_CORE_PUBLIC_KEY")
+                      or _env_pem("BACKEND_SERVICE_PUBLIC_KEY"))
         if not public_key:
             raise ValueError(
-                "BACKEND_SERVICE_PUBLIC_KEY is required — the runtime cannot "
-                "verify that connections come from the backend without it."
-            )
-        identity_key = _env_pem("AI_RUNTIME_SERVICE_PRIVATE_KEY")
-        if not identity_key:
+                "DATA_CORE_PUBLIC_KEY is required — this execution node "
+                "believes nothing the Data Core did not sign, and cannot tell "
+                "without it.")
+        credential_file = os.getenv("AI_RUNTIME_NODE_CREDENTIAL_FILE", "").strip()
+        credential_url = os.getenv("AI_RUNTIME_NODE_CREDENTIAL_URL", "").strip()
+        if not (credential_file or credential_url):
             raise ValueError(
-                "AI_RUNTIME_SERVICE_PRIVATE_KEY is required — the runtime asks "
-                "the backend for approved agent code as itself, and has no "
-                "other way to it (bootstrap/generate_service_keys.py).")
-        backend_url = os.getenv("BACKEND_INTERNAL_URL", "").strip()
+                "AI_RUNTIME_NODE_CREDENTIAL_FILE (or AI_RUNTIME_NODE_"
+                "CREDENTIAL_URL) is required — an execution node is admitted "
+                "by a credential an authority signed, read from where its "
+                "operator puts it (docs/system/execution-nodes.md).")
+        backend_url = (os.getenv("DATA_CORE_URL", "").strip()
+                       or os.getenv("BACKEND_INTERNAL_URL", "").strip())
         if not backend_url:
             raise ValueError(
-                "BACKEND_INTERNAL_URL is required — the runtime keeps nothing "
-                "itself, and asks the backend for everything a chat is.")
+                "DATA_CORE_URL is required — the runtime keeps nothing "
+                "itself, and asks the Data Core for everything a chat is.")
         agents_container = os.getenv("AI_RUNTIME_AGENTS_SPAWNER", "").strip()
         if not agents_container:
             raise ValueError(
@@ -77,7 +85,8 @@ class RuntimeSettings:
                 "does, and this names it (host:port).")
         return cls(
             backend_service_public_key=public_key,
-            runtime_service_private_key=identity_key,
+            node_credential_file=credential_file,
+            node_credential_url=credential_url,
             backend_token_issuer=os.getenv("BACKEND_TOKEN_ISSUER", "decentai-backend"),
             backend_service_audience=os.getenv("AI_RUNTIME_TOKEN_AUDIENCE", "decentai-ai-runtime"),
             backend_url=backend_url,

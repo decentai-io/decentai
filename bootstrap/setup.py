@@ -211,9 +211,12 @@ class Setup:
     GENERATORS = "/opt/decentai/bootstrap"
     KEYS = {
         "generate_service_keys.py": ("BACKEND_SERVICE_PRIVATE_KEY",
-                                     "BACKEND_SERVICE_PUBLIC_KEY",
-                                     "AI_RUNTIME_SERVICE_PRIVATE_KEY",
-                                     "AI_RUNTIME_SERVICE_PUBLIC_KEY"),
+                                     "BACKEND_SERVICE_PUBLIC_KEY"),
+        # The install's own node authority: registered as a shared
+        # authority by the seeder, and the bundled node's credentials
+        # signed with it by node-issuer — nothing asked of the person.
+        "generate_node_authority.py": ("NODE_AUTHORITY_PRIVATE_KEY",
+                                       "NODE_AUTHORITY_PUBLIC_KEY"),
         "generate_secret_keys.py": ("SECRET_ENCRYPTION_KEYS",
                                     "SECRET_ENCRYPTION_ACTIVE"),
     }

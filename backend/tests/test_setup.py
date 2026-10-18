@@ -36,10 +36,11 @@ class FakeDocker:
         if "build -q" in words:
             return 0, "sha256:the-backend-image\n"
         if "generate_service_keys.py" in words:
-            return 0, (f"# backend/config.env\nBACKEND_SERVICE_PRIVATE_KEY={PRIVATE}\n"
-                       f"AI_RUNTIME_SERVICE_PUBLIC_KEY={PUBLIC}-of-the-runtime\n\n"
-                       f"# ai_runtime/config.env\nBACKEND_SERVICE_PUBLIC_KEY={PUBLIC}\n"
-                       f"AI_RUNTIME_SERVICE_PRIVATE_KEY={PRIVATE}-of-the-runtime\n")
+            return 0, (f"# the Data Core\nBACKEND_SERVICE_PRIVATE_KEY={PRIVATE}\n\n"
+                       f"# every execution node\nBACKEND_SERVICE_PUBLIC_KEY={PUBLIC}\n")
+        if "generate_node_authority.py" in words:
+            return 0, (f"NODE_AUTHORITY_PRIVATE_KEY={PRIVATE}-of-the-authority\n\n"
+                       f"NODE_AUTHORITY_PUBLIC_KEY={PUBLIC}-of-the-authority\n")
         if "generate_secret_keys.py" in words:
             return 0, "SECRET_ENCRYPTION_KEYS=01:the-key\nSECRET_ENCRYPTION_ACTIVE=01\n"
         return 0, ""
@@ -76,6 +77,8 @@ class TestTheFirstTime:
             "run --rm sha256:the-backend-image python "
             "/opt/decentai/bootstrap/generate_service_keys.py",
             "run --rm sha256:the-backend-image python "
+            "/opt/decentai/bootstrap/generate_node_authority.py",
+            "run --rm sha256:the-backend-image python "
             "/opt/decentai/bootstrap/generate_secret_keys.py",
             "compose --env-file deploy.env up -d --build",
         ]
@@ -86,8 +89,10 @@ class TestTheFirstTime:
         assert not [name for name, value in said.items() if "change-me" in value]
         assert said["BACKEND_SERVICE_PRIVATE_KEY"] == PRIVATE
         assert said["BACKEND_SERVICE_PUBLIC_KEY"] == PUBLIC
-        assert said["AI_RUNTIME_SERVICE_PRIVATE_KEY"] == PRIVATE + "-of-the-runtime"
-        assert said["AI_RUNTIME_SERVICE_PUBLIC_KEY"] == PUBLIC + "-of-the-runtime"
+        # The install's own node authority: registered by the seeder,
+        # signing the bundled node's credentials — nothing asked.
+        assert said["NODE_AUTHORITY_PRIVATE_KEY"] == PRIVATE + "-of-the-authority"
+        assert said["NODE_AUTHORITY_PUBLIC_KEY"] == PUBLIC + "-of-the-authority"
         assert said["SECRET_ENCRYPTION_KEYS"] == "01:the-key"
         assert len(said["TOKEN_SECRET_KEY"]) >= 48
 
@@ -221,30 +226,30 @@ class TestRunAgain:
             encoding="utf-8")
 
     def test_a_key_the_platform_gained_is_made_and_added(self, setup, docker):
-        """A deploy.env from before the runtime had a key of its own:
-        the run makes that pair and adds it, and the keys the file
-        held are the keys it holds."""
+        """A deploy.env from before execution nodes were admitted by
+        authorities: the run makes the install's authority and adds
+        it, and the keys the file held are the keys it holds."""
         setup.run()
         before = setup.settings.values()
-        self.without(setup, "AI_RUNTIME_SERVICE_")
+        self.without(setup, "NODE_AUTHORITY_")
         docker.asked.clear()
         setup.run()
         said = setup.settings.values()
-        assert said["AI_RUNTIME_SERVICE_PRIVATE_KEY"] == PRIVATE + "-of-the-runtime"
-        assert said["AI_RUNTIME_SERVICE_PUBLIC_KEY"] == PUBLIC + "-of-the-runtime"
+        assert said["NODE_AUTHORITY_PRIVATE_KEY"] == PRIVATE + "-of-the-authority"
+        assert said["NODE_AUTHORITY_PUBLIC_KEY"] == PUBLIC + "-of-the-authority"
         kept = {name: value for name, value in before.items()
-                if not name.startswith("AI_RUNTIME_SERVICE_")}
+                if not name.startswith("NODE_AUTHORITY_")}
         assert {name: value for name, value in said.items()
-                if not name.startswith("AI_RUNTIME_SERVICE_")} == kept
+                if not name.startswith("NODE_AUTHORITY_")} == kept
         assert docker.asked == [
             "compose version",
             "info --format {{.ServerVersion}}",
             "build -q -f backend/Dockerfile .",
             "run --rm sha256:the-backend-image python "
-            "/opt/decentai/bootstrap/generate_service_keys.py",
+            "/opt/decentai/bootstrap/generate_node_authority.py",
             "compose --env-file deploy.env up -d --build",
         ]
-        assert any("gained AI_RUNTIME_SERVICE_PRIVATE_KEY" in line
+        assert any("gained NODE_AUTHORITY_PRIVATE_KEY" in line
                    for line in setup.said)
 
     def test_a_setting_the_platform_gained_is_added_as_the_template_says(

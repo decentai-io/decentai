@@ -33,7 +33,8 @@ from ai_runtime.agents.container import AgentsContainer
 from ai_runtime.agents.library import AgentLibrary
 from ai_runtime.agents_container.events import Events
 from ai_runtime.door.app import create_app
-from ai_runtime.door.platform import Backend, Gateway, RuntimeIdentity
+from ai_runtime.door.node import DataCoreKey, NodeCredential
+from ai_runtime.door.platform import Backend, Gateway
 from ai_runtime.door.settings import RuntimeSettings
 
 
@@ -56,12 +57,20 @@ confinement = Confinement(container, package_hosts=settings.package_hosts)
 # environments beside it, and the import path they need.
 library = AgentLibrary(settings.agents_install_dir, confinement)
 
-# The platform the sessions live against: the backend, over its /app
-# gateway (docs/system/chat-session.md) — and what this runtime asks
-# as itself: the approved packages, to stock itself with
+# Who this execution node is: a credential an authority signed, read
+# from where its operator puts it, and read again before it lapses —
+# and who the Data Core is: its public key, which every reply must be
+# signed with (door/node.py, docs/system/execution-nodes.md).
+node = NodeCredential(file=settings.node_credential_file,
+                      issuer_url=settings.node_credential_url)
+data_core = DataCoreKey(settings.backend_service_public_key)
+
+# The platform the sessions live against: the Data Core, over its /app
+# gateway (docs/system/chat-session.md) — and what this node asks as
+# itself: the approved packages, to stock itself with
 # (docs/system/agent-code.md).
-services = Backend(Gateway(settings.backend_url),
-                   RuntimeIdentity(settings.runtime_service_private_key))
+services = Backend(Gateway(settings.backend_url, node=node, key=data_core),
+                   node)
 
 app = create_app(settings, services=services, library=library,
                  container=container, confinement=confinement)

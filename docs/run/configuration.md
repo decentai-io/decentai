@@ -6,11 +6,12 @@ started by hand seeds them from `backend/config.env`, and a runtime
 started from its image by hand from `ai_runtime/config.env`. The code reads the environment and nothing
 else, so moving between platforms changes values, never code.
 
-Three values are generated, never chosen:
+Four values are generated, never chosen:
 
 | Generator | Produces |
 |---|---|
-| `python bootstrap/generate_service_keys.py` | two RS256 pairs, each half on one line with `\n` escapes: `BACKEND_SERVICE_PRIVATE_KEY` for the Data Core and `BACKEND_SERVICE_PUBLIC_KEY` for the runtime (the Data Core's identity), `AI_RUNTIME_SERVICE_PRIVATE_KEY` for the runtime and `AI_RUNTIME_SERVICE_PUBLIC_KEY` for the Data Core (the runtime's) |
+| `python bootstrap/generate_service_keys.py` | the Data Core's RS256 pair, each half on one line with `\n` escapes: `BACKEND_SERVICE_PRIVATE_KEY` for the Data Core, which signs everything it tells an execution node with it, and `BACKEND_SERVICE_PUBLIC_KEY` for every node |
+| `python bootstrap/generate_node_authority.py` | a node authority's pair: `NODE_AUTHORITY_PUBLIC_KEY`, registered with the Data Core, and `NODE_AUTHORITY_PRIVATE_KEY`, for whatever signs node credentials — never a node ([execution nodes](../system/execution-nodes.md)) |
 | `python bootstrap/generate_secret_keys.py` | `SECRET_ENCRYPTION_KEYS` and `SECRET_ENCRYPTION_ACTIVE` — versioned AES-256-GCM keys; `--rotate` appends a version |
 | `python -c "import secrets; print(secrets.token_urlsafe(48))"` | `TOKEN_SECRET_KEY` |
 
@@ -70,8 +71,9 @@ Three values are generated, never chosen:
 |---|---|---|
 | `AI_RUNTIME_URL` | `http://127.0.0.1:8001` | Where the Data Core dials a chat's session. |
 | `SPEECH_URL` | `http://speech:8004` | Where the Data Core asks the platform's own speech models ([the speech container](#the-speech-container)). Nothing answering there is not an error: an organization that keeps speech local is told it is not running, and one that chose a provider never asks. |
-| `BACKEND_SERVICE_PRIVATE_KEY` | required for chats | Signs the Data Core's identity toward the runtime; the runtime holds the public half. |
-| `AI_RUNTIME_SERVICE_PUBLIC_KEY` | required for agents | Verifies a runtime speaking as itself at the package door ([agent code](../system/agent-code.md#the-package-door)); the runtime holds the private half. Without it no runtime can fetch agent code. |
+| `BACKEND_SERVICE_PRIVATE_KEY` | required for chats | The Data Core's own key: it signs every reply and frame it sends an execution node, and nodes hold the public half ([execution nodes](../system/execution-nodes.md#the-data-cores-signature)). `DATA_CORE_PRIVATE_KEY` is read in its place where it is set. |
+| `NODE_AUTHORITY_PUBLIC_KEY` | unset | An authority's public key, registered as a shared authority when the seeder runs, once. One computer's install sets it; a server registers its authorities on the Nodes doors instead ([execution nodes](../system/execution-nodes.md)). |
+| `OPERATOR_ORG_ID` | the first organization | Whose administrators are the deployment's operator: they, holding `nodes:authority:shared`, register and revoke shared authorities. |
 | `REFERENCE_CATALOG_URL` | unset | A repository the marketplace offers as a source with one click. Unset, it offers none. |
 | `AGENT_SOURCE_FOLDER` | unset | A folder on the Data Core's own disk whose git repositories may be agent sources, added by their path (`/develop/my-agents`). For somebody writing agents on their own computer ([a DecentAI of your own](../agents/developing.md#a-decentai-of-your-own)). Unset — every server — a source is fetched from a repository's address only. |
 
@@ -132,9 +134,10 @@ gone. Back them up with it.
 |---|---|---|
 | `AI_RUNTIME_HOST` | `0.0.0.0` | Bind address; `127.0.0.1` locally. |
 | `AI_RUNTIME_PORT` | `8001` | Bind port. Left blank it is the default; a value that is not a port is refused at start, by name. |
-| `BACKEND_INTERNAL_URL` | required | Where the runtime reaches the Data Core's gateway for its services; a runtime not told does not start. In Compose it is the service name; where the containers share one network, `http://127.0.0.1:8000`. |
-| `BACKEND_SERVICE_PUBLIC_KEY` | required | Verifies that a dial really came from the Data Core. |
-| `AI_RUNTIME_SERVICE_PRIVATE_KEY` | required | Signs the runtime's own identity toward the Data Core, for what it asks as itself: the approved packages, to stock itself with ([agent code](../system/agent-code.md#the-package-door)). The Data Core holds the public half; a runtime without it does not start. |
+| `BACKEND_INTERNAL_URL` | required | Where the runtime reaches the Data Core's gateway for its services; a runtime not told does not start. In Compose it is the service name; where the containers share one network, `http://127.0.0.1:8000`. `DATA_CORE_URL` is read in its place where it is set. |
+| `BACKEND_SERVICE_PUBLIC_KEY` | required | The Data Core's public key: the node believes no reply or frame it did not sign. `DATA_CORE_PUBLIC_KEY` is read in its place where it is set. |
+| `AI_RUNTIME_NODE_CREDENTIAL_FILE` | required, or the next | Where this execution node's credential is: a file its operator's secret manager mounts and keeps fresh, signed by an authority the Data Core registered. Read again as it nears its expiry and whenever it changes. Compose points it at what `node-issuer` writes. |
+| `AI_RUNTIME_NODE_CREDENTIAL_URL` | unset | An issuer on the node's own network that answers a `GET` with a credential (the token, or `{"credential": …}`), in place of a file. |
 | `AI_RUNTIME_AGENTS_INSTALL_DIR` | `ai_runtime/installed_agents` | Where installed agent code and its environments live. A volume in a deployment; a short path outside the tree locally. |
 | `BACKEND_TOKEN_ISSUER` | `decentai-backend` | The issuer claim the runtime expects. |
 | `AI_RUNTIME_TOKEN_AUDIENCE` | `decentai-ai-runtime` | The audience claim the runtime expects. |
@@ -142,6 +145,16 @@ gone. Back them up with it.
 | `AI_RUNTIME_EGRESS_PORT` | `8002` | Where the proxy that agents connect through listens, on the runtime's container, reached over the network it shares with the Execution Sandbox and nothing else. The firewall rule of the Execution Sandbox is written for the same port when it starts. A value that is blank or not a port is read as `8002` by both containers, so the rule, the proxy and the workers agree. |
 | `AI_RUNTIME_PACKAGE_HOSTS` | `pypi.org, files.pythonhosted.org` | Where packages come from: the hosts the builder of an agent's declared packages may reach, and the whole of them. Separated by commas. |
 | `AI_RUNTIME_AGENTS_SPAWNER` | required | Where the Execution Sandbox answers, as `host:port`. `docker-compose.yml` writes `agents:8003` itself and does not read it from `deploy.env`. Every process of an agent's is started there; a runtime not told where it is does not start. |
+
+The install's own issuer of node credentials, `node-issuer`
+(`bootstrap/node_issuer.py`, the Data Core's image, on no network),
+reads:
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `NODE_AUTHORITY_PRIVATE_KEY` | required | The install's authority's private key, which signs the bundled node's credentials. The node never holds it. |
+| `NODE_NAME` | `bundled` | The name the bundled node's credential gives it. |
+| `NODE_CREDENTIAL_FILE` | `/run/decentai/node/credential` | Where the credential is written, every few minutes, for the node to read. |
 
 The Execution Sandbox is the runtime's image started as the spawner
 (`python -m ai_runtime.agents_container.service`), and reads:

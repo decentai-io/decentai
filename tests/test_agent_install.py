@@ -1017,7 +1017,7 @@ class TestThePackageDoor:
         self._install(admin, control, manifest_doc)
         refused = app_call(admin, "Agents:Package:List", {})
         assert refused.status_code == 403
-        assert "Only the AI runtime" in refused.text
+        assert "Only an execution node" in refused.text
 
     def test_a_chats_delegation_may_not_either(
         self, anon, admin, seed, control, manifest_doc

@@ -24,14 +24,17 @@ and updating. Where to look is at the end.
   deploy.env logs ai-runtime`. The runtime refuses connections whose
   signature does not verify: `BACKEND_SERVICE_PUBLIC_KEY` must be the
   pair of the Data Core's private key. A runtime that restarts says in
-  its first lines which setting it is missing: `AI_RUNTIME_SERVICE_PRIVATE_KEY`
-  (its own identity), `BACKEND_INTERNAL_URL` or `AI_RUNTIME_AGENTS_SPAWNER`.
+  its first lines which setting it is missing:
+  `AI_RUNTIME_NODE_CREDENTIAL_FILE` (where its credential is),
+  `BACKEND_INTERNAL_URL` or `AI_RUNTIME_AGENTS_SPAWNER`.
 - **Agents stay Preparing.** The runtime stocks itself every ten
-  seconds and reports each package ready; one that cannot speak as
-  itself cannot. `docker compose --env-file deploy.env logs ai-runtime`
-  says *The stock was not taken* with the Data Core's refusal:
-  `AI_RUNTIME_SERVICE_PUBLIC_KEY` on the Data Core must be the pair of
-  the runtime's private key.
+  seconds and reports each package ready; one that is not admitted as
+  an execution node cannot. `docker compose --env-file deploy.env logs
+  ai-runtime` says *The stock was not taken* with the Data Core's
+  refusal, and `logs backend` says why the node was refused: no
+  credential (`logs node-issuer`), an expired one, or one signed by an
+  authority that is not registered or was revoked
+  ([execution nodes](../system/execution-nodes.md#revoking)).
 - **The address opens the sign-in page with a refusal.** The first
   person's password was changed since `deploy.env` was written: sign in
   with the one it was changed to.

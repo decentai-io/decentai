@@ -10,7 +10,8 @@ exercises for real.
 import pytest
 
 from ai_runtime.chat.clock import Scheduler
-from ai_runtime.door.platform import Backend, GatewayError, RuntimeIdentity
+from ai_runtime.door.node import NodeCredential
+from ai_runtime.door.platform import Backend, GatewayError
 from ai_runtime.tests import fake_container
 from ai_runtime.tests.fires import Fires
 
@@ -251,24 +252,16 @@ class TestThePackageDoor:
                 serialization.PublicFormat.SubjectPublicKeyInfo).decode(),
         )
 
-    def test_the_identity_is_a_short_signed_statement_that_this_is_a_runtime(self):
-        import jwt
+    @classmethod
+    def node(cls):
+        """A node holding a credential an authority signed: the node
+        holds the credential, never the authority's key."""
+        from contracts.node import mint
 
-        private_pem, public_pem = self.keys()
-        token = RuntimeIdentity(private_pem).token()
-        claims = jwt.decode(token, public_pem, algorithms=["RS256"],
-                            audience="decentai-backend", issuer="decentai-ai-runtime")
-        assert claims["typ"] == "runtime_service"
-        assert claims["exp"] - claims["iat"] == RuntimeIdentity.TTL_SECONDS
-        assert jwt.get_unverified_header(token)["kid"] == "ai-runtime-service-v1"
-        # Signed with this key and no other: the backend's own key
-        # cannot read it.
-        with pytest.raises(jwt.PyJWTError):
-            jwt.decode(token, self.keys()[1], algorithms=["RS256"],
-                       audience="decentai-backend")
+        private_pem, _ = cls.keys()
+        return NodeCredential.fixed(mint(private_pem, "node-a"))
 
-    def test_the_door_is_asked_as_the_runtime_and_as_no_chat(self):
-        private_pem, _ = self.keys()
+    def test_the_door_is_asked_as_the_node_and_as_no_chat(self):
         gateway = StubGateway({
             "Agents:Package:List": {"packages": [
                 {"package_digest": "sha256:" + "a" * 64, "manifest_hash": "b" * 64,
@@ -276,7 +269,8 @@ class TestThePackageDoor:
             "Agents:Package:Fetch": {"package": "aGk="},
             "Agents:Package:Prepared": {"recorded": True, "approvals": 2},
         })
-        backend = Backend(gateway, RuntimeIdentity(private_pem))
+        node = self.node()
+        backend = Backend(gateway, node)
 
         async def scenario():
             return (await backend.approved_packages(),
@@ -291,7 +285,9 @@ class TestThePackageDoor:
         assert archive == b"hi" and recorded is True
         for endpoint, data, token in gateway.calls:
             assert endpoint.startswith("Agents:Package:")
-            assert "chat_id" not in data and token.count(".") == 2
+            assert "chat_id" not in data
+            # As itself: its own credential, and no chat's delegation.
+            assert token == run(node.token())
         assert gateway.last("Agents:Package:Prepared")[1]["confined"]["network"] is True
 
     def test_a_runtime_without_a_key_has_no_identity_and_asks_nothing(self):
@@ -301,8 +297,7 @@ class TestThePackageDoor:
         assert refused.value.status == 401 and gateway.calls == []
 
     def test_a_door_that_answers_no_package_is_a_refusal(self):
-        private_pem, _ = self.keys()
         backend = Backend(StubGateway({"Agents:Package:Fetch": {}}),
-                          RuntimeIdentity(private_pem))
+                          self.node())
         with pytest.raises(GatewayError, match="no package"):
             run(backend.fetch_by_digest("sha256:" + "a" * 64))

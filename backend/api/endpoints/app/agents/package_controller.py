@@ -26,15 +26,28 @@ class PackageController(AIController):
         self.logger = CustomLoggerFactory.get_logger(self.__class__.__name__)
 
     def _a_runtime(self, data, user):
-        """The refusal for anybody who is not a runtime speaking as
-        itself, or None. A person's session and a chat's delegation are
-        both refused: the answers here are nobody's in particular."""
-        if user.get("principal_type") != "runtime_service":
+        """The refusal for anybody who is not an execution node speaking
+        as itself, or None. A person's session and a chat's delegation
+        are both refused: the answers here are nobody's in particular."""
+        if user.get("principal_type") != "node":
             return self._fail(
                 data, "forbidden",
-                "Only the AI runtime, as itself, may use the package door.",
+                "Only an execution node, as itself, may use the package door.",
                 403)
         return None
+
+    @staticmethod
+    def _organization(user) -> str:
+        """The one organization whose code this node may hold, or "" for
+        a shared node: a node an organization owns is told of that
+        organization's approvals and no other's."""
+        from database.stores import AuthorityStore
+
+        scope = str(user.get("node_scope") or "")
+        return "" if scope == AuthorityStore.SHARED else scope
+
+    def _approved(self, user) -> list:
+        return self.store.approved_packages(self._organization(user))
 
     def list(self, data, user):
         """Every package some installed approval points at, anywhere:
@@ -44,7 +57,7 @@ class PackageController(AIController):
         refused = self._a_runtime(data, user)
         if refused:
             return refused
-        return self._respond(data, {"packages": self.store.approved_packages()})
+        return self._respond(data, {"packages": self._approved(user)})
 
     def fetch(self, data, user):
         """The bytes of one approved package, by its digest. The digest
@@ -61,7 +74,7 @@ class PackageController(AIController):
         # or an archive an install stored before it failed, is on disk
         # and is nobody's to run.
         if digest not in {str(p.get("package_digest") or "")
-                          for p in self.store.approved_packages()}:
+                          for p in self._approved(user)}:
             return self._fail(data, "not_found", "No approval pins that package.", 404)
         try:
             archive = self.acquisition.package_anywhere(digest)
@@ -100,7 +113,8 @@ class PackageController(AIController):
                 data, "invalid_request", "state must be ready or failed.")
         recorded = self.store.set_prepared_everywhere(
             digest, state, str(payload.get("error") or ""),
-            confined=self._confined(payload.get("confined")))
+            confined=self._confined(payload.get("confined")),
+            org_id=self._organization(user))
         return self._respond(data, {"recorded": recorded > 0, "approvals": recorded})
 
     @classmethod

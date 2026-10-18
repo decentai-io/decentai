@@ -14,6 +14,8 @@
     usage.py          every model call a chat made, and the tokens it used
     memory.py         what the assistant remembers about a person
     delegations.py    runtime sessions — revocable delegations
+    nodes.py          execution nodes: the authorities that admit them,
+                      the nodes admitted, the nodes refused by name
     api_keys.py       a person's keys, for scripts
     notifications.py  the browsers a person can be reached on
 
@@ -49,6 +51,7 @@ from database.stores.data import (
     SkillStore,
 )
 from database.stores.delegations import RuntimeSessionStore
+from database.stores.nodes import AuthorityStore, NodeStore, RefusedNodeStore
 from database.stores.memory import MemoryStore
 from database.stores.api_keys import ApiKeyStore
 from database.stores.settings import LlmConnectionStore, OauthAppStore, OauthStateStore
@@ -71,6 +74,9 @@ from database.stores.iam import (
 
 __all__ = [
     "AccessCache",
+    "AuthorityStore",
+    "NodeStore",
+    "RefusedNodeStore",
     "AgentDataStore",
     "AgentGrantStore",
     "AgentManifestStore",

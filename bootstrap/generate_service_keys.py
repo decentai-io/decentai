@@ -1,9 +1,16 @@
-"""Generate the two service RSA key pairs as env-ready lines.
+"""Generate the Data Core's own RSA key pair as env-ready lines.
 
-One pair is the backend's identity toward the runtime, the other the
-runtime's identity toward the backend. Each half is printed as a
-single-line \\n-escaped value: the private halves go where they are
-named, the public halves to the other side. Nothing is written to disk.
+The Data Core signs everything it tells an execution node with the
+private half; nodes are configured with the public half, and believe
+nothing it did not sign (docs/system/execution-nodes.md). Each half is
+printed as a single-line \\n-escaped value. Nothing is written to disk.
+
+The older names are printed, which every install reads;
+DATA_CORE_PRIVATE_KEY and DATA_CORE_PUBLIC_KEY are read in their place
+where an install names them.
+
+A node's own identity is not made here: nodes are admitted by
+credentials an authority signs (bootstrap/generate_node_authority.py).
 """
 
 from cryptography.hazmat.primitives import serialization
@@ -29,16 +36,13 @@ def pair():
 
 
 def main() -> None:
-    backend_private, backend_public = pair()
-    runtime_private, runtime_public = pair()
+    data_core_private, data_core_public = pair()
 
-    print("# backend/config.env")
-    print(f"BACKEND_SERVICE_PRIVATE_KEY={backend_private}")
-    print(f"AI_RUNTIME_SERVICE_PUBLIC_KEY={runtime_public}")
+    print("# the Data Core (backend/config.env)")
+    print(f"BACKEND_SERVICE_PRIVATE_KEY={data_core_private}")
     print()
-    print("# ai_runtime/config.env")
-    print(f"BACKEND_SERVICE_PUBLIC_KEY={backend_public}")
-    print(f"AI_RUNTIME_SERVICE_PRIVATE_KEY={runtime_private}")
+    print("# every execution node (ai_runtime/config.env)")
+    print(f"BACKEND_SERVICE_PUBLIC_KEY={data_core_public}")
 
 
 if __name__ == "__main__":

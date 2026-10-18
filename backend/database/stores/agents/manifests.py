@@ -148,7 +148,7 @@ class AgentManifestStore(OrgScopedStore):
             )
         }
 
-    def approved_packages(self) -> list:
+    def approved_packages(self, org_id: str = "") -> list:
         """Every package some standing approval of ANY organization
         points at — one row per digest: the digest, the manifest hash
         the installer verifies against, and a name for the log. What
@@ -158,11 +158,18 @@ class AgentManifestStore(OrgScopedStore):
         the tenant line on purpose: a runtime holds one folder per
         digest for every organization that approved those bytes. Nothing of who approved what
         travels, and the hash is a function of the bytes, so two
-        approvals of one digest agree on it."""
+        approvals of one digest agree on it.
+
+        ``org_id`` keeps to one organization's approvals: what a node
+        that organization owns is told of, and no other's code."""
         found: Dict[str, Dict[str, Any]] = {}
+        query: Dict[str, Any] = {
+            "status": self.STATUS_INSTALLED,
+            "package_digest": {"$exists": True, "$ne": ""}}
+        if org_id:
+            query["org_id"] = str(org_id)
         for doc in self.col.find(
-                {"status": self.STATUS_INSTALLED,
-                 "package_digest": {"$exists": True, "$ne": ""}},
+                query,
                 {"package_digest": 1, "manifest_hash": 1, "manifest": 1}):
             digest = str(doc["package_digest"])
             if digest not in found:
@@ -176,7 +183,8 @@ class AgentManifestStore(OrgScopedStore):
 
     def set_prepared_everywhere(self, digest: str, state: str,
                                 error: str = "",
-                                confined: Optional[Dict[str, bool]] = None) -> int:
+                                confined: Optional[Dict[str, bool]] = None,
+                                org_id: str = "") -> int:
         """A runtime's word about one digest, recorded on every approval
         that pins it, whichever organization's: the code is the same
         code wherever it was approved. Returns how many approvals heard
@@ -187,8 +195,11 @@ class AgentManifestStore(OrgScopedStore):
         }
         if confined is not None:
             record["confined"] = dict(confined)
-        result = self.col.update_many(
-            {"package_digest": str(digest or "")}, {"$set": {"prepared": record}})
+        query: Dict[str, Any] = {"package_digest": str(digest or "")}
+        if org_id:
+            # A node one organization owns speaks for that one's alone.
+            query["org_id"] = str(org_id)
+        result = self.col.update_many(query, {"$set": {"prepared": record}})
         return int(result.matched_count)
 
     @staticmethod

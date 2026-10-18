@@ -163,14 +163,16 @@ schedule belongs to a chat.
 A runtime keeps one copy of every approved package for every
 organization that approved it, so what it needs to know is nobody's in
 particular: which packages are approved anywhere, the bytes of one, and
-where to say that one is ready. It asks these **as itself** — with a
-service token only a runtime can sign (`AI_RUNTIME_SERVICE_PRIVATE_KEY`
-on the runtime, the public half on the Data Core as
-`AI_RUNTIME_SERVICE_PUBLIC_KEY`), the mirror of the token the Data Core
-uses to prove itself to the runtime. The Data Core reads it as a runtime
-service principal: no person, no organization, no chat, and no policy;
-what it may dispatch is the package door and nothing else
-(`RUNTIME_SERVICE_ENDPOINTS` in `backend/server/authentication/catalog.py`, enforced by `backend/server/authentication/access.py`).
+where to say that one is ready. It asks these **as itself** — with its
+execution node's credential, which an authority the Data Core
+registered signed ([execution nodes](execution-nodes.md)). The Data
+Core reads it as a node principal: no person, no organization, no chat,
+and no policy; what it may dispatch is the package door and nothing
+else (`NODE_ENDPOINTS` in `backend/server/authentication/catalog.py`,
+enforced by `backend/server/authentication/access.py`). A node one
+organization owns is told of that organization's approvals and no
+other's, and its word that a package is ready is recorded on that
+organization's approvals alone.
 
 | verb | answers |
 |---|---|
