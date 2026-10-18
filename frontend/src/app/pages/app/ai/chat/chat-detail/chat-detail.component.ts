@@ -1045,6 +1045,8 @@ export class ChatDetailComponent implements OnInit, OnDestroy {
     credential?: { mode: 'entry' | 'consent' | 'choose' | 'once'; fields?: Record<string, string>; answer?: string };
     /** A code card: allow or deny. */
     code?: 'allow' | 'deny';
+    /** A skill card: save or decline. */
+    skill?: 'save' | 'decline';
   }): Promise<void> {
     const approval = this.pendingApprovals.find(
       (a) => a.approval_id === event.approval_id,
@@ -1092,6 +1094,10 @@ export class ChatDetailComponent implements OnInit, OnDestroy {
         else res = await this.aiSession.answerQuestion(event.approval_id, c.answer || '');
       } else if (event.decision === 'answer' && event.code) {
         res = await this.aiSession.answerQuestion(event.approval_id, event.code);
+      } else if (event.decision === 'answer' && event.skill) {
+        // A save is the person creating the skill, at the platform's
+        // door, from the words the card shows.
+        res = await this.aiSession.answerQuestion(event.approval_id, event.skill);
       } else {
         res = event.decision === 'answer'
           ? await this.aiSession.answerQuestion(event.approval_id, event.files ?? answer)

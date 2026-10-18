@@ -85,6 +85,11 @@ export interface CodeAsk {
   review?: CodeReview;
 }
 
+/** A skill the assistant offers to save from the chat (save_skill):
+ *  the skill whole, as it would be kept. Shown as text, never run;
+ *  answered save or decline, and a save creates it as the person. */
+export interface SkillAsk { title: string; summary: string; body: string; }
+
 /** A card, as the backend records it: what the assistant asked, and
  *  what the person decided. A child's card names its thread. */
 export interface ChatApproval {
@@ -101,13 +106,15 @@ export interface ChatApproval {
     question?: string; choices?: string[];
     /** What the agent wants back: words, an attached file, files
      *  chosen from what the person can see, or a yes to its code. */
-    expects?: '' | 'text' | 'file' | 'files' | 'credential' | 'code';
+    expects?: '' | 'text' | 'file' | 'files' | 'credential' | 'code' | 'skill';
     /** A files question: what the assistant found, and what it looked for. */
     candidates?: FileChoice[]; query?: string;
     /** A credential question: which card, for which host, in whose name. */
     credential?: CredentialAsk;
     /** A code question: the code, what it is for and what it needs. */
     code?: CodeAsk;
+    /** A skill question: the skill whole, as a save would keep it. */
+    skill?: SkillAsk;
     permission_level?: number | null; chat_level?: number | null;
     job_id?: string | null;
   };
@@ -127,11 +134,12 @@ export interface ApprovalCard {
    *  'files': the card lists the candidates, searches the rest, and
    *  answers with the chosen refs. 'code': the card shows the code and
    *  what it needs, and answers allow or deny. */
-  expects?: '' | 'text' | 'file' | 'files' | 'credential' | 'code';
+  expects?: '' | 'text' | 'file' | 'files' | 'credential' | 'code' | 'skill';
   candidates?: FileChoice[];
   query?: string;
   credential?: CredentialAsk;
   code?: CodeAsk;
+  skill?: SkillAsk;
   thread?: string | null;
   action: { agent_id: string; agent_name?: string; function: string; inputs_preview: Record<string, unknown> };
 }
@@ -206,7 +214,7 @@ export type ChatEvent =
   /** One line of the work, saying whose; a call's lines share its call_id. */
   | (EventBase & { event: 'activity'; kind: ActivityKind; text: string; status?: string; duration_ms?: number })
   /** An agent asking the person mid-call (call.ask); then how it ended. */
-  | (EventBase & { event: 'question_asked'; approval_id: string; job_id?: string; function?: string; agent?: string; agent_name?: string; question: string; choices?: string[]; expects?: '' | 'text' | 'file' | 'files' | 'credential' | 'code'; candidates?: FileChoice[]; query?: string; credential?: CredentialAsk; code?: CodeAsk })
+  | (EventBase & { event: 'question_asked'; approval_id: string; job_id?: string; function?: string; agent?: string; agent_name?: string; question: string; choices?: string[]; expects?: '' | 'text' | 'file' | 'files' | 'credential' | 'code' | 'skill'; candidates?: FileChoice[]; query?: string; credential?: CredentialAsk; code?: CodeAsk; skill?: SkillAsk })
   | (EventBase & { event: 'question_closed'; approval_id: string; status: 'answered' | 'expired' })
   /** The door narrating a first open: an agent the runtime did not
    *  hold is being fetched and built before the hello. Socket-only. */
@@ -261,6 +269,7 @@ export function toApprovalCard(source: any, labels: Record<string, string> = {})
     query: request.query || source?.query || undefined,
     credential: request.credential || source?.credential || undefined,
     code: request.code || source?.code || undefined,
+    skill: request.skill || source?.skill || undefined,
     thread: source?.thread ?? source?.child ?? null,
     action: {
       agent_id: agentId,

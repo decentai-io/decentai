@@ -109,6 +109,12 @@ code.approval-value {
   font-family: inherit;
 }
 
+/* A skill's body is read, not scrolled sideways: long lines wrap. */
+.skill-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 /* ── Code: what it needs, and what the assistant made of it ────────── */
 .code-need-items {
   display: flex;

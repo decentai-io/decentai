@@ -126,6 +126,48 @@ def receive(frontend, timeout=30.0):
     return box["frame"]["data"]
 
 
+class ServedSocket:
+    """The person's socket into the SERVED backend, as a browser's is.
+
+    The test client runs every request on an event loop of its own, and
+    the backend's dial to the runtime (relay.py) — its socket, its
+    locks, its reader — lives on the loop of the frontend socket that
+    opened it. A decision posted through the test client while that
+    socket is open writes to the dial from another loop, which works or
+    hangs as the scheduling falls. Here the socket and the decision both
+    reach the served backend, so the dial lives and is written on one
+    loop, as it is in a deployment."""
+
+    def __init__(self, backend_url, client, path):
+        from websockets.sync.client import connect
+
+        self.backend_url = backend_url
+        self.headers = cookie_header(client)
+        self.socket = connect(
+            backend_url.replace("http://", "ws://") + path,
+            additional_headers=self.headers, open_timeout=10)
+
+    def receive_json(self):
+        return json.loads(self.socket.recv())
+
+    def send_json(self, frame):
+        self.socket.send(json.dumps(frame))
+
+    def call(self, endpoint, data):
+        """One /app call as the person, to the served backend."""
+        import httpx
+
+        return httpx.post(f"{self.backend_url}/app", headers=self.headers,
+                          json={"endpoint": endpoint, "data": data},
+                          timeout=30)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.socket.close()
+
+
 def until_ai_message(frontend, timeout=30.0):
     """Frames off the person's socket until the assistant's reply."""
     seen = []
@@ -268,6 +310,64 @@ class TestTheOrganizationsRules:
             until_ai_message(frontend)
         second = frame("Answer in English.")
         assert "Answer in English." in second and "French" not in second
+
+
+class TestASkillFromTheChat:
+    def test_the_person_saves_what_the_card_shows_and_the_next_frame_lists_it(
+        self, admin, full_stack
+    ):
+        """save_skill end to end: the runtime opens the card under the
+        chat's delegation, the person's own Decide creates the skill as
+        them, the door carries its row back, and the mind lists it."""
+        from database.stores import AuditStore, ChatStore
+        from database.stores.data.skills import SkillStore
+
+        skill = {"title": "Jira bulk resolve",
+                 "summary": "When many Jira tickets are to be resolved at once.",
+                 "body": "Run in the board's page:\n\n```javascript\n"
+                         "await fetch('/rest/api/2/issue/X-1/transitions', "
+                         "{method: 'POST'});\n```"}
+        chat_id = app_call(admin, "AI:Chat:Open", {"title": "Skill"}).json()["data"]["chat"]["chat_id"]
+        assert app_call(admin, "AI:Chat:Update", {
+            "chat_id": chat_id, "config": {"llm": {
+                "provider": "fake", "responses": [
+                    action(action="save_skill", **skill),
+                    action(action="say", text="Saved it.", final=True),
+                ]}}}).status_code == 200
+
+        # The decision is made while the socket is open, as a person
+        # makes it: both against the served backend (ServedSocket).
+        with ServedSocket(full_stack.backend_url, admin,
+                          f"/chats/{chat_id}") as frontend:
+            assert receive(frontend)["event"] == "hello"
+            frontend.send_json({"endpoint": "AI:Chat:Input", "data": {
+                "text": "save that script as a skill", "parts": []}})
+            frame = receive(frontend)
+            while frame.get("event") != "question_asked":
+                frame = receive(frontend)
+            assert frame["expects"] == "skill" and frame["skill"] == skill
+            assert SkillStore().col.count_documents({"type": "skill"}) == 0
+            decided = frontend.call("AI:Approval:Decide", {
+                "approval_id": frame["approval_id"], "answer": "save"})
+            assert decided.status_code == 200, decided.text
+            assert decided.json()["data"]["delivered"] is True
+            seen = until_ai_message(frontend)
+            assert seen[-1]["message"]["parts"][0]["content"] == "Saved it."
+
+        ref = decided.json()["data"]["skill"]["ref"]
+        stored = SkillStore().col.find_one({"_id": ref})
+        assert stored["owner"]["users"] == [stored["created_by"]]
+        [line] = list(AuditStore().col.find({"event_type": "skill.created"}))
+        assert line["chat_id"] == chat_id and line["details"]["source"] == "chat"
+        deadline = time.monotonic() + 15
+        while time.monotonic() < deadline:
+            state = ChatStore().by_chat_id(chat_id).get("state") or {}
+            framed = (state.get("messages") or [{}])[0].get("content", "")
+            if f"{ref}: Jira bulk resolve" in framed:
+                break
+            time.sleep(0.1)
+        else:
+            raise AssertionError("the saved frame never listed the skill")
 
 
 class TestThePull:

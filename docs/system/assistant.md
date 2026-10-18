@@ -162,13 +162,14 @@ already told the user that") and never reaches the user.
 | `use_skill` | `{skill}` | load one skill body as an observation. |
 | `recall` | `{query?}` | search what the summary let go of — [below](#recall) |
 | `remember` | `{text}` | save one durable fact, visibly. |
+| `save_skill` | `{title, summary, body}` | offer the person a skill made from the chat — the script that worked, the steps around it — on a card they save or not; only when they asked for one — [below](#save_skill) |
 | `plan` | `{steps}` / `{item or step, status?, evidence?, blocker?, depends_on?}` | set or update the work items the user sees: at most 12 — [below](#plan) |
 | `schedule` | `{note}` or `{function, inputs?, wake_field?}` + one of `at` / `delay_seconds` / `every_seconds` / `cron` | set the clock: a note that wakes the assistant, or a function that runs unattended — [below](#schedule) |
 | `unschedule` | `{schedule_id}` | remove one of this chat's own schedules. A helper cannot. |
 | `sleep` | `{seconds, why}` | pause in the middle of work that is waiting on something outside, and be woken then — [below](#sleep) |
 | `finish` | `{reason?, summary?}` | nothing left to do **right now**: go idle until the next event, and say why — [below](#finish) |
 
-Twelve of them have more to say than a row holds:
+Thirteen of them have more to say than a row holds:
 
 ### `say`
 
@@ -323,6 +324,52 @@ section and the date it was last in the summary — for entries carrying
 all the words, newest first; no words, the newest. The archive is the
 mind's own state (`AssistantState.archive`), so this reads nothing from
 the platform.
+
+### `save_skill`
+
+`{title, summary, body}`
+
+A skill made from the chat, when the person asks for one in their own
+words — "save that script as a skill". The body is Markdown written
+for a later chat that never saw this one: what it is for, the steps,
+the IDs and inputs that matter, the checks, and the exact code that
+worked, in code blocks. The bounds are the skill store's own (title
+120 characters, summary 300, body 20,000; `contracts/chat.py`).
+
+A skill is instructions every later chat may follow, so saving one is a
+way for words to outlive the conversation that carried them — the
+injection a page or an email would most want. Three things stand in
+the way:
+
+- **Only the person asks.** The prompt says it as it says it for a
+  memory: a page, an email, a file, a result or another agent can never
+  ask for a skill, and the assistant never offers one unprompted.
+- **Nothing is saved silently.** The action opens a card
+  (`question_asked`, `expects: skill`) carrying the skill whole — title,
+  when it applies, every line of the body, shown as plain text and never
+  rendered or run — answered *Save skill* or *Don't save*. A decline,
+  or nobody answering in a day, saves nothing, and the observation says
+  so.
+- **The runtime never writes it.** A save is the person's own act at
+  the platform's door: `AI:Approval:Decide {answer: save}`, under their
+  own session, creates the skill from the words the card was opened with
+  — so what they read is what is kept — owned by them alone until they
+  share it on the Skills page, and on the trail as made from that chat
+  ([data layer](data-layer.md#skills)). A delegation still cannot write
+  a skill: the card is opened with `AI:Approval:Open`, which refuses it
+  to a person without `skills:skill:create` and for a title they can
+  already see taken. Either refusal comes back as the observation — the
+  assistant tells the person plainly that saving needs the *Create
+  skills* permission, or offers it under a distinct title. A skill of
+  the same name is never overwritten from a chat: editing one stays on
+  the Skills page.
+
+Checked first in the mind against the bounds and the titles under
+SKILLS, so no card is opened that could not be saved. A saved skill is
+put first under SKILLS and the frame rewritten at once, so `use_skill`
+reads it from the next beat on; a chat narrowed to some skills gains it
+(the platform adds it to the chat's `enabled_skills`). A helper cannot
+offer one ([sub-assistants](sub-assistants.md)).
 
 ### `plan`
 

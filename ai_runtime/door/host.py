@@ -521,7 +521,8 @@ class SessionHost:
         elif kind == "question_answered":
             # Words for an agent's question; a list for the files card;
             # an object for a credential card (the saved row's ref, or
-            # the fields asked every time). Only words are coerced; the
+            # the fields asked every time) and for a skill card (what
+            # the person's save created, or that they declined). Only words are coerced; the
             # session knows which question it asked.
             answer = frame.get("answer")
             await session.deliver_answer(

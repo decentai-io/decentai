@@ -5,8 +5,12 @@ it, the person decides it, and the decision travels back to the runtime
 as the door's ``approval_decided`` frame. A question an agent asks
 (call.ask) is a card of the same kind, answered in words and carried
 back as ``question_answered``; code an agent wants to run (call.propose)
-is that card again, answered with allow or deny; one nobody answers in
-time the runtime closes with ``expire``. The runtime never decides its
+is that card again, answered with allow or deny; a skill the assistant
+offers to save from the chat (save_skill) is that card once more,
+answered save or decline — and a save is the person's own act: the
+skill is created here, as them, from the words the card holds, never by
+the runtime. One nobody answers in time the runtime closes with
+``expire``. The runtime never decides its
 own escalation — ``open`` is runtime-only and ``decide`` is user-only —
 and a decision lands once; a second one is refused, never recorded over
 the first.
@@ -15,6 +19,7 @@ the first.
 from contracts.chat import (
     ANSWER_MAX_CHARS, CHOICE_MAX_CHARS, CHOICES_MAX, FILE_CANDIDATES_MAX,
     FILES_CHOSEN_MAX, QUESTION_MAX_CHARS, CodeAsk, CredentialAsk,
+    skill_asked,
 )
 from api.services.chat_session.code_rules import CodeRules
 from database.stores import ApprovalStore, AuditStore, OrganizationStore
@@ -44,17 +49,21 @@ class ApprovalController(AIController):
                 data, "invalid_request", "request.function is required.")
         kind = "question" if request.get("kind") == "question" else "approval"
         question, choices, expects, candidates, credential = "", [], "", [], None
-        code = None
+        code = skill = None
         if kind == "question":
             question = str(request.get("question") or "").strip()
             choices = request.get("choices") or []
             expects = str(request.get("expects") or "").strip().lower()
             if expects not in ("", "text", "file", "files", "credential",
-                               "code"):
+                               "code", "skill"):
                 return self._fail(
                     data, "invalid_request",
                     "A question expects 'text', 'file', 'files', "
-                    "'credential' or 'code'.")
+                    "'credential', 'code' or 'skill'.")
+            if expects == "skill":
+                skill, refusal = self._skill_card(data, user, request, thread)
+                if refusal is not None:
+                    return refusal
             if expects == "code":
                 # The code whole, what it is for, what it needs and what
                 # the assistant made of it — the contract's own shape,
@@ -128,7 +137,11 @@ class ApprovalController(AIController):
                     **({"code": code,
                         # Which call is asking: a correction is known by it.
                         "call_id": str(request.get("call_id") or "")[:64]}
-                       if expects == "code" else {})}
+                       if expects == "code" else {}),
+                    # What a save creates, word for word: the page shows
+                    # it and the decision writes it, so what the person
+                    # read is what is kept.
+                    **({"skill": skill} if expects == "skill" else {})}
                    if kind == "question" else {}),
             },
             "status": ApprovalStore.PENDING,
@@ -174,6 +187,32 @@ class ApprovalController(AIController):
             return self._respond(data, {"approval_id": approval_id,
                                         "settled": "allow"})
         return self._respond(data, {"approval_id": approval_id})
+
+    def _skill_card(self, data, user, request, thread):
+        """(the skill, None) or (None, the refusal) — a skill card is
+        opened only for somebody who could save it. The delegation
+        carries the person's own policy, so their grant to create
+        skills is asked here, before anything is shown: a card whose
+        save would be refused is not a question worth putting. A title
+        they can already see taken is refused too, by the sentence the
+        Skills page uses. A helper's thread saves nothing: a skill is
+        the person's word, and the person speaks to the chat."""
+        from api.services.data_layer.skills import SkillController
+
+        if thread:
+            return None, self._fail(
+                data, "invalid_request",
+                "A skill is saved from the chat itself, not a helper.")
+        skill, why = skill_asked(request.get("skill") or {})
+        if skill is None:
+            return None, self._fail(
+                data, "invalid_request", f"skill is not a skill card: {why}")
+        skills = SkillController()
+        if not skills.policy.is_allowed(user, "skills:skill:create"):
+            return None, self._fail(data, "forbidden", skills.NO_GRANT, 403)
+        if skills._duplicate_title(user, skill["title"]):
+            return None, self._fail(data, "conflict", skills.DUPLICATE, 409)
+        return skill, None
 
     @staticmethod
     def _candidates(raw):
@@ -286,6 +325,9 @@ class ApprovalController(AIController):
                 data, user, approvals, approval, payload)
         if (approval.get("request") or {}).get("expects") == "code":
             return await self._answer_code(
+                data, user, approvals, approval, payload)
+        if (approval.get("request") or {}).get("expects") == "skill":
+            return await self._answer_skill(
                 data, user, approvals, approval, payload)
         answer = str(payload.get("answer") or "").strip()
         if not answer or len(answer) > ANSWER_MAX_CHARS:
@@ -442,6 +484,103 @@ class ApprovalController(AIController):
         return self._respond(data, {
             "status": approvals.ANSWERED, "delivered": bool(delivered),
         })
+
+    async def _answer_skill(self, data, user, approvals, approval, payload):
+        """A skill card, decided: save or decline and nothing else.
+
+        A save is the person creating the skill — here, under their own
+        session, from the words the card was opened with, owned by them
+        alone (shared only when they share it on the Skills page). Their
+        grant and the title are checked again first: either may have
+        changed while the card waited, and a refusal leaves the card
+        open with the reason, for them to decline. The card is then
+        claimed, so a second click cannot save twice; the skill is
+        written and put on the trail as made from this chat; and a chat
+        narrowed to some skills is given this one too, since the person
+        saved it here to use it. The frame carries what the assistant
+        needs to list it: ref, title, summary."""
+        from api.services.data_layer.skills import SkillController
+
+        answer = str(payload.get("answer") or "").strip().lower()
+        if answer not in ("save", "decline"):
+            return self._fail(
+                data, "invalid_answer",
+                "A skill card is answered with save or decline.")
+        if approval["status"] != approvals.PENDING:
+            return self._fail(
+                data, "not_pending",
+                f"The card is already {approval['status']}.", 409)
+        request = approval.get("request") or {}
+        skill = dict(request.get("skill") or {})
+        skills = SkillController()
+        if answer == "save":
+            if not skills.policy.is_allowed(user, "skills:skill:create"):
+                return self._fail(data, "forbidden", skills.NO_GRANT, 403)
+            if skills._duplicate_title(user, str(skill.get("title") or "")):
+                return self._fail(data, "conflict", skills.DUPLICATE, 409)
+        if not approvals.decide(approval["approval_id"], {
+            "status": approvals.ANSWERED,
+            "decision": "answer",
+            "answer": answer,
+            "answer_label": "Saved" if answer == "save" else "Not saved",
+            "resolved_at": utc_now(),
+            "resolved_by": str(user.get("email") or ""),
+        }):
+            return self._fail(
+                data, "not_pending", "The card is already closed.", 409)
+
+        carried = {"status": "declined"}
+        refs = [approval["approval_id"]]
+        if answer == "save":
+            resource, refusal = skills._from_chat(
+                user, skill, approval["chat_id"], approval["approval_id"])
+            if refusal is not None:
+                # Only a race reaches here — the same checks passed a
+                # moment ago. The card is closed, and the assistant is
+                # told why nothing was saved.
+                said = str((refusal[0] or {}).get("error") or "")
+                approvals.annotate(approval["approval_id"], {
+                    "answer_label": "Not saved", "error": said})
+                carried = {"status": "failed", "error": said}
+            else:
+                ref = str(resource["resource_ref"])
+                refs.append(ref)
+                self._narrowed_to_include(approval["chat_id"], ref)
+                carried = {"status": "saved", "skill": {
+                    "ref": ref,
+                    "title": (resource.get("keys") or {}).get("title"),
+                    "summary": (resource.get("keys") or {}).get("summary"),
+                }}
+        AuditStore().append(
+            "approval.resolved", user, chat_id=approval["chat_id"],
+            function=request.get("function"),
+            resource_refs=refs,
+            details={"decision": "answer", "kind": "question",
+                     "skill": answer},
+        )
+        delivered = await get_runtime_clients().send(
+            approval["chat_id"], user, {
+                "event": "question_answered",
+                "approval_id": approval["approval_id"], "answer": carried,
+            })
+        if carried["status"] == "failed":
+            return self._fail(data, "not_saved", carried["error"], 409)
+        return self._respond(data, {
+            "status": approvals.ANSWERED, "delivered": bool(delivered),
+            **({"skill": carried["skill"]} if "skill" in carried else {}),
+        })
+
+    @staticmethod
+    def _narrowed_to_include(chat_id, ref):
+        """A chat narrowed to some skills (enabled_skills) gains the one
+        just saved in it; a chat that uses every skill already has it."""
+        from database.stores import ChatStore
+
+        chats = ChatStore()
+        chat = chats.by_chat_id(chat_id) or {}
+        chosen = (chat.get("config") or {}).get("enabled_skills")
+        if isinstance(chosen, list) and ref not in chosen:
+            chats.edit(chat_id, {"config.enabled_skills": [*chosen, ref]})
 
     async def _answer_credential(self, data, user, approvals, approval, payload):
         """A credential card answered here rather than at the vault's

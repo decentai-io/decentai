@@ -616,8 +616,8 @@ class Assistant:
         "read": "acts.read", "find_files": "acts.find_files",
         "read_file": "acts.read_file", "use_skill": "acts.use_skill",
         "recall": "acts.recall", "remember": "acts.remember",
-        "plan": "acts.plan", "schedule": "acts.schedule",
-        "unschedule": "acts.unschedule",
+        "save_skill": "acts.save_skill", "plan": "acts.plan",
+        "schedule": "acts.schedule", "unschedule": "acts.unschedule",
     }
 
     async def _act(self, action: Dict[str, Any], implicit: bool = False) -> bool:
@@ -744,8 +744,8 @@ class Assistant:
             "content": f"Unknown action '{kind}'. Use say, open_agent, "
                        f"close_agent, find_agents, invoke, start, spawn, "
                        f"cancel_job, read, find_files, read_file, use_skill, "
-                       f"recall, remember, plan, schedule, unschedule, "
-                       f"sleep or finish.",
+                       f"recall, remember, save_skill, plan, schedule, "
+                       f"unschedule, sleep or finish.",
         })
         return False
 

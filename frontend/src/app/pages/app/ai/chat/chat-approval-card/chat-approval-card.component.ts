@@ -1,7 +1,7 @@
 import { Component, EventEmitter, Input, Output } from '@angular/core';
 import * as Prism from 'prismjs';
 import 'prismjs/components/prism-python';
-import { CodeAsk, CredentialAsk, CredentialField, FileChoice } from 'src/app/models/chat-protocol';
+import { CodeAsk, CredentialAsk, CredentialField, FileChoice, SkillAsk } from 'src/app/models/chat-protocol';
 import { levelLabel } from 'src/app/pages/app/agents/agent-shared';
 
 /**
@@ -23,6 +23,11 @@ import { levelLabel } from 'src/app/pages/app/agents/agent-shared';
  * Code an agent wants to run (call.propose) is that card again: what the
  * code is for, where it runs and what it needs, what the assistant made
  * of it, and the code itself, coloured. It is answered allow or deny.
+ *
+ * A skill the assistant offers to save from the chat (save_skill) is
+ * that card once more: its title, when it applies, and the body whole,
+ * as plain text — nothing in it is rendered or run. It is answered save
+ * or decline; a save creates the skill as the person.
  */
 @Component({
   selector: 'app-chat-approval-card',
@@ -47,12 +52,19 @@ export class ChatApprovalCardComponent {
     credential?: { mode: CredentialAsk['mode']; fields?: Record<string, string>; answer?: string };
     /** A code card's answer. */
     code?: 'allow' | 'deny';
+    /** A skill card's answer. */
+    skill?: 'save' | 'decline';
   }>();
 
   showInputs = false;
   /** A code card: whether the code is open. Unset, it is open while
    *  the card waits and closed once it is decided. */
   codeOpen: boolean | null = null;
+  /** A skill card: whether the body is open — open while the card
+   *  waits, closed once it is decided, unless the person says. */
+  skillOpen: boolean | null = null;
+  /** A skill card: what the person chose here, for the chip. */
+  skillChosen: 'save' | 'decline' | null = null;
   /** The code last coloured, so a redraw does not colour it again. */
   private coloured = { source: '', language: '', html: '' };
   /** The person's own words, for a question. */
@@ -227,6 +239,44 @@ export class ChatApprovalCardComponent {
     if (!this.isPending || !this.approval?.approval_id) return;
     this.decided.emit({
       approval_id: this.approval.approval_id, decision: 'answer', code: answer,
+    });
+  }
+
+  /** The assistant offering to save a skill (save_skill). */
+  get isSkill(): boolean {
+    return this.isQuestion && this.approval?.expects === 'skill' && !!this.approval?.skill;
+  }
+
+  get skill(): SkillAsk {
+    return this.approval?.skill || { title: '', summary: '', body: '' };
+  }
+
+  /** Lines of the body, a closing line break not counted as one. */
+  get skillLines(): number {
+    const body = this.skill.body.replace(/\s+$/, '');
+    return body ? body.split('\n').length : 0;
+  }
+
+  get skillShown(): boolean {
+    return this.skillOpen ?? this.isPending;
+  }
+
+  toggleSkill(): void {
+    this.skillOpen = !this.skillShown;
+  }
+
+  get skillStatusLabel(): string {
+    if (this.approval?.status === 'answered' && this.skillChosen) {
+      return this.skillChosen === 'save' ? 'Saved' : 'Not saved';
+    }
+    return this.statusLabel;
+  }
+
+  decideSkill(answer: 'save' | 'decline'): void {
+    if (!this.isPending || !this.approval?.approval_id) return;
+    this.skillChosen = answer;
+    this.decided.emit({
+      approval_id: this.approval.approval_id, decision: 'answer', skill: answer,
     });
   }
 

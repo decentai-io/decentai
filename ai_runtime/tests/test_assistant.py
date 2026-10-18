@@ -1126,7 +1126,7 @@ class TestToolsOffered:
         assert {tool["function"]["name"] for tool in ACTION_TOOLS} == {
             "say", "open_agent", "invoke", "start", "cancel_job", "read",
             "find_files", "read_file", "use_skill", "recall", "remember",
-            "plan", "schedule", "unschedule", "sleep", "spawn", "finish",
+            "save_skill", "plan", "schedule", "unschedule", "sleep", "spawn", "finish",
             "close_agent", "find_agents"}
         # Every tool is a schema the provider can validate against.
         for tool in ACTION_TOOLS:

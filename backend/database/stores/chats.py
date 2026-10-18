@@ -435,6 +435,15 @@ class ApprovalStore(MongoStore):
         )
         return result.modified_count > 0
 
+    def annotate(self, approval_id: str, changes: Dict[str, Any]) -> None:
+        """Words added to a card already decided — why what it decided
+        could not be done. Never its status or its decision."""
+        changes = {k: v for k, v in changes.items()
+                   if k not in ("status", "decision", "answer")}
+        if changes:
+            self.col.update_one({"approval_id": approval_id},
+                                {"$set": changes})
+
     def delete_for_chat(self, identity: Dict[str, Any]) -> None:
         self.col.delete_many(identity)
 

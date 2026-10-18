@@ -66,6 +66,12 @@ CODE_WHERE_MAX_CHARS = 253
 CODE_NEEDS_MAX = 30
 CODE_NEED_MAX_CHARS = 253
 CODE_REVIEW_MAX_CHARS = 600
+#: A skill the assistant puts before the person to save (save_skill):
+#: the skill store's own bounds (backend SkillController), here because
+#: the runtime, the card and the store have to agree on them.
+SKILL_TITLE_MAX_CHARS = 120
+SKILL_SUMMARY_MAX_CHARS = 300
+SKILL_BODY_MAX_CHARS = 20_000
 #: A screen an agent shows (call.screen): one frame's size, and how many
 #: input events one page message may carry.
 SCREEN_FRAME_MAX_BYTES = 300_000
@@ -431,6 +437,36 @@ class CodeAsk(ChatModel):
     review: Optional[CodeReview] = None
 
 
+class SkillAsk(ChatModel):
+    """A skill the assistant offers to save from the chat (save_skill),
+    put before the person whole: its title, the one line that says when
+    it applies, and the body — instructions, steps, a script — exactly
+    as it would be kept. Shown as text and never run. The answer is
+    ``save`` or ``decline``; a saved one is created by the backend, as
+    the person, from what the card holds."""
+    title: str = Field(min_length=1, max_length=SKILL_TITLE_MAX_CHARS)
+    summary: str = Field(min_length=1, max_length=SKILL_SUMMARY_MAX_CHARS)
+    body: str = Field(min_length=1, max_length=SKILL_BODY_MAX_CHARS)
+
+    @model_validator(mode="after")
+    def _not_blank(self):
+        for name in ("title", "summary", "body"):
+            if not getattr(self, name).strip():
+                raise ValueError(f"{name} must not be blank")
+        return self
+
+
+def skill_asked(spec: Any) -> tuple:
+    """``(the card's skill, None)`` for one that fits, ``(None, why)``
+    for one that does not."""
+    try:
+        skill = SkillAsk.model_validate(spec)
+    except ValidationError as exc:
+        return None, _described(exc)
+    return {name: getattr(skill, name).strip()
+            for name in ("title", "summary", "body")}, None
+
+
 def code_asked(spec: Any) -> tuple:
     """``(the card's code, None)`` for a proposal that fits, ``(None,
     why)`` for one that does not."""
@@ -446,7 +482,8 @@ class QuestionAsked(EventModel):
     own files question (find_files) is the same card, expecting
     ``files``: the candidates it found ride on it, and the answer is the
     refs the person chose. Code an agent wants to run (call.propose) is
-    the same card again, expecting ``code``."""
+    the same card again, expecting ``code``; a skill the assistant
+    offers to save (save_skill) is the card expecting ``skill``."""
     event: Literal["question_asked"]
     approval_id: str = Field(min_length=1)
     job_id: str = ""
@@ -458,7 +495,8 @@ class QuestionAsked(EventModel):
     #: what kind of answer the agent wants: words (the default), a file
     #: the person attaches, answered with its ref, or files they choose
     #: from what they can see, answered with their refs
-    expects: Literal["", "text", "file", "files", "credential", "code"] = ""
+    expects: Literal["", "text", "file", "files", "credential", "code",
+                     "skill"] = ""
     #: a files question: what the assistant found, and what it looked for
     candidates: list[FileChoice] = Field(default_factory=list,
                                          max_length=FILE_CANDIDATES_MAX)
@@ -467,6 +505,8 @@ class QuestionAsked(EventModel):
     credential: Optional[CredentialAsk] = None
     #: a code question: the code, what it is for and what it needs
     code: Optional[CodeAsk] = None
+    #: a skill question: the skill whole, as it would be saved
+    skill: Optional[SkillAsk] = None
 
 
 class QuestionClosed(EventModel):

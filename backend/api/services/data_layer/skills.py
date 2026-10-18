@@ -5,7 +5,11 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional, Tuple
 
+from contracts.chat import (
+    SKILL_BODY_MAX_CHARS, SKILL_SUMMARY_MAX_CHARS, SKILL_TITLE_MAX_CHARS,
+)
 from api.services.data_layer.base import Refusal, ResourceController
+from database.stores import AuditStore
 from database.stores.data.skills import SkillStore
 
 
@@ -22,9 +26,21 @@ class SkillController(ResourceController):
     ESCAPE_ACTION = "skills:skill:set_owner_any"
     LIST_VALUES = False
 
-    TITLE_MAX = 120
-    SUMMARY_MAX = 300
-    BODY_MAX = 20_000
+    # The chat's contract holds them, because a skill saved from a chat
+    # (save_skill) is checked by the runtime and the card first.
+    TITLE_MAX = SKILL_TITLE_MAX_CHARS
+    SUMMARY_MAX = SKILL_SUMMARY_MAX_CHARS
+    BODY_MAX = SKILL_BODY_MAX_CHARS
+
+    #: The one sentence for a title already taken among what the
+    #: person can see.
+    DUPLICATE = "A skill with this title already exists. Choose a different title."
+
+    #: What a person without the grant is told, by the card and through
+    #: the assistant: the permission by its name on the Roles page.
+    NO_GRANT = ("You do not have permission to create skills "
+                "(Skills: \"Create skills\", skills:skill:create). "
+                "An administrator can grant it.")
 
     def _duplicate_title(self, user: dict, title: str, exclude: str = "") -> bool:
         normalized = " ".join(title.split()).lower()
@@ -86,7 +102,7 @@ class SkillController(ResourceController):
             return refusal
 
         if self._duplicate_title(user, fields["title"]):
-            return {"error": "A skill with this title already exists. Choose a different title."}, 409
+            return {"error": self.DUPLICATE}, 409
 
         raw_owner = payload.get("owner")
         if raw_owner is None:
@@ -95,6 +111,16 @@ class SkillController(ResourceController):
         if refusal:
             return refusal
 
+        return {"resource": self._create(user, fields, owner)}, 200
+
+    def _create(self, user: dict, fields: Dict[str, str],
+                owner: Dict[str, Any], *, chat_id: str = "",
+                approval_id: str = "") -> Dict[str, Any]:
+        """The skill written, and the line on the trail that says who
+        wrote it and from where: the Skills page, or a chat whose skill
+        card the person answered save (``chat_id``, ``approval_id``;
+        approval_controller.py). The trail keeps how long the body is,
+        never what it says."""
         resource = self.store.create(
             user,
             resource_id="skill",
@@ -102,10 +128,34 @@ class SkillController(ResourceController):
             keys={"title": fields["title"], "summary": fields["summary"]},
             values={"body": fields["body"]},
         )
-        self.logger.info(
-            f"{user.get('email')} created skill {resource['resource_ref']}"
+        ref = resource["resource_ref"]
+        AuditStore().append(
+            "skill.created", user, chat_id=chat_id,
+            resource_refs=[ref, *([approval_id] if approval_id else [])],
+            details={"source": "chat" if chat_id else "page",
+                     "body_chars": len(fields["body"])},
         )
-        return {"resource": resource}, 200
+        self.logger.info(
+            f"{user.get('email')} created skill {ref}"
+            + (f" from chat {chat_id}" if chat_id else "")
+        )
+        return resource
+
+    def _from_chat(self, user: dict, skill: Dict[str, str], chat_id: str,
+                   approval_id: str) -> Tuple[Optional[Dict[str, Any]], Optional[Refusal]]:
+        """A skill the person chose to save from a chat's card: the
+        card's own words, private to them (the default owner), checked
+        as a create from the page is — the person's grant to create
+        skills, the store's bounds, a title nobody they see has taken."""
+        if not self.policy.is_allowed(user, "skills:skill:create"):
+            return None, ({"error": self.NO_GRANT}, 403)
+        fields, refusal = self._shape(skill, creating=True)
+        if refusal:
+            return None, refusal
+        if self._duplicate_title(user, fields["title"]):
+            return None, ({"error": self.DUPLICATE}, 409)
+        return self._create(user, fields, self._default_owner(user),
+                            chat_id=chat_id, approval_id=approval_id), None
 
     def update(self, data: dict, user: dict):
         payload = self._payload(data)

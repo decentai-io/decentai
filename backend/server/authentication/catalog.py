@@ -530,7 +530,10 @@ ACTION_CATALOG: Dict[str, Dict[str, Any]] = {
         "actions": {
             "skills:skill:list": "View the skills shared with you",
             "skills:skill:get": "Read one skill's full body",
-            "skills:skill:create": "Create skills",
+            "skills:skill:create": (
+                "Create skills, on the Skills page or by saving one "
+                "from a chat"
+            ),
             "skills:skill:update": "Edit a skill you created",
             "skills:skill:delete": "Delete a skill you created",
             "skills:skill:transfer": "Hand one of your skills to another member",
@@ -910,7 +913,9 @@ RUNTIME_ENDPOINTS = (
     # visibility applies either way.
     "settings:llm:use",
     # Skills: the model pulls a skill body the user could read anyway;
-    # authoring stays browser-only.
+    # authoring stays browser-only. A skill saved from a chat is no
+    # exception: the runtime only opens the card (ai:approval:open), and
+    # the person's own click on it creates the skill, as them.
     "skills:skill:list", "skills:skill:get",
     # An MCP server's address and credential, for a call to one of its
     # tools; adding and changing servers stays browser-only.

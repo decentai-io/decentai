@@ -10,11 +10,11 @@ whoever watches and never recorded.
 
 These are the chat's doors as a running call reaches the person
 through them (ai_runtime/execution/sinks.py): ``approve``, ``ask``, ``propose``,
-``credential``, ``screen``, and the assistant's ``find_files``. The
-session (session.py) owns the mind, the turn and the inbound answers
-(``deliver_approval``, ``deliver_answer``); this holds what is open
-right now, so that an audience arriving late and a session being
-killed can see it.
+``credential``, ``screen``, and the assistant's ``find_files`` and
+``save_skill``. The session (session.py) owns the mind, the turn and
+the inbound answers (``deliver_approval``, ``deliver_answer``); this
+holds what is open right now, so that an audience arriving late and a
+session being killed can see it.
 """
 
 import logging
@@ -298,7 +298,7 @@ class Cards:
             "agent_name": request["agent_name"],
             **{k: v for k, v in request.items()
                if k in ("question", "choices", "expects", "candidates",
-                        "query", "credential", "code")},
+                        "query", "credential", "code", "skill")},
         }
         self.questions[approval_id] = card
         await self.emit({"event": "question_asked", "source": source,
@@ -482,6 +482,38 @@ class Cards:
         if created:
             await self.emit({"event": "message_created", "message": message})
         return {"status": "chosen", "files": chosen}
+
+    async def save_skill(self, skill: Dict[str, str]) -> Dict[str, Any]:
+        """A skill the assistant offers to save (save_skill), put before
+        the person whole — title, when it applies, the body — on a card
+        they answer save or decline. The runtime writes nothing: a save
+        is the person's own act at the platform's door
+        (``AI:Approval:Decide``), which creates the skill as them from
+        the words the card holds and answers with its row.
+
+        ``status`` is saved (with ``skill``: ref, title, summary),
+        declined, expired (nobody answered in a day), refused (the card
+        was not opened: no grant to create skills, a title taken — with
+        the platform's ``error`` and its ``code``) or failed."""
+        title = str(skill.get("title") or "")
+        try:
+            answer = await self.ask_card({
+                "function": "save_skill", "agent_id": "", "agent_name": "",
+                "question": f"Save \u201c{title[:200]}\u201d as a skill?",
+                "choices": [], "expects": "skill", "skill": dict(skill),
+            }, {"kind": "assistant"})
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            return {"status": "refused", "error": str(exc),
+                    "code": getattr(exc, "status", None)}
+        if answer is None:
+            return {"status": "expired"}
+        if isinstance(answer, dict) and answer.get("status") in (
+                "saved", "declined", "failed"):
+            return dict(answer)
+        # Words where a row was expected: nothing the platform saved.
+        return {"status": "declined"}
 
     async def close_orphaned(self) -> None:
         """A question lives only as long as the call asking it. One
