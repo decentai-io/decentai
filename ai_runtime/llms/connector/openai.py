@@ -13,7 +13,7 @@ from openai import AsyncOpenAI
 
 from ai_runtime.llms.connector import cache
 from ai_runtime.llms.connector.tools import (
-    setting,
+    TIMEOUT_SECONDS, setting,
     ModelReply, is_tool_choice_refusal,
 )
 from ai_runtime.llms.connector.usage import Embeddings, Usage
@@ -39,7 +39,7 @@ class OpenAIConnector:
             base_url=str(config.get("endpoint") or "") or None,
             # A hung provider call must not stall a reasoning turn forever;
             # transient 5xx/connection errors retry with backoff in the SDK.
-            timeout=setting(config, "timeout_seconds", 60, 1, 600),
+            timeout=setting(config, "timeout_seconds", TIMEOUT_SECONDS, 1, 600),
             max_retries=int(setting(config, "max_retries", 2, 0, 10)),
             # A redirect is not followed: followed to another origin,
             # the key in this client's headers would go there with it.

@@ -15,7 +15,7 @@ from typing import Any, Dict
 
 import httpx
 
-from ai_runtime.llms.connector.tools import setting
+from ai_runtime.llms.connector.tools import TIMEOUT_SECONDS, setting
 
 
 class ProviderError(RuntimeError):
@@ -48,7 +48,7 @@ class HttpConnector:
                 raise ValueError(f"{self.NAME} connector requires {name}")
         # A hung provider call must not stall a reasoning turn forever;
         # a busy one is asked again, as the client libraries do.
-        self.timeout = setting(config, "timeout_seconds", 60, 1, 600)
+        self.timeout = setting(config, "timeout_seconds", TIMEOUT_SECONDS, 1, 600)
         self.max_retries = int(setting(config, "max_retries", 2, 0, 10))
 
     def _client(self) -> httpx.AsyncClient:

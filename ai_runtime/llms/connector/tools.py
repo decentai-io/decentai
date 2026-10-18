@@ -138,6 +138,13 @@ ACCOUNT_MARKS = (
 )
 
 
+#: How long one model reply is waited for, unless the connection says.
+#: A reasoning model writing a whole file takes minutes, not seconds: at
+#: sixty, the Code agent's every attempt timed out, and its retries spent
+#: three minutes failing the same way.
+TIMEOUT_SECONDS = 300
+
+
 def setting(config: dict, name: str, default: float,
             low: float, high: float) -> float:
     """A number a connection sets, held to what makes sense for it;

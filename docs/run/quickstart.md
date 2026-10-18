@@ -33,7 +33,7 @@ yours will differ, and these are for knowing what to expect.
 
 It has to do two things a small model often cannot.
 
-- **Answer inside a minute.** The platform waits sixty seconds for
+- **Answer inside five minutes.** The platform waits five minutes for
   each reply and then asks again. A model that takes longer never
   answers: the chat stays on *Preparing the next step…*.
 - **Read all of its instructions.** What the assistant is told before
