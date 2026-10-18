@@ -4,8 +4,9 @@
 The holding itself happens in the agents' container
 (agents_container/places.py): a user of its own for every agent, its
 home and its spool, the fences the kernel offers. The runtime proves
-at start that it holds, and keeps the one part that is its own — the
-proxy every worker is pointed at, and each worker's pass at it.
+at start that it holds — and again whenever that container started
+again since — and keeps the one part that is its own: the proxy every
+worker is pointed at, and each worker's pass at it.
 
     confinement = Confinement(container)        once, at start
     await confinement.start(port)               the proxy started, the
@@ -185,6 +186,9 @@ class Confinement:
         #: it: their one way out.
         self.proxy: Optional[EgressProxy] = None
         self.logger = logging.getLogger(self.__class__.__name__)
+        # A container that started again is checked again, and what it
+        # proves then is what is reported.
+        container.rechecked.append(self._relearn)
 
     # ------------------------------------------------------------------
     # At start
@@ -210,6 +214,10 @@ class Confinement:
             await proxy.stop()
             self.proxy = None
             raise ConfinementFailed(str(report["error"]))
+        self._learn(report)
+
+    def _learn(self, report: Dict) -> None:
+        """What the container proved it holds a worker to, kept."""
         fences = report.get("fences") or {}
         self.fences = bool(fences.get("files"))
         self.fence_lets_files_move = bool(fences.get("moves"))
@@ -228,6 +236,18 @@ class Confinement:
                 "Workers' connections are NOT fenced: the proxy is offered, "
                 "and nothing stops an agent going around it. The agents' "
                 "container was not given the right to set a firewall rule.")
+
+    def _relearn(self, report: Dict) -> None:
+        """The container started again, and was checked again. Where
+        that check failed, it runs nothing as an agent's user until it
+        passes one, and nothing is reported as holding meanwhile."""
+        if "error" in report:
+            self.logger.error(
+                f"The agents' container started again and could not prove "
+                f"it confines a worker; no worker starts until it does: "
+                f"{report['error']}")
+            report = {}
+        self._learn(report)
 
     async def stop(self) -> None:
         """The runtime is ending: the proxy stops serving."""

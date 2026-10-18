@@ -11,6 +11,8 @@ the container's own business, and no process id ever crosses.
     container = AgentsContainer("agents:8003", install_dir)
     await container.wait()                      at start, until it answers
     await container.check()                     what it holds a worker to, proved
+    await container.recheck()                   proved again, for a container that
+                                                started again since; told to ``rechecked``
     process = await container.start_worker(...) a worker, kept, with its pipes
     await container.build(...)                  requirements, built as wheels
     await container.files(agent)                what an agent keeps
@@ -30,7 +32,7 @@ import asyncio
 import json
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 from ai_runtime.agents_container import wire
 
@@ -51,6 +53,11 @@ class AgentsContainer:
         #: The spawner's own port: where the runtime asks.
         self.port = int(port)
         self.install_dir = Path(install_dir)
+        #: Who is told what a check proved when the container is
+        #: checked again (``recheck``): what holds a worker, as the
+        #: runtime reports it (confinement.py).
+        self.rechecked: List[Callable[[Dict[str, Any]], None]] = []
+        self._rechecking: Optional[asyncio.Task] = None
         self.logger = logging.getLogger(self.__class__.__name__)
 
     # ------------------------------------------------------------------
@@ -125,6 +132,39 @@ class AgentsContainer:
         be reached. ``{"error"}`` names what to mend."""
         return await self._answered({"op": "check"})
 
+    async def recheck(self) -> Dict[str, Any]:
+        """The check asked again, of a container that refused a request
+        for not having been checked since it started: it started again,
+        and the runtime did not. What it proves now is told to
+        ``rechecked``, so that what the runtime reports of it stays
+        true. Requests refused together wait for one check."""
+        running = self._rechecking
+        if (running is None or running.done()
+                or running.get_loop() is not asyncio.get_running_loop()):
+            running = self._rechecking = asyncio.ensure_future(self._recheck())
+        return await asyncio.shield(running)
+
+    async def _recheck(self) -> Dict[str, Any]:
+        self.logger.warning(
+            "The agents' container started again since the runtime did: "
+            "what it holds a worker to is proved again.")
+        report = await self.check()
+        for listener in self.rechecked:
+            listener(report)
+        return report
+
+    async def _confined(self, request: dict) -> dict:
+        """The answer to a request that runs something as an agent's
+        user there; asked once more, after a check, where the
+        container had not been checked since it started."""
+        answer = await self._answered(request)
+        if answer.get(wire.UNCHECKED):
+            report = await self.recheck()
+            if "error" in report:
+                return {"error": str(report["error"])}
+            answer = await self._answered(request)
+        return answer
+
     # ------------------------------------------------------------------
     # A worker, kept
     # ------------------------------------------------------------------
@@ -138,25 +178,39 @@ class AgentsContainer:
         hand back its process: the same streams and the same death as
         one started here would have. ``proxy`` is the worker's way out,
         with its pass. Raises OSError when it could not be started."""
+        request = {
+            "op": "start", "agent": agent, "name": name,
+            "python": str(python), "package": str(package),
+            "environment": environment, "proxy": proxy,
+        }
+        answer, reader, writer = await self._starting(request, limit)
+        if answer.get(wire.UNCHECKED):
+            writer.close()
+            report = await self.recheck()
+            if "error" in report:
+                raise OSError(str(report["error"]))
+            answer, reader, writer = await self._starting(request, limit)
+        if not answer.get("started"):
+            writer.close()
+            raise OSError(str(answer.get("error")
+                              or "the agents' container refused"))
+        return ContainerProcess(reader, writer, limit, Path(str(answer.get("spool"))))
+
+    async def _starting(self, request: dict, limit: int) -> Tuple[
+            dict, asyncio.StreamReader, asyncio.StreamWriter]:
+        """The request to start a worker, and the container's first
+        answer, on the connection the worker's lines will travel."""
         reader, writer = await asyncio.wait_for(
             asyncio.open_connection(self.host, self.port, limit=limit + wire.MARK),
             self.CONNECT_SECONDS)
         try:
-            writer.write(self._line({
-                "op": "start", "key": self.key(), "agent": agent, "name": name,
-                "python": str(python), "package": str(package),
-                "environment": environment, "proxy": proxy,
-            }))
+            writer.write(self._line({**request, "key": self.key()}))
             await writer.drain()
             answer = json.loads(await reader.readline() or b"{}")
         except (ValueError, OSError) as exc:
             writer.close()
             raise OSError(f"the agents' container did not answer ({exc})")
-        if not isinstance(answer, dict) or not answer.get("started"):
-            writer.close()
-            raise OSError(str((answer or {}).get("error")
-                              or "the agents' container refused"))
-        return ContainerProcess(reader, writer, limit, Path(str(answer.get("spool"))))
+        return (answer if isinstance(answer, dict) else {}), reader, writer
 
     # ------------------------------------------------------------------
     # One agent's processes, by name
@@ -170,7 +224,7 @@ class AgentsContainer:
         builder there. Returns (return code, what it wrote, the folder
         the wheels were left in — on the volume both containers hold,
         None where it never ran)."""
-        answer = await self._answered({
+        answer = await self._confined({
             "op": "build", "python": str(python),
             "environment_root": str(environment_root),
             "requirements": [str(word) for word in requirements],
@@ -185,7 +239,7 @@ class AgentsContainer:
     async def files(self, agent: str) -> Dict[str, Any]:
         """What the agent keeps in its home and its spool now, or
         ``{"error"}``."""
-        return await self._answered({"op": "files", "agent": agent})
+        return await self._confined({"op": "files", "agent": agent})
 
     async def stop(self, agent: str) -> List[str]:
         """End every process of the agent's there. Returns errors,

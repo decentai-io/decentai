@@ -152,6 +152,98 @@ class TestWhatItProves:
         assert "Mend" in run(container.check())["error"]
 
 
+class TestAContainerThatStartedAgain:
+    """The agents' container restarts on its own while the runtime runs
+    on: its spawner is a new process, on the same volume with the same
+    key, and nobody has asked it to check. What the one before proved
+    is not taken to hold: it runs nothing as an agent's user until it
+    is checked, and the runtime checks it again."""
+
+    @staticmethod
+    def started_again(tmp_path, helper, container):
+        """A second spawner where the first was, the runtime pointed at
+        it: the container, started again."""
+        again = Serving(tmp_path, helper)
+        container.port = again.service.port
+        helper.forget()
+        return again
+
+    def test_a_spawner_never_checked_runs_nothing_as_an_agents_user(
+            self, serving, container, tmp_path, helper):
+        for request in (
+                {"op": "start", "agent": "agt_a", "name": "A", "python": PYTHON,
+                 "package": str(tmp_path), "environment": MACHINE, "proxy": ""},
+                {"op": "build", "python": PYTHON, "environment_root": str(tmp_path),
+                 "requirements": ["plain"], "proxy": "", "environment": MACHINE,
+                 "timeout": 10},
+                {"op": "files", "agent": "agt_a"}):
+            answer = run(container._ask(request))
+            assert answer.get(wire.UNCHECKED) is True, answer
+            assert "not been checked" in answer["error"]
+        assert serving.service.places.checked is False
+        assert [line for line in helper.asked if line[0] == "run"] == []
+
+    def test_the_runtime_checks_it_again_and_reports_what_it_proves(
+            self, serving, container, venv, tmp_path, helper):
+        confinement = Confinement(container)
+
+        async def scenario():
+            await confinement.start(0, allow_loopback=True)
+            assert confinement.fence_keeps_sockets is False
+            # Started again, on a kernel that offers more.
+            helper.kernel = "landlock=6\nseccomp=1\n"
+            again = await asyncio.to_thread(
+                self.started_again, tmp_path, helper, container)
+            try:
+                handle = Here(venv.python, FIXTURE, manifest_document(),
+                              confinement.place("agt_test"))
+                assert await handle.start() == []
+                await handle.stop()
+            finally:
+                await confinement.stop()
+                await asyncio.to_thread(again.stop)
+        run(scenario())
+        asked = helper.asked
+        assert asked[0] == ["check"]
+        started = next(line for line in asked
+                       if line[0] == "run" and line[-1] == "decentai_sdk.worker")
+        # Fenced and filtered, as the new check proved.
+        assert "s:1" in started
+        assert any(word.startswith("r:") for word in started)
+        assert confinement.fences is True
+        assert confinement.fence_keeps_sockets is True
+
+    def test_one_that_cannot_prove_it_confines_starts_no_worker(
+            self, serving, container, tmp_path, helper):
+        confinement = Confinement(container)
+
+        async def scenario():
+            await confinement.start(0, allow_loopback=True)
+            assert confinement.report()["files"] is True
+            helper.refuse("check")
+            again = await asyncio.to_thread(
+                self.started_again, tmp_path, helper, container)
+            try:
+                with pytest.raises(OSError, match="Mend"):
+                    await container.start_worker(
+                        "agt_a", "A", PYTHON, tmp_path, MACHINE)
+            finally:
+                await confinement.stop()
+                await asyncio.to_thread(again.stop)
+        run(scenario())
+        assert [line[0] for line in helper.asked] == ["check"]
+        assert confinement.report()["files"] is False
+        assert confinement.filters_calls is False
+
+    def test_requests_refused_together_wait_for_one_check(
+            self, serving, container, helper):
+        async def scenario():
+            return await asyncio.gather(
+                container.files("agt_nobody"), container.files("agt_nobody"))
+        assert all("has not run" in answer["error"] for answer in run(scenario()))
+        assert [line for line in helper.asked if line == ["check"]] == [["check"]]
+
+
 class TestAWorkerThere:
     def test_it_is_started_by_name_and_answers_its_greeting(
             self, container, venv, tmp_path, helper):
@@ -249,7 +341,10 @@ class TestABuildThere:
         assert code == 0, said
         assert wheels == tmp_path / "workers" / wire.BUILDER / "spool"
         assert [path.name for path in wheels.iterdir()] == ["plain-1.0-py3-none-any.whl"]
-        build = next(line for line in helper.asked if line[0] == "run")
+        # The check asked first, of a spawner nobody had checked, runs
+        # as installation's user; the build is the line that runs pip.
+        build = next(line for line in helper.asked
+                     if line[0] == "run" and "pip" in line)
         assert build[1] == str(Places.LAST_USER)
         program = build[build.index("--") + 1:]
         assert program[:4] == [PYTHON, "-m", "pip", "wheel"]

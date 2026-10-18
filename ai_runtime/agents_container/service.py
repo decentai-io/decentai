@@ -81,6 +81,9 @@ class SpawnerService:
     WORKER_PROGRAM = ("-I", "-m", "decentai_sdk.worker")
     #: How long a build may take.
     BUILD_SECONDS = 300
+    #: The requests that run something as an agent's user, refused
+    #: until a check has proved this process's fences (places.py).
+    CONFINED = ("start", "build", "files")
 
     def __init__(self, install_dir: str | Path, port: int = 8003,
                  proxy: str = "", proxy_port: int = 8002,
@@ -218,6 +221,8 @@ class SpawnerService:
                 await self._say(writer, {"here": True})
             elif operation == "check":
                 await self._say(writer, await self._check())
+            elif operation in self.CONFINED and not self.places.checked:
+                await self._say(writer, self._unchecked())
             elif operation == "start":
                 await self._start(request, reader, writer)
             elif operation == "build":
@@ -286,6 +291,17 @@ class SpawnerService:
                 "agent going around the proxy. This container was not given "
                 "the right to set a firewall rule.")
         return {**self.places.report(), "network_fenced": fenced}
+
+    def _unchecked(self) -> Dict[str, Any]:
+        """The refusal of a spawner that has not been checked since it
+        started: it started again, and nobody asked it to prove what
+        it holds a worker to. Nothing runs unfenced on a guess."""
+        self.logger.warning(
+            "Refused to run anything as an agent's user: this container "
+            "has not proved what it holds a worker to since it started. "
+            "The runtime checks it again.")
+        return {"error": "the agents' container has not been checked since "
+                         "it started", wire.UNCHECKED: True}
 
     # ------------------------------------------------------------------
     # A worker, kept

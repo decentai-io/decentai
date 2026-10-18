@@ -17,6 +17,12 @@ never sees one's id.
       what the kernel there holds a worker to, proved; or {"error"}
       naming what to mend
 
+    A container whose spawner has not passed a check since it started
+    — it started again, and the runtime did not — refuses every request
+    that runs something as an agent's user (start, build, files) with
+    {"error", "unchecked": true}; the runtime checks it again and asks
+    once more.
+
     → {"key", "op": "start", "agent", "name", "python", "package",
        "environment", "proxy"}
     ← {"started": true, "spool"}        or {"error"}
@@ -69,6 +75,10 @@ OUT, LOG, WHY, EXIT = b"o", b"e", b"w", b"x"
 
 #: The two places that are nobody's agent, asked for by these names.
 VERIFICATION, BUILDER = "verification", "builder"
+
+#: What marks a refusal from a spawner that has not been checked since
+#: it started: the runtime's cue to check it again.
+UNCHECKED = "unchecked"
 
 
 def outlasted(timeout: Optional[float], said: Any) -> str:

@@ -259,6 +259,12 @@ class Places:
         self.filters_calls = False
         #: Whether the helper could put that filter on, asked or not.
         self.can_filter_calls = False
+        #: Whether ``check`` has proved all of the above since this
+        #: process started. Until it has, the fences above are not
+        #: known, and nothing is run as an agent's user (service.py):
+        #: a container that started again is not taken to hold what
+        #: it never proved.
+        self.checked = False
         self.logger = logging.getLogger(self.__class__.__name__)
 
     # ------------------------------------------------------------------
@@ -271,6 +277,7 @@ class Places:
         Landlock and whether seccomp it has, and installation's place
         is prepared from end to end. Raises ``ConfinementFailed``
         naming what to mend."""
+        self.checked = False
         code, output = await self._helper(["check"])
         if code != 0:
             raise ConfinementFailed(self._what_to_mend(
@@ -290,6 +297,7 @@ class Places:
             raise ConfinementFailed(self._what_to_mend("; ".join(errors)))
         await self.sweep()
         self._say_what_holds()
+        self.checked = True
 
     def report(self) -> Dict[str, object]:
         """What the kernel here holds a worker to, as the runtime is

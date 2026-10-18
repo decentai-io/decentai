@@ -71,6 +71,8 @@ class FakeContainer:
         #: program, as the container starts it — or a script a test
         #: puts in its place, to speak as a worker would not.
         self.program = ("-I", "-m", "decentai_sdk.worker")
+        #: Who is told what a check proved again (AgentsContainer's).
+        self.rechecked: List[Any] = []
         #: agent -> the processes started for it, for ``stop``.
         self._started: Dict[str, List[Any]] = {}
         self._clearing: Set[asyncio.Task] = set()
