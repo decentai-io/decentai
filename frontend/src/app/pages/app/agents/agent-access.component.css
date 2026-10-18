@@ -52,3 +52,13 @@
   font-size: var(--t-sm);
   line-height: var(--lh-sm);
 }
+
+/* A grant's functions, by name, under its line. */
+.access-fns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}

@@ -11,6 +11,14 @@
     <ng-container rowMeta>
       {{ scope(grant) }}<ng-container *ngIf="limits(grant)"> · limited to {{ limits(grant) }}</ng-container>
     </ng-container>
+    <!-- Which functions, by name: "2 functions" said how many, not which. -->
+    <ul class="access-fns" *ngIf="namedFunctions(grant).length > 1" [attr.aria-label]="'Functions ' + audience(grant) + ' may use'">
+      <li class="chip access-function" *ngFor="let fn of namedFunctions(grant)">{{ fn }}</li>
+    </ul>
+    <button rowActions class="btn sm" type="button" *ngIf="editable(grant)" [disabled]="!!busyId"
+            [attr.aria-label]="'Change the access of ' + audience(grant)" (click)="edit(grant)">
+      Edit
+    </button>
     <button rowActions class="btn sm" type="button" [disabled]="!!busyId"
             [attr.aria-label]="'Revoke the access of ' + audience(grant)" (click)="askRevoke(grant)">
       {{ busyId === grant.grant_id ? "Removing…" : "Revoke" }}
@@ -28,7 +36,10 @@
 
 <!-- ── Granting more: to whom, for which functions, within what ────── -->
 <form class="access-form" *ngIf="!loading" (ngSubmit)="save()">
-  <h3 class="form-section-title">Give access</h3>
+  <h3 class="form-section-title">{{ editing ? "Change the access of " + audience(editing) : "Give access" }}</h3>
+  <p class="form-section-note" *ngIf="editing">
+    Saving replaces this grant with the one below. Nothing else changes.
+  </p>
 
   <div class="form">
     <app-field label="To whom" [error]="tried ? errorFor('who') : ''">
@@ -85,8 +96,9 @@
        that each narrow something are hard to hold in the head at once. -->
   <div class="access-foot">
     <p class="access-sentence" role="status">{{ draftSummary }}</p>
+    <button class="btn" type="button" *ngIf="editing" [disabled]="!!busyId" (click)="cancelEdit()">Cancel</button>
     <button class="btn primary" type="submit" [disabled]="!!busyId">
-      {{ busyId === agent.agent_id ? "Saving…" : "Give access" }}
+      {{ busyId === agent.agent_id ? "Saving…" : editing ? "Save changes" : "Give access" }}
     </button>
   </div>
 </form>
