@@ -18,10 +18,11 @@ that the platform can see, is written down as it happens:
     memory           the kernel ended a process for memory
 
 One line of JSON for each, in files under ``<install_dir>/events/`` —
-one set of files for each process that writes, since two processes
-write: the runtime, and the spawner in the agents' container. Both
-hold the volume, and neither an agent's user nor its fence opens the
-folder.
+in the folder of the process that writes: the AI Runtime in its own,
+each Execution Sandbox's spawner in its own. Nothing is shared between
+them: the runtime reads its own and asks each sandbox for its, over
+the sandbox link (wire.py, ``events``). Neither an agent's user nor its
+fence opens the folder.
 
 Bounded by size, not by time: a file that is full is put aside and the
 oldest put aside is removed, so the log never holds more than

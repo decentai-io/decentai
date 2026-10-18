@@ -1,12 +1,17 @@
-"""The agents' container, stood in for by this process — for the tests.
+"""An Execution Sandbox, stood in for by this process — for the tests.
 
-In production every process of an agent's runs in the agents'
-container, which the runtime asks by name (ai_runtime/agents/container.py,
-agents_container/wire.py): a worker of an agent's, a build, a listing,
-an ending. The tests have no such container: this object answers the
-same requests by doing the work here, as this process's user — a
+In production every process of an agent's runs in an Execution Sandbox,
+which the AI Runtime asks by name (ai_runtime/agents/container.py,
+agents_container/wire.py): an install, a worker of an agent's, a
+listing, an ending. The tests have no such sandbox: this object answers
+the same requests by doing the work here, as this process's user — a
 worker is a subprocess of the test's own, started from the environment
-it was asked from; a build runs pip here, or leaves what a test said.
+it was asked from; an install is the sandbox's own (installs.py), its
+build running pip here or leaving what a test said. An agent a test
+hands in with an environment of its own (a fixture) runs from that.
+
+Several may stand side by side, each a sandbox of its own with its own
+folder (``sandbox_id``), registered by hand (``Sandboxes.of``).
 
 What was asked is remembered (``asked``), a request can be made to
 refuse (``refuses``), what ``check`` says of the kernel is a test's to
@@ -28,7 +33,9 @@ import sys
 from pathlib import Path
 from typing import Any, ClassVar, Dict, List, Optional, Sequence, Set, Tuple
 
+from ai_runtime.agents.container import AgentsContainer, SandboxRefused
 from ai_runtime.agents_container import wire
+from ai_runtime.agents_container.installs import InstallRefused, Installs, greet
 from ai_runtime.agents_container.places import Places
 
 #: What a Python process needs from the machine it runs on that the
@@ -44,13 +51,14 @@ def _with_the_machines(environment):
                if name in os.environ}, **environment}
 
 
-class FakeContainer:
+class FakeContainer(AgentsContainer):
     COULD_NOT_RUN = "it could not run"
     #: Every fake made, so that a test's teardown can end whatever any
     #: of them started.
     live: ClassVar[List["FakeContainer"]] = []
 
-    def __init__(self, install_dir: str | Path):
+    def __init__(self, install_dir: str | Path, sandbox_id: str = "fake",
+                 labels=()):
         self.install_dir = Path(install_dir)
         self.workers_dir = self.install_dir / Places.WORKERS_FOLDER
         #: The requests as they were asked, each as the request's name
@@ -81,7 +89,12 @@ class FakeContainer:
         self._listening = socket.socket()
         self._listening.bind(("127.0.0.1", 0))
         self._listening.listen(1)
-        self.port = self._listening.getsockname()[1]
+        super().__init__(f"127.0.0.1:{self._listening.getsockname()[1]}",
+                         sandbox_id=sandbox_id, labels=labels)
+        #: The sandbox's own copy of what it installs: the real code,
+        #: building and greeting here.
+        self.installs = Installs(self.install_dir, build=self._build_for,
+                                 greet=self._greet_here)
         FakeContainer.live.append(self)
 
     # -- reaching it ----------------------------------------------------
@@ -89,11 +102,104 @@ class FakeContainer:
     async def wait(self, seconds: Optional[float] = None) -> bool:
         return True
 
-    def key(self) -> str:
-        return "a-fake-key"
-
     async def usage(self) -> Optional[Dict[str, Any]]:
         return None
+
+    async def events(self, limit=200, kinds=(), agent="", before=None):
+        return []
+
+    async def keep(self, digests) -> int:
+        self.asked.append(["keep", sorted(digests)])
+        return self.installs.keep(digests)
+
+    async def drain(self, on: bool = True) -> bool:
+        self.asked.append(["drain", bool(on)])
+        self.draining = bool(on)
+        return self.draining
+
+    # -- the agent's code, held here ----------------------------------------
+
+    async def prepare(self, agent, confinement):
+        """A fixture's own environment and folder; else the package,
+        installed here as a sandbox installs it, from the bytes the
+        runtime sends when asked."""
+        self.asked.append(["prepare", agent.agent_id])
+        if "prepare" in self.refuses:
+            raise SandboxRefused(f"Execution Sandbox {self.id} did not answer "
+                                 f"(refused today)")
+        environment = getattr(agent, "environment", None)
+        if environment is not None:
+            for problem in await environment.refresh_sdk():
+                raise SandboxRefused(problem)
+            return str(environment.python), str(agent.folder)
+        return await super().prepare(agent, confinement)
+
+    async def install(self, digest, manifest_hash, packages, builder_proxy="",
+                      verify_proxy="", environment=None, worker_environment=None):
+        self.asked.append(["install", digest])
+        options = dict(builder_proxy=builder_proxy, verify_proxy=verify_proxy,
+                       environment=environment)
+        try:
+            try:
+                found = await self.installs.install(digest, manifest_hash, None, **options)
+            except LookupError:
+                if packages is None:
+                    return {"error": "nobody could send the package"}
+                archive = packages(digest)
+                self.asked.append(["sent", digest])
+                found = await self.installs.install(digest, manifest_hash,
+                                                    archive, **options)
+        except InstallRefused as exc:
+            return {"error": str(exc)}
+        self.installed.add(digest)
+        return {"installed": True, "python": found["python"],
+                "package": found["package"]}
+
+    async def extras(self, agent, requirements, confinement):
+        """Packages for one run: into a fixture's own environment, built
+        through the runtime-side builder place; else into the
+        environment the package was installed in here."""
+        self.asked.append(["extras", list(requirements)])
+        environment = getattr(agent, "environment", None)
+        if environment is not None:
+            return await environment.extras(
+                list(requirements), confinement.builder_place(self))
+        builder = confinement.builder_place(self)
+        builder.admit("the builder", confinement.package_network())
+        try:
+            answer = await self.installs.extras(
+                agent.digest, list(requirements), builder.proxy_address(), {})
+        finally:
+            builder.dismiss()
+        if "error" in answer:
+            return None, [answer["error"]]
+        return Path(answer["folder"]), []
+
+    async def _build_for(self, python, root, requirements, proxy, environment,
+                         timeout=None):
+        return await self.build(python, root, requirements, proxy,
+                                environment, timeout or 300)
+
+    async def _greet_here(self, python, package, manifest_document, proxy):
+        """The verification start, here."""
+        self.asked.append(["verify", str(package)])
+        home = self._place(wire.VERIFICATION)
+        process = await asyncio.create_subprocess_exec(
+            str(python), *self.program,
+            stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL, cwd=str(package),
+            env={**_with_the_machines({"PATH": os.environ.get("PATH", ""),
+                                       "PYTHONDONTWRITEBYTECODE": "1"}),
+                 "HOME": str(home), "TMPDIR": str(home), "TMP": str(home),
+                 "TEMP": str(home)})
+        try:
+            return await greet(process, package, manifest_document, 120)
+        finally:
+            try:
+                await asyncio.wait_for(process.wait(), 5)
+            except asyncio.TimeoutError:
+                self._kill(process)
+                await process.wait()
 
     # -- what it holds a worker to ----------------------------------------
 
@@ -115,27 +221,36 @@ class FakeContainer:
 
     # -- a worker, kept -------------------------------------------------
 
-    def _place(self, agent: str) -> Tuple[Path, Path]:
-        """The agent's home and spool here, emptied: as the container
-        prepares a place before every start."""
+    def _place(self, agent: str) -> Path:
+        """The agent's home here, emptied: as the sandbox prepares a
+        place before every start."""
         folder = self.workers_dir / agent
-        home, spool = folder / "home", folder / "spool"
-        for inside in (home, spool):
-            inside.mkdir(parents=True, exist_ok=True)
-            self._empty(inside)
+        home = folder / "home"
+        home.mkdir(parents=True, exist_ok=True)
+        self._empty(home)
         os.utime(folder)
-        return home, spool
+        return home
+
+    def _wheels(self) -> Path:
+        """Where the builder leaves what it built, emptied."""
+        wheels = self.workers_dir / wire.BUILDER / "spool"
+        wheels.mkdir(parents=True, exist_ok=True)
+        self._empty(wheels)
+        return wheels
 
     async def start_worker(self, agent: str, name: str, python: str | Path,
                            package: str | Path, environment: Dict[str, str],
                            proxy: str = "", limit: int = 2 * 1024 * 1024):
         self.asked.append(["start", agent])
         if "start" in self.refuses:
-            raise OSError("the agents' container refused: no start today")
-        home, spool = self._place(agent)
+            raise OSError(f"Execution Sandbox {self.id} refused: no start today")
+        if self.draining:
+            raise OSError(f"Execution Sandbox {self.id} is draining: it starts "
+                          f"no new worker.")
+        home = self._place(agent)
         given = {**_with_the_machines(environment),
                  "HOME": str(home), "TMPDIR": str(home), "TMP": str(home),
-                 "TEMP": str(home), "DECENTAI_SPOOL_DIR": str(spool)}
+                 "TEMP": str(home)}
         if proxy:
             for variable in ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy",
                              "https_proxy", "DECENTAI_PROXY"):
@@ -146,19 +261,21 @@ class FakeContainer:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             cwd=str(package), env=given, limit=limit)
-        process.spool = spool
         self._started.setdefault(agent, []).append(process)
-        clearing = asyncio.ensure_future(self._cleared_after(process, home, spool))
+        self.running.add(agent)
+        clearing = asyncio.ensure_future(self._cleared_after(agent, process, home))
         self._clearing.add(clearing)
         clearing.add_done_callback(self._clearing.discard)
         return process
 
-    async def _cleared_after(self, process, home: Path, spool: Path) -> None:
-        """The place emptied when the worker has gone, as the container
+    async def _cleared_after(self, agent: str, process, home: Path) -> None:
+        """The place emptied when the worker has gone, as the sandbox
         empties it."""
         await process.wait()
-        for inside in (home, spool):
-            self._empty(inside)
+        self._empty(home)
+        if not any(other.returncode is None
+                   for other in self._started.get(agent, []) if other is not process):
+            self.running.discard(agent)
 
     # -- a build, by the builder ------------------------------------------
 
@@ -171,7 +288,7 @@ class FakeContainer:
             return 1, f"{self.COULD_NOT_RUN}: the agents' container refused", None
         if self.build_fails:
             return 1, self.build_fails, None
-        _, spool = self._place(wire.BUILDER)
+        spool = self._wheels()
         if self.leaves is not None:
             for name, content in self.leaves.items():
                 if content is None:
@@ -209,7 +326,7 @@ class FakeContainer:
         if not folder.is_dir():
             return {"error": "That agent has no place here: it has not run."}
         found, total, count = [], 0, 0
-        for root in (folder / "home", folder / "spool"):
+        for root in (folder / "home",):
             for inside, _, names in os.walk(root):
                 for name in names:
                     path = Path(inside) / name
@@ -287,6 +404,12 @@ def begin(install_dir: str | Path) -> FakeContainer:
     _current.clear()
     _current["container"] = container
     return container
+
+
+def sandboxes():
+    """The registry the test's confinement stands on: its one fake,
+    and any a test added beside it."""
+    return confinement().sandboxes
 
 
 def end() -> None:

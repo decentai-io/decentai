@@ -4,9 +4,10 @@ An agent that is hostile on purpose: each thing it tries is one a
 worker could do before it had a user of its own, and the test passes
 when the attempt is refused.
 
-These run in the runtime's container of the stack test_spawner_live.py
-runs in, the helper being in the agents' container beside it, and are
-skipped everywhere else (CI runs the two files together):
+These run in the AI Runtime's container of the stack
+test_spawner_live.py runs in, the helper being in each Execution
+Sandbox beside it, and are skipped everywhere else (CI runs the two
+files together):
 
     docker compose -f ai_runtime/tests/spawner-live.compose.yml up -d --build
     docker compose -f ai_runtime/tests/spawner-live.compose.yml exec \
@@ -15,6 +16,12 @@ skipped everywhere else (CI runs the two files together):
             PYTHONPATH=/tmp/pytest python -m pytest -p no:cacheprovider \
                 --tb=short -rs ai_runtime/tests/test_confinement_live.py -q'
     docker compose -f ai_runtime/tests/spawner-live.compose.yml down -v
+
+This process is the runtime: it takes the sandboxes' registrations,
+sends each the packages it is to run, and starts workers there. It
+shares no folder with a sandbox; what a test looks at in one is seen
+through a read-only window the stack gives the tests alone
+(``seen``).
 """
 
 import ast
@@ -24,20 +31,19 @@ import http.server
 import io
 import json
 import os
-import shutil
-import sys
 import tarfile
+import tempfile
 import textwrap
 import threading
 import uuid
 import zipfile
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import pytest
 import yaml
 
 from ai_runtime.agents.confinement import Confinement
-from ai_runtime.agents.container import AgentsContainer
+from ai_runtime.agents.sandboxes import Sandboxes
 from ai_runtime.agents_container import wire
 from ai_runtime.agents_container.places import Places
 from ai_runtime.agents.egress import EgressProxy
@@ -49,19 +55,42 @@ from ai_runtime.execution.call import Call
 from ai_runtime.tests.fixture_agents import MINIMAL_MANIFEST, write_agent
 from ai_runtime.execution.sinks import ChatSinks
 from contracts.agent_manifest import load_manifest
+from contracts.agent_package import AgentPackage
 
-#: The install directory the image's helper was built for.
+#: A sandbox's own folder, as it is inside every sandbox: the install
+#: directory the image's helper was built for.
 INSTALL_DIR = Path("/data/agents")
+#: Where the tests look into each sandbox's folder, read-only.
+WINDOWS = Path("/sandboxes")
+
+#: What the stack sets: the node's secret, and the sandboxes that
+#: register — the first is the one most tests use.
+SECRET = (os.environ.get("AI_RUNTIME_SANDBOX_SECRET") or "").strip()
+LIVE = (os.environ.get("LIVE_SANDBOXES") or "").split()
+FIRST = LIVE[0] if LIVE else ""
+#: Where the sandboxes register, in this stack.
+REGISTRY_PORT = int(os.environ.get("AI_RUNTIME_SANDBOX_PORT") or 8005)
+
+#: digest -> the bytes of every package these tests made: what a
+#: sandbox is sent when it asks for one.
+PACKAGES = {}
 
 
-def user_of(name: str) -> int:
-    """The user the agents' container gave an agent: read from the
-    table it keeps on the volume, since the runtime is not told."""
+def seen(path, sandbox: str = "") -> Path:
+    """A path inside a sandbox, as the tests see it through that
+    sandbox's window."""
+    inside = PurePosixPath(str(path)).relative_to(INSTALL_DIR.as_posix())
+    return WINDOWS / (sandbox or FIRST) / inside
+
+
+def user_of(name: str, sandbox: str = "") -> int:
+    """The user a sandbox gave an agent: read from the table it keeps
+    in its folder, since the runtime is not told."""
     if name == wire.VERIFICATION:
         return Places.VERIFICATION_USER
     if name == wire.BUILDER:
         return Places.BUILDER_USER
-    return json.loads((INSTALL_DIR / "workers" / "users.json")
+    return json.loads(seen(INSTALL_DIR / "workers" / "users.json", sandbox)
                       .read_text(encoding="utf-8"))[name]
 
 
@@ -69,22 +98,69 @@ def home_of(name: str) -> Path:
     return INSTALL_DIR / "workers" / name / "home"
 
 
-def spool_of(name: str) -> Path:
-    return INSTALL_DIR / "workers" / name / "spool"
-
-
-#: Where the agents' container answers; the live tests run in the
-#: stack of the two containers (spawner-live.compose.yml).
-ADDRESS = (os.environ.get("AI_RUNTIME_AGENTS_SPAWNER") or "").strip()
-
-
 def helper_works() -> bool:
-    return bool(ADDRESS)
+    return bool(SECRET and LIVE)
 
 
 pytestmark = pytest.mark.skipif(
     not helper_works(),
-    reason="no agents' container to reach; run in spawner-live.compose.yml")
+    reason="no Execution Sandbox registers here; run in spawner-live.compose.yml")
+
+
+def packaged(folder: Path) -> InstalledAgent:
+    """A package the tests wrote, as the runtime holds an approved one:
+    its bytes kept for the sandbox that asks, by their digest."""
+    archive, digest = AgentPackage.build(folder)
+    PACKAGES[digest] = archive
+    manifest, errors = load_manifest(folder / "manifest.yaml")
+    assert errors == [], errors
+    return InstalledAgent(digest, manifest, folder, None)
+
+
+#: A secret a person types, whose ``base_url`` names where the agent
+#: connects (``from_secret``).
+CONNECTION = {"id": "connection", "label": "Connection",
+              "description": "Where the agent connects, and its token.",
+              "binding": {"cardinality": "one", "required": True},
+              "fields": [
+                  {"name": "base_url", "label": "URL", "type": "string",
+                   "storage": "keys", "required": True},
+                  {"name": "api_token", "label": "Token", "type": "secret",
+                   "storage": "values", "required": True}]}
+
+
+def intruder(network=None, code: bool = False, dependencies=(),
+             agent_id: str = "intruder", secrets=(), fresh: bool = False) -> InstalledAgent:
+    """The hostile agent, packaged, with what its manifest says of it
+    — each variant is a package of its own, as an approved one is."""
+    document = yaml.safe_load(MINIMAL_MANIFEST.format(
+        agent_id=agent_id, entrypoint="agent:DemoAgent"))
+    if network is not None:
+        document["network"] = network
+    if code:
+        document["tools"][0]["functions"][0]["code"] = True
+    if dependencies:
+        document["implementation"]["dependencies"] = list(dependencies)
+    if secrets:
+        document.setdefault("resources", {})["secrets"] = list(secrets)
+    folder = Path(tempfile.mkdtemp(prefix="live-")) / agent_id
+    files = {"agent.py": INTRUDER}
+    if fresh:
+        # Bytes no sandbox can hold from an earlier run.
+        files["made.txt"] = uuid.uuid4().hex
+    write_agent(folder.parent, agent_id, manifest=yaml.safe_dump(document),
+                files=files)
+    return packaged(folder)
+
+
+class Ground:
+    """A package held in a sandbox, where a worker of it starts from
+    there: its environment's interpreter and folder, its package."""
+
+    def __init__(self, python: str, package: str):
+        self.python = PurePosixPath(python)
+        self.root = self.python.parent.parent
+
 
 INTRUDER = textwrap.dedent("""\
     import base64
@@ -449,14 +525,30 @@ def site():
     server.server_close()
 
 
+async def registered(seconds: float = 90) -> Sandboxes:
+    """The registry, as the runtime starts it, once every sandbox of
+    the stack has registered and proved what it holds a worker to."""
+    sandboxes = Sandboxes(SECRET, port=REGISTRY_PORT)
+    await sandboxes.listen()
+    loop = asyncio.get_running_loop()
+    until = loop.time() + seconds
+    while not all(sandboxes.get(name) is not None and sandboxes.get(name).eligible()
+                  for name in LIVE):
+        assert loop.time() < until, (
+            f"the sandboxes did not register: {sandboxes.problems()}")
+        await asyncio.sleep(0.2)
+    sandboxes.packages = PACKAGES.__getitem__
+    return sandboxes
+
+
 @pytest.fixture(scope="module")
 def confinement(site):
-    """As the runtime configures it at start: the helper checked, the
-    proxy on the port the firewall rule was written for. Every name
-    resolves to this machine, where the site stands."""
-    container = AgentsContainer(ADDRESS, INSTALL_DIR)
-    assert run(container.wait(60))
-    found = Confinement(container)
+    """As the runtime configures itself at start: its sandboxes
+    registered, each having checked itself; the proxy on the port the
+    firewall rules were written for. Every name resolves to this
+    machine, where the site stands."""
+    sandboxes = run(registered())
+    found = Confinement(sandboxes)
     EgressProxy.resolver = lambda host, port: ["127.0.0.1"]
     ports = EgressProxy.PORTS_OF_A_NAMED_HOST
     EgressProxy.PORTS_OF_A_NAMED_HOST = (*ports, site)
@@ -464,8 +556,15 @@ def confinement(site):
                     allow_loopback=True))
     yield found
     run(found.stop())
+    run(sandboxes.close())
     EgressProxy.resolver = None
     EgressProxy.PORTS_OF_A_NAMED_HOST = ports
+
+
+@pytest.fixture(scope="module")
+def first(confinement):
+    """The sandbox most tests run in."""
+    return confinement.sandboxes.get(FIRST)
 
 
 @pytest.fixture
@@ -515,30 +614,21 @@ def fenced_builds(confinement):
 
 
 @pytest.fixture(scope="module")
-def ground(confinement):
-    """A package and its environment where a worker's user can reach
-    them — pytest's own temporary folders are closed to everyone else."""
-    folder = INSTALL_DIR / f"live-{uuid.uuid4().hex[:12]}"
-    folder.mkdir(mode=0o755)
-    try:
-        environment = AgentEnvironment(folder / "env")
-        assert run(environment.build([], confinement.builder_place())) == []
-        package = write_agent(
-            folder, "intruder", manifest=MINIMAL_MANIFEST.format(
-                agent_id="intruder", entrypoint="agent:DemoAgent"),
-            files={"agent.py": INTRUDER})
-        document = yaml.safe_load(
-            (package / "manifest.yaml").read_text(encoding="utf-8"))
-        yield environment, package, document
-    finally:
-        shutil.rmtree(folder, ignore_errors=True)
+def ground(confinement, first):
+    """The hostile agent's package, sent to the first sandbox and
+    installed there by the sandbox itself — its environment built and
+    the package verified there: (its environment, its package, its
+    manifest), as paths in that sandbox."""
+    agent = intruder()
+    python, package = run(first.prepare(agent, confinement))
+    yield Ground(python, package), PurePosixPath(package), agent.manifest.document
 
 
 @pytest.fixture
-def place(confinement):
-    found = confinement.place("agt_live_intruder")
+def place(confinement, first):
+    found = confinement.place("agt_live_intruder", first)
     yield found
-    run(confinement.container.stop(found.name))
+    run(first.stop(found.name))
 
 
 def ask(ground, place, what, target="", hosts=None):
@@ -591,11 +681,12 @@ class TestAConfinedWorker:
         assert ask(ground, place, "write", str(package))["happened"] is False
         assert ask(ground, place, "write",
                    str(environment.root))["happened"] is False
-        assert not (package / "planted").exists()
+        assert not seen(package / "planted").exists()
+        assert seen(package / "agent.py").is_file()
 
     def test_it_cannot_write_into_the_install_directory(self, ground, place):
         """The folder every agent's environment and home sit under, and
-        the workers' own folder in it, are the runtime's: a worker that
+        the workers' own folder in it, are the sandbox's: a worker that
         could write there could plant something for the next one."""
         assert ask(ground, place, "write", str(INSTALL_DIR))["happened"] is False
         assert ask(ground, place, "write", str(INSTALL_DIR / "workers"))["happened"] is False
@@ -604,12 +695,11 @@ class TestAConfinedWorker:
 
     def test_it_cannot_read_or_write_another_agents_home(
             self, ground, place, confinement):
-        other = confinement.place("agt_live_other")
+        other = confinement.place("agt_live_other", place.sandbox)
         ask(ground, other, "whoami")          # its place, made and left behind
         assert user_of(other.name) != user_of(place.name)
         assert ask(ground, place, "read", str(home_of(other.name)))["happened"] is False
         assert ask(ground, place, "write", str(home_of(other.name)))["happened"] is False
-        assert ask(ground, place, "write", str(spool_of(other.name)))["happened"] is False
 
     def test_it_cannot_use_the_helper(self, ground, place, confinement):
         assert ask(ground, place, "helper",
@@ -629,7 +719,10 @@ class TestAConfinedWorker:
         # ask() stopped the worker on its way out
         assert not running(child)
 
-    def test_bytes_travel_through_a_spool_both_may_reach(self, ground, place):
+    def test_large_files_travel_in_pieces_on_its_own_lines(self, ground, place):
+        """Nothing is shared between the runtime and the sandbox for a
+        file to be left in: a file larger than a line goes in pieces,
+        both ways, on the lines the worker speaks on."""
         environment, package, document = ground
         payload = b"%PDF" + os.urandom(3 * 1024 * 1024)
         encoded = base64.b64encode(payload).decode("ascii")
@@ -649,14 +742,14 @@ class TestAConfinedWorker:
 
             handle.router = router
             assert await handle.start() == []
-            assert handle.spool == spool_of(place.name)
             try:
                 result, status = await handle.invoke(
                     "c_1", "intruder.main.run", {"what": "spool"})
                 assert status == "success", result
                 assert result["size"] == len(payload)
                 assert seen["create"]["content_base64"] == encoded
-                assert list(spool_of(place.name).iterdir()) == []
+                assert "content_stream" not in seen["create"]
+                assert handle._streams == {}
             finally:
                 await handle.stop()
 
@@ -675,20 +768,21 @@ class TestAFencedWorker:
         assert ask(ground, place, "read",
                    str(environment.root))["happened"] is True
 
-    def test_it_cannot_read_another_agents_package(self, ground, place, fenced):
-        _, package, _ = ground
-        other = write_agent(package.parent, f"other-{uuid.uuid4().hex[:8]}")
-        try:
-            assert os.access(other / "agent.py", os.R_OK)
-            assert ask(ground, place, "read", str(other))["happened"] is False
-            assert ask(ground, place, "read_file",
-                       str(other / "agent.py"))["happened"] is False
-        finally:
-            shutil.rmtree(other, ignore_errors=True)
+    def test_it_cannot_read_another_agents_package(
+            self, ground, place, fenced, confinement):
+        """Another package in the same sandbox, readable by any user
+        but for the fence."""
+        _, other = run(place.sandbox.prepare(
+            intruder(agent_id=f"other{uuid.uuid4().hex[:8]}"), confinement))
+        other = PurePosixPath(other)
+        assert seen(other / "agent.py").stat().st_mode & 0o004
+        assert ask(ground, place, "read", str(other))["happened"] is False
+        assert ask(ground, place, "read_file",
+                   str(other / "agent.py"))["happened"] is False
 
     def test_it_cannot_read_the_table_of_users(self, ground, place, fenced):
         table = INSTALL_DIR / Places.WORKERS_FOLDER / Places.TABLE_FILENAME
-        assert table.is_file()
+        assert seen(table).is_file()
         assert ask(ground, place, "read_file", str(table))["happened"] is False
 
     def test_it_cannot_read_the_platforms_own_code(self, ground, place, fenced):
@@ -715,7 +809,7 @@ class TestAFencedWorker:
         environment, package, document = ground
         name = f"decentai-live-{uuid.uuid4().hex[:12]}"
         other = WorkerHandle(environment.python, package, document,
-                             place=keeps_sockets.place("agt_live_other"))
+                             place=keeps_sockets.place("agt_live_other", place.sandbox))
 
         async def opened():
             assert await other.start() == []
@@ -881,12 +975,8 @@ class TestAFencedNetwork:
 
     def test_a_host_its_credential_names_is_open_for_the_call_it_was_handed_to(
             self, ground, confinement, net, site):
-        environment, package, document = ground
-        manifest, errors = load_manifest(package / "manifest.yaml")
-        assert errors == []
-        manifest.document["network"] = {
-            "hosts": [{"from_secret": "connection.base_url"}]}
-        agent = InstalledAgent("fixture:intruder", manifest, package, environment)
+        agent = intruder(network={"hosts": [{"from_secret": "connection.base_url"}]},
+                         secrets=[CONNECTION])
         url = f"http://acme.example.net:{site}/"
 
         class Credentials:
@@ -1084,7 +1174,8 @@ def index(confinement, site, ground):
     patch.setattr(confinement, "package_hosts", ("index.test",))
     # The table of users is there for a build to try to read: an
     # agent has had a worker started.
-    ask(ground, confinement.place("agt_live_intruder"), "whoami")
+    ask(ground, confinement.place("agt_live_intruder",
+                                  confinement.sandboxes.get(FIRST)), "whoami")
     yield site
     patch.undo()
     Site.pages.clear()
@@ -1103,34 +1194,41 @@ def of_the_builder() -> list:
     return found
 
 
+def site_packages(root) -> Path:
+    """An environment's packages in the first sandbox, as seen."""
+    found = sorted(seen(root).glob("lib/python*/site-packages"))
+    assert found, f"no packages in {root}"
+    return found[0]
+
+
 @pytest.fixture(scope="class")
 def built(ground, confinement, index):
-    """An environment whose one declared package is the hostile one,
-    and what its build said of itself."""
-    environment, _, _ = ground
-    found = AgentEnvironment(environment.root.parent / "env-built")
-    errors = run(found.build(["hostile"], place=confinement.builder_place()))
-    assert errors == [], errors
-    report = (found._site_packages() / "hostile_report.py").read_text(
+    """A package whose one declared dependency is the hostile one,
+    installed in the first sandbox — its environment built there by
+    the builder — and what the build said of itself."""
+    python, _ = run(confinement.sandboxes.get(FIRST).prepare(
+        intruder(dependencies=["hostile"]), confinement))
+    found = Ground(python, "")
+    report = (site_packages(found.root) / "hostile_report.py").read_text(
         encoding="utf-8")
     yield found, json.loads(
         ast.literal_eval(report.split("=", 1)[1].strip()))
-    found.remove()
 
 
 class TestABuild:
     """The packages an agent declared are downloaded and built by the
-    builder, and unpacked by the runtime."""
+    builder, and unpacked by the sandbox's own process."""
 
-    def test_what_was_built_is_installed_and_is_the_runtimes(self, built):
+    def test_what_was_built_is_installed_and_is_the_sandboxs(self, built):
         environment, _ = built
-        assert environment.exists()
-        packages = environment._site_packages()
-        # What the list named, and what that needed in its turn.
+        assert seen(environment.root / ".ready").is_file()
+        packages = site_packages(environment.root)
+        # What the list named, and what that needed in its turn — the
+        # platform's user's, as the spawner is (the same image's user).
         for module in ("hostile_report.py", "plain.py"):
             assert (packages / module).is_file()
             assert (packages / module).stat().st_uid == os.getuid()
-        assert not (environment.root / AgentEnvironment.WHEELS_FOLDER).exists()
+        assert not seen(environment.root / AgentEnvironment.WHEELS_FOLDER).exists()
 
     def test_a_build_runs_as_the_builder(self, built, confinement):
         _, report = built
@@ -1144,7 +1242,7 @@ class TestABuild:
     def test_a_build_cannot_write_into_the_environment(self, built):
         environment, report = built
         assert report["plant"]["happened"] is False, report["plant"]
-        assert not (environment.root / "planted.py").exists()
+        assert not seen(environment.root / "planted.py").exists()
 
     def test_a_build_moves_what_it_made_between_its_own_folders(self, built):
         _, report = built
@@ -1170,48 +1268,50 @@ class TestABuild:
 
     def test_nothing_of_a_build_runs_on_and_only_wheels_are_left(self, built):
         """The builder's user runs nothing once the build is over, and
-        its spool holds what it built and nothing else — the wheels,
-        left for the runtime to take until the next build empties it."""
+        folder holds what it built and nothing else — the wheels, left
+        for the sandbox to take until the next build empties it."""
         assert of_the_builder() == []
-        left = os.listdir(spool_of(wire.BUILDER))
+        left = os.listdir(seen(INSTALL_DIR / "workers" / wire.BUILDER / "spool"))
         assert left and all(name.endswith(".whl") for name in left)
 
     def test_a_package_from_somewhere_else_is_not_fetched(
             self, ground, confinement, index):
-        environment, _, _ = ground
-        found = AgentEnvironment(environment.root.parent / "env-elsewhere")
-        errors = run(found.build(
-            [f"plain @ http://elsewhere.test:{index}"
-             f"/files/plain-1.0-py3-none-any.whl"],
-            place=confinement.builder_place()))
-        assert errors and "dependency installation failed" in errors[0]
-        assert not found.root.exists()
+        from ai_runtime.agents.container import SandboxRefused
+        from ai_runtime.agents_container.installs import Installs
+
+        agent = intruder(dependencies=[
+            f"plain @ http://elsewhere.test:{index}/files/plain-1.0-py3-none-any.whl"])
+        with pytest.raises(SandboxRefused, match="dependency installation failed"):
+            run(confinement.sandboxes.get(FIRST).prepare(agent, confinement))
+        # Nothing of it is kept: neither its code nor an environment.
+        assert not seen(INSTALL_DIR / "store" / agent.digest.split(":")[1]).exists()
+        assert not seen(INSTALL_DIR / Installs.VERIFIED_FOLDER
+                        / agent.digest.split(":")[1]).exists()
 
     def test_a_build_that_does_not_end_is_ended(
-            self, ground, confinement, index, monkeypatch):
-        environment, _, _ = ground
-        monkeypatch.setattr(AgentEnvironment, "PIP_TIMEOUT_SECONDS", 15)
-        found = AgentEnvironment(environment.root.parent / "env-sleeper")
-        errors = run(found.build(["sleeper"], place=confinement.builder_place()))
-        assert errors and "did not finish in 15 seconds" in errors[0]
-        assert not found.root.exists()
+            self, ground, confinement, index):
+        """The stack gives a build 45 seconds (AI_SANDBOX_BUILD_SECONDS)."""
+        from ai_runtime.agents.container import SandboxRefused
+
+        with pytest.raises(SandboxRefused, match="did not finish in 45 seconds"):
+            run(confinement.sandboxes.get(FIRST).prepare(
+                intruder(dependencies=["sleeper"]), confinement))
         assert of_the_builder() == []
 
 
 class TestAProgramAnAgentRuns:
     """A function that declared ``code: true``: a program it starts
     reaches the hosts a card the person allowed named, for that call,
-    and imports the packages it named — built by the builder, like any
-    package, and installed by the runtime."""
+    and imports the packages it named — built by the builder of the
+    sandbox it runs in, like any package, and installed there."""
 
-    @staticmethod
-    def coder(ground):
-        environment, package, _ = ground
-        manifest, errors = load_manifest(package / "manifest.yaml")
-        assert errors == []
-        manifest.document["network"] = {"hosts": []}
-        manifest.document["tools"][0]["functions"][0]["code"] = True
-        return InstalledAgent("fixture:intruder", manifest, package, environment)
+    _coder = None
+
+    @classmethod
+    def coder(cls, ground):
+        if cls._coder is None:
+            cls._coder = intruder(network={"hosts": []}, code=True)
+        return cls._coder
 
     @staticmethod
     def asked(confinement, agent, *calls, allows=True):
@@ -1234,7 +1334,7 @@ class TestAProgramAnAgentRuns:
                     result, status = await executor.invoke(
                         agent, "intruder.main.run", inputs)
                     assert status == "success", result
-                    answers.append(result)
+                    answers.append({**result, "_sandbox": pool.placed(agent.agent_id)})
                 return answers
             finally:
                 await pool.stop()
@@ -1248,6 +1348,7 @@ class TestAProgramAnAgentRuns:
             confinement, self.coder(ground),
             {"what": "program_reaches", "target": url},
             {"what": "fetch", "target": url})
+        during.pop("_sandbox")
         assert during == {"before": "403", "allowed": True,
                           "named": "200", "unnamed": "403"}, during
         # The call ended, and what was opened for it closed with it.
@@ -1259,49 +1360,55 @@ class TestAProgramAnAgentRuns:
         [during] = self.asked(
             confinement, self.coder(ground),
             {"what": "program_reaches", "target": url}, allows=False)
+        during.pop("_sandbox")
         assert during == {"before": "403", "allowed": False,
                           "named": "403", "unnamed": "403"}, during
 
     def test_it_imports_a_package_its_card_named(
             self, ground, confinement, index):
-        environment, _, _ = ground
-        try:
-            [answer] = self.asked(
-                confinement, self.coder(ground),
-                {"what": "program_imports", "target": "plain"})
-            assert answer["allowed"] is True and answer["said"] == "True", answer
-            folder = Path(answer["folder"])
-            assert folder.parent == environment.root / "extras"
-            # The runtime's, like the environment it lies in: the worker
-            # reads it and cannot change it.
-            assert folder.stat().st_uid == os.getuid()
-        finally:
-            shutil.rmtree(environment.root / "extras", ignore_errors=True)
+        [answer] = self.asked(
+            confinement, self.coder(ground),
+            {"what": "program_imports", "target": "plain"})
+        assert answer["allowed"] is True and answer["said"] == "True", answer
+        folder = PurePosixPath(answer["folder"])
+        # Built where the worker ran, inside its environment there.
+        assert folder.parent.name == "extras"
+        assert folder.parent.parent.parent.name == "envs"
+        # The sandbox's own, like the environment it lies in: the
+        # worker reads it and cannot change it.
+        assert seen(folder, answer["_sandbox"]).stat().st_uid == os.getuid()
 
     def test_a_package_built_for_a_run_is_built_by_the_builder(
             self, ground, confinement, index):
-        environment, _, _ = ground
-        try:
-            folder, errors = run(environment.extras(
-                ["hostile"], place=confinement.builder_place()))
-            assert errors == [], errors
-            report = json.loads(ast.literal_eval(
-                (folder / "hostile_report.py").read_text(encoding="utf-8")
-                .split("=", 1)[1].strip()))
-            assert report["user"] == Places.BUILDER_USER
-            assert report["settings"]["happened"] is False
-            assert report["elsewhere"]["happened"] is False
-            # What it depends on came with it.
-            assert (folder / "plain.py").is_file()
-            assert not (folder / ".wheels").exists()
-        finally:
-            shutil.rmtree(environment.root / "extras", ignore_errors=True)
+        sandbox = confinement.sandboxes.get(FIRST)
+        coder = self.coder(ground)
+        run(sandbox.prepare(coder, confinement))
+        folder, errors = run(sandbox.extras(coder, ["hostile"], confinement))
+        assert errors == [], errors
+        folder = seen(folder)
+        report = json.loads(ast.literal_eval(
+            (folder / "hostile_report.py").read_text(encoding="utf-8")
+            .split("=", 1)[1].strip()))
+        assert report["user"] == Places.BUILDER_USER
+        assert report["settings"]["happened"] is False
+        assert report["elsewhere"]["happened"] is False
+        # What it depends on came with it.
+        assert (folder / "plain.py").is_file()
+        assert not (folder / ".wheels").exists()
 
 
 class TestWhatTheDeploymentSets:
     """Settings:Safety, held at the proxy: a site no agent may open is
     refused to an agent whose manifest reaches anywhere, and a call's
     line on the trail names where its worker connected."""
+
+    _anywhere = None
+
+    @classmethod
+    def anywhere(cls):
+        if cls._anywhere is None:
+            cls._anywhere = intruder(network={"hosts": "any"})
+        return cls._anywhere
 
     @staticmethod
     def called(ground, confinement, safety, *calls):
@@ -1310,11 +1417,7 @@ class TestWhatTheDeploymentSets:
         from ai_runtime.execution.executor import FunctionExecutor
         from sim.resources import InMemoryResourceProvider
 
-        environment, package, _ = ground
-        manifest, errors = load_manifest(package / "manifest.yaml")
-        assert errors == []
-        manifest.document["network"] = {"hosts": "any"}
-        agent = InstalledAgent("fixture:intruder", manifest, package, environment)
+        agent = TestWhatTheDeploymentSets.anywhere()
         trail = []
 
         async def audit(event):
@@ -1367,34 +1470,65 @@ class TestWhatTheDeploymentSets:
 
 class TestVerification:
     def test_a_package_is_verified_in_installations_own_place(
-            self, ground, confinement):
+            self, ground, confinement, first):
         environment, package, document = ground
         assert run(WorkerHandle.probe(
             environment.python, package, document,
-            place=confinement.verification_place())) == []
+            place=confinement.verification_place(first))) == []
 
-    def test_a_broken_package_is_still_told_why(self, ground, confinement):
+    def test_a_broken_package_is_still_told_why(self, ground, confinement, first):
         environment, package, document = ground
         broken = {**document, "implementation": {
             **document["implementation"], "entrypoint": "agent:Nope"}}
         errors = run(WorkerHandle.probe(
             environment.python, package, broken,
-            place=confinement.verification_place()))
+            place=confinement.verification_place(first)))
         assert errors and "'Nope' not found" in errors[0]
+
+    def test_a_sandbox_verifies_what_it_installs_and_keeps_nothing_broken(
+            self, confinement, first):
+        """The sandbox's own verification start: a package whose code
+        does not load is refused, and nothing of it is kept."""
+        from ai_runtime.agents.container import SandboxRefused
+
+        folder = Path(tempfile.mkdtemp(prefix="live-")) / "broken"
+        write_agent(folder.parent, "broken", manifest=MINIMAL_MANIFEST.format(
+            agent_id="broken", entrypoint="agent:Nope"),
+            files={"agent.py": INTRUDER})
+        agent = packaged(folder)
+        with pytest.raises(SandboxRefused, match="'Nope' not found"):
+            run(first.prepare(agent, confinement))
+        assert not seen(INSTALL_DIR / "store" / agent.digest.split(":")[1]).exists()
+
+    def test_bytes_that_are_not_the_digest_are_refused_before_anything_is_written(
+            self, confinement, first):
+        agent = intruder(agent_id="tampered")
+        PACKAGES[agent.digest] = PACKAGES[agent.digest] + b"tampered"
+        answer = run(first.install(agent.digest, "", PACKAGES.__getitem__))
+        assert "does not match the digest" in answer["error"]
+        assert not seen(INSTALL_DIR / "store" / agent.digest.split(":")[1]).exists()
+        assert not any(seen(INSTALL_DIR / "store").glob(".incoming-*"))
+
+    def test_a_manifest_that_was_not_approved_is_refused_before_anything_is_written(
+            self, confinement, first):
+        agent = intruder(agent_id="unapproved")
+        answer = run(first.install(agent.digest, "sha256:" + "0" * 64,
+                                   PACKAGES.__getitem__))
+        assert "not the one that was approved" in answer["error"]
+        assert not seen(INSTALL_DIR / "store" / agent.digest.split(":")[1]).exists()
 
 
 class TestThePool:
     def test_the_pool_gives_each_agent_its_place(self, ground, confinement):
-        environment, package, _ = ground
-        manifest, errors = load_manifest(package / "manifest.yaml")
-        assert errors == []
-        agent = InstalledAgent("fixture:intruder", manifest, package, environment)
+        agent = intruder()
 
         async def scenario():
             pool = WorkerPool(confinement)
-            result, status = await pool.invoke( agent, "intruder.main.run", {"what": "whoami"}, Call("c_1", resources=None), timeout=30)
+            result, status = await pool.invoke(
+                agent, "intruder.main.run", {"what": "whoami"},
+                Call("c_1", resources=None), timeout=30)
             assert status == "success", result
-            assert result["user"] == user_of("intruder")
+            assert result["user"] == user_of("intruder", pool.placed("intruder"))
             await pool.stop()
 
         run(scenario())

@@ -3,8 +3,8 @@
 One class, two ways in:
 
 - a ``WorkerHandle`` instance — the long-lived client an execution
-  layer holds: has the agents' container start the worker from its
-  private venv (agents/container.py), handshakes, keeps any number of
+  layer holds: has an Execution Sandbox start the worker from its
+  private venv there (agents/container.py), handshakes, keeps any number of
   invocations in flight, routes the worker's asks (pool.py names them)
   to whoever may answer them, and owns the process's death.
 - ``WorkerHandle.probe`` — installation's verification station: start,
@@ -12,18 +12,21 @@ One class, two ways in:
   handshake refuses is a broken package, named at install time in the
   exact environment the agent will really run in.
 
-The container starts the worker as the SDK's worker program, from the
+The sandbox starts the worker as the SDK's worker program, from the
 environment's own interpreter, isolated: the venv answers for itself.
+A file too large for one line travels in pieces on the same wire,
+ahead of the message that names it, in either direction: nothing is
+shared between the runtime and the sandbox to leave it in.
 """
 
 from __future__ import annotations
 
 import asyncio
 import base64
+import binascii
 import json
 import logging
 import os
-import stat
 import uuid
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
@@ -41,7 +44,7 @@ class WorkerError(RuntimeError):
 class WorkerHandle:
     """One agent's worker process, from start to death."""
 
-    PROTOCOL_VERSION = 1
+    PROTOCOL_VERSION = 2
     LINE_LIMIT = 2 * 1024 * 1024
     HANDSHAKE_TIMEOUT_SECONDS = 60
     GRACE_SECONDS = 5
@@ -77,8 +80,8 @@ class WorkerHandle:
     #: and DECENTAI_AGENT_* for whatever a deployment wants its agents
     #: to read. Named family by family: other DECENTAI_ names are the
     #: platform's own (the runtime's user ids, an installer's password),
-    #: and nothing of those is an agent's to see. The spool and the
-    #: proxy address are set at spawn.
+    #: and nothing of those is an agent's to see. The proxy address is
+    #: set at spawn.
     PASSED_PREFIXES = ("LC_", "DECENTAI_BROWSER_", "DECENTAI_CODE_",
                        "DECENTAI_WEB_", "DECENTAI_AGENT_")
 
@@ -87,8 +90,8 @@ class WorkerHandle:
         self.python = Path(python)
         self.folder = Path(folder)
         self.manifest_document = manifest_document
-        #: Where the worker is confined (confinement.py): a user, a home
-        #: and a spool of its own, and its pass at the proxy.
+        #: Where the worker is confined (confinement.py): its sandbox, a
+        #: user and a home of its own there, and its pass at the proxy.
         self.place = place
         #: async (method, params) -> result — answers the worker's asks
         #: (the pool's router). An exception becomes the error
@@ -112,10 +115,11 @@ class WorkerHandle:
         self._tasks: set = set()
         #: The worker's one death, once somebody has asked for it.
         self._death: Optional[asyncio.Future] = None
-        #: The place's spool: a folder both sides can reach, for bytes
-        #: too large for one line — a file read goes to the worker as a
-        #: path in it, a file created comes back as one.
-        self.spool: Optional[Path] = None
+        #: The pieces of large files the worker sent, by stream, until
+        #: the request that names them: None for one that was more than
+        #: a file may be, or not base64.
+        self._streams: Dict[str, Optional[bytearray]] = {}
+        self._streamed = 0
         self.logger = logging.getLogger(self.__class__.__name__)
 
     # ------------------------------------------------------------------
@@ -158,76 +162,81 @@ class WorkerHandle:
         }
 
     # ------------------------------------------------------------------
-    # The spool
+    # Large files, in pieces on the wire
     # ------------------------------------------------------------------
 
     #: Base64 this long or shorter travels inline on the line; longer
-    #: goes through the spool. A line is capped at LINE_LIMIT, and a
-    #: scan or a signed form runs to many megabytes.
+    #: travels as pieces of this length, each a ``bytes`` notification,
+    #: ahead of the message that names them. A line is capped at
+    #: LINE_LIMIT, and a scan or a signed form runs to many megabytes.
     INLINE_LIMIT = 256 * 1024
+    #: The largest file a worker may hand over, and the most it may
+    #: have sent in pieces that no request has named yet.
+    FILE_MAX_BYTES = 256 * 1024 * 1024
 
-    def _spool_out(self, method: str, result: Any) -> Any:
-        """A read too large for the line: the bytes are written to the
-        spool and the worker is told where, instead of what."""
-        if (method != "resources.read_file" or self.spool is None
-                or not isinstance(result, dict)):
+    async def _stream_out(self, method: str, result: Any) -> Any:
+        """A read too large for the line: its bytes are sent in pieces,
+        and the answer names them instead of holding them."""
+        if method != "resources.read_file" or not isinstance(result, dict):
             return result
         encoded = result.get("content_base64")
         if not isinstance(encoded, str) or len(encoded) <= self.INLINE_LIMIT:
             return result
-        target = self.spool / f"{uuid.uuid4().hex}.bin"
-        target.write_bytes(base64.b64decode(encoded))
+        stream = uuid.uuid4().hex
+        for begin in range(0, len(encoded), self.INLINE_LIMIT):
+            await self._send({"method": "bytes", "params": {
+                "stream": stream,
+                "data": encoded[begin:begin + self.INLINE_LIMIT]}})
         return {**{k: v for k, v in result.items()
                    if k not in ("content_base64", "content")},
-                "content_path": str(target)}
+                "content_stream": stream}
 
-    #: The largest file a worker may hand over through the spool.
-    SPOOL_MAX_BYTES = 256 * 1024 * 1024
-
-    async def _spool_in(self, method: str, params: dict) -> dict:
-        """A create whose bytes the worker left in the spool: read them
-        back into the shape the router takes, and remove the file. Read
-        on a thread, the one place the runtime uses one: a file of up
-        to SPOOL_MAX_BYTES, and this loop serves every chat."""
-        if method != "resources.create_file" or not params.get("content_path"):
-            return params
-        if self.spool is None:
-            raise WorkerError("no spool is open for this worker")
-        encoded = await asyncio.to_thread(
-            self._spooled, str(params["content_path"]))
-        return {**{k: v for k, v in params.items() if k != "content_path"},
-                "content_base64": encoded}
-
-    def _spooled(self, named: str) -> str:
-        """The bytes of one file in the spool, encoded. The worker owns
-        the spool and wrote the name, so nothing about it is trusted:
-        only a plain file directly in the spool is read — a link is not
-        followed (it could name any file this process can read), a pipe
-        is not opened (it would wait for ever), and a file past the cap
-        is refused rather than read."""
-        target = self.spool / Path(named).name
-        if Path(named).parent.resolve() != self.spool.resolve():
-            raise WorkerError("content_path is not in this worker's spool")
-        flags = (os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
-                 | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_BINARY", 0))
+    def _receive_piece(self, params: Any) -> None:
+        """One piece of a file the worker is sending. Nothing about it
+        is trusted: a piece that is not base64, or one past what a file
+        may be, spoils its stream, and the request that names it is
+        refused."""
+        if not isinstance(params, dict):
+            return
+        stream = str(params.get("stream") or "")[:64]
+        piece = params.get("data")
+        if not stream or not isinstance(piece, str):
+            return
+        if stream not in self._streams and len(self._streams) >= 16:
+            return                       # more open at once than any create needs
+        kept = self._streams.setdefault(stream, bytearray())
+        if kept is None:
+            return
         try:
-            if target.is_symlink():
-                raise WorkerError("content_path is not a file")
-            with os.fdopen(os.open(target, flags), "rb") as spooled:
-                status = os.fstat(spooled.fileno())
-                if not stat.S_ISREG(status.st_mode):
-                    raise WorkerError("content_path is not a file")
-                if status.st_size > self.SPOOL_MAX_BYTES:
-                    raise WorkerError("the file is too large to store")
-                data = spooled.read(self.SPOOL_MAX_BYTES + 1)
-        except OSError as exc:
-            raise WorkerError(f"the spooled file could not be read: {exc}")
-        finally:
-            try:
-                target.unlink()
-            except OSError:
-                pass
-        return base64.b64encode(data).decode("ascii")
+            data = base64.b64decode(piece, validate=True)
+        except (ValueError, binascii.Error):
+            data = None
+        if data is None or self._streamed + len(data) > self.FILE_MAX_BYTES:
+            self._streamed -= len(kept)
+            self._streams[stream] = None
+            return
+        kept.extend(data)
+        self._streamed += len(data)
+
+    async def _stream_in(self, method: str, params: dict) -> dict:
+        """A create whose bytes the worker sent in pieces: the pieces,
+        joined, in the shape the router takes."""
+        if method != "resources.create_file" or not params.get("content_stream"):
+            return params
+        stream = str(params["content_stream"])
+        if stream not in self._streams:
+            raise WorkerError("the file's pieces did not arrive")
+        kept = self._streams.pop(stream)
+        if kept is None:
+            raise WorkerError("the file did not arrive whole: it was larger "
+                              "than a file may be, or not base64")
+        self._streamed -= len(kept)
+        # Encoded off the loop: a file of up to FILE_MAX_BYTES, and this
+        # loop serves every chat.
+        encoded = await asyncio.to_thread(
+            lambda: base64.b64encode(bytes(kept)).decode("ascii"))
+        return {**{k: v for k, v in params.items() if k != "content_stream"},
+                "content_base64": encoded}
 
     def whose(self) -> Dict[str, Any]:
         """Whose worker this is, as what it does is written down."""
@@ -242,7 +251,7 @@ class WorkerHandle:
         return self.process is not None and self.process.returncode is None
 
     async def start(self) -> List[str]:
-        """Have the container start the worker in the agent's place,
+        """Have the sandbox start the worker in the agent's place,
         and handshake. Returns errors, empty when the worker is
         serving: whether the package loads is the worker's to say, from
         the environment it runs in."""
@@ -254,7 +263,6 @@ class WorkerHandle:
             # Nothing runs, so nothing will die and take its pass back.
             self._release()
             return [f"the worker could not be started: {exc}"]
-        self.spool = self.process.spool
         self._serve_task = asyncio.get_running_loop().create_task(self._serve())
         self._start(self._drain_stderr())
 
@@ -318,6 +326,16 @@ class WorkerHandle:
                 pass
         await self.kill("it was asked to leave")
 
+    async def stop_when_idle(self, seconds: float) -> None:
+        """Shutdown once nothing is in flight on it — at most
+        ``seconds`` from now: a worker retired from a sandbox that
+        drains finishes what it is doing first."""
+        loop = asyncio.get_running_loop()
+        until = loop.time() + seconds
+        while self.alive and self._pending and loop.time() < until:
+            await asyncio.sleep(0.2)
+        await self.stop()
+
     async def kill(self, reason: str = "the worker is gone") -> None:
         """End the worker. It dies once: whoever asks again — the reader
         that saw the pipe close, beside the caller that closed it —
@@ -345,8 +363,8 @@ class WorkerHandle:
 
     async def _started(self):
         """The worker's process, started where it runs: the agent's own
-        place in the agents' container, from its environment, in its
-        package, pointed at the proxy with its pass."""
+        place in its Execution Sandbox, from its environment there, in
+        its package, pointed at the proxy with its pass."""
         return await self.place.container.start_worker(
             agent=self.place.name, name=self.place.label,
             python=self.python, package=self.folder,
@@ -354,13 +372,15 @@ class WorkerHandle:
             proxy=self.place.proxy_address(), limit=self.LINE_LIMIT)
 
     def _release(self) -> None:
-        """Take back the worker's pass at the proxy. Its place is the
-        container's to empty, which it does when the worker has gone."""
-        self.spool = None
+        """Take back the worker's pass at the proxy, and what it sent of
+        a file nobody named. Its place is the sandbox's to empty, which
+        it does when the worker has gone."""
+        self._streams.clear()
+        self._streamed = 0
         self.place.dismiss()
 
     async def _end(self) -> None:
-        """End the process, where it runs: the container ends every
+        """End the process, where it runs: the sandbox ends every
         process of the agent's user — the worker, and whatever it
         started with it."""
         errors = await self.place.container.stop(self.place.name)
@@ -459,6 +479,8 @@ class WorkerHandle:
                 future.set_exception(WorkerError(detail))
             else:
                 future.set_result(message.get("result"))
+        elif message.get("method") == "bytes":
+            self._receive_piece(message.get("params"))
         elif message.get("method") == "progress" and self.progress is not None:
             params = message.get("params") or {}
             self._start(self.progress(str(params.get("call_id") or ""),
@@ -480,9 +502,9 @@ class WorkerHandle:
                 "message": "nothing is serving resource asks here"}})
         method = str(message.get("method") or "")
         try:
-            result = self._spool_out(method, await self.router(
+            result = await self._stream_out(method, await self.router(
                 method,
-                await self._spool_in(method, message.get("params") or {})
+                await self._stream_in(method, message.get("params") or {})
             ))
         except Exception as exc:
             return await self._send({"id": request_id,
@@ -531,7 +553,7 @@ class WorkerHandle:
                     timeout: int = 120) -> List[str]:
         """Start a worker from the environment, hello, shutdown — in
         installation's own place, which is nobody's agent and which the
-        container lends to one verification at a time. Returns errors,
+        sandbox lends to one verification at a time. Returns errors,
         empty when the package verified. A worker that outlasts
         ``timeout`` is ended, so a refusal can never become a hang."""
         agent_name, _ = cls._declared(manifest_document)

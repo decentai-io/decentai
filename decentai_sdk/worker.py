@@ -1,4 +1,4 @@
-"""The worker entry loop (docs/reference/worker-protocol.md, version 1).
+"""The worker entry loop (docs/reference/worker-protocol.md, version 2).
 
 One process, one package. The host spawns this module inside the
 package's private venv, speaks newline-delimited JSON over stdin/stdout,
@@ -39,13 +39,17 @@ from decentai_sdk.manifest import Manifest
 #: The wire's version, said in the handshake. The runtime keeps its own
 #: copy (ai_runtime/agents/workers.py PROTOCOL_VERSION), and the
 #: two must be equal.
-PROTOCOL_VERSION = 1
+PROTOCOL_VERSION = 2
 #: One line of the wire, in either direction: what the runtime reads
 #: from a worker (ai_runtime/agents/workers.py LINE_LIMIT) the
 #: worker reads from the runtime. A file whose base64 is longer than an
-#: eighth of it (WireResources.INLINE_LIMIT) travels by the spool, where
-#: the host opened one, and not by the line.
+#: eighth of it (WireResources.INLINE_LIMIT) travels in pieces, each a
+#: ``bytes`` notification of its own on the same wire, and not in one
+#: line.
 MAX_LINE_BYTES = 2 * 1024 * 1024
+#: The most a worker keeps of the pieces the host sent it, of every
+#: file not yet read together: what one file may be.
+MAX_STREAM_BYTES = 256 * 1024 * 1024
 PACKAGE_PREFIX = "decentai_agents"
 
 logger = logging.getLogger("decentai_sdk.worker")
@@ -144,9 +148,11 @@ class WireResources:
     an in-process refusal does.
     """
 
-    def __init__(self, rpc, call_id: str):
+    def __init__(self, rpc, call_id: str, streams: Optional["Streams"] = None):
         self._rpc = rpc
         self._call_id = call_id
+        #: The pieces of large files, both ways (Streams).
+        self._streams = streams
 
     async def _ask(self, method: str, **params: Any) -> Any:
         return await self._rpc(method, {"call_id": self._call_id, **params})
@@ -193,26 +199,22 @@ class WireResources:
         return await self._ask("resources.list_files", resource_id=resource_id)
 
     #: Base64 this long or shorter travels inline on the line; longer
-    #: goes through the spool folder the host opened for this worker
-    #: (DECENTAI_SPOOL_DIR). Agent code sees neither: a read always
-    #: comes back with its bytes, a create always takes them.
+    #: travels in pieces of this length on the same wire, ahead of the
+    #: message that names them (``content_stream``). Agent code sees
+    #: neither: a read always comes back with its bytes, a create
+    #: always takes them.
     INLINE_LIMIT = 256 * 1024
 
     async def read_file(self, resource_id: str, ref: str) -> Dict[str, Any]:
         record = dict(await self._ask("resources.read_file",
                                       resource_id=resource_id, ref=ref) or {})
-        path = record.pop("content_path", None)
-        if path:
-            # Too large for the line: the host left the bytes in the
-            # spool and named the file. Read once, then it is gone.
-            target = Path(str(path))
-            try:
-                data = target.read_bytes()
-            finally:
-                try:
-                    target.unlink()
-                except OSError:
-                    pass
+        stream = record.pop("content_stream", None)
+        if stream:
+            # Too large for the line: the host sent the bytes in pieces
+            # before its answer, and the answer names them.
+            if self._streams is None:
+                raise ResourceDenied("the file's pieces have nowhere to arrive")
+            data = self._streams.take(str(stream))
             record["content_base64"] = base64.b64encode(data).decode("ascii")
             try:
                 record["content"] = data.decode("utf-8")
@@ -226,7 +228,6 @@ class WireResources:
         """Text as ``content``, bytes as ``content_base64`` — one of the
         two. A read gives both back where they apply: ``content`` when
         the bytes are text, ``content_base64`` always."""
-        spool = os.environ.get("DECENTAI_SPOOL_DIR") or ""
         encoded = content_base64
         if encoded is None and isinstance(content, (bytes, bytearray)):
             # Bytes handed as content: taken as the bytes they are. Sent
@@ -236,12 +237,12 @@ class WireResources:
         elif encoded is None and content is not None:
             encoded = base64.b64encode(
                 str(content).encode("utf-8")).decode("ascii")
-        if spool and encoded is not None and len(encoded) > self.INLINE_LIMIT:
-            target = Path(spool) / f"{uuid.uuid4().hex}.bin"
-            target.write_bytes(base64.b64decode(encoded))
+        if (self._streams is not None and encoded is not None
+                and len(encoded) > self.INLINE_LIMIT):
+            stream = self._streams.send(encoded, self.INLINE_LIMIT)
             return await self._ask("resources.create_file",
                                    resource_id=resource_id, filename=filename,
-                                   content_path=str(target))
+                                   content_stream=stream)
         return await self._ask("resources.create_file", resource_id=resource_id,
                                filename=filename, content=content,
                                content_base64=content_base64)
@@ -250,6 +251,57 @@ class WireResources:
         answer = await self._ask("resources.delete_file",
                                  resource_id=resource_id, ref=ref)
         return bool((answer or {}).get("deleted"))
+
+
+class Streams:
+    """The pieces of large files, on the one wire: those the host sends
+    ahead of an answer that names them, kept until they are read, and
+    those this worker sends ahead of a request that names them."""
+
+    def __init__(self, wire: "Wire"):
+        self.wire = wire
+        #: stream id -> the bytes arrived so far, or None for one that
+        #: was more than a file may be.
+        self._arrived: Dict[str, Optional[bytearray]] = {}
+        self._held = 0
+
+    def receive(self, params: dict) -> None:
+        stream = str(params.get("stream") or "")[:64]
+        piece = params.get("data")
+        if not stream or not isinstance(piece, str):
+            return
+        kept = self._arrived.setdefault(stream, bytearray())
+        if kept is None:
+            return
+        try:
+            data = base64.b64decode(piece, validate=True)
+        except ValueError:
+            data = None
+        if data is None or self._held + len(data) > MAX_STREAM_BYTES:
+            self._held -= len(kept)
+            self._arrived[stream] = None
+            return
+        kept.extend(data)
+        self._held += len(data)
+
+    def take(self, stream: str) -> bytes:
+        kept = self._arrived.pop(stream, None)
+        if kept is None:
+            raise ResourceDenied("the file did not arrive whole")
+        self._held -= len(kept)
+        return bytes(kept)
+
+    def send(self, encoded: str, piece: int) -> str:
+        """``encoded`` sent in pieces, each a notification of its own;
+        returns the stream's id for the request that names them. A
+        piece is a multiple of four characters, so that each is base64
+        on its own."""
+        stream = uuid.uuid4().hex
+        piece = max(4, piece - piece % 4)
+        for start in range(0, len(encoded), piece):
+            self.wire.send({"method": "bytes", "params": {
+                "stream": stream, "data": encoded[start:start + piece]}})
+        return stream
 
 
 class AgentWorker:
@@ -268,6 +320,8 @@ class AgentWorker:
         self._pending: Dict[int, asyncio.Future] = {}
         self._next_id = 0
         self._shutdown = asyncio.Event()
+        #: The pieces of large files, both ways.
+        self.streams = Streams(wire)
 
     # ------------------------------------------------------------------
     async def run(self) -> None:
@@ -289,6 +343,10 @@ class AgentWorker:
             self._serve(message)
         elif "id" in message:
             self._settle(message)
+        elif message.get("method") == "bytes":
+            # A piece of a file the host's next answer names.
+            if isinstance(message.get("params"), dict):
+                self.streams.receive(message["params"])
         elif message.get("method") == "screen.input":
             # The person acting on a screen a function is showing:
             # handed to that call's screen, or dropped when the call
@@ -442,7 +500,7 @@ class AgentWorker:
         call = FunctionCall(
             dict(params.get("inputs") or {}),
             progress_sink=self._progress_sink(call_id),
-            resources=WireResources(self._rpc, call_id),
+            resources=WireResources(self._rpc, call_id, self.streams),
             llm=self._llm(call_id),
             show=self._show(call_id),
             post=self._post_to(call_id),

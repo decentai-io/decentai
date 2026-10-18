@@ -1,6 +1,6 @@
 # The whole platform on one machine: MongoDB, the one-shot seeder, the
-# backend, the private AI runtime, the agents' container, the speech
-# container, and web (Caddy) as
+# backend (the Data Core), the AI Runtime, one Execution Sandbox, the
+# speech container, and web (Caddy) as
 # the one door (the web app and the backend on one origin). Every
 # setting comes from one file, deploy.env:
 #
@@ -26,8 +26,10 @@
 #   data      internal: mongo, and the two that speak to it, backend
 #             and init. Nothing else has a route to the database, and
 #             the database has none out.
-#   agents    internal: ai-runtime and agents. A worker's only way
-#             anywhere is the runtime's proxy.
+#   agents    internal: ai-runtime and agents, the AI Runtime and its
+#             Execution Sandbox. A worker's only way anywhere is the
+#             runtime's proxy. A second sandbox, for testing, is laid
+#             over this file by docker-compose.sandboxes.yml.
 #
 # A container on two networks keeps the reach of each: the backend on
 # default and data reaches GitHub and the database both; mongo on data
@@ -135,8 +137,10 @@ services:
   # backend's delegation surface.
   #
   # It decides everything about an agent and runs none of their code:
-  # it asks the agents' container to start each worker, and speaks to
-  # it over that connection (docs/system/sandbox.md). It is handed its
+  # its Execution Sandboxes register with it, and it asks one of them
+  # to start each worker and speaks to it over that connection
+  # (docs/system/sandbox.md). It shares no volume with them: a
+  # sandbox is sent the code it is to run, and keeps its own. It is handed its
   # settings by name, never the file: the database's password, the
   # encryption keys and the backend's private key are not this
   # container's to hold. A name with no value is passed on when
@@ -153,7 +157,9 @@ services:
       agents:
         condition: service_healthy
     environment:
-      AI_RUNTIME_AGENTS_SPAWNER: agents:8003
+      # what its Execution Sandboxes prove when they register
+      AI_RUNTIME_SANDBOX_SECRET: ${AI_RUNTIME_SANDBOX_SECRET:?set in deploy.env}
+      AI_RUNTIME_SANDBOX_PORT:
       BACKEND_SERVICE_PUBLIC_KEY: ${BACKEND_SERVICE_PUBLIC_KEY:?set in deploy.env}
       AI_RUNTIME_SERVICE_PRIVATE_KEY: ${AI_RUNTIME_SERVICE_PRIVATE_KEY:?set in deploy.env}
       BACKEND_INTERNAL_URL: ${BACKEND_INTERNAL_URL:-http://backend:8000}
@@ -186,11 +192,15 @@ services:
       DECENTAI_BROWSER_FOLD_EVERY:
       DECENTAI_CODE_RUN_SECONDS:
     volumes:
-      - agents_data:/data/agents
+      # the approved packages it passes on to its sandboxes
+      - runtime_agents:/data/agents
 
-  # Agent code runs here, and nothing else does: the runtime's image,
-  # started as the spawner, holding no setting of the platform's. What
+  # The Execution Sandbox: agent code runs here, and nothing else does.
+  # The runtime's image, started as the spawner, holding no setting of
+  # the platform's but the node's secret, which it registers with. What
   # a worker is given of the settings above, the runtime sends with it.
+  # Its folder is its own: the code it runs, the environments, the
+  # workers' homes and what it writes down of them.
   #
   # Its network reaches the runtime and nothing else, so the runtime's
   # proxy is an agent's only way out. The right below sets one firewall
@@ -212,17 +222,26 @@ services:
     mem_limit: ${AGENTS_MEMORY:-0}
     cpus: ${AGENTS_CPUS:-0}
     command: ["python", "-m", "ai_runtime.agents_container.service"]
+    # Stopped, it drains: it starts no new worker, and those running
+    # finish what they are doing before it goes.
+    stop_grace_period: 75s
     environment:
       AI_AGENTS_PROXY: ai-runtime:${AI_RUNTIME_EGRESS_PORT:-8002}
       AI_RUNTIME_EGRESS_PORT:
-      AI_RUNTIME_AGENTS_INSTALL_DIR: ${AI_RUNTIME_AGENTS_INSTALL_DIR:-/data/agents}
+      # where it registers, who it is, and what it says of itself
+      AI_SANDBOX_RUNTIME: ai-runtime:${AI_RUNTIME_SANDBOX_PORT:-8005}
+      AI_RUNTIME_SANDBOX_SECRET: ${AI_RUNTIME_SANDBOX_SECRET:?set in deploy.env}
+      AI_SANDBOX_ID: agents
+      AI_SANDBOX_LABELS: ${AGENTS_LABELS:-}
       # 0 turns off the filter on what system calls a worker may make;
       # the filter is written here, where workers run
       AI_RUNTIME_SYSCALL_FILTER:
       LOG_LEVEL:
       TZ:
     volumes:
-      - agents_data:/data/agents
+      # The helper was built for this path: a sandbox's folder is here
+      # in every sandbox, and is each sandbox's own.
+      - sandbox_data:/data/agents
     networks:
       - agents
     healthcheck:
@@ -261,13 +280,14 @@ networks:
   # to it. Nothing on it reaches the internet.
   data:
     internal: true
-  # Between the runtime and the agents' container, and nowhere else:
+  # Between the AI Runtime and its Execution Sandboxes, and nowhere else:
   # nothing on it reaches the internet, the database or the backend.
   agents:
     internal: true
 
 volumes:
-  agents_data:
+  runtime_agents:
+  sandbox_data:
   agent_packages:
   mongo_data:
   speech_models:

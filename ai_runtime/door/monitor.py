@@ -50,18 +50,22 @@ async def events(request: Request, limit: int = 200, kinds: str = "",
     by commas; ``before`` is the time of the last event of the page
     before, for the next."""
     the_backend(request)
+    wanted = [kind.strip() for kind in kinds.split(",") if kind.strip()]
     found = Events.read(
-        request.app.state.settings.agents_install_dir, limit,
-        [kind.strip() for kind in kinds.split(",") if kind.strip()],
+        request.app.state.settings.agents_install_dir, limit, wanted,
         agent, before)
-    return {"events": found}
+    # And what every Execution Sandbox wrote down, in its own folder.
+    found.extend(await request.app.state.container.events(
+        limit, wanted, agent, before))
+    found.sort(key=lambda event: event.get("at") or 0, reverse=True)
+    return {"events": found[:max(1, min(int(limit or 0) or 200, Events.READ_MAX))]}
 
 
 @router.get("/internal/monitor/usage")
 async def usage(request: Request):
-    """What the agents are given and what each uses now, and what
-    the runtime's own container holds. ``usage`` is null when the
-    agents' container did not answer."""
+    """What the agents are given and what each uses now, in every
+    Execution Sandbox together, and what the runtime's own container
+    holds. ``usage`` is null when no sandbox answered."""
     the_backend(request)
     state = request.app.state
     return {"usage": await state.container.usage(),
@@ -71,6 +75,6 @@ async def usage(request: Request):
 
 @router.get("/internal/monitor/files")
 async def files(request: Request, agent: str = ""):
-    """What one agent keeps in its home and its spool now."""
+    """What one agent keeps in its home now, in every sandbox it ran in."""
     the_backend(request)
     return await request.app.state.container.files(agent)

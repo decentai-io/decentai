@@ -69,14 +69,13 @@ class PullingServices(SimSessionServices):
 
 @pytest.fixture()
 def library(tmp_path, monkeypatch):
-    """A real library in an empty directory. Its environments are the
-    fixtures' shared venv: the notebook declares no dependencies, so a
-    venv per digest would only cost the time to build it."""
+    """A real library in an empty directory. The sandbox stands the
+    fixtures' shared venv in for each package's environment: the
+    notebook declares no dependencies, so a venv per digest would only
+    cost the time to build it."""
     shared = worker_environment()
     monkeypatch.setattr(AgentLibrary, "environment",
                         lambda self, digest: shared)
-    monkeypatch.setattr(AgentLibrary, "environment_for",
-                        lambda self, dependencies: shared)
     return AgentLibrary(tmp_path / "runtime", confinement())
 
 

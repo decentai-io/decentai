@@ -1,8 +1,14 @@
 """Running workers, and the answers to what they ask.
 
-One pool per process: approved agent -> one live WorkerHandle, started
-on first invocation in that agent's own place (confinement.py), kept
-warm, replaced after death. The pool is also the ROUTER — the single
+One pool per process: approved agent -> one Execution Sandbox and one
+live WorkerHandle there, started on first invocation in that agent's
+own place (confinement.py), kept warm, replaced after death. Which
+sandbox is the registry's to choose (sandboxes.py, ``choose``): the one
+already running the agent, else one holding its code, else the least
+loaded. A sandbox that drains is given no new worker, and the workers
+it runs are retired once they have finished what they are doing; one
+that is gone takes its workers with it, and the agent's next call is
+placed on another. The pool is also the ROUTER — the single
 place a worker's asks (resources.*, llm.complete, show, post, ask,
 propose, install, credential) are answered, by resolving the ask's
 call_id to the Call that is entitled to answer it:
@@ -46,15 +52,25 @@ from functools import partial
 from typing import Any, Dict, Optional, Tuple
 
 from ai_runtime.agents.confinement import Confinement
+from ai_runtime.agents.container import SandboxRefused
 from ai_runtime.agents.library import InstalledAgent
+from ai_runtime.agents.sandboxes import NoSandbox
 from ai_runtime.agents.workers import WorkerError, WorkerHandle
 
 
 class WorkerPool:
+    #: How long a retired worker is given to finish what it is doing.
+    RETIRE_SECONDS = 600.0
+
     def __init__(self, confinement: Confinement) -> None:
         #: Where each agent's worker runs, and what confines it there.
         self.confinement = confinement
         self._handles: Dict[str, WorkerHandle] = {}
+        #: Workers retired from a sandbox that drains, finishing what
+        #: they are doing: handle -> the digest it runs.
+        self._retiring: Dict[WorkerHandle, str] = {}
+        self._tasks: set = set()
+        confinement.sandboxes.changed.append(self._sandbox_changed)
         #: agent ref -> the digest its worker is running. Handles are
         #: keyed by approval and a handle never sees a digest, so this
         #: is how the host answers "is this code in use?" before it
@@ -181,16 +197,39 @@ class WorkerPool:
                 # A dead one too: its death clears the place the next
                 # worker is about to be started in, and must be over.
                 await self.discard(key)
-            # The worker speaks the platform's SDK, not the one copied
-            # in the day the environment was built.
-            for problem in await agent.environment.refresh_sdk():
-                self.logger.warning(
-                    f"SDK not refreshed for {agent.agent_id}: {problem}")
+            handle = await self._placed(agent)
+            self._handles[key] = handle
+            self._running[key] = agent.digest
+            self.logger.info(f"Worker up: {key} ({agent.digest[:19]}…) in "
+                             f"Execution Sandbox {getattr(self._sandbox_of(handle), 'id', '')}")
+            return handle
+
+    async def _placed(self, agent: InstalledAgent) -> WorkerHandle:
+        """A worker of the agent's, started in the sandbox the registry
+        chooses, the agent's code held there first. A sandbox that
+        cannot be reached, or drains, is passed over for the next; a
+        package a sandbox refuses is refused."""
+        key = agent.agent_id
+        sandboxes = self.confinement.sandboxes
+        tried, last = [], ""
+        for _ in range(max(1, len(sandboxes.all()))):
+            try:
+                sandbox = sandboxes.choose(key, agent.digest, avoid=tried)
+            except NoSandbox as exc:
+                raise WorkerError(f"{exc}" + (f" ({last})" if last else ""))
+            tried.append(sandbox.id)
+            try:
+                python, package = await sandbox.prepare(agent, self.confinement)
+            except SandboxRefused as exc:
+                last = str(exc)
+                if self._unreached(sandbox, last):
+                    continue
+                raise WorkerError(last)
             handle = WorkerHandle(
-                agent.environment.python, agent.folder, agent.manifest.document,
-                # Its own user and place, per approval, as the worker
-                # itself is.
-                self.confinement.place(key),
+                python, package, agent.manifest.document,
+                # Its own user and place, per approval, in the sandbox
+                # it runs in, as the worker itself is.
+                self.confinement.place(key, sandbox),
             )
             # Each callback knows which worker is speaking: the router
             # answers an ask only for an invocation sent to that worker.
@@ -198,23 +237,77 @@ class WorkerPool:
             handle.progress = partial(self._progress, handle)
             handle.screen = partial(self._screen, handle)
             errors = await handle.start()
-            if errors:
-                raise WorkerError("; ".join(errors))
-            self._handles[key] = handle
-            self._running[key] = agent.digest
-            self.logger.info(f"Worker up: {key} ({agent.digest[:19]}…)")
-            return handle
+            if not errors:
+                return handle
+            last = "; ".join(errors)
+            if handle.process is None and self._unreached(sandbox, last):
+                continue
+            raise WorkerError(last)
+        raise WorkerError(last or "No Execution Sandbox could start it")
+
+    @staticmethod
+    def _unreached(sandbox, said: str) -> bool:
+        """Whether a sandbox's failure is its own and not the agent's:
+        it is gone, did not answer, or drains — the next may serve."""
+        return (not sandbox.connected or sandbox.draining
+                or "did not answer" in said or "draining" in said)
 
     def _current(self, handle: Optional[WorkerHandle],
                  agent: InstalledAgent) -> bool:
-        """Alive, and running the code this approval now names."""
+        """Alive, running the code this approval now names, in a
+        sandbox that is there."""
         return (handle is not None and handle.alive
+                and getattr(self._sandbox_of(handle), "connected", True)
                 and self._running.get(agent.agent_id) == agent.digest)
+
+    @staticmethod
+    def _sandbox_of(handle: WorkerHandle):
+        """The sandbox a worker was started in, as its place says."""
+        place = getattr(handle, "place", None)
+        return getattr(place, "sandbox", None) if place is not None else None
+
+    def placed(self, agent_id: str) -> str:
+        """The sandbox the agent's worker runs in now, or ''."""
+        handle = self._handles.get(agent_id)
+        sandbox = self._sandbox_of(handle) if handle is not None and handle.alive else None
+        return getattr(sandbox, "id", "")
 
     def live_digests(self) -> set:
         """The code live workers are running right now — what must not be
         deleted underneath them."""
-        return {digest for digest in self._running.values() if digest}
+        return {digest for digest in [*self._running.values(),
+                                      *self._retiring.values()] if digest}
+
+    # ------------------------------------------------------------------
+    # A sandbox that drains, or is gone
+    # ------------------------------------------------------------------
+
+    def _sandbox_changed(self, sandbox) -> None:
+        """A sandbox drains, or is gone: its workers are given nothing
+        new. One that drains keeps them until they have finished what
+        they are doing, and then they leave; the agent's next call is
+        placed elsewhere."""
+        if not sandbox.draining and sandbox.connected:
+            return
+        for key, handle in list(self._handles.items()):
+            if self._sandbox_of(handle) is not sandbox:
+                continue
+            del self._handles[key]
+            digest = self._running.pop(key, "")
+            if not sandbox.connected:
+                continue                 # its connections are going with it
+            self._retiring[handle] = digest
+            task = asyncio.get_running_loop().create_task(self._retire(key, handle))
+            self._tasks.add(task)
+            task.add_done_callback(self._tasks.discard)
+
+    async def _retire(self, key: str, handle: WorkerHandle) -> None:
+        try:
+            await handle.stop_when_idle(self.RETIRE_SECONDS)
+            self.logger.info(f"Worker retired: {key}, its Execution Sandbox "
+                             f"{getattr(self._sandbox_of(handle), 'id', '')} drains")
+        finally:
+            self._retiring.pop(handle, None)
 
     async def discard(self, agent_id: str) -> None:
         """Stop the agent's worker, if one runs."""
@@ -227,17 +320,19 @@ class WorkerPool:
         """End every worker. The process shutdown hook."""
         for agent_id in list(self._handles):
             await self.discard(agent_id)
+        for handle in list(self._retiring):
+            await handle.stop()
 
     async def terminate(self) -> None:
         """End every worker where it runs, without asking — for a
-        shutdown that could not ask politely in time. The container
-        ends every process of each agent's, and takes away what they
-        left."""
-        for handle in self._handles.values():
+        shutdown that could not ask politely in time. Its sandbox ends
+        every process of each agent's, and takes away what they left."""
+        for handle in [*self._handles.values(), *self._retiring]:
             if handle.alive:
-                await self.confinement.container.stop(handle.place.name)
+                await handle.place.container.stop(handle.place.name)
         self._handles.clear()
         self._running.clear()
+        self._retiring.clear()
         self._calls.clear()
 
     # ------------------------------------------------------------------

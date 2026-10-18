@@ -1,10 +1,37 @@
-# The two containers of test_spawner_live.py and
-# test_confinement_live.py, and nothing else of the
-# platform: the runtime's image twice, as docker-compose.yml starts it —
-# once holding the tests in place of the runtime, once as the agents'
-# container beside it. The repository is mounted read-only for the
-# tests; the platform's code in both containers is the image's own.
+# The containers of test_spawner_live.py and test_confinement_live.py,
+# and nothing else of the platform: the runtime's image three times,
+# as docker-compose.yml starts it — once holding the tests in place of
+# the AI Runtime, and twice as an Execution Sandbox, each registering
+# with it, each with a folder of its own. The repository is mounted
+# read-only for the tests; the platform's code in every container is
+# the image's own.
+#
+# The runtime shares no volume with a sandbox, as in a deployment:
+# code reaches a sandbox over the sandbox link, and large files travel
+# on a worker's own lines. The one exception is the tests' and not the
+# platform's: each sandbox's folder is mounted read-only in the tests'
+# container under /sandboxes/<sandbox>, a window a test looks through
+# to see what happened there (whose a file is, what a build left) —
+# the runtime's code never reads it.
 name: decentai-spawner-live
+
+x-sandbox: &sandbox
+  build:
+    context: ../..
+    dockerfile: ai_runtime/Dockerfile
+  cap_add:
+    - NET_ADMIN
+  # What the agents are given, small enough for a test to use up.
+  mem_limit: 400m
+  cpus: 1.5
+  command: ["python", "-m", "ai_runtime.agents_container.service"]
+  networks:
+    - agents
+  healthcheck:
+    test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 8003), 4).close()"]
+    interval: 3s
+    timeout: 5s
+    retries: 10
 
 services:
   runtime:
@@ -13,42 +40,56 @@ services:
       dockerfile: ai_runtime/Dockerfile
     command: ["sleep", "infinity"]
     environment:
-      AI_RUNTIME_AGENTS_SPAWNER: agents:8003
+      AI_RUNTIME_SANDBOX_SECRET: the-live-tests-node-secret
+      # The sandboxes the tests wait for, the first the one most of
+      # them use.
+      LIVE_SANDBOXES: agents agents-b
     volumes:
-      - agents_data:/data/agents
+      - runtime_data:/data/agents
       - ../..:/src:ro
+      - agents_data:/sandboxes/agents:ro
+      - agents_b_data:/sandboxes/agents-b:ro
     networks:
       - default
       - agents
     depends_on:
       agents:
         condition: service_healthy
+      agents-b:
+        condition: service_healthy
 
   agents:
-    build:
-      context: ../..
-      dockerfile: ai_runtime/Dockerfile
-    cap_add:
-      - NET_ADMIN
-    # What the agents are given, small enough for a test to use up.
-    mem_limit: 400m
-    cpus: 1.5
-    command: ["python", "-m", "ai_runtime.agents_container.service"]
+    <<: *sandbox
     environment:
       AI_AGENTS_PROXY: runtime:8002
+      AI_SANDBOX_RUNTIME: runtime:8005
+      AI_RUNTIME_SANDBOX_SECRET: the-live-tests-node-secret
+      AI_SANDBOX_ID: agents
+      # A build that does not end is ended sooner than in a deployment.
+      AI_SANDBOX_BUILD_SECONDS: "45"
     volumes:
       - agents_data:/data/agents
-    networks:
-      - agents
-    healthcheck:
-      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 8003), 4).close()"]
-      interval: 3s
-      timeout: 5s
-      retries: 10
+
+  agents-b:
+    <<: *sandbox
+    environment:
+      AI_AGENTS_PROXY: runtime:8002
+      AI_SANDBOX_RUNTIME: runtime:8005
+      AI_RUNTIME_SANDBOX_SECRET: the-live-tests-node-secret
+      AI_SANDBOX_ID: agents-b
+      AI_SANDBOX_LABELS: gpu
+      AI_SANDBOX_BUILD_SECONDS: "45"
+      # Stopped by the last test, it drains first.
+      AI_SANDBOX_DRAIN_SECONDS: "30"
+    stop_grace_period: 45s
+    volumes:
+      - agents_b_data:/data/agents
 
 networks:
   agents:
     internal: true
 
 volumes:
+  runtime_data:
   agents_data:
+  agents_b_data:

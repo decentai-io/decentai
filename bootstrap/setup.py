@@ -142,6 +142,9 @@ class Settings:
                           f"@mongo:27017/?authSource=admin"),
             "SETUP_CODE": "none",
             "TOKEN_SECRET_KEY": secrets.token_urlsafe(48),
+            # What the AI Runtime and its Execution Sandboxes prove to
+            # each other: the secret set for this execution node.
+            "AI_RUNTIME_SANDBOX_SECRET": secrets.token_urlsafe(32),
             **keys,
         }
 
@@ -236,6 +239,9 @@ class Setup:
     #: template's word is a server's: the first-run page asks a computer
     #: of one's own for no code.
     LOCAL = {"SETUP_CODE": "none"}
+    #: What a setting this computer's file gains is made as, where it
+    #: is a secret of the install's own: never the template's word.
+    MADE = {"AI_RUNTIME_SANDBOX_SECRET": lambda: secrets.token_urlsafe(32)}
 
     # ------------------------------------------------------------------
     def run(self, port: Optional[int] = None) -> str:
@@ -296,6 +302,8 @@ class Setup:
             self.say("Building the backend, to make the keys this install lacks...")
         made = self._keys(generators) if generators else {}
         template = self.settings.template()
+        made.update({name: make() for name, make in self.MADE.items()
+                     if name in missing and name not in made})
         self.settings.add({name: made.get(name, self.LOCAL.get(name, template[name]))
                            for name in missing})
         self.say(f"{Settings.FILE} gained {', '.join(missing)}: what the "
