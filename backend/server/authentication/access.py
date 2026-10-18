@@ -191,6 +191,9 @@ class AccessController:
             user["token_type"] = "RUNTIME"
             user["principal_type"] = "runtime"
             user["chat_id"] = session.get("chat_id", "")
+            # The execution node the delegation was handed to: the
+            # gateway accepts it from that node alone (routes/app.py).
+            user["node_id"] = session.get("node_id", "")
             return
 
         user["token_type"] = "WEB"

@@ -117,6 +117,83 @@ because a reply can be a contract, and a contract is what a chat may do.
 Every request a node makes carries its credential
 (`X-DecentAI-Node`), beside whatever the request is made as.
 
+## The node link
+
+**Nodes connect to the Data Core, never the other way round.** The Data
+Core is given no node's address; a node can run anywhere, behind a
+firewall that lets nothing in included. Each node keeps **one**
+long-lived connection (`ai_runtime/door/link.py` on the node,
+`backend/api/services/nodes/link.py` and `backend/server/routes/nodes.py`
+on the Data Core):
+
+```
+WS /nodes/link    Authorization: Bearer <the node's credential>
+                  X-DecentAI-Node-Protocol: <the version it speaks>
+                  X-DecentAI-Node-Nonce: <its own, for this connection>
+```
+
+and reconnects with backoff (1, 2, 4, 8, 15, then every 30 seconds)
+whenever it ends. Which starts first does not matter.
+
+**The handshake.** The Data Core admits the credential, and refuses a
+protocol other than its own (`NODE_PROTOCOL_VERSION`, `contracts/node.py`)
+with the reason in the close: *this Data Core speaks node protocol 1;
+the node said 2* (code 4426). A refused credential closes with 4401 and
+why. The node says `hello` first — its protocol, and what it says of
+itself — and the Data Core answers `welcome`, naming the node as it
+knows it (`<authority>/<name>`). The same node connecting again
+replaces its older link (4408).
+
+**Every frame the Data Core sends is a signed token** — its key, for
+this node, for this connection (the node's nonce), at this place in the
+sequence. A frame that is any of those otherwise ends the link at the
+node, and nothing it said is acted on.
+
+| Data Core → node | |
+|---|---|
+| `welcome` | the handshake's answer |
+| `attach {chat_id, credential}` | serve this chat, with this delegation; the node's host greets with `hello` |
+| `chat {chat_id, frame}` | one of the door's frames for that chat: `user_message`, `approval_decided`, `question_answered`, `stop`, `schedules_changed`, `screen_input`, `screen_open`, `webhook_event`, `credential` ([the chat session](chat-session.md#the-node-link)) |
+| `detach {chat_id}` | the chat is no longer needed here |
+| `monitor {request_id, what, asked}` | a question about agents: `events`, `usage`, `files` ([monitoring](monitoring.md#how-it-is-read)) |
+
+| Node → Data Core | |
+|---|---|
+| `hello {protocol_version, reports}` | first, once |
+| `event {chat_id, frame}` | what one chat emits for its audience |
+| `heartbeat {chats, reports}` | every 20 seconds: still here, its load |
+| `credential {token}` | a fresh credential, before the last lapses |
+| `monitor_result {request_id, result \| error}` | the answer to one question |
+
+**Chats are multiplexed.** Each frame names its chat. On the node, each
+chat has an inbox read in order, so one chat's frames keep their order
+and no chat waits on another's. On the Data Core, an event a node sends
+for a chat that is not attached to *that* node is not heard.
+
+**A heartbeat checks the credential again.** A credential that lapsed,
+an authority revoked or a node refused by name closes the link there at
+the latest; a revoke or a refusal closes it at once. A node's fresh
+credential rides the link as a `credential` frame; one naming another
+node ends it.
+
+**Delegations are bound to the node.** The delegation an `attach` hands
+over names the node it was handed to (`runtime_sessions.node_id`). The
+gateway accepts it only on a request that node presents its own
+credential with (`X-DecentAI-Node`); from any other node, or with none,
+it opens nothing (`backend/server/routes/app.py`).
+
+**Which node.** Among those connected, admitted and unrevoked that may
+serve the chat's organization — a shared node, or one of the
+organization's own — the least loaded, by what nodes report and what
+they were given. A node one organization owns never serves another
+organization's chat.
+
+**A node that goes.** Its chats are attached nowhere, and the people
+watching them are told (`runtime_disconnected`). When a node connects,
+the chats waiting for one are attached to it, and each rebuilds from
+the Data Core's record, as a restart always has: a node restart loses no
+chat.
+
 ## One computer's install
 
 `python bootstrap/setup.py` still asks nothing of the person:

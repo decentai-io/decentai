@@ -661,14 +661,11 @@ class TestCipher:
 # ----------------------------------------------------------------------
 
 def _runtime_headers(seed, chat_id="chat_records"):
-    from api.services.chat_session.identity import Delegation
+    from conftest import delegated_headers
 
-    token = Delegation().for_chat(
+    return delegated_headers(
         {"user_id": seed.admin["_id"], "org_id": seed.org["_id"],
-         "email": seed.admin["email"], "session_id": ""},
-        chat_id,
-    )
-    return {"Authorization": f"Bearer {token}"}
+         "email": seed.admin["email"]}, chat_id)
 
 
 class TestRuntimeUpdatesMerge:

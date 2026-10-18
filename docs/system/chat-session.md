@@ -3,11 +3,12 @@
 How the Data Core serves a conversation. The runtime asks its platform
 for exactly one surface — the **services contract**
 (`ai_runtime/chat/session.py`'s docstring, with the simulator's
-`SimSessionServices` as the reference implementation) — and is dialed
-through exactly one door — the **chat socket**
-([session door](../reference/session-door.md)). The Data Core's job is to
-be that platform: answer the contract, dial the door, and hold the
-records. *How the assistant thinks* is the runtime's
+`SimSessionServices` as the reference implementation) — and hears each
+chat through exactly one door — the chat's frames over its execution
+node's **link** ([session door](../reference/session-door.md),
+[execution nodes](execution-nodes.md#the-node-link)). The Data Core's
+job is to be that platform: answer the contract, carry the frames, and
+hold the records. *How the assistant thinks* is the runtime's
 ([the assistant](assistant.md)).
 
 Two principles:
@@ -16,11 +17,10 @@ Two principles:
   method list is the runtime's. Where a method needs a store, the
   Data Core provides one; what the runtime does itself — turns,
   recovery, background work — the Data Core does not duplicate.
-- **A credential is not authority.** The dial hands the runtime a
+- **A credential is not authority.** Attaching a chat hands its node a
   delegation it uses to call back; what the chat *may do* is answered
   only by `contract`. Authority never arrives through the door; the
-  token arriving beside the service token is a key to the services,
-  not a statement of rights.
+  delegation is a key to the services, not a statement of rights.
 
 ---
 
@@ -35,7 +35,7 @@ this table and it differ. Every chat-bound verb also checks that the
 delegation was minted for the chat it names. Three verbs the runtime
 calls as itself and not as any chat — the package door,
 `Agents:Package:*` — are fenced on their own (`RUNTIME_SERVICE_ENDPOINTS`)
-and answered to the runtime's own service token
+and answered to the execution node's own credential
 ([agent code](agent-code.md#the-package-door)).
 
 | services method | runtime verb | record |
@@ -254,28 +254,32 @@ What
 the person reads as the chat never includes a thread's messages; a
 client that wants to show a child's thread asks for it by name.
 
-## The dial
+## The node link
 
-The relay (`chat_session/relay.py`) dials `WS /chats/{chat_id}` with
-the service token — proof it is the Data Core — and, in the same
-handshake, a **fresh delegation for the chat** (the runtime access
-token, the `runtime_sessions` row it names). The runtime hands that
-credential to its services implementation for the chat; revocation is
-unchanged: delete the row and the runtime's calls fail from the next
-one.
+The Data Core dials nobody: execution nodes connect to it, each over one
+link that carries every chat it serves
+([execution nodes](execution-nodes.md#the-node-link)). The relay
+(`chat_session/relay.py`) **attaches** a chat to one of them: it mints a
+**fresh delegation for the chat** (the runtime access token, the
+`runtime_sessions` row it names), bound to that node, and sends it over
+the link in an `attach` frame naming the chat. The node's host hands
+that credential to its services implementation for the chat;
+revocation is unchanged: delete the row and the node's calls fail from
+the next one. The delegation is accepted only from the node it was
+handed to.
 
-A delegation lives an hour; a dial the Data Core keeps open longer (a
-scheduled chat's, kept past the browser's leaving, or a tab left open)
-is renewed over the socket. `RuntimeClientManager.renew_due` mints a
-fresh delegation for every live dial older than three quarters of an
-hour and sends it as a `credential` frame; the host hands it to its
-services and the clock adopts any rows it unlocks. The old row is
-retired the moment the new one is minted, which is the one moment a
-call the runtime has in flight can be refused: the new key is the next
-frame on the wire, and the call after it carries it.
+A delegation lives an hour; a chat may stay attached longer (a
+scheduled chat's, kept past the browser's leaving, or a tab left open).
+`RuntimeClientManager.renew_due` mints a fresh delegation for every
+attached chat whose credential is older than three quarters of an hour
+and sends it as a `credential` frame; the host hands it to its services
+and the clock adopts any rows it unlocks. The old row is retired the
+moment the new one is minted, which is the one moment a call the node
+has in flight can be refused: the new key is the next frame on the
+wire, and the call after it carries it.
 
-Over the socket the relay speaks the door's vocabulary and nothing
-else. The first three rows are frames on the browser's socket; a
+Over the link the relay speaks the door's vocabulary and nothing else,
+each frame naming its chat. The first three rows are frames on the browser's socket; a
 decision and a stop are not, and reach the relay from the gateway; a
 webhook's event reaches it from the Data Core's own door for outside
 systems:

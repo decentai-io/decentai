@@ -30,10 +30,9 @@ class RuntimeSettings:
     #: nowhere. The node never holds an authority's private key.
     node_credential_file: str = ""
     node_credential_url: str = ""
-    backend_token_issuer: str = "decentai-backend"
-    backend_service_audience: str = "decentai-ai-runtime"
-    #: where the platform answers the services contract over /app
-    #: (docs/system/chat-session.md).
+    #: where the Data Core answers the services contract over /app
+    #: (docs/system/chat-session.md), and where the node link is
+    #: dialed (docs/system/execution-nodes.md).
     backend_url: str = ""
     host: str = "0.0.0.0"
     port: int = 8001
@@ -87,8 +86,6 @@ class RuntimeSettings:
             backend_service_public_key=public_key,
             node_credential_file=credential_file,
             node_credential_url=credential_url,
-            backend_token_issuer=os.getenv("BACKEND_TOKEN_ISSUER", "decentai-backend"),
-            backend_service_audience=os.getenv("AI_RUNTIME_TOKEN_AUDIENCE", "decentai-ai-runtime"),
             backend_url=backend_url,
             host=os.getenv("AI_RUNTIME_HOST", "0.0.0.0"),
             port=cls._port("AI_RUNTIME_PORT", 8001),

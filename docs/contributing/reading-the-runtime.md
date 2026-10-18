@@ -35,12 +35,12 @@ exception, and is `Prompts` itself.
 ```
 ai_runtime/
   main.py              settings, build the parts, serve
-  door/                the runtime's boundary with the backend, both ways
+  door/                the runtime's boundary with the Data Core, both ways
     settings.py        every setting, from the environment
     app.py             the FastAPI application; the lifespan is the start order
-    auth.py            what "the backend" means: the service token
-    socket.py          /chats/{chat_id}: frames in, frames out
-    monitor.py         /internal/monitor/*, /internal/health/live
+    node.py            this node's credential, and the Data Core's key
+    link.py            the node link: dialed to the Data Core, every chat over it
+    monitor.py         the monitoring answers, and /internal/health/live
     platform.py        Backend, ChatResources, Gateway: every call out to the backend
     host.py            SessionHost: one session per chat, emit, reap, kill
     roster.py          AgentRoster: the contract's agents, and the stock of every approved package
@@ -109,26 +109,22 @@ files they share, `wire.py` and `events.py`.
 |---|---|
 | `main.py` | the parts, built once: `Events.configure`, the `AgentsContainer`, the `Confinement`, the `AgentLibrary`, the Data Core's services. The only file at the root: everything else is in a package |
 | `door/app.py` `create_app` | the `SessionHost` and the `Scheduler`; the lifespan, which starts the parts on the loop in order (the container waited for, `Confinement.start`, `load_all`, the warm-up task, the stocking task, the clock) and stops them in reverse |
-| `door/auth.py`, `door/socket.py` | who may dial, and the loop that hands every frame to the host |
+| `door/node.py` | who this node is (`NodeCredential`, read from where its operator puts it) and who the Data Core is (`DataCoreKey`: every reply and frame checked) |
+| `door/link.py` `NodeLink` | the node link: dialed with the credential, the protocol and a nonce; `hello`, then `welcome`; every frame checked; one `ChatChannel` per chat, its inbox read in order |
 
 Check:
 
-- The service token is verified before `accept`; a dialer without one
-  sees the handshake fail with HTTP 403. The close code the route names
-  (4401, and 4503 where there are no services) reaches only an
-  in-process test client: a socket that was never accepted has no close
-  frame to carry it.
+- Nothing the Data Core did not sign for this node, this connection and
+  this place in the sequence is acted on: one such frame ends the link.
 - A frame that cannot be handled is that frame's failure: it is said
-  on the socket and the loop goes on. Only a frame that is not a JSON
-  object ends it.
-- `detach` runs on every way out of the route.
+  to the chat's audience and the chat goes on hearing the next one.
+- A link that ends takes every chat's audience with it (`_lost`), and
+  the node dials again with backoff.
 
-Tests: `ai_runtime/tests/test_session_door.py` holds the host the
-routes hand to, with a socket of its own making. The routes
-themselves — the refusal before `accept`, the catch around a frame,
-the `detach` on the way out — are dialled only by
-`tests/test_full_stack.py` and the Data Core's
-`backend/tests/test_runtime_client.py`, on the path that works.
+Tests: `ai_runtime/tests/test_session_door.py` holds the host, with a
+socket of its own making; `ai_runtime/tests/test_node_link.py` the link,
+against a fake Data Core; `tests/test_full_stack.py` a real node linked
+to the served Data Core.
 
 ## 2. The host: one session per chat
 
@@ -510,7 +506,7 @@ Check:
   twice at once, and what a fire writes back is only its own row
   (`_write`) — a pause made on the page meanwhile stands.
 - `replace_for`: a chat's rows are read again from the store at every
-  dial that carries a credential and at `schedules_changed`
+  attachment that carries a credential and at `schedules_changed`
   (`SessionHost._credentialed`, `_reload_schedules`), and what a fire
   just did to a row is kept.
 - `Scheduler._fire_invoke`: a scheduled function runs with no

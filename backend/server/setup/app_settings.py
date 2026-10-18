@@ -148,9 +148,6 @@ def _load_settings() -> Dict[str, Any]:
         # on. Empty: the first organization the deployment made.
         "operator_org_id": os.getenv("OPERATOR_ORG_ID", "").strip(),
 
-        # where the AI runtime is reachable
-        "ai_runtime_url": os.getenv("AI_RUNTIME_URL", "http://127.0.0.1:8001"),
-
         # where the platform's own speech models are reachable
         "speech_url": os.getenv("SPEECH_URL", "http://speech:8004"),
 
@@ -234,8 +231,8 @@ class Settings:
     # the organization whose administrators are the operator
     operator_org_id: str = ""
 
-    # where the AI runtime is reachable
-    ai_runtime_url: str = "http://127.0.0.1:8001"
+    # Where execution nodes are is not a setting: they connect here
+    # (docs/system/execution-nodes.md).
     # where the platform's own speech models are reachable
     speech_url: str = "http://speech:8004"
     agent_package_dir: str = "data/agent-packages"

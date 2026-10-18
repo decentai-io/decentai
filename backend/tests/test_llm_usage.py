@@ -30,12 +30,11 @@ def rows():
 
 def delegation_for(doc, chat_id):
     """The bearer a chat of this person's is dialled with."""
-    from api.services.chat_session.identity import Delegation
+    from conftest import delegated_headers
 
-    token = Delegation().for_chat({
+    return delegated_headers({
         "user_id": doc["_id"], "org_id": doc["org_id"],
-        "email": doc["email"], "session_id": ""}, chat_id)
-    return {"Authorization": f"Bearer {token}"}
+        "email": doc["email"]}, chat_id)
 
 
 # ======================================================================

@@ -29,6 +29,7 @@ class RuntimeSessionStore(MongoStore):
         user: Dict[str, Any],
         chat_id: str,
         lifetime: Optional[timedelta] = None,
+        node_id: str = "",
     ) -> Dict[str, Any]:
         """Delegate a chat to the runtime on behalf of this user.
 
@@ -43,6 +44,9 @@ class RuntimeSessionStore(MongoStore):
             "user_id": user["user_id"],
             "org_id": user.get("org_id"),
             "chat_id": str(chat_id or ""),
+            # The execution node it was handed to: accepted from that
+            # node and no other (docs/system/execution-nodes.md).
+            "node_id": str(node_id or ""),
             "created_at": now,
             "expires_at": now + (lifetime or self.LIFETIME),
         }

@@ -18,8 +18,8 @@ DecentAI is a **Data Core**, a private **AI Runtime**, a place where
   agent: whether a call may be made, what it is handed, when it ends.
   It has no database and no credential of its own to anybody's things:
   every chat, record and credential goes through the Data Core, under a
-  delegation minted per chat. Its own identity opens the package door
-  and nothing else
+  delegation minted per chat and bound to its node. Its node's
+  credential opens the package door and nothing else
   ([architecture](architecture.md#the-two-tokens-between-the-data-core-and-the-runtime)).
 - Agent code runs in worker processes with private environments, one
   per approved agent per organization. In the stack this repository
@@ -241,7 +241,7 @@ Where a word is used for more than one thing, each is said.
 | **contract** | four things. *The manifest*, an agent's contract with the platform. *The chat's contract*, what this chat may do, answered by the Data Core each turn. *The services contract*, the methods the runtime asks of the Data Core. And the package `contracts/`, the shapes both sides share | `AI:Chat:Contract`; `Backend`; `contracts/` |
 | **delegation** | the credential the Data Core makes per chat, under which the runtime calls back as the person. Also *runtime access token*, *the chat's credential* | `chat_session/identity/delegation.py`; `runtime_sessions` |
 | **definition** | the shape of a credential: its fields. An agent's is derived from its manifest at install | `secret_definitions` |
-| **door** | a way in. *The session door* is the runtime's socket for one chat; a *gateway door* is an action | `ai_runtime/door/socket.py` |
+| **door** | a way in. *The session door* is what a chat's frames reach on its execution node, over the node link; a *gateway door* is an action | `ai_runtime/door/link.py`, `ai_runtime/door/host.py` |
 | **escape grant** | an action that lets its holder reach past the usual rule. `…:set_owner_any` lifts whom a thing may be shared to and who may edit it; `…:manage_any` reaches every source or connection, and does not lift whom one may be shared to | [sharing](sharing.md) |
 | **event** | two things. *Inbound*: what the assistant is told — a message, a finished job, a wakeup — kept in the inbox before it is heard. *Outbound*: what the runtime tells the page | `ai_chat_events`, direction `in` and `out` |
 | **executor** | what stands between the assistant and an agent's function: the gates a call passes | `FunctionExecutor`, `ai_runtime/execution/executor.py` |
@@ -266,11 +266,11 @@ Where a word is used for more than one thing, each is said.
 | **principal** | who a request acts as: a person, an API key (the person), or a runtime under a delegation | `principal_type` |
 | **the proxy** | the only way from a worker to the internet | `EgressProxy`, port 8002 |
 | **reference**, **ref** | the id of one stored document (`resource_ref`), as against the label many share (`resource_id`). An *approval's ref* is an installed agent's id: `agt_` and twenty characters | |
-| **relay** | the Data Core's side of a chat's two sockets: it dials the runtime and passes frames each way | `backend/api/services/chat_session/relay.py` |
+| **relay** | the Data Core's side of a chat: it attaches the chat to an execution node and passes frames each way between the person's socket and the node's link | `backend/api/services/chat_session/relay.py` |
 | **roster** | the agents one chat may use, as the runtime holds them | `Session.roster` |
 | **the runtime's fence** | see *the fence* | |
 | **services** | what the runtime asks of the Data Core, as one object, every call naming its chat | `Backend`, `ai_runtime/door/platform.py`; `SimSessionServices` in tests |
-| **service token** | the Data Core proving to the runtime that it is the Data Core, for sixty seconds | `chat_session/identity/service.py` |
+| **node credential** | an execution node proving which node it is, for minutes: signed by an authority the Data Core registered, never by the node | `contracts/node.py`; `backend/api/services/nodes/admission.py` |
 | **session** | two things. A person's sign-in. And one chat as the runtime holds it | `sessions`; `Session`, `ai_runtime/chat/session.py` |
 | **slot** | one resource of one installed agent — its notes, its documents, its connection — and the name its things are kept under: `agt_<ref>__<resource id>`. Also *category* | `resource_id`; `keys.category` for a file |
 | **source** | a repository agents are installed from | `ai_agent_sources` |

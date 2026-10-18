@@ -69,7 +69,6 @@ Four values are generated, never chosen:
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `AI_RUNTIME_URL` | `http://127.0.0.1:8001` | Where the Data Core dials a chat's session. |
 | `SPEECH_URL` | `http://speech:8004` | Where the Data Core asks the platform's own speech models ([the speech container](#the-speech-container)). Nothing answering there is not an error: an organization that keeps speech local is told it is not running, and one that chose a provider never asks. |
 | `BACKEND_SERVICE_PRIVATE_KEY` | required for chats | The Data Core's own key: it signs every reply and frame it sends an execution node, and nodes hold the public half ([execution nodes](../system/execution-nodes.md#the-data-cores-signature)). `DATA_CORE_PRIVATE_KEY` is read in its place where it is set. |
 | `NODE_AUTHORITY_PUBLIC_KEY` | unset | An authority's public key, registered as a shared authority when the seeder runs, once. One computer's install sets it; a server registers its authorities on the Nodes doors instead ([execution nodes](../system/execution-nodes.md)). |
@@ -139,8 +138,6 @@ gone. Back them up with it.
 | `AI_RUNTIME_NODE_CREDENTIAL_FILE` | required, or the next | Where this execution node's credential is: a file its operator's secret manager mounts and keeps fresh, signed by an authority the Data Core registered. Read again as it nears its expiry and whenever it changes. Compose points it at what `node-issuer` writes. |
 | `AI_RUNTIME_NODE_CREDENTIAL_URL` | unset | An issuer on the node's own network that answers a `GET` with a credential (the token, or `{"credential": …}`), in place of a file. |
 | `AI_RUNTIME_AGENTS_INSTALL_DIR` | `ai_runtime/installed_agents` | Where installed agent code and its environments live. A volume in a deployment; a short path outside the tree locally. |
-| `BACKEND_TOKEN_ISSUER` | `decentai-backend` | The issuer claim the runtime expects. |
-| `AI_RUNTIME_TOKEN_AUDIENCE` | `decentai-ai-runtime` | The audience claim the runtime expects. |
 | `LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING` or `ERROR`. |
 | `AI_RUNTIME_EGRESS_PORT` | `8002` | Where the proxy that agents connect through listens, on the runtime's container, reached over the network it shares with the Execution Sandbox and nothing else. The firewall rule of the Execution Sandbox is written for the same port when it starts. A value that is blank or not a port is read as `8002` by both containers, so the rule, the proxy and the workers agree. |
 | `AI_RUNTIME_PACKAGE_HOSTS` | `pypi.org, files.pythonhosted.org` | Where packages come from: the hosts the builder of an agent's declared packages may reach, and the whole of them. Separated by commas. |

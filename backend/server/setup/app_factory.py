@@ -31,8 +31,12 @@ def _include_routers(app: FastAPI) -> None:
     from server.routes.health import router as health_router
     from server.routes.status import router as status_router
     from server.routes.hooks import router as hooks_router
+    from server.routes.nodes import router as nodes_router
 
     app.include_router(health_router)
+    # Where execution nodes connect, each over one link
+    # (docs/system/execution-nodes.md).
+    app.include_router(nodes_router)
     app.include_router(status_router)
     # Outside systems' events for a person's webhooks: no session,
     # the webhook's own secret (docs/system/webhooks.md).
@@ -54,21 +58,14 @@ def create_app() -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-        # Reminders fire only while the backend keeps a delegation open
-        # for their chat (docs/system/chat-session.md): every chat holding
-        # schedules is re-dialed now, so the runtime's clock can adopt
-        # its rows. A runtime that is down is simply retried by the next
-        # boot — the rows are durable here.
+        # Execution nodes connect to the Data Core, and the relay
+        # carries chats over their links: a node that connects is given
+        # the chats that wait for one (chat_session/relay.py). A
+        # delegation lives an hour and a chat may be served for days:
+        # the relay renews each credential over the link before it
+        # lapses, for as long as the process runs.
         from server.setup.app_state import get_runtime_clients
 
-        try:
-            await get_runtime_clients().redial_scheduled()
-        except Exception as exc:
-            CustomLoggerFactory.get_logger("app_factory").warning(
-                f"Scheduled chats not re-dialed: {exc}")
-        # A delegation lives an hour and a kept-open dial may live for
-        # days: the manager renews each live dial's credential over the
-        # socket before it lapses, for as long as the process runs.
         get_runtime_clients().start_renewing()
         # Notifications to other systems are posted from their queue,
         # retried as their receivers allow (server/outbound.py).

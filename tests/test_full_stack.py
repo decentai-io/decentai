@@ -7,6 +7,7 @@ delegation; the answer relayed home. The live smoke test, automated —
 nothing here is stubbed but the model.
 """
 
+import asyncio
 import dataclasses
 import json
 import socket
@@ -48,32 +49,100 @@ def serve(app, port):
     return server, thread
 
 
+class ServedNode:
+    """One execution node, built as main.py builds one, linked to the
+    served Data Core from a loop of its own — as a node on another
+    machine would be: it dials, and the Data Core reaches it only over
+    that link (docs/system/execution-nodes.md)."""
+
+    def __init__(self, backend_url, data_core_public, authority_private,
+                 name, folder):
+        from ai_runtime.agents.library import AgentLibrary
+        from ai_runtime.door.app import create_app as create_runtime_app
+        from ai_runtime.door.node import DataCoreKey, NodeCredential
+        from ai_runtime.door.platform import Backend, Gateway
+        from ai_runtime.door.settings import RuntimeSettings
+        from ai_runtime.tests.fake_container import confinement, container
+        from conftest import runtime_service_token
+
+        self.name = name
+        # A credential a registered authority signed, as the install's
+        # issuer signs the bundled node's. The node holds the
+        # credential and never the authority's key.
+        node = NodeCredential.fixed(runtime_service_token(authority_private, name))
+        key = DataCoreKey(data_core_public)
+        self.app = create_runtime_app(
+            RuntimeSettings(backend_service_public_key=data_core_public,
+                            backend_url=backend_url,
+                            agents_install_dir=str(folder)),
+            services=Backend(Gateway(backend_url, node=node, key=key), node),
+            library=AgentLibrary(folder, confinement()),
+            container=container(), confinement=confinement(),
+            node=node, data_core=key,
+        )
+        self.link = self.app.state.link
+        self.link.BACKOFF_SECONDS = (0.2,)
+        self.loop = asyncio.new_event_loop()
+        self.thread = threading.Thread(target=self.loop.run_forever, daemon=True)
+        self.thread.start()
+
+    def _on_loop(self, make, timeout=15):
+        async def call():
+            return await make()
+        return asyncio.run_coroutine_threadsafe(call(), self.loop).result(timeout)
+
+    def start(self, wait=True):
+        async def begin():
+            self.link.start()
+        self._on_loop(begin)
+        if wait:
+            self.wait_linked()
+        return self
+
+    def wait_linked(self, timeout=15):
+        deadline = time.monotonic() + timeout
+        while not self.link.connected.is_set():
+            assert time.monotonic() < deadline, f"node {self.name} never linked"
+            time.sleep(0.02)
+
+    def stop(self):
+        """The node goes, as a process that ends: its link closes and
+        its sessions are abandoned where they stand."""
+        try:
+            self._on_loop(self.link.stop)
+        except Exception:
+            pass
+        self.app.state.host.shutdown()
+
+    def close(self):
+        self.stop()
+        self.loop.call_soon_threadsafe(self.loop.stop)
+        self.thread.join(timeout=5)
+
+
 @pytest.fixture()
 def full_stack(app, seed, tmp_path, monkeypatch):
-    """The backend served over HTTP, a real runtime served beside it and
-    pointed at the backend, and the backend pointed at the runtime.
+    """The Data Core served over HTTP, and a real execution node linked
+    to it — the node dials; the Data Core holds no address of it.
 
-    The runtime starts EMPTY, with a real library in a fresh directory:
+    The node starts EMPTY, with a real library in a fresh directory:
     the code it serves is whatever a chat's contract makes it pull
     (docs/system/agent-code.md). Its environments are the fixtures' shared
     venv — the fixture agents declare no dependencies."""
     from ai_runtime.agents.library import AgentLibrary
-    from ai_runtime.door.app import create_app as create_runtime_app
-    from ai_runtime.door.settings import RuntimeSettings
-    from ai_runtime.door.node import DataCoreKey, NodeCredential
-    from ai_runtime.door.platform import Backend, Gateway
-    from ai_runtime.tests.fake_container import confinement, container
     from ai_runtime.tests.fixture_agents import worker_environment
-    from conftest import register_authority, runtime_service_token
+    from conftest import register_authority
     from server.setup.app_state import get_state
 
     private_pem, public_pem = service_keys()
-    # The node's identity: a credential a registered authority signed,
-    # as the install's issuer signs the bundled node's. The node holds
-    # the credential and never the authority's key.
     authority_private, authority_public = service_keys()
     register_authority("shared", authority_public)
-    node = NodeCredential.fixed(runtime_service_token(authority_private, "stack"))
+
+    state = get_state()
+    original = state.settings
+    # The Data Core's own key, which signs everything it tells a node.
+    state.settings = dataclasses.replace(
+        original, backend_service_private_key=private_pem)
 
     backend_port = free_port()
     backend_url = f"http://127.0.0.1:{backend_port}"
@@ -82,38 +151,31 @@ def full_stack(app, seed, tmp_path, monkeypatch):
     shared = worker_environment()
     monkeypatch.setattr(AgentLibrary, "environment",
                         lambda self, digest: shared)
-    runtime_port = free_port()
-    runtime_app = create_runtime_app(
-        RuntimeSettings(backend_service_public_key=public_pem,
-                        backend_url=backend_url),
-        services=Backend(Gateway(backend_url, node=node,
-                                 key=DataCoreKey(public_pem)), node),
-        library=AgentLibrary(tmp_path / "runtime", confinement()),
-        container=container(), confinement=confinement(),
-    )
-    runtime_server, runtime_thread = serve(runtime_app, runtime_port)
 
     deadline = time.monotonic() + 10
-    while not (backend_server.started and runtime_server.started):
-        assert time.monotonic() < deadline, "servers never started"
+    while not backend_server.started:
+        assert time.monotonic() < deadline, "the Data Core never started"
         time.sleep(0.02)
 
-    state = get_state()
-    original = state.settings
-    state.settings = dataclasses.replace(
-        original,
-        ai_runtime_url=f"http://127.0.0.1:{runtime_port}",
-        backend_service_private_key=private_pem,
-    )
+    nodes = []
+
+    def node(name="stack", start=True):
+        made = ServedNode(backend_url, public_pem, authority_private, name,
+                          tmp_path / ("runtime" if not nodes else name))
+        nodes.append(made)
+        return made.start() if start else made
+
+    first = node()
     try:
-        yield SimpleNamespace(backend_url=backend_url, runtime_app=runtime_app)
+        yield SimpleNamespace(backend_url=backend_url, runtime_app=first.app,
+                              node=first, add_node=node,
+                              authority_private=authority_private)
     finally:
+        for made in nodes:
+            made.close()
         state.settings = original
-        runtime_app.state.host.shutdown()
-        for server, thread in ((runtime_server, runtime_thread),
-                               (backend_server, backend_thread)):
-            server.should_exit = True
-            thread.join(timeout=5)
+        backend_server.should_exit = True
+        backend_thread.join(timeout=5)
 
 
 def receive(frontend, timeout=30.0):
@@ -210,9 +272,8 @@ class TestTheTwoHalves:
                 ]}}})
         assert configured.status_code == 200, configured.text
 
-        with admin.websocket_connect(
-            f"/chats/{chat_id}", headers=cookie_header(admin)
-        ) as frontend:
+        with ServedSocket(full_stack.backend_url, admin,
+                          f"/chats/{chat_id}") as frontend:
             hello = receive(frontend)
             assert hello["event"] == "hello", hello
             assert hello["chat_id"] == chat_id
@@ -230,9 +291,8 @@ class TestTheTwoHalves:
         # first turn's tail (it goes idle after answering) may still be
         # on its way when the new socket opens; nothing else may come
         # before the greeting.
-        with admin.websocket_connect(
-            f"/chats/{chat_id}", headers=cookie_header(admin)
-        ) as frontend:
+        with ServedSocket(full_stack.backend_url, admin,
+                          f"/chats/{chat_id}") as frontend:
             frame = receive(frontend)
             while frame["event"] != "hello":
                 assert frame["event"] in ("idle", "working"), frame
@@ -293,9 +353,8 @@ class TestTheOrganizationsRules:
                 time.sleep(0.1)
             raise AssertionError(f"the saved frame never said {saying!r}")
 
-        with admin.websocket_connect(
-            f"/chats/{chat_id}", headers=cookie_header(admin)
-        ) as frontend:
+        with ServedSocket(full_stack.backend_url, admin,
+                          f"/chats/{chat_id}") as frontend:
             assert receive(frontend)["event"] == "hello"
             frontend.send_json({"endpoint": "AI:Chat:Input",
                                 "data": {"text": "hi", "parts": []}})
@@ -413,9 +472,8 @@ class TestThePull:
                 ]}}})
         assert configured.status_code == 200, configured.text
 
-        with admin.websocket_connect(
-            f"/chats/{chat_id}", headers=cookie_header(admin)
-        ) as frontend:
+        with ServedSocket(full_stack.backend_url, admin,
+                          f"/chats/{chat_id}") as frontend:
             # A first open narrates the pull before it greets
             # (agent_status: pulling, installing, ready — then hello).
             # Installing builds the agent's environment and downloads its
@@ -449,3 +507,126 @@ class TestThePull:
         assert listed.status_code == 200, listed.text
         titles = [r["keys"]["title"] for r in listed.json()["resources"]]
         assert titles == ["Ship it"]
+
+
+def open_scripted(admin, title, *responses):
+    """A chat thinking with a scripted model, opened as the person."""
+    chat_id = app_call(admin, "AI:Chat:Open", {"title": title}).json()["data"]["chat"]["chat_id"]
+    assert app_call(admin, "AI:Chat:Update", {
+        "chat_id": chat_id, "config": {"llm": {
+            "provider": "fake", "responses": list(responses)}}}).status_code == 200
+    return chat_id
+
+
+def until_hello(frontend, timeout=30.0):
+    seen = []
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        frame = receive(frontend, deadline - time.monotonic())
+        seen.append(frame.get("event"))
+        if frame.get("event") == "hello":
+            return seen
+    raise AssertionError(f"no hello; saw {seen}")
+
+
+class TestTheNodeLink:
+    """Execution nodes connect to the Data Core; chats ride their links
+    (docs/system/execution-nodes.md#the-node-link)."""
+
+    def test_the_data_core_holds_no_address_of_any_node(self, full_stack):
+        from server.setup.app_state import get_node_links, get_settings
+
+        assert not hasattr(get_settings(), "ai_runtime_url")
+        [link] = get_node_links().connected()
+        assert link.key.endswith("/stack")
+
+    def test_a_node_restart_loses_no_chat(self, admin, full_stack):
+        chat_id = open_scripted(
+            admin, "Restart",
+            action(action="say", text="Before."), action(action="finish"),
+            action(action="say", text="After."), action(action="finish"))
+        with ServedSocket(full_stack.backend_url, admin,
+                          f"/chats/{chat_id}") as frontend:
+            until_hello(frontend)
+            frontend.send_json({"endpoint": "AI:Chat:Input",
+                                "data": {"text": "one", "parts": []}})
+            until_ai_message(frontend)
+
+            # The node goes, as a process that ends, and comes back.
+            full_stack.node.stop()
+            seen = []
+            deadline = time.monotonic() + 15
+            while "runtime_disconnected" not in seen:
+                assert time.monotonic() < deadline, seen
+                seen.append(receive(frontend)["event"])
+            full_stack.node.start()
+            # The chat the person has open is attached to it again, and
+            # the mind is the one the record holds.
+            until_hello(frontend)
+            frontend.send_json({"endpoint": "AI:Chat:Input",
+                                "data": {"text": "two", "parts": []}})
+            reply = until_ai_message(frontend)[-1]
+        assert reply["message"]["parts"][0]["content"] == "After."
+        listed = app_call(admin, "AI:Message:List", {"chat_id": chat_id})
+        assert [m["parts"][0]["content"]
+                for m in listed.json()["data"]["messages"]] == [
+            "one", "Before.", "two", "After."]
+
+    def test_a_node_that_starts_before_the_data_core_answers_waits_for_it(
+            self, admin, full_stack, tmp_path):
+        """The node dials and dials again: the order the two start in
+        does not matter."""
+        from server.setup.app_state import get_node_links
+
+        full_stack.node.stop()
+        early = full_stack.add_node("early", start=False)
+        # Pointed at nothing yet: a port nobody answers on.
+        early.link.url = "ws://127.0.0.1:1/nodes/link"
+        early.start(wait=False)
+        time.sleep(0.5)
+        assert not early.link.connected.is_set()
+        # The Data Core "appears" where the node dials.
+        early.link.url = full_stack.backend_url.replace(
+            "http://", "ws://") + "/nodes/link"
+        early.wait_linked(timeout=20)
+        assert any(link.key.endswith("/early")
+                   for link in get_node_links().connected())
+
+    def test_a_delegation_is_accepted_only_from_the_node_it_was_handed_to(
+            self, admin, full_stack):
+        import httpx
+
+        from conftest import runtime_service_token
+        from contracts.node import HEADER_NODE
+        from server.setup.app_state import get_runtime_clients
+
+        chat_id = open_scripted(admin, "Bound", action(action="finish"))
+        with ServedSocket(full_stack.backend_url, admin,
+                          f"/chats/{chat_id}") as frontend:
+            until_hello(frontend)
+        # The key the node was handed, presented by another node the
+        # same authority admits: refused.
+        from database.stores import RuntimeSessionStore
+        rows = list(RuntimeSessionStore().col.find({"chat_id": chat_id}))
+        assert rows and rows[0]["node_id"].endswith("/stack")
+        binding = get_runtime_clients().chats.get(chat_id)
+        assert binding is None or binding.link is None or \
+            binding.link.key.endswith("/stack")
+
+        from api.services.chat_session.identity import Delegation
+        from database.stores import UserStore
+
+        person = UserStore().get_by_email("admin@test.org")
+        stolen = Delegation().for_chat(
+            {"user_id": person["_id"], "org_id": person["org_id"],
+             "email": person["email"], "session_id": ""},
+            chat_id, node=rows[0]["node_id"])
+        other = runtime_service_token(full_stack.authority_private, "thief")
+        refused = httpx.post(f"{full_stack.backend_url}/app", json={
+            "endpoint": "AI:State:Get", "data": {"chat_id": chat_id}},
+            headers={"Authorization": f"Bearer {stolen}", HEADER_NODE: other})
+        assert refused.status_code == 401
+        bare = httpx.post(f"{full_stack.backend_url}/app", json={
+            "endpoint": "AI:State:Get", "data": {"chat_id": chat_id}},
+            headers={"Authorization": f"Bearer {stolen}"})
+        assert bare.status_code == 401

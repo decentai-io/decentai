@@ -155,8 +155,16 @@ def seed(app):
     for name in COLLECTIONS:
         db.collection(name).delete_many({})
     # Admissions remembered from a test before are of authorities just
-    # wiped.
+    # wiped; and the chats the relay held, and the nodes linked, were a
+    # test before's.
     Admission.changed()
+    from server.setup.app_state import get_state
+
+    state = get_state()
+    if state.runtime_clients is not None:
+        state.runtime_clients.chats.clear()
+    if state.node_links is not None:
+        state.node_links.links.clear()
     return Seed()
 
 
@@ -304,6 +312,39 @@ def runtime_identity(app, seed):
     private_pem, public_pem = service_keys()
     register_authority("shared", public_pem)
     yield private_pem
+
+
+#: The tests' own execution node: a shared authority's key pair, the
+#: authority registered once per test as it is needed.
+NODE_KEYS = service_keys()
+
+
+def node_for_tests(name: str = "test-node"):
+    """The test's execution node: its key at the Data Core and the
+    credential it presents."""
+    from types import SimpleNamespace
+
+    from contracts.node import mint
+    from database.stores import AuthorityStore
+
+    store = AuthorityStore()
+    doc = store.by_fingerprint(store.fingerprint(NODE_KEYS[1])) \
+        or register_authority("shared", NODE_KEYS[1], name="Test nodes")
+    return SimpleNamespace(key=f"{doc['_id']}/{name}", name=name,
+                           token=mint(NODE_KEYS[0], name))
+
+
+def delegated_headers(user: dict, chat_id: str, node=None) -> dict:
+    """What a node presents to act for ``user`` in ``chat_id``: the
+    chat's delegation, bound to the node, and the node's own
+    credential beside it (docs/system/execution-nodes.md)."""
+    from api.services.chat_session.identity import Delegation
+    from contracts.node import HEADER_NODE
+
+    node = node or node_for_tests()
+    token = Delegation().for_chat({"session_id": "", **user}, chat_id,
+                                  node=node.key)
+    return {"Authorization": f"Bearer {token}", HEADER_NODE: node.token}
 
 
 #: The Data Core's own key, as a deployment has one: it signs every

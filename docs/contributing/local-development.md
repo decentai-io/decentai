@@ -42,8 +42,9 @@ python -c "import secrets; print(secrets.token_urlsafe(48))"   # TOKEN_SECRET_KE
 
 Fill in `ADMIN_EMAIL` and `ADMIN_PASSWORD` in the Data Core's file. The
 defaults point everything at localhost: the Data Core on 8000, the web app
-on 4200; `AI_RUNTIME_URL` names 8001, where nothing answers until a
-runtime does. Keep `AGENT_PACKAGE_DIR` and
+on 4200. The Data Core is given no runtime's address: an execution
+node dials it ([execution nodes](../system/execution-nodes.md)), and
+chats wait until one does. Keep `AGENT_PACKAGE_DIR` and
 `UPLOADS_DIR` short on Windows; a package's filename is a digest, and a
 long directory overflows the path limit.
 

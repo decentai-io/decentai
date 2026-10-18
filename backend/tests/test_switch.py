@@ -5,7 +5,7 @@ withdrawn, nothing dialed until they resume."""
 import asyncio
 
 from conftest import app_call, signing_key  # noqa: F401
-from test_runtime_client import create_chat, fake_runtime  # noqa: F401
+from test_runtime_client import create_chat, fake_node  # noqa: F401
 from test_runtime_secret_use import runtime_call
 
 
@@ -26,7 +26,7 @@ def principal(seed):
 
 class TestStopEverything:
     def test_every_chat_is_killed_and_nothing_is_dialed_until_resume(
-            self, anon, admin, seed, fake_runtime, signing_key, monkeypatch):
+            self, anon, admin, seed, fake_node, signing_key, monkeypatch):
         from api.services.chat_session.halt import Halt
         from api.services.chat_session.relay import RuntimeClientManager
         from database.stores import RuntimeSessionStore
@@ -54,7 +54,7 @@ class TestStopEverything:
         killed, refused, unsent, held, dialed = asyncio.run(scenario())
         # Both were killed: the one being watched, and the one nobody was.
         assert killed == 2
-        kills = [f for f in fake_runtime.wait_for_frames(2)
+        kills = [f for f in fake_node.said()
                  if f == {"event": "stop", "force": True}]
         assert len(kills) == 2
         # While stopped: no dial, no frame, no socket kept.
@@ -64,7 +64,7 @@ class TestStopEverything:
         assert RuntimeSessionStore().chats_of(user["user_id"]) == [clocked]
 
     def test_every_key_is_withdrawn(
-            self, anon, admin, seed, fake_runtime, signing_key, monkeypatch):
+            self, anon, admin, seed, fake_node, signing_key, monkeypatch):
         """Whatever ignored its end can read nothing: the delegations
         are gone, and none is minted while the person is stopped."""
         from api.services.chat_session.relay import RuntimeClientManager

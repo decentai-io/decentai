@@ -1,0 +1,302 @@
+"""The node link, from the Data Core's side
+(docs/system/execution-nodes.md#the-node-link).
+
+Execution nodes connect to the Data Core, never the other way round:
+the Data Core holds no node's address, and a node can run behind a
+firewall that lets nothing in. Each node keeps one connection,
+
+    WS /nodes/link     Authorization: Bearer <the node's credential>
+                       X-DecentAI-Node-Protocol: <the version it speaks>
+                       X-DecentAI-Node-Nonce: <its own, for this connection>
+
+and every chat it serves is carried over it, each frame naming its
+chat. The handshake admits the node (admission.py) and refuses a
+protocol other than this Data Core's, with the reason in the close.
+Every frame the Data Core sends is a token signed with its own key
+(signing.py), for this node, this connection and this place in the
+sequence. A heartbeat checks the node's credential again: one that
+lapsed, an authority revoked, a node refused, and the link is closed.
+
+    NodeLink    one connected node: send, ask, its chats and load
+    NodeLinks   every node connected now — one process, in memory —
+                and the route's handler
+
+What a node says of itself (its load, its locks) is kept for the nodes
+view and to place chats by load; it never admits or refuses a node.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import time
+import uuid
+from typing import Any, Awaitable, Callable, Dict, List, Optional
+
+from fastapi import WebSocket, WebSocketDisconnect
+
+from api.services.nodes.admission import Admission, NodeIdentity, Refused
+from api.services.nodes.signing import DataCoreSignature
+from contracts.node import (
+    CLOSE_PROTOCOL, CLOSE_REFUSED, CLOSE_REPLACED, HEADER_NONCE,
+    HEADER_PROTOCOL, NODE_PROTOCOL_VERSION)
+from database.stores import NodeStore
+from server.custom_logging import CustomLoggerFactory
+
+
+def _close_reason(text: str) -> str:
+    """A close frame's reason holds 123 bytes."""
+    raw = str(text or "").encode("utf-8")[:120]
+    return raw.decode("utf-8", "ignore")
+
+
+class NodeLink:
+    def __init__(self, websocket: WebSocket, identity: NodeIdentity,
+                 nonce: str, token: str, reports: Dict[str, Any]):
+        self.socket = websocket
+        self.identity = identity
+        self.key = identity.key
+        self.nonce = nonce
+        #: the credential the node last presented
+        self.token = token
+        self.reports = dict(reports or {})
+        #: the chats this Data Core has attached here
+        self.chats: set = set()
+        self.connected_at = time.time()
+        self.last_beat = time.time()
+        self.open = True
+        self._seq = 0
+        self._sending = asyncio.Lock()
+        self._asked: Dict[str, asyncio.Future] = {}
+
+    @property
+    def scope(self) -> str:
+        return self.identity.scope
+
+    @property
+    def load(self) -> int:
+        """How busy the node is, by what it says and what it was given:
+        the larger of the two."""
+        said = (self.reports.get("load") or {}) if isinstance(
+            self.reports.get("load"), dict) else {}
+        try:
+            sessions = int(said.get("sessions") or 0)
+        except (TypeError, ValueError):
+            sessions = 0
+        return max(sessions, len(self.chats))
+
+    async def send(self, frame: Dict[str, Any]) -> bool:
+        """One frame, signed, in sequence. False when the node is gone."""
+        if not self.open:
+            return False
+        clean = json.loads(json.dumps(frame, default=str))
+        try:
+            async with self._sending:
+                token = DataCoreSignature().frame(
+                    self.key, self.nonce, self._seq, clean)
+                self._seq += 1
+                await self.socket.send_text(token)
+        except Exception:
+            self.open = False
+            return False
+        return True
+
+    async def ask(self, what: str, asked: Dict[str, Any],
+                  timeout: float = 20.0) -> Dict[str, Any]:
+        """A question for the node (monitoring), and its answer. Raises
+        RuntimeError with the node's own words where it refused, and
+        TimeoutError where it said nothing."""
+        request_id = f"ask_{uuid.uuid4().hex[:16]}"
+        future = asyncio.get_running_loop().create_future()
+        self._asked[request_id] = future
+        try:
+            if not await self.send({"type": "monitor", "request_id": request_id,
+                                    "what": what, "asked": asked}):
+                raise RuntimeError("the node is not connected")
+            return await asyncio.wait_for(future, timeout)
+        finally:
+            self._asked.pop(request_id, None)
+
+    def answered(self, frame: Dict[str, Any]) -> None:
+        future = self._asked.get(str(frame.get("request_id") or ""))
+        if future is None or future.done():
+            return
+        if frame.get("error"):
+            future.set_exception(RuntimeError(str(frame["error"])[:300]))
+        else:
+            result = frame.get("result")
+            future.set_result(result if isinstance(result, dict) else {})
+
+    async def close(self, code: int, reason: str) -> None:
+        self.open = False
+        try:
+            await self.socket.close(code=code, reason=_close_reason(reason))
+        except Exception:
+            pass
+
+    def fail_questions(self) -> None:
+        for future in self._asked.values():
+            if not future.done():
+                future.set_exception(RuntimeError("the node's link ended"))
+
+
+class NodeLinks:
+    #: How long a node may take to say hello.
+    HELLO_SECONDS = 10.0
+
+    def __init__(self):
+        self.links: Dict[str, NodeLink] = {}
+        #: called with a link once it is welcomed, and once it is gone:
+        #: the relay attaches and detaches chats (chat_session/relay.py)
+        self.on_link: List[Callable[[NodeLink], Awaitable[None]]] = []
+        self.on_lost: List[Callable[[NodeLink], Awaitable[None]]] = []
+        #: what a node says for one of its chats: (link, chat_id, frame)
+        self.on_event: Optional[Callable[..., Awaitable[None]]] = None
+        #: what a node says about itself: (link, frame), for leases
+        self.on_beat: List[Callable[..., Awaitable[None]]] = []
+        self.on_frame: Dict[str, Callable[..., Awaitable[None]]] = {}
+        self.logger = CustomLoggerFactory.get_logger(self.__class__.__name__)
+
+    def connected(self) -> List[NodeLink]:
+        return [link for link in self.links.values() if link.open]
+
+    def get(self, key: str) -> Optional[NodeLink]:
+        link = self.links.get(str(key or ""))
+        return link if link is not None and link.open else None
+
+    async def close_where(self, which: Callable[[NodeIdentity], bool],
+                          reason: str) -> int:
+        closing = [link for link in list(self.links.values())
+                   if which(link.identity)]
+        for link in closing:
+            await link.close(CLOSE_REFUSED, reason)
+        return len(closing)
+
+    async def close_all(self) -> None:
+        for link in list(self.links.values()):
+            await link.close(1001, "the Data Core is stopping")
+
+    # ------------------------------------------------------------------
+    async def serve(self, websocket: WebSocket) -> None:
+        """One node's connection, from the handshake to its end."""
+        await websocket.accept()
+        version = str(websocket.headers.get(HEADER_PROTOCOL) or "").strip()
+        if version != str(NODE_PROTOCOL_VERSION):
+            await websocket.close(code=CLOSE_PROTOCOL, reason=_close_reason(
+                f"this Data Core speaks node protocol {NODE_PROTOCOL_VERSION}; "
+                f"the node said {version or 'none'}"))
+            return
+        scheme, _, token = str(
+            websocket.headers.get("authorization") or "").partition(" ")
+        token = token.strip() if scheme.lower() == "bearer" else ""
+        try:
+            identity = Admission().admit(token)
+        except Refused as refused:
+            self.logger.info(f"A node's link was refused: {refused}")
+            await websocket.close(code=CLOSE_REFUSED,
+                                  reason=_close_reason(str(refused)))
+            return
+        nonce = str(websocket.headers.get(HEADER_NONCE) or "").strip()
+        if len(nonce) < 16:
+            await websocket.close(code=CLOSE_REFUSED, reason="a nonce is required")
+            return
+        try:
+            hello = await asyncio.wait_for(websocket.receive_json(),
+                                           self.HELLO_SECONDS)
+        except Exception:
+            await websocket.close(code=CLOSE_REFUSED, reason="no hello")
+            return
+        if not isinstance(hello, dict) or hello.get("type") != "hello" \
+                or hello.get("protocol_version") != NODE_PROTOCOL_VERSION:
+            await websocket.close(code=CLOSE_PROTOCOL, reason=_close_reason(
+                f"the hello is not node protocol {NODE_PROTOCOL_VERSION}'s"))
+            return
+
+        reports = hello.get("reports") if isinstance(hello.get("reports"), dict) else {}
+        link = NodeLink(websocket, identity, nonce, token, reports)
+        previous = self.links.get(link.key)
+        self.links[link.key] = link
+        if previous is not None:
+            await previous.close(CLOSE_REPLACED, "the same node connected again")
+        self._seen(link, connected=True)
+        await link.send({"type": "welcome",
+                         "protocol_version": NODE_PROTOCOL_VERSION,
+                         "node": link.key, "scope": identity.scope})
+        self.logger.info(f"Execution node {link.key} linked ({identity.scope})")
+        for callback in list(self.on_link):
+            await self._quietly(callback, link)
+        try:
+            while True:
+                frame = await websocket.receive_json()
+                if not isinstance(frame, dict):
+                    continue
+                if not await self._handle(link, frame):
+                    return
+        except (WebSocketDisconnect, RuntimeError, ValueError):
+            pass
+        finally:
+            link.open = False
+            link.fail_questions()
+            if self.links.get(link.key) is link:
+                del self.links[link.key]
+                try:
+                    NodeStore().disconnected(link.key)
+                except Exception:
+                    pass
+            for callback in list(self.on_lost):
+                await self._quietly(callback, link)
+            self.logger.info(f"Execution node {link.key} unlinked")
+
+    async def _quietly(self, callback, *args) -> None:
+        try:
+            await callback(*args)
+        except Exception as exc:
+            self.logger.warning(f"A node link's callback failed: {exc!r}")
+
+    def _seen(self, link: NodeLink, connected: Optional[bool] = None) -> None:
+        try:
+            store = NodeStore()
+            store.seen(link.identity, connected=connected)
+            store.reported(link.key, link.reports)
+        except Exception as exc:  # the view, never the gate
+            self.logger.warning(f"Node {link.key} not recorded: {exc}")
+
+    async def _handle(self, link: NodeLink, frame: Dict[str, Any]) -> bool:
+        """One frame from a node. False ends the link."""
+        kind = str(frame.get("type") or "")
+        if kind == "event":
+            if self.on_event is not None and isinstance(frame.get("frame"), dict):
+                await self._quietly(self.on_event, link,
+                                    str(frame.get("chat_id") or ""), frame["frame"])
+        elif kind == "heartbeat":
+            link.last_beat = time.time()
+            if isinstance(frame.get("reports"), dict):
+                link.reports = frame["reports"]
+            # The credential is checked again: a lapse, a revoke or a
+            # refusal by name ends the link here at the latest.
+            try:
+                Admission().admit(link.token, record=False)
+            except Refused as refused:
+                await link.close(CLOSE_REFUSED, str(refused))
+                return False
+            self._seen(link)
+            for callback in list(self.on_beat):
+                await self._quietly(callback, link, frame)
+        elif kind == "credential":
+            token = str(frame.get("token") or "")
+            try:
+                fresh = Admission().admit(token)
+            except Refused as refused:
+                await link.close(CLOSE_REFUSED, str(refused))
+                return False
+            if fresh.key != link.key:
+                await link.close(CLOSE_REFUSED,
+                                 "a credential for another node")
+                return False
+            link.token = token
+            link.identity = fresh
+        elif kind == "monitor_result":
+            link.answered(frame)
+        elif kind in self.on_frame:
+            await self._quietly(self.on_frame[kind], link, frame)
+        return True

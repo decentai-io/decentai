@@ -73,7 +73,8 @@ services = Backend(Gateway(settings.backend_url, node=node, key=data_core),
                    node)
 
 app = create_app(settings, services=services, library=library,
-                 container=container, confinement=confinement)
+                 container=container, confinement=confinement,
+                 node=node, data_core=data_core)
 
 
 if __name__ == "__main__":

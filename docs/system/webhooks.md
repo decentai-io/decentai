@@ -131,9 +131,10 @@ Once the event is recorded, the Data Core tells the chat, after the 202
 (`_tell`). It sends a **`webhook_event`** frame through the relay to the
 runtime for the person (`RuntimeClientManager.send`,
 `backend/api/services/chat_session/relay.py`); where nobody has the chat
-open, that dials the runtime as for any frame that arrives with no socket
-up — the service token and a fresh delegation for the chat
-([chat session](chat-session.md#the-dial)). A stopped person is not
+open, that attaches the chat to an execution node as for any frame
+that arrives with nobody watching — a fresh delegation for the chat,
+bound to that node
+([chat session](chat-session.md#the-node-link)). A stopped person is not
 dialed. The frame:
 
 ```
@@ -147,8 +148,8 @@ own record — never anything the caller sent. The frame is the
 Data Core's alone: it is in the relay's `FRAMES`, but the browser's
 socket builds only the frames of the actions it knows
 (`AI:Chat:Input`, `AI:Chat:Screen`, `AI:Chat:Watch`), and this is none
-of them. The runtime's door takes it only from a dialer with the
-Data Core's service token ([session door](../reference/session-door.md#inbound-what-a-consumer-may-say)).
+of them. A node takes it only over its link, in a frame the Data
+Core signed ([session door](../reference/session-door.md#inbound-what-a-consumer-may-say)).
 The delivery's outcome becomes `delivered`, or `not delivered` when the
 chat could not be reached; it is not tried again.
 

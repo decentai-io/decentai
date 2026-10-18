@@ -137,18 +137,15 @@ section, whose lines move with every edit.
 
 ## Runtime 1: start-up and the door
 
-| Id | Where | Question |
-|---|---|---|
-| DOOR-1 | `ai_runtime/door/auth.py` `verify_backend_service` | A service token is accepted any number of times during its 60 seconds: `jti` is required and never remembered (run). And `kid` is not read (run), though the docstring says key rotation is carried by it; there is one key, from one variable. |
-| DOOR-2 | `ai_runtime/door/auth.py` `jwt.decode` 20 | No allowance for clocks that differ: a token from a clock 2 seconds ahead is refused (run). Fine on one machine; on two, a small drift refuses every dial. |
-| DOOR-4 | `ai_runtime/door/socket.py` `chat_socket` 58–71 | A frame that is not JSON, not an object, or binary ends the route without a close: the dialer sees an abnormal drop, code 1006, no reason (run on a real server). In the in-process test client the same path never returns, so it cannot be tested as written. |
-| DOOR-5 | `ai_runtime/door/socket.py` `chat_socket` 51, 83; `backend/api/services/chat_session/relay.py` `RuntimeClient._relay` 161 | An exception's own text goes back on the socket (run), and the relay forwards every runtime frame to the page, so an internal error's wording can reach a person's browser. |
+The questions this section held were of the runtime's own chat socket,
+which is gone: chats reach a node over its link to the Data Core
+(`ai_runtime/door/link.py`), whose frames the Data Core signs and whose
+chats each read their own frames in order.
 
 ## Runtime 2: the host
 
 | Id | Where | Question |
 |---|---|---|
-| HOST-4 | `ai_runtime/door/host.py` `SessionHost._hand` 418–422; `ai_runtime/door/socket.py` 73 | The route handles one frame at a time, and a `user_message` awaits the refresh, which may install an agent for a minute. A `stop`, the kill switch, an approval and a renewed credential are not read meanwhile (from reading). |
 | HOST-8 | `ai_runtime/door/host.py` `SessionHost.handle` 373, `_hand` 432–433 | Frame values are read loosely (run): the text `"false"` approves, a missing `action_hash` becomes empty and the session falls back to its own record, any truthy `force` is the kill. Needs a faulty dialer. |
 | HOST-9 | `ai_runtime/door/host.py` `SessionHost._hand` 418–422 | No limit at the door for a message: a million characters of text, a 100,000-character `client_message_id` and 5,000 parts pass through (run). Settles CHAT-1: the 128-character id and 20-attachment cap are held nowhere. |
 | HOST-10 | `ai_runtime/door/host.py` `SessionHost._schedule_reap` 622–629; `ai_runtime/door/roster.py` `AgentRoster._installs` 54 | One 60-second sleeping task per frame that reaches a session (run: 2,000 `screen_input` frames left 2,000 tasks); background tasks are held by nothing; install locks are never dropped. Robustness. |

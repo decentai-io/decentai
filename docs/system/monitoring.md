@@ -78,16 +78,20 @@ is one line less.
 
 ## How it is read
 
-By the Data Core, through a door of the runtime that answers nobody else
-(`ai_runtime/door/monitor.py`): the same service token the
-chat door asks for. Who among the platform's people is shown the
-answers is the Data Core's to decide.
+By the Data Core, over each execution node's own link: the Data Core
+reaches no node, so it asks every node connected now a `monitor`
+question and puts the answers together
+(`backend/api/services/agents/monitoring.py`; the node answers in
+`ai_runtime/door/monitor.py`; [execution nodes](execution-nodes.md#the-node-link)).
+Every event names its agent, which is one organization's or is not;
+who among the platform's people is shown the answers is the Data
+Core's to decide.
 
-| Door | Answers |
+| Question | Answers |
 |---|---|
-| `GET /internal/monitor/events?limit=&kinds=&agent=&before=` | what happened, the latest first; `before` is the time of the last line of one page, for the next |
-| `GET /internal/monitor/usage` | what the agents are given and what each running agent uses now ([the sandbox](sandbox.md)), and what agents are held to here |
-| `GET /internal/monitor/files?agent=` | what one agent keeps in its home and its spool now: each file's path, size and when it changed, the first 500 listed and all of them counted |
+| `events {limit, kinds, agent, before}` | what happened, the latest first, across every node; `before` is the time of the last line of one page, for the next |
+| `usage` | what the agents are given and what each running agent uses now ([the sandbox](sandbox.md)), and what agents are held to there — each node's, and the agents of all of them together |
+| `files {agent}` | what one agent keeps in its home and its spool now: each file's path, size and when it changed, the first 500 listed and all of them counted |
 
 **The listing is made by the agent's own user**, in the agents'
 container, started through the spawn helper beside whatever worker is

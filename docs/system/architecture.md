@@ -46,11 +46,12 @@ the seeder runs once at every start and exits.
 │  init   │──────────────────────────▶│       backend        │─────▶│  mongo  │
 └─────────┘   ─ ─ the `data` network: ─│      port 8000       │─ ─ ─ └─────────┘
               internal, these three    └──────────────────────┘
-                 dials WS /chats/{chat_id}   │   ▲   POST /app, as the person,
-                 with two tokens (below)     ▼   │   under the chat's delegation
+      the node link: WS /nodes/link, │   ▲   POST /app, as the person,
+      dialed by the node; every chat ▲   │   under the chat's delegation
+      rides it (execution-nodes.md)  │   │
                                       ┌──────────────────────┐
                                       │      ai-runtime      │
-                                      │  8001 door · 8002    │──────▶ the internet,
+                                      │  8001 health · 8002  │──────▶ the internet,
                                       │  egress proxy        │        for agents only
                                       └──────────────────────┘
    ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─  │   ▲  ─ ─ the `agents` network:
@@ -68,7 +69,7 @@ the seeder runs once at every start and exits.
 | `backend` | `backend/` | the platform's API: identity and access, the data layer, the gateway, chat sessions as the runtime's services | 8000 |
 | `init` | the Data Core's | `bootstrap/init_db.py`: the schema, the access chains, the first administrator | — |
 | `mongo` | `mongo:7` | the database | 27017, on the `data` network only |
-| `ai-runtime` | `ai_runtime/` | one assistant per chat, the executor and its gates, the clock, the agents' proxy | 8001 (the door), 8002 (the proxy) |
+| `ai-runtime` | `ai_runtime/` | the bundled execution node's AI Runtime: one assistant per chat, the executor and its gates, the agents' proxy; it dials the Data Core's node link | 8001 (the health check), 8002 (the proxy) |
 | `agents` | the runtime's, started as `python -m ai_runtime.agents_container.service` | the spawner, and every agent's worker | 8003 |
 | `speech` | `speech/` | speech to text and text to speech, from models that run here ([below](#speech)) | 8004 |
 | `node-issuer` | the Data Core's, started as `bootstrap/node_issuer.py` | the install's issuer of node credentials: it holds the install's authority key and writes the bundled node a fresh credential every few minutes ([execution nodes](execution-nodes.md#one-computers-install)) | nothing; on no network |
@@ -77,7 +78,7 @@ Three networks (`docker-compose.yml`):
 
 | Network | On it | What it is for |
 |---|---|---|
-| `default` | `web`, `backend`, `ai-runtime`, `speech` | the one with a way out. Caddy reaches the Data Core; the Data Core reaches the runtime's door and the speech container, and the internet for repositories, mail, OAuth and a person's notifications to other systems ([webhooks](webhooks.md)); the runtime reaches the Data Core's gateway, and the internet for agents' packages and, through its proxy, for agents |
+| `default` | `web`, `backend`, `ai-runtime`, `speech` | the one with a way out. Caddy reaches the Data Core; the Data Core reaches the speech container (and no execution node: nodes dial it), and the internet for repositories, mail, OAuth and a person's notifications to other systems ([webhooks](webhooks.md)); the runtime reaches the Data Core's gateway, and the internet for agents' packages and, through its proxy, for agents |
 | `data` | `mongo`, `backend`, `init` | `internal: true`: the database, and the two that speak to it. Nothing else has a route to it, and it has none out |
 | `agents` | `ai-runtime`, `agents` | `internal: true`: the runtime is the only container on it with a way anywhere, so a worker's only way out is the runtime's proxy |
 
@@ -143,43 +144,45 @@ the recordings it was trained on ([operating](../run/operating.md#speech-on-this
 | From → to | Over | Carrying | Says |
 |---|---|---|---|
 | browser → Data Core | `POST /app`, body `{"endpoint": "Domain:Controller:action", …}` (`backend/server/routes/app.py`) | the session cookie, or `Authorization: Bearer dk_…` (an API key) | who the person is; every call is resolved again from the session row |
-| outside system → Data Core | `POST /hooks/{webhook_id}` (`backend/server/routes/hooks.py`), outside the gateway | the webhook's own secret as `Bearer`, and a signature where required | an event for one person's webhook, and nothing else; the Data Core then sends it to that webhook's chat on the runtime as a `webhook_event` frame, over its own dial below ([webhooks](webhooks.md)) |
+| outside system → Data Core | `POST /hooks/{webhook_id}` (`backend/server/routes/hooks.py`), outside the gateway | the webhook's own secret as `Bearer`, and a signature where required | an event for one person's webhook, and nothing else; the Data Core then sends it to that webhook's chat as a `webhook_event` frame, over its node's link below ([webhooks](webhooks.md)) |
 | browser → Data Core | `WS /chats/{chat_id}` (`backend/server/routes/ws.py`) | the session cookie, and an `Origin` the deployment names | the same person, speaking in one chat |
-| Data Core → runtime | `WS /chats/{chat_id}` on the runtime (`ai_runtime/door/socket.py`) | the **service token** and the chat's **delegation** | "this is the Data Core", and "act for this person in this chat" |
-| Data Core → runtime | `GET /internal/monitor/…` (`ai_runtime/door/monitor.py`) | the service token | "this is the Data Core" |
+| runtime → Data Core | `WS /nodes/link` (`backend/server/routes/nodes.py`), one per node, dialed by the node | its node's **credential**; every frame back is signed by the Data Core | "this is that node"; over it, each chat's frames and events, the chat's **delegation** in an `attach`, and monitoring questions ([execution nodes](execution-nodes.md#the-node-link)) |
 | Data Core → speech | `POST /v1/audio/…`, `GET /status`, `POST /prepare` (`speech/service.py`) | nothing: the private network is the only way to it | a recording to write down, or words to say |
-| runtime → Data Core | `POST /app` (`Gateway`, `ai_runtime/door/platform.py`) | the delegation, as `Bearer` | the person's own permissions, fenced (below) |
+| runtime → Data Core | `POST /app` (`Gateway`, `ai_runtime/door/platform.py`) | the delegation, as `Bearer`, and its node's credential beside it | the person's own permissions, fenced (below); accepted only from the node the delegation was handed to |
 | runtime → Data Core | `POST /app`, the package door (`Agents:Package:*`) | its execution node's **credential**, as `Bearer` | "this is that node": which packages are approved, their bytes by digest, and that one is ready — nothing of anybody's ([agent code](agent-code.md#the-package-door), [execution nodes](execution-nodes.md)) |
 | runtime → agents | TCP, port 8003 (`ai_runtime/agents/container.py`, `agents_container/wire.py`) | the spawner's key, from `<install_dir>/spawner.key` | "start this agent's worker from this environment", "build these requirements", "what does this agent keep", "end this agent's processes"; one connection per worker carries its lines |
 | worker → proxy | the proxy's port on the worker's own container, passed on to `ai-runtime:8002` | the worker's pass, a token in the proxy's address | which agent's worker this is, and so which hosts it may reach |
 
-The same path, `/chats/{chat_id}`, exists on the Data Core and on the
-runtime. They are two sockets with two vocabularies: the page's
-(`AI:Chat:Input`, `AI:Chat:Event`) and the door's
-([the session door](../reference/session-door.md)). The Data Core's relay
-translates between them (`backend/api/services/chat_session/relay.py`).
+A chat is spoken of in two vocabularies: the page's (`AI:Chat:Input`,
+`AI:Chat:Event`), on the person's socket, and the door's
+([the session door](../reference/session-door.md)), on the node's link.
+The Data Core's relay translates between them
+(`backend/api/services/chat_session/relay.py`).
 
 ### The two tokens between the Data Core and the runtime
 
 They are the core of the design, and they have several names across
 the pages. These are the two:
 
-| | **Service token** | **Delegation** |
+| | **Node credential** | **Delegation** |
 |---|---|---|
-| Also called | Data Core identity | runtime access token, the chat's credential, "a key" |
-| Says | this call is from the Data Core, and nothing about a person | this person, in this chat |
-| Made | per request, by the Data Core (`chat_session/identity/service.py`) | per chat, by the Data Core (`chat_session/identity/delegation.py`); a row in `runtime_sessions` names the chat |
-| Signed | RS256, with `BACKEND_SERVICE_PRIVATE_KEY`, which only the Data Core holds | HS256, with `TOKEN_SECRET_KEY`, as a browser's session token is |
-| Lives | 60 seconds | an hour, renewed by the relay while the chat is open |
-| Checked by | the runtime, with `BACKEND_SERVICE_PUBLIC_KEY`, before the socket is accepted (`ai_runtime/door/auth.py`); a dialer without one is closed with 4401 | the Data Core, when the runtime presents it back on `/app`. The runtime cannot read or check it: it has no key to |
-| Travels | `Authorization` on the dial | `X-DecentAI-Runtime-Access` on the dial, then `Bearer` on every call back |
+| Also called | the node's identity | runtime access token, the chat's credential, "a key" |
+| Says | this is that execution node, and nothing about a person | this person, in this chat, through that node |
+| Made | by an authority the Data Core registered — never by the node, which reads it from where its operator puts it ([execution nodes](execution-nodes.md)) | per chat, by the Data Core (`chat_session/identity/delegation.py`); a row in `runtime_sessions` names the chat and the node |
+| Signed | by the authority's private key: RS256, ES256 or EdDSA | HS256, with `TOKEN_SECRET_KEY`, as a browser's session token is |
+| Lives | minutes, an hour at most; read again by the node before it lapses | an hour, renewed by the relay while the chat is attached |
+| Checked by | the Data Core (`api/services/nodes/admission.py`): a registered, unrevoked authority, unexpired, its scope fitting the authority's, not refused by name | the Data Core, when the node presents it back on `/app` with its own credential beside it. The node cannot read or check it: it has no key to |
+| Travels | `Authorization` on the node link, then `X-DecentAI-Node` on every request | in the `attach` frame over the link, then `Bearer` on every call back |
 
-The pair is asymmetric on purpose. The runtime runs agents' code, so
-it holds nothing that could be used to pretend to be the Data Core: only
-a public key. And **authority never arrives through the door**: the
-delegation says *who*, never *what they may do*. What a chat may do is
-asked of the Data Core, per chat, again as each turn begins
-(`AI:Chat:Contract`).
+The pair is asymmetric on purpose. A node runs agents' code, so it
+holds nothing that could be used to pretend to be the Data Core, or
+another node: the Data Core's public key, and a credential of minutes.
+Everything the Data Core tells a node is signed with the Data Core's own
+key (`BACKEND_SERVICE_PRIVATE_KEY`, which only the Data Core holds), and
+the node believes nothing else. And **authority never arrives through
+the door**: the delegation says *who*, never *what they may do*. What a
+chat may do is asked of the Data Core, per chat, again as each turn
+begins (`AI:Chat:Contract`).
 
 A delegation carries the person's permissions and no more, and less:
 whatever the person holds, a call made under one is refused unless its
@@ -187,15 +190,8 @@ action is in `RUNTIME_ENDPOINTS`
 (`backend/server/authentication/catalog.py`), the fixed list of what a
 runtime has any business asking ([identity](identity.md)).
 
-A third token is the runtime's own: its execution node's
-**credential**, short-lived and signed by an authority the Data Core
-registered — never by the node, which holds no authority's key
-([execution nodes](execution-nodes.md)). It says *this is that node*
-and nothing about a person; it rides beside every request the node
-makes, and on its own it opens the package door and nothing else
-(`NODE_ENDPOINTS`; [agent code](agent-code.md#the-package-door)).
-Every reply to a node carries the Data Core's signature, and the node
-believes no other.
+On its own, a node's credential opens the package door and nothing
+else (`NODE_ENDPOINTS`; [agent code](agent-code.md#the-package-door)).
 
 ## One message, from the page to an agent and back
 
@@ -210,12 +206,14 @@ message can be refused.
    the chat is this person's, and that they hold
    `ai:chat:sendmessage`. A message of more than 256 KB is refused
    here.
-2. **The Data Core dials the runtime**, if it has not for this chat
-   (`RuntimeClient.connect`, `chat_session/relay.py`): refused if the
-   person stopped everything of theirs; otherwise a delegation is made
-   and the runtime's `/chats/{chat_id}` is dialed with both tokens.
-   **Decision 2:** the runtime checks the service token before it
-   accepts.
+2. **The Data Core attaches the chat to an execution node**, if none
+   serves it (`RuntimeClientManager`, `chat_session/relay.py`): refused
+   if the person stopped everything of theirs; otherwise a node is
+   chosen among those connected, a delegation bound to it is made, and
+   the chat's frames go over that node's link.
+   **Decision 2:** the node was admitted when it connected, by a
+   credential an authority signed, and acts on no frame the Data Core
+   did not sign ([execution nodes](execution-nodes.md)).
 3. **The runtime finds or builds the chat's session**
    (`SessionHost.session`, `ai_runtime/door/host.py`). Building asks
    the Data Core what this chat may do: `AI:Chat:Contract`, a call back
@@ -288,7 +286,7 @@ From most to least.
 
 | Part | Holds | Is trusted to | Is not trusted to |
 |---|---|---|---|
-| **Data Core** | the database's password, the encryption keys (`SECRET_ENCRYPTION_KEYS`), `TOKEN_SECRET_KEY`, the service token's private key | decide every permission; decrypt; be the only writer of the database | — |
+| **Data Core** | the database's password, the encryption keys (`SECRET_ENCRYPTION_KEYS`), `TOKEN_SECRET_KEY`, its own signing key, which every node believes | decide every permission; decrypt; be the only writer of the database | — |
 | **runtime** | the Data Core's *public* key, its node's short-lived credential (and no authority's key), the spawner's key, and — while a chat is open — that chat's delegation | act for a person with a live chat, within `RUNTIME_ENDPOINTS`; as itself, ask the package door and nothing else; keep each agent to its own slots; hold a secret or a model key in memory for one call | reach the database; decrypt; forge the Data Core; do anything for a person with no live chat; reach identity and access at all |
 | **spawner** (Execution Sandbox) | its own key; no setting of the platform's but where the proxy is | start what the runtime orders, and carry lines | decide anything: a worker's asks pass through it unread |
 | **worker** (an agent's code) | what one call was handed | nothing | everything: it is assumed hostile ([worker protocol](../reference/worker-protocol.md)) |
@@ -351,7 +349,7 @@ what they are for:
 
 | Process | Keeps in memory | After a restart |
 |---|---|---|
-| Data Core | what it resolved of sessions and permissions, for a minute; the sockets | browsers reconnect; chats that hold schedules are dialed again |
+| Data Core | what it resolved of sessions and permissions, for a minute; the sockets and the node links | browsers and nodes reconnect; the chats waiting for a node are attached as one connects |
 | runtime | each open chat's session and the beat in flight; running jobs; the proxy's passes and what it lent; open cards' waiters | a session is built again from `ai_chats` and the inbox, and hears each recorded event exactly once; a job that was running is settled as an error, whether or not its work happened; sleeps and schedules are rows, and survive |
 | agents | the workers, and whatever an agent's code kept between calls (an open browser) | gone; the next call starts a fresh worker in an emptied home |
 

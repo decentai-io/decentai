@@ -248,9 +248,9 @@ this is that path for the example, checked against the source.
    stopped everything, then mints a service token (RS256, 60 s,
    `identity/service.py`) and a delegation (HS256, 3,600 s, a
    `runtime_sessions` row, `identity/delegation.py`). The runtime's
-   `chat_socket` (`ai_runtime/door/socket.py`) verifies the first with
+   `chat_socket` (then `door/socket.py`; since replaced by the node link, `ai_runtime/door/link.py`) verifies the first with
    the public key, requiring `exp`, `iat`, `nbf`, `jti`, `sub`, issuer,
-   audience and `typ` (`ai_runtime/door/auth.py`), and closes with
+   audience and `typ` (then `door/auth.py`), and closes with
    4401 before accepting otherwise. The delegation is opaque to it.
 3. **Contract.** `SessionHost.session` builds a session once per chat
    under a lock (`ai_runtime/door/host.py`), reading `AI:Chat:Contract`.

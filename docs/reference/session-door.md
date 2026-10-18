@@ -8,8 +8,8 @@ is not refused, and is the one to notice.
 
 The door is built around **sessions** ([the
 assistant](../system/assistant.md)), hosted by the runtime, spoken to
-by whoever holds the Data Core's service key — the Data Core, or a command
-line or a test given it.
+by the Data Core over the execution node's link — or a test that
+plays the Data Core's end of it.
 
 Three principles:
 
@@ -143,21 +143,25 @@ turns that into an honest reply on the first event that needs a model
 
 ## The wire
 
-`WS /chats/{chat_id}`. The service token proves the dialer, and the
-connection is refused before `accept` without it: the dialer sees the
-handshake fail with HTTP 403, and no close code. Beside it the dialer may hand over
-a **credential** for the chat (`X-DecentAI-Runtime-Access`) — the key a
-platform reached over a network needs to answer this chat's calls
-(`ai_runtime/door/platform.py`). A credential is not authority: the
-door passes it to the services opaque, and what the chat may do is
-still only what `contract` answers. A dial that carries one also has
-the host re-read the chat's schedule rows from the services, and the
-clock replaces its copy with them, so a pause or a delete whose
-`schedules_changed` never arrived is caught up with. One socket per chat — a newer
-audience replaces an older one, which is told with a `replaced` close.
+The node link ([execution nodes](../system/execution-nodes.md#the-node-link)):
+the node dials the Data Core, and every chat it serves rides that one
+connection. An `attach {chat_id, credential}` frame opens a chat here:
+the host takes the **credential** for the chat — the delegation, bound
+to this node, that a platform reached over a network needs to answer
+this chat's calls (`ai_runtime/door/platform.py`) — and greets with
+`hello`. A credential is not authority: the door passes it to the
+services opaque, and what the chat may do is still only what
+`contract` answers. An attachment also has the host re-read the chat's
+schedule rows from the services, and the clock replaces its copy with
+them, so a pause or a delete whose `schedules_changed` never arrived is
+caught up with. Then `chat {chat_id, frame}` carries each of the frames
+below, and `detach {chat_id}` ends the chat's audience here. Each chat
+has one audience on the node (`ChatChannel`, `ai_runtime/door/link.py`),
+whose frames are read in order; what the host emits for the chat goes
+back as `event {chat_id, frame}`.
 
-Frames are newline-less JSON objects (websocket messages are already
-framed), one event or emission each. **The assistant model's event
+Each frame is one event or emission, as a JSON object inside the
+link's own envelope. **The assistant model's event
 vocabulary is the protocol** — there is no second grammar to
 translate to and no `AI:*` command surface on this door.
 
@@ -168,7 +172,7 @@ translate to and no `AI:*` command surface on this door.
 | `user_message` | `text`, `parts?`, `client_message_id?` | `session.deliver_user` — persisted first, absorbed on the next beat. One with no text and no parts is refused by the services, and said as an `error` |
 | `approval_decided` | `approval_id`, `approved`, `action_hash` | `session.deliver_approval`; a yes is handed on beside the door and delivered once the chat's contract has been read again (`SessionHost._deliver_yes`), so a stop sent after it is read at once — the live park settles and the call is held to the grants as they are now, or the hydrated job resumes through every gate; `action_hash` is the card's own record of what was approved, and the resumed inputs must hash to it |
 | `schedules_changed` | — | a person paused, resumed, wrote or deleted one of the chat's rows on the page: the host re-reads the chat's rows from the services and the clock replaces its copy. No mind is built. A forged one can only make the clock re-read what the store already says. |
-| `credential` | `credential` | the dialer's fresh key for the chat. A delegation lives an hour and a kept-open socket (a scheduled chat's) may live for days, so the relay renews over the socket instead of re-dialing: the host hands the key to the services, re-reads the chat's rows with it, and the clock replaces its copy. No mind is built. A forged one can only hand the services a key the platform then refuses. |
+| `credential` | `credential` | the Data Core's fresh key for the chat. A delegation lives an hour and a chat may stay attached for days, so the relay renews over the link: the host hands the key to the services, re-reads the chat's rows with it, and the clock replaces its copy. No mind is built. A forged one can only hand the services a key the platform then refuses. |
 | `question_answered` | `approval_id`, `answer` | `session.deliver_answer` — a question card settles: words for an agent's question, a list for the files card, an object for a credential card or a skill card (`{status: saved, skill}` or `{status: declined}`) |
 | `stop` | `force?` | cooperative, honored between beats — asked and not waited for, so the socket goes on hearing. A call the beat under way is waiting on is ended at once, so a long one does not keep the stop waiting. With `force: true` it is the kill switch: every job is cancelled where it stands, the chat's helpers and its browser end, open cards expire, and the audience hears `stopped` with how many `jobs`, `children` (helpers) and `cards` went. Either stop is written into the saved state, so a session rebuilt afterwards rests until something is asked of it. A message that arrives while the kill is under way is kept on the record, and the session built next absorbs it |
 | `screen_open` | `action?` | the person asks to see an agent's browser before asking it anything, or (`quit`) to close it |

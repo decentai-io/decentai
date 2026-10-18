@@ -67,6 +67,14 @@ async def application(request: Request):
         if not user:
             return _answer({"error": "unauthorized"}, 401, node, request_id)
 
+        if user.get("principal_type") == "runtime" and (
+                not user.get("node_id") or user.get("node_id") != node):
+            # A delegation is bound to the node it was handed to: from
+            # any other — a node it was never given to, or a request
+            # with no node's credential at all — it opens nothing.
+            return _answer({"error": "This delegation is bound to another "
+                                     "execution node."}, 401, node, request_id)
+
         try:
             data = await request.json()
         except JSONDecodeError:

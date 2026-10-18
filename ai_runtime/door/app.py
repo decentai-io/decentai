@@ -8,11 +8,12 @@ At start: the agents' container answers; confinement is proved there
 and the proxy, the agents' one way out, serves; the library registers
 what is on disk and rebuilds, in the background, what waits for an
 environment; the runtime starts keeping its stock of every approved
-package; the clock starts. At shutdown:
-the warm-up and the stocking are cancelled, the clock stops, the
-workers are asked to leave and then ended, the proxy stops, and the
-backend's client closes. Everything runs on the
-one loop the server gives the application.
+package; the clock starts; and the node link to the Data Core is
+dialed, which is how every chat reaches this node. At shutdown: the
+link closes, the warm-up and the stocking are cancelled, the clock
+stops, the workers are asked to leave and then ended, the proxy stops,
+and the Data Core's client closes. Everything runs on the one loop the
+server gives the application.
 """
 
 import asyncio
@@ -22,14 +23,15 @@ from fastapi import APIRouter, FastAPI
 
 from ai_runtime.agents.pool import WorkerPool
 from ai_runtime.chat.clock import Scheduler
-from ai_runtime.door import monitor, socket
+from ai_runtime.door import monitor
 from ai_runtime.door.host import SessionHost
+from ai_runtime.door.link import NodeLink
+from ai_runtime.door.monitor import Monitor
 from ai_runtime.door.settings import RuntimeSettings
 
-#: The runtime's doors: the chat socket, and the monitoring and health
-#: endpoints the backend reads.
+#: The runtime's one HTTP door: the health check. Everything else
+#: arrives over the node link, which this node dials (door/link.py).
 router = APIRouter()
-router.include_router(socket.router)
 router.include_router(monitor.router)
 
 
@@ -56,7 +58,7 @@ class AgentsOnly:
 
 
 def create_app(settings: RuntimeSettings, services, library, container,
-               confinement, agents=None) -> FastAPI:
+               confinement, agents=None, node=None, data_core=None) -> FastAPI:
     """The application, from the parts main.py built: ``services`` is
     the backend's client, the platform surface the sessions live
     against (docs/reference/session-door.md); ``library`` the live
@@ -64,7 +66,9 @@ def create_app(settings: RuntimeSettings, services, library, container,
     change it; ``container`` the agents' container, where every worker
     runs; ``confinement`` what holds a worker there. A test that only
     needs certain agents present may pass a plain ``agents`` mapping
-    in place of a library."""
+    in place of a library. ``node`` and ``data_core`` are this node's
+    credential and the Data Core's key (door/node.py): given both, the
+    node link is dialed at start (door/link.py)."""
     if library is None:
         library = AgentsOnly(agents)
 
@@ -81,6 +85,16 @@ def create_app(settings: RuntimeSettings, services, library, container,
         # fire, held to that chat's grants, on the process's one pool.
         scheduler = Scheduler(services, host)
         host.clock = scheduler
+
+    link = None
+    if host is not None and node is not None and data_core is not None:
+        # The node dials the Data Core, never the other way round: one
+        # connection, every chat this node serves over it. What it says
+        # of its locks is shown by the Data Core and never decides.
+        link = NodeLink(
+            settings.backend_url, host, node, data_core,
+            report=lambda: {"locks": confinement.report(),
+                            "labels": list(node.claims.get("labels") or [])})
 
     @asynccontextmanager
     async def lifespan(app):
@@ -109,7 +123,11 @@ def create_app(settings: RuntimeSettings, services, library, container,
             stocking = asyncio.ensure_future(host.agents.keep_stocked())
         if scheduler is not None:
             await scheduler.start()
+        if link is not None:
+            link.start()
         yield
+        if link is not None:
+            await link.stop()
         for task in (warming, stocking):
             if task is not None and not task.done():
                 task.cancel()
@@ -150,6 +168,9 @@ def create_app(settings: RuntimeSettings, services, library, container,
     app.state.library = library
     app.state.container = container
     app.state.confinement = confinement
+    app.state.link = link
+    if link is not None:
+        link.monitor = Monitor(app.state)
 
     app.include_router(router)
 
