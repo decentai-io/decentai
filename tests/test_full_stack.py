@@ -126,6 +126,48 @@ def receive(frontend, timeout=30.0):
     return box["frame"]["data"]
 
 
+class ServedSocket:
+    """The person's socket into the SERVED backend, as a browser's is.
+
+    The test client runs every request on an event loop of its own, and
+    the backend's dial to the runtime (relay.py) — its socket, its
+    locks, its reader — lives on the loop of the frontend socket that
+    opened it. A decision posted through the test client while that
+    socket is open writes to the dial from another loop, which works or
+    hangs as the scheduling falls. Here the socket and the decision both
+    reach the served backend, so the dial lives and is written on one
+    loop, as it is in a deployment."""
+
+    def __init__(self, backend_url, client, path):
+        from websockets.sync.client import connect
+
+        self.backend_url = backend_url
+        self.headers = cookie_header(client)
+        self.socket = connect(
+            backend_url.replace("http://", "ws://") + path,
+            additional_headers=self.headers, open_timeout=10)
+
+    def receive_json(self):
+        return json.loads(self.socket.recv())
+
+    def send_json(self, frame):
+        self.socket.send(json.dumps(frame))
+
+    def call(self, endpoint, data):
+        """One /app call as the person, to the served backend."""
+        import httpx
+
+        return httpx.post(f"{self.backend_url}/app", headers=self.headers,
+                          json={"endpoint": endpoint, "data": data},
+                          timeout=30)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.socket.close()
+
+
 def until_ai_message(frontend, timeout=30.0):
     """Frames off the person's socket until the assistant's reply."""
     seen = []
@@ -293,9 +335,10 @@ class TestASkillFromTheChat:
                     action(action="say", text="Saved it.", final=True),
                 ]}}}).status_code == 200
 
-        with admin.websocket_connect(
-            f"/chats/{chat_id}", headers=cookie_header(admin)
-        ) as frontend:
+        # The decision is made while the socket is open, as a person
+        # makes it: both against the served backend (ServedSocket).
+        with ServedSocket(full_stack.backend_url, admin,
+                          f"/chats/{chat_id}") as frontend:
             assert receive(frontend)["event"] == "hello"
             frontend.send_json({"endpoint": "AI:Chat:Input", "data": {
                 "text": "save that script as a skill", "parts": []}})
@@ -304,7 +347,7 @@ class TestASkillFromTheChat:
                 frame = receive(frontend)
             assert frame["expects"] == "skill" and frame["skill"] == skill
             assert SkillStore().col.count_documents({"type": "skill"}) == 0
-            decided = app_call(admin, "AI:Approval:Decide", {
+            decided = frontend.call("AI:Approval:Decide", {
                 "approval_id": frame["approval_id"], "answer": "save"})
             assert decided.status_code == 200, decided.text
             assert decided.json()["data"]["delivered"] is True
