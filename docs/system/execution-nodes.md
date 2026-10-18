@@ -281,6 +281,49 @@ organization's own; never another organization's):
 
 What a node says of its load places a chat and never admits a node.
 
+## Organizations owning nodes
+
+An organization's administrators may run nodes of their own: they
+register an authority for their organization ([above](#admitted-by-authorities-never-one-by-one)),
+and every node it vouches for serves that organization alone. Where
+the organization's chats may run is its setting
+(`Settings:Nodes`, `backend/api/endpoints/app/settings/nodes_controller.py`):
+
+| `placement` | Means |
+|---|---|
+| `prefer_own` (the default) | its own nodes first; shared ones while none of its own is connected |
+| `own_only` | its own nodes, and never a shared one |
+
+With **own nodes only**, nothing of the organization's reaches a shared
+node:
+
+- **No chat.** Placement keeps to its own nodes; with none connected,
+  the chat waits and its person is told why
+  (`runtime_unavailable`, with the reason in `detail`), and it is placed
+  by itself as soon as one of its own connects.
+- **No credential and no model key.** The gateway answers no shared
+  node's request made under one of the organization's delegations —
+  the contract, `Settings:Llm:Use`, `Secrets:Secret:Use`, anything —
+  whatever lease it holds (403). Turning the setting on also lets go,
+  at once, every chat of the organization a shared node holds
+  (`RuntimeClientManager.keep_to_own`), and places the open ones again
+  on its own nodes.
+- **No code.** A shared node is told of none of the organization's
+  approved packages, and its word that one is ready is not recorded on
+  the organization's approvals.
+- **No fire.** A schedule of the organization's waits for one of its
+  own nodes, and fires once one is connected.
+
+Administrators see their organization's nodes — the authority that
+admitted each, who registered that authority, when each was first and
+last seen, whether it is connected and how many chats it holds now, and
+what it reports of itself — with `Nodes:Node:List`, and their
+authorities with `Nodes:Authority:List`. There is no client page for
+them yet; the doors are the engine's.
+
+Autoscaling nodes, quotas and choosing a cloud for them are for whoever
+operates the nodes, not for the engine.
+
 ## One computer's install
 
 `python bootstrap/setup.py` still asks nothing of the person:

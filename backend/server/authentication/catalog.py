@@ -423,6 +423,19 @@ ACTION_CATALOG: Dict[str, Dict[str, Any]] = {
             ),
         },
     },
+    "settings:nodes": {
+        "label": "Where chats run",
+        "actions": {
+            "settings:nodes:get": (
+                "See whether the organization's chats run on its own "
+                "execution nodes first, or only"
+            ),
+            "settings:nodes:update": (
+                "Choose whether the organization's chats prefer its own "
+                "execution nodes or run on them only, never on shared ones"
+            ),
+        },
+    },
     # Explicit grants only, apart from administrators' `*`: the
     # organization's own instructions to the assistant may say things
     # an administrator would rather few people read, and fewer change.

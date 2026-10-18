@@ -8,6 +8,7 @@ from api.endpoints.app.settings.memory_controller import MemoryController
 from api.endpoints.app.settings.oauth_controller import OauthAppController
 from api.endpoints.app.settings.routing_controller import RoutingController
 from api.endpoints.app.settings.safety_controller import SafetyController
+from api.endpoints.app.settings.nodes_controller import NodesController
 from api.endpoints.app.settings.guardrail_controller import GuardrailController
 from api.endpoints.app.settings.speech_controller import SpeechController
 from api.endpoints.app.settings.notifications_controller import NotificationsController
@@ -33,6 +34,9 @@ def build_settings_endpoints():
         # What agents may do without asking: blocked sites, how often
         # scripts and programs are put to the person, allowed packages.
         "Safety": SafetyController(),
+        # Where the organization's chats may run: its own execution
+        # nodes first, or only (docs/system/execution-nodes.md).
+        "Nodes": NodesController(),
         # The organization's own rules for the assistant, added to its
         # instructions: apart from Safety so that reading and writing
         # them are grants of their own.

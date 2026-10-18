@@ -47,7 +47,18 @@ class PackageController(AIController):
         return "" if scope == AuthorityStore.SHARED else scope
 
     def _approved(self, user) -> list:
-        return self.store.approved_packages(self._organization(user))
+        organization = self._organization(user)
+        if organization:
+            return self.store.approved_packages(organization)
+        # A shared node is told of no code an organization approved
+        # that keeps to its own nodes (Settings:Nodes, own_only).
+        return self.store.approved_packages(excluding=self._own_only())
+
+    @staticmethod
+    def _own_only() -> list:
+        from database.stores import OrganizationStore
+
+        return OrganizationStore().own_only_organizations()
 
     def list(self, data, user):
         """Every package some installed approval points at, anywhere:
@@ -114,7 +125,9 @@ class PackageController(AIController):
         recorded = self.store.set_prepared_everywhere(
             digest, state, str(payload.get("error") or ""),
             confined=self._confined(payload.get("confined")),
-            org_id=self._organization(user))
+            org_id=self._organization(user),
+            excluding=() if self._organization(user) else
+            self._own_only())
         return self._respond(data, {"recorded": recorded > 0, "approvals": recorded})
 
     @classmethod

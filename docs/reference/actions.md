@@ -9,7 +9,7 @@ the actions a chat's delegation may call, and nothing else.
 Generated from `backend/server/authentication/catalog.py` by
 `docs/reference/generate.py`; do not edit by hand.
 
-218 actions in 42 services; 69 baseline.
+220 actions in 43 services; 69 baseline.
 
 ## Own account
 
@@ -142,6 +142,13 @@ Generated from `backend/server/authentication/catalog.py` by
 |---|---|---|---|
 | `settings:safety:get` | See what agents may do without asking |  |  |
 | `settings:safety:update` | Choose the sites no agent may open, how often scripts and programs ask, and the packages a program may install |  |  |
+
+## Where chats run
+
+| Action | Grants | Baseline | Runtime |
+|---|---|---|---|
+| `settings:nodes:get` | See whether the organization's chats run on its own execution nodes first, or only |  |  |
+| `settings:nodes:update` | Choose whether the organization's chats prefer its own execution nodes or run on them only, never on shared ones |  |  |
 
 ## Guardrail
 

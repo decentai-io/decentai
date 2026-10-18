@@ -288,6 +288,38 @@ deployment's address. A disabled organization's people are signed out
 within a minute: the running Data Core keeps a session it has just seen
 for that long.
 
+## More execution nodes
+
+The stack starts one execution node beside the Data Core. More run
+anywhere that reaches the Data Core's address — another machine, a
+cluster, a customer's own network: a node dials the Data Core, and
+nothing dials a node ([execution nodes](../system/execution-nodes.md)).
+
+1. **Vouch for them once.** Register an authority: a public key
+   (`python bootstrap/generate_node_authority.py` makes a pair) or an
+   issuer's key-set address, with `Nodes:Authority:Create`. The
+   deployment's operator registers shared ones (`scope: shared`); an
+   organization's administrator registers its own, whose nodes serve
+   that organization alone.
+2. **Give each node credentials.** Whatever holds the authority's
+   private key — a secret manager, a cluster's workload identity, or
+   `bootstrap/node_issuer.py` — writes each node a credential of
+   minutes naming it, and again before it lapses. The node never holds
+   the key.
+3. **Start it** from the runtime's image, with its Execution Sandbox
+   beside it, told where the Data Core is and what its key is:
+   `DATA_CORE_URL`, `DATA_CORE_PUBLIC_KEY` (the Data Core's
+   `BACKEND_SERVICE_PUBLIC_KEY`), and `AI_RUNTIME_NODE_CREDENTIAL_FILE`
+   or `AI_RUNTIME_NODE_CREDENTIAL_URL` ([configuration](configuration.md#the-runtime)).
+   Across a network, give it the Data Core's `https://` address.
+
+Nodes are listed, with who admitted them and what each reports, by
+`Nodes:Node:List`. To take one out: revoke its authority
+(`Nodes:Authority:Revoke`, every node it vouches for is refused at
+once), stop issuing it credentials (it drops out within minutes), or,
+in a hurry, `Nodes:Node:Refuse`. Its chats move to another node within
+a minute ([leases](../system/execution-nodes.md#leases)).
+
 ## Removing it
 
 To remove it altogether, its data with it:

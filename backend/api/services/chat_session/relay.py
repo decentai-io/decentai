@@ -28,7 +28,11 @@ running is said to have ended unknown, and is never run again by itself.
 **Which node** (api/services/nodes/placement.py): the one already
 holding the chat while its lease is live; otherwise among the nodes
 connected that may serve the chat's organization, its own first, then
-the last holder, then the least loaded.
+the last holder, then the least loaded. An organization that keeps to
+its own nodes (Settings:Nodes, ``own_only``) is served by no shared
+node: with none of its own connected, the chat waits and its person is
+told why; a shared node holding one of its chats when it changed lets
+the chat go at once (``keep_to_own``).
 
 **The clock** is the Data Core's (chat_session/clock.py): it decides
 when a schedule is due, puts the chat on a node (``hold``) and sends
@@ -52,7 +56,7 @@ from typing import Any, Dict, Optional
 
 from api.services.chat_session.identity import Delegation
 from api.services.nodes.placement import Placement
-from database.stores import LeaseStore, UserStore
+from database.stores import LeaseStore, OrganizationStore, UserStore
 from server.custom_logging import CustomLoggerFactory
 from server.setup.app_state import get_ws_manager
 
@@ -106,6 +110,9 @@ class RuntimeClientManager:
     KILL_GRACE_SECONDS = 10.0
 
     WAITING_FOR_A_NODE = "No execution node is connected that may serve this chat."
+    WAITING_FOR_OWN = ("This organization runs its chats on its own execution "
+                       "nodes only, and none of them is connected. The chat "
+                       "waits for one rather than run elsewhere.")
     MOVING = ("The execution node serving this chat stopped answering; the "
               "chat moves to another within a minute.")
 
@@ -152,20 +159,30 @@ class RuntimeClientManager:
             leases = LeaseStore()
             current = leases.current(binding.chat_id)
             org_id = str(binding.user.get("org_id") or "")
+            own_only = OrganizationStore().own_nodes_only(org_id)
+            link = None
             if leases.live(current):
                 link = self.links.get(current["node_id"])
-                if link is None:
+                if link is not None and not self.placement.may_serve(
+                        link, org_id, own_only):
+                    # The organization keeps to its own nodes now: the
+                    # shared node holding the chat lets it go, at once.
+                    await self._let_go(binding, link)
+                    current = leases.current(binding.chat_id)
+                    link = None
+                elif link is None:
                     # Its node is gone and its lease not yet: the chat
                     # moves when the lease lapses, never sooner — the
                     # node may only be slow, and two must never act.
                     binding.waiting = self.MOVING
                     return False
-            else:
+            if link is None:
                 link = self.placement.choose(
                     self.links.connected(), org_id,
-                    str((current or {}).get("node_id") or ""))
+                    str((current or {}).get("node_id") or ""), own_only)
                 if link is None:
-                    binding.waiting = self.WAITING_FOR_A_NODE
+                    binding.waiting = (self.WAITING_FOR_OWN if own_only
+                                       else self.WAITING_FOR_A_NODE)
                     return False
             lease = leases.grant(binding.chat_id, link.key, binding.user)
             if lease is None:
@@ -266,6 +283,46 @@ class RuntimeClientManager:
                 {"type": "chat", "chat_id": str(chat_id), "frame": frame})
         return await binding.link.send(
             {"type": "chat", "chat_id": binding.chat_id, "frame": frame})
+
+    async def _let_go(self, binding: ChatBinding, link) -> None:
+        """The node holding a chat is told to forget it, and its lease
+        is ended: what a node no longer allowed to serve the chat holds."""
+        link.chats.discard(binding.chat_id)
+        await link.send({"type": "detach", "chat_id": binding.chat_id})
+        LeaseStore().release(binding.chat_id, link.key)
+        if binding.link is link:
+            binding.link, binding.lease = None, None
+
+    async def keep_to_own(self, org_id: str) -> int:
+        """An organization now keeps to its own nodes: every chat of its
+        held by a shared node is let go there at once, and the ones a
+        person has open placed again on one of its own — or left
+        waiting, and the person told why. Returns how many moved off."""
+        moved = 0
+        for doc in LeaseStore().col.find({"org_id": str(org_id),
+                                          "released": False}):
+            if not LeaseStore.live(doc):
+                continue
+            link = self.links.get(doc["node_id"])
+            if link is None or self.placement.may_serve(link, org_id, True):
+                continue
+            chat_id = str(doc["_id"])
+            binding = self.chats.get(chat_id) or ChatBinding(
+                chat_id, {"org_id": org_id, "user_id": doc.get("user_id")})
+            await self._let_go(binding, link)
+            moved += 1
+            if binding.watched and chat_id in self.chats:
+                if not await self._attach(binding, again=True):
+                    try:
+                        await get_ws_manager().send_frontend(
+                            chat_id, binding.user, {
+                                "endpoint": "AI:Chat:Event",
+                                "data": {"event": "runtime_unavailable",
+                                         "chat_id": chat_id,
+                                         "detail": binding.waiting}})
+                    except Exception:
+                        pass
+        return moved
 
     async def close(self, chat_id, user) -> None:
         """Nothing may keep this chat on a node: it is being erased, or

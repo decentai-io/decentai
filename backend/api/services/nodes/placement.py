@@ -8,6 +8,10 @@ or it would not be connected — those that may serve the chat's
 organization at all: a shared node, or one of the organization's own.
 A node an organization owns never serves another organization's chat.
 
+An organization that keeps to its own nodes (Settings:Nodes,
+``own_only``) is served by its own and by no shared node: with none of
+its own connected, its chat waits.
+
 Then, in order:
 
 1. the organization's own nodes, where it has any connected;
@@ -26,17 +30,23 @@ from typing import Iterable, Optional
 
 
 class Placement:
-    def may_serve(self, link, org_id: str) -> bool:
-        return bool(link.identity.shared) or link.scope == str(org_id or "")
+    def may_serve(self, link, org_id: str, own_only: bool = False) -> bool:
+        """Whether this node may serve this organization's chat at all:
+        one of its own, or — unless it keeps to its own — a shared one."""
+        if link.scope == str(org_id or ""):
+            return True
+        return bool(link.identity.shared) and not own_only
 
-    def candidates(self, links: Iterable, org_id: str) -> list:
-        allowed = [link for link in links if self.may_serve(link, org_id)]
+    def candidates(self, links: Iterable, org_id: str,
+                   own_only: bool = False) -> list:
+        allowed = [link for link in links
+                   if self.may_serve(link, org_id, own_only)]
         own = [link for link in allowed if link.scope == str(org_id or "")]
         return own or allowed
 
     def choose(self, links: Iterable, org_id: str,
-               last_holder: str = "") -> Optional[object]:
-        pool = self.candidates(links, org_id)
+               last_holder: str = "", own_only: bool = False) -> Optional[object]:
+        pool = self.candidates(links, org_id, own_only)
         if not pool:
             return None
         last = next((link for link in pool if link.key == last_holder), None)

@@ -55,6 +55,7 @@ async def application(request: Request):
         access = get_access_controller()
         user = access.verify_request_auth(request)
 
+        node_shared = False
         if user and user.get("principal_type") == "node":
             node = str(user.get("node_id") or "")
         presented = str(request.headers.get(HEADER_NODE) or "").strip()
@@ -63,7 +64,7 @@ async def application(request: Request):
             if admitted is None:
                 return JSONResponse({"error": "node not admitted"},
                                     status_code=401)
-            node = admitted.key
+            node, node_shared = admitted.key, admitted.shared
             if user is not None:
                 user = {**user, "presented_node": node}
 
@@ -89,6 +90,18 @@ async def application(request: Request):
             if not LeaseStore().holds(str(user.get("chat_id") or ""), node, said):
                 return _answer({"error": "stale_lease: this node no longer "
                                          "holds the chat."}, 409, node, request_id)
+
+            # An organization that keeps to its own nodes is answered on
+            # no shared node's request: no contract, no credential and no
+            # model key of its leaves the Data Core for one, whatever
+            # placement did before the setting changed.
+            from database.stores import OrganizationStore
+
+            if node_shared and OrganizationStore().own_nodes_only(
+                    str(user.get("org_id") or "")):
+                return _answer({"error": "This organization runs its chats on "
+                                         "its own execution nodes only."},
+                               403, node, request_id)
 
         try:
             data = await request.json()

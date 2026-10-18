@@ -169,9 +169,11 @@ def full_stack(app, seed, tmp_path, monkeypatch):
 
     nodes = []
 
-    def node(name="stack", start=True):
-        made = ServedNode(backend_url, public_pem, authority_private, name,
-                          tmp_path / ("runtime" if not nodes else name))
+    def node(name="stack", start=True, authority=None):
+        """A node the shared authority vouches for — or ``authority``,
+        an organization's private key."""
+        made = ServedNode(backend_url, public_pem, authority or authority_private,
+                          name, tmp_path / ("runtime" if not nodes else name))
         nodes.append(made)
         return made.start() if start else made
 
@@ -769,3 +771,42 @@ class TestTheClock:
         time.sleep(1.0)
         for chat_id in chats:
             assert len(ai_messages(admin, chat_id)) == 1
+
+
+class TestOrganizationsOwningNodes:
+    """An organization that keeps to its own execution nodes
+    (docs/system/execution-nodes.md#organizations-owning-nodes)."""
+
+    def test_own_only_a_chat_waits_for_its_own_node_and_never_reaches_the_shared_one(
+            self, admin, seed, full_stack):
+        from conftest import register_authority
+        from database.stores import LeaseStore
+
+        assert app_call(admin, "Settings:Nodes:Update",
+                        {"placement": "own_only"}).status_code == 200
+        chat_id = open_scripted(
+            admin, "Ours", action(action="say", text="On our own node."),
+            action(action="finish"))
+        shared = full_stack.node
+        with ServedSocket(full_stack.backend_url, admin,
+                          f"/chats/{chat_id}") as frontend:
+            waiting = receive(frontend)
+            assert waiting["event"] == "runtime_unavailable"
+            assert "own execution nodes only" in waiting["detail"]
+            assert LeaseStore().current(chat_id) is None
+
+            # The organization's own node connects: the chat the person
+            # is waiting on is attached to it, by itself.
+            private_pem, public_pem = service_keys()
+            register_authority(seed.org["_id"], public_pem, name="Our rack")
+            ours = full_stack.add_node("ours", authority=private_pem)
+            until_hello(frontend)
+            frontend.send_json({"endpoint": "AI:Chat:Input",
+                                "data": {"text": "hello", "parts": []}})
+            reply = until_ai_message(frontend)[-1]
+        assert reply["message"]["parts"][0]["content"] == "On our own node."
+        assert LeaseStore().current(chat_id)["node_id"].endswith("/ours")
+        # The shared node never held it, and was never handed its key.
+        assert chat_id not in shared.app.state.host.sessions
+        assert chat_id not in shared.app.state.host.services.credentials
+        assert ours.app.state.host.services.credentials.get(chat_id)

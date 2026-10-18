@@ -44,13 +44,24 @@ class NodeController:
 
     def list(self, data: dict, user: dict):
         refused = RefusedNodeStore().keys()
-        authorities = {doc["_id"]: doc.get("name", "")
-                       for doc in AuthorityStore().list()}
+        authorities = {doc["_id"]: doc for doc in AuthorityStore().list()}
+        from server.setup.app_state import get_node_links
+
+        live = {link.key: link for link in get_node_links().connected()}
         nodes = []
         for doc in NodeStore().list(self._scopes(user)):
             public = NodeStore.to_public(doc)
-            public["authority"] = authorities.get(public["authority_id"], "")
+            authority = authorities.get(public["authority_id"]) or {}
+            # Who admitted it: the authority that vouched, and who
+            # registered that authority — never a step for this node.
+            public["authority"] = authority.get("name", "")
+            public["admitted_by"] = str(
+                (authority.get("registered_by") or {}).get("email") or "")
+            public["authority_revoked"] = authority.get("revoked_at") is not None
             public["refused"] = public["node_id"] in refused
+            link = live.get(public["node_id"])
+            public["connected"] = link is not None
+            public["chats"] = len(link.chats) if link is not None else 0
             nodes.append(public)
         return {"nodes": nodes}, 200
 

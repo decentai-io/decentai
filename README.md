@@ -42,7 +42,11 @@ This repository is the **AI Engine**, made of three parts:
 - **Execution Sandbox** (`ai_runtime/agents_container/`, the `agents`
   service): where agent code runs, one locked room per agent.
 
-An AI Runtime with its Execution Sandboxes is an **execution node**. The
+An AI Runtime with its Execution Sandboxes is an **execution node**. One
+Data Core serves many: each node dials the Data Core and is admitted by
+an authority registered once, each chat is held by one node under a
+numbered lease, and the clock that fires schedules is the Data Core's
+([execution nodes](docs/system/execution-nodes.md)). The
 web, desktop and mobile apps are **clients** of the engine; the web
 client still lives in `frontend/` until it moves to its own repository
 ([the plan](docs/ai-engine-plan.md)).
