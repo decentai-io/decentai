@@ -1,26 +1,22 @@
-"""Who a runtime call is.
+"""Who a call to or from an execution node is.
 
-Every call the backend makes to the runtime carries one identity, and
-the dial carries two:
-
-    service.py     ServiceToken   "this request came from the backend"
-    delegation.py  Delegation     "...and here is a key to act for this
-                                  person" — a credential, never authority
+    delegation.py  Delegation     "act for this person, in this chat" —
+                                  a credential, never authority, bound
+                                  to the node it is handed to
     scope.py       AgentScope     what this person has been granted, read
                                   fresh from the grants for the contract
-    standing.py    StandingOwner  who a chat re-dialed with nobody
+    standing.py    StandingOwner  who a chat attached with nobody
                                   watching acts as, and whether they may
 
-The service key is asymmetric: the private half is here, the public
-half is in the runtime, and the runtime therefore cannot forge a
-backend identity. The delegation key is the platform's own session
-secret — the same one a browser login is signed with. Two keys, two
-trust relationships.
+The node's own identity is its credential, which an authority signed
+(api/services/nodes/admission.py), and the Data Core's is its signature
+on everything it tells a node (api/services/nodes/signing.py). The
+delegation key is the platform's own session secret — the same one a
+browser login is signed with.
 """
 
 from api.services.chat_session.identity.delegation import Delegation
 from api.services.chat_session.identity.scope import AgentScope
-from api.services.chat_session.identity.service import ServiceToken
 from api.services.chat_session.identity.standing import StandingOwner
 
-__all__ = ["AgentScope", "Delegation", "ServiceToken", "StandingOwner"]
+__all__ = ["AgentScope", "Delegation", "StandingOwner"]

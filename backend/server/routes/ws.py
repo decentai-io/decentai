@@ -63,10 +63,15 @@ async def chat_websocket(websocket: WebSocket, chat_id: str):
     # frontend socket stays useful (history, previous results) even when
     # the runtime is down — the user just gets told.
     async def undelivered():
-        """Why nothing reached the runtime: the person stopped
-        everything of theirs, or the runtime is not there."""
+        """Why nothing reached a node: the person stopped everything of
+        theirs, or no execution node may serve the chat now — and why,
+        in words the page can show."""
         stopped = UserStore().stopped(str(user.get("user_id") or ""))
-        await tell("work_stopped" if stopped else "runtime_unavailable")
+        if stopped:
+            await tell("work_stopped")
+            return
+        why = get_runtime_clients().why_waiting(chat_id)
+        await tell("runtime_unavailable", **({"detail": why} if why else {}))
 
     if not await get_runtime_clients().ensure(chat_id, user):
         await undelivered()

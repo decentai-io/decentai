@@ -508,6 +508,35 @@ class ScheduleStore(MongoStore):
             {"$pull": {"rows": {"schedule_id": schedule_id}},
              "$set": {"updated_at": utc_now()}})
 
+    def due(self, now: float) -> List[tuple]:
+        """(holder, row) for every row that is on and whose time has
+        come: what the Data Core's clock fires."""
+        found = []
+        for holder in self.col.find(
+                {"rows": {"$elemMatch": {"enabled": {"$ne": False},
+                                         "next_run_at": {"$lte": now}}}},
+                {"chat_id": 1, "org_id": 1, "user_id": 1, "rows": 1}):
+            for row in holder.get("rows") or []:
+                if row.get("enabled", True) is not False \
+                        and float(row.get("next_run_at") or 0) <= now:
+                    found.append((holder, row))
+        return found
+
+    def claim(self, chat_id: str, schedule_id: str, seen: Any,
+              fields: Dict[str, Any]) -> bool:
+        """One due row, taken for one fire: these fields set, only if
+        the row still says the time it was found due at — so a row is
+        fired once, whoever else read it due."""
+        changed = self.col.update_one(
+            {"chat_id": chat_id,
+             "rows": {"$elemMatch": {"schedule_id": schedule_id,
+                                     "next_run_at": seen,
+                                     "enabled": {"$ne": False}}}},
+            {"$set": {**{f"rows.$.{name}": value
+                         for name, value in fields.items()},
+                      "updated_at": utc_now()}})
+        return changed.modified_count == 1
+
     def delete_for_chat(self, identity: Dict[str, Any]) -> None:
         self.col.delete_many(identity)
 

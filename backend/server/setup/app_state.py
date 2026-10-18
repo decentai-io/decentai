@@ -9,6 +9,7 @@ if TYPE_CHECKING:
     from server.authentication.access import AccessController
     from api import APIRouter
     from api.services.chat_session.relay import RuntimeClientManager
+    from api.services.nodes.link import NodeLinks
     from server.ws.ws_manager import WSManager
     from server.setup.app_settings import Settings
 
@@ -20,6 +21,8 @@ class AppState:
     access_controller: Optional["AccessController"] = None
     api_router: Optional["APIRouter"] = None
     ws_manager: Optional["WSManager"] = None
+    #: every execution node connected now (api/services/nodes/link.py)
+    node_links: Optional["NodeLinks"] = None
     runtime_clients: Optional["RuntimeClientManager"] = None
 
 
@@ -59,6 +62,10 @@ def get_api_router() -> "APIRouter":
 
 def get_ws_manager() -> "WSManager":
     return cast("WSManager", _require(_state.ws_manager, "WS Manager"))
+
+
+def get_node_links() -> "NodeLinks":
+    return cast("NodeLinks", _require(_state.node_links, "Node links"))
 
 
 def get_runtime_clients() -> "RuntimeClientManager":

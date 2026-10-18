@@ -1,19 +1,20 @@
-"""Every agent this process can run — the one interface.
+"""Every agent this AI Runtime can run — the one interface.
 
 Agents are addressed by the digest of their code: `sha256:9f2c…`, the
-hash of the canonical archive of the folder. One digest, one copy on
-disk, one loaded agent.
+hash of the canonical archive of the folder. One digest, one copy in
+the runtime's cache, one loaded agent.
 
-    library = AgentLibrary(install_dir)
+    library = AgentLibrary(install_dir, confinement)
 
     await library.install(digest, archive, manifest_hash)   # verify and keep
     library.has(digest)                               # do I hold it?
     library.agent(digest)                             # the loaded agent
+    library.archive(digest)                           # its bytes, for a sandbox
     library.forget(digest)                            # stop serving it
 
 Nothing here knows about approvals, organizations or refs. A caller that
-holds an approval knows which digest it approved — the backend tells it
-so on every connection — and asks for that. Which agent to run, and
+holds an approval knows which digest it approved — the Data Core tells
+it so on every connection — and asks for that. Which agent to run, and
 which of its functions, is decided above this module; running it is
 `ai_runtime/execution`. This module loads and holds.
 
@@ -22,25 +23,26 @@ organizations approving one agent are a thousand approvals of one entry
 here. It also verifies for free — tampered bytes stop being that digest
 — and it makes `has()` the whole of "must I fetch this?".
 
-WHERE IT LIVES.
+WHERE IT LIVES. The runtime keeps a cache of the approved packages, and
+nothing an agent runs from:
 
-    <install_dir>/store/<64-hex>/     the code, named by what it IS
-    <install_dir>/envs/<16-hex>/      the venv its worker runs in, keyed by
-                                      its DEPENDENCY SET, so versions that
-                                      declare the same list share one and
-                                      an update is code only (docs/reference/worker-protocol.md;
-                                      a prefix, for Windows path budget)
+    <install_dir>/store/<64-hex>/      the code, unpacked: its manifest,
+                                       read by the runtime
+    <install_dir>/packages/<64-hex>    the package's bytes, as approved:
+                                       what a sandbox is sent
+    <install_dir>/verified/<64-hex>    a sandbox started it and it loaded
 
-THE HOST NEVER IMPORTS AGENT CODE. Installation verifies a package by
-spawning a worker from its own venv and handshaking (workers.py);
-what the library registers afterwards is a description — manifest,
-folder, environment — that an execution layer turns into a running
-worker when something actually calls the agent.
+Each Execution Sandbox keeps its own copy, its own environments and its
+own verification (agents_container/installs.py): the runtime passes the
+bytes to a sandbox when the sandbox asks for them, and nothing is
+shared between them (docs/system/agent-code.md).
 
-The folder name IS the digest, so nothing has to be kept in step with
-the filesystem: a folder that is here is code that is here, and there is
-no index to go stale. The name is the hex alone — Windows forbids ':' in
-a path, and `sha256:` says nothing the directory does not.
+THE RUNTIME NEVER IMPORTS AGENT CODE. Installation verifies a package
+by having a sandbox install it — build its environment there and start
+a worker of it that answers its greeting; what the library registers
+afterwards is a description — manifest, folder — that an execution
+layer turns into a running worker, in a sandbox, when something
+actually calls the agent.
 
 Bytes are written in exactly one place, `_materialize`, and only after
 they have been proved to hash to the digest that names them. That is
@@ -57,17 +59,17 @@ from __future__ import annotations
 
 import logging
 import re
-import hashlib
 import asyncio
 import shutil
-import sys
 import time
 from pathlib import Path
 from typing import Dict, List, Optional
 
 from ai_runtime.agents.confinement import Confinement
-from ai_runtime.agents.environments import AgentEnvironment
-from ai_runtime.agents.workers import WorkerHandle
+from ai_runtime.agents.container import SandboxRefused
+from ai_runtime.agents_container.environments import AgentEnvironment
+from ai_runtime.agents.sandboxes import NoSandbox
+from ai_runtime.agents_container import installs
 from contracts.agent_manifest import Manifest, load_manifest, manifest_hash
 from contracts.agent_package import AgentPackage, PackagingError
 
@@ -87,16 +89,18 @@ class AgentRefused(RuntimeError):
 class InstalledAgent:
     """One package this process holds, ready to run.
 
-    A description, not a live object: the contract it declared, the
-    folder its verified bytes were unpacked into, and the private
-    environment its worker runs in. Nothing here has imported the code —
+    A description, not a live object: the contract it declared and
+    the folder its verified bytes were unpacked into. Its worker runs
+    in an Execution Sandbox, from that sandbox's own copy and
+    environment; ``environment`` is one a test stands in for the
+    sandbox's, and None in a runtime. Nothing here has imported the code —
     the host never does — and nothing here is per-organization: who
     approved it, who is calling, and what they may reach are decided
     above this module, where those things are known.
     """
 
     def __init__(self, digest: str, manifest: Manifest, folder: Path,
-                 environment: AgentEnvironment):
+                 environment: Optional[AgentEnvironment] = None):
         self.digest = digest
         self.manifest = manifest
         self.folder = folder
@@ -139,20 +143,25 @@ class InstalledAgent:
 
 class AgentLibrary:
     #: The install directory's whole layout, decided here because this is
-    #: the only thing that owns that directory. A component that knew its
-    #: own corner of it independently would be a second opinion about a
-    #: directory with one owner.
+    #: the only thing that owns that directory.
     STORE_FOLDER = "store"
-    ENVS_FOLDER = "envs"
+    PACKAGES_FOLDER = "packages"
+    VERIFIED_FOLDER = "verified"
     MANIFEST_FILENAME = "manifest.yaml"
+    #: How long an install waits for a sandbox to verify it in, where
+    #: none can take a worker yet.
+    SANDBOX_WAIT_SECONDS = 30
 
     def __init__(self, install_dir: str | Path, confinement: Confinement):
         self.install_dir = Path(install_dir)
         self.store_dir = self.install_dir / self.STORE_FOLDER
-        self.envs_dir = self.install_dir / self.ENVS_FOLDER
-        #: Where a package is verified and its packages are built: in
-        #: installation's and the builder's own places (confinement.py).
+        self.packages_dir = self.install_dir / self.PACKAGES_FOLDER
+        self.verified_dir = self.install_dir / self.VERIFIED_FOLDER
+        #: Where a package is verified: the Execution Sandboxes.
         self.confinement = confinement
+        # What a sandbox asks for, it is sent from here.
+        confinement.sandboxes.packages = self.archive
+        confinement.sandboxes.registered.append(self._sandbox_registered)
         #: digest -> the installed agent answering for it.
         self._agents: Dict[str, InstalledAgent] = {}
         #: digest -> why it would not register. A negative cache: a
@@ -160,25 +169,20 @@ class AgentLibrary:
         #: bytes, so it is not attempted again until something
         #: deliberate happens (`install`, or a restart).
         self._errors: Dict[str, List[str]] = {}
-        #: The digests whose code is here and whose environment is not —
-        #: a wiped or re-keyed envs folder. Served the moment somebody
-        #: builds it: the first chat to name one, or the warm-up.
+        #: The digests whose code is here and that no sandbox has
+        #: verified yet — the runtime stopped mid-install, or there was
+        #: no sandbox to verify in. Served all the same: a sandbox
+        #: verifies a package before it runs a worker of it. The
+        #: warm-up verifies each.
         self._waiting: set = set()
-        #: One lock per environment folder. Two installs that stand on
-        #: one dependency set — the warm-up and a chat naming the same
-        #: agent, say — must not both build it: pip twice into one venv
-        #: is a broken venv.
-        self._locks: Dict[Path, asyncio.Lock] = {}
         #: One lock per digest, held through an install: the second
         #: chat to name an agent waits for the first to finish with it.
         self._digest_locks: Dict[str, asyncio.Lock] = {}
         #: The digests an install is at work on, between its folder
         #: arriving and its code being proven.
         self._installing: set = set()
+        self._tasks: set = set()
         self.logger = logging.getLogger(self.__class__.__name__)
-
-    def _lock_for(self, environment: AgentEnvironment) -> asyncio.Lock:
-        return self._locks.setdefault(environment.root, asyncio.Lock())
 
     # ------------------------------------------------------------------
     # What is here
@@ -215,11 +219,7 @@ class AgentLibrary:
         return dict(self._agents)
 
     def stored(self) -> List[str]:
-        """Every digest on disk, whether or not it registered.
-
-        Wider than ``loaded`` on purpose: a package that failed to load
-        still occupies a folder and a virtual environment, and the point
-        of reclaiming is the disk rather than the registry."""
+        """Every digest on disk, whether or not it registered."""
         return self._digests()
 
     def load_all(self) -> None:
@@ -236,45 +236,69 @@ class AgentLibrary:
                 self.logger.error(
                     f"Agent {digest} did not register: "
                     f"{type(exc).__name__}: {exc}")
-        self.sweep_environments()
-        broken = len(self._errors) - len(self._waiting)
         self.logger.info(
             f"Agents ready: {len(self._agents)}"
-            + (f", {len(self._waiting)} wait for an environment" if self._waiting else "")
-            + (f", {broken} could not load" if broken else "")
-        )
+            + (f", {len(self._waiting)} wait for a sandbox to verify them"
+               if self._waiting else "")
+            + (f", {len(self._errors)} could not load" if self._errors else ""))
 
     def waiting(self) -> List[str]:
-        """The digests whose code is here and whose environment is not
-        built yet — what `warm_up` builds."""
+        """The digests no sandbox has verified yet — what `warm_up`
+        verifies."""
         return sorted(self._waiting)
 
     async def warm_up(self) -> int:
-        """Build every waiting environment, one after another, and serve
-        the agents that stand on it. Returns how many were made ready.
+        """Verify every package no sandbox has verified yet, then have
+        every sandbox that may take a worker hold each package this
+        runtime serves, so that the first chat to name an agent finds
+        it built wherever it is placed. Returns how many were verified.
         Started as a task of its own at start, so the process serves
-        while it builds (door/app.py).
-
-        For the start after a deploy: the install directory outlives the
-        container but an environment keyed the old way, or built for
-        another interpreter, does not, and without this every agent
-        would be rebuilt by the first person to name it — a minute of
-        pip in front of whoever happened to be first. The code is on
-        disk and was verified when it was written, so nothing has to be
-        fetched and no delegation is needed. A digest that will not
-        build is logged and left as it was: the next chat to name it
-        tries again, and says why if it fails."""
+        while it builds (door/app.py)."""
         ready = 0
         for digest in self.waiting():
             try:
                 await self.install(digest, None)
-                ready += 1
+                if digest not in self._waiting:
+                    ready += 1
             except Exception as exc:
                 self.logger.error(
-                    f"Warm-up could not prepare {digest[:19]}…: {exc}")
+                    f"Warm-up could not verify {digest[:19]}…: {exc}")
         if ready:
-            self.logger.info(f"Warm-up prepared {ready} agent(s)")
+            self.logger.info(f"Warm-up verified {ready} agent(s)")
+        for sandbox in self.confinement.sandboxes.eligible():
+            await self.stock(sandbox)
         return ready
+
+    async def stock(self, sandbox) -> int:
+        """Have one sandbox hold every package this runtime serves.
+        Returns how many it was given; one that will not install there
+        is logged and left to the first worker of it, which says why."""
+        given = 0
+        if self.confinement.proxy is None:
+            return 0                      # not started: nothing passes yet
+        for digest, installed in sorted(self.loaded().items()):
+            if digest in sandbox.installed or not sandbox.eligible():
+                continue
+            try:
+                await sandbox.prepare(installed, self.confinement)
+                given += 1
+            except SandboxRefused as exc:
+                self.logger.warning(
+                    f"Execution Sandbox {sandbox.id} does not hold "
+                    f"{digest[:19]}…: {exc}")
+        if given:
+            self.logger.info(
+                f"Execution Sandbox {sandbox.id} was given {given} package(s)")
+        return given
+
+    def _sandbox_registered(self, sandbox) -> None:
+        """A sandbox registered: it is given what this runtime serves,
+        in the background."""
+        if not self._agents:
+            return
+        task = asyncio.get_running_loop().create_task(self.stock(sandbox))
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
 
     # ------------------------------------------------------------------
     # Putting code here
@@ -289,9 +313,8 @@ class AgentLibrary:
 
         The order is the guarantee: the bytes are verified against the
         digest before anything is written, the manifest against its
-        hash before a dependency is installed or a line of the code is
-        run, and a failure at any step leaves what was already serving
-        exactly as it was.
+        hash before the package is sent anywhere, and a failure at any
+        step leaves what was already serving exactly as it was.
         """
         if not DIGEST_RE.match(str(digest or "")):
             raise AgentRefused(
@@ -315,51 +338,28 @@ class AgentLibrary:
             problems = self._materialize(digest, archive)
             if problems:
                 raise AgentRefused("; ".join(problems))
-
-        environment = None
-        fresh_environment = False
-        lock = None
         try:
             manifest = self._approved(digest, expected_manifest_hash)
-            # The venv of this dependency set: an update that changed
-            # code only finds it built and pays nothing.
-            environment = self.environment_for(manifest.dependencies)
-            # Held from here to registration: a second install of the
-            # same set — the warm-up beside a chat, two chats naming
-            # one agent — waits, then finds the venv built and pays
-            # nothing.
-            lock = self._lock_for(environment)
-            await lock.acquire()
-            fresh_environment = not environment.exists()
-            # The build is confined as a worker is: a package may run
-            # code of its own while it is built.
-            env_errors = await environment.build(
-                manifest.dependencies, self.confinement.builder_place())
-            if env_errors:
-                raise AgentRefused("; ".join(env_errors))
-            # Verification happens where the agent will really run: a
-            # worker started from the digest's own venv imports the code
-            # and checks it against the contract — the host itself never
-            # imports agent code.
-            probe_errors = await self._verify(environment, digest, manifest)
-            if probe_errors:
-                raise AgentRefused("; ".join(probe_errors))
+            installed = InstalledAgent(digest, manifest, self._folder(digest),
+                                       self.environment(digest))
+            # Verified where agents run: an Execution Sandbox installs
+            # it — its environment built there, a worker started from
+            # it and greeted. The runtime itself never imports agent code.
+            await self._verify(installed)
             errors = self._register(digest, manifest)
             if errors:
                 raise AgentRefused("; ".join(errors))
         except BaseException as exc:
             # Rollback only what THIS install created: a refused
-            # re-install must not tear down the environment a serving
-            # agent already stands on. Whatever went wrong, and not
-            # only what was refused in words: a folder left behind by
-            # an error nobody expected is served at the next start.
-            if fresh_environment and environment is not None:
-                environment.remove()
+            # re-install must not tear down what a serving agent
+            # already stands on. Whatever went wrong, and not only what
+            # was refused in words: a folder left behind by an error
+            # nobody expected is served at the next start.
             if fresh:
                 self._agents.pop(digest, None)
                 self._errors.pop(digest, None)
                 self._waiting.discard(digest)
-                self._discard(self._folder(digest))
+                self._discard_package(digest)
             if isinstance(exc, AgentRefused) or not isinstance(exc, Exception):
                 raise
             self.logger.error(
@@ -368,98 +368,75 @@ class AgentLibrary:
             raise AgentRefused(
                 f"The package could not be installed "
                 f"({type(exc).__name__}).") from exc
-        finally:
-            if lock is not None:
-                lock.release()
         return self._agents[digest]
 
-    def environments_without_an_agent(self) -> List[Path]:
-        """Venv folders no digest on disk stands on — left by a package
-        since forgotten, or named some other way than by a dependency
-        set."""
-        if not self.envs_dir.is_dir():
-            return []
-        used = self._environments_in_use()
-        return sorted(path for path in self.envs_dir.iterdir()
-                      if path.is_dir() and path not in used)
+    async def _verify(self, installed: InstalledAgent) -> None:
+        """The package installed and verified in a sandbox that may
+        take a worker: the one placement would choose for it. Where no
+        sandbox can, it waits a moment for one; then the package serves
+        unverified, and waits — every sandbox verifies a package before
+        it runs a worker of it. Raises AgentRefused for a package a
+        sandbox refused."""
+        sandboxes = self.confinement.sandboxes
+        if not sandboxes.eligible():
+            await sandboxes.wait(self.SANDBOX_WAIT_SECONDS)
+        tried: List[str] = []
+        for _ in range(max(1, len(sandboxes.all()))):
+            try:
+                sandbox = sandboxes.choose(digest=installed.digest, avoid=tried)
+            except NoSandbox as exc:
+                self._wait_for_a_sandbox(installed.digest, str(exc))
+                return
+            tried.append(sandbox.id)
+            try:
+                await sandbox.prepare(installed, self.confinement)
+            except SandboxRefused as exc:
+                if not sandbox.connected or "did not answer" in str(exc):
+                    continue
+                raise AgentRefused(str(exc))
+            self.verified_dir.mkdir(parents=True, exist_ok=True)
+            (self.verified_dir / self._hex(installed.digest)).write_text(
+                sandbox.id, encoding="utf-8")
+            self._waiting.discard(installed.digest)
+            return
+        self._wait_for_a_sandbox(installed.digest, "no Execution Sandbox answered")
 
-    def sweep_environments(self) -> int:
-        """Remove the venvs nobody stands on. Returns how many went."""
-        removed = 0
-        for path in self.environments_without_an_agent():
-            shutil.rmtree(path, ignore_errors=True)
-            removed += 1
-        if removed:
-            self.logger.info(f"Removed {removed} environment(s) nobody used")
-        return removed
+    def _wait_for_a_sandbox(self, digest: str, why: str) -> None:
+        self._waiting.add(digest)
+        self.logger.warning(
+            f"{digest[:19]}… is served before a sandbox verified it ({why}); "
+            f"the first sandbox to run it verifies it first")
 
-    #: Env folders use a PREFIX of the key, not the whole hex: a venv
-    #: holds pip's vendored tree, whose file paths under a 64-character
-    #: folder overflow Windows' 260-character path limit in any deep
-    #: install dir. Sixteen hex characters are 2^64 — not a collision
-    #: space — and the store's full-digest check still guards the code.
-    ENV_NAME_LENGTH = 16
+    def environment(self, digest: str) -> Optional[AgentEnvironment]:
+        """Where a worker of this digest runs from, as the runtime would
+        know it: nowhere — an agent's environment is its sandbox's
+        (agents_container/installs.py). A test stands one in here."""
+        return None
 
     @staticmethod
     def environment_key(dependencies) -> str:
-        """What an environment is keyed by: the declared dependency
-        list, order ignored, and the interpreter that builds it. Two
-        digests with the same list get the same venv — an update that
-        changes code only, which most do, needs no pip at all — and two
-        with different lists never share one."""
-        digest = hashlib.sha256()
-        digest.update(f"py{sys.version_info[0]}.{sys.version_info[1]}\n".encode("utf-8"))
-        for entry in sorted(str(d).strip() for d in (dependencies or []) if str(d).strip()):
-            digest.update(entry.encode("utf-8") + b"\n")
-        return digest.hexdigest()
-
-    def environment_for(self, dependencies) -> AgentEnvironment:
-        """The venv for this dependency set — where a worker runs."""
-        return AgentEnvironment(
-            self.envs_dir / self.environment_key(dependencies)[: self.ENV_NAME_LENGTH]
-        )
-
-    def environment(self, digest: str) -> AgentEnvironment:
-        """The venv the digest's worker runs in: the one its manifest's
-        dependency set names. A digest whose manifest cannot be read
-        answers with a venv of its own, which nothing else shares."""
-        agent = self._agents.get(digest)
-        if agent is not None:
-            return agent.environment
-        manifest, errors = load_manifest(self._folder(digest) / self.MANIFEST_FILENAME)
-        if errors or manifest is None:
-            return AgentEnvironment(
-                self.envs_dir / self._hex(digest)[: self.ENV_NAME_LENGTH])
-        return self.environment_for(manifest.dependencies)
-
-    def _environments_in_use(self, except_digest: str = "") -> set:
-        """The venv folders every OTHER digest on disk stands on."""
-        roots = set()
-        for other in self._digests():
-            if other == except_digest:
-                continue
-            roots.add(self.environment(other).root)
-        return roots
-
-    async def _verify(self, environment: AgentEnvironment, digest: str,
-                      manifest: Manifest) -> List[str]:
-        """The handshake as installation's gate (docs/reference/worker-protocol.md)."""
-        return await WorkerHandle.probe(
-            environment.python, self._folder(digest), manifest.document,
-            self.confinement.verification_place(),
-        )
+        """What a sandbox keys an environment by (installs.py)."""
+        return installs.environment_key(dependencies)
 
     def forget(self, digest: str) -> None:
-        """Stop serving it and drop its code — and its environment,
-        unless another digest on disk stands on the same one."""
-        environment = self.environment(digest)
+        """Stop serving it and drop its code. Each sandbox gives up its
+        own copy when told what is still approved (roster.reclaim)."""
         self._agents.pop(digest, None)
         self._errors.pop(digest, None)
         self._waiting.discard(digest)
-        self._discard(self._folder(digest))
-        if environment.root not in self._environments_in_use(except_digest=digest):
-            environment.remove()
+        self._discard_package(digest)
         self.logger.info(f"Agent {digest} forgotten")
+        sandboxes = self.confinement.sandboxes
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        if sandboxes.all():
+            kept = [other for other in self._digests() if other != digest]
+            if kept:
+                task = loop.create_task(sandboxes.keep(kept))
+                self._tasks.add(task)
+                task.add_done_callback(self._tasks.discard)
 
     # ------------------------------------------------------------------
     # The code on disk
@@ -474,6 +451,24 @@ class AgentLibrary:
 
     def _folder(self, digest: str) -> Path:
         return self.store_dir / self._hex(digest)
+
+    def _package(self, digest: str) -> Path:
+        return self.packages_dir / self._hex(digest)
+
+    def archive(self, digest: str) -> bytes:
+        """The package's bytes, as they were approved: what a sandbox
+        that asks for them is sent. Checked against the digest on the
+        way out too: a cache that drifted sends nothing."""
+        try:
+            data = self._package(digest).read_bytes()
+        except OSError:
+            # Kept before the runtime kept bytes: packed again from the
+            # folder, which is canonical, and checked.
+            data, _ = AgentPackage.build(self._folder(digest))
+        if AgentPackage.digest(data) != digest:
+            raise AgentRefused(
+                f"The runtime's copy of {digest[:19]}… is not that package.")
+        return data
 
     def _digests(self) -> List[str]:
         """Every digest on disk, read from the disk itself."""
@@ -509,6 +504,8 @@ class AgentLibrary:
                 self.logger.error(f"Package not unpacked: {exc}")
                 return [f"The package could not be unpacked "
                         f"({type(exc).__name__})."]
+            self.packages_dir.mkdir(parents=True, exist_ok=True)
+            self._package(digest).write_bytes(archive)
             self.store_dir.mkdir(parents=True, exist_ok=True)
             self._move_into_place(staging, self._folder(digest))
         finally:
@@ -531,6 +528,14 @@ class AgentLibrary:
                     raise
                 time.sleep(0.2)
 
+    def _discard_package(self, digest: str) -> None:
+        self._discard(self._folder(digest))
+        for path in (self._package(digest), self.verified_dir / self._hex(digest)):
+            try:
+                path.unlink()
+            except OSError:
+                pass
+
     @staticmethod
     def _discard(folder: Path) -> None:
         """Everything under the store was written by AgentPackage.extract,
@@ -547,44 +552,29 @@ class AgentLibrary:
         approval first.
 
         Nothing is imported and nothing is verified here: verification
-        happened at install, in the package's own environment, and the
-        digest guarantees the bytes have not changed since. What CAN be
-        wrong on a fresh start is the environment — gone with a wiped
-        volume, for instance — and an agent whose env is missing is
-        broken until a reinstall rebuilds it."""
+        happens in a sandbox, and the digest guarantees the bytes have
+        not changed since. A package no sandbox verified yet serves and
+        waits: every sandbox verifies a package before it starts a
+        worker of it."""
         folder = self._folder(digest)
         errors: List[str] = []
         if manifest is None:
             manifest, errors = load_manifest(folder / self.MANIFEST_FILENAME)
-        if not errors and not self.environment_for(manifest.dependencies).exists():
-            # The code is here and its venv is not — a wiped volume, or
-            # environments re-keyed since. Not served yet: the first
-            # chat to name it, or the runtime's own stocking, installs it
-            # again from the code on disk, which builds the venv.
-            errors = ["its environment is not built yet — built on first use"]
-            self._errors[digest] = errors
-            self._waiting.add(digest)
-            self._agents.pop(digest, None)
-            self.logger.info(
-                f"Agent {manifest.agent_id} v{manifest.version} ({digest[:19]}…) "
-                f"waits for its environment; built on first use")
-            return errors
-        self._waiting.discard(digest)
         if errors:
             self._errors[digest] = errors
             self._agents.pop(digest, None)
-            # Logged, not only recorded. Approval already answers for a
-            # package that will not verify — a runtime is shown it and
-            # says so before anybody approves it — so a failure HERE is
-            # the unexpected one: a disk that differs from the one that
-            # answered. That deserves to be in the log of the process it
-            # actually happened in.
+            self._waiting.discard(digest)
+            # Logged, not only recorded: a disk that differs from the
+            # one that answered deserves to be in the log of the process
+            # it actually happened in.
             self.logger.error(
                 f"Agent {digest} did not register: {'; '.join(errors)}")
             return errors
+        if not (self.verified_dir / self._hex(digest)).is_file() \
+                and digest not in self._installing:
+            self._waiting.add(digest)
         self._agents[digest] = InstalledAgent(
-            digest, manifest, folder, self.environment_for(manifest.dependencies)
-        )
+            digest, manifest, folder, self.environment(digest))
         self._errors.pop(digest, None)
         self.logger.info(
             f"Agent {manifest.agent_id} v{manifest.version} "
@@ -597,10 +587,9 @@ class AgentLibrary:
 
         The digest already implies it, so a mismatch means the approval
         was recorded against a different package — worth its own message
-        rather than a confusing success. Checked BEFORE the dependencies
-        it declares are installed and before any of its code runs: a
-        manifest nobody approved does not get to say what this process
-        should run."""
+        rather than a confusing success. Checked BEFORE the package is
+        sent to any sandbox: a manifest nobody approved does not get to
+        say what should run."""
         manifest, errors = load_manifest(
             self._folder(digest) / self.MANIFEST_FILENAME
         )
@@ -619,7 +608,8 @@ class ApprovedAgent(InstalledAgent):
     (docs/system/agent-code.md).
 
     The package is shared — a thousand organizations approving the
-    same agent are one folder and one environment — so nothing true of
+    same agent are one folder, and one environment in each sandbox —
+    so nothing true of
     only one of them can be written onto it. An agent has two names,
     and they belong to different parties::
 

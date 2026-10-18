@@ -1,20 +1,32 @@
 # Configuration
 
 Every setting is an environment variable. Compose reads them from
-`deploy.env`; a container platform sets them on the task; a backend
+`deploy.env`; a container platform sets them on the task; a Data Core
 started by hand seeds them from `backend/config.env`, and a runtime
 started from its image by hand from `ai_runtime/config.env`. The code reads the environment and nothing
 else, so moving between platforms changes values, never code.
 
-Three values are generated, never chosen:
+These values are generated, never chosen:
 
 | Generator | Produces |
 |---|---|
-| `python bootstrap/generate_service_keys.py` | two RS256 pairs, each half on one line with `\n` escapes: `BACKEND_SERVICE_PRIVATE_KEY` for the backend and `BACKEND_SERVICE_PUBLIC_KEY` for the runtime (the backend's identity), `AI_RUNTIME_SERVICE_PRIVATE_KEY` for the runtime and `AI_RUNTIME_SERVICE_PUBLIC_KEY` for the backend (the runtime's) |
+| `python bootstrap/generate_service_keys.py` | the Data Core's RS256 pair, each half on one line with `\n` escapes: `BACKEND_SERVICE_PRIVATE_KEY` for the Data Core, which signs everything it tells an execution node with it, and `BACKEND_SERVICE_PUBLIC_KEY` for every node |
+| `python bootstrap/generate_node_authority.py` | a node authority's pair: `NODE_AUTHORITY_PUBLIC_KEY`, registered with the Data Core, and `NODE_AUTHORITY_PRIVATE_KEY`, for whatever signs node credentials — never a node, and never the Data Core ([execution nodes](../system/execution-nodes.md)) |
 | `python bootstrap/generate_secret_keys.py` | `SECRET_ENCRYPTION_KEYS` and `SECRET_ENCRYPTION_ACTIVE` — versioned AES-256-GCM keys; `--rotate` appends a version |
 | `python -c "import secrets; print(secrets.token_urlsafe(48))"` | `TOKEN_SECRET_KEY` |
+| `python -c "import secrets; print(secrets.token_urlsafe(32))"` | `AI_RUNTIME_SANDBOX_SECRET` |
 
-## The backend
+Two of them are not in `deploy.env`, because Compose hands that file
+whole to the Data Core and the seeder, which need neither. Each is in
+a file of its own beside it, given only to what uses it:
+`AI_RUNTIME_SANDBOX_SECRET` in `sandbox.env`, given to the AI Runtime
+and its Execution Sandboxes; and `NODE_AUTHORITY_PRIVATE_KEY` in
+`node-authority.env`, given to `node-issuer` alone. `bootstrap/setup.py`
+writes both, and moves either out of a `deploy.env` from before that
+still holds it; by hand, copy `sandbox.env.example` and
+`node-authority.env.example`.
+
+## The Data Core
 
 ### Where it binds, and whom it believes
 
@@ -64,16 +76,16 @@ Three values are generated, never chosen:
 | `STORAGE_GCS_ENDPOINT` | Google | An emulator's address, signed in to with no credentials. For tests. |
 | `MAX_UPLOAD_MB` | `25` | The largest single upload accepted, between 1 and 5000; bytes are held in memory while hashed. |
 
-### The runtime, from the backend's side
+### The runtime, from the Data Core's side
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `AI_RUNTIME_URL` | `http://127.0.0.1:8001` | Where the backend dials a chat's session. |
-| `SPEECH_URL` | `http://speech:8004` | Where the backend asks the platform's own speech models ([the speech container](#the-speech-container)). Nothing answering there is not an error: an organization that keeps speech local is told it is not running, and one that chose a provider never asks. |
-| `BACKEND_SERVICE_PRIVATE_KEY` | required for chats | Signs the backend's identity toward the runtime; the runtime holds the public half. |
-| `AI_RUNTIME_SERVICE_PUBLIC_KEY` | required for agents | Verifies a runtime speaking as itself at the package door ([agent code](../system/agent-code.md#the-package-door)); the runtime holds the private half. Without it no runtime can fetch agent code. |
+| `SPEECH_URL` | `http://speech:8004` | Where the Data Core asks the platform's own speech models ([the speech container](#the-speech-container)). Nothing answering there is not an error: an organization that keeps speech local is told it is not running, and one that chose a provider never asks. |
+| `BACKEND_SERVICE_PRIVATE_KEY` | required for chats | The Data Core's own key: it signs every reply and frame it sends an execution node, and nodes hold the public half ([execution nodes](../system/execution-nodes.md#the-data-cores-signature)). `DATA_CORE_PRIVATE_KEY` is read in its place where it is set. |
+| `NODE_AUTHORITY_PUBLIC_KEY` | unset | An authority's public key, registered as a shared authority when the seeder runs, once. One computer's install sets it; a server registers its authorities on the Nodes doors instead ([execution nodes](../system/execution-nodes.md)). |
+| `OPERATOR_ORG_ID` | the first organization | Whose administrators are the deployment's operator: they, holding `nodes:authority:shared`, register and revoke shared authorities. |
 | `REFERENCE_CATALOG_URL` | unset | A repository the marketplace offers as a source with one click. Unset, it offers none. |
-| `AGENT_SOURCE_FOLDER` | unset | A folder on the backend's own disk whose git repositories may be agent sources, added by their path (`/develop/my-agents`). For somebody writing agents on their own computer ([a DecentAI of your own](../agents/developing.md#a-decentai-of-your-own)). Unset — every server — a source is fetched from a repository's address only. |
+| `AGENT_SOURCE_FOLDER` | unset | A folder on the Data Core's own disk whose git repositories may be agent sources, added by their path (`/develop/my-agents`). For somebody writing agents on their own computer ([a DecentAI of your own](../agents/developing.md#a-decentai-of-your-own)). Unset — every server — a source is fetched from a repository's address only. |
 
 ### Email
 
@@ -90,7 +102,7 @@ Three values are generated, never chosen:
 
 ### Logs
 
-Both processes write to standard output. The backend reads all of
+Both processes write to standard output. The Data Core reads all of
 these; the runtime reads `LOG_LEVEL`.
 
 | Variable | Default | Meaning |
@@ -109,7 +121,7 @@ seeding variables below.
 
 | Variable | Meaning |
 |---|---|
-| `SETUP_CODE` | What the first-run page asks for before it sets anything up. Empty (the default): the deployment makes one and writes it to the log — `docker compose --env-file deploy.env logs init`, and the backend's log. `none`: nothing is asked, for an address no other computer reaches; `bootstrap/setup.py` writes it. Anything else is the code. Wrong codes count against the address's sign-in budget. |
+| `SETUP_CODE` | What the first-run page asks for before it sets anything up. Empty (the default): the deployment makes one and writes it to the log — `docker compose --env-file deploy.env logs init`, and the Data Core's log. `none`: nothing is asked, for an address no other computer reaches; `bootstrap/setup.py` writes it. Anything else is the code. Wrong codes count against the address's sign-in budget. |
 | `ORG_SIGNUP` | `closed` (the default) or `open`. Open, the sign-in page offers **create an organization**: anybody may make one of their own, as its administrator, once a link sent to their address is followed. It stays shut where outbound email is not set up. Closing it shuts links already sent. ([Operating it](operating.md#organizations)) |
 | `ORG_NAME` | With `ADMIN_EMAIL`, the organization the seeder makes. |
 | `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_NAME` | Optional: a first administrator for the seeder to make, in place of the first-run page — for a deployment set up by automation. Once they exist nothing of theirs is changed, except that an administrator found disabled or out of the Administrators group is put back: the seeder never leaves an organization nobody can manage. Where people are in a deployment and none of them administers, these are required: the first-run page does not come back. |
@@ -120,7 +132,7 @@ seeding variables below.
 
 | Variable | Meaning |
 |---|---|
-| `SECRET_ENCRYPTION_KEYS` | `version:key` pairs, comma-separated. Every stored credential and record value is encrypted under one of them; a value's version is recorded with it. Required: unset, the backend does not start. A database an earlier version wrote under the development key it derived from `TOKEN_SECRET_KEY` is moved to real keys with `bootstrap/reencrypt_secrets.py`. |
+| `SECRET_ENCRYPTION_KEYS` | `version:key` pairs, comma-separated. Every stored credential and record value is encrypted under one of them; a value's version is recorded with it. Required: unset, the Data Core does not start. A database an earlier version wrote under the development key it derived from `TOKEN_SECRET_KEY` is moved to real keys with `bootstrap/reencrypt_secrets.py`. |
 | `SECRET_ENCRYPTION_ACTIVE` | The version new writes use; the highest one when unset. |
 
 A database without these keys is a database whose encrypted values are
@@ -132,31 +144,49 @@ gone. Back them up with it.
 |---|---|---|
 | `AI_RUNTIME_HOST` | `0.0.0.0` | Bind address; `127.0.0.1` locally. |
 | `AI_RUNTIME_PORT` | `8001` | Bind port. Left blank it is the default; a value that is not a port is refused at start, by name. |
-| `BACKEND_INTERNAL_URL` | required | Where the runtime reaches the backend's gateway for its services; a runtime not told does not start. In Compose it is the service name; where the containers share one network, `http://127.0.0.1:8000`. |
-| `BACKEND_SERVICE_PUBLIC_KEY` | required | Verifies that a dial really came from the backend. |
-| `AI_RUNTIME_SERVICE_PRIVATE_KEY` | required | Signs the runtime's own identity toward the backend, for what it asks as itself: the approved packages, to stock itself with ([agent code](../system/agent-code.md#the-package-door)). The backend holds the public half; a runtime without it does not start. |
-| `AI_RUNTIME_AGENTS_INSTALL_DIR` | `ai_runtime/installed_agents` | Where installed agent code and its environments live. A volume in a deployment; a short path outside the tree locally. |
-| `BACKEND_TOKEN_ISSUER` | `decentai-backend` | The issuer claim the runtime expects. |
-| `AI_RUNTIME_TOKEN_AUDIENCE` | `decentai-ai-runtime` | The audience claim the runtime expects. |
+| `BACKEND_INTERNAL_URL` | required | Where the runtime reaches the Data Core's gateway for its services; a runtime not told does not start. In Compose it is the service name; where the containers share one network, `http://127.0.0.1:8000`. `DATA_CORE_URL` is read in its place where it is set. |
+| `BACKEND_SERVICE_PUBLIC_KEY` | required | The Data Core's public key: the node believes no reply or frame it did not sign. `DATA_CORE_PUBLIC_KEY` is read in its place where it is set. |
+| `AI_RUNTIME_NODE_CREDENTIAL_FILE` | required, or the next | Where this execution node's credential is: a file its operator's secret manager mounts and keeps fresh, signed by an authority the Data Core registered. Read again as it nears its expiry and whenever it changes. Compose points it at what `node-issuer` writes. |
+| `AI_RUNTIME_NODE_CREDENTIAL_URL` | unset | An issuer on the node's own network that answers a `GET` with a credential (the token, or `{"credential": …}`), in place of a file. |
+| `AI_RUNTIME_AGENTS_INSTALL_DIR` | `ai_runtime/installed_agents` | Where the runtime keeps the approved packages it passes on to its Execution Sandboxes ([agent code](../system/agent-code.md)). A volume of its own in a deployment, shared with no sandbox; a short path outside the tree locally. |
 | `LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING` or `ERROR`. |
-| `AI_RUNTIME_EGRESS_PORT` | `8002` | Where the proxy that agents connect through listens, on the runtime's container, reached over the network it shares with the agents' container and nothing else. The firewall rule of the agents' container is written for the same port when it starts. A value that is blank or not a port is read as `8002` by both containers, so the rule, the proxy and the workers agree. |
+| `AI_RUNTIME_EGRESS_PORT` | `8002` | Where the proxy that agents connect through listens, on the runtime's container, reached over the network it shares with its Execution Sandboxes and nothing else. The firewall rule of each sandbox is written for the same port when it starts. A value that is blank or not a port is read as `8002` by every container, so the rule, the proxy and the workers agree. |
 | `AI_RUNTIME_PACKAGE_HOSTS` | `pypi.org, files.pythonhosted.org` | Where packages come from: the hosts the builder of an agent's declared packages may reach, and the whole of them. Separated by commas. |
-| `AI_RUNTIME_AGENTS_SPAWNER` | required | Where the agents' container answers, as `host:port`. `docker-compose.yml` writes `agents:8003` itself and does not read it from `deploy.env`. Every process of an agent's is started there; a runtime not told where it is does not start. |
+| `AI_RUNTIME_SANDBOX_SECRET` | required, in `sandbox.env` | The secret set for the execution node: what an Execution Sandbox proves when it registers with the runtime, and what the runtime proves on every request to one ([the sandbox](../system/sandbox.md#many-sandboxes)). It never travels. `bootstrap/setup.py` writes one into `deploy.env`; `docker-compose.yml` hands it to the runtime and to every sandbox. A runtime without it does not start. |
+| `AI_RUNTIME_SANDBOX_PORT` | `8005` | Where Execution Sandboxes register with the runtime. Every process of an agent's is started in a sandbox that registered; a runtime with none that can confine a worker does not start. |
+| `AI_RUNTIME_AGENTS_SPAWNER` | empty | An Execution Sandbox the runtime knows by its address, as `host:port`, besides those that register. Optional, and not set by `docker-compose.yml`: sandboxes register themselves. |
 
-The agents' container is the runtime's image started as the spawner
+The install's own issuer of node credentials, `node-issuer`
+(`bootstrap/node_issuer.py`, the Data Core's image, on no network),
+reads:
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `NODE_AUTHORITY_PRIVATE_KEY` | required, in `node-authority.env` | The install's authority's private key, which signs the bundled node's credentials. The node never holds it. |
+| `NODE_NAME` | `bundled` | The name the bundled node's credential gives it. |
+| `NODE_CREDENTIAL_FILE` | `/run/decentai/node/credential` | Where the credential is written, every few minutes, for the node to read. |
+
+An Execution Sandbox is the runtime's image started as the spawner
 (`python -m ai_runtime.agents_container.service`), and reads:
 
 | Variable | Default | Meaning |
 |---|---|---|
 | `AI_AGENTS_PROXY` | empty | Where the runtime's proxy answers, as `host:port` (`ai-runtime:8002` in Compose). What a worker sends to the proxy's port in its own container is passed on to here. |
 | `AI_AGENTS_SPAWNER_PORT` | `8003` | Where the spawner answers the runtime. Fixed at 8003 in the Compose stack, which does not pass it on. |
-| `LOG_LEVEL`, `TZ` | as the runtime's | Passed to the agents' container by name. |
+| `AI_SANDBOX_RUNTIME` | empty | Where its runtime takes registrations, as `host:port` (`ai-runtime:8005` in Compose). The sandbox connects there, registers, and connects again when the connection is lost. |
+| `AI_RUNTIME_SANDBOX_SECRET` | required, in `sandbox.env` | The execution node's secret, the same as the runtime's. The spawner takes it out of its own environment as it reads it. |
+| `AI_SANDBOX_ID` | the container's name | Who the sandbox is, to its runtime; `agents` in Compose, `agents-2` for the second of `docker-compose.sandboxes.yml`. |
+| `AI_SANDBOX_LABELS` | empty | What it says of itself, for a placement to ask for: `gpu`, separated by commas. In Compose, `AGENTS_LABELS` in `deploy.env`, and `AGENTS_2_LABELS` for the second sandbox. |
+| `AI_SANDBOX_ADDRESS` | the address it registered from | Where the runtime reaches it, as `host:port`, where that is not the address its registration came from. |
+| `AI_SANDBOX_DRAIN_SECONDS` | `60` | How long a sandbox that was stopped waits for its workers to finish before it goes. |
+| `AI_SANDBOX_BUILD_SECONDS` | `300` | How long one build of an agent's declared packages may take there. |
+| `LOG_LEVEL`, `TZ` | as the runtime's | Passed to the Execution Sandbox by name. |
 | `AI_RUNTIME_EGRESS_PORT` | `8002` | The proxy's port, as workers are pointed at it; the same number as the runtime's. |
-| `AI_RUNTIME_AGENTS_INSTALL_DIR` | `/data/agents` | The volume both containers hold, at the same path in both. |
+| `AI_RUNTIME_AGENTS_INSTALL_DIR` | `/data/agents` | The sandbox's own folder, the path the image's spawn helper was built for: its copy of the code it runs, its environments, its workers' homes, what it writes down. A volume of its own, shared with nothing. |
 | `AI_RUNTIME_SYSCALL_FILTER` | on | `0` turns off the filter on the system calls a worker may make ([the sandbox](../system/sandbox.md#system-calls--seccomp)): for an agent whose package needs a call the filter refuses, until one of the two is mended. The container says at start that it is off. |
 
-What the agents' container is given is the engine's to hold it to, and
-is set where the container is started:
+What each Execution Sandbox is given is the engine's to hold it to,
+and is set where the container is started:
 
 | Variable | Default | Meaning |
 |---|---|---|
@@ -164,17 +194,17 @@ is set where the container is started:
 | `AGENTS_CPUS` | no limit | Processors the agents are given together: `2`, `1.5`. |
 
 `docker-compose.yml` reads both from `deploy.env`; a change takes
-effect when the agents' container is started again (`docker compose
+effect when the Execution Sandbox is started again (`docker compose
 --env-file deploy.env up -d agents`). The spawner reads what was set from the kernel
 and ends the agent using most memory before the engine would have to
 ([the sandbox](../system/sandbox.md)).
 
 ### What holds an agent to the hosts it declared
 
-An agent's worker runs in the agents' container, as a user of its
+An agent's worker runs in the Execution Sandbox, as a user of its
 own, and connects through a proxy the runtime runs, which lets it
 reach the hosts its manifest declared
-([the sandbox](../system/sandbox.md)). The agents' container is on a
+([the sandbox](../system/sandbox.md)). The Execution Sandbox is on a
 network that reaches the runtime and nothing else. One firewall rule
 inside it keeps a worker to the proxy's port, and so from other agents
 and from the spawner, and setting it takes a right the container is
@@ -194,7 +224,7 @@ holds an agent to the proxy.
 
 ### Where an agent's packages come from
 
-In the agents' container the packages an agent declared are
+In the Execution Sandbox the packages an agent declared are
 downloaded and built by a user of their own, which reaches the hosts
 in `AI_RUNTIME_PACKAGE_HOSTS` and nothing else. A deployment with a
 package index of its own sets both what pip is told and what the
@@ -211,14 +241,15 @@ AI_RUNTIME_PACKAGE_HOSTS=packages.example.com
 ### What the runtime's container is given
 
 The runtime's container holds the runtime's own settings and nothing
-else, and the agents' container, where agent code runs, holds none of
-the platform's. In Compose the backend and the
-seeder are handed `deploy.env` whole; the runtime is handed the
+else, and the Execution Sandbox, where agent code runs, holds none of
+the platform's. In Compose the Data Core and the
+seeder are handed `deploy.env` whole; the runtime is handed
+`sandbox.env`, which holds the node's secret and nothing else, and the
 variables `docker-compose.yml` names for it — the table above, the
 knobs below, where packages come from, and how the machine reaches
 the internet (`HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`, `SSL_CERT_FILE`,
 `REQUESTS_CA_BUNDLE`, `TZ`).
-The database's password, the encryption keys and the backend's private
+The database's password, the encryption keys and the Data Core's private
 key never reach it. A new setting for the runtime is named in
 `docker-compose.yml` as well as set in `deploy.env`.
 
@@ -247,7 +278,7 @@ name not listed in `docker-compose.yml` reaches neither.
 
 Speech to text and text to speech from models that run on the machine
 the platform runs on (`speech/`). It holds no setting of the
-platform's and no key: it is asked by the backend alone, on the
+platform's and no key: it is asked by the Data Core alone, on the
 private network, and what an organization does with it is chosen in
 the app (**Settings → Chat configuration → Speech**).
 
@@ -274,7 +305,7 @@ the internet.
 | `MONGO_ROOT_USERNAME`, `MONGO_ROOT_PASSWORD` | The database's root account, which `MONGO_URI` must carry too. |
 
 The web server's image reads one more, `BACKEND_UPSTREAM` (where it
-proxies the backend's paths, `backend:8000` unless said). The Compose
+proxies the Data Core's paths, `backend:8000` unless said). The Compose
 stack does not pass it on: it is for a deployment that runs the image
 some other way.
 

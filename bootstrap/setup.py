@@ -27,6 +27,15 @@ not — is added to the file first: a key, made now by the generator;
 anything else, as the template says it. Nothing the file says is
 changed. A `deploy.env` written by hand for a server is left alone
 (docs/run/deploying.md says how that one is started, and updated).
+
+Two secrets are not in `deploy.env`, because Compose gives that file
+whole to the Data Core and the seeder, which need neither: the
+execution node's secret, in `sandbox.env`, given to the AI Runtime and
+its Execution Sandboxes alone; and the install's authority's private
+key, in `node-authority.env`, given to node-issuer alone. They are
+written beside it, made once, as the keys are. A `deploy.env` from
+before that holds either has it moved out into its file, and the line
+it was on says where it went.
 """
 
 from __future__ import annotations
@@ -195,15 +204,65 @@ class Settings:
         ]
         self._put(text.rstrip("\n") + "\n" + "\n".join(lines) + "\n")
 
+    def move_out(self, moved: Dict[str, str]) -> None:
+        """Each name in ``moved`` taken out of the file, its line
+        replaced by one saying which file holds it now (``moved`` maps
+        the name to that file). Nothing else the file says changes."""
+        kept: List[str] = []
+        for line in self.path.read_text(encoding="utf-8").splitlines():
+            name, mark, _ = line.partition("=")
+            name = name.strip()
+            if mark and name in moved and not line.lstrip().startswith("#"):
+                kept.append(f"# {name} moved to {moved[name]} by "
+                            f"bootstrap/setup.py on {time.strftime('%Y-%m-%d')}: "
+                            f"it is given only to what uses it.")
+                continue
+            kept.append(line)
+        self._put("\n".join(kept) + "\n")
+
     def _put(self, text: str) -> None:
         """The whole file, in one move: nobody reads it half written."""
-        staging = self.folder / f".{self.FILE}.incoming"
-        staging.write_text(text, encoding="utf-8", newline="\n")
-        try:
-            os.chmod(staging, 0o600)
-        except OSError:
-            pass
-        staging.replace(self.path)
+        _put(self.folder, self.FILE, text)
+
+
+def _put(folder: Path, name: str, text: str) -> None:
+    """A file holding secrets, in one move and readable by its owner
+    only: nobody reads it half written."""
+    staging = Path(folder) / f".{name}.incoming"
+    staging.write_text(text, encoding="utf-8", newline="\n")
+    try:
+        os.chmod(staging, 0o600)
+    except OSError:
+        pass
+    staging.replace(Path(folder) / name)
+
+
+class SecretFile:
+    """A file of secrets Compose gives to some services only
+    (docker-compose.yml, ``env_file``): never to the Data Core."""
+
+    def __init__(self, folder: Path, name: str, why: str):
+        self.folder = Path(folder)
+        self.name = name
+        self.path = self.folder / name
+        self.why = why
+
+    @property
+    def written(self) -> bool:
+        return self.path.is_file()
+
+    def values(self) -> Dict[str, str]:
+        return Settings._read(self.path) if self.written else {}
+
+    def write(self, values: Dict[str, str]) -> None:
+        for name, value in values.items():
+            if not value or "\n" in value or "\r" in value:
+                raise SetupError(f"{name} does not fit on one line.")
+        _put(self.folder, self.name, "\n".join([
+            f"# Written by bootstrap/setup.py: {self.why}",
+            "# Made once, like the keys in deploy.env; keep it.",
+            *(f"{name}={value}" for name, value in values.items()),
+        ]) + "\n")
 
 
 class Setup:
@@ -211,9 +270,12 @@ class Setup:
     GENERATORS = "/opt/decentai/bootstrap"
     KEYS = {
         "generate_service_keys.py": ("BACKEND_SERVICE_PRIVATE_KEY",
-                                     "BACKEND_SERVICE_PUBLIC_KEY",
-                                     "AI_RUNTIME_SERVICE_PRIVATE_KEY",
-                                     "AI_RUNTIME_SERVICE_PUBLIC_KEY"),
+                                     "BACKEND_SERVICE_PUBLIC_KEY"),
+        # The install's own node authority: registered as a shared
+        # authority by the seeder, and the bundled node's credentials
+        # signed with it by node-issuer — nothing asked of the person.
+        "generate_node_authority.py": ("NODE_AUTHORITY_PRIVATE_KEY",
+                                       "NODE_AUTHORITY_PUBLIC_KEY"),
         "generate_secret_keys.py": ("SECRET_ENCRYPTION_KEYS",
                                     "SECRET_ENCRYPTION_ACTIVE"),
     }
@@ -236,6 +298,22 @@ class Setup:
     #: template's word is a server's: the first-run page asks a computer
     #: of one's own for no code.
     LOCAL = {"SETUP_CODE": "none"}
+    #: What a setting this computer's file gains is made as, where it
+    #: is a secret of the install's own: never the template's word.
+    MADE: Dict[str, Callable[[], str]] = {}
+    #: The secrets kept out of deploy.env, and the file each is in:
+    #: Compose gives each file only to the services that use it.
+    SANDBOX_SECRET = "AI_RUNTIME_SANDBOX_SECRET"
+    AUTHORITY_KEY = "NODE_AUTHORITY_PRIVATE_KEY"
+    SECRET_FILES = {
+        SANDBOX_SECRET: ("sandbox.env",
+                         "the execution node's secret, which the AI Runtime "
+                         "and its Execution Sandboxes prove to each other."),
+        AUTHORITY_KEY: ("node-authority.env",
+                        "the install's node authority's private key, which "
+                        "node-issuer alone signs the bundled node's "
+                        "credentials with."),
+    }
 
     # ------------------------------------------------------------------
     def run(self, port: Optional[int] = None) -> str:
@@ -248,13 +326,18 @@ class Setup:
                     f"change PORT, PUBLIC_APP_URL and CORS_ALLOW_ORIGINS "
                     f"there together.")
             self._must_be_local()
-            self._complete()
+            self._secrets(self._complete())
         else:
             self.say("Building the backend, to make this install's keys...")
+            keys = self._keys()
+            authority = keys.pop(self.AUTHORITY_KEY)
             self.settings.write(self.settings.local(
-                port or Settings.DEFAULT_PORT, self._keys()))
+                port or Settings.DEFAULT_PORT, keys))
+            self._secrets({self.AUTHORITY_KEY: authority})
             self.say(f"{Settings.FILE} is written: the keys and the "
-                     f"database's password. Keep it; it is not made twice.")
+                     f"database's password; and beside it sandbox.env and "
+                     f"node-authority.env, each given only to what uses it. "
+                     f"Keep them; they are not made twice.")
         self.say("Starting DecentAI (the first build takes a few minutes)...")
         if self.engine.show(self._compose("up", "-d", "--build")) != 0:
             raise SetupError(
@@ -281,26 +364,65 @@ class Setup:
     def _address(self) -> str:
         return self.settings.values().get("PUBLIC_APP_URL", "").rstrip("/")
 
-    def _complete(self) -> None:
+    def _complete(self) -> Dict[str, str]:
         """What the template gained since the file was written, added
         to it. A key is made now, by the generator that makes it — and
         only the key the file lacks is taken from what it prints: the
         keys the file holds are kept, as they are made once. Any other
-        setting is added as the template says it."""
+        setting is added as the template says it. Returns what was made,
+        so a secret kept outside the file finds its way to its own."""
         missing = self.settings.missing()
         if not missing:
-            return
+            return {}
         generators = {script for script, names in self.KEYS.items()
                       if set(names) & set(missing)}
         if generators:
             self.say("Building the backend, to make the keys this install lacks...")
         made = self._keys(generators) if generators else {}
         template = self.settings.template()
+        made.update({name: make() for name, make in self.MADE.items()
+                     if name in missing and name not in made})
         self.settings.add({name: made.get(name, self.LOCAL.get(name, template[name]))
                            for name in missing})
         self.say(f"{Settings.FILE} gained {', '.join(missing)}: what the "
                  f"platform has since the file was written. Nothing else in "
                  f"it changed.")
+        return made
+
+    def _secrets(self, made: Dict[str, str]) -> None:
+        """The secrets kept out of deploy.env, each in its own file:
+        written once, from what this run made, or moved out of a
+        deploy.env from before that still holds them. A private key just
+        made always replaces its file, since its public half was just
+        written beside it."""
+        said = self.settings.values()
+        moved: Dict[str, str] = {}
+        for name, (file_name, why) in self.SECRET_FILES.items():
+            secret_file = SecretFile(self.folder, file_name, why)
+            value = made.get(name)
+            if secret_file.written and not value:
+                if name in said:
+                    moved[name] = file_name
+                continue
+            value = value or said.get(name)
+            if not value and name == self.SANDBOX_SECRET:
+                value = secrets.token_urlsafe(32)
+            if not value:
+                raise SetupError(
+                    f"{file_name} is missing, and nothing here holds {name} "
+                    f"to write it from. Restore it from a backup, or make a "
+                    f"new pair with bootstrap/generate_node_authority.py and "
+                    f"put the public half in {Settings.FILE} as "
+                    f"NODE_AUTHORITY_PUBLIC_KEY and the private half in "
+                    f"{file_name}.")
+            secret_file.write({name: value})
+            if name in said:
+                moved[name] = file_name
+        if moved:
+            self.settings.move_out(moved)
+            self.say(f"{', '.join(moved)} moved out of {Settings.FILE} into "
+                     f"{', '.join(sorted(set(moved.values())))}: the Data Core "
+                     f"is given {Settings.FILE} whole, and needs neither.")
 
     def _keys(self, scripts: Optional[set] = None) -> Dict[str, str]:
         """The keys, made by the platform's own generators in the

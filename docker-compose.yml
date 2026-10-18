@@ -1,6 +1,6 @@
 # The whole platform on one machine: MongoDB, the one-shot seeder, the
-# backend, the private AI runtime, the agents' container, the speech
-# container, and web (Caddy) as
+# backend (the Data Core), the AI Runtime, one Execution Sandbox, the
+# speech container, and web (Caddy) as
 # the one door (the web app and the backend on one origin). Every
 # setting comes from one file, deploy.env:
 #
@@ -18,16 +18,19 @@
 #
 #   default   the one with a way out to the internet: web, backend,
 #             ai-runtime, speech. Caddy reaches the backend here; the
-#             backend reaches the runtime's door and the speech
-#             container, and the internet for repositories, mail and
-#             OAuth; the runtime reaches the backend's gateway, and the
+#             backend reaches the speech container, and the internet
+#             for repositories, mail and OAuth; the runtime — the
+#             bundled execution node — dials the backend's node link
+#             and gateway (the backend reaches no node), and the
 #             internet for agents' packages and, through its proxy, for
 #             agents.
 #   data      internal: mongo, and the two that speak to it, backend
 #             and init. Nothing else has a route to the database, and
 #             the database has none out.
-#   agents    internal: ai-runtime and agents. A worker's only way
-#             anywhere is the runtime's proxy.
+#   agents    internal: ai-runtime and agents, the AI Runtime and its
+#             Execution Sandbox. A worker's only way anywhere is the
+#             runtime's proxy. A second sandbox, for testing, is laid
+#             over this file by docker-compose.sandboxes.yml.
 #
 # A container on two networks keeps the reach of each: the backend on
 # default and data reaches GitHub and the database both; mongo on data
@@ -135,8 +138,10 @@ services:
   # backend's delegation surface.
   #
   # It decides everything about an agent and runs none of their code:
-  # it asks the agents' container to start each worker, and speaks to
-  # it over that connection (docs/system/sandbox.md). It is handed its
+  # its Execution Sandboxes register with it, and it asks one of them
+  # to start each worker and speaks to it over that connection
+  # (docs/system/sandbox.md). It shares no volume with them: a
+  # sandbox is sent the code it is to run, and keeps its own. It is handed its
   # settings by name, never the file: the database's password, the
   # encryption keys and the backend's private key are not this
   # container's to hold. A name with no value is passed on when
@@ -152,10 +157,20 @@ services:
     depends_on:
       agents:
         condition: service_healthy
+      node-issuer:
+        condition: service_healthy
+    # The node's secret, which its Execution Sandboxes prove when they
+    # register: in a file of its own (bootstrap/setup.py writes it),
+    # given to the AI Runtime and its sandboxes and to nothing else.
+    env_file: sandbox.env
     environment:
-      AI_RUNTIME_AGENTS_SPAWNER: agents:8003
+      AI_RUNTIME_SANDBOX_PORT:
+      # Who the Data Core is: nothing it did not sign is believed.
       BACKEND_SERVICE_PUBLIC_KEY: ${BACKEND_SERVICE_PUBLIC_KEY:?set in deploy.env}
-      AI_RUNTIME_SERVICE_PRIVATE_KEY: ${AI_RUNTIME_SERVICE_PRIVATE_KEY:?set in deploy.env}
+      # Who this execution node is: a credential the install's authority
+      # signed, which node-issuer writes and keeps fresh. The node reads
+      # it and never holds the authority's key.
+      AI_RUNTIME_NODE_CREDENTIAL_FILE: /run/decentai/node/credential
       BACKEND_INTERNAL_URL: ${BACKEND_INTERNAL_URL:-http://backend:8000}
       AI_RUNTIME_AGENTS_INSTALL_DIR: ${AI_RUNTIME_AGENTS_INSTALL_DIR:-/data/agents}
       AI_RUNTIME_HOST:
@@ -167,8 +182,6 @@ services:
       PIP_EXTRA_INDEX_URL:
       PIP_TRUSTED_HOST:
       PIP_CERT:
-      BACKEND_TOKEN_ISSUER:
-      AI_RUNTIME_TOKEN_AUDIENCE:
       LOG_LEVEL:
       TZ:
       # how this machine reaches the internet, and whom it trusts
@@ -186,11 +199,47 @@ services:
       DECENTAI_BROWSER_FOLD_EVERY:
       DECENTAI_CODE_RUN_SECONDS:
     volumes:
-      - agents_data:/data/agents
+      # the approved packages it passes on to its sandboxes
+      - runtime_agents:/data/agents
+      - node_credential:/run/decentai/node:ro
 
-  # Agent code runs here, and nothing else does: the runtime's image,
-  # started as the spawner, holding no setting of the platform's. What
+  # The install's own issuer of node credentials — what a secret
+  # manager or a cluster's workload identity is for a larger deployment
+  # (docs/system/execution-nodes.md). It holds the authority's private
+  # key, which the seeder registered as a shared authority, signs a
+  # credential naming the bundled node that lives ten minutes, and
+  # writes it again every few. It reaches no network; the node mounts
+  # what it writes read-only.
+  node-issuer:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    command: ["python", "/opt/decentai/bootstrap/node_issuer.py"]
+    network_mode: none
+    # The install's authority's private key, in a file of its own
+    # (bootstrap/setup.py writes it), given to this service alone: the
+    # Data Core and the seeder hold only its public half.
+    env_file: node-authority.env
+    environment:
+      NODE_NAME: ${NODE_NAME:-bundled}
+      NODE_CREDENTIAL_FILE: /run/decentai/node/credential
+      LOG_LEVEL:
+    volumes:
+      - node_credential:/run/decentai/node
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os, sys; sys.exit(0 if os.path.isfile('/run/decentai/node/credential') else 1)"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 5s
+
+  # The Execution Sandbox: agent code runs here, and nothing else does.
+  # The runtime's image, started as the spawner, holding no setting of
+  # the platform's but the node's secret, which it registers with. What
   # a worker is given of the settings above, the runtime sends with it.
+  # Its folder is its own: the code it runs, the environments, the
+  # workers' homes and what it writes down of them.
   #
   # Its network reaches the runtime and nothing else, so the runtime's
   # proxy is an agent's only way out. The right below sets one firewall
@@ -212,17 +261,29 @@ services:
     mem_limit: ${AGENTS_MEMORY:-0}
     cpus: ${AGENTS_CPUS:-0}
     command: ["python", "-m", "ai_runtime.agents_container.service"]
+    # Stopped, it drains: it starts no new worker, and those running
+    # finish what they are doing before it goes.
+    stop_grace_period: 75s
+    # The node's secret, which its Execution Sandboxes prove when they
+    # register: in a file of its own (bootstrap/setup.py writes it),
+    # given to the AI Runtime and its sandboxes and to nothing else.
+    env_file: sandbox.env
     environment:
       AI_AGENTS_PROXY: ai-runtime:${AI_RUNTIME_EGRESS_PORT:-8002}
       AI_RUNTIME_EGRESS_PORT:
-      AI_RUNTIME_AGENTS_INSTALL_DIR: ${AI_RUNTIME_AGENTS_INSTALL_DIR:-/data/agents}
+      # where it registers, who it is, and what it says of itself
+      AI_SANDBOX_RUNTIME: ai-runtime:${AI_RUNTIME_SANDBOX_PORT:-8005}
+      AI_SANDBOX_ID: agents
+      AI_SANDBOX_LABELS: ${AGENTS_LABELS:-}
       # 0 turns off the filter on what system calls a worker may make;
       # the filter is written here, where workers run
       AI_RUNTIME_SYSCALL_FILTER:
       LOG_LEVEL:
       TZ:
     volumes:
-      - agents_data:/data/agents
+      # The helper was built for this path: a sandbox's folder is here
+      # in every sandbox, and is each sandbox's own.
+      - sandbox_data:/data/agents
     networks:
       - agents
     healthcheck:
@@ -261,14 +322,16 @@ networks:
   # to it. Nothing on it reaches the internet.
   data:
     internal: true
-  # Between the runtime and the agents' container, and nowhere else:
+  # Between the AI Runtime and its Execution Sandboxes, and nowhere else:
   # nothing on it reaches the internet, the database or the backend.
   agents:
     internal: true
 
 volumes:
-  agents_data:
+  runtime_agents:
+  sandbox_data:
   agent_packages:
   mongo_data:
+  node_credential:
   speech_models:
   uploads_data:

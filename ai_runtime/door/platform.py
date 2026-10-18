@@ -8,22 +8,23 @@ carries that chat's credential. What a chat may do is still only what
 ``contract`` answers. The sim (sim/session_services.py) is the same
 contract in memory; nothing that reasons can tell them apart.
 
-    backend = Backend(Gateway(url), RuntimeIdentity(private_key))
+    node = NodeCredential(file=…)
+    backend = Backend(Gateway(url, node=node, key=DataCoreKey(pem)), node)
     backend.grant(chat_id, credential)          at the dial
     await backend.contract(chat_id)             what the chat may do
     await backend.persist_message(chat_id, …)   the record
     backend.resources(chat_id)                  an agent's data, files and
                                                 secrets, as the chat (resources.py)
     await backend.open_card(chat_id, request)   a card on the record
-    await backend.approved_packages()           as the runtime itself: the
+    await backend.approved_packages()           as the node itself: the
                                                 package door (agent-code.md)
 
 One thing the runtime asks as itself and not as any chat: which
 packages are approved anywhere, their bytes, and where to say one is
-ready — the package door, with a token only a runtime can sign
-(``RuntimeIdentity``, the mirror of the backend's own service token).
-The key is required at start (settings.py): a runtime has no other way
-to code.
+ready — the package door, with this execution node's credential, which
+an authority the Data Core registered signed (door/node.py). Every
+request carries that credential, and every reply must carry the Data
+Core's signature (``Gateway``).
 
 Two things the sim does in memory that a network makes explicit:
 
@@ -42,12 +43,13 @@ from __future__ import annotations
 import base64
 import logging
 import secrets
-import uuid
-from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
-import jwt
+
+from ai_runtime.door.node import SignatureRefused
+from contracts.node import (
+    HEADER_LEASE, HEADER_NODE, HEADER_REQUEST, HEADER_SIGNATURE)
 
 #: how much of a chat's conversation frames a fresh mind
 HISTORY_LIMIT = 100
@@ -65,21 +67,49 @@ class GatewayError(RuntimeError):
 class Gateway:
     """POST /app {endpoint, data} as one credential. The AI domain
     answers in the EndpointResponse envelope; the data-layer and
-    settings domains answer plain dicts — both are accepted."""
+    settings domains answer plain dicts — both are accepted.
 
-    def __init__(self, base_url: str, timeout: float = 15.0):
+    Every request carries this node's own credential beside whatever it
+    is made as (``node``, ai_runtime/door/node.py), and every reply must
+    carry the Data Core's signature over its bytes and this request
+    (``key``): one that does not is refused as if nothing had answered.
+    A gateway with no key checks nothing — a test's, never main.py's."""
+
+    def __init__(self, base_url: str, timeout: float = 15.0,
+                 node=None, key=None):
         self.base_url = base_url.rstrip("/")
+        self.node = node
+        self.key = key
         self._client = httpx.AsyncClient(base_url=self.base_url,
                                          timeout=timeout)
 
-    async def call(self, endpoint: str, data: dict, token: str) -> dict:
+    async def _headers(self, token: Optional[str], request_id: str,
+                       lease: Optional[int]) -> Dict[str, str]:
+        headers = {HEADER_REQUEST: request_id}
+        credential = await self.node.token() if self.node is not None else ""
+        if credential:
+            headers[HEADER_NODE] = credential
+        bearer = token or credential
+        if bearer:
+            headers["Authorization"] = f"Bearer {bearer}"
+        if lease is not None:
+            headers[HEADER_LEASE] = str(int(lease))
+        return headers
+
+    async def call(self, endpoint: str, data: dict, token: Optional[str] = None,
+                   lease: Optional[int] = None) -> dict:
+        request_id = f"runtime_{secrets.token_urlsafe(18)}"
         body = {"endpoint": endpoint, "data": {
-            "request_id": f"runtime_{secrets.token_urlsafe(18)}",
+            "request_id": request_id,
             **(data or {}),
         }}
         try:
+            headers = await self._headers(token, request_id, lease)
+        except Exception as exc:
+            raise GatewayError(f"{endpoint}: {exc}", 401)
+        try:
             response = await self._client.post(
-                "/app", json=body, headers={"Authorization": f"Bearer {token}"})
+                "/app", json=body, headers=headers)
         except httpx.HTTPError as exc:
             # A timeout, a refused connection: said as every failure of
             # the platform is, with what happened where its own text is
@@ -88,6 +118,16 @@ class Gateway:
             raise GatewayError(
                 f"{endpoint} could not reach the platform: "
                 f"{type(exc).__name__}" + (f": {said[:300]}" if said else ""))
+        if self.key is not None:
+            try:
+                self.key.check_reply(
+                    response.headers.get(HEADER_SIGNATURE, ""),
+                    self.node.name if self.node is not None else "",
+                    request_id, response.content)
+            except SignatureRefused as refused:
+                raise GatewayError(
+                    f"{endpoint}: the answer is not the Data Core's — "
+                    f"{refused}", 502)
         try:
             payload = response.json()
         except ValueError:
@@ -111,43 +151,21 @@ class Gateway:
         await self._client.aclose()
 
 
-class RuntimeIdentity:
-    """The runtime's own identity toward the backend: a short-lived
-    statement that *this is a runtime*, signed with a key only runtimes
-    hold (AI_RUNTIME_SERVICE_PRIVATE_KEY; the backend verifies with the
-    public half). It names no person and no organization, and the
-    backend lets it through the package door and nowhere else
-    (backend/server/authentication/access.py). The mirror of the token
-    the backend proves itself with on a dial."""
-
-    ALGORITHM = "RS256"
-    ISSUER = "decentai-ai-runtime"
-    AUDIENCE = "decentai-backend"
-    TTL_SECONDS = 60
-    KEY_ID = "ai-runtime-service-v1"
-
-    def __init__(self, private_key: str):
-        self.private_key = private_key
-
-    def token(self) -> str:
-        now = datetime.now(timezone.utc)
-        return jwt.encode({
-            "typ": "runtime_service",
-            "iss": self.ISSUER, "sub": self.ISSUER, "aud": self.AUDIENCE,
-            "jti": f"rst_{uuid.uuid4().hex}",
-            "iat": now, "nbf": now,
-            "exp": now + timedelta(seconds=self.TTL_SECONDS),
-        }, self.private_key, algorithm=self.ALGORITHM,
-            headers={"kid": self.KEY_ID})
-
-
 class Backend:
-    def __init__(self, gateway, identity: Optional[RuntimeIdentity] = None):
+    def __init__(self, gateway, identity=None):
         self.gateway = gateway
-        #: chat_id -> the delegation to call as, granted by the dial
+        #: chat_id -> the delegation to call as, granted by attaching
         self.credentials: Dict[str, str] = {}
-        #: What this runtime is as itself. None only in a test that
-        #: asks nothing of the package door.
+        #: chat_id -> the number of the lease this node holds the chat
+        #: under: every call made for the chat carries it, and the Data
+        #: Core refuses an old one (docs/system/execution-nodes.md#leases)
+        self.leases: Dict[str, int] = {}
+        #: called with a chat's id when the Data Core says this node no
+        #: longer holds it (a stale lease): the node link lets it go
+        self.on_stale = None
+        #: What this node is as itself: its credential
+        #: (ai_runtime/door/node.py, NodeCredential). None only in a
+        #: test that asks nothing of the package door.
         self.identity = identity
         self.logger = logging.getLogger(self.__class__.__name__)
 
@@ -155,9 +173,13 @@ class Backend:
     async def _as_runtime(self, endpoint: str, data: dict) -> dict:
         if self.identity is None:
             raise GatewayError(
-                f"{endpoint}: this runtime has no identity of its own "
-                f"(AI_RUNTIME_SERVICE_PRIVATE_KEY is not set)", 401)
-        return await self.gateway.call(endpoint, data, self.identity.token())
+                f"{endpoint}: this node has no credential of its own "
+                f"(AI_RUNTIME_NODE_CREDENTIAL_FILE is not set)", 401)
+        try:
+            token = await self.identity.token()
+        except Exception as exc:
+            raise GatewayError(f"{endpoint}: {exc}", 401)
+        return await self.gateway.call(endpoint, data, token)
 
     async def approved_packages(self) -> List[dict]:
         """Every package some standing approval of any organization
@@ -198,6 +220,15 @@ class Backend:
     def revoke(self, chat_id: str) -> None:
         self.credentials.pop(self._split(chat_id)[0], None)
 
+    def hold(self, chat_id: str, lease: Optional[int]) -> None:
+        """The lease this node holds the chat under, from its attaching;
+        None lets it go."""
+        root = self._split(chat_id)[0]
+        if lease is None:
+            self.leases.pop(root, None)
+        else:
+            self.leases[root] = int(lease)
+
     @staticmethod
     def _split(chat_id: str) -> Tuple[str, str]:
         """``chat_1/sub_xxxx`` → (chat_1, sub_xxxx); a chat → (chat, "")."""
@@ -213,7 +244,18 @@ class Backend:
         payload = {"chat_id": root, **(data or {})}
         if thread:
             payload["thread"] = thread
-        return await self.gateway.call(endpoint, payload, token)
+        lease = self.leases.get(root)
+        try:
+            if lease is None:
+                return await self.gateway.call(endpoint, payload, token)
+            return await self.gateway.call(endpoint, payload, token, lease=lease)
+        except GatewayError as exc:
+            if exc.status == 409 and self.on_stale is not None \
+                    and self.leases.get(root) == lease:
+                # Another node holds the chat now: nothing more is
+                # written for it from here.
+                self.on_stale(root)
+            raise
 
     # -- the contract ----------------------------------------------------
     async def contract(self, chat_id: str) -> dict:

@@ -1017,22 +1017,22 @@ class TestThePackageDoor:
         self._install(admin, control, manifest_doc)
         refused = app_call(admin, "Agents:Package:List", {})
         assert refused.status_code == 403
-        assert "Only the AI runtime" in refused.text
+        assert "Only an execution node" in refused.text
 
     def test_a_chats_delegation_may_not_either(
         self, anon, admin, seed, control, manifest_doc
     ):
-        from api.services.chat_session.identity import Delegation
+        from conftest import delegated_headers
 
         agent = self._install(admin, control, manifest_doc)
-        token = Delegation().for_chat({
+        headers = delegated_headers({
             "user_id": seed.admin["_id"], "org_id": seed.org["_id"],
-            "email": seed.admin["email"], "session_id": "",
+            "email": seed.admin["email"],
         }, "chat_pull")
         refused = anon.post("/app", json={
             "endpoint": "Agents:Package:Fetch",
             "data": {"package_digest": agent["package_digest"]},
-        }, headers={"Authorization": f"Bearer {token}"})
+        }, headers=headers)
         assert refused.status_code == 403
 
     def test_the_runtime_lists_and_pulls_exactly_the_approved_bytes(

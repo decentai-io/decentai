@@ -1,6 +1,6 @@
-"""Where an agent's processes run: a user, a home and a spool of its
-own for each agent, the spawn helper that switches users and sets the
-fences, and the proof at start that all of it holds
+"""Where an agent's processes run in an Execution Sandbox: a user and
+a home of its own for each agent, the spawn helper that switches users
+and sets the fences, and the proof at start that all of it holds
 (docs/system/sandbox.md).
 
     places = Places(install_dir)
@@ -8,21 +8,22 @@ fences, and the proof at start that all of it holds
     place = places.place(agent_id)         one agent's place, given on first asking
     await places.prepare(place)            its folders, emptied and its own
     place.spawn_line(program, reads)       the helper's line that becomes the program
-    place.environment(given, proxy)        with its home, its spool and the way out
+    place.environment(given, proxy)        with its home and the way out
     await places.stop(place)               every process of its user ended
     await places.listing(place)            what its user keeps, as that user
 
 The spawner (service.py) is an ordinary user and cannot start a child
 as somebody else; the spawn helper (spawn_helper.c) can, and does
-nothing else. Everything here runs in the agents' container; the
-runtime asks for a worker, a build or a listing by name (wire.py) and
-never sees a user, a line or a process id.
+nothing else. Everything here runs in the Execution Sandbox; the
+AI Runtime asks for a worker, an install or a listing by name (wire.py)
+and never sees a user, a line or a process id.
 
-WHERE IT LIVES.
+WHERE IT LIVES, in the sandbox's own folder and nobody else's:
 
     <install_dir>/workers/users.json      agent -> its user
     <install_dir>/workers/<agent>/home    the worker's alone
-    <install_dir>/workers/<agent>/spool   the worker's and the runtime's
+    <install_dir>/workers/builder/spool   what the builder built, for the
+                                          sandbox to unpack
 
 A home is emptied before every start. A worker holds no state
 (docs/reference/worker-protocol.md), and a folder that outlived it would be one.
@@ -58,8 +59,8 @@ class ConfinementFailed(RuntimeError):
 
 
 class Place:
-    """Where one agent's processes run: its user, its home and its
-    spool, and the lines that start, measure and end things there."""
+    """Where one agent's processes run: its user and its home, and
+    the lines that start, measure and end things there."""
 
     def __init__(self, places: "Places", name: str, user: int):
         self.places = places
@@ -69,7 +70,13 @@ class Place:
         self.label = name
         self.folder = places.workers_dir / name
         self.home = self.folder / "home"
-        self.spool = self.folder / "spool"
+        #: Where the builder leaves what it built, for the spawner to
+        #: take: the folder the helper knows as a place's spool, its
+        #: user's and the platform's user's. No worker has one: large
+        #: files travel on a worker's own lines (wire.py).
+        self.wheels = self.folder / "spool"
+        #: Whether this is the builder's place, which leaves wheels.
+        self.builds = False
         #: Whether what runs here has to move files from one folder to
         #: another. A build does — the tools packages are built with
         #: finish by moving what they made — and the first Landlock
@@ -91,7 +98,7 @@ class Place:
         """The helper's line that becomes ``program`` as this place's
         user, with its limits and its fences. ``reads`` is what the
         program runs from — a package, an environment — and the fence
-        lets it open those, the system, its own home and spool, and
+        lets it open those, the system, its own folders, and
         nothing else. ``held`` is whether the fence also holds it to
         the proxy's port, where the kernel can; only the proof that the
         firewall rule does goes without."""
@@ -112,9 +119,14 @@ class Place:
 
     def measure_line(self) -> List[str]:
         """The line that says how much this place's user keeps on disk,
-        in its home and its spool: run as that user, the only one who
-        may read them, now and then while the worker runs."""
-        return self.spawn_line([self.MEASURER, "-sb", str(self.home), str(self.spool)])
+        in its folders: run as that user, the only one who may read
+        them, now and then while the worker runs."""
+        return self.spawn_line([self.MEASURER, "-sb", *map(str, self.folders())])
+
+    def folders(self) -> List[Path]:
+        """The folders this place's user writes in: its home, and for
+        the builder where it leaves what it built."""
+        return [self.home, self.wheels] if self.builds else [self.home]
 
     def filter(self) -> List[str]:
         """The word that has the helper refuse a program the system
@@ -131,7 +143,7 @@ class Place:
         if not self.fenced:
             return []
         readable = [*Places.SYSTEM_READS, *Places.browsers(), *reads]
-        writable = [self.home, self.spool, *Places.SYSTEM_WRITES]
+        writable = [*self.folders(), *Places.SYSTEM_WRITES]
         way_out = (
             [f"c:{self.places.proxy_port}"]
             if held and self.places.fence_holds_connections else [])
@@ -151,14 +163,13 @@ class Place:
 
     def environment(self, given: Dict[str, str], proxy: str = "") -> Dict[str, str]:
         """A program's environment: what it was given, its home as the
-        one place it writes, its spool, and the way out under every
+        one place it writes, and the way out under every
         name a program looks for one — and under the platform's own,
         for an agent that ignores the others on purpose."""
         home = str(self.home)
         environment = {
             **given,
             "HOME": home, "TMPDIR": home, "TMP": home, "TEMP": home,
-            "DECENTAI_SPOOL_DIR": str(self.spool),
         }
         if proxy:
             for name in ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy",
@@ -259,6 +270,12 @@ class Places:
         self.filters_calls = False
         #: Whether the helper could put that filter on, asked or not.
         self.can_filter_calls = False
+        #: Whether ``check`` has proved all of the above since this
+        #: process started. Until it has, the fences above are not
+        #: known, and nothing is run as an agent's user (service.py):
+        #: a container that started again is not taken to hold what
+        #: it never proved.
+        self.checked = False
         self.logger = logging.getLogger(self.__class__.__name__)
 
     # ------------------------------------------------------------------
@@ -271,6 +288,7 @@ class Places:
         Landlock and whether seccomp it has, and installation's place
         is prepared from end to end. Raises ``ConfinementFailed``
         naming what to mend."""
+        self.checked = False
         code, output = await self._helper(["check"])
         if code != 0:
             raise ConfinementFailed(self._what_to_mend(
@@ -290,6 +308,7 @@ class Places:
             raise ConfinementFailed(self._what_to_mend("; ".join(errors)))
         await self.sweep()
         self._say_what_holds()
+        self.checked = True
 
     def report(self) -> Dict[str, object]:
         """What the kernel here holds a worker to, as the runtime is
@@ -304,7 +323,7 @@ class Places:
 
     @staticmethod
     def _what_to_mend(reasons: str) -> str:
-        return (f"Workers cannot be confined in the agents' container: "
+        return (f"Workers cannot be confined in this Execution Sandbox: "
                 f"{reasons}. Mend what it names — the container's rights, "
                 f"the install directory — and start again.")
 
@@ -322,7 +341,7 @@ class Places:
             "an agent declared are built by a user of their own.")
         if self.fences:
             say("Workers' files are fenced: an agent opens the system, its "
-                "own package and environment, its home and its spool, and "
+                "own package and environment, its home, and "
                 "nothing else.")
         else:
             warn("Workers' files are NOT fenced here: this kernel has no "
@@ -402,7 +421,7 @@ class Places:
             if place.user:
                 await self.clear(place)
             try:
-                for inside in (place.home, place.spool):
+                for inside in (place.home, place.wheels):
                     if inside.is_dir():
                         inside.rmdir()
                 folder.rmdir()
@@ -452,6 +471,7 @@ class Places:
         place = Place(self, wire.BUILDER, self.BUILDER_USER)
         place.label = "the builder"
         place.moves_files = True
+        place.builds = True
         return place
 
     @staticmethod
@@ -509,28 +529,27 @@ class Places:
             # reads neither.
             self.workers_dir.mkdir(parents=True, exist_ok=True)
             place.folder.mkdir(mode=0o711, exist_ok=True)
-            for folder in (place.home, place.spool):
+            for folder in place.folders():
                 folder.mkdir(mode=0o700, exist_ok=True)
             # When it was last used, for the sweep of places nobody
             # uses any more.
             os.utime(place.folder)
         except OSError as exc:
             return [f"the worker's folders could not be made: {exc}"]
-        return (
-            await self.clear(place)
-            or await self.ask(place, ["own", str(place.user), str(place.home)])
-            or await self.ask(place, ["own", str(place.user), str(place.spool)])
-        )
+        errors = await self.clear(place)
+        for folder in place.folders():
+            errors = errors or await self.ask(
+                place, ["own", str(place.user), str(folder)])
+        return errors
 
     async def clear(self, place: Place) -> List[str]:
-        """Empty the home and the spool, and take away what the worker
-        left in the folders every user may write to — as the worker's
-        own user, so nothing but the worker's is ever deleted."""
-        return (
-            await self.ask(place, ["clear", str(place.home)])
-            or await self.ask(place, ["clear", str(place.spool)])
-            or await self.ask(place, ["sweep", str(place.user)])
-        )
+        """Empty the place's folders, and take away what the worker left
+        in the folders every user may write to — as the worker's own
+        user, so nothing but the worker's is ever deleted."""
+        errors: List[str] = []
+        for folder in place.folders():
+            errors = errors or await self.ask(place, ["clear", str(folder)])
+        return errors or await self.ask(place, ["sweep", str(place.user)])
 
     async def stop(self, place: Place) -> List[str]:
         """End every process of this place's user: the worker, and
@@ -615,14 +634,14 @@ class Places:
     LISTED_MAX = 500
 
     async def listing(self, place: Place) -> Dict[str, object]:
-        """What this place's user keeps in its home and its spool now:
+        """What this place's user keeps in its folders now:
         ``{"files": [{"path", "bytes", "modified"}], "count", "bytes"}``,
         the first ``LISTED_MAX`` of them listed and all of them counted
         — or ``{"error"}``. Asked of the agent's own user, beside a
         worker that may be running, which is left running."""
         code, output = await self.subprocess(
             place.spawn_line([sys.executable, "-I", "-c", self.LISTING,
-                              str(self.LISTED_MAX), str(place.home), str(place.spool)]),
+                              str(self.LISTED_MAX), *map(str, place.folders())]),
             environment=place.environment({"PATH": os.environ.get("PATH", "")}),
             cwd="/", timeout=self.LISTING_SECONDS, drop_errors=True,
             stop_line=place.stop_line())

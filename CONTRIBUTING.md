@@ -13,12 +13,19 @@ Read how the platform works in `docs/system/` and the contracts in
 in the same pull request, with the reasoning. Work on the web
 application is held to the same standard by
 [The design language](docs/contributing/design-language.md), which ends in six greps
-a frontend change is expected to leave clean.
+a web client change is expected to leave clean.
+
+Use the engine's names in new code, documentation, comments and log
+lines: **Data Core**, **AI Runtime**, **Execution Sandbox**, **execution
+node**, **clients** ([the parts](README.md#the-parts),
+[names](docs/system/architecture.md#names)). Existing services, folders
+and settings keep their older names until they are renamed together, in
+one change.
 
 Two rules that are load-bearing across the codebase:
 
 - **Authority never arrives through a door.** What a chat may do is
-  answered by the backend's contract, per chat, read again at every
+  answered by the Data Core's contract, per chat, read again at every
   turn. A
   socket, a frame, a model's output: none of them state entitlement.
 - **The manifest's word is the gate.** An agent may only do what its
@@ -46,13 +53,13 @@ python -m pytest examples/tests -q         # the Note example, in a real worker
 python -m pytest speech/tests -q           # the speech container, without its models
 ```
 
-Run the backend and spanning suites one at a time: they share the test
+Run the Data Core and spanning suites one at a time: they share the test
 database (`decentai_test`, on the MongoDB `MONGO_URI` names, or the
 local one where it names none).
 
 Every pull request is run through all five, and through four things a
 laptop does not do (`.github/workflows/tests.yml`): the confinement
-tests, in the runtime's and the agents' containers on a Linux kernel; a build of every
+tests, in the runtime's and the Execution Sandboxes on a Linux kernel; a build of every
 image, the web app's included; the speech container's real models,
 saying a sentence in each language and writing it back down; and the
 published agents' own suite against the change. New behaviour comes with a test that pins it at the layer that

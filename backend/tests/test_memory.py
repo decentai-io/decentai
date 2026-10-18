@@ -10,7 +10,7 @@ import dataclasses
 import pytest
 
 from conftest import app_call
-from test_runtime_client import service_keys
+from conftest import service_keys
 
 
 @pytest.fixture()
@@ -28,19 +28,14 @@ def signing_key(app):
 
 
 def runtime_headers(seed, chat_id="chat_mem", user=None):
-    from api.services.chat_session.identity import Delegation
+    from conftest import delegated_headers
 
     person = user or seed.admin
-    token = Delegation().for_chat(
-        {
-            "user_id": person["_id"],
-            "org_id": seed.org["_id"],
-            "email": person["email"],
-            "session_id": "",
-        },
-        chat_id,
-    )
-    return {"Authorization": f"Bearer {token}"}
+    return delegated_headers({
+        "user_id": person["_id"],
+        "org_id": seed.org["_id"],
+        "email": person["email"],
+    }, chat_id)
 
 
 def remember(anon, seed, text, chat_id="chat_mem", user=None):

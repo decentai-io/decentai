@@ -32,15 +32,15 @@ CHAT_ACTIONS = ["ai:chat:*", "ai:message:*", "ai:approval:*"]
 
 def delegated(anon, user_doc, chat_id, endpoint, data):
     """One /app call as the delegated runtime of ``user_doc``'s chat."""
-    from api.services.chat_session.identity import Delegation
+    from conftest import delegated_headers
 
-    token = Delegation().for_chat({
+    headers = delegated_headers({
         "user_id": user_doc["_id"], "org_id": user_doc["org_id"],
-        "email": user_doc["email"], "session_id": "",
+        "email": user_doc["email"],
     }, chat_id)
     return anon.post("/app", json={
         "endpoint": endpoint, "data": {"chat_id": chat_id, **data},
-    }, headers={"Authorization": f"Bearer {token}"})
+    }, headers=headers)
 
 
 def offer(anon, user_doc, chat_id, **skill):

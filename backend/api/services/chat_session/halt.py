@@ -58,17 +58,14 @@ class Halt:
         return len(chats)
 
     async def resume(self, user) -> int:
-        """Let this person's chats run again. The chats that keep a
-        clock are dialed back, so their schedules go on; the others
-        wait for the person to open them. Returns how many were
-        dialed."""
+        """Let this person's chats run again. Nothing is attached by
+        it: a chat is placed on a node when the person opens it, or when
+        the Data Core's clock finds one of its rows due — and a row that
+        came due while they were stopped fires once, then. Returns how
+        many of their chats hold a clock."""
         self.users.set_stopped(str(user.get("user_id") or ""), False)
         AuditStore().append("work.resumed", user)
-        dialed = 0
-        for holder in ScheduleStore().rows_for(self._owner(user)):
-            if await get_runtime_clients().ensure(str(holder["chat_id"]), user):
-                dialed += 1
-        return dialed
+        return len(ScheduleStore().rows_for(self._owner(user)))
 
     # ------------------------------------------------------------------
     @staticmethod
@@ -77,13 +74,17 @@ class Halt:
                 "user_id": str(user.get("user_id") or "")}
 
     def _serving(self, user) -> set:
-        """The chats a runtime may be serving for this person without
-        the backend holding a socket to them: one with a key still
-        out (the person left while work went on), one with a clock."""
+        """The chats a node may be serving for this person without the
+        relay holding them: one with a key still out (the person left
+        while work went on), one a node holds a live lease on."""
+        from database.stores import LeaseStore
+
         owner = self._owner(user)
         chats = set(RuntimeSessionStore().chats_of(owner["user_id"]))
-        chats |= {str(holder["chat_id"])
-                  for holder in ScheduleStore().rows_for(owner)}
+        leases = LeaseStore()
+        chats |= {str(doc["_id"]) for doc in leases.col.find(
+            {"user_id": owner["user_id"], "released": False})
+            if leases.live(doc)}
         owned = {chat["chat_id"] for chat in ChatStore().list_for(
             owner["org_id"], owner["user_id"])}
         return chats & owned

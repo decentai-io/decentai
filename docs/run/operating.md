@@ -59,7 +59,7 @@ again puts its own indexes back the same way.
 
 ## What to back up
 
-Four volumes hold everything durable. (A server started with
+Four volumes hold everything durable; two more hold caches. (A server started with
 `docker-compose.server.yml` has two more, `caddy_data` and
 `caddy_config`: the certificates and the account they were issued to,
 which are issued again if lost.)
@@ -69,7 +69,8 @@ which are issued again if lost.)
 | `mongo_data` | the database: identities, chats, records, encrypted values |
 | `uploads_data` | file bytes |
 | `agent_packages` | the approved agent packages — the only copy the platform controls |
-| `agents_data` | the runtime's installed environments, rebuildable from the packages; and what was seen of agents, for the **Monitoring** page ([what is written down](../system/monitoring.md)) |
+| `runtime_agents` | the AI Runtime's cache of the approved packages, pulled again by digest when lost; and what the runtime saw of agents, for the **Monitoring** page ([what is written down](../system/monitoring.md)) |
+| `sandbox_data` | the Execution Sandbox's own copy of the code it runs and its environments, rebuilt from the packages when lost; and what it saw of agents. Each sandbox has one of its own (`sandbox_2_data` for the second of `docker-compose.sandboxes.yml`) |
 | `speech_models` | the platform's own speech models; downloaded again when missing, so not worth a backup |
 
 The encryption keys in `deploy.env` are part of the backup: a database
@@ -151,7 +152,7 @@ signs anybody in after that, and the sign-in page is used.
 All agents share one container, and it is given so much memory and so
 much processor by whoever starts it: `AGENTS_MEMORY` (`2g`, `1500m`) and
 `AGENTS_CPUS` (`2`, `1.5`) in `deploy.env`. Unset is no limit. A change
-takes effect when the agents' container is started again:
+takes effect when the Execution Sandbox is started again:
 
 ```bash
 docker compose --env-file deploy.env up -d agents
@@ -213,7 +214,7 @@ either. To move what is there:
 1. Make the bucket or container, and give the deployment's identity
    (its role, managed identity or service account) read and write on it.
 2. Set `FILE_STORAGE_PROVIDER` and the new store's settings in
-   `deploy.env`, keep the old store's, and restart the backend.
+   `deploy.env`, keep the old store's, and restart the Data Core.
 3. Count, then move:
 
    ```bash
@@ -240,7 +241,7 @@ they are.
 Stored values are encrypted under versioned keys; old versions keep
 decrypting, so rotation is non-destructive:
 
-The tools are run in the backend's image, where the platform's code and
+The tools are run in the Data Core's image, where the platform's code and
 the settings in `deploy.env` are, as the password line above is: on the
 machine itself they would find neither the database nor the keys.
 
@@ -254,7 +255,7 @@ machine itself they would find neither the database nor the keys.
 
    It prints the map with a new active version appended.
 2. Update `SECRET_ENCRYPTION_KEYS` and `SECRET_ENCRYPTION_ACTIVE` in
-   `deploy.env`, and restart the backend. New writes use the new key.
+   `deploy.env`, and restart the Data Core. New writes use the new key.
 3. Rewrite every stored value under the active key (`--check` first
    shows the counts):
 
@@ -285,8 +286,46 @@ docker compose --env-file deploy.env run --rm init \
 Creating one seeds its access chains and prints the invitation for its
 first administrator as a path (`/?invite=…`), to put after the
 deployment's address. A disabled organization's people are signed out
-within a minute: the running backend keeps a session it has just seen
+within a minute: the running Data Core keeps a session it has just seen
 for that long.
+
+## More execution nodes
+
+The stack starts one execution node beside the Data Core. More run
+anywhere that reaches the Data Core's address — another machine, a
+cluster, a customer's own network: a node dials the Data Core, and
+nothing dials a node ([execution nodes](../system/execution-nodes.md)).
+
+1. **Vouch for them once.** Register an authority: a public key
+   (`python bootstrap/generate_node_authority.py` makes a pair) or an
+   issuer's key-set address, with `Nodes:Authority:Create`. The
+   deployment's operator registers shared ones (`scope: shared`); an
+   organization's administrator registers its own, whose nodes serve
+   that organization alone.
+2. **Give each node credentials.** Whatever holds the authority's
+   private key — a secret manager, a cluster's workload identity, or
+   `bootstrap/node_issuer.py` — writes each node a credential of
+   minutes naming it, and again before it lapses. The node never holds
+   the key.
+3. **Start it** from the runtime's image, with its Execution Sandbox
+   beside it, told where the Data Core is and what its key is:
+   `DATA_CORE_URL`, `DATA_CORE_PUBLIC_KEY` (the Data Core's
+   `BACKEND_SERVICE_PUBLIC_KEY`), and `AI_RUNTIME_NODE_CREDENTIAL_FILE`
+   or `AI_RUNTIME_NODE_CREDENTIAL_URL` ([configuration](configuration.md#the-runtime)).
+   Across a network, give it the Data Core's `https://` address.
+
+Nodes are listed, with who admitted them and what each reports, by
+`Nodes:Node:List`. To take one out: revoke its authority
+(`Nodes:Authority:Revoke`, every node it vouches for is refused at
+once), stop issuing it credentials (it drops out within minutes), or,
+in a hurry, `Nodes:Node:Refuse`. Its chats move to another node within
+a minute ([leases](../system/execution-nodes.md#leases)).
+
+To take one Execution Sandbox out of a node without stopping it —
+for maintenance, or a machine running short — drain it with
+`Nodes:Node:Drain` (`node_id`, `sandbox_id`): it is given no new
+agent, and those running finish. `drain: false` lets it work again.
+The sandboxes a node has are in what `Nodes:Node:List` shows of it.
 
 ## Removing it
 

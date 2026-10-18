@@ -279,7 +279,8 @@ class Serving:
     def __init__(self, install_dir, usage, program=None):
         self.service = SpawnerService(
             install_dir, port=0, host="127.0.0.1", usage=usage,
-            helper_line=FakeHelper(Path(install_dir) / "control").line)
+            helper_line=FakeHelper(Path(install_dir) / "control").line,
+            secret="a-node-secret")
         self.service.WATCH_SECONDS = 0.05
         if program is not None:
             self.service.WORKER_PROGRAM = program
@@ -315,7 +316,7 @@ def kernel_of_a_test(tmp_path, monkeypatch):
     served = Serving(tmp_path, usage, program=("-c", STAYING))
     usage.watched_by = served.service
     usage.served = served
-    container = AgentsContainer(f"127.0.0.1:{served.service.port}", tmp_path)
+    container = AgentsContainer(f"127.0.0.1:{served.service.port}", "a-node-secret")
     Placed.container = container
     yield usage, container
     Placed.container = None
@@ -483,11 +484,15 @@ class TestTheSpawnerHoldsThemToIt:
         said = asyncio.run(scenario())
         assert said["limits"] == {"memory": 1000 * MB, "cpus": 2.0}
         assert said["memory"] == 200 * MB
+        # Each said to be in the sandbox that answered.
+        here = usage.served.service.sandbox_id
+        assert said["sandbox"] == here
         assert said["agents"] == [
             {"user": user_of(usage, "Notes"), "memory": 100 * MB, "cpu": 0.5,
-             "processes": 3, "agent": "agt_notes", "name": "Notes", "disk": 3072},
+             "processes": 3, "agent": "agt_notes", "name": "Notes", "disk": 3072,
+             "sandbox": here},
             {"user": 20007, "memory": 5 * MB, "cpu": 0.5, "processes": 3,
-             "agent": "", "name": "", "disk": None}]
+             "agent": "", "name": "", "disk": None, "sandbox": here}]
 
     def test_what_an_agent_keeps_on_disk_is_what_its_own_measuring_said(self):
         assert SpawnerService._measured(b"1024\t/a/home\n2048\t/a/spool\n") == 3072

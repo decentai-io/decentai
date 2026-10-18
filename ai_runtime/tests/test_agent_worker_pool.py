@@ -115,7 +115,7 @@ class TestAHostACredentialNames:
 
     def test_it_closes_when_the_call_ends(self, pool, monkeypatch):
         place = Place()
-        monkeypatch.setattr(pool.confinement, "place", lambda key: place)
+        monkeypatch.setattr(pool.confinement, "place", lambda key, sandbox=None: place)
 
         async def use_secret(resource_id, ref):
             return {"host": "mail.sara.example"}
@@ -132,7 +132,7 @@ class TestAHostACredentialNames:
 
     def test_it_closes_when_the_call_fails(self, pool, monkeypatch):
         place = Place()
-        monkeypatch.setattr(pool.confinement, "place", lambda key: place)
+        monkeypatch.setattr(pool.confinement, "place", lambda key, sandbox=None: place)
         context = Call("c_1")
         context.learned = [("mail.sara.example", None)]
         place.open = list(context.learned)

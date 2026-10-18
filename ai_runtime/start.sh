@@ -1,7 +1,7 @@
 #!/bin/sh
 # The first step of a container made from the runtime's image
-# (docs/system/sandbox.md): the runtime's own, or — where a deployment
-# keeps agents in a container of their own — the agents'.
+# (docs/system/sandbox.md): the AI Runtime's, or an Execution
+# Sandbox's.
 #
 # A confined worker is pointed at the platform's proxy, which lets it
 # reach the hosts its agent declared. This is what makes the proxy the
@@ -10,10 +10,10 @@
 # accepted, and every other connection is refused, name lookups
 # included. Nobody else in the container is touched by it.
 #
-# The rule belongs where workers run. A runtime told that agents have
-# a container of their own (AI_RUNTIME_AGENTS_SPAWNER) sets none: no
-# worker starts beside it. In the agents' container the proxy's port
-# is the spawner's, which passes what arrives to the runtime's proxy.
+# The rule belongs where workers run: in each Execution Sandbox. The AI
+# Runtime sets none: no worker starts beside it. In a sandbox the
+# proxy's port is the spawner's, which passes what arrives to the
+# runtime's proxy.
 #
 # Setting the rule takes a right the container is given when it is
 # started (NET_ADMIN) and nothing started here ever holds: it is set
@@ -38,8 +38,16 @@ if [ "$(id -u)" != "0" ]; then
     exec "$@"
 fi
 
-if [ -n "${AI_RUNTIME_AGENTS_SPAWNER:-}" ]; then
-    echo "start: agents run in a container of their own ($AI_RUNTIME_AGENTS_SPAWNER)"
+# An Execution Sandbox is this image started as the spawner, or told
+# where its runtime takes registrations. Anything else is the AI
+# Runtime, beside which no worker starts.
+case " $* " in
+    *ai_runtime.agents_container.service*) SANDBOX=1 ;;
+    *) SANDBOX=${AI_SANDBOX_RUNTIME:+1} ;;
+esac
+
+if [ -z "$SANDBOX" ]; then
+    echo "start: the AI Runtime; agents run in Execution Sandboxes of their own"
 elif nft -f - 2>/dev/null <<EOF
 add table inet decentai_workers
 delete table inet decentai_workers

@@ -1811,7 +1811,7 @@
       ]
     },
     "ai_schedules": {
-      "description": "The clock's rows, one document per chat holding them whole; the runtime is the only writer.",
+      "description": "The clock's rows, one document per chat holding them whole; the Data Core's clock decides when each is due and the execution node holding the chat runs it.",
       "validator": {
         "$jsonSchema": {
           "bsonType": "object",
@@ -1847,6 +1847,15 @@
             ]
           ],
           "unique": true
+        },
+        {
+          "name": "due",
+          "keys": [
+            [
+              "rows.next_run_at",
+              1
+            ]
+          ]
         }
       ]
     },
@@ -2568,6 +2577,224 @@
             ]
           ],
           "expireAfterSeconds": 34214400
+        }
+      ]
+    },
+    "node_authorities": {
+      "description": "Who may vouch for an execution node: a public key or an issuer's key set, shared or one organization's.",
+      "validator": {
+        "$jsonSchema": {
+          "bsonType": "object",
+          "properties": {
+            "_id": {
+              "bsonType": "string"
+            },
+            "name": {
+              "bsonType": "string"
+            },
+            "kind": {
+              "enum": [
+                "key",
+                "issuer"
+              ]
+            },
+            "scope": {
+              "bsonType": "string"
+            },
+            "public_key": {
+              "bsonType": "string"
+            },
+            "fingerprint": {
+              "bsonType": "string"
+            },
+            "jwks_url": {
+              "bsonType": "string"
+            },
+            "issuer": {
+              "bsonType": "string"
+            },
+            "registered_at": {
+              "bsonType": "date"
+            },
+            "revoked_at": {
+              "bsonType": [
+                "date",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "_id",
+            "name",
+            "kind",
+            "scope"
+          ]
+        }
+      },
+      "indexes": [
+        {
+          "name": "scope",
+          "keys": [
+            [
+              "scope",
+              1
+            ]
+          ]
+        },
+        {
+          "name": "fingerprint",
+          "keys": [
+            [
+              "fingerprint",
+              1
+            ]
+          ]
+        }
+      ]
+    },
+    "execution_nodes": {
+      "description": "The execution nodes that were admitted, kept from what each presented and reported: a view, not a register.",
+      "validator": {
+        "$jsonSchema": {
+          "bsonType": "object",
+          "properties": {
+            "_id": {
+              "bsonType": "string"
+            },
+            "name": {
+              "bsonType": "string"
+            },
+            "authority_id": {
+              "bsonType": "string"
+            },
+            "scope": {
+              "bsonType": "string"
+            },
+            "first_seen": {
+              "bsonType": "date"
+            },
+            "last_seen": {
+              "bsonType": "date"
+            },
+            "connected": {
+              "bsonType": "bool"
+            }
+          },
+          "required": [
+            "_id"
+          ]
+        }
+      },
+      "indexes": [
+        {
+          "name": "scope",
+          "keys": [
+            [
+              "scope",
+              1
+            ]
+          ]
+        },
+        {
+          "name": "authority",
+          "keys": [
+            [
+              "authority_id",
+              1
+            ]
+          ]
+        }
+      ]
+    },
+    "refused_nodes": {
+      "description": "Execution nodes refused by name, whatever their credential says.",
+      "validator": {
+        "$jsonSchema": {
+          "bsonType": "object",
+          "properties": {
+            "_id": {
+              "bsonType": "string"
+            },
+            "refused_at": {
+              "bsonType": "date"
+            },
+            "refused_by": {
+              "bsonType": "string"
+            },
+            "org_id": {
+              "bsonType": "string"
+            },
+            "reason": {
+              "bsonType": "string"
+            }
+          },
+          "required": [
+            "_id"
+          ]
+        }
+      },
+      "indexes": []
+    },
+    "chat_leases": {
+      "description": "Which execution node holds each active chat: numbered and time-bound, so that two nodes never act for one chat.",
+      "validator": {
+        "$jsonSchema": {
+          "bsonType": "object",
+          "properties": {
+            "_id": {
+              "bsonType": "string"
+            },
+            "node_id": {
+              "bsonType": "string"
+            },
+            "number": {
+              "bsonType": [
+                "int",
+                "long"
+              ]
+            },
+            "expires_at": {
+              "bsonType": "date"
+            },
+            "granted_at": {
+              "bsonType": "date"
+            },
+            "released": {
+              "bsonType": "bool"
+            },
+            "org_id": {
+              "bsonType": "string"
+            },
+            "user_id": {
+              "bsonType": "string"
+            }
+          },
+          "required": [
+            "_id",
+            "node_id",
+            "number",
+            "expires_at"
+          ]
+        }
+      },
+      "indexes": [
+        {
+          "name": "node",
+          "keys": [
+            [
+              "node_id",
+              1
+            ]
+          ]
+        },
+        {
+          "name": "expires_at",
+          "keys": [
+            [
+              "expires_at",
+              1
+            ]
+          ]
         }
       ]
     }

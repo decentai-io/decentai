@@ -20,7 +20,7 @@ import jwt
 
 from server.authentication.catalog import (
     RUNTIME_ENDPOINTS as DELEGATION_SURFACE,
-    RUNTIME_SERVICE_ENDPOINTS,
+    NODE_ENDPOINTS,
 )
 from server.authentication.credentials import TokenController
 from server.authentication.policy import PolicyEngine
@@ -43,12 +43,10 @@ class AccessController:
     # data (see catalog.py); this names it where the fence reads it.
     RUNTIME_ENDPOINTS = DELEGATION_SURFACE
 
-    # What a runtime may dispatch as itself (the runtime service
+    # What an execution node may dispatch as itself (the node
     # principal, below): no person stands behind it, so no policy is
     # consulted — the list is the whole answer.
-    RUNTIME_SERVICE_ENDPOINTS = RUNTIME_SERVICE_ENDPOINTS
-    RUNTIME_SERVICE_ISSUER = "decentai-ai-runtime"
-    RUNTIME_SERVICE_AUDIENCE = "decentai-backend"
+    NODE_ENDPOINTS = NODE_ENDPOINTS
 
     def __init__(self, settings: Settings):
         # One process signs and verifies (HS256). The secret is the only key.
@@ -193,6 +191,9 @@ class AccessController:
             user["token_type"] = "RUNTIME"
             user["principal_type"] = "runtime"
             user["chat_id"] = session.get("chat_id", "")
+            # The execution node the delegation was handed to: the
+            # gateway accepts it from that node alone (routes/app.py).
+            user["node_id"] = session.get("node_id", "")
             return
 
         user["token_type"] = "WEB"
@@ -280,47 +281,49 @@ class AccessController:
         return user
 
     # ------------------------------------------------------------------
-    # The runtime, as itself
+    # An execution node, as itself
     # ------------------------------------------------------------------
 
     @staticmethod
     def _signed_by_a_runtime(token: str) -> bool:
         """A session token is signed with this process's own secret
-        (HS256); a runtime signs with a key of its own (RS256). The
-        header says which, before anything is verified."""
+        (HS256); a node's credential is signed by an authority's key
+        pair. The header says which, before anything is verified."""
         try:
-            return jwt.get_unverified_header(token).get("alg") == "RS256"
+            return jwt.get_unverified_header(token).get("alg") != "HS256"
         except jwt.PyJWTError:
             return False
 
     def _runtime_service_user(self, token: str) -> Optional[Dict[str, Any]]:
-        """A runtime speaking as itself: a bearer token only a runtime
-        can sign (RS256; this process holds just the public key, set by
-        AI_RUNTIME_SERVICE_PUBLIC_KEY), with issuer, audience and expiry
-        required. The principal names no person and no organization:
-        what it may do is the package door and nothing else
-        (``is_allowed``). No key configured means no such principal."""
-        from server.setup.app_state import get_settings
+        """An execution node speaking as itself: a credential signed by
+        an authority this Data Core registered
+        (api/services/nodes/admission.py). The principal names no person
+        and no organization: what it may do is the package door and
+        nothing else (``is_allowed``) — and a node one organization
+        owns is told only of that organization's packages
+        (package_controller.py)."""
+        node = self.admitted_node(token)
+        return None if node is None else self.node_principal(node)
 
-        public_key = getattr(get_settings(), "ai_runtime_service_public_key", "")
-        if not public_key:
-            return None
+    def admitted_node(self, token: str):
+        """The node a credential names, or None — said in the log."""
+        from api.services.nodes.admission import Admission, Refused
+
         try:
-            claims = jwt.decode(
-                token, public_key, algorithms=["RS256"],
-                audience=self.RUNTIME_SERVICE_AUDIENCE,
-                issuer=self.RUNTIME_SERVICE_ISSUER,
-                options={"require": ["exp", "iat", "nbf", "jti", "sub"]},
-            )
-        except jwt.PyJWTError:
+            return Admission().admit(token)
+        except Refused as refused:
+            self.logger.info(f"A node was refused: {refused}")
             return None
-        if claims.get("typ") != "runtime_service":
-            return None
+
+    @staticmethod
+    def node_principal(node) -> Dict[str, Any]:
         return {
-            "user_id": "", "org_id": "", "email": "ai-runtime",
-            "user_name": "AI runtime", "status": UserStore.STATUS_ACTIVE,
+            "user_id": "", "org_id": "", "email": f"node:{node.key}",
+            "user_name": f"Execution node {node.name}",
+            "status": UserStore.STATUS_ACTIVE,
             "assigned_groups": [], "session_id": "",
-            "token_type": "RUNTIME_SERVICE", "principal_type": "runtime_service",
+            "token_type": "NODE", "principal_type": "node",
+            "node_id": node.key, "node_scope": node.scope,
         }
 
     @staticmethod
@@ -383,14 +386,14 @@ class AccessController:
         if not user:
             return False
 
-        # A runtime as itself: the package door, and no policy — there
-        # is no person whose policy it could be.
-        if user.get("principal_type") == "runtime_service":
-            allowed = normalized_endpoint in self.RUNTIME_SERVICE_ENDPOINTS
+        # A node as itself: the package door, and no policy — there is
+        # no person whose policy it could be.
+        if user.get("principal_type") == "node":
+            allowed = normalized_endpoint in self.NODE_ENDPOINTS
             if not allowed:
                 self.logger.info(
-                    f"Denied the runtime → {normalized_endpoint} "
-                    f"(outside the package door)")
+                    f"Denied the node {user.get('node_id')} → "
+                    f"{normalized_endpoint} (outside the package door)")
             return allowed
 
         # fnmatchcase, not fnmatch: the latter runs both sides through

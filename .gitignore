@@ -51,3 +51,8 @@ frontend/.sass-cache/
 .claude/
 .DS_Store
 Thumbs.db
+sandbox.env
+node-authority.env
+!sandbox.env.example
+!node-authority.env.example
+**/.workerenv-build/

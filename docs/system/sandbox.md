@@ -25,78 +25,160 @@ use for: what a way out of all of the above is most often made of.
 In a stack started from `docker-compose.yml`, all four parts are
 enforced: the containers' options are the Compose file's to set.
 
-A stack started without those options does not serve: at start the
-runtime asks the agents' container to prove it can confine a worker,
-and refuses to start when it cannot, saying what to mend
-(`Confinement.start`, `Places.check`). What the kernel cannot enforce
-— the fences below, on an older kernel — is found out at start,
-written to the log, and said on an agent's page, so a person reads
-plainly what is not enforced where it runs. There is no way to run
-the runtime outside the stack: its tests stand a double in for the
-container instead.
+A stack started without those options does not serve: each Execution
+Sandbox proves at its own start that it can confine a worker, and says
+what it proved when it registers with the AI Runtime; the runtime
+places no worker on a sandbox that could not, and does not start
+until one can, saying what to mend (`Confinement.start`,
+`Places.check`, `Sandboxes.wait`). What the kernel cannot enforce —
+the fences below, on an older kernel — is found out at start, written
+to the log, and said on an agent's page, so a person reads plainly
+what is not enforced where it runs. An Execution Sandbox that started
+again is not taken to hold what it proved before: until a check has
+passed in its own process it starts no worker, installs nothing and
+lists no files, and a runtime refused for that reason checks it again
+and reports what that check proves (`AgentsContainer.recheck`). There
+is no way to run the runtime outside the stack: its tests stand a
+double in for a sandbox instead.
 
-## A container of their own
+## Execution Sandboxes of their own
 
-Agent code runs in a container that holds nothing else: the **agents'
-container**. The runtime decides what an agent may do — which code,
-which environment, which hosts, which calls — and asks for a worker
-by name; everything about the process is the agents' container's:
+Agent code runs in a container that holds nothing else: an **Execution
+Sandbox**. One AI Runtime serves many of them, and one is the ordinary
+case; a runtime and its sandboxes are one **execution node**, deployed
+together. The runtime decides what an agent may do — which code, which
+hosts, which calls — and which sandbox its worker runs in, and asks
+for the worker by name; everything about the process is the sandbox's:
 its user, its folders, its fences, its spawn line, its ending.
 
-    runtime's container                      agents' container
-    ───────────────────                      ─────────────────
-    the assistant, the executor,   ──────▶   the spawner, the places, the
-    the proxy, what an agent may    socket   spawn helper, every worker,
-                                             the builder
+    AI Runtime                                 Execution Sandboxes
+    ──────────                                 ───────────────────
+    the assistant, the executor,   ◀─register── each: the spawner, the
+    the proxy, the approved         ──socket──▶ places, the spawn helper,
+    packages, which sandbox                     its workers, its builder,
+    runs which agent                            its own copy of the code
 
 - **The spawner** (`ai_runtime/agents_container/service.py`) is the one
-  process of the platform's in that container. The runtime asks it,
-  in structured requests (`agents_container/wire.py`), to start an
-  agent's worker from an environment in a package, to build a list of
-  requirements, to list what an agent keeps, to end an agent's
-  processes, to say what the agents use. It gives each agent a user
+  process of the platform's in a sandbox. The runtime asks it, in
+  structured requests (`agents_container/wire.py`), to install a
+  package by its digest, to start an agent's worker from an
+  environment in a package, to build packages for one run, to list
+  what an agent keeps, to end an agent's processes, to say what the
+  agents use and what it wrote down. It gives each agent a user
   and a place of its own (`agents_container/places.py`), writes the
   spawn line and the fences, starts the process and carries a
   worker's lines to the runtime and back. What a worker is entitled
   to is never said to it: a worker's asks pass through it as lines,
   and are answered by the runtime. The runtime never sees a process
-  id, a user or a command line, so what stands behind the spawner's
-  port — one container, or someday many — is the spawner's business.
+  id, a user or a command line.
 - **It is the runtime's image**, started with another command, so the
   interpreter and the browsers are the same files on both sides.
-- **One volume, at one path, in both**: the store, the environments,
-  and the workers' homes and spools. A path means the same thing on
-  both sides, and only starting a process crosses
-  (`ai_runtime/agents/container.py`).
-- **Only the runtime commands the spawner.** Every request carries a
-  key the spawner made at its first start and left on the volume
-  (`spawner.key`), which the platform's user reads and no agent's
-  does.
+- **Nothing is shared.** Each sandbox has a folder of its own — its
+  own copy of the agent code it runs, its environments, its workers'
+  homes, what it writes down — and no volume is shared between
+  sandboxes, or between the runtime and a sandbox. Code reaches a
+  sandbox only through its runtime ([agent code](agent-code.md)), and
+  a file too large for one line travels on the worker's own lines, in
+  pieces ([worker protocol](../reference/worker-protocol.md)).
+- **Only its runtime commands the spawner.** The runtime and its
+  sandboxes hold one secret, set for the execution node
+  (`AI_RUNTIME_SANDBOX_SECRET`, in `sandbox.env`, which Compose gives
+  to them and to nothing else — never the Data Core). It never travels: whoever is spoken to
+  first sends a challenge, and the other answers it with an HMAC made
+  with the secret, its role written in front, so a proof one side made
+  is never the other's. The spawner takes the secret out of its own
+  environment as it reads it, so nothing it starts inherits it, and
+  no agent's user can read the spawner's.
 - **Its network reaches the runtime and nothing else.** No route leads
-  from it to the internet, the database or the backend, so the
+  from it to the internet, the database or the Data Core, so the
   runtime's proxy is the only way out whatever a worker does. Workers
   are pointed at the proxy's port on their own container's address,
   and the spawner passes what arrives there to the runtime's proxy,
   unread.
 - **A worker whose runtime hung up is ended**, with everything its
   user runs. A runtime that died leaves nothing running.
-- **The agents' container holds no secret of the platform's.** It is
-  told where the runtime's proxy is, the port, the folder agents are
-  kept in, whether to filter workers' system calls, the log level and
-  the time zone, and nothing else. What a
-  worker is given, the runtime sends with the order to start it.
+- **The Execution Sandbox holds no secret of the platform's** but the
+  node's. It is told where its runtime takes registrations and where
+  its proxy is, the port, its name and labels, whether to filter
+  workers' system calls, the log level and the time zone, and nothing
+  else. What a worker is given, the runtime sends with the order to
+  start it.
 
 What this adds to a user of its own and a fence: an agent cannot see
-the runtime's processes at all, a runaway agent is the agents'
-container's to bear and not the runtime's, and the runtime's container
-is given no right beyond an ordinary container's.
+the runtime's processes at all, a runaway agent is its sandbox's to
+bear and not the runtime's, and the runtime's container is given no
+right beyond an ordinary container's.
 
-**There is no other way to run an agent.** A runtime not told where
-the agents' container is (`AI_RUNTIME_AGENTS_SPAWNER`), or one whose
-container does not answer or cannot confine, does not start. The
-tests have no container: a stand-in in the test suite answers the
-same orders by starting programs in the test's own process
-(`ai_runtime/tests/fake_container.py`).
+**There is no other way to run an agent.** A runtime with no sandbox
+registered that can confine a worker does not start. The tests have no
+container: a stand-in in the test suite answers the same orders by
+starting programs in the test's own process
+(`ai_runtime/tests/fake_container.py`), and runs the sandbox's own
+install code (`agents_container/installs.py`).
+
+## Many sandboxes
+
+**Registration.** A sandbox connects to its runtime's registration
+port (`AI_SANDBOX_RUNTIME`, the runtime's `AI_RUNTIME_SANDBOX_PORT`)
+and registers, proving the node's secret; the runtime answers with a
+proof of its own, reaches the sandbox where it says it answers, and
+asks it who it is. The registration says, and a heartbeat every two
+seconds says again:
+
+| What | |
+|---|---|
+| its locks | what its own check proved it holds a worker to — the fences, the filter, the firewall rule — or what to mend |
+| its capacity | the memory and processors it is given and uses, and how many workers it runs |
+| its labels | what a placement may ask for, such as `gpu` (`AI_SANDBOX_LABELS`); a manifest cannot yet ask for any |
+| what it holds | the packages it holds verified, and the agents it runs a worker of now |
+| whether it drains | |
+
+The link carries a version (`wire.PROTOCOL`): a runtime and a sandbox
+of different releases refuse each other, saying both versions. A
+sandbox whose connection closed, or that has said nothing for half a
+minute, is gone: nothing more is placed on it, its workers' connections
+go with it, and the agents it ran are placed elsewhere on their next
+call (`Sandboxes`, `ai_runtime/agents/sandboxes.py`).
+
+**Where a worker runs.** The pool keeps one worker per approval, in
+one sandbox (`WorkerPool`, `ai_runtime/agents/pool.py`). A new worker is
+placed by one rule (`Sandboxes.choose`):
+
+1. **eligible** — healthy, its locks proven by its own check in the
+   process that runs now, not draining, and holding every label asked
+   for;
+2. then the one **already running** the agent;
+3. then one that **already holds** its package;
+4. then the **least loaded**: the most memory left, then the least of
+   its processors in use — memory compared in buckets of 256 MB and
+   processors in tenths, so a few megabytes do not decide;
+5. sandboxes still level are taken **in turn**.
+
+A sandbox that cannot be reached, or turned out to drain, is passed
+over for the next; a package a sandbox refuses is refused.
+
+**Draining.** A sandbox told to drain — by its runtime
+(`Sandboxes.drain`, which an administrator asks for through the Data
+Core with `Nodes:Node:Drain`, and undoes with `drain: false`), or by
+being stopped — starts no new worker; a
+worker it runs finishes what it is doing, is retired once it has
+nothing in flight, and the agent's next call is placed on another
+sandbox. A sandbox that was stopped goes once its workers are gone, or
+after `AI_SANDBOX_DRAIN_SECONDS` (60), ending what is left.
+
+**What is shown** — what the agents use, what an agent keeps, what was
+written down — is gathered from every sandbox behind the calls one
+sandbox answers (`Sandboxes.usage`, `files`, `events`): the monitoring
+door reads many as it read one, and each agent and each event says
+which sandbox it is in. What the runtime reports it holds an agent to
+is what the weakest eligible sandbox proved.
+
+**Two on one machine.** `docker-compose.sandboxes.yml`, laid over
+`docker-compose.yml`, starts a second sandbox, `agents-2`, with a
+folder of its own:
+
+    docker compose --env-file deploy.env \
+        -f docker-compose.yml -f docker-compose.sandboxes.yml up -d --build
 
 ## A user of its own — the spawn helper
 
@@ -126,7 +208,7 @@ the runtime does not have:
 
 | Job | What it does |
 |---|---|
-| `own` | hands a worker's home or spool to its user |
+| `own` | hands a worker's home, or the builder's spool, to its user |
 | `clear` | empties one, as the user it belongs to, so nothing but that user's is ever deleted. A folder its owner closed — the home itself, or one inside it that its owner may not list or write — is opened to its owner first and then emptied; what is nested deeper than is walked in one go (64 levels) is lifted to the top and emptied on the next pass. A `clear` that left anything behind says so, and is refused |
 | `stop` | ends every process of a user |
 | `sweep` | deletes what a user left in the folders every user may write to |
@@ -149,24 +231,24 @@ it.
 
 ### One user per approved agent
 
-The pool keeps one worker per approval, and each approval is given a
-user of its own from the range; the spawner keeps the table beside the
-store. The first user of the range is installation's — verifying a
-package imports it, and a package being verified is nobody's approved
-agent yet. The last is the builder's (below).
+The pool keeps one worker per approval, and in each sandbox each
+approval is given a user of its own from the range; the spawner keeps
+the table in its own folder. The first user of the range is
+installation's — verifying a package imports it, and a package being
+verified is nobody's approved agent yet. The last is the builder's
+(below).
 
     <install_dir>/workers/users.json      approved agent -> its user
     <install_dir>/workers/<agent>/home    the worker's alone
-    <install_dir>/workers/<agent>/spool   the worker's and the runtime's
+    <install_dir>/workers/builder/spool   what the builder built
 
 | Folder | Belongs to | A worker may |
 |---|---|---|
-| its package, in the store | the runtime | read |
-| its environment | the runtime | read |
+| its package, in the sandbox's store | the platform's user | read |
+| its environment | the platform's user | read |
 | its home and its temporary files | the agent's user | read and write |
-| its spool | the agent's user | read and write |
-| another agent's home or spool | that agent's user | nothing |
-| the runtime's settings | the runtime | nothing |
+| another agent's home | that agent's user | nothing |
+| the spawner's settings | the platform's user | nothing |
 | the runtime's own processes, and other agents' | their users | that they exist and how they were started (`/proc`), and nothing of their memory, environment or files; no signal reaches them |
 
 **A home is emptied before every start.** A worker holds no state, and
@@ -192,7 +274,7 @@ the worker starts, a browser included, and cannot be taken off.
 | A worker may | Where |
 |---|---|
 | read and run | the system (`/usr`, `/lib` and its variants, `/bin`, `/sbin`, `/etc`, `/sys`, `/var/cache/fontconfig`), the browsers the image carries, its own package, its own environment |
-| do anything | its home, its spool |
+| do anything | its home |
 | write, where whose-it-is still decides | `/dev`, `/proc`, `/tmp` |
 | nothing | the platform's own code, the store and the environments of other agents, the table of users, and every other folder |
 
@@ -316,17 +398,21 @@ built where it is installed, and its build is code of its own. So an
 install is two steps by two users:
 
 1. **The builder** — the last user of the range, in a place of its
-   own — is handed the declared list. It downloads what the list needs
-   and builds what has to be built, under the same limits as a worker,
-   and leaves every package as a wheel in its spool. Its pass at the
-   proxy opens where packages come from, `pypi.org` and
+   own in the sandbox — is handed the declared list. It downloads what
+   the list needs and builds what has to be built, under the same
+   limits as a worker, and leaves every package as a wheel in its
+   spool. Its pass at the runtime's proxy, sent with the install,
+   opens where packages come from, `pypi.org` and
    `files.pythonhosted.org`, and nothing else.
-2. **The runtime** takes the wheels and unpacks them into the
+2. **The spawner** takes the wheels and unpacks them into the
    environment. It is handed files and never the list, it looks
    nothing up and downloads nothing, and unpacking a wheel runs
    nothing of the package's.
 
-What the runtime takes from the builder's spool is a plain file with a
+Each sandbox builds its own environments, with its own builder, and
+keeps them named by their dependency set ([agent
+code](agent-code.md)). What the spawner takes from the builder's spool
+is a plain file with a
 wheel's name: a link is not followed, and anything else left there is
 left. Nothing is kept between builds, because what one build left
 would be what the next agent installs; and a build reads no pip
@@ -354,11 +440,12 @@ before pip is started, confined or not.
 **Packages for one run are built the same way.** Code a person allowed
 may need packages no manifest named. The code card names them, and for
 a function that declared `code: true` the platform installs exactly
-those (`call.install`): the builder downloads and builds them, the
-runtime unpacks the wheels into a folder inside the agent's
-environment (`envs/<hex>/extras/<hex>/`, one per list, kept for the
-next run that names the same list), and the program is given the
-folder on its path. The code that asked never reaches where packages
+those (`call.install`): the builder of the sandbox the worker runs in
+downloads and builds them, the spawner unpacks the wheels into a
+folder inside the agent's environment there
+(`envs/<hex>/extras/<hex>/`, one per list, kept for the next run that
+names the same list), and the program is given the folder on its
+path. The code that asked never reaches where packages
 come from, and cannot install what its card did not name. Here a
 package is a name and a version and nothing else: an address, a path
 or an option is refused before the card is shown.
@@ -380,7 +467,7 @@ call.
 
 ### What the agents are given together
 
-The agents' container is given so much memory and so much processor by
+Each Execution Sandbox is given so much memory and so much processor by
 whoever starts it: `AGENTS_MEMORY` and `AGENTS_CPUS` in `deploy.env`.
 Unset is no limit. The
 engine holds the container to both, and neither is a manifest's to ask
@@ -391,7 +478,7 @@ for.
 - **Memory** cannot be slowed, only refused. At the limit the kernel
   ends a process of its own choosing, which need not be the one that
   took the memory. So the spawner looks every second at what each
-  agent holds, and when the agents' container holds nine tenths of what
+  agent holds, and when the Execution Sandbox holds nine tenths of what
   it is given — the kernel's own number, the spawner and what is shared
   among it — it ends the agent holding most, with everything its
   user runs (`ai_runtime/agents_container/usage.py`,
@@ -416,7 +503,7 @@ many processes, and what it keeps on disk (`usage`).
 **What an agent keeps on disk is measured by its own user.** Its home
 is its user's alone to read, so nobody else can add it up. While a
 worker runs, the spawner runs, every half minute, a line that measures
-that agent's home and spool as the agent's user (`Place.measure_line`,
+that agent's home as the agent's user (`Place.measure_line`,
 `ai_runtime/agents_container/places.py`). It measures and ends; the worker is left
 as it is. The number is counted, and held to no limit.
 
@@ -461,7 +548,7 @@ where an agent connects is said, never assumed.
 
 **Internal addresses are refused for every agent**, `any` included:
 this machine, the private ranges, and the link-local range a cloud's
-metadata service lives in. The backend and the database are among them.
+metadata service lives in. The Data Core and the database are among them.
 
 ### The proxy
 
@@ -564,7 +651,7 @@ spawner's among them, another agent's, the internet, and looking a
 name up. Code that ignores the proxy reaches nothing. Nobody else in
 the container is touched by the rule.
 
-In the agents' container the network already leads nowhere but the
+In the Execution Sandbox the network already leads nowhere but the
 runtime. The rule is what keeps one agent from another inside it — a
 browser's own port, a server a worker started — and from the spawner.
 
@@ -600,27 +687,29 @@ the proxy, and how to tell.
 
 The runtime is handed its settings by name (`docker-compose.yml`):
 the database's password, the encryption keys
-and the backend's private key never reach it. The agents' container,
-where agent code runs, is handed no secret at all: where the proxy is,
-its port, the folder, whether to filter system calls, the log level and
-the time zone. The person still
-fills in one file.
+and the Data Core's private key never reach it. An Execution Sandbox,
+where agent code runs, is handed no secret but the node's: where its
+runtime takes registrations, where the proxy is, its port, its name and
+labels, whether to filter system calls, the log level and the time
+zone. The person still fills in one file, and `bootstrap/setup.py`
+writes the node's secret into it.
 
 ## What the runtime says at start
 
-At start the runtime starts its proxy, waits for the agents'
-container and asks it to prove itself. The spawner has the helper
-switch users once, asks it which Landlock the kernel has, prepares a
-place from end to end, and tries the network as a worker would; it
-writes what it found in its own log — *Workers are confined*;
+At its start each Execution Sandbox proves itself, before it
+registers: the spawner has the helper switch users once, asks it which
+Landlock the kernel has, prepares a place from end to end, and tries
+the network as a worker would; it writes what it found in its own log — *Workers are confined*;
 *Workers' files are fenced*, or that they are not; *Workers' system
 calls are filtered*, or that they are not and why; on a kernel that
 has Landlock before its sixth version, that agents are not kept from
-each other's sockets — and answers the runtime with what it found.
-The runtime writes whether *Workers' connections are fenced*. Where
-workers cannot be confined there (the container was not given its
-rights, the install directory is not the one the helper was built
-for), or the proxy cannot listen, the runtime does not start, and
+each other's sockets — and registers with what it found. A sandbox
+whose check failed registers all the same, saying what to mend, is
+given no worker, and checks again every half minute. The runtime starts
+its proxy, takes registrations, and writes, for each sandbox, what it
+proved. Where no sandbox can confine a worker (the container was not
+given its rights, the install directory is not the one the helper was
+built for), or the proxy cannot listen, the runtime does not start, and
 says what to mend.
 
 When a runtime tells the platform an agent's code is ready on it, it
@@ -629,8 +718,9 @@ files fenced, its connections fenced. The agent's page shows it under
 *How it is confined here* — one sentence when all three hold;
 otherwise a sentence for what does not: no user of its own, which
 stands for its files too; or its files not fenced; and its connections
-not held to its hosts. With several runtimes it is one runtime's word,
-as *ready* is.
+not held to its hosts. With several sandboxes it is what the weakest of
+them holds; with several runtimes it is one runtime's word, as *ready*
+is.
 
 What a person sees, then: at approval, the hosts an agent connects to;
 on an agent's page, a line for any part of the promise that is not
@@ -682,33 +772,47 @@ enforced in this install; and nothing to configure.
   with the helper stood in for by a program of the tests'
   (`fake_spawn.py`); runs anywhere. `test_confinement.py` is the
   runtime's side: the proxy, the proof asked for, each worker's pass.
-- `ai_runtime/tests/test_confinement_live.py` — a fixture agent that is
-  hostile on purpose. Each of its functions tries one thing, and the
-  test passes when the attempt is refused: read the runtime's settings,
-  signal the runtime, write into the store, read another agent's home,
-  open a socket of a family it has no use for, ask to be traced, make a
-  namespace of its own (and still start a thread and a program),
-  connect past the proxy, connect to an undeclared host, connect to the
-  backend, start more processes than allowed, start the helper again,
-  connect to a socket with a name and no file that somebody else
-  opened.
-  A package that is hostile while it is built, from an index on the
-  same machine, reads nobody's settings, writes nothing into the
-  environment, reaches the index and no other host, and is ended when
-  it does not end. It runs in the stack of the runtime's container and
-  the agents' (`ai_runtime/tests/spawner-live.compose.yml`), where the
-  helper is, and is skipped everywhere else; the file says how to run
-  it.
+- `ai_runtime/tests/test_sandboxes.py` — many sandboxes: a real
+  spawner registering with a real registry, proving the node's secret;
+  a sandbox or a runtime without it, or of another version of the link,
+  refused; the placement rule step by step; the pool over two sandboxes,
+  with one drained and one gone; what is shown, gathered from every
+  sandbox; runs anywhere.
 - `ai_runtime/tests/test_container.py` — the spawner itself and the
-  runtime's client of it, with the helper stood in for: a real worker
-  started through them by name, a build, a listing, an ending; runs
-  anywhere.
+  runtime's client of it, with the helper stood in for: a package
+  installed there, its bytes sent when asked and checked before
+  anything is written, its environment built by the sandbox's builder
+  and its code greeted; a real worker started through them by name, a
+  listing, an ending; runs anywhere.
+- `ai_runtime/tests/test_confinement_live.py` — a fixture agent that is
+  hostile on purpose, sent to a sandbox and installed there. Each of
+  its functions tries one thing, and the test passes when the attempt
+  is refused: read the runtime's settings, signal the spawner, write
+  into its package, read another agent's home or package, open a
+  socket of a family it has no use for, ask to be traced, make a
+  namespace of its own (and still start a thread and a program),
+  connect past the proxy, connect to an undeclared host, connect to
+  the Data Core, start more processes than allowed, start the helper
+  again, connect to a socket with a name and no file that somebody
+  else opened. A package that is hostile while it is built, from an
+  index on the same machine, reads nobody's settings, writes nothing
+  into the environment, reaches the index and no other host, and is
+  ended when it does not end. Bytes that are not the digest, and a
+  manifest nobody approved, are refused before anything is written.
 - `ai_runtime/tests/test_spawner_live.py` — the same hostile agent,
-  with the runtime in one container and the agent in the other: it is
-  its own user there, cannot read the spawner's key or reach the
-  spawner, reaches a declared host through both containers, and is
-  ended when the runtime hangs up. It runs in a stack of the two
-  containers (`ai_runtime/tests/spawner-live.compose.yml`); the file
-  says how. It passes on Docker and on rootless Podman: there too the
-  agents' container is given its limits, sets its firewall rule, and
-  reaches the runtime and nothing else.
+  with the runtime in one container and two sandboxes beside it, each
+  registered: it is its own user there, cannot reach the spawner or
+  read the node's secret, reaches a declared host from either sandbox,
+  and is ended when the runtime hangs up; large files travel in pieces
+  between the containers; no folder is shared; agents are placed by the
+  rule, a drained sandbox is given nothing new and its agent moves on
+  its next call; and the last test stops the second sandbox and its
+  agent moves to the first.
+
+Both live files run in a stack of the three containers
+(`ai_runtime/tests/spawner-live.compose.yml`), and are skipped
+everywhere else; the files say how. Each sandbox's folder is mounted
+read-only in the tests' container, a window for the tests to look
+through: the runtime's code never reads it. They pass on Docker and on
+rootless Podman: there too each sandbox is given its limits, sets its
+firewall rule, and reaches the runtime and nothing else.

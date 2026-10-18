@@ -1,411 +1,566 @@
-"""The backend's connection to the AI runtime — one per (user, chat).
+"""The relay: every chat, carried to the execution node that holds it,
+over that node's link (docs/system/chat-session.md,
+docs/system/execution-nodes.md).
 
-The dial (docs/system/chat-session.md): the service token proves this is the
-backend, and beside it travels a fresh delegation for the chat — the
-runtime access token, the `runtime_sessions` row it names — which the
-runtime hands to its services as the key to call back with. A key,
-never authority: what the chat may do is what `AI:Chat:Contract`
-answers when the runtime asks.
+Nodes connect to the Data Core (api/services/nodes/link.py); the Data
+Core dials nobody. A chat that needs a node is **attached** to one: it
+is given a **lease** there (database/stores/nodes.py, ``LeaseStore``)
+— the node, a number, an expiry — and a fresh delegation bound to that
+node, both sent over the link with the chat's id. From then on the
+door's frames for the chat go out over that link (``FRAMES``, each
+naming its chat), and every frame the node emits for it comes back the
+same way and reaches the person's socket as an ``AI:Chat:Event``. A
+node that speaks for a chat not attached to it is not heard.
 
-Over the socket the relay speaks the door's vocabulary and nothing
-else: the frames in FRAMES go out; every frame the runtime emits —
-`hello` first — comes back and reaches the person's frontend socket as
-an `AI:Chat:Event`.
+A delegation is a key, never authority: what the chat may do is what
+``AI:Chat:Contract`` answers when the node asks.
 
-The manager at the bottom is what app_state holds, and the only thing
-the routes and controllers reach for. At boot it re-dials every chat
-that holds schedules, so the runtime's clock can load their rows —
-reminders fire only while the backend keeps a delegation open, and
-that is the backend's to keep.
+**Leases.** A lease lasts a minute and the node's heartbeat renews it
+every twenty seconds; every call the node makes for the chat carries
+its number, and the gateway refuses any other (server/routes/app.py),
+so two nodes never both act for one chat. A chat goes idle with nobody
+watching and the node lets the lease go (``released``). A node that
+stops answering keeps the lease until it lapses; then the chat is placed
+again (``fail_over``), with a number past the last, and the new node
+rebuilds it from the record as a restart always has — a call that was
+running is said to have ended unknown, and is never run again by itself.
 
-A person who stopped everything of theirs (halt.py) is not dialed for:
-no key is minted and no frame goes out until they resume. The one
-exception is the stop itself, which dials to say it.
+**Which node** (api/services/nodes/placement.py): the one already
+holding the chat while its lease is live; otherwise among the nodes
+connected that may serve the chat's organization, its own first, then
+the last holder, then the least loaded. An organization that keeps to
+its own nodes (Settings:Nodes, ``own_only``) is served by no shared
+node: with none of its own connected, the chat waits and its person is
+told why; a shared node holding one of its chats when it changed lets
+the chat go at once (``keep_to_own``).
 
-A delegation lives an hour; a dial may live for days. So the manager
-also renews: every live dial whose credential is old enough is handed
-a fresh one over the open socket, as a `credential` frame, well before
-the old one lapses. Without that, a scheduled chat nobody has open
-would fire for an hour and then fail quietly until the next boot.
+**The clock** is the Data Core's (chat_session/clock.py): it decides
+when a schedule is due, puts the chat on a node (``hold``) and sends
+the node a ``fire`` (``fire``). No chat is kept on a node for its clock.
+
+A person who stopped everything of theirs (halt.py) is attached
+nowhere: no key is minted and no frame goes out until they resume. The
+one exception is the stop itself, sent to the lease holder.
+
+A delegation lives an hour; a chat may be held for days. So the relay
+also renews: every attached chat whose credential is old enough is
+handed a fresh one over the link, as a ``credential`` frame.
+
+The manager is what app_state holds, and the only thing the routes and
+controllers reach for.
 """
 
 import asyncio
-import json
 import time
-from urllib.parse import urlparse, urlunparse
+from typing import Any, Dict, Optional
 
-import websockets
-
-from api.services.chat_session.identity import Delegation, ServiceToken
-from database.stores import UserStore
+from api.services.chat_session.identity import Delegation
+from api.services.nodes.placement import Placement
+from database.stores import LeaseStore, OrganizationStore, UserStore
 from server.custom_logging import CustomLoggerFactory
-from server.setup.app_state import get_settings, get_ws_manager
+from server.setup.app_state import get_ws_manager
 
-#: what a frontend may say through the relay, and the frame it becomes
+#: what a client may say through the relay, and the frame it becomes
 FRAMES = {"user_message", "approval_decided", "question_answered", "stop",
           "schedules_changed", "screen_input", "screen_open",
-          # The backend's own, never a browser's: an outside system's
+          # The Data Core's own, never a browser's: an outside system's
           # event for a webhook's chat (server/routes/hooks.py). The
           # browser's socket builds only the frames of the actions it
           # knows, and this is none of them.
           "webhook_event"}
 
 
-class RuntimeClient:
-    def __init__(self, chat_id, user):
+class ChatBinding:
+    """One chat, as the relay holds it: whose it is, the node holding
+    it and under which lease, and whether a person is watching."""
+
+    def __init__(self, chat_id: str, user: Dict[str, Any]):
         self.chat_id = chat_id
         self.user = dict(user)
-        self.socket = None
-        self.reader = None
-        #: one frame on the wire at a time
-        self.lock = asyncio.Lock()
-        #: one dial at a time: two callers dialing at once would mint
-        #: two delegations, and the second would revoke the first's
-        self.dialing = asyncio.Lock()
-        #: when the runtime last received a credential for this chat
-        #: (monotonic seconds) — what renewal is due against.
-        self.credentialed_at = None
-        #: set when the runtime says a kill of this chat is over
+        self.link = None
+        self.lease: Optional[int] = None
+        #: whether a person has the chat open
+        self.watched = False
+        #: when the node last received a credential for this chat
+        #: (monotonic seconds) — what renewal is due against
+        self.credentialed_at: Optional[float] = None
+        #: why no node holds the chat, in words for the person
+        self.waiting = ""
+        #: set when the node says a kill of this chat is over
         self.killed = asyncio.Event()
+        #: one attachment at a time: two would mint two delegations,
+        #: and the second would revoke the first's
+        self.attaching = asyncio.Lock()
 
-        self.logger = CustomLoggerFactory.get_logger(self.__class__.__name__)
-
-    def url(self):
-        parsed = urlparse(get_settings().ai_runtime_url)
-        scheme = "wss" if parsed.scheme == "https" else "ws"
-        path = f"{parsed.path.rstrip('/')}/chats/{self.chat_id}"
-        return urlunparse((scheme, parsed.netloc, path, "", "", ""))
-
-    async def connect(self, halting=False):
-        """``halting`` is the stop's own dial: the only one made for a
-        person who is stopped."""
-        async with self.dialing:
-            if not halting and UserStore().stopped(
-                    str(self.user.get("user_id") or "")):
-                return False
-            if self.socket is not None:
-                return True
-
-            # Any failure — missing signing key, runtime down, refused
-            # handshake — means the same thing to the caller: no runtime
-            # connection. The frontend socket must survive it.
-            try:
-                service_token = ServiceToken().issue()
-                credential = Delegation().for_chat(self.user, self.chat_id)
-                socket = await websockets.connect(
-                    self.url(),
-                    additional_headers={
-                        "Authorization": f"Bearer {service_token}",
-                        "X-DecentAI-Runtime-Access": credential,
-                    },
-                    open_timeout=5,
-                )
-            except Exception as e:
-                self.logger.warning(
-                    f"Runtime connect failed for chat {self.chat_id}: {e}"
-                )
-                return False
-
-            self.socket = socket
-            self.credentialed_at = time.monotonic()
-            self.reader = asyncio.create_task(self._relay(socket))
-            return True
-
-    def due(self, after_seconds):
-        """Whether this dial is live and its credential old enough to
-        renew."""
-        return (self.socket is not None
-                and self.credentialed_at is not None
-                and time.monotonic() - self.credentialed_at >= after_seconds)
-
-    async def renew(self):
-        """A fresh delegation for the chat, handed over the open socket.
-
-        The credential the handshake carried lives an hour, and the
-        socket may outlive it by days — a scheduled chat's dial is kept
-        open on purpose. Minting the new row retires the old one at
-        once, so this is the one moment a call the runtime has in
-        flight can be refused; the frame is the very next thing on the
-        wire. A socket that is gone is left alone: the next input or
-        boot re-dials with a fresh credential of its own."""
-        socket = self.socket
-        if socket is None or UserStore().stopped(
-                str(self.user.get("user_id") or "")):
-            return False
-        try:
-            credential = Delegation().for_chat(self.user, self.chat_id)
-            if not credential:
-                raise RuntimeError("no delegation could be minted")
-            async with self.lock:
-                await socket.send(json.dumps(
-                    {"event": "credential", "credential": credential}))
-        except Exception as exc:
-            self.logger.warning(
-                f"Credential for chat {self.chat_id} not renewed: {exc}")
-            return False
-        self.credentialed_at = time.monotonic()
-        return True
-
-    async def _relay(self, socket):
-        """Every frame the runtime sends — the hello, the narration,
-        the cards — is the person's to see: through to their frontend
-        socket as an event, verbatim. Reads the socket it was started
-        for: when that one ends after a newer dial replaced it, the
-        newer one is left alone and nobody is told of a disconnect."""
-        try:
-            async for raw in socket:
-                try:
-                    frame = json.loads(raw)
-                except ValueError:
-                    continue
-                if isinstance(frame, dict):
-                    if frame.get("event") == "stopped":
-                        self.killed.set()
-                    await get_ws_manager().send_frontend(
-                        self.chat_id, self.user, {
-                            "endpoint": "AI:Chat:Event",
-                            "data": {**frame, "chat_id": self.chat_id},
-                        })
-        except Exception as e:
-            self.logger.warning(f"Runtime relay ended for chat {self.chat_id}: {e}")
-        finally:
-            if self.socket is socket:
-                self.socket = None
-                # The person is told, so a spinner never waits on a runtime
-                # that has gone; the next input re-dials.
-                try:
-                    await get_ws_manager().send_frontend(
-                        self.chat_id, self.user, {
-                            "endpoint": "AI:Chat:Event",
-                            "data": {"event": "runtime_disconnected",
-                                     "chat_id": self.chat_id},
-                        })
-                except Exception:
-                    pass
-
-    async def send(self, frame, halting=False):
-        """One frame of the door's vocabulary, verbatim."""
-        if str(frame.get("event") or "") not in FRAMES:
-            return False
-        if not await self.connect(halting):
-            return False
-        socket = self.socket
-        if socket is None:
-            return False
-        try:
-            async with self.lock:
-                await socket.send(json.dumps(frame, default=str))
-        except Exception as exc:
-            # Gone between the check and the send. Said, not raised: a
-            # decision already recorded must not turn into a failure,
-            # and the next frame re-dials.
-            self.logger.warning(
-                f"Frame for chat {self.chat_id} not sent: {exc!r}")
-            if self.socket is socket:
-                self.socket = None
-            return False
-        return True
-
-    #: How long a close handshake may keep a caller waiting. The frame
-    #: goes out at once; what can drag is the transport going away
-    #: afterwards, and a route's teardown or a shutdown must not stall
-    #: on it.
-    CLOSE_TIMEOUT_SECONDS = 2.0
-
-    async def close(self):
-        socket, self.socket = self.socket, None
-        if socket is not None:
-            # asyncio.timeout, not wait_for: the close runs inline, so
-            # its close frame is written before the first yield — a
-            # wrapper task would send it a loop turn later, or never,
-            # when the caller is a teardown the loop does not return to.
-            try:
-                async with asyncio.timeout(self.CLOSE_TIMEOUT_SECONDS):
-                    await socket.close()
-            except (TimeoutError, Exception) as exc:
-                self.logger.warning(
-                    f"Runtime connection for chat {self.chat_id} did not "
-                    f"close cleanly: {exc!r}")
-        reader, self.reader = self.reader, None
-        if reader is not None and reader is not asyncio.current_task():
-            reader.cancel()
+    @property
+    def attached(self) -> bool:
+        return self.link is not None and self.link.open
 
 
 class RuntimeClientManager:
-    """Mirror of WSManager, for the runtime side of the relay."""
-
-    #: When a live dial's credential is renewed: well inside the
+    #: When an attached chat's credential is renewed: well inside the
     #: delegation's hour (Delegation.DEFAULT_TTL_SECONDS), with room for
     #: a slow tick and the access cache's minute.
     RENEW_AFTER_SECONDS = 45 * 60
     RENEW_TICK_SECONDS = 60
-
-    def __init__(self):
-        self.clients = {}
-        self.lock = asyncio.Lock()
-        #: the renewal loop, once the app's lifespan started it
-        self.renewer = None
-        self.logger = CustomLoggerFactory.get_logger(self.__class__.__name__)
-
-    @staticmethod
-    def key(chat_id, user):
-        return f"{user.get('org_id')}:{user.get('user_id')}:{chat_id}"
-
-    async def ensure(self, chat_id, user):
-        """The user connected to a chat: make sure its runtime connection
-        exists, with fresh tokens. Returns False if the runtime is
-        unreachable — the frontend socket stays up regardless — or
-        the person has stopped everything of theirs."""
-        if UserStore().stopped(str(user.get("user_id") or "")):
-            return False
-        key = self.key(chat_id, user)
-        async with self.lock:
-            client = self.clients.get(key)
-            if client is None:
-                client = RuntimeClient(chat_id, user)
-                self.clients[key] = client
-        return await client.connect()
-
-    async def send(self, chat_id, user, frame):
-        key = self.key(chat_id, user)
-        client = self.clients.get(key)
-        if client is None:
-            # A frame can arrive while no frontend socket is up — a
-            # gateway decision after a disconnect. Dial the runtime: the
-            # session hydrates and hears it.
-            if not await self.ensure(chat_id, user):
-                return False
-            client = self.clients.get(key)
-            if client is None:
-                return False
-        return await client.send(frame)
-
-    async def close(self, chat_id, user):
-        async with self.lock:
-            client = self.clients.pop(self.key(chat_id, user), None)
-        if client is not None:
-            await client.close()
-
-    def chats_of(self, user):
-        """The chats of this person a socket is held for."""
-        prefix = self.key("", user)
-        return {key[len(prefix):] for key in self.clients
-                if key.startswith(prefix)}
-
+    #: How often lapsed leases are looked for.
+    LEASE_TICK_SECONDS = 5
     #: How long a killed chat is given to write down what it had done
     #: before its key is withdrawn.
     KILL_GRACE_SECONDS = 10.0
 
-    async def kill(self, chat_id, user):
-        """End everything one chat is doing, as part of the person
-        stopping all of theirs: the kill is said — dialing for it if no
-        socket is up, since a chat may be working with nobody watching
-        — the runtime's word that it is over is waited for a short
-        while, and the socket is closed. Returns whether it was said."""
-        key = self.key(chat_id, user)
+    WAITING_FOR_A_NODE = "No execution node is connected that may serve this chat."
+    WAITING_FOR_OWN = ("This organization runs its chats on its own execution "
+                       "nodes only, and none of them is connected. The chat "
+                       "waits for one rather than run elsewhere.")
+    MOVING = ("The execution node serving this chat stopped answering; the "
+              "chat moves to another within a minute.")
+
+    def __init__(self, links):
+        self.links = links
+        self.placement = Placement()
+        self.chats: Dict[str, ChatBinding] = {}
+        self.lock = asyncio.Lock()
+        #: the renewal and lease loops, once the app's lifespan started them
+        self.renewer = None
+        self.leaser = None
+        self.logger = CustomLoggerFactory.get_logger(self.__class__.__name__)
+        links.on_event = self.on_event
+        links.on_link.append(self.on_link)
+        links.on_lost.append(self.on_lost)
+        links.on_beat.append(self.on_beat)
+        links.on_frame["released"] = self.on_released
+        from api.services.chat_session.clock import ScheduleClock
+
+        #: the Data Core's clock (chat_session/clock.py)
+        self.clock = ScheduleClock(self)
+
+    # ------------------------------------------------------------------
+    async def _binding(self, chat_id: str, user: Dict[str, Any]) -> ChatBinding:
         async with self.lock:
-            client = self.clients.get(key)
-            if client is None:
-                client = RuntimeClient(chat_id, user)
-                self.clients[key] = client
-        client.killed.clear()
-        said = await client.send({"event": "stop", "force": True}, halting=True)
+            binding = self.chats.get(chat_id)
+            if binding is None:
+                binding = ChatBinding(chat_id, user)
+                self.chats[chat_id] = binding
+            return binding
+
+    async def _attach(self, binding: ChatBinding, halting: bool = False,
+                      again: bool = False) -> bool:
+        """The chat on a node, under a lease: the node already holding
+        it, or one placed now. ``again`` sends the attachment to the
+        node already holding it too — a person arriving, who is greeted
+        with the chat's present tense."""
+        async with binding.attaching:
+            if not halting and UserStore().stopped(
+                    str(binding.user.get("user_id") or "")):
+                return False
+            if binding.attached and not again:
+                return True
+            leases = LeaseStore()
+            current = leases.current(binding.chat_id)
+            org_id = str(binding.user.get("org_id") or "")
+            own_only = OrganizationStore().own_nodes_only(org_id)
+            link = None
+            if leases.live(current):
+                link = self.links.get(current["node_id"])
+                if link is not None and not self.placement.may_serve(
+                        link, org_id, own_only):
+                    # The organization keeps to its own nodes now: the
+                    # shared node holding the chat lets it go, at once.
+                    await self._let_go(binding, link)
+                    current = leases.current(binding.chat_id)
+                    link = None
+                elif link is None:
+                    # Its node is gone and its lease not yet: the chat
+                    # moves when the lease lapses, never sooner — the
+                    # node may only be slow, and two must never act.
+                    binding.waiting = self.MOVING
+                    return False
+            if link is None:
+                link = self.placement.choose(
+                    self.links.connected(), org_id,
+                    str((current or {}).get("node_id") or ""), own_only)
+                if link is None:
+                    binding.waiting = (self.WAITING_FOR_OWN if own_only
+                                       else self.WAITING_FOR_A_NODE)
+                    return False
+            lease = leases.grant(binding.chat_id, link.key, binding.user)
+            if lease is None:
+                binding.waiting = self.MOVING
+                return False
+            try:
+                credential = Delegation().for_chat(
+                    binding.user, binding.chat_id, node=link.key)
+            except Exception as exc:
+                self.logger.warning(
+                    f"No delegation for chat {binding.chat_id}: {exc}")
+                return False
+            # Bound before the frame goes: the node's greeting may come
+            # back while the frame is still being written, and is heard
+            # only from the node the chat is attached to.
+            previous = binding.link
+            binding.link, binding.lease = link, int(lease["number"])
+            link.chats.add(binding.chat_id)
+            if not await link.send({
+                    "type": "attach", "chat_id": binding.chat_id,
+                    "lease": binding.lease, "credential": credential,
+                    "watched": binding.watched}):
+                link.chats.discard(binding.chat_id)
+                binding.link = None
+                return False
+            if previous is not None and previous is not link:
+                previous.chats.discard(binding.chat_id)
+                await previous.send({"type": "detach", "chat_id": binding.chat_id})
+            binding.waiting = ""
+            binding.credentialed_at = time.monotonic()
+            return True
+
+    def why_waiting(self, chat_id: str) -> str:
+        binding = self.chats.get(str(chat_id))
+        return binding.waiting if binding is not None else ""
+
+    async def ensure(self, chat_id, user) -> bool:
+        """The person connected to a chat: make sure a node holds it,
+        with fresh tokens, and knows they are watching. False when no
+        node may serve it now — the person's socket stays up regardless
+        — or the person has stopped everything of theirs."""
+        if UserStore().stopped(str(user.get("user_id") or "")):
+            return False
+        binding = await self._binding(str(chat_id), user)
+        binding.watched = True
+        return await self._attach(binding, again=True)
+
+    async def send(self, chat_id, user, frame, halting: bool = False) -> bool:
+        """One frame of the door's vocabulary, to the node holding the
+        chat — placed first if none does. Said, not raised, when it does
+        not go: a decision already recorded must not turn into a
+        failure."""
+        if str(frame.get("event") or "") not in FRAMES:
+            return False
+        binding = await self._binding(str(chat_id), user)
+        if not await self._attach(binding, halting):
+            return False
+        link = binding.link
+        if link is None or not await link.send(
+                {"type": "chat", "chat_id": binding.chat_id, "frame": frame}):
+            self.logger.warning(f"Frame for chat {chat_id} not sent")
+            return False
+        return True
+
+    async def hold(self, chat_id, user) -> bool:
+        """The chat on a node, nobody watching: what the clock asks
+        before a fire. False when no node may take it now."""
+        if UserStore().stopped(str(user.get("user_id") or "")):
+            return False
+        binding = await self._binding(str(chat_id), user)
+        return await self._attach(binding)
+
+    async def fire(self, chat_id, user, row: Dict[str, Any]) -> bool:
+        """A schedule's fire, to the node holding the chat: the Data
+        Core's own voice over the link, never a frame a person could
+        send. The node runs it and writes back what it did."""
+        binding = self.chats.get(str(chat_id))
+        if binding is None or not binding.attached:
+            return False
+        return await binding.link.send(
+            {"type": "fire", "chat_id": binding.chat_id, "schedule": dict(row)})
+
+    async def tell(self, chat_id, user, frame) -> bool:
+        """A frame for a chat a node holds now, and nothing if none
+        does: what changed on the record that a node holding the chat
+        should hear (``schedules_changed``) and one that does not will
+        read when it is attached. Never places a chat."""
+        if str(frame.get("event") or "") not in FRAMES:
+            return False
+        binding = self.chats.get(str(chat_id))
+        if binding is None or not binding.attached:
+            current = LeaseStore().current(str(chat_id))
+            link = (self.links.get(current["node_id"])
+                    if LeaseStore.live(current) else None)
+            if link is None:
+                return False
+            return await link.send(
+                {"type": "chat", "chat_id": str(chat_id), "frame": frame})
+        return await binding.link.send(
+            {"type": "chat", "chat_id": binding.chat_id, "frame": frame})
+
+    async def _let_go(self, binding: ChatBinding, link) -> None:
+        """The node holding a chat is told to forget it, and its lease
+        is ended: what a node no longer allowed to serve the chat holds."""
+        link.chats.discard(binding.chat_id)
+        await link.send({"type": "detach", "chat_id": binding.chat_id})
+        LeaseStore().release(binding.chat_id, link.key)
+        if binding.link is link:
+            binding.link, binding.lease = None, None
+
+    async def keep_to_own(self, org_id: str) -> int:
+        """An organization now keeps to its own nodes: every chat of its
+        held by a shared node is let go there at once, and the ones a
+        person has open placed again on one of its own — or left
+        waiting, and the person told why. Returns how many moved off."""
+        moved = 0
+        for doc in LeaseStore().col.find({"org_id": str(org_id),
+                                          "released": False}):
+            if not LeaseStore.live(doc):
+                continue
+            link = self.links.get(doc["node_id"])
+            if link is None or self.placement.may_serve(link, org_id, True):
+                continue
+            chat_id = str(doc["_id"])
+            binding = self.chats.get(chat_id) or ChatBinding(
+                chat_id, {"org_id": org_id, "user_id": doc.get("user_id")})
+            await self._let_go(binding, link)
+            moved += 1
+            if binding.watched and chat_id in self.chats:
+                if not await self._attach(binding, again=True):
+                    try:
+                        await get_ws_manager().send_frontend(
+                            chat_id, binding.user, {
+                                "endpoint": "AI:Chat:Event",
+                                "data": {"event": "runtime_unavailable",
+                                         "chat_id": chat_id,
+                                         "detail": binding.waiting}})
+                    except Exception:
+                        pass
+        return moved
+
+    async def close(self, chat_id, user) -> None:
+        """Nothing may keep this chat on a node: it is being erased, or
+        its person may no longer act. Its node forgets it, and its lease
+        is let go."""
+        async with self.lock:
+            binding = self.chats.pop(str(chat_id), None)
+        link = binding.link if binding is not None else None
+        if link is None:
+            current = LeaseStore().current(str(chat_id))
+            if LeaseStore.live(current):
+                link = self.links.get(current["node_id"])
+        if link is not None:
+            link.chats.discard(str(chat_id))
+            await link.send({"type": "detach", "chat_id": str(chat_id)})
+        LeaseStore().release(str(chat_id))
+
+    def chats_of(self, user):
+        """The chats of this person a node holds now."""
+        user_id = str(user.get("user_id") or "")
+        return {chat_id for chat_id, binding in self.chats.items()
+                if str(binding.user.get("user_id") or "") == user_id
+                and binding.attached}
+
+    async def kill(self, chat_id, user) -> bool:
+        """End everything one chat is doing, as part of the person
+        stopping all of theirs: the kill is said to the node holding the
+        chat — placing it if none does, since a chat may be working with
+        nobody watching — the node's word that it is over is waited for
+        a short while, and the chat is let go. Returns whether it was
+        said."""
+        binding = await self._binding(str(chat_id), user)
+        binding.killed.clear()
+        said = await self.send(chat_id, user, {"event": "stop", "force": True},
+                               halting=True)
         if said:
             try:
                 async with asyncio.timeout(self.KILL_GRACE_SECONDS):
-                    await client.killed.wait()
+                    await binding.killed.wait()
             except TimeoutError:
                 self.logger.warning(
                     f"Chat {chat_id} did not say its kill was over")
         await self.close(chat_id, user)
         return said
 
-    async def release(self, chat_id, user):
-        """The person's last socket to a chat went away. The dial goes
-        with it — unless the chat holds schedule rows. Reminders fire
-        only while the backend keeps a delegation open, and the boot
-        redial above says whose job that is: the backend's, not the
-        browser tab's. Opening and leaving a scheduled chat must not
-        stop its clock. Returns whether the dial was closed."""
-        from database.stores import ScheduleStore
-
-        if ScheduleStore().rows(chat_id):
+    async def release(self, chat_id, user) -> bool:
+        """The person's last socket to a chat went away: the node is
+        told nobody watches, and lets the chat go once it is idle —
+        scheduled or not: the Data Core's clock places it again when a
+        row comes due. Returns whether there was a node to tell."""
+        binding = self.chats.get(str(chat_id))
+        if binding is None:
             return False
-        await self.close(chat_id, user)
-        return True
+        binding.watched = False
+        if not binding.attached:
+            return False
+        return await binding.link.send(
+            {"type": "watch", "chat_id": binding.chat_id, "watched": False})
 
-    async def redial_scheduled(self):
-        """At boot: every chat holding schedule rows gets its delegation
-        back, so the runtime's clock can adopt them. A chat whose owner
-        may no longer act is skipped and logged — never dialed as
-        somebody who cannot."""
-        from api.services.chat_session.identity import StandingOwner
-        from database.stores import ScheduleStore
+    # ------------------------------------------------------------------
+    # What the links say
+    # ------------------------------------------------------------------
 
-        dialed = 0
-        for holder in ScheduleStore().holders():
-            # A person who stopped everything is not dialed (connect
-            # refuses); their clocks wait for them to resume.
-            user = StandingOwner().resolve(holder)
-            if user is None:
-                self.logger.warning(
-                    f"Schedules of chat {holder.get('chat_id')} not "
-                    f"redialed: their owner may no longer act")
+    async def on_event(self, link, chat_id: str, frame: Dict[str, Any]) -> None:
+        """A frame a node emitted for one chat: to the person, verbatim
+        — if this chat is attached to that node, and only then."""
+        binding = self.chats.get(chat_id)
+        if binding is None or binding.link is not link:
+            return
+        if frame.get("event") == "stopped":
+            binding.killed.set()
+        await get_ws_manager().send_frontend(chat_id, binding.user, {
+            "endpoint": "AI:Chat:Event",
+            "data": {**frame, "chat_id": chat_id},
+        })
+
+    async def on_beat(self, link, frame: Dict[str, Any]) -> None:
+        """A node's heartbeat renews the leases it holds."""
+        said = frame.get("chats")
+        chats = list(said) if isinstance(said, (dict, list)) else []
+        LeaseStore().renew(link.key, chats)
+
+    async def on_released(self, link, frame: Dict[str, Any]) -> None:
+        """A node let a chat go: idle, with nobody watching."""
+        chat_id = str(frame.get("chat_id") or "")
+        lease = frame.get("lease")
+        try:
+            number = int(lease) if lease is not None else None
+        except (TypeError, ValueError):
+            number = None
+        LeaseStore().release(chat_id, link.key, number)
+        link.chats.discard(chat_id)
+        binding = self.chats.get(chat_id)
+        if binding is not None and binding.link is link:
+            binding.link, binding.lease = None, None
+            if not binding.watched:
+                self.chats.pop(chat_id, None)
+
+    async def on_lost(self, link) -> None:
+        """A node's link ended: its chats are attached nowhere until it
+        comes back or their leases lapse, and the people watching are
+        told, so a spinner never waits on a node that has gone."""
+        for binding in list(self.chats.values()):
+            if binding.link is not link:
                 continue
-            if await self.ensure(str(holder["chat_id"]), user):
-                dialed += 1
-        return dialed
+            binding.link = None
+            if not binding.watched:
+                continue
+            try:
+                await get_ws_manager().send_frontend(
+                    binding.chat_id, binding.user, {
+                        "endpoint": "AI:Chat:Event",
+                        "data": {"event": "runtime_disconnected",
+                                 "chat_id": binding.chat_id}})
+            except Exception:
+                pass
+
+    async def on_link(self, link) -> None:
+        """A node connected: the chats a person is waiting on are
+        attached — those still leased to this node, back to it under the
+        same number, and the rest where they are placed. Nothing is
+        attached for a clock: the Data Core's fires a chat when it is
+        due (chat_session/clock.py)."""
+        for binding in list(self.chats.values()):
+            if not binding.attached and binding.watched \
+                    and self.placement.may_serve(
+                        link, str(binding.user.get("org_id") or "")):
+                await self._attach(binding)
+
+    async def fail_over(self) -> int:
+        """Every lease whose node stopped renewing it and never let it
+        go: the chat placed again, under a number past the last, so the
+        node that had it can write nothing more for it. Returns how many
+        moved."""
+        from api.services.chat_session.identity import StandingOwner
+        from database.stores import ChatStore
+
+        moved = 0
+        for lease in LeaseStore().lapsed():
+            chat_id = str(lease["_id"])
+            binding = self.chats.get(chat_id)
+            if binding is None:
+                chat = ChatStore().by_chat_id(chat_id)
+                user = StandingOwner().resolve(chat) if chat else None
+                if user is None:
+                    # Nothing to move: the chat is gone, or its person
+                    # may no longer act.
+                    LeaseStore().release(chat_id)
+                    continue
+                binding = await self._binding(chat_id, user)
+            old = binding.link
+            binding.link = None
+            if await self._attach(binding):
+                moved += 1
+                self.logger.info(
+                    f"Chat {chat_id} moved from {lease.get('node_id')} to "
+                    f"{binding.link.key} under lease {binding.lease}")
+            elif old is not None:
+                binding.link = old
+        return moved
+
+    # ------------------------------------------------------------------
+    # Renewal
+    # ------------------------------------------------------------------
 
     def start_renewing(self):
-        """The renewal loop, for the life of the process: each tick,
-        every live dial older than RENEW_AFTER_SECONDS is handed a fresh
-        credential. The app's lifespan starts it; tests call renew_due
-        directly and never wait on a tick."""
+        """The renewal and lease loops and the clock, for the life of
+        the process. The app's lifespan starts them; tests call
+        renew_due, fail_over and the clock's tick directly."""
+        loop = asyncio.get_running_loop()
         if self.renewer is None or self.renewer.done():
-            self.renewer = asyncio.get_running_loop().create_task(
-                self._renew_loop())
+            self.renewer = loop.create_task(self._renew_loop())
+        if self.leaser is None or self.leaser.done():
+            self.leaser = loop.create_task(self._lease_loop())
+        self.clock.start()
 
     async def _renew_loop(self):
         while True:
             await asyncio.sleep(self.RENEW_TICK_SECONDS)
             try:
                 await self.renew_due()
-                # A runtime that went and came back took every clock
-                # with it: the chats holding schedule rows are dialled
-                # again, which the ones still live take as nothing.
-                await self.redial_scheduled()
             except Exception as exc:  # one bad tick never ends the loop
                 self.logger.warning(f"Credential renewal tick failed: {exc}")
 
-    async def renew_due(self):
-        """Renew every live dial whose credential is old enough.
+    async def _lease_loop(self):
+        while True:
+            await asyncio.sleep(self.LEASE_TICK_SECONDS)
+            try:
+                await self.fail_over()
+            except Exception as exc:  # one bad tick never ends the loop
+                self.logger.warning(f"Lease tick failed: {exc}")
+
+    def due(self, binding: ChatBinding, after_seconds: float) -> bool:
+        return (binding.attached and binding.credentialed_at is not None
+                and time.monotonic() - binding.credentialed_at >= after_seconds)
+
+    async def renew(self, binding: ChatBinding) -> bool:
+        """A fresh delegation for the chat, bound to the node holding
+        it, handed over the link. Minting the new row retires the old
+        one at once; the frame is the very next thing on the wire."""
+        link = binding.link
+        if link is None or UserStore().stopped(
+                str(binding.user.get("user_id") or "")):
+            return False
+        try:
+            credential = Delegation().for_chat(
+                binding.user, binding.chat_id, node=link.key)
+            if not credential:
+                raise RuntimeError("no delegation could be minted")
+        except Exception as exc:
+            self.logger.warning(
+                f"Credential for chat {binding.chat_id} not renewed: {exc}")
+            return False
+        if not await link.send({"type": "chat", "chat_id": binding.chat_id,
+                                "frame": {"event": "credential",
+                                          "credential": credential}}):
+            return False
+        binding.credentialed_at = time.monotonic()
+        return True
+
+    async def renew_due(self) -> int:
+        """Renew every attached chat whose credential is old enough.
         Returns how many were renewed."""
         renewed = 0
-        for client in list(self.clients.values()):
-            if client.due(self.RENEW_AFTER_SECONDS) and await client.renew():
+        for binding in list(self.chats.values()):
+            if self.due(binding, self.RENEW_AFTER_SECONDS) \
+                    and await self.renew(binding):
                 renewed += 1
         return renewed
 
     async def close_all(self):
-        """Every connection this manager holds — for shutdown.
-
-        Each client owns a socket and a reader task, so dropping the
-        references without closing them would leave both behind. One
-        client that refuses to close is reported and does not stop the
-        rest: shutdown continues regardless.
-        """
-        renewer, self.renewer = self.renewer, None
-        if renewer is not None:
-            renewer.cancel()
+        """Shutdown: the loops end. The chats are left where they are;
+        their leases lapse, or their nodes let them go."""
+        for name in ("renewer", "leaser"):
+            task = getattr(self, name)
+            setattr(self, name, None)
+            if task is not None:
+                task.cancel()
+        self.clock.stop()
         async with self.lock:
-            clients = list(self.clients.values())
-            self.clients.clear()
-
-        for client in clients:
-            try:
-                await client.close()
-            except Exception as error:
-                self.logger.warning(
-                    f"Runtime connection for chat {client.chat_id} did not "
-                    f"close cleanly: {error}"
-                )
+            self.chats.clear()

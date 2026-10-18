@@ -20,8 +20,8 @@ COPY bootstrap ./bootstrap
 
 RUN pip install --no-cache-dir -r backend/requirements.txt \
     && useradd --system decentai \
-    && mkdir -p /data/uploads /data/agent-packages \
-    && chown decentai /data/uploads /data/agent-packages
+    && mkdir -p /data/uploads /data/agent-packages /run/decentai/node \
+    && chown decentai /data/uploads /data/agent-packages /run/decentai/node
 
 USER decentai
 WORKDIR /opt/decentai/backend

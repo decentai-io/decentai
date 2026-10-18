@@ -310,7 +310,7 @@ agent saying `provider: google` with its own server there would
 otherwise collect both.
 
 The flow is the platform's, not the agent's. *Connect* asks the
-backend for the consent URL (`Secrets:Oauth:Start`), pinned to a
+Data Core for the consent URL (`Secrets:Oauth:Start`), pinned to a
 single-use, ten-minute state row with a PKCE verifier and the browser
 session that asked; the provider sends the browser to one callback
 route, `/oauth/callback`, which spends the state, refuses unless the
@@ -318,11 +318,11 @@ same person came back, in the same session where the flow began in one
 (a consent link sent to somebody else connects nothing), exchanges the
 code, reads the identity and creates
 the credential — or, for a reconnect, refreshes the existing one in
-place. At use time the backend refreshes an expiring access token
+place. At use time the Data Core refreshes an expiring access token
 before handing values out, and what an agent receives is the account
 and an access token — short-lived where the provider expires it, kept
 as never expiring where the provider gives it neither a lifetime nor a
-refresh token: the refresh token never leaves the backend. A grant the provider no longer accepts marks the credential
+refresh token: the refresh token never leaves the Data Core. A grant the provider no longer accepts marks the credential
 `needs_reconnect` and the agent is told, in words, to have it
 reconnected.
 

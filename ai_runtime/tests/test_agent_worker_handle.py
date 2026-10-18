@@ -99,12 +99,12 @@ class TestWorkerHandle:
                 await handle.stop()
         run(scenario())
 
-    def test_bytes_too_large_for_the_line_travel_through_the_spool(self, venv, tmp_path):
+    def test_bytes_too_large_for_the_line_travel_in_pieces(self, venv, tmp_path):
         """A scan runs to megabytes and a line is capped. A read that
-        large reaches the worker as a path in the spool, a create that
-        large comes back as one, and agent code sees only bytes: the
-        same read_file / create_file it always called. The spool is
-        clean after the call and gone after the worker."""
+        large reaches the worker in pieces on its own wire, ahead of the
+        answer that names them; a create that large comes back the same
+        way; and agent code sees only bytes: the same read_file /
+        create_file it always called. Nothing is left behind."""
         import base64
         import os
         import textwrap
@@ -152,53 +152,66 @@ class TestWorkerHandle:
                 raise AssertionError(method)
 
             handle.router = router
+            sent = []
+            original = handle._send
+
+            async def counted(message):
+                if message.get("method") == "bytes":
+                    sent.append(len(message["params"]["data"]))
+                await original(message)
+
+            handle._send = counted
             assert await handle.start() == []
-            spool = handle.spool
-            assert spool is not None and spool.is_dir()
             try:
                 result, status = await handle.invoke("c_1", "spooler.main.run", {})
                 assert status == "success", result
                 assert (result["size"], result["head"]) == (len(payload), "%PDF")
                 assert result["text_too"] is False        # not text: no content
                 assert result["created"] == {"resource_ref": "fil_copy"}
-                assert "content_path" not in seen["create"]
+                assert "content_stream" not in seen["create"]
                 assert seen["create"]["content_base64"] == encoded
-                assert list(spool.iterdir()) == []       # both files consumed
+                # Sent in pieces, none longer than the line allows.
+                assert len(sent) >= len(encoded) // WorkerHandle.INLINE_LIMIT
+                assert max(sent) <= WorkerHandle.INLINE_LIMIT
+                assert handle._streams == {}             # both files consumed
             finally:
                 await handle.stop()
-            # The spool is the place's, emptied with it at the worker's end.
-            assert spool.is_dir() and list(spool.iterdir()) == []
 
         run(scenario())
 
-    def test_a_path_outside_the_spool_is_refused(self, venv, tmp_path):
-        """The worker names a file to create by path; only the spool
-        counts. Anything else is refused as a resource ask is, and the
-        function hears why."""
+    def test_pieces_nobody_sent_are_refused(self, venv, tmp_path):
+        """The worker names a file to create by pieces it never sent, or
+        sends pieces that are not base64: the create is refused as a
+        resource ask is, and the function hears why."""
         import textwrap
         from ai_runtime.tests.fixture_agents import MINIMAL_MANIFEST, write_agent
 
         write_agent(tmp_path, "sneak", manifest=MINIMAL_MANIFEST.format(
             agent_id="sneak", entrypoint="agent:DemoAgent"),
-            files={"agent.py": textwrap.dedent("""                from decentai_sdk.base import AgentBase, ResourceDenied, ToolBase
+            files={"agent.py": textwrap.dedent("""\
+                from decentai_sdk.base import AgentBase, ResourceDenied, ToolBase
 
                 class MainTool(ToolBase):
                     id = "main"
 
                     async def run(self, call):
-                        try:
-                            await call.resources._ask("resources.create_file",
-                                resource_id="scan", filename="x",
-                                content_path=%r)
-                            return {"refused": ""}, "success"
-                        except ResourceDenied as exc:
-                            return {"refused": str(exc)}, "success"
+                        refused = []
+                        call.resources._streams.wire.send({"method": "bytes",
+                            "params": {"stream": "bad", "data": "not base64!"}})
+                        for stream in ("never-sent", "bad"):
+                            try:
+                                await call.resources._ask("resources.create_file",
+                                    resource_id="scan", filename="x",
+                                    content_stream=stream)
+                                refused.append("")
+                            except ResourceDenied as exc:
+                                refused.append(str(exc))
+                        return {"refused": refused}, "success"
 
                 class DemoAgent(AgentBase):
                     def tools(self):
                         return [MainTool(self)]
-            """ % str(tmp_path / "secret.txt"))})
-        (tmp_path / "secret.txt").write_text("not yours", encoding="utf-8")
+            """)})
         document = yaml.safe_load(
             (tmp_path / "sneak" / "manifest.yaml").read_text(encoding="utf-8"))
 
@@ -214,7 +227,10 @@ class TestWorkerHandle:
             try:
                 result, status = await handle.invoke("c_1", "sneak.main.run", {})
                 assert status == "success", result
-                assert "not in this worker's spool" in result["refused"]
+                assert result["refused"] == [
+                    "the file's pieces did not arrive",
+                    "the file did not arrive whole: it was larger than a "
+                    "file may be, or not base64"]
             finally:
                 await handle.stop()
 
@@ -337,16 +353,21 @@ class TestProbe:
 
 class TestInstallVerifiesInTheRealEnvironment:
     def test_install_probes_and_a_missing_function_refuses(self, tmp_path):
-        """The full station, no stubs: venv built, worker spawned from
-        it with -I, contract verified — then the same install refused
-        when the manifest declares a function the code lacks."""
-        library = AgentLibrary(tmp_path / "agents", confinement())
+        """The full station, no stubs: the package sent to the
+        sandbox, its venv built there, a worker spawned from it with -I,
+        contract verified — then the same install refused when the
+        manifest declares a function the code lacks."""
+        library = AgentLibrary(tmp_path / "runtime", confinement())
         archive, digest = AgentPackage.build(FIXTURE)
         document = manifest_document()
+        sandbox = container()
 
         loaded = run(library.install(digest, archive, manifest_hash(document)))
         assert loaded.manifest.agent_id == "notebook"
-        assert library.environment(digest).exists()
+        assert ["sent", digest] in sandbox.asked
+        held = sandbox.installs.held(digest)
+        assert held is not None and Path(held["environment"]).is_dir()
+        assert library.waiting() == []
 
         # The same code claiming one function more than it implements:
         # a clone of the fixture with a "ghost" function added to its
@@ -367,7 +388,8 @@ class TestInstallVerifiesInTheRealEnvironment:
             run(library.install(bad_digest, bad_archive, manifest_hash(broken)))
         assert "not implemented" in str(refusal.value)
         assert not library.has(bad_digest)
-        assert not library.environment(bad_digest).exists()
+        assert sandbox.installs.held(bad_digest) is None
+        assert not sandbox.installs.folder(bad_digest).exists()
 
 
 class TestTheWorkersEnvironment:

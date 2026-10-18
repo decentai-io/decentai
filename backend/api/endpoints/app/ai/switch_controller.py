@@ -28,8 +28,10 @@ class SwitchController(AIController):
         refusal = self._person_only(data, user)
         if refusal is not None:
             return refusal
-        dialed = await Halt().resume(user)
-        return self._respond(data, {"stopped": False, "dialed": dialed})
+        clocked = await Halt().resume(user)
+        # The chats that keep a clock fire again as their rows come due;
+        # none is attached to a node by the resume itself.
+        return self._respond(data, {"stopped": False, "clocked": clocked})
 
     def _person_only(self, data, user):
         """Never the runtime's delegation: what is being stopped must

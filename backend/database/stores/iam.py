@@ -242,6 +242,45 @@ class OrganizationStore(MongoStore):
                       "updated_at": utc_now()}})
         return self.guardrail(org_id)
 
+    #: Where the organization's chats may run (Settings:Nodes,
+    #: docs/system/execution-nodes.md#organizations-owning-nodes):
+    #:   placement  prefer_own — its own execution nodes first, shared
+    #:              ones when none of its own is connected; own_only —
+    #:              its own nodes and never a shared one: a chat waits
+    #:              rather than run elsewhere
+    NODES_DEFAULTS = {"placement": "prefer_own"}
+    NODES_CHOICES = {"placement": ("prefer_own", "own_only")}
+
+    def nodes(self, org_id: str) -> Dict[str, Any]:
+        doc = self.col.find_one({"_id": str(org_id or "")}, {"nodes": 1}) or {}
+        stored = doc.get("nodes") if isinstance(doc.get("nodes"), dict) else {}
+        return {**self.NODES_DEFAULTS, **{
+            key: stored[key] for key in self.NODES_DEFAULTS
+            if stored.get(key) in self.NODES_CHOICES[key]}}
+
+    def own_nodes_only(self, org_id: str) -> bool:
+        return self.nodes(org_id)["placement"] == "own_only"
+
+    def set_nodes(self, org_id: str, changes: Dict[str, Any]) -> Dict[str, Any]:
+        """Some of the rows, checked. Raises ValueError with the
+        sentence to show."""
+        cleaned: Dict[str, Any] = {}
+        for key, value in (changes or {}).items():
+            if key in self.NODES_CHOICES:
+                if value not in self.NODES_CHOICES[key]:
+                    raise ValueError(
+                        f"{key} is one of: {', '.join(self.NODES_CHOICES[key])}.")
+                cleaned[key] = value
+        merged = {**self.nodes(org_id), **cleaned}
+        self.col.update_one(
+            {"_id": str(org_id or "")},
+            {"$set": {"nodes": merged, "updated_at": utc_now()}})
+        return merged
+
+    def own_only_organizations(self) -> List[str]:
+        return [doc["_id"] for doc in self.col.find(
+            {"nodes.placement": "own_only"}, {"_id": 1})]
+
     def speech(self, org_id: str) -> Dict[str, Any]:
         doc = self.col.find_one({"_id": str(org_id or "")}) or {}
         stored = doc.get("speech") if isinstance(doc.get("speech"), dict) else {}

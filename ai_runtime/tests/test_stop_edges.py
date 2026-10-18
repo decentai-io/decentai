@@ -218,9 +218,9 @@ class TestAPortSetting:
     def settings(self, monkeypatch, **said):
         from ai_runtime.door.settings import RuntimeSettings
         monkeypatch.setenv("BACKEND_SERVICE_PUBLIC_KEY", "a key")
-        monkeypatch.setenv("AI_RUNTIME_SERVICE_PRIVATE_KEY", "a key of its own")
+        monkeypatch.setenv("AI_RUNTIME_NODE_CREDENTIAL_FILE", "/run/node/credential")
         monkeypatch.setenv("BACKEND_INTERNAL_URL", "http://backend:8000")
-        monkeypatch.setenv("AI_RUNTIME_AGENTS_SPAWNER", "agents:8003")
+        monkeypatch.setenv("AI_RUNTIME_SANDBOX_SECRET", "the node's secret")
         for name, value in said.items():
             monkeypatch.setenv(name, value)
         return RuntimeSettings.from_env()

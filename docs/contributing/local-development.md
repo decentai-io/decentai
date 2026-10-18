@@ -1,19 +1,19 @@
 # Local development
 
-The backend and the web app are started by hand: the backend reads a
+The Data Core and the web app are started by hand: the Data Core reads a
 `config.env` beside it, and the web app reads
 `frontend/src/environments/environment.ts`. This is the everyday path
 for changing those two; Compose is for running the finished thing.
 
 The runtime is not started by hand. Every process of an agent's runs
-in the agents' container, and a runtime not told where that container
+in the Execution Sandbox, and a runtime not told where that container
 is does not start ([the sandbox](../system/sandbox.md)); so the
 runtime runs in the Compose stack, and its code is worked on through
 its own test suite, which stands a double in for the container
 (`ai_runtime/tests/fake_container.py`) and starts real workers in the
 test's own process.
 
-A backend started by hand therefore has no runtime: every page works
+A Data Core started by hand therefore has no runtime: every page works
 except a chat, which has nothing to answer it, and an approved agent
 stays **Preparing**. What needs a chat — the assistant, an agent seen
 running, the whole path from the composer to an approval — is tried in
@@ -29,7 +29,7 @@ service that changed with `docker compose up -d --build <service>`.
 - Node 20 or later, with `cd frontend && npm install`.
 - MongoDB on `localhost:27017` — a local service, or
   `docker run -d -p 27017:27017 mongo:7`.
-- git on the path: the backend fetches agent sources with it.
+- git on the path: the Data Core fetches agent sources with it.
 
 ## Configure
 
@@ -40,10 +40,11 @@ python bootstrap/generate_secret_keys.py      # both lines → backend
 python -c "import secrets; print(secrets.token_urlsafe(48))"   # TOKEN_SECRET_KEY → backend
 ```
 
-Fill in `ADMIN_EMAIL` and `ADMIN_PASSWORD` in the backend's file. The
-defaults point everything at localhost: the backend on 8000, the web app
-on 4200; `AI_RUNTIME_URL` names 8001, where nothing answers until a
-runtime does. Keep `AGENT_PACKAGE_DIR` and
+Fill in `ADMIN_EMAIL` and `ADMIN_PASSWORD` in the Data Core's file. The
+defaults point everything at localhost: the Data Core on 8000, the web app
+on 4200. The Data Core is given no runtime's address: an execution
+node dials it ([execution nodes](../system/execution-nodes.md)), and
+chats wait until one does. Keep `AGENT_PACKAGE_DIR` and
 `UPLOADS_DIR` short on Windows; a package's filename is a digest, and a
 long directory overflows the path limit.
 
@@ -81,14 +82,14 @@ python -m pytest examples/tests -q          # the Note example, in a real worker
   environment for the fixture agents under `ai_runtime/tests/`; the SDK
   inside it is refreshed by itself, and it is deleted only after a
   fixture agent's dependencies change.
-- The **backend** suite needs MongoDB and uses its own database,
+- The **Data Core** suite needs MongoDB and uses its own database,
   `decentai_test`, wiped between tests.
-- The **spanning** suite loads the backend's harness and proves that an
+- The **spanning** suite loads the Data Core's harness and proves that an
   approval on one side becomes code serving on the other.
 - The **example's** suite runs Note the way an agent author would, with
   the harness in `examples/tests/`.
 
-Run the backend and spanning suites one at a time: they share the test
+Run the Data Core and spanning suites one at a time: they share the test
 database, and two at once corrupt each other's baseline. On Windows,
 pytest occasionally fails to render a traceback; `--tb=line` avoids it.
 
@@ -112,11 +113,11 @@ repository, are tested that way.
 
 ## The simulator
 
-`sim/` is the backend the runtime's tests do not have: in-memory
+`sim/` is the Data Core the runtime's tests do not have: in-memory
 services answering the same contract — state, messages, events,
 approvals, storage, schedules, the audit trail, the resource provider.
 The runtime's tests are written against it. It is not a mock in the
-sense of a stand-in that lies; where it and the backend disagree, one
+sense of a stand-in that lies; where it and the Data Core disagree, one
 of them has a bug, and a test is the place to find out.
 
 ## Where things are
@@ -129,7 +130,7 @@ of them has a bug, and a test is the place to find out.
 | the schema | `backend/database/schema.json` |
 | the assistant's cycle | `ai_runtime/mind/assistant.py`, prompt in `ai_runtime/prompts/assistant.md` |
 | the executor and its gates | `ai_runtime/execution/executor.py` |
-| agent workers | `ai_runtime/agents/`; what runs in the agents' container in `ai_runtime/agents_container/` |
+| agent workers | `ai_runtime/agents/`; what runs in the Execution Sandbox in `ai_runtime/agents_container/` |
 | the chat session and door | `ai_runtime/chat/`, `ai_runtime/door/` |
 | the manifest contract | `contracts/`, `decentai_sdk/manifest.py` |
 | pages | `frontend/src/app/pages/`, services in `frontend/src/app/services/` |

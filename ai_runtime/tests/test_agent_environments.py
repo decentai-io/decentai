@@ -34,9 +34,9 @@ def run_in(env: AgentEnvironment, code: str) -> subprocess.CompletedProcess:
     )
 
 
-async def verified(self, environment, digest, manifest):
-    """Verification stood in for: a stubbed venv cannot answer a real
-    handshake, and verification has its own tests."""
+async def greeted(python, package, manifest_document, proxy):
+    """The verification start stood in for: a stubbed venv cannot
+    answer a real handshake, and verification has its own tests."""
     return []
 
 
@@ -189,9 +189,9 @@ class TestPackagesForOneRun:
 
 class TestABuildWhereWorkersAreConfined:
     """The declared list is downloaded and built by the builder in the
-    agents' container, and the runtime unpacks what was built. The
-    container and both pips are stood in for; against the real ones,
-    test_confinement_live.py."""
+    Execution Sandbox, and the sandbox's own process unpacks what was
+    built. The builder and both pips are stood in for; against the real
+    ones, test_confinement_live.py."""
 
     LIST = ["titlecase>=2.4,<3", "humanize>=4.9,<5"]
 
@@ -313,10 +313,10 @@ class TestABuildWhereWorkersAreConfined:
         assert errors and "is not a requirement" in errors[0]
         assert builder.asked == []
 
-    def test_the_library_builds_where_the_builder_is(
+    def test_an_install_builds_where_the_builder_is(
             self, builder, runtime, tmp_path, monkeypatch):
-        monkeypatch.setattr(AgentLibrary, "_verify", verified)
-        library = AgentLibrary(tmp_path / "agents", builder.confinement)
+        monkeypatch.setattr(builder.installs, "_greet", greeted)
+        library = AgentLibrary(tmp_path / "runtime", builder.confinement)
         # The fixture declares no packages; this one declares one.
         package = tmp_path / "notebook"
         shutil.copytree(FIXTURE, package,
@@ -334,10 +334,12 @@ class TestABuildWhereWorkersAreConfined:
         assert built == [["build", ["humanize>=4.9,<5"]]]
 
 
-class TestLibraryEnvironmentStation:
-    """install() builds the env, forget() removes it, and rollback only
-    ever takes down what the failing install itself created. The venv
-    build is stubbed here — the station's wiring is the point."""
+class TestTheSandboxsStation:
+    """A sandbox's install builds the environment and keeps it named by
+    the dependency set; giving a package up removes the environment
+    once no package stands on it; and a failure only ever takes down
+    what the failing install itself created. The venv build is stubbed
+    here — the station's wiring is the point."""
 
     @pytest.fixture(autouse=True)
     def stub_builds(self, monkeypatch):
@@ -353,39 +355,41 @@ class TestLibraryEnvironmentStation:
             return 0, ""
 
         monkeypatch.setattr(AgentEnvironment, "runner", staticmethod(runner))
-        # The stubbed venv cannot answer a real handshake; verification
-        # has its own tests against a real environment.
-        monkeypatch.setattr(AgentLibrary, "_verify", verified)
+        monkeypatch.setattr(container().installs, "_greet", greeted)
         self.calls = calls
 
-    def install(self, tmp_path):
-        from contracts.agent_manifest import load_manifest
+    @staticmethod
+    def package(folder=FIXTURE):
+        archive, digest = AgentPackage.build(folder)
+        manifest, _ = load_manifest(folder / "manifest.yaml")
+        return archive, digest, manifest
 
-        library = AgentLibrary(tmp_path / "agents", confinement())
-        archive, digest = AgentPackage.build(FIXTURE)
-        manifest, _ = load_manifest(FIXTURE / "manifest.yaml")
-        loaded = run(library.install(digest, archive, manifest_hash(manifest.document)))
-        return library, digest, loaded
+    def install(self, folder=FIXTURE, expected=None):
+        installs = container().installs
+        archive, digest, manifest = self.package(folder)
+        found = run(installs.install(
+            digest, manifest_hash(manifest.document) if expected is None else expected,
+            archive))
+        return installs, digest, manifest, found
 
-    def test_install_builds_and_forget_removes_the_environment(self, tmp_path):
-        library, digest, loaded = self.install(tmp_path)
-        environment = library.environment(digest)
-        assert loaded.manifest.agent_id == "notebook"
+    def test_an_install_builds_and_keeps_it_by_digest_and_dependency_set(self):
+        installs, digest, manifest, found = self.install()
+        environment = installs.environment_for(manifest.dependencies)
         assert environment.exists()
-
-        library.forget(digest)
+        assert found["environment"] == str(environment.root)
+        assert installs.installed() == [digest]
+        # Given up when no digest still approved names it.
+        assert installs.keep(["sha256:" + "0" * 64]) == 1
+        assert installs.installed() == []
         assert not environment.exists()
-        assert not library.has(digest)
 
     def test_versions_with_one_dependency_set_share_one_environment(self, tmp_path):
         """An update that changes code only — most do — finds the venv
         of its dependency set already built and pays nothing; a digest
-        forgotten leaves the venv to the one still standing on it, and
-        the last one out takes it along."""
+        given up leaves the venv to the one still standing on it."""
         import re
-        import shutil
 
-        library, digest, loaded = self.install(tmp_path)
+        installs, digest, manifest, found = self.install()
         bumped = tmp_path / "notebook-next"
         shutil.copytree(FIXTURE, bumped, ignore=shutil.ignore_patterns("__pycache__"))
         manifest_path = bumped / "manifest.yaml"
@@ -393,83 +397,143 @@ class TestLibraryEnvironmentStation:
         text, changed = re.subn(r'(\n\s*version:\s*)"?[\d.]+"?', r'\g<1>"9.9.9"', text, count=1)
         assert changed == 1, "the fixture's version line"
         manifest_path.write_text(text, encoding="utf-8")
-        archive, next_digest = AgentPackage.build(bumped)
-        manifest, _ = load_manifest(manifest_path)
+        _, next_digest, _, next_found = self.install(bumped)
         assert next_digest != digest
-        marker = library.environment(digest).root / AgentEnvironment.READY_MARKER \
-            if hasattr(AgentEnvironment, "READY_MARKER") else library.environment(digest).root / ".ready"
-        built_at = marker.stat().st_mtime
+        assert next_found["environment"] == found["environment"]
+        venvs = [argv for argv in self.calls["argv"] if "venv" in argv]
+        assert len(venvs) == 1, "nothing was rebuilt"
 
-        run(library.install(next_digest, archive, manifest_hash(manifest.document)))
-        assert library.environment(next_digest).root == library.environment(digest).root
-        assert marker.stat().st_mtime == built_at, "nothing was rebuilt"
+        assert installs.keep([next_digest]) == 1
+        assert installs.environment_for(manifest.dependencies).exists(), \
+            "the survivor keeps the venv"
 
-        library.forget(digest)
-        assert library.environment(next_digest).exists(), "the survivor keeps the venv"
-        library.forget(next_digest)
-        assert not library.environment_for(manifest.dependencies).exists()
-        assert library.environments_without_an_agent() == []
+    def test_a_manifest_that_was_not_approved_writes_nothing(self):
+        from ai_runtime.agents_container.installs import InstallRefused
 
-    def test_a_refused_reinstall_spares_the_serving_environment(self, tmp_path):
-        library, digest, _ = self.install(tmp_path)
-        with pytest.raises(AgentRefused):
-            run(library.install(digest, None, "0" * 64))
-        assert library.environment(digest).exists()
-        assert library.agent(digest) is not None
+        installs = container().installs
+        with pytest.raises(InstallRefused, match="not the one that was approved"):
+            self.install(expected="sha256:" + "0" * 64)
+        assert not installs.store_dir.exists() or list(installs.store_dir.iterdir()) == []
+        assert self.calls["argv"] == [], "no environment was begun"
 
-    def test_a_start_without_environments_warms_them_up(self, tmp_path):
-        """The install directory outlives a deploy; its environments may
-        not. A fresh process registers such a digest as waiting, and
-        the warm-up builds its venv and serves it — nobody's first
-        chat pays for pip."""
-        library, digest, _ = self.install(tmp_path)
-        library.environment(digest).remove()
+    def test_a_refused_reinstall_spares_the_serving_environment(self):
+        from ai_runtime.agents_container.installs import InstallRefused
 
-        restarted = AgentLibrary(tmp_path / "agents", confinement())
-        restarted.load_all()
-        assert restarted.agent(digest) is None
-        assert restarted.waiting() == [digest]
+        installs, digest, manifest, found = self.install()
+        installs.verified_dir.joinpath(digest.split(":")[1]).unlink()
+        with pytest.raises(InstallRefused):
+            run(installs.install(digest, "sha256:" + "0" * 64, None))
+        assert installs.environment_for(manifest.dependencies).exists()
+        assert installs.folder(digest).is_dir()
 
-        assert run(restarted.warm_up()) == 1
-        assert restarted.waiting() == []
-        assert restarted.agent(digest) is not None
-        assert restarted.environment(digest).exists()
+    def test_bytes_are_asked_for_only_when_they_are_not_here(self):
+        installs = container().installs
+        archive, digest, manifest = self.package()
+        with pytest.raises(LookupError):
+            run(installs.install(digest, manifest_hash(manifest.document), None))
+        run(installs.install(digest, manifest_hash(manifest.document), archive))
+        assert run(installs.install(digest, manifest_hash(manifest.document), None))
 
-    def test_a_chat_naming_an_agent_mid_warm_up_waits_for_the_one_build(self, tmp_path):
-        """The warm-up and a chat that names the same agent must not
-        both build one venv. The second holds until the first is done,
-        then finds it built: one pip run, and both callers serve."""
-        library, digest, _ = self.install(tmp_path)
-        library.environment(digest).remove()
-        restarted = AgentLibrary(tmp_path / "agents", confinement())
-        restarted.load_all()
+    def test_two_installs_of_one_set_build_it_once(self, tmp_path):
+        """Two packages that stand on one dependency set, installed at
+        once, must not both build it."""
+        import re
 
-        building = asyncio.Event()
-        release = asyncio.Event()
-        venv_runs = []
-        real_runner = AgentEnvironment.runner
-
-        async def slow_runner(argv):
-            if "venv" in argv:
-                venv_runs.append(list(argv))
-                building.set()
-                await asyncio.wait_for(release.wait(), 10)
-            return await real_runner(argv)
+        installs = container().installs
+        bumped = tmp_path / "notebook-next"
+        shutil.copytree(FIXTURE, bumped, ignore=shutil.ignore_patterns("__pycache__"))
+        path = bumped / "manifest.yaml"
+        path.write_text(re.sub(r'(\n\s*version:\s*)"?[\d.]+"?', r'\g<1>"9.9.9"',
+                               path.read_text(encoding="utf-8"), count=1),
+                        encoding="utf-8")
+        first, second = self.package(), self.package(bumped)
 
         async def scenario():
-            AgentEnvironment.runner = staticmethod(slow_runner)
-            try:
-                first = asyncio.ensure_future(restarted.warm_up())
-                await asyncio.wait_for(building.wait(), 10)
-                # The chat arrives while the venv is half made.
-                second = asyncio.ensure_future(restarted.install(digest, None))
-                await asyncio.sleep(0.3)
-                assert not second.done(), "the chat's install did not wait for the build"
-                release.set()
-                await asyncio.wait_for(asyncio.gather(first, second), 10)
-            finally:
-                AgentEnvironment.runner = real_runner
-
+            await asyncio.gather(*[
+                installs.install(digest, manifest_hash(manifest.document), archive)
+                for archive, digest, manifest in (first, second)])
         run(scenario())
-        assert len(venv_runs) == 1, "the venv was created exactly once"
+        assert len([argv for argv in self.calls["argv"] if "venv" in argv]) == 1
+        assert sorted(installs.installed()) == sorted([first[1], second[1]])
+
+
+class TestTheRuntimesCache:
+    """The runtime keeps the approved packages and nothing an agent
+    runs from: a package is verified by having a sandbox install it,
+    and is sent to a sandbox from here when the sandbox asks."""
+
+    @pytest.fixture(autouse=True)
+    def stub_builds(self, monkeypatch):
+        async def runner(argv):
+            if "venv" in argv:
+                root = Path(argv[-1])
+                (root / "Lib" / "site-packages").mkdir(parents=True)
+                (root / "Scripts").mkdir()
+                (root / "Scripts" / "python.exe").write_text("")
+            return 0, ""
+
+        monkeypatch.setattr(AgentEnvironment, "runner", staticmethod(runner))
+        monkeypatch.setattr(container().installs, "_greet", greeted)
+
+    def install(self, tmp_path):
+        library = AgentLibrary(tmp_path / "runtime", confinement())
+        archive, digest = AgentPackage.build(FIXTURE)
+        manifest, _ = load_manifest(FIXTURE / "manifest.yaml")
+        loaded = run(library.install(digest, archive, manifest_hash(manifest.document)))
+        return library, digest, loaded, archive
+
+    def test_install_keeps_the_bytes_and_a_sandbox_verifies_them(self, tmp_path):
+        library, digest, loaded, archive = self.install(tmp_path)
+        assert loaded.manifest.agent_id == "notebook" and loaded.environment is None
+        assert library.archive(digest) == archive
+        assert ["sent", digest] in container().asked
+        assert container().installs.installed() == [digest]
+        assert library.waiting() == []
+        # Nothing an agent runs from is the runtime's.
+        assert not (tmp_path / "runtime" / "envs").exists()
+        assert not (tmp_path / "runtime" / "workers").exists()
+
+    def test_forget_drops_the_code_and_its_bytes(self, tmp_path):
+        library, digest, _, _ = self.install(tmp_path)
+        library.forget(digest)
+        assert not library.has(digest)
+        with pytest.raises(Exception):
+            library.archive(digest)
+
+    def test_a_refused_reinstall_spares_what_serves(self, tmp_path):
+        library, digest, _, _ = self.install(tmp_path)
+        with pytest.raises(AgentRefused):
+            run(library.install(digest, None, "0" * 64))
+        assert library.agent(digest) is not None
+
+    def test_a_package_a_sandbox_refuses_is_refused_and_kept_nowhere(self, tmp_path):
+        async def refusing(python, package, manifest_document, proxy):
+            return ["functions declared but not implemented: ['ghost']"]
+
+        container().installs._greet = refusing
+        library = AgentLibrary(tmp_path / "runtime", confinement())
+        archive, digest = AgentPackage.build(FIXTURE)
+        with pytest.raises(AgentRefused, match="not implemented"):
+            run(library.install(digest, archive, ""))
+        assert not library.has(digest)
+        assert container().installs.held(digest) is None
+
+    def test_with_no_sandbox_to_verify_in_it_serves_and_waits(self, tmp_path, monkeypatch):
+        """Every sandbox verifies a package before it runs a worker of
+        it; the runtime's own verification is for saying it is ready.
+        A package that arrived while no sandbox could take it serves,
+        and the warm-up verifies it."""
+        monkeypatch.setattr(AgentLibrary, "SANDBOX_WAIT_SECONDS", 0.1)
+        library = AgentLibrary(tmp_path / "runtime", confinement())
+        container().draining = True
+        archive, digest = AgentPackage.build(FIXTURE)
+        assert run(library.install(digest, archive, "")) is not None
+        assert library.waiting() == [digest]
+
+        restarted = AgentLibrary(tmp_path / "runtime", confinement())
+        restarted.load_all()
         assert restarted.agent(digest) is not None
+        assert restarted.waiting() == [digest]
+        container().draining = False
+        assert run(restarted.warm_up()) == 1
+        assert restarted.waiting() == []

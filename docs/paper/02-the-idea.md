@@ -151,7 +151,7 @@ The backend dials the runtime for each chat with two credentials
 
 - a **service token**, RS256-signed with a key only the backend holds,
   valid 60 seconds, which the runtime verifies with the public half
-  before it accepts the socket (`ai_runtime/door/auth.py`). The
+  before it accepts the socket (the runtime's door then; since replaced by the node link, `ai_runtime/door/link.py`). The
   runtime holds nothing that could mint one, so a runtime taken over
   by an agent cannot impersonate the backend;
 - a **delegation**, HS256-signed with `TOKEN_SECRET_KEY`, which the

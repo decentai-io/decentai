@@ -316,57 +316,46 @@ class TestTheProcessesAnAgentStarts:
             "/env/bin/python -I -m decentai_sdk.worker"]
 
 
-class TestTheDoor:
-    """The backend alone reads what was written down."""
+class TestTheMonitor:
+    """The Data Core reads what was written down over the node's own
+    link (door/monitor.py); the only HTTP door left is the health
+    check."""
 
     @pytest.fixture
-    def door(self, tmp_path):
-        from cryptography.hazmat.primitives import serialization
-        from cryptography.hazmat.primitives.asymmetric import rsa
-        from fastapi.testclient import TestClient
-
+    def app(self, tmp_path):
         from ai_runtime.door.app import create_app
         from ai_runtime.door.settings import RuntimeSettings
 
-        private = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-        public = private.public_key().public_bytes(
-            serialization.Encoding.PEM,
-            serialization.PublicFormat.SubjectPublicKeyInfo).decode()
-        settings = RuntimeSettings(
-            backend_service_public_key=public, agents_install_dir=str(tmp_path))
-        now = int(time.time())
-        token = jwt.encode({
-            "typ": "backend_service", "sub": "backend", "jti": "t1",
-            "iss": settings.backend_token_issuer,
-            "aud": settings.backend_service_audience,
-            "iat": now, "nbf": now, "exp": now + 60,
-        }, private, algorithm="RS256")
-        client = TestClient(create_app(
-            settings, services=None, library=None, container=container(),
-            confinement=confinement(), agents={}))
-        return client, {"Authorization": f"Bearer {token}"}
+        return create_app(
+            RuntimeSettings(agents_install_dir=str(tmp_path)), services=None,
+            library=None, container=container(), confinement=confinement(),
+            agents={})
 
-    def test_nobody_else_is_answered(self, door):
-        client, _ = door
+    @pytest.fixture
+    def monitor(self, app):
+        from ai_runtime.door.monitor import Monitor
+
+        return Monitor(app.state)
+
+    def test_nothing_is_answered_over_http_but_the_health_check(self, app):
+        from fastapi.testclient import TestClient
+
+        client = TestClient(app)
         for path in ("/internal/monitor/events", "/internal/monitor/usage",
-                     "/internal/monitor/files?agent=agt_a"):
-            assert client.get(path).status_code == 401
-            assert client.get(path, headers={
-                "Authorization": "Bearer not-a-token"}).status_code == 401
+                     "/internal/monitor/files?agent=agt_a", "/chats/chat_1"):
+            assert client.get(path).status_code == 404
+        assert client.get("/internal/health/live").json() == {"status": "ok"}
 
-    def test_the_backend_reads_what_happened(self, door, events, tmp_path):
-        client, backend = door
+    def test_the_data_core_reads_what_happened(self, monitor, events, tmp_path):
         Events.record("connection", agent="agt_a", host="x.example", allowed=True)
         Events.record("log", agent="agt_a", line="said")
         Events.record("log", agent="agt_b", line="other")
-        said = client.get(
-            "/internal/monitor/events?kinds=log,connection&agent=agt_a&limit=10",
-            headers=backend).json()
+        said = run(monitor.answer("events", {
+            "kinds": "log,connection", "agent": "agt_a", "limit": 10}))
         assert [event["kind"] for event in said["events"]] == ["log", "connection"]
 
-    def test_what_agents_use_is_null_where_nobody_adds_it_up(self, door):
-        client, backend = door
-        said = client.get("/internal/monitor/usage", headers=backend).json()
+    def test_what_agents_use_is_null_where_nobody_adds_it_up(self, monitor):
+        said = run(monitor.answer("usage", {}))
         assert said["usage"] is None
         # Its own container, as it read of itself: nothing here, where
         # there is no kernel ledger to read.
@@ -375,8 +364,10 @@ class TestTheDoor:
         # only way out.
         assert said["confined"] == {"user": True, "files": True, "network": True}
 
-    def test_an_agent_with_no_place_has_nothing_to_list(self, door):
-        client, backend = door
-        said = client.get("/internal/monitor/files?agent=agt_a",
-                          headers=backend).json()
+    def test_an_agent_with_no_place_has_nothing_to_list(self, monitor):
+        said = run(monitor.answer("files", {"agent": "agt_a"}))
         assert "error" in said
+
+    def test_a_question_it_does_not_know_is_refused(self, monitor):
+        with pytest.raises(ValueError):
+            run(monitor.answer("secrets", {}))

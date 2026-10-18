@@ -378,7 +378,7 @@ class TestTheWorkerLoop:
     def test_a_greeting_with_no_manifest_is_refused_in_words(self, tmp_path):
         worker = self.worker()
         worker._dispatch({"id": 1, "method": "hello", "params": {
-            "protocol_version": 1, "folder": str(tmp_path), "manifest": {}}})
+            "protocol_version": 2, "folder": str(tmp_path), "manifest": {}}})
         assert "manifest" in worker.wire.sent[-1]["error"]["message"]
 
     @pytest.mark.parametrize("message", [

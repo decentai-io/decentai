@@ -1,24 +1,23 @@
-"""Agents:Monitor — what agents use and did, read from the runtime and
-shown to an organization of its own agents only
+"""Agents:Monitor — what agents use and did, read from the execution
+nodes and shown to an organization of its own agents only
 (docs/system/monitoring.md).
 
-The runtime is stood in for at the wire: what it would answer is what a
-test says, and what it was asked is kept.
+A node is stood in for at its link: what it would answer is what a test
+says, and what it was asked over the link is kept.
 """
 
-import httpx
 import pytest
 
 from conftest import app_call
 from test_data_layer import _user
 from test_multi_tenancy import _two
-from test_runtime_secret_use import signing_key  # noqa: F401
-
-from api.services.agents.monitoring import RuntimeMonitor
 
 
 class Runtime:
-    """The runtime's three doors, answering what a test put there."""
+    """A connected node's link, answering what a test put there
+    (api/services/nodes/link.py, NodeLink.ask)."""
+
+    key = "auth_test/node-1"
 
     def __init__(self):
         self.asked = []
@@ -26,14 +25,13 @@ class Runtime:
         self.usage = None
         self.files = {"files": [], "count": 0, "bytes": 0}
         self.down = False
+        self.open = True
 
-    def __call__(self, request: httpx.Request) -> httpx.Response:
+    async def ask(self, what, asked, timeout=20.0):
         if self.down:
-            raise httpx.ConnectError("nobody is listening")
-        self.asked.append((request.url.path, dict(request.url.params),
-                           request.headers.get("Authorization", "")))
-        if request.url.path == "/internal/monitor/events":
-            asked = request.url.params
+            raise RuntimeError("the node's link ended")
+        self.asked.append((what, dict(asked), "over its link"))
+        if what == "events":
             found = sorted(self.events, key=lambda e: e["at"], reverse=True)
             if asked.get("agent"):
                 found = [e for e in found if e.get("agent") == asked["agent"]]
@@ -42,25 +40,27 @@ class Runtime:
                          if e["kind"] in asked["kinds"].split(",")]
             if asked.get("before"):
                 found = [e for e in found if e["at"] < float(asked["before"])]
-            return httpx.Response(200, json={
-                "events": found[: int(asked.get("limit") or 200)]})
-        if request.url.path == "/internal/monitor/usage":
-            return httpx.Response(200, json={
+            return {"events": found[: int(asked.get("limit") or 200)]}
+        if what == "usage":
+            return {
                 "usage": self.usage,
                 "runtime": {"memory": 300, "memory_limit": None,
                             "cpu": 0.1, "cpus": None},
-                "confined": {"user": True, "files": True, "network": True}})
-        if request.url.path == "/internal/monitor/files":
-            return httpx.Response(200, json=self.files)
-        return httpx.Response(404)
+                "confined": {"user": True, "files": True, "network": True}}
+        if what == "files":
+            return self.files
+        raise RuntimeError(f"Nothing called '{what}' is answered here.")
 
 
 @pytest.fixture()
-def runtime(signing_key):
+def runtime(app):
+    from server.setup.app_state import get_node_links
+
     stand_in = Runtime()
-    RuntimeMonitor.transport = httpx.MockTransport(stand_in)
+    links = get_node_links()
+    links.links[stand_in.key] = stand_in
     yield stand_in
-    RuntimeMonitor.transport = None
+    links.links.pop(stand_in.key, None)
 
 
 def install(org_id, agent_ref, name):
@@ -95,18 +95,23 @@ class TestWhoMayLook:
         assert runtime.asked == []
         assert app_call(admin, "Agents:Monitor:Usage").status_code == 200
 
-    def test_the_runtime_is_asked_as_the_backend(self, admin, runtime):
+    def test_the_node_is_asked_over_its_own_link(self, admin, runtime):
         app_call(admin, "Agents:Monitor:Usage")
-        path, _, authorization = runtime.asked[0]
-        assert path == "/internal/monitor/usage"
-        assert authorization.startswith("Bearer ")
+        what, _, how = runtime.asked[0]
+        assert what == "usage"
+        assert how == "over its link"
 
-    def test_a_runtime_that_is_down_is_said_so(self, admin, runtime):
+    def test_a_node_that_is_down_is_said_so(self, admin, runtime):
         runtime.down = True
         for action in ("Agents:Monitor:Usage", "Agents:Monitor:Events"):
             refused = app_call(admin, action)
             assert refused.status_code == 503
-            assert "did not answer" in refused.text
+            assert "answered" in refused.text
+
+    def test_no_node_connected_is_said_so(self, admin, seed):
+        refused = app_call(admin, "Agents:Monitor:Usage")
+        assert refused.status_code == 503
+        assert "No execution node is connected" in refused.text
 
 
 class TestWhatTheyUse:

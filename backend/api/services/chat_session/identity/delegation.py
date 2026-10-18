@@ -41,12 +41,17 @@ class Delegation:
     #: then (chat_session/relay.py, RuntimeClientManager.renew_due).
     DEFAULT_TTL_SECONDS = 3600
 
-    def for_chat(self, user: Dict[str, Any], chat_id: str) -> Optional[str]:
+    def for_chat(self, user: Dict[str, Any], chat_id: str,
+                 node: str = "") -> Optional[str]:
         """The delegation a live conversation runs under, for the
-        connection hour."""
+        hour, bound to the execution node it is handed to: the Data
+        Core accepts it only on a request that node presents its own
+        credential with (server/routes/app.py). Unbound, it is accepted
+        from nobody."""
         ttl = self.DEFAULT_TTL_SECONDS
         session = RuntimeSessionStore().create(
             user, chat_id or "", lifetime=timedelta(seconds=ttl),
+            node_id=node,
         )
         return self._token(user, session, ttl)
 

@@ -36,10 +36,11 @@ class FakeDocker:
         if "build -q" in words:
             return 0, "sha256:the-backend-image\n"
         if "generate_service_keys.py" in words:
-            return 0, (f"# backend/config.env\nBACKEND_SERVICE_PRIVATE_KEY={PRIVATE}\n"
-                       f"AI_RUNTIME_SERVICE_PUBLIC_KEY={PUBLIC}-of-the-runtime\n\n"
-                       f"# ai_runtime/config.env\nBACKEND_SERVICE_PUBLIC_KEY={PUBLIC}\n"
-                       f"AI_RUNTIME_SERVICE_PRIVATE_KEY={PRIVATE}-of-the-runtime\n")
+            return 0, (f"# the Data Core\nBACKEND_SERVICE_PRIVATE_KEY={PRIVATE}\n\n"
+                       f"# every execution node\nBACKEND_SERVICE_PUBLIC_KEY={PUBLIC}\n")
+        if "generate_node_authority.py" in words:
+            return 0, (f"NODE_AUTHORITY_PRIVATE_KEY={PRIVATE}-of-the-authority\n\n"
+                       f"NODE_AUTHORITY_PUBLIC_KEY={PUBLIC}-of-the-authority\n")
         if "generate_secret_keys.py" in words:
             return 0, "SECRET_ENCRYPTION_KEYS=01:the-key\nSECRET_ENCRYPTION_ACTIVE=01\n"
         return 0, ""
@@ -76,6 +77,8 @@ class TestTheFirstTime:
             "run --rm sha256:the-backend-image python "
             "/opt/decentai/bootstrap/generate_service_keys.py",
             "run --rm sha256:the-backend-image python "
+            "/opt/decentai/bootstrap/generate_node_authority.py",
+            "run --rm sha256:the-backend-image python "
             "/opt/decentai/bootstrap/generate_secret_keys.py",
             "compose --env-file deploy.env up -d --build",
         ]
@@ -86,10 +89,32 @@ class TestTheFirstTime:
         assert not [name for name, value in said.items() if "change-me" in value]
         assert said["BACKEND_SERVICE_PRIVATE_KEY"] == PRIVATE
         assert said["BACKEND_SERVICE_PUBLIC_KEY"] == PUBLIC
-        assert said["AI_RUNTIME_SERVICE_PRIVATE_KEY"] == PRIVATE + "-of-the-runtime"
-        assert said["AI_RUNTIME_SERVICE_PUBLIC_KEY"] == PUBLIC + "-of-the-runtime"
+        # The install's own node authority: registered by the seeder,
+        # signing the bundled node's credentials — nothing asked.
+        assert said["NODE_AUTHORITY_PUBLIC_KEY"] == PUBLIC + "-of-the-authority"
         assert said["SECRET_ENCRYPTION_KEYS"] == "01:the-key"
         assert len(said["TOKEN_SECRET_KEY"]) >= 48
+
+    def test_the_two_secrets_the_data_core_needs_not_are_kept_out_of_its_file(
+            self, setup):
+        """deploy.env is given whole to the Data Core and the seeder:
+        the node's secret and the authority's private key are each in a
+        file of their own, given only to what uses it."""
+        setup.run()
+        said = setup.settings.values()
+        assert "AI_RUNTIME_SANDBOX_SECRET" not in said
+        assert "NODE_AUTHORITY_PRIVATE_KEY" not in said
+        sandbox = module.Settings._read(setup.folder / "sandbox.env")
+        authority = module.Settings._read(setup.folder / "node-authority.env")
+        assert set(sandbox) == {"AI_RUNTIME_SANDBOX_SECRET"}
+        assert len(sandbox["AI_RUNTIME_SANDBOX_SECRET"]) >= 32
+        assert authority == {"NODE_AUTHORITY_PRIVATE_KEY": PRIVATE + "-of-the-authority"}
+
+    def test_the_secret_files_are_made_once(self, setup):
+        setup.run()
+        first = (setup.folder / "sandbox.env").read_text(encoding="utf-8")
+        setup.run()
+        assert (setup.folder / "sandbox.env").read_text(encoding="utf-8") == first
 
     def test_the_database_and_the_backend_agree_on_the_password(self, setup):
         setup.run()
@@ -221,31 +246,66 @@ class TestRunAgain:
             encoding="utf-8")
 
     def test_a_key_the_platform_gained_is_made_and_added(self, setup, docker):
-        """A deploy.env from before the runtime had a key of its own:
-        the run makes that pair and adds it, and the keys the file
-        held are the keys it holds."""
+        """A deploy.env from before execution nodes were admitted by
+        authorities: the run makes the install's authority and adds
+        it, and the keys the file held are the keys it holds."""
         setup.run()
         before = setup.settings.values()
-        self.without(setup, "AI_RUNTIME_SERVICE_")
+        self.without(setup, "NODE_AUTHORITY_")
         docker.asked.clear()
         setup.run()
         said = setup.settings.values()
-        assert said["AI_RUNTIME_SERVICE_PRIVATE_KEY"] == PRIVATE + "-of-the-runtime"
-        assert said["AI_RUNTIME_SERVICE_PUBLIC_KEY"] == PUBLIC + "-of-the-runtime"
+        assert said["NODE_AUTHORITY_PUBLIC_KEY"] == PUBLIC + "-of-the-authority"
+        assert "NODE_AUTHORITY_PRIVATE_KEY" not in said
+        # The private half just made is beside it, in its own file.
+        assert module.Settings._read(setup.folder / "node-authority.env") == {
+            "NODE_AUTHORITY_PRIVATE_KEY": PRIVATE + "-of-the-authority"}
         kept = {name: value for name, value in before.items()
-                if not name.startswith("AI_RUNTIME_SERVICE_")}
+                if not name.startswith("NODE_AUTHORITY_")}
         assert {name: value for name, value in said.items()
-                if not name.startswith("AI_RUNTIME_SERVICE_")} == kept
+                if not name.startswith("NODE_AUTHORITY_")} == kept
         assert docker.asked == [
             "compose version",
             "info --format {{.ServerVersion}}",
             "build -q -f backend/Dockerfile .",
             "run --rm sha256:the-backend-image python "
-            "/opt/decentai/bootstrap/generate_service_keys.py",
+            "/opt/decentai/bootstrap/generate_node_authority.py",
             "compose --env-file deploy.env up -d --build",
         ]
-        assert any("gained AI_RUNTIME_SERVICE_PRIVATE_KEY" in line
+        assert any("gained NODE_AUTHORITY_PUBLIC_KEY" in line
                    for line in setup.said)
+
+    def test_secrets_a_deploy_env_from_before_holds_are_moved_into_their_files(
+            self, setup, docker):
+        """A deploy.env written while it still held the node's secret
+        and the authority's private key: they move into their own files
+        as they were, and their lines say where they went."""
+        setup.run()
+        for name in ("sandbox.env", "node-authority.env"):
+            (setup.folder / name).unlink()
+        with setup.settings.path.open("a", encoding="utf-8") as older:
+            older.write("AI_RUNTIME_SANDBOX_SECRET=the-older-secret\n"
+                        f"NODE_AUTHORITY_PRIVATE_KEY={PRIVATE}-older\n")
+        docker.asked.clear()
+        setup.run()
+        said = setup.settings.values()
+        assert "AI_RUNTIME_SANDBOX_SECRET" not in said
+        assert "NODE_AUTHORITY_PRIVATE_KEY" not in said
+        text = setup.settings.path.read_text(encoding="utf-8")
+        assert "# AI_RUNTIME_SANDBOX_SECRET moved to sandbox.env" in text
+        assert "# NODE_AUTHORITY_PRIVATE_KEY moved to node-authority.env" in text
+        assert module.Settings._read(setup.folder / "sandbox.env") == {
+            "AI_RUNTIME_SANDBOX_SECRET": "the-older-secret"}
+        assert module.Settings._read(setup.folder / "node-authority.env") == {
+            "NODE_AUTHORITY_PRIVATE_KEY": PRIVATE + "-older"}
+        # Nothing was made: no generator ran.
+        assert not any("generate_" in asked for asked in docker.asked)
+
+    def test_a_lost_authority_file_is_said_not_quietly_replaced(self, setup):
+        setup.run()
+        (setup.folder / "node-authority.env").unlink()
+        with pytest.raises(module.SetupError, match="node-authority.env is missing"):
+            setup.run()
 
     def test_a_setting_the_platform_gained_is_added_as_the_template_says(
             self, setup, docker):

@@ -16,6 +16,7 @@ def init_state(settings) -> None:
     from server.authentication.access import AccessController
     from api import APIRouter
     from api.services.chat_session.relay import RuntimeClientManager
+    from api.services.nodes.link import NodeLinks
     from server.ws.ws_manager import WSManager
 
     try:
@@ -30,7 +31,10 @@ def init_state(settings) -> None:
         state.api_router.initialize_endpoints()
 
         state.ws_manager = WSManager()
-        state.runtime_clients = RuntimeClientManager()
+        # The nodes that connect, and the relay that carries chats over
+        # their links (docs/system/execution-nodes.md).
+        state.node_links = NodeLinks()
+        state.runtime_clients = RuntimeClientManager(state.node_links)
     except Exception:
         reset_state()
         raise
@@ -49,6 +53,11 @@ async def shutdown_state() -> None:
     if state.runtime_clients is not None:
         try:
             await state.runtime_clients.close_all()
+        except Exception:
+            pass
+    if state.node_links is not None:
+        try:
+            await state.node_links.close_all()
         except Exception:
             pass
 

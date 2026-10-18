@@ -78,6 +78,9 @@ class SessionHost:
         #: (it needs the host's inside door first). Sessions built
         #: before it is set have no clock to offer their assistant.
         self.clock = None
+        #: called with a chat's id when its idle, unwatched session is
+        #: forgotten: the node link releases the chat's lease
+        self.forgotten = None
         self.sessions: Dict[str, Session] = {}
         self.sockets: Dict[str, Any] = {}
         self._builds: Dict[str, asyncio.Lock] = {}
@@ -403,6 +406,31 @@ class SessionHost:
             await self._hand(chat_id, session, kind, frame)
         self._schedule_reap(chat_id)
 
+    def holding(self, chat_id: str):
+        """Held while something runs for a chat beside its session — a
+        schedule's fire: the chat is not forgotten, and its lease not
+        let go, until it is over; then it may be, once idle."""
+        host = self
+        arriving = self._arriving(chat_id)
+
+        class Holding:
+            def __enter__(self):
+                arriving.__enter__()
+
+            def __exit__(self, *exc):
+                arriving.__exit__(*exc)
+                host._schedule_reap(chat_id)
+        return Holding()
+
+    async def fire(self, chat_id: str, schedule: Dict[str, Any]) -> bool:
+        """A fire the Data Core's clock decided on, for a chat this host
+        holds: the clock runs it (chat/clock.py, ``fire_now``)."""
+        if self.clock is None or not isinstance(schedule, dict):
+            return False
+        if str(schedule.get("chat_id") or "") != chat_id:
+            return False
+        return self.clock.fire_now(schedule) is not None
+
     def _arriving(self, chat_id: str):
         """Held while something is being delivered to a chat's session:
         the reaper leaves that session alone (``_reap``). Without it a
@@ -715,9 +743,34 @@ class SessionHost:
         except RuntimeError:
             pass  # no loop — a teardown path; shutdown covers it
 
+    def _watched(self, chat_id: str) -> bool:
+        """Whether somebody is watching this chat: an audience is
+        attached, and — on a node link, where the audience is the Data
+        Core — a person is behind it (door/link.py, ``ChatChannel``)."""
+        socket = self.sockets.get(chat_id)
+        return socket is not None and bool(getattr(socket, "watched", True))
+
+    def unwatched(self, chat_id: str) -> None:
+        """Nobody watches this chat any more: it may be forgotten once
+        it is idle, as a detached one is."""
+        self._schedule_reap(chat_id)
+
+    def forget(self, chat_id: str) -> None:
+        """This chat is no longer this process's to serve — another
+        node holds it now, or it was erased: its session is abandoned
+        where it stands, as a shutdown abandons every one, and nothing
+        more is written for it from here."""
+        session = self.sessions.pop(chat_id, None)
+        self._builds.pop(chat_id, None)
+        if session is not None:
+            try:
+                session.abandon()
+            except Exception:
+                pass
+
     def _reap(self, chat_id: str) -> None:
         session = self.sessions.get(chat_id)
-        if session is None or chat_id in self.sockets:
+        if session is None or self._watched(chat_id):
             return
         if self._busy.get(chat_id):
             return      # something is on its way in to it
@@ -731,6 +784,14 @@ class SessionHost:
         del self.sessions[chat_id]
         self._builds.pop(chat_id, None)
         self.logger.info(f"Session for {chat_id} reaped (idle, unwatched)")
+        forgotten = getattr(self, "forgotten", None)
+        if forgotten is not None:
+            # The chat went idle with nobody watching: the node link
+            # lets its lease go (door/link.py).
+            try:
+                forgotten(chat_id)
+            except Exception as exc:
+                self.logger.warning(f"Release of {chat_id} not said: {exc}")
 
     def shutdown(self) -> None:
         """Abandonment, by design: state is durable to the last beat,

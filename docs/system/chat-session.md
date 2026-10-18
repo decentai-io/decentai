@@ -1,32 +1,32 @@
 # The chat session
 
-How the backend serves a conversation. The runtime asks its platform
+How the Data Core serves a conversation. The runtime asks its platform
 for exactly one surface — the **services contract**
 (`ai_runtime/chat/session.py`'s docstring, with the simulator's
-`SimSessionServices` as the reference implementation) — and is dialed
-through exactly one door — the **chat socket**
-([session door](../reference/session-door.md)). The backend's job is to
-be that platform: answer the contract, dial the door, and hold the
-records. *How the assistant thinks* is the runtime's
+`SimSessionServices` as the reference implementation) — and hears each
+chat through exactly one door — the chat's frames over its execution
+node's **link** ([session door](../reference/session-door.md),
+[execution nodes](execution-nodes.md#the-node-link)). The Data Core's
+job is to be that platform: answer the contract, carry the frames, and
+hold the records. *How the assistant thinks* is the runtime's
 ([the assistant](assistant.md)).
 
 Two principles:
 
-- **The backend implements the contract; it does not dictate it.** The
+- **The Data Core implements the contract; it does not dictate it.** The
   method list is the runtime's. Where a method needs a store, the
-  backend provides one; what the runtime does itself — turns,
-  recovery, background work — the backend does not duplicate.
-- **A credential is not authority.** The dial hands the runtime a
+  Data Core provides one; what the runtime does itself — turns,
+  recovery, background work — the Data Core does not duplicate.
+- **A credential is not authority.** Attaching a chat hands its node a
   delegation it uses to call back; what the chat *may do* is answered
   only by `contract`. Authority never arrives through the door; the
-  token arriving beside the service token is a key to the services,
-  not a statement of rights.
+  delegation is a key to the services, not a statement of rights.
 
 ---
 
 ## What the runtime asks, and what answers
 
-The contract, method by method, against the backend's records. "Runtime
+The contract, method by method, against the Data Core's records. "Runtime
 verb" means an endpoint on the `/app` gateway that the RUNTIME
 principal — the delegation — may call; the fence
 (`RUNTIME_ENDPOINTS` in `backend/server/authentication/catalog.py`) is
@@ -35,7 +35,7 @@ this table and it differ. Every chat-bound verb also checks that the
 delegation was minted for the chat it names. Three verbs the runtime
 calls as itself and not as any chat — the package door,
 `Agents:Package:*` — are fenced on their own (`RUNTIME_SERVICE_ENDPOINTS`)
-and answered to the runtime's own service token
+and answered to the execution node's own credential
 ([agent code](agent-code.md#the-package-door)).
 
 | services method | runtime verb | record |
@@ -76,7 +76,7 @@ Seven rows have more to say than a row holds:
 
 `contract(chat_id)` → `AI:Chat:Contract`, computed by
 `chat_session/contract.py`. It is what a chat may do, asked again as
-each turn begins, and the one thing between the backend and the runtime
+each turn begins, and the one thing between the Data Core and the runtime
 that carries authority.
 
 | Field | What it says |
@@ -108,7 +108,7 @@ here from the row's cron in its zone or its period); the runtime's clock
 refuses a twin — the same function/note/inputs at the same cron/period
 in one chat — naming the row that already is.
 
-The frontend's Schedules page is `/ai/schedules`.
+The web client's Schedules page is `/ai/schedules`.
 
 ### Notifications
 
@@ -155,7 +155,7 @@ time.
 
 `AI:Chat:Stop {force: true}` (person, `ai:chat:stop`)
 
-The kill switch: the backend expires every pending card of the chat on
+The kill switch: the Data Core expires every pending card of the chat on
 the record first, then the runtime is sent `{event: stop, force: true}`;
 the host runs `session.kill()` off the socket's loop — the cycle and job
 tasks cancelled where they stand (a worker call overruled, a deaf worker
@@ -193,7 +193,10 @@ longer pins is answered `recorded: false`.
 `ai_schedules`: the clock's rows, read per chat and written one row at a
 time — a row the assistant set, what a fire did to one (its next time
 and its history; a fire can end a row and never switches one back on), a
-row it took off.
+row it took off. When a row is due is the Data Core's to decide: its
+clock claims the row and hands the fire to the node holding the chat
+([execution nodes](execution-nodes.md#the-clock)); the node runs it and
+writes back with `Ran`.
 
 A chat holds at most 50; one-shots that already ran make room. `Ran`
 answers `gone` for a row the person deleted meanwhile, and the clock
@@ -207,16 +210,18 @@ its manifest calls schedulable) — `AI:Schedule:Create` / `Update`
 (`AI:Schedule:Functions` lists what the form may offer: the functions
 the person was given that are schedulable), shaped exactly as the
 runtime shapes them (first run worked out with `contracts/cron.py` in
-the chat's zone), one row at a time too, then send the chat's runtime
-session `schedules_changed` through the relay so the clock re-reads
-them.
+the chat's zone), one row at a time too, then tell the node holding the
+chat, if one does, `schedules_changed` through the relay so its copy
+is read again. No chat is placed on a node for it: the Data Core's clock
+reads the store itself.
 
 Two hands on one chat's rows never overwrite each other in the store: a
 pause on the page stands even when the row was firing as it was made.
-The clock's own copy follows the store. It reads a chat's rows again
-when it is told (`schedules_changed`) and every time the chat dials or
-its credential is renewed, so a change whose word never arrived is
-caught up with then; what the person set is taken, and what the clock's
+A node's copy of a chat's rows — what the assistant's own clock actions
+read: its sleep, a twin, what it is waiting on — follows the store. It
+reads them again when it is told (`schedules_changed`) and every time
+the chat is attached or its credential is renewed, so a change whose
+word never arrived is caught up with then; what the person set is taken, and what the clock's
 last fire did to a row is kept, so a row read back from before that
 fire does not fire again.
 
@@ -226,19 +231,20 @@ Three things follow from the table:
   else does.
 - **The wait is not an HTTP call.** The chat's cards hold the
   waiter, and the session settles it when the `approval_decided` or
-  `question_answered` frame arrives on the socket — the backend never
+  `question_answered` frame arrives on the socket — the Data Core never
   holds a request open.
 - **One writer per record, with one exception.** The runtime writes
   state, events, plan and approvals-as-opened; the person writes
-  decisions and messages. Schedule rows have both: the runtime writes
-  a row as its clock moves it, one row at a time, and the person's
-  doors change one row and tell the clock to read again.
+  decisions and messages. Schedule rows have three hands: the Data
+  Core's clock claims a row as it comes due, the node writes what the
+  fire did, and the person's doors change one row — each one row, one
+  write, so none undoes another.
 
 ## Child threads
 
 A sub-assistant (`docs/system/sub-assistants.md`) persists its own
 state, transcript, inbox and plan under `<chat>/sub_xxxxxxxx`. The
-backend knows chats, not children, so a child's records live **on its
+Data Core knows chats, not children, so a child's records live **on its
 parent's chat under a thread**: the verbs that keep a mind — state,
 plan, messages, the inbox of events, and opening a card — take an
 optional `thread`; the credential stays the parent's, the guard stays
@@ -254,43 +260,47 @@ What
 the person reads as the chat never includes a thread's messages; a
 client that wants to show a child's thread asks for it by name.
 
-## The dial
+## The node link
 
-The relay (`chat_session/relay.py`) dials `WS /chats/{chat_id}` with
-the service token — proof it is the backend — and, in the same
-handshake, a **fresh delegation for the chat** (the runtime access
-token, the `runtime_sessions` row it names). The runtime hands that
-credential to its services implementation for the chat; revocation is
-unchanged: delete the row and the runtime's calls fail from the next
-one.
+The Data Core dials nobody: execution nodes connect to it, each over one
+link that carries every chat it serves
+([execution nodes](execution-nodes.md#the-node-link)). The relay
+(`chat_session/relay.py`) **attaches** a chat to one of them: it mints a
+**fresh delegation for the chat** (the runtime access token, the
+`runtime_sessions` row it names), bound to that node, and sends it over
+the link in an `attach` frame naming the chat. The node's host hands
+that credential to its services implementation for the chat;
+revocation is unchanged: delete the row and the node's calls fail from
+the next one. The delegation is accepted only from the node it was
+handed to.
 
-A delegation lives an hour; a dial the backend keeps open longer (a
-scheduled chat's, kept past the browser's leaving, or a tab left open)
-is renewed over the socket. `RuntimeClientManager.renew_due` mints a
-fresh delegation for every live dial older than three quarters of an
-hour and sends it as a `credential` frame; the host hands it to its
-services and the clock adopts any rows it unlocks. The old row is
-retired the moment the new one is minted, which is the one moment a
-call the runtime has in flight can be refused: the new key is the next
-frame on the wire, and the call after it carries it.
+A delegation lives an hour; a chat may stay attached longer (a
+scheduled chat's, kept past the browser's leaving, or a tab left open).
+`RuntimeClientManager.renew_due` mints a fresh delegation for every
+attached chat whose credential is older than three quarters of an hour
+and sends it as a `credential` frame; the host hands it to its services
+and the clock adopts any rows it unlocks. The old row is retired the
+moment the new one is minted, which is the one moment a call the node
+has in flight can be refused: the new key is the next frame on the
+wire, and the call after it carries it.
 
-Over the socket the relay speaks the door's vocabulary and nothing
-else. The first three rows are frames on the browser's socket; a
+Over the link the relay speaks the door's vocabulary and nothing else,
+each frame naming its chat. The first three rows are frames on the browser's socket; a
 decision and a stop are not, and reach the relay from the gateway; a
-webhook's event reaches it from the backend's own door for outside
+webhook's event reaches it from the Data Core's own door for outside
 systems:
 
-| frontend says | relay sends | runtime answers with |
+| web client says | relay sends | runtime answers with |
 |---|---|---|
 | `AI:Chat:Input {text, attachments, client_message_id}` (`parts` is taken for `attachments`; the page also sends `protocol_version`. Held to the contract's `ChatInputCommand` before anything is kept: text of at most 256 KB (`USER_TEXT_MAX_BYTES`), a version that is the contract's, an id of at most 128 characters, at most 20 attachments, each a file part, and words or a file to say; what is not is answered `invalid_input`) | `user_message` | `message_created`, then work; a resend with the same `client_message_id` is the same message |
 | `AI:Chat:Screen {call_id, events}` | `screen_input` | nothing of its own: the events reach the call showing that screen |
 | `AI:Chat:Watch {action}` | `screen_open` | `screen_frame`s from the roster's watch function, or `screen_unavailable` |
 | `AI:Approval:Decide` (via the gateway, recorded first) | `approval_decided` | the job or park resumes |
 | `AI:Approval:Decide {answer}` — a question's (via the gateway, recorded first) | `question_answered` | the asking call continues, or hears it expired |
-| an outside system's `POST /hooks/{webhook_id}` (`backend/server/routes/hooks.py`, checked and recorded first; [webhooks](webhooks.md)) | `webhook_event` — the backend's own, in `FRAMES`, and no browser frame becomes it | the event recorded in the inbox; the person's instruction for the webhook as theirs and the posted fields as an `EVENT`, then work |
+| an outside system's `POST /hooks/{webhook_id}` (`backend/server/routes/hooks.py`, checked and recorded first; [webhooks](webhooks.md)) | `webhook_event` — the Data Core's own, in `FRAMES`, and no browser frame becomes it | the event recorded in the inbox; the person's instruction for the webhook as theirs and the posted fields as an `EVENT`, then work |
 | `AI:Chat:Stop` (via the gateway) | `stop` | the assistant stops between beats, a call it is waiting on being ended at once, and the audience hears `idle`, with no message; with `force`, [the kill](#the-kill) and `stopped` |
 
-Everything the runtime emits reaches the frontend as `AI:Chat:Event`. The `hello` frame on attach carries the present tense
+Everything the runtime emits reaches the web client as `AI:Chat:Event`. The `hello` frame on attach carries the present tense
 (whether a turn is under way, active jobs, pending cards, the plan) and
 the relay forwards it whole. The page rehydrates from it and from the
 record: on every reconnect it replays the events it missed
@@ -306,7 +316,7 @@ socket path. It announces nothing to the runtime — the runtime asks.
 ## The vocabulary
 
 What the runtime sends toward a person, and what a message carries, is
-defined once: `contracts/chat.py`. The runtime and the backend import
+defined once: `contracts/chat.py`. The runtime and the Data Core import
 it; the page's `chat-protocol.ts` is written by hand against it, and
 `tests/test_chat_contract.py` fails when the two disagree about which
 events and which part types there are. It compares those names and not
@@ -337,7 +347,7 @@ the fields of an event or a part.
   event, marked as data, at its next beat; a post starts no cycle of
   its own. (A session rebuilt before that beat finds the event past
   its bookmark and runs a cycle to absorb it.)
-- **An outside system may wake a chat** (a webhook's): the backend
+- **An outside system may wake a chat** (a webhook's): the Data Core
   sends `webhook_event` and the runtime records it in the inbox as a
   `webhook` event, which the assistant takes in as two `user` lines —
   the person's standing instruction for the webhook, and `EVENT
@@ -420,7 +430,7 @@ the fields of an event or a part.
   the `query`, the person's own description. The page
   lists the candidates pre-ticked, searches the rest, and answers
   `AI:Approval:Decide {answer: [refs]}` — an empty list is a decline.
-  The backend checks every ref against what the person may see and
+  The Data Core checks every ref against what the person may see and
   carries name, type and size to the runtime, which records the choice
   as a `user` message of file parts, the composer's shape, so the page
   shows it and any agent reads it by ref.
@@ -452,7 +462,7 @@ the fields of an event or a part.
   replay may still carry an old `progress`; the page reads it, nothing
   sends it.
 
-The backend validates where it records: `AI:Event:Append` refuses an
+The Data Core validates where it records: `AI:Event:Append` refuses an
 event that does not fit (`invalid_event`), and `AI:Message:Create` a
 part that does not (`invalid_parts`). A refusal costs the replay, not
 the moment — the runtime logs it as an error and the live frame still
@@ -467,13 +477,15 @@ the same way, so a malformed event fails the runtime's own tests first.
 | the contract's computation | `backend/api/services/chat_session/contract.py` |
 | the inbox and outbox on `ai_chat_events`; `ai_chats.state`; `ai_approvals`; `ai_schedules` | `backend/database/stores/chats.py` |
 | the fence, `RUNTIME_ENDPOINTS` | `backend/server/authentication/catalog.py` |
-| the relay speaking frames; the browser socket translating the frontend | `backend/api/services/chat_session/relay.py`, `backend/server/routes/ws.py` |
+| the relay speaking frames; the browser socket translating the web client | `backend/api/services/chat_session/relay.py`, `backend/server/routes/ws.py` |
 | `Backend` — the contract over HTTP, one class, every call naming its chat and carrying that chat's credential; `ChatResources`, an agent's data, files and secrets as one chat | `ai_runtime/door/platform.py` |
 
 ## What it does not do
 
-- **More than one runtime host.** A chat's turn lives in one process;
-  nothing keeps a chat on one host of several.
+- **Run one chat on two nodes.** A chat's turn lives in one process,
+  and a numbered lease keeps it on one execution node of many: the
+  gateway refuses any other node's calls for it
+  ([execution nodes](execution-nodes.md#leases)).
 - **Stream the state.** Every beat replaces the state document whole.
-- **Assume the backend is the only caller.** The same two contracts
+- **Assume the Data Core is the only caller.** The same two contracts
   would serve another consumer, a command line for instance.

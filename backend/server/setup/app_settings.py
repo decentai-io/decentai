@@ -136,16 +136,17 @@ def _load_settings() -> Dict[str, Any]:
         # reaches (bootstrap/setup.py). Anything else is the code.
         "setup_code": (os.getenv("SETUP_CODE") or "").strip(),
 
-        # backend -> runtime service identity (RS256; runtime holds the
-        # public key)
-        "backend_service_private_key": _env_pem("BACKEND_SERVICE_PRIVATE_KEY"),
-        # runtime -> backend service identity (RS256; the runtime holds
-        # the private key): what a runtime asks as itself, for the whole
-        # deployment — the package door (docs/system/agent-code.md)
-        "ai_runtime_service_public_key": _env_pem("AI_RUNTIME_SERVICE_PUBLIC_KEY"),
-
-        # where the AI runtime is reachable
-        "ai_runtime_url": os.getenv("AI_RUNTIME_URL", "http://127.0.0.1:8001"),
+        # The Data Core's own key (RS256): what it signs everything it
+        # tells an execution node with; nodes hold the public half
+        # (docs/system/execution-nodes.md). The older name still reads.
+        "backend_service_private_key": (
+            _env_pem("DATA_CORE_PRIVATE_KEY")
+            or _env_pem("BACKEND_SERVICE_PRIVATE_KEY")),
+        # Whose administrators are the deployment's operator: they, and
+        # nobody of another organization, register shared authorities —
+        # the ones that admit nodes every organization's chats may run
+        # on. Empty: the first organization the deployment made.
+        "operator_org_id": os.getenv("OPERATOR_ORG_ID", "").strip(),
 
         # where the platform's own speech models are reachable
         "speech_url": os.getenv("SPEECH_URL", "http://speech:8004"),
@@ -224,13 +225,14 @@ class Settings:
     jwt_cookie_samesite: Literal["lax", "strict", "none"] | None = "lax"
     jwt_cookie_domain: Optional[str] = None
 
-    # backend -> runtime service identity (RS256 private key, PEM)
+    # the Data Core's own key, toward execution nodes (RS256 private
+    # key, PEM)
     backend_service_private_key: Optional[str] = None
-    # runtime -> backend service identity (RS256 public key, PEM)
-    ai_runtime_service_public_key: Optional[str] = None
+    # the organization whose administrators are the operator
+    operator_org_id: str = ""
 
-    # where the AI runtime is reachable
-    ai_runtime_url: str = "http://127.0.0.1:8001"
+    # Where execution nodes are is not a setting: they connect here
+    # (docs/system/execution-nodes.md).
     # where the platform's own speech models are reachable
     speech_url: str = "http://speech:8004"
     agent_package_dir: str = "data/agent-packages"

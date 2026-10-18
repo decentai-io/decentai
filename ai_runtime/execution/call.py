@@ -360,11 +360,14 @@ class Call:
             raise WorkerError(
                 f"'{refused}' is not on a card the person allowed: put the "
                 f"code that needs it before them first.")
-        extras = getattr(getattr(self.agent, "environment", None), "extras", None)
-        if extras is None or self.confinement is None:
+        # Built where the worker runs: by the builder of its Execution
+        # Sandbox, into the environment it was started from there.
+        sandbox = getattr(getattr(self.handle, "place", None), "container", None)
+        extras = getattr(sandbox, "extras", None)
+        if extras is None or self.confinement is None or self.agent is None:
             raise WorkerError("Packages cannot be installed here.")
         async with self.paused():
-            folder, errors = await extras(names, self.confinement.builder_place())
+            folder, errors = await extras(self.agent, names, self.confinement)
         if errors:
             raise WorkerError("; ".join(errors))
         return str(folder)

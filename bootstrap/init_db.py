@@ -70,6 +70,7 @@ def main() -> int:
 
     drop_stale_actions()
     unescape_chat_titles()
+    register_install_authority()
 
     if users.col.find_one({}, {"_id": 1}) is None and not (
             admin_email and admin_password):
@@ -144,6 +145,35 @@ def main() -> int:
     )
     print(f"admin: {admin['email']} created — done")
     return 0
+
+
+def register_install_authority() -> None:
+    """The install's own authority, registered as a shared one: the
+    public half of NODE_AUTHORITY_PUBLIC_KEY, whose private half signs
+    the bundled node's credentials (bootstrap/node_issuer.py). Once: a
+    key already known — registered, or revoked by the operator since —
+    is left as it is, so a revoke is never undone by a restart."""
+    public_key = (os.getenv("NODE_AUTHORITY_PUBLIC_KEY") or "").strip()
+    if not public_key:
+        return
+    from database.stores import AuthorityStore
+
+    store = AuthorityStore()
+    try:
+        fingerprint = store.fingerprint(public_key)
+    except Exception:
+        print("ERROR: NODE_AUTHORITY_PUBLIC_KEY is not a public key; no "
+              "execution node of this install can be admitted.",
+              file=sys.stderr)
+        return
+    known = store.by_fingerprint(fingerprint)
+    if known is not None:
+        state = "revoked" if known.get("revoked_at") else "registered"
+        print(f"node authority: {known['_id']} already {state}")
+        return
+    doc = store.register(name="This install", scope=AuthorityStore.SHARED,
+                         by={"email": "setup"}, public_key=public_key)
+    print(f"node authority: {doc['_id']} registered (shared)")
 
 
 def first_run_announcement() -> None:

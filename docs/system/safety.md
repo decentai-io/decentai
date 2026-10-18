@@ -60,10 +60,10 @@ What each looser choice means, exactly:
 | Row | Where | How |
 |---|---|---|
 | Sites no agent may open | the proxy (`ai_runtime/agents/egress.py`) | a name on the list is refused to every worker, a manifest that says `any` included, and the refusal says the site is on the list. The list is of names, so while it holds any, no worker reaches anything by a bare address — an address says nothing of whose site it is. (An MCP server is called by the runtime and not through the proxy: its name is held to the list in the executor, and an address is not refused there.) The list is told to the worker's pass as each call begins, so a change applies from the next call |
-| A script, a program | the backend, as the card is opened (`backend/api/services/chat_session/code_rules.py`) | the runtime proposes and has the code read; `AI:Approval:Open` then answers the card itself where the rule allows, and says so (`settled`). The runtime opens cards and never decides them, so it cannot loosen itself |
-| MCP servers | the backend (`backend/api/services/data_layer/mcp.py`) | blocked, nobody adds or reads a server, the chat's contract names none, and the runtime's door to a server's address is refused ([MCP servers](mcp.md)) |
-| Receiving webhooks | the backend, at the door (`backend/server/routes/hooks.py`) | blocked, every inbound webhook of the organization answers 404, as one that does not exist would; none is deleted, and no new one can be made (403). Notifications going out are not affected ([webhooks](webhooks.md)) |
-| What a notification says | the backend, as a notification is delivered (`backend/server/notifications.py`, `Notifier.quiet`) | hidden, every push — to a phone through Expo, Apple or Google, to a browser through its push service — and every email says only *Something is waiting for your decision* or *A chat of yours has an answer*, with the link to the chat; no chat title, agent, function or words of a reply. A person may choose the same for their own (`Settings:Notifications:Update`, `text`), and cannot undo the organization's. Outbound subscriptions are the person's own addresses and are not affected ([webhooks](webhooks.md#outbound)) |
+| A script, a program | the Data Core, as the card is opened (`backend/api/services/chat_session/code_rules.py`) | the runtime proposes and has the code read; `AI:Approval:Open` then answers the card itself where the rule allows, and says so (`settled`). The runtime opens cards and never decides them, so it cannot loosen itself |
+| MCP servers | the Data Core (`backend/api/services/data_layer/mcp.py`) | blocked, nobody adds or reads a server, the chat's contract names none, and the runtime's door to a server's address is refused ([MCP servers](mcp.md)) |
+| Receiving webhooks | the Data Core, at the door (`backend/server/routes/hooks.py`) | blocked, every inbound webhook of the organization answers 404, as one that does not exist would; none is deleted, and no new one can be made (403). Notifications going out are not affected ([webhooks](webhooks.md)) |
+| What a notification says | the Data Core, as a notification is delivered (`backend/server/notifications.py`, `Notifier.quiet`) | hidden, every push — to a phone through Expo, Apple or Google, to a browser through its push service — and every email says only *Something is waiting for your decision* or *A chat of yours has an answer*, with the link to the chat; no chat title, agent, function or words of a reply. A person may choose the same for their own (`Settings:Notifications:Update`, `text`), and cannot undo the organization's. Outbound subscriptions are the person's own addresses and are not affected ([webhooks](webhooks.md#outbound)) |
 | Packages | the runtime, where a proposal is checked before its card (`ai_runtime/execution/call.py`, `code_problem`) | a package that is not on the list is refused before anybody is asked, and the agent is told which names are. A listed package's own dependencies are installed with it |
 
 None of it is the agent's to decide: an agent proposes, and hears yes
@@ -148,21 +148,21 @@ person's chats at once and holds them stopped (`AI:Switch`,
 `backend/api/services/chat_session/halt.py`). In order:
 
 1. The person is marked stopped. From that moment nothing of theirs is
-   dialed and no key is minted for any chat of theirs — a message, a
-   decision on a card, a schedule coming round, a boot's re-dial, a
-   webhook's event. Their webhooks answer 404 to every call until they
+   placed on a node and no key is minted for any chat of theirs — a
+   message, a decision on a card, a schedule coming round, a webhook's
+   event. Their webhooks answer 404 to every call until they
    resume ([webhooks](webhooks.md)).
-2. Every chat a runtime may be serving for them is killed as above:
-   the ones they have open, the ones working with nobody watching, the
-   ones that only keep a clock. Each is given ten seconds to write
+2. Every chat a node may be serving for them is killed as above,
+   on the node holding it: the ones they have open, and the ones
+   working with nobody watching. Each is given ten seconds to write
    down what it had done.
 3. Every key the runtime holds for them is withdrawn. Whatever is
    still running then — a process that ignored its end — can read no
    credential, no model key, no record and no file. It starves.
 
 It holds until the person resumes, which is their own act and never
-happens by itself; the chats that keep a clock are dialed back then,
-and the others wait to be opened. Both are on the audit trail
+happens by itself; a schedule that came due meanwhile fires once
+then, and the chats wait to be opened. Both are on the audit trail
 (`work.stopped`, `work.resumed`). The switch reaches the person's own
 chats and nobody else's, and the runtime's delegation has no hand on
 it: what is stopped cannot start itself again.
