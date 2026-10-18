@@ -23,7 +23,8 @@ settings keep their older names until they are renamed together
 | **AI Runtime** | `ai-runtime` | `ai_runtime/` | the assistant, the executor every call passes, what a schedule's fire runs, the egress proxy |
 | **Execution Sandbox** | `agents` | `ai_runtime/agents_container/` | agent code, one user of its own per agent |
 | **execution node** | — | — | one AI Runtime with its Execution Sandboxes, deployed together |
-| **clients** | `web` | `frontend/` | the web, desktop and mobile apps; they speak only to the Data Core |
+| **gateway** | `gateway` | `gateway/` | the one door: the Data Core's paths to the Data Core, every other to the web client |
+| **clients** | — | other repositories | the web client (`decentai-web-client`), and the desktop and mobile apps; they speak only to the Data Core |
 
 Together the Data Core, the AI Runtime and the Execution Sandbox are
 the **AI Engine**. Where this page says "the runtime", it means the AI
@@ -38,9 +39,10 @@ the seeder runs once at every start and exits.
  browser
     │  HTTP and WebSocket, port 4280 on this machine (80/443 on a server)
     ▼
-┌─────────┐   /auth/* /app /chats/* /upload /download/* /oauth/* /hooks/*
-│   web   │──────────────────────────────────────────┐
-└─────────┘   everything else: the web app's files   │
+┌─────────┐   /auth/* /app /chats/* /upload /download/* /oauth/* /hooks/* /nodes/*
+│ gateway │──────────────────────────────────────────┐
+└─────────┘   everything else: the web client        │
+              (decentai-web-client, as web-client)   │
                                                      ▼
 ┌─────────┐  seeds, then exits        ┌──────────────────────┐      ┌─────────┐
 │  init   │──────────────────────────▶│       backend        │─────▶│  mongo  │
@@ -65,7 +67,7 @@ the seeder runs once at every start and exits.
 
 | Container | Image | What it is | Listens on |
 |---|---|---|---|
-| `web` | `frontend/` | Caddy, which serves the web app's files and passes the Data Core's paths on (`frontend/Caddyfile`) | 80, published as `LISTEN:PORT` — the only published port |
+| `gateway` | `caddy:2-alpine` | Caddy, which passes the Data Core's paths to the Data Core and every other to the web client: its container on this network (`web-client`), `npm start` on port 4200, or wherever `WEB_CLIENT_UPSTREAM` says (`gateway/Caddyfile`) | 80, published as `LISTEN:PORT` — the only published port |
 | `backend` | `backend/` | the platform's API: identity and access, the data layer, the gateway, chat sessions as the runtime's services | 8000 |
 | `init` | the Data Core's | `bootstrap/init_db.py`: the schema, the access chains, the first administrator | — |
 | `mongo` | `mongo:7` | the database | 27017, on the `data` network only |
@@ -78,7 +80,7 @@ Three networks (`docker-compose.yml`):
 
 | Network | On it | What it is for |
 |---|---|---|
-| `default` | `web`, `backend`, `ai-runtime`, `speech` | the one with a way out. Caddy reaches the Data Core; the Data Core reaches the speech container (and no execution node: nodes dial it), and the internet for repositories, mail, OAuth and a person's notifications to other systems ([webhooks](webhooks.md)); the runtime reaches the Data Core's gateway, and the internet for agents' packages and, through its proxy, for agents |
+| `default` | `gateway`, `backend`, `ai-runtime`, `speech` | the one with a way out. Caddy reaches the Data Core; the Data Core reaches the speech container (and no execution node: nodes dial it), and the internet for repositories, mail, OAuth and a person's notifications to other systems ([webhooks](webhooks.md)); the runtime reaches the Data Core's gateway, and the internet for agents' packages and, through its proxy, for agents |
 | `data` | `mongo`, `backend`, `init` | `internal: true`: the database, and the two that speak to it. Nothing else has a route to it, and it has none out |
 | `agents` | `ai-runtime`, `agents` | `internal: true`: the runtime is the only container on it with a way anywhere, so a worker's only way out is the runtime's proxy |
 
@@ -399,7 +401,7 @@ what they are for:
 5. If it reaches a person: `ai_runtime/chat/session.py`, the services
    (step 6 above), a gateway action, and the frame in
    `contracts/chat.py` with its twin in
-   `frontend/src/app/models/chat-protocol.ts` —
+   `src/app/models/chat-protocol.ts` in `decentai-web-client` —
    `tests/test_chat_contract.py` holds the two to each other.
 6. [The worker protocol](../reference/worker-protocol.md) and
    [What your code is given](../agents/sdk.md).

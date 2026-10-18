@@ -28,8 +28,6 @@ ai_runtime/tests/.workerenv
 
 # Frontend builds and caches
 **/node_modules
-frontend/dist
-frontend/.angular
 
 # Editors
 **/.idea

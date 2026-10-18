@@ -586,7 +586,7 @@ Tests: the schedule classes in `ai_runtime/tests/test_session.py`,
   left alone, so the JSON examples inside a prompt are written the
   way the model must emit them.
 - `contracts/chat.py` — the frames and message parts, typed. The page's
-  copy is `frontend/src/app/models/chat-protocol.ts`, and
+  copy is `src/app/models/chat-protocol.ts` in `decentai-web-client`, and
   `tests/test_chat_contract.py` — in the spanning suite, the
   repository's own `tests/` — fails when the two disagree.
 

@@ -516,10 +516,16 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     except KeyboardInterrupt:
         print("\nStopped. Run it again to carry on.", file=sys.stderr)
         return 130
-    print("\nDecentAI is running at:\n")
+    print("\nThe DecentAI engine is running at:\n")
     print(f"  {link}\n")
-    print("The first time, it asks you to name your organization and choose "
-          "your own email and password. After that, sign in with them.")
+    print("The app itself is the web client, a repository of its own. Clone "
+          "it beside this one and start it there:\n")
+    print("  git clone https://github.com/decentai-io/decentai-web-client.git "
+          "../decentai-web-client")
+    print("  cd ../decentai-web-client && docker compose up -d --build\n")
+    print("Then open the address above. The first time, it asks you to name "
+          "your organization and choose your own email and password. After "
+          "that, sign in with them.")
     print(f"`python bootstrap/setup.py --link` says the address again. To "
           f"stop: `docker compose --env-file {Settings.FILE} stop`.")
     return 0

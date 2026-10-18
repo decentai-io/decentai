@@ -75,14 +75,26 @@ Seven containers come up: MongoDB; a one-shot seeder that creates the
 organization and the first person and exits; the Data Core; the private
 AI Runtime; the Execution Sandbox, where agent code runs and nothing
 else does; the speech container, which holds the platform's own speech
-models; and Caddy, which serves the web app and the Data Core on one
-address. The first build takes a few minutes.
+models; and the gateway (Caddy), which serves the Data Core and the web
+client on one address. The first build takes a few minutes.
 
 `deploy.env` is the install: keep it. It is not made twice — a database
 is readable with the keys it was written with and no others — and it is
 not in git.
 
-## 2. Open it
+## 2. Start the web client
+
+The app itself is the web client, a repository of its own. Clone it
+beside this one and start it there; it joins the engine's network, where
+the gateway finds it:
+
+```bash
+git clone https://github.com/decentai-io/decentai-web-client.git ../decentai-web-client
+cd ../decentai-web-client
+docker compose up -d --build
+```
+
+## 3. Open it
 
 
 Open the address the script printed: `http://localhost:4280`. The first

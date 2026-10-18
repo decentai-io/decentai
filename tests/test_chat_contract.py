@@ -1,14 +1,19 @@
 """The chat's vocabulary, held to one definition (contracts/chat.py).
 
 The runtime and the backend import the contract; the page's
-chat-protocol.ts is written by hand against it. These tests keep the
-three from drifting apart again: every event and part the contract
-defines is one the page knows, and the page knows nothing the contract
-does not account for.
+chat-protocol.ts, in the web client's own repository, is written by hand
+against it. These tests keep the three from drifting apart again: every
+event and part the contract defines is one the page knows, and the page
+knows nothing the contract does not account for. The page's half is read
+from a checkout of decentai-web-client beside this one (or where
+DECENTAI_WEB_CLIENT says), and is skipped where there is none.
 """
 
+import os
 import re
 from pathlib import Path
+
+import pytest
 
 from contracts.chat import (
     EVENT_NAMES,
@@ -23,8 +28,13 @@ from contracts.chat import (
     part_error,
 )
 
-PROTOCOL_TS = (Path(__file__).resolve().parent.parent / "frontend" / "src"
-               / "app" / "models" / "chat-protocol.ts")
+WEB_CLIENT = Path(os.environ.get("DECENTAI_WEB_CLIENT") or (
+    Path(__file__).resolve().parents[2] / "decentai-web-client"))
+PROTOCOL_TS = WEB_CLIENT / "src" / "app" / "models" / "chat-protocol.ts"
+page = pytest.mark.skipif(
+    not PROTOCOL_TS.is_file(),
+    reason="no decentai-web-client checkout beside this one "
+           "(or at DECENTAI_WEB_CLIENT) to read the page's protocol from")
 
 
 def page_events():
@@ -43,6 +53,7 @@ def page_part_types():
     return names
 
 
+@page
 class TestThePageSpeaksTheContract:
     def test_every_event_is_one_the_page_knows(self):
         expected = (set(EVENT_NAMES) | set(RELAY_EVENTS) | set(DELIVERED_EVENTS)

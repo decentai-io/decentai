@@ -5,7 +5,8 @@ Licensed under the Apache License, Version 2.0. See LICENSE.
 
 This product includes software developed by third parties under their own
 licences, listed in backend/requirements.txt, ai_runtime/requirements.txt,
-speech/requirements.txt and frontend/package.json.
+and speech/requirements.txt. The web client, a repository of its own
+(decentai-web-client), carries its own notice.
 
 The speech container (speech/) runs Piper (https://github.com/OHF-Voice/piper1-gpl),
 which is licensed under the GNU General Public License v3.0. It is run as a

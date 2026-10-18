@@ -136,15 +136,18 @@ jobs:
           sudo chmod -R a+rX speech-models || true
 
   images:
-    name: the backend's image and the web app's
+    name: the backend's image, and the gateway's configuration
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - run: docker build -f backend/Dockerfile .
-      # Builds the web app on the way: a page that does not compile
-      # fails here.
-      - run: docker build -f frontend/Dockerfile .
+      # The engine's one door: a Caddyfile that does not parse fails
+      # here, not on a server. (The web client is built and tested in
+      # its own repository, decentai-web-client.)
+      - run: >
+          docker run --rm -v "$PWD/gateway:/etc/caddy:ro" caddy:2-alpine
+          caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
 
   agents:
     name: the published agents, against this platform

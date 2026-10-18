@@ -1,8 +1,0 @@
-<app-entry-card
-  [title]="unreachable ? 'The server cannot be reached' : 'Loading DecentAI…'"
-  [sentence]="unreachable ? 'It may be restarting. Trying again…' : ''"
-  [busy]="true"
-  role="status"
->
-  <button class="btn" type="button" *ngIf="unreachable" (click)="retry.emit()">Try now</button>
-</app-entry-card>

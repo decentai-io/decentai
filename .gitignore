@@ -37,11 +37,6 @@ ai_runtime/installed_agents/
 ai_runtime/tests/.workerenv/
 
 # Frontend
-frontend/node_modules/
-frontend/dist/
-frontend/.angular/
-frontend/coverage/
-frontend/.sass-cache/
 
 # Editors and operating systems
 .idea/

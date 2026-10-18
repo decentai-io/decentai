@@ -361,12 +361,12 @@ chats ([ownership](ownership.md)).
 
 | | |
 |---|---|
-| the door, `POST /hooks/<id>` | `backend/server/routes/hooks.py`; Caddy passes `/hooks/*` to the Data Core (`frontend/Caddyfile`) |
+| the door, `POST /hooks/<id>` | `backend/server/routes/hooks.py`; Caddy passes `/hooks/*` to the Data Core (`gateway/Caddyfile`) |
 | the stores, the field check and the signature | `backend/database/stores/webhooks.py` — `webhooks`, `webhook_deliveries`, `webhook_subscriptions`, `webhook_sends` |
 | the page's doors, `Settings:Webhook:*`, `Settings:Outbound:*`; executions (`WebhookRuns`) | `backend/api/endpoints/app/settings/webhook_controller.py` |
 | the queue and the sender | `backend/server/outbound.py` |
 | where events are queued | `backend/server/notifications.py`; a schedule's run, `backend/api/endpoints/app/ai/schedule_controller.py` |
 | the frame | `backend/api/services/chat_session/relay.py` (`FRAMES`); `ai_runtime/door/host.py` (`_deliver_webhook`); `ai_runtime/mind/assistant.py` (`_absorb`) |
-| the pages | `frontend/src/app/pages/app/ai/webhooks/` (the list, a webhook's page, the test event); `frontend/src/app/pages/app/settings/outbound/` |
+| the pages | `src/app/pages/app/ai/webhooks/` in `decentai-web-client` (the list, a webhook's page, the test event); `src/app/pages/app/settings/outbound/` in `decentai-web-client` |
 | the Safety row | `backend/database/stores/iam.py` (`SAFETY_DEFAULTS`) |
 | tests | `backend/tests/test_webhooks.py` (making one, every check and refusal, the trail, outbound shapes, signing, retries and pausing; executions, sharing to view, handing over, test events); `ai_runtime/tests/test_session_door.py` (`TestAWebhookEvent`: the instruction is the person's and the fields are data) |

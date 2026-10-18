@@ -51,8 +51,8 @@ an authority registered once, each chat is held by one node under a
 numbered lease, and the clock that fires schedules is the Data Core's
 ([execution nodes](docs/system/execution-nodes.md)). The
 web, desktop and mobile apps are **clients** of the engine; the web
-client still lives in `frontend/` until it moves to its own repository
-([the plan](docs/ai-engine-plan.md)).
+client is a repository of its own, [`decentai-web-client`](https://github.com/decentai-io/decentai-web-client),
+served through the engine's gateway.
 
 ## Start here
 
@@ -65,7 +65,7 @@ client still lives in `frontend/` until it moves to its own repository
 | write an agent | [docs/agents/](docs/agents/README.md), with the example, [`note/`](https://github.com/decentai-io/decentai-agents/tree/main/note) in `decentai-agents` |
 | call it from a script | [docs/reference/api.md](docs/reference/api.md) |
 | change the platform itself | [CONTRIBUTING.md](CONTRIBUTING.md) and [docs/contributing/local-development.md](docs/contributing/local-development.md) |
-| use it as a person | the **Help → Guide** section inside the app (source: `frontend/src/assets/guide/`) |
+| use it as a person | the **Help → Guide** section inside the app (source: `src/assets/guide/` in `decentai-web-client`) |
 
 Every page is listed, by what you came to do, in [docs/README.md](docs/README.md).
 
@@ -76,8 +76,8 @@ backend/       the platform API: identity and access, the data layer, the
                /app gateway, chat sessions, and the runtime's services
 ai_runtime/    the private agent execution process: the assistant's cycle,
                the executor and its gates, agent workers, the clock
-frontend/      the web application (Angular), served with the backend on one
-               address by Caddy (frontend/Caddyfile)
+gateway/       the one door (Caddy): the Data Core's paths to the Data Core,
+               every other to the web client (decentai-web-client)
 speech/        speech to text and text to speech from models that run on
                the machine itself, in a container of their own
 decentai_sdk/  what agent code imports: AgentBase, ToolBase, the manifest

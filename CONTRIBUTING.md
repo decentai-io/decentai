@@ -10,10 +10,9 @@ repository, not to this one.
 Read how the platform works in `docs/system/` and the contracts in
 `docs/reference/`. They say what the platform does and, more importantly,
 *why*. A change that contradicts one of them changes the document first,
-in the same pull request, with the reasoning. Work on the web
-application is held to the same standard by
-[The design language](docs/contributing/design-language.md), which ends in six greps
-a web client change is expected to leave clean.
+in the same pull request, with the reasoning. The web client is a
+repository of its own, [`decentai-web-client`](https://github.com/decentai-io/decentai-web-client), with its own
+design language.
 
 Use the engine's names in new code, documentation, comments and log
 lines: **Data Core**, **AI Runtime**, **Execution Sandbox**, **execution

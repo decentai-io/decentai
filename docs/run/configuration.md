@@ -301,13 +301,14 @@ the internet.
 | `PORT` | The port DecentAI is opened at on the machine; `4280` unless said. `PUBLIC_APP_URL` and `CORS_ALLOW_ORIGINS` carry the same number. Not read under `docker-compose.server.yml`, which publishes 80 and 443. |
 | `TRUSTED_PROXIES` | Whose word Caddy takes for a client's address (`X-Forwarded-For`): the load balancer in front, by its address range, several with spaces between. Unset, nobody's (the default, `127.0.0.1/32`, is Caddy's own address) — right for a computer of one's own and for a server Caddy faces the internet on, and wrong behind a balancer, where every client would be the balancer ([deploying](deploying.md)). |
 | `LISTEN` | Who may reach that port: `127.0.0.1`, this machine alone, unless said; `0.0.0.0` behind a load balancer. Not read under `docker-compose.server.yml` either. |
+| `WEB_CLIENT_UPSTREAM` | Where the gateway finds the web client, a repository of its own (`decentai-web-client`), as `host:port`. Unset, the gateway finds it by itself: the web client's container, which joins the engine's network as `web-client`, or its development server (`npm start`) on this computer's port 4200. Set it only where the web client runs somewhere else. The gateway sends it every path that is not the Data Core's. |
 | `SITE_ADDRESS` | What Caddy answers for: `:80`, plain HTTP on any name, unless said — a computer of one's own, or a load balancer that terminates TLS. With `docker-compose.server.yml`, a domain, which gets automatic certificates. |
 | `MONGO_ROOT_USERNAME`, `MONGO_ROOT_PASSWORD` | The database's root account, which `MONGO_URI` must carry too. |
 
-The web server's image reads one more, `BACKEND_UPSTREAM` (where it
-proxies the Data Core's paths, `backend:8000` unless said). The Compose
-stack does not pass it on: it is for a deployment that runs the image
-some other way.
+The gateway's configuration (`gateway/Caddyfile`) reads one more,
+`DATA_CORE_UPSTREAM` (where it sends the Data Core's paths,
+`backend:8000` unless said). The Compose stack does not pass it on: it
+is for a deployment that runs the gateway some other way.
 
 ## What is deliberately not a setting
 

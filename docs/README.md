@@ -11,7 +11,8 @@ for AI Agents](paper/README.md) (a draft), and the same design as an
 The pages are in five groups, by what you came to do. How to use
 DecentAI as a person, screen by screen, is not here: it is the in-app
 guide, **Guide** at the foot of the sidebar (its source is
-`frontend/src/assets/guide/`).
+`src/assets/guide/` in the web client's repository,
+[`decentai-web-client`](https://github.com/decentai-io/decentai-web-client)).
 
 ## Run it
 
@@ -131,6 +132,3 @@ describe is [`note/`](https://github.com/decentai-io/decentai-agents/tree/main/n
   check at each stop and the tests that hold it.
 - [Open questions](contributing/open-questions.md) — the design
   questions the October 2026 review raised and nobody has decided yet.
-- [The design language](contributing/design-language.md) — the tokens
-  and the shared controls, the rules the interface keeps, and the greps
-  that prove it still keeps them.

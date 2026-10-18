@@ -27,12 +27,15 @@ DecentAI is a **Data Core**, a private **AI Runtime**, a place where
   commands and which reaches the runtime and nothing else
   ([the sandbox](sandbox.md)). There is no other place a worker runs:
   the runtime's tests stand a double in for that container.
-- The web app is a static Angular application served by Caddy, which
-  also proxies the Data Core's paths so the browser sees one origin.
+- The web app is a static Angular application, a repository of its own
+  (`decentai-web-client`). The engine's gateway (Caddy) sends the
+  browser to it, and the Data Core's paths to the Data Core, so the
+  browser sees one origin.
 
 Started from the repository that is seven containers: the database, a
 seeder that runs once and exits, the Data Core, the runtime, the agents'
-container, the speech container, and Caddy
+container, the speech container, and the gateway (Caddy); the web
+client runs beside it, from its own repository
 ([quickstart](../run/quickstart.md)).
 
 Besides the database, the Data Core keeps the bytes of stored files and

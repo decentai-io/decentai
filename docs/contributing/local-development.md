@@ -1,9 +1,10 @@
 # Local development
 
-The Data Core and the web app are started by hand: the Data Core reads a
-`config.env` beside it, and the web app reads
-`frontend/src/environments/environment.ts`. This is the everyday path
-for changing those two; Compose is for running the finished thing.
+The Data Core is started by hand: it reads a `config.env` beside it.
+This is the everyday path for changing it; Compose is for running the
+finished thing. The web client is developed in its own repository,
+[`decentai-web-client`](https://github.com/decentai-io/decentai-web-client), whose `npm start` the engine's gateway
+serves at the engine's address.
 
 The runtime is not started by hand. Every process of an agent's runs
 in the Execution Sandbox, and a runtime not told where that container
@@ -26,7 +27,6 @@ service that changed with `docker compose up -d --build <service>`.
   backend/requirements.txt -r backend/requirements-dev.txt -r
   ai_runtime/requirements.txt`. The second file is what the tests
   need.
-- Node 20 or later, with `cd frontend && npm install`.
 - MongoDB on `localhost:27017` — a local service, or
   `docker run -d -p 27017:27017 mongo:7`.
 - git on the path: the Data Core fetches agent sources with it.
@@ -131,5 +131,4 @@ of them has a bug, and a test is the place to find out.
 | agent workers | `ai_runtime/agents/`; what runs in the Execution Sandbox in `ai_runtime/agents_container/` |
 | the chat session and door | `ai_runtime/chat/`, `ai_runtime/door/` |
 | the manifest contract | `contracts/`, `decentai_sdk/manifest.py` |
-| pages | `frontend/src/app/pages/`, services in `frontend/src/app/services/` |
 | setting it up on a computer | `bootstrap/setup.py`, `docker-compose.yml`, `deploy.env.example` |

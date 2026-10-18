@@ -1,8 +1,9 @@
 # The whole platform on one machine: MongoDB, the one-shot seeder, the
 # backend (the Data Core), the AI Runtime, one Execution Sandbox, the
-# speech container, and web (Caddy) as
-# the one door (the web app and the backend on one origin). Every
-# setting comes from one file, deploy.env:
+# speech container, and the gateway (Caddy) as the one door: the Data
+# Core's paths to the Data Core, and every other to the web client, which
+# is a repository of its own (decentai-web-client) and runs beside this
+# one. Every setting comes from one file, deploy.env:
 #
 #   python bootstrap/setup.py      # writes deploy.env, starts this, says where
 #
@@ -12,12 +13,13 @@
 #
 # As written it serves this computer only, in plain HTTP. A server with
 # an address of its own lays docker-compose.server.yml over it
-# (docs/run/deploying.md). Only Caddy publishes a port.
+# (docs/run/deploying.md). Only the gateway publishes a port.
 #
 # Three networks, and who is on which (docs/system/architecture.md):
 #
-#   default   the one with a way out to the internet: web, backend,
-#             ai-runtime, speech. Caddy reaches the backend here; the
+#   default   the one with a way out to the internet: gateway, backend,
+#             ai-runtime, speech. The gateway reaches the backend here,
+#             and the web client on this computer's port; the
 #             backend reaches the speech container, and the internet
 #             for repositories, mail and OAuth; the runtime — the
 #             bundled execution node — dials the backend's node link
@@ -294,17 +296,26 @@ services:
       start_period: 10s
 
   # The one door: plain HTTP on one port, from this computer only
-  # unless deploy.env says otherwise (LISTEN, PORT).
-  web:
-    build:
-      context: .
-      dockerfile: frontend/Dockerfile
+  # unless deploy.env says otherwise (LISTEN, PORT). It sends the Data
+  # Core's paths to the Data Core and every other path to the web client,
+  # a repository of its own (decentai-web-client), wherever it runs
+  # (gateway/Caddyfile).
+  gateway:
+    image: caddy:2-alpine
     restart: unless-stopped
     environment:
       SITE_ADDRESS: ${SITE_ADDRESS:-:80}
       # The balancer in front, by its range, where there is one: whose
-      # word Caddy takes for a client's address (frontend/Caddyfile).
+      # word Caddy takes for a client's address.
       TRUSTED_PROXIES: ${TRUSTED_PROXIES:-127.0.0.1/32}
+      # Where the web client serves its pages, where it is not its
+      # container on this network (web-client) or `npm start` on this
+      # computer's port 4200, which the gateway finds unsaid.
+      WEB_CLIENT_UPSTREAM:
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./gateway/Caddyfile:/etc/caddy/Caddyfile:ro
     ports:
       - "${LISTEN:-127.0.0.1}:${PORT:-4280}:80"
     healthcheck:

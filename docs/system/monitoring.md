@@ -322,7 +322,7 @@ A person reads it in the chat's **Activity and audit** dialog, under
 ## Where a person reads it
 
 **Monitoring**, under Organization in the sidebar, for whoever holds
-`agents:monitor:usage` (`frontend/src/app/pages/app/monitoring/`).
+`agents:monitor:usage` (`src/app/pages/app/monitoring/` in `decentai-web-client`).
 Its views, each for whoever holds its grant:
 
 - **Overview** — what the agents did in a window, added up
@@ -382,6 +382,6 @@ Nothing on the page changes an agent or what it is given.
 - `backend/tests/test_assistant_transcript.py` — a person reading
   their own chat's assistant, and nobody reading another's.
 - `ai_runtime/tests/test_usage.py` — a container's own numbers.
-- `frontend/src/app/pages/app/monitoring/monitoring.component.spec.ts`
+- `src/app/pages/app/monitoring/monitoring.component.spec.ts` in `decentai-web-client`
   — the page, and each kind of line in words;
   `token-usage.component.spec.ts` — the tokens view.

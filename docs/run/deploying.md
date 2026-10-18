@@ -53,20 +53,25 @@ neither; Compose gives each only to what uses it
 ([configuration](configuration.md)). Keep all three files readable by
 their owner only.
 
-**3. Start it**, with the file that makes Caddy the server's front
-door laid over the stack:
+**3. Start it**, with the file that makes the gateway (Caddy) the
+server's front door laid over the stack:
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.server.yml \
     --env-file deploy.env up -d --build
 ```
 
-Only Caddy publishes ports (80 and 443); the Data Core, runtime and
+Only the gateway publishes ports (80 and 443); the Data Core, runtime and
 database live on private Compose networks, the database on one of its
 own that only the Data Core and the seeder reach. Agent code runs in a
 container of its own, `agents`, on a network that reaches the
 runtime and nothing else ([the sandbox](../system/sandbox.md)). Every
 `docker compose` line below takes the same two `-f` files on a server.
+
+**4. Start the web client** on the same host, from its own repository
+(`decentai-web-client`): `docker compose up -d --build` there joins the
+engine's network, where the gateway finds it. Where it runs somewhere
+else, set `WEB_CLIENT_UPSTREAM` in `deploy.env` to its `host:port`.
 
 **4. Set it up.** Read the setup code from the log:
 

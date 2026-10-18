@@ -234,19 +234,25 @@ credential or model key sent to a shared node.
 Sandboxes, agents spread by the placement rule; stopping one moves its
 agents to the other on their next call.
 
-### Phase 7 — The web app becomes a client (recorded now, done later)
+### Phase 7 — The web app becomes a client (done 18 October 2026)
 
-- Move `frontend/` to its own repository (`decentai-web`), keeping its
-  history.
-- Remove the `web` service from this repository's Compose files; the
-  engine exposes the Data Core's address, and the client's own repository
-  ships its container and reverse proxy.
-- Publish the client contract from `docs/reference/api.md`, with a
-  version, so the web, desktop and mobile clients follow one API.
-- The Data Core's list of allowed browser origins becomes configuration
-  each deployment sets.
-- The desktop client is later built from the web client.
-- Later still: rename `backend/` to `data_core/` in this repository.
+- `frontend/` is its own repository, `decentai-web-client` (private for
+  now), its history kept, with the brand guide and the design language.
+  It builds and tests itself; nothing is published to an image registry.
+- The engine keeps a small **gateway** (Caddy, `gateway/Caddyfile`) as its
+  one door: HTTPS on a server, the Data Core's paths to the Data Core, and
+  every other path to the web client: its container, which joins the
+  engine's network as `web-client`, or `npm start` on port 4200, or
+  wherever `WEB_CLIENT_UPSTREAM` says. The browser
+  sees one origin, so cookies and allowed origins are unchanged.
+- Each repository is developed on its own, side by side. A repository
+  that assembles them for local use and for cloud deployments (AWS,
+  Azure, …) may come later.
+- Still to do: publish the client contract from `docs/reference/api.md`,
+  with a version; the engine's chat-protocol check reads the web client
+  from a checkout beside it, and skips without one.
+- Later: the desktop client from the web client; rename `backend/` to
+  `data_core/`.
 
 ### Phase 8 — The white paper
 
