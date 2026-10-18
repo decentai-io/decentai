@@ -285,7 +285,7 @@ document, spreadsheet, presentation, image, data, audio, video); `query`
 is the person's own description, shown on the card.
 
 The session lists everything the person can see (their delegation, the
-backend's visibility), ranks it by those two (`chat/files.py` — no word
+Data Core's visibility), ranks it by those two (`chat/files.py` — no word
 of the person's is interpreted in code; with neither, or nothing
 matching, the most recent), and puts the best five on a files card
 (`question_asked`, `expects: files`); the person ticks, unticks,
@@ -309,7 +309,7 @@ layer (pypdf), decoded and windowed to 12,000 characters, `from`
 continuing where the last page stopped.
 
 The download is the same one that fetches a picture for the model, under
-the person's own delegation, so the backend's visibility rules decide
+the person's own delegation, so the Data Core's visibility rules decide
 what a ref reaches and a made-up ref finds nothing.
 
 A picture, a spreadsheet, a Word document, a scan or a file past 8 MB is

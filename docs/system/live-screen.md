@@ -10,21 +10,21 @@ README in the agents repository.
 
 ## The road a frame travels
 
-The browser runs inside the agent's worker, in the agents' container.
+The browser runs inside the agent's worker, in the Execution Sandbox.
 "The host" below is the runtime, which carries the worker's lines.
 
-    browser ─JPEG─▶ agent ─screen.frame─▶ host ─screen_frame─▶ backend ─▶ page
-    browser ◀────── agent ◀─screen.input── host ◀─screen_input── backend ◀─ page
+    browser ─JPEG─▶ agent ─screen.frame─▶ host ─screen_frame─▶ Data Core ─▶ page
+    browser ◀────── agent ◀─screen.input── host ◀─screen_input── Data Core ◀─ page
 
 - The agent pushes each frame to the host over the worker pipe as a
   notification (`screen.frame`, [worker protocol](../reference/worker-protocol.md)).
 - The host relays it to the chat's audience as a live event
-  (`screen_frame`) that is never recorded; the backend forwards it as it
+  (`screen_frame`) that is never recorded; the Data Core forwards it as it
   forwards every runtime frame, and the page draws it.
 - Input goes back the same road: the page sends `AI:Chat:Screen` —
   mouse, keyboard, wheel, taking and releasing control, a tab, an
   address typed — over the chat socket, at most 64 events in one
-  message; the backend checks the person may send messages in this chat
+  message; the Data Core checks the person may send messages in this chat
   and forwards it to the runtime as `screen_input`; the host hands it
   to the worker running that call (`screen.input`), and the agent feeds
   it to the browser.

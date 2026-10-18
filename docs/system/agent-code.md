@@ -2,7 +2,7 @@
 
 How an agent's code gets from a repository to a running worker: a
 source is read, an administrator approves one exact version, the
-backend keeps those bytes, and a runtime pulls them, and checks them
+Data Core keeps those bytes, and a runtime pulls them, and checks them
 against their digest, when a chat needs them. Reading a source never
 runs its code.
 
@@ -83,7 +83,7 @@ runtime, where copies cost something.
 
 | Name | Example | Who speaks it |
 |---|---|---|
-| approval ref | `agt_0ba09c35d8324040b6bd` | the chat's contract, grants (`agt_….*.*`), the backend's resource collections (`agt_…__note`), secret slots (`agt_…__connection`), function names in the chat and on approval cards |
+| approval ref | `agt_0ba09c35d8324040b6bd` | the chat's contract, grants (`agt_….*.*`), the Data Core's resource collections (`agt_…__note`), secret slots (`agt_…__connection`), function names in the chat and on approval cards |
 | package id | `notebook` | the manifest, the code, the worker |
 
 Everything outside the package speaks the ref; only the manifest
@@ -105,7 +105,7 @@ unpacked. So tampered bytes fail closed for everyone rather than
 poisoning a copy several organizations share.
 
 The store is on a volume. In the stack this repository starts, the
-runtime and the agents' container both hold it, at the same path: the
+runtime and the Execution Sandbox both hold it, at the same path: the
 runtime installs and reads, and the workers, which run in the agents'
 container, load from it ([the sandbox](sandbox.md)).
 
@@ -165,9 +165,9 @@ organization that approved it, so what it needs to know is nobody's in
 particular: which packages are approved anywhere, the bytes of one, and
 where to say that one is ready. It asks these **as itself** — with a
 service token only a runtime can sign (`AI_RUNTIME_SERVICE_PRIVATE_KEY`
-on the runtime, the public half on the backend as
-`AI_RUNTIME_SERVICE_PUBLIC_KEY`), the mirror of the token the backend
-uses to prove itself to the runtime. The backend reads it as a runtime
+on the runtime, the public half on the Data Core as
+`AI_RUNTIME_SERVICE_PUBLIC_KEY`), the mirror of the token the Data Core
+uses to prove itself to the runtime. The Data Core reads it as a runtime
 service principal: no person, no organization, no chat, and no policy;
 what it may dispatch is the package door and nothing else
 (`RUNTIME_SERVICE_ENDPOINTS` in `backend/server/authentication/catalog.py`, enforced by `backend/server/authentication/access.py`).
@@ -192,7 +192,7 @@ its agents' code.
 
 ## Reclaiming
 
-The backend reclaims its half per organization on every install,
+The Data Core reclaims its half per organization on every install,
 update and uninstall: an archive no approval names is deleted, which is
 what removes the version an update left behind.
 
@@ -216,7 +216,7 @@ one to distrust, not to obey.
 ## More than one runtime process
 
 With code pulled by digest and verified on arrival, the code a runtime
-holds is a cache of something the backend owns. Two things on the same
+holds is a cache of something the Data Core owns. Two things on the same
 volume are not, and exist nowhere else: the record of what agents did
 ([what is written down](monitoring.md)) and what each agent keeps in
 its own home. And a turn in flight lives in one process's memory. So several runtime

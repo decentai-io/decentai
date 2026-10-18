@@ -65,7 +65,7 @@ result, status = run(scenario())
 ```
 
 `workers()` is the pool of worker processes, over a stand-in for the
-agents' container the harness gives every test
+Execution Sandbox the harness gives every test
 (`ai_runtime/tests/fake_container.py`); `run` runs a coroutine on
 that test's own loop, and whatever the test started dies with it.
 
@@ -75,7 +75,7 @@ raises: a refusal is `(dict, "error")`.
 
 | Handed to `FunctionExecutor` | Stands for |
 |---|---|
-| `workers()` | The worker processes your functions run in, started in the test's own process by the harness's stand-in for the agents' container. |
+| `workers()` | The worker processes your functions run in, started in the test's own process by the harness's stand-in for the Execution Sandbox. |
 | `provider=InMemoryResourceProvider(secrets={"note__connection": {...}})` | Your records, files and secrets. A secret is bound under `<agent_id>__<resource_id>`. What your agent wrote is in `provider.data["<agent_id>__<resource_id>"]` and `provider.files[...]`. |
 | `sinks=ChatSinks(...)` | The chat's doors, by the names your code knows them by (`ai_runtime/execution/sinks.py`). Each one is optional; one that is missing has nobody behind it. |
 
@@ -173,7 +173,7 @@ a commit that changes only Python offers nothing. A manifest changed
 under the same version is refused when you take it — a version, once
 approved, is never approved again with other content.
 
-Deleting the file and starting the backend again takes the folder
+Deleting the file and starting the Data Core again takes the folder
 back. The folder is read, never written, and a DecentAI that was not
 handed a folder takes sources from repository addresses only.
 

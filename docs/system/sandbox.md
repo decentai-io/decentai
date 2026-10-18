@@ -26,12 +26,17 @@ In a stack started from `docker-compose.yml`, all four parts are
 enforced: the containers' options are the Compose file's to set.
 
 A stack started without those options does not serve: at start the
-runtime asks the agents' container to prove it can confine a worker,
+runtime asks the Execution Sandbox to prove it can confine a worker,
 and refuses to start when it cannot, saying what to mend
 (`Confinement.start`, `Places.check`). What the kernel cannot enforce
 — the fences below, on an older kernel — is found out at start,
 written to the log, and said on an agent's page, so a person reads
-plainly what is not enforced where it runs. There is no way to run
+plainly what is not enforced where it runs. An Execution Sandbox
+that started again on its own is not taken to hold what it proved
+before: until a check has passed in its own process it starts no
+worker, runs no build and lists no files, and the runtime, refused
+for that reason, checks it again and reports what that check proves
+(`AgentsContainer.recheck`). There is no way to run
 the runtime outside the stack: its tests stand a double in for the
 container instead.
 
@@ -40,10 +45,10 @@ container instead.
 Agent code runs in a container that holds nothing else: the **agents'
 container**. The runtime decides what an agent may do — which code,
 which environment, which hosts, which calls — and asks for a worker
-by name; everything about the process is the agents' container's:
+by name; everything about the process is the Execution Sandbox's:
 its user, its folders, its fences, its spawn line, its ending.
 
-    runtime's container                      agents' container
+    runtime's container                      Execution Sandbox
     ───────────────────                      ─────────────────
     the assistant, the executor,   ──────▶   the spawner, the places, the
     the proxy, what an agent may    socket   spawn helper, every worker,
@@ -73,14 +78,14 @@ its user, its folders, its fences, its spawn line, its ending.
   (`spawner.key`), which the platform's user reads and no agent's
   does.
 - **Its network reaches the runtime and nothing else.** No route leads
-  from it to the internet, the database or the backend, so the
+  from it to the internet, the database or the Data Core, so the
   runtime's proxy is the only way out whatever a worker does. Workers
   are pointed at the proxy's port on their own container's address,
   and the spawner passes what arrives there to the runtime's proxy,
   unread.
 - **A worker whose runtime hung up is ended**, with everything its
   user runs. A runtime that died leaves nothing running.
-- **The agents' container holds no secret of the platform's.** It is
+- **The Execution Sandbox holds no secret of the platform's.** It is
   told where the runtime's proxy is, the port, the folder agents are
   kept in, whether to filter workers' system calls, the log level and
   the time zone, and nothing else. What a
@@ -92,7 +97,7 @@ container's to bear and not the runtime's, and the runtime's container
 is given no right beyond an ordinary container's.
 
 **There is no other way to run an agent.** A runtime not told where
-the agents' container is (`AI_RUNTIME_AGENTS_SPAWNER`), or one whose
+the Execution Sandbox is (`AI_RUNTIME_AGENTS_SPAWNER`), or one whose
 container does not answer or cannot confine, does not start. The
 tests have no container: a stand-in in the test suite answers the
 same orders by starting programs in the test's own process
@@ -380,7 +385,7 @@ call.
 
 ### What the agents are given together
 
-The agents' container is given so much memory and so much processor by
+The Execution Sandbox is given so much memory and so much processor by
 whoever starts it: `AGENTS_MEMORY` and `AGENTS_CPUS` in `deploy.env`.
 Unset is no limit. The
 engine holds the container to both, and neither is a manifest's to ask
@@ -391,7 +396,7 @@ for.
 - **Memory** cannot be slowed, only refused. At the limit the kernel
   ends a process of its own choosing, which need not be the one that
   took the memory. So the spawner looks every second at what each
-  agent holds, and when the agents' container holds nine tenths of what
+  agent holds, and when the Execution Sandbox holds nine tenths of what
   it is given — the kernel's own number, the spawner and what is shared
   among it — it ends the agent holding most, with everything its
   user runs (`ai_runtime/agents_container/usage.py`,
@@ -461,7 +466,7 @@ where an agent connects is said, never assumed.
 
 **Internal addresses are refused for every agent**, `any` included:
 this machine, the private ranges, and the link-local range a cloud's
-metadata service lives in. The backend and the database are among them.
+metadata service lives in. The Data Core and the database are among them.
 
 ### The proxy
 
@@ -564,7 +569,7 @@ spawner's among them, another agent's, the internet, and looking a
 name up. Code that ignores the proxy reaches nothing. Nobody else in
 the container is touched by the rule.
 
-In the agents' container the network already leads nowhere but the
+In the Execution Sandbox the network already leads nowhere but the
 runtime. The rule is what keeps one agent from another inside it — a
 browser's own port, a server a worker started — and from the spawner.
 
@@ -600,7 +605,7 @@ the proxy, and how to tell.
 
 The runtime is handed its settings by name (`docker-compose.yml`):
 the database's password, the encryption keys
-and the backend's private key never reach it. The agents' container,
+and the Data Core's private key never reach it. The Execution Sandbox,
 where agent code runs, is handed no secret at all: where the proxy is,
 its port, the folder, whether to filter system calls, the log level and
 the time zone. The person still
@@ -689,7 +694,7 @@ enforced in this install; and nothing to configure.
   open a socket of a family it has no use for, ask to be traced, make a
   namespace of its own (and still start a thread and a program),
   connect past the proxy, connect to an undeclared host, connect to the
-  backend, start more processes than allowed, start the helper again,
+  Data Core, start more processes than allowed, start the helper again,
   connect to a socket with a name and no file that somebody else
   opened.
   A package that is hostile while it is built, from an index on the
@@ -710,5 +715,5 @@ enforced in this install; and nothing to configure.
   ended when the runtime hangs up. It runs in a stack of the two
   containers (`ai_runtime/tests/spawner-live.compose.yml`); the file
   says how. It passes on Docker and on rootless Podman: there too the
-  agents' container is given its limits, sets its firewall rule, and
+  Execution Sandbox is given its limits, sets its firewall rule, and
   reaches the runtime and nothing else.

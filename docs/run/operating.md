@@ -151,7 +151,7 @@ signs anybody in after that, and the sign-in page is used.
 All agents share one container, and it is given so much memory and so
 much processor by whoever starts it: `AGENTS_MEMORY` (`2g`, `1500m`) and
 `AGENTS_CPUS` (`2`, `1.5`) in `deploy.env`. Unset is no limit. A change
-takes effect when the agents' container is started again:
+takes effect when the Execution Sandbox is started again:
 
 ```bash
 docker compose --env-file deploy.env up -d agents
@@ -213,7 +213,7 @@ either. To move what is there:
 1. Make the bucket or container, and give the deployment's identity
    (its role, managed identity or service account) read and write on it.
 2. Set `FILE_STORAGE_PROVIDER` and the new store's settings in
-   `deploy.env`, keep the old store's, and restart the backend.
+   `deploy.env`, keep the old store's, and restart the Data Core.
 3. Count, then move:
 
    ```bash
@@ -240,7 +240,7 @@ they are.
 Stored values are encrypted under versioned keys; old versions keep
 decrypting, so rotation is non-destructive:
 
-The tools are run in the backend's image, where the platform's code and
+The tools are run in the Data Core's image, where the platform's code and
 the settings in `deploy.env` are, as the password line above is: on the
 machine itself they would find neither the database nor the keys.
 
@@ -254,7 +254,7 @@ machine itself they would find neither the database nor the keys.
 
    It prints the map with a new active version appended.
 2. Update `SECRET_ENCRYPTION_KEYS` and `SECRET_ENCRYPTION_ACTIVE` in
-   `deploy.env`, and restart the backend. New writes use the new key.
+   `deploy.env`, and restart the Data Core. New writes use the new key.
 3. Rewrite every stored value under the active key (`--check` first
    shows the counts):
 
@@ -285,7 +285,7 @@ docker compose --env-file deploy.env run --rm init \
 Creating one seeds its access chains and prints the invitation for its
 first administrator as a path (`/?invite=…`), to put after the
 deployment's address. A disabled organization's people are signed out
-within a minute: the running backend keeps a session it has just seen
+within a minute: the running Data Core keeps a session it has just seen
 for that long.
 
 ## Removing it

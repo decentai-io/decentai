@@ -3,7 +3,7 @@
 Who exists in DecentAI, what is recorded about them, and how the platform
 decides what any of them may do.
 
-This document covers identity and authorization only. The AI runtime acts
+This document covers identity and authorization only. The AI Runtime acts
 inside the platform under a delegated identity of its own; that delegation
 is named at the end of this document and described in full elsewhere.
 
@@ -114,7 +114,7 @@ None of the three puts anybody into an organization that already
 exists. A disabled organization keeps all of its data and refuses
 everyone in it: its members' sessions are dropped, and any that survives
 the moment of the decision is refused. Because the decision is made by
-another process (`bootstrap/organizations.py`), the running backend
+another process (`bootstrap/organizations.py`), the running Data Core
 learns of it when what it remembers of a session runs out: a session
 used in the last minute goes on for up to a minute more. An API key is
 looked up every time, and is refused at once.
@@ -297,7 +297,7 @@ process's own, kept for sixty seconds (`AccessCache`,
 `backend/database/stores/base.py`): a change made from the command
 line — an organization disabled, a password set by
 `bootstrap/reset_password.py` — is another process's, and takes effect
-in the backend within that minute.
+in the Data Core within that minute.
 
 ### The baseline
 
@@ -392,7 +392,7 @@ proves the address is the person's, which a password handed over
 cannot) and is shown a temporary password once, to hand over. An
 invitation made there all the same, by a script, is not lost: its link
 is handed back to whoever made it (`accept_url`), and the mail that
-could not be sent is written to the backend's log, link and all — a
+could not be sent is written to the Data Core's log, link and all — a
 log on such an install is to be kept as a password is. The link is
 handed back whenever the mail was not delivered, a mail server that
 refused it included. The same
@@ -482,7 +482,7 @@ keys, so a leaked one cannot make itself permanent or lock its owner
 out; and the app on a phone, whose session is presented as a Bearer
 header and not in the cookie, may list them and nothing more. Each person may hold twenty.
 
-A **runtime delegation** is the AI runtime acting *for* a person, within
+A **runtime delegation** is the AI Runtime acting *for* a person, within
 one conversation. It is the same identity — the same user, the same
 organization, the same policy chain — with two additional constraints. It
 is confined to a fixed set of operations decided by the platform rather

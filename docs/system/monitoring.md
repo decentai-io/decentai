@@ -20,7 +20,7 @@ it by (`name`) and, where the line is about a process, its user
 |---|---|---|---|
 | `worker.started` | a worker answered its greeting | the runtime | whose it is |
 | `worker.ended` | a worker is gone | the runtime | why, in words, and its exit code |
-| `worker.failed` | the process could not be started | the runtime | why: what the agents' container answered |
+| `worker.failed` | the process could not be started | the runtime | why: what the Execution Sandbox answered |
 | `helper` | the spawn helper was asked to do one of its jobs | the spawner | the job (`check`, `own`, `clear`, `stop`, `sweep`), what it was asked with, how long it took, and what it said if it refused |
 | `program` | one program was run to its end as an agent's user: a build, the proof at start | the spawner | the program, its exit code, how long |
 | `log` | a worker wrote a line to its log | the runtime | the line |
@@ -29,7 +29,7 @@ it by (`name`) and, where the line is about a process, its user
 | `memory` | an agent was ended for memory, or the kernel ended a process | the spawner | by whom, what the agent held and what the agents are given |
 
 The runtime orders everything that is done to a worker, so it writes
-nearly all of it. The spawner writes what only the agents' container
+nearly all of it. The spawner writes what only the Execution Sandbox
 sees: the processes there, and the programs it runs as an agent.
 
 ## What is not
@@ -78,10 +78,10 @@ is one line less.
 
 ## How it is read
 
-By the backend, through a door of the runtime that answers nobody else
+By the Data Core, through a door of the runtime that answers nobody else
 (`ai_runtime/door/monitor.py`): the same service token the
 chat door asks for. Who among the platform's people is shown the
-answers is the backend's to decide.
+answers is the Data Core's to decide.
 
 | Door | Answers |
 |---|---|
@@ -98,13 +98,13 @@ ends; the worker is left running.
 
 The runtime does not know the platform's people or their
 organizations: one runtime serves them all and writes one log. That is
-decided by the backend, which asks the doors above and answers a
+decided by the Data Core, which asks the doors above and answers a
 person through actions of its own
 (`backend/api/endpoints/app/agents/monitor_controller.py`):
 
 | Action | Answers |
 |---|---|
-| `Agents:Monitor:Usage` | what the agents are given, how much the agents' container holds, and what each of this organization's running agents uses; where the deployment has one organization, what each part of the platform holds too |
+| `Agents:Monitor:Usage` | what the agents are given, how much the Execution Sandbox holds, and what each of this organization's running agents uses; where the deployment has one organization, what each part of the platform holds too |
 | `Agents:Monitor:Events` | what happened, a page at a time: `kinds` is what the runtime reads; `kind`, `agent`, `outcome` (`ok`, `trouble`, `refused`, `unreached`, `failed`), `host` and `text` narrow what is shown; `since` and `until`, in seconds, keep it to the days asked for. With `tally`, the page comes with what the filters leave added up — how many, and of each kind, outcome, agent and host, each counted as if its own filter were not chosen — over the latest ten thousand events read, and says whether that was all |
 | `Agents:Monitor:Files` | what one of this organization's agents keeps |
 | `Agents:Monitor:Summary` | what this organization's agents did in a window, added up from the audit trail, and the model calls its chats made |
@@ -122,16 +122,16 @@ person through actions of its own
   verification, the helper's check — is one runtime's work for every
   organization. It is shown only where the deployment has one
   organization.
-- **How full the agents' container is** is shown to whoever may look:
+- **How full the Execution Sandbox is** is shown to whoever may look:
   every organization's agents share it. Whose agents fill it is not.
-- **What each part of the platform holds** — the backend, the runtime,
-  the agents' container, the database — is the deployment's and not an
+- **What each part of the platform holds** — the Data Core, the runtime,
+  the Execution Sandbox, the database — is the deployment's and not an
   organization's. It is shown only where the deployment has one
   organization.
 - **A file's place on the machine is not shown.** A path is given
   inside the agent's own folders: `home/…`, `spool/…`.
 - **A page is filled from this organization's part of the log.** The
-  backend reads further back than one answer of the runtime when what
+  Data Core reads further back than one answer of the runtime when what
   it read was another organization's.
 
 ## What the models used
@@ -208,7 +208,7 @@ when the cycle comes to rest, when fifty are waiting or the oldest has
 waited a minute, and when the session is stopped or put down. Nothing
 a beat does waits for it: a send that fails is a line in the runtime's
 log and the calls in it are let go, and a crash loses what was not yet
-sent. The backend takes a batch whole or not at all — a purpose it does
+sent. The Data Core takes a batch whole or not at all — a purpose it does
 not know, a count that is not a whole number from zero to a billion, a
 word longer than 200 characters refuses it — and keeps the runtime's
 time for a call only where it is within a day of its own.
@@ -272,17 +272,17 @@ read its own. So each part says it of itself
 
 | Part | Read by | Says |
 |---|---|---|
-| Backend | the backend, of its own container | memory, what it was given, processors used |
+| Data Core | the Data Core, of its own container | memory, what it was given, processors used |
 | Runtime | the runtime, of its own; sent with its answer about the agents | the same |
-| Agents | the spawner, of the agents' container | the same, beside what each agent holds |
-| Database | the backend, asking the database's server | the memory its server holds, how many connections are open, and what it keeps on disk for this platform |
+| Agents | the spawner, of the Execution Sandbox | the same, beside what each agent holds |
+| Database | the Data Core, asking the database's server | the memory its server holds, how many connections are open, and what it keeps on disk for this platform |
 
 Memory is the kernel's number for the container, with what it could
 give back at once left out. Processors are what was used since the
 last asking: 0.5 is half of one. A number a part could not read is
 left out — the database's memory, where the platform's account may
 not ask its server. Outside a container nothing is read, and the
-backend's and the runtime's rows are empty.
+Data Core's and the runtime's rows are empty.
 
 ## What the assistant was told and decided
 

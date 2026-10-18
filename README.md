@@ -19,7 +19,7 @@ else:
   granted to, and never the model.
 - **Nothing is permitted by default.** What a person may do is a chain
   walked on every request; what a chat may do is answered by the
-  backend per chat; a function that costs more than the chat's trust
+  Data Core per chat; a function that costs more than the chat's trust
   waits for a human.
 - **Nothing is invented.** Tables, files and "verified" marks beside the
   assistant's words are rendered from stored results of real calls.
@@ -29,6 +29,23 @@ else:
 The platform ships with no agents installed. The ones the project
 publishes are in their own repository, [`decentai-agents`](https://github.com/decentai-io/decentai-agents), and a new
 agent starts from [`examples/note/`](examples/note/) and [docs/agents/](docs/agents/README.md).
+
+## The parts
+
+This repository is the **AI Engine**, made of three parts:
+
+- **Data Core** (`backend/`): identity and access, the agent lifecycle,
+  the data layer, chats and approvals, organization settings. The only
+  part that reaches the database; it runs no agent code.
+- **AI Runtime** (`ai_runtime/`): runs the assistant, plans and executes,
+  checks every call, and runs the proxy that is agents' only way out.
+- **Execution Sandbox** (`ai_runtime/agents_container/`, the `agents`
+  service): where agent code runs, one locked room per agent.
+
+An AI Runtime with its Execution Sandboxes is an **execution node**. The
+web, desktop and mobile apps are **clients** of the engine; the web
+client still lives in `frontend/` until it moves to its own repository
+([the plan](docs/ai-engine-plan.md)).
 
 ## Start here
 
@@ -108,7 +125,7 @@ python -m pytest tests -q                   # spanning: an approval on one side,
 python -m pytest examples/tests -q          # the Note example, in a real worker
 ```
 
-Run the backend and spanning suites one at a time; they share the test
+Run the Data Core and spanning suites one at a time; they share the test
 database. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Contributing, security, licence

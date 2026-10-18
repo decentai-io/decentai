@@ -16,21 +16,21 @@ and updating. Where to look is at the end.
   `CORS_ALLOW_ORIGINS` in it together.
 - **The seeder failed.** `docker compose --env-file deploy.env logs init`.
   A wrong `MONGO_URI` password shows here, as an authentication error:
-  the seeder is the first to connect, and the backend does not start
+  the seeder is the first to connect, and the Data Core does not start
   until it has finished.
-- **The backend restarts.** `docker compose --env-file deploy.env logs
-  backend`. A missing `TOKEN_SECRET_KEY` says so in the first lines.
+- **The Data Core restarts.** `docker compose --env-file deploy.env logs
+  Data Core`. A missing `TOKEN_SECRET_KEY` says so in the first lines.
 - **Chats say the runtime is unavailable.** `docker compose --env-file
   deploy.env logs ai-runtime`. The runtime refuses connections whose
   signature does not verify: `BACKEND_SERVICE_PUBLIC_KEY` must be the
-  pair of the backend's private key. A runtime that restarts says in
+  pair of the Data Core's private key. A runtime that restarts says in
   its first lines which setting it is missing: `AI_RUNTIME_SERVICE_PRIVATE_KEY`
   (its own identity), `BACKEND_INTERNAL_URL` or `AI_RUNTIME_AGENTS_SPAWNER`.
 - **Agents stay Preparing.** The runtime stocks itself every ten
   seconds and reports each package ready; one that cannot speak as
   itself cannot. `docker compose --env-file deploy.env logs ai-runtime`
-  says *The stock was not taken* with the backend's refusal:
-  `AI_RUNTIME_SERVICE_PUBLIC_KEY` on the backend must be the pair of
+  says *The stock was not taken* with the Data Core's refusal:
+  `AI_RUNTIME_SERVICE_PUBLIC_KEY` on the Data Core must be the pair of
   the runtime's private key.
 - **The address opens the sign-in page with a refusal.** The first
   person's password was changed since `deploy.env` was written: sign in
@@ -44,7 +44,7 @@ and updating. Where to look is at the end.
   once for an account whose password is set from the machine
   ([operating](operating.md#a-forgotten-password-without-email)).
 - **Everybody is locked out together, on a server.** Something in
-  front — a load balancer — is the one address the backend sees for
+  front — a load balancer — is the one address the Data Core sees for
   every person, so the count by address is everybody's. Set
   `TRUSTED_PROXIES` ([deploying](deploying.md#behind-a-load-balancer)).
 - **The address the script printed opens the sign-in page with a
@@ -138,8 +138,8 @@ and updating. Where to look is at the end.
 
   | The log says | Why | What to do |
   |---|---|---|
-  | *Workers cannot be confined in the agents' container* (and the runtime does not start) | the stack was not started as `docker-compose.yml` starts it, or the helper is not in the image | start it from the repository's Compose file |
-  | *Workers' connections are NOT fenced here* | the agents' container was not given `NET_ADMIN` | the Compose file gives it; a stack started by hand must |
+  | *Workers cannot be confined in the Execution Sandbox* (and the runtime does not start) | the stack was not started as `docker-compose.yml` starts it, or the helper is not in the image | start it from the repository's Compose file |
+  | *Workers' connections are NOT fenced here* | the Execution Sandbox was not given `NET_ADMIN` | the Compose file gives it; a stack started by hand must |
   | *Workers' files are NOT fenced here* | the kernel has no Landlock | a kernel from 5.13 on, with Landlock among its security modules |
   | *Agents are NOT kept from each other's sockets here* | the kernel's Landlock is before its sixth version | a kernel from 6.12 on. Until then two agents that both mean to can pass bytes to each other |
   | *Builds are NOT fenced here* | Landlock's first version | a kernel from 5.19 on |

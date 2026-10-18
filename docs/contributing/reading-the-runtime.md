@@ -22,7 +22,7 @@ Three pages, in this order. The code keeps their words.
    actions it may take, the beat, pacing and limits.
 2. [The session door](../reference/session-door.md) — every frame in
    and out of the socket.
-3. [Chat sessions](../system/chat-session.md) — what the backend keeps
+3. [Chat sessions](../system/chat-session.md) — what the Data Core keeps
    for the runtime, and the services the runtime calls it by.
 
 ## The tree
@@ -107,7 +107,7 @@ files they share, `wire.py` and `events.py`.
 
 | Read | For |
 |---|---|
-| `main.py` | the parts, built once: `Events.configure`, the `AgentsContainer`, the `Confinement`, the `AgentLibrary`, the backend's services. The only file at the root: everything else is in a package |
+| `main.py` | the parts, built once: `Events.configure`, the `AgentsContainer`, the `Confinement`, the `AgentLibrary`, the Data Core's services. The only file at the root: everything else is in a package |
 | `door/app.py` `create_app` | the `SessionHost` and the `Scheduler`; the lifespan, which starts the parts on the loop in order (the container waited for, `Confinement.start`, `load_all`, the warm-up task, the stocking task, the clock) and stops them in reverse |
 | `door/auth.py`, `door/socket.py` | who may dial, and the loop that hands every frame to the host |
 
@@ -127,7 +127,7 @@ Tests: `ai_runtime/tests/test_session_door.py` holds the host the
 routes hand to, with a socket of its own making. The routes
 themselves — the refusal before `accept`, the catch around a frame,
 the `detach` on the way out — are dialled only by
-`tests/test_full_stack.py` and the backend's
+`tests/test_full_stack.py` and the Data Core's
 `backend/tests/test_runtime_client.py`, on the path that works.
 
 ## 2. The host: one session per chat
@@ -426,7 +426,7 @@ Tests: `ai_runtime/tests/test_agent_executor.py`,
 With [the sandbox](../system/sandbox.md) open beside it.
 
 - `agents/confinement.py` — the runtime's side: `Confinement.start`
-  starts the proxy and asks the agents' container to prove it
+  starts the proxy and asks the Execution Sandbox to prove it
   confines a worker; `WorkerPlace` is one agent's worker as the
   runtime knows it — its name and its pass at the proxy (`admit`,
   `proxy_address`, `lend`, `learn`).
@@ -451,29 +451,29 @@ With [the sandbox](../system/sandbox.md) open beside it.
   inside).
 - `agents/container.py`, `agents_container/wire.py`,
   `agents_container/service.py` — where every process of an agent's
-  is started: the agents' container, asked by name over a socket
+  is started: the Execution Sandbox, asked by name over a socket
   (`AgentsContainer.start_worker`, `build`, `files`, `stop`) and
   answered by `SpawnerService` (`_start`, `_build`, `_files`,
   `_stop`), which also carries a worker's lines (`_carry_worker`) and
   passes workers' connections on to the runtime's proxy (`_pass_on`).
   The tests have no container: `ai_runtime/tests/fake_container.py`
   answers the same requests in the test's own process.
-- `agents_container/usage.py` — what the agents' container is given and what
+- `agents_container/usage.py` — what the Execution Sandbox is given and what
   each agent uses, read from the kernel (`AgentsUsage.sample`), and who
   is ended when they use nearly all of it (`over`). The spawner's
   `_watch` looks every second and does the ending.
 - `agents_container/events.py` — what agents did, written down as it happens
   (`Events.record`), by the places that see it: a worker's life and
   log (`workers.py`), each connection (`egress.py`), and — in the
-  agents' container — the helper's jobs and programs run as an agent
+  Execution Sandbox — the helper's jobs and programs run as an agent
   (`agents_container/places.py`, `service.py`) and the processes an
-  agent starts (`service.py`). Read by the backend through
+  agent starts (`service.py`). Read by the Data Core through
   `door/monitor.py`. With
   [what is written down](../system/monitoring.md) open beside it.
 
 Check:
 
-- That a runtime whose agents' container cannot confine does not
+- That a runtime whose Execution Sandbox cannot confine does not
   start, and says what to mend (`Confinement.start`, `Places.check`).
 - The address the proxy checked is the one it connects to; a name that
   resolves differently a moment later gains nothing.
@@ -547,7 +547,7 @@ Tests: the schedule classes in `ai_runtime/tests/test_session.py`,
   speaks them, OpenAI's Responses; `fake.py` is scripted, for tests).
   Nothing here reads configuration: a connector is built from the
   dict the host assembled — the chat's own llm block, plus the key of
-  the connection it names, served by the backend as that person — so
+  the connection it names, served by the Data Core as that person — so
   which model a chat thinks with is stored per chat, and revoking a
   key is removing a connection. One interface, `async chat(messages,
   max_tokens, tools) -> ModelReply` (`llms/connector/tools.py`): the

@@ -12,7 +12,7 @@ procedure ([quickstart](quickstart.md)). A server with an address of
 its own is set up by hand, because what it is — its address, who its
 administrator is, where its mail goes — is yours to say.
 
-**1. Generate the secrets.** With Python 3.12 and the backend's
+**1. Generate the secrets.** With Python 3.12 and the Data Core's
 packages (`pip install -r backend/requirements.txt`):
 
 ```bash
@@ -49,9 +49,9 @@ docker compose -f docker-compose.yml -f docker-compose.server.yml \
     --env-file deploy.env up -d --build
 ```
 
-Only Caddy publishes ports (80 and 443); the backend, runtime and
+Only Caddy publishes ports (80 and 443); the Data Core, runtime and
 database live on private Compose networks, the database on one of its
-own that only the backend and the seeder reach. Agent code runs in a
+own that only the Data Core and the seeder reach. Agent code runs in a
 container of its own, `agents`, on a network that reaches the
 runtime and nothing else ([the sandbox](../system/sandbox.md)). Every
 `docker compose` line below takes the same two `-f` files on a server.
@@ -76,15 +76,15 @@ When something in front already terminates TLS, Caddy listens on plain
 HTTP and `docker-compose.yml` alone is the stack: leave
 `SITE_ADDRESS=:80`, and set `LISTEN=0.0.0.0` and `PORT` to the port the
 balancer forwards to. The load balancer's health check must
-reach the backend's `/healthz`, which Caddy proxies without regard to
-the Host header. Leave `FORWARDED_ALLOW_IPS` as it is: the backend's
-only peer is Caddy, and that setting is about the backend's peer.
+reach the Data Core's `/healthz`, which Caddy proxies without regard to
+the Host header. Leave `FORWARDED_ALLOW_IPS` as it is: the Data Core's
+only peer is Caddy, and that setting is about the Data Core's peer.
 
 **Set `TRUSTED_PROXIES` to the balancer's own address range**
 (`10.0.0.0/8`; several, with spaces between). A balancer says where
 each request came from, and Caddy takes that word only from the
 addresses named there. Unset, it takes nobody's, and every person is
-the balancer to the backend: a session's record names the balancer,
+the balancer to the Data Core: a session's record names the balancer,
 and the sign-in lockout that counts by address counts everybody as
 one — twenty wrong passwords in fifteen minutes, from anybody, lock
 sign-in for all until the window passes. Name the balancer and

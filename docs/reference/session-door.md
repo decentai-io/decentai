@@ -8,7 +8,7 @@ is not refused, and is the one to notice.
 
 The door is built around **sessions** ([the
 assistant](../system/assistant.md)), hosted by the runtime, spoken to
-by whoever holds the backend's service key — the backend, or a command
+by whoever holds the Data Core's service key — the Data Core, or a command
 line or a test given it.
 
 Three principles:
@@ -84,7 +84,7 @@ The full meaning of each field is in
 [the chat session](../system/chat-session.md).
 
 The sim answers it from its own tables (`agents: None` — everything
-the host holds, by the package's own id); the backend client answers
+the host holds, by the package's own id); the Data Core client answers
 it from the organization's live policy, naming each agent by its
 approval. Either way the consumer holds no part of it — revoking
 authority is changing what `contract` answers, and the next session
@@ -172,7 +172,7 @@ translate to and no `AI:*` command surface on this door.
 | `question_answered` | `approval_id`, `answer` | `session.deliver_answer` — a question card settles: words for an agent's question, a list for the files card, an object for a credential card or a skill card (`{status: saved, skill}` or `{status: declined}`) |
 | `stop` | `force?` | cooperative, honored between beats — asked and not waited for, so the socket goes on hearing. A call the beat under way is waiting on is ended at once, so a long one does not keep the stop waiting. With `force: true` it is the kill switch: every job is cancelled where it stands, the chat's helpers and its browser end, open cards expire, and the audience hears `stopped` with how many `jobs`, `children` (helpers) and `cards` went. Either stop is written into the saved state, so a session rebuilt afterwards rests until something is asked of it. A message that arrives while the kill is under way is kept on the record, and the session built next absorbs it |
 | `screen_open` | `action?` | the person asks to see an agent's browser before asking it anything, or (`quit`) to close it |
-| `webhook_event` | `delivery_id`, `webhook {id, name, prompt}`, `data` | an outside system's event for a webhook's chat, checked and recorded by the backend first ([webhooks](../system/webhooks.md)). Handed on beside the door once the chat's contract has been read again (`SessionHost._deliver_webhook`), then `session.deliver_event`: recorded in the inbox, and absorbed as the person's instruction (`prompt`) and an `EVENT` carrying `data`, read as data. The backend's own: no browser frame becomes it |
+| `webhook_event` | `delivery_id`, `webhook {id, name, prompt}`, `data` | an outside system's event for a webhook's chat, checked and recorded by the Data Core first ([webhooks](../system/webhooks.md)). Handed on beside the door once the chat's contract has been read again (`SessionHost._deliver_webhook`), then `session.deliver_event`: recorded in the inbox, and absorbed as the person's instruction (`prompt`) and an `EVENT` carrying `data`, read as data. The Data Core's own: no browser frame becomes it |
 | `screen_input` | `call_id`, `events` | the person acting on a screen an agent shows — to the call showing it, bounded, dropped when no such call runs |
 
 That is the whole inbound vocabulary, deliberately: `wakeup` is the

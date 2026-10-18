@@ -8,19 +8,19 @@ one message — is [Architecture](architecture.md).
 
 ## The parts
 
-DecentAI is a **backend**, a private **AI runtime**, a place where
+DecentAI is a **Data Core**, a private **AI Runtime**, a place where
 **agents** run, and a **web app**, over a MongoDB database.
 
-- The backend owns identity, permissions, every stored thing, and the
+- The Data Core owns identity, permissions, every stored thing, and the
   `/app` gateway the web app and scripts call. It is the only part
   that talks to the database.
 - The runtime runs the assistant and decides everything about an
   agent: whether a call may be made, what it is handed, when it ends.
   It has no database and no credential of its own to anybody's things:
-  every chat, record and credential goes through the backend, under a
+  every chat, record and credential goes through the Data Core, under a
   delegation minted per chat. Its own identity opens the package door
   and nothing else
-  ([architecture](architecture.md#the-two-tokens-between-the-backend-and-the-runtime)).
+  ([architecture](architecture.md#the-two-tokens-between-the-data-core-and-the-runtime)).
 - Agent code runs in worker processes with private environments, one
   per approved agent per organization. In the stack this repository
   starts they run in a container of the agents' own, which the runtime
@@ -28,22 +28,22 @@ DecentAI is a **backend**, a private **AI runtime**, a place where
   ([the sandbox](sandbox.md)). There is no other place a worker runs:
   the runtime's tests stand a double in for that container.
 - The web app is a static Angular application served by Caddy, which
-  also proxies the backend's paths so the browser sees one origin.
+  also proxies the Data Core's paths so the browser sees one origin.
 
 Started from the repository that is seven containers: the database, a
-seeder that runs once and exits, the backend, the runtime, the agents'
+seeder that runs once and exits, the Data Core, the runtime, the agents'
 container, the speech container, and Caddy
 ([quickstart](../run/quickstart.md)).
 
-Besides the database, the backend keeps the bytes of stored files and
+Besides the database, the Data Core keeps the bytes of stored files and
 each approved agent's code as an archive, on two volumes of its own.
 Two things are kept beside the agents: the approved code as the runtime
-installed it, which is a cache of what the backend holds, and the
+installed it, which is a cache of what the Data Core holds, and the
 record of what agents did ([what is written down](monitoring.md)).
 [Architecture](architecture.md#where-everything-is-kept) lists all of
 it.
 
-The runtime is tested against an in-memory simulator of the backend's
+The runtime is tested against an in-memory simulator of the Data Core's
 services (`sim/`), which is also how an agent is tested alone.
 
 *Design notes: [chat-session.md](chat-session.md),
@@ -188,7 +188,7 @@ credential read by name; every install, grant and source change; every
 chat stopped; every schedule set or removed, the assistant's marked as
 its own; and every other change made through the gateway, refused ones
 included. A line the database refuses twice is written whole to the
-backend's error log instead, and the act still happens. A
+Data Core's error log instead, and the act still happens. A
 person reads their own trail; the organization's is a grant. The
 platform only adds to it: nothing through the gateway edits or deletes
 a line. The platform writes no secret value into it; what an agent's
@@ -238,8 +238,8 @@ Where a word is used for more than one thing, each is said.
 | **catalog** | two things. The list of every action. And the file in a repository that lists its agents | `ACTION_CATALOG`; `decentai-agents.yaml` |
 | **category** | see *slot* | |
 | **the clock** | what fires schedules and ends sleeps | `Scheduler`, `ai_runtime/chat/clock.py` |
-| **contract** | four things. *The manifest*, an agent's contract with the platform. *The chat's contract*, what this chat may do, answered by the backend each turn. *The services contract*, the methods the runtime asks of the backend. And the package `contracts/`, the shapes both sides share | `AI:Chat:Contract`; `Backend`; `contracts/` |
-| **delegation** | the credential the backend makes per chat, under which the runtime calls back as the person. Also *runtime access token*, *the chat's credential* | `chat_session/identity/delegation.py`; `runtime_sessions` |
+| **contract** | four things. *The manifest*, an agent's contract with the platform. *The chat's contract*, what this chat may do, answered by the Data Core each turn. *The services contract*, the methods the runtime asks of the Data Core. And the package `contracts/`, the shapes both sides share | `AI:Chat:Contract`; `Backend`; `contracts/` |
+| **delegation** | the credential the Data Core makes per chat, under which the runtime calls back as the person. Also *runtime access token*, *the chat's credential* | `chat_session/identity/delegation.py`; `runtime_sessions` |
 | **definition** | the shape of a credential: its fields. An agent's is derived from its manifest at install | `secret_definitions` |
 | **door** | a way in. *The session door* is the runtime's socket for one chat; a *gateway door* is an action | `ai_runtime/door/socket.py` |
 | **escape grant** | an action that lets its holder reach past the usual rule. `…:set_owner_any` lifts whom a thing may be shared to and who may edit it; `…:manage_any` reaches every source or connection, and does not lift whom one may be shared to | [sharing](sharing.md) |
@@ -261,23 +261,23 @@ Where a word is used for more than one thing, each is said.
 | **the mind** | the assistant of one chat | `Assistant`, `ai_runtime/mind/assistant.py` |
 | **parked** | waiting for a person's answer, with the state saved | `waiting_approval` |
 | **pass** | the token that tells the proxy whose worker is connecting | `EgressProxy.admit`, `ai_runtime/agents/egress.py` |
-| **place** | one agent's user, home and spool where workers run, given by the agents' container; the runtime knows it by name and by its pass | `Place`, `ai_runtime/agents_container/places.py`; `WorkerPlace`, `ai_runtime/agents/confinement.py` |
+| **place** | one agent's user, home and spool where workers run, given by the Execution Sandbox; the runtime knows it by name and by its pass | `Place`, `ai_runtime/agents_container/places.py`; `WorkerPlace`, `ai_runtime/agents/confinement.py` |
 | **the platform's user** | the ordinary user the runtime and the spawner run as | `decentai` |
 | **principal** | who a request acts as: a person, an API key (the person), or a runtime under a delegation | `principal_type` |
 | **the proxy** | the only way from a worker to the internet | `EgressProxy`, port 8002 |
 | **reference**, **ref** | the id of one stored document (`resource_ref`), as against the label many share (`resource_id`). An *approval's ref* is an installed agent's id: `agt_` and twenty characters | |
-| **relay** | the backend's side of a chat's two sockets: it dials the runtime and passes frames each way | `backend/api/services/chat_session/relay.py` |
+| **relay** | the Data Core's side of a chat's two sockets: it dials the runtime and passes frames each way | `backend/api/services/chat_session/relay.py` |
 | **roster** | the agents one chat may use, as the runtime holds them | `Session.roster` |
 | **the runtime's fence** | see *the fence* | |
-| **services** | what the runtime asks of the backend, as one object, every call naming its chat | `Backend`, `ai_runtime/door/platform.py`; `SimSessionServices` in tests |
-| **service token** | the backend proving to the runtime that it is the backend, for sixty seconds | `chat_session/identity/service.py` |
+| **services** | what the runtime asks of the Data Core, as one object, every call naming its chat | `Backend`, `ai_runtime/door/platform.py`; `SimSessionServices` in tests |
+| **service token** | the Data Core proving to the runtime that it is the Data Core, for sixty seconds | `chat_session/identity/service.py` |
 | **session** | two things. A person's sign-in. And one chat as the runtime holds it | `sessions`; `Session`, `ai_runtime/chat/session.py` |
 | **slot** | one resource of one installed agent — its notes, its documents, its connection — and the name its things are kept under: `agt_<ref>__<resource id>`. Also *category* | `resource_id`; `keys.category` for a file |
 | **source** | a repository agents are installed from | `ai_agent_sources` |
-| **spawner** | the platform's one process in the agents' container: it starts an agent's worker, builds, lists and ends when the runtime asks by name | `ai_runtime/agents_container/service.py`, `wire.py`, port 8003 |
+| **spawner** | the platform's one process in the Execution Sandbox: it starts an agent's worker, builds, lists and ends when the runtime asks by name | `ai_runtime/agents_container/service.py`, `wire.py`, port 8003 |
 | **spool** | a folder a worker and the runtime both reach, for bytes too large for a line | `<install_dir>/workers/<agent>/spool` |
 | **steward** | the one person who may change a stored thing: its creator, until it is handed over | `created_by` |
-| **the stand-in**, **the sim** | the backend's services in memory, which the runtime is tested on | `sim/` |
+| **the stand-in**, **the sim** | the Data Core's services in memory, which the runtime is tested on | `sim/` |
 | **thread** | a sub-assistant's own conversation inside a chat | `<chat_id>/sub_…` |
 | **trace** | what the assistant actually ran in this chat, which evidence is checked against | `state.trace` |
 | **trust level** | see *level* | |

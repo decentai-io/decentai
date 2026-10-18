@@ -265,13 +265,13 @@ One thing comes out: `{"endpoint": "AI:Chat:Event", "data": {"event": …}}`,
 carrying what the runtime tells the chat's audience — narration,
 messages, approval cards, questions, frames. The event names are in
 [the session door](session-door.md), which is the next hop: the
-backend's own dial to the runtime, under a credential a browser never
+Data Core's own dial to the runtime, under a credential a browser never
 holds.
 
 Answering an approval card and stopping a chat are not socket frames:
 they are `AI:Approval:Decide` and `AI:Chat:Stop` on the gateway, so
 that each is checked and recorded before the runtime hears of it. The
-socket carries no authority: what the chat may do is the backend's
+socket carries no authority: what the chat may do is the Data Core's
 contract for that chat, which the runtime reads again at every turn.
 
 ## What a script cannot do
@@ -279,6 +279,6 @@ contract for that chat, which the runtime reads again at every turn.
 Sign in with a key, change a password with one (`POST /auth/password`
 answers 403 to a key: it is changed from a signed-in browser), manage
 keys, or reach the runtime directly. The runtime has no public surface; it is dialed by the
-backend under a delegation minted per chat, and that delegation is
+Data Core under a delegation minted per chat, and that delegation is
 fenced to a fixed list of gateway actions — the runtime column in the
 actions reference.

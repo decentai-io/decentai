@@ -109,7 +109,7 @@ is the answer.
 3. **The secret**, and the signature where one is required or sent.
    Otherwise **401**, saying which.
 4. **The rate.** At most 60 events a minute per webhook, counted in the
-   backend process. Otherwise **429**.
+   Data Core process. Otherwise **429**.
 5. **The body.** JSON, an object, every field declared (nothing
    undeclared), every required one present and not null, each of its
    type — a `date` is an ISO 8601 string. Otherwise **400**, naming the
@@ -127,7 +127,7 @@ nowhere: there is no webhook to record it against.
 
 ### How the event reaches the chat
 
-Once the event is recorded, the backend tells the chat, after the 202
+Once the event is recorded, the Data Core tells the chat, after the 202
 (`_tell`). It sends a **`webhook_event`** frame through the relay to the
 runtime for the person (`RuntimeClientManager.send`,
 `backend/api/services/chat_session/relay.py`); where nobody has the chat
@@ -142,13 +142,13 @@ dialed. The frame:
  "data": {…the posted fields…}}
 ```
 
-The instruction in it is the webhook's, read by the backend from its
+The instruction in it is the webhook's, read by the Data Core from its
 own record — never anything the caller sent. The frame is the
-backend's alone: it is in the relay's `FRAMES`, but the browser's
+Data Core's alone: it is in the relay's `FRAMES`, but the browser's
 socket builds only the frames of the actions it knows
 (`AI:Chat:Input`, `AI:Chat:Screen`, `AI:Chat:Watch`), and this is none
 of them. The runtime's door takes it only from a dialer with the
-backend's service token ([session door](../reference/session-door.md#inbound-what-a-consumer-may-say)).
+Data Core's service token ([session door](../reference/session-door.md#inbound-what-a-consumer-may-say)).
 The delivery's outcome becomes `delivered`, or `not delivered` when the
 chat could not be reached; it is not tried again.
 
@@ -281,7 +281,7 @@ it:
   an Adaptive Card with an *Open the chat* button (`Sender.shaped`).
   Neither of those is signed: their receivers do not check one.
 - **Sent from a queue** (`webhook_sends`), by one sender thread per
-  backend process (`Sender`, started with the app), every 15 seconds,
+  Data Core process (`Sender`, started with the app), every 15 seconds,
   so nothing in a chat waits on somebody else's server. Each attempt
   checks the address again, times out after 10 seconds, and follows no
   redirect.
@@ -334,7 +334,7 @@ chats ([ownership](ownership.md)).
   bearer token or our signature is reached through a relay such as
   Zapier, n8n or Make, until its own scheme is added.
 - **A rate across processes.** The 60 a minute is counted in memory in
-  each backend process; several backends each allow 60, and a restart
+  each Data Core process; several Data Cores each allow 60, and a restart
   starts the count again.
 - **Pin the connection to the address it checked.** An outbound address
   is resolved and checked when the subscription is made and before each
@@ -360,7 +360,7 @@ chats ([ownership](ownership.md)).
 
 | | |
 |---|---|
-| the door, `POST /hooks/<id>` | `backend/server/routes/hooks.py`; Caddy passes `/hooks/*` to the backend (`frontend/Caddyfile`) |
+| the door, `POST /hooks/<id>` | `backend/server/routes/hooks.py`; Caddy passes `/hooks/*` to the Data Core (`frontend/Caddyfile`) |
 | the stores, the field check and the signature | `backend/database/stores/webhooks.py` — `webhooks`, `webhook_deliveries`, `webhook_subscriptions`, `webhook_sends` |
 | the page's doors, `Settings:Webhook:*`, `Settings:Outbound:*`; executions (`WebhookRuns`) | `backend/api/endpoints/app/settings/webhook_controller.py` |
 | the queue and the sender | `backend/server/outbound.py` |

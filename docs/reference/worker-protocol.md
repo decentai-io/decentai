@@ -72,7 +72,7 @@ The worker process is:
 
 `-I` keeps the interpreter to its own environment: nothing of the
 machine's site packages or the caller's working directory is imported.
-The line is the agents' container's to write: the runtime names the
+The line is the Execution Sandbox's to write: the runtime names the
 agent, the interpreter and the package, and the spawner wraps the line
 in the spawn helper, which becomes the agent's own user before it
 becomes the worker ([the sandbox](../system/sandbox.md)).
@@ -86,7 +86,7 @@ browsers path) plus the `LC_*` family and the platform's knobs for
 agents — `DECENTAI_BROWSER_*`, `DECENTAI_CODE_*`, `DECENTAI_WEB_*`,
 and `DECENTAI_AGENT_*` for whatever a deployment wants its agents to
 read — with the spool directory and the proxy address set at spawn.
-The runtime's configuration — the model key, the backend's
+The runtime's configuration — the model key, the Data Core's
 trust key, its own settings — is not in the list and never reaches
 agent code. The worker mounts the folder as package
 `decentai_agents.<agent_id>` (one agent per process — no digest tag
