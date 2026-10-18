@@ -19,15 +19,20 @@ work — "look again in ten minutes" — and not a standing instruction of
 the person's: one per chat, at most a day long, gone once it has
 fired, and never on the Schedules page.
 
-The Scheduler is the clock, and what a fire does. Fires that error
-are logged and never kill the clock; an overdue schedule found at
-startup fires ONCE and advances from now — never a backlog replay.
+The Scheduler is what a fire does — and, in a test or the simulator,
+the clock. On an execution node the Data Core decides when a row is due
+and hands the fire over the node link (``fire_now``,
+docs/system/execution-nodes.md#the-clock), so a row fires once however
+many nodes hold a copy of it; the node's own clock never ticks there.
+Fires that error are logged and never kill the clock; an overdue
+schedule fires ONCE and advances from now — never a backlog replay.
 Each fire is a task of its own: one that takes its time — a slow site,
 a question waiting on the person — holds up no other row.
 """
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import asyncio
 import json
@@ -172,16 +177,24 @@ class Scheduler:
     """
 
     #: A store's answer that says the chat itself is gone or no longer
-    #: this process's to act for — not that a write failed.
-    CHAT_GONE = (401, 403, 404)
+    #: this process's to act for — not that a write failed. 409 is a
+    #: lease another node holds now (docs/system/execution-nodes.md).
+    CHAT_GONE = (401, 403, 404, 409)
 
     def __init__(self, services, host,
                  clock: Callable[[], float] = time.time,
-                 tick_seconds: float = 30.0):
+                 tick_seconds: float = 30.0, ticks: bool = True):
         self.services = services
         self.host = host
         self.clock = clock
         self.tick_seconds = tick_seconds
+        #: Whether this clock decides for itself when a row is due. On
+        #: an execution node it does not: the Data Core's clock decides
+        #: and hands each fire over the node link (``fire_now``,
+        #: docs/system/execution-nodes.md#the-clock), so that a row
+        #: fires once however many nodes hold a copy of it. A clock in
+        #: a test or the simulator still ticks.
+        self.ticks = ticks
         self.schedules: List[Schedule] = []
         self._task: Optional[asyncio.Task] = None
         #: Rows in memory that are ahead of the store: writing what a
@@ -198,11 +211,33 @@ class Scheduler:
 
     # ------------------------------------------------------------------
     async def start(self) -> "Scheduler":
+        if not self.ticks:
+            # The Data Core's clock decides when a row is due; the rows
+            # a chat holds are read as it is attached (replace_for).
+            return self
         self.schedules = [
             Schedule.from_dict(row) for row in await self.services.load_schedules()
         ]
         self._task = asyncio.get_running_loop().create_task(self._run())
         return self
+
+    def fire_now(self, row: Dict[str, Any]) -> Optional[asyncio.Task]:
+        """A fire the Data Core decided on: the row as it was found due,
+        run now as any fire is — by the chat's contract, with the same
+        limits — and what it did written back. The row's word is the
+        Data Core's: it replaces this clock's copy. A row already firing
+        here is not fired twice. Returns the fire's task."""
+        schedule = Schedule.from_dict(row)
+        if not schedule.chat_id or schedule.schedule_id in self._firing:
+            return None
+        self.schedules = [s for s in self.schedules
+                          if s.schedule_id != schedule.schedule_id]
+        self.schedules.append(schedule)
+        task = asyncio.get_running_loop().create_task(
+            self._fire(schedule, self.clock()))
+        self._firing[schedule.schedule_id] = task
+        self._firing_for[schedule.schedule_id] = schedule.chat_id
+        return task
 
     async def stop(self) -> None:
         """The process is ending: the loop and every fire under way are
@@ -338,6 +373,16 @@ class Scheduler:
             await asyncio.gather(*started, return_exceptions=True)
 
     async def _fire(self, schedule: Schedule, now: float) -> None:
+        """One row's fire, with its chat held on this host for as long
+        as it runs: a fire runs beside the chat's session, and the chat
+        must not be let go — its lease with it — while it does."""
+        hold = getattr(self.host, "holding", None)
+        holding = hold(schedule.chat_id) if hold is not None \
+            else contextlib.nullcontext()
+        with holding:
+            await self._fire_row(schedule, now)
+
+    async def _fire_row(self, schedule: Schedule, now: float) -> None:
         """One row's fire, from start to its line in the store."""
         began = time.monotonic()
         try:

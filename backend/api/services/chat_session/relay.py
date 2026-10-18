@@ -30,6 +30,10 @@ holding the chat while its lease is live; otherwise among the nodes
 connected that may serve the chat's organization, its own first, then
 the last holder, then the least loaded.
 
+**The clock** is the Data Core's (chat_session/clock.py): it decides
+when a schedule is due, puts the chat on a node (``hold``) and sends
+the node a ``fire`` (``fire``). No chat is kept on a node for its clock.
+
 A person who stopped everything of theirs (halt.py) is attached
 nowhere: no key is minted and no frame goes out until they resume. The
 one exception is the stop itself, sent to the lease holder.
@@ -119,6 +123,10 @@ class RuntimeClientManager:
         links.on_lost.append(self.on_lost)
         links.on_beat.append(self.on_beat)
         links.on_frame["released"] = self.on_released
+        from api.services.chat_session.clock import ScheduleClock
+
+        #: the Data Core's clock (chat_session/clock.py)
+        self.clock = ScheduleClock(self)
 
     # ------------------------------------------------------------------
     async def _binding(self, chat_id: str, user: Dict[str, Any]) -> ChatBinding:
@@ -128,14 +136,6 @@ class RuntimeClientManager:
                 binding = ChatBinding(chat_id, user)
                 self.chats[chat_id] = binding
             return binding
-
-    @staticmethod
-    def _standing(chat_id: str) -> bool:
-        """A chat the node keeps while it holds schedule rows: the
-        node's clock fires them only while it holds the chat."""
-        from database.stores import ScheduleStore
-
-        return bool(ScheduleStore().rows(chat_id))
 
     async def _attach(self, binding: ChatBinding, halting: bool = False,
                       again: bool = False) -> bool:
@@ -187,8 +187,7 @@ class RuntimeClientManager:
             if not await link.send({
                     "type": "attach", "chat_id": binding.chat_id,
                     "lease": binding.lease, "credential": credential,
-                    "watched": binding.watched,
-                    "standing": self._standing(binding.chat_id)}):
+                    "watched": binding.watched}):
                 link.chats.discard(binding.chat_id)
                 binding.link = None
                 return False
@@ -230,6 +229,43 @@ class RuntimeClientManager:
             self.logger.warning(f"Frame for chat {chat_id} not sent")
             return False
         return True
+
+    async def hold(self, chat_id, user) -> bool:
+        """The chat on a node, nobody watching: what the clock asks
+        before a fire. False when no node may take it now."""
+        if UserStore().stopped(str(user.get("user_id") or "")):
+            return False
+        binding = await self._binding(str(chat_id), user)
+        return await self._attach(binding)
+
+    async def fire(self, chat_id, user, row: Dict[str, Any]) -> bool:
+        """A schedule's fire, to the node holding the chat: the Data
+        Core's own voice over the link, never a frame a person could
+        send. The node runs it and writes back what it did."""
+        binding = self.chats.get(str(chat_id))
+        if binding is None or not binding.attached:
+            return False
+        return await binding.link.send(
+            {"type": "fire", "chat_id": binding.chat_id, "schedule": dict(row)})
+
+    async def tell(self, chat_id, user, frame) -> bool:
+        """A frame for a chat a node holds now, and nothing if none
+        does: what changed on the record that a node holding the chat
+        should hear (``schedules_changed``) and one that does not will
+        read when it is attached. Never places a chat."""
+        if str(frame.get("event") or "") not in FRAMES:
+            return False
+        binding = self.chats.get(str(chat_id))
+        if binding is None or not binding.attached:
+            current = LeaseStore().current(str(chat_id))
+            link = (self.links.get(current["node_id"])
+                    if LeaseStore.live(current) else None)
+            if link is None:
+                return False
+            return await link.send(
+                {"type": "chat", "chat_id": str(chat_id), "frame": frame})
+        return await binding.link.send(
+            {"type": "chat", "chat_id": binding.chat_id, "frame": frame})
 
     async def close(self, chat_id, user) -> None:
         """Nothing may keep this chat on a node: it is being erased, or
@@ -277,8 +313,9 @@ class RuntimeClientManager:
 
     async def release(self, chat_id, user) -> bool:
         """The person's last socket to a chat went away: the node is
-        told nobody watches, and lets the chat go once it is idle.
-        Returns whether there was a node to tell."""
+        told nobody watches, and lets the chat go once it is idle —
+        scheduled or not: the Data Core's clock places it again when a
+        row comes due. Returns whether there was a node to tell."""
         binding = self.chats.get(str(chat_id))
         if binding is None:
             return False
@@ -347,38 +384,16 @@ class RuntimeClientManager:
                 pass
 
     async def on_link(self, link) -> None:
-        """A node connected: the chats waiting for a node are attached —
-        those still leased to this node, back to it under the same
-        number, and the rest where they are placed."""
+        """A node connected: the chats a person is waiting on are
+        attached — those still leased to this node, back to it under the
+        same number, and the rest where they are placed. Nothing is
+        attached for a clock: the Data Core's fires a chat when it is
+        due (chat_session/clock.py)."""
         for binding in list(self.chats.values()):
-            if not binding.attached and self.placement.may_serve(
-                    link, str(binding.user.get("org_id") or "")):
+            if not binding.attached and binding.watched \
+                    and self.placement.may_serve(
+                        link, str(binding.user.get("org_id") or "")):
                 await self._attach(binding)
-        await self.redial_scheduled()
-
-    async def redial_scheduled(self) -> int:
-        """Every chat holding schedule rows is held by a node, so its
-        clock can adopt them. A chat whose owner may no longer act is
-        skipped and logged — never attached as somebody who cannot."""
-        from api.services.chat_session.identity import StandingOwner
-        from database.stores import ScheduleStore
-
-        attached = 0
-        for holder in ScheduleStore().holders():
-            chat_id = str(holder.get("chat_id") or "")
-            current = self.chats.get(chat_id)
-            if current is not None and current.attached:
-                continue
-            user = StandingOwner().resolve(holder)
-            if user is None:
-                self.logger.warning(
-                    f"Schedules of chat {chat_id} not attached: their owner "
-                    f"may no longer act")
-                continue
-            binding = await self._binding(chat_id, user)
-            if await self._attach(binding):
-                attached += 1
-        return attached
 
     async def fail_over(self) -> int:
         """Every lease whose node stopped renewing it and never let it
@@ -417,21 +432,21 @@ class RuntimeClientManager:
     # ------------------------------------------------------------------
 
     def start_renewing(self):
-        """The renewal and lease loops, for the life of the process.
-        The app's lifespan starts them; tests call renew_due and
-        fail_over directly."""
+        """The renewal and lease loops and the clock, for the life of
+        the process. The app's lifespan starts them; tests call
+        renew_due, fail_over and the clock's tick directly."""
         loop = asyncio.get_running_loop()
         if self.renewer is None or self.renewer.done():
             self.renewer = loop.create_task(self._renew_loop())
         if self.leaser is None or self.leaser.done():
             self.leaser = loop.create_task(self._lease_loop())
+        self.clock.start()
 
     async def _renew_loop(self):
         while True:
             await asyncio.sleep(self.RENEW_TICK_SECONDS)
             try:
                 await self.renew_due()
-                await self.redial_scheduled()
             except Exception as exc:  # one bad tick never ends the loop
                 self.logger.warning(f"Credential renewal tick failed: {exc}")
 
@@ -489,5 +504,6 @@ class RuntimeClientManager:
             setattr(self, name, None)
             if task is not None:
                 task.cancel()
+        self.clock.stop()
         async with self.lock:
             self.chats.clear()

@@ -19,8 +19,8 @@ settings keep their older names until they are renamed together
 
 | Name | Service | Code | Holds |
 |---|---|---|---|
-| **Data Core** | `backend` | `backend/` | identity and access, the agent lifecycle, the data layer, chats and approvals, organization settings; the only part that reaches the database |
-| **AI Runtime** | `ai-runtime` | `ai_runtime/` | the assistant, the executor every call passes, the clock, the egress proxy |
+| **Data Core** | `backend` | `backend/` | identity and access, the agent lifecycle, the data layer, chats and approvals, organization settings, the execution nodes and the clock; the only part that reaches the database |
+| **AI Runtime** | `ai-runtime` | `ai_runtime/` | the assistant, the executor every call passes, what a schedule's fire runs, the egress proxy |
 | **Execution Sandbox** | `agents` | `ai_runtime/agents_container/` | agent code, one user of its own per agent |
 | **execution node** | — | — | one AI Runtime with its Execution Sandboxes, deployed together |
 | **clients** | `web` | `frontend/` | the web, desktop and mobile apps; they speak only to the Data Core |

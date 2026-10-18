@@ -473,7 +473,7 @@ class ChatController(AIController):
         schedules = ScheduleStore()
         if schedules.rows(chat_id):
             schedules.delete_for_chat(identity)
-            await get_runtime_clients().send(
+            await get_runtime_clients().tell(
                 chat_id, user, {"event": "schedules_changed"})
 
         # Then the live side: nothing may keep acting for a chat being

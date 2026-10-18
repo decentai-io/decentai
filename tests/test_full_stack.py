@@ -691,3 +691,81 @@ class TestLeases:
                                 "data": {"text": "two", "parts": []}})
             reply = until_ai_message(frontend)[-1]
         assert reply["message"]["parts"][0]["content"] == "On the second."
+
+
+def ai_messages(admin, chat_id):
+    listed = app_call(admin, "AI:Message:List", {"chat_id": chat_id})
+    return [m["parts"][0]["content"] for m in listed.json()["data"]["messages"]
+            if m["actor"] == "ai"]
+
+
+def until_said(admin, chat_id, count=1, timeout=30.0):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        said = ai_messages(admin, chat_id)
+        if len(said) >= count:
+            return said
+        time.sleep(0.2)
+    raise AssertionError(f"the chat said {ai_messages(admin, chat_id)}")
+
+
+def schedule(admin, chat_id, **when):
+    made = app_call(admin, "AI:Schedule:Create", {
+        "chat_id": chat_id, "note": "standup", **when})
+    assert made.status_code == 200, made.text
+    return made.json()["data"]["schedule"]
+
+
+class TestTheClock:
+    """The Data Core decides when a schedule is due and hands the fire
+    to the node holding its chat (docs/system/execution-nodes.md#the-clock)."""
+
+    def tick(self, full_stack):
+        from server.setup.app_state import get_runtime_clients
+
+        return full_stack.on_data_core(get_runtime_clients().clock.tick)
+
+    def test_a_schedule_fires_through_a_node_and_the_assistant_answers(
+            self, admin, full_stack):
+        chat_id = open_scripted(
+            admin, "Clock",
+            action(action="say", text="Time for the standup."),
+            action(action="finish"))
+        row = schedule(admin, chat_id, delay_seconds=1)
+        time.sleep(1.2)
+        # Nobody has the chat open, and no node holds it: it is placed
+        # as the row comes due, then fired there.
+        assert self.tick(full_stack) == 1
+        assert until_said(admin, chat_id) == ["Time for the standup."]
+        # Fired once: the next look finds nothing due.
+        assert self.tick(full_stack) == 0
+        from database.stores import ScheduleStore
+
+        deadline = time.monotonic() + 15
+        while True:
+            kept = next(r for r in ScheduleStore().rows(chat_id)
+                        if r["schedule_id"] == row["schedule_id"])
+            if kept.get("runs"):
+                break
+            assert time.monotonic() < deadline, kept
+            time.sleep(0.2)
+        assert kept["runs"][-1]["status"] == "woke"
+        assert kept["enabled"] is False          # a one-off, and done
+
+    def test_with_two_nodes_each_schedule_fires_once(self, admin, full_stack):
+        full_stack.add_node("second")
+        chats = []
+        for title in ("One", "Two", "Three"):
+            chat_id = open_scripted(
+                admin, title, action(action="say", text=f"{title} woke."),
+                action(action="finish"))
+            schedule(admin, chat_id, delay_seconds=1)
+            chats.append(chat_id)
+        time.sleep(1.2)
+        fired = self.tick(full_stack) + self.tick(full_stack)
+        assert fired == 3
+        for chat_id, title in zip(chats, ("One", "Two", "Three")):
+            assert until_said(admin, chat_id) == [f"{title} woke."]
+        time.sleep(1.0)
+        for chat_id in chats:
+            assert len(ai_messages(admin, chat_id)) == 1

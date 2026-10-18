@@ -237,7 +237,7 @@ Where a word is used for more than one thing, each is said.
 | **card** | something in the chat that waits for a person: an approval, a question, code to allow, a login | `ai_approvals` |
 | **catalog** | two things. The list of every action. And the file in a repository that lists its agents | `ACTION_CATALOG`; `decentai-agents.yaml` |
 | **category** | see *slot* | |
-| **the clock** | what fires schedules and ends sleeps | `Scheduler`, `ai_runtime/chat/clock.py` |
+| **the clock** | what fires schedules and ends sleeps: the Data Core decides when a row is due, the node holding its chat runs it | `ScheduleClock`, `backend/api/services/chat_session/clock.py`; `Scheduler`, `ai_runtime/chat/clock.py` |
 | **contract** | four things. *The manifest*, an agent's contract with the platform. *The chat's contract*, what this chat may do, answered by the Data Core each turn. *The services contract*, the methods the runtime asks of the Data Core. And the package `contracts/`, the shapes both sides share | `AI:Chat:Contract`; `Backend`; `contracts/` |
 | **delegation** | the credential the Data Core makes per chat, under which the runtime calls back as the person. Also *runtime access token*, *the chat's credential* | `chat_session/identity/delegation.py`; `runtime_sessions` |
 | **definition** | the shape of a credential: its fields. An agent's is derived from its manifest at install | `secret_definitions` |

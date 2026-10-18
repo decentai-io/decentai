@@ -458,12 +458,12 @@ class ScheduleController(AIController):
 
     @staticmethod
     async def _notify(chat_id, user):
-        """The clock catches up: the chat's runtime session re-reads its
-        rows. Dialed if it is not up — a chat with rows is a standing
-        one. Not delivered is not a failure of the write: the rows are
-        the store's, and the next dial adopts them."""
+        """The node holding the chat, if one does, re-reads its rows.
+        Nothing is placed for it: when a row comes due the Data Core's
+        clock fires it from the store, and a node attached later reads
+        the rows then. Not delivered is not a failure of the write."""
         try:
-            return bool(await get_runtime_clients().send(
+            return bool(await get_runtime_clients().tell(
                 chat_id, user, {"event": "schedules_changed"}))
         except Exception:
             return False

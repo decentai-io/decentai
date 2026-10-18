@@ -329,25 +329,138 @@ class TestLeasesOnTheNode:
         assert released == [{"type": "released", "chat_id": "chat_1", "lease": 2}]
         assert "chat_1" not in link.channels and "chat_1" not in host.sessions
 
-    def test_a_standing_chat_is_kept_however_idle(self):
-        host, _ = build()
+    def test_a_chat_is_held_while_a_fire_runs_for_it(self):
+        """A fire runs beside the chat's session: the chat, and its
+        lease, are not let go until it is over."""
+        from ai_runtime.chat.clock import Scheduler
+
+        host, services = build()
         host.REAP_GRACE_SECONDS = 0.1
+        clock = host.clock = Scheduler(services, host, ticks=False)
+        gate = asyncio.Event()
+
+        async def slow(schedule):
+            await gate.wait()
+            return {"status": "woke"}
+
+        clock.fire = slow
 
         async def scenario():
             data_core, link = await self.linked(host)
             await data_core.say({"type": "attach", "chat_id": "chat_1",
                                  "lease": 1, "credential": "k",
-                                 "watched": False, "standing": True})
+                                 "watched": False})
             await data_core.until(lambda: data_core.events("chat_1", "hello"))
+            await data_core.say({"type": "fire", "chat_id": "chat_1",
+                                 "schedule": TestTheClockOverTheLink().row()})
+            await data_core.until(lambda: clock._firing)
             await asyncio.sleep(0.4)
-            kept = "chat_1" in link.channels
+            held = "chat_1" in link.channels
+            gate.set()
+            await data_core.until(lambda: any(
+                h.get("type") == "released" for h in data_core.heard))
             await link.stop()
             await data_core.stop()
-            return kept, data_core
+            return held
 
-        kept, data_core = run(scenario())
-        assert kept is True
-        assert not any(h.get("type") == "released" for h in data_core.heard)
+        assert run(scenario()) is True
+
+
+class TestTheClockOverTheLink:
+    """The Data Core decides when a row is due and hands the node a
+    ``fire``; the node runs it as any fire, and writes back what it did
+    (docs/system/execution-nodes.md#the-clock)."""
+
+    def row(self, **changes):
+        return {"schedule_id": "sch_1", "chat_id": "chat_1", "mode": "wake",
+                "note": "standup", "every_seconds": 3600, "cron": "",
+                "timezone": "", "next_run_at": time.time() - 1,
+                "enabled": True, "last_run_at": None, "runs": [], **changes}
+
+    def test_a_fire_wakes_the_chat_and_its_run_is_written_back(self):
+        from ai_runtime.chat.clock import Scheduler
+
+        host, services = build([
+            action(action="say", text="Standup time."), action(action="finish")])
+        host.clock = Scheduler(services, host, ticks=False)
+        services.schedules.rows = [self.row()]
+
+        async def scenario():
+            data_core, link = await TestLeasesOnTheNode().linked(host)
+            await data_core.say({"type": "attach", "chat_id": "chat_1",
+                                 "lease": 1, "credential": "k",
+                                 "watched": False})
+            await data_core.until(lambda: data_core.events("chat_1", "hello"))
+            await data_core.say({"type": "fire", "chat_id": "chat_1",
+                                 "schedule": self.row()})
+            await data_core.until(lambda: any(
+                f["message"]["actor"] == "ai"
+                for f in data_core.events("chat_1", "message_created")))
+            await data_core.until(lambda: services.schedules.rows[0]["runs"])
+            await link.stop()
+            await data_core.stop()
+
+        run(scenario())
+        [run_] = services.schedules.rows[0]["runs"]
+        assert run_["status"] == "woke"
+        assert services.schedules.rows[0]["next_run_at"] > time.time() + 3000
+
+    def test_a_node_clock_never_fires_by_itself(self):
+        from ai_runtime.chat.clock import Scheduler
+
+        host, services = build([action(action="finish")])
+        clock = Scheduler(services, host, ticks=False, tick_seconds=0.01)
+        services.schedules.rows = [self.row()]
+
+        async def scenario():
+            await clock.start()
+            await asyncio.sleep(0.2)
+            fired = bool(services.schedules.rows[0]["runs"])
+            await clock.stop()
+            return fired
+
+        assert run(scenario()) is False
+        assert host.sessions == {}
+
+    def test_a_row_already_firing_is_not_fired_twice(self):
+        from ai_runtime.chat.clock import Scheduler
+
+        host, services = build([action(action="finish")])
+        clock = Scheduler(services, host, ticks=False)
+
+        async def scenario():
+            gate = asyncio.Event()
+
+            async def slow(schedule):
+                await gate.wait()
+                return {"status": "woke"}
+
+            clock.fire = slow
+            first = clock.fire_now(self.row())
+            second = clock.fire_now(self.row())
+            gate.set()
+            await first
+            return first, second
+
+        first, second = run(scenario())
+        assert first is not None and second is None
+
+    def test_a_fire_for_a_chat_never_attached_runs_nothing(self):
+        from ai_runtime.chat.clock import Scheduler
+
+        host, services = build([action(action="finish")])
+        host.clock = Scheduler(services, host, ticks=False)
+
+        async def scenario():
+            data_core, link = await TestLeasesOnTheNode().linked(host)
+            await data_core.say({"type": "fire", "chat_id": "chat_1",
+                                 "schedule": self.row()})
+            await data_core.until(lambda: data_core.events("chat_1", "error"))
+            await link.stop()
+            await data_core.stop()
+
+        run(scenario())
+        assert host.sessions == {} and host.clock._firing == {}
 
 
 class TestMonitoringOverTheLink:

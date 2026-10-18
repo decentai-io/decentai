@@ -1811,7 +1811,7 @@
       ]
     },
     "ai_schedules": {
-      "description": "The clock's rows, one document per chat holding them whole; the runtime is the only writer.",
+      "description": "The clock's rows, one document per chat holding them whole; the Data Core's clock decides when each is due and the execution node holding the chat runs it.",
       "validator": {
         "$jsonSchema": {
           "bsonType": "object",
@@ -1847,6 +1847,15 @@
             ]
           ],
           "unique": true
+        },
+        {
+          "name": "due",
+          "keys": [
+            [
+              "rows.next_run_at",
+              1
+            ]
+          ]
         }
       ]
     },

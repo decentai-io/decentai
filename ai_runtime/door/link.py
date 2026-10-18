@@ -14,6 +14,8 @@ reconnecting with backoff, carries every chat this node serves:
       watch              whether a person is watching the chat
       chat               one of the door's frames for one chat
                          (user_message, approval_decided, stop, …)
+      fire               a schedule of a chat this node holds is due:
+                         run it (the Data Core's clock decided)
       detach             the chat is no longer this node's: forget it
       monitor            a question about agents (door/monitor.py)
 
@@ -65,8 +67,6 @@ class ChatChannel:
         #: whether a person is watching: an unwatched chat is let go
         #: once it is idle
         self.watched = True
-        #: a chat the Data Core keeps here whether or not it is idle
-        self.standing = False
 
     async def send_json(self, frame: Dict[str, Any]) -> None:
         await self.link.send({"type": "event", "chat_id": self.chat_id,
@@ -286,14 +286,14 @@ class NodeLink:
             if not channel.watched:
                 self.host.unwatched(chat_id)
             return
-        if kind not in ("attach", "chat", "detach") or not chat_id:
+        if kind not in ("attach", "chat", "fire", "detach") or not chat_id:
             self.logger.warning(f"A frame of no known kind: {kind!r}")
             return
         channel = self.channels.get(chat_id)
         if channel is None:
             if kind == "detach":
                 return
-            if kind == "chat":
+            if kind in ("chat", "fire"):
                 # Only an attachment brings a chat here: a frame for one
                 # never attached builds nothing, with no key to build on.
                 await self.send({"type": "event", "chat_id": chat_id, "frame": {
@@ -315,7 +315,6 @@ class NodeLink:
                 if kind == "attach":
                     channel.lease = frame.get("lease")
                     channel.watched = bool(frame.get("watched", True))
-                    channel.standing = bool(frame.get("standing"))
                     hold = getattr(self.host.services, "hold", None)
                     if hold is not None:
                         hold(chat_id, channel.lease)
@@ -327,6 +326,10 @@ class NodeLink:
                     inner = frame.get("frame")
                     if isinstance(inner, dict):
                         await self.host.handle(chat_id, inner)
+                elif kind == "fire":
+                    # The Data Core's own voice, never a person's: the
+                    # clock runs the row as it was found due.
+                    await self.host.fire(chat_id, frame.get("schedule"))
                 elif kind == "detach":
                     # Not this node's any more: forgotten where it
                     # stands, its key and its lease let go.
@@ -366,9 +369,9 @@ class NodeLink:
     def _forgotten(self, chat_id: str) -> None:
         """The host forgot an idle chat nobody watches: its lease is let
         go, so the Data Core may place it anywhere when it is next
-        needed. A standing chat is kept."""
+        needed."""
         channel = self.channels.get(chat_id)
-        if channel is None or channel.watched or channel.standing:
+        if channel is None or channel.watched:
             return
         del self.channels[chat_id]
         if channel.pump is not None:

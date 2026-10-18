@@ -300,43 +300,41 @@ class TestALinkThatEnds:
 
 
 class TestScheduledChats:
-    def test_a_browser_leaving_a_scheduled_chat_keeps_it_attached(
+    """The clock is the Data Core's (chat_session/clock.py): a chat with
+    schedule rows is no longer kept on a node for them."""
+
+    def test_a_browser_leaving_a_scheduled_chat_lets_it_go_as_any_other(
             self, anon, admin, seed, fake_node):
         from test_runtime_secret_use import runtime_call
 
-        scheduled, quiet = create_chat(admin), create_chat(admin)
+        scheduled = create_chat(admin)
         runtime_call(anon, seed, scheduled, "AI:Schedule:Add", {"row":
             {"schedule_id": "sch_1", "chat_id": scheduled, "mode": "wake",
              "note": "rent", "every_seconds": 86400, "next_run_at": 1.0,
              "enabled": True}})
+        with admin.websocket_connect(
+                f"/chats/{scheduled}", headers=cookie_header(admin)) as frontend:
+            assert frontend.receive_json()["data"]["event"] == "hello"
+            frontend.close()
+        assert "standing" not in fake_node.frames("attach", scheduled)[-1]
+        assert fake_node.frames("watch", scheduled)[-1]["watched"] is False
 
-        for chat_id in (scheduled, quiet):
-            with admin.websocket_connect(
-                    f"/chats/{chat_id}", headers=cookie_header(admin)) as frontend:
-                assert frontend.receive_json()["data"]["event"] == "hello"
-                frontend.close()
-        # Both are told nobody watches; only the chat with a clock is
-        # kept by the node however idle it is.
-        assert fake_node.frames("attach", scheduled)[-1]["standing"] is True
-        assert fake_node.frames("attach", quiet)[-1]["standing"] is False
-        assert not fake_node.frames("detach")
-
-    def test_a_node_connecting_is_given_the_chats_holding_schedules(
+    def test_a_node_connecting_is_given_no_chat_for_its_clock(
             self, anon, admin, seed, signing_key):
         from server.setup.app_state import get_runtime_clients
-        from test_runtime_secret_use import runtime_call
 
-        scheduled, quiet = create_chat(admin), create_chat(admin)
-        runtime_call(anon, seed, scheduled, "AI:Schedule:Add", {"row":
+        scheduled = create_chat(admin)
+        from database.stores import ScheduleStore
+
+        ScheduleStore().add(
+            {"chat_id": scheduled, "org_id": seed.org["_id"],
+             "user_id": seed.admin["_id"]},
             {"schedule_id": "sch_1", "chat_id": scheduled, "mode": "wake",
-             "note": "rent", "every_seconds": 86400, "next_run_at": 1.0,
-             "enabled": True}})
-        from conftest import node_for_tests
-
-        node = link(FakeNode(node_for_tests().key))
+             "note": "rent", "every_seconds": 86400,
+             "next_run_at": time.time() + 3600, "enabled": True})
+        node = link(FakeNode("auth_a/n1"))
         asyncio.run(get_runtime_clients().on_link(node))
-        assert node.frames("attach", scheduled)
-        assert not node.frames("attach", quiet)
+        assert node.received == []
 
 
 class TestRenewal:

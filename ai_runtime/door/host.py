@@ -406,6 +406,31 @@ class SessionHost:
             await self._hand(chat_id, session, kind, frame)
         self._schedule_reap(chat_id)
 
+    def holding(self, chat_id: str):
+        """Held while something runs for a chat beside its session — a
+        schedule's fire: the chat is not forgotten, and its lease not
+        let go, until it is over; then it may be, once idle."""
+        host = self
+        arriving = self._arriving(chat_id)
+
+        class Holding:
+            def __enter__(self):
+                arriving.__enter__()
+
+            def __exit__(self, *exc):
+                arriving.__exit__(*exc)
+                host._schedule_reap(chat_id)
+        return Holding()
+
+    async def fire(self, chat_id: str, schedule: Dict[str, Any]) -> bool:
+        """A fire the Data Core's clock decided on, for a chat this host
+        holds: the clock runs it (chat/clock.py, ``fire_now``)."""
+        if self.clock is None or not isinstance(schedule, dict):
+            return False
+        if str(schedule.get("chat_id") or "") != chat_id:
+            return False
+        return self.clock.fire_now(schedule) is not None
+
     def _arriving(self, chat_id: str):
         """Held while something is being delivered to a chat's session:
         the reaper leaves that session alone (``_reap``). Without it a

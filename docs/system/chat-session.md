@@ -193,7 +193,10 @@ longer pins is answered `recorded: false`.
 `ai_schedules`: the clock's rows, read per chat and written one row at a
 time — a row the assistant set, what a fire did to one (its next time
 and its history; a fire can end a row and never switches one back on), a
-row it took off.
+row it took off. When a row is due is the Data Core's to decide: its
+clock claims the row and hands the fire to the node holding the chat
+([execution nodes](execution-nodes.md#the-clock)); the node runs it and
+writes back with `Ran`.
 
 A chat holds at most 50; one-shots that already ran make room. `Ran`
 answers `gone` for a row the person deleted meanwhile, and the clock
@@ -207,16 +210,18 @@ its manifest calls schedulable) — `AI:Schedule:Create` / `Update`
 (`AI:Schedule:Functions` lists what the form may offer: the functions
 the person was given that are schedulable), shaped exactly as the
 runtime shapes them (first run worked out with `contracts/cron.py` in
-the chat's zone), one row at a time too, then send the chat's runtime
-session `schedules_changed` through the relay so the clock re-reads
-them.
+the chat's zone), one row at a time too, then tell the node holding the
+chat, if one does, `schedules_changed` through the relay so its copy
+is read again. No chat is placed on a node for it: the Data Core's clock
+reads the store itself.
 
 Two hands on one chat's rows never overwrite each other in the store: a
 pause on the page stands even when the row was firing as it was made.
-The clock's own copy follows the store. It reads a chat's rows again
-when it is told (`schedules_changed`) and every time the chat dials or
-its credential is renewed, so a change whose word never arrived is
-caught up with then; what the person set is taken, and what the clock's
+A node's copy of a chat's rows — what the assistant's own clock actions
+read: its sleep, a twin, what it is waiting on — follows the store. It
+reads them again when it is told (`schedules_changed`) and every time
+the chat is attached or its credential is renewed, so a change whose
+word never arrived is caught up with then; what the person set is taken, and what the clock's
 last fire did to a row is kept, so a row read back from before that
 fire does not fire again.
 
@@ -230,9 +235,10 @@ Three things follow from the table:
   holds a request open.
 - **One writer per record, with one exception.** The runtime writes
   state, events, plan and approvals-as-opened; the person writes
-  decisions and messages. Schedule rows have both: the runtime writes
-  a row as its clock moves it, one row at a time, and the person's
-  doors change one row and tell the clock to read again.
+  decisions and messages. Schedule rows have three hands: the Data
+  Core's clock claims a row as it comes due, the node writes what the
+  fire did, and the person's doors change one row — each one row, one
+  write, so none undoes another.
 
 ## Child threads
 

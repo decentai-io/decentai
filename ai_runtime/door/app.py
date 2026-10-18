@@ -75,12 +75,13 @@ def create_app(settings: RuntimeSettings, services, library, container,
     host = scheduler = None
     if services is not None:
         host = SessionHost(services, library, WorkerPool(confinement))
-        # The platform's own voice, beside the host: the clock. Its
-        # fires are deterministic — gated by the manifest's word
-        # (schedulable), never by a model. A schedule fires as its
-        # chat, with an executor the host builds from that chat's
-        # contract (host.fire_context). What wakes a mind goes through
-        # the inside door a socket cannot reach.
+        # The platform's own voice, beside the host: the clock — what a
+        # fire runs; when one is due is the Data Core's to decide on an
+        # execution node. Its fires are deterministic — gated by the
+        # manifest's word (schedulable), never by a model. A schedule
+        # fires as its chat, with an executor the host builds from that
+        # chat's contract (host.fire_context). What wakes a mind goes
+        # through the inside door a socket cannot reach.
         # No executor of the clock's own: the host builds one for each
         # fire, held to that chat's grants, on the process's one pool.
         scheduler = Scheduler(services, host)
@@ -95,6 +96,10 @@ def create_app(settings: RuntimeSettings, services, library, container,
             settings.backend_url, host, node, data_core,
             report=lambda: {"locks": confinement.report(),
                             "labels": list(node.claims.get("labels") or [])})
+        # The Data Core's clock decides when a row is due and hands
+        # each fire over the link: this node's never ticks by itself,
+        # or a row would fire on every node holding a copy of it.
+        scheduler.ticks = False
 
     @asynccontextmanager
     async def lifespan(app):

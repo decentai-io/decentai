@@ -275,6 +275,15 @@ their store (`load_schedules`, `add_schedule`, `schedule_ran`,
 `remove_schedule`: read whole and written a row at a time); the clock
 starts and stops with the app's lifespan.
 
+On an execution node the clock never decides for itself when a row is
+due: the Data Core does, and hands each fire over the node link as a
+`fire` frame (`host.fire`, `Scheduler.fire_now`;
+[execution nodes](../system/execution-nodes.md#the-clock)), so a row
+fires once however many nodes hold a copy. What the fire runs, and
+under which limits, is unchanged; the chat is held on the node while a
+fire runs for it (`host.holding`). A clock in a test or the simulator
+still ticks (`Scheduler(ticks=True)`).
+
 Each fire is a task of its own, and a row is not fired again while its
 last fire is still under way: a slow one — a site that takes its time,
 a question waiting on the person — holds up no other row and no later

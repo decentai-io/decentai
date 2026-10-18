@@ -59,9 +59,12 @@ class TestStopEverything:
         assert len(kills) == 2
         # While stopped: no dial, no frame, no socket kept.
         assert (refused, unsent, held) == (False, False, set())
-        # Resumed: the chat with a clock is dialed back, by itself.
+        # Resumed: the chat with a clock is counted, and attached to no
+        # node by the resume — the Data Core's clock places it when a
+        # row comes due.
         assert dialed == 1
-        assert RuntimeSessionStore().chats_of(user["user_id"]) == [clocked]
+        assert RuntimeSessionStore().chats_of(user["user_id"]) == []
+        assert clocked
 
     def test_every_key_is_withdrawn(
             self, anon, admin, seed, fake_node, signing_key, monkeypatch):

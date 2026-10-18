@@ -148,21 +148,21 @@ person's chats at once and holds them stopped (`AI:Switch`,
 `backend/api/services/chat_session/halt.py`). In order:
 
 1. The person is marked stopped. From that moment nothing of theirs is
-   dialed and no key is minted for any chat of theirs — a message, a
-   decision on a card, a schedule coming round, a boot's re-dial, a
-   webhook's event. Their webhooks answer 404 to every call until they
+   placed on a node and no key is minted for any chat of theirs — a
+   message, a decision on a card, a schedule coming round, a webhook's
+   event. Their webhooks answer 404 to every call until they
    resume ([webhooks](webhooks.md)).
-2. Every chat a runtime may be serving for them is killed as above:
-   the ones they have open, the ones working with nobody watching, the
-   ones that only keep a clock. Each is given ten seconds to write
+2. Every chat a node may be serving for them is killed as above,
+   on the node holding it: the ones they have open, and the ones
+   working with nobody watching. Each is given ten seconds to write
    down what it had done.
 3. Every key the runtime holds for them is withdrawn. Whatever is
    still running then — a process that ignored its end — can read no
    credential, no model key, no record and no file. It starves.
 
 It holds until the person resumes, which is their own act and never
-happens by itself; the chats that keep a clock are dialed back then,
-and the others wait to be opened. Both are on the audit trail
+happens by itself; a schedule that came due meanwhile fires once
+then, and the chats wait to be opened. Both are on the audit trail
 (`work.stopped`, `work.resumed`). The switch reaches the person's own
 chats and nobody else's, and the runtime's delegation has no hand on
 it: what is stopped cannot start itself again.

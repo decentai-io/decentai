@@ -152,7 +152,8 @@ node, and nothing it said is acted on.
 | Data Core → node | |
 |---|---|
 | `welcome` | the handshake's answer |
-| `attach {chat_id, lease, credential, watched, standing}` | hold this chat under this lease, with this delegation; the node's host greets with `hello` |
+| `attach {chat_id, lease, credential, watched}` | hold this chat under this lease, with this delegation; the node's host greets with `hello` |
+| `fire {chat_id, schedule}` | a row of the chat is due: run it ([the clock](#the-clock)) |
 | `watch {chat_id, watched}` | whether a person has the chat open |
 | `chat {chat_id, frame}` | one of the door's frames for that chat: `user_message`, `approval_decided`, `question_answered`, `stop`, `schedules_changed`, `screen_input`, `screen_open`, `webhook_event`, `credential` ([the chat session](chat-session.md#the-node-link)) |
 | `detach {chat_id}` | the chat is no longer this node's: it is forgotten where it stands, its key and lease let go |
@@ -198,15 +199,14 @@ Every active chat is held by one node under a **lease**
 node, a **number**, an expiry.
 
 - **Granted** when a chat needs a node — a person opens it, a frame for
-  it arrives, a schedule comes due. The number goes up every time the
+  it arrives, a schedule comes due ([the clock](#the-clock)). The number goes up every time the
   chat is given to a node anew, and never down; the record outlives a
   Data Core restart.
 - **Renewed** by the node's heartbeat, every 20 seconds, for 60 (decided
   in [the plan](../ai-engine-plan.md)): three missed beats and it lapses.
 - **Released** by the node when the chat goes idle with nobody watching
   (`released`). The Data Core tells a node whether a person watches
-  (`watch`); a chat holding schedule rows is kept however idle
-  (`standing`), since the node's clock fires only what it holds.
+  (`watch`).
 - **Fencing.** Every call a node makes for a chat — state, events,
   messages, approvals, results, schedules, everything a delegation opens
   — carries its lease number (`X-DecentAI-Lease`), and the gateway
@@ -225,6 +225,46 @@ node, a **number**, an expiry.
 - **Stop and kill** go to the lease holder. Stopping everything of a
   person's still deletes their delegations, so a node that ignores the
   kill can read nothing.
+
+## The clock
+
+**The clock lives in the Data Core** (`ScheduleClock`,
+`backend/api/services/chat_session/clock.py`), because a schedule must
+fire once however many nodes hold a copy of its row, and fire even when
+no node holds its chat. Every five seconds it reads the rows it already
+keeps (`ai_schedules`) for those whose time has come, and for each:
+
+1. the chat is put on a node — the one holding it, or one placed now,
+   with nobody watching (`hold`);
+2. the row is **claimed**: its next time set from now (an overdue row
+   fires once and moves on, never a backlog), or, for a one-off and for
+   a sleep, the row ended — in one write that holds only if the row
+   still says the time it was found due at (`ScheduleStore.claim`). A
+   row is fired once, whoever else looked;
+3. a `fire {chat_id, schedule}` goes to the node holding the chat over
+   its link: the Data Core's own voice, which no person's frame can
+   become.
+
+**The node runs the fire as it always has** (`Scheduler.fire_now`,
+`ai_runtime/chat/clock.py`): a note wakes the assistant with a
+`wakeup`; a function runs with no model — schedulable functions only,
+levels 0 and 1, no approvals — held to the chat's contract, and wakes
+the assistant only when its result says to. It writes back what the run
+did (`AI:Schedule:Ran`), and holds the chat (and its lease) until the
+fire is over. A node's own clock never ticks: on a node, when is the
+Data Core's to say.
+
+- **Sleep** is a one-off row the Data Core keeps, like any other
+  (`sleep: true`), and fires the same way.
+- **Webhooks** wake a chat the same way: the event is sent to the chat,
+  which is placed if no node holds it.
+- **Nothing is kept on a node for its clock.** A chat with schedules
+  goes idle and is let go like any other; the row brings it back.
+- **A fire is never repeated by itself.** One claimed whose node went
+  before it ran is a fire lost, said in the Data Core's log — as a call
+  that was running when its node went is reported unknown.
+- **A person who stopped everything** is fired for by nobody; a row
+  that came due meanwhile fires once when they resume.
 
 ## Placement
 
