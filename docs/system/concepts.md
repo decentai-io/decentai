@@ -261,7 +261,7 @@ Where a word is used for more than one thing, each is said.
 | **the mind** | the assistant of one chat | `Assistant`, `ai_runtime/mind/assistant.py` |
 | **parked** | waiting for a person's answer, with the state saved | `waiting_approval` |
 | **pass** | the token that tells the proxy whose worker is connecting | `EgressProxy.admit`, `ai_runtime/agents/egress.py` |
-| **place** | one agent's user, home and spool where workers run, given by the Execution Sandbox; the runtime knows it by name and by its pass | `Place`, `ai_runtime/agents_container/places.py`; `WorkerPlace`, `ai_runtime/agents/confinement.py` |
+| **place** | one agent's user and home where workers run, given by the Execution Sandbox; the runtime knows it by name and by its pass | `Place`, `ai_runtime/agents_container/places.py`; `WorkerPlace`, `ai_runtime/agents/confinement.py` |
 | **the platform's user** | the ordinary user the runtime and the spawner run as | `decentai` |
 | **principal** | who a request acts as: a person, an API key (the person), or a runtime under a delegation | `principal_type` |
 | **the proxy** | the only way from a worker to the internet | `EgressProxy`, port 8002 |
@@ -275,7 +275,8 @@ Where a word is used for more than one thing, each is said.
 | **slot** | one resource of one installed agent — its notes, its documents, its connection — and the name its things are kept under: `agt_<ref>__<resource id>`. Also *category* | `resource_id`; `keys.category` for a file |
 | **source** | a repository agents are installed from | `ai_agent_sources` |
 | **spawner** | the platform's one process in the Execution Sandbox: it starts an agent's worker, builds, lists and ends when the runtime asks by name | `ai_runtime/agents_container/service.py`, `wire.py`, port 8003 |
-| **spool** | a folder a worker and the runtime both reach, for bytes too large for a line | `<install_dir>/workers/<agent>/spool` |
+| **pieces** | a file too large for one line of the worker protocol, sent as `bytes` notifications on the same wire, ahead of the message that names it | `WorkerHandle._stream_out`, `ai_runtime/agents/workers.py`; `Streams`, `decentai_sdk/worker.py` |
+| **registration** | an Execution Sandbox, connected to its AI Runtime, proving the node's secret and saying what it proved, is given and holds | `Sandboxes`, `ai_runtime/agents/sandboxes.py` |
 | **steward** | the one person who may change a stored thing: its creator, until it is handed over | `created_by` |
 | **the stand-in**, **the sim** | the Data Core's services in memory, which the runtime is tested on | `sim/` |
 | **thread** | a sub-assistant's own conversation inside a chat | `<chat_id>/sub_…` |

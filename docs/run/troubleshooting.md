@@ -26,7 +26,12 @@ and updating. Where to look is at the end.
   pair of the Data Core's private key. A runtime that restarts says in
   its first lines which setting it is missing:
   `AI_RUNTIME_NODE_CREDENTIAL_FILE` (where its credential is),
-  `BACKEND_INTERNAL_URL` or `AI_RUNTIME_AGENTS_SPAWNER`.
+  `BACKEND_INTERNAL_URL` or `AI_RUNTIME_SANDBOX_SECRET`.
+- **The runtime says no Execution Sandbox can confine a worker.**
+  `docker compose --env-file deploy.env logs agents` says what the
+  sandbox proved at its start, or what to mend; a sandbox whose
+  registration was refused says why (the node's secret differs, or the
+  two are of different releases: the sandbox link's version).
 - **Agents stay Preparing.** The runtime stocks itself every ten
   seconds and reports each package ready; one that is not admitted as
   an execution node cannot. `docker compose --env-file deploy.env logs

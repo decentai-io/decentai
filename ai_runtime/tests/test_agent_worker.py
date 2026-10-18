@@ -52,7 +52,7 @@ class WorkerHost:
     async def handshaken(cls) -> "WorkerHost":
         host = await cls.spawn()
         reply = await host.request("hello", {
-            "protocol_version": 1,
+            "protocol_version": 2,
             "folder": str(FIXTURE),
             "manifest": manifest_document(),
         })
@@ -103,7 +103,7 @@ class TestHandshake:
             host = await WorkerHost.spawn()
             try:
                 reply = await host.request("hello", {
-                    "protocol_version": 1,
+                    "protocol_version": 2,
                     "folder": str(FIXTURE),
                     "manifest": manifest_document(),
                 })
@@ -121,7 +121,7 @@ class TestHandshake:
             host = await WorkerHost.spawn()
             try:
                 reply = await host.request("hello", {
-                    "protocol_version": 2,
+                    "protocol_version": 3,
                     "folder": str(FIXTURE),
                     "manifest": manifest_document(),
                 })
@@ -137,7 +137,7 @@ class TestHandshake:
                 document = copy.deepcopy(manifest_document())
                 document["implementation"]["entrypoint"] = "agent:Nope"
                 reply = await host.request("hello", {
-                    "protocol_version": 1,
+                    "protocol_version": 2,
                     "folder": str(FIXTURE),
                     "manifest": document,
                 })

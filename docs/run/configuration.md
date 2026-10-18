@@ -137,11 +137,13 @@ gone. Back them up with it.
 | `BACKEND_SERVICE_PUBLIC_KEY` | required | The Data Core's public key: the node believes no reply or frame it did not sign. `DATA_CORE_PUBLIC_KEY` is read in its place where it is set. |
 | `AI_RUNTIME_NODE_CREDENTIAL_FILE` | required, or the next | Where this execution node's credential is: a file its operator's secret manager mounts and keeps fresh, signed by an authority the Data Core registered. Read again as it nears its expiry and whenever it changes. Compose points it at what `node-issuer` writes. |
 | `AI_RUNTIME_NODE_CREDENTIAL_URL` | unset | An issuer on the node's own network that answers a `GET` with a credential (the token, or `{"credential": …}`), in place of a file. |
-| `AI_RUNTIME_AGENTS_INSTALL_DIR` | `ai_runtime/installed_agents` | Where installed agent code and its environments live. A volume in a deployment; a short path outside the tree locally. |
+| `AI_RUNTIME_AGENTS_INSTALL_DIR` | `ai_runtime/installed_agents` | Where the runtime keeps the approved packages it passes on to its Execution Sandboxes ([agent code](../system/agent-code.md)). A volume of its own in a deployment, shared with no sandbox; a short path outside the tree locally. |
 | `LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING` or `ERROR`. |
-| `AI_RUNTIME_EGRESS_PORT` | `8002` | Where the proxy that agents connect through listens, on the runtime's container, reached over the network it shares with the Execution Sandbox and nothing else. The firewall rule of the Execution Sandbox is written for the same port when it starts. A value that is blank or not a port is read as `8002` by both containers, so the rule, the proxy and the workers agree. |
+| `AI_RUNTIME_EGRESS_PORT` | `8002` | Where the proxy that agents connect through listens, on the runtime's container, reached over the network it shares with its Execution Sandboxes and nothing else. The firewall rule of each sandbox is written for the same port when it starts. A value that is blank or not a port is read as `8002` by every container, so the rule, the proxy and the workers agree. |
 | `AI_RUNTIME_PACKAGE_HOSTS` | `pypi.org, files.pythonhosted.org` | Where packages come from: the hosts the builder of an agent's declared packages may reach, and the whole of them. Separated by commas. |
-| `AI_RUNTIME_AGENTS_SPAWNER` | required | Where the Execution Sandbox answers, as `host:port`. `docker-compose.yml` writes `agents:8003` itself and does not read it from `deploy.env`. Every process of an agent's is started there; a runtime not told where it is does not start. |
+| `AI_RUNTIME_SANDBOX_SECRET` | required | The secret set for the execution node: what an Execution Sandbox proves when it registers with the runtime, and what the runtime proves on every request to one ([the sandbox](../system/sandbox.md#many-sandboxes)). It never travels. `bootstrap/setup.py` writes one into `deploy.env`; `docker-compose.yml` hands it to the runtime and to every sandbox. A runtime without it does not start. |
+| `AI_RUNTIME_SANDBOX_PORT` | `8005` | Where Execution Sandboxes register with the runtime. Every process of an agent's is started in a sandbox that registered; a runtime with none that can confine a worker does not start. |
+| `AI_RUNTIME_AGENTS_SPAWNER` | empty | An Execution Sandbox the runtime knows by its address, as `host:port`, besides those that register. Optional, and not set by `docker-compose.yml`: sandboxes register themselves. |
 
 The install's own issuer of node credentials, `node-issuer`
 (`bootstrap/node_issuer.py`, the Data Core's image, on no network),
@@ -153,20 +155,27 @@ reads:
 | `NODE_NAME` | `bundled` | The name the bundled node's credential gives it. |
 | `NODE_CREDENTIAL_FILE` | `/run/decentai/node/credential` | Where the credential is written, every few minutes, for the node to read. |
 
-The Execution Sandbox is the runtime's image started as the spawner
+An Execution Sandbox is the runtime's image started as the spawner
 (`python -m ai_runtime.agents_container.service`), and reads:
 
 | Variable | Default | Meaning |
 |---|---|---|
 | `AI_AGENTS_PROXY` | empty | Where the runtime's proxy answers, as `host:port` (`ai-runtime:8002` in Compose). What a worker sends to the proxy's port in its own container is passed on to here. |
 | `AI_AGENTS_SPAWNER_PORT` | `8003` | Where the spawner answers the runtime. Fixed at 8003 in the Compose stack, which does not pass it on. |
+| `AI_SANDBOX_RUNTIME` | empty | Where its runtime takes registrations, as `host:port` (`ai-runtime:8005` in Compose). The sandbox connects there, registers, and connects again when the connection is lost. |
+| `AI_RUNTIME_SANDBOX_SECRET` | required | The execution node's secret, the same as the runtime's. The spawner takes it out of its own environment as it reads it. |
+| `AI_SANDBOX_ID` | the container's name | Who the sandbox is, to its runtime; `agents` in Compose, `agents-2` for the second of `docker-compose.sandboxes.yml`. |
+| `AI_SANDBOX_LABELS` | empty | What it says of itself, for a placement to ask for: `gpu`, separated by commas. In Compose, `AGENTS_LABELS` in `deploy.env`, and `AGENTS_2_LABELS` for the second sandbox. |
+| `AI_SANDBOX_ADDRESS` | the address it registered from | Where the runtime reaches it, as `host:port`, where that is not the address its registration came from. |
+| `AI_SANDBOX_DRAIN_SECONDS` | `60` | How long a sandbox that was stopped waits for its workers to finish before it goes. |
+| `AI_SANDBOX_BUILD_SECONDS` | `300` | How long one build of an agent's declared packages may take there. |
 | `LOG_LEVEL`, `TZ` | as the runtime's | Passed to the Execution Sandbox by name. |
 | `AI_RUNTIME_EGRESS_PORT` | `8002` | The proxy's port, as workers are pointed at it; the same number as the runtime's. |
-| `AI_RUNTIME_AGENTS_INSTALL_DIR` | `/data/agents` | The volume both containers hold, at the same path in both. |
+| `AI_RUNTIME_AGENTS_INSTALL_DIR` | `/data/agents` | The sandbox's own folder, the path the image's spawn helper was built for: its copy of the code it runs, its environments, its workers' homes, what it writes down. A volume of its own, shared with nothing. |
 | `AI_RUNTIME_SYSCALL_FILTER` | on | `0` turns off the filter on the system calls a worker may make ([the sandbox](../system/sandbox.md#system-calls--seccomp)): for an agent whose package needs a call the filter refuses, until one of the two is mended. The container says at start that it is off. |
 
-What the Execution Sandbox is given is the engine's to hold it to, and
-is set where the container is started:
+What each Execution Sandbox is given is the engine's to hold it to,
+and is set where the container is started:
 
 | Variable | Default | Meaning |
 |---|---|---|

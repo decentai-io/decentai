@@ -64,9 +64,9 @@ jobs:
       - run: python -m pytest tests -q
 
   confinement:
-    name: confinement, in the runtime's and the agents' containers
+    name: confinement, in the AI Runtime's and two Execution Sandboxes' containers
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 40
     env:
       LIVE: ai_runtime/tests/spawner-live.compose.yml
     steps:
@@ -77,10 +77,14 @@ jobs:
       - run: docker compose -f "$LIVE" exec -T agents sh -c 'uname -r; cat /sys/kernel/security/lsm 2>/dev/null || true'
       # Both files skip everywhere but this stack. A file of which
       # nothing passed was skipped whole, and that fails the job: a
-      # green run must have run the hostile agent.
-      - name: the hostile agent, in the runtime and the agents' container
+      # green run must have run the hostile agent. The last test asks
+      # for the second sandbox to be stopped (/tmp/stop-agents-b in
+      # the tests' container), and this stops it when asked.
+      - name: the hostile agent, in the runtime and two sandboxes
         run: |
-          docker compose -f "$LIVE" exec -T -u decentai -w /src runtime sh -c '
+          ( until docker compose -f "$LIVE" exec -T runtime test -f /tmp/stop-agents-b; do sleep 1; done
+            docker compose -f "$LIVE" stop agents-b ) &
+          docker compose -f "$LIVE" exec -T -u decentai -w /src -e LIVE_STOPPER=1 runtime sh -c '
             pip install -q --target /tmp/pytest pytest &&
             PYTHONPATH=/tmp/pytest python -m pytest -p no:cacheprovider \
               --tb=short -rsp -q \

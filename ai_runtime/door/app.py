@@ -4,16 +4,16 @@ the order each needs the one before, and stopped in the reverse order
 
     app = create_app(settings, services, library, container, confinement)
 
-At start: the agents' container answers; confinement is proved there
-and the proxy, the agents' one way out, serves; the library registers
-what is on disk and rebuilds, in the background, what waits for an
-environment; the runtime starts keeping its stock of every approved
-package; the clock starts; and the node link to the Data Core is
-dialed, which is how every chat reaches this node. At shutdown: the
-link closes, the warm-up and the stocking are cancelled, the clock
-stops, the workers are asked to leave and then ended, the proxy stops,
-and the Data Core's client closes. Everything runs on the one loop the
-server gives the application.
+At start: an Execution Sandbox registers, having proved it confines a
+worker; the proxy, the agents' one way out, serves; the library
+registers what is on disk and, in the background, has a sandbox verify
+what none has yet and every sandbox hold what it serves; the runtime
+starts keeping its stock of every approved package; the clock starts;
+and the node link to the Data Core is dialed, which is how every chat
+reaches this node. At shutdown: the link closes, the warm-up and the
+stocking are cancelled, the clock stops, the workers are asked to leave
+and then ended, the proxy stops, and the Data Core's client closes.
+Everything runs on the one loop the server gives the application.
 """
 
 import asyncio
@@ -63,7 +63,7 @@ def create_app(settings: RuntimeSettings, services, library, container,
     the backend's client, the platform surface the sessions live
     against (docs/reference/session-door.md); ``library`` the live
     AgentLibrary, what code this host has and the only thing that may
-    change it; ``container`` the agents' container, where every worker
+    change it; ``container`` the Execution Sandboxes, where every worker
     runs; ``confinement`` what holds a worker there. A test that only
     needs certain agents present may pass a plain ``agents`` mapping
     in place of a library. ``node`` and ``data_core`` are this node's
@@ -103,11 +103,18 @@ def create_app(settings: RuntimeSettings, services, library, container,
 
     @asynccontextmanager
     async def lifespan(app):
-        if not await container.wait():
+        # The Execution Sandboxes register here (agents/sandboxes.py);
+        # one that can confine a worker is waited for.
+        sandboxes = confinement.sandboxes
+        started_the_registry = sandboxes is container
+        if started_the_registry:
+            await sandboxes.listen()
+        if not await sandboxes.wait():
             raise RuntimeError(
-                f"The agents' container at {container.host}:{container.port} "
-                f"does not answer. The runtime starts nothing of an agent's "
-                f"itself.")
+                f"No Execution Sandbox that can confine a worker registered "
+                f"with this AI Runtime (port {sandboxes.port}): "
+                f"{'; '.join(sandboxes.problems()) or 'none registered'}. "
+                f"The runtime starts nothing of an agent's itself.")
         # Proved before anything is started: the warm-up below verifies
         # packages, and verification runs their code. Only what this
         # application started is stopped at the end: a test hands in a
@@ -155,6 +162,8 @@ def create_app(settings: RuntimeSettings, services, library, container,
                 await host.workers.terminate()
         if started_the_confinement:
             await confinement.stop()
+        if started_the_registry:
+            await sandboxes.close()
         close = getattr(getattr(services, "gateway", None), "close", None)
         if close is not None:
             try:
@@ -171,7 +180,9 @@ def create_app(settings: RuntimeSettings, services, library, container,
     app.state.host = host
     app.state.scheduler = scheduler
     app.state.library = library
-    app.state.container = container
+    # Every sandbox, asked together as one is asked: what the
+    # monitoring door reads (door/monitor.py).
+    app.state.container = confinement.sandboxes
     app.state.confinement = confinement
     app.state.link = link
     if link is not None:

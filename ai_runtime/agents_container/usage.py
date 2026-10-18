@@ -1,6 +1,6 @@
 """What agents use, and what they are given (docs/system/sandbox.md).
 
-The agents' container is given so much memory and so much processor by
+An Execution Sandbox is given so much memory and so much processor by
 whoever started it, and the kernel keeps both numbers where a process
 inside can read them. This reads them, and adds up what each agent is
 using — every agent runs as a user of its own, so an agent's share is
@@ -84,7 +84,7 @@ class AgentsUsage:
     def __init__(self, proc: Optional[Path] = None,
                  cgroup: Optional[Path] = None):
         self.proc = Path(proc) if proc is not None else self.PROC
-        #: The agents' container's own numbers, as the kernel keeps them.
+        #: The sandbox's own numbers, as the kernel keeps them.
         self.container = ContainerUsage(
             cgroup if cgroup is not None else self.CGROUP)
         try:

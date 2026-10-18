@@ -37,9 +37,15 @@ class RuntimeSettings:
     host: str = "0.0.0.0"
     port: int = 8001
     agents_install_dir: str = field(default_factory=_default_install_dir)
-    #: Where every process of an agent's is started: the agents'
-    #: container, as host:port (``agents:8003``, docs/system/sandbox.md).
+    #: An Execution Sandbox this runtime knows by its address
+    #: (``agents:8003``), besides those that register with it. Optional:
+    #: sandboxes register themselves (docs/system/sandbox.md).
     agents_container: str = ""
+    #: The secret set for the execution node: what a sandbox proves to
+    #: register, and what the runtime proves on every request to one.
+    sandbox_secret: str = ""
+    #: Where Execution Sandboxes register with this runtime.
+    sandbox_port: int = 8005
     #: Where the proxy confined workers are held to listens
     #: (docs/system/sandbox.md). The container's firewall rule is written
     #: for this port before the runtime starts, so it is a setting and
@@ -77,11 +83,13 @@ class RuntimeSettings:
                 "DATA_CORE_URL is required — the runtime keeps nothing "
                 "itself, and asks the Data Core for everything a chat is.")
         agents_container = os.getenv("AI_RUNTIME_AGENTS_SPAWNER", "").strip()
-        if not agents_container:
+        sandbox_secret = os.getenv("AI_RUNTIME_SANDBOX_SECRET", "").strip()
+        if not sandbox_secret:
             raise ValueError(
-                "AI_RUNTIME_AGENTS_SPAWNER is required — the runtime starts "
-                "no process of an agent's itself; the agents' container "
-                "does, and this names it (host:port).")
+                "AI_RUNTIME_SANDBOX_SECRET is required — the runtime starts "
+                "no process of an agent's itself; its Execution Sandboxes "
+                "do, and register with it proving this secret, set for the "
+                "execution node (bootstrap/setup.py writes one).")
         return cls(
             backend_service_public_key=public_key,
             node_credential_file=credential_file,
@@ -94,6 +102,8 @@ class RuntimeSettings:
                 or _default_install_dir()
             ),
             agents_container=agents_container,
+            sandbox_secret=sandbox_secret,
+            sandbox_port=cls._port("AI_RUNTIME_SANDBOX_PORT", 8005),
             # As start.sh reads it, which wrote the firewall rule with
             # it: a value that is not a number is the default.
             egress_port=cls._port("AI_RUNTIME_EGRESS_PORT", 8002,

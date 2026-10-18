@@ -90,7 +90,7 @@ class TestPlace:
         assert line[6:] == [
             "--", "/envs/x/bin/python", "-I", "-m", "decentai_sdk.worker"]
 
-    def test_the_environment_names_its_home_its_spool_and_its_way_out(
+    def test_the_environment_names_its_home_and_its_way_out(
             self, helper, tmp_path):
         place = placed(helper, tmp_path).place("agt_aaaa")
         environment = place.environment(
@@ -99,7 +99,8 @@ class TestPlace:
         assert environment["PATH"] == "/bin"
         assert environment["HOME"] == str(place.home)
         assert environment["TMPDIR"] == str(place.home)
-        assert environment["DECENTAI_SPOOL_DIR"] == str(place.spool)
+        # No spool: a large file travels on the worker's own lines.
+        assert "DECENTAI_SPOOL_DIR" not in environment
         for name in ("HTTP_PROXY", "https_proxy", "DECENTAI_PROXY"):
             assert environment[name] == "http://worker:pass@127.0.0.1:8002"
         assert "NO_PROXY" not in environment
@@ -113,12 +114,23 @@ class TestPlace:
         places = placed(helper, tmp_path)
         place = places.place("agt_aaaa")
         assert run(places.prepare(place)) == []
-        assert place.home.is_dir() and place.spool.is_dir()
+        assert place.home.is_dir() and not place.wheels.exists()
         assert helper.asked == [
-            ["clear", str(place.home)], ["clear", str(place.spool)],
+            ["clear", str(place.home)],
             ["sweep", str(place.user)],
             ["own", str(place.user), str(place.home)],
-            ["own", str(place.user), str(place.spool)],
+        ]
+
+    def test_the_builder_has_a_folder_for_what_it_built(self, helper, tmp_path):
+        places = placed(helper, tmp_path)
+        place = places.builder()
+        assert run(places.prepare(place)) == []
+        assert place.wheels.is_dir() and place.wheels.name == "spool"
+        assert helper.asked == [
+            ["clear", str(place.home)], ["clear", str(place.wheels)],
+            ["sweep", str(place.user)],
+            ["own", str(place.user), str(place.home)],
+            ["own", str(place.user), str(place.wheels)],
         ]
 
     def test_prepare_stops_at_the_first_refusal(self, helper, tmp_path):
@@ -127,7 +139,7 @@ class TestPlace:
         errors = run(places.prepare(places.place("agt_aaaa")))
         assert errors and "no own today" in errors[0]
         assert [asked[0] for asked in helper.asked] == [
-            "clear", "clear", "sweep", "own"]
+            "clear", "sweep", "own"]
 
     def test_stop_names_the_user(self, helper, tmp_path):
         places = placed(helper, tmp_path)
@@ -152,14 +164,13 @@ class TestPlace:
         line = after(helper, place.measure_line())
         assert line[:2] == ["run", str(place.user)]
         # Named by its whole path: the helper becomes no other.
-        assert line[-4:] == ["/usr/bin/du", "-sb", str(place.home), str(place.spool)]
+        assert line[-3:] == ["/usr/bin/du", "-sb", str(place.home)]
 
     def test_what_an_agent_keeps_is_listed_by_its_own_user(self, helper, tmp_path):
         places = placed(helper, tmp_path)
         place = places.place("agt_aaaa")
         place.home.mkdir(parents=True)
         (place.home / "kept").write_text("four", encoding="utf-8")
-        place.spool.mkdir(parents=True)
         listed = run(places.listing(place))
         assert listed["count"] == 1 and listed["bytes"] == 4
         assert listed["files"][0]["path"] == str(place.home / "kept")
@@ -167,7 +178,7 @@ class TestPlace:
         # Through the helper, as the agent's user, and nothing is
         # stopped after: a worker may be running beside it.
         assert line[:2] == ["run", str(place.user)]
-        assert str(place.home) in line and str(place.spool) in line
+        assert str(place.home) in line
 
     def test_a_listing_that_fails_says_so(self, helper, tmp_path):
         helper.refuse("run")
@@ -270,8 +281,7 @@ class TestFence:
             *Places.SYSTEM_READS, "/opt/ms-playwright",
             "/data/agents/store/abc", "/data/agents/envs/def"}
         assert set(writes) == {
-            place.home.as_posix(), place.spool.as_posix(),
-            *Places.SYSTEM_WRITES}
+            place.home.as_posix(), *Places.SYSTEM_WRITES}
         # Nothing of the platform's, and nothing of another agent's.
         assert not any(path in ("/", "/opt", "/data", "/data/agents", "/var")
                        for path in reads + writes)
@@ -376,8 +386,7 @@ class TestTheStart:
         asked = helper.asked
         assert asked[0] == ["check"]
         # Installation's place, prepared from end to end.
-        assert [line[0] for line in asked[1:6]] == [
-            "clear", "clear", "sweep", "own", "own"]
+        assert [line[0] for line in asked[1:4]] == ["clear", "sweep", "own"]
         assert asked[1][1] == str(places.verification().home)
         assert isinstance(places.place("agt_aaaa"), Place)
 
@@ -428,12 +437,11 @@ class TestWhatIsWrittenDown:
         place.label = "Notes"
         assert run(places.prepare(place)) == []
         found = self.kinds(tmp_path, "helper")
-        assert [event["job"] for event in found] == [
-            "clear", "clear", "sweep", "own", "own"]
+        assert [event["job"] for event in found] == ["clear", "sweep", "own"]
         assert all(event["agent"] == "agt_aaaa" and event["name"] == "Notes"
                    and event["user"] == place.user and event["code"] == 0
                    for event in found)
-        assert found[3]["asked"] == [str(place.user), str(place.home)]
+        assert found[2]["asked"] == [str(place.user), str(place.home)]
 
     def test_a_job_it_refused_says_so(self, events, helper, tmp_path):
         helper.refuse("stop")

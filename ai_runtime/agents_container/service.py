@@ -1,29 +1,47 @@
-"""The spawner: what runs in the agents' container (docs/system/sandbox.md).
+"""The spawner: what runs in an Execution Sandbox (docs/system/sandbox.md).
 
     python -m ai_runtime.agents_container.service
 
-It answers the runtime's requests (wire.py): start a worker of an
-agent's, build the packages one declared, list what one keeps, end
-one, say what the agents use. Everything about a process is decided
-here — its user and its place (places.py), its fences, its spawn line,
-its ending — and nothing about what an agent is entitled to: a
-worker's asks pass through to the runtime as lines, unread.
+An AI Runtime serves many Execution Sandboxes, and each is this
+process in a container of its own, with its own folder: its own copy
+of the agent code it runs, its own environments, its workers' homes,
+its own record of what agents did, its own firewall rule. Nothing is
+shared with the runtime or with another sandbox.
+
+It connects to its runtime and registers (wire.py), proving it holds
+the secret set for the execution node, and says from then on how it
+is: what it proved it holds a worker to, what it is given and uses,
+which packages it holds, which agents it runs, whether it drains. It
+answers the runtime's requests: install a package, by its digest,
+whose bytes the runtime sends when asked; start a worker of an
+agent's; build packages for one run; list what one keeps; end one;
+say what the agents use and what was written down. Everything about a
+process is decided here — its user and its place (places.py), its
+fences, its spawn line, its ending — and nothing about what an agent
+is entitled to: a worker's asks pass through to the runtime as lines,
+unread.
 
 Two things listen:
 
 - **the spawner's own port**, where the runtime asks. Every request
-  carries the key this process made at its first start and left on the
-  volume, where the platform's user reads it and no agent's does.
+  answers a challenge with a proof made with the node's secret.
 - **the proxy's port, on this container's own address**, where every
   worker is pointed. What arrives is passed to the runtime's proxy and
   back, unread: the container's firewall rule lets a worker reach that
   one port and nothing else, and the network the container is on
   reaches the runtime and nothing else.
 
-A worker whose runtime hung up is ended, with everything its user
-runs: nobody is left to hear it.
+UNTIL ITS OWN CHECK HAS PASSED, IT RUNS NOTHING. At start it proves
+what it holds a worker to (places.py) and says so when it registers;
+a sandbox that cannot prove it registers saying what to mend, is
+given no worker, and checks again every half minute.
 
-It also watches what the agents use (usage.py). The container is given
+A worker whose runtime hung up is ended, with everything its user
+runs: nobody is left to hear it. A sandbox that is told to drain — or
+is stopped — starts no new worker, and those running finish what they
+are doing.
+
+It also watches what the agents use (usage.py). The sandbox is given
 so much memory by whoever started it; when the agents together hold
 nearly all of it, the one holding most is ended, here, by name, before
 the kernel ends a process of its own choosing — and the runtime is
@@ -35,20 +53,21 @@ whose child an orphan becomes.
 from __future__ import annotations
 
 import asyncio
-import hmac
-import json
 import logging
 import os
-import secrets
+import signal
+import socket
 import sys
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 
 from ai_runtime.agents_container import wire
+from ai_runtime.agents_container.events import Events
+from ai_runtime.agents_container.installs import (
+    GREETING_SECONDS, InstallRefused, Installs, greet)
 from ai_runtime.agents_container.places import ConfinementFailed, Place, Places
 from ai_runtime.agents_container.usage import AgentsUsage, Sample
-from ai_runtime.agents_container.events import Events
 
 
 class SpawnerService:
@@ -58,6 +77,8 @@ class SpawnerService:
     #: A worker's line, as the worker protocol caps it.
     LINE_LIMIT = 2 * 1024 * 1024
     REQUEST_SECONDS = 30
+    #: How long the bytes of a package may take to arrive.
+    PACKAGE_SECONDS = 300
     STOP_SECONDS = 60
     CHUNK = 64 * 1024
     #: How often what the agents use is looked at.
@@ -83,13 +104,25 @@ class SpawnerService:
     BUILD_SECONDS = 300
     #: The requests that run something as an agent's user, refused
     #: until a check has proved this process's fences (places.py).
-    CONFINED = ("start", "build", "files")
+    CONFINED = ("start", "install", "extras", "files")
+    #: How often the runtime is told how this sandbox is; how long it
+    #: waits before connecting again, at most; how often a check that
+    #: failed is tried again.
+    HEARTBEAT_SECONDS = 2.0
+    RECONNECT_SECONDS = 5.0
+    RECHECK_SECONDS = 30.0
+    #: How long a sandbox that was stopped waits for its workers to
+    #: finish before it goes.
+    DRAIN_SECONDS = 60.0
 
     def __init__(self, install_dir: str | Path, port: int = 8003,
                  proxy: str = "", proxy_port: int = 8002,
                  host: str = "0.0.0.0",
                  usage: Optional[AgentsUsage] = None,
-                 helper_line: Optional[Sequence[str]] = None):
+                 helper_line: Optional[Sequence[str]] = None,
+                 secret: str = "", sandbox_id: str = "",
+                 labels: Sequence[str] = (), runtime: str = "",
+                 address: str = ""):
         self.install_dir = Path(install_dir)
         #: What the agents are given and what each uses.
         self.usage = usage if usage is not None else AgentsUsage()
@@ -99,6 +132,8 @@ class SpawnerService:
         #: Each agent's place, and the helper that confines it.
         self.places = Places(install_dir, proxy_port=proxy_port,
                              helper_line=helper_line, children=self._children)
+        #: The agent code this sandbox holds: its own copy.
+        self.installs = Installs(install_dir, build=self._build, greet=self._verify)
         #: user -> the one process started for it that is running now:
         #: {"name", "process", "stop", "because"}. What may be ended
         #: for using more than the agents are given, and named.
@@ -122,7 +157,33 @@ class SpawnerService:
         #: the port workers here are pointed at. Empty passes nothing on.
         self.proxy = str(proxy or "").strip()
         self.proxy_port = int(proxy_port)
-        self.key = ""
+        #: The node's secret: what every request proves it holds, and
+        #: what this sandbox registers with.
+        self.secret = str(secret or "")
+        #: Who this sandbox is, and what it says of itself: labels a
+        #: placement may ask for (``gpu``).
+        self.sandbox_id = str(sandbox_id or socket.gethostname())
+        self.labels = sorted({str(label).strip().lower()
+                              for label in labels if str(label).strip()})
+        #: Where its runtime takes registrations (``ai-runtime:8005``),
+        #: and where the runtime reaches this one, where it is not the
+        #: address the registration came from.
+        self.runtime = str(runtime or "").strip()
+        self.address = str(address or "").strip()
+        #: What the last check proved, or ``{"error"}``; None before one.
+        self.locks: Optional[Dict[str, Any]] = None
+        #: Whether no new worker starts here.
+        self.draining = False
+        #: agent -> how many of its workers run here now.
+        self._running: Dict[str, int] = {}
+        #: The packages running workers stand on: kept by ``keep``.
+        self._in_use: Dict[int, str] = {}
+        #: Set when the runtime should be told at once how this is.
+        self._changed = asyncio.Event()
+        self._registering: Optional[asyncio.Task] = None
+        self._rechecking: Optional[asyncio.Task] = None
+        #: Whether this sandbox's runtime has accepted its registration.
+        self.registered = False
         #: One thing at a time in each place: a worker holds its place
         #: for its life, a build holds the builder's, and whoever asks
         #: next waits for it to be over and the place emptied.
@@ -136,36 +197,26 @@ class SpawnerService:
     # Its life
     # ------------------------------------------------------------------
 
-    def make_key(self) -> str:
-        """The key the runtime commands with: made once, kept on the
-        volume, the platform's user's alone to read."""
-        path = self.install_dir / wire.KEY_FILENAME
-        try:
-            kept = path.read_text(encoding="utf-8").strip()
-        except OSError:
-            kept = ""
-        if not kept:
-            kept = secrets.token_urlsafe(32)
-            self.install_dir.mkdir(parents=True, exist_ok=True)
-            staging = path.with_name(path.name + ".incoming")
-            descriptor = os.open(staging, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-            with os.fdopen(descriptor, "w", encoding="utf-8") as written:
-                written.write(kept)
-            staging.replace(path)
-        self.key = kept
-        return kept
-
-    async def start(self) -> None:
-        self.make_key()
+    async def start(self, check: bool = True) -> None:
+        """Listen, prove what this sandbox holds a worker to, and
+        register with the runtime. ``check`` is a test's to turn off:
+        a sandbox that has not been checked runs nothing."""
+        if not self.secret:
+            self.logger.warning(
+                f"No secret is set for this execution node "
+                f"({wire.SECRET_SETTING}): every request is refused.")
         self._servers.append(await asyncio.start_server(
             self._serve, self.host, self.port, limit=self.REQUEST_LIMIT))
         self.port = self._servers[0].sockets[0].getsockname()[1]
-        self.logger.info(f"The spawner answers the runtime on port {self.port}")
+        self.logger.info(
+            f"Execution Sandbox {self.sandbox_id} answers its AI Runtime on "
+            f"port {self.port}"
+            + (f", labelled {', '.join(self.labels)}" if self.labels else ""))
         if self.proxy:
             self._servers.append(await asyncio.start_server(
                 self._pass_on, "127.0.0.1", self.proxy_port))
             self.logger.info(
-                f"Workers' connections are passed to the runtime's proxy "
+                f"Workers' connections are passed to the AI Runtime's proxy "
                 f"at {self.proxy}")
         given = self.usage.limits()
         self.logger.info(
@@ -176,12 +227,20 @@ class SpawnerService:
             + (f"{given['cpus']:g} processors"
                if given["cpus"] else "processors without a limit"))
         self._watching = asyncio.ensure_future(self._watch())
+        if check:
+            await self.check()
+            if "error" in (self.locks or {}):
+                self._rechecking = asyncio.ensure_future(self._check_until_it_holds())
+        if self.runtime:
+            self._registering = asyncio.ensure_future(self._register_forever())
 
     async def stop(self) -> None:
-        for task in (self._watching, self._measuring):
+        for task in (self._watching, self._measuring, self._registering,
+                     self._rechecking):
             if task is not None:
                 task.cancel()
-        self._watching = self._measuring = None
+        self._watching = self._measuring = self._registering = None
+        self._rechecking = None
         for server in self._servers:
             server.close()
         for server in self._servers:
@@ -196,6 +255,36 @@ class SpawnerService:
         await asyncio.gather(*[server.serve_forever()
                                for server in self._servers])
 
+    def drain(self, on: bool = True) -> None:
+        """Start no new worker here while it drains; those running
+        finish what they are doing. Said to the runtime at once."""
+        if self.draining != bool(on):
+            self.draining = bool(on)
+            self.logger.warning(
+                f"Execution Sandbox {self.sandbox_id} "
+                + ("drains: no new worker starts here, and those running "
+                   "finish what they are doing." if on
+                   else "no longer drains: workers start here again."))
+        self._changed.set()
+
+    def workers(self) -> int:
+        """How many workers run here now."""
+        return sum(self._running.values())
+
+    async def leave(self, seconds: Optional[float] = None) -> None:
+        """Drain, wait for the workers to finish — at most ``seconds`` —
+        and stop: what a sandbox that is stopped does."""
+        self.drain(True)
+        loop = asyncio.get_running_loop()
+        until = loop.time() + (self.DRAIN_SECONDS if seconds is None else seconds)
+        while self.workers() and loop.time() < until:
+            await asyncio.sleep(0.2)
+        if self.workers():
+            self.logger.warning(
+                f"{self.workers()} worker(s) were still running when this "
+                f"sandbox stopped; they are ended.")
+        await self.stop()
+
     # ------------------------------------------------------------------
     # One request
     # ------------------------------------------------------------------
@@ -205,46 +294,66 @@ class SpawnerService:
         serving = asyncio.current_task()
         self._serving.add(serving)
         try:
+            said = wire.challenge()
+            await self._say(writer, {"protocol": wire.PROTOCOL, "challenge": said,
+                                     "sandbox": self.sandbox_id})
             try:
-                line = await asyncio.wait_for(
-                    reader.readline(), self.REQUEST_SECONDS)
-                request = json.loads(line) if line else None
+                request = wire.read(await asyncio.wait_for(
+                    reader.readline(), self.REQUEST_SECONDS))
             except (ValueError, OSError, asyncio.TimeoutError):
                 request = None
-            if not isinstance(request, dict):
+            if request is None:
                 return
-            if not hmac.compare_digest(str(request.get("key") or ""), self.key):
-                await self._say(writer, {"error": "that is not the runtime's key"})
+            refused = wire.mismatch(request.get("protocol"))
+            if refused:
+                await self._say(writer, {"error": refused})
                 return
-            operation = request.get("op")
-            if operation == "ping":
-                await self._say(writer, {"here": True})
-            elif operation == "check":
-                await self._say(writer, await self._check())
-            elif operation in self.CONFINED and not self.places.checked:
-                await self._say(writer, self._unchecked())
-            elif operation == "start":
-                await self._start(request, reader, writer)
-            elif operation == "build":
-                await self._say(writer, await self._build(request))
-            elif operation == "files":
-                await self._say(writer, await self._files(request))
-            elif operation == "stop":
-                await self._say(writer, await self._stop(request))
-            elif operation == "usage":
-                await self._say(writer, self._usage())
-            else:
-                await self._say(writer, {"error": f"unknown request '{operation}'"})
-        except (ConnectionError, OSError):
+            if not wire.proves(self.secret, wire.RUNTIME, said, request.get("proof")):
+                await self._say(writer, {
+                    "error": "that is not this execution node's AI Runtime: "
+                             "the request does not prove the node's secret"})
+                return
+            await self._answer(request, reader, writer)
+        except (ConnectionError, OSError, asyncio.IncompleteReadError):
             pass
         finally:
             self._serving.discard(serving)
             writer.close()
 
+    async def _answer(self, request: dict, reader: asyncio.StreamReader,
+                      writer: asyncio.StreamWriter) -> None:
+        operation = request.get("op")
+        if operation == "ping":
+            await self._say(writer, {"here": True, "sandbox": self.sandbox_id})
+        elif operation == "check":
+            await self._say(writer, await self.check())
+        elif operation in self.CONFINED and not self.places.checked:
+            await self._say(writer, self._unchecked())
+        elif operation == "start":
+            await self._start(request, reader, writer)
+        elif operation == "install":
+            await self._say(writer, await self._install(request, reader, writer))
+        elif operation == "extras":
+            await self._say(writer, await self._extras(request))
+        elif operation == "files":
+            await self._say(writer, await self._files(request))
+        elif operation == "stop":
+            await self._say(writer, await self._stop(request))
+        elif operation == "usage":
+            await self._say(writer, self._usage())
+        elif operation == "events":
+            await self._say(writer, self._events(request))
+        elif operation == "keep":
+            await self._say(writer, self._keep(request))
+        elif operation == "drain":
+            self.drain(request.get("draining", True) is not False)
+            await self._say(writer, {"draining": self.draining})
+        else:
+            await self._say(writer, {"error": f"unknown request '{operation}'"})
+
     @staticmethod
     async def _say(writer: asyncio.StreamWriter, message: dict) -> None:
-        writer.write(
-            (json.dumps(message, separators=(",", ":")) + "\n").encode("utf-8"))
+        writer.write(wire.line(message))
         await writer.drain()
 
     @staticmethod
@@ -259,49 +368,284 @@ class SpawnerService:
         return [str(word) for word in found if str(word).strip()]
 
     @staticmethod
-    def _environment(request: dict) -> Dict[str, str]:
-        found = request.get("environment")
+    def _environment(request: dict, name: str = "environment") -> Dict[str, str]:
+        found = request.get(name)
         if not isinstance(found, dict):
             return {}
-        return {str(name): str(value) for name, value in found.items()}
+        return {str(key): str(value) for key, value in found.items()}
 
     def _lock(self, place: Place) -> asyncio.Lock:
         return self._place_locks.setdefault(place.name, asyncio.Lock())
 
     # ------------------------------------------------------------------
-    # What is proved at start
+    # What is proved, by this sandbox itself
     # ------------------------------------------------------------------
 
-    async def _check(self) -> Dict[str, Any]:
-        """What this container holds a worker to, proved: the helper
-        and the kernel, and whether anything but the proxy can be
-        reached from a worker's place."""
+    async def check(self) -> Dict[str, Any]:
+        """What this sandbox holds a worker to, proved: the helper and
+        the kernel, and whether anything but the proxy can be reached
+        from a worker's place. Kept, and said to the runtime."""
         try:
             await self.places.check()
         except ConfinementFailed as exc:
-            return {"error": str(exc)}
+            self.locks = {"error": str(exc)}
+            self.logger.error(str(exc))
+            self._changed.set()
+            return dict(self.locks)
         fenced = await self.places.prove_the_network_is_fenced(self.port)
         if fenced:
             self.logger.info(
                 "Workers' connections are fenced: an agent reaches the "
-                "runtime's proxy, and nothing else.")
+                "AI Runtime's proxy, and nothing else.")
         else:
             self.logger.warning(
                 "Workers' connections are NOT fenced here: nothing stops an "
                 "agent going around the proxy. This container was not given "
                 "the right to set a firewall rule.")
-        return {**self.places.report(), "network_fenced": fenced}
+        self.locks = {**self.places.report(), "network_fenced": fenced}
+        self._changed.set()
+        return dict(self.locks)
+
+    async def _check_until_it_holds(self) -> None:
+        while "error" in (self.locks or {}):
+            await asyncio.sleep(self.RECHECK_SECONDS)
+            await self.check()
 
     def _unchecked(self) -> Dict[str, Any]:
         """The refusal of a spawner that has not been checked since it
-        started: it started again, and nobody asked it to prove what
-        it holds a worker to. Nothing runs unfenced on a guess."""
+        started, or whose check failed: nothing runs unfenced on a
+        guess."""
         self.logger.warning(
-            "Refused to run anything as an agent's user: this container "
-            "has not proved what it holds a worker to since it started. "
-            "The runtime checks it again.")
-        return {"error": "the agents' container has not been checked since "
+            "Refused to run anything as an agent's user: this sandbox "
+            "has not proved what it holds a worker to since it started.")
+        return {"error": "the Execution Sandbox has not been checked since "
                          "it started", wire.UNCHECKED: True}
+
+    # ------------------------------------------------------------------
+    # Registering with the runtime
+    # ------------------------------------------------------------------
+
+    def state(self) -> Dict[str, Any]:
+        """How this sandbox is, as the runtime is told it."""
+        found = self._found
+        limits = found.limits if found is not None else self.usage.limits()
+        return {
+            "locks": dict(self.locks) if self.locks is not None
+            else {"error": "not checked yet"},
+            "capacity": {
+                "memory": {"limit": limits.get("memory"),
+                           "used": found.memory if found is not None else None},
+                "cpus": {"limit": limits.get("cpus"),
+                         "used": found.cpu if found is not None else None},
+                "workers": self.workers(),
+            },
+            "installed": self.installs.installed(),
+            "running": sorted(agent for agent, count in self._running.items() if count),
+            "draining": self.draining,
+        }
+
+    async def _register_forever(self) -> None:
+        """Connected to the runtime and registered, for as long as this
+        sandbox runs: connected again when the connection is lost."""
+        wait = 0.5
+        while True:
+            try:
+                await self._registered()
+                wait = 0.5
+            except asyncio.CancelledError:
+                raise
+            except (OSError, ValueError, asyncio.TimeoutError,
+                    asyncio.IncompleteReadError, RuntimeError) as exc:
+                if self.registered:
+                    self.logger.warning(
+                        f"The AI Runtime at {self.runtime} is no longer "
+                        f"reached ({exc or type(exc).__name__}); connecting "
+                        f"again.")
+                self.logger.debug(f"Not registered yet: {exc}")
+            self.registered = False
+            await asyncio.sleep(wait)
+            wait = min(self.RECONNECT_SECONDS, wait * 2)
+
+    async def _registered(self) -> None:
+        host, _, port = self.runtime.rpartition(":")
+        reader, writer = await asyncio.wait_for(
+            asyncio.open_connection(host, int(port)), 10)
+        try:
+            greeting = wire.read(await asyncio.wait_for(reader.readline(), 10))
+            if greeting is None:
+                raise OSError("the AI Runtime said nothing")
+            refused = wire.mismatch(greeting.get("protocol"))
+            if refused:
+                raise RuntimeError(refused)
+            mine = wire.challenge()
+            writer.write(wire.line({
+                "protocol": wire.PROTOCOL, "op": "register",
+                "sandbox": self.sandbox_id,
+                "proof": wire.proof(self.secret, wire.SANDBOX,
+                                    str(greeting.get("challenge") or ""),
+                                    self.sandbox_id),
+                "challenge": mine, "port": self.port, "address": self.address,
+                "labels": self.labels, **self.state()}))
+            await writer.drain()
+            answer = wire.read(await asyncio.wait_for(reader.readline(), 30))
+            if answer is None or not answer.get("registered"):
+                raise RuntimeError(str((answer or {}).get("error")
+                                       or "the AI Runtime refused it"))
+            if not wire.proves(self.secret, wire.RUNTIME, mine, answer.get("proof")):
+                raise RuntimeError("the AI Runtime did not prove the node's secret")
+            self.registered = True
+            self.logger.info(f"Registered with the AI Runtime at {self.runtime}")
+            hung_up = asyncio.ensure_future(reader.read())
+            changed = None
+            try:
+                while not hung_up.done():
+                    self._changed.clear()
+                    writer.write(wire.line({"op": "heartbeat", **self.state()}))
+                    await writer.drain()
+                    changed = asyncio.ensure_future(self._changed.wait())
+                    await asyncio.wait({hung_up, changed},
+                                       timeout=self.HEARTBEAT_SECONDS,
+                                       return_when=asyncio.FIRST_COMPLETED)
+                    changed.cancel()
+            finally:
+                for task in (hung_up, changed):
+                    if task is not None:
+                        task.cancel()
+            raise OSError("the AI Runtime hung up")
+        finally:
+            writer.close()
+
+    # ------------------------------------------------------------------
+    # A package, installed and verified here
+    # ------------------------------------------------------------------
+
+    async def _install(self, request: dict, reader: asyncio.StreamReader,
+                       writer: asyncio.StreamWriter) -> Dict[str, Any]:
+        """The package a digest names, held here: the bytes asked for
+        when they are not, checked before anything is written, built
+        and verified (installs.py)."""
+        digest = self._word(request, "digest")
+        options = dict(
+            builder_proxy=self._word(request, "builder_proxy"),
+            verify_proxy=self._word(request, "verify_proxy"),
+            environment=self._environment(request))
+        self._worker_environment = self._environment(request, "worker_environment")
+        expected = self._word(request, "manifest_hash")
+        try:
+            try:
+                found = await self.installs.install(digest, expected, None, **options)
+            except LookupError:
+                await self._say(writer, {"send": True, "limit": wire.PACKAGE_LIMIT})
+                archive = await self._package_bytes(reader)
+                found = await self.installs.install(digest, expected, archive, **options)
+        except InstallRefused as exc:
+            return {"error": str(exc)}
+        self._changed.set()
+        return {"installed": True, "python": found["python"],
+                "package": found["package"]}
+
+    async def _package_bytes(self, reader: asyncio.StreamReader) -> bytes:
+        header = wire.read(await asyncio.wait_for(reader.readline(),
+                                                  self.REQUEST_SECONDS))
+        size = (header or {}).get("bytes")
+        if not isinstance(size, int) or not 0 < size <= wire.PACKAGE_LIMIT:
+            raise InstallRefused("the package did not arrive")
+        received = bytearray()
+
+        async def receive() -> None:
+            while len(received) < size:
+                piece = await reader.read(min(self.CHUNK * 4, size - len(received)))
+                if not piece:
+                    raise InstallRefused("the package did not arrive whole")
+                received.extend(piece)
+
+        try:
+            await asyncio.wait_for(receive(), self.PACKAGE_SECONDS)
+        except asyncio.TimeoutError:
+            raise InstallRefused("the package did not arrive in time")
+        return bytes(received)
+
+    #: What a worker started to verify a package is given: what the
+    #: runtime said its workers are given, with its last install.
+    _worker_environment: Dict[str, str] = {}
+
+    async def _verify(self, python: str | Path, package: str | Path,
+                      manifest_document: dict, proxy: str) -> List[str]:
+        """The verification start: a worker of the package's, from its
+        own environment, in installation's place — nobody's approved
+        agent yet — greeted and sent away (installs.greet)."""
+        place = self.places.verification()
+        agent = (manifest_document or {}).get("agent") or {}
+        place.label = str(agent.get("name") or agent.get("id") or "a package")
+        async with self._lock(place):
+            errors = await self.places.prepare(place)
+            if errors:
+                return errors
+            environment = {**self._worker_environment,
+                           "PATH": os.environ.get("PATH", ""),
+                           "PYTHONDONTWRITEBYTECODE": "1"}
+            try:
+                process = await asyncio.create_subprocess_exec(
+                    *place.spawn_line(
+                        [str(python), *self.WORKER_PROGRAM],
+                        reads=[str(package), Path(python).parent.parent]),
+                    stdin=asyncio.subprocess.PIPE,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                    cwd=str(package),
+                    env=place.environment(environment, proxy),
+                    limit=self.LINE_LIMIT)
+            except OSError as exc:
+                return [f"worker could not be spawned: {exc}"]
+            held = self._hold(place, process)
+            Events.record("worker.started", **place.whose())
+            logging_ = asyncio.ensure_future(self._log(process.stderr, place))
+            try:
+                return await greet(process, package, manifest_document,
+                                   GREETING_SECONDS)
+            finally:
+                try:
+                    await asyncio.wait_for(process.wait(), 5)
+                except asyncio.TimeoutError:
+                    await self.places.end(process, place.stop_line())
+                    await process.wait()
+                await self.places.stop(place)
+                logging_.cancel()
+                self._let_go(held, process)
+                Events.record("worker.ended", **place.whose(),
+                              why="verification is over", code=process.returncode)
+                await self.places.clear(place)
+
+    async def _log(self, stream: asyncio.StreamReader, place: Place) -> None:
+        """A worker's log, written down line by line."""
+        while True:
+            try:
+                said = await stream.readline()
+            except ValueError:
+                Events.record("log", **place.whose(),
+                              line="(a line too long to keep was dropped)")
+                continue
+            except (ConnectionError, OSError):
+                return
+            if not said:
+                return
+            text = said.decode("utf-8", "replace").rstrip()
+            if text:
+                Events.record("log", **place.whose(), line=text)
+
+    async def _extras(self, request: dict) -> Dict[str, Any]:
+        """Packages for one run, built by the builder here into the
+        environment the agent's worker runs in."""
+        return await self.installs.extras(
+            self._word(request, "digest"), self._words(request, "requirements"),
+            self._word(request, "proxy"), self._environment(request))
+
+    def _keep(self, request: dict) -> Dict[str, Any]:
+        removed = self.installs.keep(self._words(request, "digests"),
+                                     in_use=set(self._in_use.values()))
+        if removed:
+            self._changed.set()
+        return {"removed": removed}
 
     # ------------------------------------------------------------------
     # A worker, kept
@@ -315,6 +659,10 @@ class SpawnerService:
             return await self._say(writer, {
                 "error": "a worker is started for an agent, from an "
                          "interpreter, in a package"})
+        if self.draining and agent not in Places.NOBODYS_AGENT:
+            return await self._say(writer, {
+                "error": f"Execution Sandbox {self.sandbox_id} is draining: "
+                         f"it starts no new worker.", "draining": True})
         place = self.places.place(agent)
         place.label = self._word(request, "name") or agent
         async with self._lock(place):
@@ -336,11 +684,19 @@ class SpawnerService:
             except OSError as exc:
                 return await self._say(writer, {"error": str(exc)})
             held = self._hold(place, process, measured=True)
-            await self._say(writer, {"started": True, "spool": str(place.spool)})
+            self._running[agent] = self._running.get(agent, 0) + 1
+            self._in_use[process.pid] = package
+            self._changed.set()
+            await self._say(writer, {"started": True})
             try:
                 await self._carry_worker(place, process, held, reader, writer)
             finally:
                 self._let_go(held, process)
+                self._in_use.pop(process.pid, None)
+                self._running[agent] = self._running.get(agent, 1) - 1
+                if self._running[agent] <= 0:
+                    del self._running[agent]
+                self._changed.set()
                 await self.places.clear(place)
 
     async def _carry_worker(self, place: Place, process, held: Optional[dict],
@@ -409,31 +765,32 @@ class SpawnerService:
     # A build, by the builder
     # ------------------------------------------------------------------
 
-    async def _build(self, request: dict) -> Dict[str, Any]:
+    async def _build(self, python: str | Path, environment_root: str | Path,
+                     requirements: Sequence[str], proxy: str,
+                     environment: Dict[str, str],
+                     timeout: Optional[float] = None) -> Tuple[int, str, Optional[Path]]:
         """The requirements downloaded and built as wheels, by the
-        builder's user in the builder's place, through the proxy
-        the request names. The wheels are left in the builder's spool
-        for the runtime to take; the next build empties it."""
-        python, root = self._word(request, "python"), self._word(request, "environment_root")
-        requirements = self._words(request, "requirements")
-        if not python or not root or not requirements:
-            return {"error": "a build is of requirements, with an interpreter, "
-                             "for an environment"}
-        timeout = request.get("timeout")
+        builder's user in the builder's place, through the pass at the
+        proxy the install was sent with. The wheels are left in the
+        builder's folder for this sandbox to unpack; the next build
+        empties it."""
+        requirements = [str(word) for word in requirements if str(word).strip()]
+        if not python or not environment_root or not requirements:
+            return 1, "a build is of requirements, with an interpreter, for an environment", None
         timeout = float(timeout) if isinstance(timeout, (int, float)) else self.BUILD_SECONDS
         place = self.places.builder()
         async with self._lock(place):
             errors = await self.places.prepare(place)
             if errors:
-                return {"error": "; ".join(errors)}
+                return 1, "; ".join(errors), None
             code, output = await self._program(
                 place,
-                [python, "-m", "pip", "wheel", "--no-input",
+                [str(python), "-m", "pip", "wheel", "--no-input",
                  "--disable-pip-version-check", "--no-cache-dir",
-                 "--wheel-dir", str(place.spool), *requirements],
-                reads=[root], environment=self._environment(request),
-                proxy=self._word(request, "proxy"), timeout=timeout)
-            return {"code": code, "said": output, "wheels": str(place.spool)}
+                 "--wheel-dir", str(place.wheels), *requirements],
+                reads=[str(environment_root)], environment=dict(environment),
+                proxy=proxy, timeout=timeout)
+            return code, output, place.wheels
 
     async def _program(self, place: Place, program: Sequence[str],
                        reads: Sequence[str], environment: Dict[str, str],
@@ -514,6 +871,17 @@ class SpawnerService:
         found = self._found
         return AgentsUsage.said(found.limits.get("memory") if found else None)
 
+    def _events(self, request: dict) -> Dict[str, Any]:
+        """What this sandbox wrote down, the latest first, each saying
+        which sandbox wrote it."""
+        limit = request.get("limit")
+        before = request.get("before")
+        found = Events.read(
+            self.install_dir, limit if isinstance(limit, int) else 200,
+            self._words(request, "kinds"), self._word(request, "agent"),
+            before if isinstance(before, (int, float)) else None)
+        return {"events": [{**event, "sandbox": self.sandbox_id} for event in found]}
+
     # ------------------------------------------------------------------
     # What the agents use
     # ------------------------------------------------------------------
@@ -534,7 +902,7 @@ class SpawnerService:
             if found.kernel_ended > self._kernel_ended:
                 self._kernel_ended_at = now
                 self.logger.warning(
-                    "The system ended a process in the agents' container: "
+                    "The system ended a process in this Execution Sandbox: "
                     "the agents ran out of the memory they are given.")
                 Events.record(
                     "memory", by="the system", given=found.limits.get("memory"),
@@ -658,6 +1026,8 @@ class SpawnerService:
             agent["agent"] = held.get("agent", "")
             agent["name"] = held.get("name", "")
             agent["disk"] = held.get("disk")
+            agent["sandbox"] = self.sandbox_id
+        said["sandbox"] = self.sandbox_id
         return said
 
     async def _feed(self, reader: asyncio.StreamReader,
@@ -747,22 +1117,64 @@ def proxy_port() -> int:
     return 8002
 
 
+def secret_from_environment() -> str:
+    """The node's secret, taken out of this process's environment as
+    it is read: every program started here inherits the environment,
+    and an agent's user runs some of them (the measuring of a home)."""
+    return (os.environ.pop(wire.SECRET_SETTING, "") or "").strip()
+
+
 def main() -> None:
     logging.basicConfig(
         level=os.getenv("LOG_LEVEL", "INFO").upper(),
         format="%(asctime)s %(levelname)s %(name)s %(message)s")
     install_dir = os.getenv("AI_RUNTIME_AGENTS_INSTALL_DIR", "") or "/data/agents"
-    # What this container sees of agents is written down beside what
-    # the runtime sees (docs/system/monitoring.md).
-    Events.configure(install_dir, "agents")
+    # What this sandbox sees of agents is written down in its own
+    # folder, and read by its runtime over the sandbox link
+    # (docs/system/monitoring.md).
+    Events.configure(install_dir, "sandbox")
     service = SpawnerService(
         install_dir,
         port=int(os.getenv("AI_AGENTS_SPAWNER_PORT", "8003")),
         proxy=os.getenv("AI_AGENTS_PROXY", ""),
         proxy_port=proxy_port(),
+        secret=secret_from_environment(),
+        sandbox_id=os.getenv("AI_SANDBOX_ID", "").strip(),
+        labels=os.getenv("AI_SANDBOX_LABELS", "").replace(",", " ").split(),
+        runtime=os.getenv("AI_SANDBOX_RUNTIME", "").strip(),
+        address=os.getenv("AI_SANDBOX_ADDRESS", "").strip(),
     )
+    drain = os.getenv("AI_SANDBOX_DRAIN_SECONDS", "").strip()
+    if drain.isdigit():
+        service.DRAIN_SECONDS = float(drain)
+    # How long one build of declared packages may take here.
+    build = os.getenv("AI_SANDBOX_BUILD_SECONDS", "").strip()
+    if build.isdigit() and int(build) > 0:
+        from ai_runtime.agents_container.environments import AgentEnvironment
+
+        AgentEnvironment.PIP_TIMEOUT_SECONDS = int(build)
+        service.BUILD_SECONDS = int(build)
+
+    async def serve() -> None:
+        await service.start()
+        stopped = asyncio.Event()
+        loop = asyncio.get_running_loop()
+        try:
+            # Stopped, it drains first: no new worker, and those
+            # running finish what they are doing.
+            loop.add_signal_handler(signal.SIGTERM, stopped.set)
+        except (NotImplementedError, AttributeError, ValueError):
+            pass
+        serving = [asyncio.ensure_future(server.serve_forever())
+                   for server in service._servers]
+        await stopped.wait()
+        service.logger.info("Stopped: draining before it goes.")
+        await service.leave()
+        for task in serving:
+            task.cancel()
+
     try:
-        asyncio.run(service.serve_forever())
+        asyncio.run(serve())
     except KeyboardInterrupt:
         sys.exit(0)
 

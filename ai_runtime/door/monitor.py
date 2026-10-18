@@ -47,22 +47,25 @@ class Monitor:
     async def answer(self, what: str, asked: Dict[str, Any]) -> Dict[str, Any]:
         asked = asked if isinstance(asked, dict) else {}
         if what == "events":
-            return self.events(asked)
+            return await self.events(asked)
         if what == "usage":
             return await self.usage()
         if what == "files":
             return await self.state.container.files(str(asked.get("agent") or ""))
         raise ValueError(f"Nothing called '{what}' is answered here.")
 
-    def events(self, asked: Dict[str, Any]) -> Dict[str, Any]:
-        """What happened, the latest first. ``kinds`` is a list
-        separated by commas; ``before`` is the time of the last event of
-        the page before, for the next."""
+    async def events(self, asked: Dict[str, Any]) -> Dict[str, Any]:
+        """What happened, the latest first: what the runtime wrote down,
+        and what every Execution Sandbox wrote down in its own folder.
+        ``kinds`` is a list separated by commas; ``before`` is the time
+        of the last event of the page before, for the next."""
         try:
             limit = int(asked.get("limit") or 200)
         except (TypeError, ValueError):
             limit = 200
         kinds = str(asked.get("kinds") or "")
+        wanted = [kind.strip() for kind in kinds.split(",") if kind.strip()]
+        agent = str(asked.get("agent") or "")
         before: Optional[float]
         try:
             before = (float(asked["before"])
@@ -70,15 +73,16 @@ class Monitor:
         except (TypeError, ValueError):
             before = None
         found = Events.read(
-            self.state.settings.agents_install_dir, limit,
-            [kind.strip() for kind in kinds.split(",") if kind.strip()],
-            str(asked.get("agent") or ""), before)
-        return {"events": found}
+            self.state.settings.agents_install_dir, limit, wanted, agent, before)
+        found.extend(await self.state.container.events(
+            limit, wanted, agent, before))
+        found.sort(key=lambda event: event.get("at") or 0, reverse=True)
+        return {"events": found[:max(1, min(limit or 200, Events.READ_MAX))]}
 
     async def usage(self) -> Dict[str, Any]:
-        """What the agents are given and what each uses now, and what
-        the runtime's own container holds. ``usage`` is null when the
-        Execution Sandbox did not answer."""
+        """What the agents are given and what each uses now, in every
+        Execution Sandbox together, and what the runtime's own container
+        holds. ``usage`` is null when no sandbox answered."""
         return {"usage": await self.state.container.usage(),
                 "runtime": own.now(),
                 "confined": self.state.confinement.report()}

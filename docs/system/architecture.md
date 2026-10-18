@@ -150,7 +150,8 @@ the recordings it was trained on ([operating](../run/operating.md#speech-on-this
 | Data Core → speech | `POST /v1/audio/…`, `GET /status`, `POST /prepare` (`speech/service.py`) | nothing: the private network is the only way to it | a recording to write down, or words to say |
 | runtime → Data Core | `POST /app` (`Gateway`, `ai_runtime/door/platform.py`) | the delegation, as `Bearer`, and its node's credential beside it | the person's own permissions, fenced (below); accepted only from the node the delegation was handed to |
 | runtime → Data Core | `POST /app`, the package door (`Agents:Package:*`) | its execution node's **credential**, as `Bearer` | "this is that node": which packages are approved, their bytes by digest, and that one is ready — nothing of anybody's ([agent code](agent-code.md#the-package-door), [execution nodes](execution-nodes.md)) |
-| runtime → agents | TCP, port 8003 (`ai_runtime/agents/container.py`, `agents_container/wire.py`) | the spawner's key, from `<install_dir>/spawner.key` | "start this agent's worker from this environment", "build these requirements", "what does this agent keep", "end this agent's processes"; one connection per worker carries its lines |
+| Execution Sandbox → runtime | TCP, port 8005 (`ai_runtime/agents/sandboxes.py`, `agents_container/wire.py`) | a proof of the node's secret (`AI_RUNTIME_SANDBOX_SECRET`), answering the runtime's challenge | "I am this sandbox, and this is what I proved, what I am given and use, what I hold": a registration, kept open, and said again every two seconds |
+| runtime → Execution Sandbox | TCP, port 8003 (`ai_runtime/agents/container.py`, `agents_container/wire.py`) | a proof of the node's secret, answering the sandbox's challenge | "install this package" (its bytes sent when asked), "start this agent's worker from this environment", "what does this agent keep", "end this agent's processes", "drain"; one connection per worker carries its lines, and a large file in pieces |
 | worker → proxy | the proxy's port on the worker's own container, passed on to `ai-runtime:8002` | the worker's pass, a token in the proxy's address | which agent's worker this is, and so which hosts it may reach |
 
 A chat is spoken of in two vocabularies: the page's (`AI:Chat:Input`,
@@ -249,8 +250,10 @@ message can be refused.
    (`AI:Approval:Decide`), and the exact call checked again by its
    hash before it runs.
 7. **The worker is started, or found** (`WorkerPool`,
-   `WorkerHandle`, `AgentsContainer`): asked for by name of the
-   Execution Sandbox, which starts it through the spawn helper as the
+   `WorkerHandle`, `Sandboxes`, `AgentsContainer`): in the Execution
+   Sandbox the placement rule chooses — one that registered and proved
+   its locks, already running the agent or holding its code, else the
+   least loaded — asked for by name, which starts it through the spawn helper as the
    agent's own user, fenced into its own files, with the proxy as its
    only way out ([the sandbox](sandbox.md)). The call goes to it as
    one line of JSON ([the worker protocol](../reference/worker-protocol.md)).
@@ -287,8 +290,8 @@ From most to least.
 | Part | Holds | Is trusted to | Is not trusted to |
 |---|---|---|---|
 | **Data Core** | the database's password, the encryption keys (`SECRET_ENCRYPTION_KEYS`), `TOKEN_SECRET_KEY`, its own signing key, which every node believes | decide every permission; decrypt; be the only writer of the database | — |
-| **runtime** | the Data Core's *public* key, its node's short-lived credential (and no authority's key), the spawner's key, and — while a chat is open — that chat's delegation | act for a person with a live chat, within `RUNTIME_ENDPOINTS`; as itself, ask the package door and nothing else; keep each agent to its own slots; hold a secret or a model key in memory for one call | reach the database; decrypt; forge the Data Core; do anything for a person with no live chat; reach identity and access at all |
-| **spawner** (Execution Sandbox) | its own key; no setting of the platform's but where the proxy is | start what the runtime orders, and carry lines | decide anything: a worker's asks pass through it unread |
+| **runtime** | the Data Core's *public* key, its node's short-lived credential (and no authority's key), the node's sandbox secret, and — while a chat is open — that chat's delegation | act for a person with a live chat, within `RUNTIME_ENDPOINTS`; as itself, ask the package door and nothing else; keep each agent to its own slots; hold a secret or a model key in memory for one call | reach the database; decrypt; forge the Data Core; do anything for a person with no live chat; reach identity and access at all |
+| **spawner** (Execution Sandbox) | the node's secret; no setting of the platform's but where its runtime and the proxy are | install what the runtime sends, start what it orders, and carry lines | decide anything: a worker's asks pass through it unread |
 | **worker** (an agent's code) | what one call was handed | nothing | everything: it is assumed hostile ([worker protocol](../reference/worker-protocol.md)) |
 | **browser** | a session cookie | nothing beyond the person it names | — |
 
@@ -341,7 +344,8 @@ what they are for:
 | `mongo_data` | mongo | the database |
 | `uploads_data` | Data Core | the bytes of every stored file, where `FILE_STORAGE_PROVIDER` is `local`; otherwise they are in the bucket it names ([configuration](../run/configuration.md#files-and-packages)) |
 | `agent_packages` | Data Core | each approved agent's code, as an archive by its digest: the copy the platform controls — in the same bucket instead, where one is named |
-| `agents_data` | ai-runtime and agents, at one path | the agents' code unpacked, their environments, each worker's home and spool, the spawner's key, and what is written down of what agents did ([monitoring](monitoring.md)) |
+| `runtime_agents` | ai-runtime | the approved packages, kept to pass on to the sandboxes, and what the runtime writes down of what agents did ([monitoring](monitoring.md)) |
+| `sandbox_data` | agents, alone | the sandbox's own copy of the code it runs, its environments, each worker's home, and what it writes down of what agents did: no volume is shared between a runtime and a sandbox, or between sandboxes |
 | `speech_models` | speech | the speech models, as fetched: lost, they are fetched again |
 | `node_credential` | node-issuer, and ai-runtime read-only | the bundled node's current credential, minutes long: lost, the issuer writes another |
 

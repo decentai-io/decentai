@@ -5,10 +5,10 @@
 
 The parts are built here and started by the application, on its loop,
 in the order each needs the one before (door/app.py): where what agents
-do is written down; the agents' container; confinement, and the proxy
-that is the agents' one way out; the library of installed code; the
-backend's client; and the application that serves chats with all of
-them.
+do is written down; the Execution Sandboxes, which register with this
+AI Runtime; confinement, and the proxy that is the agents' one way out;
+the library of approved code; the Data Core's client; and the
+application that serves chats with all of them.
 """
 
 import logging
@@ -31,6 +31,7 @@ logging.basicConfig(
 from ai_runtime.agents.confinement import Confinement
 from ai_runtime.agents.container import AgentsContainer
 from ai_runtime.agents.library import AgentLibrary
+from ai_runtime.agents.sandboxes import Sandboxes
 from ai_runtime.agents_container.events import Events
 from ai_runtime.door.app import create_app
 from ai_runtime.door.node import DataCoreKey, NodeCredential
@@ -44,10 +45,14 @@ settings = RuntimeSettings.from_env()
 # shown it (docs/system/monitoring.md).
 Events.configure(settings.agents_install_dir, "runtime")
 
-# Where every process of an agent's is started: the agents' container,
-# which starts beside this one. The runtime starts nothing of an
-# agent's itself.
-container = AgentsContainer(settings.agents_container, settings.agents_install_dir)
+# Where every process of an agent's is started: the Execution
+# Sandboxes, which register with this runtime, proving the node's
+# secret. The runtime starts nothing of an agent's itself. One named by
+# its address (AI_RUNTIME_AGENTS_SPAWNER) is known besides them.
+container = Sandboxes(settings.sandbox_secret, port=settings.sandbox_port)
+if settings.agents_container:
+    container.add(AgentsContainer(settings.agents_container,
+                                  settings.sandbox_secret))
 
 # What holds a worker there, as this side sees it: the proxy as its
 # one way out, and the container's own proof at start.
