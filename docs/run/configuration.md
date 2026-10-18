@@ -6,14 +6,25 @@ started by hand seeds them from `backend/config.env`, and a runtime
 started from its image by hand from `ai_runtime/config.env`. The code reads the environment and nothing
 else, so moving between platforms changes values, never code.
 
-Four values are generated, never chosen:
+These values are generated, never chosen:
 
 | Generator | Produces |
 |---|---|
 | `python bootstrap/generate_service_keys.py` | the Data Core's RS256 pair, each half on one line with `\n` escapes: `BACKEND_SERVICE_PRIVATE_KEY` for the Data Core, which signs everything it tells an execution node with it, and `BACKEND_SERVICE_PUBLIC_KEY` for every node |
-| `python bootstrap/generate_node_authority.py` | a node authority's pair: `NODE_AUTHORITY_PUBLIC_KEY`, registered with the Data Core, and `NODE_AUTHORITY_PRIVATE_KEY`, for whatever signs node credentials — never a node ([execution nodes](../system/execution-nodes.md)) |
+| `python bootstrap/generate_node_authority.py` | a node authority's pair: `NODE_AUTHORITY_PUBLIC_KEY`, registered with the Data Core, and `NODE_AUTHORITY_PRIVATE_KEY`, for whatever signs node credentials — never a node, and never the Data Core ([execution nodes](../system/execution-nodes.md)) |
 | `python bootstrap/generate_secret_keys.py` | `SECRET_ENCRYPTION_KEYS` and `SECRET_ENCRYPTION_ACTIVE` — versioned AES-256-GCM keys; `--rotate` appends a version |
 | `python -c "import secrets; print(secrets.token_urlsafe(48))"` | `TOKEN_SECRET_KEY` |
+| `python -c "import secrets; print(secrets.token_urlsafe(32))"` | `AI_RUNTIME_SANDBOX_SECRET` |
+
+Two of them are not in `deploy.env`, because Compose hands that file
+whole to the Data Core and the seeder, which need neither. Each is in
+a file of its own beside it, given only to what uses it:
+`AI_RUNTIME_SANDBOX_SECRET` in `sandbox.env`, given to the AI Runtime
+and its Execution Sandboxes; and `NODE_AUTHORITY_PRIVATE_KEY` in
+`node-authority.env`, given to `node-issuer` alone. `bootstrap/setup.py`
+writes both, and moves either out of a `deploy.env` from before that
+still holds it; by hand, copy `sandbox.env.example` and
+`node-authority.env.example`.
 
 ## The Data Core
 
@@ -141,7 +152,7 @@ gone. Back them up with it.
 | `LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING` or `ERROR`. |
 | `AI_RUNTIME_EGRESS_PORT` | `8002` | Where the proxy that agents connect through listens, on the runtime's container, reached over the network it shares with its Execution Sandboxes and nothing else. The firewall rule of each sandbox is written for the same port when it starts. A value that is blank or not a port is read as `8002` by every container, so the rule, the proxy and the workers agree. |
 | `AI_RUNTIME_PACKAGE_HOSTS` | `pypi.org, files.pythonhosted.org` | Where packages come from: the hosts the builder of an agent's declared packages may reach, and the whole of them. Separated by commas. |
-| `AI_RUNTIME_SANDBOX_SECRET` | required | The secret set for the execution node: what an Execution Sandbox proves when it registers with the runtime, and what the runtime proves on every request to one ([the sandbox](../system/sandbox.md#many-sandboxes)). It never travels. `bootstrap/setup.py` writes one into `deploy.env`; `docker-compose.yml` hands it to the runtime and to every sandbox. A runtime without it does not start. |
+| `AI_RUNTIME_SANDBOX_SECRET` | required, in `sandbox.env` | The secret set for the execution node: what an Execution Sandbox proves when it registers with the runtime, and what the runtime proves on every request to one ([the sandbox](../system/sandbox.md#many-sandboxes)). It never travels. `bootstrap/setup.py` writes one into `deploy.env`; `docker-compose.yml` hands it to the runtime and to every sandbox. A runtime without it does not start. |
 | `AI_RUNTIME_SANDBOX_PORT` | `8005` | Where Execution Sandboxes register with the runtime. Every process of an agent's is started in a sandbox that registered; a runtime with none that can confine a worker does not start. |
 | `AI_RUNTIME_AGENTS_SPAWNER` | empty | An Execution Sandbox the runtime knows by its address, as `host:port`, besides those that register. Optional, and not set by `docker-compose.yml`: sandboxes register themselves. |
 
@@ -151,7 +162,7 @@ reads:
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `NODE_AUTHORITY_PRIVATE_KEY` | required | The install's authority's private key, which signs the bundled node's credentials. The node never holds it. |
+| `NODE_AUTHORITY_PRIVATE_KEY` | required, in `node-authority.env` | The install's authority's private key, which signs the bundled node's credentials. The node never holds it. |
 | `NODE_NAME` | `bundled` | The name the bundled node's credential gives it. |
 | `NODE_CREDENTIAL_FILE` | `/run/decentai/node/credential` | Where the credential is written, every few minutes, for the node to read. |
 
@@ -163,7 +174,7 @@ An Execution Sandbox is the runtime's image started as the spawner
 | `AI_AGENTS_PROXY` | empty | Where the runtime's proxy answers, as `host:port` (`ai-runtime:8002` in Compose). What a worker sends to the proxy's port in its own container is passed on to here. |
 | `AI_AGENTS_SPAWNER_PORT` | `8003` | Where the spawner answers the runtime. Fixed at 8003 in the Compose stack, which does not pass it on. |
 | `AI_SANDBOX_RUNTIME` | empty | Where its runtime takes registrations, as `host:port` (`ai-runtime:8005` in Compose). The sandbox connects there, registers, and connects again when the connection is lost. |
-| `AI_RUNTIME_SANDBOX_SECRET` | required | The execution node's secret, the same as the runtime's. The spawner takes it out of its own environment as it reads it. |
+| `AI_RUNTIME_SANDBOX_SECRET` | required, in `sandbox.env` | The execution node's secret, the same as the runtime's. The spawner takes it out of its own environment as it reads it. |
 | `AI_SANDBOX_ID` | the container's name | Who the sandbox is, to its runtime; `agents` in Compose, `agents-2` for the second of `docker-compose.sandboxes.yml`. |
 | `AI_SANDBOX_LABELS` | empty | What it says of itself, for a placement to ask for: `gpu`, separated by commas. In Compose, `AGENTS_LABELS` in `deploy.env`, and `AGENTS_2_LABELS` for the second sandbox. |
 | `AI_SANDBOX_ADDRESS` | the address it registered from | Where the runtime reaches it, as `host:port`, where that is not the address its registration came from. |
@@ -232,7 +243,8 @@ AI_RUNTIME_PACKAGE_HOSTS=packages.example.com
 The runtime's container holds the runtime's own settings and nothing
 else, and the Execution Sandbox, where agent code runs, holds none of
 the platform's. In Compose the Data Core and the
-seeder are handed `deploy.env` whole; the runtime is handed the
+seeder are handed `deploy.env` whole; the runtime is handed
+`sandbox.env`, which holds the node's secret and nothing else, and the
 variables `docker-compose.yml` names for it — the table above, the
 knobs below, where packages come from, and how the machine reaches
 the internet (`HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`, `SSL_CERT_FILE`,

@@ -57,6 +57,23 @@ class AgentsOnly:
         return 0
 
 
+def _sandboxes_said(confinement) -> list:
+    """This node's Execution Sandboxes as its report shows them: each
+    one's name, labels, whether it drains and whether it takes work —
+    what an administrator names to drain one (Nodes:Node:Drain)."""
+    sandboxes = getattr(confinement, "sandboxes", None)
+    if sandboxes is None or not hasattr(sandboxes, "all"):
+        return []
+    try:
+        return [{"sandbox": sandbox.id,
+                 "labels": sorted(getattr(sandbox, "labels", ()) or ()),
+                 "draining": bool(getattr(sandbox, "draining", False)),
+                 "eligible": bool(sandbox.eligible())}
+                for sandbox in sandboxes.all()]
+    except Exception:
+        return []
+
+
 def create_app(settings: RuntimeSettings, services, library, container,
                confinement, agents=None, node=None, data_core=None) -> FastAPI:
     """The application, from the parts main.py built: ``services`` is
@@ -95,7 +112,8 @@ def create_app(settings: RuntimeSettings, services, library, container,
         link = NodeLink(
             settings.backend_url, host, node, data_core,
             report=lambda: {"locks": confinement.report(),
-                            "labels": list(node.claims.get("labels") or [])})
+                            "labels": list(node.claims.get("labels") or []),
+                            "sandboxes": _sandboxes_said(confinement)})
         # The Data Core's clock decides when a row is due and hands
         # each fire over the link: this node's never ticks by itself,
         # or a row would fire on every node holding a copy of it.
@@ -187,6 +205,11 @@ def create_app(settings: RuntimeSettings, services, library, container,
     app.state.link = link
     if link is not None:
         link.monitor = Monitor(app.state)
+        # An administrator drains one of this node's sandboxes through
+        # the Data Core (Nodes:Node:Drain); the registry does it here.
+        sandboxes = getattr(confinement, "sandboxes", None)
+        if sandboxes is not None and hasattr(sandboxes, "drain"):
+            link.drainer = sandboxes.drain
 
     app.include_router(router)
 

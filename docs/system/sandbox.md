@@ -82,7 +82,8 @@ its user, its folders, its fences, its spawn line, its ending.
   pieces ([worker protocol](../reference/worker-protocol.md)).
 - **Only its runtime commands the spawner.** The runtime and its
   sandboxes hold one secret, set for the execution node
-  (`AI_RUNTIME_SANDBOX_SECRET`). It never travels: whoever is spoken to
+  (`AI_RUNTIME_SANDBOX_SECRET`, in `sandbox.env`, which Compose gives
+  to them and to nothing else — never the Data Core). It never travels: whoever is spoken to
   first sends a challenge, and the other answers it with an HMAC made
   with the secret, its role written in front, so a proof one side made
   is never the other's. The spawner takes the secret out of its own
@@ -157,7 +158,9 @@ A sandbox that cannot be reached, or turned out to drain, is passed
 over for the next; a package a sandbox refuses is refused.
 
 **Draining.** A sandbox told to drain — by its runtime
-(`Sandboxes.drain`), or by being stopped — starts no new worker; a
+(`Sandboxes.drain`, which an administrator asks for through the Data
+Core with `Nodes:Node:Drain`, and undoes with `drain: false`), or by
+being stopped — starts no new worker; a
 worker it runs finishes what it is doing, is retired once it has
 nothing in flight, and the agent's next call is placed on another
 sandbox. A sandbox that was stopped goes once its workers are gone, or

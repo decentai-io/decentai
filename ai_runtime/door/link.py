@@ -17,7 +17,10 @@ reconnecting with backoff, carries every chat this node serves:
       fire               a schedule of a chat this node holds is due:
                          run it (the Data Core's clock decided)
       detach             the chat is no longer this node's: forget it
-      monitor            a question about agents (door/monitor.py)
+      monitor            a question about agents (door/monitor.py), or
+                         ``what: drain``: stop placing agents on one of
+                         this node's Execution Sandboxes, or let it take
+                         work again (agents/sandboxes.py)
 
     node → Data Core
       hello              who is speaking, the protocol it speaks, and
@@ -45,7 +48,7 @@ import json
 import logging
 import secrets
 import time
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Awaitable, Callable, Dict, Optional
 from urllib.parse import urlparse, urlunparse
 
 from ai_runtime.door.node import SignatureRefused
@@ -94,6 +97,10 @@ class NodeLink:
         #: the Data Core's public key (door/node.py, DataCoreKey)
         self.key = key
         self.monitor = monitor
+        #: ``drain(sandbox_id, on)``: this node's Execution Sandboxes,
+        #: drained or let take work again when an administrator asks
+        #: through the Data Core (Nodes:Node:Drain).
+        self.drainer: Optional[Callable[[str, bool], Awaitable[bool]]] = None
         self.report = report or (lambda: {})
         self.channels: Dict[str, ChatChannel] = {}
         #: who the Data Core says this node is, once welcomed
@@ -397,16 +404,33 @@ class NodeLink:
 
     async def _answer(self, frame: Dict[str, Any]) -> None:
         request_id = str(frame.get("request_id") or "")
+        what = str(frame.get("what") or "")
+        asked = frame.get("asked") if isinstance(frame.get("asked"), dict) else {}
         try:
-            if self.monitor is None:
-                raise ValueError("This node answers no monitoring.")
-            result = await self.monitor.answer(
-                str(frame.get("what") or ""), frame.get("asked") or {})
+            if what == "drain":
+                result = await self._drain(asked)
+            else:
+                if self.monitor is None:
+                    raise ValueError("This node answers no monitoring.")
+                result = await self.monitor.answer(what, asked)
             await self.send({"type": "monitor_result",
                              "request_id": request_id, "result": result})
         except Exception as exc:
             await self.send({"type": "monitor_result",
                              "request_id": request_id, "error": str(exc)})
+
+    async def _drain(self, asked: Dict[str, Any]) -> Dict[str, Any]:
+        """One of this node's Execution Sandboxes drained (no new worker
+        placed there; those running finish), or let take work again
+        with ``on: false``. The Data Core decided who may ask; this only
+        does it, for a sandbox that is registered here."""
+        if self.drainer is None:
+            raise ValueError("This node drains no Execution Sandbox.")
+        sandbox = str(asked.get("sandbox") or "").strip()
+        if not sandbox:
+            raise ValueError("Which Execution Sandbox? None was named.")
+        on = asked.get("on", True) is not False
+        return {"sandbox": sandbox, "draining": bool(await self.drainer(sandbox, on))}
 
 
 class _FrameReader:

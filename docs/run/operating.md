@@ -321,6 +321,12 @@ once), stop issuing it credentials (it drops out within minutes), or,
 in a hurry, `Nodes:Node:Refuse`. Its chats move to another node within
 a minute ([leases](../system/execution-nodes.md#leases)).
 
+To take one Execution Sandbox out of a node without stopping it —
+for maintenance, or a machine running short — drain it with
+`Nodes:Node:Drain` (`node_id`, `sandbox_id`): it is given no new
+agent, and those running finish. `drain: false` lets it work again.
+The sandboxes a node has are in what `Nodes:Node:List` shows of it.
+
 ## Removing it
 
 To remove it altogether, its data with it:

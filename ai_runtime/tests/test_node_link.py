@@ -490,6 +490,58 @@ class TestMonitoringOverTheLink:
         assert answered == [{"type": "monitor_result", "request_id": "ask_1",
                              "result": {"what": "usage", "asked": {"x": 1}}}]
 
+    def _ask_to_drain(self, drainer, asked):
+        host, _ = build()
+
+        async def scenario():
+            data_core = await FakeDataCore().start()
+            link = node_link(data_core, host)
+            link.drainer = drainer
+            link.start()
+            await data_core.until(lambda: data_core.heard)
+            await data_core.welcome()
+            await asyncio.wait_for(link.connected.wait(), 5)
+            await data_core.say({"type": "monitor", "request_id": "ask_d",
+                                 "what": "drain", "asked": asked})
+            await data_core.until(lambda: any(
+                h.get("type") == "monitor_result" for h in data_core.heard))
+            await link.stop()
+            await data_core.stop()
+            return [h for h in data_core.heard if h.get("type") == "monitor_result"]
+
+        return run(scenario())
+
+    def test_an_administrator_drains_one_of_its_sandboxes_and_lets_it_work_again(self):
+        asked_of = []
+
+        async def drain(sandbox, on):
+            asked_of.append((sandbox, on))
+            return on
+
+        drained = self._ask_to_drain(drain, {"sandbox": "agents-2", "on": True})
+        resumed = self._ask_to_drain(drain, {"sandbox": "agents-2", "on": False})
+        assert asked_of == [("agents-2", True), ("agents-2", False)]
+        assert drained[0]["result"] == {"sandbox": "agents-2", "draining": True}
+        assert resumed[0]["result"] == {"sandbox": "agents-2", "draining": False}
+
+    def test_a_sandbox_that_is_not_registered_is_refused_in_words(self):
+        from ai_runtime.agents.sandboxes import NoSandbox
+
+        async def drain(sandbox, on):
+            raise NoSandbox(f"No Execution Sandbox {sandbox} is registered")
+
+        answered = self._ask_to_drain(drain, {"sandbox": "nowhere"})
+        assert answered[0]["error"] == "No Execution Sandbox nowhere is registered"
+
+    def test_a_node_with_no_drainer_or_no_sandbox_named_says_so(self):
+        assert "drains no Execution Sandbox" in self._ask_to_drain(
+            None, {"sandbox": "agents-2"})[0]["error"]
+
+        async def drain(sandbox, on):
+            raise AssertionError("nothing is drained without a name")
+
+        assert "None was named" in self._ask_to_drain(drain, {})[0]["error"]
+
 
 class TestTheLinkLives:
     def test_a_node_whose_link_ends_dials_again(self):

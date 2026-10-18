@@ -16,9 +16,11 @@ administrator is, where its mail goes — is yours to say.
 packages (`pip install -r backend/requirements.txt`):
 
 ```bash
-python bootstrap/generate_service_keys.py     # the two backend↔runtime signing pairs
+python bootstrap/generate_service_keys.py     # the Data Core's signing pair
+python bootstrap/generate_node_authority.py   # this deployment's node authority
 python bootstrap/generate_secret_keys.py      # the keys that encrypt stored values
 python -c "import secrets; print(secrets.token_urlsafe(48))"   # TOKEN_SECRET_KEY
+python -c "import secrets; print(secrets.token_urlsafe(32))"   # AI_RUNTIME_SANDBOX_SECRET
 ```
 
 None of them is written to disk by the scripts.
@@ -40,6 +42,16 @@ the first administrator in `ADMIN_EMAIL`, `ADMIN_PASSWORD` and
 | `JWT_COOKIE_SECURE` | `true` |
 | `SMTP_HOST`, `MAIL_FROM` and the server's sign-in | any provider's SMTP server, so invitations and password resets are sent rather than logged ([configuration](configuration.md)) |
 | `ORG_SIGNUP` | `open` to let anybody create an organization of their own from the sign-in page; it needs the mail above. `closed`, the default, keeps organizations to `bootstrap/organizations.py` ([operating it](operating.md#organizations)) |
+
+**Write `sandbox.env` and `node-authority.env`** beside it, from
+`sandbox.env.example` and `node-authority.env.example`:
+`AI_RUNTIME_SANDBOX_SECRET` in the first and the authority's
+`NODE_AUTHORITY_PRIVATE_KEY` in the second, with its public half in
+`deploy.env` as `NODE_AUTHORITY_PUBLIC_KEY`. They are kept out of
+`deploy.env` because the Data Core is given that file whole and needs
+neither; Compose gives each only to what uses it
+([configuration](configuration.md)). Keep all three files readable by
+their owner only.
 
 **3. Start it**, with the file that makes Caddy the server's front
 door laid over the stack:

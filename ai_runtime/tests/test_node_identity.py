@@ -175,7 +175,9 @@ class TestTheSettings:
                      "AI_RUNTIME_NODE_CREDENTIAL_URL", "DATA_CORE_URL",
                      "BACKEND_INTERNAL_URL"):
             monkeypatch.delenv(name, raising=False)
-        monkeypatch.setenv("AI_RUNTIME_AGENTS_SPAWNER", "agents:8003")
+        # The secret its Execution Sandboxes prove when they register:
+        # required of every runtime since sandboxes register (Phase 6).
+        monkeypatch.setenv("AI_RUNTIME_SANDBOX_SECRET", "the node's secret")
         for name, value in said.items():
             monkeypatch.setenv(name, value)
         return RuntimeSettings.from_env()

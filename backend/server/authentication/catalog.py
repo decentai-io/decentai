@@ -860,6 +860,10 @@ ACTION_CATALOG: Dict[str, Dict[str, Any]] = {
                 "credential says"
             ),
             "nodes:node:allow": "Let a node refused by name be admitted again",
+            "nodes:node:drain": (
+                "Drain one Execution Sandbox of an execution node, so no new "
+                "agent is placed there, or let it take work again"
+            ),
         },
     },
     "agents:monitor": {

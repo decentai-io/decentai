@@ -87,7 +87,16 @@ last seen, whether it is connected, and what it last reported. It is a
 view, kept from what nodes presented; nobody fills it in.
 `Nodes:Node:List` shows an organization's administrators their own
 nodes, with the authority that admitted each, and the operator the
-shared ones too.
+shared ones too. What a node reports includes its Execution Sandboxes:
+each one's name, labels, whether it drains and whether it takes work.
+
+**Draining a sandbox** (`Nodes:Node:Drain`, with `node_id` and
+`sandbox_id`): the Data Core asks the node over its link, and the node's
+registry drains that sandbox — no new agent is placed there, and
+those running finish what they are doing. `drain: false` lets it take
+work again. Who may is decided as for refusing the node: its own
+organization's administrators, and the operator for a shared node. The
+node only does it; a sandbox it does not have is refused in words.
 
 ## Revoking
 
@@ -329,8 +338,10 @@ operates the nodes, not for the engine.
 `python bootstrap/setup.py` still asks nothing of the person:
 
 1. it makes one authority key pair (`bootstrap/generate_node_authority.py`,
-   `NODE_AUTHORITY_PRIVATE_KEY` and `NODE_AUTHORITY_PUBLIC_KEY` in
-   `deploy.env`), once, as it makes every key;
+   `NODE_AUTHORITY_PUBLIC_KEY` in `deploy.env`, and
+   `NODE_AUTHORITY_PRIVATE_KEY` in `node-authority.env`, which Compose
+   gives to `node-issuer` alone — never the Data Core or the seeder),
+   once, as it makes every key;
 2. the seeder registers the public half as a shared authority, *This
    install* (`bootstrap/init_db.py`) — once: a key the operator revoked
    stays revoked across a restart;

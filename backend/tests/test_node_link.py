@@ -156,6 +156,82 @@ class TestALiveLink:
             code, reason = closed_with(link)
         assert code == CLOSE_REFUSED and "revoked" in reason
 
+    class _StandIn:
+        """A connected node's link, as Nodes:Node:Drain reaches it
+        (NodeLink.ask): what it was asked is kept, and it answers as a
+        node whose registry drains."""
+
+        def __init__(self, key):
+            self.key = key
+            self.open = True
+            self.asked = []
+            self.chats = {}
+
+        async def ask(self, what, asked, timeout=20.0):
+            self.asked.append((what, dict(asked)))
+            if asked.get("sandbox") == "nowhere":
+                raise RuntimeError("No Execution Sandbox nowhere is registered")
+            return {"sandbox": asked.get("sandbox"), "draining": asked.get("on")}
+
+    def _known_node(self, served, authority):
+        """A node the Data Core admitted once, now away: what the nodes
+        view keeps of it, for an administrator to name."""
+        private_pem, doc = authority
+        with dial(served, runtime_service_token(private_pem, "node-1")) as link:
+            self.hello(link)
+        return f"{doc['_id']}/node-1"
+
+    def test_a_sandbox_is_drained_and_let_work_again_over_the_nodes_link(
+            self, served, admin, authority):
+        from database.stores import AuditStore
+        from server.setup.app_state import get_node_links
+
+        key = self._known_node(served, authority)
+        self.until(lambda: not any(l.key == key for l in get_node_links().connected()))
+        node = self._StandIn(key)
+        get_node_links().links[key] = node
+        try:
+            drained = app_call(admin, "Nodes:Node:Drain",
+                               {"node_id": key, "sandbox_id": "agents-2"})
+            resumed = app_call(admin, "Nodes:Node:Drain",
+                               {"node_id": key, "sandbox_id": "agents-2", "drain": False})
+            refused = app_call(admin, "Nodes:Node:Drain",
+                               {"node_id": key, "sandbox_id": "nowhere"})
+        finally:
+            get_node_links().links.pop(key, None)
+        from server.setup.app_state import get_db
+
+        def said(response):
+            body = response.json()
+            return body.get("data", body) if isinstance(body, dict) else body
+
+        assert drained.status_code == 200, drained.text
+        assert said(drained) == {"node_id": key, "sandbox_id": "agents-2",
+                                 "draining": True}
+        assert said(resumed)["draining"] is False
+        assert node.asked == [("drain", {"sandbox": "agents-2", "on": True}),
+                              ("drain", {"sandbox": "agents-2", "on": False}),
+                              ("drain", {"sandbox": "nowhere", "on": True})]
+        assert refused.status_code == 409 and "nowhere" in refused.text
+        trail = get_db().collection(AuditStore.COLLECTION)
+        assert trail.count_documents({"event_type": "sandbox.drained"}) == 1
+        assert trail.count_documents({"event_type": "sandbox.resumed"}) == 1
+
+    def test_draining_needs_a_connected_node_and_a_sandbox_named(
+            self, served, admin, authority):
+        from server.setup.app_state import get_node_links
+
+        key = self._known_node(served, authority)
+        self.until(lambda: not any(l.key == key for l in get_node_links().connected()))
+        unnamed = app_call(admin, "Nodes:Node:Drain", {"node_id": key})
+        assert unnamed.status_code == 400
+        away = app_call(admin, "Nodes:Node:Drain",
+                        {"node_id": key, "sandbox_id": "agents-2"})
+        assert away.status_code == 409 and "not connected" in away.text
+        unknown = app_call(admin, "Nodes:Node:Drain",
+                           {"node_id": "nobody/nothing", "sandbox_id": "agents-2"})
+        assert unknown.status_code == 404
+
     def test_refusing_a_node_by_name_closes_its_link(self, served, admin, authority):
         private_pem, doc = authority
         with dial(served, runtime_service_token(private_pem, "node-1")) as link:

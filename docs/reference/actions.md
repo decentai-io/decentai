@@ -9,7 +9,7 @@ the actions a chat's delegation may call, and nothing else.
 Generated from `backend/server/authentication/catalog.py` by
 `docs/reference/generate.py`; do not edit by hand.
 
-220 actions in 43 services; 69 baseline.
+221 actions in 43 services; 69 baseline.
 
 ## Own account
 
@@ -421,6 +421,7 @@ Generated from `backend/server/authentication/catalog.py` by
 | `nodes:node:list` | See the execution nodes that were admitted for your organization, who admitted them and what each reports |  |  |
 | `nodes:node:refuse` | Refuse one execution node by name at once, whatever its credential says |  |  |
 | `nodes:node:allow` | Let a node refused by name be admitted again |  |  |
+| `nodes:node:drain` | Drain one Execution Sandbox of an execution node, so no new agent is placed there, or let it take work again |  |  |
 
 ## Monitoring agents
 
