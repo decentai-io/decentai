@@ -146,4 +146,4 @@ removed.
 | the doors | `Mcp:Server:List / Get / Create / Update / Refresh / Delete`, and `Use` for the runtime — `backend/api/services/data_layer/mcp.py` |
 | the store | `backend/database/stores/data/mcp.py` |
 | a server in a roster | `ai_runtime/agents/mcp.py`; the call, in `ai_runtime/execution/executor.py` |
-| tests | `ai_runtime/tests/test_mcp.py`, `backend/tests/test_mcp.py`, against the stand-in server in `sim/mcp_server.py` |
+| tests | `ai_runtime/tests/test_mcp.py`, `backend/tests/test_mcp.py`, against the stand-in server in `ai_runtime/tests/sim/mcp_server.py` |

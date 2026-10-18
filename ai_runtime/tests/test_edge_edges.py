@@ -13,8 +13,8 @@ from ai_runtime.llms.connector.http import ProviderError
 from ai_runtime.llms.connector.tools import (
     is_context_overflow, is_image_refusal, setting)
 from ai_runtime.door.platform import Backend, Gateway, GatewayError
-from sim.schedules import MemoryScheduleStore
-from sim.session_services import SimSessionServices
+from ai_runtime.tests.sim.schedules import MemoryScheduleStore
+from ai_runtime.tests.sim.session_services import SimSessionServices
 from ai_runtime.tests import fake_container
 
 
@@ -194,7 +194,7 @@ class TestAKeyGoesNowhereItWasNotSent:
 
 class TestTheSimulationKeepsAFilesSizeAndType:
     def test_on_the_row_it_answers_with_and_the_rows_it_lists(self):
-        from sim.resources import InMemoryResourceProvider
+        from ai_runtime.tests.sim.resources import InMemoryResourceProvider
 
         async def scenario():
             provider = InMemoryResourceProvider()

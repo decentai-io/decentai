@@ -16,7 +16,7 @@ from ai_runtime.llms.connector.fake import FakeConnector
 from ai_runtime.door.host import SessionHost
 from ai_runtime.tests.fixture_agents import load_agents
 from ai_runtime.tests.test_assistant import Harness
-from sim.session_services import SimSessionServices
+from ai_runtime.tests.sim.session_services import SimSessionServices
 from ai_runtime.tests import fake_container
 from ai_runtime.tests.fake_container import workers
 
@@ -329,7 +329,7 @@ class TestAKillEndsASleepWithNoSessionToDoIt:
         host forgets. Killed then, it must not wake later."""
         import logging
         from ai_runtime.chat.clock import Schedule, Scheduler
-        from sim.schedules import MemoryScheduleStore
+        from ai_runtime.tests.sim.schedules import MemoryScheduleStore
 
         relayed = []
 

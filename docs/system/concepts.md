@@ -44,7 +44,7 @@ record of what agents did ([what is written down](monitoring.md)).
 it.
 
 The runtime is tested against an in-memory simulator of the Data Core's
-services (`sim/`), which is also how an agent is tested alone.
+services (`ai_runtime/tests/sim/`), which is also how an agent is tested alone.
 
 *Design notes: [chat-session.md](chat-session.md),
 [session-door.md](../reference/session-door.md).*
@@ -278,7 +278,7 @@ Where a word is used for more than one thing, each is said.
 | **pieces** | a file too large for one line of the worker protocol, sent as `bytes` notifications on the same wire, ahead of the message that names it | `WorkerHandle._stream_out`, `ai_runtime/agents/workers.py`; `Streams`, `decentai_sdk/worker.py` |
 | **registration** | an Execution Sandbox, connected to its AI Runtime, proving the node's secret and saying what it proved, is given and holds | `Sandboxes`, `ai_runtime/agents/sandboxes.py` |
 | **steward** | the one person who may change a stored thing: its creator, until it is handed over | `created_by` |
-| **the stand-in**, **the sim** | the Data Core's services in memory, which the runtime is tested on | `sim/` |
+| **the stand-in**, **the sim** | the Data Core's services in memory, which the runtime is tested on | `ai_runtime/tests/sim/` |
 | **thread** | a sub-assistant's own conversation inside a chat | `<chat_id>/sub_…` |
 | **trace** | what the assistant actually ran in this chat, which evidence is checked against | `state.trace` |
 | **trust level** | see *level* | |

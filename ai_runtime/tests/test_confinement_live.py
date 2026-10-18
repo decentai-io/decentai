@@ -1317,7 +1317,7 @@ class TestAProgramAnAgentRuns:
     def asked(confinement, agent, *calls, allows=True):
         """Each call in turn, through the executor, in one worker."""
         from ai_runtime.execution.executor import FunctionExecutor
-        from sim.resources import InMemoryResourceProvider
+        from ai_runtime.tests.sim.resources import InMemoryResourceProvider
 
         async def proposer(code, source):
             return allows
@@ -1415,7 +1415,7 @@ class TestWhatTheDeploymentSets:
         """Each call in turn through the executor, with the
         deployment's setting, and what the trail was told."""
         from ai_runtime.execution.executor import FunctionExecutor
-        from sim.resources import InMemoryResourceProvider
+        from ai_runtime.tests.sim.resources import InMemoryResourceProvider
 
         agent = TestWhatTheDeploymentSets.anywhere()
         trail = []

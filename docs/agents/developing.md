@@ -20,15 +20,16 @@ install has.
 You need Python 3.11 or later (the platform's images run 3.12), and the
 DecentAI platform's source — the harness is the platform's own code.
 
-To run Note's tests, from the root of the platform's repository:
+To run Note's tests, from a clone of `decentai-agents` with the
+platform cloned beside it:
 
 ```bash
-python -m pip install -r examples/tests/requirements.txt
-python -m pytest examples/tests -q
+python -m pip install -r tests/requirements.txt
+PYTHONPATH=../decentai python -m pytest tests/test_note.py -q
 ```
 
-For an agent in a repository of your own, copy `examples/tests/` beside
-your agent as `tests/`, keep a clone of the platform next to your
+For an agent in a repository of your own, copy `decentai-agents`'
+[`conftest.py`](https://github.com/decentai-io/decentai-agents/blob/main/tests/conftest.py) into a `tests` folder beside your agent, keep a clone of the platform next to your
 repository, and put it on the path:
 
 ```bash
@@ -53,7 +54,7 @@ gives your tests `agents` — every agent the catalog offers, by id. Then:
 from ai_runtime.execution.executor import FunctionExecutor
 from ai_runtime.execution.sinks import ChatSinks
 from ai_runtime.tests.fake_container import run, workers
-from sim.resources import InMemoryResourceProvider
+from ai_runtime.tests.sim.resources import InMemoryResourceProvider
 
 executor = FunctionExecutor(workers(), provider=InMemoryResourceProvider())
 
@@ -112,7 +113,7 @@ the dependencies asks for the folder to be deleted.
 
 ### What to test
 
-Start with the package: `examples/tests/test_note.py` has the check installation
+Start with the package: [`test_note.py`](https://github.com/decentai-io/decentai-agents/blob/main/tests/test_note.py) in `decentai-agents` has the check installation
 itself makes — a worker imports your code and every declared function
 resolves to a method. Then what is easy to get wrong and silent when
 you do:

@@ -28,7 +28,8 @@ else:
 
 The platform ships with no agents installed. The ones the project
 publishes are in their own repository, [`decentai-agents`](https://github.com/decentai-io/decentai-agents), and a new
-agent starts from [`examples/note/`](examples/note/) and [docs/agents/](docs/agents/README.md).
+agent starts from [`note/`](https://github.com/decentai-io/decentai-agents/tree/main/note) there, the example every other is
+written from, and [docs/agents/](docs/agents/README.md).
 
 ## The parts
 
@@ -61,7 +62,7 @@ client still lives in `frontend/` until it moves to its own repository
 | keep it running: update, back up, add people, set limits | [docs/run/operating.md](docs/run/operating.md), with every setting in [docs/run/configuration.md](docs/run/configuration.md) |
 | put it on a server | [docs/run/deploying.md](docs/run/deploying.md) |
 | understand the moving parts | [docs/system/concepts.md](docs/system/concepts.md), then the pages it names |
-| write an agent | [docs/agents/](docs/agents/README.md), with the example in [`examples/note/`](examples/note/) |
+| write an agent | [docs/agents/](docs/agents/README.md), with the example, [`note/`](https://github.com/decentai-io/decentai-agents/tree/main/note) in `decentai-agents` |
 | call it from a script | [docs/reference/api.md](docs/reference/api.md) |
 | change the platform itself | [CONTRIBUTING.md](CONTRIBUTING.md) and [docs/contributing/local-development.md](docs/contributing/local-development.md) |
 | use it as a person | the **Help → Guide** section inside the app (source: `frontend/src/assets/guide/`) |
@@ -81,13 +82,9 @@ speech/        speech to text and text to speech from models that run on
                the machine itself, in a container of their own
 decentai_sdk/  what agent code imports: AgentBase, ToolBase, the manifest
 contracts/     the manifest schema and validator, shared by all of the above
-sim/           the runtime's reference services, in memory — how the runtime
-               is tested without a backend, and how an agent is tested alone
 bootstrap/     setting it up on a computer (setup.py), first-run seeding,
                key generation, organizations, rotation
 tests/         the suite that spans backend and runtime
-examples/      Note, the agent every other is written from, and its tests;
-               decentai-agents.yaml at the root offers it as a source
 docs/          guides, how each part works, and the reference
 ```
 
@@ -122,13 +119,12 @@ installer and no images. A server with an address of its own is
 
 ## Tests
 
-Four suites, each owning its layer, each run from the repository root:
+Three suites, each owning its layer, each run from the repository root:
 
 ```bash
 python -m pytest ai_runtime/tests -q       # runtime: real workers, no database
 (cd backend && python -m pytest tests -q)   # backend: real app, MongoDB on localhost
 python -m pytest tests -q                   # spanning: an approval on one side, code serving on the other
-python -m pytest examples/tests -q          # the Note example, in a real worker
 ```
 
 Run the Data Core and spanning suites one at a time; they share the test

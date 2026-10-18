@@ -8,7 +8,7 @@ import datetime
 from zoneinfo import ZoneInfo
 
 from ai_runtime.chat.clock import Schedule, Scheduler
-from sim.schedules import MemoryScheduleStore
+from ai_runtime.tests.sim.schedules import MemoryScheduleStore
 from ai_runtime.tests import fake_container
 
 LONDON = ZoneInfo("Europe/London")

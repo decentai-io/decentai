@@ -373,7 +373,7 @@ class TestAChatsCalls:
 
     def test_a_platform_that_will_not_take_them_does_not_stop_the_chat(self, caplog):
         from ai_runtime.tests.test_session import action
-        from sim.session_services import SimSessionServices
+        from ai_runtime.tests.sim.session_services import SimSessionServices
 
         class Refusing(SimSessionServices):
             async def record_usage(self, chat_id, calls):

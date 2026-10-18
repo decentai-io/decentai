@@ -10,8 +10,8 @@ from ai_runtime.execution.executor import FunctionExecutor
 from ai_runtime.execution.sinks import ChatSinks
 from ai_runtime.execution.grants import FunctionGrants
 from contracts.mcp import McpClient, McpError, McpTools
-from sim.mcp_server import FakeMcpServer
-from sim.resources import InMemoryResourceProvider
+from ai_runtime.tests.sim.mcp_server import FakeMcpServer
+from ai_runtime.tests.sim.resources import InMemoryResourceProvider
 from ai_runtime.tests.fake_container import workers
 from ai_runtime.tests import fake_container
 

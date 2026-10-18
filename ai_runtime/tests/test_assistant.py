@@ -16,7 +16,7 @@ from ai_runtime.llms.connector.fake import FakeConnector
 from ai_runtime.mind.assistant import Assistant
 from ai_runtime.mind.state import AssistantState
 from ai_runtime.tests.fixture_agents import load_agents
-from sim.resources import InMemoryResourceProvider
+from ai_runtime.tests.sim.resources import InMemoryResourceProvider
 from ai_runtime.tests.fake_container import workers
 from ai_runtime.tests import fake_container
 

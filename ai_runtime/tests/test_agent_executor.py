@@ -16,7 +16,7 @@ from ai_runtime.execution.executor import FunctionExecutor
 from ai_runtime.execution.sinks import ChatSinks
 from ai_runtime.tests.fixture_agents import load_agents
 from ai_runtime.execution.resources import ResourceAccess, ResourceDenied
-from sim.resources import InMemoryResourceProvider
+from ai_runtime.tests.sim.resources import InMemoryResourceProvider
 
 AGENTS_DIR = Path(__file__).resolve().parent / "fixtures" / "agents"
 

@@ -381,7 +381,7 @@ what they are for:
    delegation in, and does not keep a person out.
 6. If the runtime calls it: a method on `Backend`
    (`ai_runtime/door/platform.py`) and its twin on
-   `SimSessionServices` (`sim/session_services.py`), or the runtime's
+   `SimSessionServices` (`ai_runtime/tests/sim/session_services.py`), or the runtime's
    tests no longer run what production runs.
 7. `python docs/reference/generate.py`, which rewrites
    [Actions](../reference/actions.md); the docs test fails until it is

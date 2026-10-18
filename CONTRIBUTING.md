@@ -42,14 +42,13 @@ it deliberately does not do. Comments explain *why*, never *what*.
 
 ## Tests
 
-Five suites, each owning its layer, each run from the repository root.
+Four suites, each owning its layer, each run from the repository root.
 They must all pass before a pull request is reviewed:
 
 ```bash
 python -m pytest ai_runtime/tests -q      # runtime — no database needed
 (cd backend && python -m pytest tests -q)  # backend — needs MongoDB on localhost
 python -m pytest tests -q                  # spanning — both, end to end
-python -m pytest examples/tests -q         # the Note example, in a real worker
 python -m pytest speech/tests -q           # the speech container, without its models
 ```
 
@@ -57,7 +56,7 @@ Run the Data Core and spanning suites one at a time: they share the test
 database (`decentai_test`, on the MongoDB `MONGO_URI` names, or the
 local one where it names none).
 
-Every pull request is run through all five, and through four things a
+Every pull request is run through all four, and through four things a
 laptop does not do (`.github/workflows/tests.yml`): the confinement
 tests, in the runtime's and the Execution Sandboxes on a Linux kernel; a build of every
 image, the web app's included; the speech container's real models,

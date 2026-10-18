@@ -89,7 +89,7 @@ The assistant:
 ## Write an agent
 
 For somebody writing an agent, start to finish. The example the pages
-describe is [`examples/note/`](../examples/note/).
+describe is [`note/`](https://github.com/decentai-io/decentai-agents/tree/main/note), in the `decentai-agents` repository.
 
 - [Writing an agent](agents/README.md) — where to start, and how to
   make the example yours.

@@ -8,7 +8,7 @@ connection is simply an assistant working unwatched, which is what a
 "background task" is.
 
 The services object is the platform (ai_runtime/door/platform.py), with the
-sim (sim/session_services.py) implementing the same contract in
+sim (ai_runtime/tests/sim/session_services.py) implementing the same contract in
 memory. Every call names the chat it acts for. What a session lives
 against is below; what the host alone calls (a chat's credential, a
 package fetched, the digests still pinned, an MCP server, an agent's

@@ -137,7 +137,7 @@ class TestPictures:
         the function's own file grant and hands the model the bytes —
         so an agent can have a passport scan read without ever holding
         the model's key, and a file that is not a picture is refused."""
-        from sim.resources import InMemoryResourceProvider
+        from ai_runtime.tests.sim.resources import InMemoryResourceProvider
 
         write_agent(tmp_path, "peeker", manifest=PEEKING_MANIFEST,
                     files={"agent.py": PEEKING_AGENT})

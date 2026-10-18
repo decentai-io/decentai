@@ -17,7 +17,7 @@ from ai_runtime.tests.test_session import (
 )
 from ai_runtime.tests.test_session_door import FakeSocket
 from ai_runtime.tests.test_session_door import build as build_host
-from sim.session_services import SimSessionServices
+from ai_runtime.tests.sim.session_services import SimSessionServices
 from ai_runtime.tests.fake_container import workers
 
 
@@ -484,7 +484,7 @@ class TestAChildsScreen:
         relay to the parent's socket, tagged with the child, and its
         browser is kept under the parent's conversation so the header's
         watch opens the one it drives."""
-        from sim.session_services import SimSessionServices
+        from ai_runtime.tests.sim.session_services import SimSessionServices
 
         parent, services = build([action(action="finish")])
         run(parent.relay_for("sub_x", {"event": "screen_frame", "call_id": "c1"}))

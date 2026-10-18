@@ -6,7 +6,7 @@ import pytest
 
 from conftest import app_call, signing_key  # noqa: F401
 from contracts.mcp import McpClient
-from sim.mcp_server import FakeMcpServer
+from ai_runtime.tests.sim.mcp_server import FakeMcpServer
 from test_ai_messages import make_chat
 from test_ownership import colleague
 from test_runtime_secret_use import runtime_call

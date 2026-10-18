@@ -7,7 +7,7 @@ that says more will fail review.
 
 This page goes through `manifest.yaml` in the order it is written. Each
 section gives what is allowed, the rule the platform checks, and what to
-think about while writing it. [`examples/note/manifest.yaml`](../../examples/note/manifest.yaml)
+think about while writing it. [`note/manifest.yaml`](https://github.com/decentai-io/decentai-agents/blob/main/note/manifest.yaml)
 is a whole one to read beside it.
 
 ```yaml

@@ -17,7 +17,7 @@ from ai_runtime.door.host import PROTOCOL_VERSION, REPLACED, SessionHost
 from ai_runtime.door.settings import RuntimeSettings
 from ai_runtime.tests.fixture_agents import load_agents
 from ai_runtime.tests.test_session import SYNC_SECRET, approval_open
-from sim.session_services import SimSessionServices
+from ai_runtime.tests.sim.session_services import SimSessionServices
 from ai_runtime.tests.fake_container import confinement, container, workers
 from ai_runtime.tests import fake_container
 

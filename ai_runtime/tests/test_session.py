@@ -17,7 +17,7 @@ from ai_runtime.llms.connector.fake import FakeConnector
 from ai_runtime.mind.state import RUNNING, AssistantState, Job
 from ai_runtime.tests.fixture_agents import load_agents
 from contracts.chat import event_error
-from sim.session_services import SimSessionServices
+from ai_runtime.tests.sim.session_services import SimSessionServices
 from ai_runtime.tests.fake_container import workers
 from ai_runtime.tests import fake_container
 
@@ -1603,7 +1603,7 @@ class TestTheClockPersists:
         return Clock(store, None, clock=lambda: 1000.0), fired
 
     def test_each_firing_is_written_before_the_next_fires(self):
-        from sim.schedules import MemoryScheduleStore
+        from ai_runtime.tests.sim.schedules import MemoryScheduleStore
 
         class CountingStore(MemoryScheduleStore):
             def __init__(self):
@@ -1626,7 +1626,7 @@ class TestTheClockPersists:
         assert all(r["next_run_at"] > 1000.0 for r in store.rows)
 
     def test_a_write_that_fails_is_made_again_on_the_next_tick(self):
-        from sim.schedules import MemoryScheduleStore
+        from ai_runtime.tests.sim.schedules import MemoryScheduleStore
 
         class FlakyStore(MemoryScheduleStore):
             def __init__(self):
@@ -1657,7 +1657,7 @@ class TestTheClockPersists:
     def test_a_row_deleted_while_it_fired_leaves_the_clock(self):
         """The person deleted it on the page as it ran: the store says
         it is gone, and the clock does not keep what nothing keeps."""
-        from sim.schedules import MemoryScheduleStore
+        from ai_runtime.tests.sim.schedules import MemoryScheduleStore
 
         store = MemoryScheduleStore()
         scheduler, fired = self.scheduler(store)
@@ -1671,7 +1671,7 @@ class TestTheClockPersists:
         chat's rows. The run is the new row's: it is not switched back
         on, and it does not fire again for the same moment."""
         from ai_runtime.chat.clock import Scheduler
-        from sim.schedules import MemoryScheduleStore
+        from ai_runtime.tests.sim.schedules import MemoryScheduleStore
 
         store = MemoryScheduleStore()
         store.rows = [self.row("a")]
@@ -1697,7 +1697,7 @@ class TestTheClockPersists:
     def test_a_chat_that_is_gone_takes_its_rows_off_the_clock(self):
         """A deleted chat, or a key no longer accepted: its rows would
         fire and fail every time they came round."""
-        from sim.schedules import MemoryScheduleStore
+        from ai_runtime.tests.sim.schedules import MemoryScheduleStore
 
         class Gone(RuntimeError):
             status = 404
@@ -1726,7 +1726,7 @@ class TestTheClockPersists:
         row, or the next tick, waiting; and it is not fired again while
         it is still under way."""
         from ai_runtime.chat.clock import Scheduler
-        from sim.schedules import MemoryScheduleStore
+        from ai_runtime.tests.sim.schedules import MemoryScheduleStore
 
         store = MemoryScheduleStore()
         store.rows = [self.row("slow"), self.row("quick")]
@@ -1764,7 +1764,7 @@ class TestTheClockPersists:
 
     def test_a_kill_ends_the_chats_fires_and_their_rows_move_on(self):
         from ai_runtime.chat.clock import Scheduler
-        from sim.schedules import MemoryScheduleStore
+        from ai_runtime.tests.sim.schedules import MemoryScheduleStore
 
         store = MemoryScheduleStore()
         store.rows = [self.row("mine"), {**self.row("theirs"), "chat_id": "chat_2"}]
@@ -1796,7 +1796,7 @@ class TestTheClockPersists:
 
     def test_a_schedule_the_store_refuses_is_not_on_the_clock(self):
         from ai_runtime.chat.clock import ChatClock
-        from sim.schedules import MemoryScheduleStore
+        from ai_runtime.tests.sim.schedules import MemoryScheduleStore
 
         class Full(MemoryScheduleStore):
             async def add_schedule(self, row):

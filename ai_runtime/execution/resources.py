@@ -22,7 +22,7 @@ their kin), all speaking the data layer's record shape: ``{resource_ref, resourc
 keys: {...}, values: {...}}``, values decrypted for the agent that owns
 the record. Production's one implementation is ChatResources
 (ai_runtime/door/platform.py), persisting through the backend's /app
-gateway as the chat; sim/resources.py holds the in-memory stand-in
+gateway as the chat; ai_runtime/tests/sim/resources.py holds the in-memory stand-in
 tests run on.
 """
 

@@ -17,9 +17,9 @@ from ai_runtime.execution.executor import FunctionExecutor
 from ai_runtime.execution.sinks import ChatSinks
 from ai_runtime.llms.connector.fake import FakeConnector
 from ai_runtime.tests.fixture_agents import load_agents
-from sim.schedules import MemoryScheduleStore
+from ai_runtime.tests.sim.schedules import MemoryScheduleStore
 from ai_runtime.tests.fires import Fires
-from sim.session_services import SimSessionServices
+from ai_runtime.tests.sim.session_services import SimSessionServices
 from ai_runtime.tests.fake_container import workers
 from ai_runtime.tests import fake_container
 

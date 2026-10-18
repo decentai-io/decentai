@@ -5,7 +5,7 @@ One object for the host, holding one credential per chat: the dial
 hands it over (a key, never authority), and every call names the chat
 it acts for — a chat, or a sub-assistant's thread under it — and
 carries that chat's credential. What a chat may do is still only what
-``contract`` answers. The sim (sim/session_services.py) is the same
+``contract`` answers. The sim (ai_runtime/tests/sim/session_services.py) is the same
 contract in memory; nothing that reasons can tell them apart.
 
     node = NodeCredential(file=…)
@@ -579,7 +579,7 @@ class ChatResources:
     """An agent's data, files and secrets, as one chat's delegation
     over the gateway. Every operation is made as the person — the
     backend enforces visibility, ownership and encryption; this only
-    puts the provider protocol (sim/resources.py is the in-process
+    puts the provider protocol (ai_runtime/tests/sim/resources.py is the in-process
     reference) onto the gateway's endpoints."""
 
     def __init__(self, backend: Backend, chat_id: str):

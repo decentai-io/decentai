@@ -131,9 +131,9 @@ section, whose lines move with every edit.
 
 | Id | Where | Question |
 |---|---|---|
-| EX-4 | `examples/note/tools/notes_tool.py`, `examples/note/tools/archive_tool.py`, `examples/note/tools/sync_tool.py` | Five places catch `Exception` and substitute their own sentence, hiding the platform's reason (run: any failure of `use_secret` is reported as "unbound", as a success). The docs teach the opposite. |
-| EX-5 | `examples/note/manifest.yaml` `notes.summarize`; `examples/note/tools/notes_tool.py` | Level 1 for a function that only reads; and it caps the reply without checking `cut`. |
-| EX-6 | `examples/note/tools/sync_tool.py` `push` | Returns a hash made from the notes and the secret's token, in a result the model and the person see. |
+| EX-4 | `decentai-agents`: `note/tools/notes_tool.py`, `note/tools/archive_tool.py`, `note/tools/sync_tool.py` | Five places catch `Exception` and substitute their own sentence, hiding the platform's reason (run: any failure of `use_secret` is reported as "unbound", as a success). The docs teach the opposite. |
+| EX-5 | `decentai-agents`: `note/manifest.yaml` `notes.summarize`; `note/tools/notes_tool.py` | Level 1 for a function that only reads; and it caps the reply without checking `cut`. |
+| EX-6 | `decentai-agents`: `note/tools/sync_tool.py` `push` | Returns a hash made from the notes and the secret's token, in a result the model and the person see. |
 
 ## Runtime 1: start-up and the door
 

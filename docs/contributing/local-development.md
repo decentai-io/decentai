@@ -73,7 +73,6 @@ Open `http://localhost:4200` and sign in.
 python -m pytest ai_runtime/tests -q        # runtime
 (cd backend && python -m pytest tests -q)   # backend
 python -m pytest tests -q                   # spanning
-python -m pytest examples/tests -q          # the Note example, in a real worker
 ```
 
 - The **runtime** suite needs no database. It runs agents in real
@@ -86,8 +85,6 @@ python -m pytest examples/tests -q          # the Note example, in a real worker
   `decentai_test`, wiped between tests.
 - The **spanning** suite loads the Data Core's harness and proves that an
   approval on one side becomes code serving on the other.
-- The **example's** suite runs Note the way an agent author would, with
-  the harness in `examples/tests/`.
 
 Run the Data Core and spanning suites one at a time: they share the test
 database, and two at once corrupt each other's baseline. On Windows,
@@ -95,9 +92,10 @@ pytest occasionally fails to render a traceback; `--tb=line` avoids it.
 
 ## Working on an agent
 
-The example agent and its harness are here: `examples/note/` and
-`examples/tests/`, where a session-scoped fixture installs every agent
-of the catalog into one environment and each test invokes functions
+The example agent and the harness live with the published agents, in
+[`decentai-agents`](https://github.com/decentai-io/decentai-agents): `note/` and `tests/`, where a
+session-scoped fixture installs every agent of the catalog into one
+environment and each test invokes functions
 through the real executor against the in-memory provider.
 [Running your agent on your own machine](../agents/developing.md) is
 the page for it. An agent in a repository of its own copies that
@@ -113,7 +111,7 @@ repository, are tested that way.
 
 ## The simulator
 
-`sim/` is the Data Core the runtime's tests do not have: in-memory
+`ai_runtime/tests/sim/` is the Data Core the runtime's tests do not have: in-memory
 services answering the same contract — state, messages, events,
 approvals, storage, schedules, the audit trail, the resource provider.
 The runtime's tests are written against it. It is not a mock in the

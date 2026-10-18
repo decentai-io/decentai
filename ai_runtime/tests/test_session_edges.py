@@ -13,7 +13,7 @@ from ai_runtime.chat.session import Session
 from ai_runtime.llms.connector.fake import FakeConnector
 from ai_runtime.mind.state import RUNNING, Job
 from ai_runtime.tests.fixture_agents import load_agents
-from sim.session_services import SimSessionServices
+from ai_runtime.tests.sim.session_services import SimSessionServices
 from ai_runtime.tests.fake_container import workers
 from ai_runtime.tests import fake_container
 

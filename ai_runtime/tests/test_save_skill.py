@@ -17,7 +17,7 @@ from ai_runtime.mind.actions import ACTION_TOOLS
 from ai_runtime.tests.test_assistant import Harness
 from ai_runtime.tests.test_session import action, build, run
 from contracts.chat import SKILL_BODY_MAX_CHARS
-from sim.session_services import SimSessionServices
+from ai_runtime.tests.sim.session_services import SimSessionServices
 
 SCRIPT = "\n".join(
     ["```javascript",

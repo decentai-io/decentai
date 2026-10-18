@@ -542,7 +542,7 @@ Tests: the schedule classes in `ai_runtime/tests/test_session.py`,
 - `door/platform.py` — `Backend`, every call the runtime makes to the
   platform, each naming the chat it acts for and carrying that chat's
   credential; `ChatResources`, an agent's data, files and secrets as
-  one chat; `Gateway` is the request itself. `sim/session_services.py`
+  one chat; `Gateway` is the request itself. `ai_runtime/tests/sim/session_services.py`
   is the same surface in memory: reading the two side by side is the
   quickest way to see what the runtime depends on.
 - `llms/` — the factory decides WHICH connector (`llms/factory.py`,

@@ -16,7 +16,7 @@ import pytest
 from ai_runtime.execution.resources import ResourceAccess, ResourceDenied
 from contracts.file_types import FileTypes
 from contracts.record_fields import RecordFields
-from sim.resources import InMemoryResourceProvider
+from ai_runtime.tests.sim.resources import InMemoryResourceProvider
 from ai_runtime.tests import fake_container
 
 TASK = {"id": "task", "fields": [

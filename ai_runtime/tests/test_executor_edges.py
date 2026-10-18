@@ -18,7 +18,7 @@ from ai_runtime.execution.sinks import ChatSinks
 from ai_runtime.execution.grants import FunctionGrants
 from ai_runtime.tests.fixture_agents import (
     MINIMAL_MANIFEST, load_agents, write_agent)
-from sim.resources import InMemoryResourceProvider
+from ai_runtime.tests.sim.resources import InMemoryResourceProvider
 from ai_runtime.tests.fake_container import workers
 from ai_runtime.tests import fake_container
 

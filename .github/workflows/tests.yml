@@ -30,13 +30,11 @@ jobs:
           cache: pip
           cache-dependency-path: |
             ai_runtime/requirements.txt
-            examples/tests/requirements.txt
-      - run: pip install -r ai_runtime/requirements.txt -r examples/tests/requirements.txt
+      - run: pip install -r ai_runtime/requirements.txt
       # The runtime's suite holds the checks on the documentation too
       # (ai_runtime/tests/test_docs.py): a page that names what the
       # code no longer has fails here.
       - run: python -m pytest ai_runtime/tests -q
-      - run: python -m pytest examples/tests -q
 
   backend:
     name: backend and spanning

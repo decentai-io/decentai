@@ -30,7 +30,10 @@ from decentai_sdk.base import AgentBase, FunctionCall, Screen, ToolBase
 from decentai_sdk.manifest import Manifest
 from decentai_sdk.net import Tunnel
 
-NOTE = Path(__file__).resolve().parents[2] / "examples" / "note" / "manifest.yaml"
+#: A manifest that uses every feature the platform enforces: Note's, as
+#: the example agent (decentai-agents, note/) declared it, kept here so
+#: the platform's tests need no other repository.
+NOTE = Path(__file__).resolve().parent / "fixtures" / "note_manifest.yaml"
 LONDON = ZoneInfo("Europe/London")
 
 
@@ -422,7 +425,7 @@ class TestWhatThePageSends:
 
     def test_the_actors_are_kept_once(self):
         from contracts.chat import ACTORS
-        from sim.session_services import SimSessionServices
+        from ai_runtime.tests.sim.session_services import SimSessionServices
         assert tuple(SimSessionServices.ACTORS) == ACTORS
 
     def test_only_those_who_speak_are_a_source(self):

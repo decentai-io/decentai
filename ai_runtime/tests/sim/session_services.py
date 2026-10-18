@@ -16,8 +16,8 @@ from typing import Any, Callable, Dict, List, Optional
 
 from contracts.chat import ACTORS, event_error, part_error, skill_asked
 
-from sim.resources import InMemoryResourceProvider
-from sim.schedules import MemoryScheduleStore
+from ai_runtime.tests.sim.resources import InMemoryResourceProvider
+from ai_runtime.tests.sim.schedules import MemoryScheduleStore
 
 
 class Refused(RuntimeError):

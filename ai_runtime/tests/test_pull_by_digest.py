@@ -22,8 +22,8 @@ from ai_runtime.tests.fixture_agents import (
 )
 from contracts.agent_manifest import load_manifest, manifest_hash
 from contracts.agent_package import AgentPackage
-from sim.resources import InMemoryResourceProvider
-from sim.session_services import SimSessionServices
+from ai_runtime.tests.sim.resources import InMemoryResourceProvider
+from ai_runtime.tests.sim.session_services import SimSessionServices
 from ai_runtime.tests.fake_container import workers, confinement
 from ai_runtime.tests import fake_container
 

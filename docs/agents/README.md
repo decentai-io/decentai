@@ -7,7 +7,8 @@ approval pins the agent to the exact commit reviewed. Reading a source
 never runs its code.
 
 Everything an agent can say and do is in these pages, and one working
-agent that uses all of it is in [`examples/note/`](../../examples/note/).
+agent that uses all of it is [`note/`](https://github.com/decentai-io/decentai-agents/tree/main/note) in the
+[`decentai-agents`](https://github.com/decentai-io/decentai-agents) repository.
 
 | | |
 |---|---|
@@ -17,7 +18,7 @@ agent that uses all of it is in [`examples/note/`](../../examples/note/).
 | [`developing.md`](developing.md) | Running your agent on your own machine, before you publish it |
 | [`publishing.md`](publishing.md) | The catalog, versions, approval, updates, sample data |
 | [`checklist.md`](checklist.md) | Run this before you ask anyone to approve it |
-| [`examples/note/README.md`](../../examples/note/README.md) | What each of Note's functions demonstrates |
+| [`note/README.md`](https://github.com/decentai-io/decentai-agents/blob/main/note/README.md) | What each of Note's functions demonstrates |
 
 How the platform treats an agent once it is installed is in the system
 notes: [agent code](../system/agent-code.md) for how a repository
@@ -27,9 +28,9 @@ person is asked.
 
 ## See it work first
 
-This repository is itself an agent source: its catalog,
-[`decentai-agents.yaml`](../../decentai-agents.yaml), offers Note. Add
-`https://github.com/decentai-io/decentai` as a source on **Agents →
+The project's agent repository is an agent source: its catalog,
+`decentai-agents.yaml`, offers Note among the others. Add
+`https://github.com/decentai-io/decentai-agents` as a source on **Agents →
 Marketplace**, approve **Note**, and load its sample data from the
 agent's page. Then ask for the three things its page suggests: save a
 note, find it again, export the notebook.
@@ -46,11 +47,11 @@ Your agent lives in a repository of your own:
 ```text
 your-repo/
   decentai-agents.yaml     the catalog: an id and a path per agent
-  your_agent/              a copy of examples/note/
-  tests/                   a copy of examples/tests/
+  your_agent/              a copy of decentai-agents' note/
+  tests/                   its tests/conftest.py, and a test like test_note.py
 ```
 
-1. **Copy `examples/note/`** to `your_agent/`. Pick a lowercase, stable
+1. **Copy `note/`** from `decentai-agents` to `your_agent/`. Pick a lowercase, stable
    id — it is permanent, because changing `agent.id` later makes a
    *different* agent that no installation will follow.
 2. **Make three things agree**: the directory name, `agent.id` in the

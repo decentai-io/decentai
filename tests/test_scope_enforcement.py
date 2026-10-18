@@ -167,7 +167,7 @@ class TestOneName:
     ref and nothing to translate, so nothing can translate wrongly."""
 
     def test_a_grant_speaks_the_agents_own_vocabulary(self):
-        from sim.resources import InMemoryResourceProvider
+        from ai_runtime.tests.sim.resources import InMemoryResourceProvider
 
         packages, errors = load_agents(AGENTS_DIR)
         assert errors == {}
@@ -189,7 +189,7 @@ class TestExecutorGate:
         assert errors == {}
         notebook = agents["notebook"]
 
-        from sim.resources import InMemoryResourceProvider
+        from ai_runtime.tests.sim.resources import InMemoryResourceProvider
 
         executor = FunctionExecutor(workers(), 
             provider=InMemoryResourceProvider(),
@@ -220,7 +220,7 @@ class TestExecutorGate:
         assert errors == {}
         notebook = agents["notebook"]
 
-        from sim.resources import InMemoryResourceProvider
+        from ai_runtime.tests.sim.resources import InMemoryResourceProvider
 
         executor = FunctionExecutor(workers(), 
             provider=InMemoryResourceProvider(),
