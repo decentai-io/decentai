@@ -561,10 +561,13 @@ class TestTheNodeLink:
         assert link.key.endswith("/stack")
 
     def test_a_node_restart_loses_no_chat(self, admin, full_stack):
+        # One line said each turn: a session rebuilt on the node that
+        # came back thinks with a scripted model started afresh, so the
+        # script must not depend on which turn it is.
         chat_id = open_scripted(
             admin, "Restart",
-            action(action="say", text="Before."), action(action="finish"),
-            action(action="say", text="After."), action(action="finish"))
+            action(action="say", text="Here."), action(action="finish"),
+            action(action="say", text="Here."), action(action="finish"))
         with ServedSocket(full_stack.backend_url, admin,
                           f"/chats/{chat_id}") as frontend:
             until_hello(frontend)
@@ -586,11 +589,23 @@ class TestTheNodeLink:
             frontend.send_json({"endpoint": "AI:Chat:Input",
                                 "data": {"text": "two", "parts": []}})
             reply = until_ai_message(frontend)[-1]
-        assert reply["message"]["parts"][0]["content"] == "After."
+        assert reply["message"]["parts"][0]["content"] == "Here."
         listed = app_call(admin, "AI:Message:List", {"chat_id": chat_id})
         assert [m["parts"][0]["content"]
                 for m in listed.json()["data"]["messages"]] == [
-            "one", "Before.", "two", "After."]
+            "one", "Here.", "two", "Here."]
+        # The mind that answered the second time was built from the
+        # record: it holds the first turn, and absorbed both messages.
+        from database.stores import ChatStore
+
+        deadline = time.monotonic() + 15
+        while True:
+            state = ChatStore().by_chat_id(chat_id).get("state") or {}
+            if state.get("cursor") == 2:
+                break
+            assert time.monotonic() < deadline, state.get("cursor")
+            time.sleep(0.2)
+        assert any("one" in str(m.get("content")) for m in state["messages"])
 
     def test_a_node_that_starts_before_the_data_core_answers_waits_for_it(
             self, admin, full_stack, tmp_path):
