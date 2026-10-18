@@ -2,9 +2,10 @@
 
 How an agent's code gets from a repository to a running worker: a
 source is read, an administrator approves one exact version, the
-Data Core keeps those bytes, and a runtime pulls them, and checks them
-against their digest, when a chat needs them. Reading a source never
-runs its code.
+Data Core keeps those bytes, an AI Runtime pulls them, and checks them
+against their digest, and passes them to each Execution Sandbox that
+is to run them, which checks them again and installs its own copy.
+Reading a source never runs its code.
 
 ## Sources
 
@@ -91,23 +92,53 @@ lookup and the worker call translate it to the package id
 (`ApprovedAgent`, `ai_runtime/agents/library.py`). The page maps a ref to the agent's
 display name.
 
-## The runtime's store
+## The runtime's cache
 
-The runtime keeps code **by content**: one folder per digest,
-`store/<hex>/`, and one environment per declared dependency list — two
-versions that declare the same list share it ([the sandbox](sandbox.md) says who builds it). The
-thousandth organization's approval of the same bytes adds nothing to
-the disk; two versions are two digests. The bytes are checked against
-the digest before anything is written, and the packaged manifest
-against the approved hash once it is unpacked, before any dependency is
-installed or any of its code runs; a mismatch removes what was
-unpacked. So tampered bytes fail closed for everyone rather than
-poisoning a copy several organizations share.
+The AI Runtime keeps the approved packages **by content**: one folder
+per digest, `store/<hex>/`, from which it reads the manifest, and the
+package's bytes as they were approved, `packages/<hex>`, which it sends
+on. The thousandth organization's approval of the same bytes adds
+nothing to the disk; two versions are two digests. The bytes are checked
+against the digest before anything is written, and the packaged
+manifest against the approved hash once it is unpacked, before the
+package is sent anywhere; a mismatch removes what was unpacked. So
+tampered bytes fail closed for everyone rather than poisoning a copy
+several organizations share. The runtime runs nothing from this
+folder, and never imports agent code.
 
-The store is on a volume. In the stack this repository starts, the
-runtime and the Execution Sandbox both hold it, at the same path: the
-runtime installs and reads, and the workers, which run in the agents'
-container, load from it ([the sandbox](sandbox.md)).
+## Each sandbox's own copy
+
+**Each Execution Sandbox installs agent code itself**, as a cache of
+its own named by what it is, and no folder is shared between sandboxes
+or between a sandbox and its runtime (`Installs`,
+`ai_runtime/agents_container/installs.py`):
+
+    <install_dir>/store/<hex>/      the code, named by its digest
+    <install_dir>/envs/<hex16>/     the environment of one dependency set
+    <install_dir>/verified/<hex>    started there, and it loaded
+
+Code reaches a sandbox only through its runtime. Asked to install a
+digest (wire.py, `install`), a sandbox that does not hold it asks for
+the bytes, and the runtime sends them from its cache. The sandbox then,
+in this order:
+
+1. checks the bytes against the digest, and the manifest inside them
+   against the hash that was approved — before anything is written;
+2. unpacks them into its store;
+3. builds the environment of their dependency set with its own builder
+   ([the sandbox](sandbox.md)) — two versions that declare the same
+   list share it, and an update that changed code only builds nothing;
+4. starts a worker of the package once, from that environment, as
+   installation's user, and greets it: the **verification start**,
+   whose answer is whether the package loads;
+5. keeps it, named by its digest and its dependency set.
+
+A failure at any step removes what that step made and leaves what the
+sandbox already held as it was. A package held is installed again for
+nothing: its environment is given the platform's SDK of today, and its
+worker starts. Packages installed for one run, from a code card a
+person allowed, are built in the sandbox the worker runs in, the same
+way.
 
 A worker process is kept per approval, not per digest, so what an
 agent holds in memory is never shared between organizations
@@ -125,8 +156,8 @@ pulled the same way, by digest and as the runtime; no chat ever pulls
 code as itself:
 
     ask for the archive by its digest → check it against the digest
-    → unpack into store/<hex>/ → build the environment → verify it
-    loads → serve
+    → unpack into store/<hex>/ → check the manifest → have a sandbox
+    install it and verify it loads → serve
 
 - **No new trust.** The door answers a runtime only, by a digest some
   standing approval names; the bytes are checked against that digest
@@ -145,11 +176,18 @@ code as itself:
   *preparing*, and the runtime stocks itself with it on its own clock
   ([the package door](#the-package-door)), so the first chat to name
   it finds it built.
-- **Warm after a restart.** The store outlives the container; an
-  environment built for another interpreter is rebuilt in the
-  background (`AgentLibrary.warm_up`, a task started at the
-  application's start) while the process serves, from code already
-  verified on disk.
+- **Verified where it runs.** The runtime's install has the sandbox
+  placement would choose install the package and verify it there, and
+  only then says it is ready. Every sandbox verifies a package before it
+  starts a worker of it, so a package that arrived while no sandbox
+  could take it serves all the same, and is verified when one can.
+- **Warm after a restart.** The caches outlive their containers. In
+  the background (`AgentLibrary.warm_up`, a task started at the
+  application's start), while the process serves, the runtime verifies
+  what no sandbox verified yet, and has every sandbox that may take a
+  worker hold every package it serves — and a sandbox that registers
+  later is given them too — so the first chat to name an agent finds it
+  built wherever it is placed.
 - **Ready is reported.** Once per process per version the runtime tells
   the platform the agent is ready, or failed and why
   (`Agents:Package:Prepared`), which turns *Preparing* into *Ready* on
@@ -197,7 +235,9 @@ update and uninstall: an archive no approval names is deleted, which is
 what removes the version an update left behind.
 
 The runtime's half is a sweep it runs itself (`host.agents.reclaim`),
-because its disk is shared by digest. When the list of approved
+because its disk is shared by digest; each sandbox gives up its own
+copy of what the runtime forgot when it is told which digests are still
+approved (wire.py, `keep`), keeping what a running worker stands on. When the list of approved
 packages changes (`Agents:Package:List`, every digest **any**
 organization still approves), and after a chat pulled a package, it
 keeps that set, and what this process
@@ -216,9 +256,10 @@ one to distrust, not to obey.
 ## More than one runtime process
 
 With code pulled by digest and verified on arrival, the code a runtime
-holds is a cache of something the Data Core owns. Two things on the same
-volume are not, and exist nowhere else: the record of what agents did
-([what is written down](monitoring.md)) and what each agent keeps in
-its own home. And a turn in flight lives in one process's memory. So several runtime
-processes need routing that keeps a chat on one process; the platform
-does not provide that routing, and runs one runtime process.
+and its sandboxes hold is a cache of something the Data Core owns. Two
+things are not, and exist only in the sandbox an agent ran in: the
+record of what it did there ([what is written down](monitoring.md)) and
+what it keeps in its own home. And a turn in flight lives in one
+process's memory. So several runtime processes need routing that keeps
+a chat on one process; the platform does not provide that routing yet,
+and runs one runtime process, with as many sandboxes as it is given.

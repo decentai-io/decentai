@@ -59,7 +59,7 @@ again puts its own indexes back the same way.
 
 ## What to back up
 
-Four volumes hold everything durable. (A server started with
+Four volumes hold everything durable; two more hold caches. (A server started with
 `docker-compose.server.yml` has two more, `caddy_data` and
 `caddy_config`: the certificates and the account they were issued to,
 which are issued again if lost.)
@@ -69,7 +69,8 @@ which are issued again if lost.)
 | `mongo_data` | the database: identities, chats, records, encrypted values |
 | `uploads_data` | file bytes |
 | `agent_packages` | the approved agent packages — the only copy the platform controls |
-| `agents_data` | the runtime's installed environments, rebuildable from the packages; and what was seen of agents, for the **Monitoring** page ([what is written down](../system/monitoring.md)) |
+| `runtime_agents` | the AI Runtime's cache of the approved packages, pulled again by digest when lost; and what the runtime saw of agents, for the **Monitoring** page ([what is written down](../system/monitoring.md)) |
+| `sandbox_data` | the Execution Sandbox's own copy of the code it runs and its environments, rebuilt from the packages when lost; and what it saw of agents. Each sandbox has one of its own (`sandbox_2_data` for the second of `docker-compose.sandboxes.yml`) |
 | `speech_models` | the platform's own speech models; downloaded again when missing, so not worth a backup |
 
 The encryption keys in `deploy.env` are part of the backup: a database

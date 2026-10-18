@@ -25,7 +25,12 @@ and updating. Where to look is at the end.
   signature does not verify: `BACKEND_SERVICE_PUBLIC_KEY` must be the
   pair of the Data Core's private key. A runtime that restarts says in
   its first lines which setting it is missing: `AI_RUNTIME_SERVICE_PRIVATE_KEY`
-  (its own identity), `BACKEND_INTERNAL_URL` or `AI_RUNTIME_AGENTS_SPAWNER`.
+  (its own identity), `BACKEND_INTERNAL_URL` or `AI_RUNTIME_SANDBOX_SECRET`.
+- **The runtime says no Execution Sandbox can confine a worker.**
+  `docker compose --env-file deploy.env logs agents` says what the
+  sandbox proved at its start, or what to mend; a sandbox whose
+  registration was refused says why (the node's secret differs, or the
+  two are of different releases: the sandbox link's version).
 - **Agents stay Preparing.** The runtime stocks itself every ten
   seconds and reports each package ready; one that cannot speak as
   itself cannot. `docker compose --env-file deploy.env logs ai-runtime`

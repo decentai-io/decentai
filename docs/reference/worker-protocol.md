@@ -21,12 +21,17 @@ The division of labour:
   browser kept open for a conversation — is a convenience, never the
   record: a worker is disposable at any moment.
 
-This document is the contract between the two. Version: **1** — a worker
+This document is the contract between the two. Version: **2** — a worker
 and host disagreeing on the version refuse each other at handshake.
+Version 2 carries large files in pieces on the wire itself, where
+version 1 left them in a folder both sides reached.
 
 ---
 
 ## Where a worker lives
+
+In the Execution Sandbox it runs in, in that sandbox's own folder
+([agent code](../system/agent-code.md)):
 
 ```
 <install_dir>/store/<hex>/      the code, named by its digest
@@ -42,21 +47,17 @@ folder is a 16-character prefix of the key, not the whole hex: pip's
 vendored tree under a 64-character folder overflows Windows' path limit
 in any deep install dir, and 2^64 is not a collision space.
 
-`library.install()` has one station for it: after the bytes are verified
+A sandbox's install has one station for it (`Installs.install`,
+`ai_runtime/agents_container/installs.py`): after the bytes are verified
 and the manifest proven approved, the dependency set's venv is created
-if it is not there and its own pip installs **exactly the declared
-list** — nothing negotiated, nothing to conflict with. Where workers
-are confined the list is downloaded and built by the builder, a user
-of its own, and the runtime unpacks the wheels it left
-(`docs/system/sandbox.md`): a package's build is code, and no more the
-runtime's than the agent is. Forgetting a
-digest leaves the venv to any other digest still standing on it; the
-last one out takes it along, and a sweep at startup removes venvs no
-digest uses. A digest on disk whose venv is missing — the layout
-changed, or the interpreter did — waits, and a warm-up task started
-at boot builds each such venv in turn so that no chat has to. One lock
-per venv folder keeps two installs of one dependency set from building
-it twice.
+if it is not there and **exactly the declared list** is installed into
+it — nothing negotiated, nothing to conflict with. The list is
+downloaded and built by the builder, a user of its own, and the
+spawner unpacks the wheels it left (`docs/system/sandbox.md`): a
+package's build is code, and no more the platform's than the agent is.
+Giving a digest up leaves the venv to any other digest still standing
+on it; the last one out takes it along. One lock per venv folder keeps
+two installs of one dependency set from building it twice.
 
 Every venv also receives the **SDK**: a small, dependency-free package
 (`decentai_sdk`) holding `AgentBase`, `ToolBase`, `FunctionCall` and the
@@ -85,7 +86,7 @@ what was set machine-wide: CA bundles, proxies, the Playwright
 browsers path) plus the `LC_*` family and the platform's knobs for
 agents — `DECENTAI_BROWSER_*`, `DECENTAI_CODE_*`, `DECENTAI_WEB_*`,
 and `DECENTAI_AGENT_*` for whatever a deployment wants its agents to
-read — with the spool directory and the proxy address set at spawn.
+read — with the proxy address set at spawn.
 The runtime's configuration — the model key, the Data Core's
 trust key, its own settings — is not in the list and never reaches
 agent code. The worker mounts the folder as package
@@ -94,8 +95,8 @@ needed) so relative imports inside the package work.
 
 ## Framing
 
-Where agents run in a container of their own
-([the sandbox](../system/sandbox.md)), the worker's pipes are held by
+Agents run in Execution Sandboxes of their own
+([the sandbox](../system/sandbox.md)): the worker's pipes are held by
 the spawner there, which carries each line to the runtime and back
 over one connection per worker. Nothing below changes: the same lines,
 in the same order, between the same two parties.
@@ -228,8 +229,8 @@ the `ResourceDenied` the SDK raises.
 | `resources.update_data` | `{call_id, resource_id, ref, fields}` | the record |
 | `resources.delete_data` | `{call_id, resource_id, ref}` | `{deleted: bool}` |
 | `resources.list_files` | `{call_id, resource_id}` | list of files |
-| `resources.read_file` | `{call_id, resource_id, ref}` | the file: `content_base64` always, `content` when the bytes are text — or `content_path` instead of both when the bytes are too large for the line (below) |
-| `resources.create_file` | `{call_id, resource_id, filename, content?, content_base64?, content_path?}` | `{resource_ref, …}` — text as `content`, bytes as `content_base64`, or a file in the spool as `content_path` |
+| `resources.read_file` | `{call_id, resource_id, ref}` | the file: `content_base64` always, `content` when the bytes are text — or `content_stream` instead of both when the bytes are too large for the line (below) |
+| `resources.create_file` | `{call_id, resource_id, filename, content?, content_base64?, content_stream?}` | `{resource_ref, …}` — text as `content`, bytes as `content_base64`, or bytes sent in pieces as `content_stream` |
 | `resources.delete_file` | `{call_id, resource_id, ref}` | `{deleted: bool}` |
 | `llm.complete` | `{call_id, messages, max_tokens?, images?}` | `{text, stop_reason}` — `stop_reason` is the provider's word for how the model stopped (`length`/`max_tokens` when a cap cut the reply; the SDK's `Completion.cut`); `images` names files this call may read (`[{resource_id, ref}]`), which the host reads under the call's grant, or carries a picture the function made (`[{mime, content_base64}]`, a screenshot), which must fit the 2 MiB line with the rest of the request; the model is shown the bytes either way |
 | `show` | `{call_id, kind: table\|chart, title, rows?, columns?, chart_type?, labels?, series?}` | `{display_id}` — `null` where nobody could see it |
@@ -262,20 +263,29 @@ the session sends to every call showing a screen. One message from the
 page carries at most 64 events. Input reaches only the call that showed
 the screen, and is dropped when that call has ended.
 
-**The spool.** A line is capped, and a scan or a signed form runs to
-many megabytes. So the host opens a folder per worker at spawn
-(`DECENTAI_SPOOL_DIR` in the worker's environment, removed when the
-host ends the worker or could not start it, a runtime that stops
-ending each of its workers so),
-and bytes whose base64 would exceed 256 KiB go through it instead of
-the line: a read answers with `content_path`, a file the host wrote
-there for the worker to read once and delete; a create sends
-`content_path`, a file the worker wrote there for the host to read
-once and delete. The SDK does both behind `read_file` / `create_file`,
-so agent code sees bytes either way. The host trusts nothing about what
-a worker left there: it reads only a plain file directly in the spool —
-never through a link, never a pipe, never past 256 MiB — and off its
-event loop.
+**Large files, in pieces.** A line is capped, and a scan or a signed
+form runs to many megabytes. Nothing is shared between the runtime and
+the sandbox a worker runs in to leave a file in, so bytes whose base64
+would exceed 256 KiB travel on the wire itself, in pieces, ahead of the
+message that names them. A piece is a notification, either way:
+
+```json
+{"method": "bytes", "params": {"stream": "9f2c…", "data": "<base64, at most 256 KiB>"}}
+```
+
+A read too large for the line is answered by the host's pieces and then
+the answer, with `content_stream` naming them in place of
+`content_base64` and `content`; a create too large sends the worker's
+pieces and then the request, with `content_stream`. Lines on one wire
+arrive in order, so the pieces are there when the message that names
+them is read. Each piece is base64 on its own, a multiple of four
+characters. The SDK does both behind `read_file` / `create_file`, so
+agent code sees bytes either way. The host trusts nothing about what a
+worker sends: a piece that is not base64, or past 256 MiB of what no
+request has named yet, spoils its stream; at most sixteen streams are
+open at once; and a create naming a stream that never arrived, or one
+spoiled, is refused. What a worker sent and nobody named goes with the
+worker.
 
 And one notification, worker → host, no reply:
 
@@ -314,7 +324,7 @@ The other clocks on this wire:
 | the handshake after a worker starts | 60 s | the worker is killed |
 | a function whose manifest names no `timeout_seconds` | 60 s | it is cancelled as above |
 | the probe at install, which starts the worker once to see it load | 120 s | the install fails with the reason |
-| reaching the spawner, where agents have a container of their own | 10 s for a connection; 120 s at start for the container to be there | the call fails; the runtime does not start |
+| reaching a sandbox's spawner | 10 s for a connection; 120 s at start for a sandbox that can confine a worker to register | the call fails, and the next sandbox is tried; the runtime does not start |
 | ending a confined worker, which ends everything its user runs | 60 s | the helper's own failure is logged |
 
 Lifecycle rules:
@@ -328,7 +338,7 @@ Lifecycle rules:
   Uninstalling an agent does not stop its running worker: nothing can
   call it any more, and it goes with the runtime. Spawning again is
   always safe.
-- **Ended for memory.** Where the agents share a container that is
+- **Ended for memory.** Where the agents share a sandbox that is
   given so much memory, the spawner ends the agent holding most before
   the engine would have to, and every call in flight on it fails with
   the reason, which the chat says ([the sandbox](../system/sandbox.md),
@@ -350,9 +360,9 @@ Lifecycle rules:
   (`already handshaken`), a `hello` whose manifest cannot be read, a
   request whose `params` is not an object, and a method it does not
   know. None of them ends the worker.
-- **A spool is read by its own path and nothing else**: a
-  `content_path` outside the worker's spool, one that is a link, and
-  one that is not a file are each refused.
+- **A file is taken from pieces the worker sent and nothing else**: a
+  `content_stream` that never arrived, or whose pieces were not base64
+  or were more than a file may be, is refused.
 - Every worker is started with `PYTHONDONTWRITEBYTECODE=1`: it writes
   nothing beside the code it was given.
 

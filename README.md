@@ -40,7 +40,9 @@ This repository is the **AI Engine**, made of three parts:
 - **AI Runtime** (`ai_runtime/`): runs the assistant, plans and executes,
   checks every call, and runs the proxy that is agents' only way out.
 - **Execution Sandbox** (`ai_runtime/agents_container/`, the `agents`
-  service): where agent code runs, one locked room per agent.
+  service): where agent code runs, one locked room per agent. One AI
+  Runtime serves many; each registers with it and keeps its own copy
+  of the code it runs.
 
 An AI Runtime with its Execution Sandboxes is an **execution node**. The
 web, desktop and mobile apps are **clients** of the engine; the web

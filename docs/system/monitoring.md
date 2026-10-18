@@ -57,12 +57,16 @@ sees: the processes there, and the programs it runs as an agent.
 
 ## Where it is kept
 
-    <install_dir>/events/runtime.jsonl      what the runtime wrote
-    <install_dir>/events/agents.jsonl       what the spawner wrote
+    <install_dir>/events/runtime.jsonl      what the AI Runtime wrote, in its folder
+    <install_dir>/events/sandbox.jsonl      what an Execution Sandbox wrote, in its own
     <install_dir>/events/runtime.1.jsonl    … and those put aside, full
 
-On the volume both containers hold. The folder and its files are the
-platform's user's alone, and an agent's fence does not open them.
+Each in the folder of whoever wrote it: nothing is shared between the
+runtime and a sandbox. The monitoring door reads the runtime's own and
+asks every sandbox for its, over the sandbox link, and each event a
+sandbox wrote says which sandbox it was (`sandbox`). The folder and its
+files are the platform's user's alone, and an agent's fence does not
+open them.
 
 Bounded by size and not by time: a file that reaches 8 MiB is put
 aside, and each writer keeps eight, so the log is at most 128 MiB and
@@ -87,7 +91,7 @@ answers is the Data Core's to decide.
 |---|---|
 | `GET /internal/monitor/events?limit=&kinds=&agent=&before=` | what happened, the latest first; `before` is the time of the last line of one page, for the next |
 | `GET /internal/monitor/usage` | what the agents are given and what each running agent uses now ([the sandbox](sandbox.md)), and what agents are held to here |
-| `GET /internal/monitor/files?agent=` | what one agent keeps in its home and its spool now: each file's path, size and when it changed, the first 500 listed and all of them counted |
+| `GET /internal/monitor/files?agent=` | what one agent keeps in its home now, in every sandbox it ran in: each file's path, size, when it changed and which sandbox keeps it, the first 500 of each listed and all of them counted |
 
 **The listing is made by the agent's own user**, in the agents'
 container, started through the spawn helper beside whatever worker is
@@ -129,7 +133,7 @@ person through actions of its own
   organization's. It is shown only where the deployment has one
   organization.
 - **A file's place on the machine is not shown.** A path is given
-  inside the agent's own folders: `home/…`, `spool/…`.
+  inside the agent's own folder: `home/…`.
 - **A page is filled from this organization's part of the log.** The
   Data Core reads further back than one answer of the runtime when what
   it read was another organization's.
