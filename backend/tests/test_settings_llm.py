@@ -885,6 +885,192 @@ class TestTheModelsOfAConnection:
         assert "settings:llm:models" in BASELINE_ACTIONS
 
 
+class TestDeclaredModels:
+    """A connection's ``models``: what the person said each model is
+    for. A server lists its models but not what each is for, and the
+    catalog cannot know a model newer than itself — the person can, and
+    what they declared is the last word on a model's kind."""
+
+    @staticmethod
+    def own_server(admin, monkeypatch, listed=("llama3.3", "nomic-embed-text"),
+                   **extra):
+        import httpx
+        TestAskingTheProvider.answering(monkeypatch, lambda request: httpx.Response(
+            200, json={"data": [{"id": name} for name in listed]}))
+        saved = make_connection(
+            admin, name="Ollama", provider="openai_compatible", model="llama3.3",
+            api_key="none", endpoint="http://host.docker.internal:11434/v1", **extra)
+        assert saved.status_code == 200, saved.text
+        return saved.json()["connection"]
+
+    @staticmethod
+    def offered(admin, ref, kind="chat"):
+        answer = app_call(admin, "Settings:Llm:Models", {
+            "connection_id": ref, "kind": kind})
+        assert answer.status_code == 200, answer.text
+        return answer.json()
+
+    def test_a_connection_declares_nothing_until_the_person_does(self, admin, seed):
+        assert make_connection(admin).json()["connection"]["models"] == []
+
+    def test_declared_models_are_kept_cleaned_and_come_back(self, admin, seed):
+        saved = make_connection(admin, provider="openai", model="gpt-5",
+                                endpoint="https://api.openai.com/v1", models=[
+                                    {"id": "  my-embedder ", "kind": "Embedding",
+                                     "note": "dropped"},
+                                    {"id": "gpt-next", "kind": "chat"}])
+        assert saved.status_code == 200, saved.text
+        assert saved.json()["connection"]["models"] == [
+            {"id": "my-embedder", "kind": "embedding"},
+            {"id": "gpt-next", "kind": "chat"}]
+        assert listed(admin)[0]["models"] == saved.json()["connection"]["models"]
+
+    def test_an_edit_that_names_no_models_keeps_them_and_one_that_does_replaces_them(
+            self, admin, seed):
+        ref = make_connection(admin, models=[
+            {"id": "claude-embed", "kind": "embedding"}]).json()["connection"]["resource_ref"]
+        kept = app_call(admin, "Settings:Llm:Update", {
+            "connection_id": ref, "name": "Renamed"})
+        assert kept.json()["connection"]["models"] == [
+            {"id": "claude-embed", "kind": "embedding"}]
+        replaced = app_call(admin, "Settings:Llm:Update", {
+            "connection_id": ref, "models": [{"id": "whisper-x", "kind": "transcription"}]})
+        assert replaced.status_code == 200, replaced.text
+        assert replaced.json()["connection"]["models"] == [
+            {"id": "whisper-x", "kind": "transcription"}]
+        cleared = app_call(admin, "Settings:Llm:Update", {
+            "connection_id": ref, "models": []})
+        assert cleared.json()["connection"]["models"] == []
+
+    def test_a_kind_that_is_not_one_is_refused_and_says_which_are(self, admin, seed):
+        refused = make_connection(admin, models=[{"id": "tts-1", "kind": "speech"}])
+        assert refused.status_code == 400
+        assert "'tts-1' is declared as 'speech'" in refused.json()["error"]
+        assert "chat, embedding or transcription" in refused.json()["error"]
+        assert listed(admin) == []
+
+    def test_what_is_not_a_declaration_is_refused_whole(self, admin, seed):
+        for models, said in (
+                ("llama3.3", "a list of {id, kind}"),
+                (["llama3.3"], "a list of {id, kind}"),
+                ([{"id": " ", "kind": "chat"}], "needs its id"),
+                ([{"id": "x" * 201, "kind": "chat"}], "at most 200 characters"),
+                ([{"id": "two\nlines", "kind": "chat"}], "on one line"),
+                ([{"id": "m", "kind": "chat"}, {"id": "m", "kind": "embedding"}],
+                 "'m' is declared twice"),
+                ([{"id": f"m{n}", "kind": "chat"} for n in range(201)],
+                 "at most 200 models")):
+            refused = make_connection(admin, models=models)
+            assert refused.status_code == 400, models
+            assert said in refused.json()["error"], refused.json()["error"]
+        ref = make_connection(admin).json()["connection"]["resource_ref"]
+        refused = app_call(admin, "Settings:Llm:Update", {
+            "connection_id": ref, "models": [{"id": "m", "kind": "music"}]})
+        assert refused.status_code == 400
+        assert listed(admin)[0]["models"] == []
+
+    def test_two_hundred_is_allowed(self, admin, seed):
+        saved = make_connection(admin, models=[
+            {"id": f"m{n}", "kind": "chat"} for n in range(200)])
+        assert saved.status_code == 200, saved.text
+        assert len(saved.json()["connection"]["models"]) == 200
+
+    def test_a_declaration_is_not_part_of_what_a_chat_is_resolved_with(self, admin, seed):
+        from database.stores import LlmConnectionStore, UserStore
+        ref = make_connection(admin, models=[
+            {"id": "e", "kind": "embedding"}]).json()["connection"]["resource_ref"]
+        resolved = LlmConnectionStore().use(UserStore.to_public(seed.admin), ref)
+        assert set(resolved) == {"keys", "values"}
+        assert set(resolved["keys"]) == {"provider", "model", "endpoint"}
+
+    def test_a_server_lists_its_models_and_the_person_says_what_each_is_for(
+            self, admin, seed, monkeypatch):
+        ref = self.own_server(admin, monkeypatch, models=[
+            {"id": "llama3.3", "kind": "chat"},
+            {"id": "nomic-embed-text", "kind": "embedding"}])["resource_ref"]
+        chat = self.offered(admin, ref)
+        assert [model["id"] for model in chat["models"]] == ["llama3.3"]
+        assert chat["live"] is True
+        # What the server said, every id, for the form that declares them.
+        assert chat["listed"] == ["llama3.3", "nomic-embed-text"]
+        embedding = self.offered(admin, ref, "embedding")["models"]
+        assert embedding == [{"id": "nomic-embed-text", "name": "nomic-embed-text",
+                              "kind": "embedding"}]
+
+    def test_an_undeclared_model_a_server_lists_is_offered_as_before(
+            self, admin, seed, monkeypatch):
+        ref = self.own_server(admin, monkeypatch)["resource_ref"]
+        for kind in ("chat", "embedding", "transcription"):
+            assert {model["id"] for model in self.offered(admin, ref, kind)["models"]} \
+                == {"llama3.3", "nomic-embed-text"}
+
+    def test_a_declared_model_the_server_does_not_list_is_offered_all_the_same(
+            self, admin, seed, monkeypatch):
+        ref = self.own_server(admin, monkeypatch, listed=(), models=[
+            {"id": "bge-m3", "kind": "embedding"}])["resource_ref"]
+        answer = self.offered(admin, ref, "embedding")
+        assert answer["live"] is False and answer["listed"] == []
+        assert answer["models"] == [{"id": "bge-m3", "name": "bge-m3", "kind": "embedding"}]
+        assert [model["id"] for model in self.offered(admin, ref)["models"]] == ["llama3.3"]
+
+    def test_a_declared_kind_overrides_the_catalogs(self, admin, seed):
+        ref = make_connection(
+            admin, provider="openai", model="gpt-5", endpoint="https://api.openai.com/v1",
+            models=[{"id": "whisper-1", "kind": "chat"},
+                    {"id": "text-embedding-3-small", "kind": "transcription"},
+                    {"id": "my-fine-tune", "kind": "embedding"}],
+        ).json()["connection"]["resource_ref"]
+        chat = [model["id"] for model in self.offered(admin, ref)["models"]]
+        assert "whisper-1" in chat and "my-fine-tune" not in chat
+        speech = [model["id"] for model in self.offered(admin, ref, "transcription")["models"]]
+        assert "whisper-1" not in speech and "text-embedding-3-small" in speech
+        embedding = self.offered(admin, ref, "embedding")["models"]
+        ids = [model["id"] for model in embedding]
+        assert ids[0] == "my-fine-tune"
+        assert "text-embedding-3-small" not in ids and "text-embedding-3-large" in ids
+        # A model the catalog knows keeps the catalog's name under the
+        # kind it was declared as.
+        moved = next(model for model in self.offered(admin, ref)["models"]
+                     if model["id"] == "whisper-1")
+        assert moved["kind"] == "chat" and moved["name"] != ""
+
+    def test_a_model_newer_than_the_catalog_is_declared_and_offered(self, admin, seed):
+        ref = make_connection(
+            admin, provider="openai", model="gpt-5", endpoint="https://api.openai.com/v1",
+            models=[{"id": "text-embedding-4", "kind": "embedding"}],
+        ).json()["connection"]["resource_ref"]
+        embedding = self.offered(admin, ref, "embedding")["models"]
+        assert embedding[0] == {"id": "text-embedding-4", "name": "text-embedding-4",
+                                "kind": "embedding"}
+        assert "text-embedding-4" not in [
+            model["id"] for model in self.offered(admin, ref)["models"]]
+
+    def test_a_deployment_declared_as_embedding_is_offered_for_embedding(self, admin, seed):
+        ref = make_connection(
+            admin, provider="azure", model="my-gpt", endpoint="https://sara.openai.azure.com",
+            models=[{"id": "my-embeddings", "kind": "embedding"}],
+        ).json()["connection"]["resource_ref"]
+        assert self.offered(admin, ref)["models"] == [
+            {"id": "my-gpt", "name": "my-gpt", "kind": "chat"}]
+        assert self.offered(admin, ref, "embedding")["models"] == [
+            {"id": "my-embeddings", "name": "my-embeddings", "kind": "embedding"}]
+
+    def test_the_starting_model_is_a_chats_unless_it_was_declared_otherwise(
+            self, admin, seed, monkeypatch):
+        ref = self.own_server(admin, monkeypatch, listed=(), models=[
+            {"id": "llama3.3", "kind": "chat"}])["resource_ref"]
+        assert [model["id"] for model in self.offered(admin, ref)["models"]] == ["llama3.3"]
+        # A connection kept for embedding starts with its embedding model.
+        embedder = make_connection(
+            admin, name="Embedder", provider="openai_compatible", model="nomic-embed-text",
+            api_key="none", endpoint="http://host.docker.internal:11434/v1",
+            models=[{"id": "nomic-embed-text", "kind": "embedding"}],
+        ).json()["connection"]["resource_ref"]
+        assert self.offered(admin, embedder)["models"] == []
+        assert [model["id"] for model in self.offered(admin, embedder, "embedding")[
+            "models"]] == ["nomic-embed-text"]
+
+
 class TestTheProbeRepeatsOnlyWhatWasSaidAsJson:
     def test_a_providers_reason_is_its_json_and_never_its_page(self):
         import httpx
