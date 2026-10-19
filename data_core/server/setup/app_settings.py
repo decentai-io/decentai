@@ -1,0 +1,297 @@
+import os
+from dataclasses import dataclass
+from typing import Optional, List, Dict, Any, Literal
+
+from contracts.setting_names import setting
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in ("1", "true", "yes", "y", "on")
+
+
+def _env_list(name: str, default: str = "", separator: str = ",") -> List[str]:
+    raw = os.getenv(name, default)
+    return [item.strip() for item in raw.split(separator) if item.strip()]
+
+
+
+def _env_samesite() -> str:
+    """JWT_COOKIE_SAMESITE constrained to what browsers accept; an
+    unknown value falls back to lax rather than breaking logins."""
+    value = (os.getenv("JWT_COOKIE_SAMESITE") or "lax").strip().lower()
+    if value not in ("lax", "strict", "none"):
+        import logging
+
+        logging.getLogger("Settings").warning(
+            f"JWT_COOKIE_SAMESITE='{value}' is not lax/strict/none — "
+            f"using lax."
+        )
+        return "lax"
+    return value
+
+
+def _env_int(name: str, default: int, low: int, high: int) -> int:
+    """A bounded whole number. An unreadable or out-of-range value falls
+    back to the default rather than failing the boot on a typo."""
+    raw = (os.getenv(name) or "").strip()
+    if not raw:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        return default
+    return max(low, min(high, value))
+
+
+def _env_port(name: str, default: int) -> int:
+    """A TCP port. An unreadable or out-of-range value falls back to the
+    default rather than failing the boot on a typo."""
+    raw = setting(name)
+    if not raw:
+        return default
+    try:
+        port = int(raw)
+    except ValueError:
+        return default
+    return port if 1 <= port <= 65535 else default
+
+
+def _env_pem(name: str) -> Optional[str]:
+    # PEM keys are stored as single-line env values with \n escapes
+    # (env_file-safe); turn them back into a real multiline PEM here.
+    raw = setting(name)
+    return raw.replace("\\n", "\n") or None
+
+
+def _load_settings() -> Dict[str, Any]:
+    # Everything is read from the process environment. The deployment is what
+    # sets it: docker compose (env_file), an ECS task definition, a K8s
+    # manifest — or config.env seeded into os.environ for local development.
+    return {
+        # Where the server binds. Loopback locally; the container image
+        # sets 0.0.0.0, because "localhost" inside a container is the
+        # container — the proxy reaching it is somewhere else.
+        # (BACKEND_HOST and BACKEND_PORT, their older names, still read:
+        # contracts/setting_names.py.)
+        "data_core_host": setting("DATA_CORE_HOST", "127.0.0.1"),
+        "data_core_port": _env_port("DATA_CORE_PORT", 8000),
+        # Proxy hops whose X-Forwarded-* headers may be believed. Session
+        # IPs and the login lockout are counted per client address, so
+        # trusting this from anyone would let a spoofed header dodge the
+        # lockout. Comma-separated addresses, or "*" inside a private
+        # network.
+        "forwarded_allow_ips": os.getenv("FORWARDED_ALLOW_IPS", "127.0.0.1"),
+
+        "cors_allow_origins": _env_list("CORS_ALLOW_ORIGINS", "http://localhost:4200"),
+
+        # session token signing + cookie
+        "token_secret_key": os.getenv("TOKEN_SECRET_KEY"),
+        "jwt_cookie_secure": _env_bool("JWT_COOKIE_SECURE", True),
+        "jwt_cookie_samesite": _env_samesite(),
+        # Empty means "no Domain attribute" — a host-only cookie. Passing an
+        # empty string through would emit `Domain=`, which some clients treat
+        # as malformed, so it is normalised to None here.
+        "jwt_cookie_domain": os.getenv("JWT_COOKIE_DOMAIN") or None,
+
+        # email — any SMTP server. Without SMTP_HOST and MAIL_FROM the
+        # mailer logs messages instead of sending them, and people are
+        # added with a password handed over instead of an invitation.
+        "smtp_host": os.getenv("SMTP_HOST", ""),
+        "smtp_port": _env_port("SMTP_PORT", 0),
+        "smtp_username": os.getenv("SMTP_USERNAME", ""),
+        "smtp_password": os.getenv("SMTP_PASSWORD", ""),
+        "smtp_security": os.getenv("SMTP_SECURITY", "starttls"),
+        "mail_from": os.getenv("MAIL_FROM", ""),
+
+        # web push — the deployment's VAPID pair (bootstrap/generate_vapid_keys.py).
+        # Without it the composer's notifications fall back to email alone.
+        "vapid_public_key": os.getenv("VAPID_PUBLIC_KEY", ""),
+        "vapid_private_key": os.getenv("VAPID_PRIVATE_KEY", ""),
+        "vapid_subject": os.getenv("VAPID_SUBJECT", ""),
+        # phones running the app are reached through Expo's push service,
+        # which needs no key; a token only raises its limits.
+        "expo_access_token": os.getenv("EXPO_ACCESS_TOKEN", ""),
+
+        # Where the browser reaches this app — the base for links we email
+        # out. In development the SPA is served by the dev server on another
+        # port, so this is NOT the API's own base_url.
+        "public_app_url": os.getenv("PUBLIC_APP_URL", "http://localhost:4200"),
+        # Where providers send the browser back after consent — the one
+        # redirect URI registered with every connected app. Empty means
+        # PUBLIC_APP_URL + /oauth/callback, which a proxied deployment
+        # serves; development, with the API on its own port, sets it.
+        "oauth_redirect_url": os.getenv("OAUTH_REDIRECT_URL", ""),
+
+        # Who may stand a new organization up from the sign-in page.
+        # "closed" (the default): nobody — organizations are made on the
+        # machine (bootstrap/organizations.py). "open": anybody, once
+        # they prove an address by email, so it is open only where mail
+        # is sent.
+        "org_signup": (
+            "open" if (os.getenv("ORG_SIGNUP") or "").strip().lower() == "open"
+            else "closed"
+        ),
+        # What the first-run page asks for before it sets a fresh
+        # deployment up. Empty: one is made and written to the log.
+        # "none": nothing is asked — for an address only this computer
+        # reaches (bootstrap/setup.py). Anything else is the code.
+        "setup_code": (os.getenv("SETUP_CODE") or "").strip(),
+
+        # The Data Core's own key (RS256): what it signs everything it
+        # tells an execution node with; nodes hold the public half
+        # (docs/system/execution-nodes.md). Its older names still read
+        # (contracts/setting_names.py).
+        "data_core_service_private_key": _env_pem(
+            "DATA_CORE_SERVICE_PRIVATE_KEY"),
+        # Whose administrators are the deployment's operator: they, and
+        # nobody of another organization, register shared authorities —
+        # the ones that admit nodes every organization's chats may run
+        # on. Empty: the first organization the deployment made.
+        "operator_org_id": os.getenv("OPERATOR_ORG_ID", "").strip(),
+
+        # where the platform's own speech models are reachable
+        "speech_url": os.getenv("SPEECH_URL", "http://speech:8004"),
+
+        # Where approved agent code is kept.
+        "agent_package_dir": os.getenv(
+            "AGENT_PACKAGE_DIR", "data/agent-packages"),
+
+        # No trust ceiling, and no turn/step budgets. Trust is the
+        # person's choice, bounded by what they may do at all: entitlement
+        # decides which functions exist for them, the autonomous-schedules
+        # grant decides who may let standing work act unattended, and the
+        # invocation gate decides what stops to ask. Turns are the user's
+        # patience and steps are the agent manifest's to declare, so
+        # neither is a property of this process.
+
+        # A repository the Marketplace offers as a source with one click.
+        # Configuration, never a default: unset, it offers none.
+        "reference_catalog_url": os.getenv("REFERENCE_CATALOG_URL", "").strip(),
+        # A folder on this machine whose git repositories may be agent
+        # sources: how somebody writing an agent tries it before they
+        # publish it. Unset — every server — and a source is fetched
+        # from a repository's address, never from the server's own disk.
+        "agent_source_folder": os.getenv("AGENT_SOURCE_FOLDER", "").strip(),
+
+        # database
+        "mongo_uri": os.getenv("MONGO_URI", "mongodb://localhost:27017"),
+        "mongo_database_name": os.getenv("MONGO_DATABASE_NAME", "decentai"),
+
+        # file storage — where uploaded bytes live. Writes go to the
+        # configured provider (database/file_connectors); reads follow
+        # each document's own storage_provider stamp.
+        "file_storage_provider": (
+            os.getenv("FILE_STORAGE_PROVIDER", "local").strip().lower()
+        ),
+        "upload_dir": os.getenv("UPLOADS_DIR", "./uploads"),
+        # The object stores (database/blob_stores.py). Each store's
+        # settings are its own, so one a deployment moved away from can
+        # still be read; FILE_STORAGE_PROVIDER says which one is written.
+        "storage_prefix": os.getenv("STORAGE_PREFIX", ""),
+        "storage_s3_bucket": os.getenv("STORAGE_S3_BUCKET", ""),
+        "storage_s3_region": os.getenv("STORAGE_S3_REGION", ""),
+        "storage_s3_endpoint": os.getenv("STORAGE_S3_ENDPOINT", ""),
+        "storage_s3_access_key_id": os.getenv("STORAGE_S3_ACCESS_KEY_ID", ""),
+        "storage_s3_secret_access_key": os.getenv(
+            "STORAGE_S3_SECRET_ACCESS_KEY", ""),
+        "storage_s3_kms_key_id": os.getenv("STORAGE_S3_KMS_KEY_ID", ""),
+        "storage_azure_container": os.getenv("STORAGE_AZURE_CONTAINER", ""),
+        "storage_azure_account_url": os.getenv("STORAGE_AZURE_ACCOUNT_URL", ""),
+        "storage_azure_connection_string": os.getenv(
+            "STORAGE_AZURE_CONNECTION_STRING", ""),
+        "storage_gcs_bucket": os.getenv("STORAGE_GCS_BUCKET", ""),
+        "storage_gcs_project": os.getenv("STORAGE_GCS_PROJECT", ""),
+        "storage_gcs_endpoint": os.getenv("STORAGE_GCS_ENDPOINT", ""),
+        # The largest single upload this deployment accepts. Bytes are
+        # held in memory while they are hashed and stored, so this is
+        # what stands between an authenticated caller and the process's
+        # memory. A cap that exists is worth more than the right cap.
+        "max_upload_mb": _env_int("MAX_UPLOAD_MB", 25, 1, 5000),
+
+    }
+
+
+@dataclass(frozen=True)
+class Settings:
+    # where the server binds, and which proxy it believes
+    data_core_host: str = "127.0.0.1"
+    data_core_port: int = 8000
+    forwarded_allow_ips: str = "127.0.0.1"
+
+    # app
+    cors_allow_origins: Optional[List[str]] = None
+    # session token signing (HS256, one process signs and verifies)
+    token_secret_key: Optional[str] = ""
+    jwt_cookie_secure: bool = True
+    jwt_cookie_samesite: Literal["lax", "strict", "none"] | None = "lax"
+    jwt_cookie_domain: Optional[str] = None
+
+    # the Data Core's own key, toward execution nodes (RS256 private
+    # key, PEM)
+    data_core_service_private_key: Optional[str] = None
+    # the organization whose administrators are the operator
+    operator_org_id: str = ""
+
+    # Where execution nodes are is not a setting: they connect here
+    # (docs/system/execution-nodes.md).
+    # where the platform's own speech models are reachable
+    speech_url: str = "http://speech:8004"
+    agent_package_dir: str = "data/agent-packages"
+
+    # database
+    mongo_uri: str = "mongodb://localhost:27017"
+    mongo_database_name: str = "decentai"
+
+    # file storage
+    file_storage_provider: str = "local"
+    upload_dir: str = "./uploads"
+    storage_prefix: str = ""
+    storage_s3_bucket: str = ""
+    storage_s3_region: str = ""
+    storage_s3_endpoint: str = ""
+    storage_s3_access_key_id: str = ""
+    storage_s3_secret_access_key: str = ""
+    storage_s3_kms_key_id: str = ""
+    storage_azure_container: str = ""
+    storage_azure_account_url: str = ""
+    storage_azure_connection_string: str = ""
+    storage_gcs_bucket: str = ""
+    storage_gcs_project: str = ""
+    storage_gcs_endpoint: str = ""
+    max_upload_mb: int = 25
+
+    # email — SMTP
+    smtp_host: Optional[str] = ""
+    smtp_port: int = 0
+    smtp_username: Optional[str] = ""
+    smtp_password: Optional[str] = ""
+    smtp_security: Optional[str] = "starttls"
+    mail_from: Optional[str] = ""
+
+    # web push — VAPID
+    vapid_public_key: Optional[str] = ""
+    vapid_private_key: Optional[str] = ""
+    vapid_subject: Optional[str] = ""
+    # push to the app, through Expo
+    expo_access_token: Optional[str] = ""
+
+    # public base for emailed links
+    public_app_url: Optional[str] = None
+    # where connected apps send consent back
+    oauth_redirect_url: Optional[str] = ""
+
+    # who may make an organization from the sign-in page, and what the
+    # first-run page asks for
+    org_signup: str = "closed"
+    setup_code: str = ""
+
+    # the Marketplace's one-click source, and where local sources may be
+    reference_catalog_url: str = ""
+    agent_source_folder: str = ""
+
+    @classmethod
+    def from_env(cls) -> "Settings":
+        return cls(**_load_settings())

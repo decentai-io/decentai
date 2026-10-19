@@ -1,5 +1,5 @@
 """An Execution Sandbox and the AI Runtime's client of it
-(agents/container.py, agents_container/service.py, installs.py).
+(agents/sandbox.py, sandbox/service.py, installs.py).
 
 The service is the real one, listening on this machine with the spawn
 helper stood in for (fake_spawn.py): what is tested is that a runtime
@@ -26,11 +26,11 @@ import yaml
 import pytest
 
 from ai_runtime.agents.confinement import Confinement
-from ai_runtime.agents.container import AgentsContainer
+from ai_runtime.agents.sandbox import ExecutionSandbox
 from ai_runtime.agents.workers import WorkerHandle
-from ai_runtime.agents_container import wire
-from ai_runtime.agents_container.places import Places
-from ai_runtime.agents_container.service import SpawnerService, proxy_port
+from sandbox import wire
+from sandbox.places import Places
+from sandbox.service import SandboxService, proxy_port
 from ai_runtime.tests.fake_container import MACHINE_VARIABLES, FakeHelper
 from ai_runtime.tests.fixture_agents import MINIMAL_MANIFEST, write_agent
 from ai_runtime.tests.test_agent_worker_handle import FIXTURE, manifest_document, venv  # noqa: F401
@@ -65,7 +65,7 @@ class Serving:
     container of its own, with the helper stood in for."""
 
     def __init__(self, install_dir, helper: FakeHelper, proxy="", check=True):
-        self.service = SpawnerService(install_dir, port=0, proxy=proxy,
+        self.service = SandboxService(install_dir, port=0, proxy=proxy,
                                       proxy_port=0, host="127.0.0.1",
                                       helper_line=helper.line, secret=SECRET,
                                       sandbox_id="here")
@@ -112,7 +112,7 @@ def serving(tmp_path, helper):
 @pytest.fixture
 def container(serving, tmp_path):
     """This process as a runtime whose agents run elsewhere."""
-    return AgentsContainer(f"127.0.0.1:{serving.service.port}", SECRET)
+    return ExecutionSandbox(f"127.0.0.1:{serving.service.port}", SECRET)
 
 
 class TestReachingIt:
@@ -123,13 +123,13 @@ class TestReachingIt:
         with socket.socket() as taken:
             taken.bind(("127.0.0.1", 0))
             port = taken.getsockname()[1]
-        answer = run(AgentsContainer(f"127.0.0.1:{port}", SECRET).check())
+        answer = run(ExecutionSandbox(f"127.0.0.1:{port}", SECRET).check())
         assert "did not answer" in answer["error"]
-        assert run(AgentsContainer(f"127.0.0.1:{port}", SECRET).usage()) is None
+        assert run(ExecutionSandbox(f"127.0.0.1:{port}", SECRET).usage()) is None
 
     def test_an_address_is_host_and_port(self, tmp_path):
         with pytest.raises(ValueError, match="host:port"):
-            AgentsContainer("agents", SECRET)
+            ExecutionSandbox("agents", SECRET)
 
 
 class TestTheSecret:
@@ -140,13 +140,13 @@ class TestTheSecret:
         assert not (tmp_path / "spawner.key").exists()
 
     def test_a_request_without_it_is_refused(self, serving, tmp_path):
-        stranger = AgentsContainer(f"127.0.0.1:{serving.service.port}", "wrong")
+        stranger = ExecutionSandbox(f"127.0.0.1:{serving.service.port}", "wrong")
         assert "secret" in run(stranger.check())["error"]
         answer = run(stranger.install("sha256:" + "0" * 64, "", None))
         assert "secret" in answer["error"]
 
     def test_a_worker_is_not_started_without_it(self, serving, tmp_path):
-        stranger = AgentsContainer(f"127.0.0.1:{serving.service.port}", "")
+        stranger = ExecutionSandbox(f"127.0.0.1:{serving.service.port}", "")
 
         async def scenario():
             with pytest.raises(OSError, match="secret"):
@@ -154,7 +154,7 @@ class TestTheSecret:
         run(scenario())
 
     def test_a_secret_taken_from_the_environment_is_not_left_there(self, monkeypatch):
-        from ai_runtime.agents_container.service import secret_from_environment
+        from sandbox.service import secret_from_environment
 
         monkeypatch.setenv(wire.SECRET_SETTING, " the secret ")
         assert secret_from_environment() == "the secret"
@@ -178,7 +178,7 @@ class TestWhatItProves:
 
 
 class TestAContainerThatStartedAgain:
-    """The agents' container restarts on its own while the runtime runs
+    """The Execution Sandbox restarts on its own while the runtime runs
     on: its spawner is a new process, on the same volume with the same
     key, and nobody has asked it to check. What the one before proved
     is not taken to hold: it runs nothing as an agent's user until it
@@ -418,7 +418,7 @@ def a_package(directory, name="notebook", manifest=None, dependencies=()):
 def checked(tmp_path, helper):
     """A sandbox that checked itself at its start, as every one does."""
     served = Serving(tmp_path / "sandbox", helper)
-    yield served, AgentsContainer(f"127.0.0.1:{served.service.port}", SECRET)
+    yield served, ExecutionSandbox(f"127.0.0.1:{served.service.port}", SECRET)
     served.stop()
 
 

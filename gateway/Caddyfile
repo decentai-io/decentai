@@ -53,7 +53,7 @@
 	# health check reaches the Data Core.
 	@data_core path /auth/* /app /chats/* /upload /download/* /oauth/* /hooks/* /status /healthz /readyz /nodes/*
 	handle @data_core {
-		reverse_proxy {$DATA_CORE_UPSTREAM:backend:8000}
+		reverse_proxy {$DATA_CORE_UPSTREAM:data-core:8000}
 	}
 
 	# ── The web client ────────────────────────────────────────────────

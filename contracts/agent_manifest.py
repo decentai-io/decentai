@@ -1,7 +1,7 @@
 """Manifest v1 validation (docs/agents/manifest.md). The typed access
 is the SDK's ``Manifest``, re-exported at the foot of this file.
 
-Shared by both sides of the boundary: the backend validates manifests at
+Shared by both sides of the boundary: the Data Core validates manifests at
 installation approval, the runtime validates them at load — with this one
 implementation, so they can never disagree. The validator returns a list
 of error strings — empty means valid — mirroring how the platform rejects
@@ -33,7 +33,7 @@ RESOURCE_KINDS = ("secrets", "data", "files")
 FIELD_TYPES = {"string", "number", "select", "object", "secret"}
 STORAGE_KINDS = {"keys", "values"}
 #: What the place credentials are kept holds a secret's shape to
-#: (backend/database/stores/data/definitions.py). Said here as well, so
+#: (data_core/database/stores/data/definitions.py). Said here as well, so
 #: that a manifest it would refuse is refused where a manifest is read
 #: and not at install, after somebody approved it:
 #: tests/test_agent_manifest.py holds the two to each other.
@@ -96,7 +96,7 @@ X_RESOURCE_KINDS = {"secret": "secrets", "data": "data", "file": "files"}
 def manifest_hash(document: Any) -> str:
     """A stable fingerprint of one manifest document.
 
-    Both sides compute this and compare the answers: the backend records
+    Both sides compute this and compare the answers: the Data Core records
     it when an administrator approves a manifest, and the runtime checks
     it against the manifest inside the package before it replaces a
     working agent. So it is here, with the validator, for the reason

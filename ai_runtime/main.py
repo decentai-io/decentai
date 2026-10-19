@@ -29,13 +29,13 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s %(message)s")
 
 from ai_runtime.agents.confinement import Confinement
-from ai_runtime.agents.container import AgentsContainer
+from ai_runtime.agents.sandbox import ExecutionSandbox
 from ai_runtime.agents.library import AgentLibrary
 from ai_runtime.agents.sandboxes import Sandboxes
-from ai_runtime.agents_container.events import Events
+from sandbox.events import Events
 from ai_runtime.door.app import create_app
 from ai_runtime.door.node import DataCoreKey, NodeCredential
-from ai_runtime.door.platform import Backend, Gateway
+from ai_runtime.door.platform import DataCoreClient, Gateway
 from ai_runtime.door.settings import RuntimeSettings
 
 
@@ -50,9 +50,9 @@ Events.configure(settings.agents_install_dir, "runtime")
 # secret. The runtime starts nothing of an agent's itself. One named by
 # its address (AI_RUNTIME_AGENTS_SPAWNER) is known besides them.
 container = Sandboxes(settings.sandbox_secret, port=settings.sandbox_port)
-if settings.agents_container:
-    container.add(AgentsContainer(settings.agents_container,
-                                  settings.sandbox_secret))
+if settings.sandbox_address:
+    container.add(ExecutionSandbox(settings.sandbox_address,
+                                   settings.sandbox_secret))
 
 # What holds a worker there, as this side sees it: the proxy as its
 # one way out, and the container's own proof at start.
@@ -68,13 +68,13 @@ library = AgentLibrary(settings.agents_install_dir, confinement)
 # signed with (door/node.py, docs/system/execution-nodes.md).
 node = NodeCredential(file=settings.node_credential_file,
                       issuer_url=settings.node_credential_url)
-data_core = DataCoreKey(settings.backend_service_public_key)
+data_core = DataCoreKey(settings.data_core_service_public_key)
 
 # The platform the sessions live against: the Data Core, over its /app
 # gateway (docs/system/chat-session.md) — and what this node asks as
 # itself: the approved packages, to stock itself with
 # (docs/system/agent-code.md).
-services = Backend(Gateway(settings.backend_url, node=node, key=data_core),
+services = DataCoreClient(Gateway(settings.data_core_url, node=node, key=data_core),
                    node)
 
 app = create_app(settings, services=services, library=library,

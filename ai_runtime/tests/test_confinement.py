@@ -1,7 +1,7 @@
 """What holds a worker, as the runtime sees it (agents/confinement.py):
 the proxy started and the container's proof asked for at start, what
 the proof says kept in three parts, and each worker's pass at the
-proxy. Where the holding happens is tested with the agents' container's
+proxy. Where the holding happens is tested with the Execution Sandbox's
 own code (test_places.py) and against the real thing
 (test_confinement_live.py).
 """
@@ -9,13 +9,13 @@ own code (test_places.py) and against the real thing
 import pytest
 
 from ai_runtime.agents.confinement import Confinement, ConfinementFailed, WorkerPlace
-from ai_runtime.agents_container import wire
+from sandbox import wire
 from ai_runtime.tests.fake_container import FakeContainer, run
 
 
 @pytest.fixture
 def fake(tmp_path):
-    """The agents' container, stood in for: it remembers what it was
+    """The Execution Sandbox, stood in for: it remembers what it was
     asked, refuses what a test tells it to, and says of the kernel what
     a test sets."""
     return FakeContainer(tmp_path / "agents")

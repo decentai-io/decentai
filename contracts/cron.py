@@ -9,7 +9,7 @@ runtime slept through: the next run is always searched forward from now,
 never counted from the last one.
 
 Shared by both sides of the boundary — the runtime counts a cadence
-by it and the backend computes a first run for a schedule a person
+by it and the Data Core computes a first run for a schedule a person
 writes on the page — so the two can never disagree about when Monday
 is. Written here rather than imported: the search is a walk over the calendar
 with the obvious skips, sixty lines, and every rule of it — including

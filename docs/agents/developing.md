@@ -141,7 +141,7 @@ which Compose reads by itself and git ignores:
 
 ```yaml
 services:
-  backend:
+  data-core:
     environment:
       AGENT_SOURCE_FOLDER: /develop
     volumes:
@@ -149,7 +149,7 @@ services:
 ```
 
 ```bash
-docker compose --env-file config/deploy.env up -d backend
+docker compose --env-file config/deploy.env up -d data-core
 ```
 
 DecentAI now reads that folder, and only that folder, as `/develop`.

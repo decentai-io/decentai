@@ -1,6 +1,6 @@
 """Delegation scope enforcement, both layers.
 
-Layer A (backend): runtime principals are fenced to the delegation
+Layer A (Data Core): runtime principals are fenced to the delegation
 surface — IAM/account/chat-management endpoints deny before policy even
 runs. Layer B (runtime): the delegation's function grants gate every
 executor invocation, denied by default, deny-overrides-allow.

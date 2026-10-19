@@ -37,7 +37,7 @@ what is not enforced where it runs. An Execution Sandbox that started
 again is not taken to hold what it proved before: until a check has
 passed in its own process it starts no worker, installs nothing and
 lists no files, and a runtime refused for that reason checks it again
-and reports what that check proves (`AgentsContainer.recheck`). There
+and reports what that check proves (`ExecutionSandbox.recheck`). There
 is no way to run the runtime outside the stack: its tests stand a
 double in for a sandbox instead.
 
@@ -58,14 +58,14 @@ its user, its folders, its fences, its spawn line, its ending.
     packages, which sandbox                     its workers, its builder,
     runs which agent                            its own copy of the code
 
-- **The spawner** (`ai_runtime/agents_container/service.py`) is the one
+- **The spawner** (`sandbox/service.py`) is the one
   process of the platform's in a sandbox. The runtime asks it, in
-  structured requests (`agents_container/wire.py`), to install a
+  structured requests (`sandbox/wire.py`), to install a
   package by its digest, to start an agent's worker from an
   environment in a package, to build packages for one run, to list
   what an agent keeps, to end an agent's processes, to say what the
   agents use and what it wrote down. It gives each agent a user
-  and a place of its own (`agents_container/places.py`), writes the
+  and a place of its own (`sandbox/places.py`), writes the
   spawn line and the fences, starts the process and carries a
   worker's lines to the runtime and back. What a worker is entitled
   to is never said to it: a worker's asks pass through it as lines,
@@ -114,7 +114,7 @@ registered that can confine a worker does not start. The tests have no
 container: a stand-in in the test suite answers the same orders by
 starting programs in the test's own process
 (`ai_runtime/tests/fake_container.py`), and runs the sandbox's own
-install code (`agents_container/installs.py`).
+install code (`sandbox/installs.py`).
 
 ## Many sandboxes
 
@@ -174,7 +174,7 @@ which sandbox it is in. What the runtime reports it holds an agent to
 is what the weakest eligible sandbox proved.
 
 **Two on one machine.** `compose/sandboxes.yml`, laid over
-`docker-compose.yml`, starts a second sandbox, `agents-2`, with a
+`docker-compose.yml`, starts a second sandbox, `sandbox-2`, with a
 folder of its own:
 
     docker compose --env-file config/deploy.env \
@@ -184,8 +184,8 @@ folder of its own:
 
 The platform's own user is an ordinary one and cannot start a child
 as somebody else. A small program does it, and does nothing else
-(`ai_runtime/agents_container/spawn_helper.c`, driven by
-`ai_runtime/agents_container/places.py`).
+(`sandbox/spawn_helper.c`, driven by
+`sandbox/places.py`).
 
     spawner ──spawns──▶ helper ──becomes──▶ worker   (the agent's user)
 
@@ -346,7 +346,7 @@ all, after it has become the agent's user and been fenced, and the
 kernel refuses the calls on it — for the worker and everything it
 starts, a browser included. It cannot be taken off, and needs no right
 the container was not given (`filter_calls`,
-`ai_runtime/agents_container/spawn_helper.c`).
+`sandbox/spawn_helper.c`).
 
 It is a list of what is **refused**, not of what is allowed: an agent
 may bring any package, and a list of what is allowed would be a list
@@ -468,7 +468,7 @@ call.
 ### What the agents are given together
 
 Each Execution Sandbox is given so much memory and so much processor by
-whoever starts it: `AGENTS_MEMORY` and `AGENTS_CPUS` in `config/deploy.env`.
+whoever starts it: `SANDBOX_MEMORY` and `SANDBOX_CPUS` in `config/deploy.env`.
 Unset is no limit. The
 engine holds the container to both, and neither is a manifest's to ask
 for.
@@ -481,8 +481,8 @@ for.
   agent holds, and when the Execution Sandbox holds nine tenths of what
   it is given — the kernel's own number, the spawner and what is shared
   among it — it ends the agent holding most, with everything its
-  user runs (`ai_runtime/agents_container/usage.py`,
-  `SpawnerService._end_largest_agent`).
+  user runs (`sandbox/usage.py`,
+  `SandboxService._end_largest_agent`).
 
 Every agent is a user of its own, so an agent's share is what its
 user's processes hold that is theirs alone. What they share with every
@@ -504,7 +504,7 @@ many processes, and what it keeps on disk (`usage`).
 is its user's alone to read, so nobody else can add it up. While a
 worker runs, the spawner runs, every half minute, a line that measures
 that agent's home as the agent's user (`Place.measure_line`,
-`ai_runtime/agents_container/places.py`). It measures and ends; the worker is left
+`sandbox/places.py`). It measures and ends; the worker is left
 as it is. The number is counted, and held to no limit.
 
 **What an agent left behind is collected.** A process whose parent
@@ -658,8 +658,8 @@ browser's own port, a server a worker started — and from the spawner.
 The rule is set when the container starts, as root, by the one step
 that holds the right to set it. What follows is started as the
 platform's own ordinary user, with that right removed from everything
-it will ever start. The Compose file grants the agents'
-container the right (`NET_ADMIN`); it applies inside the container's
+it will ever start. The Compose file grants the Execution
+Sandbox's container the right (`NET_ADMIN`); it applies inside the container's
 own network and gives nothing over the person's machine. The runtime's
 container is given no such right. A shell opened in a container is
 therefore root's.

@@ -53,7 +53,7 @@ def _word(value: Any) -> str:
 
 
 class Meter:
-    #: How many calls one AI:Usage:Record carries (the backend's bound).
+    #: How many calls one AI:Usage:Record carries (the Data Core's bound).
     BATCH = 50
     #: Sent without waiting for the cycle to rest once this many are held,
     #: or once the oldest has waited this long: a long turn's calls are

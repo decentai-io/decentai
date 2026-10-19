@@ -20,7 +20,7 @@ from typing import Any, Dict, Optional
 
 from fastapi import APIRouter
 
-from ai_runtime.agents_container.events import Events
+from sandbox.events import Events
 from contracts.container import ContainerUsage
 
 router = APIRouter()

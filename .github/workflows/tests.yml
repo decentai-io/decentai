@@ -1,6 +1,6 @@
 # Every suite CONTRIBUTING.md names, and the ones a laptop cannot run:
-# the confinement tests need the runtime's and the agents' containers
-# on a Linux kernel.
+# the confinement tests need the AI Runtime's and the Execution
+# Sandboxes' containers on a Linux kernel.
 # On every pull request, and on main when one lands.
 name: tests
 
@@ -36,8 +36,8 @@ jobs:
       # code no longer has fails here.
       - run: python -m pytest ai_runtime/tests -q
 
-  backend:
-    name: backend and spanning
+  data-core:
+    name: Data Core and spanning
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     services:
@@ -52,13 +52,13 @@ jobs:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: |
-            backend/requirements.txt
-            backend/requirements-dev.txt
+            data_core/requirements.txt
+            data_core/requirements-dev.txt
             ai_runtime/requirements.txt
-      - run: pip install -r backend/requirements.txt -r backend/requirements-dev.txt -r ai_runtime/requirements.txt
+      - run: pip install -r data_core/requirements.txt -r data_core/requirements-dev.txt -r ai_runtime/requirements.txt
       # One after the other, in one job: the two share the test database.
       - run: python -m pytest tests -q
-        working-directory: backend
+        working-directory: data_core
       - run: python -m pytest tests -q
 
   confinement:
@@ -72,16 +72,16 @@ jobs:
       - run: docker compose -f "$LIVE" up -d --build
       # What the kernel under this run can hold a worker to; the tests
       # of what it cannot are skipped, and say so.
-      - run: docker compose -f "$LIVE" exec -T agents sh -c 'uname -r; cat /sys/kernel/security/lsm 2>/dev/null || true'
+      - run: docker compose -f "$LIVE" exec -T sandbox sh -c 'uname -r; cat /sys/kernel/security/lsm 2>/dev/null || true'
       # Both files skip everywhere but this stack. A file of which
       # nothing passed was skipped whole, and that fails the job: a
       # green run must have run the hostile agent. The last test asks
-      # for the second sandbox to be stopped (/tmp/stop-agents-b in
+      # for the second sandbox to be stopped (/tmp/stop-sandbox-b in
       # the tests' container), and this stops it when asked.
       - name: the hostile agent, in the runtime and two sandboxes
         run: |
-          ( until docker compose -f "$LIVE" exec -T runtime test -f /tmp/stop-agents-b; do sleep 1; done
-            docker compose -f "$LIVE" stop agents-b ) &
+          ( until docker compose -f "$LIVE" exec -T runtime test -f /tmp/stop-sandbox-b; do sleep 1; done
+            docker compose -f "$LIVE" stop sandbox-b ) &
           docker compose -f "$LIVE" exec -T -u decentai -w /src -e LIVE_STOPPER=1 runtime sh -c '
             pip install -q --target /tmp/pytest pytest &&
             PYTHONPATH=/tmp/pytest python -m pytest -p no:cacheprovider \
@@ -136,12 +136,12 @@ jobs:
           sudo chmod -R a+rX speech-models || true
 
   images:
-    name: the backend's image, and the gateway's configuration
+    name: the Data Core's image, and the gateway's configuration
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - run: docker build -f backend/Dockerfile .
+      - run: docker build -f data_core/Dockerfile .
       # The engine's one door: a Caddyfile that does not parse fails
       # here, not on a server. (The web client is built and tested in
       # its own repository, decentai-web-client.)

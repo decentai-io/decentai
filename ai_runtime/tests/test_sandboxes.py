@@ -1,5 +1,5 @@
 """Many Execution Sandboxes for one AI Runtime (agents/sandboxes.py,
-agents_container/wire.py, docs/system/sandbox.md).
+sandbox/wire.py, docs/system/sandbox.md).
 
 What is tested: a sandbox registers with its runtime proving the
 node's secret, and says how it is; a sandbox or a runtime without the
@@ -24,12 +24,12 @@ import pytest
 
 import ai_runtime.agents.pool as pool_module
 from ai_runtime.agents.confinement import Confinement
-from ai_runtime.agents.container import AgentsContainer
+from ai_runtime.agents.sandbox import ExecutionSandbox
 from ai_runtime.agents.pool import WorkerPool
 from ai_runtime.agents.sandboxes import NoSandbox, Sandboxes
 from ai_runtime.agents.workers import WorkerError
-from ai_runtime.agents_container import wire
-from ai_runtime.agents_container.service import SpawnerService
+from sandbox import wire
+from sandbox.service import SandboxService
 from ai_runtime.execution.call import Call
 from ai_runtime.tests import fake_container
 from ai_runtime.tests.fake_container import FakeContainer, FakeHelper
@@ -47,7 +47,7 @@ class Serving:
     a container of its own, with the helper stood in for."""
 
     def __init__(self, install_dir, helper: FakeHelper, **options):
-        self.service = SpawnerService(install_dir, port=0, proxy_port=0,
+        self.service = SandboxService(install_dir, port=0, proxy_port=0,
                                       host="127.0.0.1", helper_line=helper.line,
                                       **options)
         self.service.HEARTBEAT_SECONDS = 0.2
@@ -162,7 +162,7 @@ class TestRegistration:
     def test_a_runtime_without_the_secret_commands_nothing(self, tmp_path, helper):
         served = Serving(tmp_path / "a", helper, secret=SECRET, sandbox_id="a")
         try:
-            stranger = AgentsContainer(f"127.0.0.1:{served.service.port}", "wrong")
+            stranger = ExecutionSandbox(f"127.0.0.1:{served.service.port}", "wrong")
             said = run(stranger.check())
             assert "does not prove the node's secret" in said["error"]
 
@@ -257,8 +257,8 @@ class TestRegistration:
 
 def a_sandbox(name, memory=(1000 * MB, 0), cpus=(2.0, 0.0), labels=(),
               locks=None, installed=(), running=()):
-    found = AgentsContainer(f"{name}.example:8003", SECRET, sandbox_id=name,
-                            labels=labels)
+    found = ExecutionSandbox(f"{name}.example:8003", SECRET, sandbox_id=name,
+                             labels=labels)
     found.locks = dict(locks if locks is not None else {"fences": {"files": True}})
     found.capacity = {"memory": {"limit": memory[0], "used": memory[1]},
                       "cpus": {"limit": cpus[0], "used": cpus[1]}, "workers": 0}
@@ -444,7 +444,7 @@ class TestThePoolOverTwo:
 # What a person is shown, from every sandbox
 # ----------------------------------------------------------------------
 
-class Said(AgentsContainer):
+class Said(ExecutionSandbox):
     """A sandbox that answers with what a test said."""
 
     def __init__(self, name, usage=None, files=None, events=()):

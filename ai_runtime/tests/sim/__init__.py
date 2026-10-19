@@ -3,9 +3,9 @@
 The runtime speaks one services contract (ai_runtime/chat/session.py,
 docs/reference/session-door.md): state, messages, the inbox, approvals, storage,
 skills, memories, schedules, the chat's contract, and a resource
-provider. The backend implements it over its gateway; this package
+provider. The Data Core implements it over its gateway; this package
 implements it in memory. The runtime itself always runs against the
-backend (ai_runtime/main.py); this is what its whole test suite uses,
+Data Core (ai_runtime/main.py); this is what its whole test suite uses,
 and what an agent's own tests run against (examples/tests/), so the
 runtime is exercised end to end without a database:
 
@@ -14,9 +14,9 @@ runtime is exercised end to end without a database:
     schedules.py          MemoryScheduleStore — the clock's rows, in memory
     mcp_server.py         FakeMcpServer — a stand-in MCP server, for tests
 
-Everything here honours the same rules the backend does — a schedule
+Everything here honours the same rules the Data Core does — a schedule
 row's shape, an approval that lands once, events durable before they
 are absorbed — because the tests that run against it are the tests that
 pin the runtime's behaviour, and a simulation that were kinder than the
-backend would pin the wrong thing.
+Data Core would pin the wrong thing.
 """

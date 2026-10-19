@@ -17,9 +17,10 @@ design language.
 Use the engine's names in new code, documentation, comments and log
 lines: **Data Core**, **AI Runtime**, **Execution Sandbox**, **execution
 node**, **clients** ([the parts](README.md#the-parts),
-[names](docs/system/architecture.md#names)). Existing services, folders
-and settings keep their older names until they are renamed together, in
-one change.
+[names](docs/system/architecture.md#names)). The services, folders and
+settings carry those names too; an older name survives only where an
+existing install still uses it (`contracts/setting_names.py`,
+`bootstrap/setup.py`).
 
 Two rules that are load-bearing across the codebase:
 
@@ -46,7 +47,7 @@ They must all pass before a pull request is reviewed:
 
 ```bash
 python -m pytest ai_runtime/tests -q      # runtime — no database needed
-(cd backend && python -m pytest tests -q)  # backend — needs MongoDB on localhost
+(cd data_core && python -m pytest tests -q)  # Data Core — needs MongoDB on localhost
 python -m pytest tests -q                  # spanning — both, end to end
 python -m pytest speech/tests -q           # the speech container, without its models
 ```

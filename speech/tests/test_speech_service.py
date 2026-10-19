@@ -1,5 +1,5 @@
 """The speech container without its models: what is fetched and what is
-refused, where a model stands, and the door the backend asks through.
+refused, where a model stands, and the door the Data Core asks through.
 
 The engines themselves are not run here — they are half a gigabyte and
 a download away. A stand-in answers for them; the real ones are tried

@@ -44,7 +44,7 @@ INBOUND_EVENTS = {"user_message", "approval_decided", "question_answered",
                   "stop", "schedules_changed", "credential", "screen_input",
                   "screen_open",
                   # An outside system's event for a webhook's chat: the
-                  # backend's own frame, which no browser can send
+                  # Data Core's own frame, which no browser can send
                   # (docs/system/webhooks.md).
                   "webhook_event"}
 

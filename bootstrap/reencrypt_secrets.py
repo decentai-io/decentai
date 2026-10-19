@@ -11,7 +11,7 @@ SECRET_ENCRYPTION_KEYS decrypt; the active key writes).
     python bootstrap/reencrypt_secrets.py            # migrate
     python bootstrap/reencrypt_secrets.py --check    # count only
 
-Run with the backend stopped or idle; each document is rewritten
+Run with the Data Core stopped or idle; each document is rewritten
 atomically and a failure on one document never blocks the rest.
 """
 
@@ -22,13 +22,13 @@ import sys
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-BACKEND_ROOT = PROJECT_ROOT / "backend"
+DATA_CORE_ROOT = PROJECT_ROOT / "data_core"
 sys.path.insert(0, str(PROJECT_ROOT))
-sys.path.insert(0, str(BACKEND_ROOT))
+sys.path.insert(0, str(DATA_CORE_ROOT))
 
 from dotenv import load_dotenv  # noqa: E402
 
-load_dotenv(BACKEND_ROOT / "config.env", override=False)
+load_dotenv(DATA_CORE_ROOT / "config.env", override=False)
 
 def encrypted_fields() -> list:
     """Every (collection, field) holding an encrypted blob, as
@@ -138,7 +138,7 @@ def main() -> int:
                 f"\nNONE of the {failures} document(s) could be decrypted. "
                 f"That usually means this process is not reading the same "
                 f"SECRET_ENCRYPTION_KEYS the deployment writes with — run "
-                f"it in the same environment as the backend before "
+                f"it in the same environment as the Data Core before "
                 f"concluding anything about the data.",
                 file=sys.stderr,
             )

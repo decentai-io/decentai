@@ -37,10 +37,10 @@ Installing an agent writes the approval row (`agent_manifests`) with
 the `manifest_hash` and the package's own id, and only then — the
 manifest approved — packages its one folder at the source's commit,
 stores the archive under `(organization, sha256-digest)`
-(`backend/database/agent_packages.py`), on the volume or in the
+(`data_core/database/agent_packages.py`), on the volume or in the
 bucket `FILE_STORAGE_PROVIDER` names, and pins the `package_digest`
 on the row. A fetch that fails puts the approval back as it was
-(`backend/api/endpoints/app/agents/install_controller.py`). The
+(`data_core/api/endpoints/app/agents/install_controller.py`). The
 approval mints a platform ref, `agt_` and
 twenty random characters, that no other organization can name.
 
@@ -111,7 +111,7 @@ folder, and never imports agent code.
 **Each Execution Sandbox installs agent code itself**, as a cache of
 its own named by what it is, and no folder is shared between sandboxes
 or between a sandbox and its runtime (`Installs`,
-`ai_runtime/agents_container/installs.py`):
+`sandbox/installs.py`):
 
     <install_dir>/store/<hex>/      the code, named by its digest
     <install_dir>/envs/<hex16>/     the environment of one dependency set
@@ -206,8 +206,8 @@ execution node's credential, which an authority the Data Core
 registered signed ([execution nodes](execution-nodes.md)). The Data
 Core reads it as a node principal: no person, no organization, no chat,
 and no policy; what it may dispatch is the package door and nothing
-else (`NODE_ENDPOINTS` in `backend/server/authentication/catalog.py`,
-enforced by `backend/server/authentication/access.py`). A node one
+else (`NODE_ENDPOINTS` in `data_core/server/authentication/catalog.py`,
+enforced by `data_core/server/authentication/access.py`). A node one
 organization owns is told of that organization's approvals and no
 other's, and its word that a package is ready is recorded on that
 organization's approvals alone.

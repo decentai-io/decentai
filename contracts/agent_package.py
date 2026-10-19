@@ -1,7 +1,7 @@
 """Turning a folder of agent code into one named, verifiable thing.
 
 A package is a gzipped tar of exactly one agent's folder, and its NAME is
-the sha256 of those bytes. That name is what the backend stores it under,
+the sha256 of those bytes. That name is what the Data Core stores it under,
 what the runtime is told to expect, and what the runtime checks before
 importing anything — so "the code we approved" stops being a claim about
 a repository that may have moved and becomes a fact about bytes.
@@ -14,7 +14,7 @@ container. So every one of those is normalised here. Get it wrong and the
 digest changes for code that did not, which breaks verification and makes
 storage grow without bound.
 
-Shared on purpose. The backend builds packages and the runtime verifies
+Shared on purpose. The Data Core builds packages and the runtime verifies
 and unpacks them, and a digest only means anything if both sides compute
 it the same way — a second implementation that drifted by one detail
 would reject every package for no reason a person could see.

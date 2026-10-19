@@ -52,7 +52,7 @@ from functools import partial
 from typing import Any, Dict, Optional, Tuple
 
 from ai_runtime.agents.confinement import Confinement
-from ai_runtime.agents.container import SandboxRefused
+from ai_runtime.agents.sandbox import SandboxRefused
 from ai_runtime.agents.library import InstalledAgent
 from ai_runtime.agents.sandboxes import NoSandbox
 from ai_runtime.agents.workers import WorkerError, WorkerHandle

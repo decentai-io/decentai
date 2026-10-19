@@ -44,8 +44,8 @@ import yaml
 
 from ai_runtime.agents.confinement import Confinement
 from ai_runtime.agents.sandboxes import Sandboxes
-from ai_runtime.agents_container import wire
-from ai_runtime.agents_container.places import Places
+from sandbox import wire
+from sandbox.places import Places
 from ai_runtime.agents.egress import EgressProxy
 from ai_runtime.agents.environments import AgentEnvironment
 from ai_runtime.agents.library import InstalledAgent
@@ -706,7 +706,7 @@ class TestAConfinedWorker:
                    str(Places.FIRST_USER + 5))["happened"] is False
 
     def test_it_is_held_to_the_limits_the_platform_set(self, ground, place):
-        """What one agent may use is the agents' container's to set
+        """What one agent may use is the Execution Sandbox's to set
         (places.py), never a manifest's: the helper sets it on the
         worker's user, and the worker finds it on itself."""
         found = ask(ground, place, "limits")
@@ -804,7 +804,7 @@ class TestAFencedWorker:
         """A socket with a name and no file belongs to nobody: without
         the fence any user connects to it, another agent's worker
         among them. The door is opened where the worker is — the
-        agents' container — by another agent's worker, kept running
+        Execution Sandbox — by another agent's worker, kept running
         while this one tries."""
         environment, package, document = ground
         name = f"decentai-live-{uuid.uuid4().hex[:12]}"
@@ -1276,8 +1276,8 @@ class TestABuild:
 
     def test_a_package_from_somewhere_else_is_not_fetched(
             self, ground, confinement, index):
-        from ai_runtime.agents.container import SandboxRefused
-        from ai_runtime.agents_container.installs import Installs
+        from ai_runtime.agents.sandbox import SandboxRefused
+        from sandbox.installs import Installs
 
         agent = intruder(dependencies=[
             f"plain @ http://elsewhere.test:{index}/files/plain-1.0-py3-none-any.whl"])
@@ -1291,7 +1291,7 @@ class TestABuild:
     def test_a_build_that_does_not_end_is_ended(
             self, ground, confinement, index):
         """The stack gives a build 45 seconds (AI_SANDBOX_BUILD_SECONDS)."""
-        from ai_runtime.agents.container import SandboxRefused
+        from ai_runtime.agents.sandbox import SandboxRefused
 
         with pytest.raises(SandboxRefused, match="did not finish in 45 seconds"):
             run(confinement.sandboxes.get(FIRST).prepare(
@@ -1489,7 +1489,7 @@ class TestVerification:
             self, confinement, first):
         """The sandbox's own verification start: a package whose code
         does not load is refused, and nothing of it is kept."""
-        from ai_runtime.agents.container import SandboxRefused
+        from ai_runtime.agents.sandbox import SandboxRefused
 
         folder = Path(tempfile.mkdtemp(prefix="live-")) / "broken"
         write_agent(folder.parent, "broken", manifest=MINIMAL_MANIFEST.format(

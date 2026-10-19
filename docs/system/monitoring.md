@@ -9,7 +9,7 @@ processes, for somebody looking.
 
 ## What is written
 
-`ai_runtime/agents_container/events.py`. One line of JSON for each thing that
+`sandbox/events.py`. One line of JSON for each thing that
 happened, with when (`at`: a time in seconds, to the microsecond, and
 never the same for two events one process wrote), what (`kind`), and —
 where it is an agent's — whose: the approval's ref (`agent`), the name a person knows
@@ -85,7 +85,7 @@ is one line less.
 By the Data Core, over each execution node's own link: the Data Core
 reaches no node, so it asks every node connected now a `monitor`
 question and puts the answers together
-(`backend/api/services/agents/monitoring.py`; the node answers in
+(`data_core/api/services/agents/monitoring.py`; the node answers in
 `ai_runtime/door/monitor.py`; [execution nodes](execution-nodes.md#the-node-link)).
 Every event names its agent, which is one organization's or is not;
 who among the platform's people is shown the answers is the Data
@@ -97,8 +97,8 @@ Core's to decide.
 | `usage` | what the agents are given and what each running agent uses now ([the sandbox](sandbox.md)), and what agents are held to there — each node's, its sandboxes together, and the agents of all of them together |
 | `files {agent}` | what one agent keeps in its home now, in every sandbox it ran in: each file's path, size, when it changed and which sandbox keeps it, the first 500 of each listed and all of them counted |
 
-**The listing is made by the agent's own user**, in the agents'
-container, started through the spawn helper beside whatever worker is
+**The listing is made by the agent's own user**, in the Execution
+Sandbox, started through the spawn helper beside whatever worker is
 running, because nobody else may read an agent's home. It lists and
 ends; the worker is left running.
 
@@ -108,7 +108,7 @@ The runtime does not know the platform's people or their
 organizations: one runtime serves them all and writes one log. That is
 decided by the Data Core, which asks the doors above and answers a
 person through actions of its own
-(`backend/api/endpoints/app/agents/monitor_controller.py`):
+(`data_core/api/endpoints/app/agents/monitor_controller.py`):
 
 | Action | Answers |
 |---|---|
@@ -165,7 +165,7 @@ what it was for (`purpose`):
 
 A call that failed is not one: the provider answered nothing to count.
 
-**What is kept of it** (`llm_usage`, `backend/database/stores/usage.py`):
+**What is kept of it** (`llm_usage`, `data_core/database/stores/usage.py`):
 the organization, the person and the chat, taken from the chat's
 delegation and never from what the runtime sent; the sub-assistant's
 thread where it was one; the purpose, and the agent and function for
@@ -301,7 +301,7 @@ a notice — and each action the model chose. That document is what the
 model is shown.
 
 `AI:State:Transcript` reads it for the person whose chat it is
-(`backend/api/endpoints/app/ai/state_controller.py`): the entries in
+(`data_core/api/endpoints/app/ai/state_controller.py`): the entries in
 order, each with whose it is and its text, the part that was folded
 away to keep the mind small, and the agents the assistant has open.
 
@@ -366,11 +366,11 @@ Nothing on the page changes an agent or what it is given.
 - `ai_runtime/tests/test_spawner_live.py` — both containers writing
   into one folder, an agent's files listed while it runs, and an agent
   refused the folder; in the stack of two containers.
-- `backend/tests/test_agent_monitoring.py` — the three actions against
+- `data_core/tests/test_agent_monitoring.py` — the three actions against
   a stand-in for the runtime: who may look, two organizations kept
   apart, pages, filters, search and the tally, paths, and the
   platform's own parts.
-- `backend/tests/test_llm_usage.py` — the runtime's record of each
+- `data_core/tests/test_llm_usage.py` — the runtime's record of each
   model call (only a runtime, whose it is from the delegation, the
   bounds) and the tokens added up: who may look, two organizations
   apart, the window, the cache share and the cost across models, the
@@ -379,7 +379,7 @@ Nothing on the page changes an agent or what it is given.
   into one meaning, each connector reading its answer, the meter (sent
   in batches, in the background, a failure let go), and a chat's calls
   reaching the platform, a helper's under its thread.
-- `backend/tests/test_assistant_transcript.py` — a person reading
+- `data_core/tests/test_assistant_transcript.py` — a person reading
   their own chat's assistant, and nobody reading another's.
 - `ai_runtime/tests/test_usage.py` — a container's own numbers.
 - `src/app/pages/app/monitoring/monitoring.component.spec.ts` in `decentai-web-client`

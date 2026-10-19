@@ -382,7 +382,7 @@ class TestTheChildsLimits:
 
     def test_a_child_cannot_schedule_and_is_told_what_to_do_instead(self):
         """A schedule is the chat's. A helper that asked for one was
-        refused by the backend, as a write that is not the chat's,
+        refused by the Data Core, as a write that is not the chat's,
         with words about a row; it is told here, in its own."""
         session, services = build([
             action(action="spawn", goal="Try to set a clock."),

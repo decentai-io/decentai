@@ -24,7 +24,7 @@ A listed type may end in ``/*`` and take everything of that kind
 (``image/*``).
 
 Shared by the two places a file is stored from: the runtime, for what
-an agent's function writes, and the backend, for what a person adds on
+an agent's function writes, and the Data Core, for what a person adds on
 a page and for the type every stored file is given.
 """
 

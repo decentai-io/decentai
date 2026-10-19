@@ -16,7 +16,7 @@ Both sides import this file, so a name or a number is written once:
   different versions refuse each other at the handshake, in words.
 
 Nothing here decides anything: the Data Core admits
-(backend/api/services/nodes/admission.py) and the node checks
+(data_core/api/services/nodes/admission.py) and the node checks
 (ai_runtime/door/node.py).
 """
 

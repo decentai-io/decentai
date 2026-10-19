@@ -9,7 +9,7 @@ network, a restart — leaves nothing that is mistaken for a model, and
 the next one starts the file over.
 
 It runs no model (engines.py) and decides nothing about who may ask
-(the backend does).
+(the Data Core does).
 """
 
 from __future__ import annotations

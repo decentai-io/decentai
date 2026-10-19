@@ -246,7 +246,7 @@ class TestNetwork:
     @pytest.mark.parametrize("host", [
         "10.0.0.5", "127.0.0.1", "[::1]", "169.254.169.254",
         "https://api.example.com", "https://api.example.com:443",
-        "api.example.com/v1", "localhost", "backend", "API.Example.com",
+        "api.example.com/v1", "localhost", "data-core", "API.Example.com",
         "*", "any", "*.com.", "api.*.example.com", "-bad.example.com", "",
         "10.0.0.5:993", "localhost:993", "*:993", "any:993",
     ])
@@ -505,7 +505,7 @@ class TestFieldStorageContradictions:
     review time instead.
 
     The demo agent shipped exactly the first one — `content: object` in
-    keys — and every save failed with a backend 400 the user had to
+    keys — and every save failed with a Data Core 400 the user had to
     debug. Keys are the scalar, queryable half of a record; the manifest
     is where that contract is enforceable before anything runs."""
 
@@ -590,9 +590,9 @@ class TestFieldStorageContradictions:
 
         from contracts import agent_manifest as said
 
-        backend = Path(__file__).resolve().parent.parent / "backend"
-        if str(backend) not in sys.path:
-            sys.path.insert(0, str(backend))
+        data_core = Path(__file__).resolve().parent.parent / "data_core"
+        if str(data_core) not in sys.path:
+            sys.path.insert(0, str(data_core))
         from database.stores.data.definitions import DefinitionStore as kept
 
         assert said.SECRET_FIELD_NAME_PATTERN.pattern == kept.SLUG_PATTERN.pattern

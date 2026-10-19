@@ -401,12 +401,12 @@ class TestTheWorkersEnvironment:
         assert "PYTHONPATH" not in environment
 
     def test_the_runtimes_own_secrets_never_reach_a_worker(self, monkeypatch):
-        """This process holds the model key and the backend's trust in
+        """This process holds the model key and the Data Core's trust in
         its environment; agent code is not this process. A worker gets
         what a Python subprocess needs and what the platform means it
         to have, and nothing by inheritance."""
         monkeypatch.setenv("OPENAI_API_KEY", "sk-secret")
-        monkeypatch.setenv("BACKEND_SERVICE_PUBLIC_KEY", "trust")
+        monkeypatch.setenv("DATA_CORE_SERVICE_PUBLIC_KEY", "trust")
         monkeypatch.setenv("AI_RUNTIME_AGENTS_INSTALL_DIR", "/data/agents")
         monkeypatch.setenv("PYTHONPATH", "/somewhere")
         monkeypatch.setenv("DECENTAI_WEB_ALLOW_LOOPBACK", "1")
@@ -416,7 +416,7 @@ class TestTheWorkersEnvironment:
         monkeypatch.setenv("PLAYWRIGHT_BROWSERS_PATH", "/opt/ms-playwright")
 
         environment = WorkerHandle._clean_environment()
-        for secret in ("OPENAI_API_KEY", "BACKEND_SERVICE_PUBLIC_KEY",
+        for secret in ("OPENAI_API_KEY", "DATA_CORE_SERVICE_PUBLIC_KEY",
                        "AI_RUNTIME_AGENTS_INSTALL_DIR", "PYTHONPATH"):
             assert secret not in environment
         assert environment["DECENTAI_WEB_ALLOW_LOOPBACK"] == "1"

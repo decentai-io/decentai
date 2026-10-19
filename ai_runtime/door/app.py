@@ -77,7 +77,7 @@ def _sandboxes_said(confinement) -> list:
 def create_app(settings: RuntimeSettings, services, library, container,
                confinement, agents=None, node=None, data_core=None) -> FastAPI:
     """The application, from the parts main.py built: ``services`` is
-    the backend's client, the platform surface the sessions live
+    the Data Core's client, the platform surface the sessions live
     against (docs/reference/session-door.md); ``library`` the live
     AgentLibrary, what code this host has and the only thing that may
     change it; ``container`` the Execution Sandboxes, where every worker
@@ -110,7 +110,7 @@ def create_app(settings: RuntimeSettings, services, library, container,
         # connection, every chat this node serves over it. What it says
         # of its locks is shown by the Data Core and never decides.
         link = NodeLink(
-            settings.backend_url, host, node, data_core,
+            settings.data_core_url, host, node, data_core,
             report=lambda: {"locks": confinement.report(),
                             "labels": list(node.claims.get("labels") or []),
                             "sandboxes": _sandboxes_said(confinement)})

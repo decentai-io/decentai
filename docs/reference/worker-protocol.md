@@ -48,7 +48,7 @@ vendored tree under a 64-character folder overflows Windows' path limit
 in any deep install dir, and 2^64 is not a collision space.
 
 A sandbox's install has one station for it (`Installs.install`,
-`ai_runtime/agents_container/installs.py`): after the bytes are verified
+`sandbox/installs.py`): after the bytes are verified
 and the manifest proven approved, the dependency set's venv is created
 if it is not there and **exactly the declared list** is installed into
 it — nothing negotiated, nothing to conflict with. The list is

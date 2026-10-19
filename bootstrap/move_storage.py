@@ -13,8 +13,8 @@ old store is not configured any more is reported, not lost.
     python bootstrap/move_storage.py --packages-from s3       # packages
                                          # were in another cloud, not on disk
 
-Run where the backend runs, with its settings and the old store's still
-set, and with the backend stopped or idle.
+Run where the Data Core runs, with its settings and the old store's still
+set, and with the Data Core stopped or idle.
 """
 
 import argparse
@@ -22,13 +22,13 @@ import sys
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-BACKEND_ROOT = PROJECT_ROOT / "backend"
+DATA_CORE_ROOT = PROJECT_ROOT / "data_core"
 sys.path.insert(0, str(PROJECT_ROOT))
-sys.path.insert(0, str(BACKEND_ROOT))
+sys.path.insert(0, str(DATA_CORE_ROOT))
 
 from dotenv import load_dotenv  # noqa: E402
 
-load_dotenv(BACKEND_ROOT / "config.env", override=False)
+load_dotenv(DATA_CORE_ROOT / "config.env", override=False)
 
 
 def main() -> int:

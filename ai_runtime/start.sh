@@ -42,7 +42,7 @@ fi
 # where its runtime takes registrations. Anything else is the AI
 # Runtime, beside which no worker starts.
 case " $* " in
-    *ai_runtime.agents_container.service*) SANDBOX=1 ;;
+    *sandbox.service*) SANDBOX=1 ;;
     *) SANDBOX=${AI_SANDBOX_RUNTIME:+1} ;;
 esac
 

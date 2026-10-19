@@ -1,6 +1,6 @@
 """Write docs/reference/actions.md from the action catalog.
 
-The catalog (backend/server/authentication/catalog.py) is the one place
+The catalog (data_core/server/authentication/catalog.py) is the one place
 an action exists at all, so this page is generated from it rather than
 kept by hand: every gateway action, the sentence that describes it,
 whether every member holds it by default, and whether the runtime's
@@ -17,7 +17,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "backend"))
+sys.path.insert(0, str(ROOT / "data_core"))
 sys.path.insert(0, str(ROOT))
 os.environ.setdefault("TOKEN_SECRET_KEY", "generate")
 
@@ -41,7 +41,7 @@ def page() -> str:
         "every member of an organization without a decision; **runtime** marks",
         "the actions a chat's delegation may call, and nothing else.",
         "",
-        "Generated from `backend/server/authentication/catalog.py` by",
+        "Generated from `data_core/server/authentication/catalog.py` by",
         "`docs/reference/generate.py`; do not edit by hand.",
         "",
         f"{sum(len(s['actions']) for s in ACTION_CATALOG.values())} actions in "

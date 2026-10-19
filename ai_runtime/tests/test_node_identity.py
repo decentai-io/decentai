@@ -167,13 +167,15 @@ class TestTheDataCoresSignature:
 
 
 class TestTheSettings:
+    NAMES = ("DATA_CORE_SERVICE_PUBLIC_KEY", "DATA_CORE_PUBLIC_KEY",
+             "BACKEND_SERVICE_PUBLIC_KEY", "AI_RUNTIME_NODE_CREDENTIAL_FILE",
+             "AI_RUNTIME_NODE_CREDENTIAL_URL", "DATA_CORE_INTERNAL_URL",
+             "DATA_CORE_URL", "BACKEND_INTERNAL_URL")
+
     def settings(self, monkeypatch, **said):
         from ai_runtime.door.settings import RuntimeSettings
 
-        for name in ("DATA_CORE_PUBLIC_KEY", "BACKEND_SERVICE_PUBLIC_KEY",
-                     "AI_RUNTIME_NODE_CREDENTIAL_FILE",
-                     "AI_RUNTIME_NODE_CREDENTIAL_URL", "DATA_CORE_URL",
-                     "BACKEND_INTERNAL_URL"):
+        for name in self.NAMES:
             monkeypatch.delenv(name, raising=False)
         # The secret its Execution Sandboxes prove when they register:
         # required of every runtime since sandboxes register (Phase 6).
@@ -184,25 +186,50 @@ class TestTheSettings:
 
     def test_a_node_without_a_credential_does_not_start(self, monkeypatch):
         with pytest.raises(ValueError, match="AI_RUNTIME_NODE_CREDENTIAL_FILE"):
-            self.settings(monkeypatch, DATA_CORE_PUBLIC_KEY="k",
-                          DATA_CORE_URL="http://dc:8000")
+            self.settings(monkeypatch, DATA_CORE_SERVICE_PUBLIC_KEY="k",
+                          DATA_CORE_INTERNAL_URL="http://dc:8000")
 
     def test_nor_one_that_cannot_tell_the_data_core(self, monkeypatch):
-        with pytest.raises(ValueError, match="DATA_CORE_PUBLIC_KEY"):
-            self.settings(monkeypatch, DATA_CORE_URL="http://dc:8000",
+        with pytest.raises(ValueError, match="DATA_CORE_SERVICE_PUBLIC_KEY"):
+            self.settings(monkeypatch, DATA_CORE_INTERNAL_URL="http://dc:8000",
                           AI_RUNTIME_NODE_CREDENTIAL_FILE="/run/c")
 
-    def test_the_new_names_are_read_and_the_old_ones_beside_them(self, monkeypatch):
-        new = self.settings(monkeypatch, DATA_CORE_PUBLIC_KEY="new",
-                            BACKEND_SERVICE_PUBLIC_KEY="old",
-                            DATA_CORE_URL="http://dc:8000",
-                            BACKEND_INTERNAL_URL="http://backend:8000",
-                            AI_RUNTIME_NODE_CREDENTIAL_FILE="/run/c")
-        assert (new.backend_service_public_key, new.backend_url) == (
-            "new", "http://dc:8000")
+    def test_todays_names_are_read_before_any_older_one(self, monkeypatch):
+        read = self.settings(monkeypatch, DATA_CORE_SERVICE_PUBLIC_KEY="today",
+                             DATA_CORE_PUBLIC_KEY="earlier",
+                             BACKEND_SERVICE_PUBLIC_KEY="oldest",
+                             DATA_CORE_INTERNAL_URL="http://data-core:8000",
+                             DATA_CORE_URL="http://dc:8000",
+                             BACKEND_INTERNAL_URL="http://backend:8000",
+                             AI_RUNTIME_NODE_CREDENTIAL_FILE="/run/c")
+        assert (read.data_core_service_public_key, read.data_core_url) == (
+            "today", "http://data-core:8000")
+
+    def test_an_install_from_before_the_data_core_was_named_still_starts(
+            self, monkeypatch):
+        """A deploy.env written when the Data Core was the backend: its
+        names are read where today's are not set."""
         old = self.settings(monkeypatch, BACKEND_SERVICE_PUBLIC_KEY="old",
                             BACKEND_INTERNAL_URL="http://backend:8000",
                             AI_RUNTIME_NODE_CREDENTIAL_URL="http://issuer/")
-        assert (old.backend_service_public_key, old.backend_url,
+        assert (old.data_core_service_public_key, old.data_core_url,
                 old.node_credential_url) == (
             "old", "http://backend:8000", "http://issuer/")
+
+    def test_the_names_between_are_read_too(self, monkeypatch):
+        between = self.settings(monkeypatch, DATA_CORE_PUBLIC_KEY="between",
+                                BACKEND_SERVICE_PUBLIC_KEY="old",
+                                DATA_CORE_URL="http://dc:8000",
+                                BACKEND_INTERNAL_URL="http://backend:8000",
+                                AI_RUNTIME_NODE_CREDENTIAL_FILE="/run/c")
+        assert (between.data_core_service_public_key, between.data_core_url) == (
+            "between", "http://dc:8000")
+
+    def test_a_blank_new_name_is_not_set(self, monkeypatch):
+        from contracts.setting_names import setting
+
+        monkeypatch.setenv("DATA_CORE_HOST", "  ")
+        monkeypatch.setenv("BACKEND_HOST", "0.0.0.0")
+        assert setting("DATA_CORE_HOST", "127.0.0.1") == "0.0.0.0"
+        monkeypatch.delenv("BACKEND_HOST")
+        assert setting("DATA_CORE_HOST", "127.0.0.1") == "127.0.0.1"

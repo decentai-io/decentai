@@ -39,7 +39,7 @@ colleague kept private changes hands when its owner hands it over or is
 deleted, and not otherwise. In the four data-layer domains it is
 checked where the domain checks its steward
 (`Sharing.may_edit(..., escape=...)`,
-`backend/api/services/data_layer/base.py`). Model connections, agent
+`data_core/api/services/data_layer/base.py`). Model connections, agent
 sources and MCP servers compare the steward themselves, each in its
 own controller, to the same rule.
 
@@ -114,4 +114,4 @@ they resume what they still want.
 Disabling an organization refuses everyone in it and keeps its data.
 There is no organization delete in the application.
 
-Tests: `backend/tests/test_ownership.py`.
+Tests: `data_core/tests/test_ownership.py`.

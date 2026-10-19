@@ -1,12 +1,12 @@
 """Generate (or rotate) the platform's secret-encryption keys.
 
-Fresh pair — paste both lines into backend/config.env (or the
+Fresh pair — paste both lines into data_core/config.env (or the
 deployment's environment):
 
     python bootstrap/generate_secret_keys.py
 
 Rotation — pass the CURRENT map; a new version is appended and made
-active (restart the backend, then run bootstrap/reencrypt_secrets.py to
+active (restart the Data Core, then run bootstrap/reencrypt_secrets.py to
 move stored values onto the new key):
 
     python bootstrap/generate_secret_keys.py --rotate "01:<key>,02:<key>"
@@ -22,7 +22,7 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
-sys.path.insert(0, str(PROJECT_ROOT / "backend"))
+sys.path.insert(0, str(PROJECT_ROOT / "data_core"))
 
 from database.crypto import SecretCipher  # noqa: E402
 

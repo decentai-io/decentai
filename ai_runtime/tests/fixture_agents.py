@@ -5,7 +5,7 @@ InstalledAgent — manifest, folder, and a private environment — and
 executing its functions spawns a real worker over the real wire,
 exactly as production does. The one economy is the environment: the
 fixture agents declare no dependencies, so they all share a single
-cached venv (``backend/tests/.workerenv``, gitignored) that is built
+cached venv (``data_core/tests/.workerenv``, gitignored) that is built
 once and reused across runs.
 """
 

@@ -10,7 +10,7 @@ them:
                     "cpu": processors or None, "cpus": processors or None}
 
 Shared by the three processes of the platform, since each can read
-only its own container: the backend its own, the runtime its own, and
+only its own container: the Data Core its own, the runtime its own, and
 the spawner the agents'. No container can read another's, and none
 needs a right to read its own.
 

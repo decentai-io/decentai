@@ -1,6 +1,6 @@
 """The language-model providers the platform knows by name.
 
-One list, read by both sides: the backend accepts a connection for a
+One list, read by both sides: the Data Core accepts a connection for a
 provider on it and serves it to the page that draws the form; the
 runtime reads which protocol the provider speaks and builds the
 connector for it. Before this each side kept a list of its own, and so

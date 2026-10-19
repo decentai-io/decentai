@@ -15,7 +15,7 @@ well: the first person bootstrap/setup.py makes is nobody's address,
 and they name their own the day somebody else is to use the install
 too.
 
-Run in the backend's image, where the platform's code and settings are
+Run in the Data Core's image, where the platform's code and settings are
 (docs/run/operating.md has the line); the password travels by
 environment, once, and is kept nowhere.
 """
@@ -25,13 +25,13 @@ import sys
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-BACKEND_ROOT = PROJECT_ROOT / "backend"
+DATA_CORE_ROOT = PROJECT_ROOT / "data_core"
 sys.path.insert(0, str(PROJECT_ROOT))
-sys.path.insert(0, str(BACKEND_ROOT))
+sys.path.insert(0, str(DATA_CORE_ROOT))
 
 from dotenv import load_dotenv
 
-load_dotenv(BACKEND_ROOT / "config.env", override=False)
+load_dotenv(DATA_CORE_ROOT / "config.env", override=False)
 
 
 class PasswordReset:

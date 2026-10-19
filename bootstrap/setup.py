@@ -10,7 +10,7 @@ the standard library.
 
 Its files are in `config/`. The first time, it writes
 `config/deploy.env` from `config/deploy.env.example`: the keys, made
-by the platform's own generators inside the backend's image, and a
+by the platform's own generators inside the Data Core's image, and a
 password for the database. Then it starts the stack and
 prints the address. Nobody is made for you: the address opens on the
 app's first-run page, where you name your organization and choose your
@@ -41,13 +41,18 @@ its file, and the line it was on says where it went.
 
 An install from before `config/` kept the three files at the
 repository's root. Each is moved into `config/` as it is, the first
-time this runs, and never over a file `config/` already holds.
+time this runs, and never over a file `config/` already holds. A
+setting this computer's file names by a name it had before the engine's
+parts were named (BACKEND_SERVICE_PRIVATE_KEY, AGENTS_MEMORY, ...) is
+renamed in place, its value kept; the code reads both
+(contracts/setting_names.py).
 """
 
 from __future__ import annotations
 
 import argparse
 import os
+import re
 import secrets
 import subprocess
 import sys
@@ -213,6 +218,73 @@ class Settings:
         ]
         self._put(text.rstrip("\n") + "\n" + "\n".join(lines) + "\n")
 
+    #: Settings renamed with the engine's parts: each older name, and
+    #: its name now. Where two older names lead to one, the first is
+    #: the one the code reads first (contracts/setting_names.py).
+    RENAMED: Tuple[Tuple[str, str], ...] = (
+        ("DATA_CORE_PRIVATE_KEY", "DATA_CORE_SERVICE_PRIVATE_KEY"),
+        ("BACKEND_SERVICE_PRIVATE_KEY", "DATA_CORE_SERVICE_PRIVATE_KEY"),
+        ("DATA_CORE_PUBLIC_KEY", "DATA_CORE_SERVICE_PUBLIC_KEY"),
+        ("BACKEND_SERVICE_PUBLIC_KEY", "DATA_CORE_SERVICE_PUBLIC_KEY"),
+        ("DATA_CORE_URL", "DATA_CORE_INTERNAL_URL"),
+        ("BACKEND_INTERNAL_URL", "DATA_CORE_INTERNAL_URL"),
+        ("BACKEND_HOST", "DATA_CORE_HOST"),
+        ("BACKEND_PORT", "DATA_CORE_PORT"),
+        ("AGENTS_MEMORY", "SANDBOX_MEMORY"),
+        ("AGENTS_CPUS", "SANDBOX_CPUS"),
+        ("AGENTS_LABELS", "SANDBOX_LABELS"),
+        ("AGENTS_2_LABELS", "SANDBOX_2_LABELS"),
+    )
+    #: Values that named a service by the name it had then, and what
+    #: they name now: the service is gone, and the address with it.
+    READDRESSED: Dict[str, Tuple[str, str]] = {
+        "DATA_CORE_INTERNAL_URL": ("http://backend:8000",
+                                   "http://data-core:8000"),
+    }
+
+    def rename_older(self) -> List[str]:
+        """Each older name the file uses renamed to today's, its value
+        kept — where the file does not already say today's, which is
+        then the one read and is left as it is. An address that named a
+        service by its older name names it as it is now. A commented
+        line of the template's (``# AGENTS_MEMORY=2g``) is renamed too.
+        Returns what changed, for the person to be told."""
+        lines = self.path.read_text(encoding="utf-8").splitlines()
+        said = self.values()
+        changed: List[str] = []
+
+        def active(line: str) -> Tuple[str, str]:
+            name, mark, value = line.partition("=")
+            if not mark or name.lstrip().startswith("#"):
+                return "", ""
+            return name.strip(), value
+
+        for old, new in self.RENAMED:
+            if old in said and new not in said:
+                for index, line in enumerate(lines):
+                    name, value = active(line)
+                    if name == old:
+                        lines[index] = f"{new}={value}"
+                        break
+                said[new] = said.pop(old)
+                changed.append(f"{old} is {new}")
+            if old not in said:
+                for index, line in enumerate(lines):
+                    found = re.match(rf"(\s*#\s*){old}=", line)
+                    if found:
+                        lines[index] = found.group(1) + new + line[found.end() - 1:]
+        for name, (was, now) in self.READDRESSED.items():
+            if said.get(name) != was:
+                continue
+            for index, line in enumerate(lines):
+                if active(line)[0] == name:
+                    lines[index] = f"{name}={now}"
+            changed.append(f"{name} names {now}")
+        text = "\n".join(lines) + "\n"
+        if text != self.path.read_text(encoding="utf-8"):
+            self._put(text)
+        return changed
+
     def move_out(self, moved: Dict[str, str]) -> None:
         """Each name in ``moved`` taken out of the file, its line
         replaced by one saying which file holds it now (``moved`` maps
@@ -278,11 +350,11 @@ class SecretFile:
 
 
 class Setup:
-    #: The platform's generators, as the backend's image holds them.
+    #: The platform's generators, as the Data Core's image holds them.
     GENERATORS = "/opt/decentai/bootstrap"
     KEYS = {
-        "generate_service_keys.py": ("BACKEND_SERVICE_PRIVATE_KEY",
-                                     "BACKEND_SERVICE_PUBLIC_KEY"),
+        "generate_service_keys.py": ("DATA_CORE_SERVICE_PRIVATE_KEY",
+                                     "DATA_CORE_SERVICE_PUBLIC_KEY"),
         # The install's own node authority: registered as a shared
         # authority by the seeder, and the bundled node's credentials
         # signed with it by node-issuer — nothing asked of the person.
@@ -339,9 +411,11 @@ class Setup:
                     f"change PORT, PUBLIC_APP_URL and CORS_ALLOW_ORIGINS "
                     f"there together.")
             self._must_be_local()
+            self._rename_older()
             self._secrets(self._complete())
         else:
-            self.say("Building the backend, to make this install's keys...")
+            self.say("Building the Data Core's image, to make this "
+                     "install's keys...")
             keys = self._keys()
             authority = keys.pop(self.AUTHORITY_KEY)
             self.settings.write(self.settings.local(
@@ -409,6 +483,15 @@ class Setup:
                      f"Remove the old one once you are sure nothing in it "
                      f"is needed.")
 
+    def _rename_older(self) -> None:
+        """This computer's file, with the settings it names by an older
+        name renamed (Settings.rename_older), and the person told."""
+        changed = self.settings.rename_older()
+        if changed:
+            self.say(f"{Settings.FILE} names its settings as the engine's "
+                     f"parts are named now: {'; '.join(changed)}. Their "
+                     f"values are kept.")
+
     def _compose(self, *arguments: str) -> List[str]:
         return ["compose", "--env-file", Settings.FILE, *arguments]
 
@@ -428,7 +511,8 @@ class Setup:
         generators = {script for script, names in self.KEYS.items()
                       if set(names) & set(missing)}
         if generators:
-            self.say("Building the backend, to make the keys this install lacks...")
+            self.say("Building the Data Core's image, to make the keys "
+                     "this install lacks...")
         made = self._keys(generators) if generators else {}
         template = self.settings.template()
         made.update({name: make() for name, make in self.MADE.items()
@@ -477,15 +561,15 @@ class Setup:
 
     def _keys(self, scripts: Optional[set] = None) -> Dict[str, str]:
         """The keys, made by the platform's own generators in the
-        backend's image: this computer needs nothing installed for
+        Data Core's image: this computer needs nothing installed for
         them, and the image is the one the stack is about to run.
         ``scripts`` names the generators to run; all of them, unsaid."""
         code, said = self.engine.ask(
-            ["build", "-q", "-f", "backend/Dockerfile", "."])
+            ["build", "-q", "-f", "data_core/Dockerfile", "."])
         image = said.strip().splitlines()[-1].strip() if said.strip() else ""
         if code != 0 or not image:
             raise SetupError(
-                "The backend's image could not be built:\n" + said.strip()[-800:])
+                "The Data Core's image could not be built:\n" + said.strip()[-800:])
         keys: Dict[str, str] = {}
         for script, names in self.KEYS.items():
             if scripts is not None and script not in scripts:

@@ -10,7 +10,7 @@ observation) without a model in the way.
 
 REGISTERED as provider "fake", so a chat config can script a whole
 conversation and the full stack runs on it — a real socket, a real
-session, real executor, real backend calls (tests/test_full_stack.py).
+session, real executor, real Data Core calls (tests/test_full_stack.py).
 
 That registration is reachable in production, so it is worth saying what
 it does and does not give somebody who sets it on their own chat. A

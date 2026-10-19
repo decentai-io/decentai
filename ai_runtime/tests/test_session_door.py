@@ -514,7 +514,7 @@ class TestThePersonsHandOnTheClock:
         host, services = build()
         clock = Scheduler(services, host)
         host.clock = clock
-        # The page wrote a row straight into the store (the backend's
+        # The page wrote a row straight into the store (the Data Core's
         # door), and paused another the clock already held.
         clock.schedules = []
         services.schedules.rows = [
@@ -982,7 +982,7 @@ class TestAFireTakesTheChatsTrust:
 
 
 class TestAWebhookEvent:
-    """An outside system's event, from the backend: the person's own
+    """An outside system's event, from the Data Core: the person's own
     instruction for the webhook enters as theirs, the posted fields as
     an event beside it, read as data (docs/system/webhooks.md)."""
 

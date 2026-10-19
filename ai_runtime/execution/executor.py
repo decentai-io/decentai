@@ -162,7 +162,7 @@ class FunctionExecutor:
         before the original park, so neither runs again — the hash
         pins those exact values.
 
-        ``decision`` is the backend's verdict: approve, deny, expired,
+        ``decision`` is the Data Core's verdict: approve, deny, expired,
         or pending — pending re-parks via ``repark`` (an async () ->
         bool for the remaining window)."""
         call_id = f"c_{uuid.uuid4().hex[:12]}"

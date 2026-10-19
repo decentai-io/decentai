@@ -28,7 +28,7 @@ RUN pip install --no-cache-dir "playwright>=1.59,<1.60"     && playwright instal
 #
 # With it, the tool the firewall rule is written with (start.sh): what
 # leaves the runtime's proxy as a worker's only way out.
-COPY ai_runtime/agents_container/spawn_helper.c /tmp/spawn_helper.c
+COPY sandbox/spawn_helper.c /tmp/spawn_helper.c
 RUN apt-get update \
     && apt-get install -y --no-install-recommends gcc libc6-dev libcap2-bin nftables \
     && gcc -O2 -Wall -Wextra -Werror \
@@ -49,6 +49,9 @@ COPY contracts ./contracts
 # runtime installs it into every agent's environment.
 COPY decentai_sdk ./decentai_sdk
 COPY ai_runtime ./ai_runtime
+# What runs in an Execution Sandbox: this image, started as the
+# spawner (python -m sandbox.service).
+COPY sandbox ./sandbox
 
 # The container starts as root for one step — the firewall rule — and
 # the runtime itself runs as decentai, as it always has (start.sh). A

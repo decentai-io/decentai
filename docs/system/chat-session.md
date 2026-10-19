@@ -29,7 +29,7 @@ Two principles:
 The contract, method by method, against the Data Core's records. "Runtime
 verb" means an endpoint on the `/app` gateway that the RUNTIME
 principal — the delegation — may call; the fence
-(`RUNTIME_ENDPOINTS` in `backend/server/authentication/catalog.py`) is
+(`RUNTIME_ENDPOINTS` in `data_core/server/authentication/catalog.py`) is
 these verbs and nothing else, and that list is the authority where
 this table and it differ. Every chat-bound verb also checks that the
 delegation was minted for the chat it names. Three verbs the runtime
@@ -133,7 +133,7 @@ either way.
 The same moments — a card opened, an assistant's message, and a
 schedule's run recorded (`AI:Schedule:Ran`) — are queued for the
 addresses the person subscribed to them (`Notifier._out`,
-`backend/server/outbound.py`), whether or not they are looking
+`data_core/server/outbound.py`), whether or not they are looking
 ([webhooks](webhooks.md#outbound)).
 
 ### Attention
@@ -297,7 +297,7 @@ systems:
 | `AI:Chat:Watch {action}` | `screen_open` | `screen_frame`s from the roster's watch function, or `screen_unavailable` |
 | `AI:Approval:Decide` (via the gateway, recorded first) | `approval_decided` | the job or park resumes |
 | `AI:Approval:Decide {answer}` — a question's (via the gateway, recorded first) | `question_answered` | the asking call continues, or hears it expired |
-| an outside system's `POST /hooks/{webhook_id}` (`backend/server/routes/hooks.py`, checked and recorded first; [webhooks](webhooks.md)) | `webhook_event` — the Data Core's own, in `FRAMES`, and no browser frame becomes it | the event recorded in the inbox; the person's instruction for the webhook as theirs and the posted fields as an `EVENT`, then work |
+| an outside system's `POST /hooks/{webhook_id}` (`data_core/server/routes/hooks.py`, checked and recorded first; [webhooks](webhooks.md)) | `webhook_event` — the Data Core's own, in `FRAMES`, and no browser frame becomes it | the event recorded in the inbox; the person's instruction for the webhook as theirs and the posted fields as an `EVENT`, then work |
 | `AI:Chat:Stop` (via the gateway) | `stop` | the assistant stops between beats, a call it is waiting on being ended at once, and the audience hears `idle`, with no message; with `force`, [the kill](#the-kill) and `stopped` |
 
 Everything the runtime emits reaches the web client as `AI:Chat:Event`. The `hello` frame on attach carries the present tense
@@ -473,12 +473,12 @@ the same way, so a malformed event fails the runtime's own tests first.
 
 | Piece | Where |
 |---|---|
-| the runtime verbs: `AI:Chat:Contract`, `AI:State:*`, `AI:Event:*`, `AI:Approval:*`, `AI:Schedule:*` | `backend/api/endpoints/app/ai/`, one file per door |
-| the contract's computation | `backend/api/services/chat_session/contract.py` |
-| the inbox and outbox on `ai_chat_events`; `ai_chats.state`; `ai_approvals`; `ai_schedules` | `backend/database/stores/chats.py` |
-| the fence, `RUNTIME_ENDPOINTS` | `backend/server/authentication/catalog.py` |
-| the relay speaking frames; the browser socket translating the web client | `backend/api/services/chat_session/relay.py`, `backend/server/routes/ws.py` |
-| `Backend` — the contract over HTTP, one class, every call naming its chat and carrying that chat's credential; `ChatResources`, an agent's data, files and secrets as one chat | `ai_runtime/door/platform.py` |
+| the runtime verbs: `AI:Chat:Contract`, `AI:State:*`, `AI:Event:*`, `AI:Approval:*`, `AI:Schedule:*` | `data_core/api/endpoints/app/ai/`, one file per door |
+| the contract's computation | `data_core/api/services/chat_session/contract.py` |
+| the inbox and outbox on `ai_chat_events`; `ai_chats.state`; `ai_approvals`; `ai_schedules` | `data_core/database/stores/chats.py` |
+| the fence, `RUNTIME_ENDPOINTS` | `data_core/server/authentication/catalog.py` |
+| the relay speaking frames; the browser socket translating the web client | `data_core/api/services/chat_session/relay.py`, `data_core/server/routes/ws.py` |
+| `DataCoreClient` — the contract over HTTP, one class, every call naming its chat and carrying that chat's credential; `ChatResources`, an agent's data, files and secrets as one chat | `ai_runtime/door/platform.py` |
 
 ## What it does not do
 

@@ -1,4 +1,4 @@
-"""The chat's vocabulary, shared by the runtime and the backend. The
+"""The chat's vocabulary, shared by the runtime and the Data Core. The
 page keeps a copy written by hand (chat-protocol.ts), and a drift test
 (tests/test_chat_contract.py) holds that copy's event names and part
 types to these. The fields of each are not compared.
@@ -8,7 +8,7 @@ what a message carries is one of the parts. Both may say who produced
 them: a ``source`` names the assistant, an installed agent (and the
 call and job it spoke on), a helper, the scheduler, or the platform.
 
-The backend validates events and parts where it records them and
+The Data Core validates events and parts where it records them and
 refuses what does not fit; the simulated platform validates every
 emission, so a malformed event fails the runtime's tests rather than
 reaching a chat (docs/system/chat-session.md, "The vocabulary"). Additive
@@ -67,7 +67,7 @@ CODE_NEEDS_MAX = 30
 CODE_NEED_MAX_CHARS = 253
 CODE_REVIEW_MAX_CHARS = 600
 #: A skill the assistant puts before the person to save (save_skill):
-#: the skill store's own bounds (backend SkillController), here because
+#: the skill store's own bounds (the Data Core's SkillController), here because
 #: the runtime, the card and the store have to agree on them.
 SKILL_TITLE_MAX_CHARS = 120
 SKILL_SUMMARY_MAX_CHARS = 300
@@ -168,7 +168,7 @@ MessagePart = Annotated[Union[PART_MODELS], Field(discriminator="type")]
 
 #: Who a stored message is from: the person, the assistant, the
 #: platform, or a parent speaking to its helper. Kept once, here, for
-#: the backend's check and the simulation's.
+#: the Data Core's check and the simulation's.
 ACTORS = ("user", "ai", "system", "parent")
 
 class ChatInputCommand(ChatModel):
@@ -442,7 +442,7 @@ class SkillAsk(ChatModel):
     put before the person whole: its title, the one line that says when
     it applies, and the body — instructions, steps, a script — exactly
     as it would be kept. Shown as text and never run. The answer is
-    ``save`` or ``decline``; a saved one is created by the backend, as
+    ``save`` or ``decline``; a saved one is created by the Data Core, as
     the person, from what the card holds."""
     title: str = Field(min_length=1, max_length=SKILL_TITLE_MAX_CHARS)
     summary: str = Field(min_length=1, max_length=SKILL_SUMMARY_MAX_CHARS)
@@ -622,7 +622,7 @@ EVENT_NAMES = tuple(get_args(model.model_fields["event"].annotation)[0]
                     for model in EVENT_MODELS)
 PART_TYPES = tuple(value for model in PART_MODELS
                    for value in get_args(model.model_fields["type"].annotation))
-#: Frames the backend adds on its own side of the relay — the page
+#: Frames the Data Core adds on its own side of the relay — the page
 #: hears them, the runtime never sends them.
 RELAY_EVENTS = ("runtime_unavailable", "runtime_disconnected", "invalid_input",
                 "work_stopped")

@@ -6,7 +6,7 @@ and the name is what a policy grants. **Baseline** actions are held by
 every member of an organization without a decision; **runtime** marks
 the actions a chat's delegation may call, and nothing else.
 
-Generated from `backend/server/authentication/catalog.py` by
+Generated from `data_core/server/authentication/catalog.py` by
 `docs/reference/generate.py`; do not edit by hand.
 
 221 actions in 43 services; 69 baseline.

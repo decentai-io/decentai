@@ -22,13 +22,13 @@ and updating. Where to look is at the end.
   Data Core`. A missing `TOKEN_SECRET_KEY` says so in the first lines.
 - **Chats say the runtime is unavailable.** `docker compose --env-file
   config/deploy.env logs ai-runtime`. The runtime refuses connections whose
-  signature does not verify: `BACKEND_SERVICE_PUBLIC_KEY` must be the
+  signature does not verify: `DATA_CORE_SERVICE_PUBLIC_KEY` must be the
   pair of the Data Core's private key. A runtime that restarts says in
   its first lines which setting it is missing:
   `AI_RUNTIME_NODE_CREDENTIAL_FILE` (where its credential is),
-  `BACKEND_INTERNAL_URL` or `AI_RUNTIME_SANDBOX_SECRET`.
+  `DATA_CORE_INTERNAL_URL` or `AI_RUNTIME_SANDBOX_SECRET`.
 - **The runtime says no Execution Sandbox can confine a worker.**
-  `docker compose --env-file config/deploy.env logs agents` says what the
+  `docker compose --env-file config/deploy.env logs sandbox` says what the
   sandbox proved at its start, or what to mend; a sandbox whose
   registration was refused says why (the node's secret differs, or the
   two are of different releases: the sandbox link's version).
@@ -36,7 +36,7 @@ and updating. Where to look is at the end.
   seconds and reports each package ready; one that is not admitted as
   an execution node cannot. `docker compose --env-file config/deploy.env logs
   ai-runtime` says *The stock was not taken* with the Data Core's
-  refusal, and `logs backend` says why the node was refused: no
+  refusal, and `logs data-core` says why the node was refused: no
   credential (`logs node-issuer`), an expired one, or one signed by an
   authority that is not registered or was revoked
   ([execution nodes](../system/execution-nodes.md#revoking)).
@@ -127,7 +127,7 @@ and updating. Where to look is at the end.
   and its code or its packages could not be made ready; the reason is
   under its row. The usual ones: a package that is not on the
   index the deployment uses, and a machine that cannot reach the index
-  at all. `docker compose --env-file config/deploy.env logs ai-runtime agents`
+  at all. `docker compose --env-file config/deploy.env logs ai-runtime sandbox`
   has the build's own words.
 - **Its sample data will not load.** The sheet has an error, shown on
   the agent's card in the marketplace: a row that is not what the
@@ -162,7 +162,7 @@ and updating. Where to look is at the end.
   agent cannot do without it, `AI_RUNTIME_SYSCALL_FILTER=0` turns the
   filter off for every agent, until the package is mended.
 - **An agent was ended.** *…was ended because the agents ran out of
-  memory*: the agents share what `AGENTS_MEMORY` gives them, and the
+  memory*: the agents share what `SANDBOX_MEMORY` gives them, and the
   one holding most is the one ended
   ([operating](operating.md#what-the-agents-are-given)).
 
@@ -190,7 +190,7 @@ and updating. Where to look is at the end.
 
 ```bash
 docker compose --env-file config/deploy.env ps
-docker compose --env-file config/deploy.env logs -f backend      # or ai-runtime, agents, speech, init, web, mongo
+docker compose --env-file config/deploy.env logs -f data-core    # or ai-runtime, sandbox, node-issuer, speech, init, gateway, mongo
 ```
 
 What agents did — each worker's start and end, its log, every

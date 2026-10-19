@@ -1,4 +1,4 @@
-"""The platform, reached over the backend's /app gateway
+"""The platform, reached over the Data Core's /app gateway
 (docs/system/chat-session.md, docs/reference/session-door.md).
 
 One object for the host, holding one credential per chat: the dial
@@ -9,15 +9,15 @@ carries that chat's credential. What a chat may do is still only what
 contract in memory; nothing that reasons can tell them apart.
 
     node = NodeCredential(file=…)
-    backend = Backend(Gateway(url, node=node, key=DataCoreKey(pem)), node)
-    backend.grant(chat_id, credential)          at the dial
-    await backend.contract(chat_id)             what the chat may do
-    await backend.persist_message(chat_id, …)   the record
-    backend.resources(chat_id)                  an agent's data, files and
-                                                secrets, as the chat (resources.py)
-    await backend.open_card(chat_id, request)   a card on the record
-    await backend.approved_packages()           as the node itself: the
-                                                package door (agent-code.md)
+    data_core = DataCoreClient(Gateway(url, node=node, key=DataCoreKey(pem)), node)
+    data_core.grant(chat_id, credential)          at the dial
+    await data_core.contract(chat_id)             what the chat may do
+    await data_core.persist_message(chat_id, …)   the record
+    data_core.resources(chat_id)                  an agent's data, files and
+                                                  secrets, as the chat (resources.py)
+    await data_core.open_card(chat_id, request)   a card on the record
+    await data_core.approved_packages()           as the node itself: the
+                                                  package door (agent-code.md)
 
 One thing the runtime asks as itself and not as any chat: which
 packages are approved anywhere, their bytes, and where to say one is
@@ -29,10 +29,10 @@ Core's signature (``Gateway``).
 Two things the sim does in memory that a network makes explicit:
 
 - **A child's records** are addressed as ``<chat>/<thread>`` by the
-  runtime and as ``chat_id`` + ``thread`` by the backend (child
+  runtime and as ``chat_id`` + ``thread`` by the Data Core (child
   threads); the split happens here. An agent's resources are the
   conversation's, never a thread's.
-- **Waiting on a card** is not a request the backend holds open: the
+- **Waiting on a card** is not a request the Data Core holds open: the
   answer arrives as the door's ``approval_decided`` or
   ``question_answered`` frame, and the chat's cards (chat/cards.py)
   settle their own waiter.
@@ -151,7 +151,7 @@ class Gateway:
         await self._client.aclose()
 
 
-class Backend:
+class DataCoreClient:
     def __init__(self, gateway, identity=None):
         self.gateway = gateway
         #: chat_id -> the delegation to call as, granted by attaching
@@ -376,12 +376,12 @@ class Backend:
     async def resolve_credential(self, chat_id: str, payload: dict) -> dict:
         """A login an agent asks for as it works: what the vault holds
         for this person, and which card is owed. Runtime-only at the
-        backend, under the chat's delegation."""
+        Data Core, under the chat's delegation."""
         return await self.call(chat_id, "Secrets:Credential:Resolve", dict(payload))
 
     async def list_files(self, chat_id: str) -> List[dict]:
         """Every file the person can see, for the assistant's
-        find_files. Under the chat's delegation, so the backend's
+        find_files. Under the chat's delegation, so the Data Core's
         visibility rules — theirs, their groups' — decide what is
         listed; no agent and no grant is in this picture."""
         answer = await self.call(chat_id, "Files:File:List", {})
@@ -398,7 +398,7 @@ class Backend:
         return list(answer.get("events") or [])
 
     async def emit(self, chat_id: str, event: dict) -> Optional[int]:
-        """Record one outbound event; the sequence the backend gave it,
+        """Record one outbound event; the sequence the Data Core gave it,
         or None when it would not record. Resilience, never authority:
         a narration that will not record is still relayed live by the
         host — without a sequence, since the audience could never
@@ -578,23 +578,23 @@ class Backend:
 class ChatResources:
     """An agent's data, files and secrets, as one chat's delegation
     over the gateway. Every operation is made as the person — the
-    backend enforces visibility, ownership and encryption; this only
+    Data Core enforces visibility, ownership and encryption; this only
     puts the provider protocol (ai_runtime/tests/sim/resources.py is the in-process
     reference) onto the gateway's endpoints."""
 
-    def __init__(self, backend: Backend, chat_id: str):
-        self.backend = backend
+    def __init__(self, data_core: DataCoreClient, chat_id: str):
+        self.data_core = data_core
         self.chat_id = chat_id
 
     async def _call(self, endpoint: str, data: dict) -> dict:
-        return await self.backend.call(self.chat_id, endpoint, data)
+        return await self.data_core.call(self.chat_id, endpoint, data)
 
     # -- secrets ---------------------------------------------------------
     async def use_secret(self, resource_id: str,
                          ref: Optional[str] = None) -> Dict[str, Any]:
-        """By canonical category — the backend resolves the bound
+        """By canonical category — the Data Core resolves the bound
         instance — or by a ref among the category's instances, which the
-        backend checks belongs to this slot. Keys and values arrive
+        Data Core checks belongs to this slot. Keys and values arrive
         merged into one flat map: the definition decides which fields
         are encrypted, and the function needs the whole credential
         either way."""
@@ -618,7 +618,7 @@ class ChatResources:
         result = await self._call("Data:Record:List", payload)
         return result.get("resources") or []
 
-    # A call by reference names the slot it is for: the backend answers
+    # A call by reference names the slot it is for: the Data Core answers
     # only a document kept under that slot, so an agent never reaches
     # another agent's records, or the person's own, by guessing a ref.
     # A read with no slot (None) is of a ref the call was handed, and is

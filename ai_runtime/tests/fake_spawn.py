@@ -1,9 +1,9 @@
-"""The spawn helper, stood in for — for the tests of the agents'
-container's own code (agents_container/places.py, service.py).
+"""The spawn helper, stood in for — for the tests of the Execution
+Sandbox's own code (sandbox/places.py, service.py).
 
     python -I fake_spawn.py <control dir> <job> [arguments...]
 
-It answers the helper's jobs (agents_container/spawn_helper.c) without
+It answers the helper's jobs (sandbox/spawn_helper.c) without
 switching users: ``check`` says what ``<control dir>/kernel.txt``
 holds; ``own`` and ``sweep`` do nothing; ``clear`` empties the folder;
 ``run`` runs the program behind ``--`` as this user, with the

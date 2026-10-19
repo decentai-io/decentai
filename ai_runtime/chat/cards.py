@@ -347,8 +347,8 @@ class Cards:
     async def credential(self, host: str, fields: list, account, site,
                          refresh: bool, source: Dict[str, Any]):
         """A login an agent asks for as it works (call.credential): the
-        backend says what the vault holds and which card is owed, the
-        person answers it, and the backend is asked again — until the
+        Data Core says what the vault holds and which card is owed, the
+        person answers it, and the Data Core is asked again — until the
         values are there or the person said no.
 
         The values travel from the vault to the worker and nowhere

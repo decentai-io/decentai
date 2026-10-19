@@ -196,7 +196,7 @@ class TestSaved:
         assert read["skill"] == ref and "await fetch" in read["text"]
 
     def test_a_save_through_the_door_reaches_a_narrowed_chat_too(self):
-        """The person answers later, on the page: the backend saves it
+        """The person answers later, on the page: the Data Core saves it
         and the door carries the row; a chat narrowed to some skills
         keeps the one just saved in it."""
         services = SimSessionServices()

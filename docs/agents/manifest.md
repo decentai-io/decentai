@@ -500,7 +500,7 @@ What the two halves hold, whatever the manifest says: a record has at
 most 50 keys and 50 values, a name is at most 120 characters, a value
 kept in `keys` is at most 8,192 characters, and one kept in `values` at
 most 4 MiB, 10 MiB for a record's values together
-(`backend/database/stores/data/resources.py`). A function that takes
+(`data_core/database/stores/data/resources.py`). A function that takes
 text for a `keys` field says so in its inputs (`maxLength: 8192`), or
 the write is refused where the call was let through.
 

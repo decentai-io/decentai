@@ -21,10 +21,10 @@ node-authority.env
 **/state.json
 
 # What local runs and tests write
-backend/uploads
-backend/data
-backend/tests/.uploads
-backend/tests/.agent-packages
+data_core/uploads
+data_core/data
+data_core/tests/.uploads
+data_core/tests/.agent-packages
 ai_runtime/installed_agents
 ai_runtime/tests/.workerenv
 **/.workerenv

@@ -615,7 +615,7 @@ class TestMediatedResources:
 
             fetched = await access.read_data("note", ref)
             assert fetched["keys"]["title"] == "Milk"
-            # Read back as the backend answers it: the encrypted half
+            # Read back as the Data Core answers it: the encrypted half
             # decrypted, since the agent that wrote the body reads it.
             assert fetched["values"] == {"content": {"body": "secret text"}}
 
@@ -735,7 +735,7 @@ class TestSeveralCredentials:
             listed = await access.list_secrets("google")
             assert [a["keys"]["account"] for a in listed] == [
                 "a@work.example", "a@home.example"]
-            # Every key the backend's listing has (docs/agents/sdk.md):
+            # Every key the Data Core's listing has (docs/agents/sdk.md):
             # code written to the page runs under the stand-in.
             assert all({"resource_ref", "name", "keys", "is_default",
                         "is_bound"} <= set(a) for a in listed)

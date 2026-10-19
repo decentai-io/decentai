@@ -1,8 +1,8 @@
 """An Execution Sandbox, stood in for by this process — for the tests.
 
 In production every process of an agent's runs in an Execution Sandbox,
-which the AI Runtime asks by name (ai_runtime/agents/container.py,
-agents_container/wire.py): an install, a worker of an agent's, a
+which the AI Runtime asks by name (ai_runtime/agents/sandbox.py,
+sandbox/wire.py): an install, a worker of an agent's, a
 listing, an ending. The tests have no such sandbox: this object answers
 the same requests by doing the work here, as this process's user — a
 worker is a subprocess of the test's own, started from the environment
@@ -33,10 +33,10 @@ import sys
 from pathlib import Path
 from typing import Any, ClassVar, Dict, List, Optional, Sequence, Set, Tuple
 
-from ai_runtime.agents.container import AgentsContainer, SandboxRefused
-from ai_runtime.agents_container import wire
-from ai_runtime.agents_container.installs import InstallRefused, Installs, greet
-from ai_runtime.agents_container.places import Places
+from ai_runtime.agents.sandbox import ExecutionSandbox, SandboxRefused
+from sandbox import wire
+from sandbox.installs import InstallRefused, Installs, greet
+from sandbox.places import Places
 
 #: What a Python process needs from the machine it runs on that the
 #: runtime, which runs workers in a Linux container, never passes: the
@@ -51,7 +51,7 @@ def _with_the_machines(environment):
                if name in os.environ}, **environment}
 
 
-class FakeContainer(AgentsContainer):
+class FakeContainer(ExecutionSandbox):
     COULD_NOT_RUN = "it could not run"
     #: Every fake made, so that a test's teardown can end whatever any
     #: of them started.
@@ -79,7 +79,7 @@ class FakeContainer(AgentsContainer):
         #: program, as the container starts it — or a script a test
         #: puts in its place, to speak as a worker would not.
         self.program = ("-I", "-m", "decentai_sdk.worker")
-        #: Who is told what a check proved again (AgentsContainer's).
+        #: Who is told what a check proved again (ExecutionSandbox's).
         self.rechecked: List[Any] = []
         #: agent -> the processes started for it, for ``stop``.
         self._started: Dict[str, List[Any]] = {}
@@ -285,7 +285,7 @@ class FakeContainer(AgentsContainer):
                     timeout: float) -> Tuple[int, str, Optional[Path]]:
         self.asked.append(["build", list(requirements)])
         if "build" in self.refuses:
-            return 1, f"{self.COULD_NOT_RUN}: the agents' container refused", None
+            return 1, f"{self.COULD_NOT_RUN}: the Execution Sandbox refused", None
         if self.build_fails:
             return 1, self.build_fails, None
         spool = self._wheels()
@@ -498,8 +498,8 @@ class standalone:
 
 
 class FakeHelper:
-    """The spawn helper, stood in for, where a test runs the agents'
-    container's own code (agents_container/places.py, service.py): a
+    """The spawn helper, stood in for, where a test runs the Execution
+    Sandbox's own code (sandbox/places.py, service.py): a
     program of the tests' that answers the helper's jobs without
     switching users (fake_spawn.py). ``line`` is how it is called;
     what it was asked is read back (``asked``), what it refuses and

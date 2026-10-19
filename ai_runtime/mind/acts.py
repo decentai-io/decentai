@@ -188,7 +188,7 @@ class Acts:
     async def read_file(self, action: Dict[str, Any]) -> Dict[str, Any]:
         """A document the user attached or chose, read as text a page at
         a time (mind/documents.py). The download runs under the
-        person's own delegation, so the backend's visibility rules —
+        person's own delegation, so the Data Core's visibility rules —
         not this method — decide what a ref may reach; a ref the model
         made up finds nothing."""
         ref = str(action.get("file_ref") or "").strip()
@@ -279,7 +279,7 @@ class Acts:
 
     #: What a helper is told when it asks for the clock. A schedule is
     #: the chat's: a row of a helper's own would be nobody's, and the
-    #: backend refuses it — said here, in words the helper can act on,
+    #: Data Core refuses it — said here, in words the helper can act on,
     #: and not as the refusal of a write.
     NOT_A_HELPERS = ("A schedule is the chat's, and not a helper's to "
                      "set or remove. Say in your report what should be "

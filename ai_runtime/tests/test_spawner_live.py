@@ -22,7 +22,7 @@ their own, and are skipped everywhere else:
     docker compose -f ai_runtime/tests/spawner-live.compose.yml down -v
 
 The last test stops the second sandbox, and needs whoever started the
-stack to do it when asked: it writes /tmp/stop-agents-b in this
+stack to do it when asked: it writes /tmp/stop-sandbox-b in this
 container and waits; CI stops the sandbox then (.github/workflows/tests.yml).
 Without that, it is skipped (LIVE_STOPPER unset).
 """
@@ -38,7 +38,7 @@ import pytest
 from ai_runtime.agents.library import ApprovedAgent
 from ai_runtime.agents.pool import WorkerPool
 from ai_runtime.agents.workers import WorkerError, WorkerHandle
-from ai_runtime.agents_container.events import Events
+from sandbox.events import Events
 from ai_runtime.execution.call import Call
 # The hostile agent, the stand-in for a host on the internet, the
 # registry and how one attempt is made, are that file's.

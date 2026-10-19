@@ -12,7 +12,7 @@ from ai_runtime.execution.resources import ResourceAccess
 from ai_runtime.llms.connector.http import ProviderError
 from ai_runtime.llms.connector.tools import (
     is_context_overflow, is_image_refusal, setting)
-from ai_runtime.door.platform import Backend, Gateway, GatewayError
+from ai_runtime.door.platform import DataCoreClient, Gateway, GatewayError
 from ai_runtime.tests.sim.schedules import MemoryScheduleStore
 from ai_runtime.tests.sim.session_services import SimSessionServices
 from ai_runtime.tests import fake_container
@@ -45,7 +45,7 @@ class TestTheServicesClient:
             run(self.gateway(answers).call("AI:State:Save", {}, "key"))
 
     def test_a_refused_write_drops_only_the_key_it_was_sent_with(self):
-        class Renewing(Backend):
+        class Renewing(DataCoreClient):
             def __init__(self):
                 super().__init__(gateway=None)
                 self.credentials = {"chat_1": "old"}
@@ -60,10 +60,10 @@ class TestTheServicesClient:
                 self.revoked.append(chat_id)
                 self.credentials.pop(chat_id, None)
 
-        backend = Renewing()
+        data_core = Renewing()
         with pytest.raises(GatewayError):
-            run(backend.schedule_ran({"chat_id": "chat_1", "schedule_id": "a"}))
-        assert backend.revoked == [] and backend.credentials == {"chat_1": "new"}
+            run(data_core.schedule_ran({"chat_id": "chat_1", "schedule_id": "a"}))
+        assert data_core.revoked == [] and data_core.credentials == {"chat_1": "new"}
 
 
 class TestAConnectionsNumbers:

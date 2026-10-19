@@ -1,6 +1,6 @@
 """The chat's vocabulary, held to one definition (contracts/chat.py).
 
-The runtime and the backend import the contract; the page's
+The runtime and the Data Core import the contract; the page's
 chat-protocol.ts, in the web client's own repository, is written by hand
 against it. These tests keep the three from drifting apart again: every
 event and part the contract defines is one the page knows, and the page

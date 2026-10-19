@@ -1,8 +1,8 @@
-"""The backend's session surface, in memory.
+"""The Data Core's session surface, in memory.
 
 Implements the services contract ai_runtime/chat/session.py documents —
 state, messages, events, approvals, storage, skills, memories, plans —
-as the backend does over its gateway, minus durability. Approvals can be decided by
+as the Data Core does over its gateway, minus durability. Approvals can be decided by
 a test's hook, held open for an explicit resolve, or left forever (a
 person who never answers is a case, not a bug).
 """
@@ -159,7 +159,7 @@ class SimSessionServices:
     async def load_state(self, chat_id: str) -> Optional[dict]:
         return self.states.get(chat_id)
 
-    #: The platform's own limits (backend/api/endpoints/app/ai): what
+    #: The platform's own limits (data_core/api/endpoints/app/ai): what
     #: it refuses, this refuses, or a test passes here against
     #: something a deployment would turn away.
     STATE_MAX_BYTES = 512 * 1024
@@ -197,7 +197,7 @@ class SimSessionServices:
             for existing in rows:
                 if existing.get("client_message_id") == client_message_id:
                     return existing, False
-        # As the backend: a markdown part must carry words, so a message
+        # As the Data Core: a markdown part must carry words, so a message
         # that is only its data parts travels as exactly those.
         words = ([{"type": "markdown", "content": text,
                    **({"source": source} if source else {})}]
@@ -233,7 +233,7 @@ class SimSessionServices:
     # -- events out ------------------------------------------------------
     async def emit(self, chat_id: str, event: dict) -> int:
         """Recorded, and answered with its sequence — per chat, as the
-        backend allocates it. What the backend would refuse, the sim
+        Data Core allocates it. What the Data Core would refuse, the sim
         refuses louder: an event outside the chat contract fails the
         test that emitted it (contracts/chat.py)."""
         problem = event_error(event)
@@ -258,7 +258,7 @@ class SimSessionServices:
         once (``by`` is ``person``); else ``answer`` is None and the
         card waits for the door."""
         if request.get("expects") == "skill":
-            # The backend's checks on a skill card, before anything is
+            # The Data Core's checks on a skill card, before anything is
             # shown (approval_controller.py, _skill_card).
             request = {**request, "skill": self._skill_card(chat_id, request)}
         approval_id = f"apr_{next(self._ids)}"
@@ -276,7 +276,7 @@ class SimSessionServices:
                 answer, by = decided, "person"
         if answer is not None:
             if request.get("expects") == "skill" and by == "person":
-                # The person's save creates the skill, as the backend's
+                # The person's save creates the skill, as the Data Core's
                 # decision does; the answer is what its frame carries.
                 answer = self.decide_skill(approval_id, answer)
             record["answer"] = answer
@@ -328,7 +328,7 @@ class SimSessionServices:
 
     def answered(self, approval_id: str, answer: Any) -> None:
         """What the door delivered for a card, written on its record —
-        as the backend writes the person's decision."""
+        as the Data Core writes the person's decision."""
         record = self.approvals.get(approval_id)
         if record is not None and record["status"] == "pending":
             record["answer"] = answer
@@ -388,7 +388,7 @@ class SimSessionServices:
         return self.skill_bodies.get(ref)
 
     async def read_image(self, chat_id: str, ref: str) -> dict:
-        """A stored file, encoded, the way the backend's download answers
+        """A stored file, encoded, the way the Data Core's download answers
         it. By ref across every category: an attachment belongs to the
         chat, not to an agent."""
         import base64
@@ -409,12 +409,12 @@ class SimSessionServices:
         return {}
 
     async def resolve_credential(self, chat_id: str, payload: dict) -> dict:
-        """The backend's Secrets:Credential:Resolve, over ``self.logins``:
+        """The Data Core's Secrets:Credential:Resolve, over ``self.logins``:
         ``{(host, account): {"values": {...}, "consents": {"agent@site"},
         "resource_ref": ...}}``. A test's decider answers the cards and
         writes here as the person would."""
         host = str(payload.get("host") or "").lower().split("://")[-1].split("/")[0]
-        host = ".".join(host.split(".")[-2:])  # the registrable domain, as the backend keys it
+        host = ".".join(host.split(".")[-2:])  # the registrable domain, as the Data Core keys it
         site = str(payload.get("site") or host)
         agent = str(payload.get("agent_ref") or "")
         fields = list(payload.get("fields") or [])
@@ -453,7 +453,7 @@ class SimSessionServices:
                 "ask": [f for f in fields if not f.get("remember", True)]}
 
     async def list_files(self, chat_id: str) -> List[dict]:
-        """Every stored file, the way the backend lists them: metadata
+        """Every stored file, the way the Data Core lists them: metadata
         under ``values``, whatever category an agent filed it in — the
         person sees their own files, whoever made them."""
         listed = []

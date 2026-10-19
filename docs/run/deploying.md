@@ -13,7 +13,7 @@ its own is set up by hand, because what it is — its address, who its
 administrator is, where its mail goes — is yours to say.
 
 **1. Generate the secrets.** With Python 3.12 and the Data Core's
-packages (`pip install -r backend/requirements.txt`):
+packages (`pip install -r data_core/requirements.txt`):
 
 ```bash
 python bootstrap/generate_service_keys.py     # the Data Core's signing pair
@@ -64,7 +64,7 @@ docker compose -f docker-compose.yml -f compose/server.yml \
 Only the gateway publishes ports (80 and 443); the Data Core, runtime and
 database live on private Compose networks, the database on one of its
 own that only the Data Core and the seeder reach. Agent code runs in a
-container of its own, `agents`, on a network that reaches the
+container of its own, `sandbox`, on a network that reaches the
 runtime and nothing else ([the sandbox](../system/sandbox.md)). Every
 `docker compose` line below takes the same two `-f` files on a server.
 

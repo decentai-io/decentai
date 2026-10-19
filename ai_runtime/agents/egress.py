@@ -46,7 +46,7 @@ import time
 from typing import Callable, ClassVar, Dict, List, Optional, Tuple
 from urllib.parse import urlsplit
 
-from ai_runtime.agents_container.events import Events
+from sandbox.events import Events
 
 
 class Admission:
@@ -190,7 +190,7 @@ class EgressProxy:
     #: Where the proxy listens: every address of this container. A
     #: worker is pointed at the proxy's port on its own container's
     #: address (HOST), and that container passes what arrives there on
-    #: to here (agents_container/service.py).
+    #: to here (sandbox/service.py).
     LISTEN = "0.0.0.0"
 
     def __init__(self, port: int, allow_loopback: bool = False):

@@ -1,7 +1,7 @@
-"""The backend's data layer, simulated in memory.
+"""The Data Core's data layer, simulated in memory.
 
 The one production resource provider is the chat's ChatResources
-(ai_runtime/door/platform.py), persisting through the backend's /app
+(ai_runtime/door/platform.py), persisting through the Data Core's /app
 gateway as the chat. This is its stand-in for tests and hermetic runs — the
 harness an agent's own tests use too: dicts mirroring the data layer's
 record shape, gone when the process is.
@@ -27,7 +27,7 @@ class InMemoryResourceProvider:
     example ``notebook__connection``) — they are created by admins,
     never agents. One instance is a flat map of its fields; several are
     a list of ``{resource_ref, name, keys, values, default?}``, the shape
-    the backend lists them in."""
+    the Data Core lists them in."""
 
     def __init__(self, secrets: Optional[Dict[str, Dict[str, Any]]] = None):
         self.secrets = dict(secrets or {})
@@ -47,7 +47,7 @@ class InMemoryResourceProvider:
 
     @staticmethod
     def _public(record: Dict[str, Any]) -> Dict[str, Any]:
-        # As the backend answers a read of a data record: the plain half
+        # As the Data Core answers a read of a data record: the plain half
         # and the encrypted half decrypted (stores/data/records.py) — an
         # agent reads back the note body, the session state it kept.
         return {
@@ -67,7 +67,7 @@ class InMemoryResourceProvider:
             return []
         if isinstance(stored, dict):
             # A flat map is one instance; the keys a person names it by
-            # travel as keys, as the backend lists them.
+            # travel as keys, as the Data Core lists them.
             keys = {k: stored[k] for k in ("account", "status") if k in stored}
             return [(f"sec_{resource_id}", "default", keys, dict(stored), True)]
         return [
@@ -101,7 +101,7 @@ class InMemoryResourceProvider:
     async def list_secrets(self, resource_id):
         return [
             # No chat binds a credential here, so none is bound; the
-            # key is there because the backend's listing has it.
+            # key is there because the Data Core's listing has it.
             {"resource_ref": ref, "name": name, "keys": dict(keys),
              "is_default": default, "is_bound": False}
             for ref, name, keys, _, default in self._instances(resource_id)
@@ -119,7 +119,7 @@ class InMemoryResourceProvider:
         ]
 
     def _by_ref(self, held, slot, ref, kind):
-        """The backend's rule: in the slot named, or — with no slot, a
+        """The Data Core's rule: in the slot named, or — with no slot, a
         ref the call was handed — wherever it is kept."""
         if slot is not None:
             record = held.get(slot, {}).get(ref)

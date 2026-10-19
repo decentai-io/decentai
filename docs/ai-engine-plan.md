@@ -11,7 +11,7 @@ the clients and the white paper.*
 
 - **AI Engine**: the Data Core, the AI Runtime and the Execution Sandbox.
   This repository becomes the AI Engine alone.
-- **Data Core**: today's `backend/`. Identity and access, the agent
+- **Data Core**: `data_core/`. Identity and access, the agent
   lifecycle, the data layer, chats and approvals, organization settings.
   The only part that reaches the database. Executes nothing.
 - **AI Runtime**: plans, executes, checks every call, runs the proxy.
@@ -66,11 +66,11 @@ the clients and the white paper.*
 
 | Today | What it means for the plan |
 |---|---|
-| The Data Core knows one Runtime address (`AI_RUNTIME_URL`) and dials it once per person and chat (`backend/api/services/chat_session/relay.py`). | Replaced by nodes connecting in, with chats multiplexed over each node's link. |
+| The Data Core knows one Runtime address (`AI_RUNTIME_URL`) and dials it once per person and chat (`data_core/api/services/chat_session/relay.py`). | Replaced by nodes connecting in, with chats multiplexed over each node's link. |
 | At boot the Data Core re-dials every chat with schedules, so the Runtime's clock can load them; the clock runs in the Runtime (`ai_runtime/chat/clock.py`). | The clock moves to the Data Core; the Runtime only runs firings it is handed. |
 | Keys are fixed in `config/deploy.env`: the Data Core's public key on the Runtime, the Runtime's public key on the Data Core. | Replaced by registered authorities and node credentials they sign. |
-| The Data Core reads monitoring by calling the Runtime over HTTP (`backend/api/services/agents/monitoring.py` to `/internal/monitor/*`). | Moves onto the node link, since the Data Core can no longer reach nodes. |
-| The Runtime reaches one Sandbox at `agents:8003`, using a key read from a shared volume. | Sandboxes register with their Runtime instead. |
+| The Data Core reads monitoring by calling the Runtime over HTTP (`data_core/api/services/agents/monitoring.py` to `/internal/monitor/*`). | Moves onto the node link, since the Data Core can no longer reach nodes. |
+| The Runtime reaches one Sandbox at `sandbox:8003`, using a key read from a shared volume. | Sandboxes register with their Runtime instead. |
 | Runtime and Sandbox share `/data/agents`: packages, environments, homes, the spool for large files, the event log, the key. | Each Sandbox keeps its own; large files travel over the connection. |
 | The Data Core assumes one process: its access cache, webhook rate counter and live sockets are in memory. | Stays true for now (see open questions). |
 | The Runtime holds no state of its own, and absorbs each event exactly once. | Already right for leases and failover. Nothing to change. |
@@ -251,8 +251,10 @@ agents to the other on their next call.
 - Still to do: publish the client contract from `docs/reference/api.md`,
   with a version; the engine's chat-protocol check reads the web client
   from a checkout beside it, and skips without one.
-- Later: the desktop client from the web client; rename `backend/` to
-  `data_core/`.
+- Later: the desktop client from the web client.
+- Done: the folders, services and settings carry the parts' names
+  (`data_core/` and `sandbox/`; the `data-core` and `sandbox` services),
+  and the install's settings are in `config/`.
 
 ### Phase 8 — The white paper
 

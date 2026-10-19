@@ -1,8 +1,8 @@
-"""Make the deployment's VAPID key pair — what lets this backend send
+"""Make the deployment's VAPID key pair — what lets the Data Core send
 web push notifications to browsers that subscribed.
 
 Run once per deployment and put the three lines it prints into the
-backend's environment (config.env locally, config/deploy.env on a server).
+Data Core's environment (config.env locally, config/deploy.env on a server).
 The private key is a secret: treat it like the signing key.
 
     python bootstrap/generate_vapid_keys.py

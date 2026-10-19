@@ -4,7 +4,7 @@ One class, two ways in:
 
 - a ``WorkerHandle`` instance — the long-lived client an execution
   layer holds: has an Execution Sandbox start the worker from its
-  private venv there (agents/container.py), handshakes, keeps any number of
+  private venv there (agents/sandbox.py), handshakes, keeps any number of
   invocations in flight, routes the worker's asks (pool.py names them)
   to whoever may answer them, and owns the process's death.
 - ``WorkerHandle.probe`` — installation's verification station: start,
@@ -32,7 +32,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from ai_runtime.agents.confinement import WorkerPlace
-from ai_runtime.agents_container.events import Events
+from sandbox.events import Events
 from decentai_sdk.manifest import Manifest
 
 
@@ -59,7 +59,7 @@ class WorkerHandle:
     #: what a Python subprocess needs to run at all, and what an
     #: administrator set for every process on the machine. Nothing else —
     #: this process's own variables hold the model key and the
-    #: backend's trust, and agent code is not this process. A variable
+    #: Data Core's trust, and agent code is not this process. A variable
     #: not named here does not reach a worker, whatever else is set.
     PASSED_VARIABLES = frozenset((
         # the operating system's own: paths, temp, home, locale

@@ -16,7 +16,7 @@ that was not declared, a value that is not its field's type, a
 is an update: only what is written is checked, and nothing is missed.
 
 Shared by the two places a record is written from, so that the rule
-is one rule: the backend, for what a person writes on a page and for
+is one rule: the Data Core, for what a person writes on a page and for
 a credential, and the runtime, for what an agent's function writes.
 
 Nothing given, by an agent, is nothing kept: ``None`` is how code says
@@ -113,7 +113,7 @@ class RecordFields:
             if isinstance(value, bool) or not isinstance(value, (int, float)):
                 raise ValueError(f"{name} must be a number.")
             return value
-        # A credential definition's type, kept by the backend; a
+        # A credential definition's type, kept by the Data Core; a
         # manifest's field never declares it.
         if field_type == "boolean":
             if not isinstance(value, bool):

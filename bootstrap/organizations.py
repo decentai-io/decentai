@@ -22,13 +22,13 @@ import sys
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-BACKEND_ROOT = PROJECT_ROOT / "backend"
+DATA_CORE_ROOT = PROJECT_ROOT / "data_core"
 sys.path.insert(0, str(PROJECT_ROOT))
-sys.path.insert(0, str(BACKEND_ROOT))
+sys.path.insert(0, str(DATA_CORE_ROOT))
 
 from dotenv import load_dotenv
 
-load_dotenv(BACKEND_ROOT / "config.env", override=False)
+load_dotenv(DATA_CORE_ROOT / "config.env", override=False)
 
 
 class OrganizationCommands:

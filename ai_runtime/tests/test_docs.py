@@ -29,20 +29,20 @@ NOT_OURS = {".git", "node_modules", "dist", ".angular", ".venv", "venv",
 
 #: The top of every path the repository keeps, so that a path in a page
 #: is told from any other words with a slash between them.
-TOPS = ("ai_runtime", "backend", "bootstrap", "compose", "config",
-        "contracts", "decentai_sdk", "docs", "gateway", "speech",
-        "tests")
+TOPS = ("ai_runtime", "bootstrap", "compose", "config", "contracts",
+        "data_core", "decentai_sdk", "docs", "gateway", "sandbox",
+        "speech", "tests")
 
 #: Paths a page names that are made where the platform runs, and are
 #: not kept: a person's own settings, and the agents they installed.
-MADE_NOT_KEPT = {"backend/config.env", "ai_runtime/config.env",
+MADE_NOT_KEPT = {"data_core/config.env", "ai_runtime/config.env",
                  "ai_runtime/installed_agents", "config/deploy.env",
                  "config/sandbox.env", "config/node-authority.env"}
 
 #: Where settings are offered to whoever sets the platform up.
 EXAMPLES = ("config/deploy.env.example", "config/sandbox.env.example",
             "config/node-authority.env.example",
-            "backend/config.env.example", "ai_runtime/config.env.example")
+            "data_core/config.env.example", "ai_runtime/config.env.example")
 
 SETTINGS_PAGE = "docs/run/configuration.md"
 
@@ -165,7 +165,7 @@ class TestSettings:
 
 class TestTheGeneratedPage:
     def test_the_actions_page_is_what_its_generator_writes(self, repository):
-        """The page is written from the backend's catalog, so a new
+        """The page is written from the Data Core's catalog, so a new
         action is on it once the generator has been run again."""
         source = ROOT / "docs" / "reference" / "generate.py"
         spec = importlib.util.spec_from_file_location("docs_generate", source)
@@ -173,7 +173,7 @@ class TestTheGeneratedPage:
         try:
             spec.loader.exec_module(generator)
         except ImportError as missing:
-            pytest.skip(f"the backend's catalog cannot be read here: {missing}")
+            pytest.skip(f"the Data Core's catalog cannot be read here: {missing}")
         kept = repository.text(source.parent / "actions.md")
         assert kept == generator.page(), (
             "run: python docs/reference/generate.py")

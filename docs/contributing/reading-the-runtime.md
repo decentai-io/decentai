@@ -1,6 +1,6 @@
 # Reading the runtime
 
-A route through `ai_runtime/` for somebody who wants to understand it
+A route through `ai_runtime/`, and `sandbox/` beside it, for somebody who wants to understand it
 and check that it is right. The stops follow one message: in through
 the socket, into the chat's session, through the assistant's cycle, out
 to an agent's function in its worker, and back. The sandbox and the
@@ -41,7 +41,7 @@ ai_runtime/
     node.py            this node's credential, and the Data Core's key
     link.py            the node link: dialed to the Data Core, every chat over it
     monitor.py         the monitoring answers, and /internal/health/live
-    platform.py        Backend, ChatResources, Gateway: every call out to the backend
+    platform.py        DataCoreClient, ChatResources, Gateway: every call out to the Data Core
     host.py            SessionHost: one session per chat, emit, reap, kill
     roster.py          AgentRoster: the contract's agents, and the stock of every approved package
   chat/                a chat's body
@@ -78,31 +78,31 @@ ai_runtime/
     workers.py         WorkerHandle: the host side of the worker protocol
     pool.py            WorkerPool: the running workers, each in a sandbox, and the router to each Call
     sandboxes.py       Sandboxes: every Execution Sandbox registered, and where a worker runs
-    container.py       AgentsContainer: one Execution Sandbox, as the runtime asks it
+    sandbox.py         ExecutionSandbox: one Execution Sandbox, as the runtime asks it
     confinement.py     Confinement, WorkerPlace: the proxy and each worker's pass
     egress.py          EgressProxy: the hosts a manifest declared, and nothing else
     mcp.py             McpServer: a remote MCP server in a chat's roster
-  agents_container/    what runs in each Execution Sandbox (docs/system/sandbox.md)
-    service.py         SpawnerService: registers with its runtime, starts what it asks for, by name
-    installs.py        Installs: the sandbox's own copy of the code, checked, built and verified
-    environments.py    AgentEnvironment: one private venv per dependency list
-    places.py          Places, Place: the users, the spawn lines, the fences
-    usage.py           AgentsUsage: what the sandbox is given and each agent uses
-    wire.py            what the two sides agree on: the sandbox link, versioned
-    events.py          what agents did, written down as it happens, by both sides
-    spawn_helper.c     the one program that starts a process as another user
   llms/                how the runtime reaches a model
     factory.py         LLMConnectorFactory: provider name -> the connector
     connector/         one per provider — anthropic, bedrock, gemini, openai,
                        responses, vertex, fake — behind one interface (tools.py)
   prompts/             every prompt the runtime speaks, as .md files a person can edit
+sandbox/               what runs in each Execution Sandbox, beside ai_runtime/ (docs/system/sandbox.md)
+  service.py           SandboxService: registers with its runtime, starts what it asks for, by name
+  installs.py          Installs: the sandbox's own copy of the code, checked, built and verified
+  environments.py      AgentEnvironment: one private venv per dependency list
+  places.py            Places, Place: the users, the spawn lines, the fences
+  usage.py             AgentsUsage: what the sandbox is given and each agent uses
+  wire.py              what the two sides agree on: the sandbox link, versioned
+  events.py            what agents did, written down as it happens, by both sides
+  spawn_helper.c       the one program that starts a process as another user
 ```
 
 Two rules of the tree. `mind/` imports `execution/` and `agents/` —
 the law it operates under — and never `chat/`, the embodiment that
 hosts it: every side effect crosses `ChatSinks`, which lives in
-`execution/` for that reason. And `agents_container/` imports nothing
-of `agents/`: the two meet on a socket, and nothing else, and in the two
+`execution/` for that reason. And `sandbox/` imports nothing
+of `ai_runtime/`: the two meet on a socket, and nothing else, and in the two
 files they share, `wire.py` and `events.py`.
 
 ## 1. Start-up and the door
@@ -428,7 +428,7 @@ With [the sandbox](../system/sandbox.md) open beside it.
   confines a worker; `WorkerPlace` is one agent's worker as the
   runtime knows it — its name and its pass at the proxy (`admit`,
   `proxy_address`, `lend`, `learn`).
-- `agents_container/places.py` — the container's side: `Places` gives
+- `sandbox/places.py` — the container's side: `Places` gives
   each agent a user and a place (`place`, the table of users), proves
   the helper and the kernel at start (`check`,
   `prove_the_network_is_fenced`) and asks the helper for its jobs
@@ -446,30 +446,30 @@ With [the sandbox](../system/sandbox.md) open beside it.
   per digest, verified before it is written, and the bytes it sends a
   sandbox), and the two names of an agent (`ApprovedAgent`: the
   platform's ref outside, the package's id inside).
-- `agents_container/installs.py`, `agents_container/environments.py`
+- `sandbox/installs.py`, `sandbox/environments.py`
   — each sandbox's own copy: the bytes and the manifest checked before
   anything is written, the per-agent environment and its build by the
   builder, the verification start (`Installs.install`, `greet`).
-- `agents/sandboxes.py`, `agents/container.py`,
-  `agents_container/wire.py`, `agents_container/service.py` — where
+- `agents/sandboxes.py`, `agents/sandbox.py`,
+  `sandbox/wire.py`, `sandbox/service.py` — where
   every process of an agent's is started: an Execution Sandbox that
   registered with the runtime (`Sandboxes._register`), chosen by the
   placement rule (`Sandboxes.choose`), asked by name over a socket
-  (`AgentsContainer.prepare`, `start_worker`, `files`, `stop`) and
-  answered by `SpawnerService` (`_install`, `_start`, `_files`,
+  (`ExecutionSandbox.prepare`, `start_worker`, `files`, `stop`) and
+  answered by `SandboxService` (`_install`, `_start`, `_files`,
   `_stop`), which also carries a worker's lines (`_carry_worker`) and
   passes workers' connections on to the runtime's proxy (`_pass_on`).
   The tests have no container: `ai_runtime/tests/fake_container.py`
   answers the same requests in the test's own process.
-- `agents_container/usage.py` — what the Execution Sandbox is given and what
+- `sandbox/usage.py` — what the Execution Sandbox is given and what
   each agent uses, read from the kernel (`AgentsUsage.sample`), and who
   is ended when they use nearly all of it (`over`). The spawner's
   `_watch` looks every second and does the ending.
-- `agents_container/events.py` — what agents did, written down as it happens
+- `sandbox/events.py` — what agents did, written down as it happens
   (`Events.record`), by the places that see it: a worker's life and
   log (`workers.py`), each connection (`egress.py`), and — in the
   Execution Sandbox — the helper's jobs and programs run as an agent
-  (`agents_container/places.py`, `service.py`) and the processes an
+  (`sandbox/places.py`, `service.py`) and the processes an
   agent starts (`service.py`). Read by the Data Core through
   `door/monitor.py`. With
   [what is written down](../system/monitoring.md) open beside it.
@@ -486,9 +486,9 @@ Check:
   with only the package hosts open.
 - The spawner starts nothing for a request that does not prove the
   node's secret, and ends a worker whose runtime hung up
-  (`SpawnerService._serve`, `_start`); a sandbox that has not passed its
+  (`SandboxService._serve`, `_start`); a sandbox that has not passed its
   own check runs nothing, and is given no worker (`Places.checked`,
-  `AgentsContainer.eligible`).
+  `ExecutionSandbox.eligible`).
 
 Tests: `ai_runtime/tests/test_confinement.py`,
 `ai_runtime/tests/test_places.py`, `ai_runtime/tests/test_egress.py`,
@@ -539,7 +539,7 @@ Tests: the schedule classes in `ai_runtime/tests/test_session.py`,
 
 ## 8. The edges
 
-- `door/platform.py` — `Backend`, every call the runtime makes to the
+- `door/platform.py` — `DataCoreClient`, every call the runtime makes to the
   platform, each naming the chat it acts for and carrying that chat's
   credential; `ChatResources`, an agent's data, files and secrets as
   one chat; `Gateway` is the request itself. `ai_runtime/tests/sim/session_services.py`

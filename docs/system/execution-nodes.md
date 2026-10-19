@@ -17,7 +17,7 @@ any node holding a credential that authority signed is admitted.
 Thousands of nodes need no administrator step each.
 
 An authority is a row in the Data Core (`node_authorities`,
-`backend/database/stores/nodes.py`):
+`data_core/database/stores/nodes.py`):
 
 | Field | What it is |
 |---|---|
@@ -111,9 +111,9 @@ node only does it; a sandbox it does not have is refused in words.
 
 ## The Data Core's signature
 
-A node is configured with the Data Core's address (`DATA_CORE_URL`, or
-`BACKEND_INTERNAL_URL`) and its public key (`DATA_CORE_PUBLIC_KEY`, or
-`BACKEND_SERVICE_PUBLIC_KEY`), and believes nothing that key did not
+A node is configured with the Data Core's address
+(`DATA_CORE_INTERNAL_URL`) and its public key
+(`DATA_CORE_SERVICE_PUBLIC_KEY`), and believes nothing that key did not
 sign. Every reply the Data Core sends a node carries
 `X-DecentAI-Data-Core-Signature`: a token, signed with the Data Core's
 private key (`api/services/nodes/signing.py`), naming the node, the
@@ -132,7 +132,7 @@ Every request a node makes carries its credential
 Core is given no node's address; a node can run anywhere, behind a
 firewall that lets nothing in included. Each node keeps **one**
 long-lived connection (`ai_runtime/door/link.py` on the node,
-`backend/api/services/nodes/link.py` and `backend/server/routes/nodes.py`
+`data_core/api/services/nodes/link.py` and `data_core/server/routes/nodes.py`
 on the Data Core):
 
 ```
@@ -192,7 +192,7 @@ node ends it.
 over names the node it was handed to (`runtime_sessions.node_id`). The
 gateway accepts it only on a request that node presents its own
 credential with (`X-DecentAI-Node`); from any other node, or with none,
-it opens nothing (`backend/server/routes/app.py`).
+it opens nothing (`data_core/server/routes/app.py`).
 
 **A node that goes.** Its chats are attached nowhere, and the people
 watching them are told (`runtime_disconnected`). When it comes back
@@ -204,7 +204,7 @@ restart loses no chat.
 ## Leases
 
 Every active chat is held by one node under a **lease**
-(`chat_leases`, `LeaseStore` in `backend/database/stores/nodes.py`): the
+(`chat_leases`, `LeaseStore` in `data_core/database/stores/nodes.py`): the
 node, a **number**, an expiry.
 
 - **Granted** when a chat needs a node — a person opens it, a frame for
@@ -219,9 +219,9 @@ node, a **number**, an expiry.
 - **Fencing.** Every call a node makes for a chat — state, events,
   messages, approvals, results, schedules, everything a delegation opens
   — carries its lease number (`X-DecentAI-Lease`), and the gateway
-  accepts only the live lease's, from its node (`backend/server/routes/app.py`).
+  accepts only the live lease's, from its node (`data_core/server/routes/app.py`).
   An old number is refused (409, `stale_lease`), and the node that hears
-  that lets the chat go (`Backend.on_stale`). Two nodes can never both
+  that lets the chat go (`DataCoreClient.on_stale`). Two nodes can never both
   act for one chat, whatever either of them believes.
 - **Failover.** A lease whose node stopped renewing it and never let it
   go is looked for every five seconds (`RuntimeClientManager.fail_over`):
@@ -238,7 +238,7 @@ node, a **number**, an expiry.
 ## The clock
 
 **The clock lives in the Data Core** (`ScheduleClock`,
-`backend/api/services/chat_session/clock.py`), because a schedule must
+`data_core/api/services/chat_session/clock.py`), because a schedule must
 fire once however many nodes hold a copy of its row, and fire even when
 no node holds its chat. Every five seconds it reads the rows it already
 keeps (`ai_schedules`) for those whose time has come, and for each:
@@ -277,7 +277,7 @@ Data Core's to say.
 
 ## Placement
 
-Which node a chat is given to (`backend/api/services/nodes/placement.py`):
+Which node a chat is given to (`data_core/api/services/nodes/placement.py`):
 the one holding its live lease, if it is connected. Otherwise, among the
 nodes connected — each admitted, its authority unrevoked — that may
 serve the chat's organization (a shared node, or one of the
@@ -296,7 +296,7 @@ An organization's administrators may run nodes of their own: they
 register an authority for their organization ([above](#admitted-by-authorities-never-one-by-one)),
 and every node it vouches for serves that organization alone. Where
 the organization's chats may run is its setting
-(`Settings:Nodes`, `backend/api/endpoints/app/settings/nodes_controller.py`):
+(`Settings:Nodes`, `data_core/api/endpoints/app/settings/nodes_controller.py`):
 
 | `placement` | Means |
 |---|---|

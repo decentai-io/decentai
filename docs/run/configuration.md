@@ -2,7 +2,7 @@
 
 Every setting is an environment variable. Compose reads them from
 `config/deploy.env`; a container platform sets them on the task; a Data Core
-started by hand seeds them from `backend/config.env`, and a runtime
+started by hand seeds them from `data_core/config.env`, and a runtime
 started from its image by hand from `ai_runtime/config.env`. The code reads the environment and nothing
 else, so moving between platforms changes values, never code.
 
@@ -10,7 +10,7 @@ These values are generated, never chosen:
 
 | Generator | Produces |
 |---|---|
-| `python bootstrap/generate_service_keys.py` | the Data Core's RS256 pair, each half on one line with `\n` escapes: `BACKEND_SERVICE_PRIVATE_KEY` for the Data Core, which signs everything it tells an execution node with it, and `BACKEND_SERVICE_PUBLIC_KEY` for every node |
+| `python bootstrap/generate_service_keys.py` | the Data Core's RS256 pair, each half on one line with `\n` escapes: `DATA_CORE_SERVICE_PRIVATE_KEY` for the Data Core, which signs everything it tells an execution node with it, and `DATA_CORE_SERVICE_PUBLIC_KEY` for every node |
 | `python bootstrap/generate_node_authority.py` | a node authority's pair: `NODE_AUTHORITY_PUBLIC_KEY`, registered with the Data Core, and `NODE_AUTHORITY_PRIVATE_KEY`, for whatever signs node credentials — never a node, and never the Data Core ([execution nodes](../system/execution-nodes.md)) |
 | `python bootstrap/generate_secret_keys.py` | `SECRET_ENCRYPTION_KEYS` and `SECRET_ENCRYPTION_ACTIVE` — versioned AES-256-GCM keys; `--rotate` appends a version |
 | `python -c "import secrets; print(secrets.token_urlsafe(48))"` | `TOKEN_SECRET_KEY` |
@@ -26,14 +26,30 @@ writes both, and moves either out of a `config/deploy.env` from before that
 still holds it; by hand, copy `config/sandbox.env.example` and
 `config/node-authority.env.example`.
 
+### Older names
+
+Some settings were renamed with the engine's parts. An install's file
+may still use an older name, and it is read wherever the new one is not
+set (`contracts/setting_names.py`, and `docker-compose.yml` for the
+ones only Compose reads). `bootstrap/setup.py` renames them in a
+computer's own `config/deploy.env`, keeping their values.
+
+| Setting | Older names, still read |
+|---|---|
+| `DATA_CORE_SERVICE_PRIVATE_KEY` | `DATA_CORE_PRIVATE_KEY`, `BACKEND_SERVICE_PRIVATE_KEY` |
+| `DATA_CORE_SERVICE_PUBLIC_KEY` | `DATA_CORE_PUBLIC_KEY`, `BACKEND_SERVICE_PUBLIC_KEY` |
+| `DATA_CORE_INTERNAL_URL` | `DATA_CORE_URL`, `BACKEND_INTERNAL_URL` |
+| `DATA_CORE_HOST`, `DATA_CORE_PORT` | `BACKEND_HOST`, `BACKEND_PORT` |
+| `SANDBOX_MEMORY`, `SANDBOX_CPUS`, `SANDBOX_LABELS`, `SANDBOX_2_LABELS` | `AGENTS_MEMORY`, `AGENTS_CPUS`, `AGENTS_LABELS`, `AGENTS_2_LABELS` |
+
 ## The Data Core
 
 ### Where it binds, and whom it believes
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `BACKEND_HOST` | `127.0.0.1` | Bind address. The image sets `0.0.0.0`. |
-| `BACKEND_PORT` | `8000` | Bind port. |
+| `DATA_CORE_HOST` | `127.0.0.1` | Bind address. The image sets `0.0.0.0`. |
+| `DATA_CORE_PORT` | `8000` | Bind port. |
 | `FORWARDED_ALLOW_IPS` | `127.0.0.1` | Proxy addresses whose `X-Forwarded-*` headers are trusted; session IPs and the login lockout depend on it. `*` inside a private network. |
 | `CORS_ALLOW_ORIGINS` | `http://localhost:4200` | Comma-separated origins the browser may call from. A request carrying the session cookie from any other origin is not signed in. |
 | `PUBLIC_APP_URL` | `http://localhost:4200` | Where users reach the app; the base for links in invitations and resets, and an origin the session cookie is accepted from. |
@@ -59,7 +75,7 @@ still holds it; by hand, copy `config/sandbox.env.example` and
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `FILE_STORAGE_PROVIDER` | `local` | Where uploaded files and approved agent packages are kept: `local` (the volumes), `s3`, `azure_blob` or `gcs` (`backend/database/blob_stores.py`). New files are written there; each file is read from the store its record names, so a store moved away from is still read while its settings stay. Moving what a deployment already holds: `bootstrap/move_storage.py` ([operating](operating.md#moving-the-files-to-another-store)). |
+| `FILE_STORAGE_PROVIDER` | `local` | Where uploaded files and approved agent packages are kept: `local` (the volumes), `s3`, `azure_blob` or `gcs` (`data_core/database/blob_stores.py`). New files are written there; each file is read from the store its record names, so a store moved away from is still read while its settings stay. Moving what a deployment already holds: `bootstrap/move_storage.py` ([operating](operating.md#moving-the-files-to-another-store)). |
 | `UPLOADS_DIR` | `./uploads` | The folder for `local`. Keep it short on Windows. |
 | `AGENT_PACKAGE_DIR` | `data/agent-packages` | Where approved agent packages are kept on `local` — the only copy the platform controls. A package's filename is a digest, so keep the path short on Windows. |
 | `STORAGE_PREFIX` | empty | A folder inside the bucket or container, for every cloud: files go under `<prefix>/files/`, packages under `<prefix>/packages/`. |
@@ -81,7 +97,7 @@ still holds it; by hand, copy `config/sandbox.env.example` and
 | Variable | Default | Meaning |
 |---|---|---|
 | `SPEECH_URL` | `http://speech:8004` | Where the Data Core asks the platform's own speech models ([the speech container](#the-speech-container)). Nothing answering there is not an error: an organization that keeps speech local is told it is not running, and one that chose a provider never asks. |
-| `BACKEND_SERVICE_PRIVATE_KEY` | required for chats | The Data Core's own key: it signs every reply and frame it sends an execution node, and nodes hold the public half ([execution nodes](../system/execution-nodes.md#the-data-cores-signature)). `DATA_CORE_PRIVATE_KEY` is read in its place where it is set. |
+| `DATA_CORE_SERVICE_PRIVATE_KEY` | required for chats | The Data Core's own key: it signs every reply and frame it sends an execution node, and nodes hold the public half ([execution nodes](../system/execution-nodes.md#the-data-cores-signature)). Its older names are read where it is not set ([older names](#older-names)). |
 | `NODE_AUTHORITY_PUBLIC_KEY` | unset | An authority's public key, registered as a shared authority when the seeder runs, once. One computer's install sets it; a server registers its authorities on the Nodes doors instead ([execution nodes](../system/execution-nodes.md)). |
 | `OPERATOR_ORG_ID` | the first organization | Whose administrators are the deployment's operator: they, holding `nodes:authority:shared`, register and revoke shared authorities. |
 | `REFERENCE_CATALOG_URL` | unset | A repository the marketplace offers as a source with one click. Unset, it offers none. |
@@ -144,8 +160,8 @@ gone. Back them up with it.
 |---|---|---|
 | `AI_RUNTIME_HOST` | `0.0.0.0` | Bind address; `127.0.0.1` locally. |
 | `AI_RUNTIME_PORT` | `8001` | Bind port. Left blank it is the default; a value that is not a port is refused at start, by name. |
-| `BACKEND_INTERNAL_URL` | required | Where the runtime reaches the Data Core's gateway for its services; a runtime not told does not start. In Compose it is the service name; where the containers share one network, `http://127.0.0.1:8000`. `DATA_CORE_URL` is read in its place where it is set. |
-| `BACKEND_SERVICE_PUBLIC_KEY` | required | The Data Core's public key: the node believes no reply or frame it did not sign. `DATA_CORE_PUBLIC_KEY` is read in its place where it is set. |
+| `DATA_CORE_INTERNAL_URL` | required | Where the runtime reaches the Data Core's gateway for its services; a runtime not told does not start. In Compose it is the service name; where the containers share one network, `http://127.0.0.1:8000`. Its older names are read where it is not set ([older names](#older-names)). |
+| `DATA_CORE_SERVICE_PUBLIC_KEY` | required | The Data Core's public key: the node believes no reply or frame it did not sign. Its older names are read where it is not set ([older names](#older-names)). |
 | `AI_RUNTIME_NODE_CREDENTIAL_FILE` | required, or the next | Where this execution node's credential is: a file its operator's secret manager mounts and keeps fresh, signed by an authority the Data Core registered. Read again as it nears its expiry and whenever it changes. Compose points it at what `node-issuer` writes. |
 | `AI_RUNTIME_NODE_CREDENTIAL_URL` | unset | An issuer on the node's own network that answers a `GET` with a credential (the token, or `{"credential": …}`), in place of a file. |
 | `AI_RUNTIME_AGENTS_INSTALL_DIR` | `ai_runtime/installed_agents` | Where the runtime keeps the approved packages it passes on to its Execution Sandboxes ([agent code](../system/agent-code.md)). A volume of its own in a deployment, shared with no sandbox; a short path outside the tree locally. |
@@ -167,7 +183,7 @@ reads:
 | `NODE_CREDENTIAL_FILE` | `/run/decentai/node/credential` | Where the credential is written, every few minutes, for the node to read. |
 
 An Execution Sandbox is the runtime's image started as the spawner
-(`python -m ai_runtime.agents_container.service`), and reads:
+(`python -m sandbox.service`), and reads:
 
 | Variable | Default | Meaning |
 |---|---|---|
@@ -175,8 +191,8 @@ An Execution Sandbox is the runtime's image started as the spawner
 | `AI_AGENTS_SPAWNER_PORT` | `8003` | Where the spawner answers the runtime. Fixed at 8003 in the Compose stack, which does not pass it on. |
 | `AI_SANDBOX_RUNTIME` | empty | Where its runtime takes registrations, as `host:port` (`ai-runtime:8005` in Compose). The sandbox connects there, registers, and connects again when the connection is lost. |
 | `AI_RUNTIME_SANDBOX_SECRET` | required, in `config/sandbox.env` | The execution node's secret, the same as the runtime's. The spawner takes it out of its own environment as it reads it. |
-| `AI_SANDBOX_ID` | the container's name | Who the sandbox is, to its runtime; `agents` in Compose, `agents-2` for the second of `compose/sandboxes.yml`. |
-| `AI_SANDBOX_LABELS` | empty | What it says of itself, for a placement to ask for: `gpu`, separated by commas. In Compose, `AGENTS_LABELS` in `config/deploy.env`, and `AGENTS_2_LABELS` for the second sandbox. |
+| `AI_SANDBOX_ID` | the container's name | Who the sandbox is, to its runtime; `sandbox` in Compose, `sandbox-2` for the second of `compose/sandboxes.yml`. |
+| `AI_SANDBOX_LABELS` | empty | What it says of itself, for a placement to ask for: `gpu`, separated by commas. In Compose, `SANDBOX_LABELS` in `config/deploy.env`, and `SANDBOX_2_LABELS` for the second sandbox. |
 | `AI_SANDBOX_ADDRESS` | the address it registered from | Where the runtime reaches it, as `host:port`, where that is not the address its registration came from. |
 | `AI_SANDBOX_DRAIN_SECONDS` | `60` | How long a sandbox that was stopped waits for its workers to finish before it goes. |
 | `AI_SANDBOX_BUILD_SECONDS` | `300` | How long one build of an agent's declared packages may take there. |
@@ -190,12 +206,12 @@ and is set where the container is started:
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `AGENTS_MEMORY` | no limit | Memory the agents are given together, as the engine reads it: `2g`, `1500m`. |
-| `AGENTS_CPUS` | no limit | Processors the agents are given together: `2`, `1.5`. |
+| `SANDBOX_MEMORY` | no limit | Memory the agents are given together, as the engine reads it: `2g`, `1500m`. |
+| `SANDBOX_CPUS` | no limit | Processors the agents are given together: `2`, `1.5`. |
 
 `docker-compose.yml` reads both from `config/deploy.env`; a change takes
 effect when the Execution Sandbox is started again (`docker compose
---env-file config/deploy.env up -d agents`). The spawner reads what was set from the kernel
+--env-file config/deploy.env up -d sandbox`). The spawner reads what was set from the kernel
 and ends the agent using most memory before the engine would have to
 ([the sandbox](../system/sandbox.md)).
 
@@ -307,7 +323,7 @@ the internet.
 
 The gateway's configuration (`gateway/Caddyfile`) reads one more,
 `DATA_CORE_UPSTREAM` (where it sends the Data Core's paths,
-`backend:8000` unless said). The Compose stack does not pass it on: it
+`data-core:8000` unless said). The Compose stack does not pass it on: it
 is for a deployment that runs the gateway some other way.
 
 ## What is deliberately not a setting

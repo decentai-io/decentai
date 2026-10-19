@@ -10,8 +10,8 @@ with an OAuth token made from the key, good for an hour and made again
 before it runs out.
 
 Shared by the runtime, which calls the model (ai_runtime/llms/connector/
-vertex.py), and the backend, which checks a connection before it is
-saved (backend/api/services/llm_probe.py). The Google library is
+vertex.py), and the Data Core, which checks a connection before it is
+saved (data_core/api/services/llm_probe.py). The Google library is
 imported when an account is used, not before.
 """
 

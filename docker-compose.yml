@@ -1,6 +1,6 @@
 # The whole platform on one machine: MongoDB, the one-shot seeder, the
-# backend (the Data Core), the AI Runtime, one Execution Sandbox, the
-# speech container, and the gateway (Caddy) as the one door: the Data
+# Data Core, the AI Runtime, one Execution Sandbox, the speech
+# container, and the gateway (Caddy) as the one door: the Data
 # Core's paths to the Data Core, and every other to the web client, which
 # is a repository of its own (decentai-web-client) and runs beside this
 # one. Every setting comes from one file, config/deploy.env:
@@ -17,24 +17,24 @@
 #
 # Three networks, and who is on which (docs/system/architecture.md):
 #
-#   default   the one with a way out to the internet: gateway, backend,
-#             ai-runtime, speech. The gateway reaches the backend here,
+#   default   the one with a way out to the internet: gateway, data-core,
+#             ai-runtime, speech. The gateway reaches the Data Core here,
 #             and the web client on this computer's port; the
-#             backend reaches the speech container, and the internet
+#             Data Core reaches the speech container, and the internet
 #             for repositories, mail and OAuth; the runtime — the
-#             bundled execution node — dials the backend's node link
-#             and gateway (the backend reaches no node), and the
+#             bundled execution node — dials the Data Core's node link
+#             and gateway (the Data Core reaches no node), and the
 #             internet for agents' packages and, through its proxy, for
 #             agents.
-#   data      internal: mongo, and the two that speak to it, backend
+#   data      internal: mongo, and the two that speak to it, data-core
 #             and init. Nothing else has a route to the database, and
 #             the database has none out.
-#   agents    internal: ai-runtime and agents, the AI Runtime and its
+#   sandbox   internal: ai-runtime and sandbox, the AI Runtime and its
 #             Execution Sandbox. A worker's only way anywhere is the
 #             runtime's proxy. A second sandbox, for testing, is laid
 #             over this file by compose/sandboxes.yml.
 #
-# A container on two networks keeps the reach of each: the backend on
+# A container on two networks keeps the reach of each: the Data Core on
 # default and data reaches GitHub and the database both; mongo on data
 # alone reaches nothing and is reached by two.
 services:
@@ -59,7 +59,7 @@ services:
   init:
     build:
       context: .
-      dockerfile: backend/Dockerfile
+      dockerfile: data_core/Dockerfile
     env_file: config/deploy.env
     command: ["python", "/opt/decentai/bootstrap/init_db.py"]
     restart: "no"
@@ -69,10 +69,10 @@ services:
       mongo:
         condition: service_healthy
 
-  backend:
+  data-core:
     build:
       context: .
-      dockerfile: backend/Dockerfile
+      dockerfile: data_core/Dockerfile
     restart: unless-stopped
     env_file: config/deploy.env
     networks:
@@ -105,7 +105,7 @@ services:
   # engines and no model: models are fetched once, into the volume,
   # from a pinned list — speech to text as the container first starts,
   # since that is on in a new organization, and the voices when an
-  # administrator turns text to speech on. Only the backend asks it.
+  # administrator turns text to speech on. Only the Data Core asks it.
   speech:
     build:
       context: .
@@ -137,7 +137,7 @@ services:
       start_period: 15s
 
   # The runtime has no database — everything durable goes through the
-  # backend's delegation surface.
+  # Data Core's delegation surface.
   #
   # It decides everything about an agent and runs none of their code:
   # its Execution Sandboxes register with it, and it asks one of them
@@ -145,7 +145,7 @@ services:
   # (docs/system/sandbox.md). It shares no volume with them: a
   # sandbox is sent the code it is to run, and keeps its own. It is handed its
   # settings by name, never the file: the database's password, the
-  # encryption keys and the backend's private key are not this
+  # encryption keys and the Data Core's private key are not this
   # container's to hold. A name with no value is passed on when
   # config/deploy.env (or the shell) sets it, and is absent when neither does.
   ai-runtime:
@@ -155,9 +155,9 @@ services:
     restart: unless-stopped
     networks:
       - default
-      - agents
+      - sandbox
     depends_on:
-      agents:
+      sandbox:
         condition: service_healthy
       node-issuer:
         condition: service_healthy
@@ -168,12 +168,14 @@ services:
     environment:
       AI_RUNTIME_SANDBOX_PORT:
       # Who the Data Core is: nothing it did not sign is believed.
-      BACKEND_SERVICE_PUBLIC_KEY: ${BACKEND_SERVICE_PUBLIC_KEY:?set in config/deploy.env}
+      # (BACKEND_SERVICE_PUBLIC_KEY is its name in a deploy.env from
+      # before the Data Core was named, and is read where this is not.)
+      DATA_CORE_SERVICE_PUBLIC_KEY: ${DATA_CORE_SERVICE_PUBLIC_KEY:-${BACKEND_SERVICE_PUBLIC_KEY:?set DATA_CORE_SERVICE_PUBLIC_KEY in config/deploy.env}}
       # Who this execution node is: a credential the install's authority
       # signed, which node-issuer writes and keeps fresh. The node reads
       # it and never holds the authority's key.
       AI_RUNTIME_NODE_CREDENTIAL_FILE: /run/decentai/node/credential
-      BACKEND_INTERNAL_URL: ${BACKEND_INTERNAL_URL:-http://backend:8000}
+      DATA_CORE_INTERNAL_URL: ${DATA_CORE_INTERNAL_URL:-http://data-core:8000}
       AI_RUNTIME_AGENTS_INSTALL_DIR: ${AI_RUNTIME_AGENTS_INSTALL_DIR:-/data/agents}
       AI_RUNTIME_HOST:
       AI_RUNTIME_PORT:
@@ -215,7 +217,7 @@ services:
   node-issuer:
     build:
       context: .
-      dockerfile: backend/Dockerfile
+      dockerfile: data_core/Dockerfile
     restart: unless-stopped
     command: ["python", "/opt/decentai/bootstrap/node_issuer.py"]
     network_mode: none
@@ -250,7 +252,7 @@ services:
   # which keeps one agent from another inside the container. It is
   # used once, at start, and nothing started here ever holds it.
   # Without it the stack runs all the same, and says so.
-  agents:
+  sandbox:
     build:
       context: .
       dockerfile: ai_runtime/Dockerfile
@@ -260,9 +262,12 @@ services:
     # What the agents are given together, of memory and of processor;
     # 0 is no limit. The engine holds the container to it, and the
     # spawner ends the agent using most before the engine has to.
-    mem_limit: ${AGENTS_MEMORY:-0}
-    cpus: ${AGENTS_CPUS:-0}
-    command: ["python", "-m", "ai_runtime.agents_container.service"]
+    # (AGENTS_MEMORY, AGENTS_CPUS and AGENTS_LABELS are their names in a
+    # deploy.env from before the sandbox was named, and are read where
+    # these are not.)
+    mem_limit: ${SANDBOX_MEMORY:-${AGENTS_MEMORY:-0}}
+    cpus: ${SANDBOX_CPUS:-${AGENTS_CPUS:-0}}
+    command: ["python", "-m", "sandbox.service"]
     # Stopped, it drains: it starts no new worker, and those running
     # finish what they are doing before it goes.
     stop_grace_period: 75s
@@ -275,8 +280,8 @@ services:
       AI_RUNTIME_EGRESS_PORT:
       # where it registers, who it is, and what it says of itself
       AI_SANDBOX_RUNTIME: ai-runtime:${AI_RUNTIME_SANDBOX_PORT:-8005}
-      AI_SANDBOX_ID: agents
-      AI_SANDBOX_LABELS: ${AGENTS_LABELS:-}
+      AI_SANDBOX_ID: sandbox
+      AI_SANDBOX_LABELS: ${SANDBOX_LABELS:-${AGENTS_LABELS:-}}
       # 0 turns off the filter on what system calls a worker may make;
       # the filter is written here, where workers run
       AI_RUNTIME_SYSCALL_FILTER:
@@ -287,7 +292,7 @@ services:
       # in every sandbox, and is each sandbox's own.
       - sandbox_data:/data/agents
     networks:
-      - agents
+      - sandbox
     healthcheck:
       test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 8003), 4).close()"]
       interval: 10s
@@ -325,17 +330,17 @@ services:
       retries: 6
       start_period: 10s
     depends_on:
-      backend:
+      data-core:
         condition: service_healthy
 
 networks:
-  # The database's: mongo, and the backend and the seeder that speak
+  # The database's: mongo, and the Data Core and the seeder that speak
   # to it. Nothing on it reaches the internet.
   data:
     internal: true
   # Between the AI Runtime and its Execution Sandboxes, and nowhere else:
-  # nothing on it reaches the internet, the database or the backend.
-  agents:
+  # nothing on it reaches the internet, the database or the Data Core.
+  sandbox:
     internal: true
 
 volumes:

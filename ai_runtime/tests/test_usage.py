@@ -15,11 +15,11 @@ from pathlib import Path
 
 import pytest
 
-from ai_runtime.agents.container import AgentsContainer
-from ai_runtime.agents_container.service import SpawnerService
-from ai_runtime.agents_container.usage import AgentsUsage, Sample
+from ai_runtime.agents.sandbox import ExecutionSandbox
+from sandbox.service import SandboxService
+from sandbox.usage import AgentsUsage, Sample
 from ai_runtime.agents.workers import WorkerError, WorkerHandle
-from ai_runtime.agents_container.places import Place
+from sandbox.places import Place
 from ai_runtime.tests.fake_container import MACHINE_VARIABLES, FakeHelper
 from ai_runtime.tests.test_agent_worker_handle import FIXTURE, manifest_document
 from contracts.container import ContainerUsage
@@ -174,7 +174,7 @@ class TestWhatEachAgentUses:
         usage = AgentsUsage(proc, cgroup)
         usage.ticks = 100.0
         clock = iter([1000.0, 1002.0])
-        monkeypatch.setattr("ai_runtime.agents_container.usage.time.monotonic",
+        monkeypatch.setattr("sandbox.usage.time.monotonic",
                             lambda: next(clock))
         process(proc, 10, 20001, ticks=(100, 50))
         assert usage.sample().agents[20001]["cpu"] == 0.0      # the first look
@@ -185,7 +185,7 @@ class TestWhatEachAgentUses:
         proc, cgroup = kernel
         usage = AgentsUsage(proc, cgroup)
         clock = iter([1000.0, 1001.0])
-        monkeypatch.setattr("ai_runtime.agents_container.usage.time.monotonic",
+        monkeypatch.setattr("sandbox.usage.time.monotonic",
                             lambda: next(clock))
         process(proc, 10, 20001, ticks=(900, 0))
         process(proc, 11, 20001, ticks=(10, 0))
@@ -277,7 +277,7 @@ class Serving:
     stood in for, and a worker that is whatever a test says."""
 
     def __init__(self, install_dir, usage, program=None):
-        self.service = SpawnerService(
+        self.service = SandboxService(
             install_dir, port=0, host="127.0.0.1", usage=usage,
             helper_line=FakeHelper(Path(install_dir) / "control").line,
             secret="a-node-secret")
@@ -316,7 +316,7 @@ def kernel_of_a_test(tmp_path, monkeypatch):
     served = Serving(tmp_path, usage, program=("-c", STAYING))
     usage.watched_by = served.service
     usage.served = served
-    container = AgentsContainer(f"127.0.0.1:{served.service.port}", "a-node-secret")
+    container = ExecutionSandbox(f"127.0.0.1:{served.service.port}", "a-node-secret")
     Placed.container = container
     yield usage, container
     Placed.container = None
@@ -438,7 +438,7 @@ class TestTheSpawnerHoldsThemToIt:
         worker found killed a moment later is taken to be that one."""
         async def scenario():
             usage = Scripted()
-            service = SpawnerService(tmp_path, usage=usage)
+            service = SandboxService(tmp_path, usage=usage)
             service._found = usage.sample()
             held = {"name": "Browser", "because": ""}
             assert service._why(held, -9) == ""       # killed, by somebody else
@@ -495,9 +495,9 @@ class TestTheSpawnerHoldsThemToIt:
              "agent": "", "name": "", "disk": None, "sandbox": here}]
 
     def test_what_an_agent_keeps_on_disk_is_what_its_own_measuring_said(self):
-        assert SpawnerService._measured(b"1024\t/a/home\n2048\t/a/spool\n") == 3072
-        assert SpawnerService._measured(b"") is None
-        assert SpawnerService._measured(b"du: cannot read\n") is None
+        assert SandboxService._measured(b"1024\t/a/home\n2048\t/a/spool\n") == 3072
+        assert SandboxService._measured(b"") is None
+        assert SandboxService._measured(b"du: cannot read\n") is None
 
     def test_a_program_run_to_its_end_is_ended_and_says_why(
             self, kernel_of_a_test):

@@ -24,7 +24,7 @@ service that changed with `docker compose up -d --build <service>`.
 ## What you need
 
 - Python 3.11 or later (the images run 3.12), with `pip install -r
-  backend/requirements.txt -r backend/requirements-dev.txt -r
+  data_core/requirements.txt -r data_core/requirements-dev.txt -r
   ai_runtime/requirements.txt`. The second file is what the tests
   need.
 - MongoDB on `localhost:27017` — a local service, or
@@ -34,10 +34,10 @@ service that changed with `docker compose up -d --build <service>`.
 ## Configure
 
 ```bash
-cp backend/config.env.example backend/config.env
-python bootstrap/generate_service_keys.py     # the two lines it heads backend/config.env → backend
-python bootstrap/generate_secret_keys.py      # both lines → backend
-python -c "import secrets; print(secrets.token_urlsafe(48))"   # TOKEN_SECRET_KEY → backend
+cp data_core/config.env.example data_core/config.env
+python bootstrap/generate_service_keys.py     # the two lines it heads data_core/config.env → there
+python bootstrap/generate_secret_keys.py      # both lines → data_core/config.env
+python -c "import secrets; print(secrets.token_urlsafe(48))"   # TOKEN_SECRET_KEY → data_core/config.env
 ```
 
 Fill in `ADMIN_EMAIL` and `ADMIN_PASSWORD` in the Data Core's file. The
@@ -52,7 +52,7 @@ long directory overflows the path limit.
 
 ```bash
 python bootstrap/init_db.py                    # once, and again after pulling a schema change
-cd backend && python main.py                   # :8000
+cd data_core && python main.py                   # :8000
 cd frontend && npm start                       # :4200
 ```
 
@@ -62,7 +62,7 @@ newer version added — a new collection, a new baseline action — takes
 from every policy an action the catalog no longer has, and puts the
 named administrator back in Administrators, enabled, if they were
 taken out. Run it
-after every pull that touched `backend/database/schema.json` or the
+after every pull that touched `data_core/database/schema.json` or the
 baseline; the schema version it prints tells you where you are.
 
 Open `http://localhost:4200` and sign in.
@@ -71,7 +71,7 @@ Open `http://localhost:4200` and sign in.
 
 ```bash
 python -m pytest ai_runtime/tests -q        # runtime
-(cd backend && python -m pytest tests -q)   # backend
+(cd data_core && python -m pytest tests -q)   # Data Core
 python -m pytest tests -q                   # spanning
 ```
 
@@ -122,13 +122,13 @@ of them has a bug, and a test is the place to find out.
 
 | Concern | Path |
 |---|---|
-| gateway endpoints | `backend/api/endpoints/`, one controller class per `Domain:Controller`; the data layer's (`Data`, `Files`, `Secrets`, `Skills`, `Mcp`) are in `backend/api/services/data_layer/`. `backend/api/routing/registry/` maps each name to its class |
-| the action catalog and baseline | `backend/server/authentication/catalog.py` |
-| stores over Mongo | `backend/database/stores/` |
-| the schema | `backend/database/schema.json` |
+| gateway endpoints | `data_core/api/endpoints/`, one controller class per `Domain:Controller`; the data layer's (`Data`, `Files`, `Secrets`, `Skills`, `Mcp`) are in `data_core/api/services/data_layer/`. `data_core/api/routing/registry/` maps each name to its class |
+| the action catalog and baseline | `data_core/server/authentication/catalog.py` |
+| stores over Mongo | `data_core/database/stores/` |
+| the schema | `data_core/database/schema.json` |
 | the assistant's cycle | `ai_runtime/mind/assistant.py`, prompt in `ai_runtime/prompts/assistant.md` |
 | the executor and its gates | `ai_runtime/execution/executor.py` |
-| agent workers | `ai_runtime/agents/`; what runs in the Execution Sandbox in `ai_runtime/agents_container/` |
+| agent workers | `ai_runtime/agents/`; what runs in the Execution Sandbox in `sandbox/` |
 | the chat session and door | `ai_runtime/chat/`, `ai_runtime/door/` |
 | the manifest contract | `contracts/`, `decentai_sdk/manifest.py` |
 | setting it up on a computer | `bootstrap/setup.py`, `docker-compose.yml`, `config/deploy.env.example` |

@@ -9,7 +9,7 @@ picture is shown to the model already, as a picture).
 
 This module only turns bytes into text and says which it could not.
 It never fetches, never decides who may read: the session's download
-runs under the person's own delegation, and the backend's visibility
+runs under the person's own delegation, and the Data Core's visibility
 rules answer that question before a byte moves.
 """
 

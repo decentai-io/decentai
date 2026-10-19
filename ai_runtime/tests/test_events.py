@@ -1,7 +1,7 @@
 """What agents did, written down (events.py), and each place that
 writes: a worker's life and its log, the proxy's connections, the
-processes an agent starts — and the door the backend reads it all
-through. What the agents' container writes of the helper and of a
+processes an agent starts — and the door the Data Core reads it all
+through. What the Execution Sandbox writes of the helper and of a
 program run as an agent is in test_places.py.
 """
 
@@ -14,9 +14,9 @@ import time
 import jwt
 import pytest
 
-from ai_runtime.agents_container.events import Events
-from ai_runtime.agents_container.service import SpawnerService
-from ai_runtime.agents_container.usage import Sample
+from sandbox.events import Events
+from sandbox.service import SandboxService
+from sandbox.usage import Sample
 from ai_runtime.agents.workers import WorkerHandle
 from ai_runtime.tests.test_agent_worker_handle import (  # noqa: F401
     FIXTURE, manifest_document, venv,
@@ -273,7 +273,7 @@ class TestTheProcessesAnAgentStarts:
     def test_each_is_written_down_the_first_time_it_is_seen(self, events, tmp_path):
         usage = Scripted()
         usage.command = lambda process_id: f"program {process_id}"
-        service = SpawnerService(tmp_path, usage=usage)
+        service = SandboxService(tmp_path, usage=usage)
         service._held[20001] = {"agent": "agt_browser", "name": "Browser"}
         found = Sample()
         found.processes = {20001: [10, 11], 20002: [30]}
@@ -303,7 +303,7 @@ class TestTheProcessesAnAgentStarts:
         usage = Scripted()
         lines = {40: "/usr/local/bin/decentai-spawn run 20001 /home -- python"}
         usage.command = lambda process_id: lines[process_id]
-        service = SpawnerService(tmp_path, usage=usage)
+        service = SandboxService(tmp_path, usage=usage)
         found = Sample()
         found.processes = {20001: [40]}
         service._note_processes(found)

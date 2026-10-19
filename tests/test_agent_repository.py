@@ -4,7 +4,7 @@ Driven by a REAL git repository built per test and cloned over file://,
 which git treats exactly as it treats https — so the fetch, the commit
 pin, and the manifest check are all genuinely exercised.
 
-Fetching is the BACKEND's, and stops at a package: clone, discover,
+Fetching is the Data Core's, and stops at a package: clone, discover,
 build an archive, name it by its digest. The runtime's half begins with
 those bytes — verify, unpack, import — and never learns where they came
 from. Both halves are exercised here, in that order, because the seam
@@ -335,7 +335,7 @@ class TestCredentials:
 
 
 def package(repository):
-    """The backend's half of the seam: package a working tree. Returns
+    """The Data Core's half of the seam: package a working tree. Returns
     (archive, digest) - exactly what crosses to the runtime.
 
     Packaged from the tree rather than a clone of it: what a package IS
@@ -462,7 +462,7 @@ class TestAFolderOnThisComputer:
 
     @staticmethod
     def use(monkeypatch, folder):
-        """The deployment's setting, as a running backend holds it —
+        """The deployment's setting, as a running Data Core holds it —
         its settings are frozen, so a copy that says otherwise — and
         the environment, for a process that has none yet."""
         import dataclasses

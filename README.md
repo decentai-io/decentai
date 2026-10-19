@@ -35,12 +35,12 @@ written from, and [docs/agents/](docs/agents/README.md).
 
 This repository is the **AI Engine**, made of three parts:
 
-- **Data Core** (`backend/`): identity and access, the agent lifecycle,
+- **Data Core** (`data_core/`): identity and access, the agent lifecycle,
   the data layer, chats and approvals, organization settings. The only
   part that reaches the database; it runs no agent code.
 - **AI Runtime** (`ai_runtime/`): runs the assistant, plans and executes,
   checks every call, and runs the proxy that is agents' only way out.
-- **Execution Sandbox** (`ai_runtime/agents_container/`, the `agents`
+- **Execution Sandbox** (`sandbox/`, the `sandbox`
   service): where agent code runs, one locked room per agent. One AI
   Runtime serves many; each registers with it and keeps its own copy
   of the code it runs.
@@ -72,10 +72,13 @@ Every page is listed, by what you came to do, in [docs/README.md](docs/README.md
 ## The repository
 
 ```
-backend/       the platform API: identity and access, the data layer, the
-               /app gateway, chat sessions, and the runtime's services
-ai_runtime/    the private agent execution process: the assistant's cycle,
-               the executor and its gates, agent workers, the clock
+data_core/     the Data Core, the platform API: identity and access, the
+               data layer, the /app gateway, chat sessions, and the
+               runtime's services
+ai_runtime/    the AI Runtime: the assistant's cycle, the executor and its
+               gates, agent workers, the clock
+sandbox/       the Execution Sandbox: the spawner, and the one program
+               that starts an agent's worker as a user of its own
 gateway/       the one door (Caddy): the Data Core's paths to the Data Core,
                every other to the web client (decentai-web-client)
 speech/        speech to text and text to speech from models that run on
@@ -88,7 +91,7 @@ config/        the install's settings and secrets (deploy.env, sandbox.env,
                node-authority.env), beside the templates they come from
 compose/       what is laid over docker-compose.yml: a server's front door
                (server.yml), a second Execution Sandbox (sandboxes.yml)
-tests/         the suite that spans backend and runtime
+tests/         the suite that spans the Data Core and the runtime
 docs/          guides, how each part works, and the reference
 ```
 
@@ -127,7 +130,7 @@ Three suites, each owning its layer, each run from the repository root:
 
 ```bash
 python -m pytest ai_runtime/tests -q       # runtime: real workers, no database
-(cd backend && python -m pytest tests -q)   # backend: real app, MongoDB on localhost
+(cd data_core && python -m pytest tests -q)   # Data Core: real app, MongoDB on localhost
 python -m pytest tests -q                   # spanning: an approval on one side, code serving on the other
 ```
 

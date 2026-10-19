@@ -2,7 +2,7 @@
 
 An agent is installed from a repository its organization saved as a
 source. These tests stand in for the repository alone (``control``, in
-backend/tests/agent_fixtures.py): the catalog is discovered, the folder
+data_core/tests/agent_fixtures.py): the catalog is discovered, the folder
 packaged and its digest stored for real, with no git remote and no
 runtime process. test_full_stack.py installs the same way and has a
 real runtime pull and serve the code.
@@ -774,7 +774,7 @@ class TestRepositoryInstall:
     def test_installing_pins_the_commit_and_stores_the_bytes(
         self, admin, seed, control, manifest_doc
     ):
-        """Installing is a backend act: fetch, package, store, approve.
+        """Installing is a Data Core act: fetch, package, store, approve.
         No runtime is asked anything — whether the code loads is the
         runtime's own report when a chat first pulls it."""
         from database.stores import AgentManifestStore

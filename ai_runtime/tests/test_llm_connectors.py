@@ -56,7 +56,7 @@ class TestFactory:
 
 class TestTheCatalog:
     """contracts/llm_providers.json: the one list of providers, read by
-    the backend, the page and this factory."""
+    the Data Core, the page and this factory."""
 
     SPEAKS = {"openai": OpenAIConnector,
               "openai-responses": OpenAIResponsesConnector,

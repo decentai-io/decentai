@@ -1,11 +1,11 @@
-"""Tests that span the backend and the runtime — an approval on one
+"""Tests that span the Data Core and the runtime — an approval on one
 side becoming code that serves on the other, a policy becoming a grant.
 
-The harness is the backend's (backend/tests/conftest.py): real app,
+The harness is the Data Core's (data_core/tests/conftest.py): real app,
 real MongoDB, disposable database. It is loaded here by path and its
-fixtures re-exported, so a spanning test reads exactly like a backend
-one — and helpers shared between backend tests stay importable, since
-backend/tests is on the path.
+fixtures re-exported, so a spanning test reads exactly like a Data Core
+one — and helpers shared between Data Core tests stay importable, since
+data_core/tests is on the path.
 
     python -m pytest tests -q          (from the project root)
 """
@@ -17,15 +17,15 @@ from pathlib import Path
 import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-BACKEND_TESTS = PROJECT_ROOT / "backend" / "tests"
-for path in (PROJECT_ROOT, PROJECT_ROOT / "backend", BACKEND_TESTS):
+DATA_CORE_TESTS = PROJECT_ROOT / "data_core" / "tests"
+for path in (PROJECT_ROOT, PROJECT_ROOT / "data_core", DATA_CORE_TESTS):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
 
 _spec = importlib.util.spec_from_file_location(
-    "backend_harness", BACKEND_TESTS / "conftest.py")
+    "data_core_harness", DATA_CORE_TESTS / "conftest.py")
 _harness = importlib.util.module_from_spec(_spec)
-sys.modules["backend_harness"] = _harness
+sys.modules["data_core_harness"] = _harness
 _spec.loader.exec_module(_harness)
 
 ADMIN_EMAIL = _harness.ADMIN_EMAIL
@@ -49,8 +49,8 @@ admin = _harness.admin
 
 
 @pytest.fixture(autouse=True)
-def _agents_container(tmp_path):
-    """Every test has an agents' container of its own, stood in for
+def _sandbox(tmp_path):
+    """Every test has an Execution Sandbox of its own, stood in for
     by the runtime's test double (ai_runtime/tests/fake_container.py):
     whatever it started dies with the test."""
     from ai_runtime.tests import fake_container

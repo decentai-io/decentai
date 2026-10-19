@@ -518,11 +518,11 @@ class TestMonitoringOverTheLink:
             asked_of.append((sandbox, on))
             return on
 
-        drained = self._ask_to_drain(drain, {"sandbox": "agents-2", "on": True})
-        resumed = self._ask_to_drain(drain, {"sandbox": "agents-2", "on": False})
-        assert asked_of == [("agents-2", True), ("agents-2", False)]
-        assert drained[0]["result"] == {"sandbox": "agents-2", "draining": True}
-        assert resumed[0]["result"] == {"sandbox": "agents-2", "draining": False}
+        drained = self._ask_to_drain(drain, {"sandbox": "sandbox-2", "on": True})
+        resumed = self._ask_to_drain(drain, {"sandbox": "sandbox-2", "on": False})
+        assert asked_of == [("sandbox-2", True), ("sandbox-2", False)]
+        assert drained[0]["result"] == {"sandbox": "sandbox-2", "draining": True}
+        assert resumed[0]["result"] == {"sandbox": "sandbox-2", "draining": False}
 
     def test_a_sandbox_that_is_not_registered_is_refused_in_words(self):
         from ai_runtime.agents.sandboxes import NoSandbox
@@ -535,7 +535,7 @@ class TestMonitoringOverTheLink:
 
     def test_a_node_with_no_drainer_or_no_sandbox_named_says_so(self):
         assert "drains no Execution Sandbox" in self._ask_to_drain(
-            None, {"sandbox": "agents-2"})[0]["error"]
+            None, {"sandbox": "sandbox-2"})[0]["error"]
 
         async def drain(sandbox, on):
             raise AssertionError("nothing is drained without a name")

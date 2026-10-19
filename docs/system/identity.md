@@ -52,7 +52,7 @@ deployment hosts many, and they cannot see each other.
 Every user, group, role, policy, invitation, session and stored resource
 belongs to exactly one organization. Every read that takes an id from a
 caller carries the organization with it (`get_in`, `list_in`, in
-`backend/database/stores/iam.py`), so naming another tenant's id finds
+`data_core/database/stores/iam.py`), so naming another tenant's id finds
 nothing. Reads the platform makes by ids it took from such a read — a
 user's own groups, a role's policies, the session a cookie names — go
 by the id alone, and rest on the first.
@@ -87,7 +87,7 @@ Disabling or re-enabling an organization happens from outside the
 application entirely — a deployment operation, which no administrator
 inside an organization can perform. Creating one happens three ways,
 all through the same provisioner
-(`backend/server/authentication/provisioning.py`):
+(`data_core/server/authentication/provisioning.py`):
 
 - **The first run.** A deployment nobody is in yet shows one page,
   where the person who opens it names the organization and becomes its
@@ -253,7 +253,7 @@ rather than evaluated.
 **Every action is validated when the policy is saved.** An action that is
 not in the platform's vocabulary is rejected outright, and a wildcard's
 text before its first `*` must begin some real action
-(`ActionCatalog.is_valid_pattern`, `backend/server/authentication/policy.py`).
+(`ActionCatalog.is_valid_pattern`, `data_core/server/authentication/policy.py`).
 A typo in a whole name, or before the star, becomes an error at the
 moment it is written. What follows the star is not checked:
 `iam:user:*typo` is saved, and matches nothing.
@@ -294,7 +294,7 @@ request rather than at the next login or the next cache expiry.
 
 That is so of a change made through the application. The cache is one
 process's own, kept for sixty seconds (`AccessCache`,
-`backend/database/stores/base.py`): a change made from the command
+`data_core/database/stores/base.py`): a change made from the command
 line — an organization disabled, a password set by
 `bootstrap/reset_password.py` — is another process's, and takes effect
 in the Data Core within that minute.

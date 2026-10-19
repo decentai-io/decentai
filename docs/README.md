@@ -83,7 +83,7 @@ The assistant:
   the plan, evidence, jobs, pacing, the fold.
 - [Sub-assistants](system/sub-assistants.md) — a bounded goal for a
   mind of its own.
-- [The chat session](system/chat-session.md) — the backend as the
+- [The chat session](system/chat-session.md) — the Data Core as the
   runtime's services: the contract method by method, the dial, the
   vocabulary.
 
@@ -125,7 +125,7 @@ describe is [`note/`](https://github.com/decentai-io/decentai-agents/tree/main/n
 - [CONTRIBUTING.md](../CONTRIBUTING.md) — rules, style, and the four
   test suites.
 - [Local development](contributing/local-development.md) — the
-  backend and the web app started by hand, the runtime through its
+  Data Core and the web app started by hand, the runtime through its
   tests, the simulator.
 - [Reading the runtime](contributing/reading-the-runtime.md) — a route
   through `ai_runtime/` along the path of one message, with what to

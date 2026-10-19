@@ -5,9 +5,8 @@ private half; nodes are configured with the public half, and believe
 nothing it did not sign (docs/system/execution-nodes.md). Each half is
 printed as a single-line \\n-escaped value. Nothing is written to disk.
 
-The older names are printed, which every install reads;
-DATA_CORE_PRIVATE_KEY and DATA_CORE_PUBLIC_KEY are read in their place
-where an install names them.
+The names printed are today's; an install that still uses an older
+name for either is read by it (contracts/setting_names.py).
 
 A node's own identity is not made here: nodes are admitted by
 credentials an authority signs (bootstrap/generate_node_authority.py).
@@ -38,11 +37,11 @@ def pair():
 def main() -> None:
     data_core_private, data_core_public = pair()
 
-    print("# the Data Core (backend/config.env)")
-    print(f"BACKEND_SERVICE_PRIVATE_KEY={data_core_private}")
+    print("# the Data Core (data_core/config.env)")
+    print(f"DATA_CORE_SERVICE_PRIVATE_KEY={data_core_private}")
     print()
     print("# every execution node (ai_runtime/config.env)")
-    print(f"BACKEND_SERVICE_PUBLIC_KEY={data_core_public}")
+    print(f"DATA_CORE_SERVICE_PUBLIC_KEY={data_core_public}")
 
 
 if __name__ == "__main__":

@@ -32,11 +32,11 @@ htmlcov/
 .venv/
 venv/
 
-# What a local backend and its tests write
-backend/uploads/
-backend/data/
-backend/tests/.uploads/
-backend/tests/.agent-packages/
+# What a local Data Core and its tests write
+data_core/uploads/
+data_core/data/
+data_core/tests/.uploads/
+data_core/tests/.agent-packages/
 *.log
 # written at run time by a dependency
 state.json

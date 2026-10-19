@@ -11,7 +11,7 @@ takes the two `-f` files [Deploying](deploying.md) starts it with.
 ```bash
 docker compose --env-file config/deploy.env stop     # stop it; nothing is removed
 python bootstrap/setup.py                            # start it, and say the address
-docker compose --env-file config/deploy.env logs -f backend
+docker compose --env-file config/deploy.env logs -f data-core
 ```
 
 ## Updating
@@ -50,6 +50,20 @@ time it runs after the pull, and says so; it never moves one over a
 file `config/` already holds. On a server, move them by hand before
 step 2 (`mkdir -p config && mv deploy.env sandbox.env node-authority.env
 config/`); the server's overlay is `compose/server.yml` now.
+
+**An install from before the parts were named** has services called
+`backend` and `agents` (now `data-core` and `sandbox`), and some
+settings by older names. The data is kept: the volumes keep their
+names. `--remove-orphans` (step 3, and `bootstrap/setup.py`) replaces
+the old containers with the new ones. The older settings are still
+read ([configuration](configuration.md#older-names)), and
+`bootstrap/setup.py` renames them in a computer's own file; on a
+server, rename them by hand when convenient. A `DATA_CORE_INTERNAL_URL`
+(or `BACKEND_INTERNAL_URL`) that names `http://backend:8000` names a
+service that is gone: `bootstrap/setup.py` changes it to
+`http://data-core:8000`, and Compose uses that when the file names
+none. A `docker-compose.override.yml` of your own that names `backend`
+or `agents` names them `data-core` and `sandbox` now.
 
 Deploy by commit: note the commit a deployment was built from, so that
 going back is a matter of naming it.
@@ -158,12 +172,12 @@ signs anybody in after that, and the sign-in page is used.
 ## What the agents are given
 
 All agents share one container, and it is given so much memory and so
-much processor by whoever starts it: `AGENTS_MEMORY` (`2g`, `1500m`) and
-`AGENTS_CPUS` (`2`, `1.5`) in `config/deploy.env`. Unset is no limit. A change
+much processor by whoever starts it: `SANDBOX_MEMORY` (`2g`, `1500m`) and
+`SANDBOX_CPUS` (`2`, `1.5`) in `config/deploy.env`. Unset is no limit. A change
 takes effect when the Execution Sandbox is started again:
 
 ```bash
-docker compose --env-file config/deploy.env up -d agents
+docker compose --env-file config/deploy.env up -d sandbox
 ```
 
 An agent that takes more memory than they are given together is ended,
@@ -226,8 +240,8 @@ either. To move what is there:
 3. Count, then move:
 
    ```bash
-   docker compose exec backend python /opt/decentai/bootstrap/move_storage.py --check
-   docker compose exec backend python /opt/decentai/bootstrap/move_storage.py
+   docker compose exec data-core python /opt/decentai/bootstrap/move_storage.py --check
+   docker compose exec data-core python /opt/decentai/bootstrap/move_storage.py
    ```
 
    Every file is copied, read back, and only then its record pointed
@@ -317,8 +331,8 @@ nothing dials a node ([execution nodes](../system/execution-nodes.md)).
    the key.
 3. **Start it** from the runtime's image, with its Execution Sandbox
    beside it, told where the Data Core is and what its key is:
-   `DATA_CORE_URL`, `DATA_CORE_PUBLIC_KEY` (the Data Core's
-   `BACKEND_SERVICE_PUBLIC_KEY`), and `AI_RUNTIME_NODE_CREDENTIAL_FILE`
+   `DATA_CORE_INTERNAL_URL`, `DATA_CORE_SERVICE_PUBLIC_KEY` (the Data
+   Core's public key), and `AI_RUNTIME_NODE_CREDENTIAL_FILE`
    or `AI_RUNTIME_NODE_CREDENTIAL_URL` ([configuration](configuration.md#the-runtime)).
    Across a network, give it the Data Core's `https://` address.
 

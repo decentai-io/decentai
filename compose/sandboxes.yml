@@ -10,15 +10,15 @@
 # between the two by the placement rule; stopping one moves its agents
 # to the other on their next call.
 services:
-  agents-2:
+  sandbox-2:
     extends:
       # As every path in a file laid over another: from the project's
       # folder, the first file's (the repository root), not this one's.
       file: docker-compose.yml
-      service: agents
+      service: sandbox
     environment:
-      AI_SANDBOX_ID: agents-2
-      AI_SANDBOX_LABELS: ${AGENTS_2_LABELS:-}
+      AI_SANDBOX_ID: sandbox-2
+      AI_SANDBOX_LABELS: ${SANDBOX_2_LABELS:-${AGENTS_2_LABELS:-}}
     volumes:
       - sandbox_2_data:/data/agents
 

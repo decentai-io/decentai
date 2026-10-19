@@ -81,7 +81,7 @@ def library(tmp_path, monkeypatch):
 
 @pytest.fixture()
 def package():
-    """(archive, digest, manifest hash) — the notebook as the backend
+    """(archive, digest, manifest hash) — the notebook as the Data Core
     would package and approve it."""
     archive, digest = AgentPackage.build(NOTEBOOK)
     manifest, errors = load_manifest(NOTEBOOK / "manifest.yaml")

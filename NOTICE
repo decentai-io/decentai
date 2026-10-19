@@ -4,7 +4,7 @@ Copyright 2026 The DecentAI Authors
 Licensed under the Apache License, Version 2.0. See LICENSE.
 
 This product includes software developed by third parties under their own
-licences, listed in backend/requirements.txt, ai_runtime/requirements.txt,
+licences, listed in data_core/requirements.txt, ai_runtime/requirements.txt,
 and speech/requirements.txt. The web client, a repository of its own
 (decentai-web-client), carries its own notice.
 

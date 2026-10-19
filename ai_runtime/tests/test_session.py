@@ -1,7 +1,7 @@
 """The Session — the assistant embodied (docs/system/assistant.md).
 
 Real agents in real workers, the sim's session services standing in for
-the backend. What these tests pin is the embodiment's contract: messages
+the Data Core. What these tests pin is the embodiment's contract: messages
 persist, events stream, approvals park one job and never the mind, and
 a mind whose process dies is hydrated whole by the next one.
 """
@@ -427,7 +427,7 @@ class TestConversation:
 
     def test_a_login_is_typed_once_and_then_found(self):
         """call.credential, first time: an entry card; the person types,
-        the sim's vault takes it as the backend would, the card answers
+        the sim's vault takes it as the Data Core would, the card answers
         with the row's ref, and the values reach the function. Second
         time: no card at all."""
         services = SimSessionServices()

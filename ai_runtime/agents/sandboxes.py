@@ -4,7 +4,7 @@ one an agent runs on (docs/system/sandbox.md).
 One AI Runtime serves many Execution Sandboxes, and one is the
 ordinary case: the runtime holds no address of any. Each sandbox
 connects to the runtime's registration port and registers, proving it
-holds the secret set for the execution node (agents_container/wire.py);
+holds the secret set for the execution node (sandbox/wire.py);
 says what it proved it holds a worker to, what it is given and uses,
 its labels, the packages it holds and the agents it runs; and goes on
 saying so every few seconds. A sandbox whose connection closed is
@@ -39,9 +39,9 @@ import logging
 import math
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence
 
-from ai_runtime.agents.container import AgentsContainer
-from ai_runtime.agents_container import wire
-from ai_runtime.agents_container.events import Events
+from ai_runtime.agents.sandbox import ExecutionSandbox
+from sandbox import wire
+from sandbox.events import Events
 
 
 class NoSandbox(RuntimeError):
@@ -261,7 +261,7 @@ class Sandboxes:
             self._tell(self.registered, sandbox)
             while True:
                 said_now = wire.read(await asyncio.wait_for(
-                    reader.readline(), AgentsContainer.LATE_SECONDS * 3))
+                    reader.readline(), ExecutionSandbox.LATE_SECONDS * 3))
                 if said_now is None:
                     break
                 if said_now.get("op") == "heartbeat":
@@ -313,8 +313,8 @@ class Sandboxes:
             peer = writer.get_extra_info("peername") or ("", 0)
             address = f"{peer[0]}:{port}"
         try:
-            sandbox = AgentsContainer(address, self.secret, sandbox_id,
-                                      labels=asked.get("labels") or [])
+            sandbox = ExecutionSandbox(address, self.secret, sandbox_id,
+                                       labels=asked.get("labels") or [])
         except ValueError as exc:
             writer.write(wire.line({"error": str(exc)}))
             await writer.drain()

@@ -4,7 +4,7 @@ The Model Context Protocol lets a server offer **tools** (functions a
 model may call) and **resources** (things it may read). This is the
 platform's client for it, over the protocol's HTTP transport: one
 JSON-RPC request per POST, answered as JSON or as a short event stream.
-Both sides of the platform use it — the backend to read what a server
+Both sides of the platform use it — the Data Core to read what a server
 offers when a person adds it, the runtime to call a tool for a chat.
 
 A server's address is the person's word, so nothing about it is taken

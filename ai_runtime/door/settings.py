@@ -2,11 +2,13 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from contracts.setting_names import setting
+
 
 def _env_pem(name: str) -> str:
     # PEM keys are stored as single-line env values with \n escapes
     # (env_file-safe); turn them back into a real multiline PEM here.
-    raw = (os.getenv(name) or "").strip()
+    raw = setting(name)
     return raw.replace("\\n", "\n")
 
 
@@ -23,7 +25,7 @@ def _default_install_dir() -> str:
 class RuntimeSettings:
     #: The Data Core's public key: nothing it did not sign is believed
     #: (door/node.py, docs/system/execution-nodes.md).
-    backend_service_public_key: str = ""
+    data_core_service_public_key: str = ""
     #: Where this execution node's credential is: a file its operator's
     #: secret manager mounts and keeps fresh, or an issuer it asks. One
     #: of the two is required — a node with no credential is admitted
@@ -33,14 +35,14 @@ class RuntimeSettings:
     #: where the Data Core answers the services contract over /app
     #: (docs/system/chat-session.md), and where the node link is
     #: dialed (docs/system/execution-nodes.md).
-    backend_url: str = ""
+    data_core_url: str = ""
     host: str = "0.0.0.0"
     port: int = 8001
     agents_install_dir: str = field(default_factory=_default_install_dir)
     #: An Execution Sandbox this runtime knows by its address
-    #: (``agents:8003``), besides those that register with it. Optional:
+    #: (``sandbox:8003``), besides those that register with it. Optional:
     #: sandboxes register themselves (docs/system/sandbox.md).
-    agents_container: str = ""
+    sandbox_address: str = ""
     #: The secret set for the execution node: what a sandbox proves to
     #: register, and what the runtime proves on every request to one.
     sandbox_secret: str = ""
@@ -60,12 +62,12 @@ class RuntimeSettings:
 
     @classmethod
     def from_env(cls) -> "RuntimeSettings":
-        # The newer names first, the older ones beside them.
-        public_key = (_env_pem("DATA_CORE_PUBLIC_KEY")
-                      or _env_pem("BACKEND_SERVICE_PUBLIC_KEY"))
+        # Today's names, and where they are not set the older ones
+        # (contracts/setting_names.py).
+        public_key = _env_pem("DATA_CORE_SERVICE_PUBLIC_KEY")
         if not public_key:
             raise ValueError(
-                "DATA_CORE_PUBLIC_KEY is required — this execution node "
+                "DATA_CORE_SERVICE_PUBLIC_KEY is required — this execution node "
                 "believes nothing the Data Core did not sign, and cannot tell "
                 "without it.")
         credential_file = os.getenv("AI_RUNTIME_NODE_CREDENTIAL_FILE", "").strip()
@@ -76,13 +78,12 @@ class RuntimeSettings:
                 "CREDENTIAL_URL) is required — an execution node is admitted "
                 "by a credential an authority signed, read from where its "
                 "operator puts it (docs/system/execution-nodes.md).")
-        backend_url = (os.getenv("DATA_CORE_URL", "").strip()
-                       or os.getenv("BACKEND_INTERNAL_URL", "").strip())
-        if not backend_url:
+        data_core_url = setting("DATA_CORE_INTERNAL_URL")
+        if not data_core_url:
             raise ValueError(
-                "DATA_CORE_URL is required — the runtime keeps nothing "
+                "DATA_CORE_INTERNAL_URL is required — the runtime keeps nothing "
                 "itself, and asks the Data Core for everything a chat is.")
-        agents_container = os.getenv("AI_RUNTIME_AGENTS_SPAWNER", "").strip()
+        sandbox_address = os.getenv("AI_RUNTIME_AGENTS_SPAWNER", "").strip()
         sandbox_secret = os.getenv("AI_RUNTIME_SANDBOX_SECRET", "").strip()
         if not sandbox_secret:
             raise ValueError(
@@ -91,17 +92,17 @@ class RuntimeSettings:
                 "do, and register with it proving this secret, set for the "
                 "execution node (bootstrap/setup.py writes one).")
         return cls(
-            backend_service_public_key=public_key,
+            data_core_service_public_key=public_key,
             node_credential_file=credential_file,
             node_credential_url=credential_url,
-            backend_url=backend_url,
+            data_core_url=data_core_url,
             host=os.getenv("AI_RUNTIME_HOST", "0.0.0.0"),
             port=cls._port("AI_RUNTIME_PORT", 8001),
             agents_install_dir=(
                 os.getenv("AI_RUNTIME_AGENTS_INSTALL_DIR", "")
                 or _default_install_dir()
             ),
-            agents_container=agents_container,
+            sandbox_address=sandbox_address,
             sandbox_secret=sandbox_secret,
             sandbox_port=cls._port("AI_RUNTIME_SANDBOX_PORT", 8005),
             # As start.sh reads it, which wrote the firewall rule with

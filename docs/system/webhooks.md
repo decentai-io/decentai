@@ -21,7 +21,7 @@ organization may turn inbound webhooks off on its Safety page.
 
 ### What a person sets up
 
-`Settings:Webhook:Create` (`backend/api/endpoints/app/settings/webhook_controller.py`):
+`Settings:Webhook:Create` (`data_core/api/endpoints/app/settings/webhook_controller.py`):
 
 | Setting | What it is |
 |---|---|
@@ -88,7 +88,7 @@ model. The exact headers, answers and a signing example are in
   time. Always required.
 - **Signature** — `sha256=<hex>` of an HMAC-SHA256 over
   `"<timestamp>.<body>"`, keyed with the secret, the Unix timestamp in
-  seconds beside it (`signature`, `backend/database/stores/webhooks.py`).
+  seconds beside it (`signature`, `data_core/database/stores/webhooks.py`).
   Where the webhook *requires* one, a call without it is refused. Where
   it does not, a signature that is sent is still checked. Either way a
   timestamp more than five minutes from now is refused. It proves the
@@ -96,7 +96,7 @@ model. The exact headers, answers and a signing example are in
 
 ### What is checked, in order
 
-`receive` (`backend/server/routes/hooks.py`). The first check that fails
+`receive` (`data_core/server/routes/hooks.py`). The first check that fails
 is the answer.
 
 1. **The webhook and its person.** The webhook exists and is enabled;
@@ -130,7 +130,7 @@ nowhere: there is no webhook to record it against.
 Once the event is recorded, the Data Core tells the chat, after the 202
 (`_tell`). It sends a **`webhook_event`** frame through the relay to the
 runtime for the person (`RuntimeClientManager.send`,
-`backend/api/services/chat_session/relay.py`); where nobody has the chat
+`data_core/api/services/chat_session/relay.py`); where nobody has the chat
 open, that attaches the chat to an execution node as for any frame
 that arrives with nobody watching — a fresh delegation for the chat,
 bound to that node
@@ -205,14 +205,14 @@ call** to copy — a `curl` with the fields as declared and the secret as
   that stretch: the reply shows under the event it followed.
 - **Send a test event** (`Settings:Webhook:Test`, owner only): fields
   given on the page, checked against the webhook's fields, then the
-  same road as a call (`accept`, `backend/server/routes/hooks.py`) —
+  same road as a call (`accept`, `data_core/server/routes/hooks.py`) —
   recorded with source `test`, on the trail as `webhook.received`, and
   into the chat. A webhook that is off, an owner who pressed Stop
   everything, or an organization that blocked webhooks refuses it.
 - **Share** (`Settings:Webhook:Share`, owner only): groups of the
   owner's and people who share a group with them (the same reach as a
   personal agent, `Sharing(PERSONAL, …)` in
-  `backend/server/governance/sharing.py`). They see the webhook and its
+  `data_core/server/governance/sharing.py`). They see the webhook and its
   executions — never its secret's prefix or its chat's settings — and
   change nothing. The chat itself is not shared: its link is the
   owner's alone.
@@ -233,7 +233,7 @@ call** to copy — a `curl` with the fields as declared and the secret as
 | Setting | What it is |
 |---|---|
 | Name | at most 80 characters |
-| Address | `https` only. The host is resolved, and refused when any address it answers with is private, loopback, link-local, reserved, multicast or unspecified (`refuse_address`, `backend/server/outbound.py`) |
+| Address | `https` only. The host is resolved, and refused when any address it answers with is private, loopback, link-local, reserved, multicast or unspecified (`refuse_address`, `data_core/server/outbound.py`) |
 | Format | `json`, `slack` (an incoming-webhook URL) or `teams` (a workflow's URL) |
 | Events | at least one of `approval.waiting`, `reply.ready`, `run.finished`, `run.failed` |
 | Include the reply | off by default; on, a `reply.ready` carries the assistant's reply text (at most 4,000 characters), not only a link |
@@ -245,7 +245,7 @@ deliveries. It is not rotated: a new one is a new subscription.
 
 ### Events
 
-Queued where they happen, in `Notifier` (`backend/server/notifications.py`,
+Queued where they happen, in `Notifier` (`data_core/server/notifications.py`,
 `_out`), for every enabled, unpaused subscription of the chat's person
 that listens for the event:
 
@@ -253,7 +253,7 @@ that listens for the event:
 |---|---|---|
 | `approval.waiting` | a runtime opened a card or a question (`card_opened`) | *<agent> is waiting for your approval* / *<agent> has a question* |
 | `reply.ready` | the assistant wrote a message with words, in the root thread (`assistant_said`) | *Your chat has an answer* |
-| `run.finished`, `run.failed` | a schedule's fire was recorded (`AI:Schedule:Ran`, `ScheduleController.ran` in `backend/api/endpoints/app/ai/schedule_controller.py`); failed when its last run's status is `error` | *Schedule: <function, or "A reminder"> finished* / *failed* |
+| `run.finished`, `run.failed` | a schedule's fire was recorded (`AI:Schedule:Ran`, `ScheduleController.ran` in `data_core/api/endpoints/app/ai/schedule_controller.py`); failed when its last run's status is `error` | *Schedule: <function, or "A reminder"> finished* / *failed* |
 
 As a push is, they are sent **only while nobody has the chat open** in a
 browser (`Notifier._looking`): a person reading the chat as it answers
@@ -305,7 +305,7 @@ Seventeen actions, `settings:webhook:*` (list, get, create, update,
 rotate, delete, deliveries, executions, test, share, transfer) and
 `settings:outbound:*` (list, create, update, delete, test, deliveries),
 in the **baseline** every member holds (`BASELINE_ACTIONS`, revision
-29, `backend/server/authentication/catalog.py`;
+29, `data_core/server/authentication/catalog.py`;
 [actions](../reference/actions.md#webhooks)). Like every baseline
 action they are offered once: an organization that unticks one keeps
 it unticked. Every read and write names the caller, so another
@@ -361,12 +361,12 @@ chats ([ownership](ownership.md)).
 
 | | |
 |---|---|
-| the door, `POST /hooks/<id>` | `backend/server/routes/hooks.py`; Caddy passes `/hooks/*` to the Data Core (`gateway/Caddyfile`) |
-| the stores, the field check and the signature | `backend/database/stores/webhooks.py` — `webhooks`, `webhook_deliveries`, `webhook_subscriptions`, `webhook_sends` |
-| the page's doors, `Settings:Webhook:*`, `Settings:Outbound:*`; executions (`WebhookRuns`) | `backend/api/endpoints/app/settings/webhook_controller.py` |
-| the queue and the sender | `backend/server/outbound.py` |
-| where events are queued | `backend/server/notifications.py`; a schedule's run, `backend/api/endpoints/app/ai/schedule_controller.py` |
-| the frame | `backend/api/services/chat_session/relay.py` (`FRAMES`); `ai_runtime/door/host.py` (`_deliver_webhook`); `ai_runtime/mind/assistant.py` (`_absorb`) |
+| the door, `POST /hooks/<id>` | `data_core/server/routes/hooks.py`; Caddy passes `/hooks/*` to the Data Core (`gateway/Caddyfile`) |
+| the stores, the field check and the signature | `data_core/database/stores/webhooks.py` — `webhooks`, `webhook_deliveries`, `webhook_subscriptions`, `webhook_sends` |
+| the page's doors, `Settings:Webhook:*`, `Settings:Outbound:*`; executions (`WebhookRuns`) | `data_core/api/endpoints/app/settings/webhook_controller.py` |
+| the queue and the sender | `data_core/server/outbound.py` |
+| where events are queued | `data_core/server/notifications.py`; a schedule's run, `data_core/api/endpoints/app/ai/schedule_controller.py` |
+| the frame | `data_core/api/services/chat_session/relay.py` (`FRAMES`); `ai_runtime/door/host.py` (`_deliver_webhook`); `ai_runtime/mind/assistant.py` (`_absorb`) |
 | the pages | `src/app/pages/app/ai/webhooks/` in `decentai-web-client` (the list, a webhook's page, the test event); `src/app/pages/app/settings/outbound/` in `decentai-web-client` |
-| the Safety row | `backend/database/stores/iam.py` (`SAFETY_DEFAULTS`) |
-| tests | `backend/tests/test_webhooks.py` (making one, every check and refusal, the trail, outbound shapes, signing, retries and pausing; executions, sharing to view, handing over, test events); `ai_runtime/tests/test_session_door.py` (`TestAWebhookEvent`: the instruction is the person's and the fields are data) |
+| the Safety row | `data_core/database/stores/iam.py` (`SAFETY_DEFAULTS`) |
+| tests | `data_core/tests/test_webhooks.py` (making one, every check and refusal, the trail, outbound shapes, signing, retries and pausing; executions, sharing to view, handing over, test events); `ai_runtime/tests/test_session_door.py` (`TestAWebhookEvent`: the instruction is the person's and the fields are data) |

@@ -1,5 +1,5 @@
-"""Where an agent's processes run, in the agents' container
-(agents_container/places.py), with the spawn helper stood in for: the
+"""Where an agent's processes run, in the Execution Sandbox
+(sandbox/places.py), with the spawn helper stood in for: the
 table of users, a place's spawn line and environment, what is asked
 of the helper and in which order, what is proved at start, and what
 the kernel's version is taken to offer. The helper itself is proved
@@ -12,9 +12,9 @@ import time
 
 import pytest
 
-from ai_runtime.agents_container import wire
-from ai_runtime.agents_container.places import ConfinementFailed, Place, Places
-from ai_runtime.agents_container.events import Events
+from sandbox import wire
+from sandbox.places import ConfinementFailed, Place, Places
+from sandbox.events import Events
 from ai_runtime.tests.fake_container import FakeHelper, run
 
 #: What a helper on an old kernel says of it: nothing.

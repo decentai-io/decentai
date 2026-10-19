@@ -9,7 +9,7 @@ wrote none is told so in one word.
 
 
 from ai_runtime.chat.code_review import CodeReviewer
-from ai_runtime.door.platform import Backend
+from ai_runtime.door.platform import DataCoreClient
 from ai_runtime.llms.connector.fake import FakeConnector
 from ai_runtime.mind import frame
 from ai_runtime.mind.state import AssistantState
@@ -145,10 +145,10 @@ class TestTheReviewer:
 class TestThePlatform:
     def test_the_contract_carries_text_and_only_text(self):
         for said, kept in ((RULES, RULES), (None, ""), ({"text": "x"}, "")):
-            backend = Backend(StubGateway({"AI:Chat:Contract": {
+            data_core = DataCoreClient(StubGateway({"AI:Chat:Contract": {
                 "agents": [], "llm": None, "guardrail": said}}))
-            backend.grant("chat_1", "tok-1")
-            assert run(backend.contract("chat_1"))["guardrail"] == kept
+            data_core.grant("chat_1", "tok-1")
+            assert run(data_core.contract("chat_1"))["guardrail"] == kept
 
     def test_no_text_in_the_title_summary_or_rerank_prompts(self):
         # The rules are for what the assistant does and what the

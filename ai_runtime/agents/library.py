@@ -33,7 +33,7 @@ nothing an agent runs from:
     <install_dir>/verified/<64-hex>    a sandbox started it and it loaded
 
 Each Execution Sandbox keeps its own copy, its own environments and its
-own verification (agents_container/installs.py): the runtime passes the
+own verification (sandbox/installs.py): the runtime passes the
 bytes to a sandbox when the sandbox asks for them, and nothing is
 shared between them (docs/system/agent-code.md).
 
@@ -66,10 +66,10 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from ai_runtime.agents.confinement import Confinement
-from ai_runtime.agents.container import SandboxRefused
-from ai_runtime.agents_container.environments import AgentEnvironment
+from ai_runtime.agents.sandbox import SandboxRefused
+from sandbox.environments import AgentEnvironment
 from ai_runtime.agents.sandboxes import NoSandbox
-from ai_runtime.agents_container import installs
+from sandbox import installs
 from contracts.agent_manifest import Manifest, load_manifest, manifest_hash
 from contracts.agent_package import AgentPackage, PackagingError
 
@@ -410,7 +410,7 @@ class AgentLibrary:
     def environment(self, digest: str) -> Optional[AgentEnvironment]:
         """Where a worker of this digest runs from, as the runtime would
         know it: nowhere — an agent's environment is its sandbox's
-        (agents_container/installs.py). A test stands one in here."""
+        (sandbox/installs.py). A test stands one in here."""
         return None
 
     @staticmethod

@@ -2,7 +2,7 @@
 (docs/system/sandbox.md).
 
 The holding itself happens in the Execution Sandboxes
-(agents_container/places.py): a user of its own for every agent, its
+(sandbox/places.py): a user of its own for every agent, its
 home, the fences the kernel offers. Each sandbox proves that it holds
 by its own check, and says so when it registers (sandboxes.py); the
 runtime keeps the one part that is its own: the proxy every worker is
@@ -37,7 +37,7 @@ from urllib.parse import urlsplit
 
 from ai_runtime.agents.egress import EgressProxy
 from ai_runtime.agents.sandboxes import NoSandbox, Sandboxes
-from ai_runtime.agents_container import wire
+from sandbox import wire
 
 
 class ConfinementFailed(RuntimeError):
@@ -188,7 +188,7 @@ class InstallPasses:
     build and a worker are given of the runtime's settings."""
 
     def __init__(self, confinement: "Confinement", sandbox, agent):
-        from ai_runtime.agents_container.environments import AgentEnvironment
+        from sandbox.environments import AgentEnvironment
         from ai_runtime.agents.workers import WorkerHandle
         from contracts.agent_manifest import manifest_hash
 

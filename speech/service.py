@@ -1,8 +1,8 @@
 """The speech container's door: speech to text and text to speech for
-the backend, from models that run here and nowhere else.
+the Data Core, from models that run here and nowhere else.
 
 It speaks the audio protocol the hosted providers speak —
-``/v1/audio/transcriptions`` and ``/v1/audio/speech`` — so the backend
+``/v1/audio/transcriptions`` and ``/v1/audio/speech`` — so the Data Core
 asks this container exactly as it asks a provider an organization chose
 instead, and the choice between them is an address.
 
@@ -13,7 +13,7 @@ pinned list in catalogue.py.
 
 Who may speak or listen is not decided here. The container is on the
 platform's private network, publishes no port, and is asked only by the
-backend, which has already answered that.
+Data Core, which has already answered that.
 
     python -m speech.service
 """
@@ -35,7 +35,7 @@ from speech.shelf import Shelf, asked_for_at_start
 logger = logging.getLogger("speech.service")
 
 #: The longest recording and the longest text taken in one request.
-#: The backend holds people to its own, smaller, limits; these are what
+#: The Data Core holds people to its own, smaller, limits; these are what
 #: this process will not be made to hold in memory by anyone.
 MAX_AUDIO_BYTES = 25 * 1024 * 1024
 MAX_TEXT_CHARACTERS = 5000

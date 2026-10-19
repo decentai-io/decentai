@@ -408,7 +408,7 @@ class TestTheSandboxsStation:
             "the survivor keeps the venv"
 
     def test_a_manifest_that_was_not_approved_writes_nothing(self):
-        from ai_runtime.agents_container.installs import InstallRefused
+        from sandbox.installs import InstallRefused
 
         installs = container().installs
         with pytest.raises(InstallRefused, match="not the one that was approved"):
@@ -417,7 +417,7 @@ class TestTheSandboxsStation:
         assert self.calls["argv"] == [], "no environment was begun"
 
     def test_a_refused_reinstall_spares_the_serving_environment(self):
-        from ai_runtime.agents_container.installs import InstallRefused
+        from sandbox.installs import InstallRefused
 
         installs, digest, manifest, found = self.install()
         installs.verified_dir.joinpath(digest.split(":")[1]).unlink()

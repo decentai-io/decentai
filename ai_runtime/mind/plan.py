@@ -57,7 +57,7 @@ class WorkItem:
 class Plan:
     """The items of the work in hand, and the rules they answer to."""
 
-    #: The chat's own bounds (contracts/chat.py): the backend keeps no
+    #: The chat's own bounds (contracts/chat.py): the Data Core keeps no
     #: plan longer, so the runtime holds none longer either.
     MAX_STEPS = PLAN_MAX_STEPS
     STEP_MAX_CHARS = PLAN_STEP_MAX_CHARS
