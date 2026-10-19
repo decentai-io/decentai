@@ -121,13 +121,15 @@ class OauthFlow:
     @staticmethod
     def redirect_uri() -> str:
         """The one address registered with every provider. Explicit in the
-        environment; otherwise the public app's origin plus the
-        callback path, which is what a proxied deployment serves."""
+        environment; otherwise the engine's own public address plus the
+        callback path, which is this Data Core's route (PUBLIC_ENGINE_URL;
+        the web client's address serves no such path)."""
         settings = get_settings()
         explicit = str(getattr(settings, "oauth_redirect_url", "") or "").strip()
         if explicit:
             return explicit
-        return f"{str(settings.public_app_url or '').rstrip('/')}/oauth/callback"
+        base = str(getattr(settings, "public_engine_url", "") or settings.public_app_url or "")
+        return f"{base.rstrip('/')}/oauth/callback"
 
     #: Where the browser goes back into the app when the app does not
     #: say: the installed app's own scheme.
@@ -156,13 +158,18 @@ class OauthFlow:
     def begin(self, user: Dict[str, Any], definition: Dict[str, Any],
               resource_ref: str = "", name: str = "",
               owner: Optional[Dict[str, Any]] = None,
-              native: bool = False, return_to: str = "") -> str:
+              native: bool = False, return_to: str = "",
+              web: bool = False) -> str:
         """The consent URL for this person, this definition. Raises
         OauthError when the organization has not registered the app.
         ``native``: the app on a phone started it, and will complete it
         itself from the callback's hand-off, which the browser carries
         back to the app at ``return_to`` — the app's own scheme, never
-        a web address, so only the app answers it."""
+        a web address, so only the app answers it. ``web``: the web
+        client started it, from its own origin, where the callback's
+        browser carries no session either; the callback page tells the
+        window that opened it the hand-off, and the web client completes
+        it under its own session (Secrets:Oauth:complete)."""
         if native:
             return_to = self._app_link(return_to)
         oauth = definition.get("oauth") or {}
@@ -183,7 +190,7 @@ class OauthFlow:
             org_id, str(user.get("user_id") or ""), definition["_id"], provider,
             verifier, resource_ref=resource_ref, name=name, owner=owner,
             session_id=str(user.get("session_id") or ""), native=native,
-            return_to=return_to)
+            return_to=return_to, web=web)
 
         params = {
             # Slack takes a user token's scopes as user_scope; Slack and

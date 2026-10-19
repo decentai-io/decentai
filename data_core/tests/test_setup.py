@@ -132,17 +132,48 @@ class TestTheFirstTime:
     def test_it_is_one_persons_own_computer_in_plain_http(self, setup):
         setup.run()
         said = setup.settings.values()
-        assert said["LISTEN"] == "127.0.0.1" and said["SITE_ADDRESS"] == ":80"
-        assert said["PUBLIC_APP_URL"] == said["CORS_ALLOW_ORIGINS"] == "http://localhost:4280"
+        assert said["LISTEN"] == "127.0.0.1" and said["PORT"] == "4280"
+        assert said["PUBLIC_ENGINE_URL"] == "http://localhost:4280"
         # A cookie marked for HTTPS alone would never be sent back.
         assert said["JWT_COOKIE_SECURE"] == "false"
 
-    def test_another_port_is_said_everywhere_it_is_written(self, setup):
-        link = setup.run(port=4300)
+    def test_the_app_is_the_web_client_served_on_its_own(self, setup):
+        """The engine is headless: the app's address is the web client's
+        container on this computer, and the browser may call from it
+        and from the web client's development server."""
+        setup.run()
         said = setup.settings.values()
-        assert said["PORT"] == "4300"
-        assert said["PUBLIC_APP_URL"] == said["CORS_ALLOW_ORIGINS"] == "http://localhost:4300"
-        assert link == "http://localhost:4300"
+        assert said["PUBLIC_APP_URL"] == "http://localhost:4300"
+        assert said["CORS_ALLOW_ORIGINS"] == "http://localhost:4300,http://localhost:4200"
+        assert said["PUBLIC_APP_URL"] != said["PUBLIC_ENGINE_URL"]
+
+    def test_another_port_is_said_everywhere_it_is_written(self, setup):
+        link = setup.run(port=4380)
+        said = setup.settings.values()
+        assert said["PORT"] == "4380"
+        assert said["PUBLIC_ENGINE_URL"] == "http://localhost:4380"
+        assert link == "http://localhost:4380"
+        # The web client's addresses do not move with the engine's port.
+        assert said["PUBLIC_APP_URL"] == "http://localhost:4300"
+
+    def test_a_file_from_before_the_engine_was_headless_gains_its_address(self, setup):
+        """Such a file names the engine as PUBLIC_APP_URL and no
+        PUBLIC_ENGINE_URL: the engine's address is added from its port,
+        and the person is told the app's address is to change."""
+        setup.run(port=4380)
+        path = setup.folder / "config" / "deploy.env"
+        text = path.read_text(encoding="utf-8")
+        text = "\n".join(line for line in text.splitlines()
+                         if not line.startswith("PUBLIC_ENGINE_URL="))
+        text = text.replace("PUBLIC_APP_URL=http://localhost:4300",
+                            "PUBLIC_APP_URL=http://localhost:4380")
+        path.write_text(text + "\n", encoding="utf-8")
+        setup.said.clear()
+        assert setup.run() == "http://localhost:4380"
+        said = setup.settings.values()
+        assert said["PUBLIC_ENGINE_URL"] == "http://localhost:4380"
+        assert said["PUBLIC_APP_URL"] == "http://localhost:4380"  # unchanged: said, not changed
+        assert any("PUBLIC_APP_URL" in line and "serves no page" in line for line in setup.said)
 
     def test_every_setting_of_the_template_is_still_there(self, setup):
         setup.run()
@@ -345,7 +376,7 @@ class TestRunAgain:
     def test_the_port_is_the_files_to_say_by_then(self, setup):
         setup.run()
         with pytest.raises(module.SetupError, match="says the port"):
-            setup.run(port=4300)
+            setup.run(port=4380)
 
     def test_the_address_is_said_without_starting_anything(self, setup, docker):
         first = setup.run()
@@ -438,8 +469,8 @@ class TestAServersSettings:
     def server(self, setup):
         text = (setup.folder / "config" / "deploy.env.example").read_text(encoding="utf-8")
         (setup.folder / "config" / "deploy.env").write_text(
-            text.replace("PUBLIC_APP_URL=http://localhost:4280",
-                         "PUBLIC_APP_URL=https://ai.example.com"),
+            text.replace("PUBLIC_ENGINE_URL=http://localhost:4280",
+                         "PUBLIC_ENGINE_URL=https://api.example.com"),
             encoding="utf-8")
         return setup
 

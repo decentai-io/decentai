@@ -2,12 +2,19 @@
 
 The provider sends nothing we can trust but ``state``, which names who
 started the flow and for what, and is spent as it is read. It must also
-come back to the browser that started it: the session cookie the popup
-carries (sent on a top-level return from the provider) has to be the
-session that chose Connect. Otherwise somebody could start a flow, send
-the consent link to a colleague, and keep the colleague's account as
-their own credential. What comes back is a small page that tells the
-window that opened the popup how it went, and closes.
+come back to the person that started it. A browser on the Data Core's
+own origin proves it here: the session cookie the popup carries (sent
+on a top-level return from the provider) has to be the session that
+chose Connect. The web client, on its own origin, and the app on a
+phone hold their session as a token the popup cannot carry, so for them
+the proof moves to where it can be made: the callback parks the
+provider's code behind a one-use hand-off, and the client spends it
+under its own session (Secrets:Oauth:complete), which has to be the one
+that chose Connect. Otherwise somebody could start a flow, send the
+consent link to a colleague, and keep the colleague's account as their
+own credential. What comes back is a small page that tells the window
+that opened the popup how it went (or hands the phone's app its
+hand-off), and closes.
 """
 
 from __future__ import annotations
@@ -97,10 +104,17 @@ def _app_page(ok: bool, title: str, detail: str, return_to: str,
     ), status_code=200 if ok else 400)
 
 
-def _page(ok: bool, title: str, detail: str, resource_ref: str = "") -> HTMLResponse:
+def _page(ok: bool, title: str, detail: str, resource_ref: str = "",
+          handoff: str = "") -> HTMLResponse:
+    """The page the popup ends on, which tells the window that opened it
+    how it went — to the web client's origin alone (PUBLIC_APP_URL), so
+    no other page that opened a window here is told anything. A browser
+    session's flow finished here, and names the credential; the web
+    client's carries the hand-off it finishes with."""
     origin = str(get_settings().public_app_url or "").rstrip("/") or "*"
     payload = {"type": "decentai:oauth", "ok": ok,
-               "resource_ref": resource_ref, "error": "" if ok else detail}
+               "resource_ref": resource_ref, "handoff": handoff,
+               "error": "" if ok else detail}
     return HTMLResponse(PAGE.format(
         title=html.escape(title), detail=html.escape(detail),
         payload=_script_json(payload), origin=_script_json(origin),
@@ -143,6 +157,19 @@ async def oauth_callback(request: Request):
         return _app_page(True, "Almost there",
                          "Go back to the DecentAI app to finish connecting.", back,
                          handoff=OauthStateStore().hand_off(state, code))
+    if state.get("web"):
+        # The web client's popup carries no session to check here; the
+        # check happens where it can — when the web client spends the
+        # hand-off under its own session (Secrets:Oauth:complete).
+        if query.get("error"):
+            detail = str(query.get("error_description") or query.get("error"))
+            return _page(False, "Not connected", f"The provider said: {detail}")
+        code = str(query.get("code") or "")
+        if not code:
+            return _page(False, "Not connected", "The provider sent no authorization code.")
+        return _page(True, "Almost there",
+                     "Go back to the DecentAI window to finish connecting.",
+                     handoff=OauthStateStore().hand_off(state, code))
     if not _same_browser(request, state):
         return _page(False, "Not connected",
                      "Finish connecting in the DecentAI window where you "

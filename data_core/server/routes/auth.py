@@ -1,7 +1,9 @@
 """Public /auth/* surface — outside the gateway because these endpoints are
 how a session is obtained. Routes stay thin: decisions live in
 AuthController, the routes only hand over the session token — in the
-cookie for a browser, in the body for a native app. A decision
+body for the web client and the app on a phone, which keep it
+themselves and present it as a Bearer header; in a cookie for a
+browser that asks for neither (``client`` unsaid). A decision
 that hashes a password runs on a worker thread: bcrypt takes a moment,
 and on the event loop it would stall every other request and socket.
 """
@@ -75,12 +77,15 @@ def _clear_session_cookie(response: JSONResponse, request: Request) -> JSONRespo
 
 def _start_session(request: Request, controller: AuthController,
                    body: Dict[str, Any], user_doc: Dict[str, Any],
-                   remember: bool = False, native: bool = False) -> JSONResponse:
-    """Open a server-side session and hand back its signed token: in a
-    cookie for a browser, or in the body for a native app, which keeps
-    it in the device's own store and presents it as a Bearer header."""
+                   remember: bool = False, client: str = "") -> JSONResponse:
+    """Open a server-side session and hand back its signed token: in the
+    body for the web client (``client: "web"``) and the app on a phone
+    (``client: "native"``), which keep it themselves and present it as
+    a Bearer header; in a cookie for a browser that asks for neither.
+    The session remembers which, so that what is kept for the web
+    client — making API keys — is told apart from the phone."""
     session = controller.open_session(
-        user_doc, remember=remember, **_client(request))
+        user_doc, remember=remember, client=client, **_client(request))
     token = get_access_controller().create_session_token(session, user_doc)
 
     if not token:
@@ -88,7 +93,7 @@ def _start_session(request: Request, controller: AuthController,
         controller.close_session(session["_id"])
         return JSONResponse({"error": "Could not start a session."}, status_code=500)
 
-    if native:
+    if client in CLIENTS_HOLDING_THE_TOKEN:
         return JSONResponse({
             **body, "access_token": token,
             "expires_at": session["expires_at"].isoformat(),
@@ -97,9 +102,18 @@ def _start_session(request: Request, controller: AuthController,
         JSONResponse(body, status_code=200), request, token, remember)
 
 
-def _native(payload: Dict[str, Any]) -> bool:
-    """A native app asks for the token itself: `"client": "native"`."""
-    return payload.get("client") == "native"
+#: The clients that keep the token themselves and are handed it in the
+#: body: the web client, served from its own origin, and the app on a
+#: phone. Anything else is a browser on the Data Core's own origin, and
+#: is handed the cookie.
+CLIENTS_HOLDING_THE_TOKEN = ("web", "native")
+
+
+def _client_kind(payload: Dict[str, Any]) -> str:
+    """Which client is signing in, as it says: ``web``, ``native``, or
+    nothing. Anything else said is nothing."""
+    client = str(payload.get("client") or "")
+    return client if client in CLIENTS_HOLDING_THE_TOKEN else ""
 
 
 # ----------------------------------------------------------------------
@@ -129,7 +143,7 @@ async def setup(request: Request):
 
     return _start_session(request, AuthController(), body, user_doc,
                           remember=payload.get("remember") is True,
-                          native=_native(payload))
+                          client=_client_kind(payload))
 
 
 @router.post("/signup")
@@ -160,7 +174,7 @@ async def confirm_signup(request: Request):
         return JSONResponse(body, status_code=status)
 
     return _start_session(request, AuthController(), body, user_doc,
-                          native=_native(payload))
+                          client=_client_kind(payload))
 
 
 # ----------------------------------------------------------------------
@@ -187,7 +201,7 @@ async def accept_invitation(request: Request):
         return JSONResponse(body, status_code=status)
 
     return _start_session(request, controller, body, user_doc,
-                          native=_native(payload))
+                          client=_client_kind(payload))
 
 
 @router.post("/password/first")
@@ -204,7 +218,7 @@ async def first_password(request: Request):
 
     return _start_session(request, controller, body, user_doc,
                           remember=payload.get("remember") is True,
-                          native=_native(payload))
+                          client=_client_kind(payload))
 
 
 @router.post("/password/forgot")
@@ -236,7 +250,7 @@ async def reset_password(request: Request):
         return JSONResponse(body, status_code=status)
 
     return _start_session(request, controller, body, user_doc,
-                          native=_native(payload))
+                          client=_client_kind(payload))
 
 
 @router.post("/login")
@@ -254,7 +268,7 @@ async def login(request: Request):
     # "Keep me signed in": a longer session, and a cookie that stays.
     return _start_session(request, controller, body, user_doc,
                           remember=payload.get("remember") is True,
-                          native=_native(payload))
+                          client=_client_kind(payload))
 
 
 # ----------------------------------------------------------------------

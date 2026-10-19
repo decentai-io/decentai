@@ -282,6 +282,45 @@ class TestConnecting:
         assert app_call(phone, "Secrets:Oauth:Start", {
             "definition_id": "gmail_probe", "client": "native", "return_to": "https://evil.test/"}).status_code == 409
 
+    def test_the_web_client_finishes_through_a_hand_off(
+            self, app, admin, anon, seed, provider):
+        """Started as the web client — on its own origin, whose session
+        the popup's return cannot carry — the callback parks the code
+        and tells the window that opened the popup the hand-off; the web
+        client spends it under the session that started it."""
+        from fastapi.testclient import TestClient
+
+        from conftest import ADMIN_EMAIL, ADMIN_PASSWORD
+
+        define(admin)
+        register(admin)
+        web = TestClient(app)
+        token = web.post("/auth/login", json={
+            "email": ADMIN_EMAIL, "password": ADMIN_PASSWORD, "client": "web",
+        }).json()["access_token"]
+        web.headers["Authorization"] = f"Bearer {token}"
+
+        started = app_call(web, "Secrets:Oauth:Start",
+                           {"definition_id": "gmail_probe", "client": "web"})
+        assert started.status_code == 200, started.text
+        page = anon.get(f"/oauth/callback?state={state_of(started.json()['url'])}&code=good-code")
+        assert page.status_code == 200, page.text
+        assert "window.opener.postMessage" in page.text and '"handoff": "' in page.text
+        assert not provider.posts, "the exchange waits for the web client"
+        handoff = re.search(r'"handoff": "([A-Za-z0-9_-]+)"', page.text).group(1)
+
+        # The cookie session of the same person is not the one that chose Connect.
+        assert app_call(admin, "Secrets:Oauth:Complete", {"handoff": handoff}).status_code == 403
+        done = app_call(web, "Secrets:Oauth:Complete", {"handoff": handoff})
+        assert done.status_code == 200, done.text
+        assert done.json()["account"] == "sami@example.test" and done.json()["resource_ref"]
+        assert provider.posts[0][1]["code"] == "good-code"
+
+        # The provider refusing: the window is told, and nothing is parked.
+        again = app_call(web, "Secrets:Oauth:Start", {"definition_id": "gmail_probe", "client": "web"})
+        refused = anon.get(f"/oauth/callback?state={state_of(again.json()['url'])}&error=access_denied")
+        assert refused.status_code == 400 and '"ok": false' in refused.text
+
     def test_a_state_is_spent_on_first_use(self, admin, seed, provider):
         define(admin)
         register(admin)

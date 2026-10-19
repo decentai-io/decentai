@@ -57,9 +57,9 @@ local one where it names none).
 Every pull request is run through all four, and through four things a
 laptop does not do (`.github/workflows/tests.yml`): the confinement
 tests, in the AI Runtime's container and two Execution Sandboxes' on a
-Linux kernel; a build of the Data Core's image, and a check that the
-gateway's `gateway/Caddyfile` parses (the web client is built and tested
-in its own repository); the speech container's real models, saying a
+Linux kernel; a build of the Data Core's image (the web client is
+built and tested in its own repository); the speech container's real
+models, saying a
 sentence in each language and writing it back down; and the published
 agents' own suite against the change. New behaviour comes with a test that pins it at the layer that
 enforces it, and a test's name should read as the sentence it proves.

@@ -1,4 +1,4 @@
-"""DecentAI on this computer, from a clone, in one command.
+"""The DecentAI engine on this computer, from a clone, in one command.
 
     python bootstrap/setup.py            set it up (the first time), start it,
                                          and say where it is
@@ -11,10 +11,14 @@ the standard library.
 Its files are in `config/`. The first time, it writes
 `config/deploy.env` from `config/deploy.env.example`: the keys, made
 by the platform's own generators inside the Data Core's image, and a
-password for the database. Then it starts the stack and
-prints the address. Nobody is made for you: the address opens on the
-app's first-run page, where you name your organization and choose your
-own email and password, once. After that it is the sign-in page.
+password for the database. Then it starts the stack and prints the
+engine's address. The engine is headless — an API, with no page of its
+own. The app is the web client, a repository of its own
+(decentai-web-client), started beside this one; its first screen asks
+for the engine's address, which is what this script prints. Nobody is
+made for you: the web client then opens on the first-run page, where
+you name your organization and choose your own email and password,
+once. After that it is the sign-in page.
 
 The first-run page asks this install for no setup code
 (`SETUP_CODE=none`): DecentAI is served to this computer only
@@ -126,6 +130,19 @@ class Settings:
     TEMPLATE = f"{CONFIG}/deploy.env.example"
     FILE = f"{CONFIG}/deploy.env"
     DEFAULT_PORT = 4280
+    #: Where the web client is served on this computer: its container
+    #: (decentai-web-client's docker compose) and its development
+    #: server (npm start). The engine answers the browser from both.
+    WEB_CLIENT_PORT = 4300
+    WEB_CLIENT_DEV_PORT = 4200
+
+    @classmethod
+    def engine_address(cls, port: int) -> str:
+        return f"http://localhost:{int(port)}"
+
+    @classmethod
+    def web_client_address(cls) -> str:
+        return f"http://localhost:{cls.WEB_CLIENT_PORT}"
 
     def __init__(self, folder: Path):
         self.folder = Path(folder)
@@ -160,15 +177,20 @@ class Settings:
 
     def local(self, port: int, keys: Dict[str, str]) -> Dict[str, str]:
         """What a run on one person's own computer sets: the template's
-        settings that cannot be left as they are written there. Nobody
-        is named: the person at the keyboard names themselves, on the
-        first-run page, which asks this computer for no code."""
-        address = f"http://localhost:{int(port)}"
+        settings that cannot be left as they are written there. The
+        engine's address carries the port; the web client's addresses
+        are where its container and its development server serve it on
+        this computer. Nobody is named: the person at the keyboard
+        names themselves, on the first-run page, which asks this
+        computer for no code."""
         database = secrets.token_urlsafe(32)
         return {
             "PORT": str(int(port)),
-            "PUBLIC_APP_URL": address,
-            "CORS_ALLOW_ORIGINS": address,
+            "PUBLIC_ENGINE_URL": self.engine_address(port),
+            "PUBLIC_APP_URL": self.web_client_address(),
+            "CORS_ALLOW_ORIGINS": ",".join([
+                self.web_client_address(),
+                f"http://localhost:{self.WEB_CLIENT_DEV_PORT}"]),
             "MONGO_ROOT_PASSWORD": database,
             "MONGO_URI": (f"mongodb://decentai:{database}"
                           f"@mongo:27017/?authSource=admin"),
@@ -349,10 +371,10 @@ class Setup:
             if port is not None:
                 raise SetupError(
                     f"{Settings.FILE} is already here and says the port: "
-                    f"change PORT, PUBLIC_APP_URL and CORS_ALLOW_ORIGINS "
-                    f"there together.")
+                    f"change PORT and PUBLIC_ENGINE_URL there together.")
             self._must_be_local()
             self._secrets(self._complete())
+            self._say_where_the_app_now_is()
         else:
             self.say("Building the Data Core's image, to make this "
                      "install's keys...")
@@ -368,8 +390,9 @@ class Setup:
         self._must_name_files_here()
         self.say("Starting DecentAI (the first build takes a few minutes)...")
         # --remove-orphans: a container the stack no longer defines (the
-        # web app's, before it became a repository of its own) would keep
-        # the port the gateway is to take, and the gateway would not start.
+        # gateway's, before the engine became a headless API; the web
+        # app's, before it became a repository of its own) would keep the
+        # port the Data Core is to take, and the Data Core would not start.
         # What it defines is every file COMPOSE_FILE names, which Compose
         # reads from config/deploy.env: a second sandbox named there is
         # the stack's, and stays.
@@ -382,9 +405,9 @@ class Setup:
         return self.link()
 
     def link(self) -> str:
-        """DecentAI's address: the first-run page the first time, and
-        the sign-in page after. It carries nothing — no password is
-        written for anybody to be signed in with."""
+        """The engine's address: what the web client's first screen asks
+        for. It carries nothing — no password is written for anybody to
+        be signed in with."""
         if not self.settings.written:
             raise SetupError(
                 "Nothing is set up here yet: `python bootstrap/setup.py` "
@@ -397,7 +420,29 @@ class Setup:
         return ["compose", "--env-file", Settings.FILE, *arguments]
 
     def _address(self) -> str:
-        return self.settings.values().get("PUBLIC_APP_URL", "").rstrip("/")
+        """The engine's address. A file from before the engine went
+        headless names no PUBLIC_ENGINE_URL, and its PUBLIC_APP_URL was
+        the engine's address then."""
+        said = self.settings.values()
+        return (said.get("PUBLIC_ENGINE_URL") or said.get("PUBLIC_APP_URL", "")).rstrip("/")
+
+    def _say_where_the_app_now_is(self) -> None:
+        """A file from before the engine went headless points the app's
+        address at the engine, which serves no page any more. Nothing
+        the file says is changed; it is said, with what to change it to."""
+        said = self.settings.values()
+        engine = self._address()
+        app = said.get("PUBLIC_APP_URL", "").rstrip("/")
+        if app and app == engine:
+            self.say(
+                f"{Settings.FILE} says the app is at {app}, which is the "
+                f"engine's address: the engine serves no page any more. Set "
+                f"PUBLIC_APP_URL to where the web client is served "
+                f"({Settings.web_client_address()} for its container here) "
+                f"and CORS_ALLOW_ORIGINS to every origin it is served from "
+                f"({Settings.web_client_address()},http://localhost:"
+                f"{Settings.WEB_CLIENT_DEV_PORT} for its container and its "
+                f"development server), then run this again.")
 
     def _complete(self) -> Dict[str, str]:
         """What the template gained since the file was written, added
@@ -418,7 +463,16 @@ class Setup:
         template = self.settings.template()
         made.update({name: make() for name, make in self.MADE.items()
                      if name in missing and name not in made})
-        self.settings.add({name: made.get(name, self.LOCAL.get(name, template[name]))
+        local = dict(self.LOCAL)
+        if "PUBLIC_ENGINE_URL" in missing:
+            # The engine's own address, new to the file: the one the file
+            # already names as the engine's, by its port.
+            said = self.settings.values()
+            port = said.get("PORT") or str(Settings.DEFAULT_PORT)
+            local["PUBLIC_ENGINE_URL"] = (
+                Settings.engine_address(int(port)) if port.isdigit()
+                else said.get("PUBLIC_APP_URL", template["PUBLIC_ENGINE_URL"]))
+        self.settings.add({name: made.get(name, local.get(name, template[name]))
                            for name in missing})
         self.say(f"{Settings.FILE} gained {', '.join(missing)}: what the "
                  f"platform has since the file was written. Nothing else in "
@@ -546,7 +600,7 @@ class Setup:
         address = self._address()
         if not address.startswith(("http://localhost:", "http://127.0.0.1:")):
             raise SetupError(
-                f"{Settings.FILE} here is a server's (PUBLIC_APP_URL="
+                f"{Settings.FILE} here is a server's (PUBLIC_ENGINE_URL="
                 f"{address or 'unset'}), written by hand: it is started as "
                 f"docs/run/deploying.md says, and signed in to with the "
                 f"administrator it names.")
@@ -573,18 +627,22 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     except KeyboardInterrupt:
         print("\nStopped. Run it again to carry on.", file=sys.stderr)
         return 130
-    print("\nThe DecentAI engine is running at:\n")
+    print("\nThe DecentAI engine's API is running at:\n")
     print(f"  {link}\n")
-    print("The app itself is the web client, a repository of its own. Clone "
-          "it beside this one and start it there:\n")
+    print("It is an API alone, with no page of its own. The web client is "
+          "run separately, from its own repository: clone it beside this "
+          "one and start it there, with `npm start` while developing it "
+          f"(http://localhost:{Settings.WEB_CLIENT_DEV_PORT}) or as its "
+          f"container ({Settings.web_client_address()}):\n")
     print("  git clone https://github.com/decentai-io/decentai-web-client.git "
           "../decentai-web-client")
     print("  cd ../decentai-web-client && docker compose up -d --build\n")
-    print("Then open the address above. The first time, it asks you to name "
-          "your organization and choose your own email and password. After "
+    print("Its first screen asks for the engine's address: give it the one "
+          "above. The first time, it then asks you to name your "
+          "organization and choose your own email and password. After "
           "that, sign in with them.")
-    print(f"`python bootstrap/setup.py --link` says the address again. To "
-          f"stop: `docker compose --env-file {Settings.FILE} stop`.")
+    print(f"`python bootstrap/setup.py --link` says the engine's address "
+          f"again. To stop: `docker compose --env-file {Settings.FILE} stop`.")
     return 0
 
 

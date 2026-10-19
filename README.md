@@ -51,9 +51,12 @@ Data Core serves many: each node dials the Data Core and is admitted by
 an authority registered once, each chat is held by one node under a
 numbered lease, and the clock that fires schedules is the Data Core's
 ([execution nodes](docs/system/execution-nodes.md)). The
-web, desktop and mobile apps are **clients** of the engine; the web
-client is a repository of its own, [`decentai-web-client`](https://github.com/decentai-io/decentai-web-client),
-served through the engine's gateway.
+web, desktop and mobile apps are **clients** of the engine, which is
+headless: an API, with no page, no TLS and no proxy of its own. The
+web client is a repository of its own, [`decentai-web-client`](https://github.com/decentai-io/decentai-web-client),
+served wherever you put it — its own container, a static host — and
+told the engine's address; whatever serves TLS in front of the engine
+is chosen per deployment.
 
 ## Start here
 
@@ -82,8 +85,6 @@ ai_runtime/    the AI Runtime: the assistant's cycle, the executor and its
 sandbox/       the Execution Sandbox: the spawner, its cache of the code
                it runs, and the one program that starts an agent's
                worker as a user of its own
-gateway/       the one door (Caddy): the Data Core's paths to the Data Core,
-               every other to the web client (decentai-web-client)
 speech/        speech to text and text to speech from models that run on
                the machine itself, in a container of their own
 decentai_sdk/  what agent code imports: AgentBase, ToolBase, the manifest
@@ -93,7 +94,7 @@ bootstrap/     setting it up on a computer (setup.py), first-run seeding,
                organizations, rotation
 config/        the install's settings and secrets (deploy.env, sandbox.env,
                node-authority.env), beside the templates they come from
-compose/       what is laid over docker-compose.yml: a server's front door
+compose/       what is laid over docker-compose.yml: a server's port
                (server.yml), a second Execution Sandbox (sandboxes.yml)
 tests/         the suite that spans the Data Core and the runtime
 docs/          guides, how each part works, and the reference
@@ -111,13 +112,22 @@ python bootstrap/setup.py
 
 The first time, this writes `config/deploy.env` — the keys and the database's
 password, all generated, none of them yours to think up — builds the
-images, starts the stack, and prints the address: `http://localhost:4280`,
-served to this computer only. Open it, and the first-run page asks you
-to name your organization and choose your own email and password; you
-are its administrator. After that it is the sign-in page.
+images, starts the stack, and prints the engine's address:
+`http://localhost:4280`, served to this computer only. That is the API;
+the app is the web client, started beside it from its own repository:
 
 ```bash
-python bootstrap/setup.py --link                       # the address again
+git clone https://github.com/decentai-io/decentai-web-client.git ../decentai-web-client
+cd ../decentai-web-client && docker compose up -d --build     # http://localhost:4300
+```
+
+Open `http://localhost:4300`. Its first screen asks for the engine's
+address — the one the script printed — and then the first-run page asks
+you to name your organization and choose your own email and password;
+you are its administrator. After that it is the sign-in page.
+
+```bash
+python bootstrap/setup.py --link                       # the engine's address again
 docker compose --env-file config/deploy.env stop       # stop it; nothing is removed
 python bootstrap/setup.py                              # start it again
 ```

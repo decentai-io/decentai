@@ -26,12 +26,14 @@ provider.
    the app as well, the lists below are what the published agents
    ask for; leave out the ones of agents you will not install.
 
-Providers want the redirect URL on **https**, and most make an
-exception for `localhost`: a deployment on its own computer, at
-`http://localhost:4280`, is accepted by Google, Microsoft (as a desktop
-app), Dropbox and Box. **Slack takes https only**; for it — and for any
-provider that refuses the local address — a tunnel that gives the
-computer an https address, set as `PUBLIC_APP_URL`, is the way.
+The redirect URL is the engine's: `PUBLIC_ENGINE_URL` plus
+`/oauth/callback` (the page shows it). Providers want it on **https**,
+and most make an exception for `localhost`: an engine on its own
+computer, at `http://localhost:4280`, is accepted by Google, Microsoft
+(as a desktop app), Dropbox and Box. **Slack takes https only**; for it
+— and for any provider that refuses the local address — a tunnel that
+gives the engine an https address, set as `PUBLIC_ENGINE_URL` (or the
+whole redirect as `OAUTH_REDIRECT_URL`), is the way.
 
 | Provider | The agents that use it | Where the app is registered |
 |---|---|---|

@@ -2,6 +2,8 @@ from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
 from fastapi import FastAPI
+from starlette.datastructures import MutableHeaders
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from server.custom_logging import CustomLoggerFactory
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,7 +12,40 @@ from server.setup.app_settings import Settings
 from server.setup.app_bootstrap import init_state, shutdown_state
 
 
+class SecurityHeadersMiddleware:
+    """What every answer says about how it may be used: never guess a
+    content type, send no address to another site, never be shown in
+    another page's frame. The engine is a headless API with nothing of
+    its own in front of it, so these are its to send, on every HTTP
+    response; a WebSocket has no such headers. The page's own policy
+    (what it may load) is the web client's to send with its pages."""
+
+    HEADERS = (
+        ("X-Content-Type-Options", "nosniff"),
+        ("Referrer-Policy", "same-origin"),
+        ("X-Frame-Options", "DENY"),
+    )
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        async def send_with_headers(message: Message) -> None:
+            if message["type"] == "http.response.start":
+                headers = MutableHeaders(scope=message)
+                for name, value in self.HEADERS:
+                    headers[name] = value
+            await send(message)
+
+        await self.app(scope, receive, send_with_headers)
+
+
 def _add_middlewares(app: FastAPI, settings: Settings) -> None:
+    app.add_middleware(SecurityHeadersMiddleware)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_allow_origins,

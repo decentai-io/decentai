@@ -220,11 +220,13 @@ class OauthStateStore(MongoStore):
               provider: str, code_verifier: str, resource_ref: str = "",
               name: str = "", owner: Optional[Dict[str, Any]] = None,
               session_id: str = "", native: bool = False,
-              return_to: str = "") -> str:
+              return_to: str = "", web: bool = False) -> str:
         """Returns the raw state token; only its hash is stored. A flow
         a native app started is marked: its callback cannot carry the
         app's session, so it ends in a hand-off the app completes, and
-        the browser is sent back to the app at ``return_to``."""
+        the browser is sent back to the app at ``return_to``. One the
+        web client started is marked too: the same hand-off, told to the
+        window that opened the popup instead."""
         token = PasswordHasher.random_secret()
         now = utc_now()
         self.col.insert_one({
@@ -239,6 +241,7 @@ class OauthStateStore(MongoStore):
             "name": str(name or ""),
             "owner": dict(owner or {}),
             "native": bool(native),
+            "web": bool(web),
             "return_to": str(return_to or ""),
             "created_at": now,
             "expires_at": now + self.LIFETIME,
@@ -282,7 +285,8 @@ class OauthStateStore(MongoStore):
             return {"refused": "This connection was started by somebody else."}
         started_in = str(doc.get("session_id") or "")
         if started_in and started_in != str(session_id or ""):
-            return {"refused": "Finish connecting on the phone where you chose Connect."}
+            return {"refused": "Finish connecting where you chose Connect: the "
+                               "same browser or phone, signed in as you are there."}
         self.col.delete_one(key)
         return doc
 

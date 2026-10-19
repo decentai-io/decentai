@@ -1,9 +1,12 @@
 # The whole platform on one machine: MongoDB, the one-shot seeder, the
-# Data Core, the AI Runtime, one Execution Sandbox, the speech
-# container, and the gateway (Caddy) as the one door: the Data
-# Core's paths to the Data Core, and every other to the web client, which
-# is a repository of its own (decentai-web-client) and runs beside this
-# one. Every setting comes from one file, config/deploy.env:
+# Data Core, the AI Runtime, one Execution Sandbox and the speech
+# container. The engine is a headless API: it brings no page, no TLS
+# and no proxy of its own. The app is the web client, a repository of
+# its own (decentai-web-client), served on its own — its container, a
+# static host — and told this engine's address; TLS and a public
+# hostname are whatever a deployment puts in front of the Data Core's
+# port (compose/server.yml, docs/run/deploying.md). Every setting comes
+# from one file, config/deploy.env:
 #
 #   python bootstrap/setup.py      # writes config/deploy.env, starts this, says where
 #
@@ -11,18 +14,17 @@
 #
 #   docker compose --env-file config/deploy.env up -d --build
 #
-# As written it serves this computer only, in plain HTTP. A server with
-# an address of its own lays compose/server.yml over it
-# (docs/run/deploying.md). Only the gateway publishes a port. What is
-# laid over this file is named in config/deploy.env (COMPOSE_FILE),
-# where Compose reads it.
+# As written it serves this computer only, in plain HTTP: the Data
+# Core's port is the one published, to this computer alone (LISTEN,
+# PORT). A server lays compose/server.yml over it (docs/run/deploying.md).
+# What is laid over this file is named in config/deploy.env
+# (COMPOSE_FILE), where Compose reads it.
 #
 # Three networks, and who is on which (docs/system/architecture.md):
 #
-#   default   the one with a way out to the internet: gateway, data-core,
-#             ai-runtime, speech. The gateway reaches the Data Core here,
-#             and the web client on this computer's port; the
-#             Data Core reaches the speech container, and the internet
+#   default   the one with a way out to the internet: data-core,
+#             ai-runtime, speech. The Data Core is reached from outside
+#             on its published port, reaches the speech container here, and the internet
 #             for repositories, mail and OAuth; the runtime — the
 #             bundled execution node — dials the Data Core's node link
 #             and gateway (the Data Core reaches no node), and the
@@ -71,6 +73,12 @@ services:
       mongo:
         condition: service_healthy
 
+  # The engine's one door: the Data Core's own port, plain HTTP, from
+  # this computer only unless config/deploy.env says otherwise (LISTEN,
+  # PORT). It serves no page: the web client, a repository of its own
+  # (decentai-web-client), is served elsewhere and calls here across
+  # origins (CORS_ALLOW_ORIGINS). Whatever terminates TLS in front of it
+  # on a server is named to it as FORWARDED_ALLOW_IPS.
   data-core:
     build:
       context: .
@@ -80,6 +88,8 @@ services:
     networks:
       - default
       - data
+    ports:
+      - "${LISTEN:-127.0.0.1}:${PORT:-4280}:8000"
     volumes:
       - uploads_data:/data/uploads
       # Approved agent code, one folder per organization. The only copy
@@ -296,44 +306,6 @@ services:
       timeout: 5s
       retries: 6
       start_period: 10s
-
-  # The one door: plain HTTP on one port, from this computer only
-  # unless config/deploy.env says otherwise (LISTEN, PORT). It sends the Data
-  # Core's paths to the Data Core and every other path to the web client,
-  # a repository of its own (decentai-web-client), wherever it runs
-  # (gateway/Caddyfile).
-  gateway:
-    image: caddy:2-alpine
-    restart: unless-stopped
-    environment:
-      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
-      # The balancer in front, by its range, where there is one: whose
-      # word Caddy takes for a client's address.
-      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-127.0.0.1/32}
-      # Where the Data Core answers. Said here, and not only as the
-      # Caddyfile's default, so that a gateway started when it had
-      # another name is started again with this one: Caddy reads its
-      # file once, and Compose does not see the file change.
-      DATA_CORE_UPSTREAM: ${DATA_CORE_UPSTREAM:-data-core:8000}
-      # Where the web client serves its pages, where it is not its
-      # container on this network (web-client) or `npm start` on this
-      # computer's port 4200, which the gateway finds unsaid.
-      WEB_CLIENT_UPSTREAM:
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    volumes:
-      - ./gateway/Caddyfile:/etc/caddy/Caddyfile:ro
-    ports:
-      - "${LISTEN:-127.0.0.1}:${PORT:-4280}:80"
-    healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:2019/config/"]
-      interval: 10s
-      timeout: 5s
-      retries: 6
-      start_period: 10s
-    depends_on:
-      data-core:
-        condition: service_healthy
 
 networks:
   # The database's: mongo, and the Data Core and the seeder that speak

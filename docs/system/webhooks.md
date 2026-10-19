@@ -361,7 +361,7 @@ chats ([ownership](ownership.md)).
 
 | | |
 |---|---|
-| the door, `POST /hooks/<id>` | `data_core/server/routes/hooks.py`; Caddy passes `/hooks/*` to the Data Core (`gateway/Caddyfile`) |
+| the door, `POST /hooks/<id>` | `data_core/server/routes/hooks.py`, on the Data Core's own port |
 | the stores, the field check and the signature | `data_core/database/stores/webhooks.py` — `webhooks`, `webhook_deliveries`, `webhook_subscriptions`, `webhook_sends` |
 | the page's doors, `Settings:Webhook:*`, `Settings:Outbound:*`; executions (`WebhookRuns`) | `data_core/api/endpoints/app/settings/webhook_controller.py` |
 | the queue and the sender | `data_core/server/outbound.py` |

@@ -140,3 +140,7 @@ describe is [`note/`](https://github.com/decentai-io/decentai-agents/tree/main/n
 - [The AI Engine plan](ai-engine-plan.md) — the decentralization agreed
   in October 2026: the names, the design rules, and the phases that
   made the engine what these pages describe.
+- [Deployment: the plan](deployment-plan.md) — agreed in October 2026:
+  a headless engine, three thin-at-the-door clients, the desktop app
+  that runs it on a person's own computer, recipes kept apart from the
+  code, who runs the engine for whom, signing, and the order of work.

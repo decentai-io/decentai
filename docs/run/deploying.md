@@ -2,7 +2,11 @@
 
 The platform is one image per process, configured entirely by
 environment. Moving between a laptop, a virtual machine and a cloud
-changes values, never code.
+changes values, never code. The engine is a headless API: it brings no
+TLS, no public hostname and no proxy of its own. Whatever terminates
+TLS and serves the web client is chosen per deployment — Caddy, nginx,
+a cloud load balancer, a static host — and this page says what the
+engine needs from it, not how to run it.
 
 ## Compose on a host
 
@@ -11,6 +15,14 @@ On a person's own computer `python bootstrap/setup.py` is the whole
 procedure ([quickstart](quickstart.md)). A server with an address of
 its own is set up by hand, because what it is — its address, who its
 administrator is, where its mail goes — is yours to say.
+
+What this page stands up is the API, reached at an address of its own
+(`https://api.example.com`, say) through the TLS terminator you put in
+front of the Data Core's port. The app is the web client, served apart
+— its own container on this or any host, or a static host such as
+GitHub Pages — at the app's address (`ai.example.com`), and told the
+engine's. The web client's own README says how it is hosted; this page
+says what the engine needs to know about it: its origin.
 
 **1. Generate the secrets.** With Python 3.12 and the Data Core's
 packages (`pip install -r data_core/requirements.txt`):
@@ -37,8 +49,11 @@ the first administrator in `ADMIN_EMAIL`, `ADMIN_PASSWORD` and
 
 | Setting | On a server |
 |---|---|
-| `SITE_ADDRESS` | the domain people type. With DNS pointing at the host, Caddy obtains and renews Let's Encrypt certificates by itself |
-| `PUBLIC_APP_URL`, `CORS_ALLOW_ORIGINS` | `https://` and that domain. Links in invitations and password resets use the first |
+| `LISTEN`, `PORT` | where the Data Core's port is published: `127.0.0.1` for a terminator on the same host, `0.0.0.0` for one elsewhere (`compose/server.yml` sets that), and the port the terminator forwards to |
+| `FORWARDED_ALLOW_IPS` | the terminator's address or range, as the Data Core sees it — whose `X-Forwarded-For` is believed ([below](#tls-and-the-proxy-in-front)) |
+| `PUBLIC_ENGINE_URL` | `https://` and the engine's domain, as the terminator answers it: the OAuth redirect and a webhook's address are made from it |
+| `PUBLIC_APP_URL` | `https://` and the app's domain, where the web client is served. Links in invitations and password resets use it, and the OAuth popup reports to this origin alone |
+| `CORS_ALLOW_ORIGINS` | every origin the web client is served from, comma-separated — the app's domain, and nothing wider. The browser calls the engine from there with the session token, and the engine answers no other origin |
 | `JWT_COOKIE_SECURE` | `true` |
 | `SMTP_HOST`, `MAIL_FROM` and the server's sign-in | any provider's SMTP server, so invitations and password resets are sent rather than logged ([configuration](configuration.md)) |
 | `ORG_SIGNUP` | `open` to let anybody create an organization of their own from the sign-in page; it needs the mail above. `closed`, the default, keeps organizations to `bootstrap/organizations.py` ([operating it](operating.md#organizations)) |
@@ -53,16 +68,19 @@ neither; Compose gives each only to what uses it
 ([configuration](configuration.md)). Keep all three files readable by
 their owner only.
 
-**3. Start it**, with the file that makes the gateway (Caddy) the
-server's front door laid over the stack. It is named in
-`config/deploy.env`, where Compose reads the stack's files from:
-`COMPOSE_FILE=docker-compose.yml:compose/server.yml`.
+**3. Start it.** Where the terminator is on another host, lay
+`compose/server.yml` over the stack, which publishes the Data Core's
+port on every interface; it is named in `config/deploy.env`, where
+Compose reads the stack's files from:
+`COMPOSE_FILE=docker-compose.yml:compose/server.yml`. A terminator on
+the same host reaches the port on `127.0.0.1` as `docker-compose.yml`
+alone publishes it.
 
 ```bash
 docker compose --env-file config/deploy.env up -d --build --remove-orphans
 ```
 
-Only the gateway publishes ports (80 and 443); the Data Core, runtime and
+Only the Data Core publishes a port, plain HTTP; the runtime and the
 database live on private Compose networks, the database on one of its
 own that only the Data Core and the seeder reach. Agent code runs in a
 container of its own, `sandbox`, on a network that reaches the
@@ -71,13 +89,19 @@ runtime and nothing else ([the sandbox](../system/sandbox.md)). Every
 [operating it](operating.md), starts or reads that stack, with no
 `-f` of its own.
 
-**4. Start the web client** on the same host, from its own repository
-(`decentai-web-client`): `docker compose up -d --build` there joins the
-engine's network, where the gateway finds it. That network is
-`decentai_default` for an engine checked out in a folder called
-`decentai`; from any other folder, set `ENGINE_NETWORK` to
-`<folder>_default` there. Where the web client runs somewhere else, set
-`WEB_CLIENT_UPSTREAM` in `config/deploy.env` to its `host:port`.
+**Put TLS in front** ([below](#tls-and-the-proxy-in-front)): the
+terminator answers `https://api.example.com`, forwards every path to
+the Data Core's port — HTTP and WebSocket alike (`/chats/*`, and
+`/nodes/link` for execution nodes elsewhere) — and sends
+`X-Forwarded-For` and `X-Forwarded-Proto`.
+
+**4. Serve the web client** at the app's address, from its own
+repository (`decentai-web-client`): its container, published behind
+your own TLS, or its built files on a static host. Tell it the engine's
+address — `PUBLIC_ENGINE_URL` — in its `assets/config.json`, so that
+nobody is asked for it; its README says how. The two need share no
+host and no network: the browser calls the engine across origins,
+which is what `CORS_ALLOW_ORIGINS` above allows.
 
 **5. Set it up.** Read the setup code from the log:
 
@@ -85,33 +109,43 @@ engine's network, where the gateway finds it. That network is
 docker compose --env-file config/deploy.env logs init | grep "setup code"
 ```
 
-Open the address: the first-run page asks for that code, the
+Open the app's address: the first-run page asks for that code, the
 organization's name, and your name, email and password, and makes you
 its administrator. It is there once; after that the address is the
 sign-in page. (Where `config/deploy.env` names an administrator, there is no
 page: sign in as them.)
 
-## Behind a load balancer
+## TLS, and the proxy in front
 
 
-When something in front already terminates TLS, Caddy listens on plain
-HTTP and `docker-compose.yml` alone is the stack: leave
-`SITE_ADDRESS=:80`, and set `LISTEN=0.0.0.0` and `PORT` to the port the
-balancer forwards to. The load balancer's health check must
-reach the Data Core's `/healthz`, which Caddy proxies without regard to
-the Host header. Leave `FORWARDED_ALLOW_IPS` as it is: the Data Core's
-only peer is Caddy, and that setting is about the Data Core's peer.
+The engine speaks plain HTTP on the Data Core's port and expects
+something of yours in front of it on a server: a reverse proxy that
+terminates TLS (Caddy, nginx), or a cloud load balancer. It needs three
+things of it, and nothing else:
 
-**Set `TRUSTED_PROXIES` to the balancer's own address range**
-(`10.0.0.0/8`; several, with spaces between). A balancer says where
-each request came from, and Caddy takes that word only from the
-addresses named there. Unset, it takes nobody's, and every person is
-the balancer to the Data Core: a session's record names the balancer,
-and the sign-in lockout that counts by address counts everybody as
-one — twenty wrong passwords in fifteen minutes, from anybody, lock
-sign-in for all until the window passes. Name the balancer and
-nothing wider: whatever is named there is believed about who it is
-speaking for.
+- **Every path forwarded as it is**, HTTP and WebSocket both — the chat
+  socket is `/chats/*`, and execution nodes elsewhere dial
+  `/nodes/link`. A health check reaches the Data Core's `/healthz`.
+- **`X-Forwarded-For` and `X-Forwarded-Proto` sent**, as every proxy
+  does, so the Data Core knows the client's address and that the
+  request came in over `https`.
+- **Its address named in `FORWARDED_ALLOW_IPS`**, as the Data Core sees
+  it: the proxy's address, or its range (`10.0.0.0/8`; several,
+  comma-separated). A proxy says where each request came from, and the
+  Data Core takes that word only from the addresses named there.
+  Unset, it takes nobody's, and every person is the proxy to the Data
+  Core: a session's record names the proxy, and the sign-in lockout
+  that counts by address counts everybody as one — twenty wrong
+  passwords in fifteen minutes, from anybody, lock sign-in for all
+  until the window passes. `*` believes every peer, which is right only
+  where the port is reached through the proxy and nothing else. Name
+  the proxy and nothing wider: whatever is named there is believed
+  about who it is speaking for.
+
+The Data Core sends its own `X-Content-Type-Options`,
+`Referrer-Policy` and `X-Frame-Options` headers on every answer; the
+proxy need add none, and the page's own policy is the web client's.
+`PUBLIC_ENGINE_URL` is the address the proxy answers at.
 
 ## After it is up
 

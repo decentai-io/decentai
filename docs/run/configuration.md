@@ -34,10 +34,11 @@ still holds it; by hand, copy `config/sandbox.env.example` and
 |---|---|---|
 | `DATA_CORE_HOST` | `127.0.0.1` | Bind address. The image sets `0.0.0.0`. |
 | `DATA_CORE_PORT` | `8000` | Bind port. |
-| `FORWARDED_ALLOW_IPS` | `127.0.0.1` | Proxy addresses whose `X-Forwarded-*` headers are trusted; session IPs and the login lockout depend on it. `*` inside a private network. |
-| `CORS_ALLOW_ORIGINS` | `http://localhost:4280` | Comma-separated origins the browser may call from. A request carrying the session cookie from any other origin is not signed in. |
-| `PUBLIC_APP_URL` | `http://localhost:4280` | Where users reach the app; the base for links in invitations and resets, and an origin the session cookie is accepted from. |
-| `OAUTH_REDIRECT_URL` | `PUBLIC_APP_URL` + `/oauth/callback` | Where a provider sends the browser back after consent — the redirect URI registered with every connected app. Set it only where providers must reach another address than the page's. |
+| `FORWARDED_ALLOW_IPS` | `127.0.0.1` | The TLS terminator in front of the Data Core, by its address or range as the Data Core sees it, comma-separated: whose `X-Forwarded-*` headers are believed. Session addresses and the sign-in lockout depend on it. `*` believes every peer: right where the port is reached through the terminator and nothing else, and on a computer of one's own (`config/deploy.env.example` sets it so) ([deploying](deploying.md#tls-and-the-proxy-in-front)). |
+| `CORS_ALLOW_ORIGINS` | `http://localhost:4300,http://localhost:4200` | Comma-separated: every origin the web client is served from. The engine is headless and the web client calls it across origins, with the session token as a Bearer header; the Data Core answers the browser's preflights for these origins and no other, and a request from any other origin is refused by the browser. On this computer, the web client's container and its development server; on a server, the app's `https://` address. Never a wildcard: any page allowed here can act for a signed-in person. |
+| `PUBLIC_APP_URL` | `http://localhost:4300` | Where people reach the app — the web client's address, one of the origins above. The base for links in invitations, resets and notifications; the OAuth popup reports to this origin alone. |
+| `PUBLIC_ENGINE_URL` | `http://localhost:4280` | The engine's own address as browsers and providers reach it: the Data Core's published port, or the TLS terminator in front of it. The base of the OAuth redirect, and of a webhook's address. |
+| `OAUTH_REDIRECT_URL` | `PUBLIC_ENGINE_URL` + `/oauth/callback` | Where a provider sends the browser back after consent — the redirect URI registered with every connected app. Set it only where providers must reach the engine at another address. |
 
 ### Sessions
 
@@ -300,20 +301,15 @@ the internet.
 
 | Variable | Meaning |
 |---|---|
-| `COMPOSE_FILE` | What the stack is made of: `docker-compose.yml` and the files laid over it, separated by colons — `docker-compose.yml:compose/sandboxes.yml` for a second Execution Sandbox, `docker-compose.yml:compose/server.yml` on a server with an address of its own. Compose reads it from `config/deploy.env` itself, so no `docker compose --env-file config/deploy.env` command names a file with `-f`; `bootstrap/setup.py` starts what it names, and removes a container of a file it no longer names. |
+| `COMPOSE_FILE` | What the stack is made of: `docker-compose.yml` and the files laid over it, separated by colons — `docker-compose.yml:compose/sandboxes.yml` for a second Execution Sandbox, `docker-compose.yml:compose/server.yml` on a server whose TLS terminator is on another host. Compose reads it from `config/deploy.env` itself, so no `docker compose --env-file config/deploy.env` command names a file with `-f`; `bootstrap/setup.py` starts what it names, and removes a container of a file it no longer names. |
 | `COMPOSE_PATH_SEPARATOR` | `:`, so that the colons of `COMPOSE_FILE` separate on every system: Windows' own separator is `;`. |
-| `PORT` | The port DecentAI is opened at on the machine; `4280` unless said. `PUBLIC_APP_URL` and `CORS_ALLOW_ORIGINS` carry the same number. Not read under `compose/server.yml`, which publishes 80 and 443. |
-| `TRUSTED_PROXIES` | Whose word Caddy takes for a client's address (`X-Forwarded-For`): the load balancer in front, by its address range, several with spaces between. Unset, nobody's (the default, `127.0.0.1/32`, is Caddy's own address) — right for a computer of one's own and for a server Caddy faces the internet on, and wrong behind a balancer, where every client would be the balancer ([deploying](deploying.md)). |
-| `LISTEN` | Who may reach that port: `127.0.0.1`, this machine alone, unless said; `0.0.0.0` behind a load balancer. Not read under `compose/server.yml` either. |
-| `WEB_CLIENT_UPSTREAM` | Where the gateway finds the web client, a repository of its own (`decentai-web-client`), as `host:port`. Unset, the gateway finds it by itself: the web client's container, which joins the engine's network as `web-client`, or its development server (`npm start`) on this computer's port 4200, the container first; which of them answers is checked every five seconds. Set it only where the web client runs somewhere else. The gateway sends it every path that is not the Data Core's. |
-| `SITE_ADDRESS` | What Caddy answers for: `:80`, plain HTTP on any name, unless said — a computer of one's own, or a load balancer that terminates TLS. With `compose/server.yml`, a domain, which gets automatic certificates. |
+| `PORT` | The port the Data Core is published at on the machine — the engine's one door, plain HTTP; `4280` unless said. `PUBLIC_ENGINE_URL` carries the same number, or the TLS terminator's address in front of it. |
+| `LISTEN` | Who may reach that port: `127.0.0.1`, this machine alone, unless said — a computer of one's own, or a TLS terminator on the same host. `compose/server.yml` publishes it on every interface, for a terminator elsewhere. |
 | `MONGO_ROOT_USERNAME`, `MONGO_ROOT_PASSWORD` | The database's root account, which `MONGO_URI` must carry too. |
 
-The gateway's configuration (`gateway/Caddyfile`) reads one more,
-`DATA_CORE_UPSTREAM`: where it sends the Data Core's paths — `/nodes/*`,
-the execution nodes' link, among them — as `host:port`, `data-core:8000`
-unless said. Compose passes it on from `config/deploy.env`; it is for a
-Data Core that runs somewhere else.
+The engine brings no proxy: TLS, a public hostname and whatever serves
+the web client are a deployment's own ([deploying](deploying.md)). The
+web client finds the engine by the address it is given (its own README).
 
 ## What is deliberately not a setting
 

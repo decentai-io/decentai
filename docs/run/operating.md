@@ -69,10 +69,9 @@ again puts its own indexes back the same way.
 
 ## What to back up
 
-Four volumes hold everything durable; two more hold caches. (A server started with
-`compose/server.yml` has two more, `caddy_data` and
-`caddy_config`: the certificates and the account they were issued to,
-which are issued again if lost.)
+Four volumes hold everything durable; two more hold caches. (TLS
+certificates are the terminator's in front of the engine, not the
+stack's.)
 
 | Volume | Holds |
 |---|---|
@@ -352,8 +351,8 @@ nothing dials a node ([execution nodes](../system/execution-nodes.md)).
    proxy is (`AI_AGENTS_PROXY`), on a network that reaches its runtime
    and nothing else — as `docker-compose.yml` starts `sandbox`
    ([configuration](configuration.md#the-runtime)). Across a network,
-   give the node the deployment's `https://` address: the gateway sends
-   the node link, `/nodes/link`, to the Data Core.
+   give the node the deployment's `https://` address: the terminator
+   in front forwards the node link, `/nodes/link`, to the Data Core.
 
 Nodes are listed under **Settings → Nodes**, or by `Nodes:Node:List`.
 The page opens on a count of what is there — nodes connected, sandboxes

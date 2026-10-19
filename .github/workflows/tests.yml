@@ -137,18 +137,14 @@ jobs:
           sudo chmod -R a+rX speech-models || true
 
   images:
-    name: the Data Core's image, and the gateway's configuration
+    name: the Data Core's image
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+      # (The web client is built and tested in its own repository,
+      # decentai-web-client.)
       - run: docker build -f data_core/Dockerfile .
-      # The engine's one door: a Caddyfile that does not parse fails
-      # here, not on a server. (The web client is built and tested in
-      # its own repository, decentai-web-client.)
-      - run: >
-          docker run --rm -v "$PWD/gateway:/etc/caddy:ro" caddy:2-alpine
-          caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
 
   agents:
     name: the published agents, against this platform

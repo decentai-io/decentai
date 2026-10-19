@@ -476,7 +476,7 @@ class AuthController:
     # ------------------------------------------------------------------
     def open_session(
         self, user_doc: Dict[str, Any], user_agent: str = "", ip_address: str = "",
-        remember: bool = False,
+        remember: bool = False, client: str = "",
     ) -> Dict[str, Any]:
         return self.sessions.create(
             user_id=user_doc["_id"],
@@ -484,6 +484,7 @@ class AuthController:
             user_agent=user_agent,
             ip_address=ip_address,
             remember=remember,
+            client=client,
         )
 
     def close_session(self, session_id: str) -> bool:

@@ -74,14 +74,22 @@ def _load_settings() -> Dict[str, Any]:
         # container — the proxy reaching it is somewhere else.
         "data_core_host": os.getenv("DATA_CORE_HOST", "127.0.0.1"),
         "data_core_port": _env_port("DATA_CORE_PORT", 8000),
-        # Proxy hops whose X-Forwarded-* headers may be believed. Session
-        # IPs and the login lockout are counted per client address, so
-        # trusting this from anyone would let a spoofed header dodge the
-        # lockout. Comma-separated addresses, or "*" inside a private
-        # network.
+        # Proxy hops whose X-Forwarded-* headers may be believed: the TLS
+        # terminator a deployment put in front of this Data Core, by its
+        # address or range as this process sees it. Session IPs and the
+        # login lockout are counted per client address, so trusting this
+        # from anyone would let a spoofed header dodge the lockout.
+        # Comma-separated addresses or ranges, or "*" where the port is
+        # reached through the terminator and nothing else.
         "forwarded_allow_ips": os.getenv("FORWARDED_ALLOW_IPS", "127.0.0.1"),
 
-        "cors_allow_origins": _env_list("CORS_ALLOW_ORIGINS", "http://localhost:4280"),
+        # The web client's origin(s): where the browser calls from. The
+        # engine serves no page of its own, so this is never the engine's
+        # address: the web client's container (4300) and its development
+        # server (4200) on this computer, a deployment's app address on
+        # a server.
+        "cors_allow_origins": _env_list(
+            "CORS_ALLOW_ORIGINS", "http://localhost:4300,http://localhost:4200"),
 
         # session token signing + cookie
         "token_secret_key": os.getenv("TOKEN_SECRET_KEY"),
@@ -111,14 +119,18 @@ def _load_settings() -> Dict[str, Any]:
         # which needs no key; a token only raises its limits.
         "expo_access_token": os.getenv("EXPO_ACCESS_TOKEN", ""),
 
-        # Where the browser reaches this app — the base for links we email
-        # out. The page is opened at the engine's gateway, which passes
-        # the API's paths on, so this is NOT the API's own base_url.
-        "public_app_url": os.getenv("PUBLIC_APP_URL", "http://localhost:4280"),
+        # Where people reach the app — the web client, served on its own
+        # — and so the base for links we email out. Not the engine's own
+        # address: the engine is headless.
+        "public_app_url": os.getenv("PUBLIC_APP_URL", "http://localhost:4300"),
+        # The engine's own address as browsers and providers reach it:
+        # this Data Core's published port, or the TLS terminator a
+        # deployment put in front of it. The base of the OAuth redirect,
+        # and of a webhook's address.
+        "public_engine_url": os.getenv("PUBLIC_ENGINE_URL", "http://localhost:4280"),
         # Where providers send the browser back after consent — the one
         # redirect URI registered with every connected app. Empty means
-        # PUBLIC_APP_URL + /oauth/callback, which a proxied deployment
-        # serves; development, with the API on its own port, sets it.
+        # PUBLIC_ENGINE_URL + /oauth/callback, the engine's own route.
         "oauth_redirect_url": os.getenv("OAUTH_REDIRECT_URL", ""),
 
         # Who may stand a new organization up from the sign-in page.
@@ -273,8 +285,10 @@ class Settings:
     # push to the app, through Expo
     expo_access_token: Optional[str] = ""
 
-    # public base for emailed links
+    # public base for emailed links: the web client's address
     public_app_url: Optional[str] = None
+    # the engine's own public address: the base of the OAuth redirect
+    public_engine_url: Optional[str] = None
     # where connected apps send consent back
     oauth_redirect_url: Optional[str] = ""
 

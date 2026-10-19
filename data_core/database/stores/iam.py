@@ -1257,7 +1257,12 @@ class SessionStore(MongoStore):
         user_agent: str = "",
         ip_address: str = "",
         remember: bool = False,
+        client: str = "",
     ) -> Dict[str, Any]:
+        """``client`` is which kind of client holds the session: ``web``
+        for the web client, which keeps the token itself and presents
+        it as a Bearer header; ``native`` for the app on a phone, which
+        does the same; empty for a browser that is handed the cookie."""
         now = utc_now()
         doc = {
             "_id": new_id(),
@@ -1265,6 +1270,7 @@ class SessionStore(MongoStore):
             "org_id": org_id,
             "user_agent": str(user_agent or "")[:400],
             "ip_address": str(ip_address or "")[:64],
+            "client": str(client or "")[:16],
             "created_at": now,
             "expires_at": now + self.lifetime(remember),
         }

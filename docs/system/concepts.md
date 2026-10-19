@@ -32,15 +32,18 @@ are an **execution node**; one Data Core serves many
   each agent's worker on one of them. There is no other place a worker
   runs: the runtime's tests stand a double in for that container.
 - The web app is a static Angular application, a repository of its own
-  (`decentai-web-client`). The engine's gateway (Caddy) sends the
-  browser to it, and the Data Core's paths to the Data Core, so the
-  browser sees one origin.
+  (`decentai-web-client`), served on its own: its container, or a
+  static host. The engine is a headless API — the Data Core's port is
+  its one door, and it brings no page, no TLS and no proxy — and the
+  web client is told the engine's address, which it calls across
+  origins with the session token as a Bearer header
+  (`CORS_ALLOW_ORIGINS` names it).
 
-Started from the repository that is eight containers: the database, a
+Started from the repository that is seven containers: the database, a
 seeder that runs once and exits, the Data Core, the runtime, one
-Execution Sandbox, the speech container, the issuer of the bundled
-node's credential, and the gateway (Caddy); the web client runs beside
-it, from its own repository ([quickstart](../run/quickstart.md)).
+Execution Sandbox, the speech container, and the issuer of the bundled
+node's credential; the web client runs beside it, from its own
+repository ([quickstart](../run/quickstart.md)).
 
 Besides the database, the Data Core keeps the bytes of stored files and
 each approved agent's code as an archive, on two volumes of its own.

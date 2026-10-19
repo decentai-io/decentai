@@ -75,16 +75,17 @@ The first time, it:
 3. starts the stack — `docker compose --env-file config/deploy.env up -d
    --build --remove-orphans`, which also removes a container the stack
    no longer defines, such as an older install's `web`;
-4. waits until it answers, and prints an address.
+4. waits until it answers, and prints the engine's address.
 
-Eight containers come up: MongoDB; a one-shot seeder that brings the
+Seven containers come up: MongoDB; a one-shot seeder that brings the
 database up to date, registers this install's node authority, and
-exits; the Data Core; `node-issuer`, which signs the bundled node's
-credential and reaches no network; the private AI Runtime; the
-Execution Sandbox, where agent code runs and nothing else does; the
-speech container, which holds the platform's own speech models; and the
-gateway (Caddy), which serves the Data Core and the web client on one
-address. The AI Runtime and its Execution Sandbox are the bundled
+exits; the Data Core, whose port is the engine's one door; `node-issuer`,
+which signs the bundled node's credential and reaches no network; the
+private AI Runtime; the Execution Sandbox, where agent code runs and
+nothing else does; and the speech container, which holds the platform's
+own speech models. The engine is a headless API: it serves no page, and
+the app is the web client, started next. The AI
+Runtime and its Execution Sandbox are the bundled
 **execution node**: it dials the Data Core and is admitted by that
 authority ([execution nodes](../system/execution-nodes.md)). The first
 build takes a few minutes.
@@ -96,9 +97,9 @@ and no others — and they are not in git.
 
 ## 2. Start the web client
 
-The app itself is the web client, a repository of its own. Clone it
-beside this one and start it there; it joins the engine's network, where
-the gateway finds it:
+The app itself is the web client, a repository of its own, served on
+its own: the engine is an API and nothing more. Clone it beside this
+one and start it there; its container publishes `http://localhost:4300`:
 
 ```bash
 git clone https://github.com/decentai-io/decentai-web-client.git ../decentai-web-client
@@ -106,26 +107,37 @@ cd ../decentai-web-client
 docker compose up -d --build
 ```
 
+(Developing it, `npm start` there serves it at `http://localhost:4200`
+instead; the engine answers the browser from either, as
+`CORS_ALLOW_ORIGINS` in `config/deploy.env` says. Its own README says
+more: a static host, pointing it at an engine for good.)
+
 ## 3. Open it
 
 
-Open the address the script printed: `http://localhost:4280`. The first
-time, it is the first-run page. Name your organization, and give your
+Open `http://localhost:4300`. Its first screen asks for the engine's
+address: the one the script printed, `http://localhost:4280`. The
+browser keeps it; the sign-in page has a way to change it later.
+
+Then it is the first-run page. Name your organization, and give your
 name, the email you will sign in with and a password of your own; **Set
 up and sign in** makes the organization with you as its administrator.
 The page is there once: from then on the address opens the sign-in
 page, and you sign in with what you chose.
 
-DecentAI is served to this computer only, in plain HTTP: nobody else on
-the network reaches the page, which is why the first-run page here asks
-for no setup code (`SETUP_CODE=none` in `config/deploy.env`; a server's asks
-for one, [Deploying](deploying.md)). The address is said again by
+The engine is served to this computer only, in plain HTTP, on the
+Data Core's own port: nobody else on the network reaches it or the
+page, which is why the first-run page here asks for no setup code (`SETUP_CODE=none` in
+`config/deploy.env`; a server's asks for one, [Deploying](deploying.md)).
+The engine's address is said again by
 
 ```bash
 python bootstrap/setup.py --link
 ```
 
-Another port, said the first time: `python bootstrap/setup.py --port 4300`.
+Another port for the engine, said the first time:
+`python bootstrap/setup.py --port 4380`. The web client's port is its
+own repository's to say.
 
 ## 4. Give it a model
 

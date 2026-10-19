@@ -25,7 +25,8 @@ router = APIRouter()
 
 @router.websocket("/chats/{chat_id}")
 async def chat_websocket(websocket: WebSocket, chat_id: str):
-    user = get_access_controller().verify_request_auth(websocket)
+    access = get_access_controller()
+    user = access.verify_request_auth(websocket)
     # A person's socket only: a runtime delegation reaches its own chat
     # over its own door, and here it would replace the person's socket.
     if not user or user.get("principal_type") != "user":
@@ -46,7 +47,12 @@ async def chat_websocket(websocket: WebSocket, chat_id: str):
     if chat.get("status") == "archived":
         await websocket.close(code=4409, reason="Chat is archived")
         return
-    await websocket.accept()
+    # A handshake that offered the token as a subprotocol is answered
+    # with that subprotocol's name: a browser drops a socket whose
+    # answer names none of what it offered.
+    await websocket.accept(
+        subprotocol=access.WS_BEARER_PROTOCOL
+        if access.websocket_bearer(websocket) else None)
     manager = get_ws_manager()
     await manager.connect(websocket, chat_id, user)
     # The person has the chat in front of them from here to the

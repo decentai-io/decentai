@@ -200,6 +200,13 @@ class AccessController:
         # The actor kind the data layer speaks: browser sessions act as the
         # person; delegations act as the runtime.
         user["principal_type"] = "user"
+        # Which client holds the session, as the sign-in recorded it: the
+        # web client is a browser, the app on a phone is the app. A
+        # session from before this was recorded says nothing here, and
+        # is told apart by how its token arrives (verify_request_auth).
+        client = cls.CLIENTS.get(str(session.get("client") or ""))
+        if client:
+            user["client"] = client
 
     def _session_user(self, claims: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """A browser session: the person themselves."""
@@ -246,13 +253,28 @@ class AccessController:
 
     # ------------------------------------------------------------------
 
+    #: What a session's recorded client is called on the principal:
+    #: the web client acts from a browser, the native app from the app.
+    CLIENTS = {"web": "browser", "native": "app"}
+
+    #: The WebSocket subprotocol the web client offers with its token:
+    #: `Sec-WebSocket-Protocol: decentai.bearer, <token>`. A browser can
+    #: set no header of its own on a socket's handshake, and a token in
+    #: the address would be written into every log on the way; the
+    #: subprotocol list is the one header a page may fill. The relay
+    #: answers with the name alone, as the handshake requires.
+    WS_BEARER_PROTOCOL = "decentai.bearer"
+
     def verify_request_auth(
         self, request: Union[Request, WebSocket]
     ) -> Optional[Dict[str, Any]]:
-        """The request's token → a user, or None. Browsers carry the session
-        cookie (WebSocket handshakes included); the AI runtime carries its
-        runtime access token as a Bearer header. Same token structure, same
-        resolution."""
+        """The request's token → a user, or None. A browser on the Data
+        Core's own origin carries the session cookie (WebSocket
+        handshakes included); the web client and the app on a phone
+        carry the session token as a Bearer header, and the web client's
+        chat socket offers it as a subprotocol (``WS_BEARER_PROTOCOL``);
+        the AI runtime carries its runtime access token as a Bearer
+        header. Same token structure, same resolution."""
         access_token = request.cookies.get("access_token")
         in_cookie = bool(access_token)
         if access_token and not self._same_site(request):
@@ -267,6 +289,9 @@ class AccessController:
                 access_token = authorization[len("Bearer "):].strip()
 
         if not access_token:
+            access_token = self.websocket_bearer(request)
+
+        if not access_token:
             return None
         if ApiKeyStore.looks_like_key(access_token):
             return self._api_key_user(access_token)
@@ -274,11 +299,28 @@ class AccessController:
             return self._runtime_service_user(access_token)
         user = self.verify_token(access_token)
         if user is not None and user.get("token_type") == "WEB":
-            # Which client holds the session: a browser keeps it in the
-            # cookie, the app on a phone presents it as a Bearer header.
-            # A copy, since the cached principal is shared by both.
-            user = {**user, "client": "browser" if in_cookie else "app"}
+            # Which client holds the session: what the sign-in recorded
+            # (_stamp_principal), or — for a session from before that
+            # was recorded — a browser where it came in the cookie, the
+            # app on a phone where it came as a Bearer header. A copy,
+            # since the cached principal is shared by every request.
+            user = {**user, "client": user.get("client")
+                    or ("browser" if in_cookie else "app")}
         return user
+
+    @classmethod
+    def websocket_bearer(cls, request: Union[Request, WebSocket]) -> str:
+        """The token a WebSocket handshake offers as the entry after
+        ``WS_BEARER_PROTOCOL`` in its subprotocol list; empty for any
+        other request, and for a list that does not offer it."""
+        if not isinstance(request, WebSocket):
+            return ""
+        offered = [part.strip() for part in
+                   str(request.headers.get("sec-websocket-protocol") or "").split(",")]
+        try:
+            return offered[offered.index(cls.WS_BEARER_PROTOCOL) + 1]
+        except (ValueError, IndexError):
+            return ""
 
     # ------------------------------------------------------------------
     # An execution node, as itself

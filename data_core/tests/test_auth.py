@@ -105,12 +105,70 @@ class TestANativeSignIn:
         expires = datetime.fromisoformat(self.sign_in(anon).json()["expires_at"])
         assert expires - datetime.now(timezone.utc) < timedelta(days=8)
 
-    def test_anything_but_native_is_a_browser(self, anon):
+    def test_anything_but_native_or_web_is_a_browser(self, anon):
         response = anon.post("/auth/login", json={
             "email": ADMIN_EMAIL, "password": ADMIN_PASSWORD, "client": "app"})
         assert response.status_code == 200
         assert "access_token" not in response.json()
         assert "set-cookie" in response.headers
+
+
+class TestTheWebClientsSignIn:
+    """The web client is served on its own origin, where no cookie of
+    the engine's reaches: asked for as the web client, the sign-in
+    answers with the token in the body, as for the phone — and the
+    session remembers it was the web client, so that what is kept for a
+    browser (making API keys) is still its to do."""
+
+    def sign_in(self, anon, **extra):
+        response = anon.post("/auth/login", json={
+            "email": ADMIN_EMAIL, "password": ADMIN_PASSWORD,
+            "client": "web", **extra})
+        assert response.status_code == 200, response.text
+        return response
+
+    def test_the_token_comes_in_the_body_and_no_cookie_is_set(self, anon):
+        response = self.sign_in(anon)
+        assert response.json()["access_token"] and response.json()["expires_at"]
+        assert "set-cookie" not in response.headers
+
+    def test_it_is_a_browser_to_the_data_core(self, anon):
+        token = self.sign_in(anon).json()["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+        assert anon.get("/auth/me", headers=headers).status_code == 200
+        made = anon.post("/app", headers=headers, json={
+            "endpoint": "Settings:ApiKey:Create", "data": {"name": "laptop"}})
+        assert made.status_code == 200, made.text
+
+    def test_the_session_records_which_client_holds_it(self, anon):
+        from database.stores import SessionStore
+        from server.setup.app_state import get_access_controller
+
+        token = self.sign_in(anon).json()["access_token"]
+        user = get_access_controller().verify_token(token)
+        assert SessionStore().get(user["session_id"])["client"] == "web"
+
+    def test_the_chat_socket_takes_the_token_as_a_subprotocol(self, anon, admin, seed):
+        """A browser can set no header on a socket's handshake: the web
+        client offers the token in the subprotocol list, after the
+        engine's protocol name, and the relay answers with that name."""
+        from test_ai_messages import make_chat
+
+        token = self.sign_in(anon).json()["access_token"]
+        chat_id = make_chat(admin)
+        with anon.websocket_connect(f"/chats/{chat_id}",
+                                    subprotocols=["decentai.bearer", token]) as ws:
+            assert ws.accepted_subprotocol == "decentai.bearer"
+        # Without the token, and with one that is nobody's, the relay
+        # refuses as it would an unsigned request.
+        import pytest
+        from starlette.websockets import WebSocketDisconnect
+
+        for offered in ([], ["decentai.bearer", "not-a-token"], ["decentai.bearer"]):
+            with pytest.raises(WebSocketDisconnect) as refusal:
+                with anon.websocket_connect(f"/chats/{chat_id}", subprotocols=offered or None):
+                    pass
+            assert refusal.value.code == 4401
 
 
 class TestAHandedOverPassword:

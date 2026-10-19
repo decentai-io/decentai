@@ -76,20 +76,24 @@ class OauthConnectController:
         if not definition.get("oauth"):
             return {"error": "This credential type is filled in by hand, not connected."}, 400
 
-        # The app on a phone: its callback cannot carry its session, so
-        # the flow ends in a hand-off the app completes (``complete``).
+        # The app on a phone, and the web client on its own origin: the
+        # callback's browser carries no session of theirs, so the flow
+        # ends in a hand-off they complete (``complete``) — carried back
+        # into the phone's app, or told to the web client's window.
         native = payload.get("client") == "native"
+        web = payload.get("client") == "web"
         try:
             url = self.flow.begin(
                 user, definition, resource_ref=resource_ref,
                 name=str(payload.get("name") or ""), owner=owner, native=native,
-                return_to=str(payload.get("return_to") or ""))
+                return_to=str(payload.get("return_to") or ""), web=web)
         except OauthError as exc:
             return {"error": str(exc), "redirect_uri": self.flow.redirect_uri()}, 409
 
         self.logger.info(f"{user.get('email')} started a "
                          f"{definition['oauth'].get('provider')} connection"
-                         f"{' from the app' if native else ''}")
+                         f"{' from the app' if native else ''}"
+                         f"{' from the web client' if web else ''}")
         return {"url": url}, 200
 
     async def complete(self, data: dict, user: dict):

@@ -1,7 +1,19 @@
-# Laid over docker-compose.yml on a server with an address of its own:
-# Caddy answers on 80 and 443 for SITE_ADDRESS, and obtains and renews
-# its certificate by itself (docs/run/deploying.md). Named among the
-# stack's files in config/deploy.env,
+# Laid over docker-compose.yml on a server.
+#
+# The engine is a headless API and brings no TLS, no public hostname
+# and no proxy of its own: those are the deployment's to choose. A
+# server puts its own TLS terminator in front — Caddy, nginx, a cloud
+# load balancer — pointed at the Data Core's port, and names it to the
+# Data Core as FORWARDED_ALLOW_IPS in config/deploy.env, so that the
+# sign-in lockout and a session's record see the real client's address
+# behind it (docs/run/deploying.md). The web client is served apart, at
+# the address PUBLIC_APP_URL and CORS_ALLOW_ORIGINS name.
+#
+# This file does one thing: it opens the Data Core's port to the
+# terminator, on every interface unless LISTEN says which one (a
+# terminator on the same host wants 127.0.0.1, where
+# docker-compose.yml alone already serves). Named among the stack's
+# files in config/deploy.env,
 #
 #   COMPOSE_FILE=docker-compose.yml:compose/server.yml
 #
@@ -9,17 +21,6 @@
 #
 #   docker compose --env-file config/deploy.env up -d --build
 services:
-  gateway:
-    environment:
-      SITE_ADDRESS: ${SITE_ADDRESS:?the address people open, in config/deploy.env}
+  data-core:
     ports: !override
-      - "80:80"
-      - "443:443"
-    volumes:
-      # Certificates, and the account they were issued to.
-      - caddy_data:/data
-      - caddy_config:/config
-
-volumes:
-  caddy_data:
-  caddy_config:
+      - "${LISTEN:-0.0.0.0}:${PORT:-4280}:8000"

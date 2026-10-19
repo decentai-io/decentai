@@ -23,8 +23,7 @@ service, folder and settings carry its name
 | **AI Runtime** | `ai-runtime` | `ai_runtime/` | the assistant, the executor every call passes, what a schedule's fire runs, the egress proxy |
 | **Execution Sandbox** | `sandbox` | `sandbox/` | agent code, one user of its own per agent |
 | **execution node** | — | — | one AI Runtime with its Execution Sandboxes, deployed together |
-| **gateway** | `gateway` | `gateway/` | the one door: the Data Core's paths to the Data Core, every other to the web client |
-| **clients** | — | other repositories | the web client (`decentai-web-client`), and the desktop and mobile apps; they speak only to the Data Core |
+| **clients** | — | other repositories | the web client (`decentai-web-client`), served on its own, and the desktop and mobile apps; each is told the engine's address and speaks only to the Data Core, across origins, with the session token as a Bearer header |
 
 Together the Data Core, the AI Runtime and the Execution Sandbox are
 the **AI Engine**. Where this page says "the runtime", it means the AI
@@ -36,13 +35,11 @@ Eight containers, as `docker-compose.yml` starts them. Seven stay up;
 the seeder runs once at every start and exits.
 
 ```
- browser
-    │  HTTP and WebSocket, port 4280 on this machine (80/443 on a server)
-    ▼
-┌─────────┐   /auth/* /app /chats/* /upload /download/* /oauth/* /hooks/* /nodes/*
-│ gateway │──────────────────────────────────────────┐
-└─────────┘   everything else: the web client        │
-              (decentai-web-client, as web-client)   │
+ browser (the web client, served elsewhere, calls here across origins)
+    │  HTTP and WebSocket: port 4280 on this machine; on a server, the
+    │  TLS terminator of your own in front of it (none is the engine's)
+    │  /auth/* /app /chats/* /upload /download/* /oauth/* /hooks/* /nodes/*
+    └────────────────────────────────────────────────────┐
                                                      ▼
 ┌─────────┐  seeds, then exits        ┌──────────────────────┐      ┌─────────┐
 │  init   │──────────────────────────▶│      data-core       │─────▶│  mongo  │
@@ -68,8 +65,7 @@ the seeder runs once at every start and exits.
 
 | Container | Image | What it is | Listens on |
 |---|---|---|---|
-| `gateway` | `caddy:2-alpine` | Caddy, which passes the Data Core's paths to the Data Core and every other to the web client: its container on this network (`web-client`), `npm start` on port 4200, or wherever `WEB_CLIENT_UPSTREAM` says (`gateway/Caddyfile`) | 80, published as `LISTEN:PORT` — the only published port |
-| `data-core` | `data_core/` | the platform's API: identity and access, the data layer, the gateway, chat sessions as the runtime's services | 8000 |
+| `data-core` | `data_core/` | the platform's API: identity and access, the data layer, the gateway, chat sessions as the runtime's services | 8000, published as `LISTEN:PORT` — the only published port, the engine's one door |
 | `init` | the Data Core's | `bootstrap/init_db.py`: the schema, the access chains, the first administrator | — |
 | `mongo` | `mongo:7` | the database | 27017, on the `data` network only |
 | `ai-runtime` | `ai_runtime/` | the bundled execution node's AI Runtime: one assistant per chat, the executor and its gates, the agents' proxy, the registry of its Execution Sandboxes; it dials the Data Core's node link | 8001 (the health check), 8002 (the proxy), 8005 (where its sandboxes register) |
@@ -86,7 +82,7 @@ Three networks (`docker-compose.yml`):
 
 | Network | On it | What it is for |
 |---|---|---|
-| `default` | `gateway`, `data-core`, `ai-runtime`, `speech` | the one with a way out. Caddy reaches the Data Core; the Data Core reaches the speech container (and no execution node: nodes dial it), and the internet for repositories, mail, OAuth and a person's notifications to other systems ([webhooks](webhooks.md)); the runtime reaches the Data Core's gateway, and the internet for agents' packages and, through its proxy, for agents |
+| `default` | `data-core`, `ai-runtime`, `speech` | the one with a way out. The Data Core is reached from outside on its published port; it reaches the speech container (and no execution node: nodes dial it), and the internet for repositories, mail, OAuth and a person's notifications to other systems ([webhooks](webhooks.md)); the runtime reaches the Data Core's gateway, and the internet for agents' packages and, through its proxy, for agents |
 | `data` | `mongo`, `data-core`, `init` | `internal: true`: the database, and the two that speak to it. Nothing else has a route to it, and it has none out |
 | `sandbox` | `ai-runtime`, `sandbox` (and `sandbox-2`, where it runs) | `internal: true`: the runtime is the only container on it with a way anywhere, so a worker's only way out is the runtime's proxy |
 
@@ -209,9 +205,10 @@ Each step names where it happens; each **decision** is a place the
 message can be refused.
 
 1. **The page sends it.** A frame `{"endpoint": "AI:Chat:Input", …}`
-   on the browser's socket, through Caddy, to the Data Core
+   on the browser's socket to the Data Core
    (`data_core/server/routes/ws.py`).
-   **Decision 1:** the cookie's session, the socket's `Origin`, that
+   **Decision 1:** the socket's session (the token offered as its
+   subprotocol, or a cookie's, with the socket's `Origin`), that
    the chat is this person's, and that they hold
    `ai:chat:sendmessage`. A message of more than 256 KB is refused
    here.

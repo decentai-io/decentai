@@ -12,8 +12,13 @@ and updating. Where to look is at the end.
   the Docker service on Linux, and run the script again.
 - **The port is taken.** `docker compose` says the address is already in
   use: delete `config/deploy.env` if nothing was started with it yet and run
-  the script with `--port`, or change `PORT`, `PUBLIC_APP_URL` and
-  `CORS_ALLOW_ORIGINS` in it together.
+  the script with `--port`, or change `PORT` and `PUBLIC_ENGINE_URL` in
+  it together.
+- **The engine's address shows a line of text, not the app.** That is
+  as it should be: the engine is headless. The app is the web client,
+  served on its own (`docker compose up -d --build` in
+  `decentai-web-client` publishes `http://localhost:4300`); open that,
+  and give it the engine's address.
 - **The seeder failed.** `docker compose --env-file config/deploy.env logs init`.
   A wrong `MONGO_URI` password shows here, as an authentication error:
   the seeder is the first to connect, and the Data Core does not start
@@ -48,15 +53,24 @@ and updating. Where to look is at the end.
 
 ## Signing in
 
+- **The web client says it cannot reach the engine, or the browser's
+  console says the request was blocked by CORS.** The web client is
+  served from an origin `CORS_ALLOW_ORIGINS` in `config/deploy.env`
+  does not name — a port, a scheme or a domain that differs. Name every
+  origin it is served from there, comma-separated, exactly as the
+  browser's address bar shows it, and start the stack again. The
+  address the web client was given must be the engine's
+  (`PUBLIC_ENGINE_URL`): **Change** on its sign-in page sets another.
 - **"Too many attempts. Try again in a few minutes."** Five wrong
   passwords for one account, or twenty from one address, inside fifteen
   minutes. It lifts by itself when the fifteen minutes are over, and at
   once for an account whose password is set from the machine
   ([operating](operating.md#a-forgotten-password-without-email)).
 - **Everybody is locked out together, on a server.** Something in
-  front — a load balancer — is the one address the Data Core sees for
-  every person, so the count by address is everybody's. Set
-  `TRUSTED_PROXIES` ([deploying](deploying.md#behind-a-load-balancer)).
+  front — the TLS terminator, a load balancer — is the one address the
+  Data Core sees for every person, so the count by address is
+  everybody's. Name it in `FORWARDED_ALLOW_IPS`
+  ([deploying](deploying.md#tls-and-the-proxy-in-front)).
 - **A forgotten password, and no email is set.** The password is set
   from the machine ([operating](operating.md#a-forgotten-password-without-email)).
 

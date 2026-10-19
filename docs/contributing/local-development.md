@@ -3,8 +3,8 @@
 The Data Core is started by hand: it reads a `config.env` beside it.
 This is the everyday path for changing it; Compose is for running the
 finished thing. The web client is developed in its own repository,
-[`decentai-web-client`](https://github.com/decentai-io/decentai-web-client), whose `npm start` the engine's gateway
-serves at the engine's address.
+[`decentai-web-client`](https://github.com/decentai-io/decentai-web-client), whose `npm start` serves it on port 4200,
+pointed at whatever Data Core you name on its first screen.
 
 The AI Runtime is not started by hand. It is an execution node: it is
 admitted by a credential an authority signed
@@ -35,7 +35,6 @@ rebuilding the service that changed with
 - MongoDB on `localhost:27017` — a local service, or
   `docker run -d -p 27017:27017 mongo:7`.
 - git on the path: the Data Core fetches agent sources with it.
-- Docker, for the gateway in front of the Data Core (below).
 
 ## Configure
 
@@ -48,11 +47,11 @@ python -c "import secrets; print(secrets.token_urlsafe(48))"   # TOKEN_SECRET_KE
 
 The service keys' other half, `DATA_CORE_SERVICE_PUBLIC_KEY`, is an
 execution node's, and none is started by hand. Fill in `ADMIN_EMAIL`
-and `ADMIN_PASSWORD` in the Data Core's file. Its `PUBLIC_APP_URL`
-and `CORS_ALLOW_ORIGINS` are already `http://localhost:4280`, the
-gateway's address below, where the page is opened: the Data Core
-refuses a browser's request from any other origin. The Data Core
-listens on 8000. It is given no runtime's
+and `ADMIN_PASSWORD` in the Data Core's file. Its `CORS_ALLOW_ORIGINS`
+already names `http://localhost:4200`, the web client's development
+server, where the page is opened: the Data Core answers a browser from
+no other origin. Its `PUBLIC_ENGINE_URL` is its own address by hand,
+`http://localhost:8000`. The Data Core listens on 8000. It is given no runtime's
 address: an execution node dials it, and chats wait until one does.
 Keep `AGENT_PACKAGE_DIR` and `UPLOADS_DIR` short on Windows; a
 package's filename is a digest, and a long directory overflows the path
@@ -74,23 +73,19 @@ taken out. Run it
 after every pull that touched `data_core/database/schema.json` or the
 baseline; the schema version it prints tells you where you are.
 
-The page reaches the Data Core through the engine's gateway, as it does
-in a deployment: one origin, the Data Core's paths to the Data Core and
-every other to the web client. Start the gateway alone, pointed at the
-Data Core on this computer, and the web client's development server from
-its own repository:
+The page reaches the Data Core directly, across origins, as it does in
+a deployment: the engine is headless and no gateway is needed here.
+Start the web client's development server from its own repository:
 
 ```bash
-docker run --rm -p 127.0.0.1:4280:80 --add-host host.docker.internal:host-gateway \
-  -e SITE_ADDRESS=:80 -e DATA_CORE_UPSTREAM=host.docker.internal:8000 \
-  -e WEB_CLIENT_UPSTREAM=host.docker.internal:4200 \
-  -v "$PWD/gateway/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2-alpine
 cd ../decentai-web-client && npm start         # :4200
 ```
 
-The port is the Compose stack's: stop the stack first, or publish
-another and name it in `PUBLIC_APP_URL` and `CORS_ALLOW_ORIGINS`. Open
-`http://localhost:4280` and sign in.
+Open `http://localhost:4200`; its first screen asks for the engine's
+address — `http://localhost:8000`, the Data Core itself — and then the
+sign-in page. (To work against the Compose stack's engine instead, give
+it `http://localhost:4280`; the stack's `CORS_ALLOW_ORIGINS` names port
+4200 already.)
 
 ## The four test suites
 
