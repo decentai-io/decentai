@@ -37,7 +37,7 @@ still holds it; by hand, copy `config/sandbox.env.example` and
 | `FORWARDED_ALLOW_IPS` | `127.0.0.1` | Proxy addresses whose `X-Forwarded-*` headers are trusted; session IPs and the login lockout depend on it. `*` inside a private network. |
 | `CORS_ALLOW_ORIGINS` | `http://localhost:4280` | Comma-separated origins the browser may call from. A request carrying the session cookie from any other origin is not signed in. |
 | `PUBLIC_APP_URL` | `http://localhost:4280` | Where users reach the app; the base for links in invitations and resets, and an origin the session cookie is accepted from. |
-| `OAUTH_REDIRECT_URL` | `PUBLIC_APP_URL` + `/oauth/callback` | Where a provider sends the browser back after consent — the redirect URI registered with every connected app. Set it in development, where the API has a port of its own. |
+| `OAUTH_REDIRECT_URL` | `PUBLIC_APP_URL` + `/oauth/callback` | Where a provider sends the browser back after consent — the redirect URI registered with every connected app. Set it only where providers must reach another address than the page's. |
 
 ### Sessions
 
