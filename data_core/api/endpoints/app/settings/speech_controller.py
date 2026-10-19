@@ -28,6 +28,7 @@ import base64
 import re
 from typing import Any, Dict, Optional, Tuple
 
+from contracts.llm.providers import LlmProviders
 from api.services.speech_local import (
     SPEECH, TRANSCRIPTION, LocalSpeech, SpeechNotReady, SpeechUnreachable)
 from database.stores import LlmConnectionStore, OrganizationStore
@@ -388,12 +389,11 @@ class SpeechController:
     # ------------------------------------------------------------------
     # A provider, on the audio protocol
     # ------------------------------------------------------------------
-    #: Azure's own hosts. Audio there lives under the deployment path
-    #: with an API version, not under the OpenAI-shaped base an
-    #: endpoint is typed as — the same connection that chats through
-    #: /openai/v1 answers 404 for /audio/transcriptions.
-    AZURE_HOSTS = (".openai.azure.com", ".cognitiveservices.azure.com",
-                   ".services.ai.azure.com")
+    #: Azure's own hosts, as the catalog knows them. Audio there lives
+    #: under the deployment path with an API version, not under the
+    #: OpenAI-shaped base an endpoint is typed as — the same connection
+    #: that chats through /openai/v1 answers 404 for /audio/transcriptions.
+    AZURE_HOSTS = LlmProviders.AZURE_HOSTS
     AZURE_API_VERSION = "2025-03-01-preview"
 
     @classmethod
