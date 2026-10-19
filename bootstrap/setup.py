@@ -38,21 +38,12 @@ authority's private key, in `config/node-authority.env`, given to
 node-issuer alone. They are written beside it, made once, as the keys
 are. A `deploy.env` from before that holds either has it moved out into
 its file, and the line it was on says where it went.
-
-An install from before `config/` kept the three files at the
-repository's root. Each is moved into `config/` as it is, the first
-time this runs, and never over a file `config/` already holds. A
-setting this computer's file names by a name it had before the engine's
-parts were named (BACKEND_SERVICE_PRIVATE_KEY, AGENTS_MEMORY, ...) is
-renamed in place, its value kept; the code reads both
-(contracts/setting_names.py).
 """
 
 from __future__ import annotations
 
 import argparse
 import os
-import re
 import secrets
 import subprocess
 import sys
@@ -218,73 +209,6 @@ class Settings:
         ]
         self._put(text.rstrip("\n") + "\n" + "\n".join(lines) + "\n")
 
-    #: Settings renamed with the engine's parts: each older name, and
-    #: its name now. Where two older names lead to one, the first is
-    #: the one the code reads first (contracts/setting_names.py).
-    RENAMED: Tuple[Tuple[str, str], ...] = (
-        ("DATA_CORE_PRIVATE_KEY", "DATA_CORE_SERVICE_PRIVATE_KEY"),
-        ("BACKEND_SERVICE_PRIVATE_KEY", "DATA_CORE_SERVICE_PRIVATE_KEY"),
-        ("DATA_CORE_PUBLIC_KEY", "DATA_CORE_SERVICE_PUBLIC_KEY"),
-        ("BACKEND_SERVICE_PUBLIC_KEY", "DATA_CORE_SERVICE_PUBLIC_KEY"),
-        ("DATA_CORE_URL", "DATA_CORE_INTERNAL_URL"),
-        ("BACKEND_INTERNAL_URL", "DATA_CORE_INTERNAL_URL"),
-        ("BACKEND_HOST", "DATA_CORE_HOST"),
-        ("BACKEND_PORT", "DATA_CORE_PORT"),
-        ("AGENTS_MEMORY", "SANDBOX_MEMORY"),
-        ("AGENTS_CPUS", "SANDBOX_CPUS"),
-        ("AGENTS_LABELS", "SANDBOX_LABELS"),
-        ("AGENTS_2_LABELS", "SANDBOX_2_LABELS"),
-    )
-    #: Values that named a service by the name it had then, and what
-    #: they name now: the service is gone, and the address with it.
-    READDRESSED: Dict[str, Tuple[str, str]] = {
-        "DATA_CORE_INTERNAL_URL": ("http://backend:8000",
-                                   "http://data-core:8000"),
-    }
-
-    def rename_older(self) -> List[str]:
-        """Each older name the file uses renamed to today's, its value
-        kept — where the file does not already say today's, which is
-        then the one read and is left as it is. An address that named a
-        service by its older name names it as it is now. A commented
-        line of the template's (``# AGENTS_MEMORY=2g``) is renamed too.
-        Returns what changed, for the person to be told."""
-        lines = self.path.read_text(encoding="utf-8").splitlines()
-        said = self.values()
-        changed: List[str] = []
-
-        def active(line: str) -> Tuple[str, str]:
-            name, mark, value = line.partition("=")
-            if not mark or name.lstrip().startswith("#"):
-                return "", ""
-            return name.strip(), value
-
-        for old, new in self.RENAMED:
-            if old in said and new not in said:
-                for index, line in enumerate(lines):
-                    name, value = active(line)
-                    if name == old:
-                        lines[index] = f"{new}={value}"
-                        break
-                said[new] = said.pop(old)
-                changed.append(f"{old} is {new}")
-            if old not in said:
-                for index, line in enumerate(lines):
-                    found = re.match(rf"(\s*#\s*){old}=", line)
-                    if found:
-                        lines[index] = found.group(1) + new + line[found.end() - 1:]
-        for name, (was, now) in self.READDRESSED.items():
-            if said.get(name) != was:
-                continue
-            for index, line in enumerate(lines):
-                if active(line)[0] == name:
-                    lines[index] = f"{name}={now}"
-            changed.append(f"{name} names {now}")
-        text = "\n".join(lines) + "\n"
-        if text != self.path.read_text(encoding="utf-8"):
-            self._put(text)
-        return changed
-
     def move_out(self, moved: Dict[str, str]) -> None:
         """Each name in ``moved`` taken out of the file, its line
         replaced by one saying which file holds it now (``moved`` maps
@@ -403,7 +327,6 @@ class Setup:
     def run(self, port: Optional[int] = None) -> str:
         """Set up if nothing is, start, and return DecentAI's address."""
         self._must_reach_docker()
-        self._move_into_config()
         if self.settings.written:
             if port is not None:
                 raise SetupError(
@@ -411,7 +334,6 @@ class Setup:
                     f"change PORT, PUBLIC_APP_URL and CORS_ALLOW_ORIGINS "
                     f"there together.")
             self._must_be_local()
-            self._rename_older()
             self._secrets(self._complete())
         else:
             self.say("Building the Data Core's image, to make this "
@@ -441,7 +363,6 @@ class Setup:
         """DecentAI's address: the first-run page the first time, and
         the sign-in page after. It carries nothing — no password is
         written for anybody to be signed in with."""
-        self._move_into_config()
         if not self.settings.written:
             raise SetupError(
                 "Nothing is set up here yet: `python bootstrap/setup.py` "
@@ -449,50 +370,7 @@ class Setup:
         self._must_be_local()
         return self._address()
 
-    #: The files an install from before config/ kept at the
-    #: repository's root.
-    MOVED_IN = ("deploy.env", "sandbox.env", "node-authority.env")
-
     # ------------------------------------------------------------------
-    def _move_into_config(self) -> None:
-        """An install from before config/ kept its files at the root:
-        each is moved into config/ as it is — its keys are the install —
-        and never over a file config/ already holds, which is the one
-        the stack is started with."""
-        moved: List[str] = []
-        kept: List[str] = []
-        for name in self.MOVED_IN:
-            old = self.folder / name
-            new = self.folder / CONFIG / name
-            if not old.is_file():
-                continue
-            if new.exists():
-                kept.append(name)
-                continue
-            new.parent.mkdir(parents=True, exist_ok=True)
-            os.replace(old, new)
-            moved.append(name)
-        if moved:
-            self.say(f"Moved {', '.join(moved)} from the repository's root "
-                     f"into {CONFIG}/, where the stack reads "
-                     f"{'it' if len(moved) == 1 else 'them'} now. Nothing "
-                     f"in {'it' if len(moved) == 1 else 'them'} changed.")
-        if kept:
-            self.say(f"Left {', '.join(kept)} at the repository's root as "
-                     f"found: {CONFIG}/ already holds a file of the same "
-                     f"name, and that is the one the stack is started with. "
-                     f"Remove the old one once you are sure nothing in it "
-                     f"is needed.")
-
-    def _rename_older(self) -> None:
-        """This computer's file, with the settings it names by an older
-        name renamed (Settings.rename_older), and the person told."""
-        changed = self.settings.rename_older()
-        if changed:
-            self.say(f"{Settings.FILE} names its settings as the engine's "
-                     f"parts are named now: {'; '.join(changed)}. Their "
-                     f"values are kept.")
-
     def _compose(self, *arguments: str) -> List[str]:
         return ["compose", "--env-file", Settings.FILE, *arguments]
 

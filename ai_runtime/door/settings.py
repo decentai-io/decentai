@@ -2,13 +2,11 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from contracts.setting_names import setting
-
 
 def _env_pem(name: str) -> str:
     # PEM keys are stored as single-line env values with \n escapes
     # (env_file-safe); turn them back into a real multiline PEM here.
-    raw = setting(name)
+    raw = (os.getenv(name) or "").strip()
     return raw.replace("\\n", "\n")
 
 
@@ -62,8 +60,6 @@ class RuntimeSettings:
 
     @classmethod
     def from_env(cls) -> "RuntimeSettings":
-        # Today's names, and where they are not set the older ones
-        # (contracts/setting_names.py).
         public_key = _env_pem("DATA_CORE_SERVICE_PUBLIC_KEY")
         if not public_key:
             raise ValueError(
@@ -78,7 +74,7 @@ class RuntimeSettings:
                 "CREDENTIAL_URL) is required — an execution node is admitted "
                 "by a credential an authority signed, read from where its "
                 "operator puts it (docs/system/execution-nodes.md).")
-        data_core_url = setting("DATA_CORE_INTERNAL_URL")
+        data_core_url = os.getenv("DATA_CORE_INTERNAL_URL", "").strip()
         if not data_core_url:
             raise ValueError(
                 "DATA_CORE_INTERNAL_URL is required — the runtime keeps nothing "

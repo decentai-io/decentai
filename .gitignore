@@ -4,11 +4,6 @@ config/deploy.env
 config/sandbox.env
 config/node-authority.env
 config/.*.incoming
-# Where an install from before config/ kept them, until
-# bootstrap/setup.py moves them in.
-/deploy.env
-/sandbox.env
-/node-authority.env
 # What one person lays over the stack on their own computer: a folder
 # of agents they write (docs/agents/developing.md).
 docker-compose.override.yml

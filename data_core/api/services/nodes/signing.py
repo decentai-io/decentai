@@ -9,9 +9,7 @@ that, whoever could stand between a node and the Data Core could hand
 the node a contract — and a contract is what a chat may do.
 
 The key is the Data Core's private key
-(``DATA_CORE_SERVICE_PRIVATE_KEY``, or one of its older names where an
-install still uses one: contracts/setting_names.py), which nothing else
-holds.
+(``DATA_CORE_SERVICE_PRIVATE_KEY``), which nothing else holds.
 """
 
 from __future__ import annotations

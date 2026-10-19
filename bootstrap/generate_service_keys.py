@@ -5,9 +5,6 @@ private half; nodes are configured with the public half, and believe
 nothing it did not sign (docs/system/execution-nodes.md). Each half is
 printed as a single-line \\n-escaped value. Nothing is written to disk.
 
-The names printed are today's; an install that still uses an older
-name for either is read by it (contracts/setting_names.py).
-
 A node's own identity is not made here: nodes are admitted by
 credentials an authority signs (bootstrap/generate_node_authority.py).
 """

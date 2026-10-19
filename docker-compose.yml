@@ -168,9 +168,7 @@ services:
     environment:
       AI_RUNTIME_SANDBOX_PORT:
       # Who the Data Core is: nothing it did not sign is believed.
-      # (BACKEND_SERVICE_PUBLIC_KEY is its name in a deploy.env from
-      # before the Data Core was named, and is read where this is not.)
-      DATA_CORE_SERVICE_PUBLIC_KEY: ${DATA_CORE_SERVICE_PUBLIC_KEY:-${BACKEND_SERVICE_PUBLIC_KEY:?set DATA_CORE_SERVICE_PUBLIC_KEY in config/deploy.env}}
+      DATA_CORE_SERVICE_PUBLIC_KEY: ${DATA_CORE_SERVICE_PUBLIC_KEY:?set in config/deploy.env}
       # Who this execution node is: a credential the install's authority
       # signed, which node-issuer writes and keeps fresh. The node reads
       # it and never holds the authority's key.
@@ -262,11 +260,8 @@ services:
     # What the agents are given together, of memory and of processor;
     # 0 is no limit. The engine holds the container to it, and the
     # spawner ends the agent using most before the engine has to.
-    # (AGENTS_MEMORY, AGENTS_CPUS and AGENTS_LABELS are their names in a
-    # deploy.env from before the sandbox was named, and are read where
-    # these are not.)
-    mem_limit: ${SANDBOX_MEMORY:-${AGENTS_MEMORY:-0}}
-    cpus: ${SANDBOX_CPUS:-${AGENTS_CPUS:-0}}
+    mem_limit: ${SANDBOX_MEMORY:-0}
+    cpus: ${SANDBOX_CPUS:-0}
     command: ["python", "-m", "sandbox.service"]
     # Stopped, it drains: it starts no new worker, and those running
     # finish what they are doing before it goes.
@@ -281,7 +276,7 @@ services:
       # where it registers, who it is, and what it says of itself
       AI_SANDBOX_RUNTIME: ai-runtime:${AI_RUNTIME_SANDBOX_PORT:-8005}
       AI_SANDBOX_ID: sandbox
-      AI_SANDBOX_LABELS: ${SANDBOX_LABELS:-${AGENTS_LABELS:-}}
+      AI_SANDBOX_LABELS: ${SANDBOX_LABELS:-}
       # 0 turns off the filter on what system calls a worker may make;
       # the filter is written here, where workers run
       AI_RUNTIME_SYSCALL_FILTER:

@@ -2,8 +2,6 @@ import os
 from dataclasses import dataclass
 from typing import Optional, List, Dict, Any, Literal
 
-from contracts.setting_names import setting
-
 
 def _env_bool(name: str, default: bool) -> bool:
     value = os.getenv(name)
@@ -49,7 +47,7 @@ def _env_int(name: str, default: int, low: int, high: int) -> int:
 def _env_port(name: str, default: int) -> int:
     """A TCP port. An unreadable or out-of-range value falls back to the
     default rather than failing the boot on a typo."""
-    raw = setting(name)
+    raw = (os.getenv(name) or "").strip()
     if not raw:
         return default
     try:
@@ -62,7 +60,7 @@ def _env_port(name: str, default: int) -> int:
 def _env_pem(name: str) -> Optional[str]:
     # PEM keys are stored as single-line env values with \n escapes
     # (env_file-safe); turn them back into a real multiline PEM here.
-    raw = setting(name)
+    raw = (os.getenv(name) or "").strip()
     return raw.replace("\\n", "\n") or None
 
 
@@ -74,9 +72,7 @@ def _load_settings() -> Dict[str, Any]:
         # Where the server binds. Loopback locally; the container image
         # sets 0.0.0.0, because "localhost" inside a container is the
         # container — the proxy reaching it is somewhere else.
-        # (BACKEND_HOST and BACKEND_PORT, their older names, still read:
-        # contracts/setting_names.py.)
-        "data_core_host": setting("DATA_CORE_HOST", "127.0.0.1"),
+        "data_core_host": os.getenv("DATA_CORE_HOST", "127.0.0.1"),
         "data_core_port": _env_port("DATA_CORE_PORT", 8000),
         # Proxy hops whose X-Forwarded-* headers may be believed. Session
         # IPs and the login lockout are counted per client address, so
@@ -142,8 +138,7 @@ def _load_settings() -> Dict[str, Any]:
 
         # The Data Core's own key (RS256): what it signs everything it
         # tells an execution node with; nodes hold the public half
-        # (docs/system/execution-nodes.md). Its older names still read
-        # (contracts/setting_names.py).
+        # (docs/system/execution-nodes.md).
         "data_core_service_private_key": _env_pem(
             "DATA_CORE_SERVICE_PRIVATE_KEY"),
         # Whose administrators are the deployment's operator: they, and

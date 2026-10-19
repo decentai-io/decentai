@@ -18,7 +18,7 @@ services:
       service: sandbox
     environment:
       AI_SANDBOX_ID: sandbox-2
-      AI_SANDBOX_LABELS: ${SANDBOX_2_LABELS:-${AGENTS_2_LABELS:-}}
+      AI_SANDBOX_LABELS: ${SANDBOX_2_LABELS:-}
     volumes:
       - sandbox_2_data:/data/agents
 

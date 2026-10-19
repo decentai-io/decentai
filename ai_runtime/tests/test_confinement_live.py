@@ -1121,11 +1121,11 @@ def source_package(name: str, site: int, sleeps: int = 0) -> bytes:
     """A package as its source: what is built where it is installed."""
     files = {
         "pyproject.toml": (
-            '[build-system]\nrequires = []\nbuild-backend = "backend"\n'
+            '[build-system]\nrequires = []\nbuild-backend = "builder"\n'
             'backend-path = ["."]\n\n[project]\nname = "' + name + '"\n'
             'version = "1.0"\n'),
         "PKG-INFO": f"Metadata-Version: 2.1\nName: {name}\nVersion: 1.0\n",
-        "backend.py": HOSTILE_BUILD.format(site=site, name=name, sleeps=sleeps),
+        "builder.py": HOSTILE_BUILD.format(site=site, name=name, sleeps=sleeps),
     }
     packed = io.BytesIO()
     with tarfile.open(fileobj=packed, mode="w:gz") as archive:

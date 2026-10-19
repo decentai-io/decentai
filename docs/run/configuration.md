@@ -26,22 +26,6 @@ writes both, and moves either out of a `config/deploy.env` from before that
 still holds it; by hand, copy `config/sandbox.env.example` and
 `config/node-authority.env.example`.
 
-### Older names
-
-Some settings were renamed with the engine's parts. An install's file
-may still use an older name, and it is read wherever the new one is not
-set (`contracts/setting_names.py`, and `docker-compose.yml` for the
-ones only Compose reads). `bootstrap/setup.py` renames them in a
-computer's own `config/deploy.env`, keeping their values.
-
-| Setting | Older names, still read |
-|---|---|
-| `DATA_CORE_SERVICE_PRIVATE_KEY` | `DATA_CORE_PRIVATE_KEY`, `BACKEND_SERVICE_PRIVATE_KEY` |
-| `DATA_CORE_SERVICE_PUBLIC_KEY` | `DATA_CORE_PUBLIC_KEY`, `BACKEND_SERVICE_PUBLIC_KEY` |
-| `DATA_CORE_INTERNAL_URL` | `DATA_CORE_URL`, `BACKEND_INTERNAL_URL` |
-| `DATA_CORE_HOST`, `DATA_CORE_PORT` | `BACKEND_HOST`, `BACKEND_PORT` |
-| `SANDBOX_MEMORY`, `SANDBOX_CPUS`, `SANDBOX_LABELS`, `SANDBOX_2_LABELS` | `AGENTS_MEMORY`, `AGENTS_CPUS`, `AGENTS_LABELS`, `AGENTS_2_LABELS` |
-
 ## The Data Core
 
 ### Where it binds, and whom it believes
@@ -97,7 +81,7 @@ computer's own `config/deploy.env`, keeping their values.
 | Variable | Default | Meaning |
 |---|---|---|
 | `SPEECH_URL` | `http://speech:8004` | Where the Data Core asks the platform's own speech models ([the speech container](#the-speech-container)). Nothing answering there is not an error: an organization that keeps speech local is told it is not running, and one that chose a provider never asks. |
-| `DATA_CORE_SERVICE_PRIVATE_KEY` | required for chats | The Data Core's own key: it signs every reply and frame it sends an execution node, and nodes hold the public half ([execution nodes](../system/execution-nodes.md#the-data-cores-signature)). Its older names are read where it is not set ([older names](#older-names)). |
+| `DATA_CORE_SERVICE_PRIVATE_KEY` | required for chats | The Data Core's own key: it signs every reply and frame it sends an execution node, and nodes hold the public half ([execution nodes](../system/execution-nodes.md#the-data-cores-signature)). |
 | `NODE_AUTHORITY_PUBLIC_KEY` | unset | An authority's public key, registered as a shared authority when the seeder runs, once. One computer's install sets it; a server registers its authorities on the Nodes doors instead ([execution nodes](../system/execution-nodes.md)). |
 | `OPERATOR_ORG_ID` | the first organization | Whose administrators are the deployment's operator: they, holding `nodes:authority:shared`, register and revoke shared authorities. |
 | `REFERENCE_CATALOG_URL` | unset | A repository the marketplace offers as a source with one click. Unset, it offers none. |
@@ -160,8 +144,8 @@ gone. Back them up with it.
 |---|---|---|
 | `AI_RUNTIME_HOST` | `0.0.0.0` | Bind address; `127.0.0.1` locally. |
 | `AI_RUNTIME_PORT` | `8001` | Bind port. Left blank it is the default; a value that is not a port is refused at start, by name. |
-| `DATA_CORE_INTERNAL_URL` | required | Where the runtime reaches the Data Core's gateway for its services; a runtime not told does not start. In Compose it is the service name; where the containers share one network, `http://127.0.0.1:8000`. Its older names are read where it is not set ([older names](#older-names)). |
-| `DATA_CORE_SERVICE_PUBLIC_KEY` | required | The Data Core's public key: the node believes no reply or frame it did not sign. Its older names are read where it is not set ([older names](#older-names)). |
+| `DATA_CORE_INTERNAL_URL` | required | Where the runtime reaches the Data Core's gateway for its services; a runtime not told does not start. In Compose it is the service name; where the containers share one network, `http://127.0.0.1:8000`. |
+| `DATA_CORE_SERVICE_PUBLIC_KEY` | required | The Data Core's public key: the node believes no reply or frame it did not sign. |
 | `AI_RUNTIME_NODE_CREDENTIAL_FILE` | required, or the next | Where this execution node's credential is: a file its operator's secret manager mounts and keeps fresh, signed by an authority the Data Core registered. Read again as it nears its expiry and whenever it changes. Compose points it at what `node-issuer` writes. |
 | `AI_RUNTIME_NODE_CREDENTIAL_URL` | unset | An issuer on the node's own network that answers a `GET` with a credential (the token, or `{"credential": …}`), in place of a file. |
 | `AI_RUNTIME_AGENTS_INSTALL_DIR` | `ai_runtime/installed_agents` | Where the runtime keeps the approved packages it passes on to its Execution Sandboxes ([agent code](../system/agent-code.md)). A volume of its own in a deployment, shared with no sandbox; a short path outside the tree locally. |

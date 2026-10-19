@@ -43,28 +43,6 @@ new is ready:
 3. `docker compose --env-file config/deploy.env up -d --build --remove-orphans`
    rolls the services, and removes any the update no longer defines.
 
-**An install from before `config/`** kept `deploy.env`, `sandbox.env`
-and `node-authority.env` at the repository's root. `python
-bootstrap/setup.py` moves them into `config/` as they are, the first
-time it runs after the pull, and says so; it never moves one over a
-file `config/` already holds. On a server, move them by hand before
-step 2 (`mkdir -p config && mv deploy.env sandbox.env node-authority.env
-config/`); the server's overlay is `compose/server.yml` now.
-
-**An install from before the parts were named** has services called
-`backend` and `agents` (now `data-core` and `sandbox`), and some
-settings by older names. The data is kept: the volumes keep their
-names. `--remove-orphans` (step 3, and `bootstrap/setup.py`) replaces
-the old containers with the new ones. The older settings are still
-read ([configuration](configuration.md#older-names)), and
-`bootstrap/setup.py` renames them in a computer's own file; on a
-server, rename them by hand when convenient. A `DATA_CORE_INTERNAL_URL`
-(or `BACKEND_INTERNAL_URL`) that names `http://backend:8000` names a
-service that is gone: `bootstrap/setup.py` changes it to
-`http://data-core:8000`, and Compose uses that when the file names
-none. A `docker-compose.override.yml` of your own that names `backend`
-or `agents` names them `data-core` and `sandbox` now.
-
 Deploy by commit: note the commit a deployment was built from, so that
 going back is a matter of naming it.
 

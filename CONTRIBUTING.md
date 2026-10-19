@@ -18,9 +18,7 @@ Use the engine's names in new code, documentation, comments and log
 lines: **Data Core**, **AI Runtime**, **Execution Sandbox**, **execution
 node**, **clients** ([the parts](README.md#the-parts),
 [names](docs/system/architecture.md#names)). The services, folders and
-settings carry those names too; an older name survives only where an
-existing install still uses it (`contracts/setting_names.py`,
-`bootstrap/setup.py`).
+settings carry those names too.
 
 Two rules that are load-bearing across the codebase:
 
