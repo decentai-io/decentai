@@ -32,6 +32,30 @@ from dotenv import load_dotenv
 load_dotenv(DATA_CORE_ROOT / "config.env", override=False)
 
 
+def wait_for_database(uri: str, seconds: float = 60.0) -> None:
+    """Until the database answers, or `seconds` have gone. A new
+    database's container says it is healthy while it is still setting
+    itself up, and then restarts once: a seeder that asked only once
+    would be refused in that gap."""
+    import time
+
+    from pymongo import MongoClient
+    from pymongo.errors import PyMongoError
+
+    deadline = time.monotonic() + seconds
+    while True:
+        client = MongoClient(uri, serverSelectionTimeoutMS=2000)
+        try:
+            client.admin.command("ping")
+            return
+        except PyMongoError:
+            if time.monotonic() >= deadline:
+                raise
+            time.sleep(1)
+        finally:
+            client.close()
+
+
 def main() -> int:
     from database import MongoDB
     from database.mongo_db import load_database_schema
@@ -41,6 +65,7 @@ def main() -> int:
     state = get_state()
     schema = load_database_schema()
     state.settings = Settings.from_env()
+    wait_for_database(state.settings.mongo_uri)
     if _truthy(os.getenv("INIT_DB_FRESH", "")):
         # A deliberate fresh start: the whole database goes before the
         # schema is applied, so the seed below lays out a deployment
