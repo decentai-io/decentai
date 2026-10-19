@@ -37,7 +37,9 @@ TOPS = ("ai_runtime", "bootstrap", "compose", "config", "contracts",
 #: not kept: a person's own settings, and the agents they installed.
 MADE_NOT_KEPT = {"data_core/config.env", "ai_runtime/config.env",
                  "ai_runtime/installed_agents", "config/deploy.env",
-                 "config/sandbox.env", "config/node-authority.env"}
+                 "config/sandbox.env", "config/node-authority.env",
+                 # the fixture agents' environment, built by the suite
+                 "ai_runtime/tests/.workerenv"}
 
 #: Where settings are offered to whoever sets the platform up.
 EXAMPLES = ("config/deploy.env.example", "config/sandbox.env.example",
