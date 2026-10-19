@@ -48,10 +48,11 @@ python -c "import secrets; print(secrets.token_urlsafe(48))"   # TOKEN_SECRET_KE
 
 The service keys' other half, `DATA_CORE_SERVICE_PUBLIC_KEY`, is an
 execution node's, and none is started by hand. Fill in `ADMIN_EMAIL`
-and `ADMIN_PASSWORD` in the Data Core's file, and set `PUBLIC_APP_URL`
-and `CORS_ALLOW_ORIGINS` to `http://localhost:4280`, where the page is
-opened: the Data Core refuses a browser's request from any other
-origin. The Data Core listens on 8000. It is given no runtime's
+and `ADMIN_PASSWORD` in the Data Core's file. Its `PUBLIC_APP_URL`
+and `CORS_ALLOW_ORIGINS` are already `http://localhost:4280`, the
+gateway's address below, where the page is opened: the Data Core
+refuses a browser's request from any other origin. The Data Core
+listens on 8000. It is given no runtime's
 address: an execution node dials it, and chats wait until one does.
 Keep `AGENT_PACKAGE_DIR` and `UPLOADS_DIR` short on Windows; a
 package's filename is a digest, and a long directory overflows the path
@@ -88,7 +89,7 @@ cd ../decentai-web-client && npm start         # :4200
 ```
 
 The port is the Compose stack's: stop the stack first, or publish
-another and name it in the two settings above. Open
+another and name it in `PUBLIC_APP_URL` and `CORS_ALLOW_ORIGINS`. Open
 `http://localhost:4280` and sign in.
 
 ## The four test suites

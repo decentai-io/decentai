@@ -81,7 +81,7 @@ def _load_settings() -> Dict[str, Any]:
         # network.
         "forwarded_allow_ips": os.getenv("FORWARDED_ALLOW_IPS", "127.0.0.1"),
 
-        "cors_allow_origins": _env_list("CORS_ALLOW_ORIGINS", "http://localhost:4200"),
+        "cors_allow_origins": _env_list("CORS_ALLOW_ORIGINS", "http://localhost:4280"),
 
         # session token signing + cookie
         "token_secret_key": os.getenv("TOKEN_SECRET_KEY"),
@@ -112,9 +112,9 @@ def _load_settings() -> Dict[str, Any]:
         "expo_access_token": os.getenv("EXPO_ACCESS_TOKEN", ""),
 
         # Where the browser reaches this app — the base for links we email
-        # out. In development the SPA is served by the dev server on another
-        # port, so this is NOT the API's own base_url.
-        "public_app_url": os.getenv("PUBLIC_APP_URL", "http://localhost:4200"),
+        # out. The page is opened at the engine's gateway, which passes
+        # the API's paths on, so this is NOT the API's own base_url.
+        "public_app_url": os.getenv("PUBLIC_APP_URL", "http://localhost:4280"),
         # Where providers send the browser back after consent — the one
         # redirect URI registered with every connected app. Empty means
         # PUBLIC_APP_URL + /oauth/callback, which a proxied deployment
