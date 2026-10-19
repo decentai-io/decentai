@@ -161,14 +161,15 @@ jobs:
       - uses: actions/checkout@v4
         with:
           path: decentai
-      # decentai-agents is private: a token that may read it, kept as
-      # the secret AGENTS_REPO_TOKEN (a fine-grained token with read
-      # access to that repository's contents).
+      # Public, decentai-agents is read with the run's own token. Kept
+      # private, it needs one that may read it: the secret
+      # AGENTS_REPO_TOKEN (a fine-grained token with read access to
+      # that repository's contents).
       - uses: actions/checkout@v4
         with:
           repository: decentai-io/decentai-agents
           path: decentai-agents
-          token: ${{ secrets.AGENTS_REPO_TOKEN }}
+          token: ${{ secrets.AGENTS_REPO_TOKEN || github.token }}
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
