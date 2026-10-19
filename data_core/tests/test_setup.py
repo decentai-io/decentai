@@ -59,6 +59,9 @@ def setup(docker, tmp_path):
     (tmp_path / "config").mkdir()
     shutil.copy(ROOT / "config" / "deploy.env.example",
                 tmp_path / "config" / "deploy.env.example")
+    # The Compose files, there to be named.
+    shutil.copy(ROOT / "docker-compose.yml", tmp_path / "docker-compose.yml")
+    shutil.copytree(ROOT / "compose", tmp_path / "compose")
     said = []
     found = module.Setup(tmp_path, say=said.append)
     found.pause = 0
@@ -353,6 +356,78 @@ class TestRunAgain:
     def test_nothing_set_up_has_no_address(self, setup):
         with pytest.raises(module.SetupError, match="Nothing is set up here yet"):
             setup.link()
+
+
+class TestWhatTheStackIsMadeOf:
+    """COMPOSE_FILE in config/deploy.env: docker-compose.yml and what is
+    laid over it. Compose reads it from the file itself, so the command
+    names no file, and a second sandbox named there is the stack's — not
+    a container --remove-orphans takes away."""
+
+    UP = "compose --env-file config/deploy.env up -d --build --remove-orphans"
+
+    @staticmethod
+    def say(setup, name, value):
+        text = setup.settings.path.read_text(encoding="utf-8")
+        lines = [f"{name}={value}" if line.startswith(f"{name}=") else line
+                 for line in text.splitlines()]
+        setup.settings.path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    def test_it_is_docker_compose_yml_alone_unless_said(self, setup, docker):
+        setup.run()
+        said = setup.settings.values()
+        assert said["COMPOSE_FILE"] == "docker-compose.yml"
+        # The same separator on every system: Windows' own is ";".
+        assert said["COMPOSE_PATH_SEPARATOR"] == ":"
+        assert docker.asked[-1] == self.UP
+
+    def test_a_second_sandbox_is_started_from_the_setting(self, setup, docker):
+        setup.run()
+        self.say(setup, "COMPOSE_FILE", "docker-compose.yml:compose/sandboxes.yml")
+        docker.asked.clear()
+        setup.run()
+        # No -f: the files are the setting's, read by Compose, in this
+        # run and in every command a person types.
+        assert docker.asked[-1] == self.UP
+        assert setup.settings.values()["COMPOSE_FILE"] == (
+            "docker-compose.yml:compose/sandboxes.yml")
+
+    def test_a_file_from_before_the_setting_gains_it(self, setup, docker):
+        setup.run()
+        TestRunAgain.without(setup, "COMPOSE_")
+        setup.run()
+        said = setup.settings.values()
+        assert (said["COMPOSE_FILE"], said["COMPOSE_PATH_SEPARATOR"]) == (
+            "docker-compose.yml", ":")
+        assert any("gained COMPOSE_FILE, COMPOSE_PATH_SEPARATOR" in line
+                   for line in setup.said)
+
+    def test_a_file_that_is_not_here_is_said_before_anything_starts(
+            self, setup, docker):
+        setup.run()
+        self.say(setup, "COMPOSE_FILE", "docker-compose.yml:compose/sandbox.yml")
+        docker.asked.clear()
+        with pytest.raises(module.SetupError,
+                           match="not a file here: 'compose/sandbox.yml'"):
+            setup.run()
+        assert self.UP not in docker.asked
+
+    def test_no_file_at_all_is_said(self, setup, docker):
+        setup.run()
+        self.say(setup, "COMPOSE_FILE", "")
+        with pytest.raises(module.SetupError, match="COMPOSE_FILE is nothing"):
+            setup.run()
+
+    def test_the_shell_does_not_say_it_over_the_file(self, monkeypatch):
+        """A COMPOSE_FILE left in the shell would be Compose's word over
+        the file's, and a second sandbox the file names an orphan."""
+        monkeypatch.setenv("COMPOSE_FILE", "docker-compose.yml")
+        monkeypatch.setenv("COMPOSE_PATH_SEPARATOR", ";")
+        monkeypatch.setenv("COMPOSE_PROJECT_NAME", "kept")
+        given = module.Engine.environment()
+        assert "COMPOSE_FILE" not in given
+        assert "COMPOSE_PATH_SEPARATOR" not in given
+        assert given["COMPOSE_PROJECT_NAME"] == "kept"
 
 
 class TestAServersSettings:

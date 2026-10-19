@@ -54,11 +54,12 @@ neither; Compose gives each only to what uses it
 their owner only.
 
 **3. Start it**, with the file that makes the gateway (Caddy) the
-server's front door laid over the stack:
+server's front door laid over the stack. It is named in
+`config/deploy.env`, where Compose reads the stack's files from:
+`COMPOSE_FILE=docker-compose.yml:compose/server.yml`.
 
 ```bash
-docker compose -f docker-compose.yml -f compose/server.yml \
-    --env-file config/deploy.env up -d --build --remove-orphans
+docker compose --env-file config/deploy.env up -d --build --remove-orphans
 ```
 
 Only the gateway publishes ports (80 and 443); the Data Core, runtime and
@@ -66,7 +67,9 @@ database live on private Compose networks, the database on one of its
 own that only the Data Core and the seeder reach. Agent code runs in a
 container of its own, `sandbox`, on a network that reaches the
 runtime and nothing else ([the sandbox](../system/sandbox.md)). Every
-`docker compose` line below takes the same two `-f` files on a server.
+`docker compose --env-file config/deploy.env` line, here and in
+[operating it](operating.md), starts or reads that stack, with no
+`-f` of its own.
 
 **4. Start the web client** on the same host, from its own repository
 (`decentai-web-client`): `docker compose up -d --build` there joins the
@@ -79,8 +82,7 @@ engine's network, where the gateway finds it. That network is
 **5. Set it up.** Read the setup code from the log:
 
 ```bash
-docker compose -f docker-compose.yml -f compose/server.yml \
-    --env-file config/deploy.env logs init | grep "setup code"
+docker compose --env-file config/deploy.env logs init | grep "setup code"
 ```
 
 Open the address: the first-run page asks for that code, the

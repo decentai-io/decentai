@@ -4,8 +4,10 @@ Everything done to a running DecentAI from the machine it runs on:
 starting and stopping, updating, backing up, people and passwords, what
 the agents are given, more Execution Sandboxes and execution nodes,
 keys, and removing it. Each `docker compose` line
-is written for a computer of one's own; on a server every one of them
-takes the two `-f` files [Deploying](deploying.md) starts it with.
+is the same on a computer of one's own and on a server: the Compose
+files the stack is made of are `config/deploy.env`'s `COMPOSE_FILE`,
+which Compose reads from that file
+([configuration](configuration.md#compose-only)).
 
 ## Starting, stopping, looking
 
@@ -35,7 +37,9 @@ new is ready:
    `bootstrap/generate_node_authority.py`,
    `bootstrap/generate_secret_keys.py`) — take only what you lack and
    keep what you have, since a database is readable with the keys it was
-   written with and no others; anything else, as the template says it.
+   written with and no others; anything else, as the template says it —
+   but for `COMPOSE_FILE`, which on a server names `compose/server.yml`
+   too ([deploying](deploying.md)).
    `config/sandbox.env` and `config/node-authority.env` must be there
    too, written from the `.example` beside each
    ([deploying](deploying.md)): Compose starts nothing while a file a
@@ -296,12 +300,11 @@ One AI Runtime serves many Execution Sandboxes: each registers with it,
 proving the node's secret (`config/sandbox.env`), and keeps its own
 copy of the code it runs, sent by the runtime and kept by digest — no
 volume is shared. `compose/sandboxes.yml` lays a second, `sandbox-2`,
-beside the first:
-
-```bash
-docker compose --env-file config/deploy.env \
-    -f docker-compose.yml -f compose/sandboxes.yml up -d --build
-```
+beside the first. Name it among the stack's files in
+`config/deploy.env`,
+`COMPOSE_FILE=docker-compose.yml:compose/sandboxes.yml`, and start the
+stack again: `python bootstrap/setup.py`, or
+`docker compose --env-file config/deploy.env up -d --build`.
 
 An agent's worker is placed among the sandboxes that may take it —
 healthy and not draining — on the one already running
@@ -312,10 +315,10 @@ moves its agents to the other at their next call. Each sandbox may
 say what it is (`SANDBOX_LABELS`, and `SANDBOX_2_LABELS` for the
 second); the node reports them, and no manifest asks for one yet.
 
-Every `docker compose` line on this page then takes the two `-f` files
-as well. `python bootstrap/setup.py` starts the stack without them, and
-removes `sandbox-2` as a container the stack no longer defines; the line
-above starts it again.
+It is then part of the stack for every `docker compose` line on this
+page and for `python bootstrap/setup.py`, which keeps it. Taken out of
+`COMPOSE_FILE` again, the next `python bootstrap/setup.py` removes it
+as a container the stack no longer defines; its volume stays.
 
 ## More execution nodes
 
@@ -377,7 +380,7 @@ chats wait while none of its own is connected.
 ## Removing it
 
 To remove it altogether, its data with it:
-`docker compose --env-file config/deploy.env down --volumes` (with the
-`-f` files it was started with, so that a second sandbox's volume goes
-too), then delete `config/deploy.env`, `config/sandbox.env` and
+`docker compose --env-file config/deploy.env down --volumes` (a second
+sandbox's volume goes too, while `COMPOSE_FILE` names it), then
+delete `config/deploy.env`, `config/sandbox.env` and
 `config/node-authority.env`.

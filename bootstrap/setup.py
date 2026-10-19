@@ -30,6 +30,13 @@ says is changed. A `config/deploy.env` written by hand for a server is
 left alone (docs/run/deploying.md says how that one is started, and
 updated).
 
+What the stack is made of is a setting of the file too: COMPOSE_FILE,
+docker-compose.yml and whatever is laid over it, such as
+compose/sandboxes.yml for a second Execution Sandbox. Compose reads it
+from the file itself, so this script starts what the file names and
+removes a container of a file it no longer names — and so does every
+`docker compose --env-file config/deploy.env` command, with no `-f`.
+
 Two secrets are not in `config/deploy.env`, because Compose gives that
 file whole to the Data Core and the seeder, which need neither: the
 execution node's secret, in `config/sandbox.env`, given to the AI
@@ -84,6 +91,17 @@ class Engine:
         build is long, and a wait with no words reads as a fault."""
         return self._run(argv, shown=True)[0]
 
+    #: What Compose would take from this shell before the install's
+    #: file: which Compose files the stack is. The file says it.
+    FILE_SETTINGS = ("COMPOSE_FILE", "COMPOSE_PATH_SEPARATOR")
+
+    @classmethod
+    def environment(cls) -> Dict[str, str]:
+        """This shell's environment, but for what would override what
+        config/deploy.env says the stack is made of."""
+        return {name: value for name, value in os.environ.items()
+                if name.upper() not in cls.FILE_SETTINGS}
+
     def _run(self, argv: Sequence[str], shown: bool) -> Tuple[int, str]:
         argv = [self.COMMAND, *argv]
         if Engine.runner is not None:
@@ -91,7 +109,7 @@ class Engine:
             return code, str(said or "")
         try:
             done = subprocess.run(
-                argv, cwd=self.folder,
+                argv, cwd=self.folder, env=self.environment(),
                 stdout=None if shown else subprocess.PIPE,
                 stderr=None if shown else subprocess.STDOUT)
         except OSError as failed:
@@ -347,10 +365,14 @@ class Setup:
                      f"database's password; and beside it sandbox.env and "
                      f"node-authority.env, each given only to what uses it. "
                      f"Keep the three; they are not made twice.")
+        self._must_name_files_here()
         self.say("Starting DecentAI (the first build takes a few minutes)...")
         # --remove-orphans: a container the stack no longer defines (the
         # web app's, before it became a repository of its own) would keep
         # the port the gateway is to take, and the gateway would not start.
+        # What it defines is every file COMPOSE_FILE names, which Compose
+        # reads from config/deploy.env: a second sandbox named there is
+        # the stack's, and stays.
         if self.engine.show(self._compose(
                 "up", "-d", "--build", "--remove-orphans")) != 0:
             raise SetupError(
@@ -498,6 +520,27 @@ class Setup:
                 "Docker is installed and is not running. Start Docker "
                 "Desktop — or the Docker service, on Linux — and run this "
                 "again.")
+
+    def _must_name_files_here(self) -> None:
+        """Every Compose file config/deploy.env says the stack is made
+        of is here, said before Compose says it in a path's words."""
+        said = self.settings.values()
+        separator = said.get("COMPOSE_PATH_SEPARATOR") or os.pathsep
+        named = [name.strip()
+                 for name in said.get("COMPOSE_FILE", "").split(separator)]
+        if not any(named):
+            raise SetupError(
+                f"{Settings.FILE} says COMPOSE_FILE is nothing: it is the "
+                f"stack's Compose files, docker-compose.yml and what is laid "
+                f"over it, as {Settings.TEMPLATE} says.")
+        missing = [name for name in named
+                   if not name or not (self.folder / name).is_file()]
+        if missing:
+            raise SetupError(
+                f"{Settings.FILE} says the stack is made of "
+                f"{said['COMPOSE_FILE']}, and this is not a file here: "
+                f"{', '.join(repr(name) for name in missing)}. Name each "
+                f"from the repository's root, separated by '{separator}'.")
 
     def _must_be_local(self) -> None:
         address = self._address()

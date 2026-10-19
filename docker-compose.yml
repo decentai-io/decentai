@@ -13,7 +13,9 @@
 #
 # As written it serves this computer only, in plain HTTP. A server with
 # an address of its own lays compose/server.yml over it
-# (docs/run/deploying.md). Only the gateway publishes a port.
+# (docs/run/deploying.md). Only the gateway publishes a port. What is
+# laid over this file is named in config/deploy.env (COMPOSE_FILE),
+# where Compose reads it.
 #
 # Three networks, and who is on which (docs/system/architecture.md):
 #

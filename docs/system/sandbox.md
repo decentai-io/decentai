@@ -177,10 +177,10 @@ is what the weakest eligible sandbox proved.
 
 **Two on one machine.** `compose/sandboxes.yml`, laid over
 `docker-compose.yml`, starts a second sandbox, `sandbox-2`, with a
-folder of its own:
+folder of its own, once `config/deploy.env` names it among the
+stack's files ([operating it](../run/operating.md#more-execution-sandboxes)):
 
-    docker compose --env-file config/deploy.env \
-        -f docker-compose.yml -f compose/sandboxes.yml up -d --build
+    COMPOSE_FILE=docker-compose.yml:compose/sandboxes.yml
 
 ## A user of its own — the spawn helper
 

@@ -300,6 +300,8 @@ the internet.
 
 | Variable | Meaning |
 |---|---|
+| `COMPOSE_FILE` | What the stack is made of: `docker-compose.yml` and the files laid over it, separated by colons — `docker-compose.yml:compose/sandboxes.yml` for a second Execution Sandbox, `docker-compose.yml:compose/server.yml` on a server with an address of its own. Compose reads it from `config/deploy.env` itself, so no `docker compose --env-file config/deploy.env` command names a file with `-f`; `bootstrap/setup.py` starts what it names, and removes a container of a file it no longer names. |
+| `COMPOSE_PATH_SEPARATOR` | `:`, so that the colons of `COMPOSE_FILE` separate on every system: Windows' own separator is `;`. |
 | `PORT` | The port DecentAI is opened at on the machine; `4280` unless said. `PUBLIC_APP_URL` and `CORS_ALLOW_ORIGINS` carry the same number. Not read under `compose/server.yml`, which publishes 80 and 443. |
 | `TRUSTED_PROXIES` | Whose word Caddy takes for a client's address (`X-Forwarded-For`): the load balancer in front, by its address range, several with spaces between. Unset, nobody's (the default, `127.0.0.1/32`, is Caddy's own address) — right for a computer of one's own and for a server Caddy faces the internet on, and wrong behind a balancer, where every client would be the balancer ([deploying](deploying.md)). |
 | `LISTEN` | Who may reach that port: `127.0.0.1`, this machine alone, unless said; `0.0.0.0` behind a load balancer. Not read under `compose/server.yml` either. |
