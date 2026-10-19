@@ -172,6 +172,58 @@ class TestWhatTheyUse:
         assert parts["database"]["disk"] > 0
         assert parts["database"]["name"] == "Database"
 
+    def test_several_nodes_are_their_sandboxes_together(
+            self, admin, seed, runtime):
+        from server.setup.app_state import get_node_links
+
+        org = seeded_org()
+        install(org, "agt_one", "Notes")
+        install(org, "agt_two", "Browser")
+        runtime.usage = {
+            "at": 5.0, "memory": 900, "cpu": 0.5,
+            "limits": {"memory": 2000, "cpus": 1.5},
+            "kernel_ended": 1,
+            "agents": [{"agent": "agt_one", "memory": 100, "cpu": 0.2}],
+            "sandboxes": [{"sandbox": "sandbox", "memory": 900}]}
+        other = Runtime()
+        other.key = "auth_test/node-2"
+        other.usage = {
+            "at": 7.0, "memory": 400, "cpu": 0.25,
+            "limits": {"memory": 1000, "cpus": 0.5},
+            "kernel_ended": 2,
+            "agents": [{"agent": "agt_two", "memory": 300, "cpu": 0.1}],
+            "sandboxes": [{"sandbox": "sandbox", "memory": 400}]}
+        links = get_node_links()
+        links.links[other.key] = other
+        try:
+            said = app_call(admin, "Agents:Monitor:Usage").json()["data"]
+            parts = {part["id"]: part for part in said["services"]}
+            # What both nodes' sandboxes hold and are given, and not the
+            # first node's numbers as the whole.
+            assert parts["sandbox"] == {
+                "id": "sandbox", "name": "Execution Sandbox", "memory": 1300,
+                "memory_limit": 3000, "cpu": 0.75, "cpus": 2.0}
+            assert said["limits"] == {"memory": 3000, "cpus": 2.0}
+            assert said["memory"] == 1300 and said["at"] == 7.0
+            assert parts["runtime"]["memory"] == 600
+            assert {(agent["agent"], agent["node"]) for agent in said["agents"]} == {
+                ("agt_one", runtime.key), ("agt_two", other.key)}
+
+            # A sandbox given no bound is no bound: the whole has none,
+            # while what is held is still added up.
+            other.usage = {**other.usage, "limits": {"memory": None, "cpus": None}}
+            said = app_call(admin, "Agents:Monitor:Usage").json()["data"]
+            assert said["limits"] == {"memory": None, "cpus": None}
+            assert said["memory"] == 1300
+
+            # A node whose sandboxes did not answer adds nothing.
+            other.usage = None
+            said = app_call(admin, "Agents:Monitor:Usage").json()["data"]
+            assert said["limits"] == {"memory": 2000, "cpus": 1.5}
+            assert [agent["agent"] for agent in said["agents"]] == ["agt_one"]
+        finally:
+            links.links.pop(other.key, None)
+
     def test_where_there_are_several_organizations_it_is_not(
             self, app, seed, runtime):
         left, _ = _two(app)

@@ -29,6 +29,16 @@ class MonitorError(RuntimeError):
     """No node answered, in words for the person."""
 
 
+def _total(values: List[Any], all_known: bool = True) -> Optional[float]:
+    """The sum of what was said. A bound (``all_known``) is none where
+    any one is unbounded; a reading, the sum of those that were read.
+    None where nothing was."""
+    known = [value for value in values if isinstance(value, (int, float))]
+    if not known or (all_known and len(known) < len(values)):
+        return None
+    return sum(known)
+
+
 class RuntimeMonitor:
     SECONDS = 20
 
@@ -52,25 +62,63 @@ class RuntimeMonitor:
         return found[: int(limit)]
 
     async def usage(self) -> Dict[str, Any]:
-        """Each node's answer, and the first one's as the whole where
-        there is only one: what the page has always been shown. With
-        more, the agents are the sum of every node's."""
+        """Every connected node's answer put together, in the shape one
+        node says it. ``usage`` is the Execution Sandboxes of all of
+        them together — each node has added up its own already — and
+        null where no node's sandboxes answered; ``runtime`` is their
+        runtimes together; ``confined`` is what every node holds an
+        agent to. Each agent and each sandbox says which node it is on,
+        and ``nodes`` holds each node's own answer."""
         answers = await self._ask("usage", {})
-        node, first = answers[0]
-        if len(answers) == 1:
-            return {**first, "nodes": [{"node": node, **first}]}
-        agents = []
-        for name, said in answers:
-            usage = said.get("usage") if isinstance(said.get("usage"), dict) else {}
-            agents.extend({**agent, "node": name}
-                          for agent in usage.get("agents") or []
-                          if isinstance(agent, dict))
-        merged_usage = dict(first.get("usage") or {}) if isinstance(
-            first.get("usage"), dict) else None
-        if merged_usage is not None:
-            merged_usage["agents"] = agents
-        return {**first, "usage": merged_usage,
-                "nodes": [{"node": name, **said} for name, said in answers]}
+        counted = [(name, said["usage"]) for name, said in answers
+                   if isinstance(said.get("usage"), dict)]
+        runtimes = [said["runtime"] for _, said in answers
+                    if isinstance(said.get("runtime"), dict)]
+        held = [said["confined"] for _, said in answers
+                if isinstance(said.get("confined"), dict)]
+        return {
+            "usage": self._sandboxes(counted) if counted else None,
+            "runtime": {
+                "memory": _total([r.get("memory") for r in runtimes], False),
+                "memory_limit": _total([r.get("memory_limit") for r in runtimes]),
+                "cpu": _total([r.get("cpu") for r in runtimes], False),
+                "cpus": _total([r.get("cpus") for r in runtimes]),
+            } if runtimes else None,
+            # An agent is held to what the weakest node holds it to.
+            "confined": {key: all(bool(said.get(key)) for said in held)
+                         for key in {key for said in held for key in said}},
+            "nodes": [{"node": name, **said} for name, said in answers],
+        }
+
+    @staticmethod
+    def _sandboxes(counted: List[tuple]) -> Dict[str, Any]:
+        """The Execution Sandboxes of every node together, added up as
+        a node adds up its own (ai_runtime/agents/sandboxes.py,
+        Sandboxes.usage): what they hold is the sum of what each said;
+        what they are given is the sum only where every one is given a
+        bound, since one without is no bound at all."""
+        said = [usage for _, usage in counted]
+        return {
+            "at": max(float(usage.get("at") or 0) for usage in said),
+            "limits": {
+                key: _total([(usage.get("limits") or {}).get(key)
+                             for usage in said])
+                for key in ("memory", "cpus")},
+            "memory": _total([usage.get("memory") for usage in said], False),
+            "cpu": _total([usage.get("cpu") for usage in said], False),
+            "kernel_ended": sum(int(usage.get("kernel_ended") or 0)
+                                for usage in said),
+            "left_behind": sum(int(usage.get("left_behind") or 0)
+                               for usage in said),
+            "agents": [{**agent, "node": node}
+                       for node, usage in counted
+                       for agent in usage.get("agents") or []
+                       if isinstance(agent, dict)],
+            "sandboxes": [{**sandbox, "node": node}
+                          for node, usage in counted
+                          for sandbox in usage.get("sandboxes") or []
+                          if isinstance(sandbox, dict)],
+        }
 
     async def files(self, agent: str) -> Dict[str, Any]:
         """What one agent keeps, from the node that keeps any of it."""

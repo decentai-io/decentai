@@ -113,7 +113,7 @@ person through actions of its own
 
 | Action | Answers |
 |---|---|
-| `Agents:Monitor:Usage` | what the agents are given, how much the Execution Sandbox holds, and what each of this organization's running agents uses; where the deployment has one organization, what each part of the platform holds too |
+| `Agents:Monitor:Usage` | what the agents are given, how much the Execution Sandboxes hold — every connected node's together — and what each of this organization's running agents uses; where the deployment has one organization, what each part of the platform holds too |
 | `Agents:Monitor:Events` | what happened, a page at a time: `kinds` is what the runtime reads; `kind`, `agent`, `outcome` (`ok`, `trouble`, `refused`, `unreached`, `failed`), `host` and `text` narrow what is shown; `since` and `until`, in seconds, keep it to the days asked for. With `tally`, the page comes with what the filters leave added up — how many, and of each kind, outcome, agent and host, each counted as if its own filter were not chosen — over the latest ten thousand events read, and says whether that was all |
 | `Agents:Monitor:Files` | what one of this organization's agents keeps |
 | `Agents:Monitor:Summary` | what this organization's agents did in a window, added up from the audit trail, and the model calls its chats made |
@@ -283,9 +283,16 @@ read its own. So each part says it of itself
 | Part (`id`) | Read by | Says |
 |---|---|---|
 | Data Core (`data-core`) | the Data Core, of its own container | memory, what it was given, processors used |
-| Runtime (`runtime`) | the runtime, of its own; sent with its answer about the agents | the same |
-| Execution Sandbox (`sandbox`) | each sandbox's spawner, of its own container; the node's sandboxes added together | the same, beside what each agent holds |
+| Runtime (`runtime`) | the runtime, of its own; sent with its answer about the agents; every connected node's runtime added together | the same |
+| Execution Sandbox (`sandbox`) | each sandbox's spawner, of its own container; every sandbox of every connected node added together | the same, beside what each agent holds |
 | Database (`database`) | the Data Core, asking the database's server | the memory its server holds, how many connections are open, and what it keeps on disk for this platform |
+
+Where more than one execution node is connected, the Data Core adds
+their answers up as each node adds up its own sandboxes
+(`data_core/api/services/agents/monitoring.py`): what is held and used
+is the sum of what each said, and what is given is a sum only where
+every one was given a bound — one container without a bound leaves the
+whole without one. Each agent says which node it runs on.
 
 Memory is the kernel's number for the container, with what it could
 give back at once left out. Processors are what was used since the
