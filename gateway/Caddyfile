@@ -63,10 +63,29 @@
 	# joins this stack's network as web-client, and `npm start` on this
 	# computer's port 4200 while it is developed. WEB_CLIENT_UPSTREAM
 	# names one, as host:port, where it runs somewhere else.
+	#
+	# Which of the two answers is asked every few seconds, and not
+	# found out by a person's request: where no web-client container
+	# exists, its name is not refused at once but looked up until the
+	# lookup times out (three seconds and more under Docker Desktop),
+	# and a request that waited for that ran out of time to try the
+	# other, so the page was a 502. The check asks for the page as
+	# `localhost`, a name the development server accepts. A request
+	# whose choice went away since the last check moves to the other
+	# within the dial and retry times below.
 	handle {
 		reverse_proxy {$WEB_CLIENT_UPSTREAM:web-client:80 host.docker.internal:4200} {
 			lb_policy first
-			lb_try_duration 2s
+			health_uri /
+			health_interval 5s
+			health_timeout 2s
+			health_headers {
+				Host localhost
+			}
+			transport http {
+				dial_timeout 2s
+			}
+			lb_try_duration 3s
 			fail_duration 10s
 		}
 	}
