@@ -162,7 +162,7 @@ Functions named `test_` in files named `test_*.py`, counted with
 grep -rE '^\s*(async )?def test_' ai_runtime/tests --include='test_*.py' | wc -l
 ```
 
-and the same for `backend/tests`, `tests` and `examples/tests`: 1,024
+and the same for `data_core/tests`, `tests` and `examples/tests`: 1,024
 in 45 files, 876 in 59, 180 in 6, 24 in 1. Parametrized tests (37
 decorators across the four) make pytest's own count higher. Outside
 the four: `speech/tests` has 20, and the web app has 47 spec files
@@ -248,7 +248,7 @@ the repository (folders made by tools excepted):
    `docs/run/configuration.md` is read by code, a Compose file, a
    Dockerfile or an example file.
 4. **Settings, the other way**: every setting offered in
-   `deploy.env.example`, `backend/config.env.example` and
+   `deploy.env.example`, `data_core/config.env.example` and
    `ai_runtime/config.env.example` is on that page.
 5. **The generated page**: `docs/reference/actions.md` equals what
    `docs/reference/generate.py` writes from the backend's catalog now
@@ -266,7 +266,7 @@ and whether a sentence is true.
 | Job | Runs |
 |---|---|
 | runtime, docs and the example | `ai_runtime/tests` (with the documents' tests), `examples/tests`, Python 3.12 |
-| backend and spanning | `backend/tests`, then `tests`, one after the other, against a `mongo:7` service |
+| backend and spanning | `data_core/tests`, then `tests`, one after the other, against a `mongo:7` service |
 | confinement | starts the two-container stack (`spawner-live.compose.yml`), prints the kernel and its security modules, runs `test_confinement_live.py` and `test_spawner_live.py` in it together, and fails if either file had nothing pass |
 | speech | the speech service without its models, then with them: each language spoken and transcribed back |
 | images | builds the backend's image and the web app's (the app must compile) |

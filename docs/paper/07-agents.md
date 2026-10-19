@@ -260,18 +260,18 @@ a list of errors and never raises.
 
 ### Reading a source, and approving
 
-`Repository` (`backend/api/services/agents/repository.py`) accepts
+`Repository` (`data_core/api/services/agents/repository.py`) accepts
 `https://`, `ssh://` and `user@host:path` only, refuses a ref beginning
 with `-`, and fetches `--depth 1` into a temporary folder. `discover`
 reads `decentai-agents.yaml` (1 to 100 entries) or a lone root
 `manifest.yaml`; refuses symbolic links, paths leaving the checkout,
 and an entry whose id differs from its `agent.id`.
 `AgentAcquisition._offering`
-(`backend/api/services/agents/acquisition.py`) validates each manifest
+(`data_core/api/services/agents/acquisition.py`) validates each manifest
 and attaches up to ten errors, refusing nothing.
 
 `AgentInstallMixin.install`
-(`backend/api/endpoints/app/agents/install_controller.py`), behind
+(`data_core/api/endpoints/app/agents/install_controller.py`), behind
 `agents:agent:install`: for a saved source, fetches the commit the
 source was last read at (`last_resolved_sha`), whose catalog the app
 showed, and refuses with `source_moved` (409) when the app names
@@ -286,7 +286,7 @@ approved with a package of other bytes (`immutable_version`); grants the install
 `agent.installed`; marks the row *preparing*. No runtime is contacted.
 The ref is minted once per organization, source and catalog id
 (`AgentManifestStore.ref_for`,
-`backend/database/stores/agents/manifests.py`); `ApprovedAgent`
+`data_core/database/stores/agents/manifests.py`); `ApprovedAgent`
 (`ai_runtime/agents/library.py`) translates it to the package's id at
 the manifest lookup and the worker call, and nowhere else.
 
@@ -299,7 +299,7 @@ gzipped bytes. At most 5,000 files and 64 MB uncompressed; a symbolic
 link is refused; `.git`, `.github`, `__pycache__`, `node_modules`,
 virtual environments, editor folders and `*.pyc` are left out. The
 backend stores it per organization
-(`backend/database/agent_packages.py`).
+(`data_core/database/agent_packages.py`).
 
 The runtime asks as itself, with its own service token. Every ten
 seconds `AgentRoster.keep_stocked` (`ai_runtime/door/roster.py`) lists
@@ -318,7 +318,7 @@ that agent.
 ### Grants, and the executor's gates
 
 Grants are rows on the agent (`AgentGrantStore`,
-`backend/database/stores/agents/grants.py`): owners, `"*"` or a list of
+`data_core/database/stores/agents/grants.py`): owners, `"*"` or a list of
 `tool.function`, and `constraints` (scope → values). Absence is
 denial; an uninstall deletes them. `FunctionGrants`
 (`ai_runtime/execution/grants.py`) evaluates `agent.tool.function`

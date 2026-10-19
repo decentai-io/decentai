@@ -291,7 +291,7 @@ the person writes and every item is `done`, the plan is cleared.
 ### The gate, and the binding
 
 Trust level: 0–3, default 1; a stored value out of range resolves to 1
-(`backend/api/services/chat_session/settings/trust.py`).
+(`data_core/api/services/chat_session/settings/trust.py`).
 `FunctionExecutor._gates` (`ai_runtime/execution/executor.py`), in
 order: the function is declared; the grants reach it; top-level inputs
 `{storage_ref, path?}` are replaced by the stored value; defaults are
@@ -305,7 +305,7 @@ emitted; if that save fails the card is expired and the call is told the
 person could not be asked — not that they refused.
 
 The decision returns as `approval_decided` with the backend's copy of
-the hash (`backend/api/endpoints/app/ai/approval_controller.py`, which
+the hash (`data_core/api/endpoints/app/ai/approval_controller.py`, which
 refuses a decision from a runtime principal). `Session.deliver_approval`
 (`ai_runtime/chat/session.py`) routes it. Before a yes is delivered,
 `SessionHost.refresh` (`ai_runtime/door/host.py`) reads the chat's
@@ -353,7 +353,7 @@ hydration as an error saying its outcome is unknown; nothing is retried.
 
 | Bound | Value | Where |
 |---|---|---|
-| beats per ask | the chat's `max_turns`: standard 20, 0 = none, at most 10,000; 40 if none arrives | `backend/api/services/chat_session/settings/turns.py`, `Assistant.DEFAULT_MAX_BEATS` |
+| beats per ask | the chat's `max_turns`: standard 20, 0 = none, at most 10,000; 40 if none arrives | `data_core/api/services/chat_session/settings/turns.py`, `Assistant.DEFAULT_MAX_BEATS` |
 | past the valve | at budget, a wrap-up instruction; past budget + 3, the runtime pauses and finishes `budget` | `VALVE_GRACE_BEATS` |
 | result shown whole | 16,000 characters; beyond, whole items within 12,000 plus the `storage_ref` | `ai_runtime/mind/observations.py` |
 | open agents | `open_max`, default 8, least recently used closed | `Acts.open_agent` |
@@ -365,7 +365,7 @@ hydration as an error saying its outcome is unknown; nothing is retried.
 
 The roster is the contract's agents: installed ∩ granted ∩ narrowed by
 the chat. Past `threshold` agents (default 15; defaults and bounds in
-`backend/database/stores/iam.py`) and with an embedding model,
+`data_core/database/stores/iam.py`) and with an embedding model,
 `AgentRouter.shortlist` (`ai_runtime/mind/router.py`) runs before the
 beat after each message: embed the message; score each agent by the
 cosine of its closest vector (name and description, tags, up to 12
@@ -425,7 +425,7 @@ references rather than retyped values.
 `Session._post` records each `user_message`, `wakeup`,
 `agent_posted` and `webhook` with `record_event` before the mind sees it; the backend
 allocates the sequence atomically, per chat and per helper thread
-(`backend/database/stores/chats.py`). `_absorb` moves `cursor` to the
+(`data_core/database/stores/chats.py`). `_absorb` moves `cursor` to the
 event's `seq`, and the beat saves cursor and transcript as one document;
 hydration asks for `events_since(cursor)`. Delivery is at least once;
 absorption into the saved mind, exactly once. `job_done` is not in the
@@ -433,7 +433,7 @@ inbox (the jobs table is its record), and `stop` is transient: what a
 stop leaves is `stopped` and its line in the transcript.
 
 A `webhook` event comes from the backend's `webhook_event` frame
-(`backend/server/routes/hooks.py`, after the secret, signature, rate
+(`data_core/server/routes/hooks.py`, after the secret, signature, rate
 and declared fields are checked), which no browser frame becomes.
 `SessionHost._deliver_webhook` (`ai_runtime/door/host.py`) re-reads the
 contract before delivering it, and `Assistant._absorb`

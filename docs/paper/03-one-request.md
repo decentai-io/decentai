@@ -234,7 +234,7 @@ The path from the app to an agent is also described in
 this is that path for the example, checked against the source.
 
 1. **Browser socket.** `WS /chats/{chat_id}` reaches `chat_websocket`
-   (`backend/server/routes/ws.py`) through `frontend/Caddyfile`'s
+   (`data_core/server/routes/ws.py`) through `frontend/Caddyfile`'s
    `@backend` matcher. `verify_request_auth` refuses a cookie whose
    `Origin` is not the deployment's (a request with no `Origin` is
    taken as not cross-site); the principal must be a person; the chat
@@ -244,7 +244,7 @@ this is that path for the example, checked against the source.
    `input_error` (protocol version, `client_message_id`, at most 20
    file parts). The frame becomes the door's `user_message`.
 2. **Dial.** `RuntimeClient.connect`
-   (`backend/api/services/chat_session/relay.py`) refuses a person who
+   (`data_core/api/services/chat_session/relay.py`) refuses a person who
    stopped everything, then mints a service token (RS256, 60 s,
    `identity/service.py`) and a delegation (HS256, 3,600 s, a
    `runtime_sessions` row, `identity/delegation.py`). The runtime's
@@ -288,11 +288,11 @@ this is that path for the example, checked against the source.
    (`ai_runtime/door/platform.py`) calls `Secrets:Secret:Use` under the
    delegation. The backend decrypts, refreshes the OAuth access token
    if needed and strips the refresh token (`OauthFlow.fresh`,
-   `backend/api/services/oauth.py`) — that is the branch
+   `data_core/api/services/oauth.py`) — that is the branch
    `_values_for_agent` takes when the secret's definition is OAuth; any
    other secret's values are returned decrypted, as stored — and
    appends `secret.use` to the trail
-   (`backend/api/services/data_layer/secrets.py`). The runtime keeps
+   (`data_core/api/services/data_layer/secrets.py`). The runtime keeps
    nothing past the call; the worker, kept warm, may.
 9. **Egress.** `ai_runtime/agents/egress.py`, by the worker's pass;
    [section 8](08-the-sandbox.md) has the order of checks.
@@ -329,7 +329,7 @@ this is that path for the example, checked against the source.
   defaulted*, computes `action_hash` — SHA-256 over sorted, compact
   JSON of agent, function and inputs — and opens the card with
   `AI:Approval:Open`, which stores the hash on the record
-  (`backend/api/endpoints/app/ai/approval_controller.py`) and writes
+  (`data_core/api/endpoints/app/ai/approval_controller.py`) and writes
   `approval.requested`. The park is saved into the mind's state
   *before* the card is shown; if that save fails, the card is taken
   back and the call reports that the person could not be asked, not
@@ -390,7 +390,7 @@ this is that path for the example, checked against the source.
   first sends did (the previous block).
 - **Telling.** The answer is an `AI:Message:Create` like any other.
   When it is written and no browser of the person has the chat open,
-  `backend/server/notifications.py` (`assistant_said`) pushes to their
+  `data_core/server/notifications.py` (`assistant_said`) pushes to their
   devices — web push, or Expo's service for the phone app — at most
   every two minutes per chat, and, if no device was reached and they
   have not turned email off, sends an email through the platform's own

@@ -138,7 +138,7 @@ It is as important to say what it does not do.
 
 Agent code runs only in the **agents' container**: the runtime's image
 started with another command, sharing one volume at one path
-(`ai_runtime/agents_container/`). Its one platform process, the
+(`sandbox/`). Its one platform process, the
 **spawner** (`service.py`), takes structured requests from the runtime
 over a socket (`wire.py`), authenticated by a key it generated at first
 start and left on the volume readable by the platform's user and no
@@ -157,12 +157,12 @@ nothing else (`docker-compose.yml`, service `agents`).
 There is no unconfined path. A runtime with no `AI_RUNTIME_AGENTS_SPAWNER`,
 or whose spawner does not answer or cannot confine, raises
 `ConfinementFailed` and does not start (`ai_runtime/agents/confinement.py`,
-`Confinement.start`; `ai_runtime/agents_container/places.py`,
+`Confinement.start`; `sandbox/places.py`,
 `Places.check`).
 
 ### The spawn helper
 
-`ai_runtime/agents_container/spawn_helper.c`, a few hundred lines of C
+`sandbox/spawn_helper.c`, a few hundred lines of C
 compiled into the image (the compiler is removed again), owned
 `root:decentai`, mode `0750`, so only the runtime's group may run it.
 It is not setuid-root: the file carries exactly the four capabilities

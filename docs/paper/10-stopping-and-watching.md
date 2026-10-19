@@ -235,13 +235,13 @@ zone when it names none), `delay_seconds`, `every_seconds`.
 - **Numbers.** A tick every 30 s (`tick_seconds`), each due row fired
   as its own task. A repeating row's floor is 60 s
   (`ChatClock.MIN_EVERY_SECONDS`; again in
-  `backend/api/endpoints/app/ai/schedule_controller.py`), and no run
+  `data_core/api/endpoints/app/ai/schedule_controller.py`), and no run
   follows another sooner than 60 s (`Schedule.SOONEST_AGAIN_SECONDS`).
   An overdue row fires once and advances from now (`Schedule.advance`).
   A row keeps its last 20 runs, each with at most 400 characters of
   result. A **sleep**, the assistant's own one-off wake, is one per
   chat, at most 24 h, and never on the Schedules page.
-- **The store.** `ScheduleStore` (`backend/database/stores/chats.py`,
+- **The store.** `ScheduleStore` (`data_core/database/stores/chats.py`,
   collection `ai_schedules`): one document per chat, `MAX_ROWS = 50`;
   a full chat first drops one-offs that already ran. The runtime and
   the person's doors (`AI:Schedule:Create` / `Update` / `Delete`) each
@@ -253,10 +253,10 @@ zone when it names none), `delay_seconds`, `every_seconds`.
   rows when its last browser leaves (`RuntimeClientManager.release`),
   re-dials every such chat at boot, and renews the hour-long
   delegation over the open socket
-  (`backend/api/services/chat_session/relay.py`). Disabling a person
+  (`data_core/api/services/chat_session/relay.py`). Disabling a person
   deletes their delegations and pauses every row they own
   (`ScheduleStore.pause_for_user`, called from
-  `backend/api/endpoints/admin/iam/user_controller.py`).
+  `data_core/api/endpoints/admin/iam/user_controller.py`).
 - **Known gaps** (open questions, Runtime 7): a period is rounded up
   to the tick and drifts (CLK-11); there is no ceiling on fires at once
   (CLK-5); a row refused at every fire is never paused (CLK-6); a
@@ -265,7 +265,7 @@ zone when it names none), `delay_seconds`, `every_seconds`.
 
 ### The two stops of one chat
 
-`AI:Chat:Stop` (`backend/api/endpoints/app/ai/chat_controller.py`).
+`AI:Chat:Stop` (`data_core/api/endpoints/app/ai/chat_controller.py`).
 Without `force`: `Session.ask_to_stop`, a `stop` event honoured between
 beats, the awaited call interrupted, the chat's sleep removed. With
 `force`, the backend expires the chat's pending cards on the record
@@ -297,9 +297,9 @@ call it was serving with it, a colleague's included, as an error.
 
 ### The switch
 
-`AI:Switch` (`backend/api/endpoints/app/ai/switch_controller.py`),
+`AI:Switch` (`data_core/api/endpoints/app/ai/switch_controller.py`),
 refused to a principal of type `runtime`. `Halt.stop`
-(`backend/api/services/chat_session/halt.py`): (1)
+(`data_core/api/services/chat_session/halt.py`): (1)
 `UserStore.set_stopped`, after which `RuntimeClient.connect` neither
 dials nor mints a delegation for the person, and renewal refuses,
 except the stop's own dial (`halting=True`); (2) every chat with a live
@@ -307,9 +307,9 @@ delegation row or schedule rows that the person owns, plus every chat a
 socket is held for, killed concurrently by `RuntimeClientManager.kill`,
 waiting up to `KILL_GRACE_SECONDS` = 10 for `stopped`; (3)
 `RuntimeSessionStore.delete_for_user`: a delegation is accepted only
-while its row exists (`backend/server/authentication/access.py`); (4)
+while its row exists (`data_core/server/authentication/access.py`); (4)
 `work.stopped`. `Halt.resume` writes `work.resumed` and dials back the
-chats holding schedule rows. Tests: `backend/tests/test_switch.py`,
+chats holding schedule rows. Tests: `data_core/tests/test_switch.py`,
 `ai_runtime/tests/test_stop_edges.py`. A single chat's stop writes no
 audit line of its own. From reading, the review found that a kill frame
 can wait behind a message whose contract refresh is installing an agent
@@ -317,22 +317,22 @@ can wait behind a message whose contract refresh is installing an agent
 
 ### The Safety setting
 
-`Settings:Safety` (`backend/api/endpoints/app/settings/safety_controller.py`),
+`Settings:Safety` (`data_core/api/endpoints/app/settings/safety_controller.py`),
 one per organization (`OrganizationStore.SAFETY_DEFAULTS`). Blocked
 names are refused at the proxy (`ai_runtime/agents/egress.py`); the
 code rules are applied by the backend as a card is opened
-(`backend/api/services/chat_session/code_rules.py`), so the runtime
+(`data_core/api/services/chat_session/code_rules.py`), so the runtime
 opens cards and never decides them; the package list is checked in
 the runtime before the card (`ai_runtime/execution/call.py`); MCP is
-refused in the backend (`backend/api/services/data_layer/mcp.py`), and
+refused in the backend (`data_core/api/services/data_layer/mcp.py`), and
 blocked webhooks at their door, which answers 404 as for a webhook that
 does not exist, as it does for a stopped person
-(`_owner`, `backend/server/routes/hooks.py`).
+(`_owner`, `data_core/server/routes/hooks.py`).
 [Safety settings](../system/safety.md) has each rule exactly.
 
 ### The audit trail
 
-`AuditStore` (`backend/database/stores/audit.py`, collection
+`AuditStore` (`data_core/database/stores/audit.py`, collection
 `ai_audit`). Each line: `event_id`, `event_type`, `org_id`, `user_id`,
 `actor`, `chat_id`, `execution_id`, `function`, `resource_refs`,
 `details`, `timestamp`. Writers:
@@ -343,10 +343,10 @@ does not exist, as it does for a stopped person
 | `approval.requested`, `approval.resolved` | the backend, at the card | the function, its level and the chat's, the kind of card; then the decision, or that the Safety setting settled it |
 | `secret.use`, `llm.use` | the backend, where a credential or model key is served | the credential's reference, never its value |
 | `agent.*`, `agent_source.*`, `credential.*`, `schedule.*`, `settings.safety`, `mcp.added`, `user.*`, `work.*` | the backend, at each controller | what changed; the Safety setting with each row before and after; a schedule the assistant added or removed (`AI:Schedule:Add` / `Remove`) has `by: "assistant"` |
-| `webhook.received`, `webhook.refused` | the backend, at `POST /hooks/{id}` (`backend/server/routes/hooks.py`) | the webhook and the delivery; the names of the fields posted, or the status and the reason it was refused. A 404 is recorded nowhere |
-| `webhook.created`, `.changed`, `.rotated`, `.deleted`, `.shared`, `.transferred`, `.subscribed`, `.subscription_changed`, `.unsubscribed` | the backend, `Settings:Webhook:*` and `Settings:Outbound:*` (`backend/api/endpoints/app/settings/webhook_controller.py`) | what changed; a subscription's events, format and whether it carries the reply. A notification sent out is in the subscription's own list (`webhook_sends`), not on the trail |
+| `webhook.received`, `webhook.refused` | the backend, at `POST /hooks/{id}` (`data_core/server/routes/hooks.py`) | the webhook and the delivery; the names of the fields posted, or the status and the reason it was refused. A 404 is recorded nowhere |
+| `webhook.created`, `.changed`, `.rotated`, `.deleted`, `.shared`, `.transferred`, `.subscribed`, `.subscription_changed`, `.unsubscribed` | the backend, `Settings:Webhook:*` and `Settings:Outbound:*` (`data_core/api/endpoints/app/settings/webhook_controller.py`) | what changed; a subscription's events, format and whether it carries the reply. A notification sent out is in the subscription's own list (`webhook_sends`), not on the trail |
 | `chat.stopped` | the backend, `AI:Chat:Stop`, with or without `force` | `force`, how many cards were expired, whether the runtime was reached |
-| `platform.action` | the gateway, `_audit_action` (`backend/api/api_router.py`) | every action that is not a read, outside `ai:` and `agents:package:`: endpoint, outcome (`success`, `denied`, `failed`), status, a reason of at most 300 characters, never the payload |
+| `platform.action` | the gateway, `_audit_action` (`data_core/api/api_router.py`) | every action that is not a read, outside `ai:` and `agents:package:`: endpoint, outcome (`success`, `denied`, `failed`), status, a reason of at most 300 characters, never the payload |
 
 The runtime may write only `execution` (`AuditController.RUNTIME_TYPES`),
 so it cannot forge an approval or a credential read. It does decide
@@ -361,7 +361,7 @@ database. `AuditStore` offers `append`, `search` and `for_chat`;
 nothing in the backend calls an update or a delete on the collection
 (it inherits `MongoStore.delete`, which nothing calls on it), and no
 action exposes one. The collection's validator in
-`backend/database/schema.json` checks only the types of `chat_id` and
+`data_core/database/schema.json` checks only the types of `chat_id` and
 `timestamp`; there is no TTL index, so nothing ages out; there is no
 hash chain. `AuditStore.append` tries twice; a line refused both times
 is written whole to the error log at CRITICAL and `append` returns
@@ -371,9 +371,9 @@ the operation goes on: auditing is a witness, not a gate.
 **Reading.** `ai:audit:list` is in every person's baseline: their own
 lines, across their chats or in one. `ai:audit:list_all`, the
 organization's whole trail, is a grant of its own
-(`backend/server/authentication/catalog.py`). Pages of at most 500,
+(`data_core/server/authentication/catalog.py`). Pages of at most 500,
 newest first, by cursor, always within the reader's organization
-(`backend/api/endpoints/app/ai/audit_controller.py`).
+(`data_core/api/endpoints/app/ai/audit_controller.py`).
 
 **Secrets.** No stored secret's value is written. But the inputs are
 outlined as the model proposed them, so a password a person typed and
@@ -384,24 +384,24 @@ open).
 
 ### Telling other systems
 
-`Notifier._out` (`backend/server/notifications.py`) queues
+`Notifier._out` (`data_core/server/notifications.py`) queues
 `approval.waiting` (a card opened), `reply.ready` (an assistant's
 message) and `run.finished` / `run.failed` (a schedule's fire recorded,
 `AI:Schedule:Ran`) for every enabled, unpaused subscription of the
 chat's person, while nobody has the chat open — as a push is. `Sender`
-(`backend/server/outbound.py`), one thread per backend process, posts
+(`data_core/server/outbound.py`), one thread per backend process, posts
 the queue every 15 seconds: JSON signed with `X-DecentAI-Signature`,
 `sha256=` HMAC of `"<timestamp>.<body>"` under the subscription's
 secret, or Slack's and Teams' own shapes. An address must be `https`
 and resolve only to public addresses, checked when subscribed and
 before each send; redirects are not followed. A timeout, a 5xx, a 408
 or a 429 is retried with backoff for a day; twenty failed attempts in a
-row pause the subscription. Tests: `backend/tests/test_webhooks.py`
+row pause the subscription. Tests: `data_core/tests/test_webhooks.py`
 (`TestOutbound`).
 
 ### The monitoring record
 
-`ai_runtime/agents_container/events.py`: one JSON line per event
+`sandbox/events.py`: one JSON line per event
 (`worker.*`, `helper`, `program`, `log`, `connection`, `process`,
 `memory`), the runtime writing `<install_dir>/events/runtime.jsonl` and
 the spawner `agents.jsonl`, in a folder `0700` that no agent's fence
@@ -411,7 +411,7 @@ host, port, resolved address, the verdict, bytes each way and
 duration, never content. The backend reads it with the service token
 (`ai_runtime/door/monitor.py`) and shows it through three actions, each
 a grant no member holds by default and each kept to the organization's
-own agents (`backend/api/endpoints/app/agents/monitor_controller.py`).
+own agents (`data_core/api/endpoints/app/agents/monitor_controller.py`).
 One log serves every organization and an agent's `log` lines are not
 limited, so one agent can push others' connection lines out (LIB-7,
 open). Details: [what is written down](../system/monitoring.md).

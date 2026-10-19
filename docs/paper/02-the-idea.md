@@ -147,7 +147,7 @@ Source: [architecture](../system/architecture.md#who-is-trusted-with-what).
 ### Authority never arrives through the door
 
 The backend dials the runtime for each chat with two credentials
-(`backend/api/services/chat_session/identity/`):
+(`data_core/api/services/chat_session/identity/`):
 
 - a **service token**, RS256-signed with a key only the backend holds,
   valid 60 seconds, which the runtime verifies with the public half
@@ -164,7 +164,7 @@ is built, on every message the person sends and on every wake of the
 clock (`AI:Chat:Contract`; `SessionHost.deliver_event`): the agents and functions this person
 is granted, the trust level, the budgets. A call made under a
 delegation is refused unless its action is on `RUNTIME_ENDPOINTS`
-(`backend/server/authentication/catalog.py`), whatever the person
+(`data_core/server/authentication/catalog.py`), whatever the person
 holds. A third token, the runtime's own RS256 identity, opens the
 package download and nothing else (`RUNTIME_SERVICE_ENDPOINTS`).
 
@@ -176,7 +176,7 @@ chat's trust level, and parks for a person's approval when it is above
 (`FunctionExecutor._gates`, `ai_runtime/execution/executor.py`). The
 trust level is the person's own choice per chat; the default is 1, and
 an unreadable value resolves to 1, never to 3
-(`backend/api/services/chat_session/settings/trust.py`). The call
+(`data_core/api/services/chat_session/settings/trust.py`). The call
 that parks keeps the exact inputs it put on the card, and a yes
 releases that call with those inputs — nothing the model says
 afterwards reaches them. The card also stores a hash of the call; if
@@ -215,7 +215,7 @@ is exactly the person's answer to "how much may run without asking me";
   files, the runtime's settings, or the database.
 - **The runtime** taken over could act for each person whose
   delegation it still holds — a delegation lasts an hour from the dial
-  (`DEFAULT_TTL_SECONDS`, `backend/api/services/chat_session/identity/delegation.py`),
+  (`DEFAULT_TTL_SECONDS`, `data_core/api/services/chat_session/identity/delegation.py`),
   is renewed while the chat's socket is open, and is withdrawn early
   when the chat is deleted, the person is disabled or presses stop
   everything; closing the app does not withdraw it. Within those, it

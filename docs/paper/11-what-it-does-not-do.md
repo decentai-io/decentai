@@ -61,7 +61,7 @@ what survives is what the model wrote. *Not yet done.*
 The gate is one comparison in `FunctionExecutor._gates`
 (`ai_runtime/execution/executor.py`): a function whose declared
 `permission_level` is above the chat's level parks for approval; at or
-below, it runs. `TrustLevel` (`backend/api/services/chat_session/settings/trust.py`)
+below, it runs. `TrustLevel` (`data_core/api/services/chat_session/settings/trust.py`)
 has `STANDARD = 1` as both the shipped default and what an unreadable
 value becomes, and its docstring states the choice: "There is no
 deployment ceiling and no administrator's maximum." The other gates
@@ -137,16 +137,16 @@ cost.
 <summary><b>For the specialist</b>: where each of these is in the code</summary>
 
 - Sampling: `SpawnerService.WATCH_SECONDS = 1.0` and
-  `DISK_SECONDS = 30.0` (`ai_runtime/agents_container/service.py`);
-  `AgentsUsage.ENDS_AT = 0.9` (`ai_runtime/agents_container/usage.py`).
+  `DISK_SECONDS = 30.0` (`sandbox/service.py`);
+  `AgentsUsage.ENDS_AT = 0.9` (`sandbox/usage.py`).
   LIB-9 records that the trigger is the whole container's number while
   the choice is by one kind of memory, so small agents can be ended
   when file-backed memory fills the container.
 - Abstract sockets: the ruleset sets `LANDLOCK_SCOPE_ABSTRACT_UNIX_SOCKET`
   only when the kernel's ABI is 6 or later
-  (`ai_runtime/agents_container/spawn_helper.c`).
+  (`sandbox/spawn_helper.c`).
 - Shared temporary folders: `Places.SYSTEM_WRITES = ("/dev", "/proc",
-  "/tmp")` (`ai_runtime/agents_container/places.py`). Files are created
+  "/tmp")` (`sandbox/places.py`). Files are created
   under `umask 0007`, but an agent may change its own file's mode, and
   `sweep` clears a uid's leftovers only at start and stop. This is
   SBX-9 in [the open questions](../contributing/open-questions.md).
@@ -157,7 +157,7 @@ cost.
   name, and a `from_secret` value of `.com` was lent as "every host
   under `.com`".
 - The filter switch: `AI_RUNTIME_SYSCALL_FILTER`, read in
-  `ai_runtime/agents_container/places.py`.
+  `sandbox/places.py`.
 - The full list as the sandbox states it:
   [what the sandbox does not do](../system/sandbox.md#what-the-sandbox-does-not-do).
 
@@ -216,20 +216,20 @@ both are one agent's code. A worker serves one organization's
 approval, so it never sees another organization's call ids.
 
 The delegation: `Delegation.DEFAULT_TTL_SECONDS = 3600`
-(`backend/api/services/chat_session/identity/delegation.py`), naming a
-row in `RuntimeSessionStore` (`backend/database/stores/delegations.py`)
+(`data_core/api/services/chat_session/identity/delegation.py`), naming a
+row in `RuntimeSessionStore` (`data_core/database/stores/delegations.py`)
 whose deletion revokes it. Rows are deleted when the chat is deleted,
 the person is disabled, or the person's switch is pressed
-(`backend/api/services/chat_session/halt.py`); not when a socket
+(`data_core/api/services/chat_session/halt.py`); not when a socket
 closes. The runtime keeps the keys in `Backend.credentials`
 (`ai_runtime/door/platform.py`), a dictionary EDGE-14 notes is never
 trimmed. Under any key, only the actions on `RUNTIME_ENDPOINTS`
-(`backend/server/authentication/catalog.py`) are accepted. The runtime
+(`data_core/server/authentication/catalog.py`) are accepted. The runtime
 holds the service token's public key only, so it cannot mint a dial of
 its own.
 
 The connection log: one event log serves every agent
-(`ai_runtime/agents_container/events.py`), and standard-error lines are
+(`sandbox/events.py`), and standard-error lines are
 events with no rate limit (LIB-7).
 
 </details>
@@ -326,20 +326,20 @@ review's list.
 <details>
 <summary><b>For the specialist</b>: the door's checks and where each limit is</summary>
 
-`receive` (`backend/server/routes/hooks.py`): 404 for a webhook that is
+`receive` (`data_core/server/routes/hooks.py`): 404 for a webhook that is
 missing, off, or whose person is disabled, stopped, or in an
 organization that is off or has `webhooks: blocked` (one answer, not
 recorded); 413 over 64 KB; 401 for the bearer secret (constant-time)
 or a signature that is required, or sent, and wrong, or more than 300
 seconds off; 429 past `PER_MINUTE` = 60 in a per-process deque; 400 for
 a body that is not an object of exactly the declared fields
-(`WebhookFields.check`, `backend/database/stores/webhooks.py`). The
+(`WebhookFields.check`, `data_core/database/stores/webhooks.py`). The
 idempotency key answers the first delivery for a day. The frame is in
 the relay's `FRAMES` but no browser action builds it
-(`backend/api/services/chat_session/relay.py`), and the runtime's door
+(`data_core/api/services/chat_session/relay.py`), and the runtime's door
 takes it only from a dialer holding the service token.
 
-`refuse_address` (`backend/server/outbound.py`) resolves with
+`refuse_address` (`data_core/server/outbound.py`) resolves with
 `getaddrinfo` and refuses private, loopback, link-local, reserved,
 multicast and unspecified answers; `Sender.post` then hands the URL to
 `httpx`, which resolves again. Contrast `contracts/mcp.py`, which

@@ -261,7 +261,7 @@ After the gates ([section 5](05-the-assistant.md)), `FunctionExecutor._execute`
 Storage is "audit-plus-reference, not authority": if storing fails, the
 result stands without a ref — and, without one, cannot be shown as a
 table or named as plan evidence. The backend caps one stored result at
-8 MB (`backend/api/endpoints/app/ai/storage_controller.py`).
+8 MB (`data_core/api/endpoints/app/ai/storage_controller.py`).
 
 A display is checked when the agent offers it (`display_stored`,
 `contracts/chat.py`): a table of at most 500 rows of plain cells and 24

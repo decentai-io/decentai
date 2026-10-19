@@ -185,9 +185,9 @@ leaked key cannot make itself permanent or lock you out.
 
 Every application call is `POST /app` with
 `{"endpoint": "Domain:Controller:action", "data": {…}}`.
-`APIRouter.route` (`backend/api/api_router.py`) splits and lowercases
+`APIRouter.route` (`data_core/api/api_router.py`) splits and lowercases
 it, refuses an action beginning `_`, asks `AccessController.is_allowed`
-(`backend/server/authentication/access.py`), and only then checks the
+(`data_core/server/authentication/access.py`), and only then checks the
 string is in the catalog (`ActionCatalog.is_known`), so a controller's
 other public methods are unreachable even under a wildcard. Uploads and
 downloads go through the same router; the chat socket calls the same
@@ -195,14 +195,14 @@ downloads go through the same router; the chat socket calls the same
 invariants and tenant scoping.
 
 The vocabulary is `ACTION_CATALOG` in
-`backend/server/authentication/catalog.py` — a little under two hundred
+`data_core/server/authentication/catalog.py` — a little under two hundred
 actions, in code so that widening it is a code review. A policy is
 validated on save (`PolicyStore.validate_permissions`,
-`backend/database/stores/iam.py`): at most 50 statements of 100 actions,
+`data_core/database/stores/iam.py`): at most 50 statements of 100 actions,
 `resources` only `["*"]`, every action in the catalog or a wildcard
 whose text before its first `*` begins a real action
 (`ActionCatalog.is_valid_pattern`,
-`backend/server/authentication/policy.py`).
+`data_core/server/authentication/policy.py`).
 
 ### Resolution and evaluation
 
@@ -219,11 +219,11 @@ policy is `{"effect": "Allow", "actions": ["*"]}`
 organization-owned documents read caller-supplied ids through
 `OrgScopedStore.get_in` / `list_in`, with `org_id` in the query, and
 the organization is always taken from the caller's own record
-(`IAMController._org`, `backend/api/endpoints/admin/iam/base.py`).
+(`IAMController._org`, `data_core/api/endpoints/admin/iam/base.py`).
 
 ### The access cache
 
-`AccessCache` (`backend/database/stores/base.py`), in process, entries
+`AccessCache` (`data_core/database/stores/base.py`), in process, entries
 at most `TTL_SECONDS = 60`:
 
 - **sessions** (session id → principal): dropped for one session on
@@ -235,7 +235,7 @@ at most `TTL_SECONDS = 60`:
   policies, a policy, or an agent grant increments, staling every entry.
 
 Invalidation lives in the store method that writes, and the backend is
-one process (`backend/main.py`), so an in-app change governs the next
+one process (`data_core/main.py`), so an in-app change governs the next
 request. Another process's writes (`bootstrap/organizations.py`,
 `bootstrap/reset_password.py`) are seen when entries expire. Every
 write invalidates on both sides of itself (`AccessCache.changing_user`,
@@ -267,7 +267,7 @@ write; on failure `IAMController._lockout_check` undoes it and answers
 On a deletion the check precedes the cascade that detaches the item, so
 the undo is one reinsert. Disabling and deleting a person are checked
 *before* the write, with the target excluded, and nobody may disable or
-delete themselves. Tests: `backend/tests/test_lockout.py`.
+delete themselves. Tests: `data_core/tests/test_lockout.py`.
 
 ### Grant boundary
 
@@ -283,7 +283,7 @@ new. An administrator's password reset of someone else is bounded by
 the target's groups, since taking an account is taking its access. An
 invitation is checked when issued, and again when accepted
 (`AuthController.accept_invitation`,
-`backend/server/authentication/flows.py`), against the inviter as they
+`data_core/server/authentication/flows.py`), against the inviter as they
 are then: found by the `invited_by_user_id` recorded at issue (an older
 invitation by `invited_by_email`). An inviter who is gone, in another
 organization, disabled, or no longer holds what the groups grant
@@ -293,13 +293,13 @@ asking for a new one. An invitation with no groups is not checked.
 The boundary covers the IAM chain. **Agent grants are outside it.**
 Who may call an installed agent's functions is a separate allow-only
 list keyed by the agent (`AgentGrantStore`,
-`backend/database/stores/agents/grants.py`), because functions are
+`data_core/database/stores/agents/grants.py`), because functions are
 discovered from manifests and would rot inside authored policies.
 Whoever holds `agents:agent:grant` — in the seeded chain, only
 Administrators — may grant any installed agent to anyone in the
 organization; a first install grants it to the installer by name and
 to their assigned groups (`_grant_on_install`,
-`backend/api/endpoints/app/agents/grants_controller.py`). A
+`data_core/api/endpoints/app/agents/grants_controller.py`). A
 re-approval of a version finds a grant already there and adds nothing.
 
 </details>
@@ -321,7 +321,7 @@ an `Authorization: Bearer` value, and then:
    expiry and `typ: runtime_service`, and allowed exactly
    `RUNTIME_SERVICE_ENDPOINTS` with no policy read;
 3. anything else is HS256 over `TOKEN_SECRET_KEY`
-   (`backend/server/authentication/credentials.py`) naming a
+   (`data_core/server/authentication/credentials.py`) naming a
    `session_id`: `token_type: RUNTIME` in `runtime_sessions`, otherwise
    in `sessions`.
 
@@ -335,29 +335,29 @@ from the header `client: app`.
 **Sessions** (`SessionStore`): 7 days, or 90 with `remember`; the token
 is signed for the session's lifetime, the cookie is `HttpOnly`, and an
 unremembered cookie ends with the browser
-(`backend/server/routes/auth.py`). A native client sends
+(`data_core/server/routes/auth.py`). A native client sends
 `"client": "native"` and receives the token in the body.
 
-**API keys** (`backend/database/stores/api_keys.py`): `dk_` plus 32
+**API keys** (`data_core/database/stores/api_keys.py`): `dk_` plus 32
 random bytes; only a SHA-256 is stored (enough at that entropy) and 12
 characters for display; twenty live per person; revoking sets
 `revoked_at`. `ApiKeyController._from_browser`
-(`backend/api/endpoints/app/settings/api_key_controller.py`) admits
+(`data_core/api/endpoints/app/settings/api_key_controller.py`) admits
 `create` and `revoke` only for `token_type: WEB` with `client: browser`;
 `list` is not fenced. Disabling the person or completing a reset
 revokes all keys; deleting the person deletes them
-(`backend/tests/test_api_keys.py`).
+(`data_core/tests/test_api_keys.py`).
 
 ### Delegations
 
 `Delegation.for_chat`
-(`backend/api/services/chat_session/identity/delegation.py`) replaces
+(`data_core/api/services/chat_session/identity/delegation.py`) replaces
 the `runtime_sessions` row for (person, chat) — so an older token names
 nothing — and signs a one-hour `RUNTIME` token
-(`backend/database/stores/delegations.py`). While the backend's dial for
+(`data_core/database/stores/delegations.py`). While the backend's dial for
 that chat is open, a one-minute loop hands it a fresh credential once
 the current one is 45 minutes old (`RuntimeClientManager.renew_due`,
-`backend/api/services/chat_session/relay.py`); a person who pressed stop
+`data_core/api/services/chat_session/relay.py`); a person who pressed stop
 gets none. Three layers then apply:
 
 1. **the fence**: `is_allowed` refuses anything not on
@@ -366,13 +366,13 @@ gets none. Three layers then apply:
 2. **the person's own policy**;
 3. **the chat**: chat-scoped controllers refuse a chat other than the
    delegation's `chat_id` (`_runtime_chat`,
-   `backend/api/endpoints/app/ai/base.py`), and stored results are read
+   `data_core/api/endpoints/app/ai/base.py`), and stored results are read
    from that chat only. Actions not about a chat, such as reading the
    person's records, are bounded by layers 1 and 2.
 
 What agents may be asked is not on the delegation: it is the contract
 (`SessionContract._agents`,
-`backend/api/services/chat_session/contract.py`) — installed agents ∩
+`data_core/api/services/chat_session/contract.py`) — installed agents ∩
 grants reaching the person ∩ the chat's narrowing — read when the
 session is built, on each message and on each clock wake.
 Logging out does not end a delegation; deleting the chat, disabling or
@@ -381,8 +381,8 @@ and a disabled organization's are refused by `_resolve_session`.
 
 ### Passwords and recovery
 
-All in `backend/server/authentication/flows.py` and
-`backend/server/authentication/credentials.py`. bcrypt, cost 12, over
+All in `data_core/server/authentication/flows.py` and
+`data_core/server/authentication/credentials.py`. bcrypt, cost 12, over
 base64(SHA-256(password)), so the 72-byte limit never truncates; an
 unknown address is verified against a dummy hash, costing the same as a
 wrong password and answered identically. `LoginThrottle`: fifteen-minute

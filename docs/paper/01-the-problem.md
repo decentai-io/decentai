@@ -150,9 +150,9 @@ these promises are weaker than they sound.
 |---|---|---|
 | database contents, at rest | `mongo`, reachable only on the internal `data` network by `backend` and `init` (`docker-compose.yml`) | the runtime, the agents' container |
 | value-encryption keys, `TOKEN_SECRET_KEY`, the service token's private key | the backend | every other container |
-| a decrypted credential | the backend, which decrypts it; the runtime, for one call; the worker of the agent it was granted to | the model; the app. For a connected account the refresh token stays in the backend and the agent receives only a short-lived access token (`_values_for_agent`, `backend/api/services/data_layer/secrets.py`; `OauthFlow.fresh`, `backend/api/services/oauth.py`); a credential a person typed (an API key, a password) reaches the agent's code as it is. The worker is kept running between calls, so its code could keep what it was handed |
+| a decrypted credential | the backend, which decrypts it; the runtime, for one call; the worker of the agent it was granted to | the model; the app. For a connected account the refresh token stays in the backend and the agent receives only a short-lived access token (`_values_for_agent`, `data_core/api/services/data_layer/secrets.py`; `OauthFlow.fresh`, `data_core/api/services/oauth.py`); a credential a person typed (an API key, a password) reaches the agent's code as it is. The worker is kept running between calls, so its code could keep what it was handed |
 | a model's API key | the backend; the runtime, in memory, after `Settings:Llm:Use` | agents' code: a function that declares `llm: true` asks the runtime to call the model for it (`Call.llm`, `ai_runtime/execution/call.py`) |
-| the trail | `ai_audit`, appended through `AuditStore.append` (`backend/database/stores/audit.py`); the gateway offers no update or delete of it | anyone through the platform's API. Whoever administers the database can still edit it |
+| the trail | `ai_audit`, appended through `AuditStore.append` (`data_core/database/stores/audit.py`); the gateway offers no update or delete of it | anyone through the platform's API. Whoever administers the database can still edit it |
 
 ### Adversaries, capabilities, and what holds them
 
@@ -161,10 +161,10 @@ these promises are weaker than they sound.
 | **the model** (wrong, not hostile) | emit any action the vocabulary has, with any inputs; write any prose | every action is validated and gated outside the model; grants deny by default; the level gate; evidence drawn only from the trace | 2, 5, 6 |
 | **an injector** (author of a mail, web page, file, or an agent's result) | choose text the model reads, and so steer what it proposes | the same gates; none of grants, level, manifest hosts, approval hash or credential binding derives from model output; a Deny refuses the hosts a call named to the whole agent for the rest of the ask (`Assistant._refused_already`, `ai_runtime/mind/assistant.py`) | 2, 5 |
 | **an agent's author** (code and dependencies) | arbitrary code in the worker during a call: what the call was handed, its home, its declared hosts | an administrator's approval, after which the package is pinned by digest; resource mediation per declared operation; a uid of its own, Landlock, seccomp, limits; egress only through the proxy to declared hosts; dependencies built by a separate confined user | 7, 8, 9 |
-| **another person** | their own session, cookie or API key | sessions resolved per request; policies deny by default; chats and records bound to their owner; a browser socket is checked for `Origin` when it carries a cookie (`AccessController._same_site`, `backend/server/authentication/access.py`) | 4 |
+| **another person** | their own session, cookie or API key | sessions resolved per request; policies deny by default; chats and records bound to their owner; a browser socket is checked for `Origin` when it carries a cookie (`AccessController._same_site`, `data_core/server/authentication/access.py`) | 4 |
 | **another organization** | its own administrators and approvals | approval refs (`agt_…`) are minted per organization; sources and packages are per organization | 4, 7 |
 | **a worker taken over** | the above, plus attempts at the container's other tenants | the sandbox's layers; the agents' network is internal and leads only to the runtime | 8 |
-| **the runtime taken over** | every delegation it holds: for each person with a live chat or a schedule, the actions on `RUNTIME_ENDPOINTS` (`backend/server/authentication/catalog.py`) | no database route, no decryption key, no signing key for the backend's identity; `ai:approval:decide` is not on `RUNTIME_ENDPOINTS`, so it cannot answer a card; identity and access are not on it, nor any setting beyond reading a model key and the person's memories; the person's stop-everything switch withdraws its keys | 2, 4, 10, 11 |
+| **the runtime taken over** | every delegation it holds: for each person with a live chat or a schedule, the actions on `RUNTIME_ENDPOINTS` (`data_core/server/authentication/catalog.py`) | no database route, no decryption key, no signing key for the backend's identity; `ai:approval:decide` is not on `RUNTIME_ENDPOINTS`, so it cannot answer a card; identity and access are not on it, nor any setting beyond reading a model key and the person's memories; the person's stop-everything switch withdraws its keys | 2, 4, 10, 11 |
 
 ### Out of scope, and why
 
@@ -196,17 +196,17 @@ easy to miss, and each is taken up again in [section 11](11-what-it-does-not-do.
 2. **The execution trail is written by the runtime.** Each call's line
    arrives through `AI:Audit:Record`, which accepts only the type
    `execution` (`AuditController.record`,
-   `backend/api/endpoints/app/ai/audit_controller.py`). A runtime taken
+   `data_core/api/endpoints/app/ai/audit_controller.py`). A runtime taken
    over could leave lines out. The backend's own lines it cannot: every
    card opened and decided (`approval.requested`, `approval.resolved`),
    every credential use, and every record written through the gateway
    (`platform.action`, `APIRouter._audit_action`,
-   `backend/api/api_router.py`).
+   `data_core/api/api_router.py`).
 3. **Injection still steers what runs without a card.** A call at or
    below the chat's level runs on the model's word. At level 3, that is
    every function the person is granted. The level is the person's own
    setting; the default is 1, and an unreadable value becomes 1
-   (`TrustLevel`, `backend/api/services/chat_session/settings/trust.py`).
+   (`TrustLevel`, `data_core/api/services/chat_session/settings/trust.py`).
 4. **A rightly granted agent can misuse what it was granted.** The
    sandbox fences an agent from everything it was not given, not from
    the mailbox it was. Reading the manifest and the code before

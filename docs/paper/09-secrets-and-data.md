@@ -241,8 +241,8 @@ token.
 ### The document and the filter
 
 Every data-layer store is a `ResourceStore`
-(`backend/database/stores/data/resources.py`), with controllers in
-`backend/api/services/data_layer/`: `SecretStore` (`type: secret`),
+(`data_core/database/stores/data/resources.py`), with controllers in
+`data_core/api/services/data_layer/`: `SecretStore` (`type: secret`),
 `AgentDataStore` (`data`), `FileStore` (`file`), `SkillStore`
 (`skill`) and `McpServerStore` (`mcp`, deleted with its person rather
 than handed on). Secret definitions (`DefinitionStore`,
@@ -257,7 +257,7 @@ is `agt_` plus 20 hex characters.
 
 Every read served to a caller (`list_visible`, `get_visible`,
 `visible_doc`, `use`) is one query carrying the id and this filter
-(`Sharing.visibility_filter`, `backend/server/governance/sharing.py`,
+(`Sharing.visibility_filter`, `data_core/server/governance/sharing.py`,
 plus `type`):
 
 ```
@@ -274,7 +274,7 @@ credential it reconnects, a transfer, counting references to a file's
 bytes, and reading back a write.
 
 **Writing an owner** (`ResourceController._owner_or_refusal`,
-`backend/api/services/data_layer/base.py`): every id must exist in the
+`data_core/api/services/data_layer/base.py`): every id must exist in the
 caller's organization; then, without the escape action, each group
 must be one of the caller's explicit groups (Everyone refused) and each
 person must share one (`Sharing.beyond_reach`). **Changing** is
@@ -299,7 +299,7 @@ EXE-12).
 
 ### Encryption at rest
 
-`SecretCipher` (`backend/database/crypto.py`), on the `cryptography`
+`SecretCipher` (`data_core/database/crypto.py`), on the `cryptography`
 package's `AESGCM`:
 
 - **Key**: 32 bytes, from `SECRET_ENCRYPTION_KEYS` as comma-separated
@@ -322,7 +322,7 @@ package's `AESGCM`:
 
 The same cipher seals a model connection's key, an OAuth app's client
 secret, a source's git token, and a webhook's and an outbound
-subscription's secret (`backend/database/stores/webhooks.py`); each store names its fields in
+subscription's secret (`data_core/database/stores/webhooks.py`); each store names its fields in
 `ENCRYPTED_FIELDS`. With no keys set, the backend does not start; nor
 does it with the example settings' `01:change-me`, which decodes to
 too few bytes (`SecretCipher.verify`). It never derives a key from
@@ -330,8 +330,8 @@ another setting.
 
 **Not sealed**: `keys`, by design; a file's bytes, written as they are
 by the connector `FILE_STORAGE_PROVIDER` names — the volume
-(`backend/database/file_connectors/local.py`), or an S3, Azure Blob or
-Google Cloud Storage bucket (`backend/database/blob_stores.py`), whose
+(`data_core/database/file_connectors/local.py`), or an S3, Azure Blob or
+Google Cloud Storage bucket (`data_core/database/blob_stores.py`), whose
 provider encrypts at rest, with a KMS key of one's own on S3
 (`STORAGE_S3_KMS_KEY_ID`);
 the OAuth state rows below.
@@ -339,7 +339,7 @@ the OAuth state rows below.
 **Unreadable.** For display, `_readable_values` returns an empty map
 and a flag, served as `unreadable`. An edit to an agent's record whose
 values cannot be read is refused with 409, so nothing overwrites them
-(`backend/api/services/data_layer/records.py`). For use,
+(`data_core/api/services/data_layer/records.py`). For use,
 `Secrets:Secret:Use` answers 409 with the cipher's sentence.
 
 **Rotation** ([operating](../run/operating.md#rotating-the-encryption-key)):
@@ -361,7 +361,7 @@ stopped or idle.
    `secrets.<id>:use`; the category becomes `agt_<ref>__<id>`.
 3. `ChatResources.use_secret` posts `Secrets:Secret:Use` to the
    backend's `/app` gateway under the chat's delegation.
-4. `SecretController.use` (`backend/api/services/data_layer/secrets.py`)
+4. `SecretController.use` (`data_core/api/services/data_layer/secrets.py`)
    refuses any principal but the runtime. A category resolves in order:
    the chat's binding, the grant on this slot, the person's default,
    the only visible credential; otherwise 404 or 409, never a guess.
@@ -381,16 +381,16 @@ questions EX-6, EXE-11). A login asked for mid-call (`call.credential`)
 is typed on a card, saved by the backend, and handed out only through
 `Secrets:Credential:Resolve` — runtime-only, audited the same way, for
 agent and site pairs the person consented to
-(`backend/api/services/data_layer/credentials.py`).
+(`data_core/api/services/data_layer/credentials.py`).
 
 ### Grants and take-back
 
-`AgentSecretGrantStore` (`backend/database/stores/agents/grants.py`)
+`AgentSecretGrantStore` (`data_core/database/stores/agents/grants.py`)
 keeps one row per organization and slot, naming the credential; a new
 grant replaces the old. The granter must see the credential; shapes
 must match exactly (name, type, storage, required, options); a
 connected account needs the same provider and every scope the slot
-declares (`backend/api/endpoints/app/agents/secret_grants_controller.py`).
+declares (`data_core/api/endpoints/app/agents/secret_grants_controller.py`).
 The row is organization-wide, but at use the credential is re-read
 through the chatting person's filter, so a grant lends nothing to
 someone who cannot see it. Deleting a granted credential answers 409,
@@ -401,15 +401,15 @@ its records and files.
 
 ### Connected accounts
 
-`OauthFlow` (`backend/api/services/oauth.py`); `OauthAppStore` and
-`OauthStateStore` (`backend/database/stores/settings/oauth.py`).
+`OauthFlow` (`data_core/api/services/oauth.py`); `OauthAppStore` and
+`OauthStateStore` (`data_core/database/stores/settings/oauth.py`).
 
 - **Start.** A `token_urlsafe(32)` state, stored as its SHA-256, names
   the person, the browser session, the definition and a PKCE verifier
   (`token_urlsafe(64)`, `S256`); 10 minutes. The manifest's authorize,
   token and identity addresses must equal the organization's
   registration, or nothing is sent.
-- **Callback** (`backend/server/routes/oauth.py`). The state is spent
+- **Callback** (`data_core/server/routes/oauth.py`). The state is spent
   with `find_one_and_delete`, and refused unless the same person is
   signed in, in the session the flow recorded. The code is exchanged
   with the verifier, the account read, the credential created — or
@@ -441,9 +441,9 @@ file visible to each person whose delegation it still holds — access
 tokens included; refresh tokens and client secrets never leave the
 backend.
 
-Tests: `backend/tests/test_data_layer.py`,
-`backend/tests/test_runtime_secret_use.py`,
-`backend/tests/test_agent_secret_grants.py`,
-`backend/tests/test_oauth.py`, `backend/tests/test_files.py`.
+Tests: `data_core/tests/test_data_layer.py`,
+`data_core/tests/test_runtime_secret_use.py`,
+`data_core/tests/test_agent_secret_grants.py`,
+`data_core/tests/test_oauth.py`, `data_core/tests/test_files.py`.
 
 </details>

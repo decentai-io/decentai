@@ -474,8 +474,9 @@ class Setup:
             moved.append(name)
         if moved:
             self.say(f"Moved {', '.join(moved)} from the repository's root "
-                     f"into {CONFIG}/, where the stack now reads them. "
-                     f"Nothing in them changed.")
+                     f"into {CONFIG}/, where the stack reads "
+                     f"{'it' if len(moved) == 1 else 'them'} now. Nothing "
+                     f"in {'it' if len(moved) == 1 else 'them'} changed.")
         if kept:
             self.say(f"Left {', '.join(kept)} at the repository's root as "
                      f"found: {CONFIG}/ already holds a file of the same "
