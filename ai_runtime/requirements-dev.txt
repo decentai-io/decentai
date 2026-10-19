@@ -1,0 +1,4 @@
+# Test dependencies, beside requirements.txt:
+#   pip install -r requirements.txt -r requirements-dev.txt
+#   python -m pytest tests -q   (from the repository root: ai_runtime/tests)
+pytest~=8.4

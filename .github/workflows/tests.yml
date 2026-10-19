@@ -19,7 +19,7 @@ permissions:
 
 jobs:
   runtime:
-    name: runtime, docs and the example
+    name: AI Runtime and the docs
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -30,7 +30,8 @@ jobs:
           cache: pip
           cache-dependency-path: |
             ai_runtime/requirements.txt
-      - run: pip install -r ai_runtime/requirements.txt
+            ai_runtime/requirements-dev.txt
+      - run: pip install -r ai_runtime/requirements.txt -r ai_runtime/requirements-dev.txt
       # The runtime's suite holds the checks on the documentation too
       # (ai_runtime/tests/test_docs.py): a page that names what the
       # code no longer has fails here.
@@ -160,10 +161,14 @@ jobs:
       - uses: actions/checkout@v4
         with:
           path: decentai
+      # decentai-agents is private: a token that may read it, kept as
+      # the secret AGENTS_REPO_TOKEN (a fine-grained token with read
+      # access to that repository's contents).
       - uses: actions/checkout@v4
         with:
           repository: decentai-io/decentai-agents
           path: decentai-agents
+          token: ${{ secrets.AGENTS_REPO_TOKEN }}
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
