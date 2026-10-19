@@ -48,7 +48,7 @@ Events.configure(settings.agents_install_dir, "runtime")
 # Where every process of an agent's is started: the Execution
 # Sandboxes, which register with this runtime, proving the node's
 # secret. The runtime starts nothing of an agent's itself. One named by
-# its address (AI_RUNTIME_AGENTS_SPAWNER) is known besides them.
+# its address (AI_RUNTIME_SANDBOX_ADDRESS) is known besides them.
 container = Sandboxes(settings.sandbox_secret, port=settings.sandbox_port)
 if settings.sandbox_address:
     container.add(ExecutionSandbox(settings.sandbox_address,

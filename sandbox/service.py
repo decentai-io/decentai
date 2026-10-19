@@ -1135,7 +1135,7 @@ def main() -> None:
     Events.configure(install_dir, "sandbox")
     service = SandboxService(
         install_dir,
-        port=int(os.getenv("AI_AGENTS_SPAWNER_PORT", "8003")),
+        port=int(os.getenv("AI_SANDBOX_PORT", "8003")),
         proxy=os.getenv("AI_AGENTS_PROXY", ""),
         proxy_port=proxy_port(),
         secret=secret_from_environment(),

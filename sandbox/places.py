@@ -227,7 +227,7 @@ class Places:
     #: The setting that turns the system-call filter off (``0``): for
     #: an agent whose package needs a call the filter refuses, until
     #: the package or the filter is mended. On unless it says so.
-    FILTER_SETTING = "AI_RUNTIME_SYSCALL_FILTER"
+    FILTER_SETTING = "AI_SANDBOX_SYSCALL_FILTER"
 
     @staticmethod
     def browsers() -> List[str]:

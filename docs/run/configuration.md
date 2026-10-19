@@ -155,7 +155,7 @@ gone. Back them up with it.
 | `AI_RUNTIME_PACKAGE_HOSTS` | `pypi.org, files.pythonhosted.org` | Where packages come from: the hosts the builder of an agent's declared packages may reach, and the whole of them. Separated by commas. |
 | `AI_RUNTIME_SANDBOX_SECRET` | required, in `config/sandbox.env` | The secret set for the execution node: what an Execution Sandbox proves when it registers with the runtime, and what the runtime proves on every request to one ([the sandbox](../system/sandbox.md#many-sandboxes)). It never travels. `bootstrap/setup.py` writes one into `config/sandbox.env`; `docker-compose.yml` hands that file to the runtime and to every sandbox, and to nothing else. A runtime without it does not start. |
 | `AI_RUNTIME_SANDBOX_PORT` | `8005` | Where Execution Sandboxes register with the runtime. Every process of an agent's is started in a sandbox that registered; a runtime with none that can confine a worker does not start. |
-| `AI_RUNTIME_AGENTS_SPAWNER` | empty | An Execution Sandbox the runtime knows by its address, as `host:port`, besides those that register. Optional, and not set by `docker-compose.yml`: sandboxes register themselves. |
+| `AI_RUNTIME_SANDBOX_ADDRESS` | empty | An Execution Sandbox the runtime knows by its address, as `host:port`, besides those that register. Optional, and not set by `docker-compose.yml`: sandboxes register themselves. |
 
 The install's own issuer of node credentials, `node-issuer`
 (`bootstrap/node_issuer.py`, the Data Core's image, on no network),
@@ -173,7 +173,7 @@ An Execution Sandbox is the runtime's image started as the spawner
 | Variable | Default | Meaning |
 |---|---|---|
 | `AI_AGENTS_PROXY` | empty | Where the runtime's proxy answers, as `host:port` (`ai-runtime:8002` in Compose). What a worker sends to the proxy's port in its own container is passed on to here. |
-| `AI_AGENTS_SPAWNER_PORT` | `8003` | Where the spawner answers the runtime. Fixed at 8003 in the Compose stack, which does not pass it on. |
+| `AI_SANDBOX_PORT` | `8003` | Where the spawner answers the runtime. Fixed at 8003 in the Compose stack, which does not pass it on. |
 | `AI_SANDBOX_RUNTIME` | empty | Where its runtime takes registrations, as `host:port` (`ai-runtime:8005` in Compose). The sandbox connects there, registers, and connects again when the connection is lost. |
 | `AI_RUNTIME_SANDBOX_SECRET` | required, in `config/sandbox.env` | The execution node's secret, the same as the runtime's. The spawner takes it out of its own environment as it reads it. |
 | `AI_SANDBOX_ID` | the container's name | Who the sandbox is, to its runtime; `sandbox` in Compose, `sandbox-2` for the second of `compose/sandboxes.yml`. |
@@ -184,7 +184,7 @@ An Execution Sandbox is the runtime's image started as the spawner
 | `LOG_LEVEL`, `TZ` | as the runtime's | Passed to the Execution Sandbox by name. |
 | `AI_RUNTIME_EGRESS_PORT` | `8002` | The proxy's port, as workers are pointed at it; the same number as the runtime's. |
 | `AI_RUNTIME_AGENTS_INSTALL_DIR` | `/data/agents` | The sandbox's own folder, the path the image's spawn helper was built for: its copy of the code it runs, its environments, its workers' homes, what it writes down. A volume of its own, shared with nothing. |
-| `AI_RUNTIME_SYSCALL_FILTER` | on | `0` turns off the filter on the system calls a worker may make ([the sandbox](../system/sandbox.md#system-calls--seccomp)): for an agent whose package needs a call the filter refuses, until one of the two is mended. The container says at start that it is off. |
+| `AI_SANDBOX_SYSCALL_FILTER` | on | `0` turns off the filter on the system calls a worker may make ([the sandbox](../system/sandbox.md#system-calls--seccomp)): for an agent whose package needs a call the filter refuses, until one of the two is mended. The container says at start that it is off. |
 
 What each Execution Sandbox is given is the engine's to hold it to,
 and is set where the container is started:

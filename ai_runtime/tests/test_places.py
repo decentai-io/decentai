@@ -357,7 +357,7 @@ class TestFence:
     def test_a_deployment_may_turn_the_filter_off(self, helper, tmp_path, monkeypatch):
         """For an agent whose package needs a call the filter refuses,
         until one of the two is mended."""
-        monkeypatch.setenv("AI_RUNTIME_SYSCALL_FILTER", "0")
+        monkeypatch.setenv("AI_SANDBOX_SYSCALL_FILTER", "0")
         places = self.checked(helper, tmp_path, "landlock=3\nseccomp=1\n")
         assert places.can_filter_calls is True
         assert places.filters_calls is False

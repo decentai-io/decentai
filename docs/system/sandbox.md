@@ -385,7 +385,7 @@ pictured under the filter as it is without.
 
 **It can be turned off**, for an agent whose package needs a call the
 filter refuses, until the package or the filter is mended:
-`AI_RUNTIME_SYSCALL_FILTER=0` ([configuration](../run/configuration.md)).
+`AI_SANDBOX_SYSCALL_FILTER=0` ([configuration](../run/configuration.md)).
 The spawner says so at start, every start.
 
 **Where it does not hold.** The filter is written for the two kinds of

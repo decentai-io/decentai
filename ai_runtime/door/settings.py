@@ -79,7 +79,7 @@ class RuntimeSettings:
             raise ValueError(
                 "DATA_CORE_INTERNAL_URL is required — the runtime keeps nothing "
                 "itself, and asks the Data Core for everything a chat is.")
-        sandbox_address = os.getenv("AI_RUNTIME_AGENTS_SPAWNER", "").strip()
+        sandbox_address = os.getenv("AI_RUNTIME_SANDBOX_ADDRESS", "").strip()
         sandbox_secret = os.getenv("AI_RUNTIME_SANDBOX_SECRET", "").strip()
         if not sandbox_secret:
             raise ValueError(

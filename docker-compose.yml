@@ -279,7 +279,7 @@ services:
       AI_SANDBOX_LABELS: ${SANDBOX_LABELS:-}
       # 0 turns off the filter on what system calls a worker may make;
       # the filter is written here, where workers run
-      AI_RUNTIME_SYSCALL_FILTER:
+      AI_SANDBOX_SYSCALL_FILTER:
       LOG_LEVEL:
       TZ:
     volumes:
