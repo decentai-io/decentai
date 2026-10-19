@@ -10,6 +10,14 @@ A connection still carries one ``model``: the one it starts with — what
 a chat that chose nothing thinks with, and what the key was tried on
 when the connection was added.
 
+And it may carry ``models``: the ones the person DECLARED, each with
+what it is for — ``chat``, ``embedding`` or ``transcription``. A server
+of one's own lists which models it has but never what each is for, and
+the catalog cannot know a model newer than itself; the person can. The
+declarations are kept here and read by ``Settings:Llm:Models``, which
+offers them under their kind; nothing here decides which model a chat
+thinks with.
+
 It is its own kind of record, not a secret on a definition: its shape
 is the platform's to know, so making an organization author a
 definition before it could name a provider was ceremony around a fixed
@@ -49,6 +57,14 @@ class LlmConnectionStore(OrgScopedStore):
 
     COLLECTION = "llm_connections"
     ENCRYPTED_FIELDS = ("values",)
+
+    #: What a declared model may be for: the catalog's own kinds.
+    KINDS = ("chat", "embedding", "transcription")
+    #: Bounds on the declarations, so a connection stays a record and
+    #: never becomes a dump: more models than any server offers a
+    #: person to sort through, and ids longer than any provider's.
+    MAX_MODELS = 200
+    MAX_MODEL_ID = 200
 
     @classmethod
     def sharing(cls):
@@ -106,6 +122,12 @@ class LlmConnectionStore(OrgScopedStore):
                 "model": doc.get("model", ""),
                 "endpoint": doc.get("endpoint", ""),
             },
+            # Beside ``keys``, not in it: ``keys`` is what a chat's
+            # block is written from, and a declaration is not that.
+            "models": [{"id": str(model.get("id") or ""),
+                        "kind": str(model.get("kind") or "")}
+                       for model in (doc.get("models") or [])
+                       if isinstance(model, dict)],
             "is_default": bool(doc.get("is_default")),
             "created_at": iso(doc.get("created_at")),
             "updated_at": iso(doc.get("updated_at")),
@@ -141,7 +163,48 @@ class LlmConnectionStore(OrgScopedStore):
                     "The endpoint still has a blank to fill in: replace "
                     "each <...> with your own account's value.")
             cleaned["endpoint"] = endpoint
+        if not partial or "models" in fields:
+            cleaned["models"] = self._clean_models(fields.get("models"))
         return cleaned
+
+    @classmethod
+    def _clean_models(cls, declared: Any) -> List[Dict[str, str]]:
+        """The declared models as they are kept: ``id`` and ``kind``
+        and nothing else, each id once. None is no declaration;
+        anything else that is not a list of them is refused, with what
+        was wrong, rather than half kept."""
+        if declared is None:
+            return []
+        if not isinstance(declared, list):
+            raise ValueError("models is a list of {id, kind}.")
+        if len(declared) > cls.MAX_MODELS:
+            raise ValueError(f"A connection declares at most "
+                             f"{cls.MAX_MODELS} models.")
+        kept: List[Dict[str, str]] = []
+        seen = set()
+        for entry in declared:
+            if not isinstance(entry, dict):
+                raise ValueError("models is a list of {id, kind}.")
+            model_id = str(entry.get("id") or "").strip()
+            if not model_id:
+                raise ValueError("A declared model needs its id — the "
+                                 "name the provider knows it by.")
+            if len(model_id) > cls.MAX_MODEL_ID or any(
+                    ord(char) < 32 for char in model_id):
+                raise ValueError(
+                    f"'{model_id[:40]}' is not a model id: at most "
+                    f"{cls.MAX_MODEL_ID} characters, on one line.")
+            kind = str(entry.get("kind") or "").strip().lower()
+            if kind not in cls.KINDS:
+                raise ValueError(
+                    f"'{model_id}' is declared as '{kind[:40] or 'nothing'}':"
+                    f" a model is for chat, embedding or transcription.")
+            if model_id in seen:
+                raise ValueError(f"'{model_id}' is declared twice — a "
+                                 f"model is for one thing.")
+            seen.add(model_id)
+            kept.append({"id": model_id, "kind": kind})
+        return kept
 
     @staticmethod
     def _settled(fields: Dict[str, Any], provider: Any) -> Dict[str, Any]:

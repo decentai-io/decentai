@@ -410,6 +410,19 @@ The form asks `Settings:Llm:Providers` for one provider's, of one kind,
 and offers them in the model field. It is an offer and never a gate: the
 store accepts any model name, so a model newer than the file is typed.
 
+What a connection offers, of one kind, is `Settings:Llm:Models`: the
+catalog's models where it knows the provider, and where it does not — a
+server of the person's own, a gateway — the server's own list, asked
+with the connection's key. A server says which models it has but not
+what each is for, so a connection may also carry `models`, the ones its
+person declared: `[{id, kind}]`, at most 200, each id once, the kind one
+of the three. A declaration is the last word on a model's kind: declared
+of the kind asked, it is offered whether or not anything lists it;
+declared of another, it is not, whatever the catalog or the server says.
+A model the server lists and nobody declared is offered under whichever
+kind was asked. The model a connection starts with is always among a
+chat's, unless it was declared as something else.
+
 A model may be reached differently from its provider's others — a
 gateway that serves Claude over Anthropic's protocol at a second
 address, Azure serving it beside its OpenAI deployments. The model's row

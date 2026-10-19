@@ -90,8 +90,22 @@ class LlmController:
         From the catalog where it knows the connection's provider. Where
         it does not — a server of the person's own, a gateway — the
         server is asked for its own list with the connection's key
-        (``live``), since nothing else could know. The model the
-        connection starts with is always among a chat's, listed or not."""
+        (``live``), since nothing else could know; ``listed`` is then
+        what it said, every id, for the form that declares them.
+
+        A server says which models it has, not what each is for, and
+        the catalog cannot know a model newer than itself: the person
+        says, on the connection (its ``models``). What they declared
+        is the last word on a model's kind — declared of this kind, it
+        is offered, listed or not; declared of another, it is not,
+        whatever the catalog or the server would have said. A model
+        the server lists and nobody declared is offered under whatever
+        kind was asked, as before.
+
+        The model the connection starts with is always among a chat's,
+        listed or not — unless it was declared as something else: a
+        connection kept for embedding starts with its embedding
+        model."""
         payload = self._payload(data)
         connection = self.store.visible(
             user, str(payload.get("connection_id") or ""))
@@ -104,20 +118,34 @@ class LlmController:
         by_deployment = LlmProviders.by_deployment(provider)
         models = [] if by_deployment else LlmProviders.models(provider, kind)
         live = False
+        listed = []
         if not by_deployment and not LlmProviders.models(provider):
             resolved = self.store.use(user, connection["_id"]) or {}
             listed = ProviderProbe(
                 provider, connection.get("endpoint"),
                 (resolved.get("values") or {}).get("api_key"),
                 connection.get("model")).models()
-            # A server says which models it has, not what each is for.
             models = [{"id": name, "name": name, "kind": kind} for name in listed]
             live = bool(listed)
+        declared = {model["id"]: model["kind"]
+                    for model in self.store.to_public(connection)["models"]}
+        models = [model for model in models
+                  if declared.get(model["id"], kind) == kind]
+        offered = {model["id"] for model in models}
+        # Declared and not listed: newest knowledge first, ahead of the
+        # list, in the order the person gave them.
+        models[:0] = [
+            {"id": model_id,
+             "name": (LlmProviders.model(provider, model_id) or {}).get(
+                 "name") or model_id,
+             "kind": kind}
+            for model_id, its_kind in declared.items()
+            if its_kind == kind and model_id not in offered]
         starting = str(connection.get("model") or "")
-        if kind == "chat" and starting and all(
+        if kind == "chat" and starting and starting not in declared and all(
                 model["id"] != starting for model in models):
             models.insert(0, {"id": starting, "name": starting, "kind": "chat"})
-        return {"models": models, "live": live}, 200
+        return {"models": models, "live": live, "listed": listed}, 200
 
     def _checked(self, payload: dict, provider, endpoint, api_key, model):
         """(the provider's answer, a refusal or None). Asked only when
@@ -149,6 +177,7 @@ class LlmController:
                     "provider": payload.get("provider"),
                     "model": payload.get("model"),
                     "endpoint": payload.get("endpoint"),
+                    "models": payload.get("models"),
                 },
                 api_key=payload.get("api_key"),
                 created_by=str(user.get("user_id") or ""),
@@ -243,7 +272,7 @@ class LlmController:
             return refusal
         fields = {
             key: payload[key]
-            for key in ("provider", "model", "endpoint")
+            for key in ("provider", "model", "endpoint", "models")
             if key in payload
         }
         checked = None
