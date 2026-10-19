@@ -6,7 +6,9 @@ the row and sends the node a fire. Fake nodes stand in for linked ones
 (test_runtime_client.py): what is pinned is that every row fires once,
 whatever looks at it and however many nodes there are; that a row fires
 when its chat has no node; that a row waits while no node may take it,
-or its person is stopped; and how a fired row moves on.
+or its person is stopped; how a fired row moves on — from when it was
+due, past now, never drifting and never a burst; and that a fire that
+did not run is put back or written down, never dropped unsaid.
 """
 
 import asyncio
@@ -53,7 +55,7 @@ class TestEachRowFiresOnce:
     def test_a_due_row_fires_once_and_moves_on(self, admin, seed, clock):
         node = link(FakeNode("auth_a/n1", greet=False))
         chat_id = create_chat(admin)
-        add_row(seed, chat_id, every_seconds=3600)
+        made = add_row(seed, chat_id, every_seconds=3600)
         before = time.time()
 
         assert asyncio.run(clock.tick()) == 1
@@ -61,8 +63,8 @@ class TestEachRowFiresOnce:
         [fire] = fires(node)
         assert fire["chat_id"] == chat_id
         assert fire["schedule"]["schedule_id"] == "sch_1"
-        # Moved on from now, not from its mark.
-        assert row_of(chat_id)["next_run_at"] >= before + 3600 - 1
+        # Moved on a period from when it was due.
+        assert row_of(chat_id)["next_run_at"] == made["next_run_at"] + 3600
         assert row_of(chat_id)["fired_at"] >= before
 
     def test_two_looks_at_once_fire_it_once(self, admin, seed, clock):
@@ -179,3 +181,186 @@ class TestWhereAndWhen:
             "enabled": False})
         assert paused.status_code == 200, paused.text
         assert node.received == []
+
+
+class TestWhenARowComesNext:
+    def test_a_period_counts_from_when_it_was_due_not_when_it_was_looked_at(
+            self, admin, seed, clock):
+        node = link(FakeNode("auth_a/n1", greet=False))
+        chat_id = create_chat(admin)
+        due = time.time() - 30
+        add_row(seed, chat_id, every_seconds=60, next_run_at=due)
+        now = due + 4.2                     # the clock looked late
+
+        assert asyncio.run(clock.tick(now)) == 1
+        assert row_of(chat_id)["next_run_at"] == due + 60
+        [fire] = fires(node)
+        # The row as claimed: when it was due, which fire, to whom.
+        claimed = fire["schedule"]
+        assert (claimed["next_run_at"], claimed["due_at"], claimed["fired_at"],
+                claimed["fired_to"]) == (due + 60, due, now, node.key)
+
+    def test_periods_missed_fire_once_and_the_next_is_past_now_on_its_count(
+            self, admin, seed, clock):
+        node = link(FakeNode("auth_a/n1", greet=False))
+        chat_id = create_chat(admin)
+        now = time.time()
+        due = now - 24 * 3600 - 13          # the Data Core was down a day
+        add_row(seed, chat_id, every_seconds=60, next_run_at=due)
+
+        assert asyncio.run(clock.tick(now)) == 1
+        following = row_of(chat_id)["next_run_at"]
+        assert now < following <= now + 60
+        assert round((following - due) / 60, 6).is_integer()
+        assert asyncio.run(clock.tick(now + 1)) == 0
+        assert len(fires(node)) == 1
+
+    def test_a_cron_stays_on_its_calendar(self, admin, seed, clock):
+        from contracts.cron import Cron, zone
+
+        link(FakeNode("auth_a/n1", greet=False))
+        chat_id = create_chat(admin)
+        now = time.time()
+        add_row(seed, chat_id, cron="0 9 * * *", timezone="UTC",
+                next_run_at=now - 3)
+        asyncio.run(clock.tick(now))
+        assert row_of(chat_id)["next_run_at"] == Cron("0 9 * * *").next_after(
+            now, zone("UTC"))
+
+
+class RefusesFires(FakeNode):
+    """A node whose link takes everything but a fire, until told."""
+
+    refusing = True
+
+    async def send(self, frame):
+        if frame.get("type") == "fire" and self.refusing:
+            return False
+        return await super().send(frame)
+
+
+def given_back(fire):
+    return {"type": "unfired", "chat_id": fire["chat_id"],
+            "schedule_id": fire["schedule"]["schedule_id"],
+            "fired_at": fire["schedule"]["fired_at"]}
+
+
+class TestAFireThatDidNotRun:
+    def test_one_that_reached_no_node_is_put_back_and_fires_later(
+            self, admin, seed, clock):
+        node = link(RefusesFires("auth_a/n1", greet=False))
+        chat_id = create_chat(admin)
+        due = time.time() - 5
+        add_row(seed, chat_id, every_seconds=3600, next_run_at=due)
+        assert asyncio.run(clock.tick()) == 0
+        assert row_of(chat_id)["next_run_at"] == due        # still due
+        assert row_of(chat_id)["enabled"] is True
+        node.refusing = False
+        assert asyncio.run(clock.tick()) == 1
+        assert len(fires(node)) == 1
+        assert row_of(chat_id)["next_run_at"] == due + 3600
+
+    def test_one_given_back_by_its_node_fires_again_at_the_next_look(
+            self, admin, seed, clock):
+        node = link(FakeNode("auth_a/n1", greet=False))
+        chat_id = create_chat(admin)
+        due = time.time() - 5
+        add_row(seed, chat_id, every_seconds=3600, next_run_at=due)
+        asyncio.run(clock.tick())
+        [fire] = fires(node)
+
+        asyncio.run(clock.on_unfired(node, given_back(fire)))
+        assert row_of(chat_id)["next_run_at"] == due        # due again
+        assert asyncio.run(clock.tick()) == 1
+        assert len(fires(node)) == 2
+        # And from when it was due, still: no drift for the trouble.
+        assert row_of(chat_id)["next_run_at"] == due + 3600
+
+    def test_a_one_off_given_back_is_on_again_until_it_runs(
+            self, admin, seed, clock):
+        node = link(FakeNode("auth_a/n1", greet=False))
+        chat_id = create_chat(admin)
+        add_row(seed, chat_id)
+        asyncio.run(clock.tick())
+        assert row_of(chat_id)["enabled"] is False
+        asyncio.run(clock.on_unfired(node, given_back(fires(node)[0])))
+        assert row_of(chat_id)["enabled"] is True
+        assert asyncio.run(clock.tick()) == 1
+        assert row_of(chat_id)["enabled"] is False
+
+    def test_only_the_node_it_went_to_may_give_it_back(
+            self, admin, seed, clock):
+        node = link(FakeNode("auth_a/n1", greet=False))
+        chat_id = create_chat(admin)
+        add_row(seed, chat_id, every_seconds=3600)
+        asyncio.run(clock.tick())
+        following = row_of(chat_id)["next_run_at"]
+        stranger = link(FakeNode("auth_a/stranger", greet=False))
+        asyncio.run(clock.on_unfired(stranger, given_back(fires(node)[0])))
+        assert row_of(chat_id)["next_run_at"] == following
+        assert row_of(chat_id)["runs"] == []
+
+    def test_one_given_back_after_the_row_fired_again_is_written_as_merged(
+            self, admin, seed, clock):
+        from database.stores import ScheduleStore
+
+        node = link(FakeNode("auth_a/n1", greet=False))
+        chat_id = create_chat(admin)
+        add_row(seed, chat_id, every_seconds=3600)
+        asyncio.run(clock.tick())
+        first = fires(node)[0]
+        ScheduleStore().change(chat_id, "sch_1",
+                               {"next_run_at": time.time() - 1})
+        asyncio.run(clock.tick())
+        following = row_of(chat_id)["next_run_at"]
+
+        asyncio.run(clock.on_unfired(node, given_back(first)))
+        row = row_of(chat_id)
+        assert row["next_run_at"] == following               # not put back
+        [line] = row["runs"]
+        assert line["status"] == "merged" and line["woke"] is False
+        assert "later fire" in line["why"]
+
+    def test_one_given_back_after_the_person_changed_the_row_is_written_as_missed(
+            self, admin, seed, clock):
+        from database.stores import ScheduleStore
+
+        node = link(FakeNode("auth_a/n1", greet=False))
+        chat_id = create_chat(admin)
+        add_row(seed, chat_id, every_seconds=3600)
+        asyncio.run(clock.tick())
+        ScheduleStore().change(chat_id, "sch_1", {
+            "every_seconds": 7200, "next_run_at": time.time() + 7200})
+        following = row_of(chat_id)["next_run_at"]
+
+        asyncio.run(clock.on_unfired(node, given_back(fires(node)[0])))
+        row = row_of(chat_id)
+        assert row["next_run_at"] == following
+        assert [line["status"] for line in row["runs"]] == ["missed"]
+
+    def test_one_given_back_for_a_row_deleted_meanwhile_is_owed_nothing(
+            self, admin, seed, clock):
+        from database.stores import ScheduleStore
+
+        node = link(FakeNode("auth_a/n1", greet=False))
+        chat_id = create_chat(admin)
+        add_row(seed, chat_id, every_seconds=3600)
+        asyncio.run(clock.tick())
+        ScheduleStore().remove(chat_id, "sch_1")
+        asyncio.run(clock.on_unfired(node, given_back(fires(node)[0])))
+        assert ScheduleStore().rows(chat_id) == []
+
+    def test_which_node_a_fire_went_to_is_not_shown_to_the_person(
+            self, admin, seed, clock):
+        from conftest import app_call
+
+        link(FakeNode("auth_a/n1", greet=False))
+        chat_id = create_chat(admin)
+        add_row(seed, chat_id, every_seconds=3600)
+        asyncio.run(clock.tick())
+        assert row_of(chat_id)["fired_to"] == "auth_a/n1"
+        listed = app_call(admin, "AI:Activity:List", {})
+        assert listed.status_code == 200, listed.text
+        [shown] = [s for s in listed.json()["data"]["schedules"]
+                   if s["chat_id"] == chat_id]
+        assert "fired_to" not in shown and shown["fired_at"]

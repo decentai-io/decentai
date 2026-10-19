@@ -31,9 +31,6 @@ from .base import AIController
 
 class ScheduleController(AIController):
     MIN_EVERY_SECONDS = 60.0
-    #: What a fire changes on a row. ``enabled`` is not among them: a
-    #: fire can end a row and never switches one back on.
-    CLOCK_FIELDS = ("next_run_at", "last_run_at", "runs")
 
     def load(self, data, user):
         chat, refusal = self._runtime_chat(data, user, "load schedules")
@@ -73,9 +70,12 @@ class ScheduleController(AIController):
         return self._respond(data, {"added": True})
 
     def ran(self, data, user):
-        """What a fire did to a row: its next time, its history, and
-        whether that was its last. ``gone`` when the person deleted the
-        row meanwhile — the clock drops it too."""
+        """What a node's fires did to a row: the lines of its history
+        the row does not have yet, and its last run. Never when the row
+        fires next, nor whether it is on: that is the Data Core's
+        clock's (chat_session/clock.py), which moved the row on as it
+        claimed the fire, and the person's. ``gone`` when the person
+        deleted the row meanwhile — the clock drops it too."""
         chat, refusal = self._runtime_chat(data, user, "record schedule runs")
         if refusal is not None:
             return refusal
@@ -83,20 +83,25 @@ class ScheduleController(AIController):
         if not isinstance(row, dict):
             return self._fail(
                 data, "invalid_request", "row must be a schedule.")
-        fields = {name: row.get(name) for name in self.CLOCK_FIELDS}
-        if row.get("enabled") is False:
-            fields["enabled"] = False
-        kept = ScheduleStore().change(
-            chat["chat_id"], str(row.get("schedule_id") or ""), fields)
         runs = [run for run in (row.get("runs") or []) if isinstance(run, dict)]
-        if kept and runs:
+        added = ScheduleStore().ran(
+            chat["chat_id"], str(row.get("schedule_id") or ""), runs,
+            row.get("last_run_at"))
+        ended = [run for run in added or []
+                 if str(run.get("status") or "") not in self.NOT_RUN]
+        if ended:
             # How the fire ended, for the addresses the person subscribed.
             from server.notifications import Notifier
 
             what = (str(row.get("function") or "") or "A reminder")[:80]
             Notifier().run_ended(chat, f"Schedule: {what}",
-                                 str(runs[-1].get("status") or "") == "error")
-        return self._respond(data, {"gone": not kept})
+                                 str(ended[-1].get("status") or "") == "error")
+        return self._respond(data, {"gone": added is None})
+
+    #: Lines of a row's history that are a fire that never ran — one
+    #: folded into another that waited, or dropped before it began — and
+    #: so no run whose end the person is told of.
+    NOT_RUN = ("merged", "skipped", "missed")
 
     def remove(self, data, user):
         """A row the assistant took off the clock."""

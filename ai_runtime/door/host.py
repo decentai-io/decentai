@@ -759,7 +759,11 @@ class SessionHost:
         """This chat is no longer this process's to serve — another
         node holds it now, or it was erased: its session is abandoned
         where it stands, as a shutdown abandons every one, and nothing
-        more is written for it from here."""
+        more is written for it from here. A schedule's fire still
+        waiting to run for it is given back to the Data Core, to run
+        where the chat is now (chat/clock.py, ``Scheduler.let_go``)."""
+        if self.clock is not None:
+            self.clock.let_go(chat_id)
         session = self.sessions.pop(chat_id, None)
         self._builds.pop(chat_id, None)
         if session is not None:

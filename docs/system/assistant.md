@@ -420,16 +420,32 @@ others is taken alone.
 
 When a row is due is the Data Core's to decide: its clock looks every
 five seconds and hands the fire to the node holding the chat
-([execution nodes](execution-nodes.md)), so a run happens at the first
-look after its time. A period is counted from the fire, so a row comes
-round a period after its last fire, plus at most one look. A row's next
-run is always after the fire it follows. A fire that fails is recorded on the row and the row moves on:
-a one-off whose fire failed is spent, and is not tried again.
+([execution nodes](execution-nodes.md#the-clock)), so a run happens at
+the first look after its time. A period is counted from when the row was
+due, not from when it ran, so an hourly row stays on its hour however
+late each look; a `cron` is on its calendar. A row overdue by many
+periods — the Data Core was down — fires once, and its next run is the
+first on its count after now: never a burst of the runs it missed. A
+row's next run is always after the fire it follows. A fire that fails is
+recorded on the row and the row moves on: a one-off whose fire failed is
+spent, and is not tried again.
+
+A row never runs twice at once. When it comes round while its last run
+is still going — a slow site, a question waiting on the person — the
+new fire **waits**, and runs as soon as the last one ends. One waits at
+most: any more that come meanwhile are folded into the one waiting,
+each written on the row as `merged`, so the person sees the row came
+round and why it did not run again. A waiting fire follows its row and
+its chat: a row deleted takes it with it, a row edited runs as edited, a
+pause or a stop drops it and says so on the row (`skipped`); a chat
+that moves to another node, or a node that stops, gives it back to the
+Data Core unrun, which fires it where the chat is then.
 
 Each fire is remembered on the row (`runs`: when, status, woke, a result
-summary), bounded, for a page to read. Announced to the user. A helper
-cannot schedule: the clock is the chat's, and it is told to say in its
-report what should be.
+summary — or, for a fire that did not run, `merged`, `skipped` or
+`missed` and `why`), bounded, for a page to read. Announced to the user.
+A helper cannot schedule: the clock is the chat's, and it is told to say
+in its report what should be.
 
 ### `sleep`
 

@@ -320,11 +320,13 @@ class TestSchedules:
         assert runtime_call(anon, seed, chat_a, "AI:Schedule:Load",
                             {}).json()["data"]["rows"] == []
 
-    def test_a_fire_writes_its_own_row_and_never_switches_one_back_on(
+    def test_a_fire_writes_its_history_and_never_when_the_row_comes_next(
             self, anon, admin, seed, signing_key):
         """The person paused a row on the page while it was firing. The
         runtime, which had not heard yet, records the run: the history
-        and the next time are kept, and the pause stands."""
+        is kept, and the pause stands. When the row comes next, and
+        whether it is on, are the Data Core's clock's and the person's:
+        a node's copy says neither."""
         chat = make_chat(admin, "paused meanwhile")
         row = {"schedule_id": "sch_1", "chat_id": chat, "mode": "wake",
                "note": "rent", "every_seconds": 86400, "cron": "",
@@ -344,15 +346,46 @@ class TestSchedules:
         kept = runtime_call(anon, seed, chat, "AI:Schedule:Load",
                             {}).json()["data"]["rows"]
         assert kept[0]["enabled"] is False
-        assert (kept[0]["next_run_at"], kept[0]["runs"]) == (86405.0, [run])
+        assert (kept[0]["next_run_at"], kept[0]["last_run_at"],
+                kept[0]["runs"]) == (1.0, 5.0, [run])
         assert kept[1] == other                     # nobody else's row moved
 
-        # A one-shot that ran is ended by its own fire.
+        # Nor does a node's copy switch a row on or off.
         done = runtime_call(anon, seed, chat, "AI:Schedule:Ran", {"row": {
             **other, "enabled": False, "last_run_at": 6.0}})
         assert done.json()["data"] == {"gone": False}
         assert runtime_call(anon, seed, chat, "AI:Schedule:Load",
-                            {}).json()["data"]["rows"][1]["enabled"] is False
+                            {}).json()["data"]["rows"][1]["enabled"] is True
+
+    def test_a_fires_lines_are_added_never_the_history_replaced(
+            self, anon, admin, seed, signing_key):
+        """A node sends its whole copy of a row's history; the Data
+        Core's clock writes lines of its own into it. A copy that
+        arrives late, or lacks the clock's lines, loses nothing, and the
+        last run never moves back."""
+        from database.stores import ScheduleStore
+
+        chat = make_chat(admin, "two hands on the history")
+        row = {"schedule_id": "sch_1", "chat_id": chat, "mode": "wake",
+               "note": "rent", "every_seconds": 86400, "cron": "",
+               "next_run_at": 1.0, "enabled": True, "last_run_at": None,
+               "runs": []}
+        runtime_call(anon, seed, chat, "AI:Schedule:Add", {"row": row})
+        first = {"at": 5.0, "status": "woke", "woke": True}
+        merged = {"at": 6.0, "status": "merged", "woke": False, "why": "w"}
+        second = {"at": 7.0, "status": "woke", "woke": True}
+        runtime_call(anon, seed, chat, "AI:Schedule:Ran", {"row": {
+            **row, "last_run_at": 7.0, "runs": [first, merged, second]}})
+        ScheduleStore().record(chat, "sch_1", {
+            "at": 8.0, "status": "missed", "woke": False, "why": "moved"})
+        # An older copy, arriving last.
+        late = runtime_call(anon, seed, chat, "AI:Schedule:Ran", {"row": {
+            **row, "last_run_at": 5.0, "runs": [first]}})
+        assert late.json()["data"] == {"gone": False}
+        kept = ScheduleStore().rows(chat)[0]
+        assert [r["status"] for r in kept["runs"]] == [
+            "woke", "merged", "woke", "missed"]
+        assert kept["last_run_at"] == 7.0
 
     def test_a_row_the_person_deleted_is_gone_and_is_not_written_back(
             self, anon, admin, seed, signing_key):

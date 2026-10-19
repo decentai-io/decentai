@@ -25,9 +25,20 @@ and hands the fire over the node link (``fire_now``,
 docs/system/execution-nodes.md#the-clock), so a row fires once however
 many nodes hold a copy of it; the node's own clock never ticks there.
 Fires that error are logged and never kill the clock; an overdue
-schedule fires ONCE and advances from now — never a backlog replay.
+schedule fires ONCE and moves on to its first time after now, counted
+from when it was due — never a backlog replay, and never a drift.
 Each fire is a task of its own: one that takes its time — a slow site,
 a question waiting on the person — holds up no other row.
+
+One row never fires twice at once. A fire handed over while the row's
+last is still running **waits** for it, and runs as soon as it ends;
+one waits at most, and any more that come while one waits are folded
+into it, each a ``merged`` line of the row's history, so the person
+sees that the row came round and did not run again. A waiting fire
+follows its row: a pause or a stop drops it (``skipped``, on the row), a
+delete drops it, an edit is what it runs. One whose chat leaves this
+node — moved, its lease lost, the node stopping — is given back to the
+Data Core unrun (``let_go``), which fires it where the chat is then.
 """
 
 from __future__ import annotations
@@ -41,7 +52,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional
 
-from contracts.cron import Cron, CronError, zone
+from contracts.cron import Cron, CronError, next_on_cadence, zone
 
 
 class Schedule:
@@ -138,10 +149,20 @@ class Schedule:
         self.runs = (self.runs + [record])[-self.RUNS_KEPT:]
         return record
 
-    def advance(self, now: float) -> None:
-        """The next run after a fire — from NOW, never from the mark:
-        an overdue cadence fires once and a cron looks forward on its
-        calendar. A one-shot is done."""
+    def record_unrun(self, at: float, status: str, why: str) -> Dict[str, Any]:
+        """A fire of this row that did not run, remembered as a run is:
+        ``merged`` into the one already waiting, or ``skipped`` — the
+        row paused or the chat stopped while it waited — and why."""
+        record = {"at": at, "status": status, "woke": False, "why": why}
+        self.runs = (self.runs + [record])[-self.RUNS_KEPT:]
+        return record
+
+    def advance(self, now: float, due: Optional[float] = None) -> None:
+        """The next run after a fire, run now, of the time it was due
+        (``due``; ``next_run_at`` when not said): a cadence counts from
+        when it was due, to its first time after now — no drift by the
+        clock's look, and an overdue cadence fires once; a cron looks
+        forward on its calendar from now. A one-shot is done."""
         self.last_run_at = now
         if self.cron:
             try:
@@ -150,7 +171,12 @@ class Schedule:
             except CronError:
                 self.enabled = False
         elif self.every_seconds:
-            self.next_run_at = now + float(self.every_seconds)
+            try:
+                self.next_run_at = next_on_cadence(
+                    self.next_run_at if due is None else due,
+                    float(self.every_seconds), now)
+            except (TypeError, ValueError):
+                self.enabled = False
         else:
             self.enabled = False
         # Held here as well as where it is computed: a row whose next
@@ -207,6 +233,17 @@ class Scheduler:
         #: schedule_id -> the chat that fire is for: the row may be
         #: unscheduled while it fires, and the fire is still the chat's.
         self._firing_for: Dict[str, str] = {}
+        #: schedule_id -> the one fire the Data Core handed over while
+        #: that row's last was still firing: the row as it was claimed,
+        #: run as soon as the one firing ends (``fire_now``).
+        self._waiting: Dict[str, Dict[str, Any]] = {}
+        #: Writes of one row's history, held in the order they were
+        #: made: a line written while the row fires must not be undone
+        #: by an older copy arriving after it.
+        self._writing: Dict[str, asyncio.Lock] = {}
+        #: Writes under way that nothing awaits — a line for a fire that
+        #: did not run.
+        self._side: set = set()
         self.logger = logging.getLogger(self.__class__.__name__)
 
     # ------------------------------------------------------------------
@@ -222,28 +259,133 @@ class Scheduler:
         return self
 
     def fire_now(self, row: Dict[str, Any]) -> Optional[asyncio.Task]:
-        """A fire the Data Core decided on: the row as it was found due,
+        """A fire the Data Core decided on: the row as it was claimed,
         run now as any fire is — by the chat's contract, with the same
-        limits — and what it did written back. The row's word is the
-        Data Core's: it replaces this clock's copy. A row already firing
-        here is not fired twice. Returns the fire's task."""
+        limits — and what it did written back. When the row fires next
+        is the Data Core's word, and its claim already said it: this
+        clock takes the row's next time from it and never counts one of
+        its own. Returns the fire's task, or None for a row of no chat.
+
+        A row already firing here is not fired twice at once: the fire
+        waits for the one running, and runs when it ends. One waits at
+        most; a fire that comes while one waits is folded into it — the
+        waiting fire is now this one, as the Data Core last claimed it —
+        and said on the row's history as ``merged``. Returns the task
+        of the fire running, which the waiting one follows."""
         schedule = Schedule.from_dict(row)
-        if not schedule.chat_id or schedule.schedule_id in self._firing:
+        if not schedule.chat_id:
             return None
+        if schedule.schedule_id in self._firing:
+            return self._hold(row)
+        return self._start(schedule)
+
+    def _start(self, schedule: Schedule) -> asyncio.Task:
         self.schedules = [s for s in self.schedules
                           if s.schedule_id != schedule.schedule_id]
         self.schedules.append(schedule)
         task = asyncio.get_running_loop().create_task(
-            self._fire(schedule, self.clock()))
+            self._fire(schedule, self.clock(), handed=True))
         self._firing[schedule.schedule_id] = task
         self._firing_for[schedule.schedule_id] = schedule.chat_id
         return task
 
+    def _hold(self, row: Dict[str, Any]) -> asyncio.Task:
+        """A fire for a row that is firing: kept, to run when it ends."""
+        schedule_id = str(row.get("schedule_id") or "")
+        if schedule_id in self._waiting:
+            current = self.find(schedule_id)
+            if current is not None:
+                current.record_unrun(
+                    self.clock(), "merged",
+                    "it came round while the last fire was still running, "
+                    "with one already waiting; that one runs for both")
+                self._write_aside(current)
+            self.logger.info(
+                f"Schedule {schedule_id} came round while it was still "
+                f"running and one fire already waited: merged into it")
+        self._waiting[schedule_id] = dict(row)
+        return self._firing[schedule_id]
+
+    def _run_waiting(self, schedule_id: str) -> None:
+        """The row's fire is over: the one that waited for it, if any,
+        runs now — as its row now stands."""
+        row = self._waiting.pop(schedule_id, None)
+        if row is None:
+            return
+        current = self.find(schedule_id)
+        if current is None:
+            # Deleted while it waited. (A chat let go hands its waiting
+            # fires back as it goes: ``let_go``.)
+            return
+        serves = getattr(self.host, "serves", None)
+        if serves is not None and not serves(current.chat_id):
+            # The node may no longer act for the chat — the link is down,
+            # or the chat was let go without a word: not run here.
+            self._waiting[schedule_id] = row
+            self.let_go(current.chat_id)
+            return
+        schedule = Schedule.from_dict(row)
+        if not schedule.enabled and (schedule.cron or schedule.every_seconds):
+            current.record_unrun(
+                self.clock(), "skipped",
+                "the schedule was paused before it ran")
+            self._write_aside(current)
+            return
+        # What the row is for and when it comes next are the newest word
+        # (the claim, or the person's edit since); what it did is ours.
+        schedule.runs = list(current.runs)
+        schedule.last_run_at = current.last_run_at
+        self._start(schedule)
+
+    def let_go(self, chat_id: str) -> int:
+        """This chat is no longer this node's — moved, its lease lost, or
+        erased: the fires waiting for one of its rows must not run here.
+        Each is given back to the Data Core unrun (the host's
+        ``unfired``), which fires it again where the chat is now. A fire
+        running is left to end as it would. Returns how many."""
+        waiting = [self._waiting.pop(schedule_id)
+                   for schedule_id, row in list(self._waiting.items())
+                   if str(row.get("chat_id") or "") == chat_id]
+        for row in waiting:
+            task = asyncio.get_running_loop().create_task(self._give_back(row))
+            self._side.add(task)
+            task.add_done_callback(self._side.discard)
+        return len(waiting)
+
+    async def give_back_waiting(self) -> int:
+        """The node is stopping: every fire still waiting is given back
+        unrun, while the link can still say so. Returns how many."""
+        waiting, self._waiting = list(self._waiting.values()), {}
+        given = await asyncio.gather(
+            *(self._give_back(row) for row in waiting), return_exceptions=True)
+        return sum(1 for ok in given if ok is True)
+
+    async def _give_back(self, row: Dict[str, Any]) -> bool:
+        give = getattr(self.host, "unfired", None)
+        schedule_id = str(row.get("schedule_id") or "")
+        chat_id = str(row.get("chat_id") or "")
+        try:
+            if give is not None and await give(chat_id, row):
+                self.logger.info(
+                    f"Schedule {schedule_id} of chat {chat_id}: a fire that "
+                    f"waited here was given back unrun")
+                return True
+        except Exception as exc:
+            self.logger.warning(f"Fire of {schedule_id} not given back: {exc}")
+        self.logger.warning(
+            f"Schedule {schedule_id} of chat {chat_id}: a fire that waited "
+            f"here could not be run nor given back; it is lost")
+        return False
+
     async def stop(self) -> None:
         """The process is ending: the loop and every fire under way are
         cancelled where they stand. Nothing is written — a fire cut
-        short here is one the next process finds still due."""
-        tasks = list(self._firing.values())
+        short here is not run again by itself. A fire still waiting was
+        never begun, and is given back (``give_back_waiting``) by the
+        link before it closes; one left here is said to be lost."""
+        if self._waiting:
+            await self.give_back_waiting()
+        tasks = list(self._firing.values()) + list(self._side)
         if self._task is not None:
             tasks.append(self._task)
             self._task = None
@@ -256,7 +398,20 @@ class Scheduler:
     def cancel_chat(self, chat_id: str) -> int:
         """End the fires of one chat that are under way — the kill
         switch reaches what the clock started too. Each is recorded as
-        stopped and its row moves on. Returns how many were ended."""
+        stopped and its row moves on; a fire that was waiting for one of
+        them never runs, and is recorded as skipped. Returns how many
+        were ended."""
+        for schedule_id, row in list(self._waiting.items()):
+            if str(row.get("chat_id") or "") != chat_id:
+                continue
+            del self._waiting[schedule_id]
+            current = self.find(schedule_id)
+            if current is not None:
+                # Written with the stopped fire's own line, which the
+                # cancelled fire writes as it ends.
+                current.record_unrun(
+                    self.clock(), "skipped",
+                    "the chat was stopped before it ran")
         ended = 0
         for schedule_id, task in list(self._firing.items()):
             if self._firing_for.get(schedule_id) == chat_id:
@@ -291,7 +446,12 @@ class Scheduler:
     def forget_chat(self, chat_id: str) -> None:
         """A chat's rows, off this clock and untouched in the store:
         the chat was deleted, or this process may no longer act for it.
-        A chat that dials again brings them back (``replace_for``)."""
+        A fire waiting for one of them is given back (``let_go``). A
+        chat that dials again brings them back (``replace_for``)."""
+        self._unload(chat_id)
+        self.let_go(chat_id)
+
+    def _unload(self, chat_id: str) -> None:
         self._owed -= {s.schedule_id for s in self.schedules
                        if s.chat_id == chat_id}
         self.schedules = [s for s in self.schedules if s.chat_id != chat_id]
@@ -312,11 +472,22 @@ class Scheduler:
         held = {s.schedule_id: s for s in self.schedules
                 if s.chat_id == chat_id}
         owed = set(self._owed)
-        self.forget_chat(chat_id)
-        fresh = [Schedule.from_dict(row) for row in rows
-                 if str(row.get("chat_id") or "") == chat_id]
+        self._unload(chat_id)
+        rows = [row for row in rows
+                if str(row.get("chat_id") or "") == chat_id]
+        self._follow_waiting(chat_id, rows)
+        fresh = [Schedule.from_dict(row) for row in rows]
         for schedule in fresh:
             before = held.get(schedule.schedule_id)
+            if before is not None:
+                # Lines this clock wrote that the store did not have yet
+                # when it was read — a fire folded into a waiting one —
+                # are kept, as the store keeps them (``Ran`` adds lines).
+                known = {(r.get("at"), r.get("status")) for r in schedule.runs}
+                schedule.runs = sorted(
+                    schedule.runs + [r for r in before.runs
+                                     if (r.get("at"), r.get("status")) not in known],
+                    key=lambda r: float(r.get("at") or 0))[-Schedule.RUNS_KEPT:]
             if before is None or (schedule.last_run_at or 0) >= (
                     before.last_run_at or 0):
                 continue
@@ -325,7 +496,6 @@ class Scheduler:
             # the write is still owed). What the person set is taken;
             # what the fire did is kept, or the row would fire again.
             schedule.last_run_at = before.last_run_at
-            schedule.runs = list(before.runs)
             if schedule.next_run_at <= before.last_run_at:
                 schedule.next_run_at = before.next_run_at
                 if not before.enabled and not (
@@ -350,8 +520,8 @@ class Scheduler:
     async def tick(self, now: Optional[float] = None,
                    wait: bool = True) -> None:
         """One pass over the rows: fire what is due, each as its own
-        task, and advance from NOW — an overdue schedule fires once,
-        never a backlog. ``wait`` holds until those fires are over,
+        task, and move each on past now (``Schedule.advance``) — an
+        overdue schedule fires once, never a backlog. ``wait`` holds until those fires are over,
         which is what a caller that wants to see their effect asks
         for; the clock's own loop does not."""
         now = self.clock() if now is None else now
@@ -372,19 +542,25 @@ class Scheduler:
         if wait and started:
             await asyncio.gather(*started, return_exceptions=True)
 
-    async def _fire(self, schedule: Schedule, now: float) -> None:
+    async def _fire(self, schedule: Schedule, now: float,
+                    handed: bool = False) -> None:
         """One row's fire, with its chat held on this host for as long
         as it runs: a fire runs beside the chat's session, and the chat
-        must not be let go — its lease with it — while it does."""
+        must not be let go — its lease with it — while it does.
+        ``handed``: the Data Core's fire, whose claim already moved the
+        row on."""
         hold = getattr(self.host, "holding", None)
         holding = hold(schedule.chat_id) if hold is not None \
             else contextlib.nullcontext()
         with holding:
-            await self._fire_row(schedule, now)
+            await self._fire_row(schedule, now, handed)
 
-    async def _fire_row(self, schedule: Schedule, now: float) -> None:
+    async def _fire_row(self, schedule: Schedule, now: float,
+                        handed: bool = False) -> None:
         """One row's fire, from start to its line in the store."""
         began = time.monotonic()
+        due = schedule.next_run_at
+        mine = False
         try:
             try:
                 outcome = await self.fire(schedule)
@@ -424,7 +600,10 @@ class Scheduler:
                     self.logger.warning(
                         f"Sleep {current.schedule_id} not removed: {exc}")
             current.record_run(now, outcome)
-            current.advance(now)
+            if handed:
+                current.last_run_at = now
+            else:
+                current.advance(now, due)
             # Firing is the side effect and writing is what keeps it
             # from repeating after a restart. A stop that lands while
             # it is written may have cut the writing short: the row is
@@ -437,8 +616,12 @@ class Scheduler:
                     raise  # the clock itself is stopping
                 self._owed.add(current.schedule_id)
         finally:
-            self._firing.pop(schedule.schedule_id, None)
-            self._firing_for.pop(schedule.schedule_id, None)
+            mine = self._firing.get(schedule.schedule_id) is asyncio.current_task()
+            if mine:
+                self._firing.pop(schedule.schedule_id, None)
+                self._firing_for.pop(schedule.schedule_id, None)
+                # The fire that waited for this one runs now.
+                self._run_waiting(schedule.schedule_id)
 
     # ------------------------------------------------------------------
     # What a fire does
@@ -498,8 +681,42 @@ class Scheduler:
             outcome["woke"] = True
         return outcome
 
+    def _write_aside(self, schedule: Schedule) -> None:
+        """A line for a fire that did not run, written now and not
+        waited for: a fire still running may take hours, and the person
+        sees the row came round meanwhile."""
+        task = asyncio.get_running_loop().create_task(self._write(schedule))
+        self._side.add(task)
+        task.add_done_callback(self._side.discard)
+
+    def _follow_waiting(self, chat_id: str, rows: List[Dict[str, Any]]) -> None:
+        """The store's word on rows a fire waits for: a row deleted
+        takes its waiting fire with it, and one changed is run as it is
+        now — under the claim the fire was handed with."""
+        rows_by_id = {str(r.get("schedule_id") or ""): r for r in rows}
+        for schedule_id, waiting in list(self._waiting.items()):
+            if str(waiting.get("chat_id") or "") != chat_id:
+                continue
+            row = rows_by_id.get(schedule_id)
+            if row is None:
+                del self._waiting[schedule_id]
+                continue
+            claim = {name: waiting[name] for name in self.CLAIM
+                     if name in waiting}
+            self._waiting[schedule_id] = {**row, **claim}
+
+    #: What the Data Core's claim wrote on the row a fire was handed
+    #: with: which fire it is, and what it is given back by.
+    CLAIM = ("fired_at", "due_at", "fired_to")
+
     async def _write(self, schedule: Schedule) -> None:
-        """What a fire did to one row, to the store."""
+        """What a fire did to one row, to the store — one write of a row
+        at a time, each of the row as it is when it goes."""
+        lock = self._writing.setdefault(schedule.schedule_id, asyncio.Lock())
+        async with lock:
+            await self._write_now(schedule)
+
+    async def _write_now(self, schedule: Schedule) -> None:
         try:
             kept = await self.services.schedule_ran(schedule.to_dict())
         except Exception as exc:

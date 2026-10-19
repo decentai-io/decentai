@@ -36,7 +36,8 @@ the chat go at once (``keep_to_own``).
 
 **The clock** is the Data Core's (chat_session/clock.py): it decides
 when a schedule is due, puts the chat on a node (``hold``) and sends
-the node a ``fire`` (``fire``). No chat is kept on a node for its clock.
+the node a ``fire`` (``fire``); a node gives back one it never ran
+(``unfired``). No chat is kept on a node for its clock.
 
 A person who stopped everything of theirs (halt.py) is attached
 nowhere: no key is minted and no frame goes out until they resume. The
@@ -134,6 +135,8 @@ class RuntimeClientManager:
 
         #: the Data Core's clock (chat_session/clock.py)
         self.clock = ScheduleClock(self)
+        # A fire a node was handed and gives back unrun.
+        links.on_frame["unfired"] = self.clock.on_unfired
 
     # ------------------------------------------------------------------
     async def _binding(self, chat_id: str, user: Dict[str, Any]) -> ChatBinding:
@@ -255,15 +258,26 @@ class RuntimeClientManager:
         binding = await self._binding(str(chat_id), user)
         return await self._attach(binding)
 
-    async def fire(self, chat_id, user, row: Dict[str, Any]) -> bool:
-        """A schedule's fire, to the node holding the chat: the Data
-        Core's own voice over the link, never a frame a person could
-        send. The node runs it and writes back what it did."""
+    def node_of(self, chat_id) -> Optional[str]:
+        """The node holding a chat now, or None."""
         binding = self.chats.get(str(chat_id))
         if binding is None or not binding.attached:
-            return False
-        return await binding.link.send(
-            {"type": "fire", "chat_id": binding.chat_id, "schedule": dict(row)})
+            return None
+        return binding.link.key
+
+    async def fire(self, chat_id, user, row: Dict[str, Any]) -> Optional[str]:
+        """A schedule's fire, to the node holding the chat: the Data
+        Core's own voice over the link, never a frame a person could
+        send. The node runs it and writes back what it did. Returns the
+        node it went to, or None when it went nowhere."""
+        binding = self.chats.get(str(chat_id))
+        if binding is None or not binding.attached:
+            return None
+        link = binding.link
+        if not await link.send(
+                {"type": "fire", "chat_id": binding.chat_id, "schedule": dict(row)}):
+            return None
+        return link.key
 
     async def tell(self, chat_id, user, frame) -> bool:
         """A frame for a chat a node holds now, and nothing if none

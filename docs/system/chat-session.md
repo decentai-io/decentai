@@ -103,7 +103,8 @@ Across every chat of the person's, four things — `schedules`,
 `approvals` waiting, `jobs` running, and whether their work is `stopped`
 — of which the first is every schedule of the person's chats (a sleep is
 not among them) with `chat_title`, `runs` (each `at`, `status`, `woke`,
-`took_ms`, `error`/`result`) and `upcoming` (the next fires, computed
+`took_ms`, `error`/`result`; a fire that did not run is `merged`,
+`skipped` or `missed`, with `why`) and `upcoming` (the next fires, computed
 here from the row's cron in its zone or its period); the runtime's clock
 refuses a twin — the same function/note/inputs at the same cron/period
 in one chat — naming the row that already is.
@@ -192,12 +193,14 @@ longer pins is answered `recorded: false`.
 `AI:Schedule:Load` / `Add` / `Ran` / `Remove`
 
 `ai_schedules`: the clock's rows, read per chat and written one row at a
-time — a row the assistant set, what a fire did to one (its next time
-and its history; a fire can end a row and never switches one back on), a
-row it took off. When a row is due is the Data Core's to decide: its
-clock claims the row and hands the fire to the node holding the chat
+time — a row the assistant set, what a fire did to one (the lines of its
+history the row does not have yet, and its last run, which never moves
+back), a row it took off. When a row is due is the Data Core's to
+decide: its clock claims the row, moving it on, and hands the fire to
+the node holding the chat
 ([execution nodes](execution-nodes.md#the-clock)); the node runs it and
-writes back with `Ran`.
+writes back with `Ran`, which never moves a row's next time nor switches
+one on or off.
 
 A chat holds at most 50; one-shots that already ran make room. `Ran`
 answers `gone` for a row the person deleted meanwhile, and the clock
@@ -224,7 +227,9 @@ reads them again when it is told (`schedules_changed`) and every time
 the chat is attached or its credential is renewed, so a change whose
 word never arrived is caught up with then; what the person set is taken, and what the clock's
 last fire did to a row is kept, so a row read back from before that
-fire does not fire again.
+fire does not fire again. A fire waiting behind its row's last follows
+the copy read again: it goes with a row deleted, and runs a row edited
+as it is now.
 
 Three things follow from the table:
 
@@ -237,9 +242,10 @@ Three things follow from the table:
 - **One writer per record, with one exception.** The runtime writes
   state, events, plan and approvals-as-opened; the person writes
   decisions and messages. Schedule rows have three hands: the Data
-  Core's clock claims a row as it comes due, the node writes what the
-  fire did, and the person's doors change one row — each one row, one
-  write, so none undoes another.
+  Core's clock claims a row as it comes due (and puts back a fire that
+  did not run), the node adds what the fire did to the row's history,
+  and the person's doors change one row — each one row, one write, so
+  none undoes another.
 
 ## Child threads
 

@@ -8,18 +8,31 @@ come, and for each:
    placed now (chat_session/relay.py): a schedule fires even when no
    node holds its chat at the moment it is due;
 2. the row is **claimed**: its next time set (or, for a one-off, the row
-   ended) in one write that holds only if the row still says the time
+   ended), with when it was due, when it was claimed and the node it
+   goes to, in one write that holds only if the row still says the time
    it was found due at — so it fires once, however many look;
 3. a ``fire`` goes to the node holding the chat, over its link, with the
-   row as it was found due. The node runs it as it always has
+   row as it was claimed. The node runs it as it always has
    (ai_runtime/chat/clock.py): a schedulable function with no model, or
    a note that wakes the assistant; levels 0 and 1 only, no approvals;
-   and writes back what the run did.
+   and writes back what the run did. A fire that comes while the row's
+   last is still running waits on the node for it, one at a time.
 
-A fire is never repeated by itself: one claimed whose node goes before
-it ran is a fire lost, said in the log, as a call that was running when
-its node went is reported unknown and never run again. An overdue row
-— a Data Core that was down — fires once and moves on from now.
+When a row fires next is the clock's alone: a period is counted from
+when the row was due, not from when the clock looked, so it does not
+drift by the look; an overdue row — a Data Core that was down — fires
+once and moves on to its first time after now (``next_on_cadence``,
+contracts/cron.py). A cron is on its calendar either way.
+
+A fire that did not run is given back, never dropped unsaid: one that
+reached no node, and one a node gives back unrun (``unfired``) because
+the chat left it while the fire waited, is put back on the row — due
+again at the time it was due, fired at the next look wherever the chat
+is then. One whose row was claimed again or changed meanwhile is not
+put back; it is written into the row's history as one that did not
+run. A fire is never repeated by itself once a node began it: one whose
+node went while it ran is lost, said in the log, as a call that was
+running when its node went is reported unknown and never run again.
 
 A person who stopped everything of theirs, or may no longer act, is not
 fired for: their rows wait, and fire once when they may again.
@@ -31,7 +44,7 @@ import asyncio
 import time
 from typing import Any, Dict, Optional
 
-from contracts.cron import Cron, CronError, zone
+from contracts.cron import Cron, CronError, next_on_cadence, zone
 from database.stores import ScheduleStore, UserStore
 from server.custom_logging import CustomLoggerFactory
 
@@ -67,10 +80,14 @@ class ScheduleClock:
                 self.logger.warning(f"Clock tick failed: {exc}")
 
     # ------------------------------------------------------------------
-    def next_after(self, row: Dict[str, Any], now: float) -> Optional[float]:
-        """When a row fires next after a fire now — from now, never from
-        its mark, so an overdue row fires once — or None when it is done:
-        a one-off, or a calendar that will not read."""
+    def next_after(self, row: Dict[str, Any], now: float,
+                   due: Optional[float] = None) -> Optional[float]:
+        """When a row fires next after a fire now that was due at ``due``
+        (its ``next_run_at`` when not said) — or None when it is done: a
+        one-off, or a calendar that will not read. A period is counted
+        from when it was due, to its first time after now: no drift by
+        the clock's look, and an overdue row fires once. A cron looks
+        forward on its calendar from now."""
         found: Optional[float]
         if row.get("cron"):
             try:
@@ -80,7 +97,9 @@ class ScheduleClock:
                 return None
         elif row.get("every_seconds"):
             try:
-                found = now + float(row["every_seconds"])
+                found = next_on_cadence(
+                    float(row.get("next_run_at") or 0) if due is None else due,
+                    float(row["every_seconds"]), now)
             except (TypeError, ValueError):
                 return None
         else:
@@ -88,6 +107,16 @@ class ScheduleClock:
         if found <= now:
             found = now + self.SOONEST_AGAIN_SECONDS
         return found
+
+    def claimed(self, row: Dict[str, Any], due: float, now: float,
+                node: str) -> Dict[str, Any]:
+        """What claiming a row due at ``due`` writes on it, now, for the
+        node ``node``: its next time or its end, and which fire this is
+        — what a node gives it back by."""
+        following = self.next_after(row, now, due)
+        return {"fired_at": now, "due_at": due, "fired_to": node,
+                **({"next_run_at": following} if following is not None
+                   else {"enabled": False})}
 
     async def tick(self, now: Optional[float] = None) -> int:
         """One look at every row. Returns how many fires went out."""
@@ -110,18 +139,86 @@ class ScheduleClock:
                 # No node may take the chat now: the row stays due, and
                 # fires once one may.
                 continue
-            following = self.next_after(row, now)
-            claimed = store.claim(
-                chat_id, schedule_id, row.get("next_run_at"),
-                {"fired_at": now, **({"next_run_at": following}
-                                     if following is not None
-                                     else {"enabled": False})})
-            if not claimed:
+            seen = row.get("next_run_at")
+            fields = self.claimed(row, float(seen or 0), now,
+                                  self.relay.node_of(chat_id) or "")
+            if not store.claim(chat_id, schedule_id, seen, fields):
                 continue
-            if await self.relay.fire(chat_id, owner, row):
+            went = await self.relay.fire(chat_id, owner, {**row, **fields})
+            if went:
                 fired += 1
-            else:
+                if went != fields["fired_to"]:
+                    # The chat moved between the claim and the frame:
+                    # the fire is the node's it reached to give back.
+                    store.change_if(chat_id, schedule_id,
+                                    {"fired_at": now}, {"fired_to": went})
+            elif not self.put_back(chat_id, schedule_id, now):
                 self.logger.warning(
                     f"Schedule {schedule_id} of chat {chat_id} was due and its "
-                    f"fire did not reach a node: it is not run again by itself")
+                    f"fire reached no node, and could not be put back")
         return fired
+
+    # ------------------------------------------------------------------
+    # A fire given back
+    # ------------------------------------------------------------------
+
+    async def on_unfired(self, link, frame: Dict[str, Any]) -> None:
+        """A node gives back a fire it was handed and never ran: the
+        chat left it while the fire waited behind the row's last
+        (ai_runtime/chat/clock.py, ``Scheduler.let_go``). Heard only
+        from the node the fire went to."""
+        chat_id = str(frame.get("chat_id") or "")
+        schedule_id = str(frame.get("schedule_id") or "")
+        fired_at = frame.get("fired_at")
+        if not chat_id or not schedule_id or not isinstance(
+                fired_at, (int, float)):
+            return
+        row = self._row(chat_id, schedule_id)
+        if row is None:
+            return  # deleted meanwhile: nothing is owed
+        if row.get("fired_at") == fired_at and row.get("fired_to") != link.key:
+            self.logger.warning(
+                f"Node {link.key} gave back a fire of schedule {schedule_id} "
+                f"it was not handed; not heard")
+            return
+        if not self.put_back(chat_id, schedule_id, float(fired_at), row):
+            self.logger.info(
+                f"Schedule {schedule_id} of chat {chat_id}: a fire given back "
+                f"unrun was recorded as not run")
+
+    def put_back(self, chat_id: str, schedule_id: str, fired_at: float,
+                 row: Optional[Dict[str, Any]] = None) -> bool:
+        """A claimed fire that did not run, put back: the row due again
+        at the time it was due, so the next look fires it wherever its
+        chat is then. Only while the row still says what that claim
+        wrote; otherwise the fire is a line in the row's history —
+        ``merged`` into a later fire of the row, or ``missed`` — and
+        False. False too for a row that is gone."""
+        store = ScheduleStore()
+        row = row if row is not None else self._row(chat_id, schedule_id)
+        if row is None:
+            return False
+        due = row.get("due_at")
+        if row.get("fired_at") == fired_at and isinstance(due, (int, float)):
+            claimed = self.claimed(row, float(due), fired_at,
+                                   str(row.get("fired_to") or ""))
+            back = {"next_run_at": due}
+            if claimed.get("enabled") is False:
+                back["enabled"] = True       # a one-off, ended by its claim
+            if store.change_if(chat_id, schedule_id, claimed, back):
+                return True
+        later = float(row.get("fired_at") or 0) > fired_at
+        store.record(chat_id, schedule_id, {
+            "at": time.time(), "status": "merged" if later else "missed",
+            "woke": False,
+            "why": ("its chat left the node before it ran; a later fire of "
+                    "the row ran in its place" if later else
+                    "its chat left the node before it ran, and the row was "
+                    "changed since"),
+        })
+        return False
+
+    @staticmethod
+    def _row(chat_id: str, schedule_id: str) -> Optional[Dict[str, Any]]:
+        return next((r for r in ScheduleStore().rows(chat_id)
+                     if str(r.get("schedule_id") or "") == schedule_id), None)

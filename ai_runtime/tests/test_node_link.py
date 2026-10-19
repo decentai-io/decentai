@@ -372,9 +372,13 @@ class TestTheClockOverTheLink:
     (docs/system/execution-nodes.md#the-clock)."""
 
     def row(self, **changes):
+        """The row as the Data Core's claim hands it over: when it was
+        due, which fire this is, and its next time already set."""
+        now = time.time()
         return {"schedule_id": "sch_1", "chat_id": "chat_1", "mode": "wake",
                 "note": "standup", "every_seconds": 3600, "cron": "",
-                "timezone": "", "next_run_at": time.time() - 1,
+                "timezone": "", "next_run_at": now + 3599,
+                "due_at": now - 1, "fired_at": now, "fired_to": "auth_1/node-a",
                 "enabled": True, "last_run_at": None, "runs": [], **changes}
 
     def test_a_fire_wakes_the_chat_and_its_run_is_written_back(self):
@@ -422,28 +426,82 @@ class TestTheClockOverTheLink:
         assert run(scenario()) is False
         assert host.sessions == {}
 
-    def test_a_row_already_firing_is_not_fired_twice(self):
+    def test_a_row_already_firing_is_not_fired_twice_at_once(self):
+        """The second fire waits for the first, and runs after it."""
         from ai_runtime.chat.clock import Scheduler
 
         host, services = build([action(action="finish")])
         clock = Scheduler(services, host, ticks=False)
+        services.schedules.rows = [self.row()]
+        running = []
 
         async def scenario():
             gate = asyncio.Event()
 
             async def slow(schedule):
+                running.append(len(clock._firing))
                 await gate.wait()
                 return {"status": "woke"}
 
             clock.fire = slow
             first = clock.fire_now(self.row())
-            second = clock.fire_now(self.row())
+            second = clock.fire_now(self.row(fired_at=time.time() + 1))
+            await asyncio.sleep(0.05)
+            ran_at_once = len(running)
             gate.set()
             await first
-            return first, second
+            while clock._firing:
+                await asyncio.sleep(0.01)
+            return first, second, ran_at_once
 
-        first, second = run(scenario())
-        assert first is not None and second is None
+        first, second, ran_at_once = run(scenario())
+        assert first is not None and second is first
+        assert ran_at_once == 1 and running == [1, 1]
+
+    def test_a_chat_detached_while_a_fire_waits_gives_it_back(self):
+        """The chat moved to another node: the fire waiting behind the
+        row's last is never run here, and the Data Core hears it back
+        (``unfired``), with the claim it was handed."""
+        from ai_runtime.chat.clock import Scheduler
+
+        host, services = build([action(action="finish")])
+        clock = host.clock = Scheduler(services, host, ticks=False)
+        gate = asyncio.Event()
+        fired = []
+
+        async def slow(schedule):
+            fired.append(schedule.schedule_id)
+            await gate.wait()
+            return {"status": "woke"}
+
+        clock.fire = slow
+        waiting = self.row(fired_at=1234.5)
+
+        async def scenario():
+            data_core, link = await TestLeasesOnTheNode().linked(host)
+            await data_core.say({"type": "attach", "chat_id": "chat_1",
+                                 "lease": 1, "credential": "k",
+                                 "watched": False})
+            await data_core.until(lambda: data_core.events("chat_1", "hello"))
+            await data_core.say({"type": "fire", "chat_id": "chat_1",
+                                 "schedule": self.row()})
+            await data_core.until(lambda: clock._firing)
+            await data_core.say({"type": "fire", "chat_id": "chat_1",
+                                 "schedule": waiting})
+            await data_core.until(lambda: clock._waiting)
+            await data_core.say({"type": "detach", "chat_id": "chat_1"})
+            await data_core.until(lambda: any(
+                h.get("type") == "unfired" for h in data_core.heard))
+            gate.set()
+            await asyncio.sleep(0.1)
+            await link.stop()
+            await data_core.stop()
+            return [h for h in data_core.heard if h.get("type") == "unfired"]
+
+        [given] = run(scenario())
+        assert given == {"type": "unfired", "chat_id": "chat_1",
+                         "schedule_id": "sch_1", "fired_at": 1234.5}
+        assert fired == ["sch_1"]
 
     def test_a_fire_for_a_chat_never_attached_runs_nothing(self):
         from ai_runtime.chat.clock import Scheduler

@@ -527,7 +527,10 @@ Check:
   nothing kept.
 - `fire_now`, `tick` and `_fire`: each fire is its own task, a row never fires
   twice at once, and what a fire writes back is only its own row
-  (`_write`) — a pause made on the page meanwhile stands.
+  (`_write`) — a pause made on the page meanwhile stands. A fire handed
+  over while the row's last runs waits (`_hold`, `_run_waiting`), one
+  at most, the rest `merged`; `let_go` gives one back to the Data Core
+  when the chat leaves the node.
 - `replace_for`: a chat's rows are read again from the store at every
   attachment that carries a credential and at `schedules_changed`
   (`SessionHost._credentialed`, `_reload_schedules`), and what a fire
@@ -547,7 +550,8 @@ Check:
 Tests: the schedule classes in `ai_runtime/tests/test_session.py`,
 `ai_runtime/tests/test_cron.py`,
 `ai_runtime/tests/test_event_sources.py`,
-`ai_runtime/tests/test_clock_edges.py`.
+`ai_runtime/tests/test_clock_edges.py`,
+`ai_runtime/tests/test_clock_waiting.py`.
 
 ## 8. The edges
 
