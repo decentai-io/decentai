@@ -34,6 +34,18 @@ class AuthorityStore(MongoStore):
     SHARED = "shared"
     KIND_KEY = "key"
     KIND_ISSUER = "issuer"
+    #: How long a description may be, here and on a node.
+    DESCRIPTION_MAX = 500
+
+    @classmethod
+    def clean_description(cls, value: Any) -> str:
+        """A note an administrator writes: stripped, bounded. Raises
+        ValueError with the sentence to show."""
+        value = str(value or "").strip()
+        if len(value) > cls.DESCRIPTION_MAX:
+            raise ValueError(f"A description must be {cls.DESCRIPTION_MAX} "
+                             "characters or fewer.")
+        return value
 
     @staticmethod
     def fingerprint(public_key: str) -> str:
@@ -45,11 +57,12 @@ class AuthorityStore(MongoStore):
 
     def register(self, *, name: str, scope: str, by: Dict[str, Any],
                  public_key: str = "", jwks_url: str = "",
-                 issuer: str = "") -> Dict[str, Any]:
+                 issuer: str = "", description: str = "") -> Dict[str, Any]:
         """A new authority. Exactly one of ``public_key`` (PEM) or
         ``jwks_url`` (an issuer's published key set, with the ``issuer``
         its tokens name). Raises ValueError with the sentence to show."""
         name = self._clean_name(name, "An authority's name")
+        description = self.clean_description(description)
         scope = str(scope or "").strip()
         if not scope:
             raise ValueError("An authority's scope is shared or one organization.")
@@ -63,6 +76,7 @@ class AuthorityStore(MongoStore):
         doc: Dict[str, Any] = {
             "_id": f"auth_{new_id()[:16]}",
             "name": name,
+            "description": description,
             "scope": scope,
             "registered_by": {
                 "user_id": str(by.get("user_id") or ""),
@@ -104,6 +118,21 @@ class AuthorityStore(MongoStore):
         query = {} if scope is None else {"scope": scope}
         return list(self.col.find(query).sort("registered_at", 1))
 
+    def describe(self, authority_id: str,
+                 changes: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Its name or its description, changed — never its key, its
+        key set or its scope: to trust another key is to revoke this
+        one and register that. ``changes`` holds only what is given.
+        Raises ValueError with the sentence to show."""
+        update: Dict[str, Any] = {}
+        if "name" in changes:
+            update["name"] = self._clean_name(changes["name"], "An authority's name")
+        if "description" in changes:
+            update["description"] = self.clean_description(changes["description"])
+        if update:
+            self.col.update_one({"_id": str(authority_id or "")}, {"$set": update})
+        return self.get(str(authority_id or ""))
+
     def revoke(self, authority_id: str, by: Dict[str, Any]) -> bool:
         changed = self.col.update_one(
             {"_id": str(authority_id or ""), "revoked_at": None},
@@ -116,6 +145,7 @@ class AuthorityStore(MongoStore):
         return {
             "authority_id": doc["_id"],
             "name": doc.get("name", ""),
+            "description": doc.get("description", ""),
             "kind": doc.get("kind", ""),
             "scope": doc.get("scope", ""),
             "fingerprint": doc.get("fingerprint", ""),
@@ -125,6 +155,7 @@ class AuthorityStore(MongoStore):
             "registered_at": iso(doc.get("registered_at")),
             "revoked": doc.get("revoked_at") is not None,
             "revoked_at": iso(doc.get("revoked_at")),
+            "revoked_by": str(doc.get("revoked_by") or ""),
         }
 
 
@@ -167,6 +198,36 @@ class NodeStore(MongoStore):
     def disconnected(self, key: str) -> None:
         self.col.update_one({"_id": key}, {"$set": {"connected": False}})
 
+    #: How long the name a person gives a node may be.
+    DISPLAY_NAME_MAX = 80
+
+    def describe(self, key: str, changes: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """The name a person gives the node, shown in place of the one
+        its credential says, and a note — both theirs, kept as the node
+        comes and goes, and never read by admission. ``changes`` holds
+        only what is given; an empty name gives the node its own back.
+        Raises ValueError with the sentence to show."""
+        update: Dict[str, Any] = {}
+        if "display_name" in changes:
+            name = str(changes["display_name"] or "").strip()
+            if len(name) > self.DISPLAY_NAME_MAX:
+                raise ValueError(f"A node's name must be {self.DISPLAY_NAME_MAX} "
+                                 "characters or fewer.")
+            update["display_name"] = name
+        if "description" in changes:
+            update["description"] = AuthorityStore.clean_description(
+                changes["description"])
+        if update:
+            self.col.update_one({"_id": str(key)}, {"$set": update})
+        return self.get(str(key))
+
+    def forget(self, key: str) -> bool:
+        """The node's row, gone: what it presented and reported, and the
+        name and note it was given. Nothing else — a node refused by
+        name stays refused (RefusedNodeStore), and one whose credential
+        still admits it is kept again when it next connects."""
+        return self.col.delete_one({"_id": str(key)}).deleted_count == 1
+
     def list(self, scopes: Optional[List[str]] = None) -> List[Dict[str, Any]]:
         query = {} if scopes is None else {"scope": {"$in": list(scopes)}}
         return list(self.col.find(query).sort("first_seen", 1))
@@ -176,6 +237,8 @@ class NodeStore(MongoStore):
         return {
             "node_id": doc["_id"],
             "name": doc.get("name", ""),
+            "display_name": doc.get("display_name", ""),
+            "description": doc.get("description", ""),
             "authority_id": doc.get("authority_id", ""),
             "scope": doc.get("scope", ""),
             "labels": list(doc.get("labels") or []),
@@ -310,15 +373,45 @@ class RefusedNodeStore(MongoStore):
     credential's own expiry, or revoking the authority that vouches."""
 
     COLLECTION = "refused_nodes"
+    #: How long the reason given for a refusal may be.
+    REASON_MAX = 300
+
+    @classmethod
+    def clean_reason(cls, value: Any) -> str:
+        """Why the node is refused, in the refuser's words: optional,
+        bounded. Raises ValueError with the sentence to show."""
+        value = str(value or "").strip()
+        if len(value) > cls.REASON_MAX:
+            raise ValueError(f"A reason must be {cls.REASON_MAX} characters "
+                             "or fewer.")
+        return value
 
     def refuse(self, key: str, by: Dict[str, Any], reason: str = "") -> None:
         self.col.update_one(
             {"_id": str(key)},
             {"$set": {"refused_at": utc_now(),
-                      "refused_by": str(by.get("email") or by.get("user_id") or ""),
+                      "refused_by": {"user_id": str(by.get("user_id") or ""),
+                                     "email": str(by.get("email") or "")},
                       "org_id": str(by.get("org_id") or ""),
-                      "reason": str(reason or "")[:300]}},
+                      "reason": self.clean_reason(reason)}},
             upsert=True)
+
+    def all(self) -> Dict[str, Dict[str, Any]]:
+        """Every refusal, by the node it refuses."""
+        return {doc["_id"]: doc for doc in self.col.find({})}
+
+    @staticmethod
+    def to_public(doc: Dict[str, Any]) -> Dict[str, Any]:
+        """Why, by whom and when. A refusal kept before who refused was
+        a person's id and address holds one word, the address."""
+        by = doc.get("refused_by")
+        if not isinstance(by, dict):
+            said = str(by or "")
+            by = {"user_id": "", "email": said if "@" in said else ""}
+        return {"reason": str(doc.get("reason") or ""),
+                "by": {"user_id": str(by.get("user_id") or ""),
+                       "email": str(by.get("email") or "")},
+                "at": iso(doc.get("refused_at"))}
 
     def allow(self, key: str) -> bool:
         return self.col.delete_one({"_id": str(key)}).deleted_count == 1

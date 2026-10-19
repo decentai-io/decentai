@@ -60,7 +60,9 @@ class AgentsOnly:
 def _sandboxes_said(confinement) -> list:
     """This node's Execution Sandboxes as its report shows them: each
     one's name, labels, whether it drains and whether it takes work —
-    what an administrator names to drain one (Nodes:Node:Drain)."""
+    what an administrator names to drain one (Nodes:Node:Drain) — and
+    what it says of its load: its memory and processors, given and
+    used, its workers, and the agents it runs a worker of now."""
     sandboxes = getattr(confinement, "sandboxes", None)
     if sandboxes is None or not hasattr(sandboxes, "all"):
         return []
@@ -68,7 +70,9 @@ def _sandboxes_said(confinement) -> list:
         return [{"sandbox": sandbox.id,
                  "labels": sorted(getattr(sandbox, "labels", ()) or ()),
                  "draining": bool(getattr(sandbox, "draining", False)),
-                 "eligible": bool(sandbox.eligible())}
+                 "eligible": bool(sandbox.eligible()),
+                 "capacity": dict(getattr(sandbox, "capacity", None) or {}),
+                 "running": sorted(getattr(sandbox, "running", ()) or ())}
                 for sandbox in sandboxes.all()]
     except Exception:
         return []

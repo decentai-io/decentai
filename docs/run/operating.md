@@ -355,21 +355,40 @@ nothing dials a node ([execution nodes](../system/execution-nodes.md)).
    give the node the deployment's `https://` address: the gateway sends
    the node link, `/nodes/link`, to the Data Core.
 
-Nodes are listed, with who admitted them and what each reports — its
-Execution Sandboxes among it — under **Settings → Nodes**, or by
-`Nodes:Node:List`. To take one out: revoke its authority
-(`Nodes:Authority:Revoke`, every node it vouches for is refused at
-once), stop issuing it credentials (it drops out within minutes), or,
-in a hurry, refuse it by name (`Nodes:Node:Refuse`; `Nodes:Node:Allow`
-lets it back). Its chats move to another node within
-a minute ([leases](../system/execution-nodes.md#leases)).
+Nodes are listed under **Settings → Nodes**, or by `Nodes:Node:List`.
+The page opens on a count of what is there — nodes connected, sandboxes
+and how many drain, chats running, authorities in force — and three
+tabs:
+
+- **Nodes**: every node, grouped by organization (shared ones first),
+  searched by name and filtered by state (connected, not connected,
+  refused), organization and authority. Each row says its state, its
+  authority, its chats and sandboxes and when it was last seen; opening
+  one shows all of it: its name and a note you give it (**Edit**,
+  `Nodes:Node:Update`), its authority and organization, its version and
+  labels, the chats it holds, and its sandboxes with their load and
+  the agents they run.
+- **Authorities**: each one's kind, key fingerprint or key-set address,
+  who added it and when, and how many nodes it admitted — linked to
+  those nodes. **Edit** renames or describes one
+  (`Nodes:Authority:Update`); its key never changes.
+- **Where chats run**: the organization's placement (below).
+
+To take a node out: revoke its authority (`Nodes:Authority:Revoke`,
+every node it vouches for is refused at once), stop issuing it
+credentials (it drops out within minutes), or, in a hurry, refuse it
+by name — with a reason, kept and shown with it (`Nodes:Node:Refuse`;
+`Nodes:Node:Allow` lets it back). Its chats move to another node within
+a minute ([leases](../system/execution-nodes.md#leases)). A node that
+is gone for good — and holds no chat — is taken off the list with
+**Forget** (`Nodes:Node:Forget`); a refused node stays refused.
 
 To take one Execution Sandbox out of a node without stopping it —
 for maintenance, or a machine running short — drain it: **Drain** beside
-it under **Settings → Nodes**, or `Nodes:Node:Drain` (`node_id`,
+it in the node's sandboxes, or `Nodes:Node:Drain` (`node_id`,
 `sandbox_id`). It is given no new agent, and those running finish.
-**Resume**, or `drain: false`, lets it work again. The sandboxes a node has are in what
-`Nodes:Node:List` shows of it.
+**Resume**, or `drain: false`, lets it work again. **Drain all** (no
+`sandbox_id`) does the same to every sandbox of the node.
 
 Where an organization's chats run is its own choice, under **Settings →
 Nodes → Where chats run** (`Settings:Nodes:Update`): *Own nodes first*
