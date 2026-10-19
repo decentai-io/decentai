@@ -47,6 +47,24 @@ def zone(name: str) -> Optional[ZoneInfo]:
         return None
 
 
+def next_on_cadence(due: float, every: float, now: float) -> float:
+    """When a row that repeats every ``every`` seconds comes next, after
+    a run that was due at ``due`` and ran at ``now``: counted from when
+    it was due, never from when it ran, so a clock that looks every few
+    seconds does not make it drift; and the first time on that count
+    after now, so a row overdue by many periods runs once, not once for
+    each. A period that is not positive answers ``now``, which the
+    caller holds to its floor."""
+    due, every, now = float(due), float(every), float(now)
+    if not every > 0:
+        return now
+    missed = max(0, int((now - due) // every))
+    found = due + (missed + 1) * every
+    while found <= now:         # what the float division rounded away
+        found += every
+    return found
+
+
 class Cron:
     #: How far ahead a next run is searched before the expression is
     #: declared to match nothing (February 30th, the 31st of a month

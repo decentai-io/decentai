@@ -30,6 +30,8 @@ reconnecting with backoff, carries every chat this node serves:
                          which renews them — and its load
       released           a chat went idle with nobody watching: its
                          lease is let go
+      unfired            a fire this node was handed and never ran,
+                         given back: the chat left while it waited
       credential         a fresh credential, before the last lapses
       monitor_result     the answer to one question
 
@@ -111,9 +113,14 @@ class NodeLink:
         self._task: Optional[asyncio.Task] = None
         self._stopping = False
         self._sent_credential = ""
+        #: ``unfired`` frames that found the link down, said once it is
+        #: up again
+        self._given_back: list = []
         self.logger = logging.getLogger(self.__class__.__name__)
         if host is not None:
             host.forgotten = self._forgotten
+            host.unfired = self.unfired
+            host.serves = self.serves
             services = getattr(host, "services", None)
             if services is not None and hasattr(services, "on_stale"):
                 services.on_stale = self._stale
@@ -133,6 +140,20 @@ class NodeLink:
         return self._task
 
     async def stop(self) -> None:
+        # A fire still waiting behind its row's last never began: given
+        # back while the link can say so, for the Data Core to fire
+        # where the chat goes next.
+        give_back = getattr(getattr(self.host, "clock", None),
+                            "give_back_waiting", None)
+        if give_back is not None:
+            try:
+                await give_back()
+            except Exception as exc:
+                self.logger.warning(f"Waiting fires not given back: {exc}")
+        if self._given_back:
+            self.logger.warning(
+                f"{len(self._given_back)} fire(s) given back while the link "
+                f"was down are lost with it")
         self._stopping = True
         socket, self._socket = self._socket, None
         if socket is not None:
@@ -197,6 +218,11 @@ class NodeLink:
             self.connected.set()
             self.logger.info(
                 f"Linked to the Data Core as {self.node_key or self.node.name}")
+            # Fires given back while the link was down, said now.
+            given, self._given_back = self._given_back, []
+            for frame in given:
+                if not await self.send(frame):
+                    self._given_back.append(frame)
             beat = asyncio.get_running_loop().create_task(self._heartbeat())
             try:
                 while True:
@@ -388,6 +414,30 @@ class NodeLink:
             {"type": "released", "chat_id": chat_id, "lease": channel.lease}))
         asyncio.get_running_loop().create_task(
             self.host.detach(channel, chat_id))
+
+    def serves(self, chat_id: str) -> bool:
+        """Whether this node may act for the chat now: linked, and the
+        chat attached here. A fire waiting for one that is not is not
+        run here (chat/clock.py, ``Scheduler._run_waiting``)."""
+        return self.connected.is_set() and chat_id in self.channels
+
+    #: How many given-back fires are kept for a link that is down.
+    GIVEN_BACK_KEPT = 1000
+
+    async def unfired(self, chat_id: str, row: Dict[str, Any]) -> bool:
+        """A fire the Data Core handed over and this node never ran,
+        given back (``unfired``): the Data Core fires it again where
+        the chat is. Said when the link is up again if it is down now.
+        False only when it can be said neither now nor later."""
+        frame = {"type": "unfired", "chat_id": chat_id,
+                 "schedule_id": str(row.get("schedule_id") or ""),
+                 "fired_at": row.get("fired_at")}
+        if await self.send(frame):
+            return True
+        if self._stopping or len(self._given_back) >= self.GIVEN_BACK_KEPT:
+            return False
+        self._given_back.append(frame)
+        return True
 
     def _stale(self, chat_id: str) -> None:
         """The Data Core refused a call as this chat's lease being old:

@@ -163,7 +163,7 @@ node, and nothing it said is acted on.
 |---|---|
 | `welcome` | the handshake's answer |
 | `attach {chat_id, lease, credential, watched}` | hold this chat under this lease, with this delegation; the node's host greets with `hello` |
-| `fire {chat_id, schedule}` | a row of the chat is due: run it ([the clock](#the-clock)) |
+| `fire {chat_id, schedule}` | a row of the chat is due: run it, the row as claimed ([the clock](#the-clock)) |
 | `watch {chat_id, watched}` | whether a person has the chat open |
 | `chat {chat_id, frame}` | one of the door's frames for that chat: `user_message`, `approval_decided`, `question_answered`, `stop`, `schedules_changed`, `screen_input`, `screen_open`, `webhook_event`, `credential` ([the chat session](chat-session.md#the-node-link)) |
 | `detach {chat_id}` | the chat is no longer this node's: it is forgotten where it stands, its key and lease let go |
@@ -175,6 +175,7 @@ node, and nothing it said is acted on.
 | `event {chat_id, frame}` | what one chat emits for its audience |
 | `heartbeat {chats, reports}` | every 20 seconds: still here, the chats it holds by lease number — which renews those leases — and its load |
 | `released {chat_id, lease}` | a chat went idle with nobody watching: its lease is let go |
+| `unfired {chat_id, schedule_id, fired_at}` | a fire this node was handed and never ran, given back: the chat left while it waited behind the row's last ([the clock](#the-clock)) |
 | `credential {token}` | a fresh credential, before the last lapses |
 | `monitor_result {request_id, result \| error}` | the answer to one question |
 
@@ -246,23 +247,59 @@ keeps (`ai_schedules`) for those whose time has come, and for each:
 
 1. the chat is put on a node — the one holding it, or one placed now,
    with nobody watching (`hold`);
-2. the row is **claimed**: its next time set from now (an overdue row
-   fires once and moves on, never a backlog), or, for a one-off and for
-   a sleep, the row ended — in one write that holds only if the row
-   still says the time it was found due at (`ScheduleStore.claim`). A
-   row is fired once, whoever else looked;
+2. the row is **claimed**: its next time set, or, for a one-off and for
+   a sleep, the row ended — with when it was due (`due_at`), when it
+   was claimed (`fired_at`, which names the fire) and the node it goes
+   to (`fired_to`) — in one write that holds only if the row still says
+   the time it was found due at (`ScheduleStore.claim`). A row is fired
+   once, whoever else looked;
 3. a `fire {chat_id, schedule}` goes to the node holding the chat over
-   its link: the Data Core's own voice, which no person's frame can
-   become.
+   its link, with the row as claimed: the Data Core's own voice, which
+   no person's frame can become.
+
+**A period counts from when the row was due** (`next_on_cadence`,
+`contracts/cron.py`), not from when the clock looked: a row every hour
+fires on its hour, never a look later each time. An overdue row — a
+Data Core that was down — fires once, and its next time is the first on
+its count after now: never a backlog. A `cron` looks forward on its
+calendar from now.
 
 **The node runs the fire as it always has** (`Scheduler.fire_now`,
 `ai_runtime/chat/clock.py`): a note wakes the assistant with a
 `wakeup`; a function runs with no model — schedulable functions only,
 levels 0 and 1, no approvals — held to the chat's contract, and wakes
 the assistant only when its result says to. It writes back what the run
-did (`AI:Schedule:Ran`), and holds the chat (and its lease) until the
-fire is over. A node's own clock never ticks: on a node, when is the
-Data Core's to say.
+did (`AI:Schedule:Ran`): lines of the row's history and its last run,
+added to what the row has and never moving it back — when the row fires
+next is the claim's, and a node's copy never says it. It holds the chat
+(and its lease) until the fire is over. A node's own clock never ticks:
+on a node, when is the Data Core's to say.
+
+**A row never fires twice at once.** A fire that reaches the node while
+the row's last is still running waits there, and runs as soon as that
+one ends — the row as it stands then, under the claim it came with. One
+waits at most: a fire that comes while one waits is folded into it (the
+waiting fire becomes the newer claim) and written on the row's history
+as `merged`, with when and why. What happens meanwhile is followed:
+
+| while a fire waits | what becomes of it |
+|---|---|
+| the row is deleted | dropped with the row |
+| the row is paused | not run; `skipped` on the row |
+| the row is edited | runs as edited |
+| the chat is stopped (the kill switch) | not run; `skipped` on the row, beside the stopped run |
+| the chat moves to another node, its lease is lost, or a write is refused as no longer this node's | given back unrun (`unfired`) |
+| the node stops | given back unrun before the link closes |
+| the link is down when the last run ends | given back, said once the link is up again |
+
+**A fire given back is put back.** The Data Core hears `unfired` only
+from the node the fire went to, and puts the row back to due at the
+time it was due — a one-off on again — so the next look fires it
+wherever the chat is then, on its count still. Only while the row still
+says what that claim wrote: one claimed again since is written on its
+history as `merged` (the later fire ran in its place), and one the
+person changed as `missed`. A fire that reached no node is put back the
+same way.
 
 - **Sleep** is a one-off row the Data Core keeps, like any other
   (`sleep: true`), and fires the same way.
@@ -270,9 +307,9 @@ Data Core's to say.
   which is placed if no node holds it.
 - **Nothing is kept on a node for its clock.** A chat with schedules
   goes idle and is let go like any other; the row brings it back.
-- **A fire is never repeated by itself.** One claimed whose node went
-  before it ran is a fire lost, said in the Data Core's log — as a call
-  that was running when its node went is reported unknown.
+- **A fire begun is never repeated by itself.** One whose node went
+  while it ran is a fire lost, said in the log — as a call that was
+  running when its node went is reported unknown.
 - **A person who stopped everything** is fired for by nobody; a row
   that came due meanwhile fires once when they resume.
 

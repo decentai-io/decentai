@@ -34,7 +34,10 @@ class ActivityController(AIController):
                 # row of the clock's and not a schedule of the person's.
                 if isinstance(row, dict) and not row.get("sleep"):
                     schedules.append({
-                        **row, "chat_id": chat_id,
+                        # Which node a fire went to is the clock's, not
+                        # the person's to read.
+                        **{k: v for k, v in row.items() if k != "fired_to"},
+                        "chat_id": chat_id,
                         "chat_title": titles.get(chat_id, ""),
                         "upcoming": self._upcoming(row),
                     })

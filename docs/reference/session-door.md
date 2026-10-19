@@ -291,7 +291,9 @@ still ticks (`Scheduler(ticks=True)`).
 Each fire is a task of its own, and a row is not fired again while its
 last fire is still under way: a slow one — a site that takes its time,
 a question waiting on the person — holds up no other row and no later
-tick. A function fired this way may ask the person (`call.ask`): the
+tick. A fire the Data Core hands over meanwhile waits for it, one at a
+time, and any more are written on the row as `merged`
+([execution nodes](../system/execution-nodes.md#the-clock)). A function fired this way may ask the person (`call.ask`): the
 card is opened in the schedule's chat, the session is kept while it
 waits, and the answer reaches the run whenever the person next looks,
 or `None` after a day. The kill switch ends a chat's fires with the

@@ -6,7 +6,7 @@ does on purpose or by omission, and either answer may be right. The
 bugs, the documentation gaps and the unused code the same review found
 were fixed then; these were left for a decision.
 
-131 questions, in the order the review read the code. To settle
+130 questions, in the order the review read the code. To settle
 one: decide, change the code or the docs if the decision asks for it,
 and delete the row. The review read the code on 7–10 October 2026,
 before the runtime was restructured; every row was re-pointed to the
@@ -161,13 +161,12 @@ chats each read their own frames in order.
 
 | Id | Where | Question |
 |---|---|---|
-| CLK-4 | `data_core/api/services/chat_session/clock.py` `ScheduleClock.tick`; `ai_runtime/chat/clock.py` `Scheduler._fire_row` | A one-off is spent before it fires: the Data Core's claim ends the row, and a fire that then fails (the contract read failing, the session not built, no node reached) is one line in a log, never retried, and nobody is told (from reading; the same was run before the clock moved to the Data Core). |
+| CLK-4 | `data_core/api/services/chat_session/clock.py` `ScheduleClock.tick`; `ai_runtime/chat/clock.py` `Scheduler._fire_row` | A one-off is spent before it fires: the Data Core's claim ends the row, and a fire that then fails (the contract read failing, the session not built) is one line in a log, never retried, and nobody is told (from reading; the same was run before the clock moved to the Data Core). |
 | CLK-5 | `data_core/api/services/chat_session/clock.py` `ScheduleClock.tick`; `ai_runtime/chat/clock.py` `Scheduler.fire_now`; `ai_runtime/door/host.py` `SessionHost.fire_context` | No ceiling on fires at once: every due row is claimed and sent in one tick, and each fire is a task of its own on the node (run before the clock moved: 1,000 overdue rows gave 1,000 fires in one tick). Each function fire reads the contract and prepares the chat's whole roster (from reading). |
 | CLK-6 | `ai_runtime/chat/clock.py` `ChatClock.schedule` 513–522 | Accepted when set and refused at every fire (run): a level-1 schedulable function in a level-0 chat, inputs that do not fit the schema, a `wake_field` the outputs do not have. A row that fails every time is never paused. |
 | CLK-7 | `ai_runtime/chat/clock.py` `ChatClock._twin` 564–575 | The twin check (run): `mon` against `1` evades it; a paused twin does not count; it wrongly refuses the same note at 09:00 and at 18:00, and the same function with a different `wake_field`. |
 | CLK-8 | `ai_runtime/chat/clock.py` `ChatClock._when` 638–679; `ai_runtime/mind/actions.py` 189 | Saying when (run): a time in the past fires at the next tick; "exactly one of" is not enforced (`cron` with `every_seconds` drops the period silently); the text `"nan"` as a period gives a row that fires every tick while the assistant is told it was not set (in-memory store only). |
 | CLK-9 | `ai_runtime/chat/clock.py` `ChatClock.sleep` 590–591, `asleep` 605; `ai_runtime/door/host.py` `SessionHost._kill` 464–498 | Sleep (run): a new sleep that cannot be added still removes the old one; a fired sleep whose removal fails reads as asleep for good. |
-| CLK-11 | `data_core/api/services/chat_session/clock.py` `ScheduleClock.next_after`, `TICK_SECONDS`; `ai_runtime/chat/clock.py` `Scheduler.fire_now` | A period is counted from the fire, on the Data Core's 5-second tick, so it drifts by up to a tick each time. A fire that arrives while the row's last is still running is not run by the node, though the Data Core has claimed it, and nobody is told (from reading). |
 | CLK-12 | `ai_runtime/chat/clock.py` `ChatClock.__init__` 507, `schedule` 546, `_when` 665 | A row keeps the zone it was made in; an unresolvable zone silently becomes the server's; with no zone, `at` is read on the server's clock (all run). Settles CRON-6: the zone comes from the contract and is validated by the Data Core. |
 | CLK-15 | `ai_runtime/chat/clock.py` `ChatClock.MIN_EVERY_SECONDS` 489, `_when` 638; `data_core/api/endpoints/app/ai/schedule_controller.py` 33, `_when` 388 | Smaller: the 60-second floor is kept in three places and `_when` in two; spent one-offs stay in memory; a full row's run history is about 18 KB written whole at each fire (run). |
 

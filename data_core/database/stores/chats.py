@@ -537,6 +537,71 @@ class ScheduleStore(MongoStore):
                       "updated_at": utc_now()}})
         return changed.modified_count == 1
 
+    def change_if(self, chat_id: str, schedule_id: str,
+                  says: Dict[str, Any], fields: Dict[str, Any]) -> bool:
+        """These fields of one row, only if it still ``says`` all of
+        these: a fire given back unrun is put back only on a row that
+        still holds what its claim wrote — not one claimed again since,
+        or changed by the person."""
+        changed = self.col.update_one(
+            {"chat_id": chat_id,
+             "rows": {"$elemMatch": {"schedule_id": schedule_id, **says}}},
+            {"$set": {**{f"rows.$.{name}": value
+                         for name, value in fields.items()},
+                      "updated_at": utc_now()}})
+        return changed.modified_count == 1
+
+    #: How many runs a row remembers (ai_runtime/chat/clock.py,
+    #: ``Schedule.RUNS_KEPT``).
+    RUNS_KEPT = 20
+
+    @staticmethod
+    def _run_key(run: Dict[str, Any]) -> tuple:
+        return (run.get("at"), str(run.get("status") or ""))
+
+    def ran(self, chat_id: str, schedule_id: str,
+            runs: List[Dict[str, Any]], last_run_at: Any) -> Optional[List[Dict[str, Any]]]:
+        """What a node's fires did to one row: the runs it remembers
+        that the row does not have yet, added to its history, and its
+        last run, never moved back. A node sends its whole copy of the
+        history, and the Data Core's clock writes lines of its own into
+        it, so lines are added, never the history replaced: a write
+        that arrives late, or one that crosses the clock's, loses
+        nothing. Returns the lines added, or None when the row is no
+        longer there."""
+        row = next((r for r in self.rows(chat_id)
+                    if str(r.get("schedule_id") or "") == schedule_id), None)
+        if row is None:
+            return None
+        known = {self._run_key(r) for r in row.get("runs") or []
+                 if isinstance(r, dict)}
+        fresh = []
+        for run in runs:
+            if isinstance(run, dict) and self._run_key(run) not in known:
+                known.add(self._run_key(run))
+                fresh.append(run)
+        fresh.sort(key=lambda r: float(r.get("at") or 0))
+        update: Dict[str, Any] = {"$set": {"updated_at": utc_now()}}
+        if fresh:
+            update["$push"] = {"rows.$.runs": {
+                "$each": fresh, "$slice": -self.RUNS_KEPT}}
+        if isinstance(last_run_at, (int, float)):
+            update["$max"] = {"rows.$.last_run_at": last_run_at}
+        changed = self.col.update_one(
+            {"chat_id": chat_id, "rows.schedule_id": schedule_id}, update)
+        return fresh if changed.matched_count == 1 else None
+
+    def record(self, chat_id: str, schedule_id: str,
+               run: Dict[str, Any]) -> bool:
+        """One line of a row's history written by the Data Core's clock
+        itself — a fire that never ran. False when the row is gone."""
+        changed = self.col.update_one(
+            {"chat_id": chat_id, "rows.schedule_id": schedule_id},
+            {"$push": {"rows.$.runs": {"$each": [run],
+                                       "$slice": -self.RUNS_KEPT}},
+             "$set": {"updated_at": utc_now()}})
+        return changed.matched_count == 1
+
     def delete_for_chat(self, identity: Dict[str, Any]) -> None:
         self.col.delete_many(identity)
 
