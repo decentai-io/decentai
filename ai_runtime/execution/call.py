@@ -45,7 +45,7 @@ from contracts.chat import (
     code_asked, display_stored, event_error, CHOICE_MAX_CHARS, CHOICES_MAX,
     QUESTION_MAX_CHARS, SCREEN_FRAME_MAX_BYTES,
 )
-from ai_runtime.agents.environments import AgentEnvironment
+from sandbox.environments import AgentEnvironment
 from ai_runtime.agents.workers import WorkerError
 from ai_runtime.execution.pictures import Pictures
 from ai_runtime.execution.sinks import ChatSinks

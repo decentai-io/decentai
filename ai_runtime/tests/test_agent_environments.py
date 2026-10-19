@@ -15,7 +15,7 @@ from pathlib import Path
 import pytest
 
 from ai_runtime.agents.confinement import Confinement
-from ai_runtime.agents.environments import AgentEnvironment
+from sandbox.environments import AgentEnvironment
 from ai_runtime.agents.library import AgentLibrary, AgentRefused
 from contracts.agent_manifest import load_manifest, manifest_hash
 from contracts.agent_package import AgentPackage

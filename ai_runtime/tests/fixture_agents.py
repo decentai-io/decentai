@@ -14,7 +14,7 @@ import textwrap
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from ai_runtime.agents.environments import AgentEnvironment
+from sandbox.environments import AgentEnvironment
 from ai_runtime.agents.library import InstalledAgent
 from contracts.agent_manifest import load_manifest
 from ai_runtime.tests.fake_container import standalone

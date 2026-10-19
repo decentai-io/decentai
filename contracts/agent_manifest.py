@@ -297,7 +297,7 @@ class ManifestValidator:
         # (-r, --index-url) would be read as one by the program that
         # installs them: refused here, where a manifest is read, and
         # not found out when the approved agent fails to load
-        # (ai_runtime/agents/environments.py refuses it there too).
+        # (sandbox/environments.py refuses it there too).
         for index, dependency in enumerate(dependencies):
             if dependency.strip().startswith("-"):
                 self._fail(

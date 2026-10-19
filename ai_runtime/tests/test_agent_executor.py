@@ -1254,7 +1254,7 @@ class TestAFunctionThatRunsCode:
     def pip(self):
         """Stands in for pip, once the agents are loaded: leaves a
         module where it was told to."""
-        from ai_runtime.agents.environments import AgentEnvironment
+        from sandbox.environments import AgentEnvironment
 
         ran = []
 

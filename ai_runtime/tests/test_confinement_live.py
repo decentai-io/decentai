@@ -47,7 +47,7 @@ from ai_runtime.agents.sandboxes import Sandboxes
 from sandbox import wire
 from sandbox.places import Places
 from ai_runtime.agents.egress import EgressProxy
-from ai_runtime.agents.environments import AgentEnvironment
+from sandbox.environments import AgentEnvironment
 from ai_runtime.agents.library import InstalledAgent
 from ai_runtime.agents.workers import WorkerHandle
 from ai_runtime.agents.pool import WorkerPool

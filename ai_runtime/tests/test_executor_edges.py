@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from ai_runtime.agents.environments import AgentEnvironment
+from sandbox.environments import AgentEnvironment
 from ai_runtime.agents.mcp import McpServer
 from ai_runtime.agents.workers import WorkerError, WorkerHandle
 from ai_runtime.execution.call import Call

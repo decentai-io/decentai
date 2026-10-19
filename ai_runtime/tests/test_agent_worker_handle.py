@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from ai_runtime.agents.environments import AgentEnvironment
+from sandbox.environments import AgentEnvironment
 from ai_runtime.agents.library import AgentLibrary, AgentRefused
 from ai_runtime.agents.workers import WorkerError, WorkerHandle
 from contracts.agent_manifest import manifest_hash
