@@ -19,7 +19,10 @@ Anything that lets an agent, a model, or a person reach past what the
 platform says they may: a function called without its grant, a secret
 read by a function that did not declare it, an approval bypassed, a
 package served that does not hash to its approved digest, a delegation
-used outside its chat, one organization seeing another's records.
+used outside its chat, one organization seeing another's records, an
+execution node admitted without a credential a registered authority
+signed, or given a chat, a credential or a model key of an
+organization it may not serve.
 
 Where the platform confines agents — the Compose stack in this
 repository — each agent runs as a user of its own, reads and writes
@@ -35,5 +38,5 @@ of that is in scope too.
   and the code before approving is the control.
 - **A stack started without confinement.** Where a part of the sandbox
   does not hold — a stack started without what docker-compose.yml
-  gives it, or outside a container — the runtime says so at start and
-  an agent's page says what is not enforced there.
+  gives it, or outside a container — the Execution Sandbox says so at
+  start and an agent's page says what is not enforced there.

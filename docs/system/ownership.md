@@ -26,7 +26,10 @@ it. Being shown something is never authority over it.
 | Chats, messages, stored results, schedules, approvals | `user_id` | the person only: a chat cannot be shared, and opening one and sending to it are separate actions (`ai:chat:open`, `ai:chat:sendmessage`) | none |
 | Memories | `user_id` | the person only | none |
 | MCP servers | `created_by` | the person only; never shared or transferred | none |
+| Webhooks | `user_id` | the person only; shared to view, never to change, and handed over with its chat | none |
+| Notification subscriptions (outbound) | `user_id` | the person only; never shared or transferred | none |
 | API keys | `user_id` | the person only | none, deliberately |
+| Execution node authorities | the organization; a shared one, the deployment's operator | anyone holding `nodes:authority:revoke`; a shared one, the operator only | not needed |
 | Audit events | actor recorded | nobody — append-only | — |
 
 The escape grants are held by FullAccess through its wildcard, so an
@@ -53,6 +56,10 @@ old steward with the new one in the owner map, so visibility is
 preserved. Allowed to the steward and to holders of the escape grant;
 audited.
 
+A webhook has its own, `Settings:Webhook:Transfer`, its owner's alone:
+the webhook and its standing chat become the successor's, and its
+events run as them from the next one on ([webhooks](webhooks.md)).
+
 ## What refuses, and why
 
 - **Deleting a secret** is refused while an agent holds a grant on it,
@@ -73,9 +80,10 @@ audited.
 
 ## Deleting a chat
 
-The schedules go first, and the runtime is told while its connection
-still stands, since it holds the chat's clock in memory. Then the
-connection is closed and the delegation rows go, then messages, stored
+The schedules go first, and the execution node holding the chat is told
+while it still holds it, since it keeps a copy of the chat's rows. Then
+the chat is detached from its node and its lease let go, and the
+delegation rows go, then messages, stored
 results, events and approvals, then the chat's own uploads, bytes
 included, then the chat. Files the chat merely referenced
 are untouched.
@@ -93,12 +101,12 @@ counts, so the administrator sees the hand-over before confirming.
 | schedules | deleted with their chats — nothing keeps acting for a person who is gone |
 | chats and everything under them | deleted, with the chat cascade; conversations are personal |
 | memories | deleted |
-| MCP servers, push subscriptions (a browser's and a phone's), the note of which sample data they loaded | deleted |
+| MCP servers, webhooks and notification subscriptions, push subscriptions (a browser's and a phone's), the note of which sample data they loaded | deleted; a webhook's chat goes with their other chats |
 | secrets, records, files, skills | stewardship transferred to the successor; the owner map keeps every group and person it named; a credential granted to agents keeps working. A secret whose name the successor already uses for the same kind arrives as *name (transferred)* |
 | LLM connections, agent sources | stewardship transferred to the successor |
 | agent grants naming the person | the person is taken out of them; a grant left naming nobody is deleted |
 | credential grants | kept; they name the secret, which now has a steward |
-| the shapes of credentials (`secret_definitions`), the apps registered with providers (`oauth_apps`) | kept as they are, and not handed over: they are the organization's, and still name who made them |
+| the shapes of credentials (`secret_definitions`), the apps registered with providers (`oauth_apps`), execution node authorities (`node_authorities`) | kept as they are, and not handed over: they are the organization's, and still name who made them |
 | audit events | kept, with the actor as recorded — a trail outlives its actors |
 
 ## Disabling a person

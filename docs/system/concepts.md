@@ -8,8 +8,11 @@ one message — is [Architecture](architecture.md).
 
 ## The parts
 
-DecentAI is a **Data Core**, a private **AI Runtime**, a place where
-**agents** run, and a **web app**, over a MongoDB database.
+DecentAI is a **Data Core**, a private **AI Runtime**, the **Execution
+Sandboxes** where **agents** run, and a **web app**, over a MongoDB
+database. An AI Runtime and its Execution Sandboxes, deployed together,
+are an **execution node**; one Data Core serves many
+([execution nodes](execution-nodes.md)).
 
 - The Data Core owns identity, permissions, every stored thing, and the
   `/app` gateway the web app and scripts call. It is the only part
@@ -22,27 +25,29 @@ DecentAI is a **Data Core**, a private **AI Runtime**, a place where
   credential opens the package door and nothing else
   ([architecture](architecture.md#the-two-tokens-between-the-data-core-and-the-runtime)).
 - Agent code runs in worker processes with private environments, one
-  per approved agent per organization. In the stack this repository
-  starts they run in a container of the agents' own, which the runtime
-  commands and which reaches the runtime and nothing else
-  ([the sandbox](sandbox.md)). There is no other place a worker runs:
-  the runtime's tests stand a double in for that container.
+  per approved agent per organization. They run in an Execution
+  Sandbox: a container of the agents' own, which registers with its
+  runtime, takes its orders, and reaches the runtime and nothing else
+  ([the sandbox](sandbox.md)). A runtime may have several, and places
+  each agent's worker on one of them. There is no other place a worker
+  runs: the runtime's tests stand a double in for that container.
 - The web app is a static Angular application, a repository of its own
   (`decentai-web-client`). The engine's gateway (Caddy) sends the
   browser to it, and the Data Core's paths to the Data Core, so the
   browser sees one origin.
 
-Started from the repository that is seven containers: the database, a
-seeder that runs once and exits, the Data Core, the runtime, the Execution
-Sandbox, the speech container, and the gateway (Caddy); the web
-client runs beside it, from its own repository
-([quickstart](../run/quickstart.md)).
+Started from the repository that is eight containers: the database, a
+seeder that runs once and exits, the Data Core, the runtime, one
+Execution Sandbox, the speech container, the issuer of the bundled
+node's credential, and the gateway (Caddy); the web client runs beside
+it, from its own repository ([quickstart](../run/quickstart.md)).
 
 Besides the database, the Data Core keeps the bytes of stored files and
 each approved agent's code as an archive, on two volumes of its own.
-Two things are kept beside the agents: the approved code as the runtime
-installed it, which is a cache of what the Data Core holds, and the
-record of what agents did ([what is written down](monitoring.md)).
+The runtime and each Execution Sandbox keep, each in a folder of its
+own, the approved code by its digest — a cache of what the Data Core
+holds — and the record of what agents did
+([what is written down](monitoring.md)).
 [Architecture](architecture.md#where-everything-is-kept) lists all of
 it.
 
@@ -99,6 +104,11 @@ Every chat has a **trust level** from 0 to 3. Every function has a
 change with wider reach, an action that leaves the platform. A
 function above the chat's level pauses for a person's **approval** of
 that exact call.
+
+The rule beneath all of it: **the model may propose anything; it
+authorizes nothing.** What a call may do is decided by the manifest,
+the chat's grants and trust level, and the person — never by what the
+model said.
 
 *Design note: [assistant.md](assistant.md).*
 
@@ -235,6 +245,7 @@ Where a word is used for more than one thing, each is said.
 | **agent** | an approved program: a manifest and the code that does what it declares | `InstalledAgent`, `ai_runtime/agents/library.py` |
 | **approval** | two things. An administrator approving one exact version of an agent (an *install*). And a person's yes to one call whose level is above the chat's trust (a *card*) | `agent_manifests`; `ai_approvals` |
 | **audience** | whoever is watching a chat now: the page's open socket | — |
+| **authority** | who may vouch for an execution node: a public key, or an issuer's published key set, for one organization or shared; an administrator registers it, and any node holding a credential it signed is admitted | `node_authorities`; `Nodes:Authority:*` |
 | **baseline** | what every member may do without a decision | `BASELINE_ACTIONS` |
 | **beat** | one turn of the assistant's cycle: one call to the model, one action | `Assistant._beat` |
 | **card** | something in the chat that waits for a person: an approval, a question, code to allow, a login | `ai_approvals` |
@@ -247,6 +258,8 @@ Where a word is used for more than one thing, each is said.
 | **door** | a way in. *The session door* is what a chat's frames reach on its execution node, over the node link; a *gateway door* is an action | `ai_runtime/door/link.py`, `ai_runtime/door/host.py` |
 | **escape grant** | an action that lets its holder reach past the usual rule. `…:set_owner_any` lifts whom a thing may be shared to and who may edit it; `…:manage_any` reaches every source or connection, and does not lift whom one may be shared to | [sharing](sharing.md) |
 | **event** | two things. *Inbound*: what the assistant is told — a message, a finished job, a wakeup — kept in the inbox before it is heard. *Outbound*: what the runtime tells the page | `ai_chat_events`, direction `in` and `out` |
+| **execution node** | one AI Runtime and its Execution Sandboxes, deployed together; it dials the Data Core and carries every chat it holds over one link | `ai_runtime/door/link.py`; `execution_nodes` |
+| **Execution Sandbox** | a container where agents' workers run, and nothing else; it registers with its runtime and holds its own copy of the code | `sandbox/service.py`; `ExecutionSandbox`, `ai_runtime/agents/sandbox.py` |
 | **executor** | what stands between the assistant and an agent's function: the gates a call passes | `FunctionExecutor`, `ai_runtime/execution/executor.py` |
 | **the chat's doors** | what the mind and a running call may ask of the chat — to say, to ask, to approve, to keep, to write on the trail — as one object the session builds and hands to both. Also *sinks* | `ChatSinks`, `ai_runtime/execution/sinks.py` |
 | **the fence** | two things. What a delegation may call: a fixed list of actions. And what a worker may open: its own files | `RUNTIME_ENDPOINTS`; Landlock, `sandbox/spawn_helper.c` |
@@ -258,13 +271,15 @@ Where a word is used for more than one thing, each is said.
 | **host** | three things. The runtime, as an agent's worker sees it. The object that holds the runtime's sessions. And a machine on the network an agent connects to | —; `SessionHost`; `network.hosts` |
 | **inbox** | a chat's inbound events, each with a sequence number, kept until heard | `ai_chat_events`, direction `in` |
 | **job** | a function running in the background, begun with `start` | `ai_runtime/mind/state.py` |
-| **key** | five things. The plain half of a stored document (`keys`). An encryption key. An API key (`dk_…`). The spawner's key. And, loosely, a delegation | |
+| **key** | five things. The plain half of a stored document (`keys`). An encryption key. An API key (`dk_…`). The node's sandbox secret (`AI_RUNTIME_SANDBOX_SECRET`). And, loosely, a delegation | |
+| **lease** | which execution node holds an active chat, numbered: renewed by the node's heartbeat, and every call the node makes for the chat carries its number | `chat_leases`, `LeaseStore`; `X-DecentAI-Lease` |
 | **level** | 0 to 3, on a function (what it costs) and on a chat (its trust): a function above the chat's level asks first | `permission_level`; `chat_level` |
 | **manifest** | an agent's declaration: what it can do, keep and reach | `manifest.yaml`; `contracts/agent_manifest.py` |
 | **the mind** | the assistant of one chat | `Assistant`, `ai_runtime/mind/assistant.py` |
 | **parked** | waiting for a person's answer, with the state saved | `waiting_approval` |
 | **pass** | the token that tells the proxy whose worker is connecting | `EgressProxy.admit`, `ai_runtime/agents/egress.py` |
 | **place** | one agent's user and home where workers run, given by the Execution Sandbox; the runtime knows it by name and by its pass | `Place`, `sandbox/places.py`; `WorkerPlace`, `ai_runtime/agents/confinement.py` |
+| **placement** | two choices. Which execution node a chat is given to. And which Execution Sandbox an agent's worker runs in | `data_core/api/services/nodes/placement.py`; `Sandboxes.choose` |
 | **the platform's user** | the ordinary user the runtime and the spawner run as | `decentai` |
 | **principal** | who a request acts as: a person, an API key (the person), or a runtime under a delegation | `principal_type` |
 | **the proxy** | the only way from a worker to the internet | `EgressProxy`, port 8002 |
@@ -277,7 +292,7 @@ Where a word is used for more than one thing, each is said.
 | **session** | two things. A person's sign-in. And one chat as the runtime holds it | `sessions`; `Session`, `ai_runtime/chat/session.py` |
 | **slot** | one resource of one installed agent — its notes, its documents, its connection — and the name its things are kept under: `agt_<ref>__<resource id>`. Also *category* | `resource_id`; `keys.category` for a file |
 | **source** | a repository agents are installed from | `ai_agent_sources` |
-| **spawner** | the platform's one process in the Execution Sandbox: it starts an agent's worker, builds, lists and ends when the runtime asks by name | `sandbox/service.py`, `wire.py`, port 8003 |
+| **spawner** | the platform's one process in the Execution Sandbox: it starts an agent's worker, builds, lists and ends when the runtime asks by name | `sandbox/service.py`, `sandbox/wire.py`, port 8003 |
 | **pieces** | a file too large for one line of the worker protocol, sent as `bytes` notifications on the same wire, ahead of the message that names it | `WorkerHandle._stream_out`, `ai_runtime/agents/workers.py`; `Streams`, `decentai_sdk/worker.py` |
 | **registration** | an Execution Sandbox, connected to its AI Runtime, proving the node's secret and saying what it proved, is given and holds | `Sandboxes`, `ai_runtime/agents/sandboxes.py` |
 | **steward** | the one person who may change a stored thing: its creator, until it is handed over | `created_by` |

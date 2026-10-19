@@ -69,8 +69,8 @@ files are the platform's user's alone, and an agent's fence does not
 open them.
 
 Bounded by size and not by time: a file that reaches 8 MiB is put
-aside, and each writer keeps eight, so the log is at most 128 MiB and
-the oldest lines go first. One writer's files hold every agent's lines,
+aside, and each writer keeps eight, so each writer's log is at most
+64 MiB and the oldest lines go first. One writer's files hold every agent's lines,
 of every organization, and nothing limits how many `log` lines a worker
 writes: an agent that writes enough of them pushes the older lines out,
 its own and every other agent's, connections among them. Nothing here
@@ -86,7 +86,8 @@ By the Data Core, over each execution node's own link: the Data Core
 reaches no node, so it asks every node connected now a `monitor`
 question and puts the answers together
 (`data_core/api/services/agents/monitoring.py`; the node answers in
-`ai_runtime/door/monitor.py`; [execution nodes](execution-nodes.md#the-node-link)).
+`ai_runtime/door/monitor.py`; [execution nodes](execution-nodes.md#the-node-link)),
+each event saying which node it came from (`node`).
 Every event names its agent, which is one organization's or is not;
 who among the platform's people is shown the answers is the Data
 Core's to decide.
@@ -130,8 +131,9 @@ person through actions of its own
   verification, the helper's check — is one runtime's work for every
   organization. It is shown only where the deployment has one
   organization.
-- **How full the Execution Sandbox is** is shown to whoever may look:
-  every organization's agents share it. Whose agents fill it is not.
+- **How full the Execution Sandboxes are** is shown to whoever may
+  look: every organization's agents share them. Whose agents fill them
+  is not.
 - **What each part of the platform holds** — the Data Core, the runtime,
   the Execution Sandbox, the database — is the deployment's and not an
   organization's. It is shown only where the deployment has one
@@ -278,12 +280,12 @@ No container can read what another holds, and none needs a right to
 read its own. So each part says it of itself
 (`contracts/container.py`, read by all three processes):
 
-| Part | Read by | Says |
+| Part (`id`) | Read by | Says |
 |---|---|---|
-| Data Core | the Data Core, of its own container | memory, what it was given, processors used |
-| Runtime | the runtime, of its own; sent with its answer about the agents | the same |
-| Agents | the spawner, of the Execution Sandbox | the same, beside what each agent holds |
-| Database | the Data Core, asking the database's server | the memory its server holds, how many connections are open, and what it keeps on disk for this platform |
+| Data Core (`data-core`) | the Data Core, of its own container | memory, what it was given, processors used |
+| Runtime (`runtime`) | the runtime, of its own; sent with its answer about the agents | the same |
+| Execution Sandbox (`sandbox`) | each sandbox's spawner, of its own container; the node's sandboxes added together | the same, beside what each agent holds |
+| Database (`database`) | the Data Core, asking the database's server | the memory its server holds, how many connections are open, and what it keeps on disk for this platform |
 
 Memory is the kernel's number for the container, with what it could
 give back at once left out. Processors are what was used since the
@@ -363,9 +365,10 @@ Nothing on the page changes an agent or what it is given.
 
 - `ai_runtime/tests/test_events.py` — the log, each place that writes
   to it, and the door; runs anywhere.
-- `ai_runtime/tests/test_spawner_live.py` — both containers writing
-  into one folder, an agent's files listed while it runs, and an agent
-  refused the folder; in the stack of two containers.
+- `ai_runtime/tests/test_spawner_live.py` — the runtime and each
+  sandbox writing in folders of their own, read together, an agent's
+  files listed while it runs, and an agent refused the folder; in the
+  stack of the runtime and two sandboxes.
 - `data_core/tests/test_agent_monitoring.py` — the three actions against
   a stand-in for the runtime: who may look, two organizations kept
   apart, pages, filters, search and the tally, paths, and the

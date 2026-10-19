@@ -159,8 +159,8 @@ code as itself:
     → unpack into store/<hex>/ → check the manifest → have a sandbox
     install it and verify it loads → serve
 
-- **No new trust.** The door answers a runtime only, by a digest some
-  standing approval names; the bytes are checked against that digest
+- **No new trust.** The door answers an execution node only, as
+  itself, by a digest some standing approval names; the bytes are checked against that digest
   before anything is written, so the door can serve the same bytes to
   every runtime whichever organization stored them.
 - **Once per digest.** A per-digest lock means a stocking pass and a
@@ -214,8 +214,8 @@ organization's approvals alone.
 
 | verb | answers |
 |---|---|
-| `Agents:Package:List` | every package some standing approval of any organization points at: digest, manifest hash, a name for the log |
-| `Agents:Package:Fetch` `{package_digest}` | the bytes, whichever organization stored them: the digest is their name and their proof, and the installer hashes them before writing |
+| `Agents:Package:List` | every package some standing approval of any organization points at — to a node an organization owns, that organization's alone; to a shared node, none of an organization that keeps to its own nodes: digest, manifest hash, a name for the log |
+| `Agents:Package:Fetch` `{package_digest}` | the bytes of a package the list would name, whichever organization stored them: the digest is their name and their proof, and the installer hashes them before writing |
 | `Agents:Package:Prepared` `{package_digest, state, error?, confined?}` | recorded on every approval that pins the digest; `recorded: false` when nobody does any more |
 
 Nothing of who approved what travels: digests, hashes, bytes whose
@@ -226,9 +226,10 @@ application): every ten seconds it lists, installs what it does not
 hold and says of each whether it is ready; when the list changed it
 first reclaims what nobody approves any more. That is what turns *Preparing* into *Ready* on the Agents
 page, within seconds of the click and with no chat in the picture;
-several runtimes each keep their own stock. The key is required: a
-runtime without one does not start, since it would have no way to
-its agents' code.
+every node keeps its own stock. The credential is required
+(`AI_RUNTIME_NODE_CREDENTIAL_FILE`, or `AI_RUNTIME_NODE_CREDENTIAL_URL`):
+a runtime without one does not start, since it would have no way to its
+agents' code.
 
 ## Reclaiming
 
@@ -241,11 +242,12 @@ because its disk is shared by digest; each sandbox gives up its own
 copy of what the runtime forgot when it is told which digests are still
 approved (wire.py, `keep`), keeping what a running worker stands on. When the list of approved
 packages changes (`Agents:Package:List`, every digest **any**
-organization still approves), and after a chat pulled a package, it
-keeps that set, and what this process
-is using, and forgets the rest. The answer is deployment-wide on
-purpose: one folder serves every organization that approved those
-bytes, so a per-organization answer could never authorise a deletion.
+organization the node may serve still approves), and after a chat
+pulled a package, it keeps that set, and what this process
+is using, and forgets the rest. The answer spans every organization the
+node serves on purpose: one folder serves every organization that
+approved those bytes, so an answer for one of them could never
+authorise a deletion.
 Hashes travel, nothing else, to a process already holding the code they
 name.
 
@@ -255,13 +257,17 @@ code, and its environment where no other version on disk shares it. An unanswere
 does an empty answer: a platform that has forgotten every approval is
 one to distrust, not to obey.
 
-## More than one runtime process
+## More than one execution node
 
-With code pulled by digest and verified on arrival, the code a runtime
-and its sandboxes hold is a cache of something the Data Core owns. Two
-things are not, and exist only in the sandbox an agent ran in: the
-record of what it did there ([what is written down](monitoring.md)) and
-what it keeps in its own home. And a turn in flight lives in one
-process's memory. So several runtime processes need routing that keeps
-a chat on one process; the platform does not provide that routing yet,
-and runs one runtime process, with as many sandboxes as it is given.
+With code pulled by digest and verified on arrival, the code a node's
+runtime and its sandboxes hold is a cache of something the Data Core
+owns: every node stocks itself, so a chat finds its agents built
+wherever it is placed. Two things are not a cache, and exist only in
+the sandbox an agent ran in: the record of what it did there ([what is
+written down](monitoring.md)) and what it keeps in its own home while
+it runs. And a turn in flight lives in one process's memory. So a chat
+is held by one node at a time, under a lease the Data Core grants and
+fences ([execution nodes](execution-nodes.md#leases)); a chat that
+moves is rebuilt on its new node from the Data Core's record, and a
+call that was running on the old one is reported as unknown, never run
+again by itself.

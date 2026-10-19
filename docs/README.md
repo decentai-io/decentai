@@ -21,7 +21,8 @@ guide, **Guide** at the foot of the sidebar (its source is
 - [Operating it](run/operating.md) — starting and stopping, updating,
   what to back up, people and passwords, what the agents are given,
   speech on this machine, rotating the encryption key, several
-  organizations, removing it.
+  organizations, more Execution Sandboxes and execution nodes,
+  removing it.
 - [Configuration](run/configuration.md) — every setting, what it does,
   and its default.
 - [Deploying](run/deploying.md) — a server with an address of its own,
@@ -53,6 +54,10 @@ The platform:
   thing, transfer, and what happens when a person leaves.
 - [The data layer](system/data-layer.md) — one shape for credentials,
   records, files, skills and connections; keys and values; encryption.
+- [Execution nodes](system/execution-nodes.md) — the AI Runtimes and
+  their Execution Sandboxes the Data Core serves: authorities and
+  credentials, the node link, leases, the clock, placement, and
+  organizations running nodes of their own.
 
 Agents:
 
@@ -125,10 +130,13 @@ describe is [`note/`](https://github.com/decentai-io/decentai-agents/tree/main/n
 - [CONTRIBUTING.md](../CONTRIBUTING.md) — rules, style, and the four
   test suites.
 - [Local development](contributing/local-development.md) — the
-  Data Core and the web app started by hand, the runtime through its
-  tests, the simulator.
+  Data Core started by hand, the web client's development server, the
+  runtime through its tests, the simulator.
 - [Reading the runtime](contributing/reading-the-runtime.md) — a route
   through `ai_runtime/` along the path of one message, with what to
   check at each stop and the tests that hold it.
 - [Open questions](contributing/open-questions.md) — the design
   questions the October 2026 review raised and nobody has decided yet.
+- [The AI Engine plan](ai-engine-plan.md) — the decentralization agreed
+  in October 2026: the names, the design rules, and the phases that
+  made the engine what these pages describe.

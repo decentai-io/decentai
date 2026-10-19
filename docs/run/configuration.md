@@ -82,7 +82,7 @@ still holds it; by hand, copy `config/sandbox.env.example` and
 |---|---|---|
 | `SPEECH_URL` | `http://speech:8004` | Where the Data Core asks the platform's own speech models ([the speech container](#the-speech-container)). Nothing answering there is not an error: an organization that keeps speech local is told it is not running, and one that chose a provider never asks. |
 | `DATA_CORE_SERVICE_PRIVATE_KEY` | required for chats | The Data Core's own key: it signs every reply and frame it sends an execution node, and nodes hold the public half ([execution nodes](../system/execution-nodes.md#the-data-cores-signature)). |
-| `NODE_AUTHORITY_PUBLIC_KEY` | unset | An authority's public key, registered as a shared authority when the seeder runs, once. One computer's install sets it; a server registers its authorities on the Nodes doors instead ([execution nodes](../system/execution-nodes.md)). |
+| `NODE_AUTHORITY_PUBLIC_KEY` | unset | The install's own authority's public key, registered as a shared authority, *This install*, when the seeder runs — once: one revoked since stays revoked. Its private half, in `config/node-authority.env`, is what `node-issuer` signs the bundled node's credentials with, so the Compose stack needs it. Other authorities are registered in the app, under **Settings → Nodes**, or with `Nodes:Authority:Create` ([execution nodes](../system/execution-nodes.md)). |
 | `OPERATOR_ORG_ID` | the first organization | Whose administrators are the deployment's operator: they, holding `nodes:authority:shared`, register and revoke shared authorities. |
 | `REFERENCE_CATALOG_URL` | unset | A repository the marketplace offers as a source with one click. Unset, it offers none. |
 | `AGENT_SOURCE_FOLDER` | unset | A folder on the Data Core's own disk whose git repositories may be agent sources, added by their path (`/develop/my-agents`). For somebody writing agents on their own computer ([a DecentAI of your own](../agents/developing.md#a-decentai-of-your-own)). Unset — every server — a source is fetched from a repository's address only. |
@@ -102,8 +102,9 @@ still holds it; by hand, copy `config/sandbox.env.example` and
 
 ### Logs
 
-Both processes write to standard output. The Data Core reads all of
-these; the runtime reads `LOG_LEVEL`.
+Every container writes to standard output. The Data Core reads all of
+these; the runtime, the Execution Sandbox, `node-issuer` and the speech
+container read `LOG_LEVEL`.
 
 | Variable | Default | Meaning |
 |---|---|---|
@@ -152,7 +153,7 @@ gone. Back them up with it.
 | `LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING` or `ERROR`. |
 | `AI_RUNTIME_EGRESS_PORT` | `8002` | Where the proxy that agents connect through listens, on the runtime's container, reached over the network it shares with its Execution Sandboxes and nothing else. The firewall rule of each sandbox is written for the same port when it starts. A value that is blank or not a port is read as `8002` by every container, so the rule, the proxy and the workers agree. |
 | `AI_RUNTIME_PACKAGE_HOSTS` | `pypi.org, files.pythonhosted.org` | Where packages come from: the hosts the builder of an agent's declared packages may reach, and the whole of them. Separated by commas. |
-| `AI_RUNTIME_SANDBOX_SECRET` | required, in `config/sandbox.env` | The secret set for the execution node: what an Execution Sandbox proves when it registers with the runtime, and what the runtime proves on every request to one ([the sandbox](../system/sandbox.md#many-sandboxes)). It never travels. `bootstrap/setup.py` writes one into `config/deploy.env`; `docker-compose.yml` hands it to the runtime and to every sandbox. A runtime without it does not start. |
+| `AI_RUNTIME_SANDBOX_SECRET` | required, in `config/sandbox.env` | The secret set for the execution node: what an Execution Sandbox proves when it registers with the runtime, and what the runtime proves on every request to one ([the sandbox](../system/sandbox.md#many-sandboxes)). It never travels. `bootstrap/setup.py` writes one into `config/sandbox.env`; `docker-compose.yml` hands that file to the runtime and to every sandbox, and to nothing else. A runtime without it does not start. |
 | `AI_RUNTIME_SANDBOX_PORT` | `8005` | Where Execution Sandboxes register with the runtime. Every process of an agent's is started in a sandbox that registered; a runtime with none that can confine a worker does not start. |
 | `AI_RUNTIME_AGENTS_SPAWNER` | empty | An Execution Sandbox the runtime knows by its address, as `host:port`, besides those that register. Optional, and not set by `docker-compose.yml`: sandboxes register themselves. |
 
@@ -193,9 +194,10 @@ and is set where the container is started:
 | `SANDBOX_MEMORY` | no limit | Memory the agents are given together, as the engine reads it: `2g`, `1500m`. |
 | `SANDBOX_CPUS` | no limit | Processors the agents are given together: `2`, `1.5`. |
 
-`docker-compose.yml` reads both from `config/deploy.env`; a change takes
-effect when the Execution Sandbox is started again (`docker compose
---env-file config/deploy.env up -d sandbox`). The spawner reads what was set from the kernel
+`docker-compose.yml` reads both from `config/deploy.env`, for each
+Execution Sandbox (the second of `compose/sandboxes.yml` is given the
+same); a change takes effect when the Execution Sandbox is started
+again (`docker compose --env-file config/deploy.env up -d sandbox`). The spawner reads what was set from the kernel
 and ends the agent using most memory before the engine would have to
 ([the sandbox](../system/sandbox.md)).
 
@@ -211,7 +213,7 @@ and from the spawner, and setting it takes a right the container is
 given when it is started:
 
 ```yaml
-agents:
+sandbox:
   cap_add:
     - NET_ADMIN
 ```
@@ -219,8 +221,8 @@ agents:
 `docker-compose.yml` grants it. The right is used once, at start, for
 that one rule in the container's own network; nothing started there
 ever holds it, and the runtime's container is not given it. Without it
-the stack runs all the same, and the runtime's log says that nothing
-holds an agent to the proxy.
+the stack runs all the same, and the sandbox's log and the runtime's
+say that nothing holds an agent to the proxy.
 
 ### Where an agent's packages come from
 
@@ -280,7 +282,7 @@ Speech to text and text to speech from models that run on the machine
 the platform runs on (`speech/`). It holds no setting of the
 platform's and no key: it is asked by the Data Core alone, on the
 private network, and what an organization does with it is chosen in
-the app (**Settings → Chat configuration → Speech**).
+the app (**Settings → Speech**).
 
 | Variable | Default | Meaning |
 |---|---|---|
@@ -306,9 +308,10 @@ the internet.
 | `MONGO_ROOT_USERNAME`, `MONGO_ROOT_PASSWORD` | The database's root account, which `MONGO_URI` must carry too. |
 
 The gateway's configuration (`gateway/Caddyfile`) reads one more,
-`DATA_CORE_UPSTREAM` (where it sends the Data Core's paths,
-`data-core:8000` unless said). The Compose stack does not pass it on: it
-is for a deployment that runs the gateway some other way.
+`DATA_CORE_UPSTREAM`: where it sends the Data Core's paths — `/nodes/*`,
+the execution nodes' link, among them — as `host:port`, `data-core:8000`
+unless said. Compose passes it on from `config/deploy.env`; it is for a
+Data Core that runs somewhere else.
 
 ## What is deliberately not a setting
 

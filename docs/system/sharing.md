@@ -85,6 +85,14 @@ MCP servers are a person's own and stay so: always private to whoever
 added one, never shared, never transferred, with no escape grant
 ([MCP servers](mcp.md)).
 
+A webhook is shared to **watch**, not to use: its owner may name
+viewers — groups of theirs and their peers, the PERSONAL reach
+(`Sharing(PERSONAL, "webhook")` asks `reach_refusal` and
+`missing_in_org`) — who see it and what each event came to and change
+nothing. Its viewers are kept apart from any owner map (`viewers`), its
+chat is never shared, and there is no escape grant: the owner alone
+edits it or hands it over ([webhooks](webhooks.md#its-page)).
+
 **INFRASTRUCTURE** — LLM connections, agent sources. These exist to be
 used, so naming Everyone is open to whoever creates one. The creator is
 always retained among the users — an infrastructure record is never

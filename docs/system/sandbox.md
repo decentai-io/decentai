@@ -64,7 +64,8 @@ its user, its folders, its fences, its spawn line, its ending.
   package by its digest, to start an agent's worker from an
   environment in a package, to build packages for one run, to list
   what an agent keeps, to end an agent's processes, to say what the
-  agents use and what it wrote down. It gives each agent a user
+  agents use and what it wrote down, to give up the packages no longer
+  approved, and to drain. It gives each agent a user
   and a place of its own (`sandbox/places.py`), writes the
   spawn line and the fences, starts the process and carries a
   worker's lines to the runtime and back. What a worker is entitled
@@ -74,7 +75,8 @@ its user, its folders, its fences, its spawn line, its ending.
 - **It is the runtime's image**, started with another command, so the
   interpreter and the browsers are the same files on both sides.
 - **Nothing is shared.** Each sandbox has a folder of its own — its
-  own copy of the agent code it runs, its environments, its workers'
+  own copy of the agent code it runs, kept by digest so a package is
+  sent to it once, its environments, its workers'
   homes, what it writes down — and no volume is shared between
   sandboxes, or between the runtime and a sandbox. Code reaches a
   sandbox only through its runtime ([agent code](agent-code.md)), and
@@ -691,8 +693,9 @@ and the Data Core's private key never reach it. An Execution Sandbox,
 where agent code runs, is handed no secret but the node's: where its
 runtime takes registrations, where the proxy is, its port, its name and
 labels, whether to filter system calls, the log level and the time
-zone. The person still fills in one file, and `bootstrap/setup.py`
-writes the node's secret into it.
+zone. The person still fills in one file, `config/deploy.env`, and
+`bootstrap/setup.py` writes the node's secret into another beside it,
+`config/sandbox.env`.
 
 ## What the runtime says at start
 

@@ -1,7 +1,12 @@
 # The AI Engine: decentralization plan
 
-*Agreed 18 October 2026. One plan for the engine, the execution nodes,
-the clients and the white paper.*
+*Agreed 18 October 2026; phases 0 to 7 built by 19 October 2026. Kept as
+the record of what was decided and what was built. How each part works
+now is in [the system pages](system/architecture.md), and
+[execution nodes](system/execution-nodes.md) and
+[the sandbox](system/sandbox.md) above all.*
+
+**The core rule:** the model may propose anything. It authorizes nothing.
 
 ---
 
@@ -10,13 +15,14 @@ the clients and the white paper.*
 **Names**
 
 - **AI Engine**: the Data Core, the AI Runtime and the Execution Sandbox.
-  This repository becomes the AI Engine alone.
+  This repository is the AI Engine alone.
 - **Data Core**: `data_core/`. Identity and access, the agent
-  lifecycle, the data layer, chats and approvals, organization settings.
-  The only part that reaches the database. Executes nothing.
-- **AI Runtime**: plans, executes, checks every call, runs the proxy.
-- **Execution Sandbox**: where agent code runs. Everything else an agent
-  needs, it asks the Runtime for.
+  lifecycle, the data layer, chats and approvals, organization settings,
+  the clock. The only part that reaches the database. Executes nothing.
+- **AI Runtime**: `ai_runtime/`. Plans, executes, checks every call, runs
+  the proxy.
+- **Execution Sandbox**: `sandbox/`. Where agent code runs. Everything
+  else an agent needs, it asks the Runtime for.
 - **Execution node**: one AI Runtime with its Execution Sandboxes. They are
   deployed together, because separating them adds latency and no value.
 - **Clients**: the web, desktop and mobile apps. They live outside the
@@ -49,252 +55,167 @@ the clients and the white paper.*
 6. **Organizations can own nodes.** An authority registered by an
    organization's administrator admits nodes for that organization only;
    one registered by the operator admits shared nodes. Placement prefers,
-   or requires, the
-   organization's own nodes. Autoscaling, quotas and cloud placement are
-   for operators, not the engine.
+   or requires, the organization's own nodes. Autoscaling, quotas and
+   cloud placement are for operators, not the engine.
 7. **Each Sandbox installs agent code itself**, as a local cache named by
    fingerprint. Code reaches it only through its Runtime. No volume is
    shared between Sandboxes, or between a Runtime and its Sandboxes.
-8. **Sandbox choice:** eligible first (healthy, locks proven, hardware
-   matches), then the one already running the agent, then one that has it
-   installed, then the least loaded (memory, then processor). Round robin
-   breaks ties.
+8. **Sandbox choice:** eligible first (healthy, locks proven, not
+   draining, labels matching), then the one already running the agent,
+   then one that has it installed, then the least loaded (memory, then
+   processor). Round robin breaks ties.
 
 ---
 
-## 2. Where the code stands
+## 2. Where the code started, and where it is
 
-| Today | What it means for the plan |
+| On 18 October 2026 | Now |
 |---|---|
-| The Data Core knows one Runtime address (`AI_RUNTIME_URL`) and dials it once per person and chat (`data_core/api/services/chat_session/relay.py`). | Replaced by nodes connecting in, with chats multiplexed over each node's link. |
-| At boot the Data Core re-dials every chat with schedules, so the Runtime's clock can load them; the clock runs in the Runtime (`ai_runtime/chat/clock.py`). | The clock moves to the Data Core; the Runtime only runs firings it is handed. |
-| Keys are fixed in `config/deploy.env`: the Data Core's public key on the Runtime, the Runtime's public key on the Data Core. | Replaced by registered authorities and node credentials they sign. |
-| The Data Core reads monitoring by calling the Runtime over HTTP (`data_core/api/services/agents/monitoring.py` to `/internal/monitor/*`). | Moves onto the node link, since the Data Core can no longer reach nodes. |
-| The Runtime reaches one Sandbox at `sandbox:8003`, using a key read from a shared volume. | Sandboxes register with their Runtime instead. |
-| Runtime and Sandbox share `/data/agents`: packages, environments, homes, the spool for large files, the event log, the key. | Each Sandbox keeps its own; large files travel over the connection. |
-| The Data Core assumes one process: its access cache, webhook rate counter and live sockets are in memory. | Stays true for now (see open questions). |
-| The Runtime holds no state of its own, and absorbs each event exactly once. | Already right for leases and failover. Nothing to change. |
-| The Sandbox now refuses to run until its locks are proved after a restart. | The fix is in the working tree, not committed. |
+| The Data Core knew one Runtime address and dialed it once per person and chat. | Nodes dial the Data Core (`WS /nodes/link`); every chat a node holds is carried over that one link by its id (`data_core/api/services/chat_session/relay.py`). The Data Core holds no node's address. |
+| At boot the Data Core re-dialed every chat with schedules; the clock ran in the Runtime. | The clock is the Data Core's (`ScheduleClock`, `data_core/api/services/chat_session/clock.py`); a node runs the fires it is handed (`ai_runtime/chat/clock.py`). |
+| Fixed keys in the install's settings: the Data Core's public key on the Runtime, the Runtime's on the Data Core. | Registered authorities, and node credentials they sign; the Data Core signs what it tells a node. |
+| The Data Core read monitoring over HTTP from the Runtime. | It asks over the node link (`ai_runtime/door/monitor.py`). |
+| The Runtime reached one Sandbox at a fixed address, with a key from a shared volume. | Sandboxes register with their Runtime, proving the node's secret by an HMAC challenge (`sandbox/wire.py`). |
+| Runtime and Sandbox shared one volume: packages, environments, homes, the spool, the event log, the key. | Each Sandbox keeps its own; large files travel in pieces over the worker's connection. |
+| The Data Core assumed one process: its access cache, webhook rate counter and live sockets in memory. | Still so (section 5). |
+| The Runtime held no state of its own and absorbed each event exactly once. | Unchanged: it is what makes leases and failover work. |
 
 ---
 
-## 3. Phases
+## 3. What each phase built
 
-Each phase leaves the single-machine install working, with one command.
+Each phase left the single-machine install working, with one command
+(`bootstrap/setup.py`).
 
 ### Phase 0 — Groundwork
 
-- Commit the sandbox restart fix; run the live Compose tests it skipped.
-- Use the new names in docs, logs and new code. Keep existing environment
-  variable names working, with the new ones beside them.
-- Version the protocols: the node link and the sandbox link each carry a
-  protocol version, so a node and a Data Core of different releases fail
+- The Sandbox runs nothing as an agent's user after a restart until its
+  locks are proved again; the live Compose tests run it
+  (`ai_runtime/tests/spawner-live.compose.yml`).
+- The new names in docs, logs and code. Old setting names were kept beside
+  the new ones while the phases ran, and then removed: only the new names
+  are read.
+- Both links carry a protocol version (`contracts/node.py`,
+  `sandbox/wire.py`), so parts of different releases refuse each other
   clearly instead of half-working.
-
-**Done when:** the fix is committed and tested live, and the docs speak of
-the Data Core, the AI Runtime, the Execution Sandbox and execution nodes.
 
 ### Phase 1 — Node identity and admission
 
-No administrator step per node. Trust is given to **authorities**, once,
-and any node holding a credential one of them signed is admitted.
-
-**Data Core**
-- An **authorities** record: id, name, the public key or the address of
-  an issuer's published key set, scope (`shared` or one organization),
-  registered by, registered at, revoked. Operators register shared
-  authorities; an organization's administrators register authorities for
-  their organization only. New permission actions for both.
-- **Node credentials**: a short-lived signed token naming the node (and,
-  where the authority gives one, its organization), with an expiry of
-  minutes. The Data Core accepts it when it is signed by an unrevoked
-  authority, unexpired, and its scope fits the authority's. This replaces
-  the fixed `AI_RUNTIME_SERVICE_PUBLIC_KEY`.
-- A **nodes** record kept automatically from what admitted nodes present:
-  id, authority, scope, labels, first and last seen, what they report.
-  It is a view for administrators, not a list anyone has to fill in.
-- **Revoke**: removing an authority refuses every node it vouches for on
-  their next request. Single nodes drop out when their credential
-  expires; a list of refused node ids covers the urgent case.
-- The Data Core's own public key is published to nodes, so a node can
-  tell it is speaking to the real Data Core.
-
-**AI Runtime**
-- Reads its credential from where the operator puts it (a file mounted
-  by a secret manager, or an issuer it asks), and reads it again as it
-  nears expiry. It never holds an authority's private key.
-- Is configured with the Data Core's address and public key, and requires
-  that key on every reply.
-
-**Single-machine install**
-- Setup generates one authority key pair, registers its public half as a
-  shared authority, and gives the bundled node credentials it signs, so a
-  fresh install still needs nothing from the person.
-
-**Done when:** a node with no credential, an expired one, or one signed
-by an unregistered or revoked authority is refused; an organization's
-authority cannot admit a shared node; the one-command install still
-works.
+- **Authorities** (`AuthorityStore`), registered on the `Nodes:Authority`
+  doors: a public key or an issuer's published key set, shared (the
+  operator's) or one organization's.
+- **Node credentials**: short-lived tokens naming the node (and its
+  organization, where the authority has one), admitted when signed by an
+  unrevoked authority, unexpired and in scope
+  (`data_core/api/services/nodes/admission.py`).
+- **Nodes** (`NodeStore`) are kept from what admitted nodes present: a
+  view for administrators (`Nodes:Node`), not a list to fill in.
+  Revoking an authority refuses its nodes on their next request; a node
+  can also be refused by name (`RefusedNodeStore`).
+- The node reads its credential from where its operator puts it and
+  again before it lapses, and believes nothing the Data Core did not sign
+  (`ai_runtime/door/node.py`).
+- The one-computer install makes one authority, registers its public
+  half as shared, and runs `node-issuer` (`bootstrap/node_issuer.py`) to
+  sign the bundled node's credential.
 
 ### Phase 2 — Nodes connect to the Data Core
 
-- Each node opens **one long-lived, signed connection** to the Data Core
-  and keeps it, reconnecting with backoff.
-- **Chats are multiplexed** over it: the frames the Data Core sends today
-  per chat (`user_message`, `approval_decided`, `stop`, `credential` and the
-  rest) carry a chat id; events come back the same way. The per-chat dial
-  in `relay.py` is retired.
-- **Delegations are bound to the node** they were issued to: the Data Core
-  accepts a delegation only on a request signed by that node.
-- **Monitoring** moves onto the link: the Data Core asks over it, or nodes
-  send events in batches. Each event names its agent, so the Data Core
-  can filter by organization as it does now.
-- Package fetch is unchanged: nodes already pull approved code by
-  fingerprint.
-
-**Done when:** the Data Core holds no Runtime address; the stack works
-with the node started before or after the Data Core; a node restart loses
-no chat.
+- One long-lived, signed link per node, reconnecting with backoff
+  (`ai_runtime/door/link.py`, `data_core/api/services/nodes/link.py`).
+- Chats are multiplexed over it; the per-chat dial is gone.
+- Delegations are bound to the node they were issued to.
+- Monitoring questions travel over the link. Package fetch by fingerprint
+  is unchanged.
 
 ### Phase 3 — Placement and leases
 
-- A **lease** per active chat: node, number, expiry. Granted when a chat
-  needs a node; renewed over the link; released when the chat goes idle.
-- **Placement**: among connected, admitted, unrevoked nodes; the
-  organization's own nodes first (or only, per Phase 5); then the node
-  that last held the chat; then the least loaded, by what nodes report.
-- **Fencing**: every write a node makes for a chat (state, events,
-  messages, approvals, results, schedules) carries the lease number; an
-  old number is refused.
-- **Failover**: when a node's lease expires, the chat is placed again. The
-  new node rebuilds from the Data Core's record, as a restart does today.
-  A call that was running is reported as unknown and never retried by
-  itself, as today.
-- **Stop and kill** are sent to the lease holder; stopping everything still
-  deletes the delegations, so a node that ignores it can read nothing.
-
-**Done when:** with two nodes, killing one moves its chats to the other;
-two nodes can never both write for one chat.
+- A numbered lease per active chat (`LeaseStore`): 60 seconds, renewed
+  by the node's heartbeat every 20, let go when the chat goes idle with
+  nobody watching.
+- Placement (`data_core/api/services/nodes/placement.py`): the node
+  holding the chat; else among the nodes that may serve its
+  organization, its own first, then the last holder, then the least
+  loaded.
+- Every write a node makes for a chat carries the lease number; an old
+  number is refused.
+- Failover: a lapsed lease places the chat again, and the new node
+  rebuilds it from the record. A call that was running is reported
+  unknown and never run again by itself.
 
 ### Phase 4 — The clock in the Data Core
 
-- The Data Core decides when each schedule is due, from the rows it
-  already stores, and sends a **fire** to the chat's lease holder, placing
-  the chat first if no node holds it.
-- The Runtime keeps what a firing runs (a function with no model, or a
-  note that wakes the assistant) and its limits: schedulable functions
-  only, levels 0 and 1, no approvals.
-- Sleep becomes a one-off schedule the Data Core keeps.
-- The boot re-dial of scheduled chats is retired.
-- Webhook events already arrive at the Data Core; they wake a chat the
-  same way.
-
-**Done when:** with several nodes, each schedule fires once; a schedule
-fires even if its chat has no node at the moment it is due.
+- The Data Core finds due rows, places the chat if no node holds it,
+  claims the row so it fires once, and sends a `fire` over the link.
+- The node runs what a fire runs, with its limits: schedulable functions
+  only, levels 0 and 1, no approvals. A sleep is a one-off row the Data
+  Core keeps. The boot re-dial is gone.
 
 ### Phase 5 — Organizations owning nodes
 
-- An organization setting: **prefer own nodes** or **own nodes only**.
-- Placement honours it; with "own nodes only" and none connected, the chat
-  waits and the person is told why, rather than running elsewhere.
+- `Settings:Nodes`, `placement`: prefer own nodes (`prefer_own`), or own
+  nodes only (`own_only`).
+  With own nodes only and none connected, the chat waits and the person
+  is told why; a shared node holding one of the organization's chats lets
+  it go.
 - Administrators see their organization's nodes, who admitted them and
   what each reports.
 
-**Done when:** an organization with "own nodes only" never has a chat,
-credential or model key sent to a shared node.
-
 ### Phase 6 — Many Sandboxes per Runtime
 
-**Registration**
-- Sandboxes connect to their Runtime and register, authenticated by a
-  secret set for the node. The shared key file goes.
-- Each reports health, capacity, labels (for example `gpu`) and its proven
-  locks; each runs its own check and re-check.
+- Sandboxes (`python -m sandbox.service`) register with their Runtime
+  (`ai_runtime/agents/sandboxes.py`), proving the node's secret, and
+  report health, capacity, labels, proven locks, what they hold and run.
+- The Runtime keeps the approved packages by digest
+  (`ai_runtime/agents/library.py`) and sends the bytes when a Sandbox
+  asks; the Sandbox checks digest and manifest before writing, builds
+  the environment with its own builder, runs the verification start
+  (`sandbox/installs.py`).
+- Each agent's worker runs on the Sandbox the rule in section 1.8 picks
+  (`Sandboxes.choose`). Each Sandbox keeps its own homes, events and
+  firewall rule.
+- A Sandbox can be drained, by an administrator through the Data Core
+  and over the link: no new workers, existing ones finish.
+- `compose/sandboxes.yml` adds a second one, `sandbox-2`, for trying it
+  on one machine.
 
-**Agent code**
-- The Runtime keeps a cache of approved packages and passes the bytes to
-  a Sandbox on request.
-- The Sandbox checks the fingerprint and the approved manifest before
-  writing anything, builds the environment with its own builder, runs the
-  verification start, and keeps it named by fingerprint and dependencies.
-- Packages installed for one run (approved code cards) are built in the
-  Sandbox the same way.
+### Phase 7 — The web app becomes a client
 
-**Running**
-- The worker pool maps each approval to one Sandbox and one worker, chosen
-  by the rule in section 1.8.
-- Large files travel as chunks over the worker's connection; the spool
-  folder goes.
-- Each Sandbox keeps its own homes, events and firewall rule; the relay to
-  the Runtime's proxy is unchanged.
-- A Sandbox can be **drained**: no new workers, existing ones finish.
-- Monitoring and usage are gathered from every Sandbox.
-
-**Done when:** the shared `/data/agents` volume is gone; with two
-Sandboxes, agents spread by the placement rule; stopping one moves its
-agents to the other on their next call.
-
-### Phase 7 — The web app becomes a client (done 18 October 2026)
-
-- `frontend/` is its own repository, `decentai-web-client` (private for
-  now), its history kept, with the brand guide and the design language.
-  It builds and tests itself; nothing is published to an image registry.
-- The engine keeps a small **gateway** (Caddy, `gateway/Caddyfile`) as its
-  one door: HTTPS on a server, the Data Core's paths to the Data Core, and
-  every other path to the web client: its container, which joins the
-  engine's network as `web-client`, or `npm start` on port 4200, or
-  wherever `WEB_CLIENT_UPSTREAM` says. The browser
-  sees one origin, so cookies and allowed origins are unchanged.
-- Each repository is developed on its own, side by side. A repository
-  that assembles them for local use and for cloud deployments (AWS,
-  Azure, …) may come later.
-- Still to do: publish the client contract from `docs/reference/api.md`,
-  with a version; the engine's chat-protocol check reads the web client
-  from a checkout beside it, and skips without one.
-- Later: the desktop client from the web client.
-- Done: the folders, services and settings carry the parts' names
-  (`data_core/` and `sandbox/`; the `data-core` and `sandbox` services),
-  and the install's settings are in `config/`.
+- The web app is its own repository, `decentai-web-client` (private for
+  now). The engine's chat-protocol check (`tests/test_chat_contract.py`)
+  reads it from a checkout beside this one, and skips without one.
+- The engine keeps a **gateway** (Caddy, `gateway/Caddyfile`) as its one
+  door: the Data Core's paths to the Data Core, every other path to the
+  web client (its container, `npm start` on port 4200, or
+  `WEB_CLIENT_UPSTREAM`). The browser sees one origin.
+- The agents, Note among them, and the catalog are in `decentai-agents`.
+- The folders, services and settings carry the parts' names (`data_core/`,
+  `ai_runtime/`, `sandbox/`; the `data-core`, `ai-runtime` and `sandbox`
+  services); Compose overlays are in `compose/`, the install's settings
+  in `config/`.
+- Later: the client contract published from
+  [the API reference](reference/api.md), with a version; the desktop
+  client from the web client.
 
 ### Phase 8 — The white paper
 
-- **Title:** DecentAI: The Agent OS. Toward Large-Scale Deployment of AI
-  Agents.
-- **Core rule:** the model may propose anything; it authorizes nothing.
-- **Section 1:** the title.
-- **Section 2:** the whole system, complete but not too technical. Written
-  last.
-- **Section 3:** the technical design, for someone rebuilding the system
-  on their own. No tests, no source file names.
-- Uses the names in section 1 of this plan, describes the engine as
-  designed here, and says plainly which parts are built and which are
-  planned. Arabic names in every example.
+*DecentAI: The Agent OS. Toward Large-Scale Deployment of AI Agents*, in
+`docs/paper/`: the whole system first, then the technical design for
+someone rebuilding it, in the names of section 1, saying plainly what is
+built and what is planned.
 
 ---
 
-## 4. Order
-
-```
-Phase 0 ─► Phase 1 ─► Phase 2 ─► Phase 3 ─► Phase 4 ─► Phase 5
-                 └──────────────► Phase 6 (needs only Phase 0)
-Phase 7 any time after Phase 0.   Phase 8 alongside, section 3 first.
-```
-
-Phase 6 touches only the Runtime and the Sandbox, so it can run beside
-Phases 1 to 5, which touch the Data Core and the Runtime's door.
-
----
-
-## 5. Decided, and still open
+## 4. Decided, and still open
 
 **Decided (18 October 2026)**
 
 - **Node credentials are signed tokens**, short-lived and signed by a
   registered authority, not mutual TLS.
 - **Leases last 60 seconds and are renewed every 20.**
-- **The Data Core stays one process** for these phases. Its permission
-  cache, webhook rate counter and live connections live in its memory, so
-  two copies behind a load balancer would not share them.
+- **The Data Core stays one process** for now. Its permission cache,
+  webhook rate counter and live connections live in its memory, so two
+  copies behind a load balancer would not share them.
 - **Hardware needs are labels on Sandboxes for now**; a manifest cannot yet
   ask for them.
 

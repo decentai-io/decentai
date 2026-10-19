@@ -104,15 +104,16 @@ turns that into an honest reply on the first event that needs a model
   the work — emissions keep flowing to the durable log; only the live
   relay goes quiet.
 - **The disk is stocked and reclaimed by the runtime itself.** A
-  package installs once and serves every organization that approved
-  those bytes, so nothing that uninstalls it anywhere can safely
-  delete it. Instead the roster keeps the stock (`host.agents.stock`,
-  every ten seconds): it asks the platform, as itself, which packages
-  are approved *anywhere* (`Agents:Package:List` — answered beyond any
-  organization, because the folder is shared), installs what it does
-  not hold, and, when that list changed, sweeps: it adds what this
-  process is using (every live session's roster, every running worker)
-  and forgets the rest — code and virtual environment together. An
+  package is kept once, by digest, and serves every organization that
+  approved those bytes, so nothing that uninstalls it anywhere can
+  safely delete it. Instead the roster keeps the stock
+  (`host.agents.stock`, every ten seconds): it asks the platform, as
+  itself, which packages are approved *anywhere* (`Agents:Package:List`
+  — answered beyond any organization, because the cache is shared),
+  fetches and installs what it does not hold, and, when that list changed, sweeps:
+  it adds what this process is using (every live session's roster,
+  every running worker) and forgets the rest — its cached copy here,
+  and each Execution Sandbox drops its own install and environment. An
   unanswered read deletes nothing; so does an empty answer.
 - **The contract is re-read as a turn begins.** A session outlives
   decisions made elsewhere: an agent installed, a trust level moved, a
@@ -146,17 +147,20 @@ turns that into an honest reply on the first event that needs a model
 
 The node link ([execution nodes](../system/execution-nodes.md#the-node-link)):
 the node dials the Data Core, and every chat it serves rides that one
-connection. An `attach {chat_id, credential}` frame opens a chat here:
-the host takes the **credential** for the chat — the delegation, bound
-to this node, that a platform reached over a network needs to answer
-this chat's calls (`ai_runtime/door/platform.py`) — and greets with
-`hello`. A credential is not authority: the door passes it to the
+connection. An `attach {chat_id, credential, lease, watched}` frame
+opens a chat here: the node keeps the **lease** number it holds the
+chat under and sends it on every call for it, the host takes the
+**credential** for the chat — the delegation, bound to this node, that
+a platform reached over a network needs to answer this chat's calls
+(`ai_runtime/door/platform.py`) — and greets with `hello`. A credential is not authority: the door passes it to the
 services opaque, and what the chat may do is still only what
 `contract` answers. An attachment also has the host re-read the chat's
 schedule rows from the services, and the clock replaces its copy with
 them, so a pause or a delete whose `schedules_changed` never arrived is
 caught up with. Then `chat {chat_id, frame}` carries each of the frames
-below, and `detach {chat_id}` ends the chat's audience here. Each chat
+below, `watch {chat_id, watched}` says whether a person is behind the
+audience (an unwatched chat is let go, its lease with it, once it is
+idle), and `detach {chat_id}` ends the chat's audience here. Each chat
 has one audience on the node (`ChatChannel`, `ai_runtime/door/link.py`),
 whose frames are read in order; what the host emits for the chat goes
 back as `event {chat_id, frame}`.

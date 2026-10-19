@@ -304,8 +304,8 @@ it:
 Seventeen actions, `settings:webhook:*` (list, get, create, update,
 rotate, delete, deliveries, executions, test, share, transfer) and
 `settings:outbound:*` (list, create, update, delete, test, deliveries),
-in the **baseline** every member holds (`BASELINE_ACTIONS`, revision
-29, `data_core/server/authentication/catalog.py`;
+in the **baseline** every member holds (`BASELINE_ACTIONS`,
+`data_core/server/authentication/catalog.py`;
 [actions](../reference/actions.md#webhooks)). Like every baseline
 action they are offered once: an organization that unticks one keeps
 it unticked. Every read and write names the caller, so another

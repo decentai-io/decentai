@@ -10,7 +10,7 @@ Each stop names the file, the functions to read in order, what to
 check while reading, and the tests that hold the behaviour — run one
 after a stop to see the claims fail when the code is changed.
 
-About eighteen thousand lines without the tests. Stops 1 to 5 are the
+About twenty-two thousand lines without the tests. Stops 1 to 5 are the
 path of a message and are most of what matters; a first pass through
 them is a day's reading.
 
@@ -82,8 +82,10 @@ ai_runtime/
     confinement.py     Confinement, WorkerPlace: the proxy and each worker's pass
     egress.py          EgressProxy: the hosts a manifest declared, and nothing else
     mcp.py             McpServer: a remote MCP server in a chat's roster
+    environments.py    the sandbox's AgentEnvironment, under the name tests import it by
   llms/                how the runtime reaches a model
     factory.py         LLMConnectorFactory: provider name -> the connector
+    meter.py           every model call a chat makes, written down to be added up
     connector/         one per provider — anthropic, bedrock, gemini, openai,
                        responses, vertex, fake — behind one interface (tools.py)
   prompts/             every prompt the runtime speaks, as .md files a person can edit
@@ -102,17 +104,19 @@ Two rules of the tree. `mind/` imports `execution/` and `agents/` —
 the law it operates under — and never `chat/`, the embodiment that
 hosts it: every side effect crosses `ChatSinks`, which lives in
 `execution/` for that reason. And `sandbox/` imports nothing
-of `ai_runtime/`: the two meet on a socket, and nothing else, and in the two
-files they share, `wire.py` and `events.py`.
+of `ai_runtime/`: the two meet on a socket, and nothing else, and in the
+files the runtime reads of it — `wire.py` and `events.py`, which both
+sides speak and write, and `environments.py` and `installs.py`, whose
+names for an environment the library keys its cache by.
 
 ## 1. Start-up and the door
 
 | Read | For |
 |---|---|
 | `main.py` | the parts, built once: `Events.configure`, the `Sandboxes` the Execution Sandboxes register with, the `Confinement`, the `AgentLibrary`, the Data Core's services. The only file at the root: everything else is in a package |
-| `door/app.py` `create_app` | the `SessionHost` and the `Scheduler`; the lifespan, which starts the parts on the loop in order (the container waited for, `Confinement.start`, `load_all`, the warm-up task, the stocking task, the clock) and stops them in reverse |
+| `door/app.py` `create_app` | the `SessionHost`, the `Scheduler` and the `NodeLink`; the lifespan, which starts the parts on the loop in order (the sandboxes' registration port opened and one that can confine a worker waited for, `Confinement.start`, `load_all`, the warm-up task, the stocking task, the clock, the link) and stops them in reverse |
 | `door/node.py` | who this node is (`NodeCredential`, read from where its operator puts it) and who the Data Core is (`DataCoreKey`: every reply and frame checked) |
-| `door/link.py` `NodeLink` | the node link: dialed with the credential, the protocol and a nonce; `hello`, then `welcome`; every frame checked; one `ChatChannel` per chat, its inbox read in order |
+| `door/link.py` `NodeLink` | the node link: dialed with the credential, the protocol and a nonce; `hello`, then `welcome`; every frame checked; `_dispatch` over a closed list (`attach`, `watch`, `chat`, `fire`, `detach`, `monitor`, a drain among them); the heartbeat that renews each chat's lease; one `ChatChannel` per chat, its inbox read in order |
 
 Check:
 
@@ -125,7 +129,8 @@ Check:
 
 Tests: `ai_runtime/tests/test_session_door.py` holds the host, with a
 socket of its own making; `ai_runtime/tests/test_node_link.py` the link,
-against a fake Data Core; `tests/test_full_stack.py` a real node linked
+against a fake Data Core; `ai_runtime/tests/test_node_identity.py` the
+credential and the key; `tests/test_full_stack.py` a real node linked
 to the served Data Core.
 
 ## 2. The host: one session per chat
@@ -459,6 +464,8 @@ With [the sandbox](../system/sandbox.md) open beside it.
   answered by `SandboxService` (`_install`, `_start`, `_files`,
   `_stop`), which also carries a worker's lines (`_carry_worker`) and
   passes workers' connections on to the runtime's proxy (`_pass_on`).
+  A sandbox told to drain over the node link (`Sandboxes.drain`) is
+  given no new worker, and its running ones finish.
   The tests have no container: `ai_runtime/tests/fake_container.py`
   answers the same requests in the test's own process.
 - `sandbox/usage.py` — what the Execution Sandbox is given and what
@@ -505,15 +512,20 @@ elsewhere, and each file says how it is run.
 ## 7. The clock
 
 `chat/clock.py`, three classes: `Schedule` (a row), `Scheduler` (the
-loop, the rows, and what a fire does — through the host, as the
-schedule's chat), `ChatClock` (the assistant's own hand on it).
+rows, and what a fire does — through the host, as the schedule's
+chat), `ChatClock` (the assistant's own hand on it). On an execution
+node the `Scheduler` does not tick: the Data Core's clock
+(`ScheduleClock`, `data_core/api/services/chat_session/clock.py`)
+decides when a row is due, claims it, and hands the fire over the
+link (`Scheduler.fire_now`), so a row fires once however many nodes
+hold a copy. The loop (`tick`) is what a test and the simulator run.
 
 Check:
 
 - `Scheduler.add` writes to the store first and raises when that
   fails: the assistant never tells a person something is set that
   nothing kept.
-- `tick` and `_fire`: each fire is its own task, a row never fires
+- `fire_now`, `tick` and `_fire`: each fire is its own task, a row never fires
   twice at once, and what a fire writes back is only its own row
   (`_write`) — a pause made on the page meanwhile stands.
 - `replace_for`: a chat's rows are read again from the store at every
@@ -592,10 +604,10 @@ Tests: the schedule classes in `ai_runtime/tests/test_session.py`,
 
 ## Running what you read
 
-From `ai_runtime/`, one file at a time:
+From the repository root, one file at a time:
 
 ```bash
-python -m pytest tests/test_assistant.py -q
+python -m pytest ai_runtime/tests/test_assistant.py -q
 ```
 
 A useful habit at each stop: break the claim, run its test, and see it

@@ -57,10 +57,11 @@ the seeder runs once at every start and exits.
                                       │  egress proxy        │        for agents only
                                       └──────────────────────┘
    ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─  │   ▲  ─ ─ the `sandbox` network:
-                 orders, port 8003, with    ▼   │      internal, no way out
-                 the spawner's key          │   │  workers' lines, and their
-                                      ┌──────────────────────┐  connections
-                                      │       sandbox        │  to the proxy
+      orders, port 8003, each side          ▼   │      internal, no way out
+      proving the node's secret; workers'   │   │  registers, port 8005,
+      lines ride the same connections       │   │  proving the same secret;
+                                      ┌──────────────────────┐  workers' connections
+                                      │  sandbox (sandbox-2) │  to the proxy
                                       │  spawner · workers   │
                                       └──────────────────────┘
 ```
@@ -71,10 +72,15 @@ the seeder runs once at every start and exits.
 | `data-core` | `data_core/` | the platform's API: identity and access, the data layer, the gateway, chat sessions as the runtime's services | 8000 |
 | `init` | the Data Core's | `bootstrap/init_db.py`: the schema, the access chains, the first administrator | — |
 | `mongo` | `mongo:7` | the database | 27017, on the `data` network only |
-| `ai-runtime` | `ai_runtime/` | the bundled execution node's AI Runtime: one assistant per chat, the executor and its gates, the agents' proxy; it dials the Data Core's node link | 8001 (the health check), 8002 (the proxy) |
-| `sandbox` | the runtime's, started as `python -m sandbox.service` | the spawner, and every agent's worker | 8003 |
+| `ai-runtime` | `ai_runtime/` | the bundled execution node's AI Runtime: one assistant per chat, the executor and its gates, the agents' proxy, the registry of its Execution Sandboxes; it dials the Data Core's node link | 8001 (the health check), 8002 (the proxy), 8005 (where its sandboxes register) |
+| `sandbox` | the runtime's, started as `python -m sandbox.service` | the bundled node's Execution Sandbox: the spawner, and every agent's worker; it dials the runtime's 8005 and registers | 8003 |
 | `speech` | `speech/` | speech to text and text to speech, from models that run here ([below](#speech)) | 8004 |
 | `node-issuer` | the Data Core's, started as `bootstrap/node_issuer.py` | the install's issuer of node credentials: it holds the install's authority key and writes the bundled node a fresh credential every few minutes ([execution nodes](execution-nodes.md#one-computers-install)) | nothing; on no network |
+
+`compose/sandboxes.yml`, laid over `docker-compose.yml`, adds a second
+Execution Sandbox, `sandbox-2`: the first again, with a folder of its
+own, registering with the same runtime ([the
+sandbox](sandbox.md#many-sandboxes)).
 
 Three networks (`docker-compose.yml`):
 
@@ -82,7 +88,7 @@ Three networks (`docker-compose.yml`):
 |---|---|---|
 | `default` | `gateway`, `data-core`, `ai-runtime`, `speech` | the one with a way out. Caddy reaches the Data Core; the Data Core reaches the speech container (and no execution node: nodes dial it), and the internet for repositories, mail, OAuth and a person's notifications to other systems ([webhooks](webhooks.md)); the runtime reaches the Data Core's gateway, and the internet for agents' packages and, through its proxy, for agents |
 | `data` | `mongo`, `data-core`, `init` | `internal: true`: the database, and the two that speak to it. Nothing else has a route to it, and it has none out |
-| `sandbox` | `ai-runtime`, `sandbox` | `internal: true`: the runtime is the only container on it with a way anywhere, so a worker's only way out is the runtime's proxy |
+| `sandbox` | `ai-runtime`, `sandbox` (and `sandbox-2`, where it runs) | `internal: true`: the runtime is the only container on it with a way anywhere, so a worker's only way out is the runtime's proxy |
 
 A container on two networks keeps the reach of each: the Data Core
 reaches GitHub over `default` and the database over `data`; `mongo`,
@@ -172,7 +178,7 @@ the pages. These are the two:
 | Also called | the node's identity | runtime access token, the chat's credential, "a key" |
 | Says | this is that execution node, and nothing about a person | this person, in this chat, through that node |
 | Made | by an authority the Data Core registered — never by the node, which reads it from where its operator puts it ([execution nodes](execution-nodes.md)) | per chat, by the Data Core (`chat_session/identity/delegation.py`); a row in `runtime_sessions` names the chat and the node |
-| Signed | by the authority's private key: RS256, ES256 or EdDSA | HS256, with `TOKEN_SECRET_KEY`, as a browser's session token is |
+| Signed | by the authority's private key, never a shared secret: RS256, ES256, EdDSA and their kin (`CREDENTIAL_ALGORITHMS`, `contracts/node.py`) | HS256, with `TOKEN_SECRET_KEY`, as a browser's session token is |
 | Lives | minutes, an hour at most; read again by the node before it lapses | an hour, renewed by the relay while the chat is attached |
 | Checked by | the Data Core (`api/services/nodes/admission.py`): a registered, unrevoked authority, unexpired, its scope fitting the authority's, not refused by name | the Data Core, when the node presents it back on `/app` with its own credential beside it. The node cannot read or check it: it has no key to |
 | Travels | `Authorization` on the node link, then `X-DecentAI-Node` on every request | in the `attach` frame over the link, then `Bearer` on every call back |
@@ -326,7 +332,7 @@ without anything being unreadable
 
 ## Where everything is kept
 
-**The database**, 44 collections (`data_core/database/schema.json`), by
+**The database**, 45 collections (`data_core/database/schema.json`), by
 what they are for:
 
 | For | Collections | Page |
@@ -339,7 +345,8 @@ what they are for:
 | webhooks | `webhooks`, `webhook_deliveries` (what each received), `webhook_subscriptions`, `webhook_sends` (the outbound queue and its record) | [webhooks](webhooks.md) |
 | execution nodes | `node_authorities` (who may vouch for a node), `execution_nodes` (the nodes admitted: a view), `refused_nodes`, `chat_leases` (which node holds each active chat, numbered) | [execution nodes](execution-nodes.md) |
 
-**Six volumes.**
+**Seven volumes**, and one more for each sandbox laid over them
+(`sandbox_2_data`, `compose/sandboxes.yml`).
 
 | Volume | In | Holds |
 |---|---|---|

@@ -90,8 +90,9 @@ await call.resources.delete_file("document", ref)
 ```
 
 A file reaches your function whole, whatever its size up to the
-platform's upload limit; large files travel through a folder the
-platform opens for your worker, and your code never sees the difference.
+platform's upload limit; a large one travels to your worker in pieces
+on the worker's own line ([the worker protocol](../reference/worker-protocol.md)),
+and your code never sees the difference.
 A file's row — what `list_files` lists, and what `read_file` and
 `create_file` answer with — has `resource_ref`, `filename`,
 `file_type` and `file_size` at its top, on the platform and on the

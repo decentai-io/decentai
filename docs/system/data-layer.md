@@ -174,7 +174,9 @@ distinct steps: add a new key and make it active, re-encrypt everything
 onto it, and only then retire the old key. The middle step is a
 deliberate pass over every encrypted field — the data layer's values,
 and beside them a model connection's key, a connected app's client
-secret and a source's git token — and the set is declared by the stores
+secret, a source's git token, and the secrets of a webhook and of a
+notification subscription ([webhooks](webhooks.md)) — and the set is
+declared by the stores
 themselves (``ENCRYPTED_FIELDS``) rather than listed somewhere, because
 a hand-kept list drifts, and the cost of missing one is silent,
 permanent loss the next time a key is retired.
@@ -413,10 +415,15 @@ store accepts any model name, so a model newer than the file is typed.
 What a connection offers, of one kind, is `Settings:Llm:Models`: the
 catalog's models where it knows the provider, and where it does not — a
 server of the person's own, a gateway — the server's own list, asked
-with the connection's key. A server says which models it has but not
-what each is for, so a connection may also carry `models`, the ones its
-person declared: `[{id, kind}]`, at most 200, each id once, the kind one
-of the three. A declaration is the last word on a model's kind: declared
+with the connection's key. Azure, where a connection names a deployment
+of the customer's own, lists none. A server says which models it has but
+not what each is for, so a connection may also carry `models`, the ones
+its person declared: `[{id, kind}]`, at most 200, each id once, the kind
+one of the three — on the page, each model of the connection marked
+*Chat*, *Embedding* or *Speech to text*. It is kept on the connection
+(`LlmConnectionStore`, `data_core/database/stores/settings/llm.py`) and
+shown beside its `keys`, never in them: a chat's block is written from
+the keys, and a declaration is not that. A declaration is the last word on a model's kind: declared
 of the kind asked, it is offered whether or not anything lists it;
 declared of another, it is not, whatever the catalog or the server says.
 A model the server lists and nobody declared is offered under whichever
@@ -516,8 +523,8 @@ what it says.
 
 ## What is not here
 
-Two things sit outside the data layer, and both boundaries are worth
-stating because they look like exceptions.
+Three things sit outside the data layer, and each boundary is worth
+stating because it looks like an exception.
 
 **Memory** — what the assistant has been told to remember about a
 person — belongs to one user and carries no owner map at all. Sharing a
@@ -529,6 +536,22 @@ capability is absent rather than merely unused.
 documents anybody shares. They belong to the person who holds the
 conversation, and their lifecycle follows the chat rather than an owner
 map.
+
+**Execution nodes** are the deployment's machinery, not anybody's
+documents (`data_core/database/stores/nodes.py`,
+[execution nodes](execution-nodes.md)). `node_authorities` holds who may
+vouch for a node — a public key or an issuer's key set, `shared` or one
+organization's — and is revoked, never deleted. `execution_nodes` is a
+view the Data Core keeps from what admitted nodes presented and
+reported; nobody fills it in, and nothing a node says of itself admits
+it. `refused_nodes` holds the nodes refused by name, and `chat_leases`
+which node holds each active chat, under which number. None of them
+carries an owner map or a value to encrypt: an authority's key is a
+public half, and whether a row is read is the action's to say
+(`nodes:authority:*`, `nodes:node:*`) and the scope's: an
+administrator sees their organization's authorities and the shared
+ones, and their organization's nodes — the shared nodes are the
+operator's to see.
 
 The dividing line is straightforward: the data layer is for documents
 people share. Something personal, or something belonging to a

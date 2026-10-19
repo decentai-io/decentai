@@ -10,8 +10,10 @@ README in the agents repository.
 
 ## The road a frame travels
 
-The browser runs inside the agent's worker, in the Execution Sandbox.
-"The host" below is the runtime, which carries the worker's lines.
+The browser runs inside the agent's worker, in one of the execution
+node's Execution Sandboxes, whose spawner carries the worker's lines
+to the runtime. "The host" below is the runtime; between it and the
+Data Core is the node's link ([execution nodes](execution-nodes.md#the-node-link)).
 
     browser ─JPEG─▶ agent ─screen.frame─▶ host ─screen_frame─▶ Data Core ─▶ page
     browser ◀────── agent ◀─screen.input── host ◀─screen_input── Data Core ◀─ page
@@ -19,13 +21,15 @@ The browser runs inside the agent's worker, in the Execution Sandbox.
 - The agent pushes each frame to the host over the worker pipe as a
   notification (`screen.frame`, [worker protocol](../reference/worker-protocol.md)).
 - The host relays it to the chat's audience as a live event
-  (`screen_frame`) that is never recorded; the Data Core forwards it as it
-  forwards every runtime frame, and the page draws it.
+  (`screen_frame`) that is never recorded, up the node's link; the Data
+  Core forwards it as it forwards every runtime frame, and the page
+  draws it.
 - Input goes back the same road: the page sends `AI:Chat:Screen` —
   mouse, keyboard, wheel, taking and releasing control, a tab, an
   address typed — over the chat socket, at most 64 events in one
   message; the Data Core checks the person may send messages in this chat
-  and forwards it to the runtime as `screen_input`; the host hands it
+  and forwards it over the link to the node holding the chat, as
+  `screen_input`; the host hands it
   to the worker running that call (`screen.input`), and the agent feeds
   it to the browser.
 
@@ -70,7 +74,7 @@ holds to level 0 and no model — is what the
 platform calls when the person asks to see the browser before anything
 is asked of it: the chat header's browser button sends `AI:Chat:Watch`,
 the session calls that function directly, and it streams until the
-panel is closed, for an hour at most. A run that takes the browser
+panel is closed (the Browser agent's for an hour at most). A run that takes the browser
 meanwhile does not end it: the picture goes on, and the person's hand
 waits until the run is done. Without such an agent in
 the chat the page is told `screen_unavailable`.

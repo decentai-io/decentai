@@ -2,7 +2,8 @@
 
 An agent runs in **its own process, inside its own environment** — one
 worker per approved agent, so the same package approved by two
-organizations runs as two processes that share one venv and one folder.
+organizations runs as two processes — which, in one Execution Sandbox,
+stand on one venv and one folder.
 The runtime host never imports agent code and
 never installs an agent's dependencies into its own environment, which is
 why two agents pinning incompatible versions of one package can both
@@ -132,7 +133,7 @@ First message, host → worker:
 
 ```json
 {"id": 1, "method": "hello", "params": {
-  "protocol_version": 1,
+  "protocol_version": 2,
   "folder": "<absolute path of store/<hex>>",
   "manifest": { ...the validated manifest document, as JSON... }
 }}

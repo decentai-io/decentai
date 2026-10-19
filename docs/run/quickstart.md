@@ -26,8 +26,8 @@ yours will differ, and these are for knowing what to expect.
 |---|---|
 | The first start | about seven minutes, nearly all of it building the images. Starting again after an update: about three |
 | Downloaded once it is up | about 490 MB, in the background: the model that writes a spoken message down on this machine ([operating](operating.md#speech-on-this-machine)). Nothing waits for it but the microphone |
-| Disk | about 3.2 GB of images: the runtime's is 1.4 GB, most of it the browser an agent may drive, and the Execution Sandbox uses the same one; the database's is 0.9 GB, the speech container's 0.6 GB, the Data Core's 0.3 GB, the web app's under 0.1 GB. What you keep is beside that, and small until you keep a lot |
-| Memory, with nobody using it | about 450 MB across the six containers that stay up. A working agent adds its own; a browser, a good deal more; speech, while it listens |
+| Disk | about 3.2 GB of images: the runtime's is 1.4 GB, most of it the browser an agent may drive, and the Execution Sandbox uses the same one; the database's is 0.9 GB, the speech container's 0.6 GB, the Data Core's 0.3 GB (`node-issuer` runs in the same one), the web client's under 0.1 GB. What you keep is beside that, and small until you keep a lot |
+| Memory, with nobody using it | about 450 MB across the containers that stay up. A working agent adds its own; a browser, a good deal more; speech, while it listens |
 
 ### A model on your own computer
 
@@ -61,27 +61,38 @@ python bootstrap/setup.py
 The first time, it:
 
 1. builds the Data Core's image and has the platform's own generators
-   make this install's keys inside it: the two pairs the Data Core and
-   the runtime know each other by, and the key that encrypts every
-   stored credential and record value;
+   make this install's keys inside it: the Data Core's pair, which it
+   signs what it tells an execution node with; the pair of this
+   install's node authority, which vouches for the bundled execution
+   node; and the key that encrypts every stored credential and record
+   value;
 2. writes `config/deploy.env` from `config/deploy.env.example`, with those keys, a
-   password for the database and the session secret. Nobody is made
-   for you: you name yourself on the first-run page;
+   password for the database and the session secret; and beside it
+   `config/sandbox.env`, the secret the AI Runtime and its Execution
+   Sandbox prove to each other, and `config/node-authority.env`, the
+   authority's private key, each given only to what uses it. Nobody is
+   made for you: you name yourself on the first-run page;
 3. starts the stack — `docker compose --env-file config/deploy.env up -d
    --build --remove-orphans`, which also removes a container the stack
    no longer defines, such as an older install's `web`;
 4. waits until it answers, and prints an address.
 
-Seven containers come up: MongoDB; a one-shot seeder that creates the
-organization and the first person and exits; the Data Core; the private
-AI Runtime; the Execution Sandbox, where agent code runs and nothing
-else does; the speech container, which holds the platform's own speech
-models; and the gateway (Caddy), which serves the Data Core and the web
-client on one address. The first build takes a few minutes.
+Eight containers come up: MongoDB; a one-shot seeder that brings the
+database up to date, registers this install's node authority, and
+exits; the Data Core; `node-issuer`, which signs the bundled node's
+credential and reaches no network; the private AI Runtime; the
+Execution Sandbox, where agent code runs and nothing else does; the
+speech container, which holds the platform's own speech models; and the
+gateway (Caddy), which serves the Data Core and the web client on one
+address. The AI Runtime and its Execution Sandbox are the bundled
+**execution node**: it dials the Data Core and is admitted by that
+authority ([execution nodes](../system/execution-nodes.md)). The first
+build takes a few minutes.
 
-`config/deploy.env` is the install: keep it. It is not made twice — a database
-is readable with the keys it was written with and no others — and it is
-not in git.
+`config/deploy.env`, with `config/sandbox.env` and
+`config/node-authority.env`, is the install: keep the three. They are not
+made twice — a database is readable with the keys it was written with
+and no others — and they are not in git.
 
 ## 2. Start the web client
 
@@ -116,12 +127,12 @@ python bootstrap/setup.py --link
 
 Another port, said the first time: `python bootstrap/setup.py --port 4300`.
 
-## 3. Give it a model
+## 4. Give it a model
 
 
 **Settings → Model providers → Add a provider.** Choose the provider —
-the well-known ones are listed, the rest are behind the search — and
-paste its key. The address is filled in (Amazon Bedrock asks for your
+the popular few are listed, the rest are found by the search or under
+**Show all providers** — and paste its key. The address is filled in (Amazon Bedrock asks for your
 region, Azure for your resource name; Google Vertex AI takes a service
 account's JSON key, and its region), a model to start with is chosen
 for you, and the provider is asked whether the key works before it is
@@ -130,9 +141,12 @@ speaks OpenAI's protocol, is *Your own server*, with its address typed.
 
 One key serves every model the provider has: which one a chat thinks
 with is chosen in the chat. The first provider you add is the default.
-Keys are write-only: nobody reads one back.
+Keys are write-only: nobody reads one back. Under **Models**, a model
+can be declared for chat, embedding or speech to text, so memory and
+speech are offered the right ones; a provider in the catalog says it
+already, and *Your own server* is told by you.
 
-## 4. Install an agent
+## 5. Install an agent
 
 
 **Agents → Marketplace.** Add the [`decentai-agents`](https://github.com/decentai-io/decentai-agents) repository as a
@@ -146,7 +160,7 @@ and press **Approve and install**. The credential is for a sync that
 Notebook only simulates; saving and finding notes need none. Installing as the
 administrator grants it to you.
 
-## 5. The first chat
+## 6. The first chat
 
 
 **AI → Chats → New chat.** Enable Notebook in the chat's agents, then:

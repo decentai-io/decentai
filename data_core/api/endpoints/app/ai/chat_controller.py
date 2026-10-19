@@ -468,8 +468,8 @@ class ChatController(AIController):
         chat_id = chat["chat_id"]
         identity = self._identity(user, chat_id)
 
-        # The clock first: the runtime holds the chat's rows in memory,
-        # so it is told they are gone while the dial still stands.
+        # The schedules first: the node holding the chat is told they
+        # are gone while the chat is still open there.
         schedules = ScheduleStore()
         if schedules.rows(chat_id):
             schedules.delete_for_chat(identity)

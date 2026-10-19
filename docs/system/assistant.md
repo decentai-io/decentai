@@ -11,7 +11,7 @@ action, and the state that survives everything.
 |---|---|
 | **assistant** | the one reasoning entity behind a chat. It is durable state, not a process — processes come and go; the assistant persists. |
 | **agent** | an installed capability package (notebook, todo) — code with a manifest, run by workers. Agents do not reason; the assistant reasons and calls them. |
-| **session** | the runtime embodiment of one assistant: the thing that hydrates its state, pumps events into it, and persists what changes. A session may have a live socket, or none. |
+| **session** | the runtime embodiment of one assistant: the thing that hydrates its state, pumps events into it, and persists what changes. A session may have an audience watching, or none. |
 | **event** | anything the world tells the assistant: a user message, a finished job, a schedule firing, something an agent said to the person, a stop. |
 | **action** | anything the assistant decides to do: say something, open an agent, invoke a function, start a job, update the plan, finish. |
 | **job** | one function invocation running in the background — including one waiting on a human approval. |
@@ -80,11 +80,13 @@ AssistantState
 
 The state is persisted **every beat** (resilience, never authority — a
 failed save costs one beat, not the work). Any process may hydrate it
-and continue: the chat connection's session, a headless session after
-the socket died, a fresh process after a deploy. Two sessions never
-advance one assistant at once because one runtime process holds one
-session per chat: the host's registry and its build lock see to that,
-and the platform runs one runtime process.
+and continue: the session the person is watching, a headless one after
+they left, a fresh process after a deploy, another execution node after
+the one holding the chat went. Two sessions never advance one assistant
+at once: within a node the host's registry and its build lock hold one
+session per chat, and across nodes a numbered lease holds the chat on
+one of them, whose calls alone the Data Core takes for it
+([execution nodes](execution-nodes.md)).
 
 ## Events
 
@@ -416,11 +418,12 @@ When the day of the month and the day of the week are both anything but
 which then say when the first run is; a `cron` given with any of the
 others is taken alone.
 
-The clock looks every 30 seconds, so a run happens at the first look
-after its time. A period is counted from the look that fired the row,
-so it is rounded up to the next look: `every_seconds: 70` comes round
-about every 90 seconds. A row's next run is always after the fire it
-follows. A fire that fails is recorded on the row and the row moves on:
+When a row is due is the Data Core's to decide: its clock looks every
+five seconds and hands the fire to the node holding the chat
+([execution nodes](execution-nodes.md)), so a run happens at the first
+look after its time. A period is counted from the fire, so a row comes
+round a period after its last fire, plus at most one look. A row's next
+run is always after the fire it follows. A fire that fails is recorded on the row and the row moves on:
 a one-off whose fire failed is spent, and is not tried again.
 
 Each fire is remembered on the row (`runs`: when, status, woke, a result
@@ -440,9 +443,10 @@ after `seconds` (at most a day) carrying `why` and `slept: true`.
 One per chat; a new one replaces the last. A message from the person
 meanwhile is heard at once, as always, and the sleep still wakes the
 chat later. A stop cancels it, and so does a kill: of a chat the
-runtime holds a session for, and of one it holds none for — a chat at
-rest that nobody is watching — whose sleep the host takes off the
-clock itself (`SessionHost._end_sleep`).
+node holds a session for, and of one it holds none for — a chat at rest
+that nobody is watching, which the Data Core places on a node to be
+told — whose sleep the host takes off the clock itself
+(`SessionHost._end_sleep`).
 
 The audience is told with a `sleeping` frame (`until`, `why`; `until`
 null when a stop ended it), and the hello carries the same for one who
@@ -474,8 +478,7 @@ and meets the same rule; the words are still delivered.
 
 There is no `delegate` and no separate `task` action. Long work is the
 assistant working long; background work is `start`; work that outlives
-the socket is a session that keeps running headless (engine survival,
-already built, promoted from emergency to normal).
+the person's leaving is a session that keeps running headless.
 
 ## Jobs
 
@@ -762,4 +765,5 @@ The authority layer sits beneath the mind: manifest contract and
 validation, grants (deny by default), the executor's gates, approval
 verification hashes, resource mediation, storage refs, the worker
 protocol and pool, the digest-addressed library. The assistant
-proposes; that layer disposes.
+proposes; that layer disposes. The model may propose anything. It
+authorizes nothing.

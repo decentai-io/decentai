@@ -17,8 +17,9 @@ else:
   declared: the hosts it names, the records and files it keeps, and the
   secrets granted to it. A secret reaches the code of the agent it was
   granted to, and never the model.
-- **Nothing is permitted by default.** What a person may do is a chain
-  walked on every request; what a chat may do is answered by the
+- **Nothing is permitted by default.** The model may propose anything;
+  it authorizes nothing. What a person may do is a chain walked on
+  every request; what a chat may do is answered by the
   Data Core per chat; a function that costs more than the chat's trust
   waits for a human.
 - **Nothing is invented.** Tables, files and "verified" marks beside the
@@ -73,12 +74,14 @@ Every page is listed, by what you came to do, in [docs/README.md](docs/README.md
 
 ```
 data_core/     the Data Core, the platform API: identity and access, the
-               data layer, the /app gateway, chat sessions, and the
-               runtime's services
+               data layer, the /app gateway, chat sessions, the
+               runtime's services, and the execution nodes: their
+               admission, their link, leases, placement, the clock
 ai_runtime/    the AI Runtime: the assistant's cycle, the executor and its
-               gates, agent workers, the clock
-sandbox/       the Execution Sandbox: the spawner, and the one program
-               that starts an agent's worker as a user of its own
+               gates, agent workers, the proxy, its link to the Data Core
+sandbox/       the Execution Sandbox: the spawner, its cache of the code
+               it runs, and the one program that starts an agent's
+               worker as a user of its own
 gateway/       the one door (Caddy): the Data Core's paths to the Data Core,
                every other to the web client (decentai-web-client)
 speech/        speech to text and text to speech from models that run on
@@ -86,7 +89,8 @@ speech/        speech to text and text to speech from models that run on
 decentai_sdk/  what agent code imports: AgentBase, ToolBase, the manifest
 contracts/     the manifest schema and validator, shared by all of the above
 bootstrap/     setting it up on a computer (setup.py), first-run seeding,
-               key generation, organizations, rotation
+               key generation, the bundled node's credential issuer,
+               organizations, rotation
 config/        the install's settings and secrets (deploy.env, sandbox.env,
                node-authority.env), beside the templates they come from
 compose/       what is laid over docker-compose.yml: a server's front door
@@ -126,12 +130,13 @@ installer and no images. A server with an address of its own is
 
 ## Tests
 
-Three suites, each owning its layer, each run from the repository root:
+Four suites, each owning its layer, each run from the repository root:
 
 ```bash
 python -m pytest ai_runtime/tests -q       # runtime: real workers, no database
 (cd data_core && python -m pytest tests -q)   # Data Core: real app, MongoDB on localhost
 python -m pytest tests -q                   # spanning: an approval on one side, code serving on the other
+python -m pytest speech/tests -q            # the speech container, without its models
 ```
 
 Run the Data Core and spanning suites one at a time; they share the test

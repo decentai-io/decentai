@@ -1,12 +1,12 @@
-"""The package door: what a runtime asks as itself, for the whole
-deployment (docs/system/agent-code.md).
+"""The package door: what an execution node asks as itself
+(docs/system/agent-code.md).
 
-A runtime keeps one copy of every approved package for every
-organization that approved it, so what it needs to know is not any
-organization's: which packages are approved anywhere, the bytes of one
-by its digest, and where to say that one is ready. It asks with its own
-identity (server/authentication/access.py, the runtime service
-principal), never as a person and never as a chat. Nothing of who
+A node keeps one copy of every approved package for every organization
+it serves that approved it, so what it needs to know is not any one
+organization's: which packages are approved, the bytes of one by its
+digest, and where to say that one is ready. It asks with its own
+credential (server/authentication/access.py, an execution node as
+itself), never as a person and never as a chat. Nothing of who
 approved what travels: digests, the hash to verify a manifest against,
 a name for the log, and bytes whose name is their own hash.
 """

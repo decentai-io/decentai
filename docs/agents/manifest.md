@@ -20,9 +20,9 @@ resources: {...}           # optional
 tools: [...]               # required, at least one
 ```
 
-The platform validates a manifest with one validator, when an agent is
-installed and again when the runtime loads it, so the two can never
-disagree. A manifest that fails is shown with its reasons, each one
+The platform validates a manifest with one validator — when a source is
+read, when an agent is installed, and again when the runtime and each
+Execution Sandbox load it — so none of them can disagree. A manifest that fails is shown with its reasons, each one
 naming the path it is about (`tools[0].functions[2].inputs: …`).
 
 `schema_version` names the grammar this page describes. There is one,

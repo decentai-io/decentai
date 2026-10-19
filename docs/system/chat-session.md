@@ -34,7 +34,7 @@ these verbs and nothing else, and that list is the authority where
 this table and it differ. Every chat-bound verb also checks that the
 delegation was minted for the chat it names. Three verbs the runtime
 calls as itself and not as any chat — the package door,
-`Agents:Package:*` — are fenced on their own (`RUNTIME_SERVICE_ENDPOINTS`)
+`Agents:Package:*` — are fenced on their own (`NODE_ENDPOINTS`)
 and answered to the execution node's own credential
 ([agent code](agent-code.md#the-package-door)).
 
@@ -157,7 +157,8 @@ time.
 
 The kill switch: the Data Core expires every pending card of the chat on
 the record first, then the runtime is sent `{event: stop, force: true}`;
-the host runs `session.kill()` off the socket's loop — the cycle and job
+the host runs `session.kill()` beside the chat's inbox, which goes on
+reading what comes next — the cycle and job
 tasks cancelled where they stand (a worker call overruled, a deaf worker
 killed), helpers stopped the same way and their cards closed, the chat's
 browser closed through the watch function, jobs marked cancelled, every
@@ -170,7 +171,7 @@ A stop, with `force` or without, is on the audit trail as `chat.stopped`:
 whether it was forced, how many cards were expired, and whether the
 runtime was reached.
 
-No runtime serving the chat: the record is still quiet and the page says
+No node holding the chat: the record is still quiet and the page says
 so.
 
 ### Readiness
@@ -231,8 +232,8 @@ Three things follow from the table:
   else does.
 - **The wait is not an HTTP call.** The chat's cards hold the
   waiter, and the session settles it when the `approval_decided` or
-  `question_answered` frame arrives on the socket — the Data Core never
-  holds a request open.
+  `question_answered` frame arrives over the node link — the Data Core
+  never holds a request open.
 - **One writer per record, with one exception.** The runtime writes
   state, events, plan and approvals-as-opened; the person writes
   decisions and messages. Schedule rows have three hands: the Data

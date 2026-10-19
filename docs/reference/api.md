@@ -19,6 +19,15 @@ administrator handed over: `POST /auth/password/first` with `email`,
 actions it holds — what the web app uses to decide which controls to
 show. `POST /auth/logout` ends the session.
 
+An invitation link carries a `token`: `POST /auth/invitation` with it
+says what it is for, and `POST /auth/invitation/accept` with `token`,
+`name` and `password` makes the member and signs them in. A forgotten
+password is `POST /auth/password/forgot` with `email` — answered the
+same whether or not the address has an account — then, from the link,
+`POST /auth/password/reset/check` with its `token`, and
+`POST /auth/password/reset` with `token` and `password`, which sets it
+and signs in.
+
 ### Standing an organization up
 
 `GET /auth/setup` answers `setup_required` (nobody is in this
@@ -72,9 +81,10 @@ Four response shapes exist:
   caller's own: sent inside `data`, it comes back on the answer, and is
   empty when none was sent. `version` is the envelope's
   (`contracts/version.py`), `1` today; nothing compares it yet.
-- The identity and data-layer controllers, and the rest of Settings
-  (model providers, routing, safety, connected apps, notifications,
-  speech), answer the payload directly — `{"resources": […]}`,
+- The identity, data-layer and Nodes controllers, and the rest of
+  Settings (model providers, routing, safety, where chats run,
+  guardrail, connected apps, notifications, speech), answer the payload
+  directly — `{"resources": […]}`,
   `{"user": {…}}` — and fail with `{"error": "…"}`.
 - The gateway's own refusals, made before any controller is reached —
   an action the caller does not hold (403), an endpoint that is missing
@@ -145,6 +155,12 @@ additionalData={"endpoint": "Files:File:upload", "folder": "uploads"}
 or, for a chat's attachment, `AI:Chat:UploadFile` on the gateway with
 `chat_id`, `filename` and `content_base64`. Download is
 `GET /download/{resource_ref}`, owner-filtered like any read.
+
+Connecting an account (`Secrets:Oauth:Start`, which answers the
+provider's `url`) ends at `GET /oauth/callback`, where the provider
+sends the browser back: a small page that tells the window that opened
+the consent popup how it went, honoured only for the session that
+chose Connect ([connected apps](../run/connected-apps.md)).
 
 ## Webhooks
 
@@ -239,6 +255,23 @@ after it), and its owner has `:Test`, `:Share` (view only) and
 `:Transfer` (hand it, and its chat, to a colleague)
 ([webhooks](../system/webhooks.md#its-page)).
 
+## Execution nodes
+
+A node is no person: it presents a credential an authority signed
+([execution nodes](../system/execution-nodes.md)), and dials two doors.
+`WS /nodes/link` is the one it holds open — admitted before anything is
+heard, and every chat it serves rides it. On `POST /app` it sends the
+credential as `X-DecentAI-Node`, and a request it makes for a chat
+carries that chat's delegation, accepted only from the node it was
+handed to and with the number of the lease the node holds the chat
+under now, as `X-DecentAI-Lease` — an older number is refused 409,
+`stale_lease`. Every answer to a node is signed over its exact bytes
+and the request it answers (`X-DecentAI-Request-Id`), in
+`X-DecentAI-Data-Core-Signature`. Admitting nodes is
+`Nodes:Authority:*`, the admitted nodes are `Nodes:Node:*` (`Drain`
+included), and whether an organization's chats keep to its own nodes
+is `Settings:Nodes:*`.
+
 ## Health
 
 `GET /healthz` says the process is up; `GET /readyz` that the database
@@ -265,8 +298,8 @@ One thing comes out: `{"endpoint": "AI:Chat:Event", "data": {"event": …}}`,
 carrying what the runtime tells the chat's audience — narration,
 messages, approval cards, questions, frames. The event names are in
 [the session door](session-door.md), which is the next hop: the
-Data Core's own dial to the runtime, under a credential a browser never
-holds.
+node link between the Data Core and the execution node serving the
+chat, under a credential a browser never holds.
 
 Answering an approval card and stopping a chat are not socket frames:
 they are `AI:Approval:Decide` and `AI:Chat:Stop` on the gateway, so
@@ -278,7 +311,8 @@ contract for that chat, which the runtime reads again at every turn.
 
 Sign in with a key, change a password with one (`POST /auth/password`
 answers 403 to a key: it is changed from a signed-in browser), manage
-keys, or reach the runtime directly. The runtime has no public surface; it is dialed by the
-Data Core under a delegation minted per chat, and that delegation is
-fenced to a fixed list of gateway actions — the runtime column in the
-actions reference.
+keys, or reach the runtime directly. The runtime has no public
+surface; it dials the Data Core over the node link, acts for a chat
+under a delegation minted per chat and bound to that node, and that
+delegation is fenced to a fixed list of gateway actions — the runtime
+column in the actions reference.

@@ -87,7 +87,7 @@ for:
 | skills, secrets, data, files | the same services and provider — the same gates |
 | approvals | opened under the child's id, so the host knows whose job parked |
 | emissions | the parent's audience, each frame tagged `"child": "<id>"` so a client may thread them |
-| screen frames (`relay`) | the parent's socket, tagged the same way — the child's id has no audience of its own |
+| screen frames (`relay`) | the parent's audience, tagged the same way — the child's id has no audience of its own |
 | the browser (`call.conversation`) | the parent's id — one conversation, one browser, so the person's watch opens the one the helper drives |
 
 The goal arrives as the child's first message, actor `parent`. The
@@ -125,8 +125,8 @@ A child's level-3 call parks *the child's job*. The parent keeps
 thinking; the child does too where the call was a `start`, and waits
 for the answer where it was an `invoke`. The card reaches the parent's
 audience
-tagged with the child id; the decision comes back through the parent's
-socket as `approval_decided`. The parent's session routes it
+tagged with the child id; the decision comes back as the parent's
+chat's `approval_decided`. The parent's session routes it
 (`Session.deliver_approval`): to the parent's own waiting job, then to
 the call the parent itself is parked on, then to its live children,
 then to a card of its own that is still open; a decision that fits none
@@ -180,7 +180,9 @@ Tests: `ai_runtime/tests/test_sub_assistants.py`.
 
 - **Depth beyond one.** A child of a child is where the paraphrase
   problem compounds.
-- **Children across hosts.** One host, as for every session.
+- **Children across nodes.** A child runs on the execution node that
+  holds its parent's chat, under the parent's lease
+  ([execution nodes](execution-nodes.md)), as every session does.
 - **Children that outlive their parent's interest** — a child is always
   a job the parent is waiting on or has cancelled. Long-lived
   autonomous work is a schedule, not a child.

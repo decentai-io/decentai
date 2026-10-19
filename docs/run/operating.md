@@ -2,7 +2,8 @@
 
 Everything done to a running DecentAI from the machine it runs on:
 starting and stopping, updating, backing up, people and passwords, what
-the agents are given, keys, and removing it. Each `docker compose` line
+the agents are given, more Execution Sandboxes and execution nodes,
+keys, and removing it. Each `docker compose` line
 is written for a computer of one's own; on a server every one of them
 takes the two `-f` files [Deploying](deploying.md) starts it with.
 
@@ -29,11 +30,16 @@ new is ready:
 1. Pull the new code, and compare `config/deploy.env` with
    `config/deploy.env.example`: a name the template has and your file lacks is
    set by hand, or Compose refuses to start saying *required variable …
-   is missing a value*. A key comes from
-   `python bootstrap/generate_service_keys.py` — take only the pair you
-   lack and keep the one you have, since a database is readable with the
-   keys it was written with and no others; anything else, as the
-   template says it.
+   is missing a value*. A key comes from its generator, as the
+   template's head names it (`bootstrap/generate_service_keys.py`,
+   `bootstrap/generate_node_authority.py`,
+   `bootstrap/generate_secret_keys.py`) — take only what you lack and
+   keep what you have, since a database is readable with the keys it was
+   written with and no others; anything else, as the template says it.
+   `config/sandbox.env` and `config/node-authority.env` must be there
+   too, written from the `.example` beside each
+   ([deploying](deploying.md)): Compose starts nothing while a file a
+   service is given is missing.
 2. **Seed first.** `docker compose --env-file config/deploy.env run --rm --build init`
    applies the schema and grants any new baseline actions while the old
    code still serves. `--build` is what makes it the new seeder: without
@@ -75,7 +81,9 @@ which are issued again if lost.)
 
 The encryption keys in `config/deploy.env` are part of the backup: a database
 without `SECRET_ENCRYPTION_KEYS` is a database whose every credential
-and record value is unreadable.
+and record value is unreadable. Keep `config/node-authority.env` with
+it: `bootstrap/setup.py` makes `config/sandbox.env` again when it is
+lost, and never the authority's key.
 
 ## People
 
@@ -84,13 +92,6 @@ and password you chose there. To add a person, **Admin → Users → Add
 person**: with no email to send an invitation by, you are shown a
 temporary password once, to hand over, and they choose their own at
 their first sign-in.
-
-An install set up before the first-run page existed made its first
-person for you: their address and password are in `config/deploy.env`
-(`ADMIN_EMAIL`, `ADMIN_PASSWORD`, `me@decentai.local` unless changed).
-To sign in by an address and a password of your own instead, see *A
-forgotten password, without email* below: the same line, with
-`RESET_NEW_EMAIL`.
 
 ## Organizations
 
@@ -142,16 +143,14 @@ docker compose --env-file config/deploy.env run --rm \
 on the command line.
 
 `-e RESET_NEW_EMAIL=you@example.com` beside them gives the account a
-new address to sign in by as well. That is how the first person
-`bootstrap/setup.py` made, whose address is nobody's, takes an address
-and a password of their own; the address the script prints no longer
-signs anybody in after that, and the sign-in page is used.
+new address to sign in by as well.
 
 ## What the agents are given
 
-All agents share one container, and it is given so much memory and so
-much processor by whoever starts it: `SANDBOX_MEMORY` (`2g`, `1500m`) and
-`SANDBOX_CPUS` (`2`, `1.5`) in `config/deploy.env`. Unset is no limit. A change
+The agents of an Execution Sandbox share its container, and it is
+given so much memory and so much processor by whoever starts it:
+`SANDBOX_MEMORY` (`2g`, `1500m`) and `SANDBOX_CPUS` (`2`, `1.5`) in
+`config/deploy.env`, for each sandbox. Unset is no limit. A change
 takes effect when the Execution Sandbox is started again:
 
 ```bash
@@ -161,15 +160,15 @@ docker compose --env-file config/deploy.env up -d sandbox
 An agent that takes more memory than they are given together is ended,
 and the chat it was working for says which
 ([the sandbox](../system/sandbox.md#what-the-agents-are-given-together)).
-What each agent uses now, and what was seen of it, is **Settings →
-Monitoring** ([what is written down](../system/monitoring.md)).
+What each agent uses now, and what was seen of it, is the
+**Monitoring** page ([what is written down](../system/monitoring.md)).
 
 ## Speech on this machine
 
 A message can be spoken and a reply said aloud with models that run
 beside the platform, in the `speech` container: nothing spoken or said
 leaves the machine. What an organization uses is chosen under
-**Settings → Chat configuration → Speech**: the platform's own models,
+**Settings → Speech**: the platform's own models,
 a provider, or neither, for each of the two.
 
 - **What is downloaded, and when.** Speech to text (Whisper *small*,
@@ -218,8 +217,10 @@ either. To move what is there:
 3. Count, then move:
 
    ```bash
-   docker compose exec data-core python /opt/decentai/bootstrap/move_storage.py --check
-   docker compose exec data-core python /opt/decentai/bootstrap/move_storage.py
+   docker compose --env-file config/deploy.env exec data-core \
+     python /opt/decentai/bootstrap/move_storage.py --check
+   docker compose --env-file config/deploy.env exec data-core \
+     python /opt/decentai/bootstrap/move_storage.py
    ```
 
    Every file is copied, read back, and only then its record pointed
@@ -289,6 +290,33 @@ deployment's address. A disabled organization's people are signed out
 within a minute: the running Data Core keeps a session it has just seen
 for that long.
 
+## More Execution Sandboxes
+
+One AI Runtime serves many Execution Sandboxes: each registers with it,
+proving the node's secret (`config/sandbox.env`), and keeps its own
+copy of the code it runs, sent by the runtime and kept by digest — no
+volume is shared. `compose/sandboxes.yml` lays a second, `sandbox-2`,
+beside the first:
+
+```bash
+docker compose --env-file config/deploy.env \
+    -f docker-compose.yml -f compose/sandboxes.yml up -d --build
+```
+
+An agent's worker is placed among the sandboxes that may take it —
+healthy and not draining — on the one already running
+it, else one that already holds its package, else the least loaded,
+in turn where they are level
+([many sandboxes](../system/sandbox.md#many-sandboxes)). Stopping one
+moves its agents to the other at their next call. Each sandbox may
+say what it is (`SANDBOX_LABELS`, and `SANDBOX_2_LABELS` for the
+second); the node reports them, and no manifest asks for one yet.
+
+Every `docker compose` line on this page then takes the two `-f` files
+as well. `python bootstrap/setup.py` starts the stack without them, and
+removes `sandbox-2` as a container the stack no longer defines; the line
+above starts it again.
+
 ## More execution nodes
 
 The stack starts one execution node beside the Data Core. More run
@@ -298,7 +326,9 @@ nothing dials a node ([execution nodes](../system/execution-nodes.md)).
 
 1. **Vouch for them once.** Register an authority: a public key
    (`python bootstrap/generate_node_authority.py` makes a pair) or an
-   issuer's key-set address, with `Nodes:Authority:Create`. The
+   issuer's key-set address and the issuer its tokens name, under
+   **Settings → Nodes → Add an authority** or with
+   `Nodes:Authority:Create`. The
    deployment's operator registers shared ones (`scope: shared`); an
    organization's administrator registers its own, whose nodes serve
    that organization alone.
@@ -311,24 +341,43 @@ nothing dials a node ([execution nodes](../system/execution-nodes.md)).
    beside it, told where the Data Core is and what its key is:
    `DATA_CORE_INTERNAL_URL`, `DATA_CORE_SERVICE_PUBLIC_KEY` (the Data
    Core's public key), and `AI_RUNTIME_NODE_CREDENTIAL_FILE`
-   or `AI_RUNTIME_NODE_CREDENTIAL_URL` ([configuration](configuration.md#the-runtime)).
-   Across a network, give it the Data Core's `https://` address.
+   or `AI_RUNTIME_NODE_CREDENTIAL_URL`; and a secret of the node's own,
+   `AI_RUNTIME_SANDBOX_SECRET`, given to the runtime and its sandboxes
+   alike. Each sandbox is the same image started as
+   `python -m sandbox.service`, with `NET_ADMIN`, told where its runtime
+   takes registrations (`AI_SANDBOX_RUNTIME`) and where the runtime's
+   proxy is (`AI_AGENTS_PROXY`), on a network that reaches its runtime
+   and nothing else — as `docker-compose.yml` starts `sandbox`
+   ([configuration](configuration.md#the-runtime)). Across a network,
+   give the node the deployment's `https://` address: the gateway sends
+   the node link, `/nodes/link`, to the Data Core.
 
-Nodes are listed, with who admitted them and what each reports, by
+Nodes are listed, with who admitted them and what each reports — its
+Execution Sandboxes among it — under **Settings → Nodes**, or by
 `Nodes:Node:List`. To take one out: revoke its authority
 (`Nodes:Authority:Revoke`, every node it vouches for is refused at
 once), stop issuing it credentials (it drops out within minutes), or,
-in a hurry, `Nodes:Node:Refuse`. Its chats move to another node within
+in a hurry, refuse it by name (`Nodes:Node:Refuse`; `Nodes:Node:Allow`
+lets it back). Its chats move to another node within
 a minute ([leases](../system/execution-nodes.md#leases)).
 
 To take one Execution Sandbox out of a node without stopping it —
-for maintenance, or a machine running short — drain it with
-`Nodes:Node:Drain` (`node_id`, `sandbox_id`): it is given no new
-agent, and those running finish. `drain: false` lets it work again.
-The sandboxes a node has are in what `Nodes:Node:List` shows of it.
+for maintenance, or a machine running short — drain it: **Drain** beside
+it under **Settings → Nodes**, or `Nodes:Node:Drain` (`node_id`,
+`sandbox_id`). It is given no new agent, and those running finish.
+**Resume**, or `drain: false`, lets it work again. The sandboxes a node has are in what
+`Nodes:Node:List` shows of it.
+
+Where an organization's chats run is its own choice, under **Settings →
+Nodes → Where chats run** (`Settings:Nodes:Update`): *Own nodes first*
+(`prefer_own`, the default), or *Own nodes only* (`own_only`), which
+keeps its chats, keys and credentials off shared nodes and has its
+chats wait while none of its own is connected.
 
 ## Removing it
 
 To remove it altogether, its data with it:
-`docker compose --env-file config/deploy.env down --volumes`, then delete
-`config/deploy.env`.
+`docker compose --env-file config/deploy.env down --volumes` (with the
+`-f` files it was started with, so that a second sandbox's volume goes
+too), then delete `config/deploy.env`, `config/sandbox.env` and
+`config/node-authority.env`.

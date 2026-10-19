@@ -18,15 +18,20 @@ and updating. Where to look is at the end.
   A wrong `MONGO_URI` password shows here, as an authentication error:
   the seeder is the first to connect, and the Data Core does not start
   until it has finished.
+- **Compose says an env file is not found** — `config/sandbox.env` or
+  `config/node-authority.env`. On your own computer
+  `python bootstrap/setup.py` writes it; on a server, write it from the
+  `.example` beside it ([deploying](deploying.md)).
 - **The Data Core restarts.** `docker compose --env-file config/deploy.env logs
-  Data Core`. A missing `TOKEN_SECRET_KEY` says so in the first lines.
+  data-core`. A missing `TOKEN_SECRET_KEY` says so in the first lines.
 - **Chats say the runtime is unavailable.** `docker compose --env-file
-  config/deploy.env logs ai-runtime`. The runtime refuses connections whose
+  config/deploy.env logs ai-runtime`. The runtime believes nothing whose
   signature does not verify: `DATA_CORE_SERVICE_PUBLIC_KEY` must be the
   pair of the Data Core's private key. A runtime that restarts says in
   its first lines which setting it is missing:
-  `AI_RUNTIME_NODE_CREDENTIAL_FILE` (where its credential is),
-  `DATA_CORE_INTERNAL_URL` or `AI_RUNTIME_SANDBOX_SECRET`.
+  `DATA_CORE_SERVICE_PUBLIC_KEY`, `AI_RUNTIME_NODE_CREDENTIAL_FILE`
+  (where its credential is), `DATA_CORE_INTERNAL_URL` or
+  `AI_RUNTIME_SANDBOX_SECRET`.
 - **The runtime says no Execution Sandbox can confine a worker.**
   `docker compose --env-file config/deploy.env logs sandbox` says what the
   sandbox proved at its start, or what to mend; a sandbox whose
@@ -40,9 +45,6 @@ and updating. Where to look is at the end.
   credential (`logs node-issuer`), an expired one, or one signed by an
   authority that is not registered or was revoked
   ([execution nodes](../system/execution-nodes.md#revoking)).
-- **The address opens the sign-in page with a refusal.** The first
-  person's password was changed since `config/deploy.env` was written: sign in
-  with the one it was changed to.
 
 ## Signing in
 
@@ -55,9 +57,6 @@ and updating. Where to look is at the end.
   front — a load balancer — is the one address the Data Core sees for
   every person, so the count by address is everybody's. Set
   `TRUSTED_PROXIES` ([deploying](deploying.md#behind-a-load-balancer)).
-- **The address the script printed opens the sign-in page with a
-  refusal.** See *It does not start*, above: the first person has a
-  password of their own now.
 - **A forgotten password, and no email is set.** The password is set
   from the machine ([operating](operating.md#a-forgotten-password-without-email)).
 
@@ -79,7 +78,7 @@ and updating. Where to look is at the end.
   | *The provider failed on its side* | theirs to mend; try again |
 
 - **It stays on *Preparing the next step…*.** The model has not
-  answered. The platform waits a minute for each reply and asks again,
+  answered. The platform waits five minutes for each reply and asks again,
   and the runtime's log says so (`Retrying request to
   /chat/completions`). With a model on your own computer this is the
   usual sign that it is too slow, or too small for what it is told
@@ -104,8 +103,8 @@ and updating. Where to look is at the end.
   maker's service offers the microphone once the person chooses that,
   under **Settings → Chat defaults → Speech on this device**.
 - ***The speech to text model is still being fetched.*** It is
-  downloaded once, about 490 MB; **Settings → Chat configuration →
-  Speech** says how far it is. *The download did not finish* there
+  downloaded once, about 490 MB; **Settings → Speech** says how far it
+  is. *The download did not finish* there
   means the machine could not reach the publisher: it is tried again
   when somebody next speaks, and `docker compose --env-file config/deploy.env
   logs speech` says what was in the way
@@ -140,13 +139,13 @@ and updating. Where to look is at the end.
   *…must be a number*, *…is text/plain, and this kind of file is one
   of…*: the agent wrote what its manifest did not declare. The
   author's, again.
-- **The agent's page says something is not enforced here.** The
-  runtime says at start what it holds agents to, and its log has the
-  same in full:
+- **The agent's page says something is not enforced here.** Each
+  Execution Sandbox says at start what it holds agents to, and its log
+  (`logs sandbox`) has the same in full:
 
   | The log says | Why | What to do |
   |---|---|---|
-  | *Workers cannot be confined in the Execution Sandbox* (and the runtime does not start) | the stack was not started as `docker-compose.yml` starts it, or the helper is not in the image | start it from the repository's Compose file |
+  | *Workers cannot be confined in this Execution Sandbox* (and, with no other that can, the runtime does not start) | the stack was not started as `docker-compose.yml` starts it, or the helper is not in the image | start it from the repository's Compose file |
   | *Workers' connections are NOT fenced here* | the Execution Sandbox was not given `NET_ADMIN` | the Compose file gives it; a stack started by hand must |
   | *Workers' files are NOT fenced here* | the kernel has no Landlock | a kernel from 5.13 on, with Landlock among its security modules |
   | *Agents are NOT kept from each other's sockets here* | the kernel's Landlock is before its sixth version | a kernel from 6.12 on. Until then two agents that both mean to can pass bytes to each other |
@@ -162,8 +161,8 @@ and updating. Where to look is at the end.
   agent cannot do without it, `AI_RUNTIME_SYSCALL_FILTER=0` turns the
   filter off for every agent, until the package is mended.
 - **An agent was ended.** *…was ended because the agents ran out of
-  memory*: the agents share what `SANDBOX_MEMORY` gives them, and the
-  one holding most is the one ended
+  memory*: the agents of an Execution Sandbox share what
+  `SANDBOX_MEMORY` gives it, and the one holding most is the one ended
   ([operating](operating.md#what-the-agents-are-given)).
 
 ## Updating

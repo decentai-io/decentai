@@ -26,7 +26,7 @@ python -c "import secrets; print(secrets.token_urlsafe(32))"   # AI_RUNTIME_SAND
 None of them is written to disk by the scripts.
 
 **2. Write `config/deploy.env`.** `cp config/deploy.env.example config/deploy.env`, replace
-every `change-me` — the three generated values exactly as printed, and
+every `change-me` — the generated values exactly as printed, and
 a database password (the same one inside `MONGO_URI`) — and set what a
 server sets differently from a computer of one's own. Leave
 `SETUP_CODE` empty: the first-run page will ask for a code the
@@ -70,10 +70,13 @@ runtime and nothing else ([the sandbox](../system/sandbox.md)). Every
 
 **4. Start the web client** on the same host, from its own repository
 (`decentai-web-client`): `docker compose up -d --build` there joins the
-engine's network, where the gateway finds it. Where it runs somewhere
-else, set `WEB_CLIENT_UPSTREAM` in `config/deploy.env` to its `host:port`.
+engine's network, where the gateway finds it. That network is
+`decentai_default` for an engine checked out in a folder called
+`decentai`; from any other folder, set `ENGINE_NETWORK` to
+`<folder>_default` there. Where the web client runs somewhere else, set
+`WEB_CLIENT_UPSTREAM` in `config/deploy.env` to its `host:port`.
 
-**4. Set it up.** Read the setup code from the log:
+**5. Set it up.** Read the setup code from the log:
 
 ```bash
 docker compose -f docker-compose.yml -f compose/server.yml \

@@ -9,10 +9,10 @@
 3. An administrator reads the manifest — dependencies, tools, permissions,
    scopes, secrets, data, files — and **approves the agent by name**.
 4. Approval **pins the agent to the exact commit reviewed**. The runtime
-   pulls exactly those bytes, by digest, and installs the declared
-   dependencies into a private environment, on its own within seconds
-   of the approval; the Agents page says **Preparing** until it is
-   done.
+   pulls exactly those bytes, by digest, on its own within seconds of
+   the approval, and the Execution Sandbox that runs the agent installs
+   the declared dependencies into an environment of its own; the Agents
+   page says **Preparing** until it is done.
 
 Nothing is discovered, nothing is implicit, and nothing runs before a
 person has said yes to a specific version at a specific commit.
@@ -67,8 +67,10 @@ agents:
 Each entry is an id and a path, and nothing else. A path must stay
 inside the repository, may not be a symbolic link, and may contain none.
 
-The platform's own repository has a catalog of one, the Note example,
-so that it installs as it stands. A catalog may hold many.
+The project's agent repository,
+[`decentai-agents`](https://github.com/decentai-io/decentai-agents),
+has a catalog of many, the Note example first among them. A catalog of
+one is as good.
 
 ## Sample data
 

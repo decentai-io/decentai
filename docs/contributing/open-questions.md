@@ -6,12 +6,15 @@ does on purpose or by omission, and either answer may be right. The
 bugs, the documentation gaps and the unused code the same review found
 were fixed then; these were left for a decision.
 
-137 questions, in the order the review read the code. To settle
+131 questions, in the order the review read the code. To settle
 one: decide, change the code or the docs if the decision asks for it,
 and delete the row. The review read the code on 7–10 October 2026,
 before the runtime was restructured; every row was re-pointed to the
-files and functions as they now are on 14 October 2026, and line
-numbers are as they were that day. A page of the docs is named by its
+files and functions as they were on 14 October 2026, and line
+numbers are as they were that day. The rows the execution nodes moved
+— the clock into the Data Core, the code and its environments into
+each Execution Sandbox — were re-pointed again on 19 October 2026,
+without line numbers. A page of the docs is named by its
 section, whose lines move with every edit.
 
 ## Contracts 1: the envelope
@@ -158,13 +161,13 @@ chats each read their own frames in order.
 
 | Id | Where | Question |
 |---|---|---|
-| CLK-4 | `ai_runtime/chat/clock.py` `Scheduler._fire` 340–401, `Schedule.advance` 149–150 | A one-off is spent by a fire that failed (the contract read failing, the session not built): it is disabled with one error line, never retried, and nobody is told (run). |
-| CLK-5 | `ai_runtime/chat/clock.py` `Scheduler.tick` 315–339; `ai_runtime/door/host.py` `SessionHost.fire_context` 189 | No ceiling on fires at once: 1,000 overdue rows gave 1,000 fires in one tick (run). Each function fire reads the contract and prepares the chat's whole roster (from reading). |
+| CLK-4 | `data_core/api/services/chat_session/clock.py` `ScheduleClock.tick`; `ai_runtime/chat/clock.py` `Scheduler._fire_row` | A one-off is spent before it fires: the Data Core's claim ends the row, and a fire that then fails (the contract read failing, the session not built, no node reached) is one line in a log, never retried, and nobody is told (from reading; the same was run before the clock moved to the Data Core). |
+| CLK-5 | `data_core/api/services/chat_session/clock.py` `ScheduleClock.tick`; `ai_runtime/chat/clock.py` `Scheduler.fire_now`; `ai_runtime/door/host.py` `SessionHost.fire_context` | No ceiling on fires at once: every due row is claimed and sent in one tick, and each fire is a task of its own on the node (run before the clock moved: 1,000 overdue rows gave 1,000 fires in one tick). Each function fire reads the contract and prepares the chat's whole roster (from reading). |
 | CLK-6 | `ai_runtime/chat/clock.py` `ChatClock.schedule` 513–522 | Accepted when set and refused at every fire (run): a level-1 schedulable function in a level-0 chat, inputs that do not fit the schema, a `wake_field` the outputs do not have. A row that fails every time is never paused. |
 | CLK-7 | `ai_runtime/chat/clock.py` `ChatClock._twin` 564–575 | The twin check (run): `mon` against `1` evades it; a paused twin does not count; it wrongly refuses the same note at 09:00 and at 18:00, and the same function with a different `wake_field`. |
 | CLK-8 | `ai_runtime/chat/clock.py` `ChatClock._when` 638–679; `ai_runtime/mind/actions.py` 189 | Saying when (run): a time in the past fires at the next tick; "exactly one of" is not enforced (`cron` with `every_seconds` drops the period silently); the text `"nan"` as a period gives a row that fires every tick while the assistant is told it was not set (in-memory store only). |
 | CLK-9 | `ai_runtime/chat/clock.py` `ChatClock.sleep` 590–591, `asleep` 605; `ai_runtime/door/host.py` `SessionHost._kill` 464–498 | Sleep (run): a new sleep that cannot be added still removes the old one; a fired sleep whose removal fails reads as asleep for good. |
-| CLK-11 | `ai_runtime/chat/clock.py` `Schedule.advance` 148, `Scheduler.__init__` 180, `Scheduler._fire` 382 | A period is rounded up to the 30-second tick and drifts: `every_seconds: 70` fired every 90.6 s (run). A function slower than its period runs back to back. |
+| CLK-11 | `data_core/api/services/chat_session/clock.py` `ScheduleClock.next_after`, `TICK_SECONDS`; `ai_runtime/chat/clock.py` `Scheduler.fire_now` | A period is counted from the fire, on the Data Core's 5-second tick, so it drifts by up to a tick each time. A fire that arrives while the row's last is still running is not run by the node, though the Data Core has claimed it, and nobody is told (from reading). |
 | CLK-12 | `ai_runtime/chat/clock.py` `ChatClock.__init__` 507, `schedule` 546, `_when` 665 | A row keeps the zone it was made in; an unresolvable zone silently becomes the server's; with no zone, `at` is read on the server's clock (all run). Settles CRON-6: the zone comes from the contract and is validated by the Data Core. |
 | CLK-15 | `ai_runtime/chat/clock.py` `ChatClock.MIN_EVERY_SECONDS` 489, `_when` 638; `data_core/api/endpoints/app/ai/schedule_controller.py` 33, `_when` 388 | Smaller: the 60-second floor is kept in three places and `_when` in two; spent one-offs stay in memory; a full row's run history is about 18 KB written whole at each fire (run). |
 
@@ -211,7 +214,7 @@ chats each read their own frames in order.
 
 | Id | Where | Question |
 |---|---|---|
-| SES-9 | `ai_runtime/chat/session.py` `Session.deliver_approval` 617–635; `ai_runtime/door/host.py` `SessionHost._hand` 430 | Resuming a parked call after a restart runs the whole function inside `deliver_approval`, on the socket's read loop: no stop or kill is read meanwhile and `working` is not sent (run for the session; the socket part from reading). |
+| SES-9 | `ai_runtime/chat/session.py` `Session.deliver_approval`, `_resume_parked` | Resuming a parked call after a restart runs the whole function inside `deliver_approval`, outside the cycle, and `working` is not sent (from reading). The yes no longer waits on the door's own loop (`SessionHost._deliver_yes`). |
 | SES-11 | `ai_runtime/chat/session.py` `Session.agent_post` 1018–1019, `open` 359; `docs/system/chat-session.md`, section "The vocabulary" | The doc says hearing an agent's post never wakes the assistant. It does, at the next rebuild: the post's inbox event is past the cursor (run: one model call and a reply with no new message). |
 | SES-13 | `ai_runtime/door/host.py` `SessionHost._hand` 418–422; `ai_runtime/chat/session.py` `Session.deliver_user` 508–534, `_as_transcript` 1236 | Nothing checks a `user_message` (run: an empty one costs a model call; 500 parts accepted). A mind rebuilt from the record does not see attachments (run). The lost-message case is HOST-1. |
 | SES-14 | `ai_runtime/chat/session.py` `Session.adopt` 393–486; `ai_runtime/chat/helpers.py` `Helpers.inherit` 33 | `adopt(skills=None)` cannot lift a narrowing in an open chat (run). Helpers are given the new grants, level and safety, and not the new roster, model or zone (from reading). |
@@ -235,13 +238,13 @@ chats each read their own frames in order.
 | Id | Where | Question |
 |---|---|---|
 | LIB-2 | `ai_runtime/agents/library.py` `AgentLibrary.agent` 192–211, `_register` 543–592, `_approved` 609; `ai_runtime/door/roster.py` `AgentRoster.materialize` 201–211 | The check of the manifest against the approved hash, and the trial load, exist only on the install path. They are skipped when the digest is already serving, for a folder left by an install that stopped between unpacking and checking (run: a new process served it), and when no hash is sent. |
-| LIB-5 | `ai_runtime/agents/environments.py` 62–65, `AgentEnvironment._install` 250; `contracts/agent_manifest.py` `_implementation` 301–305; `docs/agents/manifest.md`, section "implementation" | Settles MAN-10. An option after a name, given as one argument, is refused by pip itself (run). A declared dependency may still be a direct URL, a `git+` address or a path: pip fetched a direct URL even with `--no-index` (run). Where agents are confined only the builder reads the list (from reading); where they are not, the runtime's own pip fetches it. |
+| LIB-5 | `sandbox/environments.py` `AgentEnvironment._install`; `contracts/agent_manifest.py` `_implementation`; `docs/agents/manifest.md`, section "implementation" | Settles MAN-10. A dependency that begins as an option is refused. A declared dependency may still be a direct URL, a `git+` address or a path, which the builder's pip fetches (run: pip fetched a direct URL even with `--no-index`). Only the builder reads the list. |
 | LIB-7 | `sandbox/events.py` 48–51, `Events._put_aside` 136–146; `ai_runtime/agents/workers.py` `WorkerHandle._drain_stderr` 499–516 | One event log serves every agent and organization, and every line an agent writes to standard error is an event, with no rate limit. Run at a lowered size: one agent's lines pushed out another's connection record. About 32,000 long lines fill a writer's share, so an agent can erase the record of its own connections and everyone else's. |
 | LIB-9 | `sandbox/usage.py` `AgentsUsage` 82–215; `sandbox/service.py` `SandboxService._why` 481–496, `_end_largest_agent` 574–592 | Who is ended for memory (simulated): the trigger is the whole container's number, and the one chosen is the agent holding most of one kind of memory. Agents holding 30 and 25 MB were ended one after another when file-backed memory filled the container. Settles CON-1's effect: on the older cgroup layout the rule fires early (949 MB read where 650 is meant). |
 | LIB-10 | `sandbox/service.py` `SandboxService._hold` 370–384, `_let_go` 386–390 | The spawner keeps one process per user. A second start for the same user left the first out of its table: no memory rule, no disk measure (run). Not reachable from today's callers (from reading). |
 | LIB-11 | `ai_runtime/agents/library.py` `AgentLibrary.forget` 452–462, `_materialize` 500–501; `ai_runtime/door/roster.py` `AgentRoster.reclaim` 277–320 | `forget` takes no lock and deletes an environment on the event loop. A stale answer about which digests are still approved can delete a folder under a running install (from reading; the window is one Data Core round trip). Half-arrived package folders and spools left by a crash are never swept (run for the first). |
-| LIB-13 | `sandbox/service.py` `SandboxService.make_key` 136–153, `_serve` 213–677; `ai_runtime/agents/sandbox.py` `ExecutionSandbox._ask` 87–104 | Smaller: a key that is not ASCII raises an uncaught error (run: the connection closes, nothing starts); no cap on connections before the key; the key is never changed; the runtime's request to the spawner has no deadline. |
-| LIB-14 | `ai_runtime/agents/library.py` `AgentLibrary.environment_key` 404–414; `ai_runtime/agents/environments.py` `AgentEnvironment.build` 132–136 | Smaller: dependencies are installed after the SDK is copied in, so a declared package could overwrite `decentai_sdk` in that environment; the environment's name does not include the machine type. |
+| LIB-13 | `sandbox/wire.py` `proof`; `sandbox/service.py` `SandboxService._serve`; `ai_runtime/agents/sandbox.py` `ExecutionSandbox._ask` | Smaller (from reading): no cap on connections before the proof; the node's secret is never changed while it runs; the runtime's request to a sandbox has no deadline. |
+| LIB-14 | `sandbox/installs.py` `environment_key`; `sandbox/environments.py` `AgentEnvironment.build` | Smaller: dependencies are installed after the SDK is copied in, so a declared package could overwrite `decentai_sdk` in that environment until the SDK is next brought up to date (from reading). |
 
 ## Runtime 5a: execution, the gates
 
@@ -266,7 +269,6 @@ chats each read their own frames in order.
 | EDGE-9 | `ai_runtime/llms/connector/tools.py` `parse_arguments` 37–46 | Tool arguments that do not parse, or parse to a list, become no arguments, silently, in all five connectors (run). |
 | EDGE-10 | `ai_runtime/llms/connector/anthropic.py` 99–113; `ai_runtime/llms/connector/openai.py` 48; `ai_runtime/llms/connector/gemini.py`; `ai_runtime/llms/connector/bedrock.py` | Differences that change behaviour (run): Anthropic has no fallback when a model will not be made to call a tool; `reasoning_effort` is read only by the two OpenAI connectors, though 192 catalog models on the other protocols list efforts; default reply caps are 16,384, 8,192 or none. |
 | EDGE-13 | `ai_runtime/door/host.py` `SessionHost._prepare_routing` 107–125, `_build` 157–182, `_adopt` 278; `docs/reference/session-door.md`, section "The contract" | Only a missing model opens gracefully. A block the factory refuses, or a failed lookup of the chat's own connection, fails the session's build, while a failed lookup of the embedding model is swallowed (run). |
-| EDGE-14 | `ai_runtime/door/platform.py` `DataCoreClient.credentials` 148, `revoke` 198, `load_schedules` 486–494; `ai_runtime/chat/clock.py` `Scheduler.start` 202 | The dictionary of credentials is never trimmed. `DataCoreClient.load_schedules()` is called once, when the clock starts and no credential exists, so with the real Data Core it finds nothing (from reading; the clock section found the same). |
 ## Left as they are, on purpose
 
 Decided during the fixes, recorded so nobody rediscovers them:
@@ -279,7 +281,6 @@ Decided during the fixes, recorded so nobody rediscovers them:
 | RSN-3 | `data_core/api/services/data_layer/files.py` | A file on a chat message is opened by owner visibility only; a file shared and then unshared is 404 from the message too. Chats are one person's, so that is the only case, and it is the vault's rule, not the chat's. |
 | POOL-1 | `data_core/api/services/data_layer/mcp.py`; `ai_runtime/agents/mcp.py` | The Data Core keeps an MCP tool's schema as the server wrote it, `$ref` included; the runtime drops every reference outside the schema before anything reads it. One cleaner, where the schema is used. |
 | EXE-12 | `data_core/api/services/data_layer/base.py` | A record read with no slot is held to what the person can see and nothing else: the runtime leaves the slot out for a ref the call was handed, on purpose. |
-| SES-9 | `data_core/api/services/chat_session/relay.py` | A socket silent for a whole function's timeout is kept: `websockets` pings every 20 s and nothing reads with a timeout. It drops only if the runtime's loop is blocked past 20 s. |
 | LLM-1 | `contracts/llm_providers.json`, `contracts/llm_providers.py` | Azure's entry is `/openai/v1` over OpenAI's protocol; a Claude deployment takes its own Anthropic route only when the deployment is named as the catalog names the model and the address is the template's. Whether Azure answers Claude at `/openai/v1` otherwise is Azure's documentation to say. |
 | EDGE-1 (the probe) | `data_core/api/services/llm_probe.py` | The connection probe asks the address typed, a private one included: a model server on this host (`host.docker.internal`, a LAN machine) is the usual case, and adding a connection is an administrator's door. What a provider answered is repeated only when it was JSON. |
 | SBX-10 (the spellings) | `ai_runtime/agents/egress.py` | `2130706433`, `0x7f000001`, `127.1`: the proxy never reads a spelling, only the address a name resolves to, which is what it connects to; what the resolver makes of such a spelling is the resolver's. Held by a test on the resolved address. |

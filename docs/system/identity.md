@@ -4,8 +4,10 @@ Who exists in DecentAI, what is recorded about them, and how the platform
 decides what any of them may do.
 
 This document covers identity and authorization only. The AI Runtime acts
-inside the platform under a delegated identity of its own; that delegation
-is named at the end of this document and described in full elsewhere.
+inside the platform under a delegated identity of its own, and the
+execution node it runs on is admitted by an authority rather than by a
+person; both are named at the end of this document and described in
+full elsewhere.
 
 ## The shape of the model
 
@@ -172,7 +174,7 @@ pass:
 | sessions, resets, API keys, invitations, runtime delegations | dropped |
 | chats, and everything under them: messages, approvals, uploads, schedules | deleted; conversations are personal |
 | memories | deleted; a profile of a person nobody can read is a liability |
-| MCP servers, push subscriptions (a browser's and a phone's), the note of which sample data they loaded | deleted; each is the person's alone and is handed to nobody |
+| MCP servers, webhooks and notification subscriptions, push subscriptions (a browser's and a phone's), the note of which sample data they loaded | deleted; each is the person's alone and is handed to nobody |
 | secrets, records, files, skills | stewardship passes to the successor; whoever they were shared with keeps seeing them; a credential granted to agents keeps working |
 | model connections, agent sources | stewardship passes to the successor |
 | agent grants naming the person | the person is taken out of them; a grant left naming nobody is deleted |
@@ -308,8 +310,11 @@ of a credential form well enough to fill it in. Every user may also
 make and revoke their own API keys, add and remove their own MCP
 servers, set and pause their own schedules, stop and resume all of their
 own work, hand on what they made, start a connected account's sign-in,
-see which model providers exist, load and remove an agent's sample data,
-read their own audit trail, and manage their own notifications; and
+see which model providers exist and the models a connection offers,
+speak a message and hear a reply, load and remove an agent's sample
+data, read their own audit trail, keep their own webhooks
+([webhooks](webhooks.md)), and manage their own notifications and where
+else they are sent; and
 their chats' model calls are counted (`ai:usage:record`, a write only a
 runtime may make, held by everyone so that nobody's calls go uncounted
 — [monitoring](monitoring.md#what-the-models-used)). These
@@ -467,8 +472,9 @@ account name, belong to no organization, and go when their window ends.
 
 ## Principals, and where this document ends
 
-The platform recognises two kinds of caller, and one of them has two
-ways in.
+The platform recognises three kinds of caller: a person, the runtime
+acting for a person, and an execution node acting as itself. Only the
+first is anybody.
 
 A **user** is a person acting through their browser, with the access this
 document describes — or a script acting with one of their **API keys**.
@@ -484,7 +490,7 @@ header and not in the cookie, may list them and nothing more. Each person may ho
 
 A **runtime delegation** is the AI Runtime acting *for* a person, within
 one conversation. It is the same identity — the same user, the same
-organization, the same policy chain — with two additional constraints. It
+organization, the same policy chain — with three additional constraints. It
 is confined to a fixed set of operations decided by the platform rather
 than by the user's own permissions, checked before their policy is
 consulted at all; so a delegation cannot reach identity management,
@@ -492,8 +498,15 @@ account settings or chat administration even when acting for an
 administrator who could. And it is minted for one conversation: a call
 naming another chat is refused, even one the same person owns. What it
 may ask agents to do is the chat's contract, read fresh each turn.
-Signing out does not end it — a scheduled chat runs while its person is
-away — but disabling or deleting the person does.
+And it is handed to one execution node, and the gateway accepts it only on
+a request that node makes with its own credential (`X-DecentAI-Node`),
+under the number of the lease it holds the chat by now
+(`X-DecentAI-Lease`, [leases](execution-nodes.md#leases)): from any
+other node it opens nothing, and from a shared node nothing at all
+where the organization keeps to its own (`Settings:Nodes`,
+`own_only`). Signing out does not end it — a scheduled
+chat runs while its person is away — but disabling or deleting the
+person does.
 
 The consequence worth stating here is the one that belongs to identity: a
 delegation never expands authority. It can only ever be the user, or less
@@ -501,9 +514,45 @@ than the user. Everything else about how a delegation is created, scoped,
 carried and revoked — and what the runtime does with it — belongs to the
 runtime's own documentation.
 
-The runtime also speaks **as itself**, for the one thing that is
-nobody's in particular: the approved agent code it keeps one copy of
-for every organization. That is a principal of its own — a service
-token only a runtime can sign, no person, no organization, no policy —
-fenced to the three actions of the package door and refused everything
-else ([agent code](agent-code.md#the-package-door)).
+### Execution nodes
+
+An **execution node** — one AI Runtime and its Execution Sandboxes —
+speaks **as itself** for the one thing that is nobody's in particular:
+the approved agent code it keeps one copy of for every organization.
+A node is not a user, and nobody registers one. Trust is given to an
+**authority**, once (`node_authorities`,
+`data_core/database/stores/nodes.py`): a public key, or the key set an
+issuer publishes — shared, registered by the deployment's operator, or
+for one organization, by its administrators (`Nodes:Authority:Create`;
+a shared one also needs `nodes:authority:shared` and a seat in the
+operating organization, `OPERATOR_ORG_ID`). Any node presenting a
+short-lived credential such an authority signed is admitted
+(`Admission`, `data_core/api/services/nodes/admission.py`), and is known
+by its authority and its name together.
+
+The principal it becomes names no person, no organization and no
+policy: what it may dispatch is the package door and nothing else
+(`NODE_ENDPOINTS`, beside the catalog; [agent code](agent-code.md#the-package-door)),
+and a node one organization's authority admitted is told only of that
+organization's code. Revoking the authority (`Nodes:Authority:Revoke`)
+or refusing the node by name (`Nodes:Node:Refuse`, until
+`Nodes:Node:Allow`) refuses it at its next request and closes its link
+at once. The credential's claims, the link, leases and where a chat is
+placed are [execution nodes](execution-nodes.md).
+
+### The keys between the parts
+
+None of these is a person's, and each is held only where it is used:
+
+| Key | Held by | What it proves |
+| --- | --- | --- |
+| `TOKEN_SECRET_KEY` | the Data Core alone | signs the session tokens it hands browsers, apps and delegations (HS256); a token signed with a key pair is read as a node's credential instead |
+| `DATA_CORE_SERVICE_PRIVATE_KEY` | the Data Core alone | the Data Core's signature (RS256) on every reply and link frame it sends a node |
+| `DATA_CORE_SERVICE_PUBLIC_KEY` | every execution node | that a reply or frame is the Data Core's: a node believes nothing else |
+| an authority's private key | whoever issues node credentials — on one computer's install, `node-issuer` alone (`NODE_AUTHORITY_PRIVATE_KEY`, `config/node-authority.env`) | that the node is one the authority vouches for; the Data Core holds only the public half (`NODE_AUTHORITY_PUBLIC_KEY`, which the seeder registers as a shared authority) |
+| `AI_RUNTIME_SANDBOX_SECRET` | one node's AI Runtime and its Execution Sandboxes (`config/sandbox.env`), never the Data Core | a sandbox registering with its runtime, and the runtime asking it for workers ([the sandbox](sandbox.md)) |
+
+The Data Core's pair is made by `bootstrap/generate_service_keys.py`,
+the authority's by `bootstrap/generate_node_authority.py`;
+`bootstrap/setup.py` writes both, once
+([configuration](../run/configuration.md)).

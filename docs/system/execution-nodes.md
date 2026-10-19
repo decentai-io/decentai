@@ -21,6 +21,7 @@ An authority is a row in the Data Core (`node_authorities`,
 
 | Field | What it is |
 |---|---|
+| `name` | what administrators call it |
 | `kind` | `key`: a public key (PEM) the authority's credentials are signed with; or `issuer`: the address of a key set an issuer publishes (a JWKS: a secret manager, a cluster's workload identity), and the issuer (`iss`) its tokens name |
 | `scope` | `shared`, or one organization's id |
 | `registered_by`, `registered_at` | who vouched, and when |
@@ -166,11 +167,11 @@ node, and nothing it said is acted on.
 | `watch {chat_id, watched}` | whether a person has the chat open |
 | `chat {chat_id, frame}` | one of the door's frames for that chat: `user_message`, `approval_decided`, `question_answered`, `stop`, `schedules_changed`, `screen_input`, `screen_open`, `webhook_event`, `credential` ([the chat session](chat-session.md#the-node-link)) |
 | `detach {chat_id}` | the chat is no longer this node's: it is forgotten where it stands, its key and lease let go |
-| `monitor {request_id, what, asked}` | a question about agents: `events`, `usage`, `files` ([monitoring](monitoring.md#how-it-is-read)) |
+| `monitor {request_id, what, asked}` | a question about agents: `events`, `usage`, `files` ([monitoring](monitoring.md#how-it-is-read)); or `drain`, one of the node's Execution Sandboxes drained or let take work again ([above](#the-nodes-view)) |
 
 | Node → Data Core | |
 |---|---|
-| `hello {protocol_version, reports}` | first, once |
+| `hello {protocol_version, reports}` | first, once: what it says of itself, its sandboxes among it |
 | `event {chat_id, frame}` | what one chat emits for its audience |
 | `heartbeat {chats, reports}` | every 20 seconds: still here, the chats it holds by lease number — which renews those leases — and its load |
 | `released {chat_id, lease}` | a chat went idle with nobody watching: its lease is let go |
@@ -289,6 +290,9 @@ organization's own; never another organization's):
    larger of the two — then the longest connected.
 
 What a node says of its load places a chat and never admits a node.
+Inside the node, which of its Execution Sandboxes runs an agent's
+worker is the runtime's to choose, by a rule of its own ([the
+sandbox](sandbox.md#many-sandboxes)).
 
 ## Organizations owning nodes
 
@@ -327,8 +331,13 @@ Administrators see their organization's nodes — the authority that
 admitted each, who registered that authority, when each was first and
 last seen, whether it is connected and how many chats it holds now, and
 what it reports of itself — with `Nodes:Node:List`, and their
-authorities with `Nodes:Authority:List`. There is no client page for
-them yet; the doors are the engine's.
+authorities with `Nodes:Authority:List`. The web client shows all of
+it under Settings → **Nodes** (`src/app/pages/app/settings/nodes/` in
+`decentai-web-client`): authorities added — a public key, or a key-set
+address and its issuer; shared, for the operator, or the
+organization's own — and revoked; each node refused, allowed again, and
+each of its sandboxes drained or let take work again; and the
+organization's placement, `prefer_own` or `own_only`.
 
 Autoscaling nodes, quotas and choosing a cloud for them are for whoever
 operates the nodes, not for the engine.
