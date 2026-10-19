@@ -837,12 +837,16 @@ ACTION_CATALOG: Dict[str, Dict[str, Any]] = {
                 "Register an authority whose credentials admit execution "
                 "nodes for your organization only"
             ),
+            "nodes:authority:update": (
+                "Rename or describe one of your organization's authorities; "
+                "its key and scope never change"
+            ),
             "nodes:authority:revoke": (
                 "Revoke one of your organization's authorities, refusing "
                 "every node it vouches for at its next request"
             ),
             "nodes:authority:shared": (
-                "As the deployment's operator: register and revoke shared "
+                "As the deployment's operator: register, change and revoke shared "
                 "authorities, whose nodes may serve every organization "
                 "that does not keep to its own"
             ),
@@ -859,10 +863,19 @@ ACTION_CATALOG: Dict[str, Dict[str, Any]] = {
                 "Refuse one execution node by name at once, whatever its "
                 "credential says"
             ),
+            "nodes:node:update": (
+                "Give an execution node a name and a note, shown in place "
+                "of the name its credential says"
+            ),
             "nodes:node:allow": "Let a node refused by name be admitted again",
+            "nodes:node:forget": (
+                "Take an execution node that is gone off the list; one "
+                "refused by name stays refused"
+            ),
             "nodes:node:drain": (
-                "Drain one Execution Sandbox of an execution node, so no new "
-                "agent is placed there, or let it take work again"
+                "Drain one Execution Sandbox of an execution node, or all "
+                "of them, so no new agent is placed there, or let it take "
+                "work again"
             ),
         },
     },

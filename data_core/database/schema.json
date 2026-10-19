@@ -2592,6 +2592,9 @@
             "name": {
               "bsonType": "string"
             },
+            "description": {
+              "bsonType": "string"
+            },
             "kind": {
               "enum": [
                 "key",
@@ -2615,6 +2618,9 @@
             },
             "registered_at": {
               "bsonType": "date"
+            },
+            "revoked_by": {
+              "bsonType": "string"
             },
             "revoked_at": {
               "bsonType": [
@@ -2662,6 +2668,12 @@
               "bsonType": "string"
             },
             "name": {
+              "bsonType": "string"
+            },
+            "display_name": {
+              "bsonType": "string"
+            },
+            "description": {
               "bsonType": "string"
             },
             "authority_id": {
@@ -2719,7 +2731,18 @@
               "bsonType": "date"
             },
             "refused_by": {
-              "bsonType": "string"
+              "bsonType": [
+                "object",
+                "string"
+              ],
+              "properties": {
+                "user_id": {
+                  "bsonType": "string"
+                },
+                "email": {
+                  "bsonType": "string"
+                }
+              }
             },
             "org_id": {
               "bsonType": "string"

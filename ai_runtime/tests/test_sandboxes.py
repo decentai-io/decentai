@@ -516,3 +516,21 @@ class TestGatheredFromEvery:
         assert confinement.filters_calls is False
         weak.draining = True                      # given no worker: not counted
         assert confinement.report()["files"] is True
+
+
+class TestWhatTheNodeReports:
+    def test_each_sandbox_is_reported_with_its_load_and_the_agents_it_runs(self):
+        """What the Data Core's nodes view shows of a node's sandboxes
+        (Nodes:Node:List): shown as said, and never a gate."""
+        from ai_runtime.door.app import _sandboxes_said
+
+        busy, idle = Said("a"), Said("b")
+        busy.learn({"capacity": {"memory": {"limit": 400 * MB, "used": 100 * MB},
+                                 "cpus": {"limit": 2, "used": 0.5}, "workers": 3},
+                    "running": ["agt_y", "agt_x"], "draining": True})
+        said = _sandboxes_said(SimpleNamespace(sandboxes=Sandboxes.of(busy, idle)))
+        assert [one["sandbox"] for one in said] == ["a", "b"]
+        assert said[0]["capacity"]["workers"] == 3
+        assert said[0]["running"] == ["agt_x", "agt_y"]
+        assert said[0]["draining"] is True and said[0]["eligible"] is False
+        assert said[1]["capacity"] == {} and said[1]["running"] == []

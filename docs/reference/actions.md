@@ -9,7 +9,7 @@ the actions a chat's delegation may call, and nothing else.
 Generated from `data_core/server/authentication/catalog.py` by
 `docs/reference/generate.py`; do not edit by hand.
 
-221 actions in 43 services; 69 baseline.
+224 actions in 43 services; 69 baseline.
 
 ## Own account
 
@@ -411,8 +411,9 @@ Generated from `data_core/server/authentication/catalog.py` by
 |---|---|---|---|
 | `nodes:authority:list` | See the authorities that admit execution nodes for your organization, and the shared ones |  |  |
 | `nodes:authority:create` | Register an authority whose credentials admit execution nodes for your organization only |  |  |
+| `nodes:authority:update` | Rename or describe one of your organization's authorities; its key and scope never change |  |  |
 | `nodes:authority:revoke` | Revoke one of your organization's authorities, refusing every node it vouches for at its next request |  |  |
-| `nodes:authority:shared` | As the deployment's operator: register and revoke shared authorities, whose nodes may serve every organization that does not keep to its own |  |  |
+| `nodes:authority:shared` | As the deployment's operator: register, change and revoke shared authorities, whose nodes may serve every organization that does not keep to its own |  |  |
 
 ## Execution nodes
 
@@ -420,8 +421,10 @@ Generated from `data_core/server/authentication/catalog.py` by
 |---|---|---|---|
 | `nodes:node:list` | See the execution nodes that were admitted for your organization, who admitted them and what each reports |  |  |
 | `nodes:node:refuse` | Refuse one execution node by name at once, whatever its credential says |  |  |
+| `nodes:node:update` | Give an execution node a name and a note, shown in place of the name its credential says |  |  |
 | `nodes:node:allow` | Let a node refused by name be admitted again |  |  |
-| `nodes:node:drain` | Drain one Execution Sandbox of an execution node, so no new agent is placed there, or let it take work again |  |  |
+| `nodes:node:forget` | Take an execution node that is gone off the list; one refused by name stays refused |  |  |
+| `nodes:node:drain` | Drain one Execution Sandbox of an execution node, or all of them, so no new agent is placed there, or let it take work again |  |  |
 
 ## Monitoring agents
 

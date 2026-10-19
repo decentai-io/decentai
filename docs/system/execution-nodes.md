@@ -21,11 +21,14 @@ An authority is a row in the Data Core (`node_authorities`,
 
 | Field | What it is |
 |---|---|
-| `name` | what administrators call it |
+| `name`, `description` | what administrators call it, and a note of theirs: changed with `Nodes:Authority:Update`, the only thing about an authority that changes |
 | `kind` | `key`: a public key (PEM) the authority's credentials are signed with; or `issuer`: the address of a key set an issuer publishes (a JWKS: a secret manager, a cluster's workload identity), and the issuer (`iss`) its tokens name |
 | `scope` | `shared`, or one organization's id |
 | `registered_by`, `registered_at` | who vouched, and when |
-| `revoked_at` | set once, never unset |
+| `revoked_at`, `revoked_by` | set once, never unset |
+
+An authority's key, key set and scope never change: to trust another
+key is to revoke this authority and register one for that key.
 
 Who registers which:
 
@@ -87,17 +90,51 @@ its name, its authority, its scope and labels, when it was first and
 last seen, whether it is connected, and what it last reported. It is a
 view, kept from what nodes presented; nobody fills it in.
 `Nodes:Node:List` shows an organization's administrators their own
-nodes, with the authority that admitted each, and the operator the
-shared ones too. What a node reports includes its Execution Sandboxes:
-each one's name, labels, whether it drains and whether it takes work.
+nodes, and the operator the shared ones too — never another
+organization's. Each node comes with:
+
+| Field | What it is |
+|---|---|
+| `node_id`, `name` | `<authority id>/<name>`, and the name its credential gives it |
+| `display_name`, `description` | a name and a note a person gave it (below); empty until then |
+| `authority`, `authority_kind`, `admitted_by`, `authority_revoked` | the authority that vouched for it, and who registered that |
+| `scope`, `organization` | `shared` or an organization's id; that organization as `{org_id, name}`, or `null` for a shared node |
+| `connected`, `connected_since`, `first_seen`, `last_seen` | whether its link is open now, since when, and when it was first and last heard from |
+| `chats`, `held_chats`, `held_elsewhere` | how many chats are attached over its link; the caller's organization's chats it holds a live lease on, each `{chat_id, user_email, since}`; and how many of other organizations' — counted, never named |
+| `sandboxes` | its Execution Sandboxes as it reports them, each `{sandbox_id, labels, draining, eligible, load, agents_running, agents}`: `load` is the memory and processors it was given and uses and its workers (`null` where it said none), `agents` the caller's organization's agents among those it runs, by name |
+| `refused`, `refusal` | whether it is refused by name, and `{reason, by: {user_id, email}, at}` when it is |
+| `reports` | what it last reported of itself, as it said it |
+
+`Nodes:Authority:List` gives each authority its `organization` the same
+way, and `nodes: {total, connected}`: how many of the nodes on the list
+it admitted, and how many of those are connected now.
+
+**Naming a node** (`Nodes:Node:Update`, with `node_id` and
+`display_name` and/or `description`, 80 and 500 characters at most): a
+name a person gives it, shown in place of its credential's, and a note.
+Both are theirs, kept as the node comes and goes, and never read by
+admission. An empty `display_name` gives the node its own name back.
 
 **Draining a sandbox** (`Nodes:Node:Drain`, with `node_id` and
 `sandbox_id`): the Data Core asks the node over its link, and the node's
 registry drains that sandbox — no new agent is placed there, and
 those running finish what they are doing. `drain: false` lets it take
-work again. Who may is decided as for refusing the node: its own
-organization's administrators, and the operator for a shared node. The
-node only does it; a sandbox it does not have is refused in words.
+work again. With no `sandbox_id`, every sandbox the node reports is
+asked in turn, and the answer says each one's outcome
+(`sandboxes: [{sandbox_id, draining} | {sandbox_id, error}]`). Who may
+is decided as for refusing the node: its own organization's
+administrators, and the operator for a shared node. The node only does
+it; a sandbox it does not have is refused in words.
+
+**Forgetting a node** (`Nodes:Node:Forget`, with `node_id`): a node that
+is gone, taken off the list — its row, with what it reported and the
+name and note it was given. Refused (409) while the node is connected,
+and while it still holds a chat: a node that stopped answering keeps
+its leases until they lapse, a minute at most ([leases](#leases)). A
+node of a revoked authority is forgotten the same way. Forgetting is
+not refusing: **a node refused by name stays refused** until
+`Nodes:Node:Allow`, forgotten or not, and a node whose credential still
+admits it is kept again the next time it connects.
 
 ## Revoking
 
@@ -105,10 +142,12 @@ node only does it; a sandbox it does not have is refused in words.
   is refused at its next request, and its link is closed at once. What
   the Data Core remembered of earlier admissions is thrown away on every
   change (`Admission.changed`).
-- **One node, urgently** (`Nodes:Node:Refuse`): refused by name whatever
-  its credential says, until `Nodes:Node:Allow`. The usual way out for a
-  single node is slower and needs no step: its credential lapses in
-  minutes and nobody issues another.
+- **One node, urgently** (`Nodes:Node:Refuse`, with `node_id` and an
+  optional `reason` of 300 characters at most): refused by name whatever
+  its credential says, until `Nodes:Node:Allow`; why, by whom and when
+  are kept (`refused_nodes`) and shown with the node. The usual way out
+  for a single node is slower and needs no step: its credential lapses
+  in minutes and nobody issues another.
 
 ## The Data Core's signature
 
@@ -329,14 +368,19 @@ node:
 
 Administrators see their organization's nodes — the authority that
 admitted each, who registered that authority, when each was first and
-last seen, whether it is connected and how many chats it holds now, and
-what it reports of itself — with `Nodes:Node:List`, and their
+last seen, whether it is connected and the chats it holds now, its
+sandboxes and what they run, and what it reports of itself — with
+`Nodes:Node:List` ([the nodes view](#the-nodes-view)), and their
 authorities with `Nodes:Authority:List`. The web client shows all of
 it under Settings → **Nodes** (`src/app/pages/app/settings/nodes/` in
-`decentai-web-client`): authorities added — a public key, or a key-set
-address and its issuer; shared, for the operator, or the
-organization's own — and revoked; each node refused, allowed again, and
-each of its sandboxes drained or let take work again; and the
+`decentai-web-client`), in three tabs: **Nodes**, searched and
+filtered by state, organization and authority, grouped by
+organization, each opening to its detail — named and described,
+refused with a reason or allowed again, forgotten once gone, and its
+sandboxes drained or let take work again one by one or all at once;
+**Authorities** — added (a public key, or a key-set address and its
+issuer; shared, for the operator, or the organization's own), renamed
+and described, and revoked; and **Where chats run**, the
 organization's placement, `prefer_own` or `own_only`.
 
 Autoscaling nodes, quotas and choosing a cloud for them are for whoever

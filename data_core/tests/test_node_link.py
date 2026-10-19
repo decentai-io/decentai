@@ -217,14 +217,15 @@ class TestALiveLink:
         assert trail.count_documents({"event_type": "sandbox.drained"}) == 1
         assert trail.count_documents({"event_type": "sandbox.resumed"}) == 1
 
-    def test_draining_needs_a_connected_node_and_a_sandbox_named(
-            self, served, admin, authority):
+    def test_draining_needs_a_connected_node(self, served, admin, authority):
+        """With no sandbox named, every one it reports is drained
+        (test_nodes_view.py) — and still only while it is connected."""
         from server.setup.app_state import get_node_links
 
         key = self._known_node(served, authority)
         self.until(lambda: not any(l.key == key for l in get_node_links().connected()))
         unnamed = app_call(admin, "Nodes:Node:Drain", {"node_id": key})
-        assert unnamed.status_code == 400
+        assert unnamed.status_code == 409
         away = app_call(admin, "Nodes:Node:Drain",
                         {"node_id": key, "sandbox_id": "sandbox-2"})
         assert away.status_code == 409 and "not connected" in away.text

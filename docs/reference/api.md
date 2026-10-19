@@ -268,8 +268,11 @@ under now, as `X-DecentAI-Lease` — an older number is refused 409,
 `stale_lease`. Every answer to a node is signed over its exact bytes
 and the request it answers (`X-DecentAI-Request-Id`), in
 `X-DecentAI-Data-Core-Signature`. Admitting nodes is
-`Nodes:Authority:*`, the admitted nodes are `Nodes:Node:*` (`Drain`
-included), and whether an organization's chats keep to its own nodes
+`Nodes:Authority:*` (`List`, `Create`, `Update` — a name and a
+description, never the key — and `Revoke`), the admitted nodes are
+`Nodes:Node:*` (`List`, `Update` — a name and a note — `Refuse` with a
+reason, `Allow`, `Forget` once gone, and `Drain`, one sandbox or all of
+a node's), and whether an organization's chats keep to its own nodes
 is `Settings:Nodes:*`.
 
 ## Health
