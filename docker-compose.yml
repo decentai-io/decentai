@@ -313,6 +313,11 @@ services:
       # The balancer in front, by its range, where there is one: whose
       # word Caddy takes for a client's address.
       TRUSTED_PROXIES: ${TRUSTED_PROXIES:-127.0.0.1/32}
+      # Where the Data Core answers. Said here, and not only as the
+      # Caddyfile's default, so that a gateway started when it had
+      # another name is started again with this one: Caddy reads its
+      # file once, and Compose does not see the file change.
+      DATA_CORE_UPSTREAM: ${DATA_CORE_UPSTREAM:-data-core:8000}
       # Where the web client serves its pages, where it is not its
       # container on this network (web-client) or `npm start` on this
       # computer's port 4200, which the gateway finds unsaid.
