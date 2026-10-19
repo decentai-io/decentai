@@ -238,8 +238,8 @@ now) and by person (the ten whose chats used most), each with its
 calls, its counts, its cache share and its estimated cost.
 
 **The cost is an estimate, and says what it left out.** A model's price
-is the catalog's (`contracts/llm_models.json`, copied from
-[models.dev](https://models.dev) by `contracts/generate_llm_providers.py`):
+is the catalog's (`contracts/llm/models.json`, copied from
+[models.dev](https://models.dev) by `contracts/llm/generate.py`):
 US dollars per million tokens for input and output, and for reading
 from and writing to the cache where models.dev prices them apart. A
 call costs

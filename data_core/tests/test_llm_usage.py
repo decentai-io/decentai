@@ -172,7 +172,7 @@ PRICED = {"input": 3.0, "output": 15.0, "cache_read": 0.3, "cache_write": 3.75}
 def prices(monkeypatch):
     """The catalog's prices, as a test says them: one model priced in
     full, one with no cache prices of its own, the rest unknown."""
-    from contracts.llm_providers import LlmProviders
+    from contracts.llm.providers import LlmProviders
 
     said = {("anthropic", "claude-test"): PRICED,
             ("openai", "gpt-test"): {"input": 1.0, "output": 4.0}}
@@ -300,7 +300,7 @@ class TestTheSummarysModelCalls:
 
 class TestPrices:
     def test_the_catalog_says_a_models_price_or_nothing(self, monkeypatch):
-        from contracts.llm_providers import LlmProviders
+        from contracts.llm.providers import LlmProviders
 
         monkeypatch.setattr(LlmProviders, "_models", {"acme": [
             {"id": "full", "name": "F", "kind": "chat",

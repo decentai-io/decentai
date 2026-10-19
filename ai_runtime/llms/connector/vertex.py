@@ -1,7 +1,7 @@
 """Google Vertex AI: Gemini, and Claude, behind a Google Cloud project.
 
 The same models as Gemini's own API and Anthropic's, reached through a
-project, a region and a service account (contracts/vertex.py) instead
+project, a region and a service account (contracts/llm/vertex.py) instead
 of an API key:
 
 - **Gemini** speaks generateContent exactly as the Gemini API does
@@ -25,7 +25,7 @@ from ai_runtime.llms.connector.anthropic import AnthropicConnector
 from ai_runtime.llms.connector.gemini import GeminiConnector
 from ai_runtime.llms.connector.tools import TIMEOUT_SECONDS, setting
 from ai_runtime.llms.connector.usage import Embeddings, Usage
-from contracts.vertex import VertexAccount
+from contracts.llm.vertex import VertexAccount
 
 
 class VertexGeminiConnector(GeminiConnector):

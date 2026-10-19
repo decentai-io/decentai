@@ -15,8 +15,8 @@ from ai_runtime.llms.connector.responses import OpenAIResponsesConnector
 from ai_runtime.llms.connector.vertex import (
     VertexAnthropicConnector, VertexGeminiConnector)
 from ai_runtime.llms.factory import LLMConnectorFactory
-from contracts.generate_llm_providers import ProviderCatalogWriter
-from contracts.llm_providers import LlmProviders
+from contracts.llm.generate import ProviderCatalogWriter
+from contracts.llm.providers import LlmProviders
 from ai_runtime.tests import fake_container
 
 
@@ -55,7 +55,7 @@ class TestFactory:
 
 
 class TestTheCatalog:
-    """contracts/llm_providers.json: the one list of providers, read by
+    """contracts/llm/providers.json: the one list of providers, read by
     the Data Core, the page and this factory."""
 
     SPEAKS = {"openai": OpenAIConnector,
@@ -213,7 +213,7 @@ class TestRouting:
 
 
 class TestWritingTheCatalog:
-    """contracts/generate_llm_providers.py, over a models.dev file small
+    """contracts/llm/generate.py, over a models.dev file small
     enough to read here."""
 
     @staticmethod
@@ -1157,7 +1157,7 @@ class TestVertex:
     address, and a Bearer token in place of an API key."""
 
     def test_the_account_says_its_project_and_region(self):
-        from contracts.vertex import VertexAccount
+        from contracts.llm.vertex import VertexAccount
 
         account = VertexAccount(service_account_key(),
                                 "https://europe-west4-aiplatform.googleapis.com")
@@ -1171,7 +1171,7 @@ class TestVertex:
         assert global_.location == "global"
 
     def test_a_key_that_is_not_a_service_accounts_is_refused_in_words(self):
-        from contracts.vertex import VertexAccount, VertexKeyError
+        from contracts.llm.vertex import VertexAccount, VertexKeyError
 
         for key, said in (("AIza-not-json", "whole JSON key"),
                           (json.dumps({"type": "authorized_user"}), "not a service account"),

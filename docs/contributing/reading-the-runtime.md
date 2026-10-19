@@ -559,7 +559,7 @@ Tests: the schedule classes in `ai_runtime/tests/test_session.py`,
   quickest way to see what the runtime depends on.
 - `llms/` — the factory decides WHICH connector (`llms/factory.py`,
   by the provider's name, with the catalog both sides read in
-  `contracts/llm_providers.py`), a connector decides HOW
+  `contracts/llm/providers.py`), a connector decides HOW
   (`llms/connector/`, one file per protocol: Anthropic's system
   prompt as a top-level parameter, Bedrock's Converse, Gemini's
   generateContent, OpenAI's chat completions and every server that

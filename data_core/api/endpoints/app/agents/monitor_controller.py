@@ -40,7 +40,7 @@ from typing import Any, Dict, List, Optional
 from api.endpoints.app.ai.base import AIController
 from api.services.agents.monitoring import MonitorError, RuntimeMonitor
 from contracts.container import ContainerUsage
-from contracts.llm_providers import LlmProviders
+from contracts.llm.providers import LlmProviders
 from database.stores import (
     AgentManifestStore, AuditStore, OrganizationStore, UsageStore, UserStore)
 from database.stores.usage import COUNTS
@@ -607,7 +607,7 @@ class _Tally:
 
 class _Prices:
     """What each model costs per million tokens, as the catalog says
-    (contracts/llm_models.json, from models.dev): read once a request."""
+    (contracts/llm/models.json, from models.dev): read once a request."""
 
     def __init__(self):
         self._known: Dict[tuple, Optional[Dict[str, float]]] = {}

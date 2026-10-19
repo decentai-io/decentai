@@ -42,7 +42,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-from contracts.llm_providers import LlmProviders
+from contracts.llm.providers import LlmProviders
 from database.crypto import SecretCipher
 from database.stores.iam import OrgScopedStore
 from util import iso, new_id, utc_now

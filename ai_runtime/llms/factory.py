@@ -8,7 +8,7 @@ from ai_runtime.llms.connector.openai import OpenAIConnector
 from ai_runtime.llms.connector.responses import OpenAIResponsesConnector
 from ai_runtime.llms.connector.vertex import (
     VertexAnthropicConnector, VertexGeminiConnector)
-from contracts.llm_providers import LlmProviders
+from contracts.llm.providers import LlmProviders
 
 
 class LLMConnectorFactory:
@@ -19,7 +19,7 @@ class LLMConnectorFactory:
     those come from is the host's concern, not this class's.
 
     Which providers exist is the catalog's to say
-    (contracts/llm_providers.py); this class knows only which connector
+    (contracts/llm/providers.py); this class knows only which connector
     speaks each of the protocols a provider there may name. So a
     provider that answers one of them is an entry in the catalog and no
     line here, and a provider with a protocol of its own is a connector

@@ -1,4 +1,4 @@
-"""Write contracts/llm_providers.json and llm_models.json from models.dev.
+"""Write contracts/llm/providers.json and models.json from models.dev.
 
 models.dev (https://github.com/anomalyco/models.dev) is the open
 database of language-model providers. It publishes all of it as one
@@ -7,8 +7,8 @@ client library that speaks to it and the address it answers at, and for
 each of its models what the model can do. This reads that file and keeps
 what the platform's connectors can reach with a key.
 
-    python contracts/generate_llm_providers.py                 # the published file
-    python contracts/generate_llm_providers.py path/to/api.json
+    python contracts/llm/generate.py                 # the published file
+    python contracts/llm/generate.py path/to/api.json
 
 The published file is read, not a checkout of the repository: models.dev
 names a model's file after its id, and an id like ``amazon.nova-pro-v1:0``
@@ -30,7 +30,7 @@ What it deliberately leaves out:
 - A provider reached only by a person signing in — GitHub Copilot.
   Amazon Bedrock is here because it issues an API key; Google Vertex AI
   because a service account's JSON key is one text a person can paste
-  (contracts/vertex.py).
+  (contracts/llm/vertex.py).
 - A model on the person's own machine. It is reached with
   ``openai_compatible`` and the address typed, since where that machine
   is, as seen from the platform, is nothing a catalog can know.
@@ -54,8 +54,8 @@ from urllib.parse import urlsplit
 
 
 class ProviderCatalogWriter:
-    OUTPUT = Path(__file__).with_name("llm_providers.json")
-    MODELS_OUTPUT = Path(__file__).with_name("llm_models.json")
+    OUTPUT = Path(__file__).with_name("providers.json")
+    MODELS_OUTPUT = Path(__file__).with_name("models.json")
     SOURCE = "https://models.dev/api.json"
 
     #: The client libraries whose protocol a connector speaks, when the
@@ -388,7 +388,7 @@ class ProviderCatalogWriter:
 if __name__ == "__main__":
     arguments = [a for a in sys.argv[1:] if a != "--check"]
     if len(arguments) > 1:
-        sys.exit("usage: python contracts/generate_llm_providers.py [--check] [path/to/api.json]")
+        sys.exit("usage: python contracts/llm/generate.py [--check] [path/to/api.json]")
     writer = ProviderCatalogWriter.read(arguments[0] if arguments else "")
     if "--check" in sys.argv:
         # Whether the files in the repository are what this source

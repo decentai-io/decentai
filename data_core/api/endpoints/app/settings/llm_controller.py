@@ -20,7 +20,7 @@ resolution ends, never a lock.
 from __future__ import annotations
 
 from api.services.llm_probe import ProviderProbe
-from contracts.llm_providers import LlmProviders
+from contracts.llm.providers import LlmProviders
 from database.stores.settings.llm import LlmConnectionStore
 from server.custom_logging import CustomLoggerFactory
 

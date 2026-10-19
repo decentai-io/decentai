@@ -13,7 +13,7 @@ no list a key can read, so it is asked for a reply of a few tokens from
 the model the connection starts with.
 
 Vertex AI is asked the same way: the key is a service account's JSON
-key, signed in with first (contracts/vertex.py) — a key that is not one,
+key, signed in with first (contracts/llm/vertex.py) — a key that is not one,
 or that Google will not sign in with, is refused before anything is
 asked — and the model the connection starts with is asked for a reply.
 
@@ -37,7 +37,7 @@ from urllib.parse import quote
 
 import httpx
 
-from contracts.llm_providers import LlmProviders
+from contracts.llm.providers import LlmProviders
 
 
 class ProviderProbe:
@@ -114,7 +114,7 @@ class ProviderProbe:
     def _sign_in_to_vertex(self) -> str:
         """The service account read and signed in with, or why not:
         ``self.vertex`` and ``self.token`` for the request."""
-        from contracts.vertex import VertexAccount, VertexKeyError
+        from contracts.llm.vertex import VertexAccount, VertexKeyError
 
         try:
             self.vertex = VertexAccount(self.api_key, self.endpoint)

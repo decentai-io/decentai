@@ -229,7 +229,7 @@ class TestTheCatalog:
     drawn from."""
 
     def test_the_page_is_served_the_catalog_the_store_validates_against(self, admin, seed):
-        from contracts.llm_providers import LlmProviders
+        from contracts.llm.providers import LlmProviders
 
         response = app_call(admin, "Settings:Llm:Providers")
         assert response.status_code == 200, response.text
@@ -623,7 +623,7 @@ class TestAskingTheProvider:
             self, monkeypatch):
         import httpx
         from api.services.llm_probe import ProviderProbe
-        from contracts.vertex import VertexAccount
+        from contracts.llm.vertex import VertexAccount
         from vertex_key import service_account_key
 
         seen = []
@@ -744,7 +744,7 @@ class TestAzure:
     KEPT = "https://foundry-sara.cognitiveservices.azure.com/openai/v1"
 
     def test_an_endpoint_pasted_in_any_form_comes_to_the_same_address(self):
-        from contracts.llm_providers import LlmProviders
+        from contracts.llm.providers import LlmProviders
 
         for pasted in (
                 "https://foundry-sara.cognitiveservices.azure.com",
@@ -760,7 +760,7 @@ class TestAzure:
             "azure", "sara.services.ai.azure.com") == "https://sara.services.ai.azure.com/openai/v1"
 
     def test_a_target_uri_names_the_deployment_too(self):
-        from contracts.llm_providers import LlmProviders
+        from contracts.llm.providers import LlmProviders
 
         found = LlmProviders.azure(
             "https://sara.openai.azure.com/openai/deployments/my-gpt/chat/"
@@ -770,7 +770,7 @@ class TestAzure:
         assert LlmProviders.azure("https://sara.openai.azure.com")["deployment"] == ""
 
     def test_a_gateway_of_ones_own_and_another_provider_are_left_as_written(self):
-        from contracts.llm_providers import LlmProviders
+        from contracts.llm.providers import LlmProviders
 
         gateway = "https://llm.sara.example/azure"
         assert LlmProviders.azure(gateway) is None

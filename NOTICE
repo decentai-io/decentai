@@ -18,6 +18,6 @@ Systran) and Piper voices from https://huggingface.co/rhasspy/piper-voices,
 each under the terms of the recordings it was trained on.
 
 The catalog of language-model providers and their models in
-contracts/llm_providers.json and contracts/llm_models.json is derived
+contracts/llm/providers.json and contracts/llm/models.json is derived
 from models.dev (https://github.com/anomalyco/models.dev),
 Copyright (c) 2025 models.dev, used under the MIT License.

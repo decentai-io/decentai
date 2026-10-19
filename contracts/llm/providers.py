@@ -6,8 +6,8 @@ runtime reads which protocol the provider speaks and builds the
 connector for it. Before this each side kept a list of its own, and so
 did the page, and a provider was three edits that had to agree.
 
-The list is ``llm_providers.json`` beside this file, written by
-``generate_llm_providers.py`` from models.dev. An entry is data:
+The list is ``providers.json`` beside this file, written by
+``generate.py`` from models.dev. An entry is data:
 
     id        what a connection stores
     name      what a person reads
@@ -20,7 +20,7 @@ The list is ``llm_providers.json`` beside this file, written by
               them, from 1 — so a page can show them first, in that
               order, and the other two hundred behind a search
 
-``llm_models.json``, written with it, lists the models each provider is
+``models.json``, written with it, lists the models each provider is
 known to serve — an offer for a page, never a gate: any model may be
 named. A model there is data too:
 
@@ -56,14 +56,14 @@ from urllib.parse import urlsplit
 
 
 class LlmProviders:
-    PATH: ClassVar[Path] = Path(__file__).with_name("llm_providers.json")
-    MODELS_PATH: ClassVar[Path] = Path(__file__).with_name("llm_models.json")
+    PATH: ClassVar[Path] = Path(__file__).with_name("providers.json")
+    MODELS_PATH: ClassVar[Path] = Path(__file__).with_name("models.json")
     #: The wire formats a provider may name, each spoken by one
     #: connector (ai_runtime/llms/factory.py): OpenAI's chat completions
     #: — which is also what every OpenAI-compatible server speaks — and
     #: its Responses, Anthropic's messages, Google's generateContent,
     #: Amazon's Converse, and Gemini and Claude on Google's Vertex AI,
-    #: signed in with a service account (contracts/vertex.py).
+    #: signed in with a service account (contracts/llm/vertex.py).
     PROTOCOLS: ClassVar[Tuple[str, ...]] = (
         "openai", "openai-responses", "anthropic", "gemini", "bedrock",
         "vertex", "vertex-anthropic")

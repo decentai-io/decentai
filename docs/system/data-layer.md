@@ -367,7 +367,7 @@ pick — connection, model, effort — is kept in their preferences
 their next chat starts with.
 
 Which **provider** a connection may name is one list,
-`contracts/llm_providers.json`, read by all three sides: the store
+`contracts/llm/providers.json`, read by all three sides: the store
 accepts a provider that is on it, the page draws its form from it
 (`Settings:Llm:Providers`), and the runtime builds the connector for
 the protocol the entry names. An entry is an id, a name, a protocol and
@@ -380,7 +380,7 @@ Amazon Bedrock's Converse, and Gemini and Claude on Google's Vertex AI
 (`vertex`, `vertex-anthropic`). A Vertex connection's key is a service
 account's JSON key, pasted whole: the project is the one it names, the
 region is the address's blank, and each call is signed with a token
-made from the key (`contracts/vertex.py`). A partner's model on Vertex
+made from the key (`contracts/llm/vertex.py`). A partner's model on Vertex
 (Grok, Llama and the like, behind Vertex's OpenAI-compatible address)
 is not offered yet. The few providers most people look for carry
 `popular`, so a page can show them first and the rest behind a search. An
@@ -389,7 +389,7 @@ a Cloudflare account — carries a `<blank>` for that part, which the
 person fills in; a connection with one left in it is refused, by the
 store and again by the runtime. The list is written from
 [models.dev](https://github.com/anomalyco/models.dev), the open database
-of providers, by `contracts/generate_llm_providers.py` — from the one
+of providers, by `contracts/llm/generate.py` — from the one
 file models.dev publishes, `https://models.dev/api.json` — and is a file
 in the repository rather than a request made while the platform runs: an
 install with no way out lists what any other does, and a new provider
@@ -401,7 +401,7 @@ only by a person signing in is not on the list — GitHub Copilot — and a
 model on the person's own machine is the `openai_compatible` entry with
 the address typed.
 
-`contracts/llm_models.json`, written by the same script, lists the
+`contracts/llm/models.json`, written by the same script, lists the
 models each provider is known to serve, newest first: the provider's own
 id, a name to read, what the model is for (`chat`, `embedding` or
 `transcription`) and what models.dev says it can do — read a picture,
