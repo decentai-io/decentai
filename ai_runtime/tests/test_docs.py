@@ -22,10 +22,13 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 
-#: Folders that are not the repository's own: made by a tool, or by
-#: running the platform.
+#: Folders that are not the repository's own: made by a tool, by
+#: running the platform or its tests (the fixture agents' environment,
+#: the stores' scratch folders), or by an editor's worktrees.
 NOT_OURS = {".git", "node_modules", "dist", ".angular", ".venv", "venv",
-            "__pycache__", ".pytest_cache", "installed_agents"}
+            "__pycache__", ".pytest_cache", "installed_agents",
+            ".workerenv", ".workerenv-build", ".agent-packages", ".uploads",
+            ".claude", ".idea"}
 
 #: The top of every path the repository keeps, so that a path in a page
 #: is told from any other words with a slash between them.
