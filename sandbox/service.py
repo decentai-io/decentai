@@ -1146,6 +1146,11 @@ class SandboxService:
         try:
             if target.can_write_eof():
                 target.write_eof()
+            else:
+                # An encrypted connection cannot be half closed: the end
+                # of what one side sends is the end of the connection, or
+                # the other side would wait on it until it went idle.
+                target.close()
         except (ConnectionError, OSError):
             pass
 
