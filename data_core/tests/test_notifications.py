@@ -87,15 +87,20 @@ class FakePush:
         self.sent.append((endpoint, data, kwargs))
 
 
-def notifier(monkeypatch, fake, **settings):
+def notifier(monkeypatch, fake, real_addresses=False, **settings):
     """A Notifier with VAPID set, pywebpush replaced, and the settings
-    overrides a test needs."""
+    overrides a test needs. The test's push services are on names that
+    resolve nowhere (.test), so where a push may go is taken as public
+    unless a test asks for the real check."""
     import pywebpush
 
+    from server import notifications
     from server.notifications import Notifier
     from server.setup.app_state import get_settings
 
     monkeypatch.setattr(pywebpush, "webpush", fake)
+    if not real_addresses:
+        monkeypatch.setattr(notifications, "refuse_address", lambda url: "")
     base = get_settings()
     values = {**{k: getattr(base, k) for k in base.__dataclass_fields__},
               "vapid_public_key": "PUB", "vapid_private_key": "PRIV",
@@ -104,6 +109,28 @@ def notifier(monkeypatch, fake, **settings):
 
 
 class TestDelivery:
+    def test_nothing_is_pushed_inside_this_network(self, admin, seed, monkeypatch):
+        """Anybody may subscribe, and a subscription names its own
+        address: one inside this network — the database, the engine's
+        own services, a cloud's metadata address — is never sent to,
+        and is dropped."""
+        chat_id = make_chat(admin)
+        for inside in ("https://127.0.0.1/push", "https://169.254.169.254/latest",
+                       "https://[::ffff:10.0.0.5]/push"):
+            app_call(admin, "Settings:Notifications:Subscribe", {"subscription": {
+                "endpoint": inside, "keys": {"p256dh": "B", "auth": "A"}}})
+        fake = FakePush()
+        who = {"org_id": seed.org["_id"], "user_id": seed.admin["_id"]}
+        outcome = notifier(monkeypatch, fake, real_addresses=True)._deliver(
+            chat_id, who, "card", "Waiting", "x")
+        assert fake.sent == []
+        assert outcome["pushed"] == 0 and outcome["dropped"] == 3
+
+    def test_a_subscription_that_is_not_https_is_refused(self, admin):
+        assert app_call(admin, "Settings:Notifications:Subscribe", {"subscription": {
+            "endpoint": "http://push.example.test/a",
+            "keys": {"p256dh": "B", "auth": "A"}}}).status_code == 400
+
     def test_a_card_is_pushed_to_every_device_and_dead_ones_are_dropped(
             self, admin, seed, monkeypatch):
         import json

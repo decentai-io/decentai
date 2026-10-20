@@ -463,6 +463,14 @@ class TestPasswords:
         )
         assert response.status_code == 400
 
+    def test_guessing_the_current_password_has_the_sign_ins_budget(self, admin):
+        """A stolen session must not be a way to guess the password at
+        leisure: wrong guesses here count as wrong sign-ins do."""
+        wrong = {"current_password": "wrong-1x", "new_password": "AnotherPass9"}
+        for _ in range(5):
+            assert admin.post("/auth/password", json=wrong).status_code == 400
+        assert admin.post("/auth/password", json=wrong).status_code == 429
+
     def test_weak_passwords_are_rejected_with_the_reason(self, anon, admin):
         token = self._mint_reset_token()
         response = anon.post(

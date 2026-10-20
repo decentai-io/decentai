@@ -8,7 +8,8 @@ never runs its code.
 
 Everything an agent can say and do is in these pages, and one working
 agent that uses all of it is [`note/`](https://github.com/decentai-io/decentai-agents/tree/main/note) in the
-[`decentai-agents`](https://github.com/decentai-io/decentai-agents) repository.
+[`decentai-agents`](https://github.com/decentai-io/decentai-agents) repository — private for now, so its
+links here answer only to those given access to it.
 
 | | |
 |---|---|

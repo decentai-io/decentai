@@ -4,6 +4,7 @@ of a deployment nobody is in, and sign-up where the operator opened it
 
 import dataclasses
 import importlib
+import json
 import re
 
 import pytest
@@ -16,6 +17,10 @@ SETUP = {"org_name": "Acme", "name": "Ada", "email": "ada@acme.test",
 def _settings(monkeypatch, **changes):
     from server.setup.app_state import get_state
 
+    # The engine's own address is the test client's, as a browser on
+    # this computer names it: a first run that asks for no code is made
+    # only there.
+    changes.setdefault("public_engine_url", "http://testserver")
     state = get_state()
     monkeypatch.setattr(state, "settings",
                         dataclasses.replace(state.settings, **changes))
@@ -121,6 +126,25 @@ class TestTheFirstRunPage:
         _settings(monkeypatch, setup_code="none")
         assert client.get("/auth/setup").json()["setup_code_required"] is False
         assert client.post("/auth/setup", json=SETUP).status_code == 200
+
+    def test_none_is_only_from_the_engines_own_address(
+            self, empty, client, monkeypatch):
+        """Asking for no code assumes nobody else reaches the engine. A
+        page whose own name was made to resolve to this computer (DNS
+        rebinding) arrives under that name, and is refused; so is a form
+        any page could post without asking the browser first."""
+        _settings(monkeypatch, setup_code="none",
+                  public_engine_url="http://engine.example:4280")
+        refused = client.post("/auth/setup", json=SETUP,
+                              headers={"host": "rebound.attacker.test:4280"})
+        assert refused.status_code == 403, refused.text
+        plain = client.post("/auth/setup", content=json.dumps(SETUP),
+                            headers={"host": "localhost:4280",
+                                     "content-type": "text/plain"})
+        assert plain.status_code == 415, plain.text
+        assert client.get("/auth/setup").json()["setup_required"] is True
+        assert client.post("/auth/setup", json=SETUP,
+                           headers={"host": "engine.example:4280"}).status_code == 200
 
     @pytest.mark.parametrize("field, value", [
         ("org_name", ""), ("name", " "), ("email", "not-an-address"),

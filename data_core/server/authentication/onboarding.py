@@ -26,6 +26,7 @@ from __future__ import annotations
 import hmac
 import threading
 from typing import Any, Dict, Optional, Tuple
+from urllib.parse import urlsplit
 
 from database.stores import (
     FirstRunStore, LoginThrottle, OrganizationStore, SignupStore, UserStore,
@@ -116,13 +117,35 @@ class OnboardingController:
     # First run
     # ------------------------------------------------------------------
 
+    #: The names this computer answers to: a setup that asks for no code
+    #: is made from one of these, or from the engine's own address.
+    LOOPBACK = frozenset({"localhost", "127.0.0.1", "::1"})
+
+    def _own_address(self, host: str) -> bool:
+        """Whether a request named this engine — its public address, or
+        this computer — rather than some other name that a page has
+        pointed at it (DNS rebinding: a site whose name resolves, for a
+        moment, to 127.0.0.1)."""
+        name = (urlsplit(f"//{host or ''}").hostname or "").lower()
+        own = (urlsplit(str(getattr(get_settings(), "public_engine_url", "") or ""))
+               .hostname or "").lower()
+        return bool(name) and (name in self.LOOPBACK or name == own)
+
     def setup(
-        self, payload: Dict[str, Any], client_ip: str = ""
+        self, payload: Dict[str, Any], client_ip: str = "", host: str = ""
     ) -> Tuple[Dict[str, Any], int, Optional[Dict[str, Any]]]:
         """Stand the deployment's first organization up, with the person
         asking as its administrator, and return them to be signed in."""
         if not self.setup_required():
             return {"error": self.SET_UP_ALREADY}, 409, None
+
+        if not self._code_required() and not self._own_address(host):
+            # No code is asked for because nobody else reaches this
+            # engine; a request under another name is somebody else.
+            self.logger.warning(
+                f"First-run setup refused a request for host {host!r}")
+            return {"error": "This DecentAI is set up from its own address, "
+                             "or from the computer it runs on."}, 403, None
 
         if self._code_required():
             # The code is a password for one form: guessing it costs

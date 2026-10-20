@@ -74,7 +74,7 @@ after every pull that touched `data_core/database/schema.json` or the
 baseline; the schema version it prints tells you where you are.
 
 The page reaches the Data Core directly, across origins, as it does in
-a deployment: the engine is headless and no gateway is needed here.
+a deployment: the engine is headless.
 Start the web client's development server from its own repository:
 
 ```bash

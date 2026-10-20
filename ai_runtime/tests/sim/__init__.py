@@ -6,7 +6,8 @@ skills, memories, schedules, the chat's contract, and a resource
 provider. The Data Core implements it over its gateway; this package
 implements it in memory. The runtime itself always runs against the
 Data Core (ai_runtime/main.py); this is what its whole test suite uses,
-and what an agent's own tests run against (examples/tests/), so the
+and what an agent's own tests run against (the decentai-agents
+repository's tests/), so the
 runtime is exercised end to end without a database:
 
     session_services.py   SimSessionServices — the contract, in dicts

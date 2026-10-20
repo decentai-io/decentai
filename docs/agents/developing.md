@@ -137,7 +137,9 @@ Run DecentAI on your computer ([quickstart](../run/quickstart.md)). Then
 hand it the folder you write agents in, and its git repositories become
 agent sources — no push, no account anywhere. Beside
 `docker-compose.yml`, in a file named `docker-compose.override.yml`,
-which Compose reads by itself and git ignores:
+which git ignores — and which Compose reads only when it is named, since
+`config/deploy.env` names the stack's files: add it to `COMPOSE_FILE`
+there (`docker-compose.yml:docker-compose.override.yml`):
 
 ```yaml
 services:

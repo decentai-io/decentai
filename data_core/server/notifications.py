@@ -33,6 +33,7 @@ import httpx
 from database.stores import ChatStore, UserStore
 from database.stores.notifications import PushSubscriptionStore
 from server.custom_logging import CustomLoggerFactory
+from server.outbound import refuse_address
 from server.setup.app_state import get_settings, get_ws_manager
 from util import utc_now
 
@@ -45,6 +46,8 @@ class Notifier:
     ANSWER_MIN_MINUTES = 2
     #: how long a push service may keep an undelivered push
     PUSH_TTL_SECONDS = 24 * 3600
+    #: how long one push service may take to answer
+    PUSH_TIMEOUT_SECONDS = 10
     #: where a phone running the app is reached
     EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send"
     #: what a notification says when it may not say what happened
@@ -213,6 +216,15 @@ class Notifier:
             "data": {"url": url, "onActionClick": {
                 "default": {"operation": "navigateLastFocusedOrOpen", "url": url}}},
         }})
+        # A subscription names its own address, and anybody may subscribe:
+        # nothing is sent inside this network (the database, the engine's
+        # own services, a cloud's metadata address). One that names such
+        # an address is dropped; one whose name does not resolve just now
+        # is tried again next time.
+        why = refuse_address(row["endpoint"])
+        if why:
+            self.logger.warning(f"Push to {row['endpoint'][:40]}… refused: {why}")
+            return None if why.endswith("could not be found.") else False
         try:
             webpush(
                 subscription_info={"endpoint": row["endpoint"], "keys": row["keys"]},
@@ -220,6 +232,7 @@ class Notifier:
                 vapid_private_key=self.settings.vapid_private_key,
                 vapid_claims={"sub": self.settings.vapid_subject or "mailto:admin@example.com"},
                 ttl=self.PUSH_TTL_SECONDS,
+                timeout=self.PUSH_TIMEOUT_SECONDS,
             )
         except WebPushException as exc:
             status = getattr(getattr(exc, "response", None), "status_code", None)

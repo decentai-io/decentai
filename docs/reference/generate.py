@@ -19,7 +19,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "data_core"))
 sys.path.insert(0, str(ROOT))
-os.environ.setdefault("TOKEN_SECRET_KEY", "generate")
+os.environ.setdefault("TOKEN_SECRET_KEY", "generate-the-reference-pages-not-a-session-key")
 
 from server.authentication.catalog import (  # noqa: E402
     ACTION_CATALOG, BASELINE_ACTIONS, RUNTIME_ENDPOINTS,

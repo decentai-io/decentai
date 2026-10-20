@@ -184,10 +184,12 @@ Each phase left the single-machine install working, with one command
 - The web app is its own repository, `decentai-web-client` (private for
   now). The engine's chat-protocol check (`tests/test_chat_contract.py`)
   reads it from a checkout beside this one, and skips without one.
-- The engine keeps a **gateway** (Caddy, `gateway/Caddyfile`) as its one
-  door: the Data Core's paths to the Data Core, every other path to the
-  web client (its container, `npm start` on port 4200, or
-  `WEB_CLIENT_UPSTREAM`). The browser sees one origin.
+- The engine kept a **gateway** (Caddy) as its one door: the Data
+  Core's paths to the Data Core, every other path to the web client, so
+  the browser saw one origin. It was removed on 19 October 2026, when
+  the engine became headless ([deployment](deployment-plan.md)): the
+  Data Core publishes its own port, and the web client is served apart
+  and told the engine's address.
 - The agents, Note among them, and the catalog are in `decentai-agents`.
 - The folders, services and settings carry the parts' names (`data_core/`,
   `ai_runtime/`, `sandbox/`; the `data-core`, `ai-runtime` and `sandbox`

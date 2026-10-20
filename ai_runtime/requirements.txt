@@ -6,21 +6,26 @@
 
 # Web server / ASGI
 fastapi~=0.136.1
+# The same line of Starlette as the Data Core's: FastAPI allows newer,
+# whose test client warns without httpx2 and will soon refuse.
+starlette~=1.0.0
 uvicorn~=0.46.0
 httpx~=0.28
 # The IANA zone database, so a chat's time zone resolves on an image
 # that ships without /usr/share/zoneinfo (zoneinfo falls back to it).
 tzdata>=2024.1
-# Not imported anywhere: uvicorn needs it to serve the chat WebSocket.
+# The node's link to the Data Core (door/link.py), and what uvicorn
+# serves a WebSocket with.
 websockets~=15.0.1
 
 # Config / auth
 python-dotenv~=1.2.2
 PyJWT~=2.11.0
-# Not imported anywhere: PyJWT needs it to verify the Data Core's RS256
-# service tokens.
+# The node's credential (contracts/node.py), and what PyJWT verifies the
+# Data Core's RS256 service tokens with.
 cryptography~=47.0.0
-# Not imported anywhere: FastAPI's request and response models.
+# The chat protocol's shapes (contracts/protocol.py, contracts/chat.py),
+# and FastAPI's request and response models.
 pydantic~=2.12
 
 # The text layer of a PDF the person attached, for the assistant's own

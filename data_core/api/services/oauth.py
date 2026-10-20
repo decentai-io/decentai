@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import re
 import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional, Tuple
@@ -135,19 +136,31 @@ class OauthFlow:
     #: say: the installed app's own scheme.
     APP_RETURN = "decentai://oauth"
 
+    #: The schemes an app's return link may have: the installed app's
+    #: own, and Expo Go's, which an app in development answers on.
+    APP_SCHEMES = ("decentai", "exp")
+
+    #: What a return link may hold past its scheme: the characters a URL
+    #: may, and nothing a browser drops or reads otherwise — no space,
+    #: tab or line break (a browser strips those as it parses, so
+    #: ``ht<TAB>tps:`` would become ``https:``), no quote, no angle
+    #: bracket, no backslash.
+    APP_LINK = re.compile(r"[A-Za-z0-9._~:/?#\[\]@!$&()*+,;=%-]{1,300}")
+
     @classmethod
     def _app_link(cls, offered: str) -> str:
-        """The app's return link, or the default. An app in development
-        (Expo Go) answers ``exp://``; the installed app its own scheme.
-        A web address is refused: the hand-off would be handed to a
+        """The app's return link, or the default. Allowed by what it is,
+        never by what it is not: one of APP_SCHEMES, ``://``, and only
+        URL characters after it. A web address, or anything a browser
+        could read as one, is refused: the hand-off would be handed to a
         page, which is exactly what the browser session check on the
         web flow exists to stop."""
-        link = str(offered or "").strip()
+        link = str(offered or "")
         if not link:
             return cls.APP_RETURN
-        scheme = link.split(":", 1)[0].lower() if ":" in link else ""
-        if len(link) > 300 or scheme in ("", "http", "https", "javascript", "data", "file") \
-                or any(c in link for c in "\r\n\"'<>"):
+        scheme, separator, rest = link.partition("://")
+        if (not separator or scheme not in cls.APP_SCHEMES
+                or not cls.APP_LINK.fullmatch(rest)):
             raise OauthError("return_to must be the app's own link, such as decentai://oauth.")
         return link
 

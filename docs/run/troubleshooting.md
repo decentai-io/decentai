@@ -203,7 +203,7 @@ and updating. Where to look is at the end.
 
 ```bash
 docker compose --env-file config/deploy.env ps
-docker compose --env-file config/deploy.env logs -f data-core    # or ai-runtime, sandbox, node-issuer, speech, init, gateway, mongo
+docker compose --env-file config/deploy.env logs -f data-core    # or ai-runtime, sandbox, node-issuer, speech, init, mongo
 ```
 
 What agents did — each worker's start and end, its log, every

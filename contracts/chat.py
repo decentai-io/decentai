@@ -59,7 +59,6 @@ QUESTION_WAIT_SECONDS = 24 * 60 * 60
 #: Code an agent puts before the person before it runs (call.propose):
 #: the code whole, what it is for in words, and what it needs.
 CodeLanguage = Literal["python", "javascript"]
-CODE_LANGUAGES = get_args(CodeLanguage)
 CODE_MAX_CHARS = 20_000
 CODE_PURPOSE_MAX_CHARS = 600
 CODE_WHERE_MAX_CHARS = 253

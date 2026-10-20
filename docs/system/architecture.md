@@ -147,9 +147,9 @@ the recordings it was trained on ([operating](../run/operating.md#speech-on-this
 
 | From → to | Over | Carrying | Says |
 |---|---|---|---|
-| browser → Data Core | `POST /app`, body `{"endpoint": "Domain:Controller:action", …}` (`data_core/server/routes/app.py`) | the session cookie, or `Authorization: Bearer dk_…` (an API key) | who the person is; every call is resolved again from the session row |
+| browser → Data Core | `POST /app`, body `{"endpoint": "Domain:Controller:action", …}` (`data_core/server/routes/app.py`) | the session token as `Authorization: Bearer …`, an API key the same way (`dk_…`), or a browser's session cookie | who the person is; every call is resolved again from the session row |
 | outside system → Data Core | `POST /hooks/{webhook_id}` (`data_core/server/routes/hooks.py`), outside the gateway | the webhook's own secret as `Bearer`, and a signature where required | an event for one person's webhook, and nothing else; the Data Core then sends it to that webhook's chat as a `webhook_event` frame, over its node's link below ([webhooks](webhooks.md)) |
-| browser → Data Core | `WS /chats/{chat_id}` (`data_core/server/routes/ws.py`) | the session cookie, and an `Origin` the deployment names | the same person, speaking in one chat |
+| browser → Data Core | `WS /chats/{chat_id}` (`data_core/server/routes/ws.py`) | the session token as the socket's subprotocol (or a cookie, with an `Origin` the deployment names) | the same person, speaking in one chat |
 | runtime → Data Core | `WS /nodes/link` (`data_core/server/routes/nodes.py`), one per node, dialed by the node | its node's **credential**; every frame back is signed by the Data Core | "this is that node"; over it, each chat's frames and events, the chat's **delegation** in an `attach`, and monitoring questions ([execution nodes](execution-nodes.md#the-node-link)) |
 | Data Core → speech | `POST /v1/audio/…`, `GET /status`, `POST /prepare` (`speech/service.py`) | nothing: the private network is the only way to it | a recording to write down, or words to say |
 | runtime → Data Core | `POST /app` (`Gateway`, `ai_runtime/door/platform.py`) | the delegation, as `Bearer`, and its node's credential beside it | the person's own permissions, fenced (below); accepted only from the node the delegation was handed to |
@@ -298,7 +298,7 @@ From most to least.
 | **runtime** | the Data Core's *public* key, its node's short-lived credential (and no authority's key), the node's sandbox secret, and — while a chat is open — that chat's delegation | act for a person with a live chat, within `RUNTIME_ENDPOINTS`; as itself, ask the package door and nothing else; keep each agent to its own slots; hold a secret or a model key in memory for one call | reach the database; decrypt; forge the Data Core; do anything for a person with no live chat; reach identity and access at all |
 | **spawner** (Execution Sandbox) | the node's secret; no setting of the platform's but where its runtime and the proxy are | install what the runtime sends, start what it orders, and carry lines | decide anything: a worker's asks pass through it unread |
 | **worker** (an agent's code) | what one call was handed | nothing | everything: it is assumed hostile ([worker protocol](../reference/worker-protocol.md)) |
-| **browser** | a session cookie | nothing beyond the person it names | — |
+| **browser** | a session token (or cookie) | nothing beyond the person it names | — |
 
 Three things follow that are easy to miss.
 

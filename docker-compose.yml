@@ -41,6 +41,19 @@
 # A container on two networks keeps the reach of each: the Data Core on
 # default and data reaches GitHub and the database both; mongo on data
 # alone reaches nothing and is reached by two.
+#
+# Three images make the stack: the Data Core's (init, data-core,
+# node-issuer), the AI Runtime's (ai-runtime, sandbox) and speech's.
+# Each is named, and built here when it is not there: with
+# DECENTAI_VERSION unset the tag is `local`, which no registry has, so
+# `up --build` builds it from this checkout. To run a release instead,
+# set DECENTAI_VERSION in config/deploy.env to the release's number
+# (0.6.0, without the v) and pull rather than build:
+#
+#   docker compose --env-file config/deploy.env pull
+#   docker compose --env-file config/deploy.env up -d --no-build
+#
+# DECENTAI_IMAGES names another registry, for a fork's own releases.
 services:
   mongo:
     image: mongo:7
@@ -61,6 +74,7 @@ services:
   # One-shot and idempotent: seeds the organization, the access chains,
   # the admin user, and the starter secret definitions, then exits.
   init:
+    image: ${DECENTAI_IMAGES:-ghcr.io/decentai-io}/decentai-data-core:${DECENTAI_VERSION:-local}
     build:
       context: .
       dockerfile: data_core/Dockerfile
@@ -80,6 +94,7 @@ services:
   # origins (CORS_ALLOW_ORIGINS). Whatever terminates TLS in front of it
   # on a server is named to it as FORWARDED_ALLOW_IPS.
   data-core:
+    image: ${DECENTAI_IMAGES:-ghcr.io/decentai-io}/decentai-data-core:${DECENTAI_VERSION:-local}
     build:
       context: .
       dockerfile: data_core/Dockerfile
@@ -119,6 +134,7 @@ services:
   # since that is on in a new organization, and the voices when an
   # administrator turns text to speech on. Only the Data Core asks it.
   speech:
+    image: ${DECENTAI_IMAGES:-ghcr.io/decentai-io}/decentai-speech:${DECENTAI_VERSION:-local}
     build:
       context: .
       dockerfile: speech/Dockerfile
@@ -161,6 +177,7 @@ services:
   # container's to hold. A name with no value is passed on when
   # config/deploy.env (or the shell) sets it, and is absent when neither does.
   ai-runtime:
+    image: ${DECENTAI_IMAGES:-ghcr.io/decentai-io}/decentai-ai-runtime:${DECENTAI_VERSION:-local}
     build:
       context: .
       dockerfile: ai_runtime/Dockerfile
@@ -225,6 +242,7 @@ services:
   # writes it again every few. It reaches no network; the node mounts
   # what it writes read-only.
   node-issuer:
+    image: ${DECENTAI_IMAGES:-ghcr.io/decentai-io}/decentai-data-core:${DECENTAI_VERSION:-local}
     build:
       context: .
       dockerfile: data_core/Dockerfile
@@ -263,6 +281,7 @@ services:
   # used once, at start, and nothing started here ever holds it.
   # Without it the stack runs all the same, and says so.
   sandbox:
+    image: ${DECENTAI_IMAGES:-ghcr.io/decentai-io}/decentai-ai-runtime:${DECENTAI_VERSION:-local}
     build:
       context: .
       dockerfile: ai_runtime/Dockerfile

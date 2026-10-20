@@ -1,6 +1,9 @@
 # Settings and secrets, kept on the machine that made them: the
 # install's own files in config/, beside the templates that are kept.
 config/deploy.env
+# Copies of it, kept before an edit: the same keys, never committed.
+config/*.env.bak*
+config/*.env.*.bak
 config/sandbox.env
 config/node-authority.env
 config/.*.incoming

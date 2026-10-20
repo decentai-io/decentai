@@ -26,6 +26,8 @@ from urllib.parse import urlsplit
 #: What the token may do: call Google Cloud's APIs, as the account's
 #: roles allow (Vertex AI User is what a model call needs).
 SCOPE = "https://www.googleapis.com/auth/cloud-platform"
+#: Where a service account's assertion is exchanged for a token: Google's.
+GOOGLE_TOKEN_URI = "https://oauth2.googleapis.com/token"
 
 _HOST = re.compile(r"^(?P<location>[a-z0-9-]+)-aiplatform\.googleapis\.com$")
 
@@ -68,7 +70,15 @@ class VertexAccount:
         if missing:
             raise VertexKeyError(
                 "The service account key is missing " + ", ".join(missing) + ".")
-        return info
+        # The key names where its signed assertion is exchanged for a
+        # token, and Google's library posts there as told: only Google's
+        # own address, or a pasted key could send a signed request, and
+        # read its answer back, anywhere this engine reaches.
+        token_uri = str(info.get("token_uri") or GOOGLE_TOKEN_URI)
+        if token_uri != GOOGLE_TOKEN_URI:
+            raise VertexKeyError(
+                f"The service account key's token_uri must be {GOOGLE_TOKEN_URI}.")
+        return {**info, "token_uri": GOOGLE_TOKEN_URI}
 
     @staticmethod
     def location_of(endpoint: Any) -> str:

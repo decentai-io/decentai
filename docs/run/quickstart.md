@@ -164,6 +164,8 @@ already, and *Your own server* is told by you.
 **Agents → Marketplace.** Add the [`decentai-agents`](https://github.com/decentai-io/decentai-agents) repository as a
 source, by its address — or set `REFERENCE_CATALOG_URL` in `config/deploy.env`
 to that address first, and the marketplace offers it with one click.
+The repository is private for now: the source needs the username and a
+token of an account that may read it, in the source's own fields.
 Its catalog is read without running any of its code. Open the source
 and press **Review and install** on **Notebook**: read what it declares
 — functions and their levels, where it connects (nowhere), one

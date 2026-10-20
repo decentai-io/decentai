@@ -217,6 +217,11 @@ def _load_settings() -> Dict[str, Any]:
         # what stands between an authenticated caller and the process's
         # memory. A cap that exists is worth more than the right cap.
         "max_upload_mb": _env_int("MAX_UPLOAD_MB", 25, 1, 5000),
+        # The largest body any other request may carry. Nothing in front
+        # of the engine is assumed to cap it (it is headless: a
+        # deployment chooses its proxy, or has none), so the engine
+        # does: a body is read whole before it is looked at.
+        "max_request_mb": _env_int("MAX_REQUEST_MB", 32, 1, 5000),
 
     }
 
@@ -269,6 +274,7 @@ class Settings:
     storage_gcs_project: str = ""
     storage_gcs_endpoint: str = ""
     max_upload_mb: int = 25
+    max_request_mb: int = 32
 
     # email — SMTP
     smtp_host: Optional[str] = ""

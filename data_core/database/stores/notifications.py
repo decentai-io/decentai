@@ -25,7 +25,10 @@ class PushSubscriptionStore(MongoStore):
         device registering again replaces its row."""
         endpoint = str((subscription or {}).get("endpoint") or "").strip()
         keys = (subscription or {}).get("keys") or {}
-        if not endpoint or not isinstance(keys, dict) \
+        # A browser's push service is on the public internet, over https;
+        # where it may be sent is checked again as each push goes
+        # (server/notifications.py).
+        if not endpoint.startswith("https://") or not isinstance(keys, dict) \
                 or not keys.get("p256dh") or not keys.get("auth"):
             return None
         return self._keep(org_id, user_id, endpoint, user_agent, {

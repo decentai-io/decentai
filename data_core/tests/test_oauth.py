@@ -281,6 +281,17 @@ class TestConnecting:
         assert "exp://192.168.8.65:8081/--/oauth?handoff=" in back.text, back.text
         assert app_call(phone, "Secrets:Oauth:Start", {
             "definition_id": "gmail_probe", "client": "native", "return_to": "https://evil.test/"}).status_code == 409
+        # Nor anything a browser would read as one: a tab or a line
+        # break inside the scheme (stripped as the browser parses), a
+        # scheme that hands the address on to a browser, a stray space.
+        for disguised in ("ht\ttps://evil.test/c", "htt\nps://evil.test/c",
+                          "microsoft-edge:https://evil.test/c",
+                          "intent://evil.test/#Intent;scheme=https;end",
+                          "decentai://oauth\t", "decentai://oauth evil",
+                          "decentai://oauth\"><script>", "DecentAI:https://evil.test/"):
+            assert app_call(phone, "Secrets:Oauth:Start", {
+                "definition_id": "gmail_probe", "client": "native",
+                "return_to": disguised}).status_code == 409, disguised
 
     def test_the_web_client_finishes_through_a_hand_off(
             self, app, admin, anon, seed, provider):

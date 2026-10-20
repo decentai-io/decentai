@@ -58,14 +58,49 @@ going back is a matter of naming it.
 
 ### Going back
 
-Check out the commit that was running and `up -d --build --remove-orphans` again. The
-images are built here and have no names of their own to go back to.
+Built from a checkout: check out the commit that was running and
+`up -d --build --remove-orphans` again; images built here are tagged
+`local` and keep no history to go back to. Run from a release: set
+`DECENTAI_VERSION` back to the number that was running, `pull`, and
+`up -d --no-build --remove-orphans`.
 
 A newer seed adds collections and actions and drops no data, so older
 code runs against a newer database. Two things are removed, by every
 version as it starts: an index its schema does not declare, and, from
 every policy, an action its catalog no longer has. Older code started
 again puts its own indexes back the same way.
+
+### Releases
+
+A release is a version tag on the repository: `v0.6.0`, pushed, on a
+commit whose tests passed. The release workflow
+(`.github/workflows/release.yml`) refuses a commit whose tests did not
+pass, builds the three images — the Data Core's, the AI Runtime's and
+speech's — for Intel and ARM machines, publishes each to
+`ghcr.io/decentai-io` as `decentai-data-core`, `decentai-ai-runtime`
+and `decentai-speech` under the version and `latest`, and makes a
+GitHub release that names each image's digest.
+
+```bash
+git tag v0.6.0 && git push origin v0.6.0
+```
+
+The first release's packages are private until made public once, on
+GitHub, in each package's settings; a deployment that cannot sign in to
+the registry cannot pull them before then.
+
+To run a release rather than a build, name it in `config/deploy.env`
+and pull:
+
+```bash
+# DECENTAI_VERSION=0.6.0 in config/deploy.env
+docker compose --env-file config/deploy.env pull
+docker compose --env-file config/deploy.env run --rm --no-build init
+docker compose --env-file config/deploy.env up -d --no-build --remove-orphans
+```
+
+The seeder runs first, as in an update from a checkout. The web client
+is released by its own repository, in the same way.
 
 ## What to back up
 

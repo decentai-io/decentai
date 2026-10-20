@@ -236,9 +236,3 @@ class OrganizationProvisioner:
         )
         return self.policies.get(policy["_id"])
 
-    def apply_baseline_revision_everywhere(self) -> None:
-        """Every organization's BaseAccess, for a deployment upgrade."""
-        for org in self.organizations.list():
-            policy = self.policies.get_by_name(org["_id"], "BaseAccess")
-            if policy is not None:
-                self.apply_baseline_revision(policy)

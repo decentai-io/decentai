@@ -458,8 +458,16 @@ class AuthController:
         current = str(payload.get("current_password") or "")
         new_password = str(payload.get("new_password") or "")
 
+        # The current password is a password guessed against like any
+        # other: a stolen session gets the sign-in's budget, no more.
+        email = UserStore.normalize_email(user_doc.get("email"))
+        wait = self.throttle.locked_for(email)
+        if wait:
+            return self._too_many(wait), 429
         if not PasswordHasher.verify(current, user_doc.get("password_hash")):
+            self.throttle.record_failure(email)
             return {"error": "Your current password is incorrect."}, 400
+        self.throttle.record_success(email)
 
         strong, reason = PasswordHasher.validate(new_password)
         if not strong:
@@ -467,6 +475,9 @@ class AuthController:
 
         self.users.set_password(user_doc["_id"], PasswordHasher.hash(new_password))
         self.sessions.delete_for_user(user_doc["_id"])
+        # A key made from a session somebody else held must not outlive
+        # the change that was made to shut them out, as a reset's does not.
+        ApiKeyStore().revoke_all_for_user(user_doc["_id"])
         # A reset mail already in flight must not undo a deliberate change.
         self.resets.delete_for_user(user_doc["_id"])
 

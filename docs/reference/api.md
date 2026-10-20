@@ -10,9 +10,12 @@ POST /auth/login
 {"email": "you@example.com", "password": "…"}
 ```
 
-Sets an `access_token` cookie that names a server-side session, valid
-for a week — ninety days when the login carried `remember: true`, which
-also keeps the cookie past the browser being closed — or until logout.
+Names a server-side session, valid for a week — ninety days when the
+login carried `remember: true` — or until logout. How it is handed back
+depends on who asks (below): the web client and the app on a phone ask
+for the token in the body and present it as a Bearer header; a browser
+that says neither is given an `access_token` cookie, which
+`remember: true` also keeps past the browser being closed.
 A login answered 403 with `change_required` is a password an
 administrator handed over: `POST /auth/password/first` with `email`,
 `current_password` and `new_password` replaces it and signs in. `GET /auth/me` returns the identity and the
@@ -42,16 +45,18 @@ address and answers the same whoever the address belongs to;
 `POST /auth/signup/confirm` with the `token` creates it and signs in. A
 refusal of one field names it in `field`.
 
-A native app has no cookie jar to trust. Signing in with
-`"client": "native"` in the body (on login, on the first password, on
-accepting an invitation or resetting a password, on the first run or a
-sign-up link) answers with the same
-session token in the body instead — `access_token`, with `expires_at` —
+The web client, served on an origin of its own, and a native app, with
+no cookie jar to trust, ask for the token itself. Signing in with
+`"client": "web"` or `"client": "native"` in the body (on login, on the
+first password, on accepting an invitation or resetting a password, on
+the first run or a sign-up link) answers with the same session token in
+the body instead — `access_token`, with `expires_at` —
 for the app to keep in the device's own store and present as
 `Authorization: Bearer …` on every request and on the chat socket. It
 is the same session: signed out, disabled or expired the same way. One
-door tells the two apart: API keys are made and revoked only with the
-cookie, so the app may list them and is refused the rest.
+door tells them apart: API keys are made and revoked only from a
+browser's session — the web client's token or the cookie — so the app
+on a phone may list them and is refused the rest.
 
 For a script, an **API key** is simpler: make one on Settings → API
 keys and send it as `Authorization: Bearer dk_…`. It resolves to you,
@@ -286,7 +291,9 @@ answers; `GET /status` says who the caller is (`user_id`, `org_id`,
 A chat is driven over a WebSocket, not the gateway. `AI:Chat:Open` on
 the gateway creates or resumes the chat and answers its contract — the
 model, the agents, what it may do — and where its socket is; the web
-app then opens `/chats/{chat_id}` with its session cookie.
+app then opens `/chats/{chat_id}`, offering its session token as the
+socket's subprotocol (`decentai.bearer`, then the token), since a
+browser lets a socket carry no header of its own.
 
 The browser's socket has a vocabulary of its own, in the gateway's
 envelope. Three things go in:

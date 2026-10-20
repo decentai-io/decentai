@@ -31,17 +31,9 @@ class TrustLevel(Setting):
     #: must never resolve to the most permissive thing on the scale.
     STANDARD = 1
 
-    #: What each level lets run without asking. The gate is one rule
-    #: (ai_runtime/execution/executor.py): a function runs when its own
-    #: level is at or below the chat's, and asks first when it is above.
-    LABELS = {
-        0: "reads run; every change asks first",
-        1: "standard — reads and ordinary changes run; wider changes "
-           "and outside actions ask first",
-        2: "trusted — everything inside the platform runs; outside "
-           "actions ask first",
-        3: "autonomous — everything runs without asking",
-    }
+    # What each level lets run without asking is one rule, the gate's
+    # (ai_runtime/execution/executor.py): a function runs when its own
+    # level is at or below the chat's, and asks first when it is above.
 
     def default(self, user: Dict[str, Any], chosen: Dict[str, Any]) -> int:
         """This person's own default, or the standard level.

@@ -92,11 +92,20 @@ class NodeLink:
         clean = json.loads(json.dumps(frame, default=str))
         try:
             async with self._sending:
+                # Signing fails on this side — a Data Core without its
+                # service key — and is said as that, not taken for the
+                # node going away.
                 token = DataCoreSignature().frame(
                     self.key, self.nonce, self._seq, clean)
                 self._seq += 1
                 await self.socket.send_text(token)
+        except ValueError as exc:
+            self.open = False
+            CustomLoggerFactory.get_logger(type(self).__name__).error(
+                f"A frame to node {self.key} could not be signed: {exc}")
+            return False
         except Exception:
+            # The socket is gone: the node left, or the network did.
             self.open = False
             return False
         return True

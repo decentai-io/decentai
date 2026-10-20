@@ -133,13 +133,14 @@ things of it, and nothing else:
   it: the proxy's address, or its range (`10.0.0.0/8`; several,
   comma-separated). A proxy says where each request came from, and the
   Data Core takes that word only from the addresses named there.
-  Unset, it takes nobody's, and every person is the proxy to the Data
-  Core: a session's record names the proxy, and the sign-in lockout
-  that counts by address counts everybody as one — twenty wrong
+  Left at `127.0.0.1`, it takes nobody's, and every person is the proxy
+  to the Data Core: a session's record names the proxy, and the sign-in
+  lockout that counts by address counts everybody as one — twenty wrong
   passwords in fifteen minutes, from anybody, lock sign-in for all
-  until the window passes. `*` believes every peer, which is right only
-  where the port is reached through the proxy and nothing else. Name
-  the proxy and nothing wider: whatever is named there is believed
+  until the window passes. Never `*`: it believes every peer, and takes
+  the left-most address in the header — the one a client wrote itself,
+  even behind a proxy that adds to the header rather than replacing it.
+  Name the proxy and nothing wider: whatever is named there is believed
   about who it is speaking for.
 
 The Data Core sends its own `X-Content-Type-Options`,

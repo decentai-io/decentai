@@ -57,6 +57,13 @@ class AccessController:
                 "TOKEN_SECRET_KEY is not set — sessions cannot be signed. "
                 "Set it before starting the application."
             )
+        if self.secret_key.lower().startswith("change-me") or len(self.secret_key) < 32:
+            # The template's placeholder, or a key short enough to guess:
+            # either would let somebody else sign sessions.
+            raise ValueError(
+                "TOKEN_SECRET_KEY is the template's placeholder or shorter "
+                "than 32 characters. Make one with: python -c \"import "
+                "secrets; print(secrets.token_urlsafe(48))\"")
 
         self.token_controller = TokenController()
         self.policy = PolicyEngine()

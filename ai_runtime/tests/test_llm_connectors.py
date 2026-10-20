@@ -1181,6 +1181,21 @@ class TestVertex:
         with pytest.raises(VertexKeyError, match="aiplatform"):
             VertexAccount(service_account_key(), "https://example.com")
 
+    def test_a_key_is_exchanged_for_a_token_at_googles_address_alone(self):
+        """The key names where it is exchanged for a token, and Google's
+        library posts there as told: a pasted key naming another address
+        would send a signed request, and read the answer, anywhere."""
+        from contracts.llm.vertex import VertexAccount, VertexKeyError
+
+        elsewhere = json.loads(service_account_key())
+        elsewhere["token_uri"] = "http://169.254.169.254/latest/meta-data/"
+        with pytest.raises(VertexKeyError, match="token_uri"):
+            VertexAccount(json.dumps(elsewhere), "https://us-central1-aiplatform.googleapis.com")
+        unsaid = json.loads(service_account_key())
+        del unsaid["token_uri"]
+        account = VertexAccount(json.dumps(unsaid), "https://us-central1-aiplatform.googleapis.com")
+        assert account.info["token_uri"] == "https://oauth2.googleapis.com/token"
+
     def test_gemini_is_asked_at_the_projects_address_with_a_token(self):
         import httpx
 

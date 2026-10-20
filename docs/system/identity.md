@@ -419,17 +419,19 @@ contain a letter and a digit, and neither start nor end with a space.
 Composition rules beyond that are absent on purpose; length does more
 for safety than required punctuation.
 
-**Session.** Signing in creates a session row and hands the browser a
-signed cookie that *names* it. The cookie is a pointer, not a container:
+**Session.** Signing in creates a session row and hands back a signed
+token that *names* it — in the body to the web client and the app on a
+phone, which keep it and present it as a Bearer header (`"client":
+"web"` or `"native"`), or as a cookie to a browser that says neither.
+The token is a pointer, not a container:
 its claims are read to find the session, and never to decide anything.
 Every request resolves the session and the user behind it — from the
 database, or from a copy the process keeps for at most a minute and
 drops the moment either changes — which is what makes disabling,
 deleting or signing out take effect immediately rather than whenever
-the cookie would have expired. A native app, with no cookie jar of its
-own to trust, asks for the token in the body instead (`"client":
-"native"`) and presents it as a Bearer header: the same session, kept
-in the device's store. An API key is never kept that way: it is
+the token would have expired. The web client keeps it in the
+browser's storage, tied to the engine that issued it; the app on a
+phone, in the device's store. An API key is never kept that way: it is
 looked up on every call. Sessions last seven days, or ninety when the
 person asked to be kept signed in on that device; the cookie and the
 token inside it last as long as the session, and without that ask the
@@ -485,8 +487,8 @@ kept; it is presented as `Authorization: Bearer dk_…`; revoking it is
 the only edit, and disabling the user revokes them all. Keys are made
 and revoked from a browser session only — a key cannot mint or revoke
 keys, so a leaked one cannot make itself permanent or lock its owner
-out; and the app on a phone, whose session is presented as a Bearer
-header and not in the cookie, may list them and nothing more. Each person may hold twenty.
+out; and the app on a phone, whose session is a native app's, may list them
+and nothing more. Each person may hold twenty.
 
 A **runtime delegation** is the AI Runtime acting *for* a person, within
 one conversation. It is the same identity — the same user, the same

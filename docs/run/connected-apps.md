@@ -12,7 +12,7 @@ provider.
 
 1. **The redirect URL.** Where the provider sends a person back after
    they say yes. **Settings → Connected apps** shows it, with a copy
-   button: `PUBLIC_APP_URL` followed by `/oauth/callback`, or
+   button: `PUBLIC_ENGINE_URL` followed by `/oauth/callback`, or
    `OAUTH_REDIRECT_URL` where that is set
    ([configuration](configuration.md)). Register it with the provider
    exactly as shown — the scheme, the host, the path, no trailing slash.

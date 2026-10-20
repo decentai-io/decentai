@@ -22,6 +22,20 @@ def with_key(app, key):
     return client
 
 
+class TestAPasswordChange:
+    def test_ends_the_keys_as_a_reset_does(self, app, admin, seed):
+        """A key made from a session somebody else held must not outlive
+        the change that was made to shut them out."""
+        from conftest import ADMIN_PASSWORD
+
+        script = with_key(app, make_key(admin)["key"])
+        assert script.get("/auth/me").status_code == 200
+        changed = admin.post("/auth/password", json={
+            "current_password": ADMIN_PASSWORD, "new_password": "AnotherPass9x"})
+        assert changed.status_code == 200, changed.text
+        assert script.get("/auth/me").status_code == 401
+
+
 class TestMakingOne:
     def test_the_secret_is_shown_once_and_the_list_shows_only_its_prefix(
         self, admin, seed

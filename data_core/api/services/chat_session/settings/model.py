@@ -58,8 +58,6 @@ class ModelChoice(Setting):
     name = "llm"
     preference = "llm_secret_ref"
 
-    RESOURCE_ID = "llm_api_key"
-
     def usable(self, user: Dict[str, Any]) -> List[Dict[str, Any]]:
         """The connections this person can see, default first.
 

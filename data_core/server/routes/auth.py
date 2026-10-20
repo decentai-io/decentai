@@ -14,7 +14,7 @@ import asyncio
 from json import JSONDecodeError
 from typing import Any, Dict
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from database.stores import SessionStore
@@ -30,6 +30,16 @@ COOKIE_NAME = "access_token"
 
 
 async def _body(request: Request) -> Dict[str, Any]:
+    """The request's JSON object, or nothing. A body must say it is
+    JSON: a form or ``text/plain`` is what a page on another site may
+    send here without asking the browser first, and these routes act on
+    no request a foreign page could make that way."""
+    raw = await request.body()
+    if not raw.strip():
+        return {}
+    kind = request.headers.get("content-type", "").split(";")[0].strip().lower()
+    if kind != "application/json":
+        raise HTTPException(status_code=415, detail="Send the body as application/json.")
     try:
         payload = await request.json()
     except (JSONDecodeError, ValueError):
@@ -136,7 +146,8 @@ async def setup(request: Request):
     payload = await _body(request)
     body, status, user_doc = await asyncio.to_thread(
         OnboardingController().setup, payload,
-        client_ip=_client(request)["ip_address"])
+        client_ip=_client(request)["ip_address"],
+        host=request.headers.get("host", ""))
 
     if status != 200 or user_doc is None:
         return JSONResponse(body, status_code=status)

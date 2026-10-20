@@ -111,10 +111,18 @@ def _page(ok: bool, title: str, detail: str, resource_ref: str = "",
     no other page that opened a window here is told anything. A browser
     session's flow finished here, and names the credential; the web
     client's carries the hand-off it finishes with."""
-    origin = str(get_settings().public_app_url or "").rstrip("/") or "*"
+    origin = str(get_settings().public_app_url or "").rstrip("/")
     payload = {"type": "decentai:oauth", "ok": ok,
                "resource_ref": resource_ref, "handoff": handoff,
                "error": "" if ok else detail}
+    if not origin:
+        # No web client named: whatever window opened this one is told
+        # that it ended, and nothing it could spend — never the hand-off
+        # or the credential, to an origin nobody vouched for.
+        origin = "*"
+        payload.update(ok=False, resource_ref="", handoff="",
+                       error="This engine does not know its web client's "
+                             "address (PUBLIC_APP_URL), so it cannot finish here.")
     return HTMLResponse(PAGE.format(
         title=html.escape(title), detail=html.escape(detail),
         payload=_script_json(payload), origin=_script_json(origin),

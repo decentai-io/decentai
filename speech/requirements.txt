@@ -3,6 +3,9 @@
 
 # Web server / ASGI
 fastapi~=0.136.1
+# The same line of Starlette as the Data Core's: FastAPI allows newer,
+# whose test client warns without httpx2 and will soon refuse.
+starlette~=1.0.0
 uvicorn~=0.46.0
 pydantic~=2.12
 # Not imported anywhere: FastAPI needs it to read an uploaded recording.

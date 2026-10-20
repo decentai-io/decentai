@@ -30,7 +30,9 @@ else:
 The platform ships with no agents installed. The ones the project
 publishes are in their own repository, [`decentai-agents`](https://github.com/decentai-io/decentai-agents), and a new
 agent starts from [`note/`](https://github.com/decentai-io/decentai-agents/tree/main/note) there, the example every other is
-written from, and [docs/agents/](docs/agents/README.md).
+written from, and [docs/agents/](docs/agents/README.md). That repository
+is private for now: reading it, or adding it as a source, needs access
+to it, and a token that may read it on the source.
 
 ## The parts
 
@@ -134,8 +136,9 @@ python bootstrap/setup.py                              # start it again
 
 The rest — a language model, an agent source, the first agent, the
 first chat — is [docs/run/quickstart.md](docs/run/quickstart.md). This
-repository is the platform and nothing around it: it publishes no
-installer and no images. A server with an address of its own is
+repository is the platform and nothing around it: a version tag
+publishes its images, and nothing else ([releases](docs/run/operating.md#releases)).
+A server with an address of its own is
 [docs/run/deploying.md](docs/run/deploying.md).
 
 ## Tests

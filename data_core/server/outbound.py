@@ -44,9 +44,18 @@ TIMEOUT = 10.0
 
 
 def _internal(address: str) -> bool:
+    """Whether an address is anything but the public internet: private,
+    loopback, link-local, shared (100.64.0.0/10), reserved — and an IPv4
+    address wrapped in an IPv6 one (mapped, 6to4, Teredo, NAT64) judged
+    by the address inside."""
     ip = ipaddress.ip_address(address)
-    return (ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved
-            or ip.is_multicast or ip.is_unspecified)
+    if ip.version == 6:
+        inner = ip.ipv4_mapped or ip.sixtofour or (ip.teredo[1] if ip.teredo else None)
+        if inner is None and ip in ipaddress.ip_network("64:ff9b::/96"):
+            inner = ipaddress.ip_address(int(ip) & 0xFFFFFFFF)
+        if inner is not None:
+            ip = inner
+    return not ip.is_global or ip.is_multicast
 
 
 def refuse_address(url: str) -> str:

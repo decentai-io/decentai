@@ -1570,9 +1570,6 @@ class LoginThrottle(MongoStore):
             self._left(f"ip:{ip_address}", self.MAX_PER_IP) if ip_address else 0,
         )
 
-    def is_locked(self, email: str, ip_address: str = "") -> bool:
-        return self.locked_for(email, ip_address) > 0
-
     def record_failure(self, email: str, ip_address: str = "") -> None:
         if email:
             self._bump(f"acct:{email}")

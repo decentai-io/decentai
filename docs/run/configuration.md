@@ -34,7 +34,7 @@ still holds it; by hand, copy `config/sandbox.env.example` and
 |---|---|---|
 | `DATA_CORE_HOST` | `127.0.0.1` | Bind address. The image sets `0.0.0.0`. |
 | `DATA_CORE_PORT` | `8000` | Bind port. |
-| `FORWARDED_ALLOW_IPS` | `127.0.0.1` | The TLS terminator in front of the Data Core, by its address or range as the Data Core sees it, comma-separated: whose `X-Forwarded-*` headers are believed. Session addresses and the sign-in lockout depend on it. `*` believes every peer: right where the port is reached through the terminator and nothing else, and on a computer of one's own (`config/deploy.env.example` sets it so) ([deploying](deploying.md#tls-and-the-proxy-in-front)). |
+| `FORWARDED_ALLOW_IPS` | `127.0.0.1` | The TLS terminator in front of the Data Core, by its address or range as the Data Core sees it, comma-separated: whose `X-Forwarded-*` headers are believed. Session addresses and the sign-in lockout depend on it. Never `*` on a server: it believes every peer, and takes the address a client wrote itself even behind a proxy that adds to the header ([deploying](deploying.md#tls-and-the-proxy-in-front)). |
 | `CORS_ALLOW_ORIGINS` | `http://localhost:4300,http://localhost:4200` | Comma-separated: every origin the web client is served from. The engine is headless and the web client calls it across origins, with the session token as a Bearer header; the Data Core answers the browser's preflights for these origins and no other, and a request from any other origin is refused by the browser. On this computer, the web client's container and its development server; on a server, the app's `https://` address. Never a wildcard: any page allowed here can act for a signed-in person. |
 | `PUBLIC_APP_URL` | `http://localhost:4300` | Where people reach the app — the web client's address, one of the origins above. The base for links in invitations, resets and notifications; the OAuth popup reports to this origin alone. |
 | `PUBLIC_ENGINE_URL` | `http://localhost:4280` | The engine's own address as browsers and providers reach it: the Data Core's published port, or the TLS terminator in front of it. The base of the OAuth redirect, and of a webhook's address. |
@@ -76,6 +76,7 @@ still holds it; by hand, copy `config/sandbox.env.example` and
 | `STORAGE_GCS_PROJECT` | the credentials' | The project, where the credentials do not say it. |
 | `STORAGE_GCS_ENDPOINT` | Google | An emulator's address, signed in to with no credentials. For tests. |
 | `MAX_UPLOAD_MB` | `25` | The largest single upload accepted, between 1 and 5000; bytes are held in memory while hashed. |
+| `MAX_REQUEST_MB` | `32` | The largest body any other request may carry, between 1 and 5000. The engine assumes nothing in front of it caps a body, so it does: sign-in and webhook calls are held to 64 KB, an upload to `MAX_UPLOAD_MB`, everything else to this. A larger body is refused with 413 before it is read. |
 
 ### The runtime, from the Data Core's side
 
@@ -306,6 +307,8 @@ the internet.
 | `PORT` | The port the Data Core is published at on the machine — the engine's one door, plain HTTP; `4280` unless said. `PUBLIC_ENGINE_URL` carries the same number, or the TLS terminator's address in front of it. |
 | `LISTEN` | Who may reach that port: `127.0.0.1`, this machine alone, unless said — a computer of one's own, or a TLS terminator on the same host. `compose/server.yml` publishes it on every interface, for a terminator elsewhere. |
 | `MONGO_ROOT_USERNAME`, `MONGO_ROOT_PASSWORD` | The database's root account, which `MONGO_URI` must carry too. |
+| `DECENTAI_VERSION` | The release whose images the stack runs, as its number (`0.6.0`). Unset, the tag is `local`, which no registry has, so the images are built from this checkout. Set, pull before starting, `up --no-build` ([operating it](operating.md#releases)). |
+| `DECENTAI_IMAGES` | The registry and owner the images are named under: `ghcr.io/decentai-io` unless said. A fork that publishes its own releases names its own. |
 
 The engine brings no proxy: TLS, a public hostname and whatever serves
 the web client are a deployment's own ([deploying](deploying.md)). The
