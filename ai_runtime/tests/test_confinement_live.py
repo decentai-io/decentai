@@ -44,7 +44,7 @@ import yaml
 
 from ai_runtime.agents.confinement import Confinement
 from ai_runtime.agents.sandboxes import Sandboxes
-from sandbox import wire
+from sandbox import tls, wire
 from sandbox.places import Places
 from ai_runtime.agents.egress import EgressProxy
 from sandbox.environments import AgentEnvironment
@@ -552,8 +552,11 @@ def confinement(site):
     EgressProxy.resolver = lambda host, port: ["127.0.0.1"]
     ports = EgressProxy.PORTS_OF_A_NAMED_HOST
     EgressProxy.PORTS_OF_A_NAMED_HOST = (*ports, site)
+    # The proxy over the link's TLS when the sandboxes speak it, as the
+    # runtime's settings have it (door/settings.py, sandbox_link_tls):
+    # the sandboxes carry their workers' connections here encrypted.
     run(found.start(int(os.environ.get("AI_RUNTIME_EGRESS_PORT") or 8002),
-                    allow_loopback=True))
+                    allow_loopback=True, tls=tls.wanted()))
     yield found
     run(found.stop())
     run(sandboxes.close())
