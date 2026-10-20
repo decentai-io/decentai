@@ -513,10 +513,13 @@ class TestAnInstallThere:
 
 
 class TestTheWayOut:
-    def test_what_a_worker_sends_its_proxy_is_passed_on_unread(self, tmp_path, helper):
+    def test_what_a_worker_sends_its_proxy_is_passed_on_unread(
+            self, tmp_path, helper, monkeypatch):
         """Workers are pointed at their own container's address; what
         arrives there reaches the runtime's proxy and its answer comes
-        back."""
+        back. In the clear here: the encrypted pass is below."""
+        monkeypatch.setenv("AI_RUNTIME_SANDBOX_TLS", "off")
+
         async def proxy(reader, writer):
             writer.write((await reader.readline()).upper())
             await writer.drain()

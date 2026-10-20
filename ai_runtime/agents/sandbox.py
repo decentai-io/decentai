@@ -39,7 +39,7 @@ import time
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
-from sandbox import wire
+from sandbox import tls, wire
 
 
 class SandboxRefused(RuntimeError):
@@ -197,20 +197,32 @@ class ExecutionSandbox:
         request sent on it."""
         reader, writer = await asyncio.wait_for(
             asyncio.open_connection(self.host, self.port,
-                                    limit=limit or self.ANSWER_LIMIT),
+                                    limit=limit or self.ANSWER_LIMIT,
+                                    ssl=tls.dialing()),
             self.CONNECT_SECONDS)
         try:
+            # The sandbox's certificate as it showed it here: both proofs
+            # bind it, so somebody in between fails them (sandbox/tls.py).
+            seen = tls.seen(writer)
             greeting = wire.read(await asyncio.wait_for(
                 reader.readline(), self.CONNECT_SECONDS))
             if greeting is None:
-                raise OSError("it said nothing")
+                raise OSError(tls.plain_hint("it said nothing"))
             refused = wire.mismatch(greeting.get("protocol"))
             if refused:
                 raise ValueError(refused)
+            said = str(greeting.get("challenge") or "")
+            # Nothing is sent to a sandbox that has not proved the node's
+            # secret on this very connection: what a request carries — a
+            # package, a worker's environment and input — is the node's.
+            if not wire.proves(self.secret, wire.SANDBOX, said,
+                               greeting.get("proof"), "greeting", seen):
+                raise PermissionError(
+                    "that is not this execution node's sandbox: its greeting "
+                    "does not prove the node's secret on this connection")
             writer.write(wire.line({
                 "protocol": wire.PROTOCOL,
-                "proof": wire.proof(self.secret, wire.RUNTIME,
-                                    str(greeting.get("challenge") or "")),
+                "proof": wire.proof(self.secret, wire.RUNTIME, said, seen),
                 **request}))
             await writer.drain()
         except BaseException:

@@ -23,13 +23,23 @@ first sends a challenge, and the other answers it with a proof
 answering side's role in front, so that a proof one side made can
 never be played back as the other's.
 
+ENCRYPTION (version 2). Every connection is TLS, with a certificate
+each process makes for itself (sandbox/tls.py), and every proof's last
+word is the fingerprint of the certificate the server of that
+connection showed — as each side sees it. Somebody in between shows a
+certificate of their own, and the proofs fail both ways. A sandbox
+proves itself first on every request (its greeting's ``proof``), so
+nothing is sent to one that is not the node's. ``fp`` below is that
+fingerprint; '' with AI_RUNTIME_SANDBOX_TLS=off.
+
 REGISTRATION — a sandbox connects to its runtime and stays connected:
 
     ← {"protocol", "challenge"}                          the runtime first
-    → {"protocol", "op": "register", "sandbox", "proof", "challenge",
+    → {"protocol", "op": "register", "sandbox", "proof"(challenge,
+       sandbox, fp), "challenge",
        "port", "address"?, "labels", "locks", "capacity", "installed",
        "running", "draining"}
-    ← {"registered": true, "proof"}       or {"error"}, and it hangs up
+    ← {"registered": true, "proof"(challenge, fp)}   or {"error"}, and it hangs up
     → {"op": "heartbeat", "locks", "capacity", "installed", "running",
        "draining"}                                       every few seconds
 
@@ -44,8 +54,9 @@ REGISTRATION — a sandbox connects to its runtime and stays connected:
 REQUESTS — the runtime connects to a registered sandbox's port, one
 request and one answer per connection:
 
-    ← {"protocol", "challenge"}                          the sandbox first
-    → {"protocol", "proof", "op", ...}
+    ← {"protocol", "challenge", "sandbox", "proof"(challenge,
+       "greeting", fp)}                                  the sandbox first
+    → {"protocol", "proof"(challenge, fp), "op", ...}
     ← the answer
 
     → {"op": "ping"}
@@ -129,7 +140,7 @@ from typing import Any, Optional
 
 #: The version of the sandbox link. A sandbox and a runtime that do
 #: not say the same one refuse each other.
-PROTOCOL = 1
+PROTOCOL = 2
 
 #: The setting both sides read the node's secret from.
 SECRET_SETTING = "AI_RUNTIME_SANDBOX_SECRET"

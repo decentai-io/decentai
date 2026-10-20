@@ -46,6 +46,7 @@ import time
 from typing import Callable, ClassVar, Dict, List, Optional, Tuple
 from urllib.parse import urlsplit
 
+from sandbox import tls as link_tls
 from sandbox.events import Events
 
 
@@ -193,8 +194,11 @@ class EgressProxy:
     #: to here (sandbox/service.py).
     LISTEN = "0.0.0.0"
 
-    def __init__(self, port: int, allow_loopback: bool = False):
+    def __init__(self, port: int, allow_loopback: bool = False, tls: bool = False):
         self.port = int(port)
+        #: Whether the proxy is reached over the sandbox link's TLS: the
+        #: sandboxes carry their workers' connections here (sandbox/tls.py).
+        self.tls = bool(tls)
         #: The tests' escape, as the web agents have it: a loopback
         #: address and nothing else. Never in a deployment.
         self.allow_loopback = bool(allow_loopback)
@@ -222,7 +226,8 @@ class EgressProxy:
         empty when the proxy is serving."""
         try:
             self._server = await asyncio.start_server(
-                self._serve, self.LISTEN, self.port, limit=self.HEAD_LIMIT)
+                self._serve, self.LISTEN, self.port, limit=self.HEAD_LIMIT,
+                ssl=link_tls.serving() if self.tls else None)
         except OSError as exc:
             return [f"the proxy could not listen on {self.port}: {exc}"]
         self.port = self._server.sockets[0].getsockname()[1]

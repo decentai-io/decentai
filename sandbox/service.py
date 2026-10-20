@@ -62,7 +62,7 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 
-from sandbox import wire
+from sandbox import tls, wire
 from sandbox.events import Events
 from sandbox.installs import (
     GREETING_SECONDS, InstallRefused, Installs, greet)
@@ -184,6 +184,13 @@ class SandboxService:
         self._rechecking: Optional[asyncio.Task] = None
         #: Whether this sandbox's runtime has accepted its registration.
         self.registered = False
+        #: The runtime's certificate, as this sandbox saw it when it last
+        #: registered — a registration the secret proved both ways. The
+        #: proxy's passes are believed to reach that runtime and no other
+        #: (sandbox/tls.py). '' until then, and in the clear.
+        self.runtime_fingerprint = ""
+        #: Whether a pass refused for want of it has been said, once.
+        self._said_unpinned = False
         #: One thing at a time in each place: a worker holds its place
         #: for its life, a build holds the builder's, and whoever asks
         #: next waits for it to be over and the place emptied.
@@ -206,12 +213,15 @@ class SandboxService:
                 f"No secret is set for this execution node "
                 f"({wire.SECRET_SETTING}): every request is refused.")
         self._servers.append(await asyncio.start_server(
-            self._serve, self.host, self.port, limit=self.REQUEST_LIMIT))
+            self._serve, self.host, self.port, limit=self.REQUEST_LIMIT,
+            ssl=tls.serving()))
         self.port = self._servers[0].sockets[0].getsockname()[1]
         self.logger.info(
             f"Execution Sandbox {self.sandbox_id} answers its AI Runtime on "
             f"port {self.port}"
-            + (f", labelled {', '.join(self.labels)}" if self.labels else ""))
+            + (f", labelled {', '.join(self.labels)}" if self.labels else "")
+            + (", encrypted" if tls.wanted() else
+               f", in the clear ({tls.SETTING}=off)"))
         if self.proxy:
             self._servers.append(await asyncio.start_server(
                 self._pass_on, "127.0.0.1", self.proxy_port))
@@ -295,8 +305,14 @@ class SandboxService:
         self._serving.add(serving)
         try:
             said = wire.challenge()
+            mine = tls.own()
+            # This sandbox proves itself first, bound to the certificate it
+            # shows on this connection: a runtime that sees another one is
+            # speaking to somebody in between, and stops here.
             await self._say(writer, {"protocol": wire.PROTOCOL, "challenge": said,
-                                     "sandbox": self.sandbox_id})
+                                     "sandbox": self.sandbox_id,
+                                     "proof": wire.proof(self.secret, wire.SANDBOX,
+                                                         said, "greeting", mine)})
             try:
                 request = wire.read(await asyncio.wait_for(
                     reader.readline(), self.REQUEST_SECONDS))
@@ -308,7 +324,7 @@ class SandboxService:
             if refused:
                 await self._say(writer, {"error": refused})
                 return
-            if not wire.proves(self.secret, wire.RUNTIME, said, request.get("proof")):
+            if not wire.proves(self.secret, wire.RUNTIME, said, request.get("proof"), mine):
                 await self._say(writer, {
                     "error": "that is not this execution node's AI Runtime: "
                              "the request does not prove the node's secret"})
@@ -469,11 +485,14 @@ class SandboxService:
     async def _registered(self) -> None:
         host, _, port = self.runtime.rpartition(":")
         reader, writer = await asyncio.wait_for(
-            asyncio.open_connection(host, int(port)), 10)
+            asyncio.open_connection(host, int(port), ssl=tls.dialing()), 10)
         try:
+            # The runtime's certificate, as it showed it here: what both
+            # proofs below bind, and what the proxy's passes are pinned to.
+            seen = tls.seen(writer)
             greeting = wire.read(await asyncio.wait_for(reader.readline(), 10))
             if greeting is None:
-                raise OSError("the AI Runtime said nothing")
+                raise OSError(tls.plain_hint("the AI Runtime said nothing"))
             refused = wire.mismatch(greeting.get("protocol"))
             if refused:
                 raise RuntimeError(refused)
@@ -483,7 +502,7 @@ class SandboxService:
                 "sandbox": self.sandbox_id,
                 "proof": wire.proof(self.secret, wire.SANDBOX,
                                     str(greeting.get("challenge") or ""),
-                                    self.sandbox_id),
+                                    self.sandbox_id, seen),
                 "challenge": mine, "port": self.port, "address": self.address,
                 "labels": self.labels, **self.state()}))
             await writer.drain()
@@ -491,8 +510,9 @@ class SandboxService:
             if answer is None or not answer.get("registered"):
                 raise RuntimeError(str((answer or {}).get("error")
                                        or "the AI Runtime refused it"))
-            if not wire.proves(self.secret, wire.RUNTIME, mine, answer.get("proof")):
+            if not wire.proves(self.secret, wire.RUNTIME, mine, answer.get("proof"), seen):
                 raise RuntimeError("the AI Runtime did not prove the node's secret")
+            self.runtime_fingerprint = seen
             self.registered = True
             self.logger.info(f"Registered with the AI Runtime at {self.runtime}")
             hung_up = asyncio.ensure_future(reader.read())
@@ -1074,11 +1094,34 @@ class SandboxService:
         self._serving.add(passing)
         host, _, port = self.proxy.rpartition(":")
         try:
+            dialing = tls.dialing()
+            if dialing is not None and not self.runtime_fingerprint:
+                # Encrypted, the proxy is believed to be the runtime this
+                # sandbox registered with, and nothing else: until it has,
+                # nothing is passed on.
+                if not self._said_unpinned:
+                    # Said once: expected at start, where this sandbox's own
+                    # check runs before it has registered.
+                    self._said_unpinned = True
+                    self.logger.info(
+                        "Connections to the proxy are refused until this sandbox "
+                        "has registered with its AI Runtime and learned its "
+                        "certificate (AI_SANDBOX_RUNTIME; sandbox/tls.py).")
+                writer.close()
+                return
             try:
                 onward_reader, onward_writer = await asyncio.open_connection(
-                    host, int(port))
+                    host, int(port), ssl=dialing)
             except (OSError, ValueError):
                 writer.close()
+                return
+            if dialing is not None and tls.seen(onward_writer) != self.runtime_fingerprint:
+                self.logger.warning(
+                    f"A worker's connection to the proxy was refused: {self.proxy} "
+                    f"showed a certificate that is not the AI Runtime's this "
+                    f"sandbox registered with.")
+                for end in (writer, onward_writer):
+                    end.close()
                 return
             await asyncio.gather(
                 self._one_way(reader, onward_writer),

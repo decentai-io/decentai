@@ -40,7 +40,7 @@ import math
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence
 
 from ai_runtime.agents.sandbox import ExecutionSandbox
-from sandbox import wire
+from sandbox import tls, wire
 from sandbox.events import Events
 
 
@@ -210,10 +210,12 @@ class Sandboxes:
         if self._server is not None:
             return
         self._server = await asyncio.start_server(
-            self._register, self.host, self.port, limit=8 * 1024 * 1024)
+            self._register, self.host, self.port, limit=8 * 1024 * 1024,
+            ssl=tls.serving())
         self.port = self._server.sockets[0].getsockname()[1]
         self.logger.info(
-            f"Execution Sandboxes register with this AI Runtime on port {self.port}")
+            f"Execution Sandboxes register with this AI Runtime on port {self.port}"
+            + (", encrypted" if tls.wanted() else f", in the clear ({tls.SETTING}=off)"))
 
     async def close(self) -> None:
         server, self._server = self._server, None
@@ -254,7 +256,7 @@ class Sandboxes:
             writer.write(wire.line({
                 "registered": True,
                 "proof": wire.proof(self.secret, wire.RUNTIME,
-                                    str(asked.get("challenge") or ""))}))
+                                    str(asked.get("challenge") or ""), tls.own())}))
             await writer.drain()
             self.add(sandbox)
             self._said_registered(sandbox)
@@ -297,8 +299,10 @@ class Sandboxes:
         sandbox_id = str(asked.get("sandbox") or "").strip()
         if asked.get("op") != "register" or not sandbox_id or len(sandbox_id) > 128:
             return "a registration names its sandbox"
+        # Bound to the certificate this runtime showed: a sandbox that
+        # saw another was registering through somebody in between.
         if not wire.proves(self.secret, wire.SANDBOX, said, asked.get("proof"),
-                           sandbox_id):
+                           sandbox_id, tls.own()):
             return (f"Execution Sandbox {sandbox_id} does not prove the "
                     f"execution node's secret ({wire.SECRET_SETTING})")
         return ""

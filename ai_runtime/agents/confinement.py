@@ -294,7 +294,8 @@ class Confinement:
     # At start
     # ------------------------------------------------------------------
 
-    async def start(self, egress_port: int, allow_loopback: bool = False) -> None:
+    async def start(self, egress_port: int, allow_loopback: bool = False,
+                    tls: bool = False) -> None:
         """Everything that is proved and started before a worker runs:
         the proxy, and then a sandbox's own proof that it confines a
         worker and that nothing goes around the proxy. Once; a second
@@ -303,7 +304,10 @@ class Confinement:
         start."""
         if self.proxy is not None:
             return
-        proxy = EgressProxy(egress_port, allow_loopback=allow_loopback)
+        # Encrypted, the proxy is reached only through a sandbox, which
+        # carries its workers' connections on over TLS to this runtime's
+        # certificate, as it saw it when it registered (sandbox/tls.py).
+        proxy = EgressProxy(egress_port, allow_loopback=allow_loopback, tls=tls)
         problems = await proxy.start()
         if problems:
             raise ConfinementFailed(

@@ -28,7 +28,7 @@ from ai_runtime.agents.sandbox import ExecutionSandbox
 from ai_runtime.agents.pool import WorkerPool
 from ai_runtime.agents.sandboxes import NoSandbox, Sandboxes
 from ai_runtime.agents.workers import WorkerError
-from sandbox import wire
+from sandbox import tls, wire
 from sandbox.service import SandboxService
 from ai_runtime.execution.call import Call
 from ai_runtime.tests import fake_container
@@ -182,7 +182,7 @@ class TestRegistration:
         try:
             async def scenario():
                 reader, writer = await asyncio.open_connection(
-                    "127.0.0.1", served.service.port)
+                    "127.0.0.1", served.service.port, ssl=tls.dialing())
                 greeting = json.loads(await reader.readline())
                 assert greeting["protocol"] == wire.PROTOCOL
                 writer.write(wire.line({

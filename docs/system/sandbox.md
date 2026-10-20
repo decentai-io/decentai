@@ -91,6 +91,19 @@ its user, its folders, its fences, its spawn line, its ending.
   is never the other's. The spawner takes the secret out of its own
   environment as it reads it, so nothing it starts inherits it, and
   no agent's user can read the spawner's.
+- **What crosses the link is encrypted.** Every connection between the
+  runtime and a sandbox is TLS 1.3, with a key and certificate each
+  process makes for itself as it starts — nobody has certificates to
+  make, sign or hand out, wherever a sandbox runs. Nobody signs them
+  either: each side's proof of the secret covers the fingerprint of the
+  certificate it sees on that connection, so somebody in between, who
+  must show a certificate of their own, fails the proofs both ways. A
+  sandbox proves itself first on every request, so nothing is sent to
+  one that is not the node's. The proxy's passes, which carry HTTP the
+  proxy reads as it is, go only to the runtime's certificate as the
+  sandbox saw it when it registered (`sandbox/tls.py`).
+  `AI_RUNTIME_SANDBOX_TLS=off`, on both sides together, is the clear:
+  for sandboxes on a network nothing else is on.
 - **Its network reaches the runtime and nothing else.** No route leads
   from it to the internet, the database or the Data Core, so the
   runtime's proxy is the only way out whatever a worker does. Workers
@@ -137,6 +150,8 @@ seconds says again:
 
 The link carries a version (`wire.PROTOCOL`): a runtime and a sandbox
 of different releases refuse each other, saying both versions. A
+sandbox on another machine needs nothing more than the node's secret
+and the runtime's address: the link is encrypted by itself (above). A
 sandbox whose connection closed, or that has said nothing for half a
 minute, is gone: nothing more is placed on it, its workers' connections
 go with it, and the agents it ran are placed elsewhere on their next

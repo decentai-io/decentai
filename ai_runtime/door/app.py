@@ -143,7 +143,8 @@ def create_app(settings: RuntimeSettings, services, library, container,
         # confinement it started itself, on a loop of its own.
         started_the_confinement = confinement.proxy is None
         await confinement.start(
-            settings.egress_port, allow_loopback=settings.egress_allows_loopback)
+            settings.egress_port, allow_loopback=settings.egress_allows_loopback,
+            tls=settings.sandbox_link_tls)
         # The library owns the install directory: the code under it
         # and the environments beside it. The environments a deploy
         # left behind are rebuilt now, in the background, not by the

@@ -54,6 +54,11 @@ class RuntimeSettings:
     #: The tests' escape, as the web agents have it: the proxy reaches
     #: this machine's own addresses. Never in a deployment.
     egress_allows_loopback: bool = False
+    #: Whether the sandbox link is encrypted — the registrations, the
+    #: requests, and the proxy's passes from a sandbox (sandbox/tls.py,
+    #: AI_RUNTIME_SANDBOX_TLS). On in a deployment unless turned off;
+    #: off for a test that points its workers at the proxy directly.
+    sandbox_link_tls: bool = False
     #: Where packages come from: the hosts the builder of an agent's
     #: declared packages may reach, and the whole of them.
     package_hosts: tuple = ("pypi.org", "files.pythonhosted.org")
@@ -105,6 +110,8 @@ class RuntimeSettings:
             # it: a value that is not a number is the default.
             egress_port=cls._port("AI_RUNTIME_EGRESS_PORT", 8002,
                                   or_default=True),
+            sandbox_link_tls=os.getenv("AI_RUNTIME_SANDBOX_TLS", "on").strip().lower()
+            not in ("off", "0", "false", "no"),
             egress_allows_loopback=(
                 os.getenv("DECENTAI_WEB_ALLOW_LOOPBACK", "") == "1"),
             package_hosts=cls._hosts(
