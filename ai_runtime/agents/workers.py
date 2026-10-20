@@ -115,6 +115,9 @@ class WorkerHandle:
         self._tasks: set = set()
         #: The worker's one death, once somebody has asked for it.
         self._death: Optional[asyncio.Future] = None
+        #: Whether it was asked to leave: its leaving is then that, even
+        #: when the reader sees it go before the asking finishes.
+        self._leaving = False
         #: The pieces of large files the worker sent, by stream, until
         #: the request that names them: None for one that was more than
         #: a file may be, or not base64.
@@ -317,6 +320,7 @@ class WorkerHandle:
 
     async def stop(self) -> None:
         """Shutdown, politely then not. Safe to call twice."""
+        self._leaving = True
         if self.alive:
             try:
                 await asyncio.wait_for(
@@ -457,6 +461,10 @@ class WorkerHandle:
         # Ended where it runs, for using more than agents are given:
         # the calls it was serving are told that, in those words.
         reason = getattr(self.process, "ended_because", "") or reason
+        # Asked to leave, it left: its answer and its going may arrive
+        # together, and the reader then sees the going first.
+        if reason == "the worker died" and self._leaving:
+            reason = "it was asked to leave"
         if reason != "the worker died":
             self.logger.error(reason)
         await self.kill(reason)
