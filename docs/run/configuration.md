@@ -45,7 +45,7 @@ still holds it; by hand, copy `config/sandbox.env.example` and
 | Variable | Default | Meaning |
 |---|---|---|
 | `TOKEN_SECRET_KEY` | required | Signs session tokens. Without it the process refuses to start. |
-| `JWT_COOKIE_SECURE` | `true` | Send the session cookie only over HTTPS. `false` for plain-HTTP development. |
+| `JWT_COOKIE_SECURE` | `true` | Send the session cookie only over HTTPS. `false` for plain-HTTP development. The cookie is for a browser on the engine's own origin, which signs in naming no client; the web client (`client: "web"`) and the apps (`client: "native"`) are given a token instead and sent no cookie. |
 | `JWT_COOKIE_SAMESITE` | `lax` | `lax`, `strict` or `none`. |
 | `JWT_COOKIE_DOMAIN` | unset | A cookie domain; unset is a host-only cookie. |
 
@@ -306,7 +306,7 @@ the internet.
 | `COMPOSE_FILE` | What the stack is made of: `docker-compose.yml` and the files laid over it, separated by colons — `docker-compose.yml:compose/sandboxes.yml` for a second Execution Sandbox, `docker-compose.yml:compose/server.yml` on a server whose TLS terminator is on another host. Compose reads it from `config/deploy.env` itself, so no `docker compose --env-file config/deploy.env` command names a file with `-f`; `bootstrap/setup.py` starts what it names, and removes a container of a file it no longer names. |
 | `COMPOSE_PATH_SEPARATOR` | `:`, so that the colons of `COMPOSE_FILE` separate on every system: Windows' own separator is `;`. |
 | `PORT` | The port the Data Core is published at on the machine — the engine's one door, plain HTTP; `4280` unless said. `PUBLIC_ENGINE_URL` carries the same number, or the TLS terminator's address in front of it. |
-| `LISTEN` | Who may reach that port: `127.0.0.1`, this machine alone, unless said — a computer of one's own, or a TLS terminator on the same host. `compose/server.yml` publishes it on every interface, for a terminator elsewhere. |
+| `LISTEN` | Who may reach that port: `127.0.0.1`, this machine alone, unless said — a computer of one's own, or a TLS terminator on the same host. `0.0.0.0` for a terminator elsewhere, with `compose/server.yml` laid over the stack; that file falls back to `0.0.0.0` only where `LISTEN` is empty. |
 | `MONGO_ROOT_USERNAME`, `MONGO_ROOT_PASSWORD` | The database's root account, which `MONGO_URI` must carry too. |
 | `DECENTAI_VERSION` | The release whose images the stack runs, as its number (`0.6.0`). Unset, the tag is `local`, which no registry has, so the images are built from this checkout. Set, pull before starting, `up --no-build` ([operating it](operating.md#releases)). |
 | `DECENTAI_IMAGES` | The registry and owner the images are named under: `ghcr.io/decentai-io` unless said. A fork that publishes its own releases names its own. |

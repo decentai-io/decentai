@@ -79,8 +79,9 @@ there. A provider or an operator forks a recipe, never the engine.
 |---|---|---|
 | `local-dev` | a developer on their own machine | compose for the engine, the web client's development server, the commands |
 | `single-host` | a server with a domain: a rented VM, a home server, a NAS | compose with the engine, the web client's container, and a TLS terminator in front |
+| `node` | an execution node on a machine of its own, for a Data Core elsewhere | compose for the runtime, its sandbox and the node's issuer |
 | `kubernetes` | an organization's own cluster | a Helm chart; ingress and SSO notes |
-| `aws`, `azure`, `gcp` | a provider or an organization on a cloud | infrastructure code; managed database options |
+| `cloud-vm/aws`, then `azure`, `gcp` | a provider or an organization on a cloud | infrastructure code: one VM, or two (the Data Core, and agents apart) |
 | `marketplace` | one-click listings | per-marketplace templates, generated from `single-host` |
 
 ## 2. Who runs the engine
@@ -161,3 +162,11 @@ app releases through EAS on a cadence of its own.
 5. The mobile app to both stores.
 6. `kubernetes`, the clouds, the marketplace templates.
 7. Windows signing.
+
+*Where it stands (21 October 2026).* 1 is done. 2's workflows are
+written and no release has been cut yet. 3 is done, with `node` and
+`cloud-vm/aws` beside it (decentai.net runs on the latter, from images
+built locally). 4 is done in its code; its first release waits on 2. 5
+to 7 are to come, Kubernetes set aside for now. `bootstrap/setup.py`
+still starts the stack on a person's own computer, beside making its
+keys and its settings.

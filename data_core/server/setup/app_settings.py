@@ -79,8 +79,9 @@ def _load_settings() -> Dict[str, Any]:
         # address or range as this process sees it. Session IPs and the
         # login lockout are counted per client address, so trusting this
         # from anyone would let a spoofed header dodge the lockout.
-        # Comma-separated addresses or ranges, or "*" where the port is
-        # reached through the terminator and nothing else.
+        # Comma-separated addresses or ranges. Never "*" on a server: it
+        # believes every peer, and takes the address a client wrote itself
+        # even behind a proxy that appends to the header.
         "forwarded_allow_ips": os.getenv("FORWARDED_ALLOW_IPS", "127.0.0.1"),
 
         # The web client's origin(s): where the browser calls from. The

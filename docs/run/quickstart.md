@@ -129,7 +129,8 @@ The engine is served to this computer only, in plain HTTP, on the
 Data Core's own port: nobody else on the network reaches it or the
 page, which is why the first-run page here asks for no setup code (`SETUP_CODE=none` in
 `config/deploy.env`; a server's asks for one, [Deploying](deploying.md)).
-The engine's address is said again by
+The engine's address is said again, from the engine's folder
+(`cd ../decentai`), by
 
 ```bash
 python bootstrap/setup.py --link

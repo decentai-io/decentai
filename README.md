@@ -30,9 +30,10 @@ else:
 The platform ships with no agents installed. The ones the project
 publishes are in their own repository, [`decentai-agents`](https://github.com/decentai-io/decentai-agents), and a new
 agent starts from [`note/`](https://github.com/decentai-io/decentai-agents/tree/main/note) there, the example every other is
-written from, and [docs/agents/](docs/agents/README.md). That repository
-is private for now: reading it, or adding it as a source, needs access
-to it, and a token that may read it on the source.
+written from, and [docs/agents/](docs/agents/README.md). The project's
+repositories, that one and this one among them, are private for now:
+cloning one needs access to it, and adding `decentai-agents` as a source
+needs a token that may read it on the source.
 
 ## The parts
 
@@ -127,6 +128,8 @@ Open `http://localhost:4300`. Its first screen asks for the engine's
 address — the one the script printed — and then the first-run page asks
 you to name your organization and choose your own email and password;
 you are its administrator. After that it is the sign-in page.
+
+Back in this repository's folder (`cd ../decentai`):
 
 ```bash
 python bootstrap/setup.py --link                       # the engine's address again

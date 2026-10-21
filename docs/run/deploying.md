@@ -12,9 +12,20 @@ engine needs from it, not how to run it.
 
 
 On a person's own computer `python bootstrap/setup.py` is the whole
-procedure ([quickstart](quickstart.md)). A server with an address of
-its own is set up by hand, because what it is — its address, who its
-administrator is, where its mail goes — is yours to say.
+procedure ([quickstart](quickstart.md)), and the desktop app
+([`decentai-desktop`](https://github.com/decentai-io/decentai-desktop))
+runs the same images through its own launcher. A server with an address
+of its own is set up by hand, as below, because what it is — its
+address, who its administrator is, where its mail goes — is yours to
+say.
+
+Recipes that do all of it are in
+[`decentai-deploy`](https://github.com/decentai-io/decentai-deploy):
+`single-host` (one server, with Caddy in front), `node` (an execution
+node on a machine of its own) and `cloud-vm/aws` (one or two EC2 VMs,
+with Terraform). They run released images, and no release has been
+published yet; until one is, this page is the way, or a recipe pointed
+at images of your own.
 
 What this page stands up is the API, reached at an address of its own
 (`https://api.example.com`, say) through the TLS terminator you put in
@@ -49,12 +60,12 @@ the first administrator in `ADMIN_EMAIL`, `ADMIN_PASSWORD` and
 
 | Setting | On a server |
 |---|---|
-| `LISTEN`, `PORT` | where the Data Core's port is published: `127.0.0.1` for a terminator on the same host, `0.0.0.0` for one elsewhere (`compose/server.yml` sets that), and the port the terminator forwards to |
+| `LISTEN`, `PORT` | where the Data Core's port is published: `127.0.0.1` for a terminator on the same host, `0.0.0.0` for one elsewhere — set it here: `compose/server.yml` falls back to `0.0.0.0` only where `LISTEN` is empty, and the template sets it — and the port the terminator forwards to |
 | `FORWARDED_ALLOW_IPS` | the terminator's address or range, as the Data Core sees it — whose `X-Forwarded-For` is believed ([below](#tls-and-the-proxy-in-front)) |
 | `PUBLIC_ENGINE_URL` | `https://` and the engine's domain, as the terminator answers it: the OAuth redirect and a webhook's address are made from it |
 | `PUBLIC_APP_URL` | `https://` and the app's domain, where the web client is served. Links in invitations and password resets use it, and the OAuth popup reports to this origin alone |
 | `CORS_ALLOW_ORIGINS` | every origin the web client is served from, comma-separated — the app's domain, and nothing wider; plus `http://tauri.localhost,tauri://localhost` where people use the desktop app, which serves the web client from those origins of its own. The browser calls the engine from there with the session token, and the engine answers no other origin |
-| `JWT_COOKIE_SECURE` | `true` |
+| `JWT_COOKIE_SECURE` | `true` (the session cookie is for a browser on the engine's own origin; the web client and the apps sign in with a token and are sent none) |
 | `SMTP_HOST`, `MAIL_FROM` and the server's sign-in | any provider's SMTP server, so invitations and password resets are sent rather than logged ([configuration](configuration.md)) |
 | `ORG_SIGNUP` | `open` to let anybody create an organization of their own from the sign-in page; it needs the mail above. `closed`, the default, keeps organizations to `bootstrap/organizations.py` ([operating it](operating.md#organizations)) |
 
@@ -68,9 +79,10 @@ neither; Compose gives each only to what uses it
 ([configuration](configuration.md)). Keep all three files readable by
 their owner only.
 
-**3. Start it.** Where the terminator is on another host, lay
-`compose/server.yml` over the stack, which publishes the Data Core's
-port on every interface; it is named in `config/deploy.env`, where
+**3. Start it.** Where the terminator is on another host, set
+`LISTEN=0.0.0.0` (above) and lay `compose/server.yml` over the stack,
+which publishes the Data Core's port on the interfaces `LISTEN` names;
+it is named in `config/deploy.env`, where
 Compose reads the stack's files from:
 `COMPOSE_FILE=docker-compose.yml:compose/server.yml`. A terminator on
 the same host reaches the port on `127.0.0.1` as `docker-compose.yml`

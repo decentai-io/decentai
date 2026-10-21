@@ -323,8 +323,9 @@ docker compose --env-file config/deploy.env run --rm init \
 ```
 
 Creating one seeds its access chains and prints the invitation for its
-first administrator as a path (`/?invite=…`), to put after the
-deployment's address. A disabled organization's people are signed out
+first administrator as a path (`/?invite=…`), to put after the web
+client's address (`PUBLIC_APP_URL`): the web client takes the
+invitation, and the engine's own address has no page to take it. A disabled organization's people are signed out
 within a minute: the running Data Core keeps a session it has just seen
 for that long.
 
@@ -360,6 +361,7 @@ The stack starts one execution node beside the Data Core. More run
 anywhere that reaches the Data Core's address — another machine, a
 cluster, a customer's own network: a node dials the Data Core, and
 nothing dials a node ([execution nodes](../system/execution-nodes.md)).
+`decentai-deploy`'s `node` recipe runs one on a machine of its own.
 
 1. **Vouch for them once.** Register an authority: a public key
    (`python bootstrap/generate_node_authority.py` makes a pair) or an
