@@ -12,7 +12,12 @@ see the papers beside it: [`../arxiv`](../arxiv/README.md) (long) and
 [`../arxiv-8page`](../arxiv-8page/README.md) (short).
 
 - `parts/` — the source, one file per group of chapters, in order;
-  `00-head.html` holds the design.
+  `00-head.html` holds the design. Every diagram uses one colour
+  language, declared there and shown to the reader as a legend in
+  chapter 2: deep green for the platform's own parts, pale green for an
+  agent's code, a dashed outline for the model, amber for a step that
+  waits for a person, red for refused or stopped.
+- `previous/` — the earlier 27-page edition, kept for comparison.
 - `fonts/` — IBM Plex Serif and Sans (SIL Open Font License, `OFL.txt`).
 - `build.ps1` — joins the parts into `whitepaper.html` and prints
   `decentai-whitepaper.pdf` with headless Edge or Chrome:
