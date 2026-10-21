@@ -144,7 +144,9 @@ class TestTheFirstTime:
         setup.run()
         said = setup.settings.values()
         assert said["PUBLIC_APP_URL"] == "http://localhost:4300"
-        assert said["CORS_ALLOW_ORIGINS"] == "http://localhost:4300,http://localhost:4200"
+        assert said["CORS_ALLOW_ORIGINS"] == (
+            "http://localhost:4300,http://localhost:4200,"
+            "http://tauri.localhost,tauri://localhost")
         assert said["PUBLIC_APP_URL"] != said["PUBLIC_ENGINE_URL"]
 
     def test_another_port_is_said_everywhere_it_is_written(self, setup):

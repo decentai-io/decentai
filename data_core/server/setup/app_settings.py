@@ -87,9 +87,14 @@ def _load_settings() -> Dict[str, Any]:
         # engine serves no page of its own, so this is never the engine's
         # address: the web client's container (4300) and its development
         # server (4200) on this computer, a deployment's app address on
-        # a server.
+        # a server, and the desktop app's own origins — the page inside
+        # it is served as http://tauri.localhost on Windows and
+        # tauri://localhost on macOS, which no site on the internet can
+        # claim.
         "cors_allow_origins": _env_list(
-            "CORS_ALLOW_ORIGINS", "http://localhost:4300,http://localhost:4200"),
+            "CORS_ALLOW_ORIGINS",
+            "http://localhost:4300,http://localhost:4200,"
+            "http://tauri.localhost,tauri://localhost"),
 
         # session token signing + cookie
         "token_secret_key": os.getenv("TOKEN_SECRET_KEY"),

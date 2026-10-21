@@ -135,6 +135,9 @@ class Settings:
     #: server (npm start). The engine answers the browser from both.
     WEB_CLIENT_PORT = 4300
     WEB_CLIENT_DEV_PORT = 4200
+    #: The desktop app's own origins (decentai-desktop): it carries the
+    #: web client and serves it from these, on Windows and on macOS.
+    DESKTOP_ORIGINS = ("http://tauri.localhost", "tauri://localhost")
 
     @classmethod
     def engine_address(cls, port: int) -> str:
@@ -190,7 +193,8 @@ class Settings:
             "PUBLIC_APP_URL": self.web_client_address(),
             "CORS_ALLOW_ORIGINS": ",".join([
                 self.web_client_address(),
-                f"http://localhost:{self.WEB_CLIENT_DEV_PORT}"]),
+                f"http://localhost:{self.WEB_CLIENT_DEV_PORT}",
+                *self.DESKTOP_ORIGINS]),
             "MONGO_ROOT_PASSWORD": database,
             "MONGO_URI": (f"mongodb://decentai:{database}"
                           f"@mongo:27017/?authSource=admin"),
@@ -442,7 +446,8 @@ class Setup:
                 f"and CORS_ALLOW_ORIGINS to every origin it is served from "
                 f"({Settings.web_client_address()},http://localhost:"
                 f"{Settings.WEB_CLIENT_DEV_PORT} for its container and its "
-                f"development server), then run this again.")
+                f"development server, and {','.join(Settings.DESKTOP_ORIGINS)} "
+                f"for the desktop app), then run this again.")
 
     def _complete(self) -> Dict[str, str]:
         """What the template gained since the file was written, added

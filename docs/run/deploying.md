@@ -53,7 +53,7 @@ the first administrator in `ADMIN_EMAIL`, `ADMIN_PASSWORD` and
 | `FORWARDED_ALLOW_IPS` | the terminator's address or range, as the Data Core sees it — whose `X-Forwarded-For` is believed ([below](#tls-and-the-proxy-in-front)) |
 | `PUBLIC_ENGINE_URL` | `https://` and the engine's domain, as the terminator answers it: the OAuth redirect and a webhook's address are made from it |
 | `PUBLIC_APP_URL` | `https://` and the app's domain, where the web client is served. Links in invitations and password resets use it, and the OAuth popup reports to this origin alone |
-| `CORS_ALLOW_ORIGINS` | every origin the web client is served from, comma-separated — the app's domain, and nothing wider. The browser calls the engine from there with the session token, and the engine answers no other origin |
+| `CORS_ALLOW_ORIGINS` | every origin the web client is served from, comma-separated — the app's domain, and nothing wider; plus `http://tauri.localhost,tauri://localhost` where people use the desktop app, which serves the web client from those origins of its own. The browser calls the engine from there with the session token, and the engine answers no other origin |
 | `JWT_COOKIE_SECURE` | `true` |
 | `SMTP_HOST`, `MAIL_FROM` and the server's sign-in | any provider's SMTP server, so invitations and password resets are sent rather than logged ([configuration](configuration.md)) |
 | `ORG_SIGNUP` | `open` to let anybody create an organization of their own from the sign-in page; it needs the mail above. `closed`, the default, keeps organizations to `bootstrap/organizations.py` ([operating it](operating.md#organizations)) |
