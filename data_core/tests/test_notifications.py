@@ -232,6 +232,46 @@ class TestDelivery:
         assert started == []
 
 
+class TestSayingWhatTheAgentWants:
+    """A card's notification names the step the person is asked about
+    as the approved manifest calls it, never the call's address."""
+
+    def opened(self, monkeypatch, chat, request):
+        from server import notifications
+
+        started = []
+        monkeypatch.setattr(notifications.Notifier, "_attached", staticmethod(lambda c, u: False))
+        monkeypatch.setattr(notifications.Notifier, "_out", lambda *a, **k: None)
+        monkeypatch.setattr(notifications.threading, "Thread",
+                            lambda **kw: started.append(kw) or SimpleNamespace(start=lambda: None))
+        notifications.Notifier().card_opened(chat, {"kind": "approval", "request": request})
+        _, _, kind, title, body = started[0]["args"]
+        return title, body
+
+    def test_the_manifest_names_the_step(self, admin, seed, monkeypatch):
+        from database.stores import AgentManifestStore
+
+        AgentManifestStore().upsert(seed.org["_id"], "agt_b95b1a092ea9", "2.0.9", {
+            "agent": {"name": "Notebook"},
+            "tools": [{"id": "note", "functions": [{"id": "save", "name": "Save Note"}]}],
+        }, {}, seed.admin["email"])
+        chat = {"chat_id": make_chat(admin), "org_id": seed.org["_id"], "user_id": seed.admin["_id"]}
+        title, body = self.opened(monkeypatch, chat, {
+            "agent_id": "agt_b95b1a092ea9", "agent_name": "Notebook",
+            "function": "agt_b95b1a092ea9.note.save"})
+        assert title == "Notebook is waiting for your approval"
+        assert body == "Save Note"
+
+    def test_without_a_manifest_the_address_loses_the_ref(self, admin, seed, monkeypatch):
+        chat = {"chat_id": make_chat(admin), "org_id": seed.org["_id"], "user_id": seed.admin["_id"]}
+        _, body = self.opened(monkeypatch, chat, {
+            "agent_id": "agt_gone", "agent_name": "Mail",
+            "function": "agt_gone.draft.send_now"})
+        assert body == "draft / send now"
+        _, built_in = self.opened(monkeypatch, chat, {"agent_id": "", "function": "save_skill"})
+        assert built_in == "save skill"
+
+
 class TestSayingOnlyThatSomethingHappened:
     """What a notification says leaves the deployment; a person may ask
     it to say only that something happened, and an organization may

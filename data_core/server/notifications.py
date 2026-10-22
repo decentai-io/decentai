@@ -82,10 +82,37 @@ class Notifier:
             body = str(request.get("question") or "")[:140]
         else:
             title = f"{agent} is waiting for your approval"
-            body = str(request.get("function") or "")[:140]
+            body = self._what(chat, request)[:140]
         self._later(chat, "card", title, body)
         if not self._looking(chat):
             self._out(chat, "approval.waiting", title)
+
+    @staticmethod
+    def _what(chat: Dict[str, Any], request: Dict[str, Any]) -> str:
+        """What the agent wants to do, as the person reads it: the
+        function's name in the manifest their organization approved
+        ("Save Note"), not the call's address ("agt_….note.save").
+        Without one, the address less the agent's ref ("note / save")."""
+        function = str(request.get("function") or "")
+        agent_id = str(request.get("agent_id") or "")
+        parts = [part for part in function.split(".") if part]
+        if len(parts) > 2 and (parts[0] == agent_id or parts[0].startswith("agt_")):
+            parts = parts[1:]
+        if agent_id and len(parts) == 2:
+            try:
+                from database.stores import AgentManifestStore
+
+                doc = AgentManifestStore().installed_in(
+                    str(chat.get("org_id") or ""), agent_id) or {}
+                for tool in (doc.get("manifest") or {}).get("tools") or []:
+                    if tool.get("id") != parts[0]:
+                        continue
+                    for declared in tool.get("functions") or []:
+                        if declared.get("id") == parts[1] and declared.get("name"):
+                            return str(declared["name"])
+            except Exception:
+                pass
+        return " / ".join(part.replace("_", " ") for part in parts) or function
 
     def assistant_said(self, chat: Dict[str, Any], message: Dict[str, Any]) -> None:
         """The assistant wrote to the person."""
