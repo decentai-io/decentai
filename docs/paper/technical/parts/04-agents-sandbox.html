@@ -3,30 +3,27 @@
   <div class="chapter-head">
     <div class="kicker">Chapter 7</div>
     <h2>Agents</h2>
-    <p class="lead">An agent is a folder in a git repository: a manifest that declares everything it may do, keep and reach, and Python that does it. The platform reads the manifest without running the code, an administrator approves one exact version of both, and from then on every call is held to the stored, approved manifest — never to anything the running code says about itself.</p>
+    <p class="lead">An agent is a folder in a git repository: a manifest that declares what the agent may do, keep and reach, and the Python that does it. The platform reads the manifest without running the code, and an administrator approves one exact version of both. Every call is then held to that approved manifest, never to what the running code says about itself.</p>
   </div>
 
   <h3><span class="no">7.1</span> An agent is a package</h3>
-  <p>Nothing about an agent is registered elsewhere or found by convention. The folder holds the manifest, which is the contract; the agent's entry point, which returns its tools; one class per tool, with one asynchronous method per function; a README written for the reviewer; and, optionally, sample records and files a person can load in one click. A function returns a result and a status, success or error; anything else, an exception included, becomes an error result.</p>
-  <p>At approval the folder is packed canonically: files sorted by POSIX path, mtime and owner zero, mode 0644 or 0755, PAX tar, gzip level 9 with a fixed header. The <b>package digest</b> is <code>sha256:</code> over the gzipped bytes, so one commit always gives one digest and any changed byte gives another. A package holds at most 5,000 files and 64 MB uncompressed, and no symbolic link.</p>
+  <p>An agent is self-contained: nothing about it is registered elsewhere. The folder holds the manifest, which is the contract; an entry point that returns the agent's tools, each with one asynchronous method per function; a README for the reviewer; and optional sample data. A function returns a result and a status, success or error. An exception becomes an error result.</p>
+  <p>At approval the folder is packed canonically, with sorted paths and zeroed times and owners. The <b>package digest</b> is the SHA-256 of the packed bytes, so one commit always gives one digest and any changed byte gives another. A package holds at most 5,000 files and 64 MB, and no symbolic link.</p>
 
   <h3><span class="no">7.2</span> The manifest</h3>
-  <p>The manifest has seven top-level blocks: <code>schema_version</code> (exactly <code>"1.0"</code>), <code>agent</code>, <code>implementation</code>, <code>network</code>, the optional <code>authorization</code> and <code>resources</code>, and <code>tools</code>. Figure 7.1 is the Gmail agent's, condensed to the lines that carry the design.</p>
+  <p>The manifest is one YAML document with seven top-level blocks: <code>schema_version</code> (exactly <code>"1.0"</code>), <code>agent</code>, <code>implementation</code>, <code>network</code>, the optional <code>authorization</code> and <code>resources</code>, and <code>tools</code>. Figure 7.1 shows the lines of the Gmail agent's manifest that carry the design.</p>
 
   <figure>
-<pre class="code"><span class="k">schema_version</span>: <span class="s">"1.0"</span>                  <span class="c"># the one grammar; any other value is refused</span>
-<span class="k">agent</span>:
+<pre class="code"><span class="k">agent</span>:
   id: gmail                            <span class="c"># permanent: first segment of gmail.draft.send</span>
   version: <span class="s">"0.3.2"</span>                     <span class="c"># a label for people; the digest tells code apart</span>
 <span class="k">implementation</span>:
-  entrypoint: agent:GmailAgent         <span class="c"># module:Class inside the package</span>
   dependencies: [<span class="s">"requests&gt;=2.31,&lt;3"</span>]  <span class="c"># built by the builder user, index only</span>
 <span class="k">network</span>:
   hosts: [gmail.googleapis.com]        <span class="c"># the whole of where its code connects</span>
 <span class="k">resources</span>:
   secrets:
     - id: google                       <span class="c"># a slot private to the install, not a credential</span>
-      binding: {cardinality: one, required: true}
       oauth: {provider: google, scopes: [openid, …/gmail.modify, …]}
   data:
     - id: draft                        <span class="c"># kept as agt_…__draft, per install</span>
@@ -44,58 +41,59 @@
           secrets: {google: use}
           data:    {draft: [read, update]}               <span class="c"># no create, no delete</span>
         inputs:
-          type: object
-          additionalProperties: false
-          required: [draft_ref]
           properties:
-            draft_ref: {type: string, x-resource: {type: data, id: draft}}
-        outputs: {type: object, required: [sent, status], …}</pre>
-    <figcaption><b>Figure 7.1</b> An excerpt of the Gmail agent's manifest from <code>decentai-agents</code>, condensed into flow style; comments added. The function's canonical name is <code>gmail.draft.send</code>: agent, tool and function ids joined by dots. That name is what the model calls, what a card shows, what a grant names and what the audit trail records.</figcaption>
+            draft_ref: {type: string, x-resource: {type: data, id: draft}}</pre>
+    <figcaption><b>Figure 7.1</b> Part of the Gmail agent's manifest, condensed; comments added. The name <code>gmail.draft.send</code>, agent, tool and function ids joined, is what the model calls and what cards, grants and the audit trail record.</figcaption>
   </figure>
 
-  <p>Four ideas carry most of the contract. <b>Resources appear twice.</b> The tool lists what its functions may touch at all, and each function maps resource ids to the operations it performs (<code>list</code>, <code>read</code>, <code>use</code>, <code>create</code>, <code>update</code>, <code>delete</code>). A call's resource object is built from the function's map alone, so <code>send</code> cannot delete a draft although a sibling can. <b>Fields are <code>keys</code> or <code>values</code>.</b> Keys are plaintext, scalar and filterable. Values are encrypted at rest, may hold objects, and in a secret are never shown to a person again. <b>Hosts</b> are names, <code>*.name</code>, <code>name:port</code> for protocols other than the web, <code>{from_secret: slot.field}</code> for a host only the person knows, <code>[]</code>, or <code>any</code>. <b>Scopes</b> name a dimension a grant can narrow, such as Note's <code>notebook</code>, bound per function to a top-level input with <code>from_input</code>.</p>
+  <p>Four ideas carry most of the contract.</p>
+  <ul>
+    <li><b>Resources appear twice.</b> A tool lists what its functions may touch at all; each function lists the operations it performs on each resource. A call gets only its own function's map, so <code>send</code> cannot delete a draft.</li>
+    <li><b>Fields are <code>keys</code> or <code>values</code>.</b> Keys are plaintext and filterable; values are encrypted at rest.</li>
+    <li><b>Hosts</b> are names, <code>*.name</code>, <code>name:port</code>, <code>{from_secret: slot.field}</code> for a host only the person knows, <code>[]</code>, or <code>any</code>.</li>
+    <li><b>Scopes</b> name a dimension a grant can narrow, such as Note's <code>notebook</code>. A function binds each scope to a top-level input with <code>from_input</code>.</li>
+  </ul>
 
   <table class="compact">
-    <thead><tr><th>Function key</th><th>What it opens</th><th>Rule the validator holds</th></tr></thead>
+    <thead><tr><th>Function key</th><th>What it opens</th><th>Rule</th></tr></thead>
     <tbody>
-      <tr><td><code>permission_level</code></td><td>Nothing; above the chat's trust level, the call waits on an approval card</td><td>Required; 0, 1, 2 or 3</td></tr>
-      <tr><td><code>timeout_seconds</code></td><td>The host's clock for one call</td><td>Positive integer; default 60</td></tr>
-      <tr><td><code>authorization.scopes</code></td><td>A grant may limit the values read from an input</td><td>Binds a top-level input; required unless <code>required: false</code></td></tr>
-      <tr><td><code>llm</code></td><td><code>call.llm</code>, the chat's model through the platform</td><td>Not with <code>schedulable</code> or <code>watch</code></td></tr>
-      <tr><td><code>schedulable</code></td><td>The clock may run it unattended</td><td>Level 0 or 1, no <code>llm</code></td></tr>
-      <tr><td><code>credentials</code></td><td><code>call.credential</code>: a login asked for as it works</td><td>Boolean</td></tr>
+      <tr><td><code>permission_level</code></td><td>Nothing; above the chat's trust level, a card</td><td>Required; 0 to 3</td></tr>
+      <tr><td><code>timeout_seconds</code></td><td>The host's clock for one call</td><td>Default 60</td></tr>
+      <tr><td><code>authorization.scopes</code></td><td>A grant may limit an input's values</td><td>Binds a top-level input</td></tr>
+      <tr><td><code>llm</code></td><td><code>call.llm</code>, the chat's model</td><td>Not with <code>schedulable</code> or <code>watch</code></td></tr>
+      <tr><td><code>schedulable</code></td><td>The clock may run it unattended</td><td>Level 0 or 1</td></tr>
+      <tr><td><code>credentials</code></td><td><code>call.credential</code>, a login asked for as it works</td><td>Boolean</td></tr>
       <tr><td><code>code</code></td><td>An allowed code card opens its hosts and <code>call.install</code></td><td>Boolean</td></tr>
-      <tr><td><code>watch</code></td><td>Called without a model when the person opens the agent's screen</td><td>Level 0, no <code>llm</code>; inputs take an <code>action</code></td></tr>
+      <tr><td><code>watch</code></td><td>Called, without a model, when the screen opens</td><td>Level 0</td></tr>
     </tbody>
   </table>
-  <p style="margin-top:-2.5mm"><span class="tag run">Table 7.1</span> What a function may declare. Each flag reaches further than a reviewer would otherwise assume, so each is opt-in and visible at review.</p>
+  <p style="margin-top:-2.5mm"><span class="tag run">Table 7.1</span> What a function may declare. Each flag is opt-in and visible at review.</p>
 
-  <p>The permission level is a price, not a permission. The platform checks only that it is 0–3; the reviewer judges whether it is honest. At the standard chat trust of 1, levels 0 and 1 run and levels 2 and 3 raise a card.</p>
+  <p>The permission level grants nothing; it decides whether a call needs a person's approval, and the reviewer judges whether it is honest. At the standard chat trust level of 1, levels 0 and 1 run and levels 2 and 3 raise a card.</p>
 
   <h3><span class="no">7.3</span> Validation</h3>
-  <p>One validator runs when a source is read, when an agent is installed, and when the runtime and each sandbox load it. It returns errors, each naming its path (<code>tools[0].functions[2].inputs: …</code>), and never raises. The rules worth naming:</p>
+  <p>One validator judges every manifest: when a source is read, at install, and when the runtime and each sandbox load it. It returns a list of errors, each with its path. The rules that shape the design:</p>
   <ul>
-    <li><b>JSON only.</b> An unquoted YAML date, a non-text key, NaN, or nesting past 32 levels is refused first, because approval hashes the document as JSON.</li>
-    <li><b>Ids.</b> <code>agent.id</code> matches <code>^[a-z][a-z0-9_]{1,31}$</code>; secret ids are at most 34 characters and data or file ids 94, so <code>&lt;ref&gt;__&lt;id&gt;</code> fits the stores. <code>agent</code>, <code>close</code>, <code>id</code> and <code>logger</code> are taken by <code>ToolBase</code>.</li>
-    <li><b>Bounds.</b> At most 16 tools of 25 functions; at most 50 hosts, lowercase names, never an address, scheme, path or bare <code>*</code>. No <code>network</code> block, no approval.</li>
-    <li><b>Schemas.</b> A closed JSON Schema subset, <code>object</code> root, depth at most 5; <code>$ref</code>, <code>allOf</code>, <code>anyOf</code>, <code>oneOf</code>, <code>not</code> and conditionals are refused, because a schema a reviewer cannot read at a glance is one nobody checks.</li>
-    <li><b>Storage.</b> A <code>secret</code> or <code>object</code> field in <code>keys</code> is refused; a <code>from_secret</code> host must name a string kept in <code>keys</code>, so where an agent connects stays visible.</li>
+    <li><b>JSON only.</b> Approval hashes the manifest as JSON, so YAML with no JSON equivalent, such as an unquoted date, is refused.</li>
+    <li><b>Bounds.</b> At most 16 tools of 25 functions, and 50 hosts, each a lowercase name, never an address or bare <code>*</code>. A manifest without a <code>network</code> block is refused.</li>
+    <li><b>Readable schemas.</b> Inputs and outputs use a closed subset of JSON Schema, without <code>$ref</code>, <code>anyOf</code> and their kin, because a schema a reviewer cannot read at a glance is one nobody checks.</li>
+    <li><b>Visible storage.</b> A secret or object field cannot be a key. A <code>from_secret</code> host must name a string kept in <code>keys</code>, so where an agent connects stays visible.</li>
   </ul>
   <div class="inv"><span class="id">I-7.1</span><p>Every component judges a manifest with the same validator and the same fingerprint function, so no two parts of the platform can disagree about what an agent declared.</p></div>
 
   <h3><span class="no">7.4</span> Sources and catalogs</h3>
-  <p>An administrator saves a git repository on <b>Agents → Marketplace</b>. The Data Core fetches it at one commit, depth 1, reads <code>decentai-agents.yaml</code> at its root and validates every manifest it names. A catalog lists 1 to 100 entries, each an id and a path and nothing else: what an agent is called is its manifest's to say. The whole catalog is refused if an entry's id differs from its <code>agent.id</code>, a path leaves the repository, or anything is a symbolic link. A manifest that breaks a rule refuses only its own agent, which is listed with its reasons. <b>Reading a source never executes its code.</b> A source belongs to the organization that saved it.</p>
+  <p>A <b>source</b> is a git repository an administrator saves on <b>Agents → Marketplace</b>. The Data Core fetches it at one commit, reads <code>decentai-agents.yaml</code> at its root, and validates every manifest listed there. <b>It never runs the code.</b> A catalog lists 1 to 100 entries, each just an id and a path. The whole catalog is refused if an id differs from its manifest's <code>agent.id</code>, a path leaves the repository, or anything is a symbolic link. A manifest that breaks a rule refuses only its own agent, which is listed with its reasons. A source belongs to the organization that saved it.</p>
 
   <h3><span class="no">7.5</span> Review and approval</h3>
-  <p>The review shows what the manifest declares: dependencies, levels, flags, scopes, secrets, data, files, hosts, and the README up to 20,000 characters. An administrator holding <code>agents:agent:install</code> approves the agent by name, and the install works in a fixed order:</p>
+  <p>Approval binds one reviewed manifest and one set of bytes to an agent version. An administrator holding <code>agents:agent:install</code> approves the agent by name, and the install runs in order:</p>
   <ol>
-    <li>It fetches the commit whose catalog the page showed. If the source was read again since, the request is refused (<code>source_moved</code>, 409) and the agent must be reviewed again.</li>
-    <li>It validates again, and refuses the same version with a different manifest (<code>immutable_version</code>).</li>
-    <li>It derives secret slots private to this approval, and writes the row with <code>manifest_hash</code>: SHA-256 of the canonical JSON, keys sorted.</li>
-    <li>Only then does it pack the folder and store it under <code>(organization, digest)</code>. If that fails, or the same version arrives with other bytes, the row is put back as it was.</li>
-    <li>It pins <code>package_digest</code>, grants the installer, reclaims unpinned archives, audits <code>agent.installed</code>, and marks the row <i>preparing</i>.</li>
+    <li>Fetch the commit the review showed; if the source was read again since, refuse with <code>source_moved</code>.</li>
+    <li>Validate again, and refuse a known version with a different manifest (<code>immutable_version</code>).</li>
+    <li>Write the approval row with <code>manifest_hash</code>, the SHA-256 of the manifest's canonical JSON.</li>
+    <li>Pack and store the folder per organization; on failure, restore the row.</li>
+    <li>Pin <code>package_digest</code>, grant the installer, audit <code>agent.installed</code>, and mark the row <i>preparing</i>.</li>
   </ol>
-  <p>No runtime is contacted; whether the code loads is the node's own report (§8.3). Archives are kept per organization so that one organization's deletion, retention or compromise cannot reach another's code. Deduplication happens on the node instead.</p>
+  <p>No runtime is contacted; each node reports whether the code loads (§8.3). Archives are kept per organization, so one organization's compromise cannot reach another's code.</p>
   <div class="inv"><span class="id">I-7.2</span><p>An approved version names exactly one manifest hash and one package digest. Nothing of an agent runs before an approval names it, and a version is never approved again with other content or other bytes.</p></div>
 
   <figure>
@@ -147,53 +145,51 @@
         <text x="360" y="194">same version, other manifest or bytes → immutable_version</text>
       </g>
     </svg>
-    <figcaption><b>Figure 7.2</b> The lifecycle of an agent. The review waits on a person (amber). Approval pins two fingerprints in the Data Core (deep green). Each node pulls and verifies the bytes on its own clock (§8.3). Grants and a chat's list decide who reaches it, and only then does agent code run (pale green). Red marks the refusals at each step.</figcaption>
+    <figcaption><b>Figure 7.2</b> The lifecycle of an agent. Review waits on a person (amber); approval pins two fingerprints; each node pulls and verifies the bytes. Agent code (pale green) runs only after grants and the chat's list admit a call. Red marks each step's refusal.</figcaption>
   </figure>
 
   <h3><span class="no">7.6</span> Two names: refs and qualified ids</h3>
-  <p>The author's <code>agent.id</code> decides nothing on the platform. At first install the platform mints a <b>ref</b>, <code>agt_</code> and twenty random characters, derived from nothing, so nobody can predict one or compute another install's. It is found again at every update by organization, source and catalog id, so an update keeps the agent's records and grants. Everything outside the package speaks the ref: grants, the collections <code>agt_…__draft</code>, secret slots, function names, cards, the trail. Only the manifest lookup and the worker call translate it back, so the code only ever sees <code>gmail</code>. Naming an agent after another gives it nothing of that agent's.</p>
-  <p>A ref cannot be typed, so each install also gets a <b>qualified id</b> for people and policies: the bare author id when it is free in the organization, else <code>&lt;source&gt;__&lt;id&gt;</code>. It is assigned once and keys nothing, so a later install cannot relabel it.</p>
+  <p>Inside the platform an agent is known by its <b>ref</b>, not by its author's id. At first install the platform mints the ref, <code>agt_</code> and twenty random characters, so nobody can predict one or derive another install's. Updates keep the ref, and with it the agent's records and grants. Grants, collections, secret slots, function names, cards and the audit trail all use the ref; only the manifest lookup and the worker call translate it back, so the code sees only <code>gmail</code>. Naming an agent after another gains it nothing.</p>
+  <p>For people and policies, each install also gets a <b>qualified id</b>: the author's id if it is free in the organization, otherwise <code>&lt;source&gt;__&lt;id&gt;</code>. It is assigned once and keys nothing.</p>
 
   <h3><span class="no">7.7</span> Grants, scopes and the chat</h3>
-  <p>Grants are rows keyed by the agent, not statements in IAM policies, because an agent's functions appear, change and vanish with installs, and names written into authored policies rot. An uninstall deletes the agent's grants and credential grants with it. A grant has an owner (up to 50 groups and 50 users), functions (<code>"*"</code> or up to 200 <code>tool.function</code> names) and <code>constraints</code>, the values each scope may take. Grants are allow-only: absence is denial.</p>
-  <p>On <b>first install only</b>, the install writes the smallest grant that is obviously right: the installer's groups and the installer by name. A repair leaves grants alone, so access arranged since is never undone. Wider access is edited on the agent's <b>Access</b> tab. <code>"*"</code> follows the manifest as it grows; a list keeps a new function closed until someone opens it. At call time the executor reads each scope's value from its input, normalizes it, and holds it to the grants; a constrained allow does not hold for a call that gave no value. Credentials follow the same rule: a saved credential reaches an agent's private slot only through a revocable credential grant that a person writes.</p>
-  <p>A chat's contract joins three filters: the organization's installed agents, the grants that reach this person, and the chat's <code>enabled_agents</code>. A person's default may name only installed agents, and a chat may narrow it but never reach past it. An agent with no function left after the join is absent from the chat.</p>
+  <p>A <b>grant</b> is a row, keyed by the agent, that says who may call which of its functions. Grants are not IAM policy statements, because functions come and go with installs. A grant names an owner (groups and users), functions (<code>"*"</code> or a list of <code>tool.function</code> names) and <code>constraints</code>, the values each scope may take. Grants only allow: without one there is no access.</p>
+  <p>The first install writes the smallest obviously right grant, the installer and the installer's groups; later access is set on the agent's <b>Access</b> tab. <code>"*"</code> follows the manifest as it grows, while a list keeps a new function closed until someone opens it. At call time the executor checks each scope's value, read from the input, against the grants; a constrained grant does not cover a call that gives no value. A saved credential likewise reaches an agent only through a revocable credential grant that a person writes.</p>
+  <p>A chat offers only what three sets share: the organization's installed agents, the grants that reach this person, and the chat's <code>enabled_agents</code>.</p>
   <div class="inv"><span class="id">I-7.3</span><p>A person reaches a function only through a grant row on that agent and a chat that enables it. A chat's list can narrow what a person may use and can never widen it.</p></div>
 
   <h3><span class="no">7.8</span> Versions and updates</h3>
-  <p>A version is immutable in its manifest and its code; every change, a sample sheet included, is a new <code>agent.version</code>. An update is offered only for agents whose own manifest changed, and taking it is a new approval. Credentials saved under old shapes follow where that asks nothing new of their owners. At its next call the runtime sees the new digest and retires the old worker. A call still in flight there ends with an honest error and is not retried, because nobody can know what a half-finished call changed. A renamed <code>agent.id</code> is a different agent, which no installation follows.</p>
+  <p>A version never changes. Any change, a sample sheet included, needs a new <code>agent.version</code>, and taking an update is a new approval. Saved credentials carry over wherever the new version asks nothing new of their owners. At the next call the runtime sees the new digest and retires the old worker. A call still running there ends with an error and is not retried, because nobody can know what a half-finished call changed. A renamed <code>agent.id</code> is a different agent.</p>
 
   <h3><span class="no">7.9</span> What agent code is given</h3>
-  <p>The SDK, <code>decentai_sdk</code>, has no dependencies, is installed into every agent environment, and is the only platform code an agent may import. <code>call</code> carries no identity of the person and no model key. A refusal raises <code>ResourceDenied</code> with the reason in words.</p>
+  <p>Agent code reaches the platform only through <code>call</code>, the object the SDK, <code>decentai_sdk</code>, hands each function. The SDK is the only platform code an agent may import. <code>call</code> carries neither the person's identity nor a model key, and a refusal raises <code>ResourceDenied</code> with the reason in words.</p>
   <dl class="spec">
-    <dt><code>call.inputs</code></dt><dd>Validated against the manifest, with defaults applied, before the code runs.</dd>
-    <dt><code>call.resources</code></dt><dd>Records (<code>list_data</code> … <code>delete_data</code>), files (<code>read_file</code>, <code>create_file</code>, …) and secrets (<code>use_secret</code>), each checked against this function's operation map. Writes are checked against the declared fields.</dd>
-    <dt><code>call.progress(text)</code></dt><dd>A line the person sees while the function runs; nothing is kept.</dd>
-    <dt><code>call.ask(q, choices)</code></dt><dd>A card in the agent's name: at most 1,000 characters and 8 choices of 100. Unanswered after a day it returns <code>None</code>; the function's clock stops while it waits. With <code>expects="file"</code> the answer is a file ref.</dd>
-    <dt><code>call.post(text)</code></dt><dd>Speaks to the person now: at most 4,000 characters, three posts a call.</dd>
-    <dt><code>call.llm(…)</code></dt><dd>The chat's model, reached through the platform; the stored key never enters the worker. Requires <code>llm: true</code>.</dd>
-    <dt><code>call.credential(host, fields)</code></dt><dd>A login for a site the agent could not know beforehand, 1 to 20 fields, consented per agent and per site; the model sees labels only. Requires <code>credentials: true</code>.</dd>
-    <dt><code>call.propose(code, purpose)</code></dt><dd>Code up to 20,000 characters on a card, with the model's reading of it beside it. With <code>code: true</code>, an allowed card opens the hosts it named for that call, and <code>call.install</code> installs exactly the packages it named.</dd>
-    <dt><code>call.screen</code></dt><dd>A picture the person can watch and take over (§8.11).</dd>
+    <dt><code>call.inputs</code></dt><dd>Validated against the manifest.</dd>
+    <dt><code>call.resources</code></dt><dd>Records, files and secrets, checked against this function's operation map.</dd>
+    <dt><code>call.progress</code>, <code>post</code></dt><dd>A status line while it runs; a message to the person, at most three per call.</dd>
+    <dt><code>call.ask(q, choices)</code></dt><dd>A question card. The function's clock stops while it waits; unanswered after a day, it returns <code>None</code>.</dd>
+    <dt><code>call.llm(…)</code></dt><dd>The chat's model, through the platform. Needs <code>llm: true</code>.</dd>
+    <dt><code>call.credential(host, fields)</code></dt><dd>A login for a site not known beforehand, consented per agent and site; the model sees only labels.</dd>
+    <dt><code>call.propose(code, purpose)</code></dt><dd>Code on a card, beside the model's reading of it. With <code>code: true</code>, an allowed card opens its hosts for that call.</dd>
+    <dt><code>call.screen</code></dt><dd>A live picture the person can watch and take over (§8.11).</dd>
   </dl>
   <p>Without a chat, as in a test, <code>ask</code> and <code>propose</code> return <code>None</code> and <code>post</code> returns <code>False</code>, so the same code runs everywhere.</p>
 
   <h3><span class="no">7.10</span> The catalogue</h3>
-  <p>The project's repository, <code>decentai-agents</code>, is an ordinary source; its catalog lists 38 agents, written against the same contract as a third party's.</p>
+  <p>The project's own repository, <code>decentai-agents</code>, is an ordinary source of 38 agents, written against the same contract as anyone's.</p>
   <table class="compact">
     <thead><tr><th>Agent</th><th>What its manifest shows</th></tr></thead>
     <tbody>
-      <tr><td>Note</td><td><code>hosts: []</code>; a typed secret against a simulated remote; a <code>notebook</code> scope bound with <code>from_input</code>, optional on <code>find</code>; all four levels, from <code>notes.find</code> (0) to <code>sync.push</code> (3).</td></tr>
-      <tr><td>Notebook</td><td><code>user_access: [create, update]</code> on records; file slots with <code>constraints</code>; a <code>schedulable</code> level-1 function with no model.</td></tr>
-      <tr><td>Gmail, Outlook</td><td>A connected account by <code>oauth</code>, its refresh token kept in the Data Core; one host; <code>draft.send</code> at level 3; an inbox watch that wakes a schedule only for new mail.</td></tr>
-      <tr><td>Mail</td><td>IMAP through the proxy with <code>decentai_sdk.net.Tunnel</code>: hosts with ports, and <code>{from_secret: account.imap_host, port: 993}</code>.</td></tr>
-      <tr><td>Browser</td><td><code>hosts: any</code>; <code>browse.run</code> at level 2 with <code>llm</code> and <code>credentials</code>; a level-0 <code>watch</code> function for the live screen.</td></tr>
-      <tr><td>Code (<code>code_runner</code>)</td><td><code>hosts: []</code> and <code>code: true</code>: whatever the program reaches is what a person allowed on its card, for that call.</td></tr>
-      <tr><td>Tasks, Expenses</td><td>A model that reads and code that decides: every quote checked against the source, dates only when exact; in Expenses, money in <code>Decimal</code>.</td></tr>
+      <tr><td>Note</td><td>A <code>notebook</code> scope; all four levels, from <code>notes.find</code> (0) to <code>sync.push</code> (3).</td></tr>
+      <tr><td>Gmail, Outlook</td><td>An <code>oauth</code> account whose token stays in the Data Core; one host.</td></tr>
+      <tr><td>Mail</td><td>IMAP through the proxy, to a host named by a secret: <code>{from_secret: account.imap_host, port: 993}</code>.</td></tr>
+      <tr><td>Browser</td><td><code>hosts: any</code>; <code>browse.run</code> at level 2 with <code>llm</code> and <code>credentials</code>; a level-0 <code>watch</code> function.</td></tr>
+      <tr><td>Code (<code>code_runner</code>)</td><td><code>hosts: []</code> and <code>code: true</code>: the program reaches only what a person allowed on its card.</td></tr>
+      <tr><td>Tasks, Expenses</td><td>The model reads and code decides: every quote checked against the source.</td></tr>
     </tbody>
   </table>
-  <p style="margin-top:-2.5mm"><span class="tag run">Table 7.2</span> Agents in <code>decentai-agents</code> worth reading for one pattern each.</p>
-  <p>Two show the edge of the contract. Every Google agent asks for the same OAuth scopes so one account can be granted to each; what keeps Gmail to mail is not its token, which could reach Drive, but that <code>gmail.googleapis.com</code> is the only host its worker may reach. The Code agent shows the reverse: an empty host list, widened for one call by a person's yes.</p>
+  <p style="margin-top:-2.5mm"><span class="tag run">Table 7.2</span> Agents worth reading for one pattern each.</p>
+  <p>Every Google agent asks for the same OAuth scopes, so one account serves them all. What keeps Gmail to mail is not its token, which could reach Drive, but that <code>gmail.googleapis.com</code> is the only host its worker may reach.</p>
   <div class="inv"><span class="id">I-7.4</span><p>The runtime never imports agent code and never takes a worker's word for what it may do. Every resource, credential, host and model completion is granted host-side, per call, from the approved manifest's entry for the function now running.</p></div>
 </section>
 
@@ -202,11 +198,11 @@
   <div class="chapter-head">
     <div class="kicker">Chapter 8</div>
     <h2>Execution nodes and the sandbox</h2>
-    <p class="lead">The manifest decides what an agent is <i>given</i>. The sandbox bounds what its process can <i>take</i>, whatever its code tries. Agent code runs on an execution node, in a container that holds nothing else and has no route out but one proxy, as a user of its own, behind a file fence and a system-call filter.</p>
+    <p class="lead">The manifest decides what an agent is <i>given</i>. The sandbox bounds what its process can <i>take</i>, whatever its code tries. Agent code runs on an execution node, in a container that holds nothing else, as a user of its own, behind a file fence and a system-call filter, with one proxy as its only route out.</p>
   </div>
 
   <h3><span class="no">8.1</span> The execution node</h3>
-  <p>An execution node is one AI Runtime and its Execution Sandboxes, deployed together. The bundled node of a single-machine install is three Compose services. <code>ai-runtime</code> runs each chat's assistant, the executor and its gates, the agents' proxy (port 8002) and the sandbox registry (port 8005). <code>sandbox</code> is the same image started in another role: it runs the spawner (port 8003) and every worker. <code>node-issuer</code> holds the node-authority private key with no network at all and writes the node a fresh credential into a volume the runtime mounts read-only. A node on its own machine is the same three services, dialling a Data Core elsewhere, with no port open.</p>
+  <p>An execution node is one AI Runtime and its Execution Sandboxes, deployed together as three Compose services. <code>ai-runtime</code> runs each chat's assistant, the executor and its gates, the agents' proxy and the sandbox registry. <code>sandbox</code>, the same image in another role, runs the <b>spawner</b>, which starts every worker and relays its traffic. <code>node-issuer</code> holds the node authority's private key, has no network, and writes the node a fresh credential into a volume the runtime reads. A node on its own machine dials a Data Core elsewhere and opens no port.</p>
 
   <figure>
     <svg viewBox="0 0 680 300" role="img" aria-label="Architecture of an execution node">
@@ -269,25 +265,25 @@
       <path d="M406 244H362" class="flow" marker-end="url(#m-seal)"/>
       <text x="376" y="237" text-anchor="middle" font-size="9" class="t-soft">pass</text>
     </svg>
-    <figcaption><b>Figure 8.1</b> An execution node. Every connection is dialled outward. The runtime dials the Data Core's node link, and the sandbox dials the runtime's registry over TLS 1.3 with HMAC proofs of the node's secret. Workers' connections leave the sandbox only as passes to the runtime's proxy, which reaches declared hosts at public addresses. The dashed outline is the trust boundary: the sandbox sits on an internal network with no route to the internet, the database or the Data Core.</figcaption>
+    <figcaption><b>Figure 8.1</b> An execution node. Every connection is dialled outward. Workers' connections leave only through the runtime's proxy, to declared hosts. The dashed outline is the trust boundary: the sandbox's network has no route to the internet, the database or the Data Core.</figcaption>
   </figure>
 
   <h3><span class="no">8.2</span> How a node links to the Data Core</h3>
-  <p>Nobody registers a node. Trust is given once to an <b>authority</b>: a public key or a JWKS issuer, scoped <code>shared</code> or to one organization. Any node presenting a credential it signed is admitted, so a thousand nodes need no step each. The credential names the node, audience <code>decentai-data-core</code>, and optionally an organization and labels. It lives at most an hour; the bundled issuer signs ten minutes. The node never holds the authority's key, so a node taken over can sign for nobody and keeps its name for minutes.</p>
-  <p>The node keeps one WebSocket to <code>/nodes/link</code>, reconnecting after 1, 2, 4, 8, 15, then 30 seconds. The Data Core holds no node's address, so a node can sit behind a firewall that admits nothing. Everything the Data Core sends is signed: a reply names the node, its request id and the digest of the reply's bytes; a link frame names the node, the connection's nonce and its sequence. A node treats anything else as silence, because a reply can be a contract. A heartbeat every 20 seconds renews the node's chat leases, which last 60; every call for a chat carries its lease number, so two nodes can never act for one chat.</p>
-  <p>Code arrives through the <b>package door</b>, the only verbs a node principal may use: <code>Agents:Package:List</code>, the digests standing approvals pin; <code>Agents:Package:Fetch</code>, bytes by digest; and <code>Agents:Package:Prepared</code>, ready or failed. The runtime lists every ten seconds, which turns <i>Preparing</i> into <i>Ready</i> with no chat involved.</p>
+  <p>A node is admitted because a trusted authority signed its credential; nobody registers it. An administrator trusts an <b>authority</b> (a public key or a JWKS issuer) once, and every node it signs for is admitted. A node never holds the authority's key, and its credential lasts minutes, so a node taken over can sign for nobody and soon loses its name.</p>
+  <p>The node dials one WebSocket to <code>/nodes/link</code>. The Data Core holds no node's address, so a node can sit behind a firewall that admits nothing. Everything the Data Core sends is signed for that node and that request; a node treats anything else as silence, because a reply can carry a contract. A heartbeat every 20 seconds renews the node's chat leases, which last 60 seconds. Every call for a chat carries its lease number, so two nodes never act for one chat.</p>
+  <p>Code arrives through the <b>package door</b>, the only verbs a node may use: list the digests approvals pin, fetch bytes by digest, and report a package ready or failed. The runtime lists every ten seconds, so an agent moves from <i>Preparing</i> to <i>Ready</i> without waiting for a chat.</p>
   <div class="inv"><span class="id">I-8.1</span><p>Nodes dial out and are admitted by authority, never by address. A node acts on nothing the Data Core's key did not sign for that node, and on no chat whose live lease it does not hold.</p></div>
 
   <h3><span class="no">8.3</span> Environments built from approved digests</h3>
-  <p>The runtime caches packages by content, one folder per digest. It checks bytes against the digest before writing, and the unpacked manifest against the approved hash before sending anything on. Tampered bytes therefore fail for everyone instead of poisoning a copy that many organizations share, and the runtime runs nothing from the cache.</p>
-  <p>Each sandbox keeps its own copy, and no folder is shared. Asked for a digest it lacks, it asks its runtime for the bytes. It checks digest and hash before writing, unpacks, and builds an environment keyed by the dependency list and interpreter, so a code-only update builds nothing. Then it starts one worker as installation's user, the <b>verification start</b>, to prove the package loads. A failure removes what its step made. Dependencies take two users, because a build is code too. The <b>builder</b> downloads and builds wheels through a pass that opens only <code>pypi.org</code> and <code>files.pythonhosted.org</code>. The spawner unpacks them and runs nothing of theirs.</p>
+  <p>A node runs only bytes that match an approved digest and manifest hash. The runtime caches packages by digest and checks both before passing anything on, so tampered bytes fail for everyone instead of poisoning a shared copy. The runtime itself runs nothing from the cache.</p>
+  <p>Each sandbox fetches a missing digest from its runtime, checks it again, and unpacks its own copy. It builds an environment keyed by the dependencies and the interpreter, so an update that changes only code builds nothing. A <b>verification start</b>, one worker run as a user kept for it, proves the package loads. A build runs code too, so a separate <b>builder</b> user builds the wheels through a pass that opens only the Python package index.</p>
   <div class="inv"><span class="id">I-8.2</span><p>Code reaches a sandbox only through its runtime, and is checked against the approved digest and manifest hash, both on the runtime and in the sandbox, before anything is written.</p></div>
 
   <h3><span class="no">8.4</span> The worker pool</h3>
-  <p>The worker pool keeps one worker per <b>approval</b>, not per digest, so nothing an agent holds in memory crosses organizations. A worker starts on first call, is kept warm for every chat of its organization, and keeps per-chat state such as a browser under <code>call.conversation</code>. It is disposable: replaced when its code changes, it crashes or it is ended for memory. The runtime places a new worker among <i>eligible</i> sandboxes: healthy, locks proven in the current process, not draining, holding the labels asked for. It prefers the one already running the agent, then one holding its package, then the least loaded (memory in 256 MB buckets, then processors in tenths), then takes turns.</p>
+  <p>A <b>worker</b> is the process that runs one agent's code. The pool keeps one per approval, not per digest, so nothing an agent holds in memory crosses organizations. A worker starts on first call, stays warm for every chat of its organization, and keeps per-chat state, such as a browser, under <code>call.conversation</code>. It is disposable: replaced when its code changes or it crashes, ended when memory runs short. A new worker goes to a healthy sandbox with proven confinement, preferring one already running the agent, then one holding its package, then the least loaded.</p>
 
   <h3><span class="no">8.5</span> The worker protocol</h3>
-  <p>The worker is the SDK's worker loop, run by the agent environment's interpreter in isolated mode. Its argv is empty and its environment an allow-list that never holds the model key, the Data Core's trust key or the runtime's settings. Host and worker exchange newline-delimited JSON, protocol 2, at most 2 MiB a line; a malformed line ends the worker. Every worker request names its <code>call_id</code> and is answered from that call's operation map, only if the call was sent to this worker. Bytes whose base64 exceeds 256 KiB travel ahead as <code>bytes</code> pieces.</p>
+  <p>The <b>host</b>, the runtime's side of a call, and the worker exchange newline-delimited JSON, at most 2 MiB a line; a malformed line ends the worker. The worker's environment is an allow-list that never holds the model key, the Data Core's trust key or the runtime's settings. Every worker request names its <code>call_id</code>. The host answers it from that call's operation map, and only if that call was sent to this worker.</p>
 
   <figure>
     <svg viewBox="0 0 680 282" role="img" aria-label="One call over the worker protocol">
@@ -326,36 +322,31 @@
         <text x="140" y="265" class="t-no">no answer in 5 s: killed</text>
       </g>
     </svg>
-    <figcaption><b>Figure 8.2</b> One call over the worker protocol. Green lines are the host's, grey the worker's; the spawner carries every line unread. The notes on the left are what the host checks or does at each message. Killing a worker fails every call in flight on it, and none is retried.</figcaption>
+    <figcaption><b>Figure 8.2</b> One call over the worker protocol. Green arrows are the host's, grey the worker's; the notes on the left are what the host checks at each message. The spawner relays every line unread. Killing a worker fails every call in flight on it, and none is retried.</figcaption>
   </figure>
 
   <h3><span class="no">8.6</span> The runtime–sandbox link</h3>
-  <p>Only its runtime commands a spawner. The two share one node secret, <code>AI_RUNTIME_SANDBOX_SECRET</code>, which Compose gives to nothing else, the Data Core included. The secret never travels. The side spoken to first sends a challenge, and the other answers with an HMAC-SHA256 under the secret with its role written in front, so one side's proof never passes as the other's. Every connection is TLS 1.3 with a key and certificate each process makes at start, so no certificates are issued or signed. Each proof covers the fingerprint of the certificate seen on that connection, so anyone in between fails both ways. A sandbox proves itself first on every request, and removes the secret from its environment so no worker inherits it.</p>
+  <p>Only its own runtime can command a spawner. The two share one node secret, which Compose gives to nothing else, the Data Core included, and which never travels. Each side answers the other's challenge with an HMAC-SHA256 under the secret, prefixed with its role so that neither proof passes as the other's. Connections are TLS 1.3, and each proof covers the certificate fingerprint seen on that connection, so anyone in between fails. The sandbox removes the secret from its environment so no worker inherits it.</p>
 
   <h3><span class="no">8.7</span> Confining a worker</h3>
-  <p>A small C program, the spawn helper, does the one thing the platform's user cannot: start a child as another user. It is compiled because a binary can carry that right and a script cannot. It refuses callers other than the platform's user and uids outside 20000–29999. In order, it sets limits, sets no-new-privileges for everything it will start, becomes the agent's user, applies Landlock to the paths the spawner named, and applies seccomp last. Each approval has its own uid per sandbox; the first uid is installation's, the last the builder's. A home is emptied, as its user, before every start.</p>
-  <p>Landlock lets a worker read the system, the browsers, its package and environment, and write its home. From ABI 4 it may connect over TCP only to the proxy port; from ABI 6 it reaches no abstract socket it did not create. Seccomp is a deny-list, because an allow-list would be a list of what somebody forgot. It refuses namespaces and mounts, <code>ptrace</code>, <code>bpf</code>, <code>io_uring</code>, module and keyring calls, and unneeded socket families. Each sandbox proves this at start and registers with what it proved. The runtime places no worker where confinement failed, and an agent's page states what a weaker kernel cannot enforce.</p>
+  <p>Each worker runs as its own user, behind a file fence and a system-call filter. The <b>spawn helper</b>, a small compiled C program, does the one thing the platform's user cannot: start a child as another user. It starts only uids 20000–29999, and each approval has its own uid in each sandbox. It sets resource limits and no-new-privileges, becomes the agent's user, applies Landlock, and applies seccomp last. A worker's home is emptied before every start.</p>
+  <p><b>Landlock</b>, the kernel's file and network fence, lets a worker read the system, its package and its environment, and write its home. On kernels that support it, the worker may open TCP connections only to the proxy port and cannot reach abstract sockets it did not create. <b>Seccomp</b> is a deny-list, because an allow-list would be a list of what somebody forgot. It refuses namespaces, mounts, <code>ptrace</code>, <code>bpf</code>, <code>io_uring</code> and similar calls. Each sandbox proves this confinement at start; the runtime places no worker where it failed, and an agent's page states what a weaker kernel cannot enforce.</p>
 
   <h3><span class="no">8.8</span> Network confinement</h3>
-  <p>Three things leave the proxy as a worker's only way out. The sandbox's network is internal and joins only the runtime. At container start, the image's first step runs as root, the one step holding <code>NET_ADMIN</code>, and writes an nftables chain: for socket owners in uids 20000–29999, TCP to <code>127.0.0.1</code> on the proxy port is accepted and everything else rejected, DNS and the spawner included. It then becomes the platform's ordinary user and removes the capability from its bounding set, so nothing started afterwards can regain it. The spawner relays that port to the runtime's proxy, unread.</p>
-  <p>The proxy knows a worker by its pass and refuses a host the manifest does not name. It resolves the name itself, refuses the host if any answer is internal, and connects to the address it checked; it never opens TLS. Two kinds of host are lent per call: a <code>from_secret</code> host when <code>use_secret</code> hands over the credential, and a code card's hosts on the person's yes. Both close when the call ends. Every connection is written down with its owner, destination, bytes and duration.</p>
-  <div class="inv"><span class="id">I-8.3</span><p>A confined worker's only route off its machine is the runtime's proxy, and the proxy admits only hosts the approved manifest, a credential handed to the running call, or a card the person allowed names, at public addresses.</p></div>
+  <p>Three layers leave the runtime's proxy as a worker's only way out. The sandbox's network is internal and reaches only the runtime. A firewall, written at container start by the one step that holds <code>NET_ADMIN</code>, lets worker users reach only the proxy port and refuses everything else, DNS included; that step then drops the capability for good. The spawner relays that port to the runtime's proxy, unread.</p>
+  <p>The proxy knows each worker by its <b>pass</b>, a token issued to that worker, and refuses any host the manifest does not name. It resolves the name itself, refuses an internal address, connects to the address it checked, and never opens TLS. Two kinds of host are lent for a single call: a <code>from_secret</code> host once the credential is handed over, and the hosts of a code card the person allowed. Every connection is logged.</p>
+  <div class="inv"><span class="id">I-8.3</span><p>A confined worker's only route off its machine is the runtime's proxy. The proxy admits only public addresses of hosts named by the approved manifest, by a credential handed to the running call, or by a card the person allowed.</p></div>
 
   <h3><span class="no">8.9</span> Limits and timeouts</h3>
-  <p>No manifest asks for these numbers. CPU time is not limited, because the limit counts over a warm worker's whole life; the host's clock bounds each call instead.</p>
+  <p>The platform sets these limits; no manifest can change them. CPU time is not limited, because the limit would count over a warm worker's whole life. The host's clock bounds each call instead.</p>
   <table class="compact">
     <thead><tr><th>Bound</th><th>Value</th><th>Enforced by</th></tr></thead>
     <tbody>
-      <tr><td>Processes, per agent user</td><td>2,048</td><td>the spawn helper, per user</td></tr>
-      <tr><td>Open files / size of one file / core files</td><td>4,096 / 1 GiB / 0</td><td>the spawn helper, per process</td></tr>
-      <tr><td>Memory and processors, all agents together</td><td><code>SANDBOX_MEMORY</code>, <code>SANDBOX_CPUS</code></td><td>the container engine (0 is none)</td></tr>
-      <tr><td>Largest agent ended at</td><td>90% of the sandbox's memory, looked at each 1 s</td><td>the spawner</td></tr>
-      <tr><td>Disk an agent keeps</td><td>measured every 30 s, not limited</td><td>the spawner, as the agent's user</td></tr>
-      <tr><td>One line of the worker protocol</td><td>2 MiB; pieces 256 KiB; 16 streams, 256 MiB</td><td>whoever reads the line</td></tr>
-      <tr><td>Proxy connections</td><td>128 per worker, 1,024 in all, 256 unidentified</td><td>the proxy</td></tr>
-      <tr><td>Proxy: naming the destination / upstream connect / idle</td><td>30 s and 64 KiB / 20 s / 30 min</td><td>the proxy</td></tr>
-      <tr><td>Package</td><td>5,000 files, 64 MB uncompressed</td><td>the Data Core, when it packs</td></tr>
-      <tr><td>Screen frame / input events per message</td><td>300 KB / 64</td><td>the SDK and the host</td></tr>
+      <tr><td>Processes, per agent user</td><td>2,048</td><td>the spawn helper</td></tr>
+      <tr><td>Open files / size of one file</td><td>4,096 / 1 GiB</td><td>the spawn helper</td></tr>
+      <tr><td>Memory and processors, all agents</td><td><code>SANDBOX_MEMORY</code>, <code>SANDBOX_CPUS</code></td><td>the container engine</td></tr>
+      <tr><td>Largest agent ended at</td><td>90% of the sandbox's memory</td><td>the spawner</td></tr>
+      <tr><td>Proxy connections</td><td>128 per worker, 1,024 in all</td><td>the proxy</td></tr>
     </tbody>
   </table>
   <p style="margin-top:-2.5mm"><span class="tag run">Table 8.1</span> What a worker is held to.</p>
@@ -363,28 +354,24 @@
     <thead><tr><th>Clock</th><th>Value</th><th>Then</th></tr></thead>
     <tbody>
       <tr><td>A function call</td><td><code>timeout_seconds</code>, default 60 s</td><td><code>cancel</code>; killed after a 5 s grace</td></tr>
-      <tr><td>Handshake / verification start</td><td>60 s / 120 s</td><td>worker killed / install fails with the reason</td></tr>
-      <tr><td>Dependency build</td><td>300 s (<code>AI_SANDBOX_BUILD_SECONDS</code>)</td><td>ended with everything it started</td></tr>
-      <tr><td>Sandbox heartbeat</td><td>2 s; late after 10 s; gone after 30 s</td><td>given nothing new; agents placed elsewhere</td></tr>
-      <tr><td>Reaching a spawner / first sandbox at start</td><td>10 s / 120 s</td><td>next sandbox tried / runtime does not start</td></tr>
-      <tr><td>Failed confinement check</td><td>rechecked every 30 s</td><td>no worker until it passes</td></tr>
-      <tr><td>Drain: stopped sandbox / administrative</td><td>60 s / up to 600 s per worker</td><td>what is left is ended</td></tr>
-      <tr><td>Node heartbeat / lease / stocking</td><td>20 s / 60 s / 10 s</td><td>three missed beats and the chat moves</td></tr>
-      <tr><td>Node credential</td><td>≤ 3,600 s; bundled 600 s</td><td>link closed at the next heartbeat</td></tr>
+      <tr><td>Handshake / verification start</td><td>60 s / 120 s</td><td>worker killed / install fails</td></tr>
+      <tr><td>Dependency build</td><td>300 s</td><td>ended with everything it started</td></tr>
+      <tr><td>Sandbox heartbeat</td><td>2 s; gone after 30 s</td><td>its agents placed elsewhere</td></tr>
+      <tr><td>Node heartbeat / chat lease</td><td>20 s / 60 s</td><td>three missed beats and the chat moves</td></tr>
     </tbody>
   </table>
   <p style="margin-top:-2.5mm"><span class="tag run">Table 8.2</span> The clocks, all owned by the host and never by the worker.</p>
   <div class="inv"><span class="id">I-8.4</span><p>The host owns every clock. A worker cannot extend its own time, and a worker that does not answer a cancel is killed with everything its user runs.</p></div>
 
   <h3><span class="no">8.10</span> Draining, many sandboxes, many nodes</h3>
-  <p>One runtime serves many sandboxes. A second on the same machine is one more Compose service; one elsewhere needs only the node secret and the runtime's address. <code>Nodes:Node:Drain</code> drains one sandbox or all: no new worker starts there, running workers finish and retire, and the agent's next call is placed elsewhere. Sandbox labels such as <code>gpu</code> filter placement, though no manifest can ask for one yet. Labels on a node's credential are shown and gate nothing, because what a node says of itself is reported, not believed.</p>
-  <p>The Data Core places a chat on the node holding its lease, else among connected nodes that may serve the organization: its own first, then the chat's last node, then the least loaded. With <code>placement: own_only</code> nothing of the organization reaches a shared node. A chat that moves is rebuilt from the record; a call running on the old node is reported unknown, never rerun.</p>
+  <p>One runtime serves many sandboxes; another needs only the node secret and the runtime's address. <code>Nodes:Node:Drain</code> stops new workers on one sandbox or all, while running workers finish. Labels on a node's credential gate nothing, because what a node says of itself is reported, not believed.</p>
+  <p>The Data Core sends a chat to the node holding its lease, otherwise to the organization's own nodes first, then the chat's last node, then the least loaded. With <code>placement: own_only</code>, nothing of the organization reaches a shared node. A chat that moves is rebuilt from the record, and a call running on the old node is reported unknown, never rerun.</p>
 
   <h3><span class="no">8.11</span> The live screen</h3>
-  <p>An agent that drives something visible shows it with <code>call.screen</code>, undeclared, since a picture shows nothing a file could not. A frame, a JPEG or PNG of at most 300 KB, goes as <code>screen.frame</code> to the host, as <code>screen_frame</code> up the node link, and to the page. It is relayed, never recorded, and dropped rather than queued. The Browser agent sends 1,280-pixel frames: one per step, one every 0.35 s while the person holds it, one every 100 ms while they drive. Input returns the same road. The page sends <code>AI:Chat:Screen</code>, the Data Core checks that the person may write in the chat, and the node hands the events to the call that showed the screen, dropping them once it ends. <b>Take over</b> pauses the run; <b>Hand back</b> resumes it with the agent told to look again. Opening the screen calls the chat's <code>watch: true</code> function without the model, hence level 0 and no <code>llm</code>. Nothing of the browser is reachable from the person's machine.</p>
+  <p>An agent that drives a screen, such as a browser, can show it live through <code>call.screen</code> and let the person take over. Each frame, a JPEG or PNG of at most 300 KB, passes from worker to host to Data Core to page; it is never recorded, and dropped rather than queued. Input travels back the same way, after the Data Core checks that the person may write in the chat, and reaches only the call that showed the screen. <b>Take over</b> pauses the run; <b>Hand back</b> resumes it and tells the agent to look again. Opening the screen calls the agent's <code>watch</code> function without the model, which is why that function must be level 0. Nothing of the browser is reachable from the person's machine.</p>
 
   <div class="note plain">
     <div class="kicker">What the sandbox does not do</div>
-    <p>It does not separate the people of one organization: a worker serves every chat of its approval, and a host lent to one call is reachable from another running beside it. It does not stop an agent misusing what it was rightly given. Memory is shared among agents and enforced by ending the largest. Before kernel 6.12, two agents that both intend to can share an abstract socket. The container, sharing the host's kernel, remains the outer wall.</p>
+    <p>It does not separate the people of one organization: a worker serves every chat of its approval, and a host lent to one call is open to calls beside it. It does not stop an agent misusing what it was rightly given. Memory is shared among agents and enforced by ending the largest. Before kernel 6.12, two agents that both intend to can share an abstract socket. The container, sharing the host's kernel, remains the outer wall.</p>
   </div>
 </section>

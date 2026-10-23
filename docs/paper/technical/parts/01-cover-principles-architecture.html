@@ -40,9 +40,9 @@
     <div class="kicker">Abstract</div>
     <h2>The model may propose anything. It decides nothing.</h2>
   </div>
-  <p>Language models can now plan multi-step work and call tools, which makes them useful for acting on an organization's mail, documents, records and systems. They are also unreliable in two ways that matter for action: they state false things fluently, and they follow instructions embedded in whatever they read. The tools they call are programs written by third parties. A platform that lets such a planner act has to assume that the planner will sometimes be wrong or hostile, and that the code it drives may be hostile too.</p>
-  <p>DecentAI is a self-hosted platform built on that assumption. It separates <em>proposal</em> from <em>authority</em>. The model's output is treated as a request; every request is decided by code the model cannot read or influence: a deny-by-default policy walked on each call, a gate that compares a function's declared cost with the trust the person gave the chat and holds anything more expensive for that person's approval of the exact inputs, and an executor that runs approved agent code as its own operating-system user, inside a kernel-confined sandbox whose only way out is a proxy open to the hosts the agent declared. Credentials go from an encrypted vault to the agent's code for one call and never to the model. What the interface shows as data or as a finished step is drawn from recorded results, not from the model's prose.</p>
-  <p>This paper describes the whole system for engineers who will run, extend or audit it. Code paths, settings and limits are named as they are in the source; where a property depends on the host it runs on, the paper says so.</p>
+  <p>Language models can now plan multi-step work and call tools, so they can act on an organization's mail, documents, records and systems. They are unreliable in two ways that matter for action: they state false things fluently, and they follow instructions hidden in whatever they read. The tools they call are programs written by third parties. A platform that lets such a planner act must assume that the planner will sometimes be wrong or hostile, and that the code it drives may be hostile too.</p>
+  <p>DecentAI is a self-hosted platform built on that assumption. It separates <em>proposal</em> from <em>authority</em>: the model's output is a request, and code the model cannot read or influence decides every request. A deny-by-default policy is checked on each call. A gate compares each function's declared cost with the trust the person gave the chat, and holds anything costlier until that person approves the exact inputs. Approved agent code runs as its own operating-system user, in a kernel-confined sandbox whose only way out is a proxy open to the hosts the agent declared. Credentials go from an encrypted vault to the agent's code for one call, never to the model. What the interface shows as data, or as a finished step, comes from recorded results, not from the model's prose.</p>
+  <p>This paper describes the whole system for engineers who will run, extend or audit it. Settings and limits are named as the platform names them; where a property depends on the host, the paper says so.</p>
 
   <div class="contents">
     <div class="ch"><b><span>1</span>Principles and threat model</b><p>What is trusted, with what; the decisions every other chapter follows from.</p></div>
@@ -83,10 +83,10 @@
     <tr><td>Content</td><td>A message, attachment, web page or tool result carries text written to steer the assistant.</td><td>Content is data. It can change what the model proposes, never what the platform permits.</td></tr>
     <tr><td>A person</td><td>Approves without reading; holds more access than a task needs; leaves an organization.</td><td>Approvals show the exact inputs and bind to them; grants are narrow and revocable; ownership hands over when its holder leaves (chapters 4, 6).</td></tr>
   </table>
-  <p>Two parties are trusted: the operator who runs the deployment, who controls its hosts and keys, and the code of the platform itself. The paper does not claim protection against an operator with root on the host, nor against a compromised Data Core. It does aim to keep a compromise of any <em>other</em> part — the runtime, the sandbox, an agent, the model, a client — from becoming a compromise of the whole.</p>
+  <p>Two parties are trusted: the operator, who controls the deployment's hosts and keys, and the platform's own code. Nothing here protects against an operator with root on the host, or against a compromised Data Core. The aim is that a compromise of any <em>other</em> part — the runtime, the sandbox, an agent, the model, a client — does not become a compromise of the whole.</p>
 
   <h3><span class="no">1.2</span> Where authority lives</h3>
-  <p>The central decision is to put the model outside the chain of authority altogether. A conventional assistant lets the model's tool call <em>be</em> the action, gated at best by a confirmation dialog the model can describe in its own words. DecentAI treats the model's tool call as a proposal from an unprivileged party, and passes it to code that decides on facts the model does not control: the identity of the person, the policy of the organization, the agent's approved manifest, the chat's trust level and, where the call costs more than that trust, the person's yes to those exact inputs.</p>
+  <p>The central decision is to put the model outside the chain of authority. In a conventional assistant the model's tool call <em>is</em> the action, guarded at best by a confirmation the model can describe in its own words. In DecentAI the tool call is a proposal from an unprivileged party. Code decides it from facts the model does not control: who the person is, the organization's policy, the agent's approved manifest, the chat's trust level and, when the call costs more than that trust, the person's yes to those exact inputs.</p>
 
   <figure>
     <svg viewBox="0 0 680 236">
@@ -130,7 +130,17 @@
   <div class="inv"><span class="id">I-1.3</span><p>The audit trail is append-only from the platform's side: no code path in the engine updates or deletes an audit row.</p></div>
 
   <h3><span class="no">1.4</span> Why an operating system</h3>
-  <p>The problem has a familiar shape. An operating system runs programs written by strangers, gives each a user of its own, mediates every request through a system call it may refuse, and keeps a log. DecentAI applies the same ideas one level up: an <b>agent</b> is a program with a declared manifest, a <b>worker</b> its process, a <b>function call</b> its system call, mediated by the gate; the <b>proxy</b> is its firewall, an <b>approval card</b> its "allow this app to…?" prompt, bound to one call; the <b>clock</b> is the scheduler and the <b>audit trail</b> the system log. DecentAI is not a kernel: it runs on Linux in containers and borrows the kernel's own protections for the parts that must be confined. What it adds is a place for a planner that is capable and not trusted.</p>
+  <p>The problem has a familiar shape. An operating system runs programs written by strangers, gives each a user of its own, passes every request through a system call it may refuse, and keeps a log. DecentAI applies the same ideas one level up.</p>
+  <table class="compact">
+    <tr><th style="width:34%">In an operating system</th><th>In DecentAI</th></tr>
+    <tr><td>a program, and the permissions it asks for</td><td>an <b>agent</b>, and its <b>manifest</b>, reviewed before approval</td></tr>
+    <tr><td>a process, as its own user</td><td>a <b>worker</b>: one agent's code, as that agent's own user</td></tr>
+    <tr><td>a system call the kernel may refuse</td><td>a <b>function call</b>, decided by the gate</td></tr>
+    <tr><td>the firewall</td><td>the <b>proxy</b>, open only to the hosts the manifest declared</td></tr>
+    <tr><td>"Allow this app to…?"</td><td>an <b>approval card</b>, bound to one call</td></tr>
+    <tr><td>the scheduler, and the system log</td><td>the <b>clock</b>, and the <b>audit trail</b></td></tr>
+  </table>
+  <p>DecentAI is not a kernel. It runs on Linux in containers and uses the kernel's own protections for the parts that must be confined. What it adds is a place for a planner that is capable and not trusted.</p>
 </section>
 
 <!-- ── Chapter 2 ─────────────────────────────────────────────────── -->
@@ -150,7 +160,7 @@
     <tr><td>Execution node</td><td>—</td><td>One AI Runtime with its sandboxes, deployed together. The bundled install has one; more can be linked from other machines (chapter 8).</td></tr>
     <tr><td>Clients</td><td>released on their own</td><td>The web client, the phone app and the desktop app. Each is told the engine's address and speaks only to the Data Core, across origins, with a session token (chapter 12).</td></tr>
   </table>
-  <p>The three programs together are the <b>AI Engine</b>. The engine has no user interface of its own: every client reaches it over the same HTTP and WebSocket API. That separation lets one engine serve a browser, a phone and a desktop window, and lets each client be released on its own schedule.</p>
+  <p>The three programs together are the <b>AI Engine</b>. The engine has no user interface: every client reaches it over the same HTTP and WebSocket API. So one engine serves a browser, a phone and a desktop window, and each client ships on its own schedule.</p>
 
   <h3><span class="no">2.2</span> What runs</h3>
   <p>The bundled install starts seven containers; six stay up and a seeder runs once at every start. Figure 2.1 shows them with the connections between them; every arrow is a connection its source opens.</p>
@@ -227,7 +237,7 @@
   <div class="inv"><span class="id">I-2.2</span><p>An agent's worker has no network route except the runtime's proxy, and the proxy forwards only to hosts the agent's approved manifest declared.</p></div>
 
   <h3><span class="no">2.4</span> Where state lives</h3>
-  <p>The runtime and the sandbox are designed to be replaceable: a node can be restarted, drained or rebuilt without losing a chat. Durable state lives in the database and in a small number of volumes.</p>
+  <p>The runtime and the sandbox are replaceable: a node can be restarted, drained or rebuilt without losing a chat. Durable state lives in the database and a few volumes.</p>
   <table class="compact">
     <tr><th style="width:26%">Kept in</th><th>What</th></tr>
     <tr><td>MongoDB</td><td>Every record of the platform: organizations, people, groups and policies; agents' approvals, grants and records; chats, messages, events and approvals; credentials (sealed); schedules, webhooks, notifications and the audit trail — 45 collections, all reached through org-scoped stores in the Data Core.</td></tr>

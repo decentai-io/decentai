@@ -3,10 +3,10 @@
   <div class="chapter-head">
     <div class="kicker">Chapter 3</div>
     <h2>Anatomy of a turn</h2>
-    <p class="lead">One chat message, followed across every process boundary it crosses: the person's socket, the Data Core, an execution node, the model, the gate, a worker in a sandbox, and back. Each hop names the mechanism that carries it and the check that could stop it.</p>
+    <p class="lead">One chat message, followed through every process it crosses, from the person's socket to a worker in a sandbox and back. Each step names what carries it and what could stop it.</p>
   </div>
 
-  <p>A turn is not a request and a response. A chat has one assistant with durable state, and a message is one more event delivered to it. The assistant then advances in <b>beats</b>: one model call, one action, one observation, one save. A turn ends when a beat says it is finished, when the work is blocked on a person, or when the turn budget runs out (<code>max_beats</code>, 20 by default). Figure 3.1 shows a turn with one call that needs approval; the sections follow its step numbers.</p>
+  <p>A turn is not a request and a response. Each chat has one assistant with durable state, and a message is one more event for it. The assistant advances in <b>beats</b>: one model call, one action, one observation, one save. A turn ends when a beat says it is finished, when the work waits on a person, or after 20 beats by default. The sections follow the steps of Figure 3.1.</p>
 
   <figure>
     <svg viewBox="0 0 680 440">
@@ -14,7 +14,7 @@
       <g font-size="10.5" class="b" text-anchor="middle">
         <rect x="5" y="4" width="104" height="26" rx="8" class="person"/><text x="57" y="21">Person · client</text>
         <rect x="118" y="4" width="104" height="26" rx="8" class="platform"/><text x="170" y="21" class="t-on">Data Core</text>
-        <rect x="231" y="4" width="104" height="26" rx="8" class="platform-2"/><text x="283" y="21" class="t-on">AI runtime</text>
+        <rect x="231" y="4" width="104" height="26" rx="8" class="platform-2"/><text x="283" y="21" class="t-on">AI Runtime</text>
         <rect x="344" y="4" width="104" height="26" rx="8" class="model"/><text x="396" y="21">Model</text>
         <rect x="457" y="4" width="104" height="26" rx="8" class="platform-2"/><text x="509" y="21" class="t-on">Gate</text>
         <rect x="570" y="4" width="104" height="26" rx="8" class="agent"/><text x="622" y="21">Sandbox · agent</text>
@@ -70,34 +70,27 @@
         <rect x="110" y="422" width="120" height="12" rx="5" class="step"/><text x="170" y="431.3" font-size="9" style="fill:#14161a">push · email if away</text>
       </g>
     </svg>
-    <figcaption><b>Figure 3.1 · One turn, one gated call.</b> Green arrows carry the work, the dashed one is the contract read, and ink arrows come from the model or are relayed news. The amber band happens only when the function's level is above the chat's trust level. The Gate lane is the runtime's executor, drawn apart because nothing reaches the sandbox except through it.</figcaption>
+    <figcaption><b>Figure 3.1 · One turn, one gated call.</b> Green arrows carry the work; ink arrows come from the model or relay news. The amber band happens only when the function's level is above the chat's trust level. The Gate is the runtime's executor, drawn apart because nothing reaches the sandbox except through it.</figcaption>
   </figure>
 
   <h3><span class="no">3.1</span> The message enters the Data Core</h3>
-  <p><b>Step 1.</b> The web client keeps one socket per open chat, <code>WS /chats/{chat_id}</code>. A browser cannot set headers on a WebSocket handshake, and a token in the URL ends up in proxy logs, so the client offers its session token as a subprotocol: <code>Sec-WebSocket-Protocol: decentai.bearer, &lt;token&gt;</code>. A browser on the Data Core's own origin may use the session cookie instead, which counts only when the handshake's <code>Origin</code> is one of the app's own addresses (<code>PUBLIC_APP_URL</code>, <code>CORS_ALLOW_ORIGINS</code>). The socket closes with 4401 unless the caller is a person, with 4404 unless the chat is this person's in this organization, and with 4409 when the chat is archived.</p>
-  <p>Socket frames never pass through the <code>/app</code> gateway, so the socket checks each frame's action itself: <code>AI:Chat:Input</code> requires <code>ai:chat:sendmessage</code>. The text may be at most 256 KB, the page's message id at most 128 characters, and the attachments at most 20 file parts. A refusal is an <code>invalid_input</code> event and nothing is stored, so the transcript never holds words the assistant was not given.</p>
+  <p><b>Step 1.</b> The Data Core takes a message only from the chat's own person, with the right permission, within size limits. The web client keeps one WebSocket per open chat. A browser cannot set headers on a WebSocket handshake, and a token in a URL ends up in proxy logs, so the client sends its session token as a subprotocol. The socket closes unless the caller is a person and the chat is theirs, in this organization and not archived.</p>
+  <p>Socket frames bypass the <code>/app</code> gateway, so the socket checks each frame's action itself: <code>AI:Chat:Input</code> requires <code>ai:chat:sendmessage</code>, with at most 256 KB of text and 20 attached files. A refused frame stores nothing, so the transcript never holds words the assistant was not given.</p>
 
   <h3><span class="no">3.2</span> Placement, lease and delegation</h3>
-  <p><b>Step 2.</b> Before forwarding, the Data Core's relay makes sure an execution node holds the chat. A person who stopped all of their work gets <code>work_stopped</code>. Otherwise placement picks the node holding the chat's live lease. Failing that, it picks the organization's own nodes first, then the node that last held the chat, then the least loaded; it never picks another organization's node. The relay then issues two things:</p>
+  <p><b>Step 2.</b> Before forwarding, the Data Core's relay makes sure one execution node holds the chat. Placement keeps the node with the chat's live lease. Failing that, it prefers the organization's own nodes, then the chat's last node, then the least loaded. The relay then issues two things:</p>
   <dl class="spec">
-    <dt>Lease</dt><dd>A record of node, number and expiry. The number rises every time the chat is given to a node anew. Heartbeats renew it every 20 seconds for 60. Every call for the chat carries <code>X-DecentAI-Lease</code>, and the gateway accepts only the live number from its node (otherwise 409 <code>stale_lease</code>), so two nodes can never both act for one chat.</dd>
-    <dt>Delegation</dt><dd>An HS256 token of type <code>RUNTIME</code>, naming a runtime-session record for this person, this chat and this node. It lives one hour and is renewed after 45 minutes by a <code>credential</code> frame. It is accepted only beside that node's own credential (<code>X-DecentAI-Node</code>).</dd>
+    <dt>Lease</dt><dd>Node, number and expiry. Heartbeats renew it every 20 seconds for 60. Every call for the chat carries the number, and the gateway accepts only the live one from its own node, so two nodes never both act for one chat.</dd>
+    <dt>Delegation</dt><dd>A token for one person, one chat and one node. It lives an hour, is renewed after 45 minutes, and counts only beside that node's own credential.</dd>
   </dl>
-  <p>Both travel in a signed <code>attach {chat_id, lease, credential, watched}</code> frame on the link the node dialled (<code>WS /nodes/link</code>); <code>user_message</code> follows. The delegation says <em>who</em>, never <em>what</em>. A node runs agents' code, so it holds nothing that outlives the chat.</p>
+  <p>Both travel in a signed <code>attach</code> frame, followed by the message. The delegation says <em>who</em> is acting, never <em>what</em> they may do. A node runs agents' code, so it holds nothing that outlives the chat.</p>
 
   <h3><span class="no">3.3</span> The session hears the message</h3>
-  <p><b>Step 3.</b> On the node, the session host finds the chat's live session or builds one by hydrating the persisted assistant state. The session then works in a fixed order. It stores the message (<code>AI:Message:Create</code>); a resend with the same <code>client_message_id</code> finds the first copy and stops. It emits <code>message_created</code>, runs the pre-thinking hook, and records the inbox event (<code>AI:Event:Record</code>, which returns a per-chat sequence). Only then does it hand the event to the mind. A process that dies mid-beat loses nothing: the next one replays the inbox from its cursor.</p>
-  <p><b>Step 4.</b> The hook re-reads the chat's <b>contract</b> (<code>AI:Chat:Contract</code>) and the model key (<code>Settings:Llm:Use</code>). The contract is the only message between Data Core and runtime that carries authority. It holds:</p>
-  <ul>
-    <li>the agents: installed ∩ granted ∩ enabled in this chat, each pinned by package digest and manifest hash;</li>
-    <li>the function grants and the trust level (0–3, standard 1);</li>
-    <li>the model, the turn budget, skills, routing and safety lists;</li>
-    <li>the organization's own rules and the person's MCP servers.</li>
-  </ul>
-  <p>Because the contract is re-read every turn, a grant withdrawn this morning is gone on the next message, and nothing has to be pushed to the runtime. An agent the node lacks is fetched by digest, and the audience sees <code>agent_status</code> while it installs.</p>
+  <p><b>Step 3.</b> On the node, a message is stored before the assistant sees it. The session, live or rebuilt from saved state, stores the message (<code>AI:Message:Create</code>); a resend finds the first copy and stops. The session then emits <code>message_created</code>, runs the pre-thinking hook and records the inbox event. A process that dies mid-beat loses nothing: the next one replays the inbox.</p>
+  <p><b>Step 4.</b> The hook re-reads the chat's <b>contract</b> (<code>AI:Chat:Contract</code>), the only message from the Data Core to the runtime that carries authority. It names the agents installed, granted and enabled in this chat, each pinned by package digest and manifest hash. It also carries the function grants, the trust level, the model, the turn budget, the skills, the organization's rules and the person's MCP servers. Because it is re-read every turn, a grant withdrawn this morning is gone by the next message, with nothing pushed to the runtime. An agent the node lacks is fetched by digest while the chat's open pages (its <b>audience</b>) see <code>agent_status</code>.</p>
 
   <h3><span class="no">3.4</span> What the model is shown</h3>
-  <p><b>Step 5.</b> The runtime renders the system frame with the parts that change least often first, because a provider's prompt cache keeps the front of a request (Figure 3.2). The tools are the 20 action tools plus one tool per function of each <em>opened</em> agent. Each function tool carries the manifest's input schema whole, and the total is capped at 128, the most OpenAI-compatible providers accept. The schema steers the model; the executor still validates every input.</p>
+  <p><b>Step 5.</b> The runtime puts what changes least at the front of each request, because a provider's prompt cache reuses the front (Figure 3.2). The tools are the 20 action tools plus one per function of each agent the model has <em>opened</em>, at most 128 in all, the most OpenAI-compatible providers accept. Each carries the manifest's input schema, which steers the model; the executor still validates every input.</p>
 
   <figure>
     <svg viewBox="0 0 680 196">
@@ -120,58 +113,56 @@
         <path d="M562 170H574" class="link"/><text x="578" y="173">cache_transient</text>
       </g>
     </svg>
-    <figcaption><b>Figure 3.2 · The request one beat sends</b>, front to end. Hints mark the end of the stable front, the last transcript message and the transient plan. The Anthropic, Vertex and Bedrock connectors turn the hints into cache marks; OpenAI and Gemini cache repeated prefixes on their own. No hint is ever sent to a provider as such.</figcaption>
+    <figcaption><b>Figure 3.2 · The request one beat sends</b>, front to end. The Anthropic, Vertex and Bedrock connectors turn the cache hints into cache marks; OpenAI and Gemini cache repeated prefixes on their own.</figcaption>
   </figure>
 
-  <p>Up to the routing threshold (15 agents by default), AGENTS lists every agent in one line. Past it, the router embeds the person's words with the organization's embedding model and keeps 50 candidates. It may rerank them with the chat's model, and it lists 15 plus those already open. A skill's body is loaded only on <code>use_skill</code>. Long transcripts are folded into the summary, and folded lines stay searchable through <code>recall</code>.</p>
+  <p>With up to 15 agents, AGENTS lists them all. Beyond that, a router embeds the person's words, keeps 50 candidates, may rerank them with the chat's model, and lists 15 plus any already open. A skill's body loads only on <code>use_skill</code>. Long transcripts are folded into the summary, and folded lines stay searchable through <code>recall</code>.</p>
 
   <h3><span class="no">3.5</span> One model call, one action</h3>
-  <p><b>Step 6.</b> Each beat makes one model call and takes exactly one action back, as a tool call or as strict JSON text. A call to a function's own tool is rewritten to <code>invoke {function, inputs}</code> before anything reads it, so gate, trace and evidence share one vocabulary. A reply that does not parse is bounced, and one cut off at the output cap is never acted on. The model key is held in memory only while used and never reaches agent code.</p>
+  <p><b>Step 6.</b> Each beat makes one model call and takes back exactly one action, as a tool call or as strict JSON. A call to a function's own tool is rewritten to <code>invoke {function, inputs}</code> before anything reads it, so the gate, the trace and the evidence share one vocabulary. A reply that does not parse is sent back; one cut off at the output limit is never acted on.</p>
 
   <h3><span class="no">3.6</span> The gate</h3>
-  <p><b>Step 7.</b> Every proposal, foreground or background, passes the executor's gates. They run in a fixed order, and none of them reads anything the model wrote around the call:</p>
+  <p><b>Step 7.</b> Every proposed call passes the executor's gates in a fixed order. None reads what the model wrote around the call. They check that:</p>
   <ol>
     <li>the function is declared in the approved manifest;</li>
-    <li>the chat's grants reach it; absence is refusal;</li>
+    <li>the chat's grants reach it;</li>
     <li>reference inputs resolve to stored results, and declared defaults are applied;</li>
-    <li>the inputs validate against the manifest's schema (NaN and Infinity are refused);</li>
-    <li>the scopes the call acts on are named as single values and fall within the grant's constraints;</li>
-    <li>the function's <code>permission_level</code> is at or below the chat's trust level.</li>
+    <li>the inputs validate against the manifest's schema;</li>
+    <li>each scope the call acts on is a single named value within the grant's constraints;</li>
+    <li>the function's permission level is at or below the chat's trust level.</li>
   </ol>
-  <p><b>Step 8.</b> When the level is higher, the call is parked durably before its card goes out. <code>AI:Approval:Open</code> records the agent, function, resolved inputs, both levels, the job and the <b>action hash</b>: SHA-256 over compact, key-sorted JSON of <code>{agent_id, function, inputs}</code>. The page hears <code>approval_requested</code>. Only a person decides: <code>AI:Approval:Decide</code> is outside the delegation's fence, and the Data Core refuses it from a runtime with "A runtime never decides its own escalation." The decision is recorded first, with <code>approval.resolved</code> on the audit trail. Then the relay sends <code>approval_decided</code> carrying the hash the Data Core stored.</p>
-  <p>Before a yes is delivered, the contract is read again. A grant narrowed while the card waited therefore refuses the call. The level is not judged again, since the yes was to the call as shown. A call rebuilt after a restart must hash to the stored value, or it stops: "Stored action does not match its approval; execution blocked." A Deny also refuses the hosts the call named to every function of that agent for the rest of the request, so a function that needs no card cannot make the visit instead.</p>
+  <p><b>Step 8.</b> When the level is higher, the call is parked durably before its card goes out. <code>AI:Approval:Open</code> records the call with its <b>action hash</b>: SHA-256 over key-sorted JSON of <code>{agent_id, function, inputs}</code>. Only a person decides: <code>AI:Approval:Decide</code> is outside the 41 actions a delegation may call (§4.3). The decision is recorded before the relay sends it on with the stored hash.</p>
+  <p>Before a yes is delivered, the contract is read again, so a grant narrowed while the card waited refuses the call. A call rebuilt after a restart must hash to the stored value, or it is blocked. A Deny also bars the hosts the call named from every function of that agent for the rest of the request, so a function that needs no card cannot make the same visit.</p>
   <div class="inv"><span class="id">I-3.1</span><p>No call runs above the chat's trust level unless a person approved that exact <code>(agent, function, inputs)</code> triple. Its hash is recomputed before dispatch, and the grants are re-read after the approval.</p></div>
 
   <h3><span class="no">3.7</span> Dispatch to a worker</h3>
-  <p><b>Step 9.</b> Past the gates, the executor builds a <b>call object</b>, the invocation's whole authority. It holds access to exactly the resource operations the function declared, and to a model only if the manifest says <code>llm: true</code>. The timeout is the manifest's <code>timeout_seconds</code>, or 60 seconds. The worker pool finds or starts the agent's worker in an Execution Sandbox that has registered and proved its locks; the runtime reaches it over TCP in TLS, authenticated by the node secret. The spawner starts the worker in the agent's own environment, as the agent's own user, fenced into its own files, with the egress proxy as its only route out. The call is one line of JSON (at most 2 MiB): <code>invoke {call_id, function, inputs, conversation}</code>. The worker holds no credentials. Each resource it needs is a request back naming its <code>call_id</code>, refused unless the function declared it. The host decides; the worker can only ask.</p>
+  <p><b>Step 9.</b> The worker that runs the agent's code holds no credentials. Past the gates, the executor builds a <b>call object</b>, the invocation's whole authority: exactly the resource operations the function declared, and a model only if the manifest says <code>llm: true</code>. The timeout is the manifest's, or 60 seconds.</p>
+  <p>The worker pool finds or starts the agent's worker in an Execution Sandbox that has proved its isolation locks. The worker runs as the agent's own user, confined to its own files, with the egress proxy as its only route out. The call is one line of JSON: <code>invoke {call_id, function, inputs, conversation}</code>. Each resource the worker needs is a request back naming its <code>call_id</code>, refused unless the function declared it.</p>
 
   <h3><span class="no">3.8</span> Result, evidence and activity</h3>
-  <p><b>Step 10.</b> The worker's <code>{result, status}</code> is a claim, not a fact. The host strips the keys only the platform writes (<code>storage_ref</code>, <code>displays</code>, <code>denied</code>, <code>not_permitted</code>). It validates a success against the output schema, stores it (<code>AI:Storage:Create</code>), and writes one <code>execution</code> line to the audit trail (<code>AI:Audit:Record</code>). Every call gets that line, whatever the outcome. Meanwhile the audience hears <code>activity</code> events (<code>call_started</code>, <code>agent_progress</code>, <code>call_finished</code>) sharing one <code>call_id</code>.</p>
-  <p>The mind sees the result whole up to about 16,000 characters, or as a 12,000-character preview with its <code>storage_ref</code>. <b>Evidence</b> comes from the trace, never from prose. A table or chart appears only when <code>say.show</code> names a successful traced call, and its rows are rendered from storage. Writes (level &gt; 0) ride the message as <code>success</code> parts.</p>
+  <p><b>Step 10.</b> The worker's <code>{result, status}</code> is a claim, not a fact. The host strips the keys only the platform may write, validates a success against the output schema, and stores it (<code>AI:Storage:Create</code>). Every call, whatever its outcome, gets one line on the audit trail (<code>AI:Audit:Record</code>), and the audience hears its progress as <code>activity</code> events.</p>
+  <p>The model sees a result whole up to about 16,000 characters, or else a 12,000-character preview with its <code>storage_ref</code>. <b>Evidence</b> comes from the trace, never from prose: a table or chart appears only when <code>say.show</code> names a successful traced call, and its rows are rendered from storage. Writes (level above 0) ride on the message as <code>success</code> parts.</p>
 
   <h3><span class="no">3.9</span> The answer, and the person who is not looking</h3>
-  <p><b>Step 11.</b> The next beat usually ends in <code>say {text, final: true}</code>. The runtime stores the message (<code>AI:Message:Create</code>, whose parts the Data Core validates) and emits <code>message_created</code>. The emission goes first to the durable log (<code>AI:Event:Append</code>), which assigns its <code>seq</code>, then up the link, and the relay hands it to the page as <code>AI:Chat:Event</code>. Answers are not streamed token by token: a turn streams as events from <code>working</code> to <code>idle</code>, the frame that ends a wait. A reconnecting page reads <code>hello</code> for the present and replays the rest with <code>AI:Event:List</code>.</p>
-  <p><b>Step 12.</b> When a card opens or the assistant answers while no browser of the person has the chat open, the Data Core's notifier pushes to every subscribed device: Web Push with the deployment's VAPID pair for browsers, Expo for phones. It emails only if no device was reached, at most once per chat every ten minutes, and pushes answers at most every two minutes. The notification names the agent and step as the manifest does. Where the person or the organization asks, it says only that something happened.</p>
+  <p><b>Step 11.</b> The next beat usually ends with <code>say {text, final: true}</code>. The runtime stores the message and emits <code>message_created</code>, first to the durable log, then to the page. Answers are not streamed token by token; a turn streams as events, from <code>working</code> to <code>idle</code>. A reconnecting page replays what it missed from the log.</p>
+  <p><b>Step 12.</b> When a card opens or the assistant answers while none of the person's browsers has the chat open, the Data Core pushes to every subscribed device. It emails only if no device was reached, at most once per chat every ten minutes. A notification names the agent and step, or only that something happened if the person or organization prefers.</p>
   <div class="inv"><span class="id">I-3.2</span><p>Every event an audience hears that has a replay was recorded before it was sent. A socket is an audience, not a lifeline: detaching stops the live relay, never the work.</p></div>
 
   <h4>Events the client receives</h4>
-  <p>Each arrives as <code>{"endpoint": "AI:Chat:Event", "data": {"event": …}}</code>. The list is defined once in the chat contract, which both the runtime and the Data Core use, and a test fails when the page's copy disagrees with it.</p>
+  <p>The list is defined once, in a protocol module the runtime and the Data Core share.</p>
   <table class="compact">
     <tr><th style="width:27%">Event</th><th>Meaning</th><th style="width:16%">Recorded</th></tr>
-    <tr><td><code>hello</code></td><td>on attach: protocol 2, <code>working</code>, <code>sleeping</code>, active jobs, pending cards, plan</td><td>socket only</td></tr>
+    <tr><td><code>hello</code></td><td>on attach: the present state, active jobs, pending cards, plan</td><td>socket only</td></tr>
     <tr><td><code>working</code> · <code>idle</code></td><td>a cycle starts advancing · comes to rest</td><td>yes</td></tr>
     <tr><td><code>message_created</code></td><td>a stored message: the person's echo, the assistant's answer, an agent's post</td><td>yes</td></tr>
-    <tr><td><code>activity</code></td><td><code>call_started</code>, <code>call_finished</code>, <code>agent_progress</code>, <code>job_started</code>, <code>job_finished</code>, <code>helper_spawned</code>, <code>helper_said</code></td><td>yes</td></tr>
+    <tr><td><code>activity</code></td><td>calls, jobs and helpers starting, progressing and finishing</td><td>yes</td></tr>
     <tr><td><code>plan_updated</code> · <code>memory_saved</code></td><td>the work items changed · a fact was remembered</td><td>yes</td></tr>
     <tr><td><code>approval_requested</code></td><td>a call waits for the person: agent, function, level, inputs</td><td>yes</td></tr>
-    <tr><td><code>question_asked</code> · <code>question_closed</code></td><td>a card asks a question (words, files, code, a login, a skill) · it ended: <code>answered</code> or <code>expired</code></td><td>yes</td></tr>
+    <tr><td><code>question_asked</code> · <code>question_closed</code></td><td>a card asks for words, files, code, a login or a skill · it was answered or expired</td><td>yes</td></tr>
     <tr><td><code>schedule_set</code> · <code>schedule_removed</code> · <code>sleeping</code></td><td>the clock changed; the assistant paused until a time</td><td>yes</td></tr>
-    <tr><td><code>stopped</code></td><td>the kill switch ended the work: counts of <code>jobs</code>, <code>children</code>, <code>cards</code></td><td>yes</td></tr>
-    <tr><td><code>agent_status</code></td><td>an agent being pulled or installed: <code>pulling</code>, <code>installing</code>, <code>ready</code>, <code>failed</code></td><td>socket only</td></tr>
-    <tr><td><code>screen_frame</code> · <code>screen_closed</code></td><td>a picture of a browser an agent drives (at most 300 KB) · it closed</td><td>socket only</td></tr>
-    <tr><td><code>chat_titled</code> · <code>screen_unavailable</code></td><td>delivered to an open chat, never recorded</td><td>no</td></tr>
-    <tr><td><code>error</code></td><td>the door could not take a frame; the socket lives on</td><td>socket only</td></tr>
-    <tr><td><code>runtime_unavailable</code> · <code>runtime_disconnected</code> · <code>invalid_input</code> · <code>work_stopped</code></td><td>added by the Data Core's relay: no node may serve the chat, the node went, the input was refused, the person stopped everything</td><td>relay</td></tr>
+    <tr><td><code>stopped</code></td><td>the kill switch ended the work</td><td>yes</td></tr>
+    <tr><td><code>agent_status</code> · <code>screen_frame</code></td><td>an agent is being installed · a picture of a browser an agent drives</td><td>socket only</td></tr>
+    <tr><td><code>runtime_unavailable</code> · <code>invalid_input</code> · <code>work_stopped</code></td><td>from the relay: no node may serve the chat, the input was refused, the person stopped everything</td><td>relay</td></tr>
   </table>
 </section>
 
@@ -180,25 +171,25 @@
   <div class="chapter-head">
     <div class="kicker">Chapter 4</div>
     <h2>Identity, tenancy and authorization</h2>
-    <p class="lead">An identity is a row, never a bundle of permissions. What the row may do is found by walking a chain the organization keeps, on every request, and nothing is allowed unless something in that chain says so.</p>
+    <p class="lead">An identity is a row, never a bundle of permissions. What the row may do is found on every request, by walking a chain the organization keeps.</p>
   </div>
 
   <h3><span class="no">4.1</span> Organizations, users and groups</h3>
-  <p>The <b>organization</b> is the top-level identity and the isolation boundary. Every user, group, role, policy, invitation, session and stored resource carries one <code>org_id</code>, and authorization never reads the mutable organization name. A <b>user</b> belongs to one organization. Their email is the login and is unique deployment-wide, so "who is this" never has two answers. A user's access is exactly their group membership. There is no administrator flag and no permission on a user directly, so "why may this person do that" is always a path that can be followed and changed.</p>
-  <p>Each organization has its own built-in <b>Everyone</b> group, which cannot be renamed or deleted. Its membership is implicit: the policy engine adds it whenever it resolves a user, so nobody can be missing from it. Standing an organization up seeds three chains:</p>
+  <p>The <b>organization</b> is the boundary between tenants. Every row that belongs to it carries its <code>org_id</code>; authorization never reads the organization's name, which can change. A <b>user</b> belongs to one organization, and their email is unique across the deployment. A user's access is exactly their group membership. There is no administrator flag and no permission on a user directly, so "why may this person do that" is always a path that can be followed and changed.</p>
+  <p>Each organization has a built-in <b>Everyone</b> group that every user is in implicitly. A new organization is seeded with three chains:</p>
   <table>
     <tr><th style="width:20%">Policy</th><th style="width:17%">Role</th><th style="width:20%">Group</th><th>What it carries</th></tr>
     <tr><td><code>FullAccess</code></td><td>Administrator</td><td>Administrators</td><td>the wildcard, including every escape grant</td></tr>
     <tr><td><code>BaseAccess</code></td><td>User</td><td>Everyone</td><td>the 69 baseline actions: one's own profile, memories, API keys, schedules, MCP servers, notifications. Chatting is not among them.</td></tr>
-    <tr><td><code>MemberAccess</code></td><td>Member</td><td>Members</td><td>37 everyday actions: <code>ai:chat:*</code> and the rest of one's own chats, one's own files, records and credentials, and seeing the agents one was given</td></tr>
+    <tr><td><code>MemberAccess</code></td><td>Member</td><td>Members</td><td>37 everyday actions: <code>ai:chat:*</code> and the rest of one's own chats, files, records and credentials, and seeing the agents one was given</td></tr>
   </table>
-  <p>The baseline is versioned. A new baseline action is offered to each policy once, because re-seeding on every restart would undo an administrator's deliberate removal.</p>
+  <p>The baseline is versioned: a new baseline action is offered to each policy once, so a restart never undoes an administrator's deliberate removal.</p>
 
   <h3><span class="no">4.2</span> Roles, policies and action strings</h3>
-  <p>A <b>role</b> bundles policies and reaches a person only through a group. A <b>policy</b> holds at most 50 statements of at most 100 actions each:</p>
+  <p>A <b>role</b> bundles policies and reaches a person only through a group. A <b>policy</b> is a list of statements:</p>
   <pre class="code">{<span class="s">"effect"</span>: <span class="s">"Allow"</span>, <span class="s">"actions"</span>: [<span class="s">"agents:agent:install"</span>, <span class="s">"iam:group:*"</span>], <span class="s">"resources"</span>: [<span class="s">"*"</span>]}</pre>
-  <p><b>An action is an endpoint.</b> <code>POST /app {"endpoint": "Agents:Agent:Install"}</code> is checked as <code>agents:agent:install</code>, so there is no second permission vocabulary to keep in step with the API. The vocabulary is the <b>action catalog</b>: 224 actions in 43 services, 69 of them baseline. It is part of the code under review rather than a file a deployment can edit, because every entry is a security boundary. The policy editor is drawn from the catalog. Each saved pattern is validated against it: an unknown action, or a wildcard whose text before the <code>*</code> begins no real action, is refused. <code>resources</code> must be <code>["*"]</code>; who sees an individual document is a question for sharing (§4.7).</p>
-  <p>An installed agent's functions are deliberately <em>not</em> in the catalog. They come and go with manifests, and authored policies naming them would rot. They are granted by <b>agent grants</b> instead: allow-only rows keyed by the agent, each with an owner map of groups and users, a function list or <code>*</code>, and optional constraints. These are served as the contract's <code>grants</code>. A bare <code>*</code> in a policy grants no agent function at all.</p>
+  <p><b>An action is an endpoint.</b> <code>POST /app {"endpoint": "Agents:Agent:Install"}</code> is checked as <code>agents:agent:install</code>, so there is no second permission vocabulary to keep in step with the API. The vocabulary is the <b>action catalog</b>: 224 actions in 43 services. It is part of the reviewed code, not a file a deployment can edit, because every entry is a security boundary, and a pattern that matches no real action is refused. Resources are always <code>"*"</code>; who sees an individual document is a question for sharing (§4.7).</p>
+  <p>An installed agent's functions are deliberately <em>not</em> in the catalog: they come and go with manifests, and policies naming them would go stale. They are granted by <b>agent grants</b> instead: allow-only rows keyed by the agent, each naming groups and users, functions or <code>*</code>, and optional constraints. A bare <code>*</code> in a policy grants no agent function.</p>
 
   <figure>
     <svg viewBox="0 0 680 236">
@@ -249,15 +240,15 @@
       </g>
       <path d="M288 202H312" class="flow" marker-end="url(#m-seal)"/><path d="M492 202H516" class="flow" marker-end="url(#m-seal)"/>
     </svg>
-    <figcaption><b>Figure 4.1 · How a grant reaches a person.</b> Top: the IAM chain, walked on every request, which Everyone joins implicitly. Only the Finance path matches <code>agents:agent:install</code>, and a matching Deny anywhere in the chain would override it. Bottom: calling an installed agent's functions is a separate, allow-only grant naming groups or people, which reaches the gate only through the chat's contract.</figcaption>
+    <figcaption><b>Figure 4.1 · How a grant reaches a person.</b> Top: the IAM chain, walked on every request. Only the Finance path allows <code>agents:agent:install</code>; a matching Deny anywhere in the chain would override it. Bottom: an agent's functions need a separate, allow-only grant, which reaches the gate only through the chat's contract.</figcaption>
   </figure>
 
   <h3><span class="no">4.3</span> One decision, in one place</h3>
-  <p>Routes authenticate; the gateway's router authorizes, once for every endpoint, and controllers hold no authorization code. The router lowercases the name and refuses one starting with an underscore. It then asks the access controller, and only after that requires the action to be in the catalog, so a wildcard cannot reach a helper a controller happens to expose (Figure 4.2):</p>
+  <p>Every endpoint is authorized once, in the gateway's router; controllers hold no authorization code. The router asks the access controller, then also requires the action to be in the catalog, so a wildcard cannot reach a helper a controller happens to expose. The decision depends on the caller (Figure 4.2):</p>
   <ul>
-    <li>A <b>node</b> may call the three package-door actions and nothing else; there is no person whose policy could apply.</li>
-    <li>A <b>runtime</b> delegation is first held to the delegation's fixed list of 41 action patterns, before its person's policy is read. Even an administrator's delegation therefore cannot reach identity, account settings or approval decisions. The Data Core then checks that each chat-bound call names the delegation's own chat.</li>
-    <li>For everyone, the policy engine takes every statement reachable through the user's groups, Everyone included. A matching <code>Deny</code> refuses at once; otherwise a matching <code>Allow</code> permits; no match refuses. Matching is case-exact and identical on every operating system.</li>
+    <li>A <b>node</b> may call the three package-door actions and nothing else.</li>
+    <li>A <b>runtime</b> delegation is first held to a fixed list of 41 action patterns, so even an administrator's delegation cannot reach identity, account settings or approval decisions. Each chat-bound call must also name the delegation's own chat.</li>
+    <li>For the person, the policy engine gathers every statement reachable through their groups. A matching <code>Deny</code> refuses; otherwise a matching <code>Allow</code> permits; no match refuses.</li>
   </ul>
 
   <figure>
@@ -280,58 +271,56 @@
         <rect x="584" y="96" width="92" height="24" rx="12" class="no"/><text x="630" y="112" class="t-no">404 · 403 · 409</text>
       </g>
     </svg>
-    <figcaption><b>Figure 4.2 · The order of the checks on <code>POST /app</code>.</b> The first check that fails is the answer. The controller's checks concern a record (is this chat the delegation's, may this person see or change this document); whether the caller may perform the action at all was settled before the controller is reached.</figcaption>
+    <figcaption><b>Figure 4.2 · The order of the checks on <code>POST /app</code>.</b> The first check that fails is the answer. The controller checks only the record: is this chat the delegation's, may this person see or change this document.</figcaption>
   </figure>
 
-  <p>Resolution is cached per process for 60 seconds, but every write that could change a decision invalidates the cache before and after the write, and a resolution that began before an invalidation is not kept. A revocation made through the application therefore counts from the next request. One made by another process, from the command line, takes effect within the minute.</p>
+  <p>Each process caches resolution for 60 seconds, but every write that could change a decision clears the cache. A revocation made through the application therefore counts from the next request; one made from the command line, within the minute.</p>
 
   <h3><span class="no">4.4</span> Tokens and sessions</h3>
-  <p>A session token is a pointer, not a container. Signing in writes a session row and returns an HS256 token that <em>names</em> it. Its claims find the row and decide nothing. Every request resolves session and user again, from the database or from a copy kept at most a minute and dropped on change, so signing out, disabling and deleting take effect at once. Sessions last 7 days, or 90 days when the person asked to stay signed in.</p>
+  <p>A session token is a pointer to a row, not a container of rights. Signing in writes a session row and returns a signed token that <em>names</em> it. Every request resolves the session and the user again, so signing out, disabling and deleting take effect at once. Sessions last 7 days, or 90 when the person asks to stay signed in.</p>
   <table class="compact">
     <tr><th style="width:21%">Credential</th><th style="width:31%">Presented as</th><th>Notes</th></tr>
-    <tr><td>Browser session</td><td><code>access_token</code> cookie</td><td>for a browser on the Data Core's own origin; accepted only from the app's own origins, because the browser sends the cookie to every port of a host</td></tr>
-    <tr><td>Web client session</td><td><code>Authorization: Bearer …</code>, and on the chat socket the subprotocol <code>decentai.bearer</code></td><td>signing in with <code>"client": "web"</code> returns <code>access_token</code> and <code>expires_at</code> in the body</td></tr>
-    <tr><td>Native app session</td><td><code>Authorization: Bearer …</code></td><td><code>"client": "native"</code>; kept in the device's store; may list API keys but not make or revoke them</td></tr>
-    <tr><td>API key</td><td><code>Bearer dk_…</code></td><td>the person themselves, looked up on every call and never cached; only the hash is stored; 20 per person; made and revoked only from a browser session, so a leaked key cannot make itself permanent</td></tr>
-    <tr><td>Runtime delegation</td><td><code>Bearer</code> + <code>X-DecentAI-Node</code> + <code>X-DecentAI-Lease</code></td><td>one person, one chat, one node; one hour; held to the 41 runtime actions; survives sign-out (a scheduled chat runs while its person is away), but not disabling or deleting the person</td></tr>
-    <tr><td>Node credential</td><td><code>Bearer</code> on <code>WS /nodes/link</code></td><td>signed by a registered authority's private key (RS256, ES256, EdDSA); minutes long; opens only the package door</td></tr>
+    <tr><td>Browser session</td><td><code>access_token</code> cookie</td><td>accepted only with the app's own <code>Origin</code>, because a browser sends a host's cookie to every port on it</td></tr>
+    <tr><td>Web or app session</td><td><code>Authorization: Bearer …</code>; on the chat socket, the subprotocol</td><td>returned in the body at sign-in; a native app's session may list API keys but not make or revoke them</td></tr>
+    <tr><td>API key</td><td><code>Bearer dk_…</code></td><td>acts as the person; only its hash is stored; made and revoked only from a browser session, so a leaked key cannot make itself permanent</td></tr>
+    <tr><td>Runtime delegation</td><td><code>Bearer</code> + node and lease headers</td><td>one person, chat and node, for an hour; held to the 41 runtime actions; survives sign-out, so a scheduled chat runs while its person is away, but not disabling or deleting</td></tr>
+    <tr><td>Node credential</td><td><code>Bearer</code> on the node link</td><td>signed by a registered authority's private key; valid for minutes; opens only the package door</td></tr>
   </table>
-  <p>Passwords must be 10 to 256 characters with a letter and a digit. They are hashed with bcrypt over a SHA-256 pre-digest, so bcrypt's 72-byte limit never truncates a passphrase. Sign-ins are throttled in a 15-minute window: 5 attempts per account and 20 per address. The throttle is checked before the password, so a locked window answers a right password exactly as it answers a wrong one. A reset link lives an hour, works once and is stored only as a fingerprint. Using it ends every session and API key the person had.</p>
+  <p>Passwords are hashed with bcrypt over a SHA-256 pre-digest, so bcrypt's 72-byte limit never truncates a passphrase. Sign-ins are throttled to 5 attempts per account and 20 per address in 15 minutes, checked before the password, so a locked window answers a right password exactly as a wrong one. Using a reset link ends every session and API key the person had.</p>
   <div class="inv"><span class="id">I-4.1</span><p>No authority is copied into a token. Every credential names a row or a principal, and what that principal may do is read from the live chain, or for a chat from the live contract, at the moment it acts.</p></div>
 
   <h3><span class="no">4.5</span> First run, setup code and invitations</h3>
-  <p>Nobody signs themselves into an existing organization. An organization is created in one of three ways, all through the same provisioner.</p>
+  <p>Nobody signs themselves into an existing organization. An organization is created in one of three ways:</p>
   <ul>
-    <li><b>First run.</b> While the deployment has no users, <code>POST /auth/setup</code> (<code>org_name</code>, <code>name</code>, <code>email</code>, <code>password</code>) creates the organization with that person as administrator. A single first-run claim makes two simultaneous submissions produce one administrator; once anybody exists, the call answers 409. Where the address is reachable from other computers, setup also asks for a <b>setup code</b>. The deployment generates one and writes it to its log when <code>SETUP_CODE</code> is empty, uses the operator's value when one is set, and asks for none when it is <code>none</code>.</li>
+    <li><b>First run.</b> While the deployment has no users, <code>POST /auth/setup</code> creates the organization with the caller as administrator; two simultaneous submissions still produce one. Where the address is reachable from other computers, setup also asks for a <b>setup code</b>, which the deployment writes to its log unless the operator sets one or turns it off.</li>
     <li><b>On the machine.</b> The operator's bootstrap command creates the organization and invites its first administrator.</li>
-    <li><b>Sign-up.</b> Only with <code>ORG_SIGNUP=open</code> and mail configured. Nothing is created until the emailed link is followed, and the answer is the same whether or not the address has an account.</li>
+    <li><b>Sign-up.</b> Only when the operator opens it and mail is configured. Nothing is created until the emailed link is followed.</li>
   </ul>
-  <p><b>Invitations</b> store only the token's hash, one live per address, valid for seven days. The account's address and organization come from the invitation, never from the request, because the link proves one mailbox and nothing more. The invitation's groups are given only if the inviter could still give them at acceptance. Without mail, an administrator adds the person (<code>iam:user:create</code>) with a temporary password. Signing in with it answers <code>change_required</code> and opens no session until the person chooses their own.</p>
+  <p>An <b>invitation</b> stores only its token's hash and lasts seven days. The account's address and organization come from the invitation, never from the request, because the link proves one mailbox and nothing more. Its groups are given only if the inviter could still give them at acceptance.</p>
 
   <h3><span class="no">4.6</span> Two invariants</h3>
-  <div class="inv"><span class="id">I-4.2</span><p>An organization cannot lock itself out. Every change to the access chain checks, before it commits, that at least one <em>active</em> user of <em>this</em> organization still holds <code>iam:user:set_groups</code>, the recovery capability. If none would, the change undoes itself and is refused.</p></div>
-  <div class="inv"><span class="id">I-4.3</span><p>Nobody grants what they do not hold. An author may only <em>allow</em> actions they hold themselves. This is checked when a policy is written and again at every attachment: a policy to a role, a role to a group, a group to a user. Escalation therefore cannot be laundered through an attachment. A <code>Deny</code> can only narrow access, so anyone may write one.</p></div>
+  <div class="inv"><span class="id">I-4.2</span><p>An organization cannot lock itself out. Before any change to the access chain commits, it is checked that at least one <em>active</em> user of <em>this</em> organization still holds <code>iam:user:set_groups</code>, the recovery capability. If none would, the change is undone and refused.</p></div>
+  <div class="inv"><span class="id">I-4.3</span><p>Nobody grants what they do not hold. An author may <em>allow</em> only actions they hold themselves. This is checked when a policy is written and again at every attachment of a policy to a role, a role to a group or a group to a user, so escalation cannot be laundered through one. A <code>Deny</code> only narrows access, so anyone may write one.</p></div>
 
   <h3><span class="no">4.7</span> Ownership and sharing</h3>
-  <p><b>Who may see</b> a document is its owner map, a set of groups and a set of users. <b>Who may change</b> it is its steward, the person recorded as its creator. One sharing engine serves every shareable type, because two copies would drift and the next shareable type would be the one that leaks. Stores filter every read through it, organization pin first, then owner map, so a document out of reach does not exist as far as the API can tell. Everything starts private. A writer shares only into groups they sit in and with their peers, and an id from another organization is refused rather than stored. Seeing is never authority: a colleague can use a shared credential but cannot edit or delete it.</p>
+  <p>Seeing a document and changing it are separate rights. <b>Who may see</b> it is its owner map, a set of groups and users. <b>Who may change</b> it is its steward, the person recorded as its creator. One sharing engine serves every shareable type, because two copies would drift. Every read is filtered through it, so a document out of reach does not exist as far as the API can tell. Everything starts private, and a writer shares only into groups they belong to and with their peers. Seeing is never authority: a colleague can use a shared credential but cannot edit or delete it.</p>
   <table class="compact">
     <tr><th style="width:27%">Domain</th><th style="width:22%">Sharing</th><th>Steward and escape grant</th></tr>
-    <tr><td>Secrets, files, records, skills</td><td>personal: organization-wide only with the escape grant</td><td>the creator; <code>…:set_owner_any</code> per domain, reaching only documents its holder can already see</td></tr>
-    <tr><td>LLM connections, agent sources</td><td>infrastructure: Everyone open to the creator, who always stays in the map</td><td><code>settings:llm:manage_any</code>, <code>agents:agent:source_manage_any</code>, reaching every one in the organization</td></tr>
+    <tr><td>Secrets, files, records, skills</td><td>personal; organization-wide only with the escape grant</td><td>the creator; <code>…:set_owner_any</code> per domain, reaching only documents its holder can already see</td></tr>
+    <tr><td>LLM connections, agent sources</td><td>infrastructure: the creator may share with Everyone, and always stays in the map</td><td><code>settings:llm:manage_any</code>, <code>agents:agent:source_manage_any</code>, reaching every one in the organization</td></tr>
     <tr><td>Chats, memories, MCP servers, API keys</td><td>never shared</td><td>the person only; no escape grant</td></tr>
     <tr><td>Installed agents, agent and credential grants</td><td>the organization's</td><td>whoever holds the action (<code>agents:agent:delete</code>, <code>…:grant</code>)</td></tr>
   </table>
-  <p>An agent's use of a credential is a grant, not a share. It is a revocable record per agent and slot that rides on visibility, and it checks a connected account's provider and consented scopes. Stewardship is transferable (<code>secrets:secret:transfer</code> and its siblings). The new steward takes the old one's place in the owner map, so every viewer keeps seeing the document.</p>
+  <p>An agent's use of a credential is a grant, not a share: a revocable record per agent and slot. Stewardship can be transferred; the new steward takes the old one's place in the owner map, so every viewer keeps seeing the document.</p>
 
   <h3><span class="no">4.8</span> Hand-over, and isolation between tenants</h3>
-  <p>Deleting a user is a hand-over. <code>IAM:User:Leaving</code> previews what the person owns, by kind. <code>IAM:User:Delete</code> names a successor, an active member who is the deleting administrator by default. In one pass it:</p>
+  <p>Deleting a user hands over what others rely on and removes what was only theirs. The deletion names a successor, by default the deleting administrator, and in one pass:</p>
   <ul>
     <li>drops sessions, keys, invitations and delegations;</li>
     <li>deletes chats with everything under them, memories, MCP servers and webhooks;</li>
     <li>passes stewardship of secrets, records, files, skills, model connections and agent sources to the successor, with every share intact;</li>
-    <li>takes the person out of agent grants;</li>
-    <li>keeps the audit trail as recorded.</li>
+    <li>takes the person out of agent grants, and keeps the audit trail as recorded.</li>
   </ul>
-  <p>Disabling keeps everything, but drops sessions, keys and delegations, closes live chats and pauses every schedule, so nothing acts unattended for someone who may not act.</p>
-  <p>Isolation lives in the queries, not in filtering afterwards. Organization-scoped stores put <code>org_id</code> beside every id a caller supplies, so another tenant's id finds nothing, and the visibility filter pins the organization before it reads an owner map. Nodes keep the same boundary. Placement never uses another organization's node. An organization may refuse shared nodes (the <code>own_only</code> setting of <code>Settings:Nodes</code>). A node admitted by one organization's authority is told only of that organization's packages. A disabled organization keeps its data and refuses everyone in it; the application has no way to delete an organization.</p>
+  <p>Disabling a user keeps everything but drops sessions, keys and delegations, closes live chats and pauses every schedule, so nothing acts unattended for someone who may not act.</p>
+  <p>Isolation lives in the queries, not in filtering afterwards. Organization-scoped stores put <code>org_id</code> beside every id a caller supplies, so another tenant's id finds nothing. Nodes keep the same boundary: placement never uses another organization's node, an organization may refuse shared nodes, and a node admitted by one organization hears only of its packages. A disabled organization keeps its data and refuses everyone in it; the application cannot delete an organization.</p>
 </section>
