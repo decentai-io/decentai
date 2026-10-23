@@ -145,3 +145,7 @@ describe is [`note/`](https://github.com/decentai-io/decentai-agents/tree/main/n
   a headless engine, three thin-at-the-door clients, the desktop app
   that runs it on a person's own computer, recipes kept apart from the
   code, who runs the engine for whom, signing, and the order of work.
+- [Decentralization: the plan](decentralization-plan.md) — proposed in
+  October 2026: a Data Core cluster with no single process, sandboxes
+  shared by a pool of runtimes, and Data Cores that share execution
+  nodes; what each phase changes, and the decisions still open.
