@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>DecentAI — Technical Paper</title>
+<meta name="description" content="DecentAI, the technical paper: the architecture, protocols and mechanisms of an operating system for AI agents.">
+<style>
+/* The DecentAI technical paper, in the white paper's design (../whitepaper).
+   The white paper's design. It wears the website's palette — paper and
+   ink with one deep green — and its type, IBM Plex: Serif for what a
+   reader meets first, Sans for what they read afterwards. One column,
+   printed to A4 by build.ps1.
+
+   Every diagram speaks one colour language, declared once below under
+   "Diagrams" and shown to the reader as a legend in chapter 2:
+     deep green   the platform's own parts (Data Core, runtime, gate, proxy, vault)
+     pale green   an agent's code — the least trusted thing that runs
+     dashed ink   the model — not on the ladder at all
+     amber        a step that waits for a person
+     red          refused, or stopped                                        */
+
+@font-face { font-family: "Plex Serif"; font-weight: 400; src: url(../whitepaper/fonts/ibm-plex-serif-latin-400-normal.woff2); }
+@font-face { font-family: "Plex Serif"; font-weight: 400; font-style: italic; src: url(../whitepaper/fonts/ibm-plex-serif-latin-400-italic.woff2); }
+@font-face { font-family: "Plex Serif"; font-weight: 500; src: url(../whitepaper/fonts/ibm-plex-serif-latin-500-normal.woff2); }
+@font-face { font-family: "Plex Serif"; font-weight: 600; src: url(../whitepaper/fonts/ibm-plex-serif-latin-600-normal.woff2); }
+@font-face { font-family: "Plex Sans"; font-weight: 400; src: url(../whitepaper/fonts/ibm-plex-sans-latin-400-normal.woff2); }
+@font-face { font-family: "Plex Sans"; font-weight: 400; font-style: italic; src: url(../whitepaper/fonts/ibm-plex-sans-latin-400-italic.woff2); }
+@font-face { font-family: "Plex Sans"; font-weight: 500; src: url(../whitepaper/fonts/ibm-plex-sans-latin-500-normal.woff2); }
+@font-face { font-family: "Plex Sans"; font-weight: 600; src: url(../whitepaper/fonts/ibm-plex-sans-latin-600-normal.woff2); }
+
+:root {
+  --paper: #f7f6f2;
+  --paper-sunk: #f1efe9;
+  --sheet: #ffffff;
+  --ink: #14161a;
+  --ink-soft: #4c525b;
+  --ink-faint: #6e747e;
+  --rule: #e5e1d8;
+  --rule-soft: #eeebe4;
+  /* the one green, in four depths: the ladder of trust */
+  --seal: #0e7c5b;        /* Data Core, and "the platform" wherever it acts as one */
+  --seal-2: #3d9677;      /* runtime */
+  --seal-3: #8fc5b1;      /* spawner */
+  --agent: #d6ebe3;       /* an agent's code */
+  --agent-edge: #3d9677;
+  --seal-ink: #0b6a4e;
+  --seal-wash: #e9f3ef;
+  --seal-edge: #bcdcd0;
+  --ask: #a5620f;
+  --ask-wash: #f8eedd;
+  --ask-edge: #e7cfa6;
+  --stop: #a8321f;
+  --stop-wash: #f8e6e2;
+  --display: "Plex Serif", Georgia, serif;
+  --body: "Plex Sans", "Segoe UI", sans-serif;
+}
+
+@page {
+  size: A4;
+  margin: 17mm 18mm 19mm;
+  @bottom-left { content: "DecentAI · Technical paper"; font: 8.5pt var(--body); color: #6e747e; }
+  @bottom-right { content: counter(page); font: 8.5pt var(--body); color: #6e747e; }
+}
+@page cover { margin: 0; @bottom-left { content: none; } @bottom-right { content: none; } }
+
+* { box-sizing: border-box; }
+html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+body {
+  margin: 0; color: var(--ink); background: #fff;
+  font-family: var(--body); font-size: 10.3pt; line-height: 1.5;
+  text-rendering: optimizeLegibility; hyphens: manual;
+}
+h1, h2, h3, h4 { font-family: var(--display); font-weight: 500; line-height: 1.2; margin: 0; }
+p { margin: 0 0 .65em; orphans: 3; widows: 3; }
+strong, b { font-weight: 600; }
+em { font-style: italic; }
+a { color: var(--seal-ink); text-decoration: none; }
+
+/* ── Cover ─────────────────────────────────────────────────────── */
+.cover {
+  page: cover; height: 297mm; width: 210mm; position: relative;
+  background: var(--paper); overflow: hidden; break-after: page;
+}
+.cover .art { position: absolute; right: -26mm; top: 30mm; width: 128mm; }
+.cover .brand { position: absolute; left: 22mm; top: 22mm; display: flex; align-items: center; gap: 10px;
+  font: 600 13pt var(--body); letter-spacing: .01em; }
+.cover .brand svg { width: 26px; height: 26px; }
+.cover .words { position: absolute; left: 22mm; bottom: 46mm; width: 140mm; }
+.cover .kicker { margin-bottom: 7mm; }
+.cover h1 { font-size: 34pt; font-weight: 500; letter-spacing: -.01em; line-height: 1.08; }
+.cover h1 em { color: var(--seal); font-style: normal; }
+.cover .sub { margin-top: 7mm; font-size: 13pt; line-height: 1.5; color: var(--ink-soft); width: 125mm; }
+.cover .meta { position: absolute; left: 22mm; bottom: 22mm; font-size: 9pt; color: var(--ink-faint); }
+.cover .meta b { color: var(--ink); font-weight: 500; }
+
+.kicker { font-size: 8pt; font-weight: 600; letter-spacing: .16em; text-transform: uppercase; color: var(--seal-ink); }
+
+/* ── Chapters ──────────────────────────────────────────────────── */
+/* Chapters flow on, each opened by a rule; a heading never ends a page. */
+.chapter { margin-top: 8mm; padding-top: 5mm; border-top: 1px solid var(--rule); }
+.chapter.page { break-before: page; margin-top: 0; padding-top: 0; border-top: none; }
+.chapter-head { margin-bottom: 4.5mm; }
+.chapter-head .kicker { margin-bottom: 2.5mm; break-after: avoid; }
+.chapter-head h2 { font-size: 22pt; letter-spacing: -.005em; break-inside: avoid; break-after: avoid; }
+.chapter-head .lead { margin-top: 3.5mm; font-size: 11.8pt; line-height: 1.5; color: var(--ink-soft); orphans: 2; widows: 2; }
+h3 { font-size: 13pt; margin: 6mm 0 2mm; break-after: avoid; }
+h4 { font: 600 10.3pt var(--body); margin: 3.5mm 0 1.2mm; break-after: avoid; }
+ul, ol { margin: 0 0 .75em; padding-left: 1.25em; }
+li { margin: .15em 0; }
+li::marker { color: var(--seal); }
+
+.quote {
+  font-family: var(--display); font-size: 14pt; line-height: 1.4; color: var(--ink);
+  border-left: 3px solid var(--seal); padding: 1mm 0 1mm 6mm; margin: 4mm 0 5mm;
+}
+
+.note {
+  background: var(--seal-wash); border: 1px solid var(--seal-edge); border-radius: 10px;
+  padding: 3.5mm 4.5mm; margin: 3.5mm 0 4.5mm; break-inside: avoid;
+}
+.note .kicker { margin-bottom: 1.2mm; }
+.note p:last-child { margin-bottom: 0; }
+.note.plain { background: var(--paper); border-color: var(--rule); }
+.note.plain .kicker { color: var(--ink-faint); }
+
+/* ── Figures ───────────────────────────────────────────────────── */
+figure { margin: 3.5mm 0 4.5mm; break-inside: avoid; }
+figure svg { width: 100%; height: auto; display: block; }
+figcaption { margin-top: 2.2mm; font-size: 8.8pt; color: var(--ink-faint); line-height: 1.45; }
+figcaption b { color: var(--ink-soft); font-weight: 600; }
+.legend { display: flex; flex-wrap: wrap; align-items: center; gap: 1.5mm 5mm; margin: -2mm 0 5mm;
+  font-size: 8.6pt; color: var(--ink-soft); break-inside: avoid; }
+.legend .lg { font-weight: 600; letter-spacing: .08em; text-transform: uppercase; font-size: 7.6pt; color: var(--ink-faint); }
+.sw { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 1.6mm; vertical-align: -1px; border: 1px solid transparent; }
+.sw.platform { background: var(--seal); }
+.sw.agent { background: var(--agent); border-color: var(--agent-edge); }
+.sw.model { background: #fff; border: 1px dashed var(--ink); }
+.sw.ask { background: var(--ask-wash); border-color: var(--ask); }
+.sw.no { background: var(--stop-wash); border-color: var(--stop); }
+
+/* ── Diagrams: one class per meaning ───────────────────────────── */
+svg text { font-family: var(--body); fill: var(--ink); }
+svg .b { font-weight: 600; }
+svg .serif { font-family: var(--display); }
+svg .cap { font-size: 9.5px; font-weight: 600; letter-spacing: 1.3px; fill: var(--ink-faint); }
+svg .t-soft { fill: var(--ink-soft); }
+svg .t-faint { fill: var(--ink-faint); }
+svg .t-on { fill: #fff; }
+svg .t-on-soft { fill: #e9f3ef; }
+svg .t-seal { fill: var(--seal-ink); }
+svg .t-ask { fill: var(--ask); }
+svg .t-no { fill: var(--stop); }
+svg .t-no-soft { fill: #fbe9e5; }
+svg .platform { fill: var(--seal); }
+svg .platform-2 { fill: var(--seal-2); }
+svg .platform-3 { fill: var(--seal-3); }
+svg .step { fill: var(--seal-wash); stroke: var(--seal-edge); }
+svg .step-strong { fill: var(--seal-wash); stroke: var(--seal); stroke-width: 1.4; }
+svg .agent { fill: var(--agent); stroke: var(--agent-edge); }
+svg .model { fill: #fff; stroke: var(--ink); stroke-dasharray: 5 4; }
+svg .person { fill: var(--paper); stroke: var(--rule); }
+svg .plain { fill: #fff; stroke: var(--rule); }
+svg .frame { fill: var(--paper); stroke: var(--rule); }
+svg .ask { fill: var(--ask-wash); stroke: var(--ask-edge); }
+svg .ask-solid { fill: var(--ask); }
+svg .no { fill: var(--stop-wash); }
+svg .no-solid { fill: var(--stop); }
+svg .white { fill: #fff; }
+svg .flow { stroke: var(--seal); stroke-width: 1.7; fill: none; }
+svg .flow-ask { stroke: var(--ask); stroke-width: 1.7; fill: none; }
+svg .flow-no { stroke: var(--stop); stroke-width: 1.5; fill: none; stroke-dasharray: 4 3; }
+svg .link { stroke: var(--ink-soft); stroke-width: 1.4; fill: none; }
+svg .dash { stroke-dasharray: 4 3; }
+svg .lane { stroke: var(--rule); stroke-width: 1; }
+svg .hair { stroke: var(--rule-soft); }
+
+/* ── Tables ────────────────────────────────────────────────────── */
+table { width: 100%; border-collapse: collapse; margin: 2.5mm 0 4.5mm; font-size: 9.3pt; break-inside: avoid; }
+th { text-align: left; font-weight: 600; font-size: 7.8pt; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--ink-faint); border-bottom: 1.5px solid var(--ink); padding: 0 3mm 1.8mm 0; }
+td { border-bottom: 1px solid var(--rule); padding: 1.6mm 3mm 1.6mm 0; vertical-align: top; }
+td:first-child { font-weight: 500; }
+tr:last-child td { border-bottom: none; }
+table.compact { font-size: 8.8pt; }
+table.compact td { padding: 1.4mm 2.5mm 1.4mm 0; }
+.tag { display: inline-block; font-size: 7.6pt; font-weight: 600; letter-spacing: .05em; text-transform: uppercase;
+  padding: .3mm 2mm; border-radius: 99px; white-space: nowrap; }
+.tag.run { background: var(--seal-wash); color: var(--seal-ink); }
+.tag.ask { background: var(--ask-wash); color: var(--ask); }
+.tag.no { background: var(--stop-wash); color: var(--stop); }
+
+/* ── Grids and cards ───────────────────────────────────────────── */
+.grid { display: grid; gap: 3mm; margin: 3mm 0 4mm; }
+.grid.two { grid-template-columns: 1fr 1fr; }
+.grid.three { grid-template-columns: 1fr 1fr 1fr; }
+.grid.side { grid-template-columns: 1fr 1.1fr; align-items: start; }
+.card { border: 1px solid var(--rule); border-radius: 10px; padding: 3.2mm 3.8mm; background: #fff; break-inside: avoid; }
+.card.sunk { background: var(--paper); }
+.card.seal { border-color: var(--seal); }
+.card h4 { margin: 0 0 1.2mm; }
+.card p { font-size: 9.3pt; color: var(--ink-soft); margin: 0; }
+.card .num { font: 500 20pt var(--display); color: var(--seal); line-height: 1; margin-bottom: 1.5mm; }
+
+.glance { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 3.5mm; }
+.glance .card { padding: 3.5mm 4mm; }
+.glance .card h4 { font-size: 9.8pt; }
+.glance .card p { font-size: 8.9pt; }
+
+/* ── Contents and glossary ─────────────────────────────────────── */
+.toc { list-style: none; padding: 0; margin: 1mm 0 0; columns: 3; column-gap: 7mm; }
+.toc li { display: flex; gap: 2mm; padding: 1mm 0; border-bottom: 1px solid var(--rule-soft); break-inside: avoid; font-size: 8.8pt; }
+.toc li span { color: var(--seal); font-weight: 600; width: 5mm; flex: none; }
+.links { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 5mm; margin: 3mm 0 1.5mm; padding-top: 2.5mm; border-top: 1px solid var(--rule); break-inside: avoid; }
+.links h4 { margin: 0 0 .8mm; }
+.links p { font-size: 9.2pt; color: var(--ink-soft); margin: 0; }
+.gloss { columns: 3; column-gap: 6mm; font-size: 8.6pt; line-height: 1.4; margin-top: 1.5mm; }
+.gloss p { break-inside: avoid; margin: 0 0 1.8mm; color: var(--ink-soft); }
+.gloss b { color: var(--ink); }
+
+/* ── Technical paper additions ─────────────────────────────────── */
+/* Numbered sections: a chapter's h3 carries its number ("3.2") as a
+   faint prefix, written in the markup: <h3><span class="no">3.2</span> … */
+h3 .no, h4 .no { color: var(--seal); font-family: var(--body); font-weight: 600; font-size: .78em; margin-right: 2.2mm; letter-spacing: .02em; }
+code, .mono { font-family: "Cascadia Mono", Consolas, "SFMono-Regular", Menlo, monospace; font-size: .86em; }
+p code, li code, td code { background: var(--paper-sunk); border-radius: 4px; padding: .15mm 1.1mm; color: var(--ink); }
+pre.code { font-family: "Cascadia Mono", Consolas, Menlo, monospace; font-size: 8.1pt; line-height: 1.5;
+  background: var(--paper); border: 1px solid var(--rule); border-radius: 8px; padding: 3mm 4mm; margin: 2.5mm 0 4mm;
+  white-space: pre-wrap; break-inside: avoid; color: var(--ink); }
+pre.code .c { color: var(--ink-faint); }
+pre.code .k { color: var(--seal-ink); font-weight: 600; }
+pre.code .s { color: var(--ask); }
+/* A definition list for protocol fields, settings and states. */
+dl.spec { display: grid; grid-template-columns: 38mm 1fr; gap: 1.2mm 4mm; margin: 2mm 0 4mm; font-size: 9.2pt; break-inside: avoid; }
+dl.spec dt { font-weight: 600; color: var(--ink); }
+dl.spec dt code { font-weight: 500; }
+dl.spec dd { margin: 0; color: var(--ink-soft); }
+/* An invariant: a property the system holds, stated once, numbered. */
+.inv { display: grid; grid-template-columns: 12.5mm 1fr; gap: 0 2mm; align-items: baseline;
+  border-left: 3px solid var(--seal); background: var(--seal-wash); border-radius: 0 8px 8px 0;
+  padding: 2.4mm 4mm 2.4mm 3mm; margin: 3mm 0 4mm; break-inside: avoid; font-size: 9.6pt; }
+.inv .id { font: 600 8pt var(--body); color: var(--seal-ink); letter-spacing: .06em; }
+.inv p { margin: 0; }
+/* Two figures, or a figure and its key, side by side. */
+.pair { display: grid; grid-template-columns: 1fr 1fr; gap: 4mm; align-items: start; }
+.pair figure { margin-top: 0; }
+/* The contents page lists chapters with their sections. */
+.contents { columns: 2; column-gap: 9mm; font-size: 9.2pt; margin-top: 4mm; }
+.contents .ch { break-inside: avoid; margin: 0 0 3.2mm; }
+.contents .ch b { display: flex; gap: 2.5mm; font-family: var(--display); font-weight: 500; font-size: 11pt; }
+.contents .ch b span { color: var(--seal); font-family: var(--body); font-weight: 600; font-size: 9.5pt; width: 6mm; }
+.contents .ch p { margin: .6mm 0 0 8.5mm; color: var(--ink-faint); font-size: 8.6pt; line-height: 1.4; }
+
+/* ── Density: a reference text, read in pieces, set a little tighter
+   than the white paper (which is read straight through). ─────────── */
+@page { margin: 14mm 15mm 16mm; }
+body { font-size: 9.7pt; line-height: 1.46; }
+.chapter-head { margin-bottom: 3.5mm; }
+.chapter-head h2 { font-size: 20pt; }
+.chapter-head .lead { font-size: 10.8pt; margin-top: 2.5mm; }
+h3 { font-size: 12pt; margin: 4.5mm 0 1.6mm; }
+h4 { margin: 2.8mm 0 1mm; }
+table { font-size: 8.8pt; margin: 2mm 0 3.5mm; }
+table.compact { font-size: 8.5pt; }
+td { padding: 1.3mm 2.6mm 1.3mm 0; }
+figure { margin: 2.5mm 0 3.5mm; }
+figcaption { font-size: 8.4pt; margin-top: 1.6mm; }
+.inv { margin: 2.2mm 0 3mm; padding: 1.9mm 3.5mm 1.9mm 3mm; font-size: 9.2pt; }
+.note { padding: 2.8mm 4mm; margin: 2.8mm 0 3.5mm; }
+pre.code { font-size: 7.8pt; padding: 2.4mm 3.4mm; margin: 2mm 0 3.2mm; }
+.card { padding: 2.6mm 3.2mm; }
+.card p { font-size: 8.9pt; }
+.grid { gap: 2.5mm; margin: 2.5mm 0 3.2mm; }
+p { margin: 0 0 .55em; }
+.contents { font-size: 8.8pt; margin-top: 3mm; }
+.contents .ch { margin: 0 0 2.2mm; }
+.contents .ch b { font-size: 10.5pt; }
+.contents .ch p { font-size: 8.2pt; }
+.howto { font-size: 8.6pt; color: var(--ink-soft); border-top: 1px solid var(--rule); padding-top: 2.5mm; margin-top: 1mm; }
+.howto .sw { margin-left: 1.5mm; }
+.grid.three .card h4 { font-size: 9.6pt; }
+.grid.three .card p { font-size: 8.5pt; }
+</style>
+</head>
+<body>
+<!-- Arrowheads shared by every diagram; a 0×0 SVG keeps them in the document. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <marker id="m-seal" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto"><path d="M0 0L10 5L0 10z" fill="#0e7c5b"/></marker>
+  <marker id="m-ask" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto"><path d="M0 0L10 5L0 10z" fill="#a5620f"/></marker>
+  <marker id="m-no" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto"><path d="M0 0L10 5L0 10z" fill="#a8321f"/></marker>
+  <marker id="m-ink" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto"><path d="M0 0L10 5L0 10z" fill="#4c525b"/></marker>
+</defs></svg>

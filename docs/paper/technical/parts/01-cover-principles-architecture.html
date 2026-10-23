@@ -1,0 +1,242 @@
+<!-- ── Cover ─────────────────────────────────────────────────────── -->
+<section class="cover">
+  <div class="brand">
+    <svg viewBox="0 0 64 64"><path d="M42 8H44A12 12 0 0 1 56 20V44A12 12 0 0 1 44 56H20A12 12 0 0 1 8 44V20A12 12 0 0 1 20 8H22" fill="none" stroke="#14161A" stroke-width="7" stroke-linecap="round"/><circle cx="32" cy="32" r="8" fill="#0E7C5B"/></svg>
+    DecentAI
+  </div>
+  <svg class="art" viewBox="0 0 400 420" aria-hidden="true" style="top:16mm">
+    <defs>
+      <pattern id="tdots" width="16" height="16" patternUnits="userSpaceOnUse"><circle cx="2" cy="2" r="1.3" fill="#d9d4c8"/></pattern>
+    </defs>
+    <rect x="0" y="0" width="400" height="420" fill="url(#tdots)"/>
+    <!-- Four layers of trust, offset like a stack of plates: the Data
+         Core, the runtime, the spawner, an agent's code. -->
+    <rect x="70" y="40" width="250" height="150" rx="22" fill="#0e7c5b"/>
+    <rect x="100" y="108" width="250" height="150" rx="22" fill="#3d9677"/>
+    <rect x="130" y="176" width="250" height="150" rx="22" fill="#8fc5b1"/>
+    <rect x="160" y="244" width="220" height="140" rx="22" fill="#d6ebe3" stroke="#3d9677" stroke-width="2"/>
+    <!-- The model: outside the stack, dashed, connected by text alone. -->
+    <rect x="18" y="300" width="112" height="70" rx="16" fill="#fff" stroke="#14161a" stroke-width="2" stroke-dasharray="7 6"/>
+    <path d="M130 335 H 156" stroke="#14161a" stroke-width="2" stroke-dasharray="4 4"/>
+    <g font-family="Plex Sans, sans-serif" font-size="12" font-weight="600" letter-spacing="1.4">
+      <text x="92" y="68" fill="#e9f3ef">DATA CORE</text>
+      <text x="122" y="136" fill="#e9f3ef">AI RUNTIME</text>
+      <text x="152" y="204" fill="#0b6a4e">SANDBOX</text>
+      <text x="182" y="272" fill="#0b6a4e">AGENT CODE</text>
+      <text x="40" y="341" fill="#14161a">MODEL</text>
+    </g>
+  </svg>
+  <div class="words">
+    <div class="kicker">Technical paper · Edition 1 · October 2026</div>
+    <h1>An operating system for AI agents, in which <em>code decides and the model proposes.</em></h1>
+    <p class="sub">The architecture, protocols and mechanisms of DecentAI: identity and policy, the gate every call passes, agents as declared contracts, confined execution, secrets that never reach the model, evidence, and how it is deployed and verified.</p>
+  </div>
+  <div class="meta"><b>Ahmed Dirir</b> · DecentAI · ahmed@decentai.io · decentai.io</div>
+</section>
+
+<!-- ── Abstract and contents ─────────────────────────────────────── -->
+<section>
+  <div class="chapter-head">
+    <div class="kicker">Abstract</div>
+    <h2>The model may propose anything. It decides nothing.</h2>
+  </div>
+  <p>Language models can now plan multi-step work and call tools, which makes them useful for acting on an organization's mail, documents, records and systems. They are also unreliable in two ways that matter for action: they state false things fluently, and they follow instructions embedded in whatever they read. The tools they call are programs written by third parties. A platform that lets such a planner act has to assume that the planner will sometimes be wrong or hostile, and that the code it drives may be hostile too.</p>
+  <p>DecentAI is a self-hosted platform built on that assumption. It separates <em>proposal</em> from <em>authority</em>. The model's output is treated as a request; every request is decided by code the model cannot read or influence: a deny-by-default policy walked on each call, a gate that compares a function's declared cost with the trust the person gave the chat and holds anything more expensive for that person's approval of the exact inputs, and an executor that runs approved agent code as its own operating-system user, inside a kernel-confined sandbox whose only way out is a proxy open to the hosts the agent declared. Credentials go from an encrypted vault to the agent's code for one call and never to the model. What the interface shows as data or as a finished step is drawn from recorded results, not from the model's prose.</p>
+  <p>This paper describes the whole system for engineers who will run, extend or audit it. Code paths, settings and limits are named as they are in the source; where a property depends on the host it runs on, the paper says so.</p>
+
+  <div class="contents">
+    <div class="ch"><b><span>1</span>Principles and threat model</b><p>What is trusted, with what; the decisions every other chapter follows from.</p></div>
+    <div class="ch"><b><span>2</span>Architecture</b><p>The engine's parts, containers and networks; where state lives.</p></div>
+    <div class="ch"><b><span>3</span>Anatomy of a turn</b><p>One message, end to end, as a sequence of checked steps.</p></div>
+    <div class="ch"><b><span>4</span>Identity, tenancy and authorization</b><p>Organizations, groups, policies, sessions, ownership and sharing.</p></div>
+    <div class="ch"><b><span>5</span>The assistant</b><p>Context, the step loop, plans and verification, helpers, memory.</p></div>
+    <div class="ch"><b><span>6</span>The gate</b><p>Permission levels, trust levels, approval cards and Safety rules.</p></div>
+    <div class="ch"><b><span>7</span>Agents</b><p>The manifest as a contract; sources, review, approval and grants.</p></div>
+    <div class="ch"><b><span>8</span>Execution nodes and the sandbox</b><p>Linking a node, workers, confinement, the proxy, the live screen.</p></div>
+    <div class="ch"><b><span>9</span>Secrets and data</b><p>The vault, credentials, connected apps, records, files and storage.</p></div>
+    <div class="ch"><b><span>10</span>Evidence, monitoring and audit</b><p>What a call leaves behind, and who can see it.</p></div>
+    <div class="ch"><b><span>11</span>Time and reach</b><p>Schedules, webhooks in and out, notifications, stopping.</p></div>
+    <div class="ch"><b><span>12</span>Clients</b><p>The web client, the phone app and the desktop app.</p></div>
+    <div class="ch"><b><span>13</span>Deployment</b><p>One host, a separate node, two VMs on AWS, a desktop install.</p></div>
+    <div class="ch"><b><span>14</span>Verification</b><p>Test suites, documentation checks, and the evaluation.</p></div>
+    <div class="ch"><b><span>15</span>Limits and open questions</b><p>What the platform does not do or guarantee.</p></div>
+    <div class="ch"><b><span>A</span>Glossary</b><p>The vocabulary, in one place.</p></div>
+  </div>
+
+  <p class="howto">Sections are numbered within chapters (3.2), as are figures (Figure 3.2). Properties the system holds are stated once as numbered <b>invariants</b> (I-6.1) in a green margin, so that a reader can find them, test them and hold the code to them. Diagrams use one colour language throughout: <span class="sw platform"></span>the platform's own parts, <span class="sw agent"></span>an agent's code, <span class="sw model"></span>the model, <span class="sw ask"></span>a step that waits for a person, <span class="sw no"></span>refused or stopped. What the paper describes is the engine, its three clients, its deployment recipes and its catalogue of agents, as released in October 2026.</p>
+</section>
+
+<!-- ── Chapter 1 ─────────────────────────────────────────────────── -->
+<section class="chapter page">
+  <div class="chapter-head">
+    <div class="kicker">Chapter 1</div>
+    <h2>Principles and threat model</h2>
+    <p class="lead">Every mechanism in DecentAI follows from a short list of assumptions about what can go wrong and a shorter list of decisions about where authority lives. This chapter states both, so that the rest of the paper can be read as their consequences.</p>
+  </div>
+
+  <h3><span class="no">1.1</span> What is assumed to go wrong</h3>
+  <p>The platform is designed against four kinds of failure, each assumed to happen in normal operation rather than as a rare attack.</p>
+  <table class="compact">
+    <tr><th style="width:24%">Who or what</th><th style="width:38%">How it fails</th><th>What the design does about it</th></tr>
+    <tr><td>The model</td><td>States false things fluently; follows instructions hidden in mail, pages and files it reads (prompt injection); proposes calls that are wrong, wasteful or harmful.</td><td>Holds no authority, no credential and no secret. Its output is a proposal that passes checks which do not read its prose (chapters 5–6).</td></tr>
+    <tr><td>An agent's code</td><td>Is written by a third party; may be buggy or hostile; may try to read other agents' files, reach hosts it did not declare, or escape its process.</td><td>Runs as its own user, confined by the kernel, with a proxy as its only way out, open to the hosts its manifest declared (chapters 7–8).</td></tr>
+    <tr><td>Content</td><td>A message, attachment, web page or tool result carries text written to steer the assistant.</td><td>Content is data. It can change what the model proposes, never what the platform permits.</td></tr>
+    <tr><td>A person</td><td>Approves without reading; holds more access than a task needs; leaves an organization.</td><td>Approvals show the exact inputs and bind to them; grants are narrow and revocable; ownership hands over when its holder leaves (chapters 4, 6).</td></tr>
+  </table>
+  <p>Two parties are trusted: the operator who runs the deployment, who controls its hosts and keys, and the code of the platform itself. The paper does not claim protection against an operator with root on the host, nor against a compromised Data Core. It does aim to keep a compromise of any <em>other</em> part — the runtime, the sandbox, an agent, the model, a client — from becoming a compromise of the whole.</p>
+
+  <h3><span class="no">1.2</span> Where authority lives</h3>
+  <p>The central decision is to put the model outside the chain of authority altogether. A conventional assistant lets the model's tool call <em>be</em> the action, gated at best by a confirmation dialog the model can describe in its own words. DecentAI treats the model's tool call as a proposal from an unprivileged party, and passes it to code that decides on facts the model does not control: the identity of the person, the policy of the organization, the agent's approved manifest, the chat's trust level and, where the call costs more than that trust, the person's yes to those exact inputs.</p>
+
+  <figure>
+    <svg viewBox="0 0 680 236">
+      <g font-size="10.5">
+        <text x="0" y="12" class="cap">MOST TRUSTED</text>
+        <text x="0" y="226" class="cap">LEAST TRUSTED</text>
+        <rect x="0" y="22" width="430" height="38" rx="9" class="platform"/>
+        <text x="14" y="45" class="b t-on">Data Core</text><text x="104" y="45" class="t-on-soft">identity, policy, every key, the only route to the database</text>
+        <rect x="40" y="68" width="390" height="38" rx="9" class="platform-2"/>
+        <text x="54" y="91" class="b t-on">AI Runtime</text><text x="148" y="91" class="t-on-soft">the assistant, the gate, the executor, the proxy</text>
+        <rect x="80" y="114" width="350" height="38" rx="9" class="platform-3"/>
+        <text x="94" y="137" class="b">Spawner</text><text x="162" y="137" class="t-soft">starts workers; decides nothing</text>
+        <rect x="120" y="160" width="310" height="38" rx="9" class="agent"/>
+        <text x="134" y="183" class="b">Worker</text><text x="196" y="183" class="t-soft">an agent's code, assumed hostile</text>
+        <rect x="520" y="96" width="160" height="68" rx="12" class="model"/>
+        <text x="600" y="124" text-anchor="middle" class="b">The model</text>
+        <text x="600" y="141" text-anchor="middle" class="t-soft">not on the ladder</text>
+        <path d="M520 130 H 438" class="link dash" marker-end="url(#m-ink)"/>
+        <text x="479" y="122" text-anchor="middle" class="t-faint" font-size="9.5">text only</text>
+        <text x="455" y="45" class="t-faint" font-size="9.5">holds the keys</text>
+        <text x="455" y="183" class="t-faint" font-size="9.5">holds nothing it</text>
+        <text x="455" y="196" class="t-faint" font-size="9.5">did not declare</text>
+      </g>
+    </svg>
+    <figcaption><b>Figure 1.1 — The ladder of trust.</b> Each part is trusted with what its job needs and nothing more, so taking one over gains as little as possible. The model is not a rung: it reaches the runtime as text, and nothing it writes is read as permission.</figcaption>
+  </figure>
+
+  <h3><span class="no">1.3</span> The decisions</h3>
+  <p>Six decisions shape the implementation. Each is enforced in one place, so that it can be read, tested and argued about there.</p>
+  <div class="grid three">
+    <div class="card"><h4>Deny by default</h4><p>No action is permitted unless a policy chain grants it to the person, walked on every request in the Data Core's one authorization point. A page that forgets to declare its action is refused, not opened.</p></div>
+    <div class="card"><h4>One door</h4><p>Clients, nodes and webhooks reach the engine through the Data Core alone. The runtime has no database and no route to one; it asks for what it keeps.</p></div>
+    <div class="card"><h4>Contracts before code</h4><p>An agent declares its functions, their cost, what it keeps and where it connects before anyone approves it. The executor holds it to that declaration on every call.</p></div>
+    <div class="card"><h4>Decisions bound to inputs</h4><p>A person's yes covers one call with one set of inputs, identified by a hash. Changing a character asks again.</p></div>
+    <div class="card"><h4>Evidence over prose</h4><p>Tables, files and "done" marks shown beside the model's words come from stored results of calls that ran. A claim with nothing behind it is shown as a claim.</p></div>
+    <div class="card"><h4>Limits stated</h4><p>Where a protection depends on the host — a kernel feature, a container runtime — the platform checks for it, refuses to start without the essential ones, and reports what is not enforced.</p></div>
+  </div>
+
+  <div class="inv"><span class="id">I-1.1</span><p>No model output is an authorization. A function runs only when the person's policy, the agent's approval and grant, the chat's enabled set and the gate all permit it, each decided by platform code from stored state.</p></div>
+  <div class="inv"><span class="id">I-1.2</span><p>No secret is ever placed in the model's context. Credentials travel from the vault to the agent's worker for one call (chapter 9).</p></div>
+  <div class="inv"><span class="id">I-1.3</span><p>The audit trail is append-only from the platform's side: no code path in the engine updates or deletes an audit row.</p></div>
+
+  <h3><span class="no">1.4</span> Why an operating system</h3>
+  <p>The problem has a familiar shape. An operating system runs programs written by strangers, gives each a user of its own, mediates every request through a system call it may refuse, and keeps a log. DecentAI applies the same ideas one level up: an <b>agent</b> is a program with a declared manifest, a <b>worker</b> its process, a <b>function call</b> its system call, mediated by the gate; the <b>proxy</b> is its firewall, an <b>approval card</b> its "allow this app to…?" prompt, bound to one call; the <b>clock</b> is the scheduler and the <b>audit trail</b> the system log. DecentAI is not a kernel: it runs on Linux in containers and borrows the kernel's own protections for the parts that must be confined. What it adds is a place for a planner that is capable and not trusted.</p>
+</section>
+
+<!-- ── Chapter 2 ─────────────────────────────────────────────────── -->
+<section class="chapter">
+  <div class="chapter-head">
+    <div class="kicker">Chapter 2</div>
+    <h2>Architecture</h2>
+    <p class="lead">The engine is three programs — the Data Core, the AI Runtime and the Execution Sandbox — and the clients that speak to it. This chapter names them, shows what runs and what speaks to what, and says where every piece of state is kept.</p>
+  </div>
+
+  <h3><span class="no">2.1</span> The parts</h3>
+  <table class="compact">
+    <tr><th style="width:18%">Part</th><th style="width:20%">Service</th><th>What it holds and does</th></tr>
+    <tr><td>Data Core</td><td><code>data-core</code></td><td>Identity and access, the agent lifecycle, the data layer, chats and approvals, organization settings, execution nodes and the clock. The only part that reaches the database; the engine's one published port.</td></tr>
+    <tr><td>AI Runtime</td><td><code>ai-runtime</code></td><td>One assistant per chat, the executor every call passes and its gates, what a schedule's fire runs, and the egress proxy agents reach the internet through.</td></tr>
+    <tr><td>Execution Sandbox</td><td><code>sandbox</code></td><td>Agent code: a spawner that starts workers, and one worker per call, each as the agent's own user.</td></tr>
+    <tr><td>Execution node</td><td>—</td><td>One AI Runtime with its sandboxes, deployed together. The bundled install has one; more can be linked from other machines (chapter 8).</td></tr>
+    <tr><td>Clients</td><td>released on their own</td><td>The web client, the phone app and the desktop app. Each is told the engine's address and speaks only to the Data Core, across origins, with a session token (chapter 12).</td></tr>
+  </table>
+  <p>The three programs together are the <b>AI Engine</b>. The engine has no user interface of its own: every client reaches it over the same HTTP and WebSocket API. That separation lets one engine serve a browser, a phone and a desktop window, and lets each client be released on its own schedule.</p>
+
+  <h3><span class="no">2.2</span> What runs</h3>
+  <p>The bundled install starts seven containers; six stay up and a seeder runs once at every start. Figure 2.1 shows them with the connections between them; every arrow is a connection its source opens.</p>
+
+  <figure>
+    <svg viewBox="0 0 680 392">
+      <g font-size="10.5" text-anchor="middle">
+        <!-- Top row: clients, and the support containers. -->
+        <rect x="240" y="6" width="200" height="40" rx="10" class="person"/>
+        <text x="340" y="23" class="b">Clients</text><text x="340" y="38" class="t-soft" font-size="9.5">web · phone · desktop</text>
+        <rect x="20" y="6" width="170" height="40" rx="10" class="step"/>
+        <text x="105" y="23" class="b">node-issuer</text><text x="105" y="38" class="t-soft" font-size="9.5">on no network</text>
+        <rect x="490" y="6" width="170" height="40" rx="10" class="step"/>
+        <text x="575" y="23" class="b">init</text><text x="575" y="38" class="t-soft" font-size="9.5">seeds the schema, then exits</text>
+
+        <!-- Second row: the Data Core between speech and the database. -->
+        <rect x="240" y="88" width="200" height="58" rx="12" class="platform"/>
+        <text x="340" y="112" class="b t-on" font-size="12">Data Core</text>
+        <text x="340" y="129" class="t-on-soft" font-size="9.5">data-core · :8000 · the one door</text>
+        <rect x="20" y="96" width="170" height="42" rx="10" class="step"/>
+        <text x="105" y="114" class="b">speech</text><text x="105" y="129" class="t-soft" font-size="9.5">:8004 · local models</text>
+        <rect x="490" y="96" width="170" height="42" rx="10" class="frame"/>
+        <text x="575" y="114" class="b">MongoDB</text><text x="575" y="129" class="t-soft" font-size="9.5">on the data network only</text>
+
+        <!-- The execution node. -->
+        <rect x="20" y="186" width="530" height="196" rx="14" class="frame"/>
+        <text x="40" y="206" text-anchor="start" class="cap">EXECUTION NODE</text>
+        <rect x="60" y="218" width="450" height="60" rx="12" class="platform-2"/>
+        <text x="285" y="242" class="b t-on" font-size="12">AI Runtime</text>
+        <text x="285" y="260" class="t-on-soft" font-size="9.5">assistant · executor and gate · proxy :8002 · sandboxes register on :8005</text>
+        <rect x="60" y="306" width="450" height="62" rx="12" class="platform-3"/>
+        <text x="80" y="330" text-anchor="start" class="b">Execution Sandbox</text>
+        <text x="80" y="347" text-anchor="start" class="t-soft" font-size="9.5">spawner :8003</text>
+        <rect x="250" y="318" width="74" height="38" rx="8" class="agent"/><text x="287" y="341" font-size="9.5">worker</text>
+        <rect x="334" y="318" width="74" height="38" rx="8" class="agent"/><text x="371" y="341" font-size="9.5">worker</text>
+        <rect x="418" y="318" width="74" height="38" rx="8" class="agent"/><text x="455" y="341" font-size="9.5">worker</text>
+
+        <!-- Outside the node: the model and the internet. -->
+        <rect x="575" y="212" width="105" height="36" rx="10" class="model"/>
+        <text x="627" y="234" class="b">Model</text>
+        <rect x="575" y="262" width="105" height="36" rx="10" class="plain"/>
+        <text x="627" y="279" class="b" font-size="10">Internet</text><text x="627" y="292" class="t-soft" font-size="8.5">declared hosts</text>
+      </g>
+      <g font-size="9.3" class="t-soft">
+        <path d="M340 46 V 84" class="flow" marker-end="url(#m-seal)"/>
+        <text x="348" y="70">HTTPS · WebSocket</text>
+        <path d="M440 117 H 486" class="flow" marker-end="url(#m-seal)"/>
+        <path d="M575 46 V 92" class="link" marker-end="url(#m-ink)"/>
+        <path d="M240 117 H 194" class="flow" marker-end="url(#m-seal)"/>
+        <path d="M300 218 V 150" class="flow" marker-end="url(#m-seal)"/>
+        <text x="308" y="166">node link, dialed by the node</text>
+        <text x="308" y="178">WS /nodes/link</text>
+        <path d="M20 26 H 8 V 196 H 16" class="link dash" marker-end="url(#m-ink)"/>
+        <text x="30" y="176" text-anchor="start" font-size="8.8">the node's credential</text>
+        <path d="M230 278 V 302" class="flow" marker-end="url(#m-seal)"/>
+        <text x="158" y="295">orders :8003</text>
+        <path d="M262 318 V 282" class="link" marker-end="url(#m-ink)"/>
+        <path d="M510 230 H 571" class="flow" marker-end="url(#m-seal)"/>
+        <path d="M510 266 H 571" class="flow" marker-end="url(#m-seal)"/>
+      </g>
+    </svg>
+    <figcaption><b>Figure 2.1 — The bundled install.</b> The Data Core is the only published port and the only part that reaches the database. The execution node dials the Data Core's node link; the runtime orders the sandbox's spawner, and the sandbox registers with the runtime, each side proving the node's secret. Workers reach the internet only through the runtime's proxy, to the hosts their agent declared. The node issuer rewrites the bundled node's credential every few minutes from the install's authority key.</figcaption>
+  </figure>
+
+  <h3><span class="no">2.3</span> Networks</h3>
+  <p>Three container networks carry the connections, and two of them are <code>internal: true</code>: they have no way out.</p>
+  <table class="compact">
+    <tr><th style="width:16%">Network</th><th style="width:30%">On it</th><th>Purpose</th></tr>
+    <tr><td><code>default</code></td><td><code>data-core</code>, <code>ai-runtime</code>, <code>speech</code></td><td>The one with a way out: clients reach the Data Core's published port; the Data Core reaches the speech service and the internet (repositories, mail, OAuth, outbound notifications); the runtime reaches the model's provider and, for agents, the internet through its proxy.</td></tr>
+    <tr><td><code>data</code></td><td><code>mongo</code>, <code>data-core</code>, <code>init</code></td><td>Internal. The database and the two that speak to it; nothing else has a route to it.</td></tr>
+    <tr><td><code>sandbox</code></td><td><code>ai-runtime</code>, <code>sandbox</code></td><td>Internal. The runtime is the only container on it with a way anywhere, so a worker's only way out is the proxy.</td></tr>
+  </table>
+  <div class="inv"><span class="id">I-2.1</span><p>Only the Data Core holds a database credential or a route to the database. Everything the runtime keeps, it keeps by asking the Data Core, under the person's delegation for that chat.</p></div>
+  <div class="inv"><span class="id">I-2.2</span><p>An agent's worker has no network route except the runtime's proxy, and the proxy forwards only to hosts the agent's approved manifest declared.</p></div>
+
+  <h3><span class="no">2.4</span> Where state lives</h3>
+  <p>The runtime and the sandbox are designed to be replaceable: a node can be restarted, drained or rebuilt without losing a chat. Durable state lives in the database and in a small number of volumes.</p>
+  <table class="compact">
+    <tr><th style="width:26%">Kept in</th><th>What</th></tr>
+    <tr><td>MongoDB</td><td>Every record of the platform: organizations, people, groups and policies; agents' approvals, grants and records; chats, messages, events and approvals; credentials (sealed); schedules, webhooks, notifications and the audit trail — 45 collections, all reached through org-scoped stores in the Data Core.</td></tr>
+    <tr><td>Uploads volume</td><td>Files, unless the organization stores them in S3, Azure Blob or Google Cloud Storage instead.</td></tr>
+    <tr><td>Agent packages</td><td>The approved code of each agent, by digest; nodes pull it from the Data Core.</td></tr>
+    <tr><td>Node volumes</td><td>Prepared agent environments, the sandbox's working folders and the node's credential: rebuildable from the above.</td></tr>
+    <tr><td>Speech models</td><td>Pinned model files, fetched once and checked against their published digests.</td></tr>
+  </table>
+  <p>A chat in progress is held by one runtime at a time under a lease kept in the Data Core. If that runtime goes away, the lease lapses and the next one hydrates the session from the stored state — including a call parked for approval, which is saved before its card is shown (chapter 6).</p>
+
+  <p><b>Speech</b> is the phone's or computer's own by default, or the organization's: a provider it named, or the platform's own models in the <code>speech</code> container (Whisper to write speech down, Piper voices to say answers). The container holds no key and no setting, speaks the providers' audio protocol so the choice between them is an address, and keeps nothing it is sent.</p>
+</section>

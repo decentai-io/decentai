@@ -1,0 +1,247 @@
+<!-- ── Chapter 5. The assistant ──────────────────────────────────── -->
+<section class="chapter page">
+  <div class="chapter-head">
+    <div class="kicker">Chapter 5</div>
+    <h2>The assistant</h2>
+    <p class="lead">Each chat has one assistant. It is a durable record, not a process. A session loads it, feeds it events, lets the model choose one action at a time, and saves it after every step. The model chooses; the platform checks each choice, carries it out, and records only what actually happened.</p>
+  </div>
+
+  <h3><span class="no">5.1</span> One mind per chat, kept as state</h3>
+  <p>There are no turns that start from nothing. A user message is one more event reaching a mind that already exists. That mind is one serializable state object: the working transcript, a summary and archive of what folds removed, the plan, the opened agents, the <em>trace</em> of every invocation with inputs, status and result, the jobs table, the one foreground call parked on a person, the inbox <code>cursor</code>, the beat count and a <code>stopped</code> flag. It is saved whole on every step (<code>AI:State:Save</code>). Any process can load it and continue: the watched session, a headless one, a fresh process after a deploy, another node after a failure. A failed save costs one step, not the work.</p>
+
+  <h3><span class="no">5.2</span> What the model is shown</h3>
+  <p>Each step sends one request, rebuilt from state and ordered by how rarely each part changes, because a provider's prompt cache keeps the front of a request:</p>
+  <table class="compact">
+    <tr><th style="width:22%">Part</th><th>What it holds</th></tr>
+    <tr><td>Tools</td><td>The actions as tool schemas, plus every function of an <em>opened</em> agent with its manifest input schema whole; at most 128, the rest callable by name. Tools are only ever appended.</td></tr>
+    <tr><td>Instructions, rules</td><td>The platform's instructions for every chat, then the organization's own rules (§6.6). Together, the stable front of the frame.</td></tr>
+    <tr><td>Skills, memory, summary</td><td>One line per skill (40 by default), the person's remembered facts, and what folds took out of the transcript.</td></tr>
+    <tr><td>Agents</td><td>One line per enabled agent; past 15 agents, the open ones plus an embedding shortlist of 15 for the latest message.</td></tr>
+    <tr><td>Transcript, plan</td><td>Events and observations, each stamped with local time; then the plan, added to every call and never kept.</td></tr>
+  </table>
+  <p>Details cost space only once asked for. <code>open_agent</code> loads an agent's catalogue with each function's price, marked <code>NEEDS APPROVAL</code> where it exceeds the chat's trust level, so the model knows before it chooses. Invoking an unopened agent is refused, since it means guessing inputs. At most eight agents stay open. A result over 16,000 characters enters as a preview of whole items plus its <code>storage_ref</code>, which <code>read</code> pages through.</p>
+
+  <h3><span class="no">5.3</span> The step loop</h3>
+  <p>One <em>beat</em>: absorb events, think once, act once, observe, save. The model returns exactly one action from a fixed vocabulary of twenty (<code>say</code>, <code>open_agent</code>, <code>invoke</code>, <code>start</code>, <code>spawn</code>, <code>plan</code>, <code>remember</code>, <code>schedule</code>, <code>sleep</code>, <code>finish</code> and their kin). A call to a function's own tool is rewritten to <code>invoke</code> first, so the gates, the trace and the evidence share one vocabulary.</p>
+
+  <figure>
+    <svg viewBox="0 0 680 210" role="img" aria-label="The step loop">
+      <text x="0" y="10" class="cap">ONE REQUEST, EACH BEAT</text>
+      <text x="250" y="10" class="cap">THE CYCLE</text>
+      <g font-size="10">
+        <rect x="0" y="18" width="196" height="30" rx="7" class="step"/>
+        <text x="10" y="31" class="b">Tools</text><text x="10" y="43" font-size="9" class="t-soft">actions + open functions, ≤128</text>
+        <rect x="0" y="52" width="196" height="30" rx="7" class="step"/>
+        <text x="10" y="65" class="b">Instructions, org rules</text><text x="10" y="77" font-size="9" class="t-soft">the stable front, cached</text>
+        <rect x="0" y="86" width="196" height="30" rx="7" class="step"/>
+        <text x="10" y="99" class="b">Skills · memory · summary</text><text x="10" y="111" font-size="9" class="t-soft">then the agents, one line each</text>
+        <rect x="0" y="120" width="196" height="30" rx="7" class="step"/>
+        <text x="10" y="133" class="b">Transcript</text><text x="10" y="145" font-size="9" class="t-soft">events and observations; grows</text>
+        <rect x="0" y="154" width="196" height="30" rx="7" class="step dash"/>
+        <text x="10" y="167" class="b">Plan</text><text x="10" y="179" font-size="9" class="t-soft">added each beat, never kept</text>
+      </g>
+      <path d="M196 33H204M196 67H204M196 101H204M196 135H204M196 169H204M204 33V169" class="link"/>
+      <path d="M204 40H248" class="link" marker-end="url(#m-ink)"/>
+      <g font-size="10.5" text-anchor="middle">
+        <rect x="250" y="18" width="170" height="44" rx="10" class="model"/>
+        <text x="335" y="36" class="b">Think once</text><text x="335" y="51" font-size="9.5" class="t-soft">one model call, one action</text>
+        <rect x="500" y="18" width="180" height="44" rx="10" class="platform"/>
+        <text x="590" y="36" class="b t-on">Act</text><text x="590" y="51" font-size="9.5" class="t-on-soft">gates → executor → worker</text>
+        <rect x="500" y="100" width="180" height="44" rx="10" class="step-strong"/>
+        <text x="590" y="118" class="b">Observe and persist</text><text x="590" y="133" font-size="9.5" class="t-soft">result stored; state saved</text>
+        <rect x="250" y="100" width="170" height="44" rx="10" class="step"/>
+        <text x="335" y="118" class="b">Absorb</text><text x="335" y="133" font-size="9.5" class="t-soft">events, stamped with the time</text>
+        <rect x="250" y="168" width="190" height="40" rx="10" class="plain"/>
+        <text x="345" y="184" class="b">Inbox</text><text x="345" y="199" font-size="9.5" class="t-soft">message · job · wakeup · stop</text>
+        <rect x="500" y="168" width="180" height="40" rx="10" class="person"/>
+        <text x="590" y="184" class="b">Idle</text><text x="590" y="199" font-size="9.5" class="t-soft">finish, or a final say</text>
+      </g>
+      <path d="M420 40H498" class="flow" marker-end="url(#m-seal)"/>
+      <path d="M590 62V98" class="flow" marker-end="url(#m-seal)"/>
+      <path d="M500 122H422" class="flow" marker-end="url(#m-seal)"/>
+      <path d="M335 100V64" class="flow" marker-end="url(#m-seal)"/>
+      <path d="M335 168V146" class="link" marker-end="url(#m-ink)"/>
+      <path d="M590 144V166" class="link" marker-end="url(#m-ink)"/>
+      <path d="M500 188H442" class="link dash" marker-end="url(#m-ink)"/>
+      <g font-size="9.5" class="t-soft">
+        <text x="460" y="34" text-anchor="middle">one action</text>
+        <text x="596" y="84">result</text>
+        <text x="461" y="116" text-anchor="middle">observation</text>
+        <text x="329" y="85" text-anchor="end">next beat</text>
+        <text x="341" y="160">absorbed once</text>
+        <text x="596" y="160">nothing owed</text>
+        <text x="471" y="182" text-anchor="middle">next event</text>
+        <text x="461" y="80" text-anchor="middle" class="t-faint">turn budget</text>
+        <text x="461" y="92" text-anchor="middle" class="t-faint">counts beats</text>
+      </g>
+    </svg>
+    <figcaption><b>Figure 5.1</b> The step loop. The request is rebuilt from state each beat; the dashed box, the model, only proposes. Every action passes the gates before anything runs, and the state is saved before the next beat.</figcaption>
+  </figure>
+
+  <p>Malformed replies are corrected, not acted on: an invalid action bounces (two in a row cost no beat), prose with no action is delivered as a <code>say</code>, a reply gluing several actions runs only the first, a <code>say</code> 92% alike to one already sent is refused, and a reply cut off at the output cap is never acted on. A <code>finish</code> carries a reason checked against the state: <code>completed</code> is refused while plan items are owed, <code>awaiting_events</code> when nothing runs or is scheduled, <code>blocked</code> when nothing is blocked.</p>
+  <p><b>The turn budget</b> is a valve against runaway loops, not a quota. It counts beats since the person last spoke, up to the chat's <code>max_turns</code> (20 by default; 0 means none). At the limit the model is told to wrap up honestly and gets three more beats; then the runtime pauses the work, intact and resumable. A helper that runs out reports <code>budget</code>, not "done".</p>
+
+  <h3><span class="no">5.4</span> The plan, and nothing invented</h3>
+  <p>The plan is the assistant's to-do list, shown to the person: at most 12 items of 200 characters, each <code>pending</code>, <code>active</code>, <code>done</code> or <code>blocked</code>, with runtime-assigned ids. A blocked item needs a blocker; an item becomes active only when its dependencies are done. While an item is active, every successful call's storage ref and every finished job's id land on it as evidence. The model may name evidence too, but only refs the trace holds. Done without evidence is kept and shown <em>unverified</em>, since "answer the question" leaves no trace. The rules are enforced in code; the prompt only describes them.</p>
+
+  <figure>
+    <svg viewBox="0 0 680 116" role="img" aria-label="The plan and the trace">
+      <rect x="0" y="0" width="330" height="114" rx="10" class="frame"/>
+      <rect x="350" y="0" width="330" height="114" rx="10" class="frame"/>
+      <text x="12" y="16" class="cap">PLAN · WHAT THE PERSON SEES</text>
+      <text x="362" y="16" class="cap">TRACE · WHAT RAN</text>
+      <g font-size="10">
+        <rect x="12" y="24" width="306" height="24" rx="6" class="step"/>
+        <text x="22" y="40">w1  Find last month's notes</text>
+        <rect x="230" y="28" width="80" height="16" rx="8" class="white"/><text x="270" y="39" font-size="9" text-anchor="middle" class="b t-seal">verified</text>
+        <rect x="12" y="54" width="306" height="24" rx="6" class="ask"/>
+        <text x="22" y="70">w2  Export them as a file</text>
+        <rect x="230" y="58" width="80" height="16" rx="8" class="white"/><text x="270" y="69" font-size="9" text-anchor="middle" class="b t-ask">on a card</text>
+        <rect x="12" y="84" width="306" height="24" rx="6" class="plain"/>
+        <text x="22" y="100">w3  Answer the question</text>
+        <rect x="230" y="88" width="80" height="16" rx="8" class="frame"/><text x="270" y="99" font-size="9" text-anchor="middle" class="t-faint">unverified</text>
+        <rect x="362" y="24" width="306" height="24" rx="6" class="plain"/>
+        <text x="372" y="40">notebook.find · success</text><text x="658" y="40" font-size="9" text-anchor="end" class="t-soft">st_7a1</text>
+        <rect x="362" y="54" width="306" height="24" rx="6" class="ask"/>
+        <text x="372" y="70">notebook.export · waiting</text><text x="658" y="70" font-size="9" text-anchor="end" class="t-ask">level 2 &gt; trust 1</text>
+        <rect x="362" y="84" width="306" height="24" rx="6" class="plain dash"/>
+        <text x="515" y="100" font-size="9" text-anchor="middle" class="t-faint">no entry: done, but nothing proves it</text>
+      </g>
+      <path d="M360 36H320" class="flow" marker-end="url(#m-seal)"/>
+      <path d="M360 66H320" class="flow-ask" marker-end="url(#m-ask)"/>
+    </svg>
+    <figcaption><b>Figure 5.2</b> The plan and the trace. The words of each item are the model's; what marks one verified is a trace entry produced while it was active. A <code>finish</code> claiming completion while w2 is owed is refused, and so is evidence naming a ref the trace does not hold.</figcaption>
+  </figure>
+  <div class="inv"><span class="id">I-5.1</span><p>A plan item is verified only by refs the trace produced. A <code>finish</code> that claims completion is refused while any item is pending or active.</p></div>
+
+  <p>No prompting stops a model from inventing things, so the platform guarantees something narrower: <em>anything shown as data was read from a real result</em>. A reply has two voices. The words are the model's. Everything beside them is assembled by the runtime's evidence step from successful trace entries, never from parsed prose: a table or chart the <code>say</code> names (up to three), only if a successful call stored those rows or offered that display, rendered from storage so no value is retyped; a <code>success</code> part for every write above level 0; files only from calls that produced them. A show it cannot back is dropped and the reason goes to the model. Keys only the platform may write (<code>storage_ref</code>, <code>displays</code>, <code>denied</code>) are stripped from worker output, which is validated against the declared outputs before it is stored.</p>
+  <div class="inv"><span class="id">I-5.2</span><p>Every table, chart, file and "verified" mark on a message comes from a successful trace entry and its stored result. A claim with nothing behind it is shown as the model's words alone.</p></div>
+
+  <h3><span class="no">5.5</span> Jobs and helpers</h3>
+  <p><code>invoke</code> holds its beat until the call answers; <code>start</code> runs the same call as a <em>job</em> whose result arrives as a <code>job_done</code> event, through the same gates and into the same trace. A job whose process died is settled as an honest error, never retried on a guess. <code>spawn</code> hands a bounded goal to a <em>helper</em>, a job whose worker is a session. Paraphrased context is where invented values come from, so the goal is the whole brief: the helper never sees the parent's transcript, summary or plan. It runs under the parent's contract, optionally narrowed to fewer agents. At most three are live per parent, and depth is one by construction: a helper cannot spawn, sleep, schedule, remember or save a skill. Its trace entries join the parent's, so its work is presented through evidence. Its job is <code>done</code> only if it finished <code>completed</code>, and success with no successful call leaves its items blocked.</p>
+
+  <h3><span class="no">5.6</span> Memory, skills, MCP servers, models</h3>
+  <p><b>Memory.</b> <code>remember</code> saves one durable fact, visibly. The runtime may list and add memories but holds no verb to delete one: a model that could forget could quietly rewrite what it knows about someone. <b>Skills</b> are Markdown instructions, listed in the frame and loaded by <code>use_skill</code>. A skill outlives its chat, which makes it what an injected page would most like to plant, so only the person asks for one; <code>save_skill</code> opens a card showing it whole, and the save is the person's own click, made as them. <b>MCP servers</b> a person adds appear beside the agents as <code>&lt;server&gt;.tools.&lt;id&gt;</code>. A server does not say what its tools do, so each tool starts at level 3; a tool that is new or changed comes back switched off; address and credential are fetched only at call time (<code>Mcp:Server:Use</code>). <b>Models.</b> A connection is a provider and a key; the model is chosen per chat, and the key travels as a <code>secret_ref</code>. Connectors cover OpenAI-compatible, OpenAI Responses, Anthropic, Bedrock, Gemini and Vertex AI. When a chat's model changes, the transcript says so once, and the new model is told the earlier actions were not its own.</p>
+
+  <h3><span class="no">5.7</span> Steering, stopping, sleeping</h3>
+  <p>The person may write at any moment. The mind gives way at once: a reply still being written is dropped and asked for again, uncounted; a foreground call continues in the background as a job; a call showing a screen receives the words too.</p>
+  <table class="compact">
+    <tr><th style="width:24%">Control</th><th>Effect</th></tr>
+    <tr><td>Stop generating</td><td>Honoured between beats; a call the beat waits on ends at once; jobs are cancelled and given 15 seconds; the stop is written into transcript and state, so a reloaded mind rests.</td></tr>
+    <tr><td>Stop everything in this chat</td><td>The kill: pending cards are expired on the record first, then the cycle, jobs, workers, helpers, browser and sleep end where they stand.</td></tr>
+    <tr><td>Stop all my work</td><td><code>AI:Switch</code>: nothing of the person's is placed on a node, every chat is killed with ten seconds to record itself, and every runtime key for them is withdrawn. It holds until they resume.</td></tr>
+    <tr><td><code>sleep</code></td><td>A pause of at most a day while waiting on something outside, one per chat; a message is still heard at once, and a stop cancels it.</td></tr>
+  </table>
+
+  <h3><span class="no">5.8</span> The lease, and hydration after a restart</h3>
+  <p>Two sessions never advance one assistant. Within a node, a registry and a per-chat build lock hold one session per chat. Across nodes, a numbered lease holds each active chat on one node, renewed by heartbeat every 20 seconds for 60. Every call a node makes for a chat carries the number (<code>X-DecentAI-Lease</code>); the gateway takes only the live one and answers others <code>409 stale_lease</code>. A lapsed lease is re-placed under the next number, never sooner, so a slow node never finds another acting for its chat. Hydration then rewrites the frame from the present, settles jobs left <code>running</code> as unknown (a helper resumes from its own state), expires questions a dead process left, absorbs every inbox event past <code>cursor</code> exactly once, and resumes the cycle if the mind was left mid-work and not stopped. Approval cards stay open: their parked calls are durable (§6.3).</p>
+  <div class="inv"><span class="id">I-5.3</span><p>At most one process acts for a chat at a time. A call that was running when its process died is reported as unknown and never re-run on its own.</p></div>
+</section>
+
+<!-- ── Chapter 6. The gate ───────────────────────────────────────── -->
+<section class="chapter">
+  <div class="chapter-head">
+    <div class="kicker">Chapter 6</div>
+    <h2>The gate</h2>
+    <p class="lead">Every call the model proposes passes one chokepoint, the runtime's function executor. It compares a price on the function with a trust level on the chat. When the price is higher, the call waits for a person. The model is never an input.</p>
+  </div>
+
+  <h3><span class="no">6.1</span> Two numbers and one rule</h3>
+  <p>Every manifest function declares <code>permission_level</code> 0–3: a read, an ordinary change, a wider change still inside the platform, an action that leaves it. The level is a price, not a permission; a reviewer reads it beside the function before approving the agent. Each chat has a <em>trust level</em> on the same scale, chosen by the person: <em>Ask for every change</em>, <em>Standard</em>, <em>Trusted</em>, <em>Autonomous</em>. The rule is one comparison: a function runs when its level is at or below the chat's trust, and asks first when above. Which functions exist for a person is decided by grants; trust decides only how far work goes unasked. The default is 1, and a stored value that is not 0–3 reads as 1, never 3, so damaged data never resolves to the most permissive setting.</p>
+
+  <figure>
+    <table>
+      <tr><th style="width:30%">Function level</th><th style="width:20%">0 · Ask for every change</th><th style="width:16%">1 · Standard</th><th style="width:16%">2 · Trusted</th><th style="width:18%">3 · Autonomous</th></tr>
+      <tr><td>0 · read</td><td><span class="tag run">runs</span></td><td><span class="tag run">runs</span></td><td><span class="tag run">runs</span></td><td><span class="tag run">runs</span></td></tr>
+      <tr><td>1 · ordinary change</td><td><span class="tag ask">asks</span></td><td><span class="tag run">runs</span></td><td><span class="tag run">runs</span></td><td><span class="tag run">runs</span></td></tr>
+      <tr><td>2 · wider change</td><td><span class="tag ask">asks</span></td><td><span class="tag ask">asks</span></td><td><span class="tag run">runs</span></td><td><span class="tag run">runs</span></td></tr>
+      <tr><td>3 · leaves the platform</td><td><span class="tag ask">asks</span></td><td><span class="tag ask">asks</span></td><td><span class="tag ask">asks</span></td><td><span class="tag run">runs</span></td></tr>
+      <tr><td>Not granted, out of scope, invalid inputs, blocked site, unlisted package, host denied this request</td><td><span class="tag no">refused</span></td><td><span class="tag no">refused</span></td><td><span class="tag no">refused</span></td><td><span class="tag no">refused</span></td></tr>
+    </table>
+    <figcaption><b>Figure 6.1</b> The matrix: the function's declared level against the chat's trust level. <em>Asks</em> parks the call on an approval card with its exact inputs. The last row is independent of trust: refused before any card, with the reason told to the model.</figcaption>
+  </figure>
+
+  <h3><span class="no">6.2</span> The order of the checks</h3>
+  <p>In fixed order, each failure returned to the model as an observation: the function is declared in the approved manifest; the grants reach it (deny by default); references are resolved to stored values, defaults applied, and inputs validated against the manifest schema; scopes are read from the inputs the manifest binds them to and held to the grants, each named as one value; the level is compared with trust; the call runs in its worker under its timeout, and its output is validated, stored and audited whatever the outcome. The chat's contract (agents, grants, trust, model, Safety) is read again before every turn, so access taken away this morning is gone this turn.</p>
+
+  <h3><span class="no">6.3</span> The approval card</h3>
+  <p>A card shows the agent, the function, its level and the <em>exact inputs</em>, after defaults and references, so the person approves values, not a ticket. An <em>action hash</em>, SHA-256 over sorted compact JSON of <code>(agent_id, function, inputs)</code>, is stored on the card and kept with the parked call. The park is durable before the card exists: the runtime writes the parked call, or the job set to <code>waiting_approval</code>, into the state and saves it, and only then emits <code>approval_requested</code>. If that save fails, the card is withdrawn and the call reports that nobody could be asked, never that someone refused.</p>
+
+  <figure>
+    <svg viewBox="0 0 680 232" role="img" aria-label="The life of an approval">
+      <path d="M0 58H680M0 118H680M0 178H680" class="lane"/>
+      <text x="0" y="34" class="cap">MODEL</text>
+      <text x="0" y="92" class="cap">RUNTIME</text>
+      <text x="0" y="152" class="cap">DATA CORE</text>
+      <text x="0" y="212" class="cap">PERSON</text>
+      <g font-size="10.5" text-anchor="middle">
+        <rect x="76" y="12" width="110" height="36" rx="9" class="model"/>
+        <text x="131" y="27" class="b">Proposes a call</text><text x="131" y="40" font-size="9.5" class="t-soft">invoke, level 3</text>
+        <rect x="76" y="70" width="110" height="36" rx="9" class="step-strong"/>
+        <text x="131" y="85" class="b">Gates</text><text x="131" y="98" font-size="9.5" class="t-soft">level 3 &gt; trust 1</text>
+        <rect x="206" y="70" width="110" height="36" rx="9" class="platform-2"/>
+        <text x="261" y="85" class="b t-on">Park, hash</text><text x="261" y="98" font-size="9.5" class="t-on-soft">saved before card</text>
+        <rect x="206" y="130" width="110" height="36" rx="9" class="platform"/>
+        <text x="261" y="145" class="b t-on">Card: pending</text><text x="261" y="158" font-size="9.5" class="t-on-soft">request + hash</text>
+        <rect x="206" y="190" width="110" height="36" rx="9" class="person"/>
+        <text x="261" y="205" class="b">Card shown</text><text x="261" y="218" font-size="9.5" class="t-soft">the exact inputs</text>
+        <rect x="336" y="190" width="110" height="36" rx="9" class="ask"/>
+        <text x="391" y="205" class="b t-ask">Approve</text><text x="391" y="218" font-size="9.5" class="t-ask">or Deny</text>
+        <rect x="336" y="130" width="110" height="36" rx="9" class="platform"/>
+        <text x="391" y="145" class="b t-on">Decision kept</text><text x="391" y="158" font-size="9.5" class="t-on-soft">once; audited</text>
+        <rect x="570" y="70" width="110" height="36" rx="9" class="platform"/>
+        <text x="625" y="85" class="b t-on">Re-checked, run</text><text x="625" y="98" font-size="9.5" class="t-on-soft">grants now; hash</text>
+        <rect x="570" y="12" width="110" height="36" rx="9" class="model"/>
+        <text x="625" y="27" class="b">Reads the result</text><text x="625" y="40" font-size="9.5" class="t-soft">as an observation</text>
+      </g>
+      <path d="M131 48V68" class="flow" marker-end="url(#m-seal)"/>
+      <path d="M186 88H204" class="flow" marker-end="url(#m-seal)"/>
+      <path d="M261 106V128" class="flow" marker-end="url(#m-seal)"/>
+      <path d="M261 166V188" class="flow-ask" marker-end="url(#m-ask)"/>
+      <path d="M316 208H334" class="flow-ask" marker-end="url(#m-ask)"/>
+      <path d="M391 190V168" class="flow" marker-end="url(#m-seal)"/>
+      <path d="M446 148H625V108" class="flow" marker-end="url(#m-seal)"/>
+      <path d="M625 70V50" class="flow" marker-end="url(#m-seal)"/>
+      <g font-size="9.5" class="t-soft">
+        <text x="267" y="116">AI:Approval:Open</text>
+        <text x="397" y="176">AI:Approval:Decide</text>
+        <text x="535" y="142" text-anchor="middle">approval_decided + hash</text>
+        <text x="443" y="92" text-anchor="middle" class="t-faint">only this call waits; the mind goes on</text>
+        <text x="378" y="34" text-anchor="middle" class="t-faint">the model sees the result, never the decision</text>
+        <text x="460" y="205" class="b t-no">Deny: nothing runs,</text>
+        <text x="460" y="219">and the hosts it named stay shut</text>
+      </g>
+    </svg>
+    <figcaption><b>Figure 6.2</b> The life of an approval, left to right. The call is parked and saved before the card exists, so a decision days later still resumes it. The Data Core records the decision before sending it; the runtime re-reads the contract, checks grants as they are now and compares the hash before anything runs. Amber steps wait for a person.</figcaption>
+  </figure>
+
+  <p>Only a person decides. <code>AI:Approval:Decide</code> is a person's verb; a runtime principal calling it hears "A runtime never decides its own escalation". The decision is recorded first, audited as <code>approval.resolved</code>, then sent. It is a conditional update that lands only while the card is <code>pending</code>, so a second decision gets <code>409 not_pending</code> and never overwrites the first. The runtime ignores a decision for a card its chat does not hold. An approval has no deadline: a parked job waits while the mind works on, and a foreground <code>invoke</code> holds its beat until the card is answered or the person writes. On a yes, the level is not judged again, since the yes is to the call as shown, but the grants are: an entitlement narrowed while the card waited must not be carried through.</p>
+  <table class="compact">
+    <tr><th style="width:28%">If</th><th>Then</th></tr>
+    <tr><td>the person denies</td><td>Nothing runs. The hosts the call named are refused to every function of that agent, at any level, until the person's next message, so a function that needs no card cannot make the visit anyway.</td></tr>
+    <tr><td>the process died meanwhile</td><td>The card stays open; the decision resumes the call from the saved park, every gate re-run and the hash recomputed. A mismatch blocks execution.</td></tr>
+    <tr><td>a grant was narrowed</td><td>The yes is refused <code>not_permitted</code>.</td></tr>
+    <tr><td>the call was stopped or killed</td><td>The card is expired on the record and closed on the page.</td></tr>
+  </table>
+  <div class="inv"><span class="id">I-6.1</span><p>What runs after an approval is exactly the call the card showed: its inputs hash to the value recorded when the card opened, and it passes the grants as they stand when the yes arrives.</p></div>
+  <div class="inv"><span class="id">I-6.2</span><p>A decision is recorded by the Data Core before it reaches the runtime, lands once, and can only be made by a person.</p></div>
+
+  <h3><span class="no">6.4</span> Questions, credentials and code</h3>
+  <p>The same record, <code>ai_approvals</code>, carries every card where the platform needs an answer it cannot know. These are <code>kind: question</code>, told apart by <code>expects</code>, and wait at most a day, the function's own timeout paused meanwhile. A question lives only as long as the call that asked it.</p>
+  <table class="compact">
+    <tr><th style="width:14%">Card</th><th style="width:43%">Shows</th><th>Answered with</th></tr>
+    <tr><td>Question</td><td>an agent's question, up to 8 choices</td><td>a choice, words, or a file</td></tr>
+    <tr><td>Files</td><td>up to five files the person can see</td><td>refs ticked, each re-checked against what they may see</td></tr>
+    <tr><td>Credential</td><td>entry, consent, choose or once; host, site, field labels only</td><td>values go straight to <code>Secrets:Credential:Save</code>, never to the card's record</td></tr>
+    <tr><td>Code</td><td>the code whole, purpose, packages, hosts, credentials, files, review</td><td>allow or deny; allow opens the named hosts for that call only</td></tr>
+    <tr><td>Skill</td><td>title, summary, body as plain text</td><td>save or decline; a save creates it as the person</td></tr>
+  </table>
+  <p>Code proposals exist because the Browser runs scripts and the Code agent writes programs that nobody can list in advance. A package not on the organization's list is refused before anyone is asked. Then the chat's model reads the code and the card carries its verdict: <code>agrees</code>, <code>differs</code> or <code>unread</code>; code that would break the organization's rules never agrees. The review advises and never decides, and one sent by an agent is discarded. An organization may let some code through without a card, but that is decided in the Data Core as the card opens, so the runtime cannot loosen itself. Only code the review agrees with qualifies, it is still announced in the chat with its first 25 lines, and every looser choice rests on an earlier yes from a person.</p>
+
+  <h3><span class="no">6.5</span> The organization's Safety rules</h3>
+  <p><b>Settings → Safety</b> is the administrator's, for everyone, and each row is enforced in code: <b>sites no agent may open</b> at the proxy, for every worker and every manifest, bare addresses refused while the list holds names; <b>scripts and programs</b> in the Data Core as the card opens; <b>packages</b> in the runtime before any card; <b>MCP servers and inbound webhooks</b> in the Data Core (blocked webhooks answer 404); and <b>what a notification says</b> in the notifier. Notifications pass through services outside the deployment, so the hidden setting reduces every push and email to "Something is waiting for your decision" or "A chat of yours has an answer", with a link; a person may choose the same but cannot undo the organization's choice. Below the rows sit the organization's own rules for the assistant (<code>Settings:Guardrail</code>, at most 4,000 characters), placed in the frame and the code reviewer's instructions. They are guidance, not enforcement: no code reads them. What must never happen belongs in the rows, the grants and the trust levels, which hold whatever any prompt says.</p>
+
+  <h3><span class="no">6.6</span> Why the model decides nothing</h3>
+  <p>A model's output is shaped by everything it read, including pages, emails and results written by people who are not the user. So nothing that grants authority reads it. The level comes from the reviewed manifest, trust from the chat's settings, grants from policy served in the contract, and a yes from a person through a verb no runtime can call. The runtime acts under a one-chat delegation that lasts an hour and opens only a fixed list of runtime verbs: it can open and expire cards but not decide them, add memories but not delete them, read skills but not write them. The model may propose anything; a refusal reaches it as an observation it can explain, and nothing it writes afterwards reaches a parked call's inputs.</p>
+  <div class="inv"><span class="id">I-6.3</span><p>No input to the gate is produced by the model. Levels, trust, grants and decisions come from the manifest, the chat's settings, policy and a person. The runtime can open a card but never answer one.</p></div>
+</section>

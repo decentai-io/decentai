@@ -45,3 +45,10 @@ closer look at one step of it:
 
 The same design for researchers, typeset for arXiv, is [the academic
 paper](arxiv/README.md) ([PDF](arxiv/decentai-paper.pdf)).
+
+For engineers who will run, extend or audit the platform, [the
+technical paper](technical/README.md)
+([PDF](technical/decentai-technical-paper.pdf)) describes the whole
+system in detail: its parts and protocols, one turn end to end, the
+gate, agents, the sandbox, secrets, evidence, the clients, deployment
+and verification.

@@ -141,7 +141,8 @@ either way.
 The same moments — a card opened, an assistant's message, and a
 schedule's run recorded (`AI:Schedule:Ran`) — are queued for the
 addresses the person subscribed to them (`Notifier._out`,
-`data_core/server/outbound.py`), whether or not they are looking
+`data_core/server/outbound.py`): a card or a message while nobody
+has the chat open, as a push is, and a schedule's run always
 ([webhooks](webhooks.md#outbound)).
 
 ### Attention

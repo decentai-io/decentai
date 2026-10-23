@@ -138,7 +138,9 @@ class Notifier:
 
     def _out(self, chat: Dict[str, Any], event: str, line: str, reply: str = "") -> None:
         """The same moment, for the addresses the person subscribed
-        (server/outbound.py) — whether or not they are looking."""
+        (server/outbound.py). A card or an answer is sent here only
+        while nobody has the chat open (the callers ask); a schedule's
+        run, always."""
         try:
             from server.outbound import Outbound
 
