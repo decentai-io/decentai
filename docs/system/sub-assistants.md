@@ -84,7 +84,8 @@ for:
 | storage (`store_result`, `read_result`) | the parent's chat — the results are this conversation's, and the goal may name refs |
 | memories | the parent's chat, read at open; `remember` is refused ("Durable facts are the parent's to save, visibly — put it in your report.") |
 | a skill to save | `save_skill` is refused — a skill is the person's, offered from the chat itself — and the platform refuses a skill card on a helper's thread |
-| skills, secrets, data, files | the same services and provider — the same gates |
+| skills, secrets, files | the same services — the same gates |
+| an agent's records (`call.resources`) | the parent's chat — a helper's agents read and write what the chat's agents do |
 | approvals | opened under the child's id, so the host knows whose job parked |
 | emissions | the parent's audience, each frame tagged `"child": "<id>"` so a client may thread them |
 | screen frames (`relay`) | the parent's audience, tagged the same way — the child's id has no audience of its own |

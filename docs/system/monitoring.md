@@ -30,7 +30,9 @@ it by (`name`) and, where the line is about a process, its user
 
 The runtime orders everything that is done to a worker, so it writes
 nearly all of it. The spawner writes what only the Execution Sandbox
-sees: the processes there, and the programs it runs as an agent.
+sees: the processes there, the programs it runs as an agent, and the
+worker it starts itself to verify a package as it is installed (its
+`worker.started`, its `log` lines and its `worker.ended`).
 
 ## What is not
 
@@ -221,7 +223,9 @@ log and the calls in it are let go, and a crash loses what was not yet
 sent. The Data Core takes a batch whole or not at all — a purpose it does
 not know, a count that is not a whole number from zero to a billion, a
 word longer than 200 characters refuses it — and keeps the runtime's
-time for a call only where it is within a day of its own.
+time for a call only where it is at most a day before its own and five
+minutes after. While the platform cannot be reached the session holds
+at most 2,000 calls, and lets the oldest go first.
 
 Recording is every person's (`ai:usage:record`, in the
 [baseline](identity.md#the-baseline)), because a chat's delegation
@@ -376,7 +380,8 @@ Nothing on the page changes an agent or what it is given.
   sandbox writing in folders of their own, read together, an agent's
   files listed while it runs, and an agent refused the folder; in the
   stack of the runtime and two sandboxes.
-- `data_core/tests/test_agent_monitoring.py` — the three actions against
+- `data_core/tests/test_agent_monitoring.py` — `Usage`, `Events`,
+  `Files` and `Summary` against
   a stand-in for the runtime: who may look, two organizations kept
   apart, pages, filters, search and the tally, paths, and the
   platform's own parts.

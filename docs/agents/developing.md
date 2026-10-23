@@ -46,9 +46,10 @@ runs reuse it. **Delete that folder after you change the dependencies.**
 
 ### What the harness gives you
 
-`conftest.py` reads the catalog, validates every manifest, checks
-each catalog id against its `agent.id`, builds the environment, and
-gives your tests `agents` — every agent the catalog offers, by id. Then:
+`conftest.py` reads the catalog, validates every manifest, builds the
+environment, and gives your tests `agents` — every agent the catalog
+offers, by its `agent.id`. It does not compare a catalog entry's id
+with the manifest's; `test_note.py` has the test that does. Then:
 
 ```python
 from ai_runtime.execution.executor import FunctionExecutor

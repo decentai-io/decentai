@@ -24,7 +24,10 @@ an agent seen running, the whole path from the composer to an approval —
 is tried in the Compose stack ([quickstart](../run/quickstart.md)),
 rebuilding the service that changed with
 `docker compose --env-file config/deploy.env up -d --build <service>`
-(`data-core`, `ai-runtime`, `sandbox`).
+(`data-core`, `ai-runtime`, `sandbox`). The `local-dev` recipe in
+[`decentai-deploy`](https://github.com/decentai-io/decentai-deploy)
+starts the stack and the web client's container together from sibling
+checkouts of the two repositories (`dev.sh`, `dev.ps1`).
 
 ## What you need
 

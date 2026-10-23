@@ -99,6 +99,7 @@ sources of the same thing.
 | `user_message` | message id, text, attachments | the person spoke — including while work is running. Absorbed on the next beat; never queued behind a "busy" wall, and refused only for its length: more than 256 KB of text is turned away at the door, before anything is kept, and belongs in a file. |
 | `job_done` | job_id, result, status | a background invocation finished (success or error — both are results). |
 | `wakeup` | schedule_id, and `note` or `function` with its `result`; `slept: true` after a sleep | a schedule fired (the reminders design's clock, natively). |
+| `webhook` | the webhook (id, name, the person's instruction for it), delivery id, the posted fields | an outside system posted to one of the person's webhooks ([webhooks](webhooks.md)). Absorbed as two lines: the instruction as the person's own words, a fresh ask; the fields as an EVENT beside it, data and never instructions. |
 | `agent_posted` | agent, function, text | an agent said something to the person directly (`call.post`), beside the conversation. The assistant is told so that it does not repeat it; the words are data, not instructions. |
 | `stop` | nothing | the user's stop. Cooperative and honored between beats; a call the beat under way is waiting on is ended at once (its worker is told to stop, the call goes on the trail, and the mind reads that the person stopped it), so the beat ends and the stop is heard. Running jobs are cancelled and waited for (up to 15 seconds), so that what each says as it ends is read as the end of something stopped; a line saying the person pressed stop is written into the transcript; the state is saved with `stopped` set; and the assistant goes idle without a word. A message the person sends after the stop is a new ask, and is answered. `force` on the stop is the kill, which ends the work where it stands and leaves the same two marks. |
 
@@ -113,8 +114,8 @@ arrived — the assistant's only clock, and always current when it
 thinks, because a beat follows an absorption. It reads the same clock
 its schedules fire by.
 
-A message, a wakeup and an agent's post are durable before they are
-absorbed — the session records each in the services' inbox and posts it
+A message, a wakeup, a webhook's event and an agent's post are durable
+before they are absorbed — the session records each in the services' inbox and posts it
 carrying its sequence — so an assistant that was down when something
 happened finds it on hydration. A `job_done` is not in that inbox: the
 jobs table is its record, and a job whose process is gone is found

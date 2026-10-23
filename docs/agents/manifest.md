@@ -40,7 +40,8 @@ leaves it with the default.
 
 A manifest holds what JSON can say. A value YAML reads as a date
 (`2026-09-21`, unquoted) and a key that is not text (`1:`) are refused
-wherever they are, with the path: quote them.
+wherever they are, with the path: quote them. So is a number that is
+not finite (`.nan`, `.inf`).
 
 ## Ids
 
@@ -162,10 +163,10 @@ agent:
 |---|---|---|
 | `id` | yes | See Ids. **Permanent**: a different id is a different agent, and no installation follows it. |
 | `name` | yes | What people see. Change it freely. |
-| `version` | yes | `MAJOR.MINOR.PATCH`, digits only, and quoted: `"1.2.0"` — unquoted, YAML may read `1.10` as a number. Bump it with **every** change to the manifest — see "Versions are immutable" below. A label for people: the platform tells one version's code from another's by the hash of the package. |
+| `version` | yes | `MAJOR.MINOR.PATCH`, digits only, and quoted: `"1.2.0"` — unquoted, YAML may read `1.10` as a number. Bump it with **every** change to the manifest or the code — see "Versions are immutable" below. A label for people: the platform tells one version's code from another's by the hash of the package. |
 | `description` | yes | A sentence or two a person reads on the agent's page. |
 | `tags` | no | A list of strings, none blank: words for what the agent is about. |
-| `icon` | no | The name of an icon for the agent's mark, from [Lucide](https://lucide.dev/icons): lowercase words joined by hyphens, like `calendar-clock`, at most 40 characters. Where it is left out, or names an icon the app does not carry, the mark shows the agent's initials. A name only: no file, address or markup. |
+| `icon` | no | The name of an icon for the agent's mark, from [Lucide](https://lucide.dev/icons): words of lowercase letters and digits joined by hyphens, starting with a letter, like `calendar-clock`, at most 40 characters. Where it is left out, or names an icon the app does not carry, the mark shows the agent's initials. A name only: no file, address or markup. |
 | `examples` | no | At most 6, each `{title, prompt}`; title ≤ 80 characters, prompt ≤ 500. Shown on the agent's page under *Try asking*, each with a **Start a chat** button that opens a new chat with the prompt in the box, for the person to send. |
 | `instructions` | no | A string: what the chat's model reads once it has opened your agent. It advises the model; it does not widen what a function may do. |
 
@@ -253,8 +254,9 @@ word and a name with `_` in it are refused. A `from_secret` entry holds
 `from_secret` and, if it needs one, `port` — a number, not a string —
 and nothing else.
 
-**A manifest with no `network` block is refused.** Say `hosts: []` when
-your agent connects to nothing. Note does.
+**A manifest with no `network` block is refused**, and so is a block
+with no `hosts`. Say `hosts: []` when your agent connects to nothing.
+Note does.
 
 **Name what your code calls, and where it lands.** The consent and
 token addresses in an `oauth` block are the platform's to call, not
@@ -429,7 +431,7 @@ Every resource has:
 | `label` | yes | What people see |
 | `description` | no | A sentence for the person who binds or reviews it |
 | `binding` | yes | `{cardinality: one \| many, required: true \| false}` — one record or many, and whether the agent cannot work without it. `required` may be left out, and is then `false` |
-| `user_access` | no | What a person may do **directly**, from the records page, with no agent in the loop. Data: `create`, `update`. Files: `create`. Secrets: none. |
+| `user_access` | no | What a person may do **directly**, from the records page, with no agent in the loop. Data: `create`, `update`. Files: `create`. Secrets: none, and the key is refused on one. Where it is given, a non-empty list that names each operation once. |
 
 `read`, `list` and `delete` are never declarable in `user_access`: the
 owner always sees and may always delete their own records. What a person
@@ -568,7 +570,7 @@ carry.
 | `scopes` | Required, non-empty; each a string that is not blank. |
 | `authorize_params` | Extra query parameters for the consent page, strings only |
 | `identity` | Whose account it is: `{url, field}` read with the new token (`method: GET \| POST`, optional `headers`), or `{source: token, field}` read from the token response. `field` is a dotted path of at most six names, default `email`. `source` is `url` (the default) or `token`, and with `token` there is no `url`. Any other key is refused. |
-| `scope_param` | The query parameter scopes go in, when not `scope` (Slack: `user_scope`): lowercase letters, digits and `_`, at most 32 characters |
+| `scope_param` | The query parameter scopes go in, when not `scope` (Slack: `user_scope`): lowercase letters, digits and `_`, starting with a letter, at most 32 characters |
 | `scope_separator` | `" "` (default) or `","` |
 | `token_auth` | `body` (default) or `basic` — how the client proves itself to `token_url` |
 | `token_format` | `form` (default) or `json` |
@@ -896,6 +898,7 @@ files:
 **Every change to a manifest is a new version.** An installation approves
 a manifest by its `agent.version`, and a version is immutable once
 approved: the platform refuses to re-approve `1.0.0` with different
-content, even when only a sentence changed. Bump the version with the
-change, or nobody can take the update. [`publishing.md`](publishing.md)
+content, even when only a sentence changed, and refuses it with
+different code too. Bump the version with the change, or nobody can
+take the update. [`publishing.md`](publishing.md)
 has the rest.

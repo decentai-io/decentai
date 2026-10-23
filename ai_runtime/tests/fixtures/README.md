@@ -6,8 +6,10 @@ layer needs something real to load, execute and enforce against — and a
 suite that fetched it over the network would fail for reasons that have
 nothing to do with the code under test.
 
-They are fixtures, not shipped agents: nothing outside `ai_runtime/tests`
-reads this directory, and no deployment installs from it. When the
+They are fixtures, not shipped agents: only the test suites read this
+directory — the runtime's, and the Data Core's and the spanning suite's
+through `ai_runtime/tests/fixture_agents.py` — and no deployment
+installs from it. When the
 published agent changes in a way these tests should follow, copy it again.
 
 `agents/llm` is the LLM agent — the reference for `llm: true` functions,

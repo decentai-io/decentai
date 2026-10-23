@@ -80,7 +80,7 @@ The platform refuses the whole catalog, with the reason, when:
 - a `path` leaves the repository, or has no `manifest.yaml`;
 - the catalog file, an agent's folder, or anything inside an agent's
   folder is a symbolic link;
-- a manifest it points to cannot be read as YAML.
+- a manifest it points to cannot be read as YAML, or is not a mapping.
 
 A manifest that reads but breaks a rule of the grammar does not refuse
 the catalog. That one agent is listed with the reasons, on its card in
@@ -194,8 +194,11 @@ can.
 The network is held to the hosts your manifest declares wherever the
 platform runs agents ([the sandbox](../system/sandbox.md)): every
 stack is started from `docker-compose.yml`, and a runtime that cannot
-confine does not start. Your own tests run the agent with no network
-at all; write the agent for the confined case.
+confine does not start. Your own tests run the agent behind the same
+kind of proxy, where every name the agent declared is answered on your
+own machine, so nothing reaches the internet
+([`developing.md`](developing.md)); write the agent for the confined
+case.
 
 ## `samples.yaml`
 

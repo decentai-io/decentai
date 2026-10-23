@@ -315,8 +315,9 @@ The flow is the platform's, not the agent's. *Connect* asks the
 Data Core for the consent URL (`Secrets:Oauth:Start`), pinned to a
 single-use, ten-minute state row with a PKCE verifier and the browser
 session that asked; the provider sends the browser to one callback
-route, `/oauth/callback`, which spends the state, refuses unless the
-same person came back, in the same session where the flow began in one
+route, `/oauth/callback`, which spends the state and, for a browser on
+the Data Core's own origin, whose cookie comes back with it, refuses
+unless the same person came back, in the same session where the flow began in one
 (a consent link sent to somebody else connects nothing), exchanges the
 code, reads the identity and creates
 the credential — or, for a reconnect, refreshes the existing one in
@@ -337,6 +338,14 @@ an address on the web is refused);
 the app spends the hand-off with `Secrets:Oauth:Complete` under its own
 session, where the same-person, same-session check is made, and the
 exchange happens then.
+
+The web client, on an origin of its own, holds its session as a token
+the popup cannot carry either. It starts with `client: web`; the
+callback parks the code behind the same hand-off and the popup's page
+tells it to the window that opened it — to the web client's origin
+alone (`PUBLIC_APP_URL`); where that is not set, the window is told
+only that it failed, with nothing to spend — and the web client spends it with `Secrets:Oauth:Complete`, as
+the app does (`data_core/server/routes/oauth.py`).
 
 The platform's own two credentials are deliberately NOT definitions.
 The model key a chat thinks with is an **LLM connection** — the settings
@@ -458,12 +467,17 @@ under another name, or by two people, it is two — each belonging to the
 person who uploaded it. Bytes are removed only when the
 last document referring to them goes.
 
-Where bytes actually live is a connector's business. This platform
-ships one, a directory on disk; another store is one connector beside
-it. Each stored document records which connector wrote it, and reads
-follow that record. Containment is the connector's own rule to enforce:
-it resolves every path against its root and refuses anything outside,
-regardless of what the document it was handed happens to say.
+Where bytes actually live is a connector's business
+(`data_core/database/file_connectors/`). This platform ships a
+directory on disk and the object stores `FILE_STORAGE_PROVIDER` may
+name instead — S3 and what speaks its protocol, Azure Blob Storage,
+Google Cloud Storage (`data_core/database/blob_stores.py`); another
+store is one connector beside them. Each stored document records which
+connector wrote it, and reads follow that record. Containment is the
+connector's own rule to enforce: the disk resolves every path against
+its root and refuses anything outside, a bucket refuses a folder that
+climbs (`..`), regardless of what the document it was handed happens
+to say.
 
 ### Records
 
@@ -543,8 +557,11 @@ documents (`data_core/database/stores/nodes.py`,
 vouch for a node — a public key or an issuer's key set, `shared` or one
 organization's — and is revoked, never deleted. `execution_nodes` is a
 view the Data Core keeps from what admitted nodes presented and
-reported; nobody fills it in, and nothing a node says of itself admits
-it. `refused_nodes` holds the nodes refused by name, and `chat_leases`
+reported; nobody fills it in but for the name and note an
+administrator may give a node (`Nodes:Node:Update`), and nothing a node
+says of itself admits it. A row of a node that is gone may be
+forgotten (`Nodes:Node:Forget`); one its credential still admits is
+kept again when it next connects. `refused_nodes` holds the nodes refused by name, and `chat_leases`
 which node holds each active chat, under which number. None of them
 carries an owner map or a value to encrypt: an authority's key is a
 public half, and whether a row is read is the action's to say

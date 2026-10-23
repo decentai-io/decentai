@@ -23,7 +23,7 @@ service, folder and settings carry its name
 | **AI Runtime** | `ai-runtime` | `ai_runtime/` | the assistant, the executor every call passes, what a schedule's fire runs, the egress proxy |
 | **Execution Sandbox** | `sandbox` | `sandbox/` | agent code, one user of its own per agent |
 | **execution node** | — | — | one AI Runtime with its Execution Sandboxes, deployed together |
-| **clients** | — | other repositories | the web client (`decentai-web-client`), served on its own, and the desktop and mobile apps; each is told the engine's address and speaks only to the Data Core, across origins, with the session token as a Bearer header |
+| **clients** | — | other repositories | the web client (`decentai-web-client`), served on its own, the desktop app (`decentai-desktop`) and the mobile app; each is told the engine's address and speaks only to the Data Core, across origins, with the session token as a Bearer header |
 
 Together the Data Core, the AI Runtime and the Execution Sandbox are
 the **AI Engine**. Where this page says "the runtime", it means the AI
@@ -31,7 +31,7 @@ Runtime.
 
 ## What runs
 
-Eight containers, as `docker-compose.yml` starts them. Seven stay up;
+Seven containers, as `docker-compose.yml` starts them. Six stay up;
 the seeder runs once at every start and exits.
 
 ```
@@ -154,8 +154,8 @@ the recordings it was trained on ([operating](../run/operating.md#speech-on-this
 | Data Core → speech | `POST /v1/audio/…`, `GET /status`, `POST /prepare` (`speech/service.py`) | nothing: the private network is the only way to it | a recording to write down, or words to say |
 | runtime → Data Core | `POST /app` (`Gateway`, `ai_runtime/door/platform.py`) | the delegation, as `Bearer`, and its node's credential beside it | the person's own permissions, fenced (below); accepted only from the node the delegation was handed to |
 | runtime → Data Core | `POST /app`, the package door (`Agents:Package:*`) | its execution node's **credential**, as `Bearer` | "this is that node": which packages are approved, their bytes by digest, and that one is ready — nothing of anybody's ([agent code](agent-code.md#the-package-door), [execution nodes](execution-nodes.md)) |
-| Execution Sandbox → runtime | TCP, port 8005 (`ai_runtime/agents/sandboxes.py`, `sandbox/wire.py`) | a proof of the node's secret (`AI_RUNTIME_SANDBOX_SECRET`), answering the runtime's challenge | "I am this sandbox, and this is what I proved, what I am given and use, what I hold": a registration, kept open, and said again every two seconds |
-| runtime → Execution Sandbox | TCP, port 8003 (`ai_runtime/agents/sandbox.py`, `sandbox/wire.py`) | a proof of the node's secret, answering the sandbox's challenge | "install this package" (its bytes sent when asked), "start this agent's worker from this environment", "what does this agent keep", "end this agent's processes", "drain"; one connection per worker carries its lines, and a large file in pieces |
+| Execution Sandbox → runtime | TCP, port 8005, in TLS unless `AI_RUNTIME_SANDBOX_TLS` is `off` (`ai_runtime/agents/sandboxes.py`, `sandbox/wire.py`, `sandbox/tls.py`) | a proof of the node's secret, which also covers the TLS certificate each side sees (`AI_RUNTIME_SANDBOX_SECRET`), answering the runtime's challenge | "I am this sandbox, and this is what I proved, what I am given and use, what I hold": a registration, kept open, and said again every two seconds |
+| runtime → Execution Sandbox | TCP, port 8003, in the same TLS (`ai_runtime/agents/sandbox.py`, `sandbox/wire.py`) | a proof of the node's secret, answering the sandbox's challenge | "install this package" (its bytes sent when asked), "start this agent's worker from this environment", "what does this agent keep", "end this agent's processes", "drain"; one connection per worker carries its lines, and a large file in pieces |
 | worker → proxy | the proxy's port on the worker's own container, passed on to `ai-runtime:8002` | the worker's pass, a token in the proxy's address | which agent's worker this is, and so which hosts it may reach |
 
 A chat is spoken of in two vocabularies: the page's (`AI:Chat:Input`,

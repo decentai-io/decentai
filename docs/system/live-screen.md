@@ -55,11 +55,12 @@ that showed it.
 
 | `call.screen…` | Does |
 |---|---|
-| `show(image, width, height, mime="image/jpeg", tabs=None)` | pushes a frame — a PNG is passed with `mime="image/png"`, or it is dropped as not being what it says; `tabs` tells what else is open — a name, an address, which one is in front — and the live view shows them above the picture |
+| `show(image, width, height, mime="image/jpeg", tabs=None)` | pushes a frame, and says whether it was sent: false for one over the size, or where nobody could see it — a PNG is passed with `mime="image/png"`, or it is dropped as not being what it says; `tabs` tells what else is open — a name, an address, which one is in front, at most 20 — and the live view shows them above the picture |
 | `close()` | ends the stream |
 | `inputs()` | drains the events the person sent since last asked; a hand on a tab arrives as `{"type": "tab", "action": "switch" \| "close" \| "new", "index"}` |
 | `taken` | whether the person holds control now |
 | `took()` | whether the person took control since last asked, even if they have handed it back by now — for a function that looks only between its own steps |
+| `closed` | whether the person closed the live view: a function that only shows, a watch, ends on it; one that works on regardless ignores it |
 | `wait_input(timeout=1.0)` | `inputs()`, waiting up to `timeout` seconds for any to arrive |
 | `said()` | drains what the person wrote in the chat while this call runs, so an agent hears "only the 20 kg one" at its next step |
 

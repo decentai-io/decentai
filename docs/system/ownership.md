@@ -29,7 +29,8 @@ it. Being shown something is never authority over it.
 | Webhooks | `user_id` | the person only; shared to view, never to change, and handed over with its chat | none |
 | Notification subscriptions (outbound) | `user_id` | the person only; never shared or transferred | none |
 | API keys | `user_id` | the person only | none, deliberately |
-| Execution node authorities | the organization; a shared one, the deployment's operator | anyone holding `nodes:authority:revoke`; a shared one, the operator only | not needed |
+| Execution node authorities | the organization; a shared one, the deployment's operator | anyone holding `nodes:authority:update` (its name and note) or `nodes:authority:revoke`; a shared one, the operator only. Its key, key set and scope never change | not needed |
+| Execution nodes (the view), refusals by name | the organization; a shared node, the deployment's operator | anyone holding `nodes:node:update`, `nodes:node:refuse`, `nodes:node:allow`, `nodes:node:forget` or `nodes:node:drain`; a shared node, the operator only ([execution nodes](execution-nodes.md#the-nodes-view)) | not needed |
 | Audit events | actor recorded | nobody — append-only | — |
 
 The escape grants are held by FullAccess through its wildcard, so an

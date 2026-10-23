@@ -10,7 +10,7 @@ Each stop names the file, the functions to read in order, what to
 check while reading, and the tests that hold the behaviour — run one
 after a stop to see the claims fail when the code is changed.
 
-About twenty-two thousand lines without the tests. Stops 1 to 5 are the
+About twenty-four thousand lines without the tests. Stops 1 to 5 are the
 path of a message and are most of what matters; a first pass through
 them is a day's reading.
 
@@ -82,7 +82,6 @@ ai_runtime/
     confinement.py     Confinement, WorkerPlace: the proxy and each worker's pass
     egress.py          EgressProxy: the hosts a manifest declared, and nothing else
     mcp.py             McpServer: a remote MCP server in a chat's roster
-    environments.py    the sandbox's AgentEnvironment, under the name tests import it by
   llms/                how the runtime reaches a model
     factory.py         LLMConnectorFactory: provider name -> the connector
     meter.py           every model call a chat makes, written down to be added up
@@ -96,6 +95,7 @@ sandbox/               what runs in each Execution Sandbox, beside ai_runtime/ (
   places.py            Places, Place: the users, the spawn lines, the fences
   usage.py             AgentsUsage: what the sandbox is given and each agent uses
   wire.py              what the two sides agree on: the sandbox link, versioned
+  tls.py               the sandbox link's encryption, which both sides use
   events.py            what agents did, written down as it happens, by both sides
   spawn_helper.c       the one program that starts a process as another user
 ```
@@ -105,7 +105,7 @@ the law it operates under — and never `chat/`, the embodiment that
 hosts it: every side effect crosses `ChatSinks`, which lives in
 `execution/` for that reason. And `sandbox/` imports nothing
 of `ai_runtime/`: the two meet on a socket, and nothing else, and in the
-files the runtime reads of it — `wire.py` and `events.py`, which both
+files the runtime reads of it — `wire.py`, `tls.py` and `events.py`, which both
 sides speak and write, and `environments.py` and `installs.py`, whose
 names for an environment the library keys its cache by.
 

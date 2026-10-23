@@ -103,7 +103,9 @@ its user, its folders, its fences, its spawn line, its ending.
   proxy reads as it is, go only to the runtime's certificate as the
   sandbox saw it when it registered (`sandbox/tls.py`).
   `AI_RUNTIME_SANDBOX_TLS=off`, on both sides together, is the clear:
-  for sandboxes on a network nothing else is on.
+  for sandboxes on a network nothing else is on. A side in the clear
+  and a side encrypted refuse each other, and the error says to set it
+  the same on both.
 - **Its network reaches the runtime and nothing else.** No route leads
   from it to the internet, the database or the Data Core, so the
   runtime's proxy is the only way out whatever a worker does. Workers
@@ -114,9 +116,11 @@ its user, its folders, its fences, its spawn line, its ending.
   user runs. A runtime that died leaves nothing running.
 - **The Execution Sandbox holds no secret of the platform's** but the
   node's. It is told where its runtime takes registrations and where
-  its proxy is, the port, its name and labels, whether to filter
-  workers' system calls, the log level and the time zone, and nothing
-  else. What a worker is given, the runtime sends with the order to
+  its proxy is, the port, its name and labels, whether the link is
+  encrypted, whether to filter workers' system calls, the log level
+  and the time zone, and nothing else; where they are not the
+  defaults, also where the runtime reaches it, how long it drains and
+  how long a build may take ([configuration](../run/configuration.md)). What a worker is given, the runtime sends with the order to
   start it.
 
 What this adds to a user of its own and a fence: an agent cannot see
@@ -135,9 +139,10 @@ install code (`sandbox/installs.py`).
 
 **Registration.** A sandbox connects to its runtime's registration
 port (`AI_SANDBOX_RUNTIME`, the runtime's `AI_RUNTIME_SANDBOX_PORT`)
-and registers, proving the node's secret; the runtime answers with a
-proof of its own, reaches the sandbox where it says it answers, and
-asks it who it is. The registration says, and a heartbeat every two
+and registers, proving the node's secret; the runtime reaches the
+sandbox where it says it answers (`AI_SANDBOX_ADDRESS`, or the address
+the registration came from), asks it who it is, and answers with a
+proof of its own. The registration says, and a heartbeat every two
 seconds says again:
 
 | What | |
@@ -176,7 +181,8 @@ over for the next; a package a sandbox refuses is refused.
 
 **Draining.** A sandbox told to drain — by its runtime
 (`Sandboxes.drain`, which an administrator asks for through the Data
-Core with `Nodes:Node:Drain`, and undoes with `drain: false`), or by
+Core with `Nodes:Node:Drain`, for one sandbox or, naming none, for
+every sandbox the node reports, and undoes with `drain: false`), or by
 being stopped — starts no new worker; a
 worker it runs finishes what it is doing, is retired once it has
 nothing in flight, and the agent's next call is placed on another
@@ -420,7 +426,8 @@ install is two steps by two users:
    limits as a worker, and leaves every package as a wheel in its
    spool. Its pass at the runtime's proxy, sent with the install,
    opens where packages come from, `pypi.org` and
-   `files.pythonhosted.org`, and nothing else.
+   `files.pythonhosted.org` unless `AI_RUNTIME_PACKAGE_HOSTS` names
+   others, and nothing else.
 2. **The spawner** takes the wheels and unpacks them into the
    environment. It is handed files and never the list, it looks
    nothing up and downloads nothing, and unpacking a wheel runs
@@ -435,8 +442,8 @@ left. Nothing is kept between builds, because what one build left
 would be what the next agent installs; and a build reads no pip
 configuration file, so one left in the home builds share decides
 nothing for the next. Builds share a user, so one
-runs at a time, and one that does not end in five minutes is ended
-with everything it started.
+runs at a time, and one that does not end in five minutes
+(`AI_SANDBOX_BUILD_SECONDS`) is ended with everything it started.
 
 **The builder's files are fenced from Landlock's second version on.**
 The tools packages are built with move what they made from one folder
@@ -707,8 +714,8 @@ the database's password, the encryption keys
 and the Data Core's private key never reach it. An Execution Sandbox,
 where agent code runs, is handed no secret but the node's: where its
 runtime takes registrations, where the proxy is, its port, its name and
-labels, whether to filter system calls, the log level and the time
-zone. The person still fills in one file, `config/deploy.env`, and
+labels, whether the link is encrypted, whether to filter system calls,
+the log level and the time zone. The person still fills in one file, `config/deploy.env`, and
 `bootstrap/setup.py` writes the node's secret into another beside it,
 `config/sandbox.env`.
 
@@ -796,6 +803,14 @@ enforced in this install; and nothing to configure.
   refused; the placement rule step by step; the pool over two sandboxes,
   with one drained and one gone; what is shown, gathered from every
   sandbox; runs anywhere.
+- `ai_runtime/tests/test_sandbox_link_tls.py` — the link encrypted:
+  every connection TLS with a certificate its process made, somebody in
+  between with a certificate of their own refused by the runtime and
+  the sandbox both, a sandbox proving itself before anything is sent to
+  it, the proxy's passes going only to the runtime's certificate the
+  sandbox registered with, and `AI_RUNTIME_SANDBOX_TLS=off` the clear on
+  both sides, a side in the clear refused by an encrypted one; runs
+  anywhere.
 - `ai_runtime/tests/test_container.py` — the spawner itself and the
   runtime's client of it, with the helper stood in for: a package
   installed there, its bytes sent when asked and checked before

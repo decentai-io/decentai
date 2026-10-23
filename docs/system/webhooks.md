@@ -114,9 +114,10 @@ is the answer.
    undeclared), every required one present and not null, each of its
    type — a `date` is an ISO 8601 string. Otherwise **400**, naming the
    field, and nothing reaches the chat.
-6. **The idempotency key**, where sent: a call accepted with the same
-   key in the last day answers its first delivery id again, with
-   `repeated: true`, and runs nothing.
+6. **The idempotency key**, where sent: at most 200 characters
+   (otherwise **400**). A call accepted with the same key in the last
+   day answers its first delivery id again, with `repeated: true`, and
+   runs nothing.
 
 Every call past the first check — accepted or refused, and why — is a
 line in the webhook's own delivery list (`Settings:Webhook:Deliveries`,
@@ -190,8 +191,9 @@ each event came to. At the top are its address and an **example
 call** to copy — a `curl` with the fields as declared and the secret as
 `$WEBHOOK_SECRET`, since the page never holds the secret itself.
 
-- **Executions** (`Settings:Webhook:Executions`): every call, newest
-  first, for 30 days. An accepted one shows the fields posted, whether
+- **Executions** (`Settings:Webhook:Executions`): the calls of the
+  last 30 days, newest first — 50 at a time unless the page asks for
+  more, at most 200. An accepted one shows the fields posted, whether
   it came from a caller or was a test from the page, and what its chat
   did after it — the assistant's reply, how long it took, and the cards
   it opened and how they stand. Its result is *answered*, *waiting* (a
@@ -233,7 +235,7 @@ call** to copy — a `curl` with the fields as declared and the secret as
 | Setting | What it is |
 |---|---|
 | Name | at most 80 characters |
-| Address | `https` only. The host is resolved, and refused when any address it answers with is private, loopback, link-local, reserved, multicast or unspecified (`refuse_address`, `data_core/server/outbound.py`) |
+| Address | `https` only. The host is resolved, and refused when any address it answers with is not on the public internet: private, loopback, link-local, shared (`100.64.0.0/10`), reserved, multicast or unspecified, an IPv4 address wrapped in an IPv6 one judged by the one inside (`refuse_address`, `data_core/server/outbound.py`) |
 | Format | `json`, `slack` (an incoming-webhook URL) or `teams` (a workflow's URL) |
 | Events | at least one of `approval.waiting`, `reply.ready`, `run.finished`, `run.failed` |
 | Include the reply | off by default; on, a `reply.ready` carries the assistant's reply text (at most 4,000 characters), not only a link |
@@ -251,7 +253,7 @@ that listens for the event:
 
 | Event | When | Line |
 |---|---|---|
-| `approval.waiting` | a runtime opened a card or a question (`card_opened`) | *<agent> is waiting for your approval* / *<agent> has a question* |
+| `approval.waiting` | a runtime opened a card or a question (`card_opened`); not a code card the Safety setting answered, which nobody is asked | *<agent> is waiting for your approval* / *<agent> has a question* |
 | `reply.ready` | the assistant wrote a message with words, in the root thread (`assistant_said`) | *Your chat has an answer* |
 | `run.finished`, `run.failed` | a schedule's fire was recorded (`AI:Schedule:Ran`, `ScheduleController.ran` in `data_core/api/endpoints/app/ai/schedule_controller.py`); failed when its last run's status is `error` | *Schedule: <function, or "A reminder"> finished* / *failed* |
 

@@ -44,7 +44,7 @@ still holds it; by hand, copy `config/sandbox.env.example` and
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `TOKEN_SECRET_KEY` | required | Signs session tokens. Without it the process refuses to start. |
+| `TOKEN_SECRET_KEY` | required | Signs session tokens. Without it, or with the template's `change-me` or a value shorter than 32 characters, the process refuses to start. |
 | `JWT_COOKIE_SECURE` | `true` | Send the session cookie only over HTTPS. `false` for plain-HTTP development. The cookie is for a browser on the engine's own origin, which signs in naming no client; the web client (`client: "web"`) and the apps (`client: "native"`) are given a token instead and sent no cookie. |
 | `JWT_COOKIE_SAMESITE` | `lax` | `lax`, `strict` or `none`. |
 | `JWT_COOKIE_DOMAIN` | unset | A cookie domain; unset is a host-only cookie. |
@@ -113,7 +113,7 @@ container read `LOG_LEVEL`.
 | `LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING` or `ERROR`. |
 | `LOG_FORMAT` | `text` | `text`, or `json` for a log collector. |
 | `LOG_COLOR` | when a terminal | `true` or `false`. |
-| `LOG_TO_FILE` | `false` | Also write rotating files under `LOGS_DIR` (`./logs`), `LOG_MAX_BYTES` each, `LOG_BACKUP_COUNT` kept. |
+| `LOG_TO_FILE` | `false` | Also write rotating files under `LOGS_DIR` (`./logs`), `LOG_MAX_BYTES` each (`10000000`), `LOG_BACKUP_COUNT` kept (`5`). |
 
 ### First run and organizations
 
@@ -135,7 +135,7 @@ seeding variables below.
 
 | Variable | Meaning |
 |---|---|
-| `SECRET_ENCRYPTION_KEYS` | `version:key` pairs, comma-separated. Every stored credential and record value is encrypted under one of them; a value's version is recorded with it. Required: unset, the Data Core does not start. A database an earlier version wrote under the development key it derived from `TOKEN_SECRET_KEY` is moved to real keys with `bootstrap/reencrypt_secrets.py`. |
+| `SECRET_ENCRYPTION_KEYS` | `version:key` pairs, comma-separated. Every stored credential and record value is encrypted under one of them; a value's version is recorded with it. Every version has the same width (`01`, `02`, not `1`, `2`): versions are ordered as text, and the Data Core refuses mixed widths. Required: unset, the Data Core does not start. A database an earlier version wrote under the development key it derived from `TOKEN_SECRET_KEY` is moved to real keys with `bootstrap/reencrypt_secrets.py`. |
 | `SECRET_ENCRYPTION_ACTIVE` | The version new writes use; the highest one when unset. |
 
 A database without these keys is a database whose encrypted values are
@@ -179,7 +179,7 @@ An Execution Sandbox is the runtime's image started as the spawner
 | `AI_SANDBOX_PORT` | `8003` | Where the spawner answers the runtime. Fixed at 8003 in the Compose stack, which does not pass it on. |
 | `AI_SANDBOX_RUNTIME` | empty | Where its runtime takes registrations, as `host:port` (`ai-runtime:8005` in Compose). The sandbox connects there, registers, and connects again when the connection is lost. |
 | `AI_RUNTIME_SANDBOX_SECRET` | required, in `config/sandbox.env` | The execution node's secret, the same as the runtime's. The spawner takes it out of its own environment as it reads it. |
-| `AI_SANDBOX_ID` | the container's name | Who the sandbox is, to its runtime; `sandbox` in Compose, `sandbox-2` for the second of `compose/sandboxes.yml`. |
+| `AI_SANDBOX_ID` | the host name: a container's short ID, unless it is given a host name | Who the sandbox is, to its runtime; `sandbox` in Compose, `sandbox-2` for the second of `compose/sandboxes.yml`. |
 | `AI_SANDBOX_LABELS` | empty | What it says of itself, for a placement to ask for: `gpu`, separated by commas. In Compose, `SANDBOX_LABELS` in `config/deploy.env`, and `SANDBOX_2_LABELS` for the second sandbox. |
 | `AI_SANDBOX_ADDRESS` | the address it registered from | Where the runtime reaches it, as `host:port`, where that is not the address its registration came from. |
 | `AI_SANDBOX_DRAIN_SECONDS` | `60` | How long a sandbox that was stopped waits for its workers to finish before it goes. |

@@ -88,7 +88,8 @@ none of it admits or refuses a node.
 The Data Core keeps a row for each node it admitted (`execution_nodes`):
 its name, its authority, its scope and labels, when it was first and
 last seen, whether it is connected, and what it last reported. It is a
-view, kept from what nodes presented; nobody fills it in.
+view, kept from what nodes presented; nobody fills it in, but for the
+name and note a person may give a node ([below](#the-nodes-view)).
 `Nodes:Node:List` shows an organization's administrators their own
 nodes, and the operator the shared ones too — never another
 organization's. Each node comes with:
@@ -441,3 +442,8 @@ operates the nodes, not for the engine.
    every few into a volume; it reaches no network;
 4. `ai-runtime` mounts that volume read-only and reads its credential
    from it.
+
+A node on a machine of its own, for a Data Core that runs elsewhere, is
+the same three services without the rest: `decentai-deploy`'s `node`
+recipe runs `ai-runtime`, `sandbox` and `node-issuer` there, dialing
+the Data Core's `/nodes/link`, with no port of its own open.

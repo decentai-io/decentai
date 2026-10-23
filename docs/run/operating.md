@@ -104,7 +104,8 @@ is released by its own repository, in the same way.
 
 ## What to back up
 
-Four volumes hold everything durable; two more hold caches. (TLS
+Three volumes hold what cannot be made again; the other four hold what
+can, and what was seen of agents. (TLS
 certificates are the terminator's in front of the engine, not the
 stack's.)
 
@@ -116,6 +117,7 @@ stack's.)
 | `runtime_agents` | the AI Runtime's cache of the approved packages, pulled again by digest when lost; and what the runtime saw of agents, for the **Monitoring** page ([what is written down](../system/monitoring.md)) |
 | `sandbox_data` | the Execution Sandbox's own copy of the code it runs and its environments, rebuilt from the packages when lost; and what it saw of agents. Each sandbox has one of its own (`sandbox_2_data` for the second of `compose/sandboxes.yml`) |
 | `speech_models` | the platform's own speech models; downloaded again when missing, so not worth a backup |
+| `node_credential` | the bundled node's credential, which `node-issuer` writes again every few minutes; not worth a backup |
 
 The encryption keys in `config/deploy.env` are part of the backup: a database
 without `SECRET_ENCRYPTION_KEYS` is a database whose every credential

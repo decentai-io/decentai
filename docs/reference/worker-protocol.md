@@ -339,6 +339,10 @@ Lifecycle rules:
   Uninstalling an agent does not stop its running worker: nothing can
   call it any more, and it goes with the runtime. Spawning again is
   always safe.
+- **Retired when its sandbox drains.** A worker in an Execution
+  Sandbox that drains is handed no new call. It finishes what it is
+  running, for at most ten minutes, and is then shut down; the agent's
+  next call is placed in another sandbox.
 - **Ended for memory.** Where the agents share a sandbox that is
   given so much memory, the spawner ends the agent holding most before
   the engine would have to, and every call in flight on it fails with
