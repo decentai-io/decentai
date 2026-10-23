@@ -16,7 +16,7 @@
   <figure>
 <pre class="code"><span class="k">agent</span>:
   id: gmail                            <span class="c"># permanent: first segment of gmail.draft.send</span>
-  version: <span class="s">"0.3.2"</span>                     <span class="c"># a label for people; the digest tells code apart</span>
+  version: <span class="s">"0.3.3"</span>                   <span class="c"># a label for people; the digest tells code apart</span>
 <span class="k">implementation</span>:
   dependencies: [<span class="s">"requests&gt;=2.31,&lt;3"</span>]  <span class="c"># built by the builder user, index only</span>
 <span class="k">network</span>:
@@ -202,7 +202,7 @@
   </div>
 
   <h3><span class="no">8.1</span> The execution node</h3>
-  <p>An execution node is one AI Runtime and its Execution Sandboxes, deployed together as three Compose services. <code>ai-runtime</code> runs each chat's assistant, the executor and its gates, the agents' proxy and the sandbox registry. <code>sandbox</code>, the same image in another role, runs the <b>spawner</b>, which starts every worker and relays its traffic. <code>node-issuer</code> holds the node authority's private key, has no network, and writes the node a fresh credential into a volume the runtime reads. A node on its own machine dials a Data Core elsewhere and opens no port.</p>
+  <p>An execution node is one AI Runtime and its Execution Sandboxes, deployed together as three Compose services. <code>ai-runtime</code> runs each chat's assistant, the executor and its gates, the agents' proxy and the sandbox registry. <code>sandbox</code>, the same image in another role, runs the <b>spawner</b>, which starts every worker and relays its traffic. <code>node-issuer</code> holds the node authority's private key, has no network, and writes the node a fresh credential into a volume the runtime reads. A node on its own machine dials a Data Core elsewhere and publishes no port.</p>
 
   <figure>
     <svg viewBox="0 0 680 300" role="img" aria-label="Architecture of an execution node">
@@ -259,13 +259,14 @@
       <!-- links -->
       <path d="M152 139H114" class="flow" marker-end="url(#m-seal)"/>
       <path d="M152 257H114" class="flow" marker-end="url(#m-seal)"/>
-      <path d="M406 182H362" class="flow" marker-end="url(#m-seal)"/>
-      <text x="376" y="175" text-anchor="middle" font-size="9" class="t-soft">TLS</text>
-      <text x="376" y="196" text-anchor="middle" font-size="9" class="t-soft">HMAC</text>
+      <path d="M406 176H362" class="flow" marker-end="url(#m-seal)"/>
+      <path d="M362 190H404" class="flow" marker-end="url(#m-seal)"/>
+      <text x="376" y="169" text-anchor="middle" font-size="9" class="t-soft">TLS</text>
+      <text x="376" y="204" text-anchor="middle" font-size="9" class="t-soft">HMAC</text>
       <path d="M406 244H362" class="flow" marker-end="url(#m-seal)"/>
       <text x="376" y="237" text-anchor="middle" font-size="9" class="t-soft">pass</text>
     </svg>
-    <figcaption><b>Figure 8.1</b> An execution node. Every connection is dialled outward. Workers' connections leave only through the runtime's proxy, to declared hosts. The dashed outline is the trust boundary: the sandbox's network has no route to the internet, the database or the Data Core.</figcaption>
+    <figcaption><b>Figure 8.1</b> An execution node. Every connection that leaves the node is dialled outward; inside it, the sandbox registers with the runtime on :8005, and the runtime orders the spawner on :8003. Workers' connections leave only through the runtime's proxy, to declared hosts. The dashed outline is the trust boundary: the sandbox's network has no route to the internet, the database or the Data Core.</figcaption>
   </figure>
 
   <h3><span class="no">8.2</span> How a node links to the Data Core</h3>

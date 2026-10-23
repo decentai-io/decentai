@@ -44,7 +44,7 @@
         <path d="M278 122H175" class="flow" marker-end="url(#m-seal)"/><text x="226.5" y="118">AI:Message:Create</text>
         <path d="M278 140H175" class="flow dash" marker-end="url(#m-seal)"/><text x="226.5" y="136">AI:Chat:Contract</text>
         <rect x="213" y="152" width="140" height="12" rx="5" class="step"/><text x="283" y="161.3" font-size="9" style="fill:#14161a">frame · tools · plan</text>
-        <path d="M288 176H391" class="flow" marker-end="url(#m-seal)"/><text x="339.5" y="172">messages + tools</text>
+        <path d="M288 178H391" class="flow" marker-end="url(#m-seal)"/><text x="339.5" y="175">messages + tools</text>
         <path d="M391 194H288" class="link" marker-end="url(#m-ink)"/><text x="339.5" y="190">tool call: invoke</text>
         <path d="M288 212H504" class="flow" marker-end="url(#m-seal)"/><text x="452.5" y="208">fn + inputs</text>
         <rect x="439" y="221" width="140" height="12" rx="5" class="step-strong"/><text x="509" y="230.3" font-size="9" style="fill:#14161a">gates · level ≤ trust?</text>
@@ -162,7 +162,7 @@
     <tr><td><code>schedule_set</code> · <code>schedule_removed</code> · <code>sleeping</code></td><td>the clock changed; the assistant paused until a time</td><td>yes</td></tr>
     <tr><td><code>stopped</code></td><td>the kill switch ended the work</td><td>yes</td></tr>
     <tr><td><code>agent_status</code> · <code>screen_frame</code></td><td>an agent is being installed · a picture of a browser an agent drives</td><td>socket only</td></tr>
-    <tr><td><code>runtime_unavailable</code> · <code>invalid_input</code> · <code>work_stopped</code></td><td>from the relay: no node may serve the chat, the input was refused, the person stopped everything</td><td>relay</td></tr>
+    <tr><td><code>runtime_unavailable</code> · <code>runtime_disconnected</code> · <code>invalid_input</code> · <code>work_stopped</code></td><td>from the relay: no node may serve the chat, the node holding it went away, the input was refused, the person stopped everything</td><td>relay</td></tr>
   </table>
 </section>
 

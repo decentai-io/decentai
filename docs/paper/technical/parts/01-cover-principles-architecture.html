@@ -94,7 +94,7 @@
         <text x="0" y="12" class="cap">MOST TRUSTED</text>
         <text x="0" y="226" class="cap">LEAST TRUSTED</text>
         <rect x="0" y="22" width="430" height="38" rx="9" class="platform"/>
-        <text x="14" y="45" class="b t-on">Data Core</text><text x="104" y="45" class="t-on-soft">identity, policy, every key, the only route to the database</text>
+        <text x="14" y="45" class="b t-on">Data Core</text><text x="104" y="45" class="t-on-soft">identity, policy, the vault, the only route to the database</text>
         <rect x="40" y="68" width="390" height="38" rx="9" class="platform-2"/>
         <text x="54" y="91" class="b t-on">AI Runtime</text><text x="148" y="91" class="t-on-soft">the assistant, the gate, the executor, the proxy</text>
         <rect x="80" y="114" width="350" height="38" rx="9" class="platform-3"/>
@@ -163,7 +163,7 @@
   <p>The three programs together are the <b>AI Engine</b>. The engine has no user interface: every client reaches it over the same HTTP and WebSocket API. So one engine serves a browser, a phone and a desktop window, and each client ships on its own schedule.</p>
 
   <h3><span class="no">2.2</span> What runs</h3>
-  <p>The bundled install starts seven containers; six stay up and a seeder runs once at every start. Figure 2.1 shows them with the connections between them; every arrow is a connection its source opens.</p>
+  <p>The bundled install starts seven containers; six stay up and a seeder runs once at every start. Figure 2.1 shows them with the connections between them; every solid arrow is a connection its source opens, and the dashed one is a file.</p>
 
   <figure>
     <svg viewBox="0 0 680 392">
@@ -189,8 +189,9 @@
         <rect x="20" y="186" width="530" height="196" rx="14" class="frame"/>
         <text x="40" y="206" text-anchor="start" class="cap">EXECUTION NODE</text>
         <rect x="60" y="218" width="450" height="60" rx="12" class="platform-2"/>
-        <text x="285" y="242" class="b t-on" font-size="12">AI Runtime</text>
-        <text x="285" y="260" class="t-on-soft" font-size="9.5">assistant · executor and gate · proxy :8002 · sandboxes register on :8005</text>
+        <text x="285" y="238" class="b t-on" font-size="12">AI Runtime</text>
+        <text x="285" y="254" class="t-on-soft" font-size="9.5">assistant · executor and gate</text>
+        <text x="285" y="268" class="t-on-soft" font-size="9.3">health :8001 · proxy :8002 · sandbox registry :8005</text>
         <rect x="60" y="306" width="450" height="62" rx="12" class="platform-3"/>
         <text x="80" y="330" text-anchor="start" class="b">Execution Sandbox</text>
         <text x="80" y="347" text-anchor="start" class="t-soft" font-size="9.5">spawner :8003</text>
@@ -206,13 +207,13 @@
       </g>
       <g font-size="9.3" class="t-soft">
         <path d="M340 46 V 84" class="flow" marker-end="url(#m-seal)"/>
-        <text x="348" y="70">HTTPS · WebSocket</text>
+        <text x="348" y="70">HTTP · WebSocket · host :4280 → :8000</text>
         <path d="M440 117 H 486" class="flow" marker-end="url(#m-seal)"/>
         <path d="M575 46 V 92" class="link" marker-end="url(#m-ink)"/>
         <path d="M240 117 H 194" class="flow" marker-end="url(#m-seal)"/>
         <path d="M300 218 V 150" class="flow" marker-end="url(#m-seal)"/>
-        <text x="308" y="166">node link, dialed by the node</text>
-        <text x="308" y="178">WS /nodes/link</text>
+        <text x="308" y="166">node link and gateway, dialed by the node</text>
+        <text x="308" y="178">WS /nodes/link · POST /app</text>
         <path d="M20 26 H 8 V 196 H 16" class="link dash" marker-end="url(#m-ink)"/>
         <text x="30" y="176" text-anchor="start" font-size="8.8">the node's credential</text>
         <path d="M230 278 V 302" class="flow" marker-end="url(#m-seal)"/>
@@ -222,26 +223,26 @@
         <path d="M510 266 H 571" class="flow" marker-end="url(#m-seal)"/>
       </g>
     </svg>
-    <figcaption><b>Figure 2.1 — The bundled install.</b> The Data Core is the only published port and the only part that reaches the database. The execution node dials the Data Core's node link; the runtime orders the sandbox's spawner, and the sandbox registers with the runtime, each side proving the node's secret. Workers reach the internet only through the runtime's proxy, to the hosts their agent declared. The node issuer rewrites the bundled node's credential every few minutes from the install's authority key.</figcaption>
+    <figcaption><b>Figure 2.1 — The bundled install.</b> The Data Core is the only published port and the only part that reaches the database. The execution node dials the Data Core's node link, and every chat travels over it; what the runtime keeps and reads for a chat, it asks for over the Data Core's <code>/app</code> gateway. The Data Core opens no connection to a node, and the runtime's port 8001 answers only the container's own health check; the runtime orders the sandbox's spawner, and the sandbox registers with the runtime, each side proving the node's secret. Workers reach the internet only through the runtime's proxy, to the hosts their agent declared. The node issuer rewrites the bundled node's credential every few minutes from the install's authority key, into a volume the node reads.</figcaption>
   </figure>
 
   <h3><span class="no">2.3</span> Networks</h3>
   <p>Three container networks carry the connections, and two of them are <code>internal: true</code>: they have no way out.</p>
   <table class="compact">
     <tr><th style="width:16%">Network</th><th style="width:30%">On it</th><th>Purpose</th></tr>
-    <tr><td><code>default</code></td><td><code>data-core</code>, <code>ai-runtime</code>, <code>speech</code></td><td>The one with a way out: clients reach the Data Core's published port; the Data Core reaches the speech service and the internet (repositories, mail, OAuth, outbound notifications); the runtime reaches the model's provider and, for agents, the internet through its proxy.</td></tr>
+    <tr><td><code>default</code></td><td><code>data-core</code>, <code>ai-runtime</code>, <code>speech</code></td><td>The one with a way out: clients reach the Data Core's published port; the Data Core reaches the speech service and the internet (repositories, mail, OAuth, outbound notifications); the runtime dials the Data Core's node link and gateway, and reaches the model's provider and, for agents, the internet through its proxy.</td></tr>
     <tr><td><code>data</code></td><td><code>mongo</code>, <code>data-core</code>, <code>init</code></td><td>Internal. The database and the two that speak to it; nothing else has a route to it.</td></tr>
     <tr><td><code>sandbox</code></td><td><code>ai-runtime</code>, <code>sandbox</code></td><td>Internal. The runtime is the only container on it with a way anywhere, so a worker's only way out is the proxy.</td></tr>
   </table>
-  <div class="inv"><span class="id">I-2.1</span><p>Only the Data Core holds a database credential or a route to the database. Everything the runtime keeps, it keeps by asking the Data Core, under the person's delegation for that chat.</p></div>
+  <div class="inv"><span class="id">I-2.1</span><p>Only the Data Core holds a database credential or a route to the database — it and its seeder, which runs once from the same image and exits. Everything the runtime keeps, it keeps by asking the Data Core, under the person's delegation for that chat.</p></div>
   <div class="inv"><span class="id">I-2.2</span><p>An agent's worker has no network route except the runtime's proxy, and the proxy forwards only to hosts the agent's approved manifest declared.</p></div>
 
   <h3><span class="no">2.4</span> Where state lives</h3>
   <p>The runtime and the sandbox are replaceable: a node can be restarted, drained or rebuilt without losing a chat. Durable state lives in the database and a few volumes.</p>
   <table class="compact">
     <tr><th style="width:26%">Kept in</th><th>What</th></tr>
-    <tr><td>MongoDB</td><td>Every record of the platform: organizations, people, groups and policies; agents' approvals, grants and records; chats, messages, events and approvals; credentials (sealed); schedules, webhooks, notifications and the audit trail — 45 collections, all reached through org-scoped stores in the Data Core.</td></tr>
-    <tr><td>Uploads volume</td><td>Files, unless the organization stores them in S3, Azure Blob or Google Cloud Storage instead.</td></tr>
+    <tr><td>MongoDB</td><td>Every record of the platform: organizations, people, groups and policies; agents' approvals, grants and records; chats, messages, events and approvals; credentials (sealed); schedules, webhooks, notifications and the audit trail — 45 collections, all reached through the Data Core's stores.</td></tr>
+    <tr><td>Uploads volume</td><td>Files, unless the deployment stores them in S3, Azure Blob or Google Cloud Storage instead.</td></tr>
     <tr><td>Agent packages</td><td>The approved code of each agent, by digest; nodes pull it from the Data Core.</td></tr>
     <tr><td>Node volumes</td><td>Prepared agent environments, the sandbox's working folders and the node's credential: rebuildable from the above.</td></tr>
     <tr><td>Speech models</td><td>Pinned model files, fetched once and checked against their published digests.</td></tr>

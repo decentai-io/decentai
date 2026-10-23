@@ -176,7 +176,7 @@
       <tr><td>Overview</td><td><code>agents:monitor:summary</code></td><td>the agents' acts and model calls in a window, from the audit trail</td></tr>
       <tr><td>Tokens</td><td><code>agents:monitor:tokens</code></td><td>tokens, cache share and estimated cost by model, purpose, agent and person</td></tr>
       <tr><td>Agents</td><td><code>agents:monitor:usage</code></td><td>limits; each running agent's memory, processor, processes and disk, every 5 s</td></tr>
-      <tr><td>Events · Connections</td><td><code>agents:monitor:usage</code></td><td>every line, filterable; connections with their bytes</td></tr>
+      <tr><td>Events · Connections</td><td><code>agents:monitor:events</code></td><td>every line, filterable; connections with their bytes</td></tr>
     </tbody>
   </table>
   <p>No member holds these grants by default. What an agent did is what every person did through it, so seeing it is a decision someone makes.</p>
@@ -316,9 +316,9 @@ Idempotency-Key: &lt;the caller's id for this event&gt;   <span class="c"># opti
 
       <text x="340" y="212" text-anchor="middle" font-size="10" class="t-faint">Each carries a line and a link into the chat. Never a secret, never the conversation.</text>
     </svg>
-    <figcaption><b>Figure 11.1</b> The paths that reach a person. Email (dashed) goes only when no push reached anyone. Every push endpoint and outbound address passes the address check first.</figcaption>
+    <figcaption><b>Figure 11.1</b> The paths that reach a person. Email (dashed) goes only when no push reached anyone. A run's end goes to outbound webhooks alone, whether or not the chat is open. Every push endpoint and outbound address passes the address check first.</figcaption>
   </figure>
-  <div class="inv"><span class="id">I-11.3</span><p>No push and no outbound delivery goes to an address that resolves off the public internet. The check runs when the address is registered and again on every send.</p></div>
+  <div class="inv"><span class="id">I-11.3</span><p>No push and no outbound delivery goes to an address that resolves off the public internet. The check runs on every send, and for an outbound address also when it is subscribed.</p></div>
 
   <h3><span class="no">11.5</span> Stop everything</h3>
   <p>The stop at the top of every page (<code>AI:Switch</code>) ends all of a person's work without relying on anything to agree. It acts in a fixed order:</p>

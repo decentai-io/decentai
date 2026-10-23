@@ -386,7 +386,7 @@ p { margin: 0 0 .55em; }
         <text x="0" y="12" class="cap">MOST TRUSTED</text>
         <text x="0" y="226" class="cap">LEAST TRUSTED</text>
         <rect x="0" y="22" width="430" height="38" rx="9" class="platform"/>
-        <text x="14" y="45" class="b t-on">Data Core</text><text x="104" y="45" class="t-on-soft">identity, policy, every key, the only route to the database</text>
+        <text x="14" y="45" class="b t-on">Data Core</text><text x="104" y="45" class="t-on-soft">identity, policy, the vault, the only route to the database</text>
         <rect x="40" y="68" width="390" height="38" rx="9" class="platform-2"/>
         <text x="54" y="91" class="b t-on">AI Runtime</text><text x="148" y="91" class="t-on-soft">the assistant, the gate, the executor, the proxy</text>
         <rect x="80" y="114" width="350" height="38" rx="9" class="platform-3"/>
@@ -455,7 +455,7 @@ p { margin: 0 0 .55em; }
   <p>The three programs together are the <b>AI Engine</b>. The engine has no user interface: every client reaches it over the same HTTP and WebSocket API. So one engine serves a browser, a phone and a desktop window, and each client ships on its own schedule.</p>
 
   <h3><span class="no">2.2</span> What runs</h3>
-  <p>The bundled install starts seven containers; six stay up and a seeder runs once at every start. Figure 2.1 shows them with the connections between them; every arrow is a connection its source opens.</p>
+  <p>The bundled install starts seven containers; six stay up and a seeder runs once at every start. Figure 2.1 shows them with the connections between them; every solid arrow is a connection its source opens, and the dashed one is a file.</p>
 
   <figure>
     <svg viewBox="0 0 680 392">
@@ -481,8 +481,9 @@ p { margin: 0 0 .55em; }
         <rect x="20" y="186" width="530" height="196" rx="14" class="frame"/>
         <text x="40" y="206" text-anchor="start" class="cap">EXECUTION NODE</text>
         <rect x="60" y="218" width="450" height="60" rx="12" class="platform-2"/>
-        <text x="285" y="242" class="b t-on" font-size="12">AI Runtime</text>
-        <text x="285" y="260" class="t-on-soft" font-size="9.5">assistant · executor and gate · proxy :8002 · sandboxes register on :8005</text>
+        <text x="285" y="238" class="b t-on" font-size="12">AI Runtime</text>
+        <text x="285" y="254" class="t-on-soft" font-size="9.5">assistant · executor and gate</text>
+        <text x="285" y="268" class="t-on-soft" font-size="9.3">health :8001 · proxy :8002 · sandbox registry :8005</text>
         <rect x="60" y="306" width="450" height="62" rx="12" class="platform-3"/>
         <text x="80" y="330" text-anchor="start" class="b">Execution Sandbox</text>
         <text x="80" y="347" text-anchor="start" class="t-soft" font-size="9.5">spawner :8003</text>
@@ -498,13 +499,13 @@ p { margin: 0 0 .55em; }
       </g>
       <g font-size="9.3" class="t-soft">
         <path d="M340 46 V 84" class="flow" marker-end="url(#m-seal)"/>
-        <text x="348" y="70">HTTPS · WebSocket</text>
+        <text x="348" y="70">HTTP · WebSocket · host :4280 → :8000</text>
         <path d="M440 117 H 486" class="flow" marker-end="url(#m-seal)"/>
         <path d="M575 46 V 92" class="link" marker-end="url(#m-ink)"/>
         <path d="M240 117 H 194" class="flow" marker-end="url(#m-seal)"/>
         <path d="M300 218 V 150" class="flow" marker-end="url(#m-seal)"/>
-        <text x="308" y="166">node link, dialed by the node</text>
-        <text x="308" y="178">WS /nodes/link</text>
+        <text x="308" y="166">node link and gateway, dialed by the node</text>
+        <text x="308" y="178">WS /nodes/link · POST /app</text>
         <path d="M20 26 H 8 V 196 H 16" class="link dash" marker-end="url(#m-ink)"/>
         <text x="30" y="176" text-anchor="start" font-size="8.8">the node's credential</text>
         <path d="M230 278 V 302" class="flow" marker-end="url(#m-seal)"/>
@@ -514,26 +515,26 @@ p { margin: 0 0 .55em; }
         <path d="M510 266 H 571" class="flow" marker-end="url(#m-seal)"/>
       </g>
     </svg>
-    <figcaption><b>Figure 2.1 — The bundled install.</b> The Data Core is the only published port and the only part that reaches the database. The execution node dials the Data Core's node link; the runtime orders the sandbox's spawner, and the sandbox registers with the runtime, each side proving the node's secret. Workers reach the internet only through the runtime's proxy, to the hosts their agent declared. The node issuer rewrites the bundled node's credential every few minutes from the install's authority key.</figcaption>
+    <figcaption><b>Figure 2.1 — The bundled install.</b> The Data Core is the only published port and the only part that reaches the database. The execution node dials the Data Core's node link, and every chat travels over it; what the runtime keeps and reads for a chat, it asks for over the Data Core's <code>/app</code> gateway. The Data Core opens no connection to a node, and the runtime's port 8001 answers only the container's own health check; the runtime orders the sandbox's spawner, and the sandbox registers with the runtime, each side proving the node's secret. Workers reach the internet only through the runtime's proxy, to the hosts their agent declared. The node issuer rewrites the bundled node's credential every few minutes from the install's authority key, into a volume the node reads.</figcaption>
   </figure>
 
   <h3><span class="no">2.3</span> Networks</h3>
   <p>Three container networks carry the connections, and two of them are <code>internal: true</code>: they have no way out.</p>
   <table class="compact">
     <tr><th style="width:16%">Network</th><th style="width:30%">On it</th><th>Purpose</th></tr>
-    <tr><td><code>default</code></td><td><code>data-core</code>, <code>ai-runtime</code>, <code>speech</code></td><td>The one with a way out: clients reach the Data Core's published port; the Data Core reaches the speech service and the internet (repositories, mail, OAuth, outbound notifications); the runtime reaches the model's provider and, for agents, the internet through its proxy.</td></tr>
+    <tr><td><code>default</code></td><td><code>data-core</code>, <code>ai-runtime</code>, <code>speech</code></td><td>The one with a way out: clients reach the Data Core's published port; the Data Core reaches the speech service and the internet (repositories, mail, OAuth, outbound notifications); the runtime dials the Data Core's node link and gateway, and reaches the model's provider and, for agents, the internet through its proxy.</td></tr>
     <tr><td><code>data</code></td><td><code>mongo</code>, <code>data-core</code>, <code>init</code></td><td>Internal. The database and the two that speak to it; nothing else has a route to it.</td></tr>
     <tr><td><code>sandbox</code></td><td><code>ai-runtime</code>, <code>sandbox</code></td><td>Internal. The runtime is the only container on it with a way anywhere, so a worker's only way out is the proxy.</td></tr>
   </table>
-  <div class="inv"><span class="id">I-2.1</span><p>Only the Data Core holds a database credential or a route to the database. Everything the runtime keeps, it keeps by asking the Data Core, under the person's delegation for that chat.</p></div>
+  <div class="inv"><span class="id">I-2.1</span><p>Only the Data Core holds a database credential or a route to the database — it and its seeder, which runs once from the same image and exits. Everything the runtime keeps, it keeps by asking the Data Core, under the person's delegation for that chat.</p></div>
   <div class="inv"><span class="id">I-2.2</span><p>An agent's worker has no network route except the runtime's proxy, and the proxy forwards only to hosts the agent's approved manifest declared.</p></div>
 
   <h3><span class="no">2.4</span> Where state lives</h3>
   <p>The runtime and the sandbox are replaceable: a node can be restarted, drained or rebuilt without losing a chat. Durable state lives in the database and a few volumes.</p>
   <table class="compact">
     <tr><th style="width:26%">Kept in</th><th>What</th></tr>
-    <tr><td>MongoDB</td><td>Every record of the platform: organizations, people, groups and policies; agents' approvals, grants and records; chats, messages, events and approvals; credentials (sealed); schedules, webhooks, notifications and the audit trail — 45 collections, all reached through org-scoped stores in the Data Core.</td></tr>
-    <tr><td>Uploads volume</td><td>Files, unless the organization stores them in S3, Azure Blob or Google Cloud Storage instead.</td></tr>
+    <tr><td>MongoDB</td><td>Every record of the platform: organizations, people, groups and policies; agents' approvals, grants and records; chats, messages, events and approvals; credentials (sealed); schedules, webhooks, notifications and the audit trail — 45 collections, all reached through the Data Core's stores.</td></tr>
+    <tr><td>Uploads volume</td><td>Files, unless the deployment stores them in S3, Azure Blob or Google Cloud Storage instead.</td></tr>
     <tr><td>Agent packages</td><td>The approved code of each agent, by digest; nodes pull it from the Data Core.</td></tr>
     <tr><td>Node volumes</td><td>Prepared agent environments, the sandbox's working folders and the node's credential: rebuildable from the above.</td></tr>
     <tr><td>Speech models</td><td>Pinned model files, fetched once and checked against their published digests.</td></tr>
@@ -589,7 +590,7 @@ p { margin: 0 0 .55em; }
         <path d="M278 122H175" class="flow" marker-end="url(#m-seal)"/><text x="226.5" y="118">AI:Message:Create</text>
         <path d="M278 140H175" class="flow dash" marker-end="url(#m-seal)"/><text x="226.5" y="136">AI:Chat:Contract</text>
         <rect x="213" y="152" width="140" height="12" rx="5" class="step"/><text x="283" y="161.3" font-size="9" style="fill:#14161a">frame · tools · plan</text>
-        <path d="M288 176H391" class="flow" marker-end="url(#m-seal)"/><text x="339.5" y="172">messages + tools</text>
+        <path d="M288 178H391" class="flow" marker-end="url(#m-seal)"/><text x="339.5" y="175">messages + tools</text>
         <path d="M391 194H288" class="link" marker-end="url(#m-ink)"/><text x="339.5" y="190">tool call: invoke</text>
         <path d="M288 212H504" class="flow" marker-end="url(#m-seal)"/><text x="452.5" y="208">fn + inputs</text>
         <rect x="439" y="221" width="140" height="12" rx="5" class="step-strong"/><text x="509" y="230.3" font-size="9" style="fill:#14161a">gates · level ≤ trust?</text>
@@ -707,7 +708,7 @@ p { margin: 0 0 .55em; }
     <tr><td><code>schedule_set</code> · <code>schedule_removed</code> · <code>sleeping</code></td><td>the clock changed; the assistant paused until a time</td><td>yes</td></tr>
     <tr><td><code>stopped</code></td><td>the kill switch ended the work</td><td>yes</td></tr>
     <tr><td><code>agent_status</code> · <code>screen_frame</code></td><td>an agent is being installed · a picture of a browser an agent drives</td><td>socket only</td></tr>
-    <tr><td><code>runtime_unavailable</code> · <code>invalid_input</code> · <code>work_stopped</code></td><td>from the relay: no node may serve the chat, the input was refused, the person stopped everything</td><td>relay</td></tr>
+    <tr><td><code>runtime_unavailable</code> · <code>runtime_disconnected</code> · <code>invalid_input</code> · <code>work_stopped</code></td><td>from the relay: no node may serve the chat, the node holding it went away, the input was refused, the person stopped everything</td><td>relay</td></tr>
   </table>
 </section>
 
@@ -1033,7 +1034,7 @@ p { margin: 0 0 .55em; }
   <p>The checks run in the fixed order of §3.6: manifest, grants, inputs, scopes, then level. Each failure returns to the model as an observation. A call that passes runs in its worker under its timeout, and is audited whatever the outcome. The contract is read again before every turn, so access withdrawn this morning is gone on the next one.</p>
 
   <h3><span class="no">6.3</span> The approval card</h3>
-  <p>An approval card asks a person to approve one exact call. It shows the agent, the function, its level and the <em>exact inputs</em> after defaults and references, so the person approves values, not a description. The card and the parked call both keep the action hash of §3.6. The call is parked before the card exists: the runtime saves the parked call, or the job set to <code>waiting_approval</code>, and only then emits <code>approval_requested</code>. If that save fails, the card is withdrawn and the call reports that nobody could be asked, never that someone refused.</p>
+  <p>An approval card asks a person to approve one exact call. It shows the agent, the function, its level and the <em>exact inputs</em> after defaults and references, so the person approves values, not a description. The card and the parked call both keep the action hash of §3.6. The call is parked before the card is shown: the runtime opens the card's record, saves the parked call, or the job set to <code>waiting_approval</code>, and only then emits <code>approval_requested</code>. If that save fails, the card is withdrawn and the call reports that nobody could be asked, never that someone refused.</p>
 
   <figure>
     <svg viewBox="0 0 680 232" role="img" aria-label="The life of an approval">
@@ -1048,7 +1049,7 @@ p { margin: 0 0 .55em; }
         <rect x="76" y="70" width="110" height="36" rx="9" class="step-strong"/>
         <text x="131" y="85" class="b">Gates</text><text x="131" y="98" font-size="9.5" class="t-soft">level 3 &gt; trust 1</text>
         <rect x="206" y="70" width="110" height="36" rx="9" class="platform-2"/>
-        <text x="261" y="85" class="b t-on">Park, hash</text><text x="261" y="98" font-size="9.5" class="t-on-soft">saved before card</text>
+        <text x="261" y="85" class="b t-on">Park, hash</text><text x="261" y="98" font-size="9.5" class="t-on-soft">saved before shown</text>
         <rect x="206" y="130" width="110" height="36" rx="9" class="platform"/>
         <text x="261" y="145" class="b t-on">Card: pending</text><text x="261" y="158" font-size="9.5" class="t-on-soft">request + hash</text>
         <rect x="206" y="190" width="110" height="36" rx="9" class="person"/>
@@ -1080,7 +1081,7 @@ p { margin: 0 0 .55em; }
         <text x="460" y="219">and the hosts it named stay shut</text>
       </g>
     </svg>
-    <figcaption><b>Figure 6.2</b> The life of an approval. The call is saved before the card exists, so a decision days later still resumes it; the Data Core records the decision before sending it. Amber steps wait for a person.</figcaption>
+    <figcaption><b>Figure 6.2</b> The life of an approval. The call is saved before the card is shown, so a decision days later still resumes it; the Data Core records the decision before sending it. Amber steps wait for a person.</figcaption>
   </figure>
 
   <p>Only a person decides (§3.6). A decision lands only while the card is <code>pending</code>, so a second one gets <code>409 not_pending</code> and never overwrites the first. The runtime ignores a decision for a card its chat does not hold. An approval has no deadline: a parked job waits while the assistant works on, and a foreground <code>invoke</code> holds its beat until the card is answered or the person writes.</p>
@@ -1143,7 +1144,7 @@ p { margin: 0 0 .55em; }
   <figure>
 <pre class="code"><span class="k">agent</span>:
   id: gmail                            <span class="c"># permanent: first segment of gmail.draft.send</span>
-  version: <span class="s">"0.3.2"</span>                     <span class="c"># a label for people; the digest tells code apart</span>
+  version: <span class="s">"0.3.3"</span>                   <span class="c"># a label for people; the digest tells code apart</span>
 <span class="k">implementation</span>:
   dependencies: [<span class="s">"requests&gt;=2.31,&lt;3"</span>]  <span class="c"># built by the builder user, index only</span>
 <span class="k">network</span>:
@@ -1329,7 +1330,7 @@ p { margin: 0 0 .55em; }
   </div>
 
   <h3><span class="no">8.1</span> The execution node</h3>
-  <p>An execution node is one AI Runtime and its Execution Sandboxes, deployed together as three Compose services. <code>ai-runtime</code> runs each chat's assistant, the executor and its gates, the agents' proxy and the sandbox registry. <code>sandbox</code>, the same image in another role, runs the <b>spawner</b>, which starts every worker and relays its traffic. <code>node-issuer</code> holds the node authority's private key, has no network, and writes the node a fresh credential into a volume the runtime reads. A node on its own machine dials a Data Core elsewhere and opens no port.</p>
+  <p>An execution node is one AI Runtime and its Execution Sandboxes, deployed together as three Compose services. <code>ai-runtime</code> runs each chat's assistant, the executor and its gates, the agents' proxy and the sandbox registry. <code>sandbox</code>, the same image in another role, runs the <b>spawner</b>, which starts every worker and relays its traffic. <code>node-issuer</code> holds the node authority's private key, has no network, and writes the node a fresh credential into a volume the runtime reads. A node on its own machine dials a Data Core elsewhere and publishes no port.</p>
 
   <figure>
     <svg viewBox="0 0 680 300" role="img" aria-label="Architecture of an execution node">
@@ -1386,13 +1387,14 @@ p { margin: 0 0 .55em; }
       <!-- links -->
       <path d="M152 139H114" class="flow" marker-end="url(#m-seal)"/>
       <path d="M152 257H114" class="flow" marker-end="url(#m-seal)"/>
-      <path d="M406 182H362" class="flow" marker-end="url(#m-seal)"/>
-      <text x="376" y="175" text-anchor="middle" font-size="9" class="t-soft">TLS</text>
-      <text x="376" y="196" text-anchor="middle" font-size="9" class="t-soft">HMAC</text>
+      <path d="M406 176H362" class="flow" marker-end="url(#m-seal)"/>
+      <path d="M362 190H404" class="flow" marker-end="url(#m-seal)"/>
+      <text x="376" y="169" text-anchor="middle" font-size="9" class="t-soft">TLS</text>
+      <text x="376" y="204" text-anchor="middle" font-size="9" class="t-soft">HMAC</text>
       <path d="M406 244H362" class="flow" marker-end="url(#m-seal)"/>
       <text x="376" y="237" text-anchor="middle" font-size="9" class="t-soft">pass</text>
     </svg>
-    <figcaption><b>Figure 8.1</b> An execution node. Every connection is dialled outward. Workers' connections leave only through the runtime's proxy, to declared hosts. The dashed outline is the trust boundary: the sandbox's network has no route to the internet, the database or the Data Core.</figcaption>
+    <figcaption><b>Figure 8.1</b> An execution node. Every connection that leaves the node is dialled outward; inside it, the sandbox registers with the runtime on :8005, and the runtime orders the spawner on :8003. Workers' connections leave only through the runtime's proxy, to declared hosts. The dashed outline is the trust boundary: the sandbox's network has no route to the internet, the database or the Data Core.</figcaption>
   </figure>
 
   <h3><span class="no">8.2</span> How a node links to the Data Core</h3>
@@ -1681,7 +1683,7 @@ p { margin: 0 0 .55em; }
       <tr><td>Overview</td><td><code>agents:monitor:summary</code></td><td>the agents' acts and model calls in a window, from the audit trail</td></tr>
       <tr><td>Tokens</td><td><code>agents:monitor:tokens</code></td><td>tokens, cache share and estimated cost by model, purpose, agent and person</td></tr>
       <tr><td>Agents</td><td><code>agents:monitor:usage</code></td><td>limits; each running agent's memory, processor, processes and disk, every 5 s</td></tr>
-      <tr><td>Events · Connections</td><td><code>agents:monitor:usage</code></td><td>every line, filterable; connections with their bytes</td></tr>
+      <tr><td>Events · Connections</td><td><code>agents:monitor:events</code></td><td>every line, filterable; connections with their bytes</td></tr>
     </tbody>
   </table>
   <p>No member holds these grants by default. What an agent did is what every person did through it, so seeing it is a decision someone makes.</p>
@@ -1821,9 +1823,9 @@ Idempotency-Key: &lt;the caller's id for this event&gt;   <span class="c"># opti
 
       <text x="340" y="212" text-anchor="middle" font-size="10" class="t-faint">Each carries a line and a link into the chat. Never a secret, never the conversation.</text>
     </svg>
-    <figcaption><b>Figure 11.1</b> The paths that reach a person. Email (dashed) goes only when no push reached anyone. Every push endpoint and outbound address passes the address check first.</figcaption>
+    <figcaption><b>Figure 11.1</b> The paths that reach a person. Email (dashed) goes only when no push reached anyone. A run's end goes to outbound webhooks alone, whether or not the chat is open. Every push endpoint and outbound address passes the address check first.</figcaption>
   </figure>
-  <div class="inv"><span class="id">I-11.3</span><p>No push and no outbound delivery goes to an address that resolves off the public internet. The check runs when the address is registered and again on every send.</p></div>
+  <div class="inv"><span class="id">I-11.3</span><p>No push and no outbound delivery goes to an address that resolves off the public internet. The check runs on every send, and for an outbound address also when it is subscribed.</p></div>
 
   <h3><span class="no">11.5</span> Stop everything</h3>
   <p>The stop at the top of every page (<code>AI:Switch</code>) ends all of a person's work without relying on anything to agree. It acts in a fixed order:</p>
@@ -1984,8 +1986,8 @@ Idempotency-Key: &lt;the caller's id for this event&gt;   <span class="c"># opti
   </div>
 
   <h3><span class="no">13.1</span> What is deployed</h3>
-  <p>The engine is three images and MongoDB 7, and it publishes one port. The images are the Data Core's, which also runs the node issuer; the AI Runtime's, which also runs the Execution Sandbox; and speech. Together they make seven containers on the three networks of chapter 2. The one published port is the Data Core's, plain HTTP, <code>4280</code> by default. The web client is served separately.</p>
-  <p>An execution node <em>dials</em> the Data Core's <code>/nodes/link</code> over the public address people use, and nothing dials a node (chapter 8). So moving agent code to another machine opens no inbound port; that machine only needs to reach the engine's HTTPS address.</p>
+  <p>The engine is three images and MongoDB 7, and it publishes one port. The images are the Data Core's, which also runs the node issuer; the AI Runtime's, which also runs the Execution Sandbox; and speech. Together they make seven containers on the three networks of chapter 2. The one published port is the Data Core's, plain HTTP, <code>4280</code> on <code>127.0.0.1</code> by default. The web client is served separately.</p>
+  <p>An execution node <em>dials</em> the Data Core's <code>/nodes/link</code>, over the public address people use when it runs on another machine, and nothing dials a node (chapter 8). So moving agent code to another machine opens no inbound port; that machine only needs to reach the engine's HTTPS address.</p>
 
   <h3><span class="no">13.2</span> Topologies</h3>
   <table class="compact">
@@ -2002,7 +2004,8 @@ Idempotency-Key: &lt;the caller's id for this event&gt;   <span class="c"># opti
 
   <h3><span class="no">13.3</span> Two VMs on AWS</h3>
   <p><code>cloud-vm/aws</code> is Terraform for the whole deployment: a VPC with one public subnet, two EC2 VMs (Ubuntu 24.04, encrypted disks), an Elastic IP for the core, Route 53 records when a hosted zone is named, and daily disk snapshots, the last seven kept. The core admits 80 and 443; the node admits nothing. SSH is off by default, and the VMs are reached through Session Manager.</p>
-  <p>The VMs need no git: each first boot copies its recipe from a private S3 bucket and runs it. The node bundle travels once through an encrypted SSM parameter and is then deleted. Both VMs require IMDSv2 with a hop limit of one, so no container can reach the VM's instance role. With <code>ecr_mirror = true</code>, images not yet public are pulled from ECR in the account.</p>
+  <p>The VMs need no git: each first boot copies its recipe from a private S3 bucket and runs it. The node bundle travels once through an encrypted SSM parameter, and its file is deleted from the core. Both VMs require IMDSv2 with a hop limit of one, so no container can reach the VM's instance role. With <code>ecr_mirror = true</code>, images not yet public are pulled from ECR in the account.</p>
+  <p><code>cloud-vm/azure</code> and <code>cloud-vm/gcp</code> are the same recipe for Azure and Google Cloud, with the same two layouts. There the node VM has no public address and goes out through a NAT gateway, and the node bundle travels through Key Vault or Secret Manager.</p>
 
   <figure>
     <svg viewBox="0 0 680 250">
@@ -2023,7 +2026,7 @@ Idempotency-Key: &lt;the caller's id for this event&gt;   <span class="c"># opti
         <text x="30" y="92" class="b">Caddy :80 :443</text>
         <text x="140" y="92" font-size="10" class="t-soft">TLS; api. → data-core, app. → files</text>
         <rect x="16" y="122" width="104" height="38" rx="8" class="plain"/>
-        <text x="28" y="137" class="b">web-client</text>
+        <text x="28" y="137" class="b">web-client :80</text>
         <text x="28" y="152" font-size="10" class="t-soft">static files</text>
         <rect x="136" y="122" width="228" height="38" rx="8" class="platform"/>
         <text x="150" y="137" class="b t-on">data-core :8000</text>
@@ -2123,11 +2126,11 @@ Idempotency-Key: &lt;the caller's id for this event&gt;   <span class="c"># opti
     <tr><td>Spanning</td><td>190</td><td>both, a real runtime process</td><td>agent install and manifest, scope enforcement, the chat contract, the full stack</td></tr>
     <tr><td>Confinement, live</td><td>97 of the runtime's</td><td>the runtime's and two sandboxes' containers on Linux</td><td>a hostile agent's escapes, and the spawner across containers</td></tr>
     <tr><td>Speech</td><td>20</td><td>the speech image; 3 with the real models</td><td>the audio protocol, the model catalogue's digests</td></tr>
-    <tr><td>Web client</td><td>about 670 cases</td><td>Karma and Jasmine, headless Chrome</td><td>services, chat state and connection, cards, components</td></tr>
+    <tr><td>Web client</td><td>510 cases</td><td>Karma and Jasmine, headless Chrome</td><td>services, chat state and connection, cards, components</td></tr>
     <tr><td>Desktop launcher</td><td>95</td><td>pytest</td><td>release verification, installation, updates and roll-back</td></tr>
     <tr><td>Desktop shell</td><td>10</td><td><code>cargo test</code></td><td>the first-open choice, the release file, the window</td></tr>
   </table>
-  <p>Continuous integration runs on every pull request: the runtime suite with the documentation checks; the Data Core and spanning suites against <code>mongo:7</code>; the confinement suites in containers; and speech. The phone app is held to the TypeScript compiler and Expo's linter, and the deploy repository to static checks that need no cloud account.</p>
+  <p>Continuous integration runs on every pull request: the runtime suite with the documentation checks; the Data Core and spanning suites against <code>mongo:7</code>; the confinement suites in containers; and speech. The phone app has no workflow of its own: the TypeScript compiler, Expo's linter and Expo's doctor are run before each build. The deploy repository is held to static checks that need no cloud account.</p>
 
   <h3><span class="no">14.2</span> A scripted model</h3>
   <p>Runtime tests run real agent code in real worker processes against a <b>scripted model</b>, which returns replies written in advance. A test must give the same result on every run, which a real model does not, and the claims under test concern what the platform does with <em>whatever</em> the model proposes. The simulator answers the Data Core's services in memory; agent authors use it too. The spanning suite closes the gap the simulator leaves. In its full-stack test a person's socket reaches the Data Core, which attaches a real runtime process, and the runtime calls back over <code>/app</code> under the chat's delegation. Only the model is stubbed.</p>
@@ -2189,7 +2192,7 @@ Idempotency-Key: &lt;the caller's id for this event&gt;   <span class="c"># opti
   </table>
 
   <h3><span class="no">15.2</span> What is not built yet</h3>
-  <p>No release has been published at the time of writing. The <code>decentai-deploy</code> recipes pull released images, so until a release exists they run images of one's own (or the ECR mirror, on AWS). Recipes for Azure, Google Cloud, Kubernetes and marketplaces are planned and absent. The desktop install listens on <code>127.0.0.1</code> only, sends no email, and does not carry over installs from the earlier monolithic app. The phone app configures only its own use.</p>
+  <p>No release has been published at the time of writing. The <code>decentai-deploy</code> recipes pull released images, so until a release exists they run images of one's own (or a cloud recipe's registry mirror). Recipes for Kubernetes and marketplaces are planned and absent. The desktop install listens on <code>127.0.0.1</code> only, sends no email, and does not carry over installs from the earlier monolithic app. The phone app configures only its own use.</p>
 
   <h3><span class="no">15.3</span> Open questions</h3>
   <p>The October 2026 review raised design questions it did not settle: choices, not defects, where either answer may be right. They are published with the code as a list, each naming the function it concerns and whether it was reproduced or found by reading. The long paper counts 137; the list holds 130 at the time of writing, as rows are deleted when decided. A sample a deployer should know:</p>

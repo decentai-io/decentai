@@ -146,8 +146,8 @@
   </div>
 
   <h3><span class="no">13.1</span> What is deployed</h3>
-  <p>The engine is three images and MongoDB 7, and it publishes one port. The images are the Data Core's, which also runs the node issuer; the AI Runtime's, which also runs the Execution Sandbox; and speech. Together they make seven containers on the three networks of chapter 2. The one published port is the Data Core's, plain HTTP, <code>4280</code> by default. The web client is served separately.</p>
-  <p>An execution node <em>dials</em> the Data Core's <code>/nodes/link</code> over the public address people use, and nothing dials a node (chapter 8). So moving agent code to another machine opens no inbound port; that machine only needs to reach the engine's HTTPS address.</p>
+  <p>The engine is three images and MongoDB 7, and it publishes one port. The images are the Data Core's, which also runs the node issuer; the AI Runtime's, which also runs the Execution Sandbox; and speech. Together they make seven containers on the three networks of chapter 2. The one published port is the Data Core's, plain HTTP, <code>4280</code> on <code>127.0.0.1</code> by default. The web client is served separately.</p>
+  <p>An execution node <em>dials</em> the Data Core's <code>/nodes/link</code>, over the public address people use when it runs on another machine, and nothing dials a node (chapter 8). So moving agent code to another machine opens no inbound port; that machine only needs to reach the engine's HTTPS address.</p>
 
   <h3><span class="no">13.2</span> Topologies</h3>
   <table class="compact">
@@ -164,7 +164,8 @@
 
   <h3><span class="no">13.3</span> Two VMs on AWS</h3>
   <p><code>cloud-vm/aws</code> is Terraform for the whole deployment: a VPC with one public subnet, two EC2 VMs (Ubuntu 24.04, encrypted disks), an Elastic IP for the core, Route 53 records when a hosted zone is named, and daily disk snapshots, the last seven kept. The core admits 80 and 443; the node admits nothing. SSH is off by default, and the VMs are reached through Session Manager.</p>
-  <p>The VMs need no git: each first boot copies its recipe from a private S3 bucket and runs it. The node bundle travels once through an encrypted SSM parameter and is then deleted. Both VMs require IMDSv2 with a hop limit of one, so no container can reach the VM's instance role. With <code>ecr_mirror = true</code>, images not yet public are pulled from ECR in the account.</p>
+  <p>The VMs need no git: each first boot copies its recipe from a private S3 bucket and runs it. The node bundle travels once through an encrypted SSM parameter, and its file is deleted from the core. Both VMs require IMDSv2 with a hop limit of one, so no container can reach the VM's instance role. With <code>ecr_mirror = true</code>, images not yet public are pulled from ECR in the account.</p>
+  <p><code>cloud-vm/azure</code> and <code>cloud-vm/gcp</code> are the same recipe for Azure and Google Cloud, with the same two layouts. There the node VM has no public address and goes out through a NAT gateway, and the node bundle travels through Key Vault or Secret Manager.</p>
 
   <figure>
     <svg viewBox="0 0 680 250">
@@ -185,7 +186,7 @@
         <text x="30" y="92" class="b">Caddy :80 :443</text>
         <text x="140" y="92" font-size="10" class="t-soft">TLS; api. → data-core, app. → files</text>
         <rect x="16" y="122" width="104" height="38" rx="8" class="plain"/>
-        <text x="28" y="137" class="b">web-client</text>
+        <text x="28" y="137" class="b">web-client :80</text>
         <text x="28" y="152" font-size="10" class="t-soft">static files</text>
         <rect x="136" y="122" width="228" height="38" rx="8" class="platform"/>
         <text x="150" y="137" class="b t-on">data-core :8000</text>
@@ -285,11 +286,11 @@
     <tr><td>Spanning</td><td>190</td><td>both, a real runtime process</td><td>agent install and manifest, scope enforcement, the chat contract, the full stack</td></tr>
     <tr><td>Confinement, live</td><td>97 of the runtime's</td><td>the runtime's and two sandboxes' containers on Linux</td><td>a hostile agent's escapes, and the spawner across containers</td></tr>
     <tr><td>Speech</td><td>20</td><td>the speech image; 3 with the real models</td><td>the audio protocol, the model catalogue's digests</td></tr>
-    <tr><td>Web client</td><td>about 670 cases</td><td>Karma and Jasmine, headless Chrome</td><td>services, chat state and connection, cards, components</td></tr>
+    <tr><td>Web client</td><td>510 cases</td><td>Karma and Jasmine, headless Chrome</td><td>services, chat state and connection, cards, components</td></tr>
     <tr><td>Desktop launcher</td><td>95</td><td>pytest</td><td>release verification, installation, updates and roll-back</td></tr>
     <tr><td>Desktop shell</td><td>10</td><td><code>cargo test</code></td><td>the first-open choice, the release file, the window</td></tr>
   </table>
-  <p>Continuous integration runs on every pull request: the runtime suite with the documentation checks; the Data Core and spanning suites against <code>mongo:7</code>; the confinement suites in containers; and speech. The phone app is held to the TypeScript compiler and Expo's linter, and the deploy repository to static checks that need no cloud account.</p>
+  <p>Continuous integration runs on every pull request: the runtime suite with the documentation checks; the Data Core and spanning suites against <code>mongo:7</code>; the confinement suites in containers; and speech. The phone app has no workflow of its own: the TypeScript compiler, Expo's linter and Expo's doctor are run before each build. The deploy repository is held to static checks that need no cloud account.</p>
 
   <h3><span class="no">14.2</span> A scripted model</h3>
   <p>Runtime tests run real agent code in real worker processes against a <b>scripted model</b>, which returns replies written in advance. A test must give the same result on every run, which a real model does not, and the claims under test concern what the platform does with <em>whatever</em> the model proposes. The simulator answers the Data Core's services in memory; agent authors use it too. The spanning suite closes the gap the simulator leaves. In its full-stack test a person's socket reaches the Data Core, which attaches a real runtime process, and the runtime calls back over <code>/app</code> under the chat's delegation. Only the model is stubbed.</p>
@@ -351,7 +352,7 @@
   </table>
 
   <h3><span class="no">15.2</span> What is not built yet</h3>
-  <p>No release has been published at the time of writing. The <code>decentai-deploy</code> recipes pull released images, so until a release exists they run images of one's own (or the ECR mirror, on AWS). Recipes for Azure, Google Cloud, Kubernetes and marketplaces are planned and absent. The desktop install listens on <code>127.0.0.1</code> only, sends no email, and does not carry over installs from the earlier monolithic app. The phone app configures only its own use.</p>
+  <p>No release has been published at the time of writing. The <code>decentai-deploy</code> recipes pull released images, so until a release exists they run images of one's own (or a cloud recipe's registry mirror). Recipes for Kubernetes and marketplaces are planned and absent. The desktop install listens on <code>127.0.0.1</code> only, sends no email, and does not carry over installs from the earlier monolithic app. The phone app configures only its own use.</p>
 
   <h3><span class="no">15.3</span> Open questions</h3>
   <p>The October 2026 review raised design questions it did not settle: choices, not defects, where either answer may be right. They are published with the code as a list, each naming the function it concerns and whether it was reproduced or found by reading. The long paper counts 137; the list holds 130 at the time of writing, as rows are deleted when decided. A sample a deployer should know:</p>

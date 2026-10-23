@@ -161,7 +161,7 @@
   <p>The checks run in the fixed order of §3.6: manifest, grants, inputs, scopes, then level. Each failure returns to the model as an observation. A call that passes runs in its worker under its timeout, and is audited whatever the outcome. The contract is read again before every turn, so access withdrawn this morning is gone on the next one.</p>
 
   <h3><span class="no">6.3</span> The approval card</h3>
-  <p>An approval card asks a person to approve one exact call. It shows the agent, the function, its level and the <em>exact inputs</em> after defaults and references, so the person approves values, not a description. The card and the parked call both keep the action hash of §3.6. The call is parked before the card exists: the runtime saves the parked call, or the job set to <code>waiting_approval</code>, and only then emits <code>approval_requested</code>. If that save fails, the card is withdrawn and the call reports that nobody could be asked, never that someone refused.</p>
+  <p>An approval card asks a person to approve one exact call. It shows the agent, the function, its level and the <em>exact inputs</em> after defaults and references, so the person approves values, not a description. The card and the parked call both keep the action hash of §3.6. The call is parked before the card is shown: the runtime opens the card's record, saves the parked call, or the job set to <code>waiting_approval</code>, and only then emits <code>approval_requested</code>. If that save fails, the card is withdrawn and the call reports that nobody could be asked, never that someone refused.</p>
 
   <figure>
     <svg viewBox="0 0 680 232" role="img" aria-label="The life of an approval">
@@ -176,7 +176,7 @@
         <rect x="76" y="70" width="110" height="36" rx="9" class="step-strong"/>
         <text x="131" y="85" class="b">Gates</text><text x="131" y="98" font-size="9.5" class="t-soft">level 3 &gt; trust 1</text>
         <rect x="206" y="70" width="110" height="36" rx="9" class="platform-2"/>
-        <text x="261" y="85" class="b t-on">Park, hash</text><text x="261" y="98" font-size="9.5" class="t-on-soft">saved before card</text>
+        <text x="261" y="85" class="b t-on">Park, hash</text><text x="261" y="98" font-size="9.5" class="t-on-soft">saved before shown</text>
         <rect x="206" y="130" width="110" height="36" rx="9" class="platform"/>
         <text x="261" y="145" class="b t-on">Card: pending</text><text x="261" y="158" font-size="9.5" class="t-on-soft">request + hash</text>
         <rect x="206" y="190" width="110" height="36" rx="9" class="person"/>
@@ -208,7 +208,7 @@
         <text x="460" y="219">and the hosts it named stay shut</text>
       </g>
     </svg>
-    <figcaption><b>Figure 6.2</b> The life of an approval. The call is saved before the card exists, so a decision days later still resumes it; the Data Core records the decision before sending it. Amber steps wait for a person.</figcaption>
+    <figcaption><b>Figure 6.2</b> The life of an approval. The call is saved before the card is shown, so a decision days later still resumes it; the Data Core records the decision before sending it. Amber steps wait for a person.</figcaption>
   </figure>
 
   <p>Only a person decides (§3.6). A decision lands only while the card is <code>pending</code>, so a second one gets <code>409 not_pending</code> and never overwrites the first. The runtime ignores a decision for a card its chat does not hold. An approval has no deadline: a parked job waits while the assistant works on, and a foreground <code>invoke</code> holds its beat until the card is answered or the person writes.</p>
