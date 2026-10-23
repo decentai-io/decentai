@@ -136,7 +136,7 @@ A2 injector & choose text the model reads, and so steer its proposals & the same
 A3 agent author & arbitrary code in the worker during a call & approval pinned to commit and digest; per-operation resource mediation; uid, Landlock, seccomp, limits; egress only to declared hosts; dependencies built by a separate confined user \\
 A4 another person & their own session, cookie, or API key & sessions resolved per request; deny-by-default policy; reads filtered by visibility inside the query; tenant scoping; \code{Origin} check on cookie-bearing sockets \\
 A5 compromised worker & the above, plus attacks on co-tenants of the container & sandbox layers; internal network leading only to the runtime \\
-A6 compromised runtime & every delegation it currently holds & no database route, decryption key, or backend signing key; 40-action fence; cannot decide approvals; stop-everything withdraws its delegations \\
+A6 compromised runtime & every delegation it currently holds & no database route, decryption key, or backend signing key; 41-action fence; cannot decide approvals; stop-everything withdraws its delegations \\
 \bottomrule
 \end{tabularx}
 \end{table*}
@@ -158,7 +158,7 @@ no credential is exposed to the model.
 A compromised worker holds what its call was handed, its own home, and
 its declared hosts. A compromised runtime can act for the people whose
 delegations it holds---people with a chat open or a schedule
-running---within 40 actions, and, since the level gate runs in the
+running---within 41 actions, and, since the level gate runs in the
 runtime, could run their granted functions without opening a card; it
 cannot answer a card, read the database, open a sealed value, obtain a
 refresh token, or act for anyone else. Delegations last at most an hour

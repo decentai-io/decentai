@@ -207,7 +207,7 @@ no route to the database and nothing that could mint a backend
 identity. For each open chat it holds a \emph{delegation}: an opaque
 token, signed with a secret the runtime does not have, naming the
 person and chat; it says who, never what they may do. A call under a
-delegation passes a fixed \emph{fence} of 40 runtime actions before any
+delegation passes a fixed \emph{fence} of 41 runtime actions before any
 policy is read---identity, accounts, authoring, transfers and approval
 decisions are not on it---then the person's own policy, then a check
 that it concerns that chat. Delegations last an hour and are withdrawn
@@ -482,7 +482,7 @@ A2 injector & choose text the model reads, and so steer proposals & the same gat
 A3 agent author & arbitrary code in the worker during a call & approval pinned to commit and digest; per-operation resource mediation; uid, Landlock, seccomp, limits; egress to declared hosts; confined builder \\
 A4 other person & their own session, cookie or API key & per-request identity; deny-by-default policy; visibility inside queries; tenant scoping; \code{Origin} check on cookie sockets \\
 A5 compromised worker & A3, plus attacks on co-located workers & per-agent uid and Landlock domain; seccomp; an internal network leading only to the runtime \\
-A6 compromised runtime & every delegation it currently holds & no database route, decryption key or signing key; 40-action fence; cannot decide approvals; stop-everything withdraws its delegations \\
+A6 compromised runtime & every delegation it currently holds & no database route, decryption key or signing key; 41-action fence; cannot decide approvals; stop-everything withdraws its delegations \\
 \bottomrule
 \end{tabularx}
 \end{table*}
@@ -498,7 +498,7 @@ every defence held by a more trusted one in place.
 A compromised worker holds what its call was handed, its home and its
 declared hosts. A compromised runtime can act for the people whose
 delegations it holds---those with a chat open or a schedule
-running---within the 40 actions, for at most an hour each; since the
+running---within the 41 actions, for at most an hour each; since the
 level gate runs in the runtime, it could run their granted functions
 without a card. It cannot decide a card, read the database, open a
 sealed value, obtain a refresh token, or act for anyone else. A

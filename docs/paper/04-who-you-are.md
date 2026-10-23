@@ -361,7 +361,7 @@ the current one is 45 minutes old (`RuntimeClientManager.renew_due`,
 gets none. Three layers then apply:
 
 1. **the fence**: `is_allowed` refuses anything not on
-   `RUNTIME_ENDPOINTS` (40 actions) before reading the policy; identity,
+   `RUNTIME_ENDPOINTS` (41 actions) before reading the policy; identity,
    account, transfers, authoring and chat administration are off it;
 2. **the person's own policy**;
 3. **the chat**: chat-scoped controllers refuse a chat other than the
