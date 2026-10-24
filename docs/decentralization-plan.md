@@ -158,14 +158,13 @@ the other's work untouched.
 
 ## Decisions
 
-Open, for the owner:
+Agreed with the owner on 24 October 2026:
 
-1. **The bus**: MongoDB change streams (recommended: no new component)
-   or a message broker (Redis, NATS) for higher volume.
-2. **A pool's scope**: one node authority's scope (recommended: a pool
-   never mixes organizations that keep to their own nodes) or any
-   runtimes that share the pool secret.
-3. **Federation's first step**: shared execution (3a, recommended) or
-   identity (3b).
-4. **Order**: 1, then 2, then 3a (recommended), or 2 first where spare
-   execution capacity matters more than a second Data Core.
+1. **The bus** is MongoDB change streams over a capped collection: the
+   replica set the cluster needs carries it, and no broker is added.
+2. **A pool's scope** is one node authority's scope: shared runtimes
+   share shared sandboxes, and an organization's own runtimes share its
+   own. A pool never mixes organizations that keep to their own nodes.
+3. **Federation starts with shared execution** (3a). Identity (3b) is
+   decided separately, later.
+4. **The order** is 1, then 2, then 3a.
