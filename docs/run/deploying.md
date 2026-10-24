@@ -160,6 +160,49 @@ The Data Core sends its own `X-Content-Type-Options`,
 proxy need add none, and the page's own policy is the web client's.
 `PUBLIC_ENGINE_URL` is the address the proxy answers at.
 
+## A cluster
+
+The Data Core may run as several replicas behind one address, so that
+no single process is the platform ([cluster](../system/cluster.md)).
+Any of them may be stopped, upgraded or lost: people and execution
+nodes reconnect through the address to another, and no chat is lost.
+It needs four things, and no new component:
+
+- **A MongoDB replica set**, named in `MONGO_URI`
+  (`mongodb://…/?replicaSet=rs0`) — a managed one that offers change
+  streams, or three `mongod --replSet` of your own. The replicas speak to one another
+  through a change stream on it. On a single MongoDB server each Data
+  Core runs alone, and says so as it starts.
+- **An object store** for files and agent packages:
+  `FILE_STORAGE_PROVIDER` set to `s3`, `azure_blob` or `gcs`
+  ([configuration](configuration.md#files-and-packages)), or one volume
+  every replica mounts. A replica that sees others while it keeps them
+  on its own disk says so in its log.
+- **The same settings on every replica**: one `config/deploy.env`, the
+  same keys, the same addresses
+  ([configuration](configuration.md#several-replicas)).
+- **One address in front of them**: the TLS terminator or load balancer
+  of [above](#tls-and-the-proxy-in-front), with every replica in its
+  upstream list, each checked on `/healthz`, WebSockets forwarded. No
+  stickiness is needed: a person's socket and the node serving their
+  chat may land on different replicas, and the replicas carry the chat
+  between them. A node is given the one address, as before.
+
+The seeder (`init`) runs once per deployment, not once per replica,
+and brings the schema to the version's; a replica that takes the lead
+does the same if no seeder did. Each replica is the Data Core's image as
+the `data-core` service runs it, on a host or as one of N tasks of a
+service on a cloud, each on a port of its own behind the address. To
+update, roll the replicas one at a time: each
+start adds what its schema lacks and drops nothing, so old and new run
+side by side until the last old one is gone, and the version's own
+changes are made once, by the seeder or the leader
+([cluster](../system/cluster.md#the-schema)).
+
+Which replicas are running, which one leads and which nodes each holds
+are rows in the database: `cluster_replicas`, the `leader` row of
+`cluster_state`, and `cluster_links`.
+
 ## After it is up
 
 Updating, backups, a forgotten password, key rotation and several

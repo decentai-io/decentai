@@ -43,7 +43,7 @@ class NodesController:
         from server.setup.app_state import get_node_links
 
         org_id = self._org(user)
-        own = [link.key for link in get_node_links().connected()
+        own = [link.key for link in get_node_links().everywhere()
                if link.scope == org_id]
         return {"nodes": self.organizations.nodes(org_id),
                 "choices": {key: list(values) for key, values

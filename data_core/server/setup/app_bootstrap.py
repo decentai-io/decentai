@@ -16,6 +16,7 @@ def init_state(settings) -> None:
     from server.authentication.access import AccessController
     from api import APIRouter
     from api.services.chat_session.relay import RuntimeClientManager
+    from api.services.cluster import Cluster
     from api.services.nodes.link import NodeLinks
     from server.ws.ws_manager import WSManager
 
@@ -23,6 +24,11 @@ def init_state(settings) -> None:
         state.settings = settings
         state.db = MongoDB(settings)
         state.access_controller = AccessController(settings)
+        # This process, as one of the Data Core's replicas: what it holds
+        # is written where the others can see it, and they reach it over
+        # the bus (docs/system/cluster.md). Before everything that holds
+        # a connection, which says where it holds it.
+        state.cluster = Cluster()
 
         # The router is placed in state BEFORE its endpoints are built:
         # endpoint controllers read it (and the db/access_controller) from
@@ -58,6 +64,12 @@ async def shutdown_state() -> None:
     if state.node_links is not None:
         try:
             await state.node_links.close_all()
+        except Exception:
+            pass
+    # Last: the replica says it stopped once it holds nothing more.
+    if state.cluster is not None:
+        try:
+            await state.cluster.stop()
         except Exception:
             pass
 

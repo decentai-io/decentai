@@ -543,7 +543,23 @@ class OutboundDeliveryStore(MongoStore):
         it was read as."""
         return self.col.update_one(
             {"_id": send_id, "state": "pending", "attempts": attempts},
-            {"$set": {"state": "sending"}}).modified_count == 1
+            {"$set": {"state": "sending", "claimed_at": utc_now()}}).modified_count == 1
+
+    #: How long a delivery may be mid-send before it is taken for one
+    #: whose sender stopped: well past one attempt's timeout.
+    STUCK_AFTER = timedelta(minutes=5)
+
+    def put_back_stuck(self) -> int:
+        """Deliveries left mid-send by a replica that stopped: due again,
+        the attempt counted. Whether the receiver had it is unknown, so
+        it may hear it twice, rather than never. Returns how many were
+        put back."""
+        now = utc_now()
+        return self.col.update_many(
+            {"state": "sending", "claimed_at": {"$lte": now - self.STUCK_AFTER}},
+            {"$set": {"state": "pending", "next_at": now,
+                      "last_error": "Its sender stopped mid-send; sent again."},
+             "$inc": {"attempts": 1}}).modified_count
 
     def settle(self, send_id: str, state: str, attempts: int, status: Any,
                error: str = "", next_at=None) -> None:

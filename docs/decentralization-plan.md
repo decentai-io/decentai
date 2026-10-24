@@ -19,7 +19,8 @@ of each part may run, and what each copy must share.
 
 ## Where it stands
 
-Measured against the code (October 2026):
+Measured against the code (October 2026), before phase 1 — which
+changed the second and third points ([below](#phase-1--a-data-core-cluster)):
 
 - **Already safe with many processes**, because the decision is a
   conditional write in MongoDB: leases (`grant`, `renew`, `release`,
@@ -92,6 +93,70 @@ the clients. A node may still be given one address — the cluster's.
 with any replica killed mid-turn; a chat keeps streaming to a person
 whose socket and node landed on different replicas; a revocation is
 seen by every replica within two seconds.
+
+**Built** (24 October 2026; [cluster](system/cluster.md) is the page).
+
+1. **Presence**: `cluster_replicas`, `cluster_links`, `cluster_sockets`,
+   each row with its replica's id and an expiry that replica's heartbeat
+   moves on every two seconds; a replica is gone ten seconds after its
+   last beat (`Cluster`, `data_core/api/services/cluster/replica.py`;
+   `data_core/database/stores/cluster.py`).
+2. **The bus**: a change stream over the capped `cluster_bus`, one-way
+   messages and calls with answers, one chat's messages in order, at
+   most once (`Bus`, `data_core/api/services/cluster/bus.py`). A chat is
+   bound on the replica holding its node's link — only it can sign the
+   node's frames — and every relay operation is done there, here when
+   it is here (`RuntimeClientManager`, `Elsewhere`). A node's event
+   reaches the person's socket wherever it is (`WSManager.deliver`). A
+   node that links to another replica is given back every chat it holds
+   a lease on, under the same number, with the delegation it already
+   holds (`Delegation.resumed`) — a fresh one would retire the key under
+   a call in flight, which the spanning test caught.
+3. **Placement over all links** (`NodeLinks.everywhere`), by the load
+   the node reports and the chats its replica gave it; the nodes view,
+   the authorities' counts and monitoring read every replica's links,
+   and a question for a node elsewhere is asked through its replica.
+4. **Shared invalidation**: numbers in `cluster_state`
+   (`SharedGeneration`) read at most once a second by `AccessCache` and
+   `Admission` — a session's own part, so retiring a delegation drops
+   sessions and not every resolution. A revoke closes the node's link
+   on whichever replica holds it (`NodeLinks.close_everywhere`).
+5. **Counters**: the webhook limit in `rate_counters` (`RateCounter`),
+   the sign-in throttle as conditional increments (`LoginThrottle._bump`).
+6. **One runner per loop**: a leader's lease in `cluster_state`
+   (`LeaderLease`); the leader runs lease fail-over, the clock — which
+   now claims a row before it holds the chat, and puts the claim back
+   where no node may take it — and the outbound sweep, which puts back
+   a delivery left mid-send for five minutes (`Sender.sweep`).
+7. **Migrations once**: every start adds what is missing and drops
+   nothing (`MongoDB.apply_schema`); a version's changes are made once,
+   by the seeder or the replica taking the lead, under a claim on the
+   version row, and never by a version older than the one written
+   (`MongoDB.migrate`).
+
+Files and agent packages were already kept in the object store
+`FILE_STORAGE_PROVIDER` names, packages included (`BlobPackageStorage`,
+`data_core/database/agent_packages.py`); a replica that sees others
+while both are on its own disk says so. `Notifier._attached` reads the
+socket's presence. The API, tokens, the node link's protocol and the
+clients are unchanged, and no setting was added.
+
+**Shown**: `tests/test_cluster_replicas.py` runs three replicas as
+processes on one replica set, behind one address, with a real node:
+the node's link on one replica and the person's socket on another, the
+model held mid-turn while each of the three in turn is killed, and the
+answer reaches the person every time; a revoke on one replica closes
+the node's link on another and is refused by the third within two
+seconds; the leader killed, another takes the lead and the clock fires.
+`data_core/tests/test_cluster.py` pins each change on its own.
+
+**Left for phase 2 and after**: a node is still given one address, so
+a load balancer that fails is a node that cannot link (`DATA_CORE_URLS`,
+phase 2); a connection stays on the replica it reached, so a replica
+added later takes only new connections; the bus is at most once, and a
+frame lost with a replica is read back from the record by the page, not
+sent again; the tests' replica set is one member, so the database's own
+fail-over is MongoDB's and not tested here.
 
 ## Phase 2 — execution pools
 

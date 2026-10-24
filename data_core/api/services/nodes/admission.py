@@ -22,7 +22,10 @@ and never decides.
 
 Nothing is cached past a change: registering, revoking or refusing
 moves ``generation`` and every remembered admission is thrown away,
-which is what makes a revoke count on a node's next request.
+which is what makes a revoke count on a node's next request. The change
+also moves a number every replica of the Data Core reads at most once a
+second (``SharedGeneration``, docs/system/cluster.md#shared-invalidation),
+so a revoke on one replica counts on all of them within a second.
 """
 
 from __future__ import annotations
@@ -124,12 +127,18 @@ class Admission:
     process: it remembers admissions until their credential lapses or
     something changes."""
 
-    #: Moves on every change to authorities or refusals, in this
-    #: process (the Data Core is one process).
+    #: Moves on every change to authorities or refusals: made in this
+    #: process, or heard of from the cluster's number.
     generation = 0
     _remembered: Dict[str, Tuple[int, NodeIdentity]] = {}
     _issuers = IssuerKeys()
     _lock = threading.Lock()
+    #: the cluster's number as last read, and when
+    _shared = None
+    _checked_at = 0.0
+    #: How long remembered admissions are trusted before asking whether
+    #: another replica changed an authority or a refusal.
+    CHECK_SECONDS = 1.0
 
     #: How far a credential's clock may be from the Data Core's.
     LEEWAY_SECONDS = 30
@@ -140,16 +149,53 @@ class Admission:
     @classmethod
     def changed(cls) -> None:
         """An authority was registered or revoked, or a node refused or
-        let back: nothing admitted before counts."""
+        let back: nothing admitted before counts — here, and on every
+        other replica within a second."""
+        cls._forget()
+        try:
+            from database.stores.cluster import SharedGeneration
+
+            number = SharedGeneration("admission").bump().get("number", 0)
+        except Exception:
+            return
+        with cls._lock:
+            heard = cls._shared is not None and number != cls._shared + 1
+            cls._shared = number
+        if heard:
+            cls._forget()
+
+    @classmethod
+    def _forget(cls) -> None:
         with cls._lock:
             cls.generation += 1
             cls._remembered = {}
+
+    @classmethod
+    def _sync(cls) -> None:
+        """What another replica changed, heard: looked at once a second
+        at most."""
+        now = time.monotonic()
+        if now - cls._checked_at < cls.CHECK_SECONDS:
+            return
+        cls._checked_at = now
+        try:
+            from database.stores.cluster import SharedGeneration
+
+            number = SharedGeneration("admission").read().get("number", 0)
+        except Exception:
+            return
+        with cls._lock:
+            moved = cls._shared is not None and number != cls._shared
+            cls._shared = number
+        if moved:
+            cls._forget()
 
     # ------------------------------------------------------------------
     def admit(self, token: str, record: bool = True) -> NodeIdentity:
         token = str(token or "").strip()
         if not token:
             raise Refused("No node credential was presented.")
+        self._sync()
         digest = hashlib.sha256(token.encode("utf-8")).hexdigest()
         with self._lock:
             held = self._remembered.get(digest)

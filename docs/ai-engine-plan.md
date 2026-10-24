@@ -77,7 +77,7 @@ now is in [the system pages](system/architecture.md), and
 | The Data Core read monitoring over HTTP from the Runtime. | It asks over the node link (`ai_runtime/door/monitor.py`). |
 | The Runtime reached one Sandbox at a fixed address, with a key from a shared volume. | Sandboxes register with their Runtime, proving the node's secret by an HMAC challenge (`sandbox/wire.py`). |
 | Runtime and Sandbox shared one volume: packages, environments, homes, the spool, the event log, the key. | Each Sandbox keeps its own; large files travel in pieces over the worker's connection. |
-| The Data Core assumed one process: its access cache, webhook rate counter and live sockets in memory. | Still so (section 5). |
+| The Data Core assumed one process: its access cache, webhook rate counter and live sockets in memory. | Several replicas may serve one deployment: presence and a bus between them in the database, caches that hear another replica's change within a second, counts in the database, one leader for the single loops ([cluster](system/cluster.md)). |
 | The Runtime held no state of its own and absorbed each event exactly once. | Unchanged: it is what makes leases and failover work. |
 
 ---
@@ -217,7 +217,10 @@ built and what is planned.
 - **Leases last 60 seconds and are renewed every 20.**
 - **The Data Core stays one process** for now. Its permission cache,
   webhook rate counter and live connections live in its memory, so two
-  copies behind a load balancer would not share them.
+  copies behind a load balancer would not share them. *Superseded on 24
+  October 2026: the Data Core runs as a cluster of replicas
+  ([the decentralization plan](decentralization-plan.md), phase 1;
+  [cluster](system/cluster.md)).*
 - **Hardware needs are labels on Sandboxes for now**; a manifest cannot yet
   ask for them.
 
@@ -225,7 +228,9 @@ built and what is planned.
 
 1. **Running several Data Cores.** Either one Data Core per organization,
    or its cache, rate counters and node connections moved into a shared
-   store.
+   store. *Settled: the second — a cluster of replicas on one replica
+   set ([cluster](system/cluster.md)); Data Cores that share execution
+   nodes are phase 3 of [the decentralization plan](decentralization-plan.md).*
 2. **Trust in a node's operator.** A node sees the model key and every
    credential lent during a call. Registering an authority is trusting
    whoever runs its nodes with that; the paper must say so.

@@ -1536,17 +1536,27 @@ class LoginThrottle(MongoStore):
         return int(doc.get("attempts") or 0)
 
     def _bump(self, key: str) -> None:
+        """One more failure in the window — each step a conditional
+        write, so failures counted at once by several replicas of the
+        Data Core all count, and only one of them starts a new window."""
+        from pymongo.errors import DuplicateKeyError
+
         now = utc_now()
-        doc = self.col.find_one({"_id": key})
-        if doc is None or doc.get("expires_at", now) <= now:
+        for _ in range(3):
+            if self.col.update_one(
+                    {"_id": key, "expires_at": {"$gt": now}},
+                    {"$inc": {"attempts": 1}}).modified_count:
+                return
             # New window. Overwrite whatever expired row may linger.
-            self.col.update_one(
-                {"_id": key},
-                {"$set": {"attempts": 1, "expires_at": now + self.WINDOW}},
-                upsert=True,
-            )
-        else:
-            self.col.update_one({"_id": key}, {"$inc": {"attempts": 1}})
+            fresh = {"attempts": 1, "expires_at": now + self.WINDOW}
+            if self.col.update_one({"_id": key, "expires_at": {"$lte": now}},
+                                   {"$set": fresh}).modified_count:
+                return
+            try:
+                self.col.insert_one({"_id": key, **fresh})
+                return
+            except DuplicateKeyError:
+                continue  # another replica started it: counted against it
 
     # ------------------------------------------------------------------
     def _left(self, key: str, cap: int) -> int:

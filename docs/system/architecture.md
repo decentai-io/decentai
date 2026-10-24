@@ -19,7 +19,7 @@ service, folder and settings carry its name
 
 | Name | Service | Code | Holds |
 |---|---|---|---|
-| **Data Core** | `data-core` | `data_core/` | identity and access, the agent lifecycle, the data layer, chats and approvals, organization settings, the execution nodes and the clock; the only part that reaches the database |
+| **Data Core** | `data-core` | `data_core/` | identity and access, the agent lifecycle, the data layer, chats and approvals, organization settings, the execution nodes and the clock; the only part that reaches the database. One process, or several replicas behind one address ([cluster](cluster.md)) |
 | **AI Runtime** | `ai-runtime` | `ai_runtime/` | the assistant, the executor every call passes, what a schedule's fire runs, the egress proxy |
 | **Execution Sandbox** | `sandbox` | `sandbox/` | agent code, one user of its own per agent |
 | **execution node** | — | — | one AI Runtime with its Execution Sandboxes, deployed together |
@@ -329,7 +329,7 @@ without anything being unreadable
 
 ## Where everything is kept
 
-**The database**, 45 collections (`data_core/database/schema.json`), by
+**The database**, 51 collections (`data_core/database/schema.json`), by
 what they are for:
 
 | For | Collections | Page |
@@ -341,6 +341,7 @@ what they are for:
 | settings | `llm_connections`, `oauth_apps`, `oauth_states`, `push_subscriptions` | [data layer](data-layer.md) |
 | webhooks | `webhooks`, `webhook_deliveries` (what each received), `webhook_subscriptions`, `webhook_sends` (the outbound queue and its record) | [webhooks](webhooks.md) |
 | execution nodes | `node_authorities` (who may vouch for a node), `execution_nodes` (the nodes admitted: a view), `refused_nodes`, `chat_leases` (which node holds each active chat, numbered) | [execution nodes](execution-nodes.md) |
+| the Data Core's replicas | `cluster_replicas` (each beating), `cluster_links` and `cluster_sockets` (which replica holds each node's link and each person's socket), `cluster_bus` (their messages, capped), `cluster_state` (the leader's lease, the caches' numbers, the schema's version), `rate_counters` | [cluster](cluster.md) |
 
 **Seven volumes**, and one more for each sandbox laid over them
 (`sandbox_2_data`, `compose/sandboxes.yml`).
@@ -359,7 +360,7 @@ what they are for:
 
 | Process | Keeps in memory | After a restart |
 |---|---|---|
-| Data Core | what it resolved of sessions and permissions, for a minute; the sockets and the node links | browsers and nodes reconnect; the chats waiting for a node are attached as one connects |
+| Data Core | what it resolved of sessions and permissions, for a minute, dropped within a second of a change on any replica; the sockets and the node links it holds, and the chats bound to those links | browsers and nodes reconnect, to it or to another replica; a node is given back the chats it holds a lease on wherever it links, and the chats waiting for a node are attached as one connects ([cluster](cluster.md)) |
 | runtime | each open chat's session and the beat in flight; running jobs; the proxy's passes and what it lent; open cards' waiters | a session is built again from `ai_chats` and the inbox, and hears each recorded event exactly once; a job that was running is settled as an error, whether or not its work happened; sleeps and schedules are rows, and survive |
 | agents | the workers, and whatever an agent's code kept between calls (an open browser) | gone; the next call starts a fresh worker in an emptied home |
 

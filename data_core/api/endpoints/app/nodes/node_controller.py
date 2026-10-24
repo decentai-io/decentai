@@ -69,7 +69,7 @@ class NodeController:
     def _live() -> Dict[str, Any]:
         from server.setup.app_state import get_node_links
 
-        return {link.key: link for link in get_node_links().connected()}
+        return {link.key: link for link in get_node_links().everywhere()}
 
     # ------------------------------------------------------------------
     # The view
@@ -104,7 +104,7 @@ class NodeController:
             public["connected"] = link is not None
             public["connected_since"] = (
                 iso_seconds(link.connected_at) if link is not None else None)
-            public["chats"] = len(link.chats) if link is not None else 0
+            public["chats"] = link.chat_count if link is not None else 0
             ours, elsewhere = held.get(public["node_id"], ([], 0))
             public["held_chats"] = ours
             public["held_elsewhere"] = elsewhere
@@ -233,8 +233,7 @@ class NodeController:
         Admission.changed()
         from api.endpoints.app.nodes.authority_controller import AuthorityController
 
-        closed = await AuthorityController._close_links(
-            lambda node: node.key == key)
+        closed = await AuthorityController._close_links(node_key=key)
         AuditStore().append("node.refused", user, resource_refs=[key],
                             details={"links_closed": closed, "reason": reason})
         return {"refused": True, "links_closed": closed,

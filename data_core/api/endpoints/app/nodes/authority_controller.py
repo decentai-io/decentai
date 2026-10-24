@@ -109,7 +109,7 @@ class AuthorityController:
         list, and how many of them are connected now."""
         from server.setup.app_state import get_node_links
 
-        live = {link.key for link in get_node_links().connected()}
+        live = {link.key for link in get_node_links().everywhere()}
         scopes = sorted({row.get("scope", "") for row in rows})
         counts: Dict[str, Dict[str, int]] = {}
         for node in NodeStore().list(scopes):
@@ -193,7 +193,7 @@ class AuthorityController:
             return refused
         revoked = store.revoke(authority_id, user)
         self._changed()
-        closed = await self._close_links(lambda node: node.authority_id == authority_id)
+        closed = await self._close_links(authority_id=authority_id)
         AuditStore().append(
             "node.authority.revoked", user, resource_refs=[authority_id],
             details={"scope": doc.get("scope"), "links_closed": closed})
@@ -206,12 +206,15 @@ class AuthorityController:
         Admission.changed()
 
     @staticmethod
-    async def _close_links(which) -> int:
-        """The links of the nodes ``which`` picks, closed now: a revoke
-        counts at once, not at their next request."""
+    async def _close_links(authority_id: str = "", node_key: str = "") -> int:
+        """The links of an authority's nodes, or of one node, closed now
+        on every replica of the Data Core that holds one: a revoke counts
+        at once, not at their next request."""
         from server.setup.app_state import get_state
 
         links = getattr(get_state(), "node_links", None)
         if links is None:
             return 0
-        return await links.close_where(which, "its authority was revoked")
+        return await links.close_everywhere(
+            "its authority was revoked" if authority_id else "refused by name",
+            authority_id=authority_id, node_key=node_key)

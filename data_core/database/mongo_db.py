@@ -1,7 +1,10 @@
 import json
+import socket
+from datetime import timedelta
 from pathlib import Path
 
-from pymongo import MongoClient
+from pymongo import MongoClient, ReturnDocument
+from pymongo.errors import DuplicateKeyError
 
 from server.custom_logging import CustomLoggerFactory
 
@@ -19,9 +22,32 @@ def load_database_schema() -> dict:
 
 
 class MongoDB:
-    """MongoDB connection that applies the declarative schema on startup:
-    every collection with its validator, every index as declared, and
-    nothing undeclared left behind."""
+    """MongoDB connection, and the declarative schema laid down in two
+    halves (docs/system/cluster.md#the-schema).
+
+    **At every start** (``apply_schema``): what the schema declares and
+    the database lacks — a collection with its validator, an index —
+    is made, and nothing that is there is changed or dropped. Several
+    replicas start at once, and during an upgrade replicas of two
+    versions run side by side: a start that dropped what its version
+    does not declare would take an index from the other version's
+    queries.
+
+    **Once per version** (``migrate``): the database brought to exactly
+    what this version declares — validators replaced, indexes whose
+    keys or options changed made again, indexes no longer declared
+    dropped — and the version written down. The leader runs it when it
+    takes the lead, and the seeder as it starts; a claim on the version
+    row lets one of them do it, and a version older than the one
+    written does nothing.
+    """
+
+    #: The row in ``cluster_state`` that says which version the
+    #: database was last brought to.
+    VERSION_ROW = "schema"
+    #: How long one migration may hold its claim before another may
+    #: take it over: a process that died mid-step.
+    CLAIM_SECONDS = 600
 
     def __init__(self, settings):
         self.logger = CustomLoggerFactory.get_logger(__class__.__name__)
@@ -43,29 +69,107 @@ class MongoDB:
     def collection(self, name: str):
         return self.db[name]
 
+    def replica_set(self) -> str:
+        """The replica set's name, or "" for a server that is none: the
+        replicas' bus reads a change stream, which only a replica set
+        has (api/services/cluster/bus.py)."""
+        try:
+            return str(self.client.admin.command("hello").get("setName") or "")
+        except Exception:
+            return ""
+
+    # ------------------------------------------------------------------
+    # Every start: what is missing, and nothing else
+    # ------------------------------------------------------------------
+
     def apply_schema(self) -> None:
-        """Create/update every declared collection, validator, and index."""
+        """Create every declared collection and index that is missing."""
         definitions = load_database_schema()["collections"]
         existing = set(self.db.list_collection_names())
 
         for name, definition in definitions.items():
-            validator = definition.get("validator", {})
             if name not in existing:
+                options = {}
+                if definition.get("capped"):
+                    options = {"capped": True,
+                               "size": int(definition["capped"]["size"])}
                 self.db.create_collection(
                     name,
-                    validator=validator,
+                    validator=definition.get("validator", {}),
                     validationLevel="moderate",
                     validationAction="error",
+                    **options,
                 )
-            else:
-                self.db.command(
-                    "collMod",
-                    name,
-                    validator=validator,
-                    validationLevel="moderate",
-                    validationAction="error",
-                )
+            collection = self.db[name]
+            information = collection.index_information()
+            for index in definition.get("indexes", []):
+                wanted = [list(pair) for pair in index["keys"]]
+                if index["name"] in information or any(
+                        [list(pair) for pair in spec.get("key", [])] == wanted
+                        for spec in information.values()):
+                    # There already, perhaps as another version has it:
+                    # changing it is the migration's.
+                    continue
+                options = {key: value for key, value in index.items()
+                           if key not in {"keys", "name"}}
+                try:
+                    collection.create_index(index["keys"], name=index["name"],
+                                            **options)
+                except Exception as exc:
+                    self.logger.warning(
+                        f"Index {name}.{index['name']} not made at start "
+                        f"({exc}); the schema's migration makes it.")
 
+    # ------------------------------------------------------------------
+    # Once per version: exactly what this version declares
+    # ------------------------------------------------------------------
+
+    def migrate(self, by: str = "") -> bool:
+        """Bring the database to this version's schema, once. Returns
+        whether this call did; False when the database is there
+        already, at a later version, or another is doing it now."""
+        from util import utc_now
+
+        version = int(load_database_schema().get("schema_version") or 0)
+        state = self.db["cluster_state"]
+        by = by or socket.gethostname()
+        now = utc_now()
+        claim = {"applying_by": by,
+                 "applying_until": now + timedelta(seconds=self.CLAIM_SECONDS)}
+        claimed = state.find_one_and_update(
+            {"_id": self.VERSION_ROW, "version": {"$lt": version},
+             "$or": [{"applying_until": {"$exists": False}},
+                     {"applying_until": {"$lte": now}}]},
+            {"$set": claim}, return_document=ReturnDocument.AFTER)
+        if claimed is None:
+            if state.find_one({"_id": self.VERSION_ROW}, {"_id": 1}) is not None:
+                return False
+            try:
+                state.insert_one({"_id": self.VERSION_ROW, "version": 0, **claim})
+            except DuplicateKeyError:
+                return False
+        self.reconcile()
+        state.update_one(
+            {"_id": self.VERSION_ROW},
+            {"$set": {"version": version, "applied_at": utc_now(),
+                      "applied_by": by},
+             "$unset": {"applying_by": "", "applying_until": ""}})
+        self.logger.info(f"Schema brought to version {version}")
+        return True
+
+    def reconcile(self) -> None:
+        """Every declared collection's validator, and its indexes exactly
+        as declared: nothing undeclared left behind."""
+        definitions = load_database_schema()["collections"]
+        self.apply_schema()
+        for name, definition in definitions.items():
+            self.db.command(
+                "collMod",
+                name,
+                validator=definition.get("validator", {}),
+                validationLevel="moderate",
+                validationAction="error",
+            )
             collection = self.db[name]
             declared_indexes = {
                 index["name"] for index in definition.get("indexes", [])

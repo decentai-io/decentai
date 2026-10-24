@@ -1,9 +1,14 @@
 """Store foundations: MongoStore (shared plumbing) and AccessCache.
 
 The cache lives at the bottom of the import graph because the stores are
-what invalidate it — single-process, so dropping entries on mutation is
-exactly equivalent to re-reading Mongo. A short TTL backstops out-of-band
-writes.
+what invalidate it: within one process, dropping entries on mutation is
+exactly equivalent to re-reading Mongo. Across the Data Core's replicas
+(docs/system/cluster.md#shared-invalidation) every invalidation also
+moves a number in the database (``SharedGeneration``), and each replica
+reads that number at most once a second: one that moved means another
+replica changed something, and everything cached here goes. A sign-out,
+a disabled user or a policy edit counts everywhere within a second. A
+short TTL backstops out-of-band writes.
 """
 
 from __future__ import annotations
@@ -19,6 +24,9 @@ from server.setup.app_state import get_db
 
 class AccessCache:
     TTL_SECONDS = 60
+    #: How long the cache trusts itself before asking whether another
+    #: replica changed anything.
+    CHECK_SECONDS = 1.0
 
     def __init__(self):
         self._sessions: Dict[str, Dict[str, Any]] = {}
@@ -29,18 +37,77 @@ class AccessCache:
         # invalidation came in the meantime: what it read may be from
         # before a write that has since landed.
         self._generation = 0
+        # The cluster's numbers, as last read, and when.
+        self._shared: Optional[Dict[str, int]] = None
+        self._checked_at = 0.0
 
     def generation(self) -> int:
         """Taken before reading the database for a resolution, and
         handed back when the result is put."""
+        self._sync()
         return self._generation
 
     def _current(self, since: Optional[int]) -> bool:
         return since is None or since == self._generation
 
+    # ── the cluster's invalidations ────────────────────────────────────
+
+    #: The parts of the cluster's number: a session dropped, and
+    #: anything a person's access was resolved from.
+    SESSIONS, ACCESS = "sessions", "access"
+
+    def _sync(self) -> None:
+        """What another replica changed, gone from here — looked at once
+        a second at most: the sessions when a session was dropped, and
+        everything when anything else was."""
+        now = time.monotonic()
+        if now - self._checked_at < self.CHECK_SECONDS:
+            return
+        self._checked_at = now
+        try:
+            from database.stores.cluster import SharedGeneration
+
+            numbers = SharedGeneration("access").read()
+        except Exception:
+            return  # no database yet: nothing was cached from one either
+        self._heard(numbers)
+
+    def _announce(self, part: str) -> None:
+        """An invalidation here, said to the other replicas."""
+        try:
+            from database.stores.cluster import SharedGeneration
+
+            numbers = SharedGeneration("access").bump(part)
+        except Exception:
+            return
+        if self._shared is not None:
+            # Ours is one step; any more is another replica's change,
+            # unheard until now.
+            self._shared = {**self._shared,
+                            part: self._shared.get(part, 0) + 1}
+        self._heard(numbers)
+
+    def _heard(self, numbers: Dict[str, int]) -> None:
+        seen = self._shared
+        self._shared = dict(numbers)
+        if seen is None:
+            return
+        if numbers.get(self.ACCESS, 0) != seen.get(self.ACCESS, 0):
+            self._forget()
+        elif numbers.get(self.SESSIONS, 0) != seen.get(self.SESSIONS, 0):
+            self._generation += 1
+            self._sessions.clear()
+
+    def _forget(self) -> None:
+        self._generation += 1
+        self._sessions.clear()
+        self._statements.clear()
+        self._permissions_version += 1
+
     # ── sessions (session_id → user dict) ──────────────────────────────
 
     def get_session(self, session_id: str) -> Optional[Dict[str, Any]]:
+        self._sync()
         entry = self._sessions.get(session_id)
         if entry is None:
             return None
@@ -63,12 +130,14 @@ class AccessCache:
     def drop_session(self, session_id: str) -> None:
         self._generation += 1
         self._sessions.pop(session_id, None)
+        self._announce(self.SESSIONS)
 
     def drop_user(self, user_id: str) -> None:
         """Everything cached about one user — sessions and statements.
         Called when they are disabled, deleted, re-grouped, or change
         password."""
         self._generation += 1
+        self._announce(self.ACCESS)
         self._statements.pop(user_id, None)
         for session_id in [
             sid for sid, entry in self._sessions.items()
@@ -79,6 +148,7 @@ class AccessCache:
     # ── statements (user_id → resolved policy statements) ──────────────
 
     def get_statements(self, user_id: str) -> Optional[List[Dict[str, Any]]]:
+        self._sync()
         entry = self._statements.get(user_id)
         if entry is None:
             return None
@@ -104,12 +174,11 @@ class AccessCache:
         """Any group/role/policy mutation: every cached resolution is stale."""
         self._generation += 1
         self._permissions_version += 1
+        self._announce(self.ACCESS)
 
     def clear(self) -> None:
-        self._generation += 1
-        self._sessions.clear()
-        self._statements.clear()
-        self._permissions_version += 1
+        self._forget()
+        self._announce(self.ACCESS)
 
     # ── a write, with what it changes invalidated on both sides ────────
     #

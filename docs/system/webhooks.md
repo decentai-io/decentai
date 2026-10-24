@@ -109,7 +109,9 @@ is the answer.
 3. **The secret**, and the signature where one is required or sent.
    Otherwise **401**, saying which.
 4. **The rate.** At most 60 events a minute per webhook, counted in the
-   Data Core process. Otherwise **429**.
+   database (`rate_counters`), so every replica of the Data Core counts
+   against the one limit ([cluster](cluster.md#shared-counts)).
+   Otherwise **429**.
 5. **The body.** JSON, an object, every field declared (nothing
    undeclared), every required one present and not null, each of its
    type — a `date` is an ISO 8601 string. Otherwise **400**, naming the
@@ -336,9 +338,6 @@ chats ([ownership](ownership.md)).
   their own ways; v1 checks DecentAI's. A provider that cannot send a
   bearer token or our signature is reached through a relay such as
   Zapier, n8n or Make, until its own scheme is added.
-- **A rate across processes.** The 60 a minute is counted in memory in
-  each Data Core process; several Data Cores each allow 60, and a restart
-  starts the count again.
 - **Pin the connection to the address it checked.** An outbound address
   is resolved and checked when the subscription is made and before each
   send, and the connection is then made by name. A name that answers

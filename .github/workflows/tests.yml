@@ -41,12 +41,24 @@ jobs:
     name: Data Core and spanning
     runs-on: ubuntu-24.04
     timeout-minutes: 60
-    services:
-      mongo:
-        image: mongo:7
-        ports:
-          - 27017:27017
     steps:
+      # A replica set of one: the Data Core's replicas speak over a
+      # change stream (docs/system/cluster.md), which a single server
+      # has not. A service container is given no command line, so it
+      # is started here.
+      - name: MongoDB, as a replica set
+        run: |
+          docker run -d --name mongo -p 27017:27017 mongo:7 --replSet rs0 --bind_ip_all
+          for attempt in $(seq 1 60); do
+            docker exec mongo mongosh --quiet --eval 'db.adminCommand("ping").ok' && break
+            sleep 1
+          done
+          docker exec mongo mongosh --quiet --eval \
+            'rs.initiate({_id: "rs0", members: [{_id: 0, host: "localhost:27017"}]})'
+          for attempt in $(seq 1 60); do
+            [ "$(docker exec mongo mongosh --quiet --eval 'rs.status().myState')" = "1" ] && break
+            sleep 1
+          done
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:

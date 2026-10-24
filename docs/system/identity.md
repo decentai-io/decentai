@@ -294,12 +294,16 @@ in meanwhile, so a request that read the old rows while the write ran
 cannot put them back. Revocation therefore takes effect on the next
 request rather than at the next login or the next cache expiry.
 
-That is so of a change made through the application. The cache is one
-process's own, kept for sixty seconds (`AccessCache`,
-`data_core/database/stores/base.py`): a change made from the command
-line — an organization disabled, a password set by
-`bootstrap/reset_password.py` — is another process's, and takes effect
-in the Data Core within that minute.
+The cache is each Data Core process's own, kept for sixty seconds
+(`AccessCache`, `data_core/database/stores/base.py`), and every
+invalidation also moves a number in the database that each process
+reads at most once a second. So a change made on one replica of the
+Data Core counts on every other within a second
+([cluster](cluster.md#shared-invalidation)), and so does one made from
+the command line — an organization disabled, a password set by
+`bootstrap/reset_password.py` — whose stores move the same number. A
+write made to the database by hand moves nothing, and counts within the
+minute.
 
 ### The baseline
 
@@ -462,7 +466,10 @@ many accounts. A successful sign-in clears the account's count but not the
 address's, because succeeding against one account must not refill an
 attacker's budget against the rest. The throttle is consulted before the
 password is checked, so a locked window answers the same for a right
-password as for a wrong one.
+password as for a wrong one. The counts are rows in the database
+(`auth_throttle`), each failure a conditional increment, so attempts
+spread over several replicas of the Data Core all count against the
+one window.
 
 Each of these — invitations, sessions, resets — is scoped and swept the
 same way as everything else: they belong to an organization, they die

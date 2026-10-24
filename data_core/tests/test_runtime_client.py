@@ -41,6 +41,10 @@ class FakeNode:
     def load(self):
         return len(self.chats)
 
+    @property
+    def chat_count(self):
+        return len(self.chats)
+
     async def send(self, frame):
         if not self.open:
             return False

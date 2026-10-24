@@ -1,5 +1,5 @@
 {
-  "schema_version": 50,
+  "schema_version": 51,
   "collections": {
     "ai_chats": {
       "description": "Chat metadata, owned by the Data Core: configuration, plan, the assistant's state (the mind, one document, per thread), and the runtime block.",
@@ -2818,6 +2818,307 @@
               1
             ]
           ]
+        }
+      ]
+    },
+    "cluster_replicas": {
+      "description": "The Data Core replicas running now: each beats, and one that stops beating is gone when its row lapses.",
+      "validator": {
+        "$jsonSchema": {
+          "bsonType": "object",
+          "required": [
+            "_id",
+            "expires_at"
+          ],
+          "properties": {
+            "_id": {
+              "bsonType": "string"
+            },
+            "beat_at": {
+              "bsonType": "date"
+            },
+            "started_at": {
+              "bsonType": "date"
+            },
+            "expires_at": {
+              "bsonType": "date"
+            },
+            "host": {
+              "bsonType": "string"
+            },
+            "schema_version": {
+              "bsonType": [
+                "int",
+                "long"
+              ]
+            }
+          }
+        }
+      },
+      "indexes": [
+        {
+          "name": "expires_at_ttl",
+          "keys": [
+            [
+              "expires_at",
+              1
+            ]
+          ],
+          "expireAfterSeconds": 0
+        }
+      ]
+    },
+    "cluster_links": {
+      "description": "Which Data Core replica holds each execution node's link, and what the node last said of its load.",
+      "validator": {
+        "$jsonSchema": {
+          "bsonType": "object",
+          "required": [
+            "_id",
+            "replica_id",
+            "link_id",
+            "expires_at"
+          ],
+          "properties": {
+            "_id": {
+              "bsonType": "string"
+            },
+            "replica_id": {
+              "bsonType": "string"
+            },
+            "link_id": {
+              "bsonType": "string"
+            },
+            "expires_at": {
+              "bsonType": "date"
+            },
+            "scope": {
+              "bsonType": "string"
+            },
+            "shared": {
+              "bsonType": "bool"
+            },
+            "authority_id": {
+              "bsonType": "string"
+            },
+            "name": {
+              "bsonType": "string"
+            },
+            "labels": {
+              "bsonType": "array"
+            },
+            "connected_at": {
+              "bsonType": [
+                "double",
+                "int",
+                "long"
+              ]
+            },
+            "load": {
+              "bsonType": [
+                "int",
+                "long"
+              ]
+            },
+            "chats": {
+              "bsonType": [
+                "int",
+                "long"
+              ]
+            }
+          }
+        }
+      },
+      "indexes": [
+        {
+          "name": "replica",
+          "keys": [
+            [
+              "replica_id",
+              1
+            ]
+          ]
+        },
+        {
+          "name": "expires_at_ttl",
+          "keys": [
+            [
+              "expires_at",
+              1
+            ]
+          ],
+          "expireAfterSeconds": 0
+        }
+      ]
+    },
+    "cluster_sockets": {
+      "description": "Which Data Core replica holds each person's chat socket.",
+      "validator": {
+        "$jsonSchema": {
+          "bsonType": "object",
+          "required": [
+            "_id",
+            "chat_id",
+            "replica_id",
+            "socket_id",
+            "expires_at"
+          ],
+          "properties": {
+            "_id": {
+              "bsonType": "string"
+            },
+            "chat_id": {
+              "bsonType": "string"
+            },
+            "replica_id": {
+              "bsonType": "string"
+            },
+            "socket_id": {
+              "bsonType": "string"
+            },
+            "expires_at": {
+              "bsonType": "date"
+            }
+          }
+        }
+      },
+      "indexes": [
+        {
+          "name": "chat",
+          "keys": [
+            [
+              "chat_id",
+              1
+            ]
+          ]
+        },
+        {
+          "name": "replica",
+          "keys": [
+            [
+              "replica_id",
+              1
+            ]
+          ]
+        },
+        {
+          "name": "expires_at_ttl",
+          "keys": [
+            [
+              "expires_at",
+              1
+            ]
+          ],
+          "expireAfterSeconds": 0
+        }
+      ]
+    },
+    "cluster_bus": {
+      "description": "The replicas' messages to one another, read through a change stream: capped, so it never grows.",
+      "capped": {
+        "size": 67108864
+      },
+      "validator": {
+        "$jsonSchema": {
+          "bsonType": "object",
+          "required": [
+            "to",
+            "from",
+            "kind"
+          ],
+          "properties": {
+            "to": {
+              "bsonType": "string"
+            },
+            "from": {
+              "bsonType": "string"
+            },
+            "kind": {
+              "bsonType": "string"
+            },
+            "lane": {
+              "bsonType": "string"
+            },
+            "request_id": {
+              "bsonType": "string"
+            },
+            "body": {
+              "bsonType": "string"
+            },
+            "at": {
+              "bsonType": "date"
+            }
+          }
+        }
+      },
+      "indexes": []
+    },
+    "cluster_state": {
+      "description": "What the replicas share one row of: the leader's lease, each cache's generation number, the schema's version.",
+      "validator": {
+        "$jsonSchema": {
+          "bsonType": "object",
+          "properties": {
+            "_id": {
+              "bsonType": "string"
+            },
+            "holder": {
+              "bsonType": "string"
+            },
+            "number": {
+              "bsonType": [
+                "int",
+                "long"
+              ]
+            },
+            "expires_at": {
+              "bsonType": "date"
+            },
+            "since": {
+              "bsonType": "date"
+            },
+            "version": {
+              "bsonType": [
+                "int",
+                "long"
+              ]
+            }
+          }
+        }
+      },
+      "indexes": []
+    },
+    "rate_counters": {
+      "description": "Counts in a window every replica shares: an outside system's events per webhook a minute.",
+      "validator": {
+        "$jsonSchema": {
+          "bsonType": "object",
+          "properties": {
+            "_id": {
+              "bsonType": "string"
+            },
+            "count": {
+              "bsonType": [
+                "int",
+                "long"
+              ]
+            },
+            "expires_at": {
+              "bsonType": "date"
+            }
+          }
+        }
+      },
+      "indexes": [
+        {
+          "name": "expires_at_ttl",
+          "keys": [
+            [
+              "expires_at",
+              1
+            ]
+          ],
+          "expireAfterSeconds": 0
         }
       ]
     }

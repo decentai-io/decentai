@@ -27,17 +27,32 @@ running is said to have ended unknown, and is never run again by itself.
 
 **Which node** (api/services/nodes/placement.py): the one already
 holding the chat while its lease is live; otherwise among the nodes
-connected that may serve the chat's organization, its own first, then
-the last holder, then the least loaded. An organization that keeps to
-its own nodes (Settings:Nodes, ``own_only``) is served by no shared
-node: with none of its own connected, the chat waits and its person is
-told why; a shared node holding one of its chats when it changed lets
-the chat go at once (``keep_to_own``).
+connected — to this replica or any other — that may serve the chat's
+organization, its own first, then the last holder, then the least
+loaded. An organization that keeps to its own nodes (Settings:Nodes,
+``own_only``) is served by no shared node: with none of its own
+connected, the chat waits and its person is told why; a shared node
+holding one of its chats when it changed lets the chat go at once
+(``keep_to_own``).
+
+**Several replicas** (docs/system/cluster.md). A node's link is on one
+Data Core replica, and only that replica can sign the node's frames —
+so the chat is bound where its node's link is: that replica mints the
+chat's delegations, sends its frames, hears its events and renews its
+key. Every operation here — a person arriving, a frame, a fire, a stop
+— is done on this replica when the chat's node is linked here, and
+otherwise asked of the replica that holds the link, over the bus
+(``Elsewhere``, ``_anywhere``). When the person's socket and the node's
+link share a replica, nothing crosses the bus. A node's event reaches
+the person's socket wherever it is (``WSManager.deliver``). A node
+that links to a replica — after the one it was on stopped — is given
+back every chat it holds a live lease on, under the same numbers.
 
 **The clock** is the Data Core's (chat_session/clock.py): it decides
 when a schedule is due, puts the chat on a node (``hold``) and sends
 the node a ``fire`` (``fire``); a node gives back one it never ran
-(``unfired``). No chat is kept on a node for its clock.
+(``unfired``). No chat is kept on a node for its clock. The clock and
+lease fail-over run on the replica that leads, alone.
 
 A person who stopped everything of theirs (halt.py) is attached
 nowhere: no key is minted and no frame goes out until they resume. The
@@ -69,6 +84,15 @@ FRAMES = {"user_message", "approval_decided", "question_answered", "stop",
           # browser's socket builds only the frames of the actions it
           # knows, and this is none of them.
           "webhook_event"}
+
+
+class Elsewhere(Exception):
+    """The chat's node is linked to another replica: what was asked is
+    that replica's to do."""
+
+    def __init__(self, replica_id: str):
+        super().__init__(replica_id)
+        self.replica_id = replica_id
 
 
 class ChatBinding:
@@ -109,6 +133,9 @@ class RuntimeClientManager:
     #: How long a killed chat is given to write down what it had done
     #: before its key is withdrawn.
     KILL_GRACE_SECONDS = 10.0
+    #: How many times an operation follows a chat that moved between
+    #: replicas while it was being asked for.
+    ROUTE_ATTEMPTS = 3
 
     WAITING_FOR_A_NODE = "No execution node is connected that may serve this chat."
     WAITING_FOR_OWN = ("This organization runs its chats on its own execution "
@@ -119,6 +146,9 @@ class RuntimeClientManager:
 
     def __init__(self, links):
         self.links = links
+        #: this process as one replica (api/services/cluster); None for
+        #: a test's links of their own
+        self.cluster = getattr(links, "cluster", None)
         self.placement = Placement()
         self.chats: Dict[str, ChatBinding] = {}
         self.lock = asyncio.Lock()
@@ -137,6 +167,10 @@ class RuntimeClientManager:
         self.clock = ScheduleClock(self)
         # A fire a node was handed and gives back unrun.
         links.on_frame["unfired"] = self.clock.on_unfired
+        if self.cluster is not None:
+            self.cluster.bus.on("relay", self._on_relay)
+            self.cluster.bus.on("link_up", self._on_link_up)
+            self.cluster.on_gone.append(self.on_replicas_gone)
 
     # ------------------------------------------------------------------
     async def _binding(self, chat_id: str, user: Dict[str, Any]) -> ChatBinding:
@@ -147,12 +181,19 @@ class RuntimeClientManager:
                 self.chats[chat_id] = binding
             return binding
 
+    def _remote(self, node_key: str):
+        """The node, where another replica holds its link; else None."""
+        if self.cluster is None or self.links.get(node_key) is not None:
+            return None
+        return self.cluster.link(node_key)
+
     async def _attach(self, binding: ChatBinding, halting: bool = False,
                       again: bool = False) -> bool:
         """The chat on a node, under a lease: the node already holding
         it, or one placed now. ``again`` sends the attachment to the
         node already holding it too — a person arriving, who is greeted
-        with the chat's present tense."""
+        with the chat's present tense. Raises Elsewhere when that node's
+        link is on another replica."""
         async with binding.attaching:
             if not halting and UserStore().stopped(
                     str(binding.user.get("user_id") or "")):
@@ -166,6 +207,10 @@ class RuntimeClientManager:
             link = None
             if leases.live(current):
                 link = self.links.get(current["node_id"])
+                if link is None:
+                    remote = self._remote(current["node_id"])
+                    if remote is not None:
+                        raise Elsewhere(remote.replica_id)
                 if link is not None and not self.placement.may_serve(
                         link, org_id, own_only):
                     # The organization keeps to its own nodes now: the
@@ -179,21 +224,33 @@ class RuntimeClientManager:
                     # node may only be slow, and two must never act.
                     binding.waiting = self.MOVING
                     return False
+            # Already this node's: attached again, it is handed the key
+            # it holds rather than a fresh one, which would retire that
+            # key under a call it has in flight.
+            again_here = link is not None
             if link is None:
                 link = self.placement.choose(
-                    self.links.connected(), org_id,
+                    self.links.everywhere(), org_id,
                     str((current or {}).get("node_id") or ""), own_only)
                 if link is None:
                     binding.waiting = (self.WAITING_FOR_OWN if own_only
                                        else self.WAITING_FOR_A_NODE)
                     return False
+                if getattr(link, "replica_id", None):
+                    raise Elsewhere(link.replica_id)
             lease = leases.grant(binding.chat_id, link.key, binding.user)
             if lease is None:
                 binding.waiting = self.MOVING
                 return False
+            age = 0.0
             try:
-                credential = Delegation().for_chat(
-                    binding.user, binding.chat_id, node=link.key)
+                resumed = Delegation().resumed(
+                    binding.user, binding.chat_id, link.key) if again_here else None
+                if resumed is not None:
+                    credential, age = resumed
+                else:
+                    credential = Delegation().for_chat(
+                        binding.user, binding.chat_id, node=link.key)
             except Exception as exc:
                 self.logger.warning(
                     f"No delegation for chat {binding.chat_id}: {exc}")
@@ -215,8 +272,133 @@ class RuntimeClientManager:
                 previous.chats.discard(binding.chat_id)
                 await previous.send({"type": "detach", "chat_id": binding.chat_id})
             binding.waiting = ""
-            binding.credentialed_at = time.monotonic()
+            # Renewal is due by the key's age, whichever replica made it.
+            binding.credentialed_at = time.monotonic() - age
             return True
+
+    # ------------------------------------------------------------------
+    # Here, or where the chat's node is
+    # ------------------------------------------------------------------
+
+    async def _anywhere(self, op: str, chat_id: str, user: Dict[str, Any],
+                        **args) -> Dict[str, Any]:
+        """One of the relay's operations, on this replica when the
+        chat's node is linked here, and asked of the replica that holds
+        the link otherwise — following the chat if it moved meanwhile."""
+        chat_id = str(chat_id)
+        for _ in range(self.ROUTE_ATTEMPTS):
+            try:
+                return await self._here(op, chat_id, user, args)
+            except Elsewhere as there:
+                self._stray(chat_id)
+                if args.get("watched"):
+                    args["watcher"] = self.cluster.replica_id
+                try:
+                    answer = await self.cluster.bus.call(
+                        there.replica_id, "relay",
+                        {"op": op, "chat_id": chat_id, "user": user, "args": args},
+                        timeout=self.KILL_GRACE_SECONDS + 10 if op == "kill" else None,
+                        lane=chat_id)
+                except Exception as exc:
+                    self.logger.warning(
+                        f"Replica {there.replica_id} did not do {op!r} for chat "
+                        f"{chat_id}: {exc}")
+                    answer = {"ok": False, "waiting": self.MOVING}
+                if answer.get("elsewhere"):
+                    continue
+                if op == "attach" and args.get("watched") and not answer.get("ok"):
+                    # Waiting here, where the person is: told why, and
+                    # attached when a node that may serve it links.
+                    binding = await self._binding(chat_id, user)
+                    binding.watched = True
+                    binding.waiting = str(answer.get("waiting") or "")
+                return answer
+        return {"ok": False, "waiting": self.MOVING}
+
+    def _stray(self, chat_id: str) -> None:
+        """A binding left here for a chat held elsewhere: forgotten,
+        unless the person's socket is here, where it says they wait."""
+        binding = self.chats.get(chat_id)
+        if binding is None or binding.attached:
+            return
+        try:
+            local = get_ws_manager().frontends.get(
+                get_ws_manager().key(chat_id, binding.user)) is not None
+        except Exception:
+            local = False
+        if not local:
+            self.chats.pop(chat_id, None)
+
+    async def _here(self, op: str, chat_id: str, user: Dict[str, Any],
+                    args: Dict[str, Any]) -> Dict[str, Any]:
+        """``op`` on this replica. Raises Elsewhere where the chat's
+        node is another replica's."""
+        if op == "attach":
+            binding = await self._binding(chat_id, user)
+            if args.get("watched"):
+                binding.watched = True
+            ok = await self._attach(binding, halting=bool(args.get("halting")),
+                                    again=bool(args.get("again")))
+            return {"ok": ok, "waiting": binding.waiting,
+                    "node": binding.link.key if ok and binding.link else ""}
+        if op == "send":
+            return {"ok": await self._send_here(chat_id, user, args.get("frame") or {},
+                                                bool(args.get("halting")))}
+        if op == "fire":
+            return await self._fire_here(chat_id, args.get("row") or {})
+        if op == "tell":
+            return {"ok": await self._tell_here(chat_id, args.get("frame") or {})}
+        if op == "kill":
+            return {"ok": await self._kill_here(chat_id, user)}
+        if op == "release":
+            return {"ok": await self._release_here(chat_id, user)}
+        if op == "close":
+            await self._close_here(chat_id)
+            return {"ok": True}
+        if op == "let_go":
+            return {"ok": await self._let_go_here(chat_id, user)}
+        raise ValueError(f"no relay operation {op!r}")
+
+    async def _on_relay(self, body: Dict[str, Any], sender: str) -> Dict[str, Any]:
+        """Another replica asks for a chat whose node is linked here."""
+        op = str(body.get("op") or "")
+        chat_id = str(body.get("chat_id") or "")
+        user = body.get("user") if isinstance(body.get("user"), dict) else {}
+        args = body.get("args") if isinstance(body.get("args"), dict) else {}
+        if op == "unwatch":
+            binding = self.chats.get(chat_id)
+            if binding is not None and not self._watching(chat_id, binding.user):
+                binding.watched = False
+            return {}
+        if args.get("watcher"):
+            get_ws_manager().seen_on(chat_id, user, str(args["watcher"]))
+        try:
+            answer = await self._here(op, chat_id, user, args)
+        except Elsewhere as there:
+            self._stray(chat_id)
+            return {"elsewhere": there.replica_id}
+        if not answer.get("ok"):
+            self._stray(chat_id)
+        return answer
+
+    def _watching(self, chat_id: str, user: Dict[str, Any]) -> bool:
+        """Whether the person has the chat open, on any replica."""
+        try:
+            return get_ws_manager().watching(chat_id, user)
+        except Exception:
+            return False
+
+    def _held(self, chat_id: str) -> bool:
+        """Whether a node connected anywhere holds the chat's live lease."""
+        current = LeaseStore().current(chat_id)
+        if not LeaseStore.live(current):
+            return False
+        node = current["node_id"]
+        return self.links.get(node) is not None or self._remote(node) is not None
+
+    # ------------------------------------------------------------------
+    # What the routes and controllers ask
+    # ------------------------------------------------------------------
 
     def why_waiting(self, chat_id: str) -> str:
         binding = self.chats.get(str(chat_id))
@@ -229,9 +411,9 @@ class RuntimeClientManager:
         — or the person has stopped everything of theirs."""
         if UserStore().stopped(str(user.get("user_id") or "")):
             return False
-        binding = await self._binding(str(chat_id), user)
-        binding.watched = True
-        return await self._attach(binding, again=True)
+        answer = await self._anywhere("attach", chat_id, user,
+                                      watched=True, again=True)
+        return bool(answer.get("ok"))
 
     async def send(self, chat_id, user, frame, halting: bool = False) -> bool:
         """One frame of the door's vocabulary, to the node holding the
@@ -240,6 +422,11 @@ class RuntimeClientManager:
         failure."""
         if str(frame.get("event") or "") not in FRAMES:
             return False
+        answer = await self._anywhere("send", chat_id, user, frame=dict(frame),
+                                      halting=halting)
+        return bool(answer.get("ok"))
+
+    async def _send_here(self, chat_id, user, frame, halting: bool) -> bool:
         binding = await self._binding(str(chat_id), user)
         if not await self._attach(binding, halting):
             return False
@@ -255,29 +442,42 @@ class RuntimeClientManager:
         before a fire. False when no node may take it now."""
         if UserStore().stopped(str(user.get("user_id") or "")):
             return False
-        binding = await self._binding(str(chat_id), user)
-        return await self._attach(binding)
+        return bool((await self._anywhere("attach", chat_id, user)).get("ok"))
 
     def node_of(self, chat_id) -> Optional[str]:
-        """The node holding a chat now, or None."""
+        """The node holding a chat now, linked to any replica, or None."""
         binding = self.chats.get(str(chat_id))
-        if binding is None or not binding.attached:
-            return None
-        return binding.link.key
+        if binding is not None and binding.attached:
+            return binding.link.key
+        current = LeaseStore().current(str(chat_id))
+        if LeaseStore.live(current) and self._held(str(chat_id)):
+            return str(current["node_id"])
+        return None
 
     async def fire(self, chat_id, user, row: Dict[str, Any]) -> Optional[str]:
         """A schedule's fire, to the node holding the chat: the Data
         Core's own voice over the link, never a frame a person could
         send. The node runs it and writes back what it did. Returns the
         node it went to, or None when it went nowhere."""
-        binding = self.chats.get(str(chat_id))
-        if binding is None or not binding.attached:
+        answer = await self._anywhere("fire", chat_id, user, row=dict(row))
+        if not answer.get("ok"):
             return None
+        return str(answer.get("node") or "") or None
+
+    async def _fire_here(self, chat_id: str, row: Dict[str, Any]) -> Dict[str, Any]:
+        binding = self.chats.get(chat_id)
+        if binding is None or not binding.attached:
+            current = LeaseStore().current(chat_id)
+            if LeaseStore.live(current):
+                remote = self._remote(current["node_id"])
+                if remote is not None:
+                    raise Elsewhere(remote.replica_id)
+            return {"ok": False}
         link = binding.link
         if not await link.send(
                 {"type": "fire", "chat_id": binding.chat_id, "schedule": dict(row)}):
-            return None
-        return link.key
+            return {"ok": False}
+        return {"ok": True, "node": link.key}
 
     async def tell(self, chat_id, user, frame) -> bool:
         """A frame for a chat a node holds now, and nothing if none
@@ -286,15 +486,23 @@ class RuntimeClientManager:
         read when it is attached. Never places a chat."""
         if str(frame.get("event") or "") not in FRAMES:
             return False
-        binding = self.chats.get(str(chat_id))
+        return bool((await self._anywhere("tell", chat_id, user,
+                                          frame=dict(frame))).get("ok"))
+
+    async def _tell_here(self, chat_id: str, frame: Dict[str, Any]) -> bool:
+        binding = self.chats.get(chat_id)
         if binding is None or not binding.attached:
-            current = LeaseStore().current(str(chat_id))
-            link = (self.links.get(current["node_id"])
-                    if LeaseStore.live(current) else None)
+            current = LeaseStore().current(chat_id)
+            if not LeaseStore.live(current):
+                return False
+            link = self.links.get(current["node_id"])
             if link is None:
+                remote = self._remote(current["node_id"])
+                if remote is not None:
+                    raise Elsewhere(remote.replica_id)
                 return False
             return await link.send(
-                {"type": "chat", "chat_id": str(chat_id), "frame": frame})
+                {"type": "chat", "chat_id": chat_id, "frame": frame})
         return await binding.link.send(
             {"type": "chat", "chat_id": binding.chat_id, "frame": frame})
 
@@ -317,45 +525,72 @@ class RuntimeClientManager:
                                           "released": False}):
             if not LeaseStore.live(doc):
                 continue
-            link = self.links.get(doc["node_id"])
+            link = self.links.get(doc["node_id"]) or self._remote(doc["node_id"])
             if link is None or self.placement.may_serve(link, org_id, True):
                 continue
             chat_id = str(doc["_id"])
-            binding = self.chats.get(chat_id) or ChatBinding(
-                chat_id, {"org_id": org_id, "user_id": doc.get("user_id")})
-            await self._let_go(binding, link)
-            moved += 1
-            if binding.watched and chat_id in self.chats:
-                if not await self._attach(binding, again=True):
-                    try:
-                        await get_ws_manager().send_frontend(
-                            chat_id, binding.user, {
-                                "endpoint": "AI:Chat:Event",
-                                "data": {"event": "runtime_unavailable",
-                                         "chat_id": chat_id,
-                                         "detail": binding.waiting}})
-                    except Exception:
-                        pass
+            binding = self.chats.get(chat_id)
+            user = binding.user if binding is not None else {
+                "org_id": org_id, "user_id": doc.get("user_id")}
+            if (await self._anywhere("let_go", chat_id, user)).get("ok"):
+                moved += 1
         return moved
+
+    async def _let_go_here(self, chat_id: str, user: Dict[str, Any]) -> bool:
+        """One chat of an organization that keeps to its own nodes, off
+        the shared node linked here — and placed again, where it is
+        open, on one of the organization's own anywhere."""
+        current = LeaseStore().current(chat_id)
+        if not LeaseStore.live(current):
+            return False
+        link = self.links.get(current["node_id"])
+        if link is None:
+            remote = self._remote(current["node_id"])
+            if remote is not None:
+                raise Elsewhere(remote.replica_id)
+            return False
+        binding = self.chats.get(chat_id) or ChatBinding(chat_id, user)
+        await self._let_go(binding, link)
+        if not (binding.watched or self._watching(chat_id, binding.user)):
+            return True
+        answer = await self._anywhere("attach", chat_id, binding.user,
+                                      watched=True, again=True)
+        if not answer.get("ok"):
+            try:
+                await get_ws_manager().deliver(chat_id, binding.user, {
+                    "endpoint": "AI:Chat:Event",
+                    "data": {"event": "runtime_unavailable", "chat_id": chat_id,
+                             "detail": str(answer.get("waiting") or "")}})
+            except Exception:
+                pass
+        return True
 
     async def close(self, chat_id, user) -> None:
         """Nothing may keep this chat on a node: it is being erased, or
         its person may no longer act. Its node forgets it, and its lease
         is let go."""
-        async with self.lock:
-            binding = self.chats.pop(str(chat_id), None)
-        link = binding.link if binding is not None else None
-        if link is None:
-            current = LeaseStore().current(str(chat_id))
-            if LeaseStore.live(current):
-                link = self.links.get(current["node_id"])
-        if link is not None:
-            link.chats.discard(str(chat_id))
-            await link.send({"type": "detach", "chat_id": str(chat_id)})
+        await self._anywhere("close", chat_id, user)
         LeaseStore().release(str(chat_id))
 
+    async def _close_here(self, chat_id: str) -> None:
+        async with self.lock:
+            binding = self.chats.pop(chat_id, None)
+        link = binding.link if binding is not None else None
+        if link is None:
+            current = LeaseStore().current(chat_id)
+            if LeaseStore.live(current):
+                link = self.links.get(current["node_id"])
+                if link is None:
+                    remote = self._remote(current["node_id"])
+                    if remote is not None:
+                        raise Elsewhere(remote.replica_id)
+        if link is not None:
+            link.chats.discard(chat_id)
+            await link.send({"type": "detach", "chat_id": chat_id})
+        LeaseStore().release(chat_id)
+
     def chats_of(self, user):
-        """The chats of this person a node holds now."""
+        """The chats of this person a node linked here holds now."""
         user_id = str(user.get("user_id") or "")
         return {chat_id for chat_id, binding in self.chats.items()
                 if str(binding.user.get("user_id") or "") == user_id
@@ -368,10 +603,13 @@ class RuntimeClientManager:
         nobody watching — the node's word that it is over is waited for
         a short while, and the chat is let go. Returns whether it was
         said."""
-        binding = await self._binding(str(chat_id), user)
+        return bool((await self._anywhere("kill", chat_id, user)).get("ok"))
+
+    async def _kill_here(self, chat_id: str, user: Dict[str, Any]) -> bool:
+        binding = await self._binding(chat_id, user)
         binding.killed.clear()
-        said = await self.send(chat_id, user, {"event": "stop", "force": True},
-                               halting=True)
+        said = await self._send_here(chat_id, user, {"event": "stop", "force": True},
+                                     halting=True)
         if said:
             try:
                 async with asyncio.timeout(self.KILL_GRACE_SECONDS):
@@ -387,28 +625,45 @@ class RuntimeClientManager:
         told nobody watches, and lets the chat go once it is idle —
         scheduled or not: the Data Core's clock places it again when a
         row comes due. Returns whether there was a node to tell."""
-        binding = self.chats.get(str(chat_id))
-        if binding is None:
+        return bool((await self._anywhere("release", chat_id, user)).get("ok"))
+
+    async def _release_here(self, chat_id: str, user: Dict[str, Any]) -> bool:
+        binding = self.chats.get(chat_id)
+        if binding is not None and self._watching(chat_id, binding.user):
+            # The person opened it again, on another replica, before
+            # this one heard they left: still watched.
             return False
-        binding.watched = False
-        if not binding.attached:
-            return False
-        return await binding.link.send(
-            {"type": "watch", "chat_id": binding.chat_id, "watched": False})
+        if binding is not None:
+            binding.watched = False
+            if binding.attached:
+                return await binding.link.send(
+                    {"type": "watch", "chat_id": binding.chat_id, "watched": False})
+        current = LeaseStore().current(chat_id)
+        if LeaseStore.live(current):
+            remote = self._remote(current["node_id"])
+            if remote is not None:
+                raise Elsewhere(remote.replica_id)
+        if binding is None and self.cluster is not None and self.cluster.others:
+            # Held nowhere now: a replica that bound the chat for this
+            # person before its node went hears they left.
+            self.cluster.bus.post(self.cluster.bus.EVERYONE, "relay", {
+                "op": "unwatch", "chat_id": chat_id, "user": user})
+        return False
 
     # ------------------------------------------------------------------
     # What the links say
     # ------------------------------------------------------------------
 
     async def on_event(self, link, chat_id: str, frame: Dict[str, Any]) -> None:
-        """A frame a node emitted for one chat: to the person, verbatim
-        — if this chat is attached to that node, and only then."""
+        """A frame a node emitted for one chat: to the person, verbatim,
+        on whichever replica their socket is — if this chat is attached
+        to that node, and only then."""
         binding = self.chats.get(chat_id)
         if binding is None or binding.link is not link:
             return
         if frame.get("event") == "stopped":
             binding.killed.set()
-        await get_ws_manager().send_frontend(chat_id, binding.user, {
+        await get_ws_manager().deliver(chat_id, binding.user, {
             "endpoint": "AI:Chat:Event",
             "data": {**frame, "chat_id": chat_id},
         })
@@ -446,7 +701,7 @@ class RuntimeClientManager:
             if not binding.watched:
                 continue
             try:
-                await get_ws_manager().send_frontend(
+                await get_ws_manager().deliver(
                     binding.chat_id, binding.user, {
                         "endpoint": "AI:Chat:Event",
                         "data": {"event": "runtime_disconnected",
@@ -455,16 +710,81 @@ class RuntimeClientManager:
                 pass
 
     async def on_link(self, link) -> None:
-        """A node connected: the chats a person is waiting on are
-        attached — those still leased to this node, back to it under the
-        same number, and the rest where they are placed. Nothing is
+        """A node connected: the chats it holds a live lease on are
+        attached to it again under the same numbers — wherever it was
+        linked before, this replica or one that stopped — then the chats
+        a person is waiting on, where they are placed; and the other
+        replicas are told, for the chats waiting there. Nothing is
         attached for a clock: the Data Core's fires a chat when it is
         due (chat_session/clock.py)."""
+        from api.services.chat_session.identity import StandingOwner
+        from database.stores import ChatStore
+
+        for lease in LeaseStore().of_node(link.key):
+            chat_id = str(lease["_id"])
+            binding = self.chats.get(chat_id)
+            if binding is not None and binding.link is link and binding.attached:
+                continue
+            if binding is None:
+                chat = ChatStore().by_chat_id(chat_id)
+                user = StandingOwner().resolve(chat) if chat else None
+                if user is None:
+                    continue
+                binding = await self._binding(chat_id, user)
+                binding.watched = self._watching(chat_id, user)
+            try:
+                await self._attach(binding)
+            except Elsewhere:
+                self._stray(chat_id)
         for binding in list(self.chats.values()):
             if not binding.attached and binding.watched \
                     and self.placement.may_serve(
                         link, str(binding.user.get("org_id") or "")):
-                await self._attach(binding)
+                await self._quietly_attach(binding)
+        if self.cluster is not None and self.cluster.others:
+            self.cluster.bus.post(self.cluster.bus.EVERYONE, "link_up",
+                                  {"node": link.key})
+
+    async def _quietly_attach(self, binding: ChatBinding) -> None:
+        """A chat a person waits on here, attached where it is placed."""
+        try:
+            await self._attach(binding)
+        except Elsewhere:
+            if not self._held(binding.chat_id):
+                await self._anywhere("attach", binding.chat_id, binding.user,
+                                     watched=True)
+
+    async def _on_link_up(self, body: Dict[str, Any], sender: str) -> Dict[str, Any]:
+        """A node linked to another replica: the chats a person waits on
+        here may be placed on it now."""
+        for binding in list(self.chats.values()):
+            if binding.attached or not binding.watched \
+                    or self._held(binding.chat_id):
+                continue
+            await self._quietly_attach(binding)
+        return {}
+
+    async def on_replicas_gone(self, gone: set) -> None:
+        """Replicas stopped beating, and the node links they held went
+        with them: the people watching here a chat whose node is now
+        linked nowhere are told, as when a link ends here. The node
+        linking again gives its chats back (``on_link``)."""
+        manager = get_ws_manager()
+        for key in list(manager.frontends):
+            org_id, _, rest = key.partition(":")
+            user_id, _, chat_id = rest.partition(":")
+            current = LeaseStore().current(chat_id)
+            if not LeaseStore.live(current) or self._held(chat_id):
+                continue
+            user = {"org_id": org_id, "user_id": user_id}
+            binding = self.chats.get(chat_id)
+            if binding is None:
+                binding = await self._binding(chat_id, user)
+            binding.watched = True
+            binding.waiting = self.MOVING
+            await manager.send_frontend(chat_id, user, {
+                "endpoint": "AI:Chat:Event",
+                "data": {"event": "runtime_disconnected", "chat_id": chat_id}})
 
     async def fail_over(self) -> int:
         """Every lease whose node stopped renewing it and never let it
@@ -486,16 +806,19 @@ class RuntimeClientManager:
                     # may no longer act.
                     LeaseStore().release(chat_id)
                     continue
-                binding = await self._binding(chat_id, user)
-            old = binding.link
-            binding.link = None
-            if await self._attach(binding):
+                watched = self._watching(chat_id, user)
+                old = None
+            else:
+                user, watched = binding.user, binding.watched
+                old, binding.link = binding.link, None
+            answer = await self._anywhere("attach", chat_id, user, watched=watched)
+            if answer.get("ok"):
                 moved += 1
                 self.logger.info(
                     f"Chat {chat_id} moved from {lease.get('node_id')} to "
-                    f"{binding.link.key} under lease {binding.lease}")
-            elif old is not None:
-                binding.link = old
+                    f"{answer.get('node')}")
+            elif old is not None and chat_id in self.chats:
+                self.chats[chat_id].link = old
         return moved
 
     # ------------------------------------------------------------------
@@ -513,6 +836,11 @@ class RuntimeClientManager:
             self.leaser = loop.create_task(self._lease_loop())
         self.clock.start()
 
+    @property
+    def leading(self) -> bool:
+        """Whether this replica runs the loops one replica must."""
+        return self.cluster is None or self.cluster.leading
+
     async def _renew_loop(self):
         while True:
             await asyncio.sleep(self.RENEW_TICK_SECONDS)
@@ -524,6 +852,8 @@ class RuntimeClientManager:
     async def _lease_loop(self):
         while True:
             await asyncio.sleep(self.LEASE_TICK_SECONDS)
+            if not self.leading:
+                continue
             try:
                 await self.fail_over()
             except Exception as exc:  # one bad tick never ends the loop

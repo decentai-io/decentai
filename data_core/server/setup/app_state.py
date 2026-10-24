@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     from api.services.nodes.link import NodeLinks
     from server.ws.ws_manager import WSManager
     from server.setup.app_settings import Settings
+    from api.services.cluster import Cluster
 
 
 @dataclass
@@ -20,6 +21,8 @@ class AppState:
     db: Optional["MongoDB"] = None
     access_controller: Optional["AccessController"] = None
     api_router: Optional["APIRouter"] = None
+    #: this process as one replica of the Data Core (api/services/cluster)
+    cluster: Optional["Cluster"] = None
     ws_manager: Optional["WSManager"] = None
     #: every execution node connected now (api/services/nodes/link.py)
     node_links: Optional["NodeLinks"] = None
@@ -58,6 +61,10 @@ def get_access_controller() -> "AccessController":
 
 def get_api_router() -> "APIRouter":
     return cast("APIRouter", _require(_state.api_router, "Router"))
+
+
+def get_cluster() -> "Cluster":
+    return cast("Cluster", _require(_state.cluster, "Cluster"))
 
 
 def get_ws_manager() -> "WSManager":

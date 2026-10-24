@@ -162,10 +162,10 @@ class Notifier:
 
     @staticmethod
     def _attached(chat_id: str, user: Dict[str, str]) -> bool:
-        """Whether a browser of this person has the chat open now."""
+        """Whether a browser of this person has the chat open now, on
+        this replica of the Data Core or any other (cluster_sockets)."""
         try:
-            manager = get_ws_manager()
-            return manager.frontends.get(manager.key(chat_id, user)) is not None
+            return get_ws_manager().watching(chat_id, user)
         except Exception:
             return False
 

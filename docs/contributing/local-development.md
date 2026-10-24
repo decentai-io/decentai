@@ -36,7 +36,12 @@ checkouts of the two repositories (`dev.sh`, `dev.ps1`).
   ai_runtime/requirements.txt`. The second file is what the tests
   need.
 - MongoDB on `localhost:27017` — a local service, or
-  `docker run -d -p 27017:27017 mongo:7`.
+  `docker run -d --name mongo -p 27017:27017 mongo:7 --replSet rs0`,
+  then once `docker exec mongo mongosh --eval 'rs.initiate({_id: "rs0",
+  members: [{_id: 0, host: "localhost:27017"}]})'`. A replica set
+  of one is what the Data Core's cluster tests need — its replicas speak
+  over a change stream ([cluster](../system/cluster.md#the-bus)); on a
+  single server they are skipped and the rest runs.
 - git on the path: the Data Core fetches agent sources with it.
 
 ## Configure

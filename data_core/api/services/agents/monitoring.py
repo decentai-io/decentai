@@ -131,7 +131,7 @@ class RuntimeMonitor:
     async def _ask(self, what: str, asked: Dict[str, Any]) -> list:
         """(node, answer) for every node that answered. Raises
         MonitorError when none did."""
-        links = get_node_links().connected()
+        links = get_node_links().everywhere()
         if not links:
             raise MonitorError("No execution node is connected.")
         results = await asyncio.gather(

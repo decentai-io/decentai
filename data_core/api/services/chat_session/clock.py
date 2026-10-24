@@ -4,13 +4,14 @@ The rows are the Data Core's (``ai_schedules``); so is deciding when
 one is due. Every few seconds the clock looks for rows whose time has
 come, and for each:
 
-1. its chat is put on an execution node — the one holding it, or one
-   placed now (chat_session/relay.py): a schedule fires even when no
-   node holds its chat at the moment it is due;
-2. the row is **claimed**: its next time set (or, for a one-off, the row
+1. the row is **claimed**: its next time set (or, for a one-off, the row
    ended), with when it was due, when it was claimed and the node it
    goes to, in one write that holds only if the row still says the time
    it was found due at — so it fires once, however many look;
+2. its chat is put on an execution node — the one holding it, or one
+   placed now (chat_session/relay.py): a schedule fires even when no
+   node holds its chat at the moment it is due. Where no node may take
+   it, the claim is put back and the row stays due;
 3. a ``fire`` goes to the node holding the chat, over its link, with the
    row as it was claimed. The node runs it as it always has
    (ai_runtime/chat/clock.py): a schedulable function with no model, or
@@ -36,6 +37,11 @@ running when its node went is reported unknown and never run again.
 
 A person who stopped everything of theirs, or may no longer act, is not
 fired for: their rows wait, and fire once when they may again.
+
+Of several Data Core replicas, the one that leads looks
+(docs/system/cluster.md#the-leader). The lead is not what makes a row
+fire once — the claim is — so a replica taking over while the last
+leader still looks fires nothing twice.
 """
 
 from __future__ import annotations
@@ -74,6 +80,9 @@ class ScheduleClock:
     async def _run(self) -> None:
         while True:
             await asyncio.sleep(self.TICK_SECONDS)
+            # One replica looks: the one that leads (relay.leading).
+            if not self.relay.leading:
+                continue
             try:
                 await self.tick()
             except Exception as exc:  # one bad tick never stops the clock
@@ -135,15 +144,25 @@ class ScheduleClock:
             owner = owners[user_id]
             if owner is None or users.stopped(user_id):
                 continue
-            if not await self.relay.hold(chat_id, owner):
-                # No node may take the chat now: the row stays due, and
-                # fires once one may.
-                continue
+            # Claimed before the chat is held: of two replicas that both
+            # found the row due — a leader and the one taking over from
+            # it — only the claim's winner places the chat and fires.
             seen = row.get("next_run_at")
             fields = self.claimed(row, float(seen or 0), now,
                                   self.relay.node_of(chat_id) or "")
             if not store.claim(chat_id, schedule_id, seen, fields):
                 continue
+            if not await self.relay.hold(chat_id, owner):
+                # No node may take the chat now: the claim is put back,
+                # the row stays due, and fires once one may.
+                self.put_back(chat_id, schedule_id, now)
+                continue
+            held = self.relay.node_of(chat_id) or ""
+            if held != fields["fired_to"]:
+                # Placed only now: the fire is that node's to give back.
+                store.change_if(chat_id, schedule_id, {"fired_at": now},
+                                {"fired_to": held})
+                fields["fired_to"] = held
             went = await self.relay.fire(chat_id, owner, {**row, **fields})
             if went:
                 fired += 1

@@ -166,8 +166,20 @@ def create_app() -> FastAPI:
         # delegation lives an hour and a chat may be served for days:
         # the relay renews each credential over the link before it
         # lapses, for as long as the process runs.
-        from server.setup.app_state import get_runtime_clients
+        import asyncio
 
+        from server.setup.app_state import get_cluster, get_db, get_runtime_clients
+
+        # This process as one replica among any others: beating, reading
+        # the bus, and standing for leader — which brings the schema to
+        # this version's as it takes the lead (database/mongo_db.py).
+        cluster = get_cluster()
+
+        async def migrate() -> None:
+            await asyncio.to_thread(get_db().migrate, cluster.replica_id)
+
+        cluster.on_lead.append(migrate)
+        await cluster.start()
         get_runtime_clients().start_renewing()
         # Notifications to other systems are posted from their queue,
         # retried as their receivers allow (server/outbound.py).

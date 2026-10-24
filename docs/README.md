@@ -58,6 +58,10 @@ The platform:
   their Execution Sandboxes the Data Core serves: authorities and
   credentials, the node link, leases, the clock, placement, and
   organizations running nodes of their own.
+- [A Data Core cluster](system/cluster.md) — several Data Core replicas
+  behind one address: presence, the bus between them, a chat whose
+  socket and node are on different replicas, shared invalidation, the
+  leader, and the schema's steps.
 
 Agents:
 
@@ -148,4 +152,5 @@ describe is [`note/`](https://github.com/decentai-io/decentai-agents/tree/main/n
 - [Decentralization: the plan](decentralization-plan.md) — agreed in
   October 2026: a Data Core cluster with no single process, sandboxes
   shared by a pool of runtimes, and Data Cores that share execution
-  nodes; what each phase changes, and the decisions still open.
+  nodes; what each phase changes, the decisions agreed, and what phase
+  1 built.

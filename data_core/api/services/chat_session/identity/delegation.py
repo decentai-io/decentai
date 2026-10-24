@@ -27,7 +27,7 @@ Disabling or deleting the person does.
 from __future__ import annotations
 
 from datetime import timedelta
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 from database.stores import RuntimeSessionStore
 from server.authentication.credentials import TokenController
@@ -54,6 +54,34 @@ class Delegation:
             node_id=node,
         )
         return self._token(user, session, ttl)
+
+    #: A delegation with less than this left is not handed again: the
+    #: node is given a fresh one.
+    RESUME_MIN_SECONDS = 15 * 60
+
+    def resumed(self, user: Dict[str, Any], chat_id: str,
+                node: str) -> Optional[Tuple[str, float]]:
+        """The chat's live delegation, handed again to the node it is
+        bound to — a token naming the same row — with how many seconds
+        ago the row was made; None where there is none for that node, or
+        too little of it is left. For a chat attached again to the node
+        that holds it: a node linking again on another replica, a person
+        arriving. A fresh one would retire the row, and refuse a call
+        the node has in flight under it."""
+        from util import utc_now
+
+        row = RuntimeSessionStore().col.find_one(
+            {"user_id": str(user.get("user_id") or ""), "chat_id": str(chat_id or "")})
+        if row is None or str(row.get("node_id") or "") != str(node or ""):
+            return None
+        now = utc_now()
+        left = (row["expires_at"] - now).total_seconds()
+        if left < self.RESUME_MIN_SECONDS:
+            return None
+        token = self._token(user, row, int(left))
+        if not token:
+            return None
+        return token, max(0.0, (now - row["created_at"]).total_seconds())
 
     @staticmethod
     def _token(

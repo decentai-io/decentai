@@ -223,9 +223,25 @@ class Sender:
     def stop(self) -> None:
         self._stop.set()
 
+    def sweep(self) -> int:
+        """Deliveries a stopped sender left mid-send, put back on the
+        queue. Run by the replica that leads (docs/system/cluster.md):
+        each replica sends, since a claim keeps a delivery to one
+        sender, and one looks for what a sender that stopped left."""
+        put_back = self.sends.put_back_stuck()
+        if put_back:
+            self.logger.info(f"{put_back} notification(s) left mid-send were "
+                             f"put back on the queue")
+        return put_back
+
     def _loop(self) -> None:
+        from server.setup.app_state import get_state
+
         while not self._stop.wait(self.INTERVAL):
             try:
+                cluster = get_state().cluster
+                if cluster is None or cluster.leading:
+                    self.sweep()
                 self.run_once()
             except Exception as exc:
                 self.logger.warning(f"Sending notifications failed: {exc}")

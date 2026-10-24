@@ -140,9 +140,11 @@ admits it is kept again the next time it connects.
 ## Revoking
 
 - **An authority** (`Nodes:Authority:Revoke`): every node it vouches for
-  is refused at its next request, and its link is closed at once. What
-  the Data Core remembered of earlier admissions is thrown away on every
-  change (`Admission.changed`).
+  is refused at its next request, and its link is closed at once, on
+  whichever replica of the Data Core holds it. What the Data Core
+  remembered of earlier admissions is thrown away on every change
+  (`Admission.changed`) — on every replica within a second
+  ([cluster](cluster.md#shared-invalidation)).
 - **One node, urgently** (`Nodes:Node:Refuse`, with `node_id` and an
   optional `reason` of 300 characters at most): refused by name whatever
   its credential says, until `Nodes:Node:Allow`; why, by whom and when
@@ -192,7 +194,8 @@ the node said 2* (code 4426). A refused credential closes with 4401 and
 why. The node says `hello` first — its protocol, and what it says of
 itself — and the Data Core answers `welcome`, naming the node as it
 knows it (`<authority>/<name>`). The same node connecting again
-replaces its older link (4408).
+replaces its older link (4408), on whichever replica of the Data Core
+the older is ([cluster](cluster.md#presence)).
 
 **Every frame the Data Core sends is a signed token** — its key, for
 this node, for this connection (the node's nonce), at this place in the
@@ -238,8 +241,10 @@ it opens nothing (`data_core/server/routes/app.py`).
 
 **A node that goes.** Its chats are attached nowhere, and the people
 watching them are told (`runtime_disconnected`). When it comes back
-before its leases lapse, its chats are attached to it again under the
-same numbers; when they lapse, the chats move ([leases](#leases)). Each
+before its leases lapse — to the same replica of the Data Core or
+another — every chat it holds a live lease on is attached to it again
+under the same number, with the delegation it already holds; when they
+lapse, the chats move ([leases](#leases)). Each
 rebuilds from the Data Core's record, as a restart always has: a node
 restart loses no chat.
 
@@ -266,7 +271,8 @@ node, a **number**, an expiry.
   that lets the chat go (`DataCoreClient.on_stale`). Two nodes can never both
   act for one chat, whatever either of them believes.
 - **Failover.** A lease whose node stopped renewing it and never let it
-  go is looked for every five seconds (`RuntimeClientManager.fail_over`):
+  go is looked for every five seconds, by the replica of the Data Core
+  that leads ([cluster](cluster.md#the-leader), `RuntimeClientManager.fail_over`):
   the chat is placed again, under the next number, and its new node
   rebuilds it from the record. A call that was running on the old node
   is reported as unknown, and never run again by itself, as after any
@@ -282,17 +288,21 @@ node, a **number**, an expiry.
 **The clock lives in the Data Core** (`ScheduleClock`,
 `data_core/api/services/chat_session/clock.py`), because a schedule must
 fire once however many nodes hold a copy of its row, and fire even when
-no node holds its chat. Every five seconds it reads the rows it already
-keeps (`ai_schedules`) for those whose time has come, and for each:
+no node holds its chat. Every five seconds the replica of the Data
+Core that leads ([cluster](cluster.md#the-leader)) reads the rows it
+already keeps (`ai_schedules`) for those whose time has come, and for
+each:
 
-1. the chat is put on a node — the one holding it, or one placed now,
-   with nobody watching (`hold`);
-2. the row is **claimed**: its next time set, or, for a one-off and for
+1. the row is **claimed**: its next time set, or, for a one-off and for
    a sleep, the row ended — with when it was due (`due_at`), when it
    was claimed (`fired_at`, which names the fire) and the node it goes
    to (`fired_to`) — in one write that holds only if the row still says
    the time it was found due at (`ScheduleStore.claim`). A row is fired
-   once, whoever else looked;
+   once, whoever else looked — a replica taking the lead while the last
+   leader still looks among them;
+2. the chat is put on a node — the one holding it, or one placed now,
+   with nobody watching (`hold`). Where no node may take it, the claim
+   is put back and the row stays due;
 3. a `fire {chat_id, schedule}` goes to the node holding the chat over
    its link, with the row as claimed: the Data Core's own voice, which
    no person's frame can become.
@@ -357,7 +367,9 @@ same way.
 
 Which node a chat is given to (`data_core/api/services/nodes/placement.py`):
 the one holding its live lease, if it is connected. Otherwise, among the
-nodes connected — each admitted, its authority unrevoked — that may
+nodes connected to any replica of the Data Core
+([cluster](cluster.md#placement)) — each admitted, its authority
+unrevoked — that may
 serve the chat's organization (a shared node, or one of the
 organization's own; never another organization's):
 

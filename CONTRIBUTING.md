@@ -52,7 +52,10 @@ python -m pytest speech/tests -q           # the speech container, without its m
 
 Run the Data Core and spanning suites one at a time: they share the test
 database (`decentai_test`, on the MongoDB `MONGO_URI` names, or the
-local one where it names none).
+local one where it names none). The tests of the Data Core as a cluster
+of replicas read a change stream, and are skipped unless that MongoDB
+is a replica set — one member is enough
+([local development](docs/contributing/local-development.md#what-you-need)).
 
 Every pull request is run through all four, and through four things a
 laptop does not do (`.github/workflows/tests.yml`): the confinement

@@ -117,7 +117,8 @@ The web client's Schedules page is `/ai/schedules`.
 
 When a runtime opens a card (`AI:Approval:Open`) or the assistant writes
 a message (`AI:Message:Create`, actor `ai`, root thread) and no browser
-of the chat's person has it open, the notifier pushes to every device
+of the chat's person has it open — on any replica of the Data Core
+(`cluster_sockets`) — the notifier pushes to every device
 the person subscribed (browsers by web push, VAPID pair from
 `VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY`/`VAPID_SUBJECT`; phones running
 the app through Expo's push service, by the token they registered;
@@ -287,7 +288,16 @@ the link in an `attach` frame naming the chat. The node's host hands
 that credential to its services implementation for the chat;
 revocation is unchanged: delete the row and the node's calls fail from
 the next one. The delegation is accepted only from the node it was
-handed to.
+handed to. A chat attached again to the node that already holds it — a
+person arriving, the node linking again after its link ended — is
+handed the delegation it holds, a token naming the same row
+(`Delegation.resumed`), while that row has a quarter of an hour left: a
+fresh one would retire the row under a call the node has in flight.
+
+With several replicas of the Data Core, a chat is bound on the replica
+holding its node's link, which mints its keys and sends its frames; the
+others ask that replica over the bus, and a node's events reach the
+person's socket on whichever replica it is ([cluster](cluster.md#a-chat-across-replicas)).
 
 A delegation lives an hour; a chat may stay attached longer (a
 scheduled chat's, kept past the browser's leaving, or a tab left open).
@@ -493,6 +503,7 @@ the same way, so a malformed event fails the runtime's own tests first.
 | the inbox and outbox on `ai_chat_events`; `ai_chats.state`; `ai_approvals`; `ai_schedules` | `data_core/database/stores/chats.py` |
 | the fence, `RUNTIME_ENDPOINTS` | `data_core/server/authentication/catalog.py` |
 | the relay speaking frames; the browser socket translating the web client | `data_core/api/services/chat_session/relay.py`, `data_core/server/routes/ws.py` |
+| a chat across the Data Core's replicas: presence, the bus, the leader | `data_core/api/services/cluster/`, `data_core/database/stores/cluster.py` ([cluster](cluster.md)) |
 | `DataCoreClient` — the contract over HTTP, one class, every call naming its chat and carrying that chat's credential; `ChatResources`, an agent's data, files and secrets as one chat | `ai_runtime/door/platform.py` |
 
 ## What it does not do

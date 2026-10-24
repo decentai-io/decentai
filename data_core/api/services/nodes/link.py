@@ -18,8 +18,18 @@ sequence. A heartbeat checks the node's credential again: one that
 lapsed, an authority revoked, a node refused, and the link is closed.
 
     NodeLink    one connected node: send, ask, its chats and load
-    NodeLinks   every node connected now — one process, in memory —
-                and the route's handler
+    NodeLinks   every node connected to this replica, in memory, and
+                the route's handler
+
+**In a cluster** (docs/system/cluster.md) a node's link is on one
+replica, and only that replica can sign its frames — the sequence is
+the connection's. So each link is said in the presence table
+(``cluster_links``) with this replica's id, refreshed by the replica's
+heartbeat, and the node's load with each of the node's beats; another
+replica places chats on it from there, and asks it questions through
+this one (``ask``). A node linking again on another replica takes the
+row, and this replica is told to close the old link (4408). Revoking a
+node closes its link wherever it is (``close_everywhere``).
 
 What a node says of itself (its load, its locks) is kept for the nodes
 view and to place chats by load; it never admits or refuses a node.
@@ -72,6 +82,10 @@ class NodeLink:
     @property
     def scope(self) -> str:
         return self.identity.scope
+
+    @property
+    def chat_count(self) -> int:
+        return len(self.chats)
 
     @property
     def load(self) -> int:
@@ -154,7 +168,15 @@ class NodeLinks:
     HELLO_SECONDS = 10.0
 
     def __init__(self):
+        from server.setup.app_state import get_state
+
         self.links: Dict[str, NodeLink] = {}
+        #: this process as a replica; None where there is no cluster
+        #: (a test's links of their own)
+        self.cluster = get_state().cluster
+        if self.cluster is not None:
+            self.cluster.bus.on("ask", self._on_ask)
+            self.cluster.bus.on("close_links", self._on_close_links)
         #: called with a link once it is welcomed, and once it is gone:
         #: the relay attaches and detaches chats (chat_session/relay.py)
         self.on_link: List[Callable[[NodeLink], Awaitable[None]]] = []
@@ -168,6 +190,16 @@ class NodeLinks:
 
     def connected(self) -> List[NodeLink]:
         return [link for link in self.links.values() if link.open]
+
+    def everywhere(self) -> list:
+        """Every node connected now, to this replica or to another
+        (``RemoteLink``, api/services/cluster): what placement chooses
+        among, the nodes view shows and monitoring asks."""
+        found = self.connected()
+        if self.cluster is not None:
+            here = {link.key for link in found}
+            found += [link for link in self.cluster.links() if link.key not in here]
+        return found
 
     def get(self, key: str) -> Optional[NodeLink]:
         link = self.links.get(str(key or ""))
@@ -184,6 +216,109 @@ class NodeLinks:
     async def close_all(self) -> None:
         for link in list(self.links.values()):
             await link.close(1001, "the Data Core is stopping")
+
+    async def close_everywhere(self, reason: str, authority_id: str = "",
+                               node_key: str = "") -> int:
+        """The links of the nodes an authority vouches for, or of one
+        node, closed now on every replica that holds one. Returns how
+        many were closed."""
+        def which(identity) -> bool:
+            if node_key:
+                return identity.key == node_key
+            return bool(authority_id) and identity.authority_id == authority_id
+
+        closed = await self.close_where(which, reason)
+        if self.cluster is None:
+            return closed
+        held = {link.replica_id for link in self.cluster.links()
+                if which(link.identity)}
+        for replica in held:
+            try:
+                answer = await self.cluster.bus.call(
+                    replica, "close_links", {"reason": reason,
+                                             "authority_id": authority_id,
+                                             "node_key": node_key})
+                closed += int(answer.get("closed") or 0)
+            except Exception as exc:
+                self.logger.warning(
+                    f"Replica {replica} did not close its links: {exc}")
+        return closed
+
+    # ------------------------------------------------------------------
+    # What the other replicas ask
+    # ------------------------------------------------------------------
+
+    async def _on_close_links(self, body: Dict[str, Any], sender: str):
+        node_key = str(body.get("node_key") or "")
+        authority_id = str(body.get("authority_id") or "")
+        link_id = str(body.get("link_id") or "")
+        if link_id:
+            # The one link a node left for another replica: closed as a
+            # replaced link is, and only while it is still that one.
+            link = self.links.get(node_key)
+            if link is None or link.nonce != link_id:
+                return {"closed": 0}
+            await link.close(CLOSE_REPLACED, "the same node connected again")
+            return {"closed": 1}
+
+        def which(identity) -> bool:
+            if node_key:
+                return identity.key == node_key
+            return bool(authority_id) and identity.authority_id == authority_id
+
+        return {"closed": await self.close_where(
+            which, str(body.get("reason") or "refused"))}
+
+    async def _on_ask(self, body: Dict[str, Any], sender: str):
+        link = self.get(str(body.get("node") or ""))
+        if link is None:
+            return {"error": "the node is not connected"}
+        try:
+            result = await link.ask(str(body.get("what") or ""),
+                                    body.get("asked") or {},
+                                    float(body.get("timeout") or 20.0))
+        except TimeoutError:
+            return {"error": "the node did not answer"}
+        except RuntimeError as exc:
+            return {"error": str(exc)}
+        return {"result": result}
+
+    def _present(self, link: NodeLink) -> None:
+        """This link, in the presence table; a replica the node left is
+        told to close the link it still has there."""
+        if self.cluster is None:
+            return
+        from database.stores.cluster import LinkPresenceStore
+
+        identity = link.identity
+        try:
+            before = LinkPresenceStore().hold(
+                link.key, self.cluster.replica_id, link.nonce, {
+                    "name": identity.name, "authority_id": identity.authority_id,
+                    "scope": identity.scope, "shared": bool(identity.shared),
+                    "labels": list(identity.labels),
+                    "connected_at": float(link.connected_at),
+                    **self._load(link)}, self.cluster.EXPIRES_SECONDS)
+        except Exception as exc:  # where a link is, is a view
+            self.logger.warning(f"Node {link.key} not said present: {exc}")
+            return
+        if before and before.get("replica_id") not in (None, self.cluster.replica_id):
+            self.cluster.bus.post(str(before["replica_id"]), "close_links", {
+                "node_key": link.key, "link_id": str(before.get("link_id") or "")})
+
+    @staticmethod
+    def _load(link: NodeLink) -> Dict[str, Any]:
+        """What the node said of its load, and how many chats this
+        replica gave it: what another replica places by."""
+        said = link.reports.get("load") if isinstance(
+            link.reports.get("load"), dict) else {}
+        loads = []
+        for name in ("sessions", "chats"):
+            try:
+                loads.append(int(said.get(name) or 0))
+            except (TypeError, ValueError):
+                pass
+        return {"load": max(loads or [0]), "chats": len(link.chats)}
 
     # ------------------------------------------------------------------
     async def serve(self, websocket: WebSocket) -> None:
@@ -228,6 +363,7 @@ class NodeLinks:
         if previous is not None:
             await previous.close(CLOSE_REPLACED, "the same node connected again")
         self._seen(link, connected=True)
+        self._present(link)
         await link.send({"type": "welcome",
                          "protocol_version": NODE_PROTOCOL_VERSION,
                          "node": link.key, "scope": identity.scope})
@@ -250,6 +386,13 @@ class NodeLinks:
                 del self.links[link.key]
                 try:
                     NodeStore().disconnected(link.key)
+                except Exception:
+                    pass
+            if self.cluster is not None:
+                try:
+                    from database.stores.cluster import LinkPresenceStore
+
+                    LinkPresenceStore().release(link.key, link.nonce)
                 except Exception:
                     pass
             for callback in list(self.on_lost):
@@ -289,6 +432,14 @@ class NodeLinks:
                 await link.close(CLOSE_REFUSED, str(refused))
                 return False
             self._seen(link)
+            if self.cluster is not None:
+                try:
+                    from database.stores.cluster import LinkPresenceStore
+
+                    LinkPresenceStore().reported(link.key, link.nonce,
+                                                 self._load(link))
+                except Exception:
+                    pass
             for callback in list(self.on_beat):
                 await self._quietly(callback, link, frame)
         elif kind == "credential":

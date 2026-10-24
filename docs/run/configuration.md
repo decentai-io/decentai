@@ -53,8 +53,20 @@ still holds it; by hand, copy `config/sandbox.env.example` and
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `MONGO_URI` | `mongodb://localhost:27017` | The connection string, credentials included. |
+| `MONGO_URI` | `mongodb://localhost:27017` | The connection string, credentials included. Several Data Core replicas need a replica set, named in it (`?replicaSet=rs0`): their bus is a change stream, which a single server has not ([deploying](deploying.md#a-cluster)). |
 | `MONGO_DATABASE_NAME` | `decentai` | The database. |
+
+### Several replicas
+
+A cluster adds no setting. Every replica of the Data Core is given the
+same `config/deploy.env` — the same database, the same keys
+(`TOKEN_SECRET_KEY`, `SECRET_ENCRYPTION_KEYS`,
+`DATA_CORE_SERVICE_PRIVATE_KEY`), the same addresses — and an object
+store in `FILE_STORAGE_PROVIDER`, or one volume they all mount
+([cluster](../system/cluster.md#files-and-packages)). Each names itself
+as it starts, by its host and a random part; the replicas, which of
+them leads and the nodes each holds are rows in the database
+(`cluster_replicas`, `cluster_state`, `cluster_links`).
 
 ### Files and packages
 

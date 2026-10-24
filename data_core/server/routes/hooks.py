@@ -19,8 +19,7 @@ import asyncio
 import hmac
 import json
 import time
-from collections import defaultdict, deque
-from typing import Any, Deque, Dict
+from typing import Any, Dict
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
@@ -34,10 +33,10 @@ logger = CustomLoggerFactory.get_logger(__name__)
 MAX_BODY = 64 * 1024
 #: How far a signature's timestamp may be from now, in seconds.
 SIGNATURE_WINDOW = 300
-#: Events a minute one webhook takes; one process holds the count.
+#: Events a minute one webhook takes, counted in the database, so every
+#: replica of the Data Core counts against the one limit.
 PER_MINUTE = 60
 
-_recent: Dict[str, Deque[float]] = defaultdict(deque)
 #: Chats being told, held so the loop keeps the task.
 _telling: set = set()
 
@@ -48,14 +47,12 @@ def _answer(status: int, error: str = "", **extra: Any) -> JSONResponse:
 
 
 def _within_rate(webhook_id: str) -> bool:
-    now = time.monotonic()
-    seen = _recent[webhook_id]
-    while seen and now - seen[0] > 60:
-        seen.popleft()
-    if len(seen) >= PER_MINUTE:
-        return False
-    seen.append(now)
-    return True
+    """One more event this minute for the webhook, if it has room: a
+    minute's window from its first event, counted by a conditional
+    increment (database/stores/cluster.py, ``RateCounter``)."""
+    from database.stores.cluster import RateCounter
+
+    return RateCounter().hit(f"hook:{webhook_id}", PER_MINUTE, 60)
 
 
 def _owner(webhook: Dict[str, Any]):

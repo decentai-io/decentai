@@ -81,9 +81,14 @@ def main() -> int:
         print(f"FRESH START: dropped database "
               f"{state.settings.mongo_database_name}")
     state.db = MongoDB(state.settings)
+    # The version's own steps — validators replaced, indexes changed or
+    # dropped — once: a replica that leads may have done them already
+    # (database/mongo_db.py).
+    migrated = state.db.migrate("init")
     print(
         f"schema: v{schema['schema_version']} "
-        f"({len(schema['collections'])} collections)"
+        f"({len(schema['collections'])} collections"
+        f"{', migrated' if migrated else ''})"
     )
 
     from server.authentication.credentials import PasswordHasher
