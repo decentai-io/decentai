@@ -9,6 +9,10 @@ reads that number at most once a second: one that moved means another
 replica changed something, and everything cached here goes. A sign-out,
 a disabled user or a policy edit counts everywhere within a second. A
 short TTL backstops out-of-band writes.
+
+It is read and changed from the loop and from the threads requests are
+answered on, each step a single operation on a dict — never a dict
+walked while another thread may change it.
 """
 
 from __future__ import annotations
@@ -112,7 +116,7 @@ class AccessCache:
         if entry is None:
             return None
         if time.monotonic() - entry["cached_at"] > self.TTL_SECONDS:
-            del self._sessions[session_id]
+            self._sessions.pop(session_id, None)
             return None
         # A copy: callers annotate the dict (the ws route does), and that
         # must never leak into the cached original.
@@ -140,10 +144,10 @@ class AccessCache:
         self._announce(self.ACCESS)
         self._statements.pop(user_id, None)
         for session_id in [
-            sid for sid, entry in self._sessions.items()
+            sid for sid, entry in list(self._sessions.items())
             if entry["user"].get("user_id") == user_id
         ]:
-            del self._sessions[session_id]
+            self._sessions.pop(session_id, None)
 
     # ── statements (user_id → resolved policy statements) ──────────────
 
@@ -156,7 +160,7 @@ class AccessCache:
             entry["version"] != self._permissions_version
             or time.monotonic() - entry["cached_at"] > self.TTL_SECONDS
         ):
-            del self._statements[user_id]
+            self._statements.pop(user_id, None)
             return None
         return entry["statements"]
 

@@ -194,16 +194,21 @@ class RuntimeClientManager:
         node already holding it too — a person arriving, who is greeted
         with the chat's present tense. Raises Elsewhere when that node's
         link is on another replica."""
+        # What an attachment reads and writes — the person, the lease,
+        # the organization's setting, the delegation — waits on the
+        # database, on a thread: the loop carries every chat and every
+        # node's link meanwhile. The lock keeps one attachment at a time.
         async with binding.attaching:
-            if not halting and UserStore().stopped(
-                    str(binding.user.get("user_id") or "")):
+            if not halting and await asyncio.to_thread(
+                    UserStore().stopped, str(binding.user.get("user_id") or "")):
                 return False
             if binding.attached and not again:
                 return True
             leases = LeaseStore()
-            current = leases.current(binding.chat_id)
+            current = await asyncio.to_thread(leases.current, binding.chat_id)
             org_id = str(binding.user.get("org_id") or "")
-            own_only = OrganizationStore().own_nodes_only(org_id)
+            own_only = await asyncio.to_thread(
+                OrganizationStore().own_nodes_only, org_id)
             link = None
             if leases.live(current):
                 link = self.links.get(current["node_id"])
@@ -216,7 +221,7 @@ class RuntimeClientManager:
                     # The organization keeps to its own nodes now: the
                     # shared node holding the chat lets it go, at once.
                     await self._let_go(binding, link)
-                    current = leases.current(binding.chat_id)
+                    current = await asyncio.to_thread(leases.current, binding.chat_id)
                     link = None
                 elif link is None:
                     # Its node is gone and its lease not yet: the chat
@@ -230,7 +235,7 @@ class RuntimeClientManager:
             again_here = link is not None
             if link is None:
                 link = self.placement.choose(
-                    self.links.everywhere(), org_id,
+                    await asyncio.to_thread(self.links.everywhere), org_id,
                     str((current or {}).get("node_id") or ""), own_only)
                 if link is None:
                     binding.waiting = (self.WAITING_FOR_OWN if own_only
@@ -238,19 +243,22 @@ class RuntimeClientManager:
                     return False
                 if getattr(link, "replica_id", None):
                     raise Elsewhere(link.replica_id)
-            lease = leases.grant(binding.chat_id, link.key, binding.user)
+            lease = await asyncio.to_thread(
+                leases.grant, binding.chat_id, link.key, binding.user)
             if lease is None:
                 binding.waiting = self.MOVING
                 return False
             age = 0.0
             try:
-                resumed = Delegation().resumed(
-                    binding.user, binding.chat_id, link.key) if again_here else None
+                resumed = await asyncio.to_thread(
+                    Delegation().resumed, binding.user, binding.chat_id,
+                    link.key) if again_here else None
                 if resumed is not None:
                     credential, age = resumed
                 else:
-                    credential = Delegation().for_chat(
-                        binding.user, binding.chat_id, node=link.key)
+                    credential = await asyncio.to_thread(
+                        Delegation().for_chat, binding.user, binding.chat_id,
+                        link.key)
             except Exception as exc:
                 self.logger.warning(
                     f"No delegation for chat {binding.chat_id}: {exc}")
@@ -672,7 +680,7 @@ class RuntimeClientManager:
         """A node's heartbeat renews the leases it holds."""
         said = frame.get("chats")
         chats = list(said) if isinstance(said, (dict, list)) else []
-        LeaseStore().renew(link.key, chats)
+        await asyncio.to_thread(LeaseStore().renew, link.key, chats)
 
     async def on_released(self, link, frame: Dict[str, Any]) -> None:
         """A node let a chat go: idle, with nobody watching."""

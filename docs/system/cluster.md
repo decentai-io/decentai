@@ -217,10 +217,17 @@ nodes view, the counters — wait for the primary alone
 (`MongoStore.PRIMARY_ONLY`); the bus's messages are still handed on
 only once the majority has them. A single server keeps its own default.
 
-The Data Core calls its database from its event loop, so a write's
-latency is a request's; each replica's beat runs on a thread of its own,
-so a busy loop never makes a living replica look gone. The database
-wants disks that journal in a millisecond or two.
+The database is called synchronously, and waited on beside the event
+loop that carries every socket and link, never on it: a gateway action
+runs on a thread (`APIRouter.route`), and so do the gateway's own checks
+— who is asking, a node's admission, a lease's number, the caller's
+policies, the audit trail (`data_core/server/routes/app.py`) — a chat
+socket's, a node's beat and a chat's attachment
+(`data_core/tests/test_off_the_loop.py`). A slow database slows the
+request that waits on it and nothing else. Each replica's beat runs on
+a thread of its own, so a living replica never looks gone. The database
+still wants disks that journal in a millisecond or two: a write's
+latency is the request's.
 `tests/test_cluster_replicas.py` steps the primary of a replica set of
 three down in the middle of a turn, and the turn goes on under the new
 one.
@@ -283,7 +290,12 @@ while it keeps them on `local` says so in its log, once, as an error.
 
 - **Move a person's socket.** A socket stays on the replica it reached
   until it ends; only node links are rebalanced
-  ([above](#rebalancing)).
+  ([above](#rebalancing)). Decided: a socket costs a replica little — the
+  work is the node's — and lives minutes, opened again with every page,
+  network change and sleeping tab, so the load balancer spreads new ones
+  as they come, and a replica added takes its share within minutes.
+  Moving one would break a person's stream for no capacity it frees. A
+  replica that stops closes its sockets, and they reopen elsewhere.
 - **Elect by majority.** The leader is whoever holds a lease in the
   database; the database's own replica set is what survives a lost
   machine.

@@ -485,6 +485,17 @@ class NodeLinks:
         except Exception as exc:
             self.logger.warning(f"A node link's callback failed: {exc!r}")
 
+    def _beat_seen(self, link: NodeLink) -> None:
+        """A beat, written down: the nodes view, and where the link is."""
+        self._seen(link)
+        if self.cluster is not None:
+            try:
+                from database.stores.cluster import LinkPresenceStore
+
+                LinkPresenceStore().reported(link.key, link.nonce, self._load(link))
+            except Exception:
+                pass
+
     def _seen(self, link: NodeLink, connected: Optional[bool] = None) -> None:
         try:
             store = NodeStore()
@@ -511,15 +522,9 @@ class NodeLinks:
             except Refused as refused:
                 await link.close(CLOSE_REFUSED, str(refused))
                 return False
-            self._seen(link)
-            if self.cluster is not None:
-                try:
-                    from database.stores.cluster import LinkPresenceStore
-
-                    LinkPresenceStore().reported(link.key, link.nonce,
-                                                 self._load(link))
-                except Exception:
-                    pass
+            # Written on a thread: a node's every beat would otherwise
+            # wait on the database on the loop that carries every chat.
+            await asyncio.to_thread(self._beat_seen, link)
             for callback in list(self.on_beat):
                 await self._quietly(callback, link, frame)
         elif kind == "credential":

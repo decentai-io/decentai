@@ -143,13 +143,17 @@ class APIRouter:
 
         normalized_endpoint = f"{domain}:{controller}:{action}"
 
-        if not get_access_controller().is_allowed(user, normalized_endpoint):
+        # Policies and the audit trail are read and written on a thread,
+        # as a synchronous action runs: the loop carries every chat.
+        if not await asyncio.to_thread(
+                get_access_controller().is_allowed, user, normalized_endpoint):
             result = self.prepare_method_failed_response(
                 "Permission Error",
                 "You are not allowed to perform this action.",
                 403,
             )
-            self._audit_action(normalized_endpoint, action, user, result[1], result[0])
+            await asyncio.to_thread(self._audit_action, normalized_endpoint, action,
+                                    user, result[1], result[0])
             return result
 
         # Only what the catalog names is an endpoint. A controller's
@@ -196,7 +200,8 @@ class APIRouter:
 
             msg, status_code = result
 
-            self._audit_action(normalized_endpoint, action, user, status_code, msg)
+            await asyncio.to_thread(self._audit_action, normalized_endpoint, action,
+                                    user, status_code, msg)
 
             if status_code == 200:
                 self.logger.info(
@@ -221,5 +226,6 @@ class APIRouter:
                 f"Internal error while processing {normalized_endpoint}",
                 500,
             )
-            self._audit_action(normalized_endpoint, action, user, result[1], result[0])
+            await asyncio.to_thread(self._audit_action, normalized_endpoint, action,
+                                    user, result[1], result[0])
             return result

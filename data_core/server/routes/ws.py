@@ -10,6 +10,8 @@ socket frames: they are recorded over /app, and the controller that
 recorded one carries it to the runtime.
 """
 
+import asyncio
+
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from contracts.chat import (
@@ -26,14 +28,16 @@ router = APIRouter()
 @router.websocket("/chats/{chat_id}")
 async def chat_websocket(websocket: WebSocket, chat_id: str):
     access = get_access_controller()
-    user = access.verify_request_auth(websocket)
+    # What a socket is checked against is read from the database, on a
+    # thread: the loop carries every other chat meanwhile.
+    user = await asyncio.to_thread(access.verify_request_auth, websocket)
     # A person's socket only: a runtime delegation reaches its own chat
     # over its own door, and here it would replace the person's socket.
     if not user or user.get("principal_type") != "user":
         await websocket.close(code=4401, reason="Authentication failed")
         return
 
-    chat = ChatStore().for_identity({
+    chat = await asyncio.to_thread(ChatStore().for_identity, {
         "chat_id": chat_id,
         "org_id": str(user.get("org_id") or ""),
         "user_id": str(user.get("user_id") or ""),
@@ -57,7 +61,7 @@ async def chat_websocket(websocket: WebSocket, chat_id: str):
     await manager.connect(websocket, chat_id, user)
     # The person has the chat in front of them from here to the
     # disconnect: nothing in between is news to them afterwards.
-    ChatStore().mark_seen(chat_id)
+    await asyncio.to_thread(ChatStore().mark_seen, chat_id)
 
     async def tell(event, **detail):
         await websocket.send_json({
@@ -72,7 +76,8 @@ async def chat_websocket(websocket: WebSocket, chat_id: str):
         """Why nothing reached a node: the person stopped everything of
         theirs, or no execution node may serve the chat now — and why,
         in words the page can show."""
-        stopped = UserStore().stopped(str(user.get("user_id") or ""))
+        stopped = await asyncio.to_thread(
+            UserStore().stopped, str(user.get("user_id") or ""))
         if stopped:
             await tell("work_stopped")
             return
@@ -189,13 +194,15 @@ async def chat_websocket(websocket: WebSocket, chat_id: str):
     except WebSocketDisconnect:
         pass
     finally:
-        try:
-            ChatStore().mark_seen(chat_id)
-        except Exception:
-            pass
         # Only the current socket owns the chat's runtime connection: a
         # replaced socket's teardown must not close the client its
         # successor just created. And the manager decides whether the
-        # dial closes at all — a chat with schedules keeps it.
+        # dial closes at all — a chat with schedules keeps it. The node
+        # hears nobody watches first; when they last saw it is written
+        # after.
         if await manager.disconnect(websocket, chat_id, user):
             await get_runtime_clients().release(chat_id, user)
+        try:
+            await asyncio.to_thread(ChatStore().mark_seen, chat_id)
+        except Exception:
+            pass

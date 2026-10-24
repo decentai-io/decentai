@@ -177,9 +177,16 @@ on a replica set of three, the primary steps down mid-turn and the turn
 goes on. `data_core/tests/test_cluster.py` pins each change on its own.
 CI runs it all on a replica set of three.
 
-**Left**: a person's socket stays on the replica it reached; the
-Data Core still calls its database from its event loop, so a write's
-latency is a request's, and the database wants fast disks.
+**Then, the last two**: the database is waited on beside the loop,
+never on it — the gateway's checks, a chat socket's, a node's beat and
+a chat's attachment run their calls on threads, as gateway actions
+already did, so a slow database slows the request that waits on it and
+nothing else (`data_core/tests/test_off_the_loop.py`); and a person's
+socket stays where it landed, decided: it costs a replica little, lives
+minutes and is spread as it reopens, and moving one would break a
+stream for no capacity it frees ([cluster](system/cluster.md#what-it-does-not-do)).
+**Left**: the database wants disks that journal in a millisecond or
+two — a write's latency is the request's.
 
 ## Phase 2 — execution pools
 

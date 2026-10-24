@@ -11,8 +11,10 @@ accepted only from the node it was handed to, and only with the number
 of the lease that node holds the chat under now (``X-DecentAI-Lease``).
 """
 
+import asyncio
 import json
 from json import JSONDecodeError
+from typing import Optional, Tuple
 
 from fastapi import APIRouter, Request
 from fastapi.encoders import jsonable_encoder
@@ -52,56 +54,13 @@ async def application(request: Request):
     node = ""
     request_id = str(request.headers.get(HEADER_REQUEST) or "")
     try:
-        access = get_access_controller()
-        user = access.verify_request_auth(request)
-
-        node_shared = False
-        if user and user.get("principal_type") == "node":
-            node = str(user.get("node_id") or "")
-        presented = str(request.headers.get(HEADER_NODE) or "").strip()
-        if presented and not node:
-            admitted = access.admitted_node(presented)
-            if admitted is None:
-                return JSONResponse({"error": "node not admitted"},
-                                    status_code=401)
-            node, node_shared = admitted.key, admitted.shared
-            if user is not None:
-                user = {**user, "presented_node": node}
-
-        if not user:
-            return _answer({"error": "unauthorized"}, 401, node, request_id)
-
-        if user.get("principal_type") == "runtime" and (
-                not user.get("node_id") or user.get("node_id") != node):
-            # A delegation is bound to the node it was handed to: from
-            # any other — a node it was never given to, or a request
-            # with no node's credential at all — it opens nothing.
-            return _answer({"error": "This delegation is bound to another "
-                                     "execution node."}, 401, node, request_id)
-
-        if user.get("principal_type") == "runtime":
-            # Fencing: every call a node makes for a chat carries the
-            # number of the lease it holds the chat under, and only the
-            # live lease's number is accepted — so two nodes can never
-            # both act for one chat, whatever either believes.
-            from database.stores import LeaseStore
-
-            said = request.headers.get(HEADER_LEASE)
-            if not LeaseStore().holds(str(user.get("chat_id") or ""), node, said):
-                return _answer({"error": "stale_lease: this node no longer "
-                                         "holds the chat."}, 409, node, request_id)
-
-            # An organization that keeps to its own nodes is answered on
-            # no shared node's request: no contract, no credential and no
-            # model key of its leaves the Data Core for one, whatever
-            # placement did before the setting changed.
-            from database.stores import OrganizationStore
-
-            if node_shared and OrganizationStore().own_nodes_only(
-                    str(user.get("org_id") or "")):
-                return _answer({"error": "This organization runs its chats on "
-                                         "its own execution nodes only."},
-                               403, node, request_id)
+        # Who is asking is read from the database — a session, a node's
+        # admission, a lease — and a read waits on the database: on a
+        # thread, so the loop that carries every chat and node link goes
+        # on meanwhile.
+        user, node, refused = await asyncio.to_thread(_who, request)
+        if refused is not None:
+            return _answer(*refused, node, request_id)
 
         try:
             data = await request.json()
@@ -115,3 +74,57 @@ async def application(request: Request):
     except Exception as e:
         logger.error(f"Error processing /app request: {e}", exc_info=True)
         return _answer({"error": "Internal server error"}, 500, node, request_id)
+
+
+def _who(request: Request) -> Tuple[Optional[dict], str, Optional[tuple]]:
+    """The caller, the node it comes from, and the refusal to answer
+    with where it may not ask: (user, node, (content, status) or None)."""
+    access = get_access_controller()
+    user = access.verify_request_auth(request)
+
+    node, node_shared = "", False
+    if user and user.get("principal_type") == "node":
+        node = str(user.get("node_id") or "")
+    presented = str(request.headers.get(HEADER_NODE) or "").strip()
+    if presented and not node:
+        admitted = access.admitted_node(presented)
+        if admitted is None:
+            return None, "", ({"error": "node not admitted"}, 401)
+        node, node_shared = admitted.key, admitted.shared
+        if user is not None:
+            user = {**user, "presented_node": node}
+
+    if not user:
+        return None, node, ({"error": "unauthorized"}, 401)
+
+    if user.get("principal_type") == "runtime" and (
+            not user.get("node_id") or user.get("node_id") != node):
+        # A delegation is bound to the node it was handed to: from
+        # any other — a node it was never given to, or a request
+        # with no node's credential at all — it opens nothing.
+        return None, node, ({"error": "This delegation is bound to another "
+                                      "execution node."}, 401)
+
+    if user.get("principal_type") == "runtime":
+        # Fencing: every call a node makes for a chat carries the
+        # number of the lease it holds the chat under, and only the
+        # live lease's number is accepted — so two nodes can never
+        # both act for one chat, whatever either believes.
+        from database.stores import LeaseStore
+
+        said = request.headers.get(HEADER_LEASE)
+        if not LeaseStore().holds(str(user.get("chat_id") or ""), node, said):
+            return None, node, ({"error": "stale_lease: this node no longer "
+                                          "holds the chat."}, 409)
+
+        # An organization that keeps to its own nodes is answered on
+        # no shared node's request: no contract, no credential and no
+        # model key of its leaves the Data Core for one, whatever
+        # placement did before the setting changed.
+        from database.stores import OrganizationStore
+
+        if node_shared and OrganizationStore().own_nodes_only(
+                str(user.get("org_id") or "")):
+            return None, node, ({"error": "This organization runs its chats on "
+                                          "its own execution nodes only."}, 403)
+    return user, node, None
