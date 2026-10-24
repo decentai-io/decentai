@@ -57,14 +57,28 @@ class MongoDB:
                 serverSelectionTimeoutMS=5000,
                 tz_aware=True,
             )
-            self.db = self.client[settings.mongo_database_name]
             self.client.admin.command("ping")
+            self.db = self._database(settings.mongo_database_name)
             self.apply_schema()
             self.logger.info(
                 f"MongoDB connected: db={settings.mongo_database_name}")
         except Exception as exc:
             self.logger.error(f"Error initializing MongoDB connection: {exc}")
             raise
+
+    def _database(self, name: str):
+        """The database, its writes waiting for what the server is: on a
+        replica set, the majority and its journal — so a write the Data
+        Core was told is done survives the primary's loss (a lease's
+        number, a row's claim), and asked for at once, where the
+        server's default waits for its next periodic journal flush; on
+        a single server, the server's own default, unchanged."""
+        from pymongo import WriteConcern
+
+        if self.client.admin.command("hello").get("setName"):
+            return self.client.get_database(
+                name, write_concern=WriteConcern(w="majority", j=True))
+        return self.client[name]
 
     def collection(self, name: str):
         return self.db[name]

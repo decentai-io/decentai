@@ -63,6 +63,9 @@ HEADER_NONCE = "X-DecentAI-Node-Nonce"
 CLOSE_REFUSED = 4401        # no credential, or one the Data Core refuses
 CLOSE_PROTOCOL = 4426       # the node speaks another version
 CLOSE_REPLACED = 4408       # the same node connected again
+CLOSE_ELSEWHERE = 4429      # this replica of the Data Core holds more than
+                            # its share of links: dial another address
+                            # (docs/system/cluster.md#rebalancing)
 
 
 def key_fingerprint(public_pem: str) -> str:

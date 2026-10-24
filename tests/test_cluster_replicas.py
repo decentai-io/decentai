@@ -47,13 +47,14 @@ sys.path.insert(0, "..")
 from api.services.cluster import Cluster
 from api.services.chat_session.clock import ScheduleClock
 from api.services.chat_session.relay import RuntimeClientManager
-from database.stores.base import AccessCache
-from api.services.nodes.admission import Admission
+from api.services.nodes.link import NodeLinks
 Cluster.HEARTBEAT_SECONDS = 0.3
-Cluster.EXPIRES_SECONDS = 2.0
-Cluster.LEADER_SECONDS = 2.0
+Cluster.EXPIRES_SECONDS = 4.0
+Cluster.LEADER_SECONDS = 4.0
 ScheduleClock.TICK_SECONDS = 0.5
 RuntimeClientManager.LEASE_TICK_SECONDS = 0.5
+NodeLinks.REBALANCE_SECONDS = 0.5
+NodeLinks.REBALANCE_AFTER_SECONDS = float(sys.argv[3])
 # Named, so the test knows which process each replica row is.
 _made = Cluster.__init__
 Cluster.__init__ = lambda self, replica_id=None: _made(self, replica_id or sys.argv[2])
@@ -71,7 +72,8 @@ class Replica:
         self.url = f"http://127.0.0.1:{port}"
         self.log = open(Path(os.environ.get("TMPDIR", "/tmp")) / f"replica-{name}.log", "w")
         self.process = subprocess.Popen(
-            [sys.executable, "-c", REPLICA, str(port), self.replica_id], cwd=DATA_CORE, env=env,
+            [sys.executable, "-c", REPLICA, str(port), self.replica_id,
+             str(env.get("REBALANCE_AFTER", "3600"))], cwd=DATA_CORE, env=env,
             stdout=self.log, stderr=subprocess.STDOUT)
 
     def wait_ready(self, timeout=60):
@@ -198,7 +200,8 @@ class Person:
             seen.append(frame)
             if until(frame):
                 return seen
-        raise AssertionError(f"not seen; saw {[f.get('event') for f in seen]}")
+        raise AssertionError(
+            f"not seen; saw {[(f.get('event'), f.get('detail')) for f in seen]}")
 
 
 def ai_message(frame):
@@ -207,20 +210,31 @@ def ai_message(frame):
 
 
 @pytest.fixture()
-def cluster(app, seed, tmp_path, monkeypatch):
+def cluster(request, app, seed, tmp_path, monkeypatch):
     """Three replicas on the test database, the one address in front of
     them preferring A, then C, then B — and an execution node dialing
-    that address."""
+    that address. Rebalancing waits an hour unless the test says how
+    long (``rebalance_after``, through ``indirect`` parametrization)."""
     from server.setup.app_state import get_db
 
     if not get_db().replica_set():
         pytest.skip("the replicas' bus reads a change stream: MongoDB must "
                     "be a replica set")
+    # The test database was laid down by this version's schema and the
+    # seed wiped the row that says so: written again, so the replica
+    # that leads does not take this test's time bringing it there.
+    from database.mongo_db import load_database_schema
+
+    get_db().collection("cluster_state").update_one(
+        {"_id": "schema"},
+        {"$set": {"version": load_database_schema()["schema_version"]}}, upsert=True)
     private_pem, public_pem = service_keys()
     authority_private, authority_public = service_keys()
     authority = register_authority("shared", authority_public)
+    said = getattr(request, "param", None) or {}
     env = {**os.environ, "DATA_CORE_SERVICE_PRIVATE_KEY": private_pem,
-           "PYTHONUNBUFFERED": "1"}
+           "PYTHONUNBUFFERED": "1",
+           "REBALANCE_AFTER": str(said.get("rebalance_after", 3600))}
     replicas = {name: Replica(name, free_port(), env) for name in "ABC"}
     nodes = []
     address = None
@@ -229,9 +243,14 @@ def cluster(app, seed, tmp_path, monkeypatch):
             replica.wait_ready()
         address = OneAddress([replicas["A"], replicas["C"], replicas["B"]])
 
-        def node(name="cluster"):
-            made = ServedNode(address.url, public_pem, authority_private, name,
-                              tmp_path / name)
+        def node(name="cluster", addresses=None):
+            """A node given the one address, or ``addresses`` of its own
+            (DATA_CORE_URLS), tried in their order."""
+            made = ServedNode(addresses or address.url, public_pem,
+                              authority_private, name, tmp_path / name)
+            # As a node beats, more or less: its leases last a minute,
+            # and every beat is writes on the replica holding its link.
+            made.link.HEARTBEAT_SECONDS = 5.0
             nodes.append(made)
             return made.start()
 
@@ -395,3 +414,100 @@ class TestTheLeader:
                                    None),
                       timeout=15, what="the row fired by the new leader")
         assert fired["fired_to"].endswith("/clocked")   # the node it went to
+
+
+class TestNodesAcrossReplicas:
+    @pytest.mark.parametrize("cluster", [{"rebalance_after": 0}], indirect=True)
+    def test_nodes_given_every_address_spread_over_the_replicas_and_serve_on(
+            self, cluster):
+        """DATA_CORE_URLS and rebalancing: two nodes dial A first, A holds
+        more than its share, lets one go, and it links at its next
+        address; a chat on it is answered after the move."""
+        from ai_runtime.llms.connector.fake import FakeConnector  # noqa: F401
+
+        a, b, c = (cluster.replicas[name] for name in "ABC")
+        addresses = [a.url, c.url, b.url]
+        cluster.node("first", addresses)
+        cluster.node("second", addresses)
+
+        def spread():
+            from server.setup.app_state import get_db
+
+            rows = list(get_db().collection("cluster_links").find({}))
+            return len(rows) == 2 and len({row["replica_id"] for row in rows}) == 2
+
+        until(spread, timeout=20, what="the two nodes on two replicas")
+
+        person = Person(b.url)
+        chat_id = person.call(b.url, "AI:Chat:Open", {"title": "Spread"})["chat"]["chat_id"]
+        person.call(b.url, "AI:Chat:Update", {"chat_id": chat_id, "config": {"llm": {
+            "provider": "fake", "responses": [
+                action(action="say", text="Served wherever."),
+                action(action="finish")]}}})
+        person.open(b.url, chat_id)
+        person.frames(lambda f: f.get("event") == "hello")
+        person.socket.send(json.dumps({"endpoint": "AI:Chat:Input",
+                                       "data": {"text": "hi", "parts": []}}))
+        seen = person.frames(ai_message)
+        assert seen[-1]["message"]["parts"][0]["content"] == "Served wherever."
+
+
+class TestTheDatabaseFailsOver:
+    def test_a_turn_goes_on_while_the_databases_primary_steps_down(
+            self, cluster, monkeypatch):
+        """On a replica set of three, the primary steps down mid-turn: the
+        replicas' writes, reads and bus carry on under the new primary."""
+        from pymongo import MongoClient
+
+        from ai_runtime.llms.connector.fake import FakeConnector
+
+        client = MongoClient(os.environ.get("MONGO_URI", "mongodb://localhost:27017"),
+                             serverSelectionTimeoutMS=10000)
+        members = client.admin.command("replSetGetStatus")["members"]
+        if len(members) < 3:
+            pytest.skip("a step-down needs a replica set of three members")
+        a, b, c = (cluster.replicas[name] for name in "ABC")
+        cluster.node()
+        until(lambda: where("cluster_links"), what="the node's link")
+
+        thinking, answer = threading.Event(), threading.Event()
+        chat = FakeConnector.chat
+
+        async def waits(self, *args, **kwargs):
+            thinking.set()
+            await asyncio.to_thread(answer.wait, 60)
+            return await chat(self, *args, **kwargs)
+
+        monkeypatch.setattr(FakeConnector, "chat", waits)
+        person = Person(b.url)
+        chat_id = person.call(b.url, "AI:Chat:Open", {"title": "Stepped"})["chat"]["chat_id"]
+        person.call(b.url, "AI:Chat:Update", {"chat_id": chat_id, "config": {"llm": {
+            "provider": "fake", "responses": [
+                action(action="say", text="Still answering."),
+                action(action="finish")]}}})
+        person.open(b.url, chat_id)
+        person.frames(lambda f: f.get("event") == "hello")
+        person.socket.send(json.dumps({"endpoint": "AI:Chat:Input",
+                                       "data": {"text": "hi", "parts": []}}))
+        assert thinking.wait(30), "the turn never reached the model"
+
+        def primary():
+            try:
+                return client.admin.command("hello").get("primary")
+            except Exception:
+                return None             # mid-election
+
+        before = primary()
+        try:
+            client.admin.command("replSetStepDown", 30, secondaryCatchUpPeriodSecs=10)
+        except Exception:
+            pass  # the primary drops its connections as it steps down
+        until(lambda: primary() not in (None, before), timeout=30,
+              what="another primary elected")
+        answer.set()
+
+        seen = person.frames(ai_message)
+        assert seen[-1]["message"]["parts"][0]["content"] == "Still answering."
+        messages = person.call(c.url, "AI:Message:List", {"chat_id": chat_id})["messages"]
+        assert [m["parts"][0]["content"] for m in messages] == ["hi", "Still answering."]
+

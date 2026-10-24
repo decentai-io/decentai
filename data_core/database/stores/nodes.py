@@ -164,6 +164,9 @@ class NodeStore(MongoStore):
     Core alone, as nodes come and go; read by administrators."""
 
     COLLECTION = "execution_nodes"
+    #: A view, written again with each of the node's beats: no write of
+    #: it waits for the database's majority (base.py).
+    PRIMARY_ONLY = True
 
     #: What of a node's own report is kept. Shown, never a gate: a node
     #: can say anything about itself.

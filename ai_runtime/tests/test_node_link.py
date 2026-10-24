@@ -170,6 +170,65 @@ class TestTheHandshake:
         assert data_core.events() == []
 
 
+class TestSeveralAddresses:
+    def test_a_data_core_address_that_cannot_be_reached_is_passed_over_at_once(self):
+        """DATA_CORE_URLS: the next address is dialed without waiting the
+        backoff, which is for a whole round that failed."""
+        import socket
+
+        host, _ = build()
+        with socket.socket() as probe:
+            probe.bind(("127.0.0.1", 0))
+            closed = probe.getsockname()[1]
+
+        async def scenario():
+            data_core = await FakeDataCore().start()
+            node = NodeCredential.fixed(mint(AUTHORITY[0], "node-a"))
+            link = NodeLink([f"http://127.0.0.1:{closed}", data_core.url], host,
+                            node, DataCoreKey(DATA_CORE[1]))
+            link.BACKOFF_SECONDS = (30,)
+            link.start()
+            await asyncio.wait_for(data_core.connected.wait(), 5)
+            await data_core.until(lambda: data_core.heard)
+            await data_core.welcome()
+            await asyncio.wait_for(link.connected.wait(), 5)
+            at = link.url
+            await link.stop()
+            await data_core.stop()
+            return at, data_core.url
+
+        at, reached = run(scenario())
+        assert at == NodeLink.link_url(reached)
+
+    def test_a_link_the_data_core_sends_elsewhere_is_made_at_the_next_address(self):
+        """A replica holding more than its share of links closes one with
+        4429: the node dials its next address at once."""
+        from contracts.node import CLOSE_ELSEWHERE
+
+        host, _ = build()
+
+        async def scenario():
+            first, second = await FakeDataCore().start(), await FakeDataCore().start()
+            node = NodeCredential.fixed(mint(AUTHORITY[0], "node-a"))
+            link = NodeLink([first.url, second.url], host, node,
+                            DataCoreKey(DATA_CORE[1]))
+            link.BACKOFF_SECONDS = (30,)
+            link.start()
+            await first.until(lambda: first.heard)
+            await first.welcome()
+            await asyncio.wait_for(link.connected.wait(), 5)
+            await first.connections[-1].socket.close(
+                code=CLOSE_ELSEWHERE, reason="another replica takes this link")
+            await asyncio.wait_for(second.connected.wait(), 5)
+            await link.stop()
+            await first.stop()
+            await second.stop()
+            return link.url, second.url
+
+        at, second = run(scenario())
+        assert at == NodeLink.link_url(second)
+
+
 class TestChatsOverTheLink:
     def test_an_attached_chat_is_served_and_its_events_come_back_naming_it(self):
         host, services = build([

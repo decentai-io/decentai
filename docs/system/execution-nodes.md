@@ -155,7 +155,8 @@ admits it is kept again the next time it connects.
 ## The Data Core's signature
 
 A node is configured with the Data Core's address
-(`DATA_CORE_INTERNAL_URL`) and its public key
+(`DATA_CORE_INTERNAL_URL`, or several, `DATA_CORE_URLS`, for a Data
+Core that runs as a cluster) and its public key
 (`DATA_CORE_SERVICE_PUBLIC_KEY`), and believes nothing that key did not
 sign. Every reply the Data Core sends a node carries
 `X-DecentAI-Data-Core-Signature`: a token, signed with the Data Core's
@@ -185,7 +186,12 @@ WS /nodes/link    Authorization: Bearer <the node's credential>
 ```
 
 and reconnects with backoff (1, 2, 4, 8, 15, then every 30 seconds)
-whenever it ends. Which starts first does not matter.
+whenever it ends. Which starts first does not matter. Given several
+addresses, it dials the next at once when one cannot be reached, and
+waits its backoff only once each was missed; a replica of the Data Core
+that holds more than its share of links may close one with 4429, and
+the node dials its next address
+([cluster](cluster.md#rebalancing)).
 
 **The handshake.** The Data Core admits the credential, and refuses a
 protocol other than its own (`NODE_PROTOCOL_VERSION`, `contracts/node.py`)

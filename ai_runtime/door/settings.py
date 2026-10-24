@@ -34,6 +34,11 @@ class RuntimeSettings:
     #: (docs/system/chat-session.md), and where the node link is
     #: dialed (docs/system/execution-nodes.md).
     data_core_url: str = ""
+    #: Every address the Data Core answers at — its replicas, or the
+    #: load balancers in front of them — tried in turn, so a node
+    #: outlives any one of them (docs/system/cluster.md). The first is
+    #: ``data_core_url``.
+    data_core_urls: tuple = ()
     host: str = "0.0.0.0"
     port: int = 8001
     agents_install_dir: str = field(default_factory=_default_install_dir)
@@ -79,11 +84,14 @@ class RuntimeSettings:
                 "CREDENTIAL_URL) is required — an execution node is admitted "
                 "by a credential an authority signed, read from where its "
                 "operator puts it (docs/system/execution-nodes.md).")
-        data_core_url = os.getenv("DATA_CORE_INTERNAL_URL", "").strip()
-        if not data_core_url:
+        data_core_urls = cls._hosts_as_said(os.getenv("DATA_CORE_URLS", "")) or \
+            cls._hosts_as_said(os.getenv("DATA_CORE_INTERNAL_URL", ""))
+        if not data_core_urls:
             raise ValueError(
-                "DATA_CORE_INTERNAL_URL is required — the runtime keeps nothing "
-                "itself, and asks the Data Core for everything a chat is.")
+                "DATA_CORE_INTERNAL_URL (or DATA_CORE_URLS) is required — the "
+                "runtime keeps nothing itself, and asks the Data Core for "
+                "everything a chat is.")
+        data_core_url = data_core_urls[0]
         sandbox_address = os.getenv("AI_RUNTIME_SANDBOX_ADDRESS", "").strip()
         sandbox_secret = os.getenv("AI_RUNTIME_SANDBOX_SECRET", "").strip()
         if not sandbox_secret:
@@ -97,6 +105,7 @@ class RuntimeSettings:
             node_credential_file=credential_file,
             node_credential_url=credential_url,
             data_core_url=data_core_url,
+            data_core_urls=data_core_urls,
             host=os.getenv("AI_RUNTIME_HOST", "0.0.0.0"),
             port=cls._port("AI_RUNTIME_PORT", 8001),
             agents_install_dir=(
@@ -133,6 +142,13 @@ class RuntimeSettings:
         raise ValueError(
             f"{name} must be a port, a number from 1 to 65535; "
             f"it is '{said}'.")
+
+    @staticmethod
+    def _hosts_as_said(said: str) -> tuple:
+        """Addresses, as a setting lists them — separated by commas or
+        spaces — in its order, which is the order they are tried in."""
+        return tuple(address.strip() for address in
+                     str(said or "").replace(",", " ").split() if address.strip())
 
     @staticmethod
     def _hosts(said: str) -> tuple:

@@ -45,6 +45,10 @@ class FakeNode:
     def chat_count(self):
         return len(self.chats)
 
+    async def close(self, code, reason):
+        self.open = False
+        self.closed = (code, reason)
+
     async def send(self, frame):
         if not self.open:
             return False

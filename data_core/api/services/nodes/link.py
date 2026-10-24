@@ -31,6 +31,14 @@ this one (``ask``). A node linking again on another replica takes the
 row, and this replica is told to close the old link (4408). Revoking a
 node closes its link wherever it is (``close_everywhere``).
 
+**Rebalancing.** A connection stays where it landed, so a replica that
+joins the cluster would hold only the links made after it. A replica
+holding more than its share while another holds less lets one link go
+at a time (``rebalance``, 4429): the node dials its next address, and
+its chats are given back to it where it lands. A node let go is refused
+once if it lands here again at once, and taken the time after, so a
+load balancer that always sends it here never locks it out.
+
 What a node says of itself (its load, its locks) is kept for the nodes
 view and to place chats by load; it never admits or refuses a node.
 """
@@ -48,8 +56,8 @@ from fastapi import WebSocket, WebSocketDisconnect
 from api.services.nodes.admission import Admission, NodeIdentity, Refused
 from api.services.nodes.signing import DataCoreSignature
 from contracts.node import (
-    CLOSE_PROTOCOL, CLOSE_REFUSED, CLOSE_REPLACED, HEADER_NONCE,
-    HEADER_PROTOCOL, NODE_PROTOCOL_VERSION)
+    CLOSE_ELSEWHERE, CLOSE_PROTOCOL, CLOSE_REFUSED, CLOSE_REPLACED,
+    HEADER_NONCE, HEADER_PROTOCOL, NODE_PROTOCOL_VERSION)
 from database.stores import NodeStore
 from server.custom_logging import CustomLoggerFactory
 
@@ -166,6 +174,10 @@ class NodeLink:
 class NodeLinks:
     #: How long a node may take to say hello.
     HELLO_SECONDS = 10.0
+    #: How often a replica looks whether it holds more than its share
+    #: of links, and how long a link is left where it landed first.
+    REBALANCE_SECONDS = 30.0
+    REBALANCE_AFTER_SECONDS = 60.0
 
     def __init__(self):
         from server.setup.app_state import get_state
@@ -174,9 +186,14 @@ class NodeLinks:
         #: this process as a replica; None where there is no cluster
         #: (a test's links of their own)
         self.cluster = get_state().cluster
+        #: nodes this replica let go to rebalance, and when: refused once
+        #: if they land here again at once
+        self._shed: Dict[str, float] = {}
+        self._balanced_at = 0.0
         if self.cluster is not None:
             self.cluster.bus.on("ask", self._on_ask)
             self.cluster.bus.on("close_links", self._on_close_links)
+            self.cluster.on_tick.append(self.rebalance)
         #: called with a link once it is welcomed, and once it is gone:
         #: the relay attaches and detaches chats (chat_session/relay.py)
         self.on_link: List[Callable[[NodeLink], Awaitable[None]]] = []
@@ -243,6 +260,64 @@ class NodeLinks:
                 self.logger.warning(
                     f"Replica {replica} did not close its links: {exc}")
         return closed
+
+    # ------------------------------------------------------------------
+    # Rebalancing
+    # ------------------------------------------------------------------
+
+    def _shares(self):
+        """(how many links this replica holds, a replica's fair share,
+        whether another holds less than it)."""
+        import math
+
+        from database.stores.cluster import LinkPresenceStore
+
+        replicas = self.cluster.others | {self.cluster.replica_id}
+        held = {replica: 0 for replica in replicas}
+        for row in LinkPresenceStore().live():
+            if row.get("replica_id") in held and row.get("replica_id") !=                     self.cluster.replica_id:
+                held[row["replica_id"]] += 1
+        mine = len(self.connected())
+        held[self.cluster.replica_id] = mine
+        fair = math.ceil(sum(held.values()) / len(replicas))
+        below = any(count < fair for replica, count in held.items()
+                    if replica != self.cluster.replica_id)
+        return mine, fair, below
+
+    async def rebalance(self) -> Optional[str]:
+        """One link let go, where this replica holds more than its share
+        and another less: the one with fewest chats of those that have
+        been here a while. Returns the node let go, or None."""
+        now = time.monotonic()
+        if self.cluster is None or not self.cluster.others                 or now - self._balanced_at < self.REBALANCE_SECONDS:
+            return None
+        self._balanced_at = now
+        mine, fair, below = self._shares()
+        if mine <= fair or not below:
+            return None
+        settled = [link for link in self.connected()
+                   if time.time() - link.connected_at >= self.REBALANCE_AFTER_SECONDS]
+        if not settled:
+            return None
+        link = min(settled, key=lambda each: (len(each.chats), -each.connected_at))
+        self._shed = {key: at for key, at in self._shed.items()
+                      if now - at < self.REBALANCE_SECONDS}
+        self._shed[link.key] = now
+        self.logger.info(f"Execution node {link.key} let go to rebalance: "
+                         f"{mine} links here, a fair share is {fair}")
+        await link.close(CLOSE_ELSEWHERE, "another replica of the Data Core "
+                                          "takes this link")
+        return link.key
+
+    def _refuse_again(self, key: str) -> bool:
+        """Whether a node just let go, landing here again, is sent away
+        — once, and only while this replica would still hold more than
+        its share with it."""
+        at = self._shed.pop(key, None)
+        if at is None or self.cluster is None                 or time.monotonic() - at >= self.REBALANCE_SECONDS:
+            return False
+        mine, fair, below = self._shares()
+        return mine + 1 > fair and below
 
     # ------------------------------------------------------------------
     # What the other replicas ask
@@ -339,6 +414,11 @@ class NodeLinks:
             self.logger.info(f"A node's link was refused: {refused}")
             await websocket.close(code=CLOSE_REFUSED,
                                   reason=_close_reason(str(refused)))
+            return
+        if self._refuse_again(identity.key):
+            await websocket.close(code=CLOSE_ELSEWHERE, reason=_close_reason(
+                "this replica of the Data Core holds more than its share of "
+                "links; dial another address"))
             return
         nonce = str(websocket.headers.get(HEADER_NONCE) or "").strip()
         if len(nonce) < 16:

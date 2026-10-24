@@ -203,6 +203,9 @@ services:
       # it and never holds the authority's key.
       AI_RUNTIME_NODE_CREDENTIAL_FILE: /run/decentai/node/credential
       DATA_CORE_INTERNAL_URL: ${DATA_CORE_INTERNAL_URL:-http://data-core:8000}
+      # Several addresses, tried in turn, where the Data Core runs as a
+      # cluster (docs/system/cluster.md); empty, the one above.
+      DATA_CORE_URLS: ${DATA_CORE_URLS:-}
       AI_RUNTIME_AGENTS_INSTALL_DIR: ${AI_RUNTIME_AGENTS_INSTALL_DIR:-/data/agents}
       AI_RUNTIME_HOST:
       AI_RUNTIME_PORT:

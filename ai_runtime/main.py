@@ -74,8 +74,9 @@ data_core = DataCoreKey(settings.data_core_service_public_key)
 # gateway (docs/system/chat-session.md) — and what this node asks as
 # itself: the approved packages, to stock itself with
 # (docs/system/agent-code.md).
-services = DataCoreClient(Gateway(settings.data_core_url, node=node, key=data_core),
-                   node)
+services = DataCoreClient(Gateway(settings.data_core_urls or settings.data_core_url,
+                                  node=node, key=data_core),
+                          node)
 
 app = create_app(settings, services=services, library=library,
                  container=container, confinement=confinement,

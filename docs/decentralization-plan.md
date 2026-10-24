@@ -141,22 +141,45 @@ while both are on its own disk says so. `Notifier._attached` reads the
 socket's presence. The API, tokens, the node link's protocol and the
 clients are unchanged, and no setting was added.
 
+Then, the points first left for later
+([cluster](system/cluster.md)):
+
+- **A node with several addresses** (`DATA_CORE_URLS`): its link and
+  its calls go to the next address when one cannot be reached — the
+  first piece of phase 2, built here with the rest of the cluster.
+- **Rebalancing**: a replica holding more than its share of node links
+  lets one go at a time (close 4429, a code added to the link's
+  protocol, which a node that does not know it takes as any close); the
+  node dials its next address.
+- **The database's own fail-over**: on a replica set the Data Core's
+  writes wait for the majority and its journal, asked for at once — the
+  server's default waited for its next periodic flush, a fifth of a
+  second a write in the tests' containers; rows rewritten with every
+  beat wait for the primary alone; and each replica beats on a thread
+  of its own, so a loop slowed by its database never makes it look
+  gone. A replica taking the lead runs the schema's step beside its
+  beat, not in it: the spanning suite on three members caught a step
+  that held the beat long enough to lose the lead.
+- **The bus stays at most once**, decided: a frame that does not
+  arrive is either said to its sender, who tells the person, or read
+  back from the record by the page; sent again, it would arrive twice
+  and recover nothing the record does not hold.
+
 **Shown**: `tests/test_cluster_replicas.py` runs three replicas as
 processes on one replica set, behind one address, with a real node:
 the node's link on one replica and the person's socket on another, the
 model held mid-turn while each of the three in turn is killed, and the
 answer reaches the person every time; a revoke on one replica closes
 the node's link on another and is refused by the third within two
-seconds; the leader killed, another takes the lead and the clock fires.
-`data_core/tests/test_cluster.py` pins each change on its own.
+seconds; the leader killed, another takes the lead and the clock fires;
+two nodes given every address spread over the replicas and serve on;
+on a replica set of three, the primary steps down mid-turn and the turn
+goes on. `data_core/tests/test_cluster.py` pins each change on its own.
+CI runs it all on a replica set of three.
 
-**Left for phase 2 and after**: a node is still given one address, so
-a load balancer that fails is a node that cannot link (`DATA_CORE_URLS`,
-phase 2); a connection stays on the replica it reached, so a replica
-added later takes only new connections; the bus is at most once, and a
-frame lost with a replica is read back from the record by the page, not
-sent again; the tests' replica set is one member, so the database's own
-fail-over is MongoDB's and not tested here.
+**Left**: a person's socket stays on the replica it reached; the
+Data Core still calls its database from its event loop, so a write's
+latency is a request's, and the database wants fast disks.
 
 ## Phase 2 — execution pools
 

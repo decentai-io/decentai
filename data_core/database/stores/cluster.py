@@ -49,6 +49,7 @@ def _until(seconds: float):
 
 class ReplicaStore(MongoStore):
     COLLECTION = "cluster_replicas"
+    PRIMARY_ONLY = True
 
     def beat(self, replica_id: str, seconds: float,
              about: Optional[Dict[str, Any]] = None) -> None:
@@ -72,6 +73,8 @@ class ReplicaStore(MongoStore):
 
 class _Presence(MongoStore):
     """Rows a replica holds, refreshed by its heartbeat."""
+
+    PRIMARY_ONLY = True
 
     def refresh(self, replica_id: str, seconds: float) -> None:
         self.col.update_many({"replica_id": str(replica_id)},
@@ -147,6 +150,9 @@ class BusStore(MongoStore):
     read through a change stream (api/services/cluster/bus.py)."""
 
     COLLECTION = "cluster_bus"
+    #: The change stream hands a message on only once the majority has
+    #: it: posting need not wait for that too.
+    PRIMARY_ONLY = True
 
     def publish(self, message: Dict[str, Any]) -> None:
         self.col.insert_one(message)
@@ -236,6 +242,7 @@ class RateCounter(MongoStore):
     increment per hit, on a row that expires with its window."""
 
     COLLECTION = "rate_counters"
+    PRIMARY_ONLY = True
 
     def hit(self, key: str, cap: int, seconds: float) -> bool:
         """One more, if the window has room. False when it is full."""

@@ -186,7 +186,9 @@ It needs four things, and no new component:
   upstream list, each checked on `/healthz`, WebSockets forwarded. No
   stickiness is needed: a person's socket and the node serving their
   chat may land on different replicas, and the replicas carry the chat
-  between them. A node is given the one address, as before.
+  between them. A node is given the one address, as before — or every
+  address it may dial (`DATA_CORE_URLS`), so it outlives a load
+  balancer too ([configuration](configuration.md#the-runtime)).
 
 The seeder (`init`) runs once per deployment, not once per replica,
 and brings the schema to the version's; a replica that takes the lead

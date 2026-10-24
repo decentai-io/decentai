@@ -137,6 +137,33 @@ person's socket on another replica than the node's link, and kills
 each of the three in turn in the middle of a turn: the answer reaches
 the person every time.
 
+## A node with several addresses
+
+A node may be given every address the Data Core answers at
+(`DATA_CORE_URLS`, `ai_runtime/door/link.py`, `ai_runtime/door/platform.py`)
+— its replicas, or more than one load balancer — so that it outlives
+any one of them. Its link is dialed at each in turn: one that cannot be
+reached is passed over for the next at once, and the backoff is waited
+only after a whole round missed. Its calls on `/app` go to the address
+that answered last; one that cannot be reached at all is passed over,
+which is safe because nothing reached it, and a call that reached an
+address and failed there is that call's failure, never sent again
+elsewhere.
+
+## Rebalancing
+
+A connection stays on the replica it reached, so a replica added to a
+running cluster would hold only the links made after it. Each replica
+looks, with its beat, whether it holds more node links than its share
+— the links of every replica alive, divided among them, rounded up —
+while another holds fewer (`NodeLinks.rebalance`). If so it lets one go,
+of those linked a minute or more, the one with the fewest chats,
+closing it with 4429: the node dials its next address, and is given
+back its chats where it lands, under their leases. One link goes at a
+time, every half minute at most. A node let go and landing on the same
+replica at once is sent away once more, and taken the time after, so a
+load balancer that always sends it there never locks it out.
+
 ## Placement
 
 Placement chooses among every node connected to any replica
@@ -177,6 +204,26 @@ holds it (`NodeLinks.close_everywhere`).
   every replica counts against the one limit.
 - **Failed sign-ins** (`LoginThrottle`, `auth_throttle`): each failure
   a conditional increment, and a new window started by one replica only.
+
+## The database
+
+The Data Core's writes on a replica set wait for its majority and its
+journal (`MongoDB._database`, `data_core/database/mongo_db.py`): a
+lease's number, a row's claim or a card decided survives the primary's
+loss. They are asked for at once — the server's default would wait for
+its next periodic journal flush, a tenth of a second or more each. The
+rows that are a view rewritten with every beat — presence, the bus, the
+nodes view, the counters — wait for the primary alone
+(`MongoStore.PRIMARY_ONLY`); the bus's messages are still handed on
+only once the majority has them. A single server keeps its own default.
+
+The Data Core calls its database from its event loop, so a write's
+latency is a request's; each replica's beat runs on a thread of its own,
+so a busy loop never makes a living replica look gone. The database
+wants disks that journal in a millisecond or two.
+`tests/test_cluster_replicas.py` steps the primary of a replica set of
+three down in the middle of a turn, and the turn goes on under the new
+one.
 
 ## The leader
 
@@ -234,9 +281,9 @@ while it keeps them on `local` says so in its log, once, as an error.
 
 ## What it does not do
 
-- **Move a connection.** A node's link and a person's socket stay on
-  the replica they reached until they end; a replica's load is the
-  connections it was given.
+- **Move a person's socket.** A socket stays on the replica it reached
+  until it ends; only node links are rebalanced
+  ([above](#rebalancing)).
 - **Elect by majority.** The leader is whoever holds a lease in the
   database; the database's own replica set is what survives a lost
   machine.

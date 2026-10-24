@@ -42,21 +42,27 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
-      # A replica set of one: the Data Core's replicas speak over a
+      # A replica set of three: the Data Core's replicas speak over a
       # change stream (docs/system/cluster.md), which a single server
-      # has not. A service container is given no command line, so it
-      # is started here.
-      - name: MongoDB, as a replica set
+      # has not, and the cluster's tests step its primary down. Each
+      # member on the runner's own network, so the test's localhost
+      # reaches all three; a service container is given no command
+      # line, so they are started here.
+      - name: MongoDB, as a replica set of three
         run: |
-          docker run -d --name mongo -p 27017:27017 mongo:7 --replSet rs0 --bind_ip_all
-          for attempt in $(seq 1 60); do
-            docker exec mongo mongosh --quiet --eval 'db.adminCommand("ping").ok' && break
+          for port in 27017 27018 27019; do
+            docker run -d --name "mongo-$port" --network host mongo:7               --replSet rs0 --bind_ip_all --port "$port"
+          done
+          for _ in $(seq 1 60); do
+            docker exec mongo-27017 mongosh --quiet --port 27017               --eval 'db.adminCommand("ping").ok' && break
             sleep 1
           done
-          docker exec mongo mongosh --quiet --eval \
-            'rs.initiate({_id: "rs0", members: [{_id: 0, host: "localhost:27017"}]})'
-          for attempt in $(seq 1 60); do
-            [ "$(docker exec mongo mongosh --quiet --eval 'rs.status().myState')" = "1" ] && break
+          docker exec mongo-27017 mongosh --quiet --port 27017 --eval             'rs.initiate({_id: "rs0", members: [
+               {_id: 0, host: "localhost:27017"},
+               {_id: 1, host: "localhost:27018"},
+               {_id: 2, host: "localhost:27019"}]})'
+          for _ in $(seq 1 90); do
+            [ "$(docker exec mongo-27017 mongosh --quiet --port 27017               --eval 'rs.status().members.filter(m => m.state === 1 || m.state === 2).length')" = "3" ] && break
             sleep 1
           done
       - uses: actions/checkout@v4

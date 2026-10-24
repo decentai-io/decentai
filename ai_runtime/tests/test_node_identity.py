@@ -168,7 +168,8 @@ class TestTheDataCoresSignature:
 
 class TestTheSettings:
     NAMES = ("DATA_CORE_SERVICE_PUBLIC_KEY", "AI_RUNTIME_NODE_CREDENTIAL_FILE",
-             "AI_RUNTIME_NODE_CREDENTIAL_URL", "DATA_CORE_INTERNAL_URL")
+             "AI_RUNTIME_NODE_CREDENTIAL_URL", "DATA_CORE_INTERNAL_URL",
+             "DATA_CORE_URLS")
 
     def settings(self, monkeypatch, **said):
         from ai_runtime.door.settings import RuntimeSettings
@@ -204,3 +205,61 @@ class TestTheSettings:
         assert (read.data_core_service_public_key, read.data_core_url,
                 read.node_credential_url) == (
             "key", "http://data-core:8000", "http://issuer/")
+
+    def test_several_addresses_are_read_in_their_order_and_the_first_is_the_one(
+            self, monkeypatch):
+        read = self.settings(
+            monkeypatch, DATA_CORE_SERVICE_PUBLIC_KEY="key",
+            DATA_CORE_URLS="http://a:8000, http://b:8000 http://c:8000",
+            DATA_CORE_INTERNAL_URL="http://not-asked:8000",
+            AI_RUNTIME_NODE_CREDENTIAL_FILE="/run/c")
+        assert read.data_core_urls == ("http://a:8000", "http://b:8000",
+                                       "http://c:8000")
+        assert read.data_core_url == "http://a:8000"
+
+
+class TestSeveralAddresses:
+    """The Data Core at several addresses (DATA_CORE_URLS): its replicas,
+    or the load balancers before them (docs/system/cluster.md)."""
+
+    @staticmethod
+    def gateway(answer):
+        node = NodeCredential.fixed(mint(AUTHORITY[0], "node-a"))
+        gateway = Gateway(["http://gone.test", "http://here.test"], node=node,
+                          key=DataCoreKey(DATA_CORE[1]))
+        gateway._client = httpx.AsyncClient(transport=httpx.MockTransport(answer))
+        return gateway
+
+    def test_an_address_that_cannot_be_reached_is_passed_over_for_the_next(self):
+        asked = []
+
+        def answer(request):
+            asked.append(request.url.host)
+            if request.url.host == "gone.test":
+                raise httpx.ConnectError("refused", request=request)
+            body = b'{"answered":true}'
+            return httpx.Response(200, content=body, headers={
+                HEADER_SIGNATURE: signed_reply(
+                    "auth_1/node-a", request.headers[HEADER_REQUEST], body)})
+
+        gateway = self.gateway(answer)
+        assert run(gateway.call("AI:Chat:Contract", {}, "a-delegation")) == {
+            "answered": True}
+        assert run(gateway.call("AI:Chat:Contract", {}, "a-delegation")) == {
+            "answered": True}
+        # The one that answered is asked first from then on.
+        assert asked == ["gone.test", "here.test", "here.test"]
+
+    def test_a_request_that_reached_an_address_is_never_sent_again_elsewhere(self):
+        asked = []
+
+        def answer(request):
+            asked.append(request.url.host)
+            body = b'{"error": "it broke"}'
+            return httpx.Response(500, content=body, headers={
+                HEADER_SIGNATURE: signed_reply(
+                    "auth_1/node-a", request.headers[HEADER_REQUEST], body)})
+
+        with pytest.raises(GatewayError, match="500"):
+            run(self.gateway(answer).call("AI:Chat:Contract", {}, "a-delegation"))
+        assert asked == ["gone.test"]

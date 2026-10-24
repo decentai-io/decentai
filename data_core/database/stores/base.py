@@ -224,12 +224,23 @@ class MongoStore:
     #: (bootstrap/reencrypt_secrets.py) finds every one of them.
     ENCRYPTED_FIELDS: tuple = ()
 
+    #: Whether a write waits only for the primary. True for rows that
+    #: are a view written again on the next beat (presence, the bus):
+    #: on a replica set every other write waits for the majority
+    #: (database/mongo_db.py), and these need not.
+    PRIMARY_ONLY: bool = False
+
     def __init__(self):
         self.db = get_db()
 
     @property
     def col(self):
-        return self.db.collection(self.COLLECTION)
+        collection = self.db.collection(self.COLLECTION)
+        if self.PRIMARY_ONLY:
+            from pymongo import WriteConcern
+
+            return collection.with_options(write_concern=WriteConcern(w=1))
+        return collection
 
     # ------------------------------------------------------------------
     @staticmethod

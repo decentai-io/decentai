@@ -55,7 +55,8 @@ from urllib.parse import urlparse, urlunparse
 
 from ai_runtime.door.node import SignatureRefused
 from contracts.node import (
-    CLOSE_PROTOCOL, HEADER_NONCE, HEADER_PROTOCOL, NODE_PROTOCOL_VERSION)
+    CLOSE_ELSEWHERE, CLOSE_PROTOCOL, HEADER_NONCE, HEADER_PROTOCOL,
+    NODE_PROTOCOL_VERSION)
 
 
 class ChatChannel:
@@ -90,9 +91,15 @@ class NodeLink:
     #: How long a welcome may take to arrive.
     WELCOME_SECONDS = 10.0
 
-    def __init__(self, url: str, host, node, key, monitor=None,
+    def __init__(self, url, host, node, key, monitor=None,
                  report: Optional[Callable[[], Dict[str, Any]]] = None):
-        self.url = self.link_url(url)
+        #: every address the Data Core answers at (DATA_CORE_URLS), in
+        #: the order they are tried: a link that cannot be made at one
+        #: is made at the next at once, and only a whole round that
+        #: failed waits its backoff
+        said = url if isinstance(url, (list, tuple)) else [url]
+        self.urls = [self.link_url(address) for address in said] or [self.link_url("")]
+        self._at = 0
         self.host = host
         #: this node's credential (door/node.py, NodeCredential)
         self.node = node
@@ -116,6 +123,9 @@ class NodeLink:
         #: ``unfired`` frames that found the link down, said once it is
         #: up again
         self._given_back: list = []
+        #: set when the Data Core closed the link asking for another
+        #: address (CLOSE_ELSEWHERE)
+        self._elsewhere = False
         self.logger = logging.getLogger(self.__class__.__name__)
         if host is not None:
             host.forgotten = self._forgotten
@@ -124,6 +134,16 @@ class NodeLink:
             services = getattr(host, "services", None)
             if services is not None and hasattr(services, "on_stale"):
                 services.on_stale = self._stale
+
+    @property
+    def url(self) -> str:
+        """The address the link is made at now."""
+        return self.urls[self._at]
+
+    @url.setter
+    def url(self, link_url: str) -> None:
+        """One address, the link's own, in place of every one."""
+        self.urls, self._at = [str(link_url)], 0
 
     @staticmethod
     def link_url(base: str) -> str:
@@ -171,7 +191,9 @@ class NodeLink:
         """Connect, serve until the connection ends, and connect again —
         for as long as the node runs."""
         attempt = 0
+        missed = 0
         while not self._stopping:
+            welcomed = False
             try:
                 welcomed = await self._connect()
                 if welcomed:
@@ -179,11 +201,28 @@ class NodeLink:
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
-                self.logger.warning(f"The link to the Data Core failed: {exc}")
+                self.logger.warning(
+                    f"The link to the Data Core at {self.url} failed: {exc}")
             finally:
                 await self._lost()
             if self._stopping:
                 return
+            if welcomed and not self._elsewhere:
+                missed = 0
+            elif welcomed:
+                # The replica held more than its share of links: the
+                # next address, at once (docs/system/cluster.md).
+                self._elsewhere = False
+                missed = 0
+                self._at = (self._at + 1) % len(self.urls)
+                continue
+            else:
+                # Another address, at once, until every one was missed.
+                self._elsewhere = False
+                missed += 1
+                self._at = (self._at + 1) % len(self.urls)
+                if missed % len(self.urls):
+                    continue
             wait = self.BACKOFF_SECONDS[min(attempt, len(self.BACKOFF_SECONDS) - 1)]
             attempt += 1
             await asyncio.sleep(wait)
@@ -240,6 +279,10 @@ class NodeLink:
         received = getattr(closed, "rcvd", None)
         code = getattr(received, "code", None)
         reason = getattr(received, "reason", "") or ""
+        if code == CLOSE_ELSEWHERE:
+            self._elsewhere = True
+            self.logger.info(f"The Data Core asked this node to link elsewhere: {reason}")
+            return
         if code == CLOSE_PROTOCOL:
             self.logger.error(
                 f"The Data Core speaks another node protocol: {reason}. This "

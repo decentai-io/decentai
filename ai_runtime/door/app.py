@@ -114,7 +114,7 @@ def create_app(settings: RuntimeSettings, services, library, container,
         # connection, every chat this node serves over it. What it says
         # of its locks is shown by the Data Core and never decides.
         link = NodeLink(
-            settings.data_core_url, host, node, data_core,
+            settings.data_core_urls or settings.data_core_url, host, node, data_core,
             report=lambda: {"locks": confinement.report(),
                             "labels": list(node.claims.get("labels") or []),
                             "sandboxes": _sandboxes_said(confinement)})

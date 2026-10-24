@@ -73,11 +73,22 @@ class Gateway:
     is made as (``node``, ai_runtime/door/node.py), and every reply must
     carry the Data Core's signature over its bytes and this request
     (``key``): one that does not is refused as if nothing had answered.
-    A gateway with no key checks nothing — a test's, never main.py's."""
+    A gateway with no key checks nothing — a test's, never main.py's.
 
-    def __init__(self, base_url: str, timeout: float = 15.0,
+    ``base_url`` may be several addresses — the Data Core's replicas, or
+    the load balancers before them (``DATA_CORE_URLS``). A request goes
+    to the one that answered last; one that cannot be reached at all is
+    passed over for the next, which is safe because nothing was sent to
+    it. A request that reached an address and failed there is that
+    request's failure, never sent again elsewhere."""
+
+    def __init__(self, base_url, timeout: float = 15.0,
                  node=None, key=None):
-        self.base_url = base_url.rstrip("/")
+        said = base_url if isinstance(base_url, (list, tuple)) else [base_url]
+        self.addresses = [str(address).rstrip("/") for address in said
+                          if str(address or "").strip()] or [""]
+        self.base_url = self.addresses[0]
+        self._at = 0
         self.node = node
         self.key = key
         self._client = httpx.AsyncClient(base_url=self.base_url,
@@ -108,8 +119,7 @@ class Gateway:
         except Exception as exc:
             raise GatewayError(f"{endpoint}: {exc}", 401)
         try:
-            response = await self._client.post(
-                "/app", json=body, headers=headers)
+            response = await self._post(body, headers)
         except httpx.HTTPError as exc:
             # A timeout, a refused connection: said as every failure of
             # the platform is, with what happened where its own text is
@@ -146,6 +156,19 @@ class Gateway:
                 raise GatewayError(str(said or f"{endpoint} failed"))
             return payload.get("data") or {}
         return payload if isinstance(payload, dict) else {}
+
+    async def _post(self, body: dict, headers: Dict[str, str]):
+        """The request, to the address that answered last, and to the
+        next while one cannot be reached."""
+        for tried in range(len(self.addresses)):
+            address = self.addresses[self._at]
+            try:
+                return await self._client.post(f"{address}/app", json=body,
+                                               headers=headers)
+            except (httpx.ConnectError, httpx.ConnectTimeout):
+                if tried + 1 == len(self.addresses):
+                    raise
+                self._at = (self._at + 1) % len(self.addresses)
 
     async def close(self) -> None:
         await self._client.aclose()

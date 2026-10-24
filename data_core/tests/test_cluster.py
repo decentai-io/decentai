@@ -407,6 +407,67 @@ class TestAChatAttachedAgain:
         assert get_runtime_clients().node_of(chat_id) == node.key
 
 
+class TestRebalancing:
+    """A connection stays where it landed: a replica holding more than
+    its share lets one go at a time, for the node to dial elsewhere."""
+
+    @staticmethod
+    def settled(*keys, chats=0):
+        nodes = []
+        for key in keys:
+            node = link(FakeNode(key))
+            node.connected_at = time.time() - 3600
+            node.chats.update(f"{key}-chat-{n}" for n in range(chats))
+            nodes.append(node)
+        return nodes
+
+    def test_a_replica_with_more_than_its_share_lets_one_link_go(self, cluster):
+        from contracts.node import CLOSE_ELSEWHERE
+        from server.setup.app_state import get_node_links
+
+        beating("replica-b")
+        cluster._others = {"replica-b"}
+        busy = self.settled("auth_a/busy", chats=2)[0]
+        quiet = self.settled("auth_a/quiet-1", "auth_a/quiet-2")
+        links = get_node_links()
+        links._balanced_at = 0.0
+        let_go = asyncio.run(links.rebalance())
+        # Three here and none there: a fair share is two. The one let go
+        # is a quiet one — the fewest chats to move.
+        assert let_go in {node.key for node in quiet}
+        closed = [node for node in quiet + [busy] if not node.open]
+        assert [node.closed[0] for node in closed] == [CLOSE_ELSEWHERE]
+        # One at a time.
+        assert asyncio.run(links.rebalance()) is None
+
+    def test_a_node_let_go_landing_here_again_is_sent_away_once(self, cluster):
+        from server.setup.app_state import get_node_links
+
+        beating("replica-b")
+        cluster._others = {"replica-b"}
+        self.settled("auth_a/one", "auth_a/two", "auth_a/three")
+        links = get_node_links()
+        links._balanced_at = 0.0
+        let_go = asyncio.run(links.rebalance())
+        links.links.pop(let_go)
+        assert links._refuse_again(let_go) is True
+        assert links._refuse_again(let_go) is False
+
+    def test_a_replica_alone_or_at_its_share_lets_nothing_go(self, cluster):
+        from server.setup.app_state import get_node_links
+
+        self.settled("auth_a/one", "auth_a/two")
+        links = get_node_links()
+        links._balanced_at = 0.0
+        assert asyncio.run(links.rebalance()) is None        # alone
+        beating("replica-b")
+        cluster._others = {"replica-b"}
+        remote_node("replica-b", "auth_b/one")
+        remote_node("replica-b", "auth_b/two")
+        links._balanced_at = 0.0
+        assert asyncio.run(links.rebalance()) is None        # two and two
+
+
 # ── 4. shared invalidation ───────────────────────────────────────────
 
 class TestSharedInvalidation:
@@ -539,14 +600,40 @@ class TestTheLeader:
             led.append("replica-2")
 
         second.on_lead.append(leads)
-        asyncio.run(first.tick())
-        asyncio.run(second.tick())
-        assert first.leading and not second.leading
-        asyncio.run(first.stop())        # says it stopped: the lead let go
-        asyncio.run(second.tick())
-        asyncio.run(second.tick())
-        assert second.leading
+
+        async def scenario():
+            await first.tick()
+            await second.tick()
+            assert first.leading and not second.leading
+            await first.stop()           # says it stopped: the lead let go
+            await second.tick()
+            await second.tick()
+            await asyncio.sleep(0.05)    # what the lead starts runs beside the beat
+            assert second.leading
+
+        asyncio.run(scenario())
         assert led == ["replica-2"]       # once, as it took the lead
+
+    def test_what_taking_the_lead_starts_never_holds_up_the_beat(self, app, seed):
+        """A schema's step can take minutes: a beat that waited on it
+        would lose the lead, and the replica be taken for gone."""
+        from api.services.cluster import Cluster
+
+        replica = Cluster("replica-slow")
+
+        async def slow():
+            await asyncio.sleep(5)
+
+        replica.on_lead.append(slow)
+
+        async def scenario():
+            begun = time.monotonic()
+            await replica.tick()
+            took = time.monotonic() - begun
+            await replica.stop()
+            return took
+
+        assert asyncio.run(scenario()) < 2
 
     def test_a_lapsed_lease_moves_to_the_next_holder_numbered_past_the_last(
             self, app, seed):

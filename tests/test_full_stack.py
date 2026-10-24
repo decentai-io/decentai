@@ -79,9 +79,11 @@ class ServedNode:
         # credential and never the authority's key.
         node = NodeCredential.fixed(runtime_service_token(authority_private, name))
         key = DataCoreKey(data_core_public)
+        # One address, or several (DATA_CORE_URLS): a cluster's replicas.
+        urls = tuple(data_core_url) if isinstance(data_core_url, (list, tuple))             else (data_core_url,)
         self.app = create_runtime_app(
             RuntimeSettings(data_core_service_public_key=data_core_public,
-                            data_core_url=data_core_url,
+                            data_core_url=urls[0], data_core_urls=urls,
                             agents_install_dir=str(folder)),
             services=DataCoreClient(Gateway(data_core_url, node=node, key=key), node),
             library=AgentLibrary(folder, confinement()),

@@ -6,7 +6,7 @@
     cluster.links()              the nodes linked to the other replicas
     cluster.leading              whether this replica runs the single loops
 
-Every replica beats every two seconds: its own row, and the expiry of
+Every replica beats every two seconds, on a thread of its own: its own row, and the expiry of
 every presence row it holds (database/stores/cluster.py) — its nodes'
 links and its people's sockets. A replica that stops beating is gone ten
 seconds later, and its rows with it; nodes and browsers reconnect to
@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import asyncio
 import socket
+import threading
 import uuid
 from types import SimpleNamespace
 from typing import Any, Awaitable, Callable, Dict, List, Optional
@@ -103,19 +104,31 @@ class Cluster:
         self.on_lead: List[Callable[[], Awaitable[None]]] = []
         #: called with the ids of replicas that stopped beating
         self.on_gone: List[Callable[[set], Awaitable[None]]] = []
+        #: called at the end of every beat (the links' rebalancing)
+        self.on_tick: List[Callable[[], Awaitable[object]]] = []
         self._others: set = set()
-        self._task: Optional[asyncio.Task] = None
+        self._thread: Optional[threading.Thread] = None
+        self._stopping = threading.Event()
+        self._loop: Optional[asyncio.AbstractEventLoop] = None
+        #: what taking the lead started, held so the loop keeps it
+        self._leading_work: set = set()
         self._warned_storage = False
         self.logger = CustomLoggerFactory.get_logger(self.__class__.__name__)
 
     # ------------------------------------------------------------------
     async def start(self) -> None:
         """Beat once now — so this replica is seen, and leads at once
-        where it is alone — then read the bus and go on beating."""
+        where it is alone — then read the bus and go on beating, on a
+        thread of its own: whether a replica is alive must not wait on
+        how busy its loop is, whose every database call blocks it."""
         await self.tick()
         self.bus.start()
-        if self._task is None or self._task.done():
-            self._task = asyncio.get_running_loop().create_task(self._run())
+        self._loop = asyncio.get_running_loop()
+        if self._thread is None or not self._thread.is_alive():
+            self._stopping.clear()
+            self._thread = threading.Thread(target=self._run, name="cluster-beat",
+                                            daemon=True)
+            self._thread.start()
 
     async def stop(self) -> None:
         """Stopping says so: the lead let go and the rows forgotten, so
@@ -123,9 +136,10 @@ class Cluster:
         from database.stores.cluster import (
             LeaderLease, LinkPresenceStore, ReplicaStore, SocketPresenceStore)
 
-        task, self._task = self._task, None
-        if task is not None:
-            task.cancel()
+        self._stopping.set()
+        thread, self._thread = self._thread, None
+        if thread is not None:
+            await asyncio.to_thread(thread.join, 5)
         self.bus.stop()
         try:
             if self.leading:
@@ -137,17 +151,29 @@ class Cluster:
         except Exception as exc:
             self.logger.warning(f"Replica {self.replica_id} did not say it stopped: {exc}")
 
-    async def _run(self) -> None:
-        while True:
-            await asyncio.sleep(self.HEARTBEAT_SECONDS)
+    def _run(self) -> None:
+        pending = None
+        while not self._stopping.wait(self.HEARTBEAT_SECONDS):
             try:
-                await self.tick()
-            except Exception as exc:  # one bad beat never ends the loop
+                beat = self.beat()
+            except Exception as exc:  # one bad beat never ends the beating
                 self.logger.warning(f"Replica heartbeat failed: {exc}")
+                continue
+            # What a beat calls for is the loop's; one at a time, so a
+            # loop that is slow to get to them is not buried in them.
+            if pending is None or pending.done():
+                pending = asyncio.run_coroutine_threadsafe(
+                    self._after(*beat), self._loop)
 
     async def tick(self) -> None:
-        """One beat: alive, the rows held refreshed, the others looked
-        at, and the leader's lease renewed or stood for."""
+        """One beat, and what it calls for: what the thread does every
+        two seconds, for the start and a test to do at once."""
+        await self._after(*await asyncio.to_thread(self.beat))
+
+    def beat(self):
+        """Alive, the rows held refreshed, the others looked at, and the
+        leader's lease renewed or stood for. Returns (the replicas gone
+        since the last beat, whether this one took the lead now)."""
         from database.mongo_db import load_database_schema
         from database.stores.cluster import (
             LeaderLease, LinkPresenceStore, ReplicaStore, SocketPresenceStore)
@@ -162,18 +188,28 @@ class Cluster:
         gone, self._others = self._others - live, live
         if live:
             self._check_storage()
-        if gone:
-            for callback in list(self.on_gone):
-                await self._quietly(callback, gone)
 
         was = self.leading
         self.leading = LeaderLease().claim(self.replica_id, self.LEADER_SECONDS) is not None
         if self.leading and not was:
             self.logger.info(f"Replica {self.replica_id} leads")
-            for callback in list(self.on_lead):
-                await self._quietly(callback)
         elif was and not self.leading:
             self.logger.info(f"Replica {self.replica_id} no longer leads")
+        return gone, self.leading and not was
+
+    async def _after(self, gone: set, took_lead: bool) -> None:
+        if gone:
+            for callback in list(self.on_gone):
+                await self._quietly(callback, gone)
+        if took_lead:
+            # Beside the beat, never in it: a schema's step can take
+            # minutes.
+            for callback in list(self.on_lead):
+                task = asyncio.get_running_loop().create_task(self._quietly(callback))
+                self._leading_work.add(task)
+                task.add_done_callback(self._leading_work.discard)
+        for callback in list(self.on_tick):
+            await self._quietly(callback)
 
     async def _quietly(self, callback, *args) -> None:
         try:
