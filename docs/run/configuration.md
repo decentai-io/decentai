@@ -188,9 +188,10 @@ An Execution Sandbox is the runtime's image started as the spawner
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `AI_AGENTS_PROXY` | empty | Where the runtime's proxy answers, as `host:port` (`ai-runtime:8002` in Compose). What a worker sends to the proxy's port in its own container is passed on to here. |
+| `AI_AGENTS_PROXY` | empty | Where the runtime's proxy answers, as `host:port` (`ai-runtime:8002` in Compose). What a worker sends to the proxy's port in its own container is passed on to here. A sandbox of a pool, given several runtimes, carries each worker's connections to the proxy of the runtime that started it, at that runtime's host and the port it says. |
 | `AI_SANDBOX_PORT` | `8003` | Where the spawner answers the runtime. Fixed at 8003 in the Compose stack, which does not pass it on. |
-| `AI_SANDBOX_RUNTIME` | empty | Where its runtime takes registrations, as `host:port` (`ai-runtime:8005` in Compose). The sandbox connects there, registers, and connects again when the connection is lost. |
+| `AI_SANDBOX_RUNTIME` | empty | Where its runtime takes registrations, as `host:port` (`ai-runtime:8005` in Compose). The sandbox connects there, registers, and connects again when the connection is lost. Several, separated by commas or spaces, make it a sandbox of a pool: it registers with each and serves them all, keeping each runtime's workers apart ([the sandbox](../system/sandbox.md#execution-pools)). |
+| `AI_SANDBOX_SCOPE` | empty | The node authority's scope this sandbox's pool serves: `shared`, or an organization's id. A runtime whose node is of another is refused. Empty, any runtime that proves the node's secret is served. |
 | `AI_RUNTIME_SANDBOX_SECRET` | required, in `config/sandbox.env` | The execution node's secret, the same as the runtime's. The spawner takes it out of its own environment as it reads it. |
 | `AI_SANDBOX_ID` | the host name: a container's short ID, unless it is given a host name | Who the sandbox is, to its runtime; `sandbox` in Compose, `sandbox-2` for the second of `compose/sandboxes.yml`. |
 | `AI_SANDBOX_LABELS` | empty | What it says of itself, for a placement to ask for: `gpu`, separated by commas. In Compose, `SANDBOX_LABELS` in `config/deploy.env`, and `SANDBOX_2_LABELS` for the second sandbox. |

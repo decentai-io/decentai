@@ -41,6 +41,21 @@ runs: nobody is left to hear it. A sandbox that is told to drain — or
 is stopped — starts no new worker, and those running finish what they
 are doing.
 
+A POOL (docs/system/sandbox.md#execution-pools). A sandbox may be
+given several runtimes (``AI_SANDBOX_RUNTIME``, a list), registers
+with each, and serves them all: the runtimes of one pool, which hold
+one secret within one node authority's scope (``AI_SANDBOX_SCOPE``, and
+a runtime that says another is refused). Each worker belongs to the
+runtime that started it: its user and its home are that runtime's
+copy of the agent's (places.py), its lines ride that runtime's
+connection, and its connections to the proxy go to that runtime's
+proxy, pinned to that runtime's certificate — the spawner reads the
+pass's name, which it gave the worker, and nothing else of what passes.
+A runtime that asks to stop an agent, to drain, to list an agent's
+files, what agents use or what was written down is answered about its
+own agents only. Packages and environments are named by what they are
+and shared; a digest goes once no runtime keeps it.
+
 It also watches what the agents use (usage.py). The sandbox is given
 so much memory by whoever started it; when the agents together hold
 nearly all of it, the one holding most is ended, here, by name, before
@@ -68,6 +83,37 @@ from sandbox.installs import (
     GREETING_SECONDS, InstallRefused, Installs, greet)
 from sandbox.places import ConfinementFailed, Place, Places
 from sandbox.usage import AgentsUsage, Sample
+
+
+class Registration:
+    """One runtime this sandbox serves, as it registered with it: where
+    it takes registrations, who it said it is, its certificate as this
+    sandbox saw it — what that runtime's workers' passes are pinned to —
+    where its proxy answers, whether it asked this sandbox to drain, and
+    the packages it keeps."""
+
+    def __init__(self, address: str, index: int):
+        self.address = address
+        #: What its workers' passes are named, so that the spawner knows
+        #: whose proxy a connection goes to (``SandboxService._route``).
+        self.route = f"r{index}"
+        #: Who it says it is — its node's name — once it has answered.
+        self.runtime: Optional[str] = None
+        self.scope = ""
+        #: Its certificate, as this sandbox saw it when it last
+        #: registered, a registration the secret proved both ways: its
+        #: workers' connections are believed to reach that runtime and no
+        #: other (sandbox/tls.py). '' until then, and in the clear.
+        self.fingerprint = ""
+        self.proxy = ""
+        self.registered = False
+        #: Whether this runtime asked that nothing new of its be placed here.
+        self.draining = False
+        #: The digests it keeps, once it said; None until then.
+        self.kept: Optional[set] = None
+        #: Set when it should be told at once how this sandbox is.
+        self.changed = asyncio.Event()
+        self.task: Optional[asyncio.Task] = None
 
 
 class SandboxService:
@@ -121,8 +167,8 @@ class SandboxService:
                  usage: Optional[AgentsUsage] = None,
                  helper_line: Optional[Sequence[str]] = None,
                  secret: str = "", sandbox_id: str = "",
-                 labels: Sequence[str] = (), runtime: str = "",
-                 address: str = ""):
+                 labels: Sequence[str] = (), runtime="",
+                 address: str = "", scope: str = ""):
         self.install_dir = Path(install_dir)
         #: What the agents are given and what each uses.
         self.usage = usage if usage is not None else AgentsUsage()
@@ -165,30 +211,31 @@ class SandboxService:
         self.sandbox_id = str(sandbox_id or socket.gethostname())
         self.labels = sorted({str(label).strip().lower()
                               for label in labels if str(label).strip()})
-        #: Where its runtime takes registrations (``ai-runtime:8005``),
-        #: and where the runtime reaches this one, where it is not the
-        #: address the registration came from.
-        self.runtime = str(runtime or "").strip()
+        #: Where its runtimes take registrations (``ai-runtime:8005``),
+        #: one or a pool's several, each a registration of its own; and
+        #: where the runtimes reach this one, where it is not the address
+        #: a registration came from.
+        said = runtime if isinstance(runtime, (list, tuple)) else \
+            str(runtime or "").replace(",", " ").split()
+        self.registrations = [Registration(address, index)
+                              for index, address in enumerate(
+                                  str(each).strip() for each in said) if address]
+        self.runtime = self.registrations[0].address if self.registrations else ""
         self.address = str(address or "").strip()
+        #: The node authority's scope this sandbox's pool serves: a runtime
+        #: that registers saying another is refused. Empty takes any that
+        #: proves the secret.
+        self.scope = str(scope or "").strip()
         #: What the last check proved, or ``{"error"}``; None before one.
         self.locks: Optional[Dict[str, Any]] = None
         #: Whether no new worker starts here.
         self.draining = False
-        #: agent -> how many of its workers run here now.
-        self._running: Dict[str, int] = {}
+        #: (runtime, agent) -> how many of its workers run here now.
+        self._running: Dict[Tuple[str, str], int] = {}
         #: The packages running workers stand on: kept by ``keep``.
         self._in_use: Dict[int, str] = {}
-        #: Set when the runtime should be told at once how this is.
-        self._changed = asyncio.Event()
-        self._registering: Optional[asyncio.Task] = None
         self._rechecking: Optional[asyncio.Task] = None
-        #: Whether this sandbox's runtime has accepted its registration.
-        self.registered = False
-        #: The runtime's certificate, as this sandbox saw it when it last
-        #: registered — a registration the secret proved both ways. The
-        #: proxy's passes are believed to reach that runtime and no other
-        #: (sandbox/tls.py). '' until then, and in the clear.
-        self.runtime_fingerprint = ""
+        self._fingerprint = ""
         #: Whether a pass refused for want of it has been said, once.
         self._said_unpinned = False
         #: One thing at a time in each place: a worker holds its place
@@ -222,12 +269,14 @@ class SandboxService:
             + (f", labelled {', '.join(self.labels)}" if self.labels else "")
             + (", encrypted" if tls.wanted() else
                f", in the clear ({tls.SETTING}=off)"))
-        if self.proxy:
+        if self.proxy or len(self.registrations) > 1:
             self._servers.append(await asyncio.start_server(
                 self._pass_on, "127.0.0.1", self.proxy_port))
             self.logger.info(
                 f"Workers' connections are passed to the AI Runtime's proxy "
-                f"at {self.proxy}")
+                f"at {self.proxy}" if len(self.registrations) <= 1 else
+                f"Workers' connections are passed to the proxy of the AI "
+                f"Runtime that started each, of {len(self.registrations)}")
         given = self.usage.limits()
         self.logger.info(
             "The agents are given "
@@ -241,16 +290,18 @@ class SandboxService:
             await self.check()
             if "error" in (self.locks or {}):
                 self._rechecking = asyncio.ensure_future(self._check_until_it_holds())
-        if self.runtime:
-            self._registering = asyncio.ensure_future(self._register_forever())
+        for registration in self.registrations:
+            registration.task = asyncio.ensure_future(
+                self._register_forever(registration))
 
     async def stop(self) -> None:
-        for task in (self._watching, self._measuring, self._registering,
-                     self._rechecking):
+        for task in (self._watching, self._measuring, self._rechecking,
+                     *[each.task for each in self.registrations]):
             if task is not None:
                 task.cancel()
-        self._watching = self._measuring = self._registering = None
-        self._rechecking = None
+        self._watching = self._measuring = self._rechecking = None
+        for registration in self.registrations:
+            registration.task = None
         for server in self._servers:
             server.close()
         for server in self._servers:
@@ -275,7 +326,65 @@ class SandboxService:
                 + ("drains: no new worker starts here, and those running "
                    "finish what they are doing." if on
                    else "no longer drains: workers start here again."))
-        self._changed.set()
+        self._say_changed()
+
+    def _say_changed(self) -> None:
+        """Every runtime is told at once how this sandbox is."""
+        for registration in self.registrations:
+            registration.changed.set()
+
+    # ------------------------------------------------------------------
+    # The runtimes
+    # ------------------------------------------------------------------
+
+    @property
+    def registered(self) -> bool:
+        """Whether a runtime of this sandbox's has accepted it."""
+        return any(each.registered for each in self.registrations)
+
+    @property
+    def runtime_fingerprint(self) -> str:
+        """The first runtime's certificate, as this sandbox saw it; a
+        sandbox given no runtime to register with holds the one it is
+        told."""
+        if self.registrations:
+            return self.registrations[0].fingerprint
+        return self._fingerprint
+
+    @runtime_fingerprint.setter
+    def runtime_fingerprint(self, value: str) -> None:
+        if self.registrations:
+            self.registrations[0].fingerprint = str(value or "")
+        else:
+            self._fingerprint = str(value or "")
+
+    def _registration(self, runtime: str) -> Optional["Registration"]:
+        """The registration of the runtime that names itself so."""
+        return next((each for each in self.registrations
+                     if each.runtime is not None and each.runtime == runtime), None)
+
+    def _serves(self, runtime: str) -> bool:
+        """Whether a request said to be this runtime's is one this
+        sandbox serves: one it registered with, or — a sandbox given no
+        runtime, known by its address — any that proves the secret."""
+        return not self.registrations or self._registration(runtime) is not None
+
+    def _route(self, proxy: str, runtime: str) -> str:
+        """The proxy address a runtime sent, with the name of its pass
+        made the route to it: what the spawner reads of a worker's
+        connection to know whose proxy it goes to, and nothing more."""
+        registration = self._registration(runtime)
+        if not proxy or registration is None:
+            return proxy
+        from urllib.parse import urlsplit, urlunsplit
+
+        parts = urlsplit(proxy)
+        if parts.password is None:
+            return proxy
+        host = parts.hostname or ""
+        where = f"{host}:{parts.port}" if parts.port else host
+        return urlunsplit((parts.scheme, f"{registration.route}:{parts.password}@{where}",
+                           parts.path, parts.query, parts.fragment))
 
     def workers(self) -> int:
         """How many workers run here now."""
@@ -324,12 +433,23 @@ class SandboxService:
             if refused:
                 await self._say(writer, {"error": refused})
                 return
-            if not wire.proves(self.secret, wire.RUNTIME, said, request.get("proof"), mine):
+            who = str(request.get("runtime") or "")
+            if not wire.proves(self.secret, wire.RUNTIME, said, request.get("proof"),
+                               who, mine):
                 await self._say(writer, {
                     "error": "that is not this execution node's AI Runtime: "
                              "the request does not prove the node's secret"})
                 return
-            await self._answer(request, reader, writer)
+            # Who it is and what it holds a worker to are anybody's of
+            # the node's to ask — a runtime registering asks before this
+            # sandbox has heard its name — and nothing else is.
+            if request.get("op") not in ("ping", "check") and not self._serves(who):
+                await self._say(writer, {
+                    "error": f"Execution Sandbox {self.sandbox_id} serves no "
+                             f"AI Runtime named {who or 'nothing'}: it serves those "
+                             f"it registered with"})
+                return
+            await self._answer(request, reader, writer, who)
         except (ConnectionError, OSError, asyncio.IncompleteReadError):
             pass
         finally:
@@ -337,7 +457,7 @@ class SandboxService:
             writer.close()
 
     async def _answer(self, request: dict, reader: asyncio.StreamReader,
-                      writer: asyncio.StreamWriter) -> None:
+                      writer: asyncio.StreamWriter, who: str = "") -> None:
         operation = request.get("op")
         if operation == "ping":
             await self._say(writer, {"here": True, "sandbox": self.sandbox_id})
@@ -346,24 +466,32 @@ class SandboxService:
         elif operation in self.CONFINED and not self.places.checked:
             await self._say(writer, self._unchecked())
         elif operation == "start":
-            await self._start(request, reader, writer)
+            await self._start(request, reader, writer, who)
         elif operation == "install":
-            await self._say(writer, await self._install(request, reader, writer))
+            await self._say(writer, await self._install(request, reader, writer, who))
         elif operation == "extras":
-            await self._say(writer, await self._extras(request))
+            await self._say(writer, await self._extras(request, who))
         elif operation == "files":
-            await self._say(writer, await self._files(request))
+            await self._say(writer, await self._files(request, who))
         elif operation == "stop":
-            await self._say(writer, await self._stop(request))
+            await self._say(writer, await self._stop(request, who))
         elif operation == "usage":
-            await self._say(writer, self._usage())
+            await self._say(writer, self._usage(who))
         elif operation == "events":
-            await self._say(writer, self._events(request))
+            await self._say(writer, self._events(request, who))
         elif operation == "keep":
-            await self._say(writer, self._keep(request))
+            await self._say(writer, self._keep(request, who))
         elif operation == "drain":
-            self.drain(request.get("draining", True) is not False)
-            await self._say(writer, {"draining": self.draining})
+            on = request.get("draining", True) is not False
+            registration = self._registration(who)
+            if registration is None or len(self.registrations) == 1:
+                self.drain(on)
+            elif registration.draining != on:
+                # One runtime's of a pool: it places nothing new here;
+                # the others still may.
+                registration.draining = on
+                registration.changed.set()
+            await self._say(writer, {"draining": self._draining_for(who)})
         else:
             await self._say(writer, {"error": f"unknown request '{operation}'"})
 
@@ -406,7 +534,7 @@ class SandboxService:
         except ConfinementFailed as exc:
             self.locks = {"error": str(exc)}
             self.logger.error(str(exc))
-            self._changed.set()
+            self._say_changed()
             return dict(self.locks)
         fenced = await self.places.prove_the_network_is_fenced(self.port)
         if fenced:
@@ -419,7 +547,7 @@ class SandboxService:
                 "agent going around the proxy. This container was not given "
                 "the right to set a firewall rule.")
         self.locks = {**self.places.report(), "network_fenced": fenced}
-        self._changed.set()
+        self._say_changed()
         return dict(self.locks)
 
     async def _check_until_it_holds(self) -> None:
@@ -441,8 +569,13 @@ class SandboxService:
     # Registering with the runtime
     # ------------------------------------------------------------------
 
-    def state(self) -> Dict[str, Any]:
-        """How this sandbox is, as the runtime is told it."""
+    def _draining_for(self, runtime: str) -> bool:
+        registration = self._registration(runtime)
+        return self.draining or (registration is not None and registration.draining)
+
+    def state(self, runtime: str = "") -> Dict[str, Any]:
+        """How this sandbox is, as a runtime is told it: what it runs
+        and whether it drains, for that runtime."""
         found = self._found
         limits = found.limits if found is not None else self.usage.limits()
         return {
@@ -456,34 +589,35 @@ class SandboxService:
                 "workers": self.workers(),
             },
             "installed": self.installs.installed(),
-            "running": sorted(agent for agent, count in self._running.items() if count),
-            "draining": self.draining,
+            "running": sorted(agent for (whose, agent), count in self._running.items()
+                              if count and whose == runtime),
+            "draining": self._draining_for(runtime),
         }
 
-    async def _register_forever(self) -> None:
-        """Connected to the runtime and registered, for as long as this
+    async def _register_forever(self, registration: "Registration") -> None:
+        """Connected to a runtime and registered, for as long as this
         sandbox runs: connected again when the connection is lost."""
         wait = 0.5
         while True:
             try:
-                await self._registered()
+                await self._registered(registration)
                 wait = 0.5
             except asyncio.CancelledError:
                 raise
             except (OSError, ValueError, asyncio.TimeoutError,
                     asyncio.IncompleteReadError, RuntimeError) as exc:
-                if self.registered:
+                if registration.registered:
                     self.logger.warning(
-                        f"The AI Runtime at {self.runtime} is no longer "
+                        f"The AI Runtime at {registration.address} is no longer "
                         f"reached ({exc or type(exc).__name__}); connecting "
                         f"again.")
                 self.logger.debug(f"Not registered yet: {exc}")
-            self.registered = False
+            registration.registered = False
             await asyncio.sleep(wait)
             wait = min(self.RECONNECT_SECONDS, wait * 2)
 
-    async def _registered(self) -> None:
-        host, _, port = self.runtime.rpartition(":")
+    async def _registered(self, registration: "Registration") -> None:
+        host, _, port = registration.address.rpartition(":")
         reader, writer = await asyncio.wait_for(
             asyncio.open_connection(host, int(port), ssl=tls.dialing()), 10)
         try:
@@ -504,25 +638,49 @@ class SandboxService:
                                     str(greeting.get("challenge") or ""),
                                     self.sandbox_id, seen),
                 "challenge": mine, "port": self.port, "address": self.address,
-                "labels": self.labels, **self.state()}))
+                "labels": self.labels, **self.state(registration.runtime or "")}))
             await writer.drain()
             answer = wire.read(await asyncio.wait_for(reader.readline(), 30))
             if answer is None or not answer.get("registered"):
                 raise RuntimeError(str((answer or {}).get("error")
                                        or "the AI Runtime refused it"))
-            if not wire.proves(self.secret, wire.RUNTIME, mine, answer.get("proof"), seen):
+            who = str(answer.get("runtime") or "")
+            scope = str(answer.get("scope") or "")
+            if not wire.proves(self.secret, wire.RUNTIME, mine, answer.get("proof"),
+                               who, scope, seen):
                 raise RuntimeError("the AI Runtime did not prove the node's secret")
-            self.runtime_fingerprint = seen
-            self.registered = True
-            self.logger.info(f"Registered with the AI Runtime at {self.runtime}")
+            if self.scope and scope != self.scope:
+                # Of the node's secret, and of another authority's scope:
+                # a pool never mixes what keeps to its own nodes.
+                self.logger.error(
+                    f"The AI Runtime at {registration.address} ({who}) is of "
+                    f"the scope {scope or 'none'}, and this sandbox's pool is "
+                    f"{self.scope}'s: it is not served.")
+                raise RuntimeError(f"a runtime outside this pool's scope ({scope})")
+            other = next((each for each in self.registrations
+                          if each is not registration and each.runtime == who), None)
+            if other is not None:
+                raise RuntimeError(
+                    f"the AI Runtime at {registration.address} names itself "
+                    f"{who}, as the one at {other.address} does")
+            registration.runtime = who
+            registration.scope = scope
+            registration.fingerprint = seen
+            registration.proxy = self.proxy if len(self.registrations) == 1 and self.proxy \
+                else (f"{host}:{int(answer.get('proxy_port') or proxy_port())}")
+            registration.registered = True
+            self.logger.info(
+                f"Registered with the AI Runtime at {registration.address}"
+                + (f" ({who})" if who else ""))
             hung_up = asyncio.ensure_future(reader.read())
             changed = None
             try:
                 while not hung_up.done():
-                    self._changed.clear()
-                    writer.write(wire.line({"op": "heartbeat", **self.state()}))
+                    registration.changed.clear()
+                    writer.write(wire.line({"op": "heartbeat",
+                                            **self.state(registration.runtime)}))
                     await writer.drain()
-                    changed = asyncio.ensure_future(self._changed.wait())
+                    changed = asyncio.ensure_future(registration.changed.wait())
                     await asyncio.wait({hung_up, changed},
                                        timeout=self.HEARTBEAT_SECONDS,
                                        return_when=asyncio.FIRST_COMPLETED)
@@ -540,14 +698,14 @@ class SandboxService:
     # ------------------------------------------------------------------
 
     async def _install(self, request: dict, reader: asyncio.StreamReader,
-                       writer: asyncio.StreamWriter) -> Dict[str, Any]:
+                       writer: asyncio.StreamWriter, who: str = "") -> Dict[str, Any]:
         """The package a digest names, held here: the bytes asked for
         when they are not, checked before anything is written, built
         and verified (installs.py)."""
         digest = self._word(request, "digest")
         options = dict(
-            builder_proxy=self._word(request, "builder_proxy"),
-            verify_proxy=self._word(request, "verify_proxy"),
+            builder_proxy=self._route(self._word(request, "builder_proxy"), who),
+            verify_proxy=self._route(self._word(request, "verify_proxy"), who),
             environment=self._environment(request))
         self._worker_environment = self._environment(request, "worker_environment")
         expected = self._word(request, "manifest_hash")
@@ -560,7 +718,7 @@ class SandboxService:
                 found = await self.installs.install(digest, expected, archive, **options)
         except InstallRefused as exc:
             return {"error": str(exc)}
-        self._changed.set()
+        self._say_changed()
         return {"installed": True, "python": found["python"],
                 "package": found["package"]}
 
@@ -653,18 +811,27 @@ class SandboxService:
             if text:
                 Events.record("log", **place.whose(), line=text)
 
-    async def _extras(self, request: dict) -> Dict[str, Any]:
+    async def _extras(self, request: dict, who: str = "") -> Dict[str, Any]:
         """Packages for one run, built by the builder here into the
         environment the agent's worker runs in."""
         return await self.installs.extras(
             self._word(request, "digest"), self._words(request, "requirements"),
-            self._word(request, "proxy"), self._environment(request))
+            self._route(self._word(request, "proxy"), who), self._environment(request))
 
-    def _keep(self, request: dict) -> Dict[str, Any]:
-        removed = self.installs.keep(self._words(request, "digests"),
-                                     in_use=set(self._in_use.values()))
+    def _keep(self, request: dict, who: str = "") -> Dict[str, Any]:
+        """What a runtime keeps, said: a package or an environment is
+        given up once no runtime of this sandbox's keeps it and no
+        worker stands on it — and not before every runtime has said."""
+        kept = self._words(request, "digests")
+        registration = self._registration(who)
+        if registration is not None:
+            registration.kept = set(kept)
+            if any(each.kept is None for each in self.registrations):
+                return {"removed": 0}
+            kept = sorted(set().union(*(each.kept for each in self.registrations)))
+        removed = self.installs.keep(kept, in_use=set(self._in_use.values()))
         if removed:
-            self._changed.set()
+            self._say_changed()
         return {"removed": removed}
 
     # ------------------------------------------------------------------
@@ -672,18 +839,18 @@ class SandboxService:
     # ------------------------------------------------------------------
 
     async def _start(self, request: dict, reader: asyncio.StreamReader,
-                     writer: asyncio.StreamWriter) -> None:
+                     writer: asyncio.StreamWriter, who: str = "") -> None:
         agent, python, package = (self._word(request, name)
                                   for name in ("agent", "python", "package"))
         if not agent or not python or not package:
             return await self._say(writer, {
                 "error": "a worker is started for an agent, from an "
                          "interpreter, in a package"})
-        if self.draining and agent not in Places.NOBODYS_AGENT:
+        if self._draining_for(who) and agent not in Places.NOBODYS_AGENT:
             return await self._say(writer, {
                 "error": f"Execution Sandbox {self.sandbox_id} is draining: "
                          f"it starts no new worker.", "draining": True})
-        place = self.places.place(agent)
+        place = self.places.place(agent, who)
         place.label = self._word(request, "name") or agent
         async with self._lock(place):
             errors = await self.places.prepare(place)
@@ -699,24 +866,25 @@ class SandboxService:
                     stderr=asyncio.subprocess.PIPE,
                     cwd=package,
                     env=place.environment(self._environment(request),
-                                          self._word(request, "proxy")),
+                                          self._route(self._word(request, "proxy"), who)),
                     limit=self.LINE_LIMIT)
             except OSError as exc:
                 return await self._say(writer, {"error": str(exc)})
             held = self._hold(place, process, measured=True)
-            self._running[agent] = self._running.get(agent, 0) + 1
+            running = (who, agent)
+            self._running[running] = self._running.get(running, 0) + 1
             self._in_use[process.pid] = package
-            self._changed.set()
+            self._say_changed()
             await self._say(writer, {"started": True})
             try:
                 await self._carry_worker(place, process, held, reader, writer)
             finally:
                 self._let_go(held, process)
                 self._in_use.pop(process.pid, None)
-                self._running[agent] = self._running.get(agent, 1) - 1
-                if self._running[agent] <= 0:
-                    del self._running[agent]
-                self._changed.set()
+                self._running[running] = self._running.get(running, 1) - 1
+                if self._running[running] <= 0:
+                    del self._running[running]
+                self._say_changed()
                 await self.places.clear(place)
 
     async def _carry_worker(self, place: Place, process, held: Optional[dict],
@@ -765,7 +933,8 @@ class SandboxService:
         ended for using more than the agents are given, and named."""
         self._children.add(process.pid)
         held = {"user": place.user, "process": process, "stop": place.stop_line(),
-                "because": "", "agent": place.name, "name": place.label,
+                "because": "", "agent": place.agent_id, "name": place.label,
+                "runtime": place.runtime,
                 # How what it keeps on disk is measured, and what the
                 # last measuring found; None until the first.
                 "measure": place.measure_line() if measured else None,
@@ -856,16 +1025,17 @@ class SandboxService:
     # What an agent keeps, and ending one
     # ------------------------------------------------------------------
 
-    async def _files(self, request: dict) -> Dict[str, Any]:
-        place = self.places.existing(self._word(request, "agent"))
+    async def _files(self, request: dict, who: str = "") -> Dict[str, Any]:
+        place = self.places.existing(self._word(request, "agent"), who)
         if place is None:
             return {"error": "That agent has no place here: it has not run."}
         return await self.places.listing(place)
 
-    async def _stop(self, request: dict) -> Dict[str, Any]:
-        """Every process of the agent's user ended. Its place is
-        emptied by whoever started the worker in it, when it has gone."""
-        place = self.places.existing(self._word(request, "agent"))
+    async def _stop(self, request: dict, who: str = "") -> Dict[str, Any]:
+        """Every process of the agent's user ended — the asking
+        runtime's agent's. Its place is emptied by whoever started the
+        worker in it, when it has gone."""
+        place = self.places.existing(self._word(request, "agent"), who)
         if place is None:
             return {"stopped": True}
         errors = await self.places.stop(place)
@@ -891,15 +1061,17 @@ class SandboxService:
         found = self._found
         return AgentsUsage.said(found.limits.get("memory") if found else None)
 
-    def _events(self, request: dict) -> Dict[str, Any]:
+    def _events(self, request: dict, who: str = "") -> Dict[str, Any]:
         """What this sandbox wrote down, the latest first, each saying
-        which sandbox wrote it."""
+        which sandbox wrote it — of the asking runtime's agents, in a
+        pool, and of nobody's."""
         limit = request.get("limit")
         before = request.get("before")
         found = Events.read(
             self.install_dir, limit if isinstance(limit, int) else 200,
             self._words(request, "kinds"), self._word(request, "agent"),
-            before if isinstance(before, (int, float)) else None)
+            before if isinstance(before, (int, float)) else None,
+            runtime=who if self.registrations else None)
         return {"events": [{**event, "sandbox": self.sandbox_id} for event in found]}
 
     # ------------------------------------------------------------------
@@ -976,7 +1148,7 @@ class SandboxService:
         return sum(counted) if counted else None
 
     async def _end_largest_agent(self, found: Sample, now: float) -> None:
-        user = self.usage.over(found, list(self._held))
+        user = self.usage.over(found, self._fairly(found))
         held = self._held.get(user) if user is not None else None
         if held is None:
             return
@@ -990,9 +1162,25 @@ class SandboxService:
         self.logger.warning(held["because"])
         Events.record(
             "memory", by="the spawner", agent=held["agent"], name=held["name"],
+            **({"runtime": held["runtime"]} if held.get("runtime") else {}),
             user=user, held=found.agents[user]["memory"],
             given=found.limits["memory"], why=held["because"])
         await self.places.end(held["process"], held["stop"])
+
+    def _fairly(self, found: Sample) -> List[int]:
+        """Whose agent may be ended for memory: of the runtime whose
+        agents hold the most of it together — so that one runtime's many
+        small agents are not spared at another's one large one's cost —
+        the users of that runtime's agents."""
+        held: Dict[str, int] = {}
+        for user, each in self._held.items():
+            used = (found.agents.get(user) or {}).get("memory") or 0
+            held[each.get("runtime", "")] = held.get(each.get("runtime", ""), 0) + used
+        if len(held) <= 1:
+            return list(self._held)
+        most = max(held, key=lambda runtime: held[runtime])
+        return [user for user, each in self._held.items()
+                if each.get("runtime", "") == most]
 
     def _note_processes(self, found: Sample) -> None:
         """Write down each process an agent's user runs, the first
@@ -1020,7 +1208,8 @@ class SandboxService:
                 Events.record(
                     "process", agent=held.get("agent", ""),
                     name=held.get("name", ""), user=user, pid=process_id,
-                    command=command)
+                    command=command,
+                    **({"runtime": held["runtime"]} if held.get("runtime") else {}))
             self._seen[user] = noted
         for user in [user for user in self._seen if user not in found.processes]:
             del self._seen[user]
@@ -1038,15 +1227,22 @@ class SandboxService:
             except (OSError, AttributeError):
                 pass
 
-    def _usage(self) -> Dict[str, Any]:
+    def _usage(self, who: str = "") -> Dict[str, Any]:
+        """What the sandbox is given and uses, and what each agent
+        uses — the asking runtime's agents, in a pool."""
         found = self._found if self._found is not None else self.usage.sample()
         said = found.as_message()
+        mine = []
         for agent in said["agents"]:
             held = self._held.get(agent["user"]) or {}
+            if self.registrations and held.get("runtime", "") != who:
+                continue
             agent["agent"] = held.get("agent", "")
             agent["name"] = held.get("name", "")
             agent["disk"] = held.get("disk")
             agent["sandbox"] = self.sandbox_id
+            mine.append(agent)
+        said["agents"] = mine
         said["sandbox"] = self.sandbox_id
         return said
 
@@ -1086,16 +1282,70 @@ class SandboxService:
     # The way out
     # ------------------------------------------------------------------
 
+    #: How much of a worker's first request is read for its pass's
+    #: name: a proxy's request head, and no more.
+    HEAD_LIMIT = 64 * 1024
+
+    async def _whose_proxy(self, reader: asyncio.StreamReader
+                           ) -> Tuple[bytes, Optional[Registration], str]:
+        """The start of a worker's connection, and whose proxy it goes
+        to: the runtime its pass's name routes to (``_route``) — read
+        from the request's head, and nothing else of it. With one way
+        to go, nothing is read. (head read so far, the registration or
+        None, where the proxy is.)"""
+        if len(self.registrations) <= 1:
+            only = self.registrations[0] if self.registrations else None
+            return b"", only, (only.proxy if only is not None and only.proxy
+                               else self.proxy)
+        try:
+            head = await asyncio.wait_for(reader.readuntil(b"\r\n\r\n"),
+                                          self.REQUEST_SECONDS)
+        except (asyncio.LimitOverrunError, asyncio.IncompleteReadError,
+                asyncio.TimeoutError, OSError):
+            return b"", None, ""
+        for line in head.split(b"\r\n")[1:]:
+            name, _, value = line.partition(b":")
+            if name.strip().lower() != b"proxy-authorization":
+                continue
+            scheme, _, encoded = value.strip().partition(b" ")
+            if scheme.lower() != b"basic":
+                break
+            try:
+                import base64
+
+                route = base64.b64decode(encoded.strip()).decode("utf-8").partition(":")[0]
+            except (ValueError, UnicodeDecodeError):
+                break
+            found = next((each for each in self.registrations
+                          if each.route == route and each.registered), None)
+            if found is not None:
+                return head, found, found.proxy
+            break
+        return head, None, ""
+
     async def _pass_on(self, reader: asyncio.StreamReader,
                        writer: asyncio.StreamWriter) -> None:
-        """A worker's connection to the proxy, passed to where the
-        proxy is. Nothing of it is read here."""
+        """A worker's connection to the proxy, passed to the proxy of
+        the runtime whose worker it is. Nothing of it is read here but,
+        in a pool, its pass's name."""
         passing = asyncio.current_task()
         self._serving.add(passing)
-        host, _, port = self.proxy.rpartition(":")
         try:
+            head, registration, proxy = await self._whose_proxy(reader)
+            if not proxy:
+                # No pass that names a runtime of this pool: asked to show
+                # one, as a proxy asks — a worker's first request may come
+                # without it.
+                writer.write(b"HTTP/1.1 407 Proxy Authentication Required\r\n"
+                             b"Proxy-Authenticate: Basic realm=\"DecentAI\"\r\n"
+                             b"Content-Length: 0\r\nConnection: close\r\n\r\n")
+                await writer.drain()
+                writer.close()
+                return
+            pinned = registration.fingerprint if registration is not None                 else self._fingerprint
+            host, _, port = proxy.rpartition(":")
             dialing = tls.dialing()
-            if dialing is not None and not self.runtime_fingerprint:
+            if dialing is not None and not pinned:
                 # Encrypted, the proxy is believed to be the runtime this
                 # sandbox registered with, and nothing else: until it has,
                 # nothing is passed on.
@@ -1115,14 +1365,17 @@ class SandboxService:
             except (OSError, ValueError):
                 writer.close()
                 return
-            if dialing is not None and tls.seen(onward_writer) != self.runtime_fingerprint:
+            if dialing is not None and tls.seen(onward_writer) != pinned:
                 self.logger.warning(
-                    f"A worker's connection to the proxy was refused: {self.proxy} "
+                    f"A worker's connection to the proxy was refused: {proxy} "
                     f"showed a certificate that is not the AI Runtime's this "
                     f"sandbox registered with.")
                 for end in (writer, onward_writer):
                     end.close()
                 return
+            if head:
+                onward_writer.write(head)
+                await onward_writer.drain()
             await asyncio.gather(
                 self._one_way(reader, onward_writer),
                 self._one_way(onward_reader, writer),
@@ -1189,8 +1442,10 @@ def main() -> None:
         secret=secret_from_environment(),
         sandbox_id=os.getenv("AI_SANDBOX_ID", "").strip(),
         labels=os.getenv("AI_SANDBOX_LABELS", "").replace(",", " ").split(),
+        # One runtime, or a pool's several, separated by commas or spaces.
         runtime=os.getenv("AI_SANDBOX_RUNTIME", "").strip(),
         address=os.getenv("AI_SANDBOX_ADDRESS", "").strip(),
+        scope=os.getenv("AI_SANDBOX_SCOPE", "").strip(),
     )
     drain = os.getenv("AI_SANDBOX_DRAIN_SECONDS", "").strip()
     if drain.isdigit():

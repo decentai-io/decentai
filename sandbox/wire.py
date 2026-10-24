@@ -23,6 +23,15 @@ first sends a challenge, and the other answers it with a proof
 answering side's role in front, so that a proof one side made can
 never be played back as the other's.
 
+POOLS (version 3). A sandbox may serve several runtimes: a pool, the
+runtimes and sandboxes that hold one secret within one node
+authority's scope (docs/system/sandbox.md#execution-pools). Each runtime
+says who it is — its node's name — when it takes a registration, and
+every request it makes says it again, bound into its proof
+(``runtime``): the sandbox keeps each runtime's workers, homes, users
+and packages kept apart by it, and answers one runtime about its own
+agents only.
+
 ENCRYPTION (version 2). Every connection is TLS, with a certificate
 each process makes for itself (sandbox/tls.py), and every proof's last
 word is the fingerprint of the certificate the server of that
@@ -39,7 +48,8 @@ REGISTRATION — a sandbox connects to its runtime and stays connected:
        sandbox, fp), "challenge",
        "port", "address"?, "labels", "locks", "capacity", "installed",
        "running", "draining"}
-    ← {"registered": true, "proof"(challenge, fp)}   or {"error"}, and it hangs up
+    ← {"registered": true, "runtime", "scope", "proxy_port",
+       "proof"(challenge, runtime, scope, fp)}       or {"error"}, and it hangs up
     → {"op": "heartbeat", "locks", "capacity", "installed", "running",
        "draining"}                                       every few seconds
 
@@ -56,7 +66,7 @@ request and one answer per connection:
 
     ← {"protocol", "challenge", "sandbox", "proof"(challenge,
        "greeting", fp)}                                  the sandbox first
-    → {"protocol", "proof"(challenge, fp), "op", ...}
+    → {"protocol", "runtime", "proof"(challenge, runtime, fp), "op", ...}
     ← the answer
 
     → {"op": "ping"}
@@ -140,7 +150,7 @@ from typing import Any, Optional
 
 #: The version of the sandbox link. A sandbox and a runtime that do
 #: not say the same one refuse each other.
-PROTOCOL = 2
+PROTOCOL = 3
 
 #: The setting both sides read the node's secret from.
 SECRET_SETTING = "AI_RUNTIME_SANDBOX_SECRET"

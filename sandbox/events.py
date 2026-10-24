@@ -152,10 +152,13 @@ class Events:
     @classmethod
     def read(cls, install_dir: str | Path, limit: int = 200,
              kinds: Optional[Iterable[str]] = None, agent: str = "",
-             before: Optional[float] = None) -> List[Dict[str, Any]]:
+             before: Optional[float] = None,
+             runtime: Optional[str] = None) -> List[Dict[str, Any]]:
         """What happened, the latest first: at most ``limit``, of
         ``kinds`` where any are named, of ``agent`` where one is, and
-        from before ``before`` for the page after a page."""
+        from before ``before`` for the page after a page. ``runtime``,
+        in a sandbox serving a pool: what that runtime's agents did, and
+        what was no runtime's, and nothing of another runtime's."""
         folder = Path(install_dir) / cls.FOLDER
         limit = max(1, min(int(limit or 0) or 200, cls.READ_MAX))
         wanted = {str(kind) for kind in kinds or [] if str(kind)}
@@ -167,12 +170,13 @@ class Events:
         found: List[Dict[str, Any]] = []
         for writer in writers:
             found.extend(cls(install_dir, writer)._latest(
-                limit, wanted, str(agent or ""), before))
+                limit, wanted, str(agent or ""), before, runtime))
         found.sort(key=lambda event: event.get("at") or 0, reverse=True)
         return found[:limit]
 
     def _latest(self, limit: int, kinds: set, agent: str,
-                before: Optional[float]) -> List[Dict[str, Any]]:
+                before: Optional[float],
+                runtime: Optional[str] = None) -> List[Dict[str, Any]]:
         """This writer's latest ``limit`` that are asked for, read
         from the file being written back through those put aside."""
         found: List[Dict[str, Any]] = []
@@ -191,6 +195,8 @@ class Events:
                 if kinds and event.get("kind") not in kinds:
                     continue
                 if agent and event.get("agent") != agent:
+                    continue
+                if runtime is not None and event.get("runtime") not in (None, runtime):
                     continue
                 if before is not None and (event.get("at") or 0) >= before:
                     continue

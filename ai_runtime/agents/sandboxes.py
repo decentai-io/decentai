@@ -56,8 +56,22 @@ class Sandboxes:
     #: Memory differences smaller than this do not decide a placement.
     MEMORY_BUCKET = 256 * 1024 * 1024
 
-    def __init__(self, secret: str = "", port: int = 8005, host: str = "0.0.0.0"):
+    def __init__(self, secret: str = "", port: int = 8005, host: str = "0.0.0.0",
+                 runtime: str = "", scope: str = "", proxy_port: int = 0):
         self.secret = str(secret or "")
+        #: Who this runtime is to its sandboxes — its node's name — and
+        #: its node authority's scope (``shared``, or an organization's
+        #: id): a sandbox of a pool keeps each runtime's workers apart by
+        #: the one, and refuses a runtime outside its pool by the other
+        #: (docs/system/sandbox.md#execution-pools). And where its proxy
+        #: answers, for a sandbox to carry its workers' connections to.
+        self.runtime = str(runtime or "")
+        self.scope = str(scope or "")
+        self.proxy_port = int(proxy_port or 0)
+        #: This node's credential (door/node.py), where the runtime has
+        #: one: its name and its organization are who this runtime is
+        #: to its sandboxes, read as a registration is answered.
+        self.node = None
         self.host = host
         self.port = int(port)
         self._sandboxes: Dict[str, Any] = {}
@@ -250,13 +264,16 @@ class Sandboxes:
                 writer.write(wire.line({"error": refusal}))
                 await writer.drain()
                 return
+            await self._identify()
             sandbox = await self._admitted(asked, writer)
             if sandbox is None:
                 return
             writer.write(wire.line({
-                "registered": True,
+                "registered": True, "runtime": self.runtime, "scope": self.scope,
+                "proxy_port": self.proxy_port,
                 "proof": wire.proof(self.secret, wire.RUNTIME,
-                                    str(asked.get("challenge") or ""), tls.own())}))
+                                    str(asked.get("challenge") or ""),
+                                    self.runtime, self.scope, tls.own())}))
             await writer.drain()
             self.add(sandbox)
             self._said_registered(sandbox)
@@ -290,6 +307,18 @@ class Sandboxes:
                     f"placed on it.")
                 self.remove(sandbox)
 
+    async def _identify(self) -> None:
+        """Who this runtime is, from its node's credential: its name,
+        and the scope of the authority that signed it."""
+        if self.node is None:
+            return
+        try:
+            await self.node.token()
+        except Exception:
+            return  # said with what is known; the link says the rest
+        self.runtime = self.node.name or self.runtime
+        self.scope = str(self.node.claims.get("org") or "shared")
+
     def _refusal(self, asked: Optional[dict], said: str) -> str:
         if asked is None:
             return "it said nothing a registration is made of"
@@ -318,7 +347,8 @@ class Sandboxes:
             address = f"{peer[0]}:{port}"
         try:
             sandbox = ExecutionSandbox(address, self.secret, sandbox_id,
-                                       labels=asked.get("labels") or [])
+                                       labels=asked.get("labels") or [],
+                                       runtime=self.runtime)
         except ValueError as exc:
             writer.write(wire.line({"error": str(exc)}))
             await writer.drain()

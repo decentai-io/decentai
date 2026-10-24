@@ -220,6 +220,49 @@ workers on the same sandboxes.
 runtime leaves the other's work running; an agent of one cannot reach
 the other's proxy or files.
 
+**Built** (24 October 2026; [the sandbox](system/sandbox.md#execution-pools)).
+
+- **Runtimes reach the cluster** by a list of addresses
+  (`DATA_CORE_URLS`, `ai_runtime/door/link.py`,
+  `ai_runtime/door/platform.py`), built with phase 1's cluster.
+- **A sandbox serves a pool**: given several runtimes
+  (`AI_SANDBOX_RUNTIME`), it registers with each (`Registration`,
+  `sandbox/service.py`). The sandbox link is at version 3: a runtime
+  names itself — its node's name — and its scope as it takes a
+  registration, and every request says the name again, bound into its
+  proof. A runtime of another scope than the pool's (`AI_SANDBOX_SCOPE`)
+  is refused.
+- **Each worker belongs to one runtime**: its user and home are per
+  (runtime, agent) (`Places.place`); `stop`, `drain`, `files`, `usage`
+  and `events` answer the asking runtime about its own agents; a drain
+  one runtime asks for of a pool's sandbox leaves it to the others; the
+  memory watcher ends the largest agent of the runtime whose agents
+  hold the most together.
+- **The way out follows the worker**: the sandbox names each worker's
+  pass for the runtime that started it, and carries its connections to
+  that runtime's proxy, pinned to that runtime's certificate; the
+  spawner reads the pass's name and nothing else of what passes.
+- **Caches are shared, deletion is not**: each runtime says what it
+  keeps, and a digest goes once none does — not before every runtime
+  has said.
+- **The proof is the sandbox's own**: checked once, said to each
+  runtime.
+
+**Shown**: `ai_runtime/tests/test_pools.py` — two runtimes and two
+sandboxes, the real spawner with its helper stood in for: each runtime's
+copy of an agent has its own user and home; one runtime stopping its
+agent, or going altogether, leaves the other's workers running and new
+ones starting; a runtime is answered about its own agents only; a
+worker's connection reaches the proxy of the runtime that started it,
+and a pass that names no runtime of the pool is asked for again. What
+the plan's "done when" names is pinned there.
+
+**Left**: a runtime is trusted with what its name says — every runtime
+of a pool holds its secret, which is what a pool is; the sandbox's
+confinement tests in containers (`test_spawner_live.py`) run one
+runtime, and the pool is tested against the spawner with its helper
+stood in for.
+
 ## Phase 3 — federation
 
 Independent Data Cores — each its own deployment, database, keys and

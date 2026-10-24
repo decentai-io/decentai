@@ -203,6 +203,55 @@ stack's files ([operating it](../run/operating.md#more-execution-sandboxes)):
 
     COMPOSE_FILE=docker-compose.yml:compose/sandboxes.yml
 
+## Execution pools
+
+A sandbox may serve several runtimes: a **pool**, the runtimes and
+sandboxes that hold one secret (`AI_RUNTIME_SANDBOX_SECRET`) within one
+node authority's scope — shared runtimes share shared sandboxes, and an
+organization's own runtimes share its own; a pool never mixes
+organizations that keep to their own nodes. A sandbox is given every
+runtime of its pool (`AI_SANDBOX_RUNTIME`, a list) and registers with
+each; a runtime that dies leaves its sandboxes, warm caches and all, to
+the others, and its chats move to another node, whose next calls start
+fresh workers on the same sandboxes.
+
+- **Each runtime says who it is.** As it takes a registration it names
+  itself — its node's name — and its node's scope, and every request it
+  makes says its name again, bound into its proof (`wire.PROTOCOL` 3,
+  `sandbox/wire.py`). A runtime of another scope than the sandbox's own
+  (`AI_SANDBOX_SCOPE`) is refused, and so is a request from a runtime
+  the sandbox does not serve.
+- **Each worker belongs to one runtime.** It is started, carried and
+  ended for the runtime that asked; `stop`, `drain`, what agents use,
+  what an agent keeps and what was written down answer the asking
+  runtime about its own agents, and a drain one runtime asks for leaves
+  the sandbox to the others. When memory runs short, the agent ended is
+  the largest of the runtime whose agents hold the most together, so
+  one runtime's many small agents are not spared at another's cost.
+- **Users per agent and runtime.** An agent's user and home are given
+  per runtime and approval (`Places.place`, `sandbox/places.py`), so two
+  runtimes' copies of one agent never share a home.
+- **The way out follows the worker.** A worker's pass is named by the
+  sandbox for the runtime that started it; its connections to the proxy
+  are carried to that runtime's proxy, pinned to that runtime's
+  certificate. The spawner reads the pass's name and nothing else of
+  what passes. A worker naming another runtime's pass reaches that
+  runtime's proxy, which knows no pass of its, and is refused: an agent
+  can reach only its own runtime's proxy, and through it only its
+  manifest's hosts.
+- **Caches are shared, deletion is not.** Packages and environments are
+  named by what they are and kept once for all; each runtime says what
+  it keeps (`keep`), and a digest goes only once no runtime of the pool
+  keeps it and no worker stands on it — not before every runtime has
+  said.
+- **The proof is the sandbox's own.** It proves what it holds a worker
+  to once, and says so to each runtime.
+
+`ai_runtime/tests/test_pools.py` holds two runtimes to two sandboxes:
+either runtime gone, the other's work runs on and new work starts; an
+agent of one is shown nothing of the other's and cannot pass through
+its proxy.
+
 ## A user of its own — the spawn helper
 
 The platform's own user is an ordinary one and cannot start a child
@@ -255,7 +304,8 @@ it.
 ### One user per approved agent
 
 The pool keeps one worker per approval, and in each sandbox each
-approval is given a user of its own from the range; the spawner keeps
+approval is given a user of its own from the range — one per runtime,
+in a sandbox serving several ([above](#execution-pools)); the spawner keeps
 the table in its own folder. The first user of the range is
 installation's — verifying a package imports it, and a package being
 verified is nobody's approved agent yet. The last is the builder's

@@ -6,6 +6,9 @@ and sets the fences, and the proof at start that all of it holds
     places = Places(install_dir)
     report = await places.check()          the helper and the kernel, proved
     place = places.place(agent_id)         one agent's place, given on first asking
+    place = places.place(agent_id, runtime) one runtime's agent's, in a pool: two
+                                           runtimes' copies of an approval never
+                                           share a user or a home
     await places.prepare(place)            its folders, emptied and its own
     place.spawn_line(program, reads)       the helper's line that becomes the program
     place.environment(given, proxy)        with its home and the way out
@@ -66,6 +69,10 @@ class Place:
         self.places = places
         self.name = name
         self.user = user
+        #: The agent asked for, and the runtime that asked, in a pool:
+        #: what is written down of the place, whatever its folder's name.
+        self.agent_id = name
+        self.runtime = ""
         #: What a person knows the agent by, once a request said.
         self.label = name
         self.folder = places.workers_dir / name
@@ -87,7 +94,10 @@ class Place:
     def whose(self) -> Dict[str, object]:
         """Whose what runs here is, as what it does is written down and
         what it uses is added up: the agent, its user, and its name."""
-        return {"agent": self.name, "user": self.user, "name": self.label}
+        whose = {"agent": self.agent_id, "user": self.user, "name": self.label}
+        if self.runtime:
+            whose["runtime"] = self.runtime
+        return whose
 
     # ------------------------------------------------------------------
     # The lines
@@ -440,27 +450,33 @@ class Places:
     # The places
     # ------------------------------------------------------------------
 
-    def place(self, agent_id: str) -> Place:
+    def place(self, agent_id: str, runtime: str = "") -> Place:
         """Where this agent's processes run: its place, given one the
-        first time it is asked for. The two names that are nobody's
-        agent (wire.py) are their own places."""
+        first time it is asked for — one per runtime that asks, in a
+        pool. The two names that are nobody's agent (wire.py) are their
+        own places, whichever runtime asks."""
         if agent_id == wire.VERIFICATION:
             return self.verification()
         if agent_id == wire.BUILDER:
             return self.builder()
-        name = self._name(agent_id)
-        return Place(self, name, self._user(name))
+        name = self._name(agent_id, runtime)
+        return self._of(Place(self, name, self._user(name)), agent_id, runtime)
 
-    def existing(self, agent_id: str) -> Optional[Place]:
+    @staticmethod
+    def _of(place: Place, agent_id: str, runtime: str) -> Place:
+        place.agent_id, place.runtime = str(agent_id), str(runtime or "")
+        return place
+
+    def existing(self, agent_id: str, runtime: str = "") -> Optional[Place]:
         """The place this agent already has, or None for an agent that
         never ran here. Asking gives nobody a place."""
         if not agent_id:
             return None
         if agent_id in self.NOBODYS_AGENT:
             return self.place(agent_id)
-        name = self._name(agent_id)
+        name = self._name(agent_id, runtime)
         user = self._read_table().get(name)
-        return Place(self, name, user) if user else None
+        return self._of(Place(self, name, user), agent_id, runtime) if user else None
 
     def verification(self) -> Place:
         """Where a package is verified before anybody approved it."""
@@ -475,13 +491,18 @@ class Places:
         return place
 
     @staticmethod
-    def _name(agent_id: str) -> str:
+    def _name(agent_id: str, runtime: str = "") -> str:
         """The folder an agent's place is kept under: its id where that
-        is a plain name, which an approval's ref always is."""
+        is a plain name, which an approval's ref always is — and, for a
+        runtime of a pool, a mark of that runtime after it."""
         agent_id = str(agent_id or "")
         if PLAIN_NAME_RE.match(agent_id) and agent_id not in Places.NOBODYS_AGENT:
-            return agent_id
-        return "a-" + hashlib.sha256(agent_id.encode("utf-8")).hexdigest()[:32]
+            name = agent_id
+        else:
+            name = "a-" + hashlib.sha256(agent_id.encode("utf-8")).hexdigest()[:32]
+        if runtime:
+            name += "." + hashlib.sha256(str(runtime).encode("utf-8")).hexdigest()[:12]
+        return name
 
     def _user(self, name: str) -> int:
         """The agent's user: the one it was given, or the next free."""

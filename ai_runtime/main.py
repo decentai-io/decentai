@@ -69,6 +69,10 @@ library = AgentLibrary(settings.agents_install_dir, confinement)
 node = NodeCredential(file=settings.node_credential_file,
                       issuer_url=settings.node_credential_url)
 data_core = DataCoreKey(settings.data_core_service_public_key)
+# Who this runtime is to its sandboxes, which a pool's serve several
+# runtimes: its node, and where its proxy answers their workers.
+container.node = node
+container.proxy_port = settings.egress_port
 
 # The platform the sessions live against: the Data Core, over its /app
 # gateway (docs/system/chat-session.md) — and what this node asks as

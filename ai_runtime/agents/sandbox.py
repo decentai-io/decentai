@@ -61,7 +61,7 @@ class ExecutionSandbox:
     ANSWER_LIMIT = 32 * 1024 * 1024
 
     def __init__(self, address: str, secret: str = "", sandbox_id: str = "",
-                 labels: Iterable[str] = ()):
+                 labels: Iterable[str] = (), runtime: str = ""):
         host, _, port = str(address or "").strip().rpartition(":")
         if not host or not port.isdigit():
             raise ValueError(
@@ -71,6 +71,10 @@ class ExecutionSandbox:
         self.port = int(port)
         #: The execution node's secret, which every request proves.
         self.secret = str(secret or "")
+        #: Who this runtime is to the sandbox, said and proved on every
+        #: request: a sandbox serving a pool keeps each runtime's own
+        #: apart by it.
+        self.runtime = str(runtime or "")
         #: Who the sandbox is, as it registered.
         self.id = str(sandbox_id or f"{host}:{port}")
         #: What it says of itself, for a placement to ask for (``gpu``).
@@ -221,8 +225,9 @@ class ExecutionSandbox:
                     "that is not this execution node's sandbox: its greeting "
                     "does not prove the node's secret on this connection")
             writer.write(wire.line({
-                "protocol": wire.PROTOCOL,
-                "proof": wire.proof(self.secret, wire.RUNTIME, said, seen),
+                "protocol": wire.PROTOCOL, "runtime": self.runtime,
+                "proof": wire.proof(self.secret, wire.RUNTIME, said,
+                                    self.runtime, seen),
                 **request}))
             await writer.drain()
         except BaseException:
