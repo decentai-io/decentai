@@ -1,0 +1,120 @@
+<!-- ── Part three ────────────────────────────────────────────────── -->
+<div class="part">
+  <div class="kicker">Part three</div>
+  <h2>Running and doubting it</h2>
+  <p>How it is laid out, what leaves it, what a taken-over part would get, what is tested, and what isn't proven.</p>
+</div>
+
+<!-- ── 15. Laying it out ─────────────────────────────────────────── -->
+<section id="c15">
+  <div class="chapter-head">
+    <div class="kicker">15 · Laying it out</div>
+    <h2>The same nodes, on one machine or across sites</h2>
+    <p class="lead">Nothing in a node changes between layouts: only what sits behind each address, and what the operator puts in each identity folder. One API server serves many runtimes, each with its sandboxes. A runtime and its sandboxes are an <b>execution node</b>.</p>
+  </div>
+
+  <figure>
+    <svg viewBox="0 0 680 204">
+      <rect x="0" y="0" width="210" height="204" rx="14" class="frame"/>
+      <text x="14" y="22" class="cap">ONE MACHINE</text>
+      <g font-size="10" text-anchor="middle">
+        <rect x="14" y="34" width="84" height="30" rx="8" class="platform"/><text x="56" y="53" class="b t-on">API server</text>
+        <rect x="112" y="34" width="84" height="30" rx="8" class="platform"/><text x="154" y="53" class="b t-on">Issuer</text>
+        <rect x="14" y="74" width="182" height="30" rx="8" class="platform-2"/><text x="105" y="93" class="b t-on">Runtime, with its egress</text>
+        <rect x="14" y="114" width="182" height="30" rx="8" class="platform-3"/><text x="105" y="133" class="b">Sandbox</text>
+      </g>
+      <text x="14" y="166" font-size="9.5" class="t-soft">a trial, or one team.</text>
+      <text x="14" y="180" font-size="9.5" class="t-soft">Compose, eight containers,</text>
+      <text x="14" y="194" font-size="9.5" class="t-soft">six of which stay up.</text>
+      <rect x="225" y="0" width="210" height="204" rx="14" class="frame"/>
+      <text x="239" y="22" class="cap">ONE CLUSTER</text>
+      <g font-size="10" text-anchor="middle">
+        <rect x="239" y="34" width="84" height="30" rx="8" class="platform"/><text x="281" y="53" class="b t-on">API servers</text>
+        <rect x="337" y="34" width="84" height="30" rx="8" class="platform"/><text x="379" y="53" class="b t-on">Issuers</text>
+        <rect x="239" y="74" width="182" height="30" rx="8" class="platform-2"/><text x="330" y="93" class="b t-on">Runtimes, with their egress</text>
+        <rect x="239" y="114" width="182" height="30" rx="8" class="platform-3"/><text x="330" y="133" class="b">Sandboxes</text>
+      </g>
+      <text x="239" y="166" font-size="9.5" class="t-soft">several replicas behind one address.</text>
+      <text x="239" y="180" font-size="9.5" class="t-soft">Anything before 8004 must pass</text>
+      <text x="239" y="194" font-size="9.5" class="t-soft">TLS through.</text>
+      <rect x="450" y="0" width="230" height="204" rx="14" class="frame"/>
+      <text x="464" y="22" class="cap">SEVERAL SITES</text>
+      <g font-size="10" text-anchor="middle">
+        <rect x="464" y="34" width="92" height="30" rx="8" class="platform"/><text x="510" y="53" class="b t-on">API server</text>
+        <rect x="464" y="74" width="92" height="30" rx="8" class="platform"/><text x="510" y="93" class="b t-on">Issuer</text>
+        <rect x="582" y="34" width="84" height="30" rx="8" class="platform-2"/><text x="624" y="53" class="b t-on">Runtime</text>
+        <rect x="582" y="74" width="84" height="30" rx="8" class="platform-3"/><text x="624" y="93" class="b">Sandbox</text>
+      </g>
+      <path d="M558 49H580" class="flow" marker-start="url(#m-seal-rev)" marker-end="url(#m-seal)"/>
+      <path d="M580 89H558" class="flow" marker-end="url(#m-seal)"/>
+      <text x="464" y="122" font-size="9.5" class="t-soft">a customer's machines, a GPU provider.</text>
+      <text x="464" y="136" font-size="9.5" class="b t-no">Each side of a link must be able to</text>
+      <text x="464" y="150" font-size="9.5" class="b t-no">reach the other: a runtime is called,</text>
+      <text x="464" y="164" font-size="9.5" class="b t-no">not only calling.</text>
+      <text x="464" y="180" font-size="9.5" class="t-soft">Renewal crosses the sites, so a site may</text>
+      <text x="464" y="193" font-size="9.5" class="t-soft">be cut off for a certificate's lifetime.</text>
+    </svg>
+    <figcaption><b>Three layouts, one set of nodes.</b> The repository holds no Kubernetes manifests. It states what a cluster must give.</figcaption>
+  </figure>
+
+  <h3>A chat belongs to one runtime at a time</h3>
+  <p>Nobody registers a runtime. The operator starts one and names the API server, and it says it is there every five seconds. That report places chats and shows them to a person. It admits nothing: a runtime's id, scope and labels come from its certificate. A runtime silent for 15 seconds is given no chats, and after 70 seconds it is gone and its chats go free. Each rebuilds from the record on another runtime and hears what it missed exactly once, since every frame is recorded before it is sent.</p>
+  <p>A runtime keeps nothing, so losing one loses no decision. It holds each chat's state as one document, saved to the API server after every step, and first whenever a call parks.</p>
+  <table class="compact">
+    <thead><tr><th style="width:15%">Process</th><th style="width:36%">Keeps in memory</th><th>After a restart</th></tr></thead>
+    <tr><td>API server</td><td>what it resolved of sessions and permissions, for a minute, dropped within a second of a change</td><td>browsers reconnect, to it or another replica</td></tr>
+    <tr><td>Runtime</td><td>each open chat, its runs and their passes, open cards' waiters</td><td>its chats open again from the record. A job that was running is settled as an error, whether or not its work happened. Schedules are rows, and survive</td></tr>
+    <tr><td>Sandbox</td><td>its runs, and whatever agent code kept between calls</td><td>gone. The next call starts a fresh run</td></tr>
+  </table>
+
+  <h3>An organization's own nodes</h3>
+  <p>One deployment can hold many organizations, and an organization's administrators can run nodes of their own. They make an enrollment token, and every node it enrolls carries the organization as its <code>scope</code> and serves it alone. A runtime with no scope is shared. Where its chats run is the organization's setting:</p>
+  <pre><span class="c">Settings:Nodes:Update</span>
+{"placement": "own_only"}
+<span class="c">→</span> {"nodes": {"placement": "own_only"}, "own_connected": ["runtime-4q8w1z"], "moved": 2, ...}</pre>
+  <div class="rule">With <code>own_only</code>, nothing of the organization reaches a shared runtime: no chat, no credential, no model key, no code, and no schedule's fire. Checked at the gateway, whatever the runtime holds.</div>
+  <p>Sandboxes are set aside the same way, by the <code>scope</code> in the token they enroll with, and no setting can widen it. The operator is a role of its own: the administrators of one organization, holding <code>nodes:authority:shared</code>. An administrator of any other organization holds everything in their own, and is still not the operator.</p>
+</section>
+
+<!-- ── 16. What leaves ───────────────────────────────────────────── -->
+<section class="chapter" id="c16">
+  <div class="chapter-head">
+    <div class="kicker">16 · What leaves your deployment</div>
+    <h2>Your data stays where you put it, and here is every exception</h2>
+    <p class="lead">DecentAI keeps its database, files, secrets and audit trail where you run it. Some of what a chat does has to leave to work: a model has to read a message to answer it. This is every way something leaves, and who decides. Nothing on this list is sent to DecentAI's makers.</p>
+  </div>
+
+  <table class="compact">
+    <thead><tr><th style="width:22%">What</th><th style="width:46%">Where it goes</th><th>Who decides</th></tr></thead>
+    <tr><td>A chat's messages</td><td>the model provider the chat uses, or nowhere, with a model on your own machine</td><td>the administrator adds providers; each person picks a model</td></tr>
+    <tr><td>A chat, to be run</td><td>the runtime that holds it, which is handed its messages, the model key and the credentials its calls are granted. It may be a shared runtime of the operator's</td><td>the operator; each organization, by <em>own nodes only</em></td></tr>
+    <tr><td>What an agent sends</td><td>the sites it reaches, through the egress, only where its manifest says</td><td>the administrator, by the agents they install and the sites they block</td></tr>
+    <tr><td>An address, for a catalog</td><td>the source saved, with its credential to its own host alone. A request for files: nothing of a chat or a person</td><td>whoever saves the source</td></tr>
+    <tr><td>A connected account's sign-in</td><td>the provider, through the app your organization registered</td><td>each person, when they connect</td></tr>
+    <tr><td>An MCP server's tools</td><td>the server's address</td><td>each person, where Safety allows them</td></tr>
+    <tr><td>Notifications</td><td>a phone through Expo and Apple or Google; a browser through its push service; email through your mail server</td><td>each person, and the administrator for everyone</td></tr>
+    <tr><td>Outbound webhooks</td><td>addresses a person subscribed: a link, and the reply's text only if they asked</td><td>each person</td></tr>
+    <tr><td>Speech</td><td>by default nowhere: a phone's recognizer and voices stay on it, and a browser's where it hears on the computer. A server's <code>speech</code> container keeps it in your deployment. It leaves for a provider the administrator chose, or a browser that can only send voice to its maker, where the person chooses that</td><td>each person, on each device; the administrator, for the server's</td></tr>
+  </table>
+  <p>Files stay in your storage, or in S3, Azure Blob or Google Cloud Storage only where the administrator chose one. The platform's own keys stay in its configuration.</p>
+</section>
+
+<!-- ── 17. If a part is taken over ───────────────────────────────── -->
+<section class="chapter" id="c17">
+  <div class="chapter-head">
+    <div class="kicker">17 · If a part is taken over</div>
+    <h2>What they get, and what stays out of reach</h2>
+    <p class="lead">Security that assumes nothing will ever break isn't security. So the question for each part is what an attacker who took it over would get, and what would still be out of reach.</p>
+  </div>
+
+  <table class="compact flow">
+    <thead><tr><th style="width:12%">Taken over</th><th style="width:38%">They get</th><th style="width:30%">They still can't</th><th>What ends it</th></tr></thead>
+    <tr><td>A run</td><td>what its calls were handed, for as long as the run lasts; its own scratch space; its declared hosts; its grants as the runtime answers them</td><td>read another run's files, reach other hosts, reach the database, the runtime's memory or the sandbox's certificate</td><td>the run ending; a call's lent hosts close with the call</td></tr>
+    <tr><td>A sandbox</td><td>its programs, and every line its runs read and write, the credentials handed to them among it</td><td>reach the database, decrypt, or act for a person. It holds no setting of the platform's, and its certificate is of kind <code>sandbox</code></td><td>refusing its id; its certificate's end. Sandboxes set aside by <code>scope</code> limit whom it can serve</td></tr>
+    <tr><td>A runtime</td><td>everything visible to each person whose chat it holds, as that person: their credentials, records and files, the model keys in its contracts. It can run their granted functions with no card, open its runs' way out to any host, and name any slot</td><td>decide a card through the API server, reach the database, decrypt what it isn't given, or act for anybody with no chat there. A refresh token never reaches it</td><td>stop-everything starves it for that person; <code>Nodes:Node:Refuse</code> cuts it off at once</td></tr>
+    <tr><td>API server</td><td colspan="2">everything of the platform's. It is the one part trusted with all data, which is why it never runs model output or agent code. It can make tokens, each recorded, and it can't make an intermediate</td><td>restoring it, and rotating the keys</td></tr>
+    <tr><td>Issuer</td><td colspan="2">certifying nodes of the kinds its intermediate names, until it ends: up to 120 days. In Compose its connection string is the database's root account, the API server's too, so it reaches the platform's database, with <code>values</code> still sealed. It holds no encryption key</td><td>not renewing its intermediate</td></tr>
+  </table>
+  <div class="rule">Keeping one agent out of another's data is the runtime's work. The API server decides person and chat, and the runtime names the slot. So a taken-over runtime reaches across agents, within the people whose chats it holds.</div>
+  <p>The approval hash binds what ran to what was shown against a fault, a restart or a changed input. It isn't proof against a taken-over runtime, which computes and compares it. That is the reason for the checks at the data: a runtime gone wrong reaches only what its chats could reach anyway, and a person with no chat there is out of reach.</p>
+</section>

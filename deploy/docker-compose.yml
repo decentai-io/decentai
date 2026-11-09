@@ -1,0 +1,328 @@
+# The whole platform on one machine (documentation/). deploy/README.md says what each file here is for.
+#
+#   python deploy/setup/setup.py                                       on your own computer
+#   docker compose --env-file deploy/config/deploy.env up -d --build   from the repository root
+#
+# Every setting comes from deploy/config/deploy.env, whose COMPOSE_FILE names what is laid over this file. As
+# written it serves this computer only, in plain HTTP. With DECENTAI_VERSION unset the image tag is `local`, which no
+# registry has, so images are built from this checkout.
+name: decentai
+
+# What every service but the database and the sandbox keeps to: no Linux right, and none gained by running a program.
+x-hardened: &hardened
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+
+# A service that writes nothing but its volumes, and a little in /tmp.
+x-read-only: &read-only
+  read_only: true
+  tmpfs:
+    - /tmp:size=64m
+
+services:
+  # A replica set of one: the API server follows the chats' events as the database changes, which needs one. Its one
+  # member proves itself to itself with a key made at each start. The issuer's account is made with the database.
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    entrypoint:
+      - sh
+      - -c
+      - >-
+        head -c 756 /dev/urandom | base64 > /tmp/member.key && chmod 400 /tmp/member.key &&
+        chown mongodb /tmp/member.key &&
+        exec docker-entrypoint.sh mongod --replSet rs0 --bind_ip_all --keyFile /tmp/member.key
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME:-root}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:?set in deploy/config/deploy.env}
+      ISSUER_DATABASE_PASSWORD: ${ISSUER_DATABASE_PASSWORD:?set in deploy/config/deploy.env}
+    networks:
+      - data
+    volumes:
+      - mongo_data:/data/db
+      - ./setup/issuer-account.js:/docker-entrypoint-initdb.d/issuer-account.js:ro
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          mongosh --quiet -u "$$MONGO_INITDB_ROOT_USERNAME" -p "$$MONGO_INITDB_ROOT_PASSWORD"
+          --eval "try { quit(rs.status().myState === 1 ? 0 : 1) }
+          catch (e) { rs.initiate({_id: 'rs0', members: [{_id: 0, host: 'mongo:27017'}]}); quit(1) }"
+      interval: 5s
+      timeout: 10s
+      retries: 30
+      start_period: 30s
+
+  # One-shot, at every start: the API server's database account, the one AI_API_DATABASE_URI names, with its rights.
+  database:
+    image: ${DECENTAI_IMAGES:-ghcr.io/decentai-io}/decentai-api-server:${DECENTAI_VERSION:-local}
+    build:
+      context: ..
+      dockerfile: api_server/Dockerfile
+    command: ["sh", "-c", "exec python -m api_server.admin database --admin-uri \"$$MONGO_ADMIN_URI\""]
+    restart: "no"
+    <<: [*hardened, *read-only]
+    env_file: config/deploy.env
+    environment:
+      MONGO_ADMIN_URI: mongodb://${MONGO_ROOT_USERNAME:-root}:${MONGO_ROOT_PASSWORD}@mongo:27017/?replicaSet=rs0&authSource=admin
+      ISSUER_DATABASE_PASSWORD: ""
+    networks:
+      - data
+    depends_on:
+      mongo:
+        condition: service_healthy
+
+  # One-shot, at every start and before any node: each node's identity folder, from the roots in
+  # deploy/config/root/roots.pem. Root, to hand each volume to the platform's user.
+  identities:
+    image: ${DECENTAI_IMAGES:-ghcr.io/decentai-io}/decentai-issuer:${DECENTAI_VERSION:-local}
+    build:
+      context: ..
+      dockerfile: issuer/Dockerfile
+    command: ["python", "/opt/decentai/setup/identities.py"]
+    restart: "no"
+    user: "0"
+    <<: *read-only
+    # Root with three rights alone: making each folder, and handing it to the platform's user.
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      MONGO_URI: &issuer-database mongodb://issuer:${ISSUER_DATABASE_PASSWORD}@mongo:27017/decentai_issuer?replicaSet=rs0&authSource=decentai_issuer
+    networks:
+      - data
+    volumes:
+      # Refused by name where it is missing, rather than made a folder.
+      - type: bind
+        source: ./config/root/roots.pem
+        target: /given/roots.pem
+        read_only: true
+        bind:
+          create_host_path: false
+      - issuer_identity:/nodes/issuer
+      - issuer_authority:/nodes/issuer/authority
+      - api_identity:/nodes/api
+      - runtime_identity:/nodes/runtime
+      - sandbox_identity:/nodes/sandbox
+    depends_on:
+      mongo:
+        condition: service_healthy
+
+  # Certifies every node. It serves nothing until the root has signed its request, and looks for that once a minute.
+  issuer:
+    image: ${DECENTAI_IMAGES:-ghcr.io/decentai-io}/decentai-issuer:${DECENTAI_VERSION:-local}
+    build:
+      context: ..
+      dockerfile: issuer/Dockerfile
+    restart: unless-stopped
+    <<: [*hardened, *read-only]
+    environment:
+      MONGO_URI: *issuer-database
+      LOG_LEVEL:
+    networks:
+      - data
+      - sandbox
+    volumes:
+      - issuer_identity:/run/decentai
+      - issuer_authority:/run/decentai/authority
+    depends_on:
+      identities:
+        condition: service_completed_successfully
+
+  # The root tool, on your own computer: deploy/setup/setup.py runs it, on no network, and `up` never starts it. On a
+  # server the root stays off the machine.
+  root:
+    image: ${DECENTAI_IMAGES:-ghcr.io/decentai-io}/decentai-issuer:${DECENTAI_VERSION:-local}
+    build:
+      context: ..
+      dockerfile: issuer/Dockerfile
+    profiles:
+      - root
+    user: "0"
+    network_mode: none
+    working_dir: /root-files
+    entrypoint: ["python", "/opt/decentai/tools/decentai_root.py", "--passphrase-file", "passphrase"]
+    volumes:
+      - ../tools/decentai_root.py:/opt/decentai/tools/decentai_root.py:ro
+      - ./config/root:/root-files
+
+  # The API server (documentation/api-server.md). People reach the published port (LISTEN, PORT) in plain HTTP,
+  # through the proxy that holds the TLS on a server; runtimes reach 8004, with mutual TLS. It enrolls before it
+  # answers anyone, so its port stays silent until the issuer serves. It is handed the file whole, but for what is
+  # the database's and the issuer's.
+  api-server:
+    image: ${DECENTAI_IMAGES:-ghcr.io/decentai-io}/decentai-api-server:${DECENTAI_VERSION:-local}
+    build:
+      context: ..
+      dockerfile: api_server/Dockerfile
+    restart: unless-stopped
+    <<: [*hardened, *read-only]
+    env_file: config/deploy.env
+    environment:
+      AI_API_IDENTITY: /run/decentai/api
+      AI_API_STORAGE_FOLDER: /data/storage
+      MONGO_ROOT_PASSWORD: ""
+      ISSUER_DATABASE_PASSWORD: ""
+    networks:
+      - default
+      - data
+    ports:
+      - "${LISTEN:-127.0.0.1}:${PORT:-4280}:8000"
+    volumes:
+      - storage_data:/data/storage
+      - api_identity:/run/decentai/api
+    # Here and not left to the image: Podman drops an image's health check unless it is in Docker's format.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/readyz', timeout=4)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+    depends_on:
+      database:
+        condition: service_completed_successfully
+      identities:
+        condition: service_completed_successfully
+
+  # Speech to text and text to speech, from models fetched once into the volume. Only the API server asks it.
+  speech:
+    image: ${DECENTAI_IMAGES:-ghcr.io/decentai-io}/decentai-speech:${DECENTAI_VERSION:-local}
+    build:
+      context: ..
+      dockerfile: speech/Dockerfile
+    restart: unless-stopped
+    <<: [*hardened, *read-only]
+    environment:
+      SPEECH_FETCH:
+      SPEECH_IDLE_SECONDS:
+      SPEECH_MODEL_HOST:
+      LOG_LEVEL:
+      TZ:
+      HTTP_PROXY:
+      HTTPS_PROXY:
+      NO_PROXY:
+      SSL_CERT_FILE:
+    volumes:
+      - speech_models:/data/models
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8004/healthz', timeout=4)"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
+
+  # The runtime (documentation/runtime.md): the active chats, their agents' processes, and the mind. It keeps nothing
+  # but its identity, and is handed its settings by name, never the file. API servers reach it on 8004, sandboxes on
+  # 8004 and their processes' way out on 8005. It reaches models from here.
+  runtime:
+    image: ${DECENTAI_IMAGES:-ghcr.io/decentai-io}/decentai-ai-runtime:${DECENTAI_VERSION:-local}
+    build:
+      context: ..
+      dockerfile: runtime/Dockerfile
+    restart: unless-stopped
+    <<: [*hardened, *read-only]
+    stop_grace_period: 30s
+    environment:
+      AI_RUNTIME_ADDRESS: runtime:8004
+      AI_RUNTIME_API_SERVERS: ${AI_RUNTIME_API_SERVERS:-api-server:8004}
+      AI_RUNTIME_IDENTITY: /run/decentai/runtime
+      AI_RUNTIME_WAY_OUT_PORT: "8005"
+      AI_RUNTIME_AGENT_PROCESS_IDLE_MINUTES:
+      AI_RUNTIME_AGENT_READY_SECONDS:
+      AI_RUNTIME_AGENT_CANCEL_SECONDS:
+      AI_RUNTIME_AGENT_CONNECTIONS_MAX:
+      AI_RUNTIME_LOG_LEVEL:
+      TZ:
+      # how this machine reaches the models, and whom it trusts
+      HTTP_PROXY:
+      HTTPS_PROXY:
+      NO_PROXY:
+      SSL_CERT_FILE:
+    networks:
+      - default
+      - sandbox
+    volumes:
+      - runtime_identity:/run/decentai/runtime
+    depends_on:
+      identities:
+        condition: service_completed_successfully
+
+  # Agents' processes, each in a jail of its own (documentation/sandbox.md). It starts as root with only the four
+  # rights below, hands the container's cgroup to the platform's user, and is that user from then on.
+  sandbox:
+    image: ${DECENTAI_IMAGES:-ghcr.io/decentai-io}/decentai-sandbox:${DECENTAI_VERSION:-local}
+    build:
+      context: ..
+      dockerfile: sandbox/Dockerfile
+    restart: unless-stopped
+    init: true
+    pids_limit: 65536
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - KILL
+      - SETUID
+      - SETGID
+    security_opt:
+      - seccomp=../sandbox/config/seccomp.json
+      - systempaths=unconfined
+      - writable-cgroups=true
+    # What its processes are given together: memory 4 GiB unless set, and their homes counted in it; cpus 0 is no
+    # limit.
+    mem_limit: ${SANDBOX_MEMORY:-4g}
+    cpus: ${SANDBOX_CPUS:-0}
+    tmpfs:
+      - /data/homes:size=${SANDBOX_MEMORY:-4g},mode=0755
+    # Longer than AI_SANDBOX_STOP_SECONDS (60), and the moment it takes to end what is left.
+    stop_grace_period: 75s
+    environment:
+      AI_SANDBOX_CALLERS: runtime:8004
+      AI_SANDBOX_ADDRESS: sandbox:8004
+      AI_SANDBOX_IDENTITY: /run/decentai/sandbox
+      AI_SANDBOX_PROCESSES_MAX:
+      AI_SANDBOX_PROCESS_MEMORY_MIB:
+      AI_SANDBOX_PROCESS_MEMORY_MAX_MIB:
+      AI_SANDBOX_PROCESS_CPUS:
+      AI_SANDBOX_PROCESS_TASKS_MAX:
+      AI_SANDBOX_PROGRAM_MAX_GIB:
+      AI_SANDBOX_PROGRAM_UNPACKED_MAX_GIB:
+      AI_SANDBOX_PROGRAM_KEPT_DAYS:
+      AI_SANDBOX_STOP_SECONDS:
+      AI_SANDBOX_LOG_LEVEL:
+    volumes:
+      - sandbox_data:/data
+      - sandbox_identity:/run/decentai/sandbox
+    networks:
+      - sandbox
+    depends_on:
+      identities:
+        condition: service_completed_successfully
+
+networks:
+  # mongo, and those that speak to it. No way out.
+  data:
+    internal: true
+  # The runtime, its sandboxes and the issuer. No way out.
+  sandbox:
+    internal: true
+
+volumes:
+  mongo_data:
+  storage_data:
+  speech_models:
+  sandbox_data:
+  issuer_identity:
+  issuer_authority:
+  api_identity:
+  runtime_identity:
+  sandbox_identity:

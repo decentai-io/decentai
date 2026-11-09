@@ -1,0 +1,153 @@
+# Every suite CONTRIBUTING.md names, and the ones a laptop cannot run:
+# the sandboxes' tests need the Execution Sandbox's container on a
+# Linux kernel.
+# On every pull request, and on main when one lands.
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A newer push to the same branch makes the older run pointless.
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  runtime:
+    name: the runtime
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: runtime/requirements.txt
+      - run: pip install -r runtime/requirements.txt pytest pytest-timeout
+      # Through events: minds in a world of stand-in agents, and the link against a
+      # stand-in API server and fleet, with a scripted model.
+      - run: python -m pytest runtime/tests -q --timeout 60
+      # The link every part speaks, and the root tool: each its own run, since they collide at collection.
+      - run: python -m pytest communication/tests -q --timeout 60
+      - run: python -m pytest tools/tests -q --timeout 120
+
+  api-server:
+    name: the API server and what it shares
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      # A replica set of three: the API server's replicas speak over a
+      # change stream (documentation/api-server.md), which a single server
+      # has not, and the cluster's tests step its primary down. Each
+      # member on the runner's own network, so the test's localhost
+      # reaches all three; a service container is given no command
+      # line, so they are started here.
+      - name: MongoDB, as a replica set of three
+        run: |
+          for port in 27017 27018 27019; do
+            docker run -d --name "mongo-$port" --network host mongo:7 \
+              --replSet rs0 --bind_ip_all --port "$port"
+          done
+          for _ in $(seq 1 60); do
+            docker exec mongo-27017 mongosh --quiet --port 27017 \
+              --eval 'db.adminCommand("ping").ok' && break
+            sleep 1
+          done
+          docker exec mongo-27017 mongosh --quiet --port 27017 --eval \
+            'rs.initiate({_id: "rs0", members: [
+               {_id: 0, host: "localhost:27017"},
+               {_id: 1, host: "localhost:27018"},
+               {_id: 2, host: "localhost:27019"}]})'
+          for _ in $(seq 1 90); do
+            [ "$(docker exec mongo-27017 mongosh --quiet --port 27017 \
+              --eval 'rs.status().members.filter(m => m.state === 1 || m.state === 2).length')" = "3" ] && break
+            sleep 1
+          done
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: api_server/requirements.txt
+      - run: pip install -r api_server/requirements.txt pytest
+      - run: python -m pytest api_server/tests -q
+      - run: python -m pytest shared/tests -q
+      # The issuer, against the same database; its whole-deployment test is issuer/tests/compose.yml.
+      - run: python -m pytest issuer/tests -q --ignore=issuer/tests/test_deployment.py
+
+  sandboxes:
+    name: the sandbox, in its container
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      # The sandbox alone, its real image served by two callers that are its tests.
+      - name: the sandbox
+        env:
+          LIVE: sandbox/tests/compose.yml
+        run: |
+          docker compose -f "$LIVE" up -d --build
+          docker compose -f "$LIVE" exec -T callers sh -c '
+            pip install -q aiohttp msgpack cryptography pytest &&
+            cd /src && python -m pytest -p no:cacheprovider --tb=short -q sandbox/tests' ||
+            { docker compose -f "$LIVE" logs --tail 200; docker compose -f "$LIVE" down -v; exit 1; }
+          docker compose -f "$LIVE" down -v
+
+  speech:
+    name: speech, with its real models
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -f speech/Dockerfile -t decentai-speech .
+      - name: without its models
+        run: |
+          docker run --rm -v "$PWD:/src:ro" -w /src decentai-speech sh -c '
+            pip install -q --target /tmp/pytest pytest &&
+            PYTHONPATH=/tmp/pytest python -m pytest -p no:cacheprovider \
+              --tb=short speech/tests/test_speech_service.py -q'
+      # The models are 600 MB from somebody else's server. They are
+      # kept between runs, and fetched again only when the list of
+      # them changes.
+      - uses: actions/cache@v4
+        with:
+          path: speech-models
+          key: speech-models-${{ hashFiles('speech/catalogue.py') }}
+      - name: Piper says a sentence in each language, and Whisper writes it back down
+        run: |
+          mkdir -p speech-models && chmod 0777 speech-models
+          docker run -d --name speech --network host \
+            -e SPEECH_FETCH=transcription,speech \
+            -v "$PWD/speech-models:/data/models" decentai-speech
+          docker run --rm --network host -v "$PWD:/src:ro" -w /src \
+            -e SPEECH_LIVE_URL=http://127.0.0.1:8004 decentai-speech sh -c '
+              pip install -q --target /tmp/pytest pytest &&
+              PYTHONPATH=/tmp/pytest python -m pytest -p no:cacheprovider \
+                --tb=short speech/tests/test_speech_live.py -q -rs'
+      - if: failure()
+        run: docker logs --tail 100 speech
+      # What the container wrote is its own user's; the step that
+      # keeps it for the next run reads it as this one.
+      - if: always()
+        run: |
+          docker rm -f speech || true
+          sudo chmod -R a+rX speech-models || true
+
+  images:
+    name: the API server's image and the runtime's
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      # (The web client is built and tested in its own repository,
+      # decentai-web-client.)
+      - run: docker build -f api_server/Dockerfile .
+      # (The sandbox's image is built by the sandboxes job.)
+      - run: docker build -f runtime/Dockerfile .
+

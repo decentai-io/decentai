@@ -1,0 +1,244 @@
+<!-- ── Part two ──────────────────────────────────────────────────── -->
+<div class="part">
+  <div class="kicker">Part two</div>
+  <h2>The mechanisms</h2>
+  <p>Who may do what, how a call is judged, how an agent gets in and what it can reach, how trust is built, and how the record is kept. This is where to check us.</p>
+</div>
+
+<!-- ── 5. People and permissions ─────────────────────────────────── -->
+<section id="c5">
+  <div class="chapter-head">
+    <div class="kicker">5 · People and permissions</div>
+    <h2>A name on every request, and a list that starts empty</h2>
+    <p class="lead">Every request carries proof of who sent it. What that person may do is read from lists the organization keeps, fresh on each request. A list that doesn't mention something means <em>no</em>.</p>
+  </div>
+
+  <div class="rule">An action is an endpoint. The call <code>Files:File:Upload</code> is the action <code>files:file:upload</code>, and that name is what a policy grants. There is no second list to keep in step.</div>
+
+  <p>One deployment hosts many organizations that can't see each other. A person belongs to one, and their authority is a chain walked on every call:</p>
+  <pre>user → groups → roles → policies → statements
+
+<span class="k">{"effect": "Allow", "actions": ["iam:user:list", "iam:group:*"], "resources": ["*"]}</span>
+<span class="n">{"effect": "Deny",  "actions": ["secrets:secret:delete"], "resources": ["*"]}</span></pre>
+  <p>A matching <code>Deny</code> refuses at once, wherever in the chain it came from. Otherwise a matching <code>Allow</code> permits. With no match, the answer is no. Authority is never copied into a token, so a group changed a moment ago governs the next request, not the next login.</p>
+
+  <div class="grid three">
+    <div class="card"><h4>An organization is the wall</h4><p>Every read carries the organization, taken from the caller's own record and never from the request. Another organization's ids answer as made-up ones do.</p></div>
+    <div class="card"><h4>Nobody grants what they don't hold</h4><p>Saving a policy, or placing someone in a group, is refused when it would give an action its author lacks. The refusal names what was out of reach.</p></div>
+    <div class="card"><h4>An organization can't lock itself out</h4><p>A change that would leave no active person able to place users into groups is undone, and answered <code>409</code>.</p></div>
+  </div>
+  <p>Using the platform and using an agent are separate decisions. Every organization starts with three groups: <b>Administrators</b>, <b>Everyone</b>, which carries a small baseline and no chatting, and <b>Members</b>, for everyday use. An agent reaches whoever installed it and their groups, and nobody else until somebody grants it, whole or function by function.</p>
+
+  <div class="mech"><div><span class="m">Mechanism</span><h3>Who a call can be</h3></div><span class="src">api_server/src/core/access.py · people/credentials.py</span></div>
+  <table class="compact">
+    <thead><tr><th style="width:15%">Caller</th><th style="width:37%">Proves it with</th><th>Held to</th></tr></thead>
+    <tr><td>A person</td><td>a signed session token, a pointer to a row; or a browser cookie from the app's own addresses only</td><td>their chain, read fresh. Disabling and signing out count on the next request. Passwords are bcrypt over a SHA-256 digest. Five failures in 15 minutes lock an account, and 20 lock an address</td></tr>
+    <tr><td>A script</td><td>an API key, <code>dk_…</code>, shown once and kept as a hash</td><td>the person who made it, and no more. Keys are made and revoked from a browser's session only, so a key can't make keys. A key is looked up on every call, never cached</td></tr>
+    <tr><td>A runtime</td><td>its certificate, of kind <code>runtime</code>, proved by TLS</td><td>the seven checks below. It holds no rights of its own</td></tr>
+    <tr><td>An outside system</td><td>a webhook's own secret, <code>dws_…</code></td><td>firing that one webhook. What it posts reaches the assistant as data, beside the person's own instruction, never as one</td></tr>
+  </table>
+
+  <div class="mech"><div><span class="m">Mechanism</span><h3>A runtime, acting for a chat's owner</h3></div><span class="src">api_server/src/core/access.py · core/router.py</span></div>
+  <p>A runtime has no rights of its own. For a chat it holds, it acts <em>as that chat's owner</em>, and can do what the owner could and no more. One step decides it, on every call a runtime makes back.</p>
+  <table class="compact plainfirst">
+    <thead><tr><th style="width:5%"></th><th style="width:43%">Check</th><th>If not</th></tr></thead>
+    <tr><td>1</td><td>It is of kind <code>runtime</code>, not refused by name, calling an action for a runtime</td><td><code>403</code>. <code>Secrets:Secret:Use</code> is the other way round: no person may call it, whatever their policies say</td></tr>
+    <tr><td>2</td><td>It names a chat</td><td>It reaches only what it asks as itself: <code>AI:Runtime:State</code>, <code>AI:Schedule:Claim</code>, <code>Agents:Package:List</code> and <code>Fetch</code></td></tr>
+    <tr><td>3</td><td>It holds that chat</td><td><code>409</code>, <code>reason: "stale"</code>: another runtime holds it</td></tr>
+    <tr><td>4</td><td>The owner stands: their account and organization are active</td><td><code>403</code></td></tr>
+    <tr><td>5</td><td>The organization is one it may serve: a <code>scope</code> serves that organization alone, and an unscoped runtime is shared and serves those that don't keep to their own</td><td><code>403</code>, whatever it holds</td></tr>
+    <tr><td>6</td><td>The owner hasn't stopped everything</td><td>Only what writes down what the chat had done passes</td></tr>
+    <tr><td>7</td><td>The owner may do this action, by their own policies</td><td><code>403</code>. Recording a chat's own history needs no policy of theirs</td></tr>
+  </table>
+  <pre><span class="c">AI:Chat:Load {"chat_id": "chat_8d2f", "request_id": "kT2vQ8..."}</span>
+  from runtime-4q8w1z, kind runtime, no scope
+  chat_8d2f is held by runtime-4q8w1z                   <span class="k">yes</span>
+  its owner, dana@acme.example, stands                  <span class="k">yes</span>
+  acme doesn't keep to its own runtimes                 <span class="k">yes</span>
+  dana may ai:chat:load                                 <span class="k">yes → the call runs as dana</span></pre>
+  <p>Reads are filtered, not checked. Every read carries the organization and the caller's reach in the query, so it can't match a document the caller may not see. Which documents a person sees is each document's own <code>owner</code> map, and everything starts private. A runtime never holds an escape grant.</p>
+</section>
+
+<!-- ── 6. The gate ───────────────────────────────────────────────── -->
+<section class="chapter" id="c6">
+  <div class="chapter-head">
+    <div class="kicker">6 · The gate</div>
+    <h2>Six checks, and a person for what costs more</h2>
+    <p class="lead">Whoever proposes a call, the model, a schedule, a helper, it goes through one place. It is checked in a fixed order, and no check reads what the model wrote around it. If any check fails, nothing runs and the model is told why. Either way the call writes one line on the trail.</p>
+  </div>
+
+  <figure>
+    <svg viewBox="0 0 680 150">
+      <g font-size="10.2" text-anchor="middle">
+        <g><rect x="0" y="6" width="102" height="78" rx="12" class="step"/><text x="51" y="34" font-size="20" class="serif t-seal">1</text><text x="51" y="56">Not refused</text><text x="51" y="71" class="t-soft">a host you refused</text></g>
+        <g><rect x="115" y="6" width="102" height="78" rx="12" class="step"/><text x="166" y="34" font-size="20" class="serif t-seal">2</text><text x="166" y="56">Declared</text><text x="166" y="71" class="t-soft">by the manifest</text></g>
+        <g><rect x="230" y="6" width="102" height="78" rx="12" class="step"/><text x="281" y="34" font-size="20" class="serif t-seal">3</text><text x="281" y="56">Reachable</text><text x="281" y="71" class="t-soft">some grant could</text></g>
+        <g><rect x="345" y="6" width="102" height="78" rx="12" class="step"/><text x="396" y="34" font-size="20" class="serif t-seal">4</text><text x="396" y="56">Valid inputs</text><text x="396" y="71" class="t-soft">as declared</text></g>
+        <g><rect x="460" y="6" width="102" height="78" rx="12" class="step"/><text x="511" y="34" font-size="20" class="serif t-seal">5</text><text x="511" y="56">Within scope</text><text x="511" y="71" class="t-soft">the values granted</text></g>
+        <g><rect x="575" y="6" width="105" height="78" rx="12" class="ask"/><text x="627" y="34" font-size="20" class="serif t-ask">6</text><text x="627" y="56">Level</text><text x="627" y="71" class="t-soft">within the chat's?</text></g>
+      </g>
+      <g font-size="10.5" class="b">
+        <path d="M627 86V100M490 100H640M490 100V114M640 100V114" class="link"/>
+        <rect x="420" y="115" width="140" height="30" rx="15" class="step" stroke="none"/><text x="490" y="134" text-anchor="middle" class="t-seal">within: it runs</text>
+        <rect x="572" y="115" width="108" height="30" rx="15" class="ask" stroke="none"/><text x="626" y="134" text-anchor="middle" class="t-ask">above: a card</text>
+        <rect x="0" y="115" width="330" height="30" rx="15" class="no"/><text x="165" y="134" text-anchor="middle" class="t-no">any check fails: nothing runs, and the model is told why</text>
+      </g>
+    </svg>
+    <figcaption><b>The gates, in order.</b> With nobody to ask, as on a schedule, a call above the chat's trust is denied.</figcaption>
+  </figure>
+
+  <div class="mech"><div><span class="m">Mechanism</span><h3>What each gate reads</h3></div><span class="src">runtime/src/gates/gate.py · gates/grants.py</span></div>
+  <table class="compact plainfirst">
+    <thead><tr><th style="width:4%"></th><th style="width:48%">It reads</th><th>Refused because</th></tr></thead>
+    <tr><td>1</td><td>the hosts this agent was refused since the person last wrote</td><td>a host named in the inputs was refused on a card, by this function or another</td></tr>
+    <tr><td>2</td><td>the approved manifest, never one the program supplies</td><td>unknown function</td></tr>
+    <tr><td>3</td><td>the contract's grants: <code>agent.tool.function</code>, with <code>*</code> per segment. Nothing is allowed by default</td><td>no statement could ever allow it</td></tr>
+    <tr><td>4</td><td>the function's input schema, after a stored result is put in by its reference and defaults are filled. Nothing outside a schema is read to check it</td><td>invalid inputs; a number that is no number; a reference that doesn't resolve</td></tr>
+    <tr><td>5</td><td>the scopes the function declares, taken from its inputs, normalized as the manifest says. A matching deny beats every allow</td><td>the value isn't granted; a required scope isn't named; a list where one value belongs</td></tr>
+    <tr><td>6</td><td><code>permission_level</code> beside the contract's <code>trust</code></td><td>above it, the call parks on a card. With nobody to ask, denied</td></tr>
+  </table>
+  <p class="sample"><b>Grants narrowed by value.</b> A value is compared as text on both sides, so a deny can't be passed by the type a value arrived in. A call that names no value is read against it: an allow without the value doesn't hold, and a deny without it does.</p>
+  <pre><span class="k">{"effect": "allow", "functions": ["agt_3.orders.*"], "constraints": {"region": ["eu", "uk"]}}</span>
+<span class="n">{"effect": "deny",  "functions": ["agt_3.orders.delete"], "constraints": {"region": ["eu"]}}</span>
+
+<span class="c">agt_3.orders.search {"region": "EU"}   passes, where the manifest folds case to lower
+agt_3.orders.search {"region": "us"}   refused: the grant is for other values only</span></pre>
+
+  <h3>How much may happen without asking</h3>
+  <p>Every function declares a level, and every chat has a trust level its person chooses. A function runs alone only if its level is at or below the chat's. The model can change neither.</p>
+  <figure>
+    <svg viewBox="0 0 680 232">
+      <g font-size="10.5" class="t-soft">
+        <text x="226" y="14" class="cap">THE FUNCTION'S LEVEL →</text>
+        <g text-anchor="middle" class="b" style="fill:#14161a">
+          <text x="276" y="38">0 · a read</text><text x="378" y="38">1 · ordinary change</text><text x="480" y="38">2 · wider change</text><text x="590" y="38">3 · leaves the platform</text>
+        </g>
+        <text x="0" y="38" class="cap">THE CHAT'S TRUST ↓</text>
+      </g>
+      <g font-size="10.5">
+        <text x="0" y="74" class="b">Trust 0</text><text x="0" y="89" class="t-faint">every change asks</text>
+        <text x="0" y="120" class="b">Trust 1 · standard</text><text x="0" y="135" class="t-faint">everyday work</text>
+        <text x="0" y="166" class="b">Trust 2 · trusted</text><text x="0" y="181" class="t-faint">all inside the platform</text>
+        <text x="0" y="212" class="b">Trust 3 · autonomous</text><text x="0" y="227" class="t-faint">never asks</text>
+      </g>
+      <g font-size="10.5" class="b" text-anchor="middle">
+        <rect x="226" y="54" width="100" height="40" rx="8" class="step" stroke="none"/><text x="276" y="78" class="t-seal">runs</text>
+        <rect x="328" y="54" width="100" height="40" rx="8" class="ask" stroke="none"/><text x="378" y="78" class="t-ask">asks you</text>
+        <rect x="430" y="54" width="100" height="40" rx="8" class="ask" stroke="none"/><text x="480" y="78" class="t-ask">asks you</text>
+        <rect x="532" y="54" width="116" height="40" rx="8" class="ask" stroke="none"/><text x="590" y="78" class="t-ask">asks you</text>
+        <rect x="226" y="100" width="100" height="40" rx="8" class="step" stroke="none"/><text x="276" y="124" class="t-seal">runs</text>
+        <rect x="328" y="100" width="100" height="40" rx="8" class="step" stroke="none"/><text x="378" y="124" class="t-seal">runs</text>
+        <rect x="430" y="100" width="100" height="40" rx="8" class="ask" stroke="none"/><text x="480" y="124" class="t-ask">asks you</text>
+        <rect x="532" y="100" width="116" height="40" rx="8" class="ask" stroke="none"/><text x="590" y="124" class="t-ask">asks you</text>
+        <rect x="226" y="146" width="100" height="40" rx="8" class="step" stroke="none"/><text x="276" y="170" class="t-seal">runs</text>
+        <rect x="328" y="146" width="100" height="40" rx="8" class="step" stroke="none"/><text x="378" y="170" class="t-seal">runs</text>
+        <rect x="430" y="146" width="100" height="40" rx="8" class="step" stroke="none"/><text x="480" y="170" class="t-seal">runs</text>
+        <rect x="532" y="146" width="116" height="40" rx="8" class="ask" stroke="none"/><text x="590" y="170" class="t-ask">asks you</text>
+        <rect x="226" y="192" width="100" height="40" rx="8" class="step" stroke="none"/><text x="276" y="216" class="t-seal">runs</text>
+        <rect x="328" y="192" width="100" height="40" rx="8" class="step" stroke="none"/><text x="378" y="216" class="t-seal">runs</text>
+        <rect x="430" y="192" width="100" height="40" rx="8" class="step" stroke="none"/><text x="480" y="216" class="t-seal">runs</text>
+        <rect x="532" y="192" width="116" height="40" rx="8" class="step" stroke="none"/><text x="590" y="216" class="t-seal">runs</text>
+        <rect x="222" y="96" width="430" height="48" rx="10" fill="none" stroke="#14161a" stroke-width="1.3" stroke-dasharray="4 3"/>
+      </g>
+    </svg>
+    <figcaption><b>What runs alone, and what asks you,</b> for every pair of levels. The outlined row is the standard. A level is a price the publisher sets and a reviewer reads. The platform checks it is 0 to 3, and takes the publisher's word for what the function does (chapter 19).</figcaption>
+  </figure>
+
+  <div class="grid side">
+    <div>
+      <h3 style="margin-top:0">Your yes covers one exact call</h3>
+      <p>A call above the chat's trust stops being a call in progress. Its inputs are settled: literally what will run. It is <b>parked</b>, saved with the chat before you see anything, and a card shows the agent, the function, the level and the exact inputs.</p>
+      <p>Only a person can decide a card. <code>AI:Approval:Decide</code> isn't among the actions a runtime may call, so the part that asks can't answer itself.</p>
+    </div>
+    <figure style="margin:0">
+      <svg viewBox="0 0 300 236">
+        <rect x="1" y="1" width="298" height="234" rx="14" class="plain"/>
+        <path d="M1 15A14 14 0 0 1 15 1H285A14 14 0 0 1 299 15V44H1Z" class="ask" stroke="none"/>
+        <text x="18" y="28" font-size="11" class="b t-ask">WAITING FOR YOU · LEVEL 3</text>
+        <text x="18" y="70" font-size="13" class="b">Gmail wants to send a draft</text>
+        <g font-size="10.5">
+          <text x="18" y="96" class="t-faint">To</text><text x="70" y="96">accounts@northwind.example</text>
+          <text x="18" y="116" class="t-faint">Subject</text><text x="70" y="116">Invoice 1043: a reminder</text>
+          <text x="18" y="136" class="t-faint">Body</text><text x="70" y="136">Hello, our records show that…</text>
+          <text x="18" y="160" class="t-faint">An action that leaves the platform.</text>
+        </g>
+        <rect x="18" y="180" width="126" height="38" rx="9" class="platform"/><text x="81" y="204" text-anchor="middle" font-size="12" class="b t-on">Approve</text>
+        <rect x="156" y="180" width="126" height="38" rx="9" class="plain"/><text x="219" y="204" text-anchor="middle" font-size="12" class="b">Deny</text>
+      </svg>
+      <figcaption><b>A card</b>, as a person sees it: the exact call, not a summary.</figcaption>
+    </figure>
+  </div>
+
+  <div class="mech"><div><span class="m">Mechanism</span><h3>The life of a card</h3></div><span class="src">runtime/src/gates/gate.py · gates/cards.py · api_server/src/chats/cards.py</span></div>
+  <figure>
+    <svg viewBox="0 0 680 216">
+      <g font-size="9.4" class="cap" text-anchor="start">
+        <text x="0" y="36" class="cap">RUNTIME</text>
+        <text x="0" y="108" class="cap">API SERVER</text>
+        <text x="0" y="180" class="cap">A PERSON</text>
+      </g>
+      <path d="M0 62H680M0 134H680" class="lane"/>
+      <g font-size="9.8">
+        <rect x="72" y="8" width="118" height="46" rx="9" class="step"/>
+        <text x="131" y="26" text-anchor="middle" class="b">Parks the call</text><text x="131" y="41" text-anchor="middle" class="t-soft">saved with the chat first</text>
+        <path d="M131 54V78" class="flow" marker-end="url(#m-seal)"/>
+        <rect x="72" y="80" width="118" height="46" rx="9" class="platform"/>
+        <text x="131" y="98" text-anchor="middle" class="b t-on">Keeps the hash</text><text x="131" y="113" text-anchor="middle" class="t-on-soft mono" font-size="8.6">AI:Approval:Open</text>
+        <path d="M131 126V150" class="flow-ask" marker-end="url(#m-ask)"/>
+        <rect x="72" y="152" width="118" height="46" rx="9" class="ask"/>
+        <text x="131" y="170" text-anchor="middle" class="b t-ask">Reads the card</text><text x="131" y="185" text-anchor="middle" class="t-soft">however long it takes</text>
+        <path d="M190 175H226" class="flow-ask" marker-end="url(#m-ask)"/>
+        <rect x="228" y="152" width="118" height="46" rx="9" class="ask"/>
+        <text x="287" y="170" text-anchor="middle" class="b t-ask">Approves</text><text x="287" y="185" text-anchor="middle" class="t-soft mono" font-size="8.6">AI:Approval:Decide</text>
+        <path d="M287 152V128" class="flow" marker-end="url(#m-seal)"/>
+        <rect x="228" y="80" width="118" height="46" rx="9" class="platform"/>
+        <text x="287" y="98" text-anchor="middle" class="b t-on">Records it first</text><text x="287" y="113" text-anchor="middle" class="t-on-soft">a decision lands once</text>
+        <path d="M346 103H382" class="flow" marker-end="url(#m-seal)"/>
+        <text x="364" y="96" text-anchor="middle" font-size="8.4" class="t-faint">frame</text>
+        <rect x="384" y="80" width="134" height="46" rx="9" class="platform"/>
+        <text x="451" y="98" text-anchor="middle" class="b t-on">Sends its copy of the hash</text><text x="451" y="113" text-anchor="middle" class="t-on-soft mono" font-size="8.6">action_hash</text>
+        <path d="M451 80V56" class="flow" marker-end="url(#m-seal)"/>
+        <rect x="384" y="8" width="134" height="46" rx="9" class="step-strong"/>
+        <text x="451" y="26" text-anchor="middle" class="b">Reads the contract again</text><text x="451" y="41" text-anchor="middle" class="t-soft">every gate again; hash equal</text>
+        <path d="M518 24H556" class="flow" marker-end="url(#m-seal)"/>
+        <rect x="558" y="6" width="122" height="24" rx="8" class="agent"/><text x="619" y="22" text-anchor="middle" class="b">it runs</text>
+        <path d="M518 42H556" class="flow-no" marker-end="url(#m-no)"/>
+        <rect x="558" y="34" width="122" height="24" rx="8" class="no"/><text x="619" y="50" text-anchor="middle" class="b t-no">blocked: differs</text>
+      </g>
+    </svg>
+    <figcaption><b>A yes is judged again.</b> The hash is SHA-256 over the agent, the function and the inputs. A yes reads the contract first, so the call is judged against what the chat may do by then. If the contract can't be read, nothing runs. Only the level isn't asked again, since the card answered that. A missing or different hash blocks the call. A runtime that restarted while the card waited rebuilds the call from the saved state, and it passes the same way.</figcaption>
+  </figure>
+  <pre><span class="c">AI:Approval:Open</span>
+{"request": {"kind": "approval", "job_id": "", "function": "agt_3.orders.cancel",
+             "agent_id": "agt_3", "agent_name": "Orders", "inputs": {"order": "A-17"},
+             "permission_level": 2, "chat_level": 1, "action_hash": "3f1c9a..."}}
+<span class="c">→</span> {"approval_id": "apr_9"}
+
+<span class="c">Runtime:Chat:send, once the person has answered</span>
+{"type": "answer", "card_id": "apr_9", "answer": "allow", "action_hash": "3f1c9a..."}</pre>
+  <table class="compact">
+    <thead><tr><th style="width:18%">Answer</th><th>What follows</th></tr></thead>
+    <tr><td>Approve</td><td>as above. The call runs once</td></tr>
+    <tr><td>Deny</td><td>nothing runs. The hosts its inputs named are refused to that agent, by any of its functions, until the person next writes. A webhook doesn't clear that</td></tr>
+    <tr><td>Something else arrives first</td><td>the call steps aside as a job that goes on waiting, and the conversation goes on. An approval has no clock of its own</td></tr>
+    <tr><td>Stop</td><td>every card closes, and what was parked never runs</td></tr>
+  </table>
+
+  <div class="mech"><div><span class="m">Mechanism</span><h3>Code on a card</h3></div><span class="src">runtime/src/gates/review.py · api_server/src/chats/code_rules.py</span></div>
+  <p>Some agents do things nobody can list beforehand: a browser runs scripts in pages, and a code agent writes programs. Both put each one to the person on a code card. The chat's model reads the code first and answers <code>agrees</code>, <code>differs</code> or <code>unread</code>. That review advises and never decides, and the code goes last in the model's prompt, so that nothing it says can pass for a field above it.</p>
+  <p>An organization may ask to be shown less often. That decision sits in the API server, as the card opens, and isn't in the runtime's contract, so a runtime can't loosen itself. Three rules hold under every setting.</p>
+  <ul>
+    <li><b>Code is let through unseen only when the review says <code>agrees</code>.</b> Code that does more, or that nobody could read, goes to the person.</li>
+    <li><b>What is let through is still said,</b> in the chat, in the agent's name, with its first 25 lines.</li>
+    <li><b>A setting never vouches for itself.</b> "Once for a site" and "a correction" rest only on something a person allowed.</li>
+  </ul>
+  <p>For a function that declares <code>code: true</code>, an allowed card is a grant, so its names are checked first. A host must be one host, never an address or every host under a name. A package must be a name with versions, on the deployment's list where it keeps one. The hosts are lent to the run until the call ends.</p>
+
+  <div class="note">
+    <div class="kicker">The reach of a successful attack, stated exactly</div>
+    <p>If planted text fools the model, the most it can make happen <em>without a card</em> is a function that is declared, granted to this chat, with inputs that fit its schema, at or below the chat's trust. At the standard trust that means reads and ordinary changes through agents you were given. Every wider change and everything that leaves the platform becomes a card. Whatever the trust, an agent's code reaches only its declared hosts, and no secret reaches the model. No detector of "malicious" text is needed for any of this to hold.</p>
+  </div>
+
+  <h3>Work that runs while you are away</h3>
+  <p>A <b>schedule</b> is a note that wakes the assistant at a time, or a function run unattended with fixed inputs, which wakes it only when a named field comes back non-empty. Only a function its manifest marks <code>schedulable</code> may do that, and such a function must be level 0 or 1 and may not call the model: a manifest that breaks either is refused. The API server keeps the rows and the runtime claims what is due, every 30 seconds. Each fire goes through every gate against what the person may do that day, with nobody to ask, so a call above the chat's trust is denied. A cadence is 60 seconds at the least, and an overdue row fires once.</p>
+</section>

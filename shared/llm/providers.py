@@ -1,0 +1,207 @@
+"""The model providers and their models, read from ``providers.json`` and ``models.json`` beside this file
+(documentation/operating.md#6-model-connections, "The catalog"). It holds no key and reaches no network: a connection carries its own
+address, and the catalog's is only what the form starts with."""
+
+from __future__ import annotations
+
+import json
+import re
+from pathlib import Path
+from typing import Any, ClassVar
+from urllib.parse import urlsplit
+
+
+class LlmProviders:
+    PATH: ClassVar[Path] = Path(__file__).with_name("providers.json")
+    MODELS_PATH: ClassVar[Path] = Path(__file__).with_name("models.json")
+    #: The wire formats a provider may name, each spoken by one
+    #: connector (runtime/src/models/factory.py): OpenAI's chat completions
+    #: — which is also what every OpenAI-compatible server speaks — and
+    #: its Responses, Anthropic's messages, Google's generateContent,
+    #: Amazon's Converse, and Gemini and Claude on Google's Vertex AI,
+    #: signed in with a service account (shared/llm/vertex.py).
+    PROTOCOLS: ClassVar[tuple[str, ...]] = (
+        "openai", "openai-responses", "anthropic", "gemini", "bedrock",
+        "vertex", "vertex-anthropic")
+
+    #: ``<aws-region>``: the customer's own part of an address.
+    BLANK: ClassVar[re.Pattern] = re.compile(r"<([^<>]+)>")
+
+    _entries: ClassVar[dict[str, dict[str, Any]] | None] = None
+    _models: ClassVar[dict[str, list[dict[str, Any]]] | None] = None
+
+    @classmethod
+    def _load(cls) -> dict[str, dict[str, Any]]:
+        if cls._entries is None:
+            document = json.loads(cls.PATH.read_text(encoding="utf-8"))
+            cls._entries = {
+                entry["id"]: dict(entry) for entry in document["providers"]
+            }
+        return cls._entries
+
+    @classmethod
+    def all(cls) -> list[dict[str, Any]]:
+        """Every provider, in the order a person is shown them."""
+        return [dict(entry) for entry in cls._load().values()]
+
+    @classmethod
+    def models(cls, provider: Any, kind: str = "") -> list[dict[str, Any]]:
+        """The models a provider is known to serve, newest first, and
+        only those of one ``kind`` when one is named; empty for a
+        provider the list says nothing of."""
+        if cls._models is None:
+            cls._models = json.loads(
+                cls.MODELS_PATH.read_text(encoding="utf-8"))["models"]
+        return [dict(model) for model in
+                cls._models.get(str(provider or "").strip().lower(), [])
+                if not kind or model["kind"] == kind]
+
+    @classmethod
+    def model(cls, provider: Any, model_id: Any) -> dict[str, Any] | None:
+        """One model of a provider, or None for one the list does not
+        know — which is no refusal: it is asked for by the id given."""
+        wanted = str(model_id or "").strip()
+        return next((model for model in cls.models(provider)
+                     if model["id"] == wanted), None)
+
+    @classmethod
+    def price(cls, provider: Any, model_id: Any) -> dict[str, float] | None:
+        """What a model of a provider costs per million tokens, as the
+        catalog says (``cost``), or None where it says nothing — a
+        model it does not list, a provider of the person's own, a
+        catalog written before prices were kept."""
+        model = cls.model(provider, model_id)
+        cost = (model or {}).get("cost")
+        if not isinstance(cost, dict) or not all(
+                isinstance(cost.get(name), (int, float)) for name in ("input", "output")):
+            return None
+        return {name: float(cost[name]) for name in
+                ("input", "output", "cache_read", "cache_write")
+                if isinstance(cost.get(name), (int, float))}
+
+    @classmethod
+    def route(cls, provider: Any, model_id: Any, endpoint: Any) -> dict[str, str] | None:
+        """The protocol and the address a request for this model goes
+        by, or None for a provider that is in no catalog.
+
+        Both are the provider's, except for a model the catalog says is
+        reached differently — and then only while the connection still
+        points at the provider's own address. One the person pointed at
+        a gateway of theirs is theirs: it is asked as the provider is,
+        where they said.
+
+        A model's own address may carry the provider's blanks
+        (``<azure-resource-name>``); they are read out of the address
+        the connection holds, so nobody is asked for them twice."""
+        entry = cls.find(provider)
+        if entry is None:
+            return None
+        address = str(endpoint or "").strip() or entry["endpoint"]
+        chosen = {"protocol": entry["protocol"], "endpoint": address}
+        model = cls.model(provider, model_id)
+        if not model or not (model.get("protocol") or model.get("endpoint")):
+            return chosen
+        filled = cls._blanks(entry["endpoint"], address)
+        if filled is None:
+            return chosen
+        own = cls.BLANK.sub(
+            lambda blank: filled.get(blank.group(1), blank.group(0)),
+            model.get("endpoint") or address)
+        if cls.unfilled(own):
+            return chosen
+        return {"protocol": model.get("protocol") or entry["protocol"],
+                "endpoint": own}
+
+    @classmethod
+    def _blanks(cls, template: str, address: str) -> dict[str, str] | None:
+        """What an address has in each blank of the catalog's, or None
+        when it is not that address at all."""
+        if not template:
+            return None
+        pattern, position = "", 0
+        for number, blank in enumerate(cls.BLANK.finditer(template.rstrip("/"))):
+            pattern += re.escape(template[position:blank.start()]) + f"(?P<b{number}>[^/]+?)"
+            position = blank.end()
+        pattern += re.escape(template.rstrip("/")[position:])
+        found = re.fullmatch(pattern, address.rstrip("/"))
+        if found is None:
+            return None
+        names = [blank.group(1) for blank in cls.BLANK.finditer(template)]
+        return {name: found.group(f"b{number}") for number, name in enumerate(names)}
+
+    @staticmethod
+    def unfilled(endpoint: Any) -> bool:
+        """Whether an address still carries a blank from the catalog."""
+        return "<" in str(endpoint or "") or ">" in str(endpoint or "")
+
+    # ------------------------------------------------------------------
+    # Azure
+    # ------------------------------------------------------------------
+    #
+    # Azure is not shaped like the others. A customer has an endpoint of
+    # their own, shown in the portal in several forms, and calls a
+    # DEPLOYMENT, by a name they chose — not a model from a list. So a
+    # person pastes what the portal shows, and names their deployment.
+
+    #: Azure's provider id.
+    AZURE: ClassVar[str] = "azure"
+    #: The hosts Azure serves models at.
+    AZURE_HOSTS: ClassVar[tuple[str, ...]] = (
+        ".openai.azure.com", ".cognitiveservices.azure.com",
+        ".services.ai.azure.com")
+    AZURE_DEPLOYMENT: ClassVar[re.Pattern] = re.compile(
+        r"/openai/deployments/([^/?#]+)")
+
+    @classmethod
+    def by_deployment(cls, provider: Any) -> bool:
+        """Whether a connection of this provider names a deployment of
+        the customer's own where others name a model: there is no list
+        to offer, and the name is typed."""
+        return str(provider or "").strip().lower() == cls.AZURE
+
+    @classmethod
+    def azure(cls, pasted: Any) -> dict[str, str] | None:
+        """What an Azure endpoint, pasted in any form the portal shows
+        it, comes to: ``{endpoint, deployment}`` — the address requests
+        go to, and the deployment the address named, where it named one
+        (a deployment's "target URI" does). None for an address that is
+        not Azure's own: a gateway of the person's, left as they wrote
+        it.
+
+            https://x.openai.azure.com/
+            https://x.cognitiveservices.azure.com/openai/deployments/
+                gpt-4o/chat/completions?api-version=2025-01-01-preview
+            x.services.ai.azure.com
+
+        all come to ``https://<host>/openai/v1``, the address Azure
+        answers OpenAI's protocol at."""
+        text = str(pasted or "").strip()
+        if not text:
+            return None
+        try:
+            parts = urlsplit(text if "://" in text else "https://" + text)
+            host = (parts.hostname or "").lower()
+        except ValueError:
+            return None
+        if not any(host.endswith(suffix) and host != suffix.lstrip(".")
+                   for suffix in cls.AZURE_HOSTS):
+            return None
+        named = cls.AZURE_DEPLOYMENT.search(parts.path or "")
+        return {"endpoint": f"https://{host}/openai/v1",
+                "deployment": named.group(1) if named else ""}
+
+    @classmethod
+    def settled(cls, provider: Any, endpoint: Any) -> str:
+        """The address a connection is saved with: what was given, and
+        for Azure the address its pasted endpoint comes to."""
+        given = str(endpoint or "").strip()
+        if cls.by_deployment(provider):
+            found = cls.azure(given)
+            if found is not None:
+                return found["endpoint"]
+        return given
+
+    @classmethod
+    def find(cls, provider: Any) -> dict[str, Any] | None:
+        entry = cls._load().get(str(provider or "").strip().lower())
+        return dict(entry) if entry else None

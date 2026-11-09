@@ -1,0 +1,67 @@
+schema: 3
+agent:
+  id: connection_check
+  name: Connection Check
+  version: "0.2.0"
+  description: >
+    See what an agent can reach from where it runs: the host it declared, one it never declared, an address
+    inside the network, and a way around the platform.
+  instructions: >
+    Use this agent when the person wants to see whether agents are held to the hosts they declared. report runs
+    the whole check; reach tries one address. Report every row as given: reached, refused, unreachable or
+    not_tried are different things, and a refusal's reason is the platform's own words.
+  examples:
+    - {title: Check this install, prompt: "Run the connection check and tell me what was reached and what was refused."}
+    - {title: Try one address, prompt: "Ask Connection Check whether it can reach api.github.com."}
+  tags: [diagnostics, security]
+network:
+  hosts: [example.com]
+functions:
+  - id: report
+    name: Run the check
+    description: >
+      The whole check: the host this agent declared, a host it did not, an address inside the network, and a
+      connection and a name lookup made past the platform's way out. Each row says what a held agent expects
+      and what happened; held says whether every row went as expected.
+    level: 0
+    timeout_seconds: 90
+    calls: [chat]
+    inputs: {type: object, additionalProperties: false, properties: {}}
+    outputs:
+      type: object
+      required: [held, verdict, rows]
+      properties:
+        held: {type: boolean}
+        verdict: {type: string}
+        rows:
+          type: array
+          items:
+            type: object
+            required: [attempt, target, expected, outcome, as_expected]
+            properties:
+              attempt: {type: string}
+              target: {type: string}
+              expected: {type: string}
+              outcome: {type: string, enum: [reached, refused, unreachable, not_tried]}
+              reason: {type: string}
+              as_expected: {type: boolean}
+  - id: reach
+    name: Try one address
+    description: Try one host, with a port when it is not 443 (host:8443), and say what happened.
+    level: 0
+    timeout_seconds: 45
+    inputs:
+      type: object
+      additionalProperties: false
+      required: [address]
+      properties:
+        address: {type: string, minLength: 1, maxLength: 300}
+    outputs:
+      type: object
+      required: [host, port, declared, outcome]
+      properties:
+        host: {type: string}
+        port: {type: integer}
+        declared: {type: boolean}
+        outcome: {type: string, enum: [reached, refused, unreachable, not_tried]}
+        reason: {type: string}

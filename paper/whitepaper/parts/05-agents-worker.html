@@ -1,0 +1,236 @@
+<!-- ── 7. Agents ─────────────────────────────────────────────────── -->
+<section class="chapter" id="c7">
+  <div class="chapter-head">
+    <div class="kicker">7 · Agents, and how one is approved</div>
+    <h2>An address, a catalog, and one exact release</h2>
+    <p class="lead">An <b>agent</b> is what the assistant calls to get things done: a <b>manifest</b> that declares what it may do, keep and reach, and a <b>program</b> that does it. Agents install the way tools do. An address and a credential return a catalog, a person reviews one agent, and approval downloads that release and pins it by digest.</p>
+  </div>
+
+  <p>The platform ships with no agents installed. An agent may be written in anything: the program is one self-sufficient file per machine, and nothing of the platform goes inside it. Writing one for a system only your company has is the point: the same contract, the same gates, the same jail.</p>
+
+  <figure>
+    <svg viewBox="0 0 680 158">
+      <g font-size="10.3" text-anchor="middle">
+        <g><circle cx="52" cy="36" r="24" class="person"/><text x="52" y="43" font-size="17" class="serif t-soft">1</text>
+          <text x="52" y="80" class="b">Publish</text><text x="52" y="95" class="t-faint">a catalog and its</text><text x="52" y="109" class="t-faint">files, at an address</text></g>
+        <g><circle cx="168" cy="36" r="24" class="step-strong"/><text x="168" y="43" font-size="17" class="serif t-seal">2</text>
+          <text x="168" y="80" class="b">Read</text><text x="168" y="95" class="t-faint">kept as a snapshot,</text><text x="168" y="109" class="t-faint">with its digest.</text><text x="168" y="123" class="t-faint">Nothing is run</text></g>
+        <g><circle cx="284" cy="36" r="24" class="ask"/><text x="284" y="43" font-size="17" class="serif t-ask">3</text>
+          <text x="284" y="80" class="b t-ask">Review</text><text x="284" y="95" class="t-faint">a person reads what</text><text x="284" y="109" class="t-faint">the manifest declares</text></g>
+        <g><circle cx="400" cy="36" r="24" class="step-strong"/><text x="400" y="43" font-size="17" class="serif t-seal">4</text>
+          <text x="400" y="80" class="b">Approve</text><text x="400" y="95" class="t-faint">files downloaded,</text><text x="400" y="109" class="t-faint">each digest checked,</text><text x="400" y="123" class="t-faint">one write says it all</text></g>
+        <g><circle cx="516" cy="36" r="24" class="step-strong"/><text x="516" y="43" font-size="17" class="serif t-seal">5</text>
+          <text x="516" y="80" class="b">Check</text><text x="516" y="95" class="t-faint">started once, with</text><text x="516" y="109" class="t-faint">no network, greeted</text></g>
+        <g><circle cx="630" cy="36" r="24" class="agent"/><text x="630" y="43" font-size="17" class="serif">6</text>
+          <text x="630" y="80" class="b">Run</text><text x="630" y="95" class="t-faint">fetched by digest,</text><text x="630" y="109" class="t-faint">hashed again, jailed</text></g>
+      </g>
+      <path d="M78 36H142" class="flow" marker-end="url(#m-seal)"/><path d="M194 36H258" class="flow" marker-end="url(#m-seal)"/><path d="M310 36H374" class="flow" marker-end="url(#m-seal)"/><path d="M426 36H490" class="flow" marker-end="url(#m-seal)"/><path d="M542 36H604" class="flow" marker-end="url(#m-seal)"/>
+    </svg>
+    <figcaption><b>The life of an agent.</b> After step 4 the deployment doesn't need the publisher's server. It runs what it stored, and never takes a fresh copy of what is offered. Nothing moves by itself: the API server doesn't poll, and an update is read, reviewed and approved the same way.</figcaption>
+  </figure>
+
+  <div class="rule">What was reviewed is what is installed. An install takes the snapshot, never what the address says by then.</div>
+
+  <div class="mech"><div><span class="m">Mechanism</span><h3>A real catalog entry</h3></div><span class="src">docs/agents/publishing.md · shared/agent_catalog.py</span></div>
+  <p>One JSON document, at any address. This one offers one agent, whose program is a script, so one file serves both machines. The digest and size are of the real program: the small worker in <code>docs/agents/worker-protocol.md</code>, 1,140 bytes.</p>
+  <pre class="long">{
+  "schema": 2,
+  "catalog": {"id": "acme_agents", "name": "Acme agents"},
+  "agents": [{
+    "manifest": {
+      "schema_version": "2.0",
+      "agent": {"id": "greeter", "name": "Greeter", "version": "1.0.0",
+                "description": "Says hello to someone by name."},
+      <span class="k">"network": {"hosts": []},</span>
+      "tools": [{"id": "greetings", "name": "Greetings", "description": "Greets people.",
+        "functions": [{"id": "hello", "name": "Say hello", "description": "Greet one person by name.",
+          <span class="k">"permission_level": 0,</span>
+          "inputs":  {"type": "object", "properties": {"name": {"type": "string"}},
+                      "required": ["name"]},
+          "outputs": {"type": "object", "properties": {"text": {"type": "string"}},
+                      "required": ["text"]}}]}]
+    },
+    "programs": {
+      "x86_64":  {"url": "greeter/1.0.0/greeter", "size": 1140,
+                  <span class="k">"digest": "sha256:35f67122fdbafbafa16c9698eddfce3ab15d312b595d1aabad9b48fb1ac235f0"</span>},
+      "aarch64": {"url": "greeter/1.0.0/greeter", "size": 1140,
+                  <span class="k">"digest": "sha256:35f67122fdbafbafa16c9698eddfce3ab15d312b595d1aabad9b48fb1ac235f0"</span>}
+    },
+    "readme": "Greets people by name. Keeps nothing, and connects to nothing."
+  }]
+}</pre>
+  <p>A catalog holds up to 100 agents and 8 MiB. A wrong entry keeps its errors beside it and can't be installed, and the rest are still offered. Any https server will do: a folder of static files is enough, and there is nothing to run on the publisher's side.</p>
+
+  <div class="mech"><div><span class="m">Mechanism</span><h3>What pins a release</h3></div><span class="src">api_server/src/agents/install.py · agents/sources.py</span></div>
+  <p>Saving a source fetches a catalog and nothing else. Approval then names the snapshot that was reviewed:</p>
+  <pre><span class="c">Agents:Agent:Sourcecreate</span>
+{"name": "Acme agents", "url": "https://agents.acme.example/catalog.json", "credential": {"token": "..."}}
+
+<span class="c">Agents:Agent:Install</span>
+{"source_id": "src_7f3a", "agent": "greeter", "catalog_digest": "sha256:7c2e..."}
+<span class="c">→</span> {"agent": {"agent_id": "agt_0ba0...", "version": "1.0.0", "status": "installed", ...}, "installed": true}</pre>
+  <table class="compact">
+    <thead><tr><th style="width:18%">Digest</th><th style="width:32%">Over</th><th>What it stops</th></tr></thead>
+    <tr><td><code>catalog_digest</code></td><td>the exact bytes of the catalog that was read</td><td>installing what wasn't reviewed. A source read again since is refused: <code>source_moved</code></td></tr>
+    <tr><td>a program's <code>digest</code></td><td>the program's bytes, one per machine</td><td>a swapped file. A download past its <code>size</code> is stopped, and one that isn't its digest is thrown away: <code>fetch_failed</code></td></tr>
+    <tr><td><code>manifest_hash</code></td><td>the manifest</td><td>a change going unseen: an update is offered when the source's differs</td></tr>
+    <tr><td><code>release_digest</code></td><td>the manifest, each machine's program and the sample data</td><td>a version coming to mean something else: <code>immutable_version</code>. What a runtime said of one release says nothing of the next</td></tr>
+  </table>
+  <p>One write says all of it, so a chat never sees a manifest and a program that disagree, and a failure leaves nothing behind. Nothing downloaded is run by the API server. The bytes are stored per organization, by digest, so the same agent approved by two organizations is kept twice, and one's deletion or compromise can't reach the other's. An approval carries what it was approved from:</p>
+  <pre>{"_id": "agt_0ba09c35d8324040b6bd", "org_id": "org_1", "source_id": "src_7f3a", "local_agent_id": "greeter",
+ "version": "1.0.0", "status": "installed", "manifest_hash": "5d41ab...",
+ "release_digest": "sha256:21c99b55...",
+ "executables": {"x86_64": "sha256:35f67122...", "aarch64": "sha256:35f67122..."},
+ "source": {"url": "https://agents.acme.example/catalog.json", "catalog_digest": "sha256:7c2e..."},
+ "installed_by": "dana@acme.example",
+ "prepared": {"digest": "sha256:21c99b55...", "state": "ready", "error": "",
+              "at": "2026-10-31T08:13:00+00:00"}}</pre>
+  <p><b>The reference is the platform's.</b> <code>agt_</code> and twenty random characters, minted once per install, and worked out from nothing. Everything outside the agent speaks of it by that reference, and the runtime translates at the door, so a program only ever sees its own id. So two publishers' <code>note</code> agents never meet, and naming your agent after another one opens nothing.</p>
+  <table class="compact">
+    <thead><tr><th style="width:21%">Refused</th><th>Because</th></tr></thead>
+    <tr><td><code>source_unread</code></td><td>the source was never read</td></tr>
+    <tr><td><code>source_moved</code></td><td>it was read again after the page was shown: review it again</td></tr>
+    <tr><td><code>invalid_manifest</code></td><td>the entry has errors, each naming its path</td></tr>
+    <tr><td><code>immutable_version</code></td><td>this version is already approved with another manifest, program or sample data. The same bytes again are a repair</td></tr>
+    <tr><td><code>fetch_failed</code></td><td>a file couldn't be downloaded, is larger than it said, or isn't its digest</td></tr>
+  </table>
+  <p>Any of these leaves nothing behind, and an agent already installed keeps running what it had. A private source's credential is kept encrypted, never comes back, and goes to the source's own scheme, host and port alone. A file on another host, or a redirect to one, gets no credential, so a catalog can't hand a deployment's credential to a server it names. A token in an address is refused.</p>
+
+  <h3>The manifest is the contract</h3>
+  <p>The platform validates a manifest before anything runs, enforces it at every call, and trusts nothing else. A manifest that says less than the code does will stop the code. One that says more will fail review.</p>
+  <p class="sample"><b>A manifest fragment.</b> The agent Note, written in YAML for reading; it reaches the platform as JSON. It connects to nothing, and this one function may list, create and update its own notes, narrowed by notebook.</p>
+  <pre class="long">schema_version: "2.0"
+agent: {id: note, name: Note, version: "1.2.5", description: "Your working memory across conversations."}
+<span class="k">network:
+  hosts: []</span>                                  <span class="c"># the whole of where it may connect</span>
+authorization:
+  scopes:
+    notebook: {type: string, description: "Notebook name.", normalization: lowercase}
+resources:
+  data:
+    - id: note
+      label: Note
+      binding: {cardinality: many}
+      fields:
+        - {name: title, label: Title, type: string, storage: keys, required: true}
+tools:
+  - id: notes
+    name: Notes
+    description: Saves, reads and finds notes.
+    resources: {data: [note]}                <span class="c"># the tool's ceiling</span>
+    functions:
+      - id: save
+        name: Save Note
+        description: Save a note into a notebook.
+        <span class="k">permission_level: 1</span>
+        timeout_seconds: 30
+        <span class="k">resources: {data: {note: [list, create, update]}}</span>     <span class="c"># this function's actual reach</span>
+        authorization: {scopes: {notebook: {from_input: notebook, required: true}}}
+        inputs: {type: object, ...}
+        outputs: {type: object, ...}</pre>
+
+  <table class="compact">
+    <thead><tr><th style="width:31%">It declares</th><th>Where it is held</th></tr></thead>
+    <tr><td><code>network.hosts</code></td><td>at the egress, on every connection (chapter 10). A reviewer reads the list beside the functions. <code>hosts: []</code> reaches nothing. <code>hosts: any</code> is said once, on purpose, and addresses inside the platform's network stay refused</td></tr>
+    <tr><td><code>{from_secret: account.imap_host}</code></td><td>a host only the person knows. The field must be plain, so a reviewer can see it, and the host is open only while a call holding that credential runs</td></tr>
+    <tr><td><code>permission_level</code>, <code>inputs</code></td><td>at the gate</td></tr>
+    <tr><td><code>outputs</code></td><td>after the function returns, before anything is shown as fact</td></tr>
+    <tr><td><code>resources</code></td><td>on every ask, by operation: <code>list</code>, <code>read</code>, <code>use</code>, <code>create</code>, <code>update</code>, <code>delete</code>. A function without <code>delete</code> can't delete, though a sibling can</td></tr>
+    <tr><td><code>secrets</code>, by shape</td><td>a shape is no access. Which saved credential answers is a person's grant to that slot</td></tr>
+    <tr><td><code>llm</code>, <code>credentials</code>, <code>code</code>, <code>watch</code></td><td>the ask is refused unless the function declares it</td></tr>
+    <tr><td><code>schedulable</code></td><td>read at validation: level 0 or 1, and no model</td></tr>
+  </table>
+  <p>Inputs and outputs are JSON Schema, deliberately reduced: no <code>$ref</code>, no <code>allOf</code>, no <code>anyOf</code>, depth 5 at most. A schema a reviewer can't read at a glance is one nobody checks. A key the platform doesn't know is ignored in most places and refused inside <code>network</code>, so a mistake in where an agent connects is loud. A version is immutable once approved: every change to a manifest is a higher version.</p>
+
+  <div class="note plain">
+    <div class="kicker">Beside agents: a person's MCP server</div>
+    <p>A remote tool server a person adds is not an agent. Its tools run on its server, so there is nothing to jail, and the questions are where the request may go and what the answer is worth. It passes the same gates. Each tool starts at level 3 until its person prices it, what a server says of its tools is data, and a tool that changes comes back switched off. It reaches public addresses only. The Safety page can turn MCP servers off for an organization.</p>
+  </div>
+</section>
+
+<!-- ── 8. The worker ─────────────────────────────────────────────── -->
+<section class="chapter" id="c8">
+  <div class="chapter-head">
+    <div class="kicker">8 · The worker</div>
+    <h2>A program, two pipes, and no standing credentials</h2>
+    <p class="lead">An agent's program speaks one JSON message to a line on its standard input and output. That is the whole interface between an agent and the platform. The runtime holds all authority. A worker can only <em>ask</em>.</p>
+  </div>
+
+  <div class="rule">A worker starts with no credentials and no grants. A function is handed a credential when it asks for one its manifest declared, for the call that asked.</div>
+
+  <p>A worker is one run in a sandbox, and there is one run of an agent per chat. The runtime never loads agent code, which is why a hung or crashing function can actually be ended. A worker is disposable at any moment, and what it keeps between calls, a browser left open, is a convenience and never the record.</p>
+
+  <div class="mech"><div><span class="m">Mechanism</span><h3>A real exchange</h3></div><span class="src">docs/agents/worker-protocol.md · runtime/src/nodes/worker.py</span></div>
+  <p>Requests flow both ways on the same two streams, and each side numbers its own. Three shapes, JSON-RPC in spirit. This session is the program from the catalog above, fed these three lines, with its answers exactly as it wrote them. <code>→</code> is the runtime speaking, and <code>←</code> the worker.</p>
+  <pre class="tight"><span class="c">→</span> {"id":1,"method":"hello","params":{"protocol_version":2,"manifest":{}}}
+<span class="k">←</span> {"id": 1, "result": {"agent_id": "greeter", "version": "1.0.0", "functions": ["greeter.greetings.hello"]}}
+<span class="c">→</span> {"id":2,"method":"invoke","params":{"call_id":"c_9f2","function":"greeter.greetings.hello","inputs":{"name":"Dana"}}}
+<span class="k">←</span> {"id": 2, "result": {"result": {"text": "Hello, Dana."}, "status": "success"}}
+<span class="c">→</span> {"id":3,"method":"shutdown","params":{}}
+<span class="k">←</span> {"id": 3, "result": {}}</pre>
+  <p>In <code>hello</code> the worker is told the approved manifest rather than reading its own. Inputs reach it already validated, with defaults applied. Its function is <code>greeter.greetings.hello</code>, by its own id, whatever reference the platform gave it. A function that needs something asks, naming its call, while its invocation is open:</p>
+  <pre class="tight"><span class="c">→</span> {"id":4,"method":"invoke","params":{"call_id":"c_7aa","function":"mail.inbox.read","inputs":{"limit":20}}}
+<span class="k">←</span> {"id":1,"method":"resources.use_secret","params":{"call_id":"c_7aa","resource_id":"mailbox"}}
+<span class="c">→</span> {"id":1,"result":{"account":"dana@acme.example","access_token":"ya29..."}}
+<span class="k">←</span> {"id":4,"result":{"result":{"messages":[...]},"status":"success"}}</pre>
+
+  <figure>
+    <svg viewBox="0 0 680 200">
+      <rect x="0" y="44" width="134" height="104" rx="14" class="agent"/>
+      <text x="67" y="72" text-anchor="middle" font-size="12.5" class="b">A run</text>
+      <text x="67" y="91" text-anchor="middle" font-size="10" class="t-soft">holds no credential</text>
+      <text x="67" y="106" text-anchor="middle" font-size="10" class="t-soft">knows only its call_id</text>
+      <text x="67" y="130" text-anchor="middle" font-size="8.6" class="mono t-soft">resources.use_secret</text>
+      <path d="M136 84H210" class="flow" marker-end="url(#m-seal)"/>
+      <text x="173" y="76" text-anchor="middle" font-size="9.5" class="t-soft">it asks</text>
+      <rect x="214" y="10" width="222" height="172" rx="14" class="step-strong"/>
+      <path d="M214 26A16 16 0 0 1 230 10H420A16 16 0 0 1 436 26V36H214Z" class="platform-2"/>
+      <text x="325" y="28" text-anchor="middle" font-size="11.5" class="b t-on">The runtime</text>
+      <g font-size="10">
+        <rect x="228" y="46" width="194" height="24" rx="6" class="plain"/><text x="238" y="62">Is this call on this worker?</text>
+        <rect x="228" y="76" width="194" height="24" rx="6" class="plain"/><text x="238" y="92">Did its function declare this?</text>
+        <rect x="228" y="106" width="194" height="24" rx="6" class="plain"/><text x="238" y="122">This operation, this resource?</text>
+        <rect x="228" y="136" width="194" height="24" rx="6" class="plain"/><text x="238" y="152">Names the agent's own slot</text>
+      </g>
+      <path d="M438 84H542" class="flow" marker-end="url(#m-seal)"/>
+      <text x="490" y="76" text-anchor="middle" font-size="8.6" class="mono t-soft">Secrets:Secret:Use</text>
+      <rect x="546" y="44" width="134" height="104" rx="14" class="platform"/>
+      <text x="613" y="72" text-anchor="middle" font-size="12.5" class="b t-on">API server</text>
+      <text x="613" y="91" text-anchor="middle" font-size="10" class="t-on-soft">the owner may?</text>
+      <text x="613" y="106" text-anchor="middle" font-size="10" class="t-on-soft">writes a line, decrypts</text>
+      <text x="613" y="130" text-anchor="middle" font-size="9.5" class="t-on-soft">answers for this chat</text>
+      <path d="M542 116H442" class="flow" marker-end="url(#m-seal)"/>
+      <path d="M210 116H140" class="flow" marker-end="url(#m-seal)"/>
+      <text x="173" y="132" text-anchor="middle" font-size="9.5" class="t-soft">one call's worth</text>
+      <path d="M214 170H67V152" class="flow-no" marker-end="url(#m-no)"/>
+      <text x="0" y="190" font-size="9.5" class="t-no">refused: an error the function sees</text>
+    </svg>
+    <figcaption><b>Every ask goes through the runtime,</b> held to what that function declared, and then through the API server, held to what the chat's owner may do. The sandbox carries the lines unread.</figcaption>
+  </figure>
+
+  <table class="compact">
+    <thead><tr><th style="width:30%">It asks</th><th>Answered when</th></tr></thead>
+    <tr><td><code>resources.use_secret</code>, <code>list_secrets</code></td><td>the function declares that resource and <code>use</code>. As a credential is handed over, a host it names is lent to the call</td></tr>
+    <tr><td><code>resources.*_data</code>, <code>*_file</code></td><td>the function declares that resource and operation. A write is held to the manifest's fields, in the agent's own slot</td></tr>
+    <tr><td><code>llm.complete</code></td><td><code>llm: true</code>, and a person stands behind the call. The stored key never enters the run</td></tr>
+    <tr><td><code>credential</code></td><td><code>credentials: true</code>, and a person stands behind the call. Values go from the vault to the worker, never onto a card or a record</td></tr>
+    <tr><td><code>propose</code>, <code>install</code></td><td>a card the person allowed. <code>install</code> needs <code>code: true</code>, and the packages named on a card of this call</td></tr>
+    <tr><td><code>ask</code></td><td>any time. The function's clock stops while the person decides. With nobody behind the call the answer is <code>null</code> at once</td></tr>
+    <tr><td><code>show</code>, <code>post</code>, <code>progress</code></td><td>at most 5 displays and 3 posts a call. A display is an offer the assistant may decline. A post reaches the model marked as data</td></tr>
+  </table>
+
+  <div class="mech"><div><span class="m">Mechanism</span><h3>What the runtime assumes of a worker</h3></div><span class="src">runtime/src/nodes/worker.py · gates/gate.py</span></div>
+  <ul>
+    <li><b>Its answer is claimed, not believed.</b> The keys only the platform writes (<code>storage_ref</code>, <code>displays</code>, <code>denied</code>, <code>not_permitted</code>) are taken out of what it returned, and a success must fit the manifest's <code>outputs</code>, or the call fails.</li>
+    <li><b>Its identity is its process.</b> An ask is answered only when it comes from the worker the invocation was sent to. A call id learned any other way opens nothing.</li>
+    <li><b>A worker that breaks the framing is ended, not accommodated.</b> One line that isn't a JSON object, or passes 2 MiB, ends it. Standard error is its log, never parsed.</li>
+    <li><b>The runtime owns every clock.</b> Past <code>timeout_seconds</code>, 60 unless declared, a worker is sent <code>cancel</code>, and has 5 seconds before it is ended.</li>
+    <li><b>Nothing is retried by itself.</b> Ending a worker fails every call in flight with an honest error, because the runtime can't know what a half-run function changed.</li>
+    <li><b>At most 32 asks are answered at once.</b> Past that a worker isn't read, and waits. Its output waits in the sandbox too, so a flood slows only itself.</li>
+  </ul>
+  <p>A run starts at the first call of its agent in a chat, is greeted within 60 seconds, and is replaced when its program changes. It is retired after 5 minutes idle. Its environment is an allow-list: <code>HOME</code>, <code>TMPDIR</code>, <code>PATH</code>, the browser's path, its proxy with its pass in the address, and the platform's settings for agents, by four prefixes. The model's key and the runtime's settings never reach it.</p>
+  <div class="note plain">
+    <div class="kicker">Honest edge</div>
+    <p>Two calls in flight on one worker are one agent's code, and nothing on the wire keeps one from asking under the other's id. A worker's process lives between calls, so code that wanted to could keep a value it was handed for as long as the run lasts.</p>
+  </div>
+</section>

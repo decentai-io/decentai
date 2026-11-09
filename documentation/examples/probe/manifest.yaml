@@ -1,0 +1,49 @@
+schema: 3
+agent:
+  id: probe
+  name: Probe
+  version: "0.1.0"
+  description: >
+    Tests a sandbox from inside: says what it can see and reach, and does on request what a sandbox must hold or
+    end: using memory, starting children, writing files, writing what isn't a message.
+  instructions: >
+    A tool for testing a sandbox, not for a person's work. Call inspect to see what a process sees.
+  tags: [diagnostics]
+network:
+  hosts: [example.com]
+functions:
+  - {id: inspect, name: Inspect, description: What this process sees and can reach., level: 0,
+     inputs: {type: object, properties: {}}, outputs: {type: object}}
+  - {id: echo, name: Echo, description: Its inputs back., level: 0,
+     inputs: {type: object}, outputs: {type: object}}
+  - {id: write, name: Write a file, description: A file written in its home and returned., level: 0,
+     inputs: {type: object, required: [name, text], properties: {name: {type: string}, text: {type: string},
+                                                                repeat: {type: integer}, link: {type: boolean}}},
+     outputs: {type: object}}
+  - {id: lock, name: Lock a folder, description: A folder in its home only its own user may open., level: 0,
+     inputs: {type: object, properties: {}}, outputs: {type: object}}
+  - {id: read, name: Read a file, description: "A file it was handed, read.", level: 0,
+     inputs: {type: object, required: [path], properties: {path: {type: string}}}, outputs: {type: object}}
+  - {id: eat, name: Use memory, description: Memory held in steps until it holds as much as asked., level: 0,
+     inputs: {type: object, required: [mib], properties: {mib: {type: integer}, step: {type: integer},
+                                                         keep: {type: boolean}}},
+     outputs: {type: object}}
+  - {id: spawn, name: Start children, description: "Child processes started, as many as it may.", level: 0,
+     inputs: {type: object, required: [count], properties: {count: {type: integer}}}, outputs: {type: object}}
+  - {id: spin, name: Use the processor, description: "The processor kept busy, and how much of it it got.", level: 0,
+     inputs: {type: object, required: [seconds], properties: {seconds: {type: number}}}, outputs: {type: object}}
+  - {id: sleep, name: Sleep, description: Waits until the time passes or it is cancelled., level: 0,
+     inputs: {type: object, required: [seconds], properties: {seconds: {type: number}}}, outputs: {type: object}}
+  - {id: say, name: Write to its log, description: Lines written to its standard error., level: 0,
+     inputs: {type: object, required: [lines], properties: {lines: {type: array, items: {type: string}}}},
+     outputs: {type: object}}
+  - {id: misbehave, name: Break the protocol, description: "Writes a line that is not a message, or too long a line.",
+     level: 0, inputs: {type: object, required: [how], properties: {how: {enum: [not_json, too_long]}}},
+     outputs: {type: object}}
+  - {id: stay, name: Stay, description: Its input closing no longer ends it., level: 0,
+     inputs: {type: object, properties: {}}, outputs: {type: object}}
+  - {id: exit, name: Exit, description: Exits with the code asked., level: 0,
+     inputs: {type: object, required: [code], properties: {code: {type: integer}}}, outputs: {type: object}}
+  - {id: connect, name: Connect, description: A connection asked of its way out., level: 0,
+     inputs: {type: object, required: [host, port], properties: {host: {type: string}, port: {type: integer}}},
+     outputs: {type: object}}

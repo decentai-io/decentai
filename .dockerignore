@@ -1,0 +1,30 @@
+# The images are built from the repository root and take only code:
+# nothing a local run, a test or an editor left behind, and no settings.
+.git
+documentation
+paper
+**/.claude
+
+# Settings and secrets
+deploy/config/*.env
+deploy/config/root
+**/config.env
+**/.env
+**/*.pem
+**/*.key
+
+# Python leftovers
+**/__pycache__
+**/.pytest_cache
+**/.venv
+**/state.json
+
+# What local runs and tests write
+**/.workerenv
+
+# Node builds and caches
+**/node_modules
+
+# Editors
+**/.idea
+**/.vscode

@@ -1,0 +1,73 @@
+# The sandbox's tests (test_sandbox.py): its real image, served by callers that are the tests, running the example
+# agents of documentation/examples.
+#
+#   docker compose -f sandbox/tests/compose.yml up -d --build
+#   docker compose -f sandbox/tests/compose.yml exec -T callers sh -c '
+#       pip install -q aiohttp msgpack cryptography pytest pyyaml && cd /src && python -m pytest -q sandbox/tests'
+#   docker compose -f sandbox/tests/compose.yml down -v
+name: decentai-sandbox-tests
+
+services:
+  identities:
+    image: python:3.12-slim
+    command: ["sh", "-c", "pip install -q msgpack cryptography && python /src/sandbox/tests/identities.py /identities"]
+    environment:
+      PYTHONPATH: /src
+    volumes:
+      - ../..:/src:ro
+      - identities:/identities
+
+  sandbox:
+    build:
+      context: ../..
+      dockerfile: sandbox/Dockerfile
+    depends_on:
+      identities:
+        condition: service_completed_successfully
+    init: true
+    pids_limit: 65536
+    mem_limit: 1536m
+    cap_drop: [ALL]
+    cap_add: [CHOWN, KILL, SETUID, SETGID]
+    security_opt:
+      - seccomp=../config/seccomp.json
+      - systempaths=unconfined
+      - writable-cgroups=true
+    tmpfs:
+      - /data/homes:size=1g,mode=0755
+    environment:
+      AI_SANDBOX_CALLERS: callers:8004 callers:8014 callers:8024
+      AI_SANDBOX_ADDRESS: sandbox:8004
+      AI_SANDBOX_IDENTITY: /run/decentai/sandbox
+      AI_SANDBOX_PROGRAM_UNPACKED_MAX_GIB: "1"
+      AI_SANDBOX_PROCESSES_MAX: "6"
+      AI_SANDBOX_PROCESS_MEMORY_MIB: "256"
+      AI_SANDBOX_PROCESS_MEMORY_MAX_MIB: "1024"
+      AI_SANDBOX_PROCESS_CPUS: "0.5"
+      AI_SANDBOX_PROCESS_TASKS_MAX: "64"
+      AI_SANDBOX_PROCESS_EXIT_SECONDS: "3"
+      AI_SANDBOX_CALLER_GONE_SECONDS: "5"
+      AI_SANDBOX_STOP_SECONDS: "5"
+    volumes:
+      - identities:/run/decentai:ro
+    networks: [sandbox]
+
+  # The callers, played by the tests (caller.py): nodes on 8004, 8014 and 8024, each with its way out a port above.
+  # Docker's socket lets the tests stop the sandbox and start it again.
+  callers:
+    image: python:3.12-slim
+    command: ["sleep", "infinity"]
+    environment:
+      PYTHONPATH: /src
+    volumes:
+      - ../..:/src:ro
+      - identities:/identities:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks: [sandbox, default]
+
+networks:
+  sandbox:
+    internal: true
+
+volumes:
+  identities:

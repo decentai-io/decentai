@@ -1,0 +1,139 @@
+<!-- ── 18. How we know ───────────────────────────────────────────── -->
+<section class="chapter" id="c18">
+  <div class="chapter-head">
+    <div class="kicker">18 · How we know</div>
+    <h2>Saying is not enough</h2>
+    <p class="lead">What convinces you about a lock is someone who tried to open it and wrote down how. Every suite here runs in Docker, and the live ones use real images and real jails.</p>
+  </div>
+
+  <table class="compact">
+    <thead><tr><th style="width:22%">Suite</th><th style="width:15%">Tests</th><th style="width:37%">Real</th><th>Stood in for</th></tr></thead>
+    <tr><td>API server and shared</td><td>2,172, 3 skipped</td><td>MongoDB, as a replica set</td><td>the runtime</td></tr>
+    <tr><td>Runtime</td><td>1,279</td><td>its gates, turns and worker link, and the egress's checks</td><td>the API server and the model</td></tr>
+    <tr><td>Communication</td><td>70</td><td>TLS, certificates, enrollment</td><td>nothing</td></tr>
+    <tr><td>Issuer</td><td>16</td><td>MongoDB</td><td>nothing</td></tr>
+    <tr><td>Tools</td><td>10</td><td>the root tool</td><td>nothing</td></tr>
+    <tr><td><b>Sandbox, live</b></td><td><b>12</b></td><td>the sandbox's own image, with real jails, a real firewall and two callers</td><td>the callers are the tests</td></tr>
+    <tr><td><b>Runtime, live</b></td><td><b>7</b></td><td>a whole runtime, the real sandbox, the real egress, mutual TLS</td><td>the API server, on a node of its own, and the model</td></tr>
+    <tr><td><b>Deployment, live</b></td><td><b>1</b></td><td>the issuer's image, signed by the root tool; nodes enrolling, renewing, a token withdrawn</td><td>nothing</td></tr>
+  </table>
+  <p>The counts are as of November 2026, and every suite passed. The tests use a <b>scripted model</b>, which answers from a script. That is deliberate: a test must give the same result every time, and the claims here are about what the <em>platform</em> does with whatever a model proposes.</p>
+
+  <h3>What the live tests saw</h3>
+  <table class="compact">
+    <thead><tr><th style="width:17%">Boundary</th><th style="width:56%">A run tried</th><th>And found</th></tr></thead>
+    <tr><td>Files</td><td>to write under <code>/usr</code>; to list <code>/</code> and find the platform; to find what the last run in its slot left behind</td><td><span class="tag no">read-only</span> <span class="tag no">not there</span> <span class="tag no">nothing</span></td></tr>
+    <tr><td>Processes</td><td>to count what it could see</td><td>its own, three at most</td></tr>
+    <tr><td>Network</td><td>to connect to another port on the machine</td><td><span class="tag no">no route</span> errno 113</td></tr>
+    <tr><td>Call filter</td><td><code>shmget</code>, and <code>unshare</code> to make a user namespace</td><td><span class="tag no">refused</span> errno 1</td></tr>
+    <tr><td>Environment</td><td>a caller asking for <code>LD_PRELOAD</code>; a run reading the sandbox's own settings</td><td><span class="tag no">refused</span> <span class="tag no">not there</span></td></tr>
+    <tr><td>Programs</td><td>bytes that aren't their digest; a run of a program not held</td><td><span class="tag no">kept nowhere</span> <span class="tag no">refused</span></td></tr>
+    <tr><td>Way out</td><td>a port its manifest didn't declare; a site on the blocked list, though declared</td><td><span class="tag no">403</span></td></tr>
+    <tr><td>Install</td><td>a program started to be checked, on a pass that opens nothing</td><td>greeted, then stopped</td></tr>
+    <tr><td>Trust</td><td>a runtime listing the issuer's nodes; a renewal after its token was withdrawn</td><td><span class="tag no">403</span></td></tr>
+    <tr><td>Still works</td><td>a real browser in its jail; a declared host through the egress; two callers naming a run alike; 63 runs at once, then a 64th refused as full</td><td><span class="tag run">works</span></td></tr>
+  </table>
+
+  <div class="note plain">
+    <div class="kicker">What the tests do not show</div>
+    <ul style="margin-bottom:0">
+      <li><b>How well a real model resists a cleverly written email.</b> No test asks a real model anything.</li>
+      <li><b>The whole call filter, live.</b> The live probe tries two of its calls. The rest is a list in a fixed file, read here and not attacked.</li>
+      <li><b>The memory rule.</b> No test fills a sandbox and watches it end the largest run.</li>
+      <li><b>A run attacking a run.</b> No live test has one run reach for another's files, processes or sockets. That rests on the jail's user and namespaces, and the probe above.</li>
+      <li><b>Speed and behaviour at large scale.</b> None of these suites measures them.</li>
+      <li><b>A flaw in the Linux kernel,</b> which is a way past every layer, and which no test can rule out.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ── 19. What it does not do ───────────────────────────────────── -->
+<section class="chapter" id="c19">
+  <div class="chapter-head">
+    <div class="kicker">19 · What it does not do</div>
+    <h2>The limits, in one place</h2>
+    <p class="lead">Every gap we know of, for a reader deciding whether to trust the rest. Some are trade-offs made on purpose, some aren't done yet, and some come from what the platform runs on.</p>
+  </div>
+
+  <h3>The sandbox</h3>
+  <table class="compact">
+    <thead><tr><th style="width:33%">Limit</th><th>What it means</th></tr></thead>
+    <tr><td>No memory cgroup per run</td><td>A container can't write its own cgroup, so a run has no memory limit of its own. The container's limit holds them all, and the sandbox ends the largest at 90%. Compose sets no limit unless <code>SANDBOX_MEMORY</code> is given, and with none the sandbox ends no run for memory. Between its looks, once a second, a run can reach the limit first, and the kernel ends a process of its choosing</td></tr>
+    <tr><td>No processor or time limit on a run</td><td>A run may hold the container's processors for as long as it lives. A function has a timeout. The run under it doesn't</td></tr>
+    <tr><td>Abstract unix sockets are shared</td><td>They belong to the container's network, so a run could reach one another run listens on. Nothing of the platform's listens on one</td></tr>
+    <tr><td>Runs share a kernel</td><td>nsjail is a process jail, not a virtual machine. A kernel flaw is a way past all of it. Where that is too much to share, the separation is another sandbox, set aside by <code>scope</code></td></tr>
+    <tr><td>It needs a stronger container than Docker's default</td><td>User namespaces, mounting and an unmasked <code>/proc</code> are given to the container, and the jail's own filter is what withholds them from runs. On AppArmor hosts the operator adds the profile: Compose doesn't name it</td></tr>
+  </table>
+
+  <h3>Agents and the way out</h3>
+  <table class="compact">
+    <thead><tr><th style="width:33%">Limit</th><th>What it means</th></tr></thead>
+    <tr><td>A level is the publisher's word</td><td>The platform checks it is 0 to 3, and takes the publisher's word for what a function does. A level 0 that sends mail is caught by a reviewer, or not at all</td></tr>
+    <tr><td>Nothing reads the program</td><td>A digest pins bytes, not behaviour. Nothing scans an agent, and catalogs carry no publisher's signature: the digest comes from the catalog that was reviewed. Review is the control</td></tr>
+    <tr><td>An approved agent can misuse what it is lent</td><td>It can use a mailbox against the hosts it declared, and keep a value in memory while its run lasts. For an access token that is bounded by its expiry, and for a typed key it isn't</td></tr>
+    <tr><td>The egress sees a host and a port</td><td>It doesn't read what is sent. A declared host that relays, a shared CDN, a paste site, is a way out it can't see. An agent with <code>hosts: any</code> reaches any public address. Bytes aren't limited, only connections</td></tr>
+    <tr><td>Below the chat's trust, the model's word is enough</td><td>A granted function at or below the chat's trust runs with no card, and at trust 3 every granted function does. Trust and grants are security decisions</td></tr>
+    <tr><td>A refused host is held in memory</td><td>A person's refusal of a host, until they next write, lives in the runtime's process. A restart forgets it. Only an input that is itself an address is matched, not one inside a sentence</td></tr>
+    <tr><td>The code review is a model reading code</td><td>It advises, and it can be fooled. A setting that shows code less often rests on it. Keep <code>always</code> where that matters</td></tr>
+  </table>
+
+  <h3>Secrets, nodes and the record</h3>
+  <table class="compact">
+    <thead><tr><th style="width:33%">Limit</th><th>What it means</th></tr></thead>
+    <tr><td>A secret passes through the runtime's memory</td><td>The runtime carries a decrypted secret for one call, and holds each open chat's model key. A runtime on someone else's machines is trusted with that. <em>Own nodes only</em> exists for this</td></tr>
+    <tr><td>Each side of a link must be able to reach the other</td><td>The API server calls a runtime at its address, a runtime calls its sandboxes, and each is called back. A node behind a one-way network doesn't work: every node needs an address the other can reach</td></tr>
+    <tr><td>A stolen certificate lasts its lifetime</td><td>There is no revocation list. A node's certificate ends within 12 hours, 7 days on one machine, unless the API server refuses it first. A stolen intermediate certifies for up to 120 days</td></tr>
+    <tr><td>On one's own computer the root isn't offline</td><td><code>deploy/setup/setup.py</code> keeps the roots in <code>deploy/config/root</code> with their passphrase beside them, and signs an intermediate for 3,650 days. That is fair for a laptop, and it isn't the trust of chapter 12</td></tr>
+    <tr><td>One database account, in Compose</td><td><code>MONGO_URI</code> carries the database's root account, for the API server and the issuer alike. The issuer needs only a database of its own, and a taken-over issuer reaches more than that</td></tr>
+    <tr><td>The trail is append-only by code</td><td>Nothing through the gateway can change a line, and someone holding the database's password could, with nothing to show it. It isn't cryptographically chained</td></tr>
+    <tr><td>A file's bytes aren't encrypted by the platform</td><td>Its metadata is. At rest its content is the store's to protect</td></tr>
+    <tr><td>Content can still carry a secret</td><td>A password pasted into a message, or one an agent returns as ordinary output, is ordinary data to the platform</td></tr>
+    <tr><td>It doesn't make the model correct</td><td>The model can still choose the wrong customer or write something untrue. The platform keeps the mistake small, visible and, where it matters, waiting for you</td></tr>
+    <tr><td>A call's outcome can be unknown</td><td>A job running when a runtime dies is settled as an error, whether or not its work happened. Nothing is retried by itself, and nothing claims it finished</td></tr>
+  </table>
+</section>
+
+<!-- ── Closing ───────────────────────────────────────────────────── -->
+<section class="chapter">
+  <div class="chapter-head">
+    <div class="kicker">In closing</div>
+    <h2>The model may never be safe. The system around it can be.</h2>
+  </div>
+  <p class="lead" style="font-size:11.8pt;color:var(--ink-soft)">Making models resistant to every trick hidden in what they read may never be finished. Deciding what a model's suggestion is allowed to do is a different problem, and that one can be engineered, audited and tested with tools security has trusted for fifty years.</p>
+  <p>DecentAI is that engineering: permissions that start from no; one gate every call passes; a person's yes for what costs more; one exact release, pinned by digest; agents that hold nothing; strangers' code in jails with one way out; every node proved on every call; results drawn from records, not retyped; a stop that doesn't ask; and a trail that only grows. The model will still be fooled sometimes. When it is, the consequence is small, visible and, where it counts, waiting for you.</p>
+
+  <div class="links">
+    <div><h4>Run it</h4><p>On your own computer with one command, or on your organization's servers. Open source, Apache 2.0.</p></div>
+    <div><h4>Read the code</h4><p>github.com/decentai-io: the engine and the web client.</p></div>
+    <div><h4>Write an agent</h4><p>In any language. <code>docs/agents/</code> is all an author needs, and nothing of the platform goes inside it.</p></div>
+  </div>
+
+  <h3>The words used here</h3>
+  <div class="gloss">
+    <p><b>Agent</b>: a manifest and a program, one exact release of which an organization approved.</p>
+    <p><b>Approval</b>: two things. An administrator approving one release, and a person's yes to one call.</p>
+    <p><b>Ask</b>: what a running function requests of the runtime.</p>
+    <p><b>Card</b>: something in a chat that waits for a person.</p>
+    <p><b>Catalog</b>: what a source's address answers.</p>
+    <p><b>Contract</b>: what a chat may do right away, answered by the API server.</p>
+    <p><b>Digest</b>: <code>sha256:</code> and the hex of a file's bytes. It names a program and proves it.</p>
+    <p><b>Egress</b>: the runtime's part that is a run's one way out.</p>
+    <p><b>Engine</b>: the API server, runtime, egress, sandbox and issuer together.</p>
+    <p><b>Execution node</b>: a runtime and its sandboxes.</p>
+    <p><b>Gateway</b>: <code>POST /app</code>, the route every action goes through.</p>
+    <p><b>Grant</b>: who may use an agent; a credential lent to one; which functions a chat may call.</p>
+    <p><b>Level</b>: 0 to 3, on a function (what it costs) and on a chat (its trust).</p>
+    <p><b>Manifest</b>: an agent's contract: what it may do, keep and reach.</p>
+    <p><b>Node</b>: a part that holds a certificate and serves on port 8004.</p>
+    <p><b>Pass</b>: the token that tells the egress which run is connecting.</p>
+    <p><b>Program</b>: the file a run executes, one per machine.</p>
+    <p><b>Reference</b>: the id of a stored thing. An approval's, <code>agt_…</code>, is an installed agent's.</p>
+    <p><b>Run</b>: one started program, in a jail. There is one per agent per chat.</p>
+    <p><b>Scope</b>: the organization a node's certificate says it serves.</p>
+    <p><b>Slot</b>: one resource of one installed agent, and the name its things are kept under.</p>
+    <p><b>Source</b>: an address agents are installed from.</p>
+    <p><b>Step, turn</b>: one model reply and its calls; the steps until a reply that calls nothing.</p>
+    <p><b>Trace</b>: what the assistant actually ran in this chat, which evidence is checked against.</p>
+    <p><b>Worker</b>: a run, as the worker protocol sees it.</p>
+  </div>
+</section>

@@ -1,0 +1,117 @@
+# A whole deployment's trust, end to end (test_deployment.py): roots made with the root tool, the
+# issuer from its own image, its intermediate signed by hand (by a job here), and nodes
+# that enroll through it over the network.
+#
+#   docker compose -f issuer/tests/compose.yml up -d --build
+#   docker compose -f issuer/tests/compose.yml exec tester sh -c \
+#     "pip install -q aiohttp msgpack cryptography pymongo pytest anyio && cd /src && python -m pytest -q issuer/tests/test_deployment.py"
+#   docker compose -f issuer/tests/compose.yml down -v
+name: decentai-issuer-tests
+
+x-tools: &tools
+  image: python:3.12-slim
+  environment:
+    PYTHONPATH: /src
+  working_dir: /offline
+
+services:
+  mongo:
+    image: mongo:7
+
+  # The root's administrator, on the offline machine: the two roots. What the issuer and the
+  # nodes are given goes into their volumes.
+  roots:
+    <<: *tools
+    command:
+      - sh
+      - -c
+      - >-
+        pip install -q cryptography &&
+        echo 'a passphrase for the end-to-end roots' > passphrase &&
+        python /src/tools/decentai_root.py --passphrase-file passphrase init e2e &&
+        mkdir -p /issuer/authority &&
+        cp roots.pem /issuer/ && cp roots.pem /nodes/ &&
+        chown -R 999:999 /issuer
+    volumes:
+      - ../..:/src:ro
+      - offline:/offline
+      - issuer:/issuer
+      - nodes:/nodes
+
+  issuer:
+    build:
+      context: ../..
+      dockerfile: issuer/Dockerfile
+    command: ["python", "-m", "issuer"]
+    healthcheck:
+      disable: true
+    depends_on:
+      roots:
+        condition: service_completed_successfully
+      mongo:
+        condition: service_started
+    environment:
+      MONGO_URI: mongodb://mongo:27017
+      ISSUER_DATABASE: decentai_issuer
+    volumes:
+      - issuer:/run/decentai
+
+  # The root's administrator again: the issuer's request, signed, and brought back.
+  signer:
+    <<: *tools
+    command:
+      - sh
+      - -c
+      - >-
+        pip install -q cryptography &&
+        until [ -f /issuer/authority/authority.csr ]; do sleep 0.5; done &&
+        python /src/tools/decentai_root.py --passphrase-file passphrase sign /issuer/authority/authority.csr
+        --name decentai-e2e-issuer-1-ca --kinds issuer,api,runtime,sandbox --yes &&
+        cp decentai-e2e-issuer-1-ca.pem /issuer/authority/authority.pem &&
+        chown 999:999 /issuer/authority/authority.pem
+    depends_on:
+      issuer:
+        condition: service_started
+    volumes:
+      - ../..:/src:ro
+      - offline:/offline
+      - issuer:/issuer
+
+  # The operator: the first API server's token, by the one command there is for it.
+  first-token:
+    build:
+      context: ../..
+      dockerfile: issuer/Dockerfile
+    command: ["sh", "-c", "python /opt/decentai/setup/identities.py token api > /nodes/first-token"]
+    user: "0"
+    healthcheck:
+      disable: true
+    depends_on:
+      roots:
+        condition: service_completed_successfully
+      mongo:
+        condition: service_started
+    environment:
+      MONGO_URI: mongodb://mongo:27017
+      ISSUER_DATABASE: decentai_issuer
+    volumes:
+      - nodes:/nodes
+
+  # The nodes: the tests start them, and they enroll through the issuer at issuer:8004.
+  tester:
+    image: python:3.12-slim
+    command: ["sleep", "infinity"]
+    depends_on:
+      first-token:
+        condition: service_completed_successfully
+    environment:
+      PYTHONPATH: /src
+      ISSUER_ADDRESS: issuer:8004
+    volumes:
+      - ../..:/src:ro
+      - nodes:/nodes:ro
+
+volumes:
+  offline:
+  issuer:
+  nodes:

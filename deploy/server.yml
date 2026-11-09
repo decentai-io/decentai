@@ -1,0 +1,9 @@
+# Laid over deploy/docker-compose.yml on a server whose proxy holding the TLS is on another host. It publishes
+# the API server's port on the interfaces LISTEN names. Name it in
+# deploy/config/deploy.env:
+#
+#   COMPOSE_FILE=deploy/docker-compose.yml:deploy/server.yml
+services:
+  api-server:
+    ports: !override
+      - "${LISTEN:-0.0.0.0}:${PORT:-4280}:8000"

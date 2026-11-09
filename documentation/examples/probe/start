@@ -1,0 +1,201 @@
+#!/usr/local/bin/python3 -I
+"""Probe: a sandbox tested from inside. A whole agent in one file, speaking the standard on its standard input and
+output (documentation/agents.md#9-the-standard-field-by-field)."""
+
+import ctypes
+import hashlib
+import itertools
+import json
+import os
+import socket
+import subprocess
+import sys
+import threading
+import time
+
+AGENT, VERSION = "probe", "0.1.0"
+HOME, PROXY, DIRECT = "/home/run", ("127.0.0.1", 3128), ("1.1.1.1", 443)
+MIB = 1024 * 1024
+#: Memory a call was asked to keep holding after it returned.
+KEPT = []
+
+
+class Wire:
+    """Messages in and out: one JSON object a line, written by one thread at a time."""
+
+    def __init__(self):
+        self.ids = itertools.count(1)
+        self.writing = threading.Lock()
+        #: A running call's _id -> set when it is cancelled.
+        self.cancelled = {}
+        #: Once set, its input closing no longer ends it.
+        self.stay = False
+
+    def send(self, kind, data, files=None):
+        message = {"_id": f"p{next(self.ids)}", "body": {"type": kind, "data": data}}
+        if files:
+            message["files"] = files
+        self.write(json.dumps(message) + "\n")
+
+    def write(self, line):
+        with self.writing:
+            sys.stdout.write(line)
+            sys.stdout.flush()
+
+
+def tried(work):
+    try:
+        return work()
+    except OSError as refused:
+        return f"errno {refused.errno}"
+
+
+def inspect(wire, call, inputs):
+    libc = ctypes.CDLL(None, use_errno=True)
+    found = {
+        "uid": os.getuid(), "gid": os.getgid(), "cwd": os.getcwd(), "arguments": sys.argv[1:],
+        "environment": dict(os.environ),
+        "root": sorted(os.listdir("/")), "sees_data": os.path.exists("/data"),
+        "processes": len([name for name in os.listdir("/proc") if name.isdigit()]),
+        "cgroup": open("/proc/self/cgroup").read().strip(),
+        "interfaces": sorted(line.split(":")[0].strip() for line in open("/proc/net/dev").readlines()[2:]),
+        "left_before": os.path.exists(f"{HOME}/left") or os.path.exists("/tmp/left"),
+        "write_the_system": tried(lambda: open("/usr/x", "w") and "written"),
+        "direct": tried(lambda: socket.create_connection(DIRECT, 3).close() or "connected"),
+        "lookup": tried(lambda: socket.getaddrinfo("example.com", 443) and "found"),
+        "shared_memory": libc.shmget(0x5eed, 4096, 0o1666) >= 0 or ctypes.get_errno(),
+        "namespace": libc.unshare(0x10000000) == 0 or ctypes.get_errno(),
+    }
+    for left in (f"{HOME}/left", "/tmp/left"):
+        with open(left, "w") as written:
+            written.write("left by an earlier process")
+    return found
+
+
+def echo(wire, call, inputs):
+    return inputs
+
+
+def write(wire, call, inputs):
+    os.makedirs(f"{HOME}/out", exist_ok=True)
+    path = f"out/{inputs['name']}"
+    with open(f"{HOME}/{path}", "w") as written:
+        written.write(inputs["text"] * inputs.get("repeat", 1))
+    if inputs.get("link"):
+        os.symlink("/etc/passwd", f"{HOME}/{path}.link")
+        path = f"{path}.link"
+    return {"file": path}, [path]
+
+
+def lock(wire, call, inputs):
+    """A folder only its own user may open, holding one it may not even write: the sandbox can't remove these."""
+    os.makedirs(f"{HOME}/private/inner", exist_ok=True)
+    with open(f"{HOME}/private/inner/kept", "w") as written:
+        written.write("only mine")
+    os.chmod(f"{HOME}/private/inner", 0o500)
+    os.chmod(f"{HOME}/private", 0o700)
+    return {"locked": True}
+
+
+def read(wire, call, inputs):
+    with open(f"{HOME}/{inputs['path']}", "rb") as found:
+        data = found.read()
+    return {"size": len(data), "sha256": hashlib.sha256(data).hexdigest()}
+
+
+def eat(wire, call, inputs):
+    """Memory held in steps; kept after the call when asked, so the process goes on using it."""
+    held, step = [], inputs.get("step", 10)
+    while len(held) * step < inputs["mib"]:
+        held.append(bytearray(b"\x01") * (step * MIB))
+        time.sleep(0.05)
+    if inputs.get("keep"):
+        KEPT.extend(held)
+    return {"held_mib": len(held) * step}
+
+
+def spawn(wire, call, inputs):
+    children, refused = [], ""
+    for _ in range(inputs["count"]):
+        try:
+            children.append(subprocess.Popen(["sleep", "30"]))
+        except OSError as error:
+            refused = str(error)
+            break
+    for child in children:
+        child.kill()
+        child.wait()
+    return {"started": len(children), "refused": refused}
+
+
+def spin(wire, call, inputs):
+    started, used = time.monotonic(), time.process_time()
+    while time.monotonic() - started < inputs["seconds"]:
+        pass
+    return {"wall": time.monotonic() - started, "cpu": time.process_time() - used}
+
+
+def sleep(wire, call, inputs):
+    started = time.monotonic()
+    cancelled = wire.cancelled[call].wait(inputs["seconds"])
+    return {"slept": time.monotonic() - started, "cancelled": cancelled}
+
+
+def say(wire, call, inputs):
+    for line in inputs["lines"]:
+        print(line, file=sys.stderr, flush=True)
+    return {"said": len(inputs["lines"])}
+
+
+def misbehave(wire, call, inputs):
+    wire.write("this is not a message\n" if inputs["how"] == "not_json" else "x" * (MIB + 10) + "\n")
+    return {}
+
+
+def stay(wire, call, inputs):
+    wire.stay = True
+    return {"staying": True}
+
+
+def exit(wire, call, inputs):
+    os._exit(inputs["code"])
+
+
+def connect(wire, call, inputs):
+    target = f"{inputs['host']}:{inputs['port']}"
+    with socket.create_connection(PROXY, 10) as link:
+        link.sendall(f"CONNECT {target} HTTP/1.1\r\nHost: {target}\r\n\r\n".encode())
+        return {"answer": link.recv(4096).split(b"\r\n", 1)[0].decode("latin-1")}
+
+
+FUNCTIONS = {function.__name__: function for function in (inspect, echo, write, lock, read, eat, spawn, spin, sleep,
+                                                          say, misbehave, stay, exit, connect)}
+
+
+def run(wire, call, data):
+    try:
+        found = FUNCTIONS[data["function"]](wire, call, data["inputs"])
+        output, files = found if isinstance(found, tuple) else (found, None)
+        wire.send("result", {"call": call, "output": output}, files)
+    except Exception as error:
+        wire.send("error", {"call": call, "message": str(error)[:1000] or type(error).__name__})
+    finally:
+        wire.cancelled.pop(call, None)
+
+
+def main():
+    wire = Wire()
+    wire.send("ready", {"agent": AGENT, "version": VERSION, "functions": list(FUNCTIONS)})
+    for line in sys.stdin:
+        message = json.loads(line)
+        body = message["body"]
+        if body["type"] == "call":
+            wire.cancelled[message["_id"]] = threading.Event()
+            threading.Thread(target=run, args=(wire, message["_id"], body["data"]), daemon=True).start()
+        elif body["type"] == "cancel" and body["data"]["call"] in wire.cancelled:
+            wire.cancelled[body["data"]["call"]].set()
+    while wire.stay:
+        time.sleep(60)
+
+
+main()

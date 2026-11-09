@@ -1,0 +1,27 @@
+# The API server: what it imports and nothing else (documentation/api-server.md).
+
+# The people's door, and calling out
+fastapi~=0.136.1
+uvicorn~=0.46.0
+websockets~=15.0.1
+httpx~=0.28
+
+# The runtimes' door (communication/): HTTPS with mutual TLS, and its bodies
+aiohttp~=3.12
+msgpack~=1.1
+
+# Keys, passwords
+cryptography~=47.0.0
+bcrypt~=5.0
+
+# The database, and a chat's time zone where the image has no zoneinfo
+pymongo~=4.16
+tzdata>=2024.1
+
+# The agents standard's manifest and catalog, webhooks' fields; and agents' samples
+jsonschema~=4.23
+PyYAML~=6.0
+
+# Web push, and S3-compatible storage
+pywebpush~=2.5
+boto3~=1.43

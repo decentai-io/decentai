@@ -1,0 +1,22 @@
+# The API server's tests: MongoDB as a one-node replica set, and a runner with the repository read-only.
+#
+#   docker compose -f api_server/tests/compose.yml up -d
+#   docker compose -f api_server/tests/compose.yml exec -T runner sh /src/api_server/tests/run.sh
+#   docker compose -f api_server/tests/compose.yml down -v
+
+services:
+  mongo:
+    image: mongo:7
+    command: ["--replSet", "rs0", "--bind_ip_all", "--quiet"]
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval",
+             "try { rs.status().ok } catch (e) { rs.initiate({_id: 'rs0', members: [{_id: 0, host: 'mongo:27017'}]}).ok }"]
+      interval: 2s
+      retries: 30
+
+  runner:
+    image: python:3.12-slim
+    volumes: ["../..:/src:ro"]
+    depends_on:
+      mongo: {condition: service_healthy}
+    command: ["sleep", "infinity"]

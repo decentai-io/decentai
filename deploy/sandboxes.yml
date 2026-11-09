@@ -1,0 +1,24 @@
+# A second sandbox beside the first, from the same image, with a folder and an identity of its own. Name it in
+# deploy/config/deploy.env:
+#
+#   COMPOSE_FILE=deploy/docker-compose.yml:deploy/sandboxes.yml
+services:
+  # Its identity folder is filled with the others'.
+  identities:
+    volumes:
+      - sandbox_2_identity:/nodes/sandbox-2
+
+  sandbox-2:
+    extends:
+      # Relative to deploy/, the project's folder, as every path in a file laid over another.
+      file: docker-compose.yml
+      service: sandbox
+    environment:
+      AI_SANDBOX_ADDRESS: sandbox-2:8004
+    volumes:
+      - sandbox_2_data:/data
+      - sandbox_2_identity:/run/decentai/sandbox
+
+volumes:
+  sandbox_2_data:
+  sandbox_2_identity:

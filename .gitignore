@@ -1,0 +1,44 @@
+# Settings and secrets, kept on the machine that made them: the
+# install's own files in deploy/config/, beside the templates that are kept.
+deploy/config/deploy.env
+# Copies of it, kept before an edit: the same keys, never committed.
+deploy/config/*.env.bak*
+deploy/config/*.env.*.bak
+deploy/config/root/
+deploy/config/.*.incoming
+# What one person lays over the stack on their own computer: a folder
+# of agents they write.
+deploy/docker-compose.override.yml
+**/config.env
+!**/config.env.example
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Python
+**/__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+
+# What local runs and tests write
+*.log
+# written at run time by a dependency
+state.json
+
+# Editors and operating systems
+.idea/
+.vscode/
+.history/
+.claude/
+.DS_Store
+Thumbs.db
+**/.workerenv-build/

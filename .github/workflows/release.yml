@@ -1,0 +1,147 @@
+# A release: the engine's five images, published under the version a
+# tag names (v0.6.0), and a GitHub release that names each by digest.
+# Runs when a version is tagged. documentation/operating.md, "Releases",
+# says how a version is cut and run.
+#
+# What it needs of the repository: nothing but its own token. The
+# packages it publishes are private until made public once, on GitHub,
+# after the first release.
+name: release
+
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+
+permissions:
+  contents: write
+  packages: write
+  actions: read
+
+env:
+  IMAGES: ghcr.io/${{ github.repository_owner }}
+
+jobs:
+  # A tag on a commit whose tests did not pass is not released. The
+  # tests run on the push to main; tag once they are green.
+  tested:
+    name: the commit's tests passed
+    runs-on: ubuntu-latest
+    steps:
+      - name: Look for a passing run of the tests on this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          conclusion=$(gh run list --repo "$GITHUB_REPOSITORY" \
+            --workflow tests.yml --commit "$GITHUB_SHA" \
+            --json conclusion,status \
+            --jq '[.[] | select(.status == "completed")][0].conclusion // "none"')
+          echo "tests on ${GITHUB_SHA}: ${conclusion}"
+          if [ "$conclusion" != "success" ]; then
+            echo "::error::The tests have not passed on this commit (${conclusion}). Tag a commit whose tests passed, or re-run this workflow once they have."
+            exit 1
+          fi
+
+  image:
+    name: ${{ matrix.image }}
+    needs: tested
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - image: api-server
+            dockerfile: api_server/Dockerfile
+          - image: ai-runtime
+            dockerfile: runtime/Dockerfile
+          - image: issuer
+            dockerfile: issuer/Dockerfile
+          - image: sandbox
+            dockerfile: sandbox/Dockerfile
+          - image: speech
+            dockerfile: speech/Dockerfile
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: The version is the tag's
+        id: version
+        run: echo "number=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      # Both processor types a server or a laptop has: Intel and AMD,
+      # and ARM. Layers are kept between releases, so one that did not
+      # change is not built again.
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Build and publish
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,scope=${{ matrix.image }},mode=max
+          tags: |
+            ${{ env.IMAGES }}/decentai-${{ matrix.image }}:${{ steps.version.outputs.number }}
+            ${{ env.IMAGES }}/decentai-${{ matrix.image }}:latest
+          labels: |
+            org.opencontainers.image.title=decentai-${{ matrix.image }}
+            org.opencontainers.image.version=${{ steps.version.outputs.number }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.licenses=Apache-2.0
+
+      # A matrix job's outputs are the last one's, so each image leaves
+      # its digest as a file the release collects.
+      - name: Keep the digest
+        run: |
+          mkdir -p digests
+          echo "${{ env.IMAGES }}/decentai-${{ matrix.image }}@${{ steps.build.outputs.digest }}" \
+            > "digests/${{ matrix.image }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: digest-${{ matrix.image }}
+          path: digests/${{ matrix.image }}
+          retention-days: 1
+
+  release:
+    name: the release
+    needs: image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: digest-*
+          path: digests
+          merge-multiple: true
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          {
+            echo "The engine's images for ${version}, by digest:"
+            echo
+            echo "| Image | Digest |"
+            echo "|---|---|"
+            for image in api-server ai-runtime issuer sandbox speech; do
+              echo "| decentai-${image} | \`$(cat "digests/${image}")\` |"
+            done
+            echo
+            echo "To run it: \`DECENTAI_VERSION=${version}\` in deploy/config/deploy.env, then"
+            echo "\`docker compose --env-file deploy/config/deploy.env pull\` and \`up -d --no-build\`"
+            echo "(documentation/operating.md, Releases)."
+          } > notes.md
+          gh release create "$GITHUB_REF_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "DecentAI engine ${version}" \
+            --notes-file notes.md \
+            --generate-notes \
+            --verify-tag

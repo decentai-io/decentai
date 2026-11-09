@@ -1,0 +1,15 @@
+{
+  "defaultAction": "SCMP_ACT_ALLOW",
+  "syscalls": [
+    {
+      "names": ["acct", "add_key", "bpf", "clock_adjtime", "clock_settime", "delete_module",
+                "finit_module", "init_module", "io_uring_enter", "io_uring_register", "io_uring_setup",
+                "ioperm", "iopl", "kexec_file_load", "kexec_load", "keyctl", "lookup_dcookie",
+                "name_to_handle_at", "open_by_handle_at", "perf_event_open", "process_vm_readv",
+                "process_vm_writev", "ptrace", "quotactl", "reboot", "request_key", "settimeofday",
+                "swapoff", "swapon", "syslog", "userfaultfd"],
+      "action": "SCMP_ACT_ERRNO",
+      "errnoRet": 1
+    }
+  ]
+}

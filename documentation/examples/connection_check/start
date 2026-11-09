@@ -1,0 +1,157 @@
+#!/usr/local/bin/python3 -I
+"""Connection Check: what an agent can reach from where it runs. A whole agent in one file, speaking the standard
+on its standard input and output (documentation/agents.md#9-the-standard-field-by-field)."""
+
+import itertools
+import json
+import socket
+import sys
+import threading
+from urllib.parse import urlsplit
+
+AGENT, VERSION = "connection_check", "0.2.0"
+#: Its way out, the one host it declared, one it never declared, an address inside the network, and an address and
+#: a name tried past the way out.
+PROXY = ("127.0.0.1", 3128)
+DECLARED, UNDECLARED, INSIDE = "example.com", "www.wikipedia.org", "169.254.169.254"
+DIRECT, NAME = ("1.1.1.1", 443), "example.com"
+SECONDS = 10
+REACHED, REFUSED, UNREACHABLE = "reached", "refused", "unreachable"
+
+
+class Wire:
+    """Messages in and out: one JSON object a line. Its own calls to the runtime wait here for their answers."""
+
+    def __init__(self):
+        self.ids = itertools.count(1)
+        self.writing = threading.Lock()
+        #: The _id of each call of its own -> [answered, the answer's body].
+        self.waiting = {}
+
+    def send(self, kind, data, message_id=None):
+        message_id = message_id or f"p{next(self.ids)}"
+        line = json.dumps({"_id": message_id, "body": {"type": kind, "data": data}}) + "\n"
+        with self.writing:
+            sys.stdout.write(line)
+            sys.stdout.flush()
+        return message_id
+
+    def call(self, within, function, inputs):
+        """A function of the runtime's, called within one of its calls: its output, or RuntimeError."""
+        message_id, answered = f"p{next(self.ids)}", threading.Event()
+        self.waiting[message_id] = [answered, None]
+        self.send("call", {"within": within, "function": function, "inputs": inputs}, message_id)
+        answered.wait()
+        body = self.waiting.pop(message_id)[1]
+        if body["type"] == "error":
+            raise RuntimeError(body["data"].get("message", "refused"))
+        return body["data"]["output"]
+
+    def answered(self, body):
+        found = self.waiting.get(body["data"].get("call"))
+        if found is not None:
+            found[1] = body
+            found[0].set()
+
+
+class Check:
+    """The attempts: a connection opened and closed, and what became of it. Nothing is sent and nothing is read."""
+
+    @staticmethod
+    def through_the_way_out(host, port):
+        """A tunnel asked of the way out: its first line is the answer, and a refusal's reason is on it."""
+        try:
+            with socket.create_connection(PROXY, SECONDS) as link:
+                link.settimeout(SECONDS * 3)
+                link.sendall(f"CONNECT {host}:{port} HTTP/1.1\r\nHost: {host}:{port}\r\n\r\n".encode())
+                line = link.recv(4096).split(b"\r\n", 1)[0].decode("latin-1")
+        except OSError as error:
+            return UNREACHABLE, f"its way out did not answer: {error}"
+        status, _, reason = line.partition(" ")[2].partition(" ")
+        if status == "200":
+            return REACHED, ""
+        return (UNREACHABLE if status in ("502", "504") else REFUSED), reason.strip() or line
+
+    @staticmethod
+    def straight(host, port):
+        """A connection to an address, asking nobody."""
+        try:
+            socket.create_connection((host, port), SECONDS).close()
+            return REACHED, ""
+        except socket.timeout:
+            return UNREACHABLE, "the host did not answer"
+        except OSError as error:
+            return REFUSED, error.strerror or str(error)
+
+    @staticmethod
+    def looked_up(name):
+        try:
+            socket.getaddrinfo(name, 443)
+            return REACHED, ""
+        except OSError as error:
+            return REFUSED, str(error)
+
+    @staticmethod
+    def row(attempt, target, expected, found):
+        outcome, reason = found
+        row = {"attempt": attempt, "target": target, "expected": expected, "outcome": outcome,
+               "as_expected": outcome == expected}
+        return {**row, "reason": reason} if reason else row
+
+
+def report(wire, call, inputs):
+    rows = [
+        Check.row("The host this agent declared", DECLARED, REACHED, Check.through_the_way_out(DECLARED, 443)),
+        Check.row("A host it did not declare", UNDECLARED, REFUSED, Check.through_the_way_out(UNDECLARED, 443)),
+        Check.row("An address inside the network", INSIDE, REFUSED, Check.through_the_way_out(INSIDE, 80)),
+        Check.row("Past the way out: a connection made straight", f"{DIRECT[0]}:{DIRECT[1]}", REFUSED,
+                  Check.straight(*DIRECT)),
+        Check.row("Past the way out: a name looked up", NAME, REFUSED, Check.looked_up(NAME)),
+    ]
+    held = all(row["as_expected"] for row in rows)
+    try:
+        wire.call(call, "chat", {"table": {"title": "What this agent could reach",
+                                           "columns": ["attempt", "target", "outcome", "reason"],
+                                           "rows": [[row["attempt"], row["target"], row["outcome"],
+                                                     row.get("reason", "")] for row in rows]}})
+    except RuntimeError:
+        pass  # the table is a courtesy; the result says it all
+    verdict = ("Held. This agent reached the host it declared, and was refused everything else it tried." if held
+               else "Not held as expected: see the rows.")
+    return {"held": held, "verdict": verdict, "rows": rows}
+
+
+def reach(wire, call, inputs):
+    address = str(inputs["address"]).strip()
+    parts = urlsplit(address if "://" in address else f"//{address}")
+    host, port = (parts.hostname or "").lower(), parts.port or (80 if parts.scheme == "http" else 443)
+    if not host:
+        raise ValueError(f"'{address}' names no host")
+    outcome, reason = Check.through_the_way_out(host, port)
+    found = {"host": host, "port": port, "declared": host == DECLARED, "outcome": outcome}
+    return {**found, "reason": reason} if reason else found
+
+
+FUNCTIONS = {"report": report, "reach": reach}
+
+
+def run(wire, call, data):
+    try:
+        wire.send("result", {"call": call, "output": FUNCTIONS[data["function"]](wire, call, data["inputs"])})
+    except Exception as error:
+        wire.send("error", {"call": call, "message": str(error)[:1000] or type(error).__name__})
+
+
+def main():
+    wire = Wire()
+    wire.send("ready", {"agent": AGENT, "version": VERSION, "functions": list(FUNCTIONS)})
+    for line in sys.stdin:
+        message = json.loads(line)
+        body = message["body"]
+        if body["type"] == "call":
+            threading.Thread(target=run, args=(wire, message["_id"], body["data"]), daemon=True).start()
+        elif body["type"] in ("result", "error"):
+            wire.answered(body)
+
+
+main()

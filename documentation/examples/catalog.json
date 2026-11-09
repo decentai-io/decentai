@@ -1,0 +1,492 @@
+{
+  "schema": 3,
+  "catalog": {
+    "id": "decentai_examples",
+    "name": "DecentAI examples"
+  },
+  "agents": [
+    {
+      "manifest": {
+        "schema": 3,
+        "agent": {
+          "id": "connection_check",
+          "name": "Connection Check",
+          "version": "0.2.0",
+          "description": "See what an agent can reach from where it runs: the host it declared, one it never declared, an address inside the network, and a way around the platform.\n",
+          "instructions": "Use this agent when the person wants to see whether agents are held to the hosts they declared. report runs the whole check; reach tries one address. Report every row as given: reached, refused, unreachable or not_tried are different things, and a refusal's reason is the platform's own words.\n",
+          "examples": [
+            {
+              "title": "Check this install",
+              "prompt": "Run the connection check and tell me what was reached and what was refused."
+            },
+            {
+              "title": "Try one address",
+              "prompt": "Ask Connection Check whether it can reach api.github.com."
+            }
+          ],
+          "tags": [
+            "diagnostics",
+            "security"
+          ]
+        },
+        "network": {
+          "hosts": [
+            "example.com"
+          ]
+        },
+        "functions": [
+          {
+            "id": "report",
+            "name": "Run the check",
+            "description": "The whole check: the host this agent declared, a host it did not, an address inside the network, and a connection and a name lookup made past the platform's way out. Each row says what a held agent expects and what happened; held says whether every row went as expected.\n",
+            "level": 0,
+            "timeout_seconds": 90,
+            "calls": [
+              "chat"
+            ],
+            "inputs": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {}
+            },
+            "outputs": {
+              "type": "object",
+              "required": [
+                "held",
+                "verdict",
+                "rows"
+              ],
+              "properties": {
+                "held": {
+                  "type": "boolean"
+                },
+                "verdict": {
+                  "type": "string"
+                },
+                "rows": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "attempt",
+                      "target",
+                      "expected",
+                      "outcome",
+                      "as_expected"
+                    ],
+                    "properties": {
+                      "attempt": {
+                        "type": "string"
+                      },
+                      "target": {
+                        "type": "string"
+                      },
+                      "expected": {
+                        "type": "string"
+                      },
+                      "outcome": {
+                        "type": "string",
+                        "enum": [
+                          "reached",
+                          "refused",
+                          "unreachable",
+                          "not_tried"
+                        ]
+                      },
+                      "reason": {
+                        "type": "string"
+                      },
+                      "as_expected": {
+                        "type": "boolean"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "id": "reach",
+            "name": "Try one address",
+            "description": "Try one host, with a port when it is not 443 (host:8443), and say what happened.",
+            "level": 0,
+            "timeout_seconds": 45,
+            "inputs": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "address"
+              ],
+              "properties": {
+                "address": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 300
+                }
+              }
+            },
+            "outputs": {
+              "type": "object",
+              "required": [
+                "host",
+                "port",
+                "declared",
+                "outcome"
+              ],
+              "properties": {
+                "host": {
+                  "type": "string"
+                },
+                "port": {
+                  "type": "integer"
+                },
+                "declared": {
+                  "type": "boolean"
+                },
+                "outcome": {
+                  "type": "string",
+                  "enum": [
+                    "reached",
+                    "refused",
+                    "unreachable",
+                    "not_tried"
+                  ]
+                },
+                "reason": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "programs": {
+        "x86_64": {
+          "url": "connection_check/0.2.0/program.zip",
+          "digest": "sha256:0b3eceb588ddc861bbfa9f398a8e074ced49e138941abf660490e54dc55ea169",
+          "size": 2627
+        },
+        "aarch64": {
+          "url": "connection_check/0.2.0/program.zip",
+          "digest": "sha256:0b3eceb588ddc861bbfa9f398a8e074ced49e138941abf660490e54dc55ea169",
+          "size": 2627
+        }
+      },
+      "base": "python-3.12",
+      "readme": "See what an agent can reach from where it runs: the host it declared, one it never declared, an address inside the network, and a way around the platform."
+    },
+    {
+      "manifest": {
+        "schema": 3,
+        "agent": {
+          "id": "probe",
+          "name": "Probe",
+          "version": "0.1.0",
+          "description": "Tests a sandbox from inside: says what it can see and reach, and does on request what a sandbox must hold or end: using memory, starting children, writing files, writing what isn't a message.\n",
+          "instructions": "A tool for testing a sandbox, not for a person's work. Call inspect to see what a process sees.\n",
+          "tags": [
+            "diagnostics"
+          ]
+        },
+        "network": {
+          "hosts": [
+            "example.com"
+          ]
+        },
+        "functions": [
+          {
+            "id": "inspect",
+            "name": "Inspect",
+            "description": "What this process sees and can reach.",
+            "level": 0,
+            "inputs": {
+              "type": "object",
+              "properties": {}
+            },
+            "outputs": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "echo",
+            "name": "Echo",
+            "description": "Its inputs back.",
+            "level": 0,
+            "inputs": {
+              "type": "object"
+            },
+            "outputs": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "write",
+            "name": "Write a file",
+            "description": "A file written in its home and returned.",
+            "level": 0,
+            "inputs": {
+              "type": "object",
+              "required": [
+                "name",
+                "text"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "text": {
+                  "type": "string"
+                },
+                "repeat": {
+                  "type": "integer"
+                },
+                "link": {
+                  "type": "boolean"
+                }
+              }
+            },
+            "outputs": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "lock",
+            "name": "Lock a folder",
+            "description": "A folder in its home only its own user may open.",
+            "level": 0,
+            "inputs": {
+              "type": "object",
+              "properties": {}
+            },
+            "outputs": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "read",
+            "name": "Read a file",
+            "description": "A file it was handed, read.",
+            "level": 0,
+            "inputs": {
+              "type": "object",
+              "required": [
+                "path"
+              ],
+              "properties": {
+                "path": {
+                  "type": "string"
+                }
+              }
+            },
+            "outputs": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "eat",
+            "name": "Use memory",
+            "description": "Memory held in steps until it holds as much as asked.",
+            "level": 0,
+            "inputs": {
+              "type": "object",
+              "required": [
+                "mib"
+              ],
+              "properties": {
+                "mib": {
+                  "type": "integer"
+                },
+                "step": {
+                  "type": "integer"
+                },
+                "keep": {
+                  "type": "boolean"
+                }
+              }
+            },
+            "outputs": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "spawn",
+            "name": "Start children",
+            "description": "Child processes started, as many as it may.",
+            "level": 0,
+            "inputs": {
+              "type": "object",
+              "required": [
+                "count"
+              ],
+              "properties": {
+                "count": {
+                  "type": "integer"
+                }
+              }
+            },
+            "outputs": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "spin",
+            "name": "Use the processor",
+            "description": "The processor kept busy, and how much of it it got.",
+            "level": 0,
+            "inputs": {
+              "type": "object",
+              "required": [
+                "seconds"
+              ],
+              "properties": {
+                "seconds": {
+                  "type": "number"
+                }
+              }
+            },
+            "outputs": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "sleep",
+            "name": "Sleep",
+            "description": "Waits until the time passes or it is cancelled.",
+            "level": 0,
+            "inputs": {
+              "type": "object",
+              "required": [
+                "seconds"
+              ],
+              "properties": {
+                "seconds": {
+                  "type": "number"
+                }
+              }
+            },
+            "outputs": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "say",
+            "name": "Write to its log",
+            "description": "Lines written to its standard error.",
+            "level": 0,
+            "inputs": {
+              "type": "object",
+              "required": [
+                "lines"
+              ],
+              "properties": {
+                "lines": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "outputs": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "misbehave",
+            "name": "Break the protocol",
+            "description": "Writes a line that is not a message, or too long a line.",
+            "level": 0,
+            "inputs": {
+              "type": "object",
+              "required": [
+                "how"
+              ],
+              "properties": {
+                "how": {
+                  "enum": [
+                    "not_json",
+                    "too_long"
+                  ]
+                }
+              }
+            },
+            "outputs": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "stay",
+            "name": "Stay",
+            "description": "Its input closing no longer ends it.",
+            "level": 0,
+            "inputs": {
+              "type": "object",
+              "properties": {}
+            },
+            "outputs": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "exit",
+            "name": "Exit",
+            "description": "Exits with the code asked.",
+            "level": 0,
+            "inputs": {
+              "type": "object",
+              "required": [
+                "code"
+              ],
+              "properties": {
+                "code": {
+                  "type": "integer"
+                }
+              }
+            },
+            "outputs": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "connect",
+            "name": "Connect",
+            "description": "A connection asked of its way out.",
+            "level": 0,
+            "inputs": {
+              "type": "object",
+              "required": [
+                "host",
+                "port"
+              ],
+              "properties": {
+                "host": {
+                  "type": "string"
+                },
+                "port": {
+                  "type": "integer"
+                }
+              }
+            },
+            "outputs": {
+              "type": "object"
+            }
+          }
+        ]
+      },
+      "programs": {
+        "x86_64": {
+          "url": "probe/0.1.0/program.zip",
+          "digest": "sha256:141a0214e6f19b3c7e08f94480a45a3a32c5ce9aa94891d51840c24b735c2038",
+          "size": 2821
+        },
+        "aarch64": {
+          "url": "probe/0.1.0/program.zip",
+          "digest": "sha256:141a0214e6f19b3c7e08f94480a45a3a32c5ce9aa94891d51840c24b735c2038",
+          "size": 2821
+        }
+      },
+      "base": "python-3.12",
+      "readme": "Tests a sandbox from inside: says what it can see and reach, and does on request what a sandbox must hold or end: using memory, starting children, writing files, writing what isn't a message."
+    }
+  ]
+}

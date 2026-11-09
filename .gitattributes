@@ -1,0 +1,5 @@
+# Every text file is checked out with Unix line endings, wherever: the images are Linux, and nft, nsjail
+# and the shell read a Windows line ending as part of the line.
+* text=auto eol=lf
+
+*.png binary
