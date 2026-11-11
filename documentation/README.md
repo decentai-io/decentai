@@ -42,5 +42,6 @@ people ──https──► proxy ──► API server ◄──8004──► ru
 | [operating](operating.md) | running a deployment: one computer, a server, backups, releases, the admin tool, more nodes |
 | [connected apps](connected-apps.md) | registering an organization's app with each OAuth provider |
 | [examples](examples/) | two example agents and their catalog, which the sandbox's tests run |
+| [known gaps](known-gaps.md) | what is still to fix, test or decide: security, performance, tests, features the old platform had |
 
 Why the parts are what they are is argued in [the paper](../paper/README.md).
