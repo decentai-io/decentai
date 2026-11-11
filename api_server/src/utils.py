@@ -149,7 +149,10 @@ class Outside:
                     raise OutsideRefused(f"{self._host(url)} answered more than {self.most // KIB} KiB.")
                 if time.monotonic() > until:
                     raise OutsideRefused(f"{self._host(url)} took too long to answer.")
-            return httpx.Response(response.status_code, headers=response.headers, content=bytes(body))
+            # The body is decoded already: kept with its Content-Encoding, httpx would decode it a second time.
+            headers = [(name, value) for name, value in response.headers.multi_items()
+                       if name.lower() not in ("content-encoding", "content-length")]
+            return httpx.Response(response.status_code, headers=headers, content=bytes(body))
 
     def download(self, url: str, write: Callable[[bytes], None]) -> None:
         """An answer of 200, handed piece by piece to ``write``."""
