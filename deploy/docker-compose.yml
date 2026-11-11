@@ -24,6 +24,8 @@ x-read-only: &read-only
 services:
   # A replica set of one: the API server follows the chats' events as the database changes, which needs one. Its one
   # member proves itself to itself with a key made at each start. The issuer's account is made with the database.
+  # A restarted container still has the last key, owned by mongodb, and /tmp's protected_regular refuses even root
+  # writing over it: it is removed first.
   mongo:
     image: mongo:7@sha256:8bb4442761a63a8dda452744082cdac9644b429807eb977b42324a63cef59ca4
     restart: unless-stopped
@@ -33,6 +35,7 @@ services:
       - sh
       - -c
       - >-
+        rm -f /tmp/member.key &&
         head -c 756 /dev/urandom | base64 > /tmp/member.key && chmod 400 /tmp/member.key &&
         chown mongodb /tmp/member.key &&
         exec docker-entrypoint.sh mongod --replSet rs0 --bind_ip_all --keyFile /tmp/member.key
