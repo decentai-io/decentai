@@ -228,7 +228,9 @@ class TestAHostileProcess:
         assert attacked["homes"] == ["run"] and attacked["sibling"] == {"still": "here"}
 
     def test_the_hosts_kernel_files_are_covered(self, attacked):
-        assert {path: read for path, read in attacked["kernel_files"].items() if read not in (0, "errno 2")} == {}
+        # Each reads empty, through the jail's cover; or is refused, by an AppArmor host; or isn't there at all.
+        assert {path: read for path, read in attacked["kernel_files"].items()
+                if read != 0 and not str(read).startswith("errno")} == {}
 
     def test_the_kernel_ends_it_before_the_sandbox(self, attacked):
         assert attacked["oom_score_adj"] == "1000"
