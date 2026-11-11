@@ -124,15 +124,18 @@ async def test_a_question_waits_for_the_answer():
     assert chat._connector.requests[1].messages[-1]["text"] == "blue"
 
 
-async def test_with_nobody_there_nothing_is_asked_and_the_run_is_told():
-    api, sandboxes, chat = await held([call(("ask", {"text": "Sure?"}), ("probe__wipe", {})), "Done, unasked."])
+async def test_with_nobody_there_no_question_is_asked_but_an_approval_waits_and_the_run_is_told():
+    api, sandboxes, chat = await held([call(("ask", {"text": "Sure?"}), ("probe__wipe", {})), "Done, once allowed."])
     await chat.told({"type": "schedule", "schedule_id": "s9", "what": {"prompt": "Tidy up."}})
+    card = (await until(lambda: api.of("AI:Approval:open")))[0]
+    assert card["kind"] == "approval" and card["request"]["function"] == "wipe"
+    assert not api.of("AI:Schedule:ran")
+    await chat.told({"type": "answer", "card": "card1", "answer": {"allowed": True}})
     await settled(chat)
     answers = [m["text"] for m in chat._connector.requests[1].messages if m["role"] == "tool"]
-    assert answers[0].startswith("Not done: nobody is here") and answers[1] == "refused: Nobody is there to approve this."
-    assert not api.of("AI:Approval:open")
+    assert answers[0].startswith("Not done: nobody is here") and not answers[1].startswith("refused")
     assert api.of("AI:Schedule:ran") == [{"chat_id": "chat1", "schedule_id": "s9", "failed": False,
-                                          "summary": "Done, unasked."}]
+                                          "summary": "Done, once allowed."}]
 
 
 async def test_a_stop_cancels_the_call_in_the_program_and_thinks_no_more():

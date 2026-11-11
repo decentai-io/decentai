@@ -37,16 +37,53 @@ async def test_the_gate_asks_above_trust_and_takes_the_answer():
         await asking
 
 
-async def test_the_gate_refuses_with_nobody_there_or_by_policy_and_keeps_a_remembered_answer():
+async def test_the_gate_keeps_a_remembered_answer_and_refuses_by_policy_asking_nobody():
     api, sandboxes, chat = await held([])
-    with pytest.raises(CallFailed, match="Nobody is there"):
-        await chat.gate.uses("probe", wipe(chat), Call("m1", "wipe", False))
     chat.contract["remembered"] = [{"agent": "probe", "function": "wipe", "record": "", "allowed": True}]
     await chat.gate.uses("probe", wipe(chat), Call("m2", "wipe", False))
     chat.contract["rules"] = [*chat.contract["rules"], {"effect": "deny", "actions": ["agent:probe:wipe"]}]
     with pytest.raises(CallFailed, match="policy"):
         await chat.gate.uses("probe", wipe(chat), Call("m3", "wipe", True))
     assert not api.of("AI:Approval:open")
+
+
+async def test_with_nobody_there_a_call_waits_on_its_card_and_goes_on_when_answered():
+    api, sandboxes, chat = await held([])
+    asking = asyncio.ensure_future(chat.gate.uses("probe", wipe(chat), Call("m1", "wipe", False)))
+    card = (await until(lambda: api.of("AI:Approval:open")))[0]
+    assert card["kind"] == "approval" and card["request"] == {"function": "wipe", "level": 2}
+    await asyncio.sleep(0.05)
+    assert not asking.done()
+    await chat.told({"type": "answer", "card": "card1", "answer": {"allowed": True}})
+    await asking
+    # A day without an answer comes back as none: refused, saying so.
+    asking = asyncio.ensure_future(chat.gate.uses("probe", wipe(chat), Call("m2", "wipe", False)))
+    await until(lambda: len(api.of("AI:Approval:open")) == 2)
+    await chat.told({"type": "answer", "card": "card2", "answer": None})
+    with pytest.raises(CallFailed, match="within a day"):
+        await asking
+
+
+async def test_unattended_calls_asking_the_same_wait_on_one_card_and_the_last_to_stop_expires_it():
+    api, sandboxes, chat = await held([])
+    first = asyncio.ensure_future(chat.gate.uses("probe", wipe(chat), Call("m1", "wipe", False)))
+    second = asyncio.ensure_future(chat.gate.uses("probe", wipe(chat), Call("m2", "wipe", False)))
+    await until(lambda: api.of("AI:Approval:open"))
+    await asyncio.sleep(0.05)
+    assert len(api.of("AI:Approval:open")) == 1
+    await chat.told({"type": "answer", "card": "card1", "answer": {"allowed": True}})
+    await asyncio.gather(first, second)
+    # Both stopped before an answer: the card is let go, not left open.
+    first = asyncio.ensure_future(chat.gate.uses("probe", wipe(chat), Call("m3", "wipe", False)))
+    second = asyncio.ensure_future(chat.gate.uses("probe", wipe(chat), Call("m4", "wipe", False)))
+    await until(lambda: len(api.of("AI:Approval:open")) == 2)
+    first.cancel()
+    await asyncio.sleep(0.05)
+    assert not api.of("AI:Approval:expire") and not second.done()
+    second.cancel()
+    await until(lambda: api.of("AI:Approval:expire"))
+    assert api.of("AI:Approval:expire") == [{"chat_id": "chat1", "card": "card2"}]
+    assert not chat.gate.parked and not chat.waiting
 
 
 async def test_a_process_is_held_to_its_manifest():
@@ -155,11 +192,16 @@ async def test_a_scheduled_function_runs_with_nobody_there_and_its_run_is_told()
     api, sandboxes, chat = await held([])
     await chat.told({"type": "schedule", "schedule_id": "s1", "what": {"function": "probe.report", "inputs": {}}})
     await until(lambda: api.of("AI:Schedule:ran"))
+    # Above the chat's trust: the run waits for its person's answer, then is told.
     await chat.told({"type": "schedule", "schedule_id": "s2", "what": {"function": "probe.wipe", "inputs": {}}})
+    await until(lambda: api.of("AI:Approval:open"))
+    await asyncio.sleep(0.05)
+    assert len(api.of("AI:Schedule:ran")) == 1
+    await chat.told({"type": "answer", "card": "card1", "answer": {"allowed": False}})
     await until(lambda: len(api.of("AI:Schedule:ran")) == 2)
     first, second = api.of("AI:Schedule:ran")
     assert first["failed"] is False and second == {"chat_id": "chat1", "schedule_id": "s2", "failed": True,
-                                                   "summary": "Nobody is there to approve this."}
+                                                   "summary": "Its person declined, or did not answer within a day."}
 
 
 async def test_cards_left_open_by_a_lost_runtime_expire_when_the_chat_is_placed():
