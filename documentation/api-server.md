@@ -349,6 +349,8 @@ before it; one older than an event the browser took already came late, and is dr
   with nobody there.
 - When one is due, one API server claims it, places its chat if no runtime holds it, and asks the holder to run it.
   The last 20 runs' outcomes are kept.
+- A run that needs its person's approval waits on the card, and its person is told; it ends when they answer, or
+  when the card is a day old ([runtime](runtime.md)).
 - At most 50 to a chat, and a cap for each person and each organization (§9).
 
 **Stopping.** A person stops a chat: its work is cancelled and its cards expire. Or they stop one call or task of

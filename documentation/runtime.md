@@ -79,7 +79,9 @@ A call to one of the person's MCP tools passes the same gate by its level alone:
 ([api-server](api-server.md#8-settings)); above the chat's trust, the person is asked.
 
 Asking is a card for the chat's person ([api-server](api-server.md#7-chats)); the call waits for the answer. A card
-given up on, as when its call is stopped, expires. With nobody there, as when a schedule runs it, an ask is refused.
+given up on, as when its call is stopped, expires. With nobody there, as when a schedule runs it, an approval still
+waits on its card, and the call's clock stops meanwhile; calls that wait for the same answer, as a schedule's every
+run does, wait on one card. A question, and opening the network, are not asked with nobody there.
 The API server checks again every call that reaches it.
 
 ## 6. What a program may call

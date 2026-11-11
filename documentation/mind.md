@@ -45,8 +45,9 @@ chat is lost.
 - **The turn ends** when a thought makes no call and nothing new is waiting: the brain is quiet.
 - **The turn budget:** at most the chat's `turn_budget` thoughts, 24 by default, after the person's last word. Past
   it the brain stops and says so; the person's next word starts a new count.
-- **With nobody there,** as in a turn a schedule or a webhook started, a call that would ask the person is refused,
-  and so is `ask`.
+- **With nobody there,** as in a turn a schedule or a webhook started, a call that needs the person's approval waits
+  on its card: the person is told, and the turn goes on when they answer. Declined, or unanswered for a day, the call
+  is refused. A question (`ask`) is not asked: it answers that nobody is there.
 - **A model that fails** ends the turn: the chat's brain says why. A request too long for the model's window is
   folded ([6](#6-its-history-and-what-the-model-is-shown)) and asked once more.
 
