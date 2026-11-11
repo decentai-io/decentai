@@ -27,7 +27,7 @@ services:
   # A restarted container still has the last key, owned by mongodb, and /tmp's protected_regular refuses even root
   # writing over it: it is removed first.
   mongo:
-    image: mongo:7@sha256:8bb4442761a63a8dda452744082cdac9644b429807eb977b42324a63cef59ca4
+    image: mongo:9@sha256:452bdaf2127b8ff851e31410a267809b9829eded219979f2210e7c7efb85a058
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
