@@ -5,6 +5,10 @@
 #   docker compose -f sandbox/tests/compose.yml exec -T callers sh -c '
 #       pip install -q aiohttp msgpack cryptography pytest pyyaml && cd /src && python -m pytest -q sandbox/tests'
 #   docker compose -f sandbox/tests/compose.yml down -v
+#
+# On a host with AppArmor, load the sandbox's profile first, as on a server (documentation/operating.md, step 6):
+#   sudo apparmor_parser -r sandbox/config/decentai-sandbox.apparmor
+# A host without AppArmor ignores it.
 name: decentai-sandbox-tests
 
 services:
@@ -33,6 +37,7 @@ services:
       - seccomp=../config/seccomp.json
       - systempaths=unconfined
       - writable-cgroups=true
+      - apparmor=decentai-sandbox
     tmpfs:
       - /data/homes:size=1g,mode=0755
     environment:

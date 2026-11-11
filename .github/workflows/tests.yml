@@ -76,6 +76,10 @@ jobs:
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # Ubuntu 24.04 lets only a program its AppArmor profile allows make user namespaces, as nsjail does: the
+      # sandbox's own profile, loaded as on a server (documentation/operating.md, step 6).
+      - name: the sandbox's AppArmor profile
+        run: sudo apparmor_parser -r sandbox/config/decentai-sandbox.apparmor
       # The sandbox alone, its real image served by two callers that are its tests.
       - name: the sandbox
         env:
@@ -86,7 +90,7 @@ jobs:
           docker compose -f "$LIVE" exec -T callers test -d /identities ||
             { docker compose -f "$LIVE" logs --tail 200; docker compose -f "$LIVE" down -v; exit 1; }
           docker compose -f "$LIVE" exec -T callers sh -c '
-            pip install -q aiohttp msgpack cryptography pytest &&
+            pip install -q aiohttp msgpack cryptography pytest pyyaml &&
             cd /src && python -m pytest -p no:cacheprovider --tb=short -q sandbox/tests' ||
             { docker compose -f "$LIVE" logs --tail 200; docker compose -f "$LIVE" down -v; exit 1; }
           docker compose -f "$LIVE" down -v

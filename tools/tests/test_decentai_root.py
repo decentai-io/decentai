@@ -52,8 +52,9 @@ class TestInit:
         for number in (1, 2):
             key = tmp_path / f"decentai-acme-root-{number}.key"
             assert os.stat(key).st_mode & 0o777 == 0o600 and b"ENCRYPTED" in key.read_bytes()
-        assert openssl("x509", "-in", str(tmp_path / "roots.pem"), "-noout", "-subject").stdout.strip() == \
-            "subject=CN=decentai-acme-root-1"
+        # RFC 2253 names print the same in every OpenSSL; the default form gained and lost spaces between versions.
+        assert openssl("x509", "-in", str(tmp_path / "roots.pem"), "-noout", "-subject",
+                       "-nameopt", "RFC2253").stdout.strip() == "subject=CN=decentai-acme-root-1"
         roots = (tmp_path / "roots.pem").read_bytes()
         assert roots.count(b"BEGIN CERTIFICATE") == 2
 
