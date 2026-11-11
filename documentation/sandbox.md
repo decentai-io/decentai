@@ -63,7 +63,7 @@ A process runs `start` from its program, as an unprivileged user of its own, in 
 | `/home/run` | its home and working folder, empty at the start | its own; gone when it ends |
 | `/tmp`, `/dev/shm` | its temporary files | its own; gone when it ends |
 | `/usr`, `/bin`, `/lib`, `/etc` | the base | read-only, with every process |
-| `/proc` | its own processes | its own |
+| `/proc` | its own processes; what it would show of the host's, and Docker hides, covered | its own |
 | `/dev/null`, `/dev/zero`, `/dev/random`, `/dev/urandom` | the usual devices | — |
 
 - **Its environment** is the variables its caller gave, then the sandbox's own over them: `HOME`, `TMPDIR`,
@@ -94,7 +94,8 @@ program starts inside it are its threads and child processes.
 - **At most 32 processes** run at once. Past that, a start is refused as full.
 - **Memory is overcommitted on purpose:** most processes use far less than their limit. When the container itself
   nears its memory (90%), the sandbox ends the process using the most, from the caller whose processes use the
-  most together. The reason given is "machine short of memory".
+  most together. The reason given is "machine short of memory". Should the kernel itself run short first, every
+  process is its first pick, before the sandbox.
 - **There is no time limit.** When a process ends normally is its caller's to decide.
 
 | Variable | Is | Default |
@@ -246,9 +247,10 @@ The sandbox runs as one container, started with:
 |---|---|
 | `cap_drop: ALL`; `cap_add: CHOWN, KILL, SETUID, SETGID` | `CHOWN`: root's first step hands the container's cgroup to the sandbox's user. `KILL`: the init passes `SIGTERM` on. `SETUID`, `SETGID`: each process's user is mapped. The sandbox itself runs with none |
 | `security_opt: writable-cgroups=true` | a cgroup made for each process |
-| `security_opt: seccomp=sandbox/config/seccomp.json`, `systempaths=unconfined`; on hosts with AppArmor, `apparmor=decentai-sandbox` | nsjail making its namespaces and the jail's view |
+| `security_opt: seccomp=sandbox/config/seccomp.json`, `systempaths=unconfined`; on hosts with AppArmor, `apparmor=decentai-sandbox` | nsjail making its namespaces and the jail's view. The profile is Docker's default, with what nsjail needs allowed and what the sandbox refuses taken out |
 | `tmpfs: /data/homes` | homes kept in memory, counted in each process's |
 | `init: true` | an init that reaps and passes signals on |
 | its identity folder, at `AI_SANDBOX_IDENTITY` | its certificate |
 
-Before it serves anyone, it checks that a jail holds; if not, it doesn't start, and says what to mend.
+Before it serves anyone, it checks that a jail holds; if not, it doesn't start, and says what to mend. Its
+container's health is its door's `/health`, answered once it serves.

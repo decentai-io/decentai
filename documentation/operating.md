@@ -68,8 +68,10 @@ second sandbox, or `deploy/server.yml` on a server.
 ## 3. On a server
 
 1. **Its settings:** copy `deploy/config/deploy.env.example` to `deploy/config/deploy.env`, replace every
-   `change-me` (passwords URL-safe), and set `AI_API_URL` (https, its domain), `AI_API_APP_URL` and `AI_API_ORIGINS`
-   (where the web client is served; never a wildcard), and `AI_API_PROXIES` (the proxy, by address or range).
+   `change-me` (passwords URL-safe; the API server and the issuer don't start with one left), and set `AI_API_URL`
+   (https, its domain), `AI_API_APP_URL` and `AI_API_ORIGINS` (where the web client is served; never a wildcard), and
+   `AI_API_PROXIES` (the proxy, by address or range). `ISSUER_KEY_PASSPHRASE` encrypts the issuer's key: keep it
+   where you keep the database's passwords, not with the issuer's volume.
 2. **Its roots, off the machine:** on another machine, `python tools/decentai_root.py init <deployment>`. Copy only
    `roots.pem` to `deploy/config/root/roots.pem` on the server, then start the stack.
 3. **Its issuer's intermediate:** `docker compose cp issuer:/run/decentai/authority/authority.csr .`; compare its
@@ -83,8 +85,9 @@ second sandbox, or `deploy/server.yml` on a server.
    address, and its sign-in lockout. Health: `/healthz` (alive) and `/readyz` (ready). Port 8004, where runtimes of
    other machines reach the API server, is TCP passed through, never ended. With the proxy on another host, set
    `LISTEN=0.0.0.0` and add `deploy/server.yml`.
-5. **The first run:** the code is `AI_API_SETUP_CODE`, or the one in the API server's log. Or make organizations
-   from the machine: `python -m api_server.admin organizations create --name <name> --admin-email <email>`.
+5. **The first run:** the code is `AI_API_SETUP_CODE`; until the first run is done the API server doesn't start
+   without it. Or make organizations from the machine:
+   `python -m api_server.admin organizations create --name <name> --admin-email <email>`.
 6. **On hosts with AppArmor** (Ubuntu 24.04 and later restrict user namespaces):
    `sudo apparmor_parser -r sandbox/config/decentai-sandbox.apparmor`, and add `apparmor=decentai-sandbox` to the
    sandbox's `security_opt`. Without it nsjail can't make its jails, and the sandbox doesn't start.
@@ -149,12 +152,14 @@ A model connection is an administrator's ([api-server](api-server.md#8-settings)
 
 - **The providers and models** offered are the catalog in `shared/llm/providers.json` and `models.json`, written by
   `tools/generate_llm_catalog.py`. A provider has its protocol and an address, which may hold a blank to fill in;
-  only `openai` and `anthropic` may leave the address out. Redirects are never followed.
+  only `openai` and `anthropic` may leave the address out. Redirects are never followed. An address must be public,
+  unless its host is named in the runtime's `AI_RUNTIME_INSIDE_HOSTS`: a model served on your own network.
 - **A connection's own settings:** `timeout_seconds` (300, at most 600), `max_retries` (4, at most 10),
   `reasoning_effort` (the chat's `effort`), and `tool_mode: text` for a model with no tools of its own.
 - **Prompt caching** is asked where a provider takes it: Anthropic's, and Bedrock's for Claude and Nova; OpenAI's by
   a key on its own address. A model's kept reasoning goes back only to the model that wrote it.
-- **Usage** is recorded for each reply, its tokens in and out, by the chat, the agent and the model.
+- **Usage** is recorded for each reply, its tokens in and out, read from the cache and written to it, and its
+  reasoning, by the chat, the agent and the model; its cost counts the cache's tokens at their prices.
 
 ## 7. Speech
 

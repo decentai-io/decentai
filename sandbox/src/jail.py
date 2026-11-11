@@ -145,8 +145,8 @@ class Jail:
     @classmethod
     def command(cls, cgroup: Cgroup, user: int, program: Path, home: Path, way_out: Path | None,
                 arguments: list[str], environment: dict[str, str], inside: list[str] | None = None) -> list[str]:
-        """The command that starts a process: a shell joins its cgroup, then becomes nsjail, so everything after
-        is in it."""
+        """The command that starts a process: a shell joins its cgroup and offers itself first to the kernel's OOM
+        killer, so the sandbox itself is the last it picks; then it becomes nsjail, so everything after is in it."""
         mapping = f"{cls.INSIDE_USER}:{user}:1"
         jail = [cls.NSJAIL, "--config", cls.CONFIG, "--really_quiet", "-U", mapping, "-G", mapping,
                 "-R", f"{program}:/program", "-B", f"{home}:/home/run",
@@ -154,7 +154,8 @@ class Jail:
                 *(f"-E{name}={value}" for name, value in environment.items()), "--", "/usr/bin/tini", "--"]
         inside = inside or (["/bin/sh", "-c", cls.WITH_NETWORK, "start", *arguments] if way_out
                             else ["/program/start", *arguments])
-        return ["/bin/sh", "-c", 'echo $$ > "$0" && exec "$@"', cgroup.procs, *jail, *inside]
+        return ["/bin/sh", "-c", 'echo $$ > "$0" || exit 1; { echo 1000 > /proc/self/oom_score_adj; } 2>/dev/null; '
+                'exec "$@"', cgroup.procs, *jail, *inside]
 
     @classmethod
     async def check(cls, folder: Path) -> None:

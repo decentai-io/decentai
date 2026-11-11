@@ -23,8 +23,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.12"
           cache: pip
@@ -42,43 +42,32 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
-      # A replica set of three: the API server's replicas speak over a
-      # change stream (documentation/api-server.md), which a single server
-      # has not, and the cluster's tests step its primary down. Each
-      # member on the runner's own network, so the test's localhost
-      # reaches all three; a service container is given no command
-      # line, so they are started here.
-      - name: MongoDB, as a replica set of three
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      # Its own rig, as CONTRIBUTING.md runs it: MongoDB as a replica set of one, enough for the change stream it reads.
+      - name: the API server
+        env:
+          RIG: api_server/tests/compose.yml
         run: |
-          for port in 27017 27018 27019; do
-            docker run -d --name "mongo-$port" --network host mongo:7 \
-              --replSet rs0 --bind_ip_all --port "$port"
-          done
+          docker compose -f "$RIG" up -d --wait
+          docker compose -f "$RIG" exec -T runner sh /src/api_server/tests/run.sh ||
+            { docker compose -f "$RIG" logs --tail 100 mongo; docker compose -f "$RIG" down -v; exit 1; }
+          docker compose -f "$RIG" down -v
+      # shared and the issuer, against a MongoDB of one on the runner's own network.
+      - name: MongoDB
+        run: |
+          docker run -d --name mongo --network host mongo:7 --bind_ip_all
           for _ in $(seq 1 60); do
-            docker exec mongo-27017 mongosh --quiet --port 27017 \
-              --eval 'db.adminCommand("ping").ok' && break
+            docker exec mongo mongosh --quiet --eval 'db.adminCommand("ping").ok' && break
             sleep 1
           done
-          docker exec mongo-27017 mongosh --quiet --port 27017 --eval \
-            'rs.initiate({_id: "rs0", members: [
-               {_id: 0, host: "localhost:27017"},
-               {_id: 1, host: "localhost:27018"},
-               {_id: 2, host: "localhost:27019"}]})'
-          for _ in $(seq 1 90); do
-            [ "$(docker exec mongo-27017 mongosh --quiet --port 27017 \
-              --eval 'rs.status().members.filter(m => m.state === 1 || m.state === 2).length')" = "3" ] && break
-            sleep 1
-          done
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: api_server/requirements.txt
       - run: pip install -r api_server/requirements.txt pytest
-      - run: python -m pytest api_server/tests -q
       - run: python -m pytest shared/tests -q
-      # The issuer, against the same database; its whole-deployment test is issuer/tests/compose.yml.
+      # Its whole-deployment test is issuer/tests/compose.yml.
       - run: python -m pytest issuer/tests -q --ignore=issuer/tests/test_deployment.py
 
   sandboxes:
@@ -86,13 +75,16 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       # The sandbox alone, its real image served by two callers that are its tests.
       - name: the sandbox
         env:
           LIVE: sandbox/tests/compose.yml
         run: |
           docker compose -f "$LIVE" up -d --build
+          # Its tests skip where the rig made no identities: here that is a failure, not a pass.
+          docker compose -f "$LIVE" exec -T callers test -d /identities ||
+            { docker compose -f "$LIVE" logs --tail 200; docker compose -f "$LIVE" down -v; exit 1; }
           docker compose -f "$LIVE" exec -T callers sh -c '
             pip install -q aiohttp msgpack cryptography pytest &&
             cd /src && python -m pytest -p no:cacheprovider --tb=short -q sandbox/tests' ||
@@ -104,7 +96,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - run: docker build -f speech/Dockerfile -t decentai-speech .
       - name: without its models
         run: |
@@ -115,7 +107,7 @@ jobs:
       # The models are 600 MB from somebody else's server. They are
       # kept between runs, and fetched again only when the list of
       # them changes.
-      - uses: actions/cache@v4
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: speech-models
           key: speech-models-${{ hashFiles('speech/catalogue.py') }}
@@ -144,7 +136,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       # (The web client is built and tested in its own repository,
       # decentai-web-client.)
       - run: docker build -f api_server/Dockerfile .

@@ -15,31 +15,6 @@ from .endpoints import FileEndpoints
 from .store import Records
 
 
-class Sniff:
-    """Whether a file's first bytes agree with the type its name says."""
-
-    MAGIC = {"application/pdf": (b"%PDF",), "image/png": (b"\x89PNG",), "image/jpeg": (b"\xff\xd8\xff",),
-             "image/gif": (b"GIF87a", b"GIF89a"), "application/zip": (b"PK\x03\x04", b"PK\x05\x06")}
-    ZIPPED = ("vnd.openxmlformats", "vnd.oasis.opendocument")
-
-    @classmethod
-    def agrees(cls, kind: str, head: bytes) -> bool:
-        if kind == "image/webp":
-            return head[:4] == b"RIFF" and head[8:12] == b"WEBP"
-        if any(z in kind for z in cls.ZIPPED):
-            kind = "application/zip"
-        if kind in cls.MAGIC:
-            return head.startswith(cls.MAGIC[kind])
-        if kind.startswith("text/") or kind in ("application/json", "application/x-ndjson", "application/yaml",
-                                                "application/xml", "image/svg+xml"):
-            try:
-                head.decode("utf-8")
-            except UnicodeDecodeError as error:
-                return error.start > len(head) - 4  # a character cut at the piece's end
-            return b"\0" not in head
-        return not any(head.startswith(magic) for magics in cls.MAGIC.values() for magic in magics)
-
-
 class Files:
     """What the people's door calls for a file's bytes."""
 
@@ -59,7 +34,7 @@ class Files:
                 if len(head) < 64:
                     head += piece[:64]
                 await asyncio.to_thread(writing.write, piece)
-            if not Sniff.agrees(kind, head):
+            if not FileTypes.agrees(kind, head):
                 raise ValueError(f"The file's bytes are not a {kind}, as its name says.")
         record = Records().create(caller.person, "file", {}, {}, of=None,
                                   file={"name": name, "type": kind, "size": writing.size, "key": key,

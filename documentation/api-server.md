@@ -128,7 +128,8 @@ statements, under a name of its own in the organization that an administrator ma
 **An organization** keeps everything of its own apart from every other. It begins in one of three ways:
 
 - **At first run,** the first visitor with the setup code makes the first organization and its administrator. The
-  code is `AI_API_SETUP_CODE`, or one the server writes to its log.
+  code is `AI_API_SETUP_CODE`: until the first run is done, the server doesn't start without one, and it never writes
+  it to its log.
 - **By sign-up,** where it is open and mail is set up: anyone makes one of their own by following a link mailed to
   them.
 - **By the operator,** with the admin tool.
@@ -318,7 +319,7 @@ always an event missed.
 
 | Kind | Asks |
 |---|---|
-| approval | to let an agent's call through: its level is above the chat's trust, or a policy says `ask` (§3). The person may remember the answer for that agent, function and record |
+| approval | to let an agent's call through: its level is above the chat's trust, or a policy says `ask` (§3). The person may remember the answer for that agent, function and record. Or to let one of their MCP tools be called: its level is above the chat's trust (§8); never remembered, since the tool's level is theirs to set |
 | question | what `chat` expects: words, a choice or a file ([agents](agents.md#9-the-standard-field-by-field)) |
 | form | a secret's empty fields, a `form` field's questions, or an account to connect (§6) |
 | network | `network.open`'s code, purpose and hosts |
@@ -329,12 +330,16 @@ always an event missed.
 - What is typed into a form goes into the record, not the card. An answer not to be remembered goes to the agent
   once.
 - A remembered approval is the person's, listed where they can take it back.
+- When an agent's call reaches the API server, an approval lets it through only if it was for that call, agent,
+  function and operation, and only once.
 
 **Schedules** run a chat's work with nobody present: a function marked `schedulable`, or a prompt for the assistant.
 
 - When: a cron line in the chat's time zone, every so many seconds (at least 60), or once, at a time.
-- The person lists, makes, pauses, resumes, runs now and deletes them, paused ones too. The assistant may too,
-  through its runtime.
+- The person lists, makes, pauses, resumes, runs now and deletes them, paused ones too. The assistant lists, makes
+  and deletes its chat's, through its runtime.
+- A function's schedule may name a `wake` field of its output: a run whose output has it set wakes the assistant,
+  with nobody there.
 - When one is due, one API server claims it, places its chat if no runtime holds it, and asks the holder to run it.
   The last 20 runs' outcomes are kept.
 - At most 50 to a chat, and a cap for each person and each organization (§9).
@@ -364,7 +369,6 @@ administrator may stop everything of a person.
 | `runtimes` | where its chats may run: `prefer_own` or `own_only` (§2) | `prefer_own` |
 | `mcp` | whether people may add MCP servers | allowed |
 | `webhooks` | whether webhooks may wake chats, and notifications go to outside addresses | allowed |
-| `webhook_trust` | the highest trust a webhook's chat may run at | 1 |
 | `notification_text` | `shown`, or `hidden`: every notification says only that something happened | `shown` |
 | `speech` | what writes speech down and says replies aloud: the platform's speech service, a model connection, or none | none |
 | `model` | the default model connection | none |
@@ -398,7 +402,7 @@ ended.
   `Idempotency-Key` is at most 200 characters.
 - Its body is JSON of at most 64 KiB, checked against its fields; at most 60 a minute. A repeated idempotency key is
   answered with the first delivery.
-- Its chat runs at the webhook's trust, never above the organization's `webhook_trust`.
+- Its chat runs at the webhook's trust, 0 to 3, which its person chooses: 0 unless they say.
 - Its person may let people and groups see it and what it did, and hand it with its chat to another member, who
   accepts.
 - What it received and did is kept 30 days.
@@ -410,8 +414,9 @@ for each person. Audio is at most 10 MB.
 
 - **memories:** at most 50, each at most 500 characters;
 - **skills:** written by the person or saved from a card, shared with people and groups;
-- **MCP servers:** an address, credential headers kept encrypted, and which tools are on; shared with people and
-  groups. Their tools are read by a runtime, not the API server.
+- **MCP servers:** an address, credential headers kept encrypted, and which tools are on, each with its level, 0 to
+  3, 2 unless the person changes it; shared with people and groups. Their tools are read by a runtime, not the API
+  server.
 
 ## 9. Calling out, limits and the trail
 
@@ -462,9 +467,10 @@ A call past a limit is answered `413` or `429` (§3).
 - A person reads their own lines; an administrator with the right, the organization's. Either is filtered by a
   chat, by what was done, and by how it ended.
 
-**Usage and monitoring.** Runtimes report what each chat used: tokens, for each model connection and agent. A person
-sees their own usage. An administrator sees the organization's: by person, agent, model and day, with its cost where
-the model's prices are known; and what its runtimes report, processes, memory and events for each agent.
+**Usage and monitoring.** Runtimes report what each chat used: tokens in, out, read from the prompt cache and written
+to it, and how many of those out were reasoning, for each model connection and agent. A person sees their own usage.
+An administrator sees the organization's: by person, agent, model and day, with its cost where the model's prices are
+known; and what its runtimes report, processes, memory and events for each agent.
 
 ## 10. Runtimes
 
@@ -558,7 +564,7 @@ values (§2).
 | `AI_API_VAPID_PUBLIC_KEY`, `_PRIVATE_KEY`, `_SUBJECT` | web push | none |
 | `AI_API_SPEECH_URL` | the platform's speech service | `http://speech:8004` |
 | `AI_API_SIGNUP` | `closed` or `open` | `closed` |
-| `AI_API_SETUP_CODE` | the first run's code | one written to its log |
+| `AI_API_SETUP_CODE` | the first run's code, required until the first run is done | none |
 | `AI_API_OPERATOR_ORG` | the operator's organization | the first one made |
 | `AI_API_REFERENCE_CATALOG` | a catalog address the Agents page suggests | none |
 | `AI_API_LOG_LEVEL`, `AI_API_LOG_FORMAT` | its log, on standard output, as `text` or `json` | `INFO`, `text` |

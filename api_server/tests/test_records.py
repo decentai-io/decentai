@@ -81,7 +81,9 @@ class TestAnAgentsReach:
         answer, status = agent(world, runtime, chat, "read", call="c9", resource="mailbox", ref=ref)
         assert status == 403 and answer["error"]["approval"] is True
         card = world.ok("AI:Approval:Open", {"chat_id": chat["chat_id"], "kind": "approval", "call": "c9",
-                                             "agent": "notes", "request": {"function": "keep"}}, runtime.caller)
+                                             "agent": "notes", "request": {"function": "keep",
+                                                                           "call": "record.read:mailbox"}},
+                         runtime.caller)
         world.ok("AI:Approval:Decide", {"card_id": card["card_id"], "answer": {"allowed": True}}, org.member)
         answer, status = agent(world, runtime, chat, "read", call="c9", resource="mailbox", ref=ref)
         assert status == 200 and answer["fields"]["password"] == "hunter22"

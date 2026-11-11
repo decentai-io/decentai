@@ -53,6 +53,11 @@ class Certifying:
         issuer certifies only itself."""
         return kind != "issuer" and kind in self.authority.kinds
 
+    def refused(self, node_id: str) -> bool:
+        """Whether a node is refused, or unknown here."""
+        node = self.store.node(node_id)
+        return node is None or node["refused"]
+
     def certify(self, node_id: str, kind: str, metadata: dict[str, Any], key: bytes, lifetime: int,
                 token_id: str | None) -> Answer:
         signer = self.authority.signer
@@ -87,6 +92,9 @@ class EnrollmentController:
         token = self.certifying.store.spend_token(str(data.get("token") or ""))
         if token is None:
             return Router.failed("Enrollment Error", "This token enrolls nobody: unknown, withdrawn, expired or used up.", 403)
+        launcher = token["metadata"].get("launched_by")
+        if launcher and self.certifying.refused(launcher):
+            return Router.failed("Enrollment Error", "This token's launcher is refused: it enrolls nobody.", 403)
         node_id = f"{token['kind']}-{''.join(secrets.choice(ALPHABET) for _ in range(6))}"
         log.info("enrolling %s with token %s", node_id, token["_id"])
         answer, status = self.certifying.certify(node_id, token["kind"], token["metadata"], key, token["lifetime"],
@@ -133,9 +141,11 @@ class TokenController:
         if not isinstance(lifetime, int) or lifetime < 1:
             return Router.failed("Token Error", "A lifetime is a whole number of seconds, above zero.")
         if peer["kind"] == "api":
-            uses = data.get("uses")
+            uses = data.get("uses") or 1
             expires = time.time() + int(data.get("expires") or 7 * 86400)
         else:
+            if self.certifying.refused(peer["id"]):
+                return Router.failed("Permission Error", f"{peer['id']} is refused: it makes no tokens.", 403)
             rule = self.certifying.rules.launch[peer["kind"]]
             if kind not in rule["kinds"]:
                 return Router.failed("Permission Error", f"A {peer['kind']} may not make tokens for kind {kind}.", 403)

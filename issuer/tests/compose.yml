@@ -53,6 +53,7 @@ services:
     environment:
       MONGO_URI: mongodb://mongo:27017
       ISSUER_DATABASE: decentai_issuer
+      ISSUER_KEY_PASSPHRASE: the-tests-passphrase
     volumes:
       - issuer:/run/decentai
 

@@ -8,6 +8,7 @@ import base64
 import itertools
 import logging
 import posixpath
+import secrets
 import time
 from typing import Any
 
@@ -58,8 +59,11 @@ class Process:
         self.name = f"{chat.id}.{self.agent_id}"[:128]
         self.sandbox, self.gone = "", ""
         self.heard = self.sent = 0
-        self._sending, self._ids = asyncio.Lock(), itertools.count(1)
+        #: Ids from a random start, so no two processes or placements of a chat give a call the same id.
+        self._sending, self._ids = asyncio.Lock(), itertools.count(secrets.randbelow(2 ** 40))
         self.calls: dict[str, Call] = {}
+        #: The person's files offered to its sandbox for it, withdrawn when it ends.
+        self.offers: set[str] = set()
         #: The program's own calls to the runtime, being served, by their _id.
         self.serving: dict[str, asyncio.Task] = {}
         self.ready: asyncio.Future = asyncio.get_running_loop().create_future()
@@ -206,6 +210,9 @@ class Process:
     def forget(self) -> None:
         if self.chat.sandboxes.processes.get(self.name) is self:
             del self.chat.sandboxes.processes[self.name]
+        for record_id in self.offers:
+            self.chat.sandboxes.offered.pop((self.sandbox, record_id), None)
+        self.offers.clear()
 
     async def send(self, message_id: str, kind: str, data: dict[str, Any], files: list[dict] | None = None) -> None:
         async with self._sending:
@@ -224,9 +231,10 @@ class Process:
             await self.send(f"a{n}", "result", {"call": message_id, "output": output}, files)
 
     async def offer(self, record_id: str) -> dict[str, Any]:
-        """A person's file, offered for the sandbox to pull: {id, name, size}."""
+        """A person's file, offered for its own sandbox alone to pull: {id, name, size}."""
         piece = await self.chat.api.call("Files:Piece:read", {"chat_id": self.chat.id, "record_id": record_id, "offset": 0})
-        self.chat.sandboxes.offered[record_id] = self.chat.id
+        self.chat.sandboxes.offered[(self.sandbox, record_id)] = self.chat.id
+        self.offers.add(record_id)
         return {"id": record_id, "name": str(piece["name"]), "size": int(piece["size"])}
 
     async def kept(self, value: Any, files: Any) -> tuple[Any, list[str]]:

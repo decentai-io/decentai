@@ -13,7 +13,7 @@ from jsonschema import Draft202012Validator
 from ..agents.process import CallFailed
 from ..api.client import Refused
 from ..models.base import Connector, Reply, Request
-from .history import LOOKED, SHOWN, History, cut
+from .history import LOOKED, SHOWN, History, around, cut, text
 from .tools import OWN, Tools
 
 log = logging.getLogger("runtime")
@@ -27,6 +27,9 @@ TASK = ("You are a task: the chat's assistant started you on the brief below. Wo
 
 
 class Brain:
+    #: Whole answers kept while the runtime holds the chat, for look's from: the last FULL, each at most FULL_MOST.
+    FULL, FULL_MOST = 5, 1_000_000
+
     def __init__(self, mind: Any, id: str = "", parent: str = "", depth: int = 0, kept: dict[str, Any] | None = None):
         kept = kept or {}
         self.mind, self.id, self.parent, self.depth = mind, id, parent, depth
@@ -43,6 +46,7 @@ class Brain:
         self.asking = self.halted = False
         self.running: dict[str, asyncio.Task] = {}
         self.loop: asyncio.Task | None = None
+        self.full: dict[str, str] = {}
 
     @property
     def busy(self) -> bool:
@@ -73,12 +77,17 @@ class Brain:
         return [file for entry in self.history.entries if entry["kind"] == "in" for file in entry.get("files") or []][-8:]
 
     def alert(self) -> None:
-        """Something new: a thought owed, and what the last thought waits for left to run on."""
+        """Something new: a thought owed, a sleep woken, and what else the last thought waits for left to run on."""
         self.owed = True
         if self.waiting and not self.asking:
             for id in self.waiting:
-                self.history.add("answer", tool=self.work[id]["tool"],
-                                 text=f"Still running, as {id}: its answer comes as a message.")
+                work, said = self.work[id], f"Still running, as {id}: its answer comes as a message."
+                if work["kind"] == "sleep":
+                    if (sleeping := self.running.pop(id, None)) is not None:
+                        sleeping.cancel()
+                    work["status"], said = DONE, "Woken early: something new came in."
+                    self.mind.event("work", {"id": id, "title": work["title"], "status": DONE})
+                self.history.add("answer", tool=work["tool"], text=said)
             self.waiting = []
         self.wake()
 
@@ -88,7 +97,9 @@ class Brain:
         if work is None or work["status"] != RUNNING:
             return
         self.running.pop(id, None)
-        work["status"], work["output"] = status, cut(output, LOOKED)
+        work["status"], work["output"] = status, cut(output, LOOKED, f"{id} from {LOOKED}")
+        self.full[id] = text(output)[:self.FULL_MOST]
+        self.full = dict(list(self.full.items())[-self.FULL:])
         self.mind.event("work", {"id": id, "title": work["title"], "status": status})
         said = cut(output, SHOWN, id)
         if id in self.waiting:
@@ -148,7 +159,7 @@ class Brain:
                     raise
 
     def request(self, tools: Tools) -> Request:
-        stable, rest = self.mind.instructions()
+        stable, rest = self.mind.instructions(tools.offered, tools.every)
         pictures = {} if self.mind.blind else {file: self.mind.pictures[file] for file in self.files()
                                                if self.mind.pictures.get(file)}
         messages = self.history.view(pictures)
@@ -201,8 +212,9 @@ class Brain:
         problem = next(Draft202012Validator(OWN[means[1]][1]).iter_errors(inputs), None)
         if problem is not None:
             return f"Not done: {problem.message[:300]}"
-        own = {"task": self.task, "tell": self.tell, "look": self.look, "stop": self.stop, "ask": self.ask,
-               "schedule": self.schedule, "remember": self.remember, "skill": self.skill, "open": self.open}
+        own = {"task": self.task, "tell": self.tell, "look": self.look, "stop": self.stop, "sleep": self.sleep,
+               "ask": self.ask, "schedule": self.schedule, "unschedule": self.unschedule, "remember": self.remember,
+               "skill": self.skill, "open": self.open}
         return own[means[1]](call, inputs)
 
     def start(self, call: dict[str, Any], kind: str, title: str,
@@ -244,7 +256,11 @@ class Brain:
         return "Told."
 
     def look(self, call: dict[str, Any], inputs: dict[str, Any]) -> str:
-        id, chapters = str(inputs.get("id") or ""), self.history.chapters()
+        if inputs.get("find"):
+            return self.recall(str(inputs["find"]))
+        id, chapters, start = str(inputs.get("id") or ""), self.history.chapters(), int(inputs.get("from") or 0)
+        if start and id in self.work:
+            return self.read(id, start)
         if not id:
             lines = [self.line(work) for work in list(self.work.values())[-40:]]
             lines += [f"ch{number}: {chapter['summary'][:200]}" for number, chapter in enumerate(chapters, 1)]
@@ -260,6 +276,21 @@ class Brain:
         lines = [self.line(work), f"Its last words: {task.said}" if task is not None and task.said else "",
                  work["output"]]
         return "\n".join(line for line in lines if line)
+
+    def recall(self, words: str) -> str:
+        """Where words were said: in the history, folded chapters too, and in the answers kept."""
+        lines = self.history.found(words) + [f"{work['id']} · its answer: {found}" for work in self.work.values()
+                                             if (found := around(self.full.get(work["id"], work["output"]), words))]
+        return "\n".join(lines[-20:]) or f"Nothing here says {words}."
+
+    def read(self, id: str, start: int) -> str:
+        """An answer from a character on, LOOKED at a time; whole while the runtime holds the chat."""
+        whole = self.full.get(id, self.work[id]["output"])
+        if start >= len(whole):
+            return f"Not done: {id}'s answer here is {len(whole)} characters."
+        more = len(whole) - start - LOOKED
+        return whole[start:start + LOOKED] + (f"\n… {more} more characters: look at {id} from {start + LOOKED}."
+                                              if more > 0 else "")
 
     def stop(self, call: dict[str, Any], inputs: dict[str, Any]) -> str:
         work = self.work.get(inputs["id"])
@@ -279,10 +310,30 @@ class Brain:
 
     def schedule(self, call: dict[str, Any], inputs: dict[str, Any]) -> None:
         what = {"prompt": inputs["prompt"]} if inputs.get("prompt") else {
-            "function": inputs.get("function"), "inputs": inputs.get("inputs") or {}}
+            "function": inputs.get("function"), "inputs": inputs.get("inputs") or {},
+            **({"wake": inputs["wake"]} if inputs.get("wake") else {})}
         when = {key: inputs[key] for key in ("cron", "every", "at") if key in inputs}
         self.start(call, "schedule", f"Schedule · {what.get('prompt') or what.get('function')}"[:120],
                    lambda: self.mind.chat.schedule(what, when))
+
+    def unschedule(self, call: dict[str, Any], inputs: dict[str, Any]) -> None:
+        id = str(inputs.get("id") or "")
+
+        async def job() -> Any:
+            if not id:
+                return await self.mind.chat.schedules() or "This chat has no schedules."
+            return "Cancelled." if await self.mind.chat.unschedule(id) else f"{id} is no schedule of this chat."
+
+        self.start(call, "schedule", f"Unschedule · {id}" if id else "Schedules", job)
+
+    def sleep(self, call: dict[str, Any], inputs: dict[str, Any]) -> None:
+        seconds = float(inputs["seconds"])
+
+        async def job() -> str:
+            await asyncio.sleep(seconds)
+            return "Slept."
+
+        self.start(call, "sleep", f"Sleep · {seconds:g} s", job)
 
     def remember(self, call: dict[str, Any], inputs: dict[str, Any]) -> None:
         self.start(call, "memory", "A memory offered", lambda: self.mind.offer("memory", {"text": inputs["text"][:500]}))

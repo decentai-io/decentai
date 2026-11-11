@@ -24,8 +24,10 @@ class Authority:
     RENEW_BEFORE = 30 * 86400
     SUFFIX = ".kind." + Identity.DOMAIN
 
-    def __init__(self, folder: str, roots: list[x509.Certificate]):
-        self.folder, self.roots = folder, roots
+    def __init__(self, folder: str, roots: list[x509.Certificate], passphrase: bytes = b""):
+        """``passphrase`` encrypts the keys it writes (ISSUER_KEY_PASSPHRASE); a key written before without one is
+        encrypted when first read."""
+        self.folder, self.roots, self.passphrase = folder, roots, passphrase
 
     @property
     def signer(self) -> Identity | None:
@@ -142,8 +144,7 @@ class Authority:
 
     def _make(self, stem: str) -> None:
         identity = Identity()
-        self._write(f"{stem}.key", identity.key.private_bytes(PEM, serialization.PrivateFormat.PKCS8,
-                                                              serialization.NoEncryption()))
+        self._write_key(stem, identity.key)
         request = Enrollment.request(identity)
         self._write(f"{stem}.csr", request.encode())
         log.warning("%s waits for the root: give %s to the root's administrator (request fingerprint %s)",
@@ -153,7 +154,11 @@ class Authority:
         key = certificate = None
         if os.path.exists(self._path(f"{stem}.key")):
             with open(self._path(f"{stem}.key"), "rb") as file:
-                key = serialization.load_pem_private_key(file.read(), password=None)
+                written = file.read()
+            encrypted = written.startswith(b"-----BEGIN ENCRYPTED")
+            key = serialization.load_pem_private_key(written, password=self.passphrase if encrypted else None)
+            if self.passphrase and not encrypted:  # written before it had a passphrase
+                self._write_key(stem, key)
         if os.path.exists(self._path(f"{stem}.pem")):
             with open(self._path(f"{stem}.pem"), "rb") as file:
                 try:
@@ -161,6 +166,11 @@ class Authority:
                 except ValueError as error:  # a file still being copied in, say
                     log.warning("%s can't be read: %s", self._path(f"{stem}.pem"), error)
         return key, certificate
+
+    def _write_key(self, stem: str, key: Ed25519PrivateKey) -> None:
+        encryption = serialization.BestAvailableEncryption(self.passphrase) if self.passphrase \
+            else serialization.NoEncryption()
+        self._write(f"{stem}.key", key.private_bytes(PEM, serialization.PrivateFormat.PKCS8, encryption))
 
     def _write(self, name: str, data: bytes) -> None:
         os.makedirs(self.folder, exist_ok=True)

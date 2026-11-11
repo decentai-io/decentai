@@ -135,7 +135,8 @@ class Deployment:
         authority_folder = identity / "authority"
         authority_folder.mkdir()
         self.settings = Settings({"ISSUER_IDENTITY": str(identity), "ISSUER_AUTHORITY": str(authority_folder),
-                                  "MONGO_URI": MONGO_URI, "ISSUER_DATABASE": database, "ISSUER_PORT": "0"})
+                                  "MONGO_URI": MONGO_URI, "ISSUER_DATABASE": database, "ISSUER_PORT": "0",
+                                  "ISSUER_KEY_PASSPHRASE": "the-tests-passphrase"})
         authority = Authority(str(authority_folder), [root.certificate])
         authority.tick()
         authority.install(sign(root, authority))

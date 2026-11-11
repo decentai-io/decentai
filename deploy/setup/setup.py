@@ -78,7 +78,7 @@ class Settings:
             "AI_API_DATABASE_URI": f"mongodb://api:{secrets.token_urlsafe(32)}@mongo:27017/?replicaSet=rs0"
                                    f"&authSource=decentai",
             "AI_API_ENCRYPTION_KEYS": f"01:{base64.b64encode(secrets.token_bytes(32)).decode()}",
-            "AI_API_SETUP_CODE": secrets.token_hex(6)}
+            "ISSUER_KEY_PASSPHRASE": secrets.token_urlsafe(32), "AI_API_SETUP_CODE": secrets.token_hex(6)}
         lines = ["# Written by deploy/setup/setup.py for this computer, every generated value in place. It is the "
                  "install:", "# its keys are made once. What follows is the template, which explains each.", "#"]
         for line in (Docker.FOLDER / self.TEMPLATE).read_text(encoding="utf-8").splitlines():
@@ -165,7 +165,7 @@ class Setup:
         if not self.settings.path.is_file():
             raise SetupError("Nothing is set up here yet: `python deploy/setup/setup.py` does it.")
         self._must_be_this_computers()
-        code = self.settings.values().get("AI_API_SETUP_CODE") or "the one in `logs api-server`"
+        code = self.settings.values().get("AI_API_SETUP_CODE") or f"none: set AI_API_SETUP_CODE in {Settings.FILE}"
         return f"The API server: {self._address()}\nThe first run's code: {code}"
 
     def _address(self) -> str:

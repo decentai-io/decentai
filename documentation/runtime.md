@@ -70,15 +70,19 @@ Every call an agent's program makes, and every call to an agent's function, pass
    ([api-server](api-server.md#3-calls-answers-and-permissions)): a deny refuses; an ask asks.
 3. **The level** against the chat's trust: above it, the chat's person is asked, unless they remembered an answer.
 
+A call to one of the person's MCP tools passes the same gate by its level alone: 2 unless the person changed it
+([api-server](api-server.md#8-settings)); above the chat's trust, the person is asked.
+
 Asking is a card for the chat's person ([api-server](api-server.md#7-chats)); the call waits for the answer. A card
-given up on, as when its call is stopped, expires. With nobody there, as when a schedule runs it, an ask is refused. The API server checks again every call that reaches it.
+given up on, as when its call is stopped, expires. With nobody there, as when a schedule runs it, an ask is refused.
+The API server checks again every call that reaches it.
 
 ## 6. What a program may call
 
 | Function | The runtime |
 |---|---|
 | `record.*` | asks the API server, naming the chat, the agent, the function and the call |
-| `model` | calls the chat's model connection, and reports what it used |
+| `model` | calls the chat's model connection, with pictures that are PNG, JPEG, GIF or WebP by their bytes, and reports what it used |
 | `chat` | says it in the chat; one that expects an answer is a question card, waited on |
 | `network.open` | asks the person with a card; a yes opens the hosts for that call |
 
@@ -93,9 +97,11 @@ A sandbox opens TLS to port `AI_RUNTIME_WAY_OUT_PORT` with its certificate; the 
 - the host is one the agent's manifest declares, one `network.open` opened for a call in flight, or one written in a
   `from_secret` field of a secret the agent has read; and not one the organization's policy blocks;
 - the name is looked up once, and only a public address is reached, at the address checked;
-- a tunnel (`CONNECT`) or a plain `http://` request, passed through unread.
+- a tunnel (`CONNECT`) or a plain `http://` request, passed through unread. A host is checked by its name: on an
+  address several sites share, such as a CDN's, the bytes may reach another of them.
 
-A refusal is answered at once with its reason. A process has at most `AI_RUNTIME_AGENT_CONNECTIONS_MAX` open.
+A refusal is answered at once with its reason. Each connection, reached or refused, is a line in the runtime's log. A
+process has at most `AI_RUNTIME_AGENT_CONNECTIONS_MAX` open, and one with no bytes either way for 5 minutes is closed.
 
 ## 8. The mind's port
 
@@ -107,7 +113,7 @@ The mind is what thinks in a chat ([mind](mind.md)). The runtime gives it events
 | a schedule's prompt | call an agent's function through the gate, and cancel it |
 | a stop | ask the person a question; offer them a memory or a skill |
 | a clear | schedule its chat's work |
-| a new contract | call the model, and the person's MCP tools; keep its state |
+| a new contract | call the model, and the person's MCP tools through the gate; keep its state |
 
 ## 9. Its container
 
@@ -121,6 +127,7 @@ The mind is what thinks in a chat ([mind](mind.md)). The runtime gives it events
 | `AI_RUNTIME_AGENT_READY_SECONDS` | how long a new process has to say `ready` | `60` |
 | `AI_RUNTIME_AGENT_CANCEL_SECONDS` | how long a cancelled call has to end | `5` |
 | `AI_RUNTIME_AGENT_CONNECTIONS_MAX` | connections one process may have open | `128` |
+| `AI_RUNTIME_INSIDE_HOSTS` | model hosts inside this network a model connection may reach, by name or as a network such as `10.0.0.0/8`; any other must be a public address | none |
 | `AI_RUNTIME_LOG_LEVEL` | how much it writes to its log | `INFO` |
 
 It runs as user 999 with no right, read-only, and keeps nothing on disk but its identity.

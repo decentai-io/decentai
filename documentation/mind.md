@@ -19,6 +19,7 @@ The mind is what thinks in a chat: one for each chat a runtime holds ([runtime](
 | the person's message, with their files | thinks, as the person attended |
 | a webhook's message | thinks, with nobody there |
 | a schedule's prompt | thinks, with nobody there; when it is quiet, tells the API server how the run ended |
+| a scheduled function's output, its `wake` field set | thinks, with nobody there |
 | a stop | stops every call and task; the thought in progress ends, and its calls are not made |
 | a stop of one call or task | stops it, with everything under it, and tells the model the person stopped it |
 | a clear | starts afresh |
@@ -49,21 +50,25 @@ chat is lost.
 - **A model that fails** ends the turn: the chat's brain says why. A request too long for the model's window is
   folded ([6](#6-its-history-and-what-the-model-is-shown)) and asked once more.
 
-**The instructions** are the platform's own, then the organization's `guardrail`, then each agent's name,
-description and instructions, then the person's memories, the names of their skills, and the time.
+**The instructions** are the platform's own, then the organization's `guardrail`, then the instructions of each
+agent whose functions are offered ([4](#4-its-tools)), then the person's memories, the names of their skills, and the
+time. Past 100 functions, `open` lists every agent in one line, and only the agents opened have their instructions
+shown.
 
 ## 4. Its tools
 
 | Tool | Does |
 |---|---|
 | each function of the chat's agents | calls it through the gate ([runtime](runtime.md#5-the-gate)), named `agent__function`, its inputs the function's |
-| each MCP tool the person turned on | calls it on their server, named `mcp_server__tool`. The person chose it, so no gate asks |
+| each MCP tool the person turned on | calls it on their server through the gate by its level ([runtime](runtime.md#5-the-gate)), named `mcp_server__tool` |
 | `task` | starts a task on a brief ([5](#5-tasks)) |
 | `tell` | gives words to a task it started; from a task, to the one that started it |
-| `look` | its work; one call or task and all it answered; or a chapter |
+| `look` | its work; one call or task and all it answered, from a character on; or a chapter; or where words were said, in the whole history and its answers |
 | `stop` | stops a call or a task, with everything under it |
+| `sleep` | waits up to 900 seconds; anything new that comes in wakes it early |
 | `ask` | asks the person a question, words or a choice, and waits for the answer |
-| `schedule` | runs a prompt, or an agent's schedulable function, later with nobody there |
+| `schedule` | runs a prompt, or an agent's schedulable function, later with nobody there; a function's run whose output has its `wake` field set comes in, with nobody there |
+| `unschedule` | lists the chat's schedules, or cancels one |
 | `remember` | offers the person a memory to keep; they decide |
 | `skill` | reads one of the person's skills; or offers them a new one to save |
 | `open` | when the chat's agents have more than 100 functions: an agent's functions become its tools |
@@ -80,7 +85,7 @@ description and instructions, then the person's memories, the names of their ski
 A task is a brain of its own for a brief, given by `task`.
 
 - It sees only its brief and what its own calls answer. Its tools are the agents' functions, the MCP tools, `look`,
-  `stop`, `tell`, and `task` while it may nest.
+  `stop`, `sleep`, `tell`, and `task` while it may nest.
 - **At most 2 deep:** the chat's brain starts tasks, and they start tasks of their own, which start none.
 - It thinks beside the brain that started it, under the same turn budget.
 - **It reports** its last words when it is quiet: that is its call's answer. One that fails reports why.
@@ -100,7 +105,8 @@ A task is a brain of its own for a brief, given by `task`.
 | `chapter` | a stretch of entries, and its summary |
 
 **The view** is the history as the model reads it: each thought followed by its calls' answers, and each chapter in
-place of what it holds. An answer shows at most 4,000 characters; `look` shows up to 50,000.
+place of what it holds. An answer shows at most 4,000 characters; `look` shows up to 50,000 at a time, and while the
+runtime holds the chat, the last 5 answers whole, up to a million characters each, from any character on.
 
 **Folding:** when the view passes 150,000 characters, the older half of what is not folded is summarized by the
 model, and kept as a chapter. A chapter always ends where a thought begins, so no call is parted from its answer.

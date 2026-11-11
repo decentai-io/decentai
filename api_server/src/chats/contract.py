@@ -44,7 +44,9 @@ class Contract:
                 "memories": [m["text"] for m in Memories().col.find({"user_id": person["_id"]})],
                 "skills": [{k: s[k] for k in ("_id", "name", "description", "text")} for s in skills],
                 "mcp_servers": [{"id": m["_id"], "name": m["name"], "address": m["address"],
-                                 "headers": McpServers().headers(m), "tools": [t["name"] for t in m["tools"] if t["on"]]}
+                                 "headers": McpServers().headers(m),
+                                 "tools": [t["name"] for t in m["tools"] if t["on"]],
+                                 "levels": {t["name"]: t.get("level", 2) for t in m["tools"] if t["on"]}}
                                 for m in servers]}}
 
     @staticmethod

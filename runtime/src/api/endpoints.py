@@ -69,14 +69,18 @@ class AgentDoor:
 class ModelDoor:
     """``Runtime:Model:check``: one short request on a connection, from where models are called."""
 
+    def __init__(self, inside: list[str]):
+        self.inside = inside
+
     async def check(self, data: dict[str, Any], peer: dict[str, Any]) -> Answer:
         connection = data.get("connection") if isinstance(data.get("connection"), dict) else {}
         named = [str(m) for m in connection.get("models") or []]
         offered = [m["id"] for m in LlmProviders.models(connection.get("provider"))]
         try:
-            connector = Factory.create({"provider": connection.get("provider"), "endpoint": connection.get("address"),
-                                        "api_key": (connection.get("key") or {}).get("key", ""),
-                                        "model": (named or offered or [""])[0]})
+            connector = await Factory.connected({"provider": connection.get("provider"),
+                                                 "endpoint": connection.get("address"),
+                                                 "api_key": (connection.get("key") or {}).get("key", ""),
+                                                 "model": (named or offered or [""])[0]}, self.inside)
             await connector.complete("", "Say ok.", max_tokens=5, timeout=30)
             await connector.close()
         except Exception as error:

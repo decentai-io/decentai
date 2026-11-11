@@ -7,8 +7,9 @@ from typing import Any, Protocol
 
 class Mind(Protocol):
     """What thinks in one chat, made with the chat and what was loaded of it. ``told`` gets each event as a dict with
-    its ``type``: ``message``, ``schedule``, ``stop``, ``clear`` or ``contract``. Its actions are the chat's: ``say``,
-    ``event``, ``call``, ``ask``, ``card``, ``schedule``, ``think``, ``keep`` and ``mcp``."""
+    its ``type``: ``message``, ``schedule``, ``woke``, ``stop``, ``clear`` or ``contract``. Its actions are the chat's:
+    ``say``, ``event``, ``call``, ``ask``, ``card``, ``schedule``, ``schedules``, ``unschedule``, ``think``, ``keep``
+    and ``mcp``."""
 
     def idle(self) -> bool:
         ...

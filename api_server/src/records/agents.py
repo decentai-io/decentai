@@ -38,7 +38,8 @@ class Gate:
         effect = Rules().evaluate(Rules().statements(person), f"agent:{agent_id}:{function_id}:{call}")
         if effect == DENY:
             raise Refused("refused", "The organization's policy doesn't allow this.")
-        if (effect != ALLOW or level > int(chat["settings"].get("trust", 1))) and not self._approved(caller, data):
+        asks = effect != ALLOW or level > int(chat["settings"].get("trust", 1))
+        if asks and not self._approved(caller, data, call):
             raise Refused("refused", "This needs its person's approval first.", approval=True)
         found = Standard.resource(agent["manifest"], resource_id)
         if found is None:
@@ -46,10 +47,13 @@ class Gate:
         return agent, found[1] | {"kind": KIND_OF[found[0]]}
 
     @staticmethod
-    def _approved(caller: Caller, data: dict[str, Any]) -> bool:
-        card = Cards().col.find_one({"chat_id": caller.chat["_id"], "kind": "approval", "call": str(data.get("call") or ""),
-                                     "status": "answered", "answer.allowed": True})
-        if card:
+    def _approved(caller: Caller, data: dict[str, Any], call: str) -> bool:
+        """A yes on a card for this very call, agent, function and operation, spent by this check; or a remembered
+        yes."""
+        if Cards().col.find_one_and_update({
+                "chat_id": caller.chat["_id"], "kind": "approval", "call": str(data.get("call") or ""),
+                "agent": str(data.get("agent")), "request.function": str(data.get("function")), "request.call": call,
+                "status": "answered", "answer.allowed": True, "spent": {"$ne": True}}, {"$set": {"spent": True}}):
             return True
         return Remembered().col.count_documents({"user_id": caller.user_id, "agent": str(data.get("agent")),
                                                  "function": str(data.get("function")), "allowed": True,

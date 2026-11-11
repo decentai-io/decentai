@@ -7,6 +7,7 @@ from __future__ import annotations
 import asyncio
 import ipaddress
 import logging
+import time
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -17,6 +18,7 @@ from communication.node import Node
 
 log = logging.getLogger("runtime")
 WEB_PORTS = (80, 443)
+NAT64 = ipaddress.ip_network("64:ff9b::/96")
 
 
 class Hosts:
@@ -49,7 +51,8 @@ class Hosts:
 
 
 class WayOut:
-    HEAD_MOST, SECONDS = 16 * 1024, 20
+    #: A connection with no bytes either way for IDLE seconds is closed.
+    HEAD_MOST, SECONDS, IDLE = 16 * 1024, 20, 300
 
     def __init__(self, identity: str, port: int, sandboxes: Any, connections_max: int):
         self.identity, self.port, self.sandboxes, self.connections_max = identity, port, sandboxes, connections_max
@@ -100,31 +103,38 @@ class WayOut:
             host, port = parts.hostname, parts.port or 80
         host = host.strip("[]").lower()
         refusal = Hosts.refusal(process, host, port)
-        address = None if refusal else await self._public(host, port)
-        if address is None:
-            return await self._refuse(writer, refusal or f"{host} is not a public address.")
-        upstream_reader, upstream_writer = await asyncio.wait_for(asyncio.open_connection(address, port), self.SECONDS)
+        found = [] if refusal else await self.addresses(host, port)
+        refusal = refusal or ("" if found and all(map(self.public, found)) else f"{host} is not a public address.")
+        log.info(f"{process.name}: {host}:{port} {'refused: ' + refusal if refusal else 'reached'}")
+        if refusal:
+            return await self._refuse(writer, refusal)
+        upstream_reader, upstream_writer = await asyncio.wait_for(asyncio.open_connection(found[0], port), self.SECONDS)
         if tunnel:
             writer.write(b"HTTP/1.1 200 Connection established\r\n\r\n")
         else:
             path = urlsplit(target)._replace(scheme="", netloc="").geturl() or "/"
             upstream_writer.write(head.replace(target.encode("latin-1"), path.encode("latin-1"), 1))
-        await asyncio.gather(self._pipe(reader, upstream_writer), self._pipe(upstream_reader, writer))
+        seen = [time.monotonic()]
+        await asyncio.gather(self._pipe(reader, upstream_writer, seen), self._pipe(upstream_reader, writer, seen))
 
     @staticmethod
-    async def _public(host: str, port: int) -> str | None:
-        """The address the name answers with, when every one it answers with is public."""
+    async def addresses(host: str, port: int) -> list[str]:
+        """What the name answers with, looked up once; none when it can't be."""
         try:
             found = await asyncio.get_running_loop().getaddrinfo(host, port)
-        except OSError:
-            return None
-        addresses = list(dict.fromkeys(info[4][0] for info in found))
-        for answer in addresses:
-            ip = ipaddress.ip_address(answer)
-            ip = (ip.ipv4_mapped or ip.sixtofour or ip) if ip.version == 6 else ip
-            if not ip.is_global or ip.is_multicast:
-                return None
-        return addresses[0] if addresses else None
+        except (OSError, UnicodeError):
+            return []
+        return list(dict.fromkeys(info[4][0] for info in found))
+
+    @staticmethod
+    def public(address: str) -> bool:
+        """The public internet only, an IPv4 address inside an IPv6 one (mapped, 6to4, Teredo, NAT64) judged by what
+        is inside."""
+        ip = ipaddress.ip_address(address)
+        if ip.version == 6:
+            ip = ip.ipv4_mapped or ip.sixtofour or (ip.teredo[1] if ip.teredo else None) or (
+                ipaddress.ip_address(int(ip) & 0xFFFFFFFF) if ip in NAT64 else ip)
+        return ip.is_global and not ip.is_multicast
 
     @staticmethod
     async def _refuse(writer: asyncio.StreamWriter, reason: str) -> None:
@@ -132,10 +142,20 @@ class WayOut:
         writer.write(f"HTTP/1.1 403 {line}\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n{reason}\n".encode())
         await writer.drain()
 
-    @staticmethod
-    async def _pipe(source: asyncio.StreamReader, target: asyncio.StreamWriter) -> None:
+    @classmethod
+    async def _pipe(cls, source: asyncio.StreamReader, target: asyncio.StreamWriter, seen: list[float]) -> None:
+        """One way of a connection; ``seen`` is when bytes last went either way."""
         try:
-            while data := await source.read(64 * 1024):
+            while True:
+                try:
+                    data = await asyncio.wait_for(source.read(64 * 1024), cls.IDLE)
+                except TimeoutError:
+                    if time.monotonic() - seen[0] < cls.IDLE:
+                        continue
+                    break
+                if not data:
+                    break
+                seen[0] = time.monotonic()
                 target.write(data)
                 await target.drain()
         finally:

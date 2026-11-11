@@ -83,7 +83,8 @@ class ScheduleEndpoints(Controller):
         inputs = raw.get("inputs") if isinstance(raw.get("inputs"), dict) else {}
         if len(str(inputs)) > 16000:
             raise ValueError("A schedule's inputs are at most 16,000 characters.")
-        return {"function": f"{agent_id}.{function_id}", "inputs": inputs}
+        wake = str(raw.get("wake") or "")[:100]
+        return {"function": f"{agent_id}.{function_id}", "inputs": inputs, **({"wake": wake} if wake else {})}
 
     def make(self, chat: dict[str, Any], person: dict[str, Any], data: dict[str, Any], by: str) -> dict[str, Any]:
         settings = Settings.read()
@@ -140,10 +141,15 @@ class ScheduleEndpoints(Controller):
     def add(self, data: dict[str, Any], caller: Caller) -> dict[str, Any]:
         return {"schedule_id": self.make(caller.chat, caller.person, data, "assistant")["_id"]}
 
+    @endpoint("The assistant sees its chat's schedules", by=CHAT, changes=False)
+    def held(self, data: dict[str, Any], caller: Caller) -> dict[str, Any]:
+        return {"schedules": [Schedules.public(r) for r in
+                              Schedules().col.find({"chat_id": caller.chat["_id"]}).sort("next_at", 1).limit(50)]}
+
     @endpoint("The assistant removes one of its chat's schedules", by=CHAT)
     def remove(self, data: dict[str, Any], caller: Caller) -> dict[str, Any]:
-        Schedules().col.delete_one({"_id": str(data.get("schedule_id") or ""), "chat_id": caller.chat["_id"]})
-        return {}
+        found = Schedules().col.delete_one({"_id": str(data.get("schedule_id") or ""), "chat_id": caller.chat["_id"]})
+        return {"removed": found.deleted_count == 1}
 
     @endpoint("A runtime tells how a scheduled run ended", by=RECORD)
     def ran(self, data: dict[str, Any], caller: Caller) -> dict[str, Any]:

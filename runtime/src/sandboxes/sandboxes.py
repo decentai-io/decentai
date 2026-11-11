@@ -28,8 +28,8 @@ class Sandboxes:
         self.drained: set[str] = set()
         #: process name -> the Process it is.
         self.processes: dict[str, Any] = {}
-        #: A person's file offered to a sandbox -> the chat it is offered for.
-        self.offered: dict[str, str] = {}
+        #: (sandbox id, a person's file offered to it) -> the chat it is offered for.
+        self.offered: dict[tuple[str, str], str] = {}
 
     def choose(self, agent: dict[str, Any]) -> dict[str, Any] | None:
         """One that reports itself, isn't stopping or drained, of a machine the agent has a program for, of its
@@ -125,7 +125,7 @@ class FileDoor:
         try:
             if file.startswith("sha256:"):
                 return await self.sandboxes.api.call("Agents:Package:fetch", {"digest": file, "offset": offset}), 200
-            chat = self.sandboxes.offered.get(file)
+            chat = self.sandboxes.offered.get((peer["id"], file))
             if chat is None:
                 return {"error": "No such file."}, 404
             return await self.sandboxes.api.call("Files:Piece:read", {"chat_id": chat, "record_id": file,

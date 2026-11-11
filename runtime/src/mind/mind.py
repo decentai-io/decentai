@@ -14,7 +14,7 @@ from shared.cron import zone
 from ..agents.process import CallFailed
 from ..api.client import Refused
 from .brain import Brain
-from .history import text
+from .history import SHOWN, cut, text
 
 log = logging.getLogger("runtime")
 
@@ -84,6 +84,9 @@ class Mind:
         elif kind == "schedule" and (event.get("what") or {}).get("prompt"):
             self.schedules.append(str(event.get("schedule_id") or ""))
             self.turn(False, f"A schedule of this chat is due, with nobody here: {event['what']['prompt']}")
+        elif kind == "woke":
+            self.turn(False, f"A scheduled run of {event['function']} came back with {event['field']} set, with "
+                             f"nobody here. Its output: {cut(event['output'], SHOWN)}")
         elif kind == "stop" and event.get("work"):
             brain = next((b for b in self.brains.values() if b.work.get(event["work"], {}).get("status") == "running"), None)
             if brain is not None:
@@ -151,18 +154,22 @@ class Mind:
 
     # -- what it does, through the chat ---------------------------------------------------------------
 
-    def instructions(self) -> tuple[str, str]:
-        """The stable part, cached by a provider that can, and the rest."""
+    def instructions(self, offered: list[dict[str, Any]], every: bool) -> tuple[str, str]:
+        """The stable part, cached by a provider that can, and the rest. Only the agents whose functions are offered
+        have their instructions shown: in the stable part when every agent's are, otherwise in the rest, while the
+        open tool lists every agent in one line."""
         contract = self.chat.contract
         agents = "\n\n".join(f"## {a['manifest']['agent']['name']} ({a['agent_id']})\n"
                              f"{a['manifest']['agent'].get('description', '')}\n"
-                             f"{a['manifest']['agent'].get('instructions', '')}" for a in self.chat.agents.values())
+                             f"{a['manifest']['agent'].get('instructions', '')}" for a in offered)
         guardrail = contract["organization"].get("guardrail")
         assistant = contract.get("assistant") or {}
         memories = "\n".join(f"- {memory}" for memory in assistant.get("memories") or [])
         skills = "\n".join(f"- {skill['name']}: {skill['description']}" for skill in assistant.get("skills") or [])
-        stable = [BASE, guardrail and f"The organization's rules:\n{guardrail}", agents and f"# The agents\n\n{agents}"]
-        rest = [memories and f"What the person asked you to remember:\n{memories}",
+        stable = [BASE, guardrail and f"The organization's rules:\n{guardrail}",
+                  every and agents and f"# The agents\n\n{agents}"]
+        rest = [not every and agents and f"# The agents you opened\n\n{agents}",
+                memories and f"What the person asked you to remember:\n{memories}",
                 skills and f"The person's skills, read with the skill tool:\n{skills}"]
         return "\n\n".join(part for part in stable if part), "\n\n".join(part for part in rest if part)
 
@@ -176,7 +183,7 @@ class Mind:
         return output
 
     async def mcp(self, server: dict[str, Any], tool: str, inputs: dict[str, Any]) -> Any:
-        answer = await self.chat.mcp(server, tool, inputs)
+        answer = await self.chat.mcp(server, tool, inputs, self.attended)
         if answer["failed"]:
             raise CallFailed("failed", answer["text"] or "The tool failed.")
         return answer["structured"] or answer["text"]

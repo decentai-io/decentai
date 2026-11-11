@@ -114,7 +114,7 @@ async def test_a_secret_read_and_hosts_opened_widen_the_way_out_for_the_call():
     seen = {}
 
     async def reaches(world, process, call_id, inputs):
-        seen["before"] = Hosts.refusal(process, "mail.example.org", 443)
+        seen["call"], seen["before"] = call_id, Hosts.refusal(process, "mail.example.org", 443)
         await world.ask(process, call_id, "record.read", {"resource": "mailbox", "ref": "r1"})
         seen["read"] = Hosts.refusal(process, "mail.example.org", 443)
         seen["opened"] = await world.ask(process, call_id, "network.open", {"hosts": ["files.example.net"],
@@ -131,7 +131,7 @@ async def test_a_secret_read_and_hosts_opened_widen_the_way_out_for_the_call():
     await calling
     asked = api.of("Records:Record:read")[0]
     assert {key: asked[key] for key in ("chat_id", "agent", "function", "call")} == {
-        "chat_id": "chat1", "agent": "probe", "function": "report", "call": "r1"}
+        "chat_id": "chat1", "agent": "probe", "function": "report", "call": seen["call"]}
     assert seen["before"] and seen["read"] == "" and seen["open"] == ""
     assert seen["opened"]["data"]["output"] == {"hosts": ["files.example.net"]}
     assert Hosts.refusal(process, "files.example.net", 443) and "blocked" in Hosts.refusal(process, "blocked.example.com", 443)
@@ -143,10 +143,11 @@ def test_hosts_are_matched_by_name_and_port():
     assert Hosts.matches("example.com:993", "example.com", 993) and not Hosts.matches("example.com:993", "example.com", 443)
 
 
-async def test_the_way_out_reaches_only_public_addresses():
-    for inside in ("127.0.0.1", "10.0.0.1", "169.254.169.254", "::1", "::ffff:127.0.0.1", "224.0.0.1"):
-        assert await WayOut._public(inside, 443) is None
-    assert await WayOut._public("8.8.8.8", 443) == "8.8.8.8"
+def test_the_way_out_reaches_only_public_addresses():
+    for inside in ("127.0.0.1", "10.0.0.1", "169.254.169.254", "::1", "::ffff:127.0.0.1", "224.0.0.1",
+                   "64:ff9b::a9fe:a9fe"):
+        assert not WayOut.public(inside)
+    assert WayOut.public("8.8.8.8") and WayOut.public("64:ff9b::808:808")
 
 
 async def test_a_scheduled_function_runs_with_nobody_there_and_its_run_is_told():

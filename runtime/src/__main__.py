@@ -52,7 +52,8 @@ class Main:
         sandboxes.runtime_id = self.identity(settings.identity)
         chats = Chats(api, sandboxes, settings, Mind)
         await node.start(Router({
-            "Runtime": {"Chat": ChatDoor(chats), "Agent": AgentDoor(chats), "Model": ModelDoor(), "Mcp": McpDoor()},
+            "Runtime": {"Chat": ChatDoor(chats), "Agent": AgentDoor(chats), "Model": ModelDoor(settings.inside_hosts),
+                        "Mcp": McpDoor()},
             "Caller": {"Sandbox": SandboxDoor(sandboxes), "Process": ProcessDoor(sandboxes),
                        "File": FileDoor(sandboxes)}}, self.allowed))
         way_out = WayOut(settings.identity, settings.way_out_port, sandboxes, settings.connections_max)

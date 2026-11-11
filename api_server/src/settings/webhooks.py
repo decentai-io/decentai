@@ -159,8 +159,8 @@ class WebhookEndpoints(Controller):
                 raise ValueError("fields is a JSON Schema.") from None
             fields["fields"] = data["fields"]
         if "trust" in data:
-            if data["trust"] not in (0, 1, 2, 3) or data["trust"] > OrgSettings().of(caller.org_id)["webhook_trust"]:
-                raise ValueError("A webhook's trust is 0 to 3, never above the organization's webhook_trust.")
+            if type(data["trust"]) is not int or data["trust"] not in (0, 1, 2, 3):
+                raise ValueError("A webhook's trust is 0 to 3.")
             fields["trust"] = data["trust"]
         for key in ("require_signature", "enabled"):
             if key in data:

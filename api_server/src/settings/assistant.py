@@ -173,7 +173,10 @@ class SkillEndpoints(SharedEndpoints):
 
 
 class McpEndpoints(SharedEndpoints):
-    NAME, STORE, WHAT = "Mcp:Server", McpServers, "MCP server"
+    """A tool's level is weighed against a chat's trust before it is called, as an agent's function's is: 2 unless
+    the person changes it (mind.md §4)."""
+
+    NAME, STORE, WHAT, LEVEL = "Mcp:Server", McpServers, "MCP server", 2
 
     def _fields(self, data: dict[str, Any], doc: dict[str, Any]) -> dict[str, Any]:
         fields: dict[str, Any] = {}
@@ -190,8 +193,13 @@ class McpEndpoints(SharedEndpoints):
             headers = data["headers"] if isinstance(data["headers"], dict) else {}
             fields["headers"] = Cipher.seal({str(k)[:80]: str(v)[:4000] for k, v in headers.items()},
                                             f"{doc['org_id']}:mcp:{doc['_id']}") if headers else ""
-        if isinstance(data.get("tools"), dict):
-            fields["tools"] = [{**t, "on": data["tools"].get(t["name"], t.get("on", False)) is True}
+        on = data.get("tools") if isinstance(data.get("tools"), dict) else {}
+        levels = data.get("levels") if isinstance(data.get("levels"), dict) else {}
+        if any(type(level) is not int or not 0 <= level <= 3 for level in levels.values()):
+            raise ValueError("A tool's level is 0 to 3.")
+        if on or levels:
+            fields["tools"] = [{**t, "on": on.get(t["name"], t.get("on", False)) is True,
+                                "level": levels.get(t["name"], t.get("level", self.LEVEL))}
                                for t in doc.get("tools") or []]
         return fields
 
@@ -204,7 +212,7 @@ class McpEndpoints(SharedEndpoints):
         McpServers().col.insert_one(doc)
         return {"item": self._public(doc)}
 
-    @endpoint("Change an MCP server of yours, or switch its tools on and off")
+    @endpoint("Change an MCP server of yours, switch its tools on and off, or set their levels")
     def update(self, data: dict[str, Any], caller: Caller) -> dict[str, Any]:
         doc = self._seen(data, caller, mine=True)
         fields = self._fields(data, doc)
@@ -216,9 +224,11 @@ class McpEndpoints(SharedEndpoints):
         doc = await asyncio.to_thread(self._seen, data, caller, True)
         said = await RuntimeCalls().ask(caller.org_id, "Runtime:Mcp:tools", {"server": {
             "address": doc["address"], "headers": McpServers().headers(doc)}})
-        was = {t["name"]: t.get("on", False) for t in doc.get("tools") or []}
+        was = {t["name"]: t for t in doc.get("tools") or []}
         tools = [{"name": str(t.get("name"))[:100], "description": str(t.get("description") or "")[:1000],
-                  "on": was.get(t.get("name"), False)} for t in said.get("tools") or [] if isinstance(t, dict)][:200]
+                  "on": was.get(t.get("name"), {}).get("on", False),
+                  "level": was.get(t.get("name"), {}).get("level", self.LEVEL)}
+                 for t in said.get("tools") or [] if isinstance(t, dict)][:200]
         await asyncio.to_thread(McpServers().col.update_one, {"_id": doc["_id"]},
                                 {"$set": {"tools": tools, "read_at": McpServers.now()}})
         return {"item": self._public({**doc, "tools": tools})}

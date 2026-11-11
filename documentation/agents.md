@@ -416,7 +416,7 @@ Output: `{deleted: true}`.
 |---|---|
 | `messages` | `[{role: system \| user \| assistant, text}]` |
 | `max_tokens` | optional: the most the reply may be |
-| `pictures` | optional: paths of pictures in the home, named in `files`, shown with the last message; each a PNG, JPEG, GIF or WebP of at most 5 MiB, at most 16 |
+| `pictures` | optional: paths of pictures in the home, named in `files`, shown with the last message; each a PNG, JPEG, GIF or WebP by its bytes, of at most 5 MiB, at most 16 |
 
 Output: `{text, stop}`; `stop` is `end`, or `length` when `max_tokens` cut the reply.
 

@@ -22,7 +22,6 @@ class OrgSettings:
         "runtimes": ("prefer_own", ("prefer_own", "own_only")),
         "mcp": ("allowed", ("allowed", "blocked")),
         "webhooks": ("allowed", ("allowed", "blocked")),
-        "webhook_trust": (1, (0, 1, 2, 3)),
         "notification_text": ("shown", ("shown", "hidden")),
         "speech": ("none", ("none", "service", "model")),
         "speech_connection": ("", 100),

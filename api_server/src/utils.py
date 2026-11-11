@@ -16,6 +16,7 @@ from urllib.parse import urljoin, urlsplit
 import httpx
 
 KIB, MIB, GIB = 1024, 1024 ** 2, 1024 ** 3
+NAT64 = ipaddress.ip_network("64:ff9b::/96")
 
 
 class SettingsRefused(ValueError):
@@ -37,6 +38,8 @@ class Settings:
         self.app_url = self._required("AI_API_APP_URL").rstrip("/")
         self.origins = self._list("AI_API_ORIGINS", self.app_url)
         self.database_uri = self._required("AI_API_DATABASE_URI")
+        if "change-me" in self.database_uri:
+            raise SettingsRefused("AI_API_DATABASE_URI still says change-me: give the database a password of your own.")
         self.database_name = self._text("AI_API_DATABASE_NAME", "decentai")
         self.encryption_keys = self._required("AI_API_ENCRYPTION_KEYS")
         self.encryption_active = self._required("AI_API_ENCRYPTION_ACTIVE")
@@ -57,6 +60,8 @@ class Settings:
         self.speech_url = self._text("AI_API_SPEECH_URL", "http://speech:8004").rstrip("/")
         self.signup = self._choice("AI_API_SIGNUP", "closed", ("closed", "open"))
         self.setup_code = self._text("AI_API_SETUP_CODE")
+        if self.setup_code == "change-me":
+            raise SettingsRefused("AI_API_SETUP_CODE still says change-me: set a code of your own.")
         self.operator_org = self._text("AI_API_OPERATOR_ORG")
         self.reference_catalog = self._text("AI_API_REFERENCE_CATALOG")
         self.log_level = self._choice("AI_API_LOG_LEVEL", "INFO", ("DEBUG", "INFO", "WARNING", "ERROR"))
@@ -232,10 +237,12 @@ class Outside:
 
     @staticmethod
     def _public(address: str) -> bool:
-        """The public internet only, an IPv4 address inside an IPv6 one judged by what is inside."""
+        """The public internet only, an IPv4 address inside an IPv6 one (mapped, 6to4, Teredo, NAT64) judged by what
+        is inside."""
         ip = ipaddress.ip_address(address)
         if ip.version == 6:
-            ip = ip.ipv4_mapped or ip.sixtofour or (ip.teredo[1] if ip.teredo else None) or ip
+            ip = ip.ipv4_mapped or ip.sixtofour or (ip.teredo[1] if ip.teredo else None) or (
+                ipaddress.ip_address(int(ip) & 0xFFFFFFFF) if ip in NAT64 else ip)
         return ip.is_global and not ip.is_multicast
 
     @staticmethod

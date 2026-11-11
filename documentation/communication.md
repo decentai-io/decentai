@@ -60,7 +60,7 @@ decentai-acme-root-1            the root: offline, out of the deployment
 | Level | How many | Kept where | Lasts | Signs |
 |---|---|---|---|---|
 | root | 2 per deployment, a primary and a backup | off the deployment, encrypted with a passphrase of 12 or more characters | 10 years, path length 1 | intermediates, by hand |
-| intermediate | 1 per issuer | its issuer alone | 120 days, path length 0, named to `id.decentai` and the kinds it may sign | nodes |
+| intermediate | 1 per issuer | its issuer alone, its key encrypted with `ISSUER_KEY_PASSPHRASE` | 120 days, path length 0, named to `id.decentai` and the kinds it may sign | nodes |
 | node | 1 per node | its identity folder | what its token says: 12 hours unless set, at most 1 hour for a launched node, 7 days on one machine | nothing |
 
 - A deployment has roots of its own: a certificate of one means nothing in another.
@@ -107,7 +107,8 @@ It keeps token hashes and the nodes it certified in a database of its own, `dece
 |---|---|---|
 | `ISSUER_IDENTITY` | its identity folder | `/run/decentai` |
 | `ISSUER_AUTHORITY` | where its intermediate is kept | `/run/decentai/authority` |
-| `MONGO_URI`, `ISSUER_DATABASE` | its database | none, `decentai_issuer` |
+| `MONGO_URI`, `ISSUER_DATABASE` | its database; a password still `change-me` is refused | none, `decentai_issuer` |
+| `ISSUER_KEY_PASSPHRASE` | what encrypts its intermediate's key on disk; it doesn't start without one. A key written without one is encrypted when first read | none |
 | `ISSUER_PORT` | its port | `8004` |
 | `ISSUER_LIFETIME` | a certificate's seconds, when a token says none | `43200` |
 | `ISSUER_LAUNCH_RULES` | which kinds may launch which ([7](#7-launching)) | the runtime launches sandboxes |
@@ -119,13 +120,14 @@ It keeps token hashes and the nodes it certified in a database of its own, `dece
 - **Its next intermediate:** 30 days before the current one ends it makes `authority.next.*`, to be signed the same
   way. The API server's admin tool asks for the request and installs the result
   (`python -m api_server.admin intermediate request | install --file`).
-- **Tokens:** made for a kind, a lifetime (43200 seconds unless said), a number of uses (any unless said) and an
+- **Tokens:** made for a kind, a lifetime (43200 seconds unless said), a number of uses (one unless said) and an
   expiry (7 days unless said), with metadata such as a scope. Never for kind `issuer`. Only a hash is kept. A first
   token for a node Compose doesn't start: `python /opt/decentai/setup/identities.py token <kind>` in the issuer's
   container.
 - **What it answers:** enrolling and renewing to anyone; making, withdrawing and listing tokens, listing, refusing
   and allowing nodes, and asking for and installing its intermediate, to nodes of kind `api`; a kind with a launch
-  rule makes tokens for, and refuses, the nodes it launched.
+  rule makes tokens for, and refuses, the nodes it launched. A node refused makes no tokens, and what its tokens
+  would enroll is refused.
 
 ## 7. Launching
 

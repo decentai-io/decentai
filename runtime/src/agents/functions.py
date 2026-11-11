@@ -5,12 +5,15 @@ from __future__ import annotations
 
 import asyncio
 import base64
-import mimetypes
+import logging
 from typing import Any
 
+from shared.file_types import FileTypes
 from ..api.client import Refused
 from ..models.base import Request
 from .process import Call, CallFailed, Process
+
+log = logging.getLogger("runtime")
 
 LEVELS = {"record.list": 0, "record.read": 0, "record.create": 1, "record.update": 1, "record.delete": 2, "model": 0,
           "chat": 0, "network.open": 3}
@@ -18,7 +21,7 @@ CODES = {400: "invalid", 403: "refused", 404: "not_found", 409: "refused", 413: 
 
 
 class Functions:
-    CHATS_MOST = 5
+    CHATS_MOST, PICTURES = 5, ("image/png", "image/jpeg", "image/gif", "image/webp")
 
     def __init__(self, chat: Any):
         self.chat = chat
@@ -42,6 +45,9 @@ class Functions:
             await process.answer(message_id, failed=CallFailed(CODES.get(refused.status, "failed"), refused.message))
         except asyncio.CancelledError:
             await process.answer(message_id, failed=CallFailed("cancelled", "Cancelled."))
+        except Exception as error:
+            log.warning(f"{process.name}: a call to the runtime failed: {error!r}")
+            await process.answer(message_id, failed=CallFailed("failed", str(error)[:500] or "It failed."))
         finally:
             process.serving.pop(message_id, None)
 
@@ -58,8 +64,8 @@ class Functions:
         except Refused as refused:
             if not refused.extra.get("approval"):
                 raise
-            await self.chat.gate.approved(process.agent_id, call, {"function": call.function, "call": name,
-                                                                   "record": str(inputs.get("ref") or "")})
+            await self.chat.gate.approved(process.agent_id, call, {
+                "function": call.function, "call": f"{name}:{resource}", "record": str(inputs.get("ref") or "")})
             answer = await self.chat.api.call(f"Records:Record:{operation}", asked)
         if answer.get("waiting"):
             filled = await self.chat.asked_card(answer.pop("waiting"), call) or {}
@@ -84,8 +90,10 @@ class Functions:
         pictures = []
         for file in (message.get("files") or [])[:16]:
             data = await self.chat.sandboxes.pulled(process.sandbox, file["id"], 5 * 1024 * 1024)
-            pictures.append({"mime": mimetypes.guess_type(file["path"])[0] or "image/png",
-                             "data": base64.b64encode(data).decode()})
+            kind = FileTypes.of(file["path"])
+            if kind not in self.PICTURES or not FileTypes.agrees(kind, data[:16]):
+                raise CallFailed("invalid", f"{file['path']} is not a PNG, JPEG, GIF or WebP picture by its bytes.")
+            pictures.append({"mime": kind, "data": base64.b64encode(data).decode()})
         spoken[-1]["images"] = pictures
         reply = await self.chat.think(Request(system_rest=system, messages=spoken,
                                               max_tokens=inputs.get("max_tokens")), process.agent_id)

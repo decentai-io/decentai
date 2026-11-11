@@ -61,6 +61,29 @@ class FileTypes:
         "compress": "application/x-compress",
     }
 
+    #: First bytes of the kinds whose bytes are checked against their name.
+    MAGIC = {"application/pdf": (b"%PDF",), "image/png": (b"\x89PNG",), "image/jpeg": (b"\xff\xd8\xff",),
+             "image/gif": (b"GIF87a", b"GIF89a"), "application/zip": (b"PK\x03\x04", b"PK\x05\x06")}
+    ZIPPED = ("vnd.openxmlformats", "vnd.oasis.opendocument")
+
+    @classmethod
+    def agrees(cls, kind: str, head: bytes) -> bool:
+        """Whether a file's first bytes agree with the type its name says."""
+        if kind == "image/webp":
+            return head[:4] == b"RIFF" and head[8:12] == b"WEBP"
+        if any(z in kind for z in cls.ZIPPED):
+            kind = "application/zip"
+        if kind in cls.MAGIC:
+            return head.startswith(cls.MAGIC[kind])
+        if kind.startswith("text/") or kind in ("application/json", "application/x-ndjson", "application/yaml",
+                                                "application/xml", "image/svg+xml"):
+            try:
+                head.decode("utf-8")
+            except UnicodeDecodeError as error:
+                return error.start > len(head) - 4  # a character cut at the piece's end
+            return b"\0" not in head
+        return not any(head.startswith(magic) for magics in cls.MAGIC.values() for magic in magics)
+
     @classmethod
     def of(cls, filename: str) -> str:
         """The type a file's name says, the same wherever it is asked."""

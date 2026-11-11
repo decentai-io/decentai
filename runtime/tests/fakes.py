@@ -73,7 +73,7 @@ class Sandboxes:
 
     def __init__(self):
         self.processes: dict[str, Any] = {}
-        self.offered: dict[str, str] = {}
+        self.offered: dict[tuple[str, str], str] = {}
         self.drained: set[str] = set()
         #: What the runtime sent programs; the functions ready names (None: the manifest's); calls running.
         self.sent: list[dict[str, Any]] = []

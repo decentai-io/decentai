@@ -6,6 +6,7 @@ from __future__ import annotations
 import asyncio
 import itertools
 import logging
+import secrets
 import time
 from typing import Any
 
@@ -16,6 +17,7 @@ from ..agents.process import Call, CallFailed, Process
 from ..api.client import Refused
 from ..models.base import OnText, Reply, Request
 from ..models.factory import Factory
+from ..models.usage import Usage
 from ..utils import Held
 
 log = logging.getLogger("runtime")
@@ -31,7 +33,8 @@ class Chat:
         self.held, self.used_at = Held(), time.monotonic()
         self.gate, self.functions = Gate(self), Functions(self)
         self._starting: dict[str, asyncio.Lock] = {}
-        self._ids = itertools.count(1)
+        #: From a random start, so a card's call id names no other placement's call.
+        self._ids = itertools.count(secrets.randbelow(2 ** 40))
         self._connector: Any = None
         self.mind = chats.mind(self, loaded)
 
@@ -143,6 +146,12 @@ class Chat:
     async def schedule(self, what: dict[str, Any], when: dict[str, Any]) -> dict[str, Any]:
         return await self.api.call("AI:Schedule:add", {"chat_id": self.id, "what": what, "when": when})
 
+    async def schedules(self) -> list[dict[str, Any]]:
+        return (await self.api.call("AI:Schedule:held", {"chat_id": self.id}))["schedules"]
+
+    async def unschedule(self, schedule_id: str) -> bool:
+        return (await self.api.call("AI:Schedule:remove", {"chat_id": self.id, "schedule_id": schedule_id}))["removed"]
+
     async def think(self, request: Request, agent: str = "", on_text: OnText | None = None) -> Reply:
         """One request to the chat's model connection, its words given to ``on_text`` as they come; what it used,
         reported."""
@@ -150,15 +159,14 @@ class Chat:
         if not model:
             raise CallFailed("failed", "This chat has no model connection.")
         if self._connector is None:
-            self._connector = Factory.create({"provider": model["provider"], "endpoint": model["address"],
-                                              "api_key": (model.get("key") or {}).get("key", ""),
-                                              "model": (model.get("models") or [""])[0],
-                                              "reasoning_effort": self.contract["chat"]["settings"].get("effort")},
-                                             self.id)
+            config = {"provider": model["provider"], "endpoint": model["address"],
+                      "api_key": (model.get("key") or {}).get("key", ""), "model": (model.get("models") or [""])[0],
+                      "reasoning_effort": self.contract["chat"]["settings"].get("effort")}
+            self._connector = await Factory.connected(config, self.settings.inside_hosts, self.id)
         reply = await self._connector.stream(request, on_text)
         self.held.start(self.api.call("AI:Usage:record", {
             "chat_id": self.id, "agent": agent, "provider": model["provider"], "model": reply.model,
-            "input": reply.usage.input, "output": reply.usage.output}))
+            **{name: getattr(reply.usage, name) for name in Usage.FIELDS}}))
         return reply
 
     async def keep(self, state: Any) -> None:
@@ -169,8 +177,10 @@ class Chat:
         async with McpClient(server["address"], server.get("headers") or {}) as client:
             return await asyncio.wait_for(client.tools(), 30)
 
-    async def mcp(self, server: dict[str, Any], tool: str, arguments: dict[str, Any]) -> dict[str, Any]:
-        """One tool of a person's MCP server: ``{text, structured, other, failed}``."""
+    async def mcp(self, server: dict[str, Any], tool: str, arguments: dict[str, Any],
+                  attended: bool = True) -> dict[str, Any]:
+        """One tool of a person's MCP server, through the gate: ``{text, structured, other, failed}``."""
+        await self.gate.tool(server, tool, arguments, Call(f"m{next(self._ids)}", tool, attended))
         async with McpClient(server["address"], server.get("headers") or {}) as client:
             return await client.call(tool, arguments)
 
@@ -193,10 +203,14 @@ class Chat:
 
     async def scheduled(self, frame: dict[str, Any]) -> None:
         """A function due on a schedule, run with nobody present; how it ended told back."""
-        agent_id, _, function_id = str(frame["what"]["function"]).partition(".")
+        what = frame["what"]
+        agent_id, _, function_id = str(what["function"]).partition(".")
         try:
-            output, _ = await self.call(agent_id, function_id, frame["what"].get("inputs") or {}, attended=False)
+            output, _ = await self.call(agent_id, function_id, what.get("inputs") or {}, attended=False)
             ended = {"failed": False, "summary": str(output)[:500]}
+            if what.get("wake") and isinstance(output, dict) and output.get(what["wake"]):
+                await self.mind.told(self, {"type": "woke", "function": what["function"], "field": what["wake"],
+                                            "output": output})
         except CallFailed as failed:
             ended = {"failed": True, "summary": failed.message[:500]}
         try:

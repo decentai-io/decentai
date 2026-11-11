@@ -21,6 +21,12 @@ def cut(value: Any, most: int, name: str = "") -> str:
     return said[:most] + f"\n… {len(said) - most} more characters" + (f": look at {name}." if name else ".")
 
 
+def around(said: str, words: str) -> str:
+    """The words and a little on each side, where ``said`` has them; '' where it doesn't."""
+    at = said.lower().find(words.lower()) if words else -1
+    return "" if at < 0 else "…" + said[max(0, at - 100):at + len(words) + 100] + "…"
+
+
 class History:
     """Entries, oldest first: ``in``, ``thought``, ``answer`` and ``chapter``. An entry whose chapter keeps only its
     summary is ``gone``."""
@@ -75,6 +81,20 @@ class History:
         return {chapter["start"]: (number, chapter) for number, chapter in enumerate(chapters, 1)
                 if inside(chapter, start, end) and (chapter["start"], chapter["end"]) != (start, end)
                 and not any(inside(chapter, later["start"], later["end"]) for later in chapters[number:])}
+
+    def found(self, words: str) -> list[str]:
+        """Each entry that says these words, with where it is: ``now``, or the chapter that holds it."""
+        chapters, lines = self.chapters(), []
+        for at, entry in enumerate(self.entries):
+            if entry["kind"] == "chapter":
+                where, said = f"ch{chapters.index(entry) + 1}", entry["summary"]
+            else:
+                holding = [n for n, chapter in enumerate(chapters, 1) if chapter["start"] <= at < chapter["end"]]
+                where = f"ch{holding[-1]}" if holding else "now"
+                said = text({key: entry[key] for key in ("text", "calls") if key in entry})
+            if found := around(said, words):
+                lines.append(f"{where} · {entry['kind']}: {found}")
+        return lines
 
     def too_long(self) -> bool:
         return len(json.dumps(self.view(), ensure_ascii=False, default=str)) > self.VIEW_MOST

@@ -70,6 +70,7 @@ services:
     environment:
       MONGO_ADMIN_URI: mongodb://${MONGO_ROOT_USERNAME:-root}:${MONGO_ROOT_PASSWORD}@mongo:27017/?replicaSet=rs0&authSource=admin
       ISSUER_DATABASE_PASSWORD: ""
+      ISSUER_KEY_PASSPHRASE: ""
     networks:
       - data
     depends_on:
@@ -127,6 +128,7 @@ services:
     <<: [*hardened, *read-only]
     environment:
       MONGO_URI: *issuer-database
+      ISSUER_KEY_PASSPHRASE: ${ISSUER_KEY_PASSPHRASE:?set in deploy/config/deploy.env}
       LOG_LEVEL:
     networks:
       - data
@@ -172,6 +174,7 @@ services:
       AI_API_STORAGE_FOLDER: /data/storage
       MONGO_ROOT_PASSWORD: ""
       ISSUER_DATABASE_PASSWORD: ""
+      ISSUER_KEY_PASSPHRASE: ""
     networks:
       - default
       - data
@@ -241,6 +244,7 @@ services:
       AI_RUNTIME_AGENT_CANCEL_SECONDS:
       AI_RUNTIME_AGENT_CONNECTIONS_MAX:
       AI_RUNTIME_LOG_LEVEL:
+      AI_RUNTIME_INSIDE_HOSTS:
       TZ:
       # how this machine reaches the models, and whom it trusts
       HTTP_PROXY:
@@ -299,6 +303,13 @@ services:
       AI_SANDBOX_PROGRAM_KEPT_DAYS:
       AI_SANDBOX_STOP_SECONDS:
       AI_SANDBOX_LOG_LEVEL:
+    # Its door answers /health once a jail holds; it is TLS, with its own certificate, so the check doesn't verify it.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import ssl, urllib.request; urllib.request.urlopen('https://127.0.0.1:8004/health', context=ssl._create_unverified_context(), timeout=4)"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 120s
     volumes:
       - sandbox_data:/data
       - sandbox_identity:/run/decentai/sandbox

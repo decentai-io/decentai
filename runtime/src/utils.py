@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import re
 from typing import Coroutine
 
@@ -29,6 +30,13 @@ class Settings:
         self.ready_seconds = self._number("AI_RUNTIME_AGENT_READY_SECONDS", 60, 1, 3600)
         self.cancel_seconds = self._number("AI_RUNTIME_AGENT_CANCEL_SECONDS", 5, 1, 3600)
         self.connections_max = self._number("AI_RUNTIME_AGENT_CONNECTIONS_MAX", 128, 1, 100000)
+        #: Model hosts inside this network that may be reached anyway: names, or networks such as 10.0.0.0/8.
+        self.inside_hosts = [host.lower() for host in self._text("AI_RUNTIME_INSIDE_HOSTS").replace(",", " ").split()]
+        for network in [host for host in self.inside_hosts if "/" in host]:
+            try:
+                ipaddress.ip_network(network, strict=False)
+            except ValueError:
+                raise SettingsRefused(f"AI_RUNTIME_INSIDE_HOSTS: '{network}' is not a network.") from None
         self.log_level = self._text("AI_RUNTIME_LOG_LEVEL", "INFO").upper()
         if self.log_level not in ("DEBUG", "INFO", "WARNING", "ERROR"):
             raise SettingsRefused("AI_RUNTIME_LOG_LEVEL is DEBUG, INFO, WARNING or ERROR.")

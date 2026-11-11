@@ -8,7 +8,6 @@ import contextlib
 import json
 import logging
 import os
-import secrets
 import sys
 from typing import Any, AsyncIterator
 
@@ -57,7 +56,8 @@ class Main:
         Database.connect(settings.database_uri, settings.database_name)
         Database.prepare()
         Storage.open(settings)
-        cls.first_run(settings)
+        if not cls.first_run(settings):
+            return 2
         callers = Callers()
         router = Catalog.router(callers)
         door = RuntimesDoor(router, callers)
@@ -86,15 +86,16 @@ class Main:
         return 0
 
     @staticmethod
-    def first_run(settings: Settings) -> None:
-        """Until first run is done, a setup code: the operator's, or one written to the log."""
-        deployment = Deployment().get()
-        if deployment.get("first_run_done"):
-            return
-        code = settings.setup_code or deployment.get("setup_code") or secrets.token_hex(6)
-        Deployment().set(setup_code=code)
+    def first_run(settings: Settings) -> bool:
+        """Until first run is done, the operator's setup code, never made here nor written to the log; False when
+        there is none."""
+        if Deployment().get().get("first_run_done"):
+            return True
         if not settings.setup_code:
-            log.warning(f"First run: the setup code is {code}")
+            log.error("The API server doesn't start: until its first run is done, AI_API_SETUP_CODE is required.")
+            return False
+        Deployment().set(setup_code=settings.setup_code)
+        return True
 
 
 sys.exit(Main.run())

@@ -25,7 +25,7 @@ def settings(world, org, **changes):
 class TestTheOrganization:
     def test_its_settings_are_one_table_checked_and_an_administrators(self, world, org):
         world.refused("Settings:Organization:update", {"settings": {"nothing": 1}}, org.admin, 400)
-        world.refused("Settings:Organization:update", {"settings": {"webhook_trust": 5}}, org.admin, 400)
+        world.refused("Settings:Organization:update", {"settings": {"mcp": "sometimes"}}, org.admin, 400)
         world.refused("Settings:Organization:update", {"settings": {"guardrail": "Be kind."}}, org.member, 403)
         assert settings(world, org, guardrail="Be kind.")["guardrail"] == "Be kind."
 
@@ -113,8 +113,10 @@ class TestWebhooks:
         first, second = self.post(hook, {"id": 7}, **auth)[0], self.post(hook, {"id": 7}, **auth)[0]
         assert second["repeated"] is True and second["delivery_id"] == first["delivery_id"]
 
-    def test_its_trust_never_passes_the_organizations_and_a_block_hides_it(self, world, org, hook):
-        world.refused("Settings:Webhook:update", {"webhook_id": hook["id"], "trust": 3}, org.member, 400)
+    def test_its_trust_is_its_persons_choice_and_a_block_hides_it(self, world, org, hook):
+        world.refused("Settings:Webhook:update", {"webhook_id": hook["id"], "trust": 4}, org.member, 400)
+        changed = world.ok("Settings:Webhook:update", {"webhook_id": hook["id"], "trust": 3}, org.member)
+        assert changed["webhook"]["trust"] == 3
         settings(world, org, webhooks="blocked")
         assert self.post(hook, {"id": 1}, authorization=f"Bearer {hook['secret']}")[1] == 404
 

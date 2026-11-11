@@ -29,6 +29,12 @@ class Settings:
         self.identity = env.get("ISSUER_IDENTITY", "/run/decentai")
         self.authority = env.get("ISSUER_AUTHORITY", "/run/decentai/authority")
         self.mongo_uri = env.get("MONGO_URI", "mongodb://localhost:27017")
+        if "change-me" in self.mongo_uri:
+            raise SettingsRefused("ISSUER_DATABASE_PASSWORD still says change-me: give the database a password of your "
+                                  "own.")
+        self.passphrase = env.get("ISSUER_KEY_PASSPHRASE", "").strip()
+        if not self.passphrase or self.passphrase == "change-me":
+            raise SettingsRefused("ISSUER_KEY_PASSPHRASE: a passphrase of your own, which encrypts its key on disk.")
         self.database = env.get("ISSUER_DATABASE", "decentai_issuer")
         self.port = self._number(env, "ISSUER_PORT", "8004")
         self.lifetime = self._number(env, "ISSUER_LIFETIME", "43200")
@@ -64,8 +70,12 @@ class Issuer:
         except (OSError, ValueError) as error:
             raise SettingsRefused(f"ISSUER_IDENTITY: {settings.identity} holds no roots: {error}") from error
         rules = Rules(settings.launch)
+        self.authority = Authority(settings.authority, roots, settings.passphrase.encode())
+        try:
+            self.authority.signer
+        except ValueError as error:
+            raise SettingsRefused(f"ISSUER_KEY_PASSPHRASE doesn't open its key: {error}") from error
         self.store = Store(settings.mongo_uri, settings.database)
-        self.authority = Authority(settings.authority, roots)
         self.node = Node(settings.identity, Certifying(self.store, self.authority, rules).endpoints(),
                          allowed=rules.allowed, port=settings.port)
 

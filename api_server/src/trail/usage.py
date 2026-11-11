@@ -14,6 +14,11 @@ from ..utils import Settings
 from .trail import Trail
 
 
+#: What a model call used, as the runtime counts it: input leaves out the cache's reads and writes; output holds
+#: the reasoning.
+TOKENS = ("input", "output", "cache_read", "cache_write", "reasoning")
+
+
 class Usage(Store):
     COLLECTION = "usage"
     INDEXES = (([("org_id", Store.ASC), ("day", Store.ASC)], {}), ([("user_id", Store.ASC), ("day", Store.ASC)], {}),
@@ -23,13 +28,16 @@ class Usage(Store):
         since = (self.now() - timedelta(days=days)).date().isoformat()
         rows = self.col.aggregate([
             {"$match": {**match, "day": {"$gte": since}}},
-            {"$group": {"_id": {key: f"${key}" for key in by}, "input": {"$sum": "$input"},
-                        "output": {"$sum": "$output"}, "calls": {"$sum": 1}}}, {"$limit": 5000}])
+            {"$group": {"_id": {key: f"${key}" for key in by}, **{name: {"$sum": f"${name}"} for name in TOKENS},
+                        "calls": {"$sum": 1}}}, {"$limit": 5000}])
         found = []
         for row in rows:
             price = LlmProviders.price(row["_id"].get("provider"), row["_id"].get("model")) if "model" in by else None
-            cost = (row["input"] * price["input"] + row["output"] * price["output"]) / 1e6 if price else None
-            found.append({**row["_id"], "input": row["input"], "output": row["output"], "calls": row["calls"], "cost": cost})
+            # Reasoning is counted in output already; cache reads and writes cost the input's price where the
+            # catalog names none of their own.
+            cost = sum(row[name] * price.get(name, price["input"]) for name in TOKENS if name != "reasoning") / 1e6 \
+                if price else None
+            found.append({**row["_id"], **{name: row[name] for name in TOKENS}, "calls": row["calls"], "cost": cost})
         return found
 
 
@@ -38,7 +46,7 @@ class UsageEndpoints(Controller):
 
     @endpoint("A runtime tells what a chat used", by=RECORD, changes=False)
     def record(self, data: dict[str, Any], caller: Caller) -> dict[str, Any]:
-        tokens = {key: int(data.get(key) or 0) for key in ("input", "output")}
+        tokens = {key: int(data.get(key) or 0) for key in TOKENS}
         if any(not 0 <= value <= 10 ** 8 for value in tokens.values()):
             raise ValueError("Tokens are counted from 0.")
         Usage().col.insert_one({"_id": Usage.new_id(), "org_id": caller.chat["org_id"], "user_id": caller.user_id,
