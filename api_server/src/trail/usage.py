@@ -75,19 +75,11 @@ class MonitorEndpoints(Controller):
         return {"usage": [{**row, "person": people.get(row["user_id"], ""), "agent_name": agents.get(row["agent"], "")}
                           for row in usage]}
 
-    @endpoint("See what the organization's runtimes run: processes and memory for each agent", changes=False)
+    @endpoint("See what the organization's runtimes run: processes, memory and processor for each agent",
+              changes=False)
     def usage(self, data: dict[str, Any], caller: Caller) -> dict[str, Any]:
-        found: dict[str, dict[str, int]] = {}
-        for row in Runtimes().live():
-            if row.get("scope") not in (caller.org_id, ""):
-                continue
-            for sandbox in row.get("sandboxes") or []:
-                for process in sandbox.get("processes") or []:
-                    if isinstance(process, dict) and process.get("org_id") == caller.org_id:
-                        agent = found.setdefault(str(process.get("agent")), {"processes": 0, "memory": 0})
-                        agent["processes"] += 1
-                        agent["memory"] += int(process.get("memory") or 0)
-        return {"agents": [{"agent": name, **counts} for name, counts in sorted(found.items())]}
+        found = Runtimes.agents(caller.org_id)
+        return {"agents": [{"agent": agent, **counts} for (_, agent), counts in sorted(found.items())]}
 
     @endpoint("See what the organization's runtimes reported of its chats", changes=False)
     def events(self, data: dict[str, Any], caller: Caller) -> dict[str, Any]:

@@ -1,7 +1,20 @@
-# The workflows' actions are pinned by commit; this keeps the pins current.
+# Everything the images and workflows are built from is pinned: actions by commit, base images by digest, Python
+# packages by version and hash (requirements.txt, made from requirements.in). This keeps the pins current.
 version: 2
 updates:
   - package-ecosystem: github-actions
     directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directories: [/api_server, /issuer, /runtime, /sandbox, /speech]
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker-compose
+    directory: /deploy
+    schedule:
+      interval: weekly
+  - package-ecosystem: pip
+    directories: [/api_server, /issuer, /runtime, /sandbox, /speech]
     schedule:
       interval: weekly

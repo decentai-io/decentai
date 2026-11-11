@@ -11,9 +11,9 @@ import time
 import pytest
 
 from conftest import NOTES, World
-from api_server.chats.store import Chats
+from api_server.chats.store import Chats, Events
 from api_server.settings.notify import Notifier, NotifyTo, Outbox
-from api_server.settings.webhooks import Hooks
+from api_server.settings.webhooks import Hooks, Webhooks
 
 PUBLIC = "https://93.184.215.14"
 
@@ -100,6 +100,9 @@ class TestWebhooks:
         assert self.post(hook, {"no": 1}, authorization=f"Bearer {hook['secret']}")[1] == 400
         assert self.post(hook, {"id": 1}, authorization=f"Bearer {hook['secret']}")[1] == 202
         assert runtime.frames("message")
+        # An open chat sees the message as it comes.
+        chat_id = Webhooks().col.find_one({"_id": hook["id"]})["chat_id"]
+        assert [event["event"] for event in Events().after(chat_id, 0)] == ["message"]
 
     def test_a_signature_is_taken_once(self, world, org, hook):
         world.ok("Settings:Webhook:update", {"webhook_id": hook["id"], "require_signature": True}, org.member)

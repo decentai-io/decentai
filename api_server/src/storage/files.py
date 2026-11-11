@@ -1,8 +1,9 @@
-"""The bytes of files and programs, under keys that say nothing of them: in one folder every server shares, or in
-S3-compatible storage (api-server.md §6, §11)."""
+"""The bytes of files and programs, under keys that say nothing of them: in one folder every server shares, in
+S3-compatible storage, or in Azure Blob storage (api-server.md §6, §11)."""
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import os
 import re
@@ -39,11 +40,19 @@ class Storage:
     """Where bytes are kept. ``current`` is the deployment's, set at start."""
 
     KEY = re.compile(r"[a-z]+/[a-z0-9:]{8,80}")
+    KINDS = ("local", "s3", "azure")
     current: Storage
 
     @classmethod
     def open(cls, settings: Any) -> None:
-        cls.current = Folder(settings.storage_folder) if settings.storage == "local" else S3(settings.s3)
+        cls.current = cls.of(settings.storage, settings)
+
+    @staticmethod
+    def of(kind: str, settings: Any) -> Storage:
+        """The storage of this kind, as the settings describe it."""
+        if kind == "s3":
+            return S3(settings.s3)
+        return Azure(settings.azure) if kind == "azure" else Folder(settings.storage_folder)
 
     @staticmethod
     def new_key(kind: str) -> str:
@@ -194,3 +203,65 @@ class S3(Storage):
 
     def _abort(self, writing: S3Writing) -> None:
         self.client.abort_multipart_upload(Bucket=self.bucket, Key=writing.key, UploadId=writing.upload)
+
+
+class AzureWriting(Writing):
+    PART = S3Writing.PART
+
+    def __init__(self, most: int, store: Azure, key: str):
+        super().__init__(most)
+        self.blob, self.buffer, self.blocks = store.container.get_blob_client(store.prefix + key), bytearray(), []
+
+    def _write(self, piece: bytes) -> None:
+        self.buffer += piece
+        if len(self.buffer) >= self.PART:
+            self.flush()
+
+    def flush(self) -> None:
+        """The buffer staged as the next block; blocks never committed are dropped by Azure after a week."""
+        block = base64.b64encode(f"{len(self.blocks):08d}".encode()).decode()
+        self.blob.stage_block(block, bytes(self.buffer))
+        self.blocks.append(block)
+        self.buffer.clear()
+
+
+class Azure(Storage):
+    def __init__(self, azure: dict[str, str]):
+        from azure.storage.blob import ContainerClient
+
+        self.prefix = azure["prefix"].strip("/") + "/" if azure["prefix"] else ""
+        self.container = ContainerClient.from_connection_string(azure["connection_string"], azure["container"])
+
+    def read(self, key: str, offset: int = 0, size: int = PIECE) -> bytes:
+        from azure.core.exceptions import HttpResponseError
+
+        self._check(key)
+        try:
+            return self.container.download_blob(self.prefix + key, offset=offset, length=size).readall()
+        except HttpResponseError as error:
+            if error.status_code == 416:
+                return b""
+            raise
+
+    def delete(self, key: str) -> None:
+        from azure.core.exceptions import ResourceNotFoundError
+
+        self._check(key)
+        try:
+            self.container.delete_blob(self.prefix + key)
+        except ResourceNotFoundError:
+            pass
+
+    def exists(self, key: str) -> bool:
+        return self.container.get_blob_client(self.prefix + key).exists()
+
+    def _start(self, key: str, most: int) -> Writing:
+        return AzureWriting(most, self, key)
+
+    def _commit(self, writing: AzureWriting) -> None:
+        if writing.buffer:
+            writing.flush()
+        writing.blob.commit_block_list(writing.blocks)
+
+    def _abort(self, writing: AzureWriting) -> None:
+        pass

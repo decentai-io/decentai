@@ -99,7 +99,7 @@ class ChatEndpoints(Controller):
     @endpoint("Write in a chat: words, and files of yours")
     async def input(self, data: dict[str, Any], caller: Caller) -> dict[str, Any]:
         chat = await thread(self.mine, data, caller)
-        await thread(Limits().check, f"input:{caller.user_id}", 30, 60, "messages")
+        await thread(Limits().counted, f"input:{caller.user_id}", 30, 60, "messages")
         text, files = str(data.get("text") or "")[:20000], [str(f) for f in data.get("files") or []][:20]
         for record_id in files:
             if await thread(Records().seen, caller.person, record_id, "file") is None:
@@ -109,7 +109,8 @@ class ChatEndpoints(Controller):
         message = await thread(Messages().add, chat, "person", [{"type": "text", "text": text}], files,
                                str(data.get("client_id") or ""))
         await thread(Events().add, chat, "message", Messages.public(message))
-        if not await RuntimeCalls().send(chat, {"type": "message", "message": Messages.public(message)}):
+        if not await RuntimeCalls().send(chat, {"type": "message", "message": Messages.public(message)},
+                                         caller.person):
             await thread(Events().add, chat, "runtime_unavailable", {})
         return {"message": Messages.public(message)}
 
@@ -121,7 +122,7 @@ class ChatEndpoints(Controller):
                 isinstance(e, dict) and e.get("type") in ("mouse", "key", "control", "navigate", "tab", "say")
                 for e in events) or len(str(events)) > 16000:
             raise ValueError("input is 1 to 64 screen events (agents.md §9).")
-        await thread(Limits().check, f"screen:{caller.user_id}", 600, 60, "screen inputs")
+        await thread(Limits().counted, f"screen:{caller.user_id}", 600, 60, "screen inputs")
         await RuntimeCalls().send(chat, {"type": "screen", "call": str(data.get("call") or ""), "input": events})
         return {}
 
@@ -166,7 +167,7 @@ class ChatEndpoints(Controller):
 
     @endpoint("A runtime reads a chat's contract", by=CHAT, changes=False)
     def contract(self, data: dict[str, Any], caller: Caller) -> dict[str, Any]:
-        return Contract().of(caller.chat)
+        return Contract().of(caller.chat, caller.person)
 
     @endpoint("A runtime reads a chat's last messages and open cards", by=CHAT, changes=False)
     def load(self, data: dict[str, Any], caller: Caller) -> dict[str, Any]:
@@ -189,10 +190,10 @@ class MessageEndpoints(Controller):
     def create(self, data: dict[str, Any], caller: Caller) -> dict[str, Any]:
         parts = data.get("parts") if isinstance(data.get("parts"), list) else []
         message = Messages().add(caller.chat, "assistant", parts, [str(f) for f in data.get("files") or []][:20])
-        Events().add(caller.chat, "message", Messages.public(message))
+        event = Events().add(caller.chat, "message", Messages.public(message))
         text = " ".join(str(p.get("text") or "") for p in parts if isinstance(p, dict))
         Notifier().tell(caller.chat, "reply.ready", caller.chat["title"] or "Your chat", "Your chat has an answer", text)
-        return {"message_id": message["_id"], "seq": message["seq"]}
+        return {"message_id": message["_id"], "seq": message["seq"], "event_seq": event["seq"]}
 
 
 class EventEndpoints(Controller):

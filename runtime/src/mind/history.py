@@ -109,13 +109,16 @@ class History:
             return None
         return 0 if len(shown) >= self.CHAPTERS_MOST else last, thoughts[len(thoughts) // 2]
 
-    def trim(self) -> bool:
-        """The oldest chapter whose entries are still here keeps only its summary; False when none is left."""
+    def trim(self) -> int:
+        """The oldest chapter whose entries are still here keeps only its summary; the characters that freed, 0
+        when none is left."""
+        gone = {"kind": "gone"}
         for chapter in self.chapters():
             held = [at for at in range(chapter["start"], chapter["end"])
                     if self.entries[at]["kind"] not in ("gone", "chapter")]
             if held:
+                freed = sum(len(str(self.entries[at])) - len(str(gone)) for at in held)
                 for at in held:
-                    self.entries[at] = {"kind": "gone"}
-                return True
-        return False
+                    self.entries[at] = dict(gone)
+                return max(freed, 1)
+        return 0

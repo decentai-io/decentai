@@ -6,11 +6,11 @@
 # /tmp; its storage folder, shared by every API server, at AI_API_STORAGE_FOLDER; its identity folder at
 # AI_API_IDENTITY. MongoDB runs as a replica set.
 
-FROM python:3.12-slim
+FROM python:3.12-slim@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b
 
 WORKDIR /opt/decentai
 COPY api_server/requirements.txt ./api-server-requirements.txt
-RUN pip install --no-cache-dir -r api-server-requirements.txt \
+RUN pip install --no-cache-dir --require-hashes -r api-server-requirements.txt \
     && groupadd --system --gid 999 decentai \
     && useradd --system --uid 999 --gid decentai decentai \
     && mkdir -p /data/storage /run/decentai/api \

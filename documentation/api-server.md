@@ -42,8 +42,11 @@ only as its hash.
 
 - Every call carries it in `Authorization: Bearer`. On the live socket it goes as the subprotocol, since a browser
   can't set a header there.
-- Each call reads the session, the person and their organization again, so a person disabled, removed or signed
-  out is refused on their next call.
+- Each call reads the session, the person and their organization again, in one read, so a person disabled, removed
+  or signed out is refused on their next call. On the live socket too, at every input.
+- What the person's groups and policies allow is kept by each server, by the organization's access version: every
+  change to people's groups, groups or policies raises it, and each call reads it, so a change holds from the very
+  next call on every server.
 - A session lasts 7 days, or 90 when they chose to stay signed in.
 - There are no cookies: no other site can act through a person's browser.
 - Wrong passwords are counted per account and address together, and per address, so nobody else's tries can shut a
@@ -272,8 +275,8 @@ under that resource and that the chat's person may see, with the `record.*` func
   asks them to connect it.
 - A `form` field's answers not to be remembered go to the agent once, and are never kept.
 
-**A file's bytes** are kept in the deployment's storage, local or S3-compatible, under an id that says nothing of the
-file.
+**A file's bytes** are kept in the deployment's storage, local, S3-compatible or Azure Blob, under an id that says
+nothing of the file.
 
 **Skills, MCP servers and memories** are not records: they are a person's assistant's (§8).
 
@@ -309,11 +312,15 @@ deleting takes its messages, cards, schedules and files with it. Its settings ar
 the assistant says, the holder writes. Each is numbered in its chat, so a chat has one order.
 
 **Events** are what happens in a chat as it happens: the assistant working or idle, progress notes, cards opened and
-closed, a schedule's runs, an agent's screen. The holder writes them. Every API server follows the events of the
-chats whose sockets it holds, so they reach the person whichever server their browser reached (§1). The last 200 are
-kept for a browser that comes back; screen frames, and the assistant's words as they are written, are not kept.
-Each event kept is numbered in its chat; one not kept carries the number of the last kept, so a gap in the numbers is
-always an event missed.
+closed, a schedule's runs. The holder writes them. Every API server follows the events kept, through one change
+stream it resumes where it stopped, and sends those of the chats its browsers have open, so they reach the person
+whichever server their browser reached (§1). The last 200 are kept for a browser that comes back; each is numbered in
+its chat, so a gap in the numbers is always an event missed.
+
+**What only passes,** the assistant's words as they are written and an agent's screen, never reaches the database:
+for as long as a browser has a chat open on a server, that server asks the chat's runtime for them
+(`Runtime:Chat:passing`), each ask held until something passes. Each carries the number of the last event kept
+before it; one older than an event the browser took already came late, and is dropped.
 
 **Cards** ask the chat's person, and only them:
 
@@ -352,7 +359,8 @@ administrator may stop everything of a person.
 **The live socket,** `/chats/<id>`, is one for each chat open in a browser, with the token as its subprotocol (§2).
 
 - The browser sends the person's words and files, and their input on an agent's screen. Each is checked
-  ([agents](agents.md#9-the-standard-field-by-field)), and limited in size and rate.
+  ([agents](agents.md#9-the-standard-field-by-field)), and limited in size and rate. The socket is closed, 4401,
+  at the first input after its person signed out or was disabled.
 - The server sends the chat's events, from where the browser left off.
 - A socket it refuses is accepted, then closed with why: 4401 signed out, 4403 no chat of theirs.
 
@@ -454,6 +462,13 @@ the issuer.
 - The live socket takes at most 30 inputs a minute.
 - On the runtimes' door, a call is at most 8 MiB, and a caller without a certificate is refused before its body is
   read.
+- How often people call, write in a chat and act on a screen, and how often a webhook is sent, are counted in each
+  server's memory and added to the database once a second: across several servers a burst may pass a limit by what
+  isn't added yet, a second's worth from each. Sign-in tries, links, setup and replayed signatures are counted at
+  once.
+- On the runtimes' door, what a call reads of its runtime and of the chat it acts for is kept for 2 seconds on each
+  server: a runtime refused, a person who stopped everything, or a chat placed elsewhere takes up to that long to
+  hold on another server.
 
 A call past a limit is answered `413` or `429` (§3).
 
@@ -462,6 +477,7 @@ A call past a limit is answered `413` or `429` (§3).
 - A line says when, who (a person, a runtime or a webhook), in which organization, which endpoint or event, the ids
   it touched, the outcome and the reason. It never holds a secret's value or a body.
 - Refusals of callers nobody knows are counted for each address, a line a minute, not one each.
+- Lines are written after the answer, a batch each second: a server that dies loses its last second's.
 - Lines are only ever added: the API server's database user may add and read them, never change or remove them.
   They go by age alone, after `AI_API_KEPT_DAYS`.
 - A person reads their own lines; an administrator with the right, the organization's. Either is filtered by a
@@ -470,7 +486,11 @@ A call past a limit is answered `413` or `429` (§3).
 **Usage and monitoring.** Runtimes report what each chat used: tokens in, out, read from the prompt cache and written
 to it, and how many of those out were reasoning, for each model connection and agent. A person sees their own usage.
 An administrator sees the organization's: by person, agent, model and day, with its cost where the model's prices are
-known; and what its runtimes report, processes, memory and events for each agent.
+known; and what its runtimes report, processes, memory, the processor's cores and events for each agent.
+
+**Metrics** for an outside monitoring tool: `GET /metrics`, in Prometheus' text format, with the operator's
+`AI_API_METRICS_TOKEN` as a bearer token. The live runtimes and sandboxes, and for each organization and agent its
+processes, their memory and the cores they use.
 
 ## 10. Runtimes
 
@@ -557,9 +577,10 @@ values (§2).
 | `AI_API_ORIGINS` | every origin the web client is served from | `AI_API_APP_URL` |
 | `AI_API_DATABASE_URI`, `AI_API_DATABASE_NAME` | the database | none, `decentai` |
 | `AI_API_ENCRYPTION_KEYS`, `AI_API_ENCRYPTION_ACTIVE` | its keys | none |
-| `AI_API_STORAGE` | `local` or `s3` | `local` |
+| `AI_API_STORAGE` | `local`, `s3` or `azure` | `local` |
 | `AI_API_STORAGE_FOLDER` | local storage: one folder every API server shares | `/data/storage` |
-| `AI_API_S3_BUCKET`, `_REGION`, `_ENDPOINT`, `_PREFIX`, `_ACCESS_KEY_ID`, `_SECRET_ACCESS_KEY`, `_KMS_KEY_ID` | S3-compatible storage | none |
+| `AI_API_S3_BUCKET`, `_REGION`, `_ENDPOINT`, `_PREFIX`, `_ACCESS_KEY_ID`, `_SECRET_ACCESS_KEY`, `_KMS_KEY_ID` | S3-compatible storage, Google Cloud Storage's included | none |
+| `AI_API_AZURE_CONNECTION_STRING`, `_CONTAINER`, `_PREFIX` | Azure Blob storage: the account's connection string, with its key or a SAS | none |
 | `AI_API_SMTP_HOST`, `_PORT`, `_USERNAME`, `_PASSWORD`, `_SECURITY`; `AI_API_MAIL_FROM` | mail; without it, no invitations, sign-up or reset links (§4) | none |
 | `AI_API_VAPID_PUBLIC_KEY`, `_PRIVATE_KEY`, `_SUBJECT` | web push | none |
 | `AI_API_SPEECH_URL` | the platform's speech service | `http://speech:8004` |
@@ -567,8 +588,9 @@ values (§2).
 | `AI_API_SETUP_CODE` | the first run's code, required until the first run is done | none |
 | `AI_API_OPERATOR_ORG` | the operator's organization | the first one made |
 | `AI_API_REFERENCE_CATALOG` | a catalog address the Agents page suggests | none |
+| `AI_API_METRICS_TOKEN` | the bearer token `/metrics` asks for, at least 24 characters; without it there is no `/metrics` (§9) | none |
 | `AI_API_LOG_LEVEL`, `AI_API_LOG_FORMAT` | its log, on standard output, as `text` or `json` | `INFO`, `text` |
 
 **The admin tool,** `python -m api_server.admin <command>`, run in the container: set up the database (its user,
 roles and indexes); list, create, disable and enable organizations; reset a person's password; re-encrypt under the
-active key; move files between local and S3 storage; install the issuer's intermediate (§10).
+active key; move files from one storage to another; install the issuer's intermediate (§10).

@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
+import logging
+import queue
 import re
 from typing import Any
 
@@ -9,6 +12,8 @@ from ..doors.calls import RECORD, Caller, Controller, Refused, endpoint
 from ..doors.limits import Limits
 from ..storage.database import Store
 from ..utils import Settings
+
+log = logging.getLogger("api_server")
 
 
 class Trail(Store):
@@ -18,6 +23,9 @@ class Trail(Store):
     INDEXES = (([("org_id", Store.ASC), ("_id", Store.DESC)], {}), ([("user_id", Store.ASC), ("_id", Store.DESC)], {}),
                ([("expires_at", Store.ASC)], {"expireAfterSeconds": 0}))
     IDS = 10
+    #: Lines written after the answer, a batch a second (``forever``): a server that dies loses its last second's.
+    waiting: queue.SimpleQueue = queue.SimpleQueue()
+    WAITING_MOST = 100_000
 
     def add(self, caller: Caller, action: str, data: dict[str, Any], answer: tuple[dict[str, Any], int]) -> None:
         """The line for an endpoint's call. Callers nobody knows are counted for each address, a line a minute."""
@@ -32,12 +40,34 @@ class Trail(Store):
     def record(self, caller: Caller, what: str, outcome: str = "success", ids: list[str] | None = None,
                reason: str = "", details: dict[str, Any] | None = None) -> None:
         """A line: when, who, where, what, on what, how it ended and why. Never a secret's value or a body."""
-        self.col.insert_one({
+        self.waiting.put({
             "_id": self.new_id(), "at": self.now(), "org_id": caller.org_id, "user_id": caller.user_id,
             "who": caller.name, "kind": "webhook" if caller.kind == "webhook" else caller.kind,
             "chat_id": str((caller.chat or {}).get("_id") or ""), "what": what, "outcome": outcome,
             "ids": ids or [], "reason": reason[:300], "details": details or {},
             "expires_at": self.expires(Settings.read().kept_days * 86400)})
+
+    def flush(self) -> None:
+        """The lines waiting, written in one batch; put back to wait again when the database refuses them."""
+        lines = []
+        while not self.waiting.empty():
+            lines.append(self.waiting.get_nowait())
+        try:
+            if lines:
+                self.col.insert_many(lines, ordered=False)
+        except Exception:
+            for line in lines[-self.WAITING_MOST:]:
+                self.waiting.put(line)
+            raise
+
+    @classmethod
+    async def forever(cls) -> None:
+        while True:
+            await asyncio.sleep(1)
+            try:
+                await asyncio.to_thread(cls().flush)
+            except Exception:
+                log.exception("The trail was not written; trying again")
 
     @staticmethod
     def public(doc: dict[str, Any]) -> dict[str, Any]:

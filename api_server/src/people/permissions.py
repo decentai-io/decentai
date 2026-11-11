@@ -8,7 +8,7 @@ from typing import Any, Callable
 
 from shared.rules import ALLOW, ASK, DENY, evaluate
 from ..doors.calls import Refused
-from .store import Groups, Policies, Users
+from .store import Access, Groups, Organizations, Policies, Users
 
 __all__ = ["ALLOW", "ASK", "DENY", "Rules", "Bounds"]
 
@@ -38,10 +38,18 @@ class Rules:
         return [{"action": action, "words": cls.words.get(action, "")} for action in cls.catalog]
 
     def statements(self, person: dict[str, Any]) -> list[dict[str, Any]]:
-        names = {name for group in Groups().of(person) for name in group.get("policies") or []}
-        found = [self.BUILT_IN[name] for name in names if name in self.BUILT_IN]
-        found += Policies().in_org(person["org_id"], [name for name in names if name not in self.BUILT_IN])
-        return [statement for policy in found for statement in policy.get("statements") or []]
+        def read() -> list[dict[str, Any]]:
+            groups = Groups().of(person)
+            names = [name for group in groups for name in group.get("policies") or [] if name not in self.BUILT_IN]
+            return self.held(groups, Policies().in_org(person["org_id"], names) if names else [])
+        return Access.kept("statements", person, read)
+
+    def held(self, groups: list[dict[str, Any]], policies: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """The statements of these groups' policies, the built-in ones or among ``policies``."""
+        kept = {policy["_id"]: policy for policy in policies}
+        found = [self.BUILT_IN.get(name) or kept.get(name)
+                 for name in {name for group in groups for name in group.get("policies") or []}]
+        return [statement for policy in found if policy for statement in policy.get("statements") or []]
 
     def allows(self, person: dict[str, Any], action: str) -> str:
         return self.evaluate(self.statements(person), action)
@@ -121,13 +129,20 @@ class Bounds:
         return {"users": users, "groups": groups}
 
     def keeps_access(self, org_id: str, change: Callable[[], Any], undo: Callable[[], Any]) -> Any:
-        """The change, undone when it leaves nobody able to manage access."""
+        """The change, undone when it leaves nobody able to manage access. The organization's groups, policies and
+        people are read once each, whatever its size. Every change to access comes through here, and raises the
+        organization's access version either way."""
         done = change()
-        people = [p for p in Users().in_org(org_id) if p["status"] == "active"]
-        if not any(all(self.rules.allows(p, a) == ALLOW for a in Rules.MANAGING) for p in people):
-            undo()
-            raise Refused("refused", "That would leave nobody able to manage access.")
-        return done
+        Organizations().access_changed(org_id)
+        groups, policies = Groups().in_org(org_id), Policies().in_org(org_id)
+        for person in Users().col.find({"org_id": org_id, "status": "active"}, {"groups": 1}):
+            mine = [group for group in groups if group.get("everyone") or group["_id"] in (person.get("groups") or [])]
+            statements = self.rules.held(mine, policies)
+            if all(Rules.evaluate(statements, action) == ALLOW for action in Rules.MANAGING):
+                return done
+        undo()
+        Organizations().access_changed(org_id)
+        raise Refused("refused", "That would leave nobody able to manage access.")
 
     def _covers(self, mine: list[dict[str, Any]], pattern: str) -> bool:
         if pattern.startswith("agent:"):

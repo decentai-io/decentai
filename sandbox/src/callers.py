@@ -34,7 +34,7 @@ class Caller:
 
     EVERY, TELL_EVERY, RETRY_SECONDS = 0.5, 5.0, 0.5
     #: What a state moves at every reading: told every TELL_EVERY seconds, never taken as a change.
-    MOVING = ("memory_used", "memory", "tasks")
+    MOVING = ("memory_used", "memory", "tasks", "cpu")
 
     def __init__(self, sandbox: "Sandbox", address: str):
         self.sandbox, self.address = sandbox, address

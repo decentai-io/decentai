@@ -3,10 +3,15 @@
 from __future__ import annotations
 
 import hashlib
+import uuid
 from datetime import timedelta
+
+import pytest
 
 from conftest import JOURNAL, NOTES, PASSWORD, World
 from api_server.doors.callers import Callers
+from api_server.doors.calls import Refused
+from api_server.doors.limits import Limits
 from api_server.people.permissions import Rules
 from api_server.people.store import ApiKeys, Deployment, Groups, Links, Policies, Sessions, Users
 from api_server.records.store import Records
@@ -42,6 +47,19 @@ class TestCalls:
             world.ok("AI:Chat:list", {}, org.member)
         error = world.refused("AI:Chat:list", {}, org.member, 429)
         assert error["code"] == "too_many" and error["retry_after"] > 0
+
+
+    def test_calls_are_counted_in_memory_and_learn_what_every_server_added(self, world):
+        key, limits = f"calls:{uuid.uuid4().hex}", Limits()
+        for _ in range(2):
+            limits.counted(key, 5, 60, "calls")
+        limits.flush()
+        assert limits.col.find_one({"_id": key})["count"] == 2
+        limits.col.update_one({"_id": key}, {"$inc": {"count": 3}})  # another server's
+        limits.counted(key, 5, 60, "calls")
+        limits.flush()
+        with pytest.raises(Refused, match="Too many calls"):
+            limits.counted(key, 5, 60, "calls")
 
 
 class TestSigningIn:
@@ -136,6 +154,9 @@ class TestPermissions:
         error = world.refused("IAM:User:set_groups", {"user_id": org.admin.user_id, "groups": []}, org.admin, 403)
         assert "manage access" in error["message"]
         assert Users().by_email(org.admin_email)["groups"]
+        # Once the member manages access through one of the organization's own policies, the founder may step down.
+        self._delegate(world, org, ["iam:user:*", "iam:group:*"])
+        world.ok("IAM:User:set_groups", {"user_id": org.admin.user_id, "groups": []}, org.admin)
 
     def test_deny_wins_then_ask_then_allow_and_ask_is_for_agents_alone(self, world, org):
         statements = [{"effect": "allow", "actions": ["agent:*"]}, {"effect": "ask", "actions": ["agent:notes:*"]},

@@ -1,22 +1,24 @@
 """The people's door: every call on ``POST /app``, and the few routes a call can't take the shape of: a file's bytes,
-speech, a webhook, a provider's redirect, the live socket and the probes (api-server.md §2, §3, §9)."""
+speech, a webhook, a provider's redirect, the live socket, the probes and the metrics (api-server.md §2, §3, §9)."""
 
 from __future__ import annotations
 
 import asyncio
+import hmac
 from typing import Any
 from urllib.parse import quote
 
 from fastapi import FastAPI, Request, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.encoders import jsonable_encoder
-from fastapi.responses import JSONResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse, StreamingResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from ..chats.socket import Live
 from ..people.permissions import Rules
 from ..records.files import Files
 from ..records.oauth import Connections
+from ..runtimes.store import Runtimes
 from ..settings.speech import Speech
 from ..settings.webhooks import Hooks
 from ..storage.database import Database
@@ -99,6 +101,8 @@ class PeopleDoor:
         app.add_api_route("/oauth/callback", self.oauth, methods=["GET"])
         app.add_api_route("/healthz", lambda: {"status": "ok"}, methods=["GET"])
         app.add_api_route("/readyz", self.ready, methods=["GET"])
+        if settings.metrics_token:
+            app.add_api_route("/metrics", self.metrics, methods=["GET"])
         app.add_api_websocket_route("/chats/{chat_id}", self.socket)
         return app
 
@@ -175,5 +179,29 @@ class PeopleDoor:
         ready = await asyncio.to_thread(Database.ready)
         return Answered({"status": "ready" if ready else "not ready"}, 200 if ready else 503)
 
+    async def metrics(self, request: Request) -> PlainTextResponse:
+        """What the runtimes run, in Prometheus' text format, for the operator's token alone."""
+        given = request.headers.get("authorization", "").encode()
+        if not hmac.compare_digest(given, f"Bearer {Settings.read().metrics_token}".encode()):
+            return PlainTextResponse("", 401)
+        return PlainTextResponse(await asyncio.to_thread(self._metrics), media_type="text/plain; version=0.0.4")
+
+    @staticmethod
+    def _metrics() -> str:
+        def label(value: str) -> str:
+            return value.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+
+        live = Runtimes().live()
+        lines = ["# TYPE decentai_runtimes gauge", f"decentai_runtimes {len(live)}",
+                 "# TYPE decentai_sandboxes gauge", f"decentai_sandboxes {sum(len(r.get('sandboxes') or []) for r in live)}"]
+        agents = sorted(Runtimes.agents().items())
+        for field, name, about in (("processes", "processes", "Processes running for an agent."),
+                                   ("memory", "memory_bytes", "The memory they hold."),
+                                   ("cpu", "cpu_cores", "The processor's cores they used over the last second.")):
+            lines += [f"# HELP decentai_agent_{name} {about}", f"# TYPE decentai_agent_{name} gauge"]
+            lines += [f'decentai_agent_{name}{{org="{label(org)}",agent="{label(agent)}"}} {counts[field]}'
+                      for (org, agent), counts in agents]
+        return "\n".join(lines) + "\n"
+
     async def socket(self, socket: WebSocket, chat_id: str) -> None:
-        await Live().serve(socket, chat_id, await self.caller(socket), self.router)
+        await Live().serve(socket, chat_id, lambda: self.caller(socket), self.router)

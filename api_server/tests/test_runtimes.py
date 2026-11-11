@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
+from datetime import timedelta
+
 from conftest import Runtime
 from api_server.chats.store import Chats, Events
 from api_server.doors.callers import Callers
 from api_server.runtimes.calls import RuntimeCalls
+from api_server.runtimes.store import Runtimes
 
 
 def report(world, runtime, **extra):
@@ -35,6 +39,18 @@ class TestRuntimes:
         assert Callers().runtime(own.peer).kind == "anyone"
         assert Chats().find(chat["chat_id"])["holder"] == ""
 
+    def test_a_runtime_gone_lets_its_chats_go_and_a_working_one_is_resumed_elsewhere(self, world, org, monkeypatch):
+        gone = Runtime(monkeypatch, scope=org.org_id)
+        chats = [world.ok("AI:Chat:create", {}, org.member)["chat"]["chat_id"] for _ in range(2)]
+        for chat_id in chats:
+            gone.holds(chat_id)
+        Chats().set(chats[0], working=True)
+        Runtimes().col.update_one({"_id": gone.peer["id"]}, {"$set": {"seen_at": Runtimes.now() - timedelta(minutes=2)}})
+        live = Runtime(monkeypatch, scope=org.org_id)
+        asyncio.run(RuntimeCalls().sweep())
+        assert [frame["type"] for frame in live.frames("resume")] == ["resume"]
+        assert Chats().find(chats[0])["holder"] == live.peer["id"] and Chats().find(chats[1])["holder"] == ""
+
     def test_an_organization_that_keeps_to_its_own_runtimes_waits_for_one(self, world, org, monkeypatch):
         Runtime(monkeypatch)
         world.ok("Settings:Organization:update", {"settings": {"runtimes": "own_only"}}, org.admin)
@@ -46,6 +62,28 @@ class TestRuntimes:
         assert Chats().find(chat["chat_id"])["holder"] == own.peer["id"]
 
 
+    def test_a_chat_its_runtime_no_longer_reports_goes_free(self, world, org, monkeypatch):
+        own = Runtime(monkeypatch, scope=org.org_id)
+        chat = world.ok("AI:Chat:create", {}, org.member)["chat"]["chat_id"]
+        Chats().col.update_one({"_id": chat}, {"$set": {"holder": own.peer["id"], "held_at": Chats.now() - timedelta(minutes=1)}})
+        report(world, own, chats=[chat])
+        assert Chats().find(chat)["holder"] == own.peer["id"]
+        report(world, own, chats=[])
+        assert Chats().find(chat)["holder"] == ""
+
+    def test_a_runtimes_standing_in_a_chat_is_kept_a_moment(self, world, org, monkeypatch):
+        monkeypatch.setattr(Callers, "KEPT_SECONDS", 60)
+        monkeypatch.setattr(Callers, "_kept", {})
+        own = Runtime(monkeypatch, scope=org.org_id)
+        chat = world.ok("AI:Chat:create", {}, org.member)["chat"]["chat_id"]
+        own.holds(chat)
+        world.ok("AI:Chat:load", {"chat_id": chat}, own.caller)
+        Chats().col.update_one({"_id": chat}, {"$set": {"holder": "another"}})
+        world.ok("AI:Chat:load", {"chat_id": chat}, own.caller)
+        Callers._kept.clear()
+        assert world.call("AI:Chat:load", {"chat_id": chat}, own.caller)[1] == 409
+
+
 class TestWhatAnOrganizationSees:
     def test_a_runtime_shows_an_organization_its_own_processes_alone(self, world, org, monkeypatch):
         own = Runtime(monkeypatch, scope=org.org_id)
@@ -53,3 +91,10 @@ class TestWhatAnOrganizationSees:
         report(world, own, sandboxes=[{"sandbox": "sb1", "processes": processes}])
         node = next(n for n in world.ok("Nodes:Node:list", {}, org.admin)["nodes"] if n["node_id"] == own.peer["id"])
         assert node["sandboxes"][0]["processes"] == processes[:1]
+
+    def test_a_runtime_says_how_many_chats_it_holds_for_the_organization_and_for_others(self, world, org, monkeypatch):
+        own = Runtime(monkeypatch, scope=org.org_id)
+        for member in (org.member, org.member, world.organization().member):
+            own.holds(world.ok("AI:Chat:create", {}, member)["chat"]["chat_id"])
+        node = next(n for n in world.ok("Nodes:Node:list", {}, org.admin)["nodes"] if n["node_id"] == own.peer["id"])
+        assert (node["held_chats"], node["held_elsewhere"]) == (2, 1)

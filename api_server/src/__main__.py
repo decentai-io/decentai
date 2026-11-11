@@ -20,6 +20,7 @@ from .chats.schedules import Firing
 from .chats.socket import Live
 from .doors.callers import Callers
 from .doors.catalog import Catalog
+from .doors.limits import Limits
 from .doors.people import PeopleDoor
 from .doors.runtimes import RuntimesDoor
 from .people.store import Deployment
@@ -28,6 +29,7 @@ from .settings.notify import Sender
 from .storage.cipher import Cipher
 from .storage.database import Database
 from .storage.files import Storage
+from .trail.trail import Trail
 from .utils import Settings, SettingsRefused
 
 log = logging.getLogger("api_server")
@@ -70,13 +72,15 @@ class Main:
             await door.node.start(door) if identified else log.warning("No identity: no runtime can reach this server.")
             await Live().follow()
             loops = [asyncio.ensure_future(loop()) for loop in (Firing().forever, Sender().forever,
-                                                                RuntimeCalls().forever, CardEndpoints.overdue_forever)]
+                                                                RuntimeCalls().forever, CardEndpoints.overdue_forever,
+                                                                Limits.forever, Trail.forever)]
             try:
                 yield
             finally:
                 for loop in loops:
                     loop.cancel()
                 await door.node.stop()
+                await asyncio.to_thread(Trail().flush)
 
         host, _, port = settings.address.rpartition(":")
         uvicorn.Server(uvicorn.Config(PeopleDoor(router, callers).app(lifespan), host=host, port=int(port),

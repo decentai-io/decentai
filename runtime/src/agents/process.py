@@ -243,6 +243,6 @@ class Process:
         for file in files if isinstance(files, list) else []:
             data = await self.chat.sandboxes.pulled(self.sandbox, file["id"], FILE_MOST)
             made = await self.chat.api.call("Files:Piece:write", {"chat_id": self.chat.id, "name": posixpath.basename(
-                file["path"]), "data": base64.b64encode(data).decode()})
+                file["path"]), "data": (await asyncio.to_thread(base64.b64encode, data)).decode()})
             found[file["path"]] = made["record_id"]
         return swapped(value, found), list(found.values())

@@ -7,6 +7,7 @@ import asyncio
 import json
 import logging
 import re
+import time
 from typing import TYPE_CHECKING, Any
 
 from .callers import CallerGone
@@ -27,6 +28,8 @@ BROKE, CALLER_GONE, STOPPING = "broke the protocol", "caller gone", "sandbox sto
 class Process:
     LINE_MAX = 1024 * 1024
     LOG_LINE_MAX = 2000
+    #: The log lines a process may send: so many a second on average, and so many at once.
+    LOG_RATE, LOG_BURST = 20, 200
     ID = re.compile(r"[A-Za-z0-9_-]{1,64}")
     #: How long its last output is waited for, once it exited.
     LAST_OUTPUT = 5
@@ -41,11 +44,14 @@ class Process:
         self.process: asyncio.subprocess.Process | None = None
         #: Why it ended: the first reason given, '' while nothing has ended it.
         self.reason = ""
-        #: What it uses (memory, tasks), and the processes in it already told as commands (watch.py).
-        self.used = (0, 0)
+        #: What it uses (memory, tasks, the processor's cores), and the processes in it already told as commands
+        #: (watch.py).
+        self.used, self.cpu_seconds = (0, 0, 0.0), 0.0
         self.seen: set[int] = set()
         #: The numbers of the messages told to its caller, of the last taken from it, and of its log lines.
         self.told, self.taken, self.logged = 0, 0, 0
+        #: The log lines it may send now, when that was worked out, and those dropped since one was sent.
+        self._log_room, self._log_at, self._dropped = float(self.LOG_BURST), time.monotonic(), 0
         self._telling, self._taking = asyncio.Lock(), asyncio.Lock()
 
     async def start(self, arguments: list[str], environment: dict[str, str]) -> None:
@@ -114,7 +120,17 @@ class Process:
                 pass
 
     async def log(self, line: str) -> None:
-        """A line of its log, as a message the sandbox makes."""
+        """A line of its log, as a message the sandbox makes. Past its rate a line is dropped, and the next one sent
+        says how many were."""
+        now = time.monotonic()
+        self._log_room = min(self.LOG_BURST, self._log_room + (now - self._log_at) * self.LOG_RATE)
+        self._log_at = now
+        if self._log_room < 1:
+            self._dropped += 1
+            return
+        self._log_room -= 1
+        if self._dropped:
+            line, self._dropped = f"({self._dropped} lines dropped) {line}", 0
         self.logged += 1
         await self.tell("sandbox", {"_id": f"log-{self.logged}",
                                     "body": {"type": "log", "data": {"line": line[:self.LOG_LINE_MAX]}}})

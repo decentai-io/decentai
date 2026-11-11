@@ -8,8 +8,8 @@ when it is done, or strike it with the reason when it is dropped on purpose.
 Items marked **(checked)** were confirmed in the code when this list was written; the others come from a review of
 the code and are confirmed first when their turn comes. Places are as of the commit that added this file.
 
-Every item was decided on 2026-11-11: ticked ones were done then, struck ones dropped with the reason, and open ones
-are for later.
+Every item was decided on 2026-11-11: ticked ones are done, struck ones dropped with the reason, and the open ones,
+which matter with scale, are for later.
 
 ## Security
 
@@ -48,11 +48,10 @@ are for later.
   agents' code reads the host's world-readable `/proc` that Docker would mask (`/proc/timer_list` and others).
   `deploy/docker-compose.yml`, `sandbox/config/jail.cfg`. *Do:* mask those paths inside the jail. *Done:* Covered in
   `jail.cfg`. Proven once the sandbox's tests pass with it.
-- [ ] **S9** The compose file sets no AppArmor profile, though [sandbox](sandbox.md) §9 requires
+- [x] **S9** The compose file sets no AppArmor profile, though [sandbox](sandbox.md) §9 requires
   `apparmor=decentai-sandbox`; on Ubuntu the jail's probe then fails and an operator is tempted to `unconfined`. The
   profile given is itself broad (`capability, file, mount, userns`). *Do:* set it in the compose file and narrow it.
-  *Later: narrowing the profile, tested on an Ubuntu host. The compose file stays as it is: without the profile the
-  sandbox refuses to start rather than run unconfined, and naming it would break every host that hasn't loaded it.*
+  *Done:* The profile allows the capabilities nsjail uses by name, the network families the sandbox uses, and no mount of a file system that reaches the host's kernel or another machine; CI loads it and runs the sandbox's tests under it on Ubuntu 24.04. The compose file stays as it is: without the profile the sandbox refuses to start rather than run unconfined, and naming it would break every host that hasn't loaded it.*
 - [x] **S10** The jail's own seccomp list misses calls the old blocked: `open_tree`, `move_mount`, `fsopen`,
   `fsmount`, `fspick`, `mount_setattr`, `pidfd_getfd`. `sandbox/config/jail.cfg`. *Do:* add them (defence in depth; no
   capabilities and the user-namespace block cover them today). *Done:* In `jail.cfg`. Proven once the sandbox's tests
@@ -85,10 +84,9 @@ are for later.
   be public unless its host is in `AI_RUNTIME_INSIDE_HOSTS`. The error's 500 characters stay, for debugging.
 - [x] ~~**S19** The speech service asks no one who is calling, on the stack's default network. `speech/`.~~ *Dropped:*
   Only the API server and the runtime share its network, and it isn't published.
-- [ ] **S20** The supply chain is pinned loosely: actions by tag, not SHA; `python:3.12-slim` and `mongo:7` not by
+- [x] **S20** The supply chain is pinned loosely: actions by tag, not SHA; `python:3.12-slim` and `mongo:7` not by
   digest; pip by `~=` without hashes; releases push `latest`. `.github/workflows/`, the Dockerfiles, the
-  `requirements.txt` files. *Partly done: the actions are pinned by commit, kept current by Dependabot. Later: images
-  by digest and pip by hash, before images are published.*
+  `requirements.txt` files. *Done:* Actions pinned by commit, base images by digest, every Python package by version and hash (`requirements.txt`, made from `requirements.in`, installed with `--require-hashes`); releases push only their version. Dependabot keeps all four current.*
 - [x] ~~**S21** The database checks nothing itself: the old installed MongoDB `$jsonSchema` validators at start; now
   only the code checks. `api_server/`.~~ *Dropped:* The code is the one place shapes are checked; validators would be
   a second copy to keep in step.
@@ -101,28 +99,25 @@ are for later.
 - [x] **P2** Usage leaves out prompt-cache reads and writes (though "input" excludes them), reasoning tokens, purpose
   and duration, so cost is under-reported. `runtime/src/chats/chat.py`, `shared/llm/`. The old: `llms/meter.py`.
   *Done:* Cache reads and writes and reasoning are reported, kept and priced, and the usage page counts them.
-- [ ] **P3** Each call reads the session, user, organization, groups and policies and writes a rate-limit counter, 5–6
+- [x] **P3** Each call reads the session, user, organization, groups and policies and writes a rate-limit counter, 5–6
   round trips with no cache; the old answered these from its `AccessCache`. `api_server/src/doors/callers.py`,
-  `doors/limits.py`, `people/permissions.py`. *Later: measured first, since with several API servers a cache needs
-  invalidating.*
-- [ ] **P4** N+1: `Bounds.keeps_access` evaluates the rules for every active person on each group, user or policy
+  `doors/limits.py`, `people/permissions.py`. *Done:* Who calls is one read: the session or key, the person and the organization (its settings and access version with it); what the person's groups and policies allow is kept on each server by that access version, raised by every change to access, so it holds from the next call; how often people call is counted in memory and added once a second; the trail is written after the answer, a batch a second; a runtime's standing in a chat is kept 2 s. A person's read is 3 round trips, from 8; a change, 3 from 9; writing in a chat, 9 from 18 (measured with pymongo's command listener).*
+- [x] **P4** N+1: `Bounds.keeps_access` evaluates the rules for every active person on each group, user or policy
   change; `NodeEndpoints.list` asks for each runtime's chats one runtime at a time.
-  `api_server/src/people/permissions.py`, `api_server/src/runtimes/endpoints.py`. *Later.*
-- [ ] **P5** Each chat event, streamed text too, is a find and an insert, and every API server reads every event from
+  `api_server/src/people/permissions.py`, `api_server/src/runtimes/endpoints.py`. *Done:* Whether someone still manages access reads the organization's groups, policies and people once each; the node list counts held chats in one aggregation; refusing a runtime, and the sweep of runtimes gone, let their chats go in one write. The sweep now also resumes a working chat elsewhere, which it never managed before: it placed the chat as still held by the runtime gone.*
+- [x] **P5** Each chat event, streamed text too, is a find and an insert, and every API server reads every event from
   one unfiltered change stream. `api_server/src/chats/store.py`, `chats/socket.py`. Fine at modest scale; grows with
-  servers × events. *Later: when there are many servers, or many chats at once.*
-- [ ] **P6** No warm processes: each new chat starts its agents cold (kept 12 idle minutes). Each line a process
+  servers × events. *Done:* What only passes, streamed text and screens, never reaches the database: each server with the chat open asks its runtime for it (`Runtime:Chat:passing`), and the runtime streams twice a second. Kept events go through one change stream a server, projected and resumed where it stopped. A kept event is 2 round trips, from 6; a piece of streamed text, none.*
+- [x] **P6** No warm processes: each new chat starts its agents cold (kept 12 idle minutes). Each line a process
   writes is its own mTLS call, sent one at a time; a program's first pull is pieces one after another.
-  `sandbox/src/process.py`, `sandbox/src/callers.py`, `runtime/src/utils.py`. *Later: log lines sent in batches, or
-  capped. Dropped: warm processes, which would share a process between chats; the first download, done once per
-  sandbox.*
+  `sandbox/src/process.py`, `sandbox/src/callers.py`, `runtime/src/utils.py`. *Done:* A process sends at most 20 log lines a second, 200 at once; the rest are dropped and counted on the next line. Dropped: warm processes, which would share a process between chats; the first download, done once per sandbox.*
 - [x] **P7** Every agent's full instructions, and up to 100 tool schemas, go into every system prompt; the old
   shortlisted agents with an embedding router and rerank (see F6). `runtime/src/mind/mind.py`. *Done:* Only the agents
   whose functions are offered have their instructions shown; past 100 functions, those opened.
 - [x] ~~**P8** History is folded at a fixed 150,000 characters, whatever the model's window.
   `runtime/src/mind/history.py`.~~ *Dropped:* Folding at 150,000 characters keeps cost and answer time down on large
   windows, and a smaller window is folded on its first refusal.
-- [ ] **P9** Heavy work on the event loop (`str(state)` again and again while trimming; base64 of up to 16 pictures of
+- [x] **P9** Heavy work on the event loop (`str(state)` again and again while trimming; base64 of up to 16 pictures of
   5 MB), and caches never pruned (pictures, `Sandboxes.offered`). `runtime/src/mind/mind.py`,
   `runtime/src/agents/functions.py`, `runtime/src/sandboxes/sandboxes.py` (filled from `agents/process.py`). *Partly
   done by S6. Later: the rest.*
@@ -132,12 +127,12 @@ are for later.
 
 ## Tests and CI
 
-- [ ] **T1** The runtime has 32 tests and none for a model connector, the hand-written Bedrock event-stream parser
-  among them (the old: 1,198, connectors included). *Later: one recorded stream per connector, Bedrock first.*
+- [x] **T1** The runtime has 32 tests and none for a model connector, the hand-written Bedrock event-stream parser
+  among them (the old: 1,198, connectors included). *Done:* Pictures are encoded off the event loop, a picture no brain shows any more is let go, and the state is measured once while trimming, each trim saying what it freed. `Sandboxes.offered` by S6.*
 - [ ] **T2** The API server, issuer, communication and shared have 230 tests (the old Data Core: 1,160); nothing tests
-  OAuth, the outside-call client, key rotation, notifications, or more than one server. *Later.*
-- [ ] **T3** The old's 94 hostile-agent tests (`ai_runtime/tests/test_confinement_live.py`, `test_spawner_live.py`)
-  are not ported to the sandbox's tests. *Later, first: they prove S7, S8, S10 and P10.*
+  OAuth, the outside-call client, key rotation, notifications, or more than one server. *Done:* `runtime/tests/test_models.py`: one recorded stream for each protocol (Bedrock's event stream, Anthropic, OpenAI's chat and responses, Gemini), arriving in pieces that cut every frame, with text, thinking, a tool call and usage; and an error in the stream. Vertex reads with the Gemini and Anthropic connectors.*
+- [x] **T3** The old's 94 hostile-agent tests (`ai_runtime/tests/test_confinement_live.py`, `test_spawner_live.py`)
+  are not ported to the sandbox's tests. *Done:* `sandbox/tests/test_sandbox.py`, `TestAHostileProcess`: the old attempts that apply to a jail (kernel calls, sockets, mounts, devices, the sandbox's port, identity and files, the host's /proc files, signalling every process, a child left behind), with the OOM score that proves P10. The rest tested the old runtime's builder, pool and helper, which the redesign has no more.*
 - [x] **T4** CI passes when every sandbox test is skipped (`sandbox/tests/test_sandbox.py`, `skipif`); the old failed
   the run when nothing in its live files ran. `.github/workflows/tests.yml`. *Done:* The job fails when the rig made
   no identities.
@@ -151,8 +146,7 @@ are for later.
 
 Each needs a decision: port it, or strike it here with the reason.
 
-- [ ] **F1** Azure Blob and Google Cloud Storage for files (now local and S3). *Later, when someone needs it: Google
-  Cloud Storage already works through its S3-compatible access; Azure Blob doesn't.*
+- [x] **F1** Azure Blob and Google Cloud Storage for files (now local and S3). *Done:* `AI_API_STORAGE=azure`, with a connection string, a container and a prefix; the admin tool copies files between any two storages. Google Cloud Storage works through its S3-compatible access.*
 - [x] ~~**F2** An organization's own node authority, by its own CA or JWKS (now only the deployment's issuer).~~
   *Dropped:* An organization brings its own runtimes with tokens from the deployment's issuer; a second authority
   doubles what is trusted.
@@ -185,9 +179,8 @@ Each needs a decision: port it, or strike it here with the reason.
 - [x] ~~**F15** Building an agent from its manifest in the sandbox: pip builds as a builder user, a verification
   start, extras per run (now programs come prebuilt for each machine type).~~ *Dropped:* Programs come prebuilt for
   each machine.
-- [ ] **F16** Monitoring: an event history, usage and CPU per agent, disk measured, a home's files listed, and reports
-  to monitoring (now memory and task counts only). *Later: CPU per agent, and metrics for outside monitoring tools;
-  the rest is in api-server.md §9.*
+- [x] **F16** Monitoring: an event history, usage and CPU per agent, disk measured, a home's files listed, and reports
+  to monitoring (now memory and task counts only). *Done:* Each process's processor use, in cores, from the sandbox to the monitoring page; and `/metrics` in Prometheus' format, behind the operator's `AI_API_METRICS_TOKEN`. The rest is in api-server.md §9.*
 - [x] ~~**F17** One sandbox serving several runtimes (drain, labels, recheck every 30 s), and sandboxes that only dial
   out, so one can sit behind NAT.~~ *Dropped:* Several runtimes already share a sandbox, and drain works; one behind
   NAT would need standing connections, removed on purpose.

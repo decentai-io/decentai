@@ -204,6 +204,43 @@ class TestWhatAProcessSees:
         assert answered["body"]["type"] == "error"
 
 
+class TestAHostileProcess:
+    """What a program tries that its jail is there to refuse: the old platform's hostile agent's attempts, as they
+    apply to a jail, while another process runs beside it."""
+
+    @pytest.fixture(scope="class")
+    @classmethod
+    def attacked(cls, loop, callers):
+        sibling = run(loop, callers[0].start_process("sibling", *PROBE))
+        hostile = run(loop, callers[0].start_process("hostile", *PROBE, network=True))
+        found = output(loop, hostile, "attack")
+        found["sibling"] = output(loop, sibling, "echo", {"still": "here"})
+        yield found
+        for seen in (hostile, sibling):
+            run(loop, seen.end())
+            run(loop, seen.ending(30))
+
+    def test_the_kernel_calls_it_has_no_use_for_are_refused(self, attacked):
+        assert {name: outcome for name, outcome in attacked["calls"].items() if outcome != "errno 1"} == {}
+
+    def test_it_reaches_nothing_of_the_sandbox_or_another_process(self, attacked):
+        assert {name: outcome for name, outcome in attacked["reaches"].items() if not outcome.startswith("errno")} == {}
+        assert attacked["homes"] == ["run"] and attacked["sibling"] == {"still": "here"}
+
+    def test_the_hosts_kernel_files_are_covered(self, attacked):
+        assert {path: read for path, read in attacked["kernel_files"].items() if read not in (0, "errno 2")} == {}
+
+    def test_the_kernel_ends_it_before_the_sandbox(self, attacked):
+        assert attacked["oom_score_adj"] == "1000"
+
+    def test_what_it_started_ends_with_it(self, loop, caller, started):
+        seen = start(loop, caller, started)
+        output(loop, seen, "orphan")
+        run(loop, seen.end())
+        run(loop, seen.ending())
+        assert "sleep 3601" not in run(loop, Docker.run("sh", "-c", "cat /proc/[0-9]*/cmdline | tr '\\0' ' '"))
+
+
 class TestLimits:
     def test_memory_past_its_limit_ends_the_whole_process(self, loop, caller, started):
         seen = start(loop, caller, started, memory=128)
@@ -294,6 +331,20 @@ class TestTheProgramProtocol:
         assert run(loop, until(lambda: {"one", "two"} <= set(seen.logs())))
         assert run(loop, until(lambda: any(line.startswith("started:") and "/program/start" in line
                                            for line in seen.logs())))
+
+    def test_a_flood_of_log_lines_is_capped_and_counted(self, loop, caller, started):
+        seen = start(loop, caller, started)
+        output(loop, seen, "say", {"lines": [f"line {n}" for n in range(1000)]})
+        heard = -1
+        while heard != len(seen.logs()):  # until the flood is through, and its room has filled again
+            heard = len(seen.logs())
+            time.sleep(1.5)
+        output(loop, seen, "say", {"lines": ["after"]})
+        assert run(loop, until(lambda: seen.logs()[-1].endswith("after")))
+        # The count of those dropped rides on the next line sent, whichever it is.
+        flood = [line for line in seen.logs() if line.startswith("line ")]
+        dropped = [int(line[1:].split()[0]) for line in seen.logs() if line.startswith("(") and "lines dropped)" in line]
+        assert len(flood) < 400 and len(flood) + sum(dropped) == 1000
 
     def test_ending_closes_its_input_then_ends_it(self, loop, caller, started):
         polite, stubborn = start(loop, caller, started), start(loop, caller, started)
@@ -406,6 +457,16 @@ class Docker:
         async with aiohttp.ClientSession(connector=aiohttp.UnixConnector(path=cls.SOCKET)) as session:
             async with session.post(f"http://docker{path}") as answer:
                 assert answer.status in (204, 304), await answer.text()
+
+    @classmethod
+    async def run(cls, *command: str) -> str:
+        """What a command run in the sandbox's container wrote."""
+        async with aiohttp.ClientSession(connector=aiohttp.UnixConnector(path=cls.SOCKET)) as session:
+            async with session.post(f"http://docker/containers/{CONTAINER}/exec",
+                                    json={"Cmd": list(command), "AttachStdout": True, "Tty": True}) as made:
+                exec_id = (await made.json())["Id"]
+            async with session.post(f"http://docker/exec/{exec_id}/start", json={"Tty": True}) as answer:
+                return (await answer.read()).decode(errors="replace")
 
     @classmethod
     async def stopped(cls, seconds: float = 60) -> None:

@@ -12,7 +12,6 @@ from typing import Any
 from pymongo import ReturnDocument
 from pywebpush import WebPushException, webpush
 
-from ..chats.store import Chats
 from ..doors.calls import Caller, Controller, Refused, endpoint
 from ..doors.limits import Limits
 from ..people.mail import Mailer
@@ -52,7 +51,8 @@ class Notifier:
     """What the chats tell: queued for the chat's person when no browser of theirs is looking."""
 
     def tell(self, chat: dict[str, Any], event: str, title: str, line: str, reply: str = "") -> None:
-        if (Chats().find(chat["_id"]) or {}).get("watched_until", Store.now()) > Store.now():
+        """``chat``, as the call read it."""
+        if chat.get("watched_until", Store.now()) > Store.now():
             return
         person = Users().col.find_one({"_id": chat["user_id"]}) or {}
         wishes = (person.get("preferences") or {}).get("notifications") or {}

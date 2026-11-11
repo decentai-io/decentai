@@ -33,7 +33,10 @@ class Watch:
             await asyncio.sleep(self.EVERY)
             self.memory, self.memory_limit = Cgroup.container_memory()
             for process in list(self.sandbox.processes.values()):
-                process.used = (process.cgroup.memory(), process.cgroup.tasks())
+                # The processor's cores it used since the last look: 1.0 is one core all the time.
+                before, process.cpu_seconds = process.cpu_seconds, process.cgroup.cpu()
+                process.used = (process.cgroup.memory(), process.cgroup.tasks(),
+                                round(max(process.cpu_seconds - before, 0) / self.EVERY, 2))
                 self._tell_commands(process)
             self._keep_from_running_out()
 

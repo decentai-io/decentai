@@ -31,8 +31,10 @@ class OrgSettings:
         "model": ("", 100),
     }
 
-    def of(self, org_id: str) -> dict[str, Any]:
-        found = (Organizations().col.find_one({"_id": org_id}, {"settings": 1}) or {}).get("settings") or {}
+    def of(self, org_id: str, found: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Every setting, its default where none is set; ``found``, the settings as read already."""
+        if found is None:
+            found = (Organizations().col.find_one({"_id": org_id}, {"settings": 1}) or {}).get("settings") or {}
         return {name: found.get(name, default) for name, (default, _) in self.TABLE.items()}
 
     def checked(self, changes: dict[str, Any]) -> dict[str, Any]:

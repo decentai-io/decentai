@@ -119,7 +119,7 @@ not carried over: a deployment from then starts empty.
 | `organizations list \| create --name --admin-email [--admin-name] \| disable --org-id \| enable --org-id` | organizations; a new one's administrator gets a password to replace |
 | `password <email>` | hands a person a password to replace, and ends their sessions |
 | `reencrypt` | seals every value under the active key |
-| `storage local \| s3` | copies every file and program to the other storage |
+| `storage <from> <to>` | copies every file and program from one storage to another: `local`, `s3` or `azure` |
 | `intermediate request \| install --file <pem>` | the issuer's next intermediate |
 
 **Rotating the encryption key:** add a key to `AI_API_ENCRYPTION_KEYS` (`version:base64 of 32 bytes`), name it in
@@ -127,7 +127,7 @@ not carried over: a deployment from then starts empty.
 
 ## 5. More nodes
 
-- **API servers:** the same settings and keys, the one replica set, one storage (a folder they share, or S3), an
+- **API servers:** the same settings and keys, the one replica set, one storage (a folder they share, S3 or Azure), an
   identity folder each; every runtime is given every address in `AI_RUNTIME_API_SERVERS`.
 - **Runtimes and sandboxes elsewhere:** an administrator of the operator's organization makes a token
   (`Nodes:Authority:create` with the kind `runtime` or `sandbox`, `shared` or the organization's own, and labels);

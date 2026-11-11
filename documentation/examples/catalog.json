@@ -181,8 +181,8 @@
         "agent": {
           "id": "probe",
           "name": "Probe",
-          "version": "0.1.0",
-          "description": "Tests a sandbox from inside: says what it can see and reach, and does on request what a sandbox must hold or end: using memory, starting children, writing files, writing what isn't a message.\n",
+          "version": "0.2.0",
+          "description": "Tests a sandbox from inside: says what it can see and reach, and does on request what a sandbox must hold or end: using memory, starting children, writing files, writing what isn't a message, trying what a jail refuses.\n",
           "instructions": "A tool for testing a sandbox, not for a person's work. Call inspect to see what a process sees.\n",
           "tags": [
             "diagnostics"
@@ -470,23 +470,49 @@
             "outputs": {
               "type": "object"
             }
+          },
+          {
+            "id": "attack",
+            "name": "Attack its jail",
+            "description": "What a hostile program tries, each with what happened.",
+            "level": 0,
+            "inputs": {
+              "type": "object",
+              "properties": {}
+            },
+            "outputs": {
+              "type": "object"
+            }
+          },
+          {
+            "id": "orphan",
+            "name": "Leave a child",
+            "description": "A child started in a session of its own, left running.",
+            "level": 0,
+            "inputs": {
+              "type": "object",
+              "properties": {}
+            },
+            "outputs": {
+              "type": "object"
+            }
           }
         ]
       },
       "programs": {
         "x86_64": {
-          "url": "probe/0.1.0/program.zip",
-          "digest": "sha256:141a0214e6f19b3c7e08f94480a45a3a32c5ce9aa94891d51840c24b735c2038",
-          "size": 2821
+          "url": "probe/0.2.0/program.zip",
+          "digest": "sha256:6cade216b5830f5153a5914bde7780d9e675a1920c7ec5f677f46b8ab72186c5",
+          "size": 3955
         },
         "aarch64": {
-          "url": "probe/0.1.0/program.zip",
-          "digest": "sha256:141a0214e6f19b3c7e08f94480a45a3a32c5ce9aa94891d51840c24b735c2038",
-          "size": 2821
+          "url": "probe/0.2.0/program.zip",
+          "digest": "sha256:6cade216b5830f5153a5914bde7780d9e675a1920c7ec5f677f46b8ab72186c5",
+          "size": 3955
         }
       },
       "base": "python-3.12",
-      "readme": "Tests a sandbox from inside: says what it can see and reach, and does on request what a sandbox must hold or end: using memory, starting children, writing files, writing what isn't a message."
+      "readme": "Tests a sandbox from inside: says what it can see and reach, and does on request what a sandbox must hold or end: using memory, starting children, writing files, writing what isn't a message, trying what a jail refuses."
     }
   ]
 }

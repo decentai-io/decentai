@@ -66,8 +66,15 @@ class Records(Store):
     COLLECTION = "records"
     INDEXES = (([("org_id", Store.ASC), ("kind", Store.ASC), ("agents.agent", Store.ASC)], {}),
                ([("org_id", Store.ASC), ("owner.users", Store.ASC)], {}),
-               ([("org_id", Store.ASC), ("owner.groups", Store.ASC)], {}), ([("handing.to", Store.ASC)], {}))
+               ([("org_id", Store.ASC), ("owner.groups", Store.ASC)], {}), ([("handing.to", Store.ASC)], {}),
+               ([("created_by", Store.ASC), ("kind", Store.ASC)], {}))
     MOST = 512 * 1024
+
+    def files_size(self, user_id: str) -> int:
+        """The bytes of the files a person keeps."""
+        found = next(self.col.aggregate([{"$match": {"created_by": user_id, "kind": "file"}},
+                                         {"$group": {"_id": None, "size": {"$sum": "$file.size"}}}]), None)
+        return int((found or {}).get("size") or 0)
 
     @staticmethod
     def bound(record: dict[str, Any]) -> str:

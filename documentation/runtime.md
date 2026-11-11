@@ -27,6 +27,11 @@ calls any API server that answers; they are one to it.
 screen's input, a schedule due, a resume, and a close. It asks it to check an agent, a model connection, or an MCP
 server's tools.
 
+**What only passes** in a chat, the assistant's words as the model writes them and pictures of an agent's screen, the
+runtime keeps in memory, the last 50, and never sends: an API server with the chat open in a browser asks for them,
+`Runtime:Chat:passing` with the count it has, and the runtime holds the ask up to 20 seconds until something passes.
+Each carries the number of the last event the chat kept ([api-server](api-server.md#7-chats)).
+
 **Sandboxes** report themselves to it ([sandbox](sandbox.md#6-the-caller-protocol)); a sandbox is used while it
 reports. The runtime answers with its id and its way out's port.
 

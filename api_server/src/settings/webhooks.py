@@ -15,7 +15,7 @@ from jsonschema import Draft202012Validator
 from jsonschema.exceptions import SchemaError
 from pymongo.errors import DuplicateKeyError
 
-from ..chats.store import Chats, Messages
+from ..chats.store import Chats, Events, Messages
 from ..doors.calls import Caller, Controller, Refused, endpoint
 from ..doors.limits import Limits
 from ..people.permissions import Bounds
@@ -73,15 +73,18 @@ class Hooks:
         chat = await asyncio.to_thread(Chats().find, hook["chat_id"])
         message = await asyncio.to_thread(Messages().add, chat, "webhook", [
             {"type": "webhook", "text": hook["instruction"], "data": data}])
+        await asyncio.to_thread(Events().add, chat, "message", Messages.public(message))
         await RuntimeCalls().send(chat, {"type": "message", "message": Messages.public(message)})
         return {"delivery_id": delivery["_id"]}, 202
 
     @staticmethod
     def _standing(hook_id: str) -> dict[str, Any] | None:
-        hook = Webhooks().col.find_one({"_id": str(hook_id or "")})
-        person = Users().col.find_one({"_id": (hook or {}).get("user_id"), "status": "active"}) if hook else None
-        if person is None or not Organizations().active(hook["org_id"]) or not hook.get("enabled", True) \
-                or OrgSettings().of(hook["org_id"])["webhooks"] == "blocked":
+        """The hook, enabled, of an active person in an organization that allows webhooks: one round trip."""
+        found = Organizations.standing(Webhooks(), {"_id": str(hook_id or "")})
+        if found is None:
+            return None
+        hook, person = found
+        if not hook.get("enabled", True) or (person["organization"].get("settings") or {}).get("webhooks") == "blocked":
             return None
         return hook
 
@@ -90,7 +93,7 @@ class Hooks:
         if len(key) > 200:
             raise Refused("invalid", "The Idempotency-Key is at most 200 characters.")
         self._proved(hook, headers, body, key)
-        Limits().check(f"hook:{hook['_id']}", Webhooks.PER_MINUTE, 60, "events")
+        Limits().counted(f"hook:{hook['_id']}", Webhooks.PER_MINUTE, 60, "events")
         try:
             data = json.loads(body or b"null")
         except ValueError:

@@ -70,7 +70,8 @@ class Sandboxes:
         """What the runtime tells API servers of its sandboxes."""
         now = time.monotonic()
         return [{"sandbox": s["sandbox"], "machine": s.get("machine"), "base": s.get("base"), "room": s.get("room"),
-                 "processes": [{"agent": p.agent_id, "org_id": p.chat.org_id, "memory": used.get("memory", 0)}
+                 "processes": [{"agent": p.agent_id, "org_id": p.chat.org_id, "memory": used.get("memory", 0),
+                                "cpu": used.get("cpu", 0)}
                                for used in s.get("processes") or [] if (p := self.processes.get(used.get("process")))]}
                 for s in self.seen.values() if now - s["at"] < self.SILENT]
 

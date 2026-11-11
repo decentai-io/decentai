@@ -1,5 +1,5 @@
-# The sandbox container's AppArmor profile (documentation/operating.md#3-on-a-server): Docker's own, but
-# letting nsjail make user namespaces and mount the jail's view. Loaded once per host:
+# The sandbox container's AppArmor profile (documentation/operating.md#3-on-a-server): Docker's own, but letting
+# nsjail make user namespaces and mount the jail's view, and nothing more. Loaded once per host:
 #
 #   sudo apparmor_parser -r sandbox/config/decentai-sandbox.apparmor
 
@@ -8,10 +8,32 @@
 profile decentai-sandbox flags=(attach_disconnected,mediate_deleted) {
   #include <abstractions/base>
 
-  network,
-  capability,
+  # The sandbox's own connections, and the netlink a name lookup asks. Its processes' are held by the jail's filter.
+  network inet,
+  network inet6,
+  network unix,
+  network netlink raw,
+
+  # The container's four, and what nsjail uses in the user namespace it makes: its mounts and pivot_root, the jail's
+  # loopback, its user and groups, and dropping its capabilities before the program starts.
+  capability chown,
+  capability dac_override,
+  capability dac_read_search,
+  capability fowner,
+  capability fsetid,
+  capability kill,
+  capability net_admin,
+  capability setgid,
+  capability setpcap,
+  capability setuid,
+  capability sys_admin,
+  capability sys_chroot,
+
   file,
+  # The jail's view is binds, tmpfs and proc: no file system that reaches the host's kernel or another machine.
   mount,
+  deny mount fstype=(sysfs, cgroup, cgroup2, securityfs, debugfs, tracefs, bpf, configfs, pstore, efivarfs),
+  deny mount fstype=(fusectl, fuse, overlay, hugetlbfs, binfmt_misc, nfs, nfs4, cifs, smb3, 9p, ext4, xfs, btrfs),
   umount,
   pivot_root,
   userns,

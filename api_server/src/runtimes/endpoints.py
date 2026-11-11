@@ -15,15 +15,19 @@ from .store import Refusals, Runtimes
 
 class ReportEndpoints(Controller):
     NAME = "AI:Runtime"
+    RELEASE = timedelta(seconds=30)
 
     @endpoint("A runtime reports itself", by=RUNTIME, changes=False)
     def state(self, data: dict[str, Any], caller: Caller) -> dict[str, Any]:
-        """Chats it no longer holds go free, once placed long enough to be in its report; the answer says what it
-        should drain."""
-        row = Runtimes().told(caller.runtime, data)
-        Chats().col.update_many({"holder": row["_id"], "_id": {"$nin": row["chats"]},
-                                 "held_at": {"$lt": Runtimes.now() - timedelta(seconds=30)}}, {"$set": {"holder": ""}})
-        return {"draining": row.get("draining", False), "drained": row.get("drained", [])}
+        """Chats it no longer holds go free, once placed long enough to be in its report: looked for when the chats
+        it reports changed, and every RELEASE seconds. The answer says what it should drain."""
+        before, now = Runtimes().told(caller.runtime, data) or {}, Runtimes.now()
+        chats = Runtimes.chats(data)
+        if before.get("chats") != chats or before.get("released_at", now - self.RELEASE) <= now - self.RELEASE:
+            Chats().col.update_many({"holder": caller.runtime["id"], "_id": {"$nin": chats},
+                                     "held_at": {"$lt": now - timedelta(seconds=30)}}, {"$set": {"holder": ""}})
+            Runtimes().col.update_one({"_id": caller.runtime["id"]}, {"$set": {"released_at": now}})
+        return {"draining": before.get("draining", False), "drained": before.get("drained", [])}
 
 
 class NodeEndpoints(Controller):
@@ -42,13 +46,11 @@ class NodeEndpoints(Controller):
     @endpoint("See the runtimes that serve the organization", changes=False)
     def list(self, data: dict[str, Any], caller: Caller) -> dict[str, Any]:
         refused = Refusals().ids()
-        nodes = []
-        for row in Runtimes().col.find({"scope": {"$in": self._scopes(caller)}}):
-            held = Chats().held_by(row["_id"])
-            ours = [c for c in held if c["org_id"] == caller.org_id]
-            nodes.append({**Runtimes.public(row, caller.org_id), "live": Runtimes().is_live(row), "refused": row["_id"] in refused,
-                          "held_chats": len(ours), "held_elsewhere": len(held) - len(ours)})
-        return {"nodes": nodes}
+        rows = list(Runtimes().col.find({"scope": {"$in": self._scopes(caller)}}))
+        held = Chats().held(caller.org_id, [row["_id"] for row in rows])
+        return {"nodes": [{**Runtimes.public(row, caller.org_id), "live": Runtimes().is_live(row),
+                           "refused": row["_id"] in refused, "held_chats": held.get(row["_id"], (0, 0))[0],
+                           "held_elsewhere": held.get(row["_id"], (0, 0))[1]} for row in rows]}
 
     @endpoint("Name a runtime, with a note")
     def update(self, data: dict[str, Any], caller: Caller) -> dict[str, Any]:
@@ -71,8 +73,7 @@ class NodeEndpoints(Controller):
     async def refuse(self, data: dict[str, Any], caller: Caller) -> dict[str, Any]:
         row = await asyncio.to_thread(self._row, data, caller)
         await asyncio.to_thread(Refusals().refuse, row["_id"], caller.name, str(data.get("reason") or ""))
-        for chat in await asyncio.to_thread(Chats().held_by, row["_id"]):
-            await asyncio.to_thread(Chats().let_go, chat["_id"], row["_id"])
+        await asyncio.to_thread(Chats().let_go_all, [row["_id"]])
         await RuntimeCalls().issuer("Certificates:Node:refuse", {"id": row["_id"]})
         return {"refused": True}
 
@@ -85,7 +86,7 @@ class NodeEndpoints(Controller):
     @endpoint("Forget a runtime that is gone")
     def forget(self, data: dict[str, Any], caller: Caller) -> dict[str, Any]:
         row = self._row(data, caller)
-        if Runtimes().is_live(row) or Chats().held_by(row["_id"]):
+        if Runtimes().is_live(row) or Chats().held(caller.org_id, [row["_id"]]):
             raise Refused("conflict", "That runtime is connected, or still holds chats: refuse it first.")
         Runtimes().col.delete_one({"_id": row["_id"]})
         return {"forgotten": True}

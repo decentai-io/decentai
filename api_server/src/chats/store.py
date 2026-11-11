@@ -49,8 +49,20 @@ class Chats(Store):
     def let_go(self, chat_id: str, runtime: str = "") -> None:
         self.col.update_one({"_id": chat_id, **({"holder": runtime} if runtime else {})}, {"$set": {"holder": ""}})
 
-    def held_by(self, runtime: str) -> list[dict[str, Any]]:
-        return list(self.col.find({"holder": runtime}))
+    def held_by(self, runtimes: list[str]) -> list[dict[str, Any]]:
+        return list(self.col.find({"holder": {"$in": runtimes}})) if runtimes else []
+
+    def let_go_all(self, runtimes: list[str]) -> None:
+        """Every chat these runtimes still hold, let go."""
+        self.col.update_many({"holder": {"$in": runtimes}}, {"$set": {"holder": ""}})
+
+    def held(self, org_id: str, runtimes: list[str]) -> dict[str, tuple[int, int]]:
+        """For each of these runtimes holding chats: how many are this organization's, and how many another's."""
+        rows = self.col.aggregate([
+            {"$match": {"holder": {"$in": runtimes}}},
+            {"$group": {"_id": "$holder", "all": {"$sum": 1},
+                        "ours": {"$sum": {"$cond": [{"$eq": ["$org_id", org_id]}, 1, 0]}}}}])
+        return {row["_id"]: (row["ours"], row["all"] - row["ours"]) for row in rows}
 
     def next(self, chat_id: str, counter: str) -> int:
         """The chat's next message or event number."""
@@ -74,7 +86,9 @@ class ChatStates(Store):
 
 class Messages(Store):
     COLLECTION = "messages"
-    INDEXES = (([("chat_id", Store.ASC), ("seq", Store.ASC)], {"unique": True}),)
+    #: Listed by ``_id`` a page at a time (Store.page), and found by their number.
+    INDEXES = (([("chat_id", Store.ASC), ("seq", Store.ASC)], {"unique": True}),
+               ([("chat_id", Store.ASC), ("_id", Store.ASC)], {}))
     MOST = 512 * 1024
 
     def add(self, chat: dict[str, Any], actor: str, parts: list[Any], files: list[str] | None = None,
@@ -97,34 +111,29 @@ class Messages(Store):
 
 
 class Events(Store):
-    """What happens in a chat as it happens. The last KEPT are kept; screen frames and words being written only for a
-    moment, as they pass through to every server that follows the chat."""
+    """What happens in a chat and is kept: the last KEPT of each chat. What only passes, streamed text and pictures of
+    a screen, never comes here: each server that has the chat open asks its runtime for it (Live)."""
 
     COLLECTION = "events"
-    INDEXES = (([("chat_id", Store.ASC), ("seq", Store.ASC)], {}),
-               ([("expires_at", Store.ASC)], {"expireAfterSeconds": 0}))
-    KEPT, PASSING_SECONDS, MOST = 200, 60, 512 * 1024
+    INDEXES = (([("chat_id", Store.ASC), ("seq", Store.ASC)], {}),)
+    KEPT, MOST = 200, 512 * 1024
     PASSING = ("screen", "saying")
 
     def add(self, chat: dict[str, Any], event: str, data: dict[str, Any]) -> dict[str, Any]:
         if len(str(data)) > self.MOST:
             raise ValueError("An event is at most 512 KiB.")
-        passing = event in self.PASSING
-        # What passes takes the number of the last event kept, so a gap in the numbers is always a missed event.
-        seq = (Chats().col.find_one({"_id": chat["_id"]}, {"events": 1}) or {}).get("events", 0) if passing \
-            else Chats().next(chat["_id"], "events")
+        if event in self.PASSING:
+            raise ValueError("Streamed text and screens pass through the runtime, and are not kept.")
+        seq = Chats().next(chat["_id"], "events")
         doc = {"_id": self.new_id(), "chat_id": chat["_id"], "user_id": chat["user_id"], "seq": seq, "event": event,
                "data": data, "at": self.now()}
-        if passing:
-            doc["expires_at"] = self.expires(self.PASSING_SECONDS)
         self.col.insert_one(doc)
-        if not passing and seq % 50 == 0:
+        if seq % 50 == 0:
             self.col.delete_many({"chat_id": chat["_id"], "seq": {"$lte": seq - self.KEPT}})
         return doc
 
     def after(self, chat_id: str, seq: int) -> list[dict[str, Any]]:
-        return list(self.col.find({"chat_id": chat_id, "seq": {"$gt": seq}, "expires_at": {"$exists": False}})
-                    .sort("seq", Store.ASC).limit(self.KEPT))
+        return list(self.col.find({"chat_id": chat_id, "seq": {"$gt": seq}}).sort("seq", Store.ASC).limit(self.KEPT))
 
     @staticmethod
     def public(doc: dict[str, Any]) -> dict[str, Any]:

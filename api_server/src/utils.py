@@ -43,11 +43,13 @@ class Settings:
         self.database_name = self._text("AI_API_DATABASE_NAME", "decentai")
         self.encryption_keys = self._required("AI_API_ENCRYPTION_KEYS")
         self.encryption_active = self._required("AI_API_ENCRYPTION_ACTIVE")
-        self.storage = self._choice("AI_API_STORAGE", "local", ("local", "s3"))
+        self.storage = self._choice("AI_API_STORAGE", "local", ("local", "s3", "azure"))
         self.storage_folder = self._text("AI_API_STORAGE_FOLDER", "/data/storage")
         self.s3 = {name: self._text(f"AI_API_S3_{name.upper()}")
                    for name in ("bucket", "region", "endpoint", "prefix", "access_key_id", "secret_access_key",
                                 "kms_key_id")}
+        self.azure = {name: self._text(f"AI_API_AZURE_{name.upper()}")
+                      for name in ("connection_string", "container", "prefix")}
         self.smtp_host = self._text("AI_API_SMTP_HOST")
         self.smtp_port = self._number("AI_API_SMTP_PORT", 587, 1, 65535)
         self.smtp_username = self._text("AI_API_SMTP_USERNAME")
@@ -58,6 +60,9 @@ class Settings:
         self.vapid_private_key = self._text("AI_API_VAPID_PRIVATE_KEY")
         self.vapid_subject = self._text("AI_API_VAPID_SUBJECT")
         self.speech_url = self._text("AI_API_SPEECH_URL", "http://speech:8004").rstrip("/")
+        self.metrics_token = self._text("AI_API_METRICS_TOKEN")
+        if self.metrics_token and len(self.metrics_token) < 24:
+            raise SettingsRefused("AI_API_METRICS_TOKEN is at least 24 characters, or left out.")
         self.signup = self._choice("AI_API_SIGNUP", "closed", ("closed", "open"))
         self.setup_code = self._text("AI_API_SETUP_CODE")
         if self.setup_code == "change-me":

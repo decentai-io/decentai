@@ -9,6 +9,7 @@ import pytest
 
 from fakes import AGENT, held, until
 from runtime.agents.process import Call, CallFailed, Process
+from runtime.chats.passing import Passing
 from runtime.sandboxes.sandboxes import Sandboxes
 from runtime.utils import Settings, SettingsRefused
 from runtime.way_out.proxy import Hosts, WayOut
@@ -211,3 +212,16 @@ async def test_a_refusal_gives_its_reason_on_its_first_line():
     writer = type("Writer", (), {"write": staticmethod(written.extend), "drain": staticmethod(lambda: asyncio.sleep(0))})
     await WayOut._refuse(writer, "files.example.net is not\nopened for this call.")
     assert bytes(written).split(b"\r\n")[0] == b"HTTP/1.1 403 files.example.net is not opened for this call."
+
+
+async def test_what_passes_is_held_a_moment_for_the_api_servers_that_ask():
+    passing = Passing()
+    passing.kept = 7
+    assert await passing.after(None) == {"count": 0, "events": []}
+    asking = asyncio.ensure_future(passing.after(0, 5))
+    await passing.add("saying", {"text": "Hel"})
+    answer = await asking
+    assert answer["count"] == 1 and [(e["seq"], e["event"], e["data"]) for e in answer["events"]] == [
+        (7, "saying", {"text": "Hel"})]
+    assert (await passing.after(1, 0.1))["events"] == []
+    assert await passing.after(5) == {"count": 1, "events": []}  # a number it never reached: from where it is

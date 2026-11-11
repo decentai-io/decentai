@@ -51,6 +51,10 @@ class Cgroup:
     def tasks(self) -> int:
         return self._number(self.path / "pids.current")
 
+    def cpu(self) -> float:
+        """The processor time it has used, in seconds."""
+        return self._counted(self.path / "cpu.stat", "usage_usec") / 1_000_000
+
     def pids(self) -> list[int]:
         try:
             return [int(pid) for pid in (self.path / "cgroup.procs").read_text().split()]

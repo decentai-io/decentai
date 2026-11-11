@@ -5,6 +5,8 @@ mkdir -p /work/shared
 ln -sfn /src/api_server/src /work/api_server
 ln -sfn /src/communication /work/communication
 for part in __init__.py cron.py file_types.py rules.py llm; do ln -sfn "/src/shared/$part" "/work/shared/$part"; done
-pip install -q --root-user-action=ignore -r /src/api_server/requirements.txt pytest pytest-timeout 2>&1 | grep -v notice || true
+# Apart: a list with hashes holds every package of its install to them.
+pip install -q --root-user-action=ignore -r /src/api_server/requirements.txt 2>&1 | grep -v notice || true
+pip install -q --root-user-action=ignore pytest pytest-timeout 2>&1 | grep -v notice || true
 cd /work && PYTHONPATH=/work PYTHONDONTWRITEBYTECODE=1 python -m pytest -q -p no:cacheprovider --timeout=60 \
     /src/api_server/tests "$@"

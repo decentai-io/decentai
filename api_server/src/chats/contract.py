@@ -6,7 +6,6 @@ from typing import Any
 
 from ..agents.store import Agents
 from ..people.permissions import Rules
-from ..people.store import Users
 from ..settings.assistant import McpServers, Memories, Skills
 from ..settings.models import Models
 from ..settings.organization import OrgSettings
@@ -21,9 +20,9 @@ class Contract:
         return [agent for agent in Agents().ready(chat["org_id"])
                 if (chosen is None or agent["agent_id"] in chosen) and rules.uses(person, agent)]
 
-    def of(self, chat: dict[str, Any]) -> dict[str, Any]:
-        person = Users().col.find_one({"_id": chat["user_id"]})
-        org = OrgSettings().of(chat["org_id"])
+    def of(self, chat: dict[str, Any], person: dict[str, Any]) -> dict[str, Any]:
+        """``person``, the chat's, read with their organization: their permissions are kept by its access version."""
+        org = OrgSettings().of(chat["org_id"], person["organization"].get("settings") or {})
         statements = [s for s in Rules().statements(person)
                       if any(p.startswith("agent") or p.startswith("*") for p in s["actions"])]
         connection = Models().col.find_one({"_id": chat["settings"].get("model") or org["model"], "org_id": chat["org_id"]})

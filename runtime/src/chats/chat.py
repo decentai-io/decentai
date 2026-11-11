@@ -19,6 +19,7 @@ from ..models.base import OnText, Reply, Request
 from ..models.factory import Factory
 from ..models.usage import Usage
 from ..utils import Held
+from .passing import Passing
 
 log = logging.getLogger("runtime")
 
@@ -30,7 +31,7 @@ class Chat:
         self.processes: dict[str, Process] = {}
         #: Cards waited on, by their id.
         self.waiting: dict[str, asyncio.Future] = {}
-        self.held, self.used_at = Held(), time.monotonic()
+        self.held, self.used_at, self.passing = Held(), time.monotonic(), Passing()
         self.gate, self.functions = Gate(self), Functions(self)
         self._starting: dict[str, asyncio.Lock] = {}
         #: From a random start, so a card's call id names no other placement's call.
@@ -88,10 +89,16 @@ class Chat:
         self._connector = None
 
     async def say(self, parts: list[dict[str, Any]], files: list[str] = ()) -> dict[str, Any]:
-        return await self.api.call("AI:Message:create", {"chat_id": self.id, "parts": parts, "files": list(files)})
+        said = await self.api.call("AI:Message:create", {"chat_id": self.id, "parts": parts, "files": list(files)})
+        self.passing.kept = said.get("event_seq", self.passing.kept)
+        return said
 
     async def event(self, name: str, data: dict[str, Any]) -> None:
-        await self.api.call("AI:Event:append", {"chat_id": self.id, "event": name, "data": data})
+        """An event of the chat: kept by an API server, or, streamed text and screens, only passing (Passing)."""
+        if name in Passing.EVENTS:
+            return await self.passing.add(name, data)
+        kept = await self.api.call("AI:Event:append", {"chat_id": self.id, "event": name, "data": data})
+        self.passing.kept = kept.get("seq", self.passing.kept)
 
     async def call(self, agent_id: str, function_id: str, inputs: dict[str, Any], files: list[str] = (),
                    attended: bool = True) -> tuple[Any, list[str]]:

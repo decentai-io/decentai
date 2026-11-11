@@ -65,6 +65,29 @@ class Organizations(Store):
     def active(self, org_id: str) -> bool:
         return self.col.count_documents({"_id": str(org_id or ""), "status": "active"}, limit=1) == 1
 
+    def access_changed(self, org_id: str) -> None:
+        """Its access version raised: every server's permissions of it are read again on their next call."""
+        self.col.update_one({"_id": org_id}, {"$inc": {"access": 1}})
+
+    @staticmethod
+    def standing(source: Store, match: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]] | None:
+        """The session, key or chat matched, with its person if active, in an organization that is, in one round
+        trip. The person carries the organization's settings and access version as ``organization``."""
+        found = next(source.col.aggregate([
+            {"$match": match}, {"$limit": 1},
+            {"$lookup": {"from": "users", "localField": "user_id", "foreignField": "_id", "as": "person",
+                         "pipeline": [{"$match": {"status": "active"}}]}},
+            {"$unwind": "$person"},
+            {"$lookup": {"from": "organizations", "localField": "person.org_id", "foreignField": "_id",
+                         "as": "organization", "pipeline": [{"$match": {"status": "active"}},
+                                                            {"$project": {"settings": 1, "access": 1}}]}},
+            {"$unwind": "$organization"}]), None)
+        if found is None:
+            return None
+        person = found.pop("person")
+        person["organization"] = found.pop("organization")
+        return found, person
+
     @staticmethod
     def clean_name(name: Any) -> str:
         name = " ".join(str(name or "").split())
@@ -117,6 +140,26 @@ class Users(Store):
                 "last_login": doc.get("last_login"), "created_at": doc.get("created_at")}
 
 
+class Access:
+    """What a person's groups and policies make, kept on each server by their organization's access version: any
+    change to access raises it (``Organizations.access_changed``), and every call reads it, so nothing kept is ever
+    used once it changed. Only for a person read with their organization (``Organizations.standing``)."""
+
+    MOST = 10_000
+    _kept: dict[tuple[Any, ...], Any] = {}
+
+    @classmethod
+    def kept(cls, what: str, person: dict[str, Any], read: Any) -> Any:
+        if "organization" not in person:
+            return read()
+        key = (what, person["org_id"], person["organization"].get("access", 0), tuple(sorted(person.get("groups") or [])))
+        if key not in cls._kept:
+            if len(cls._kept) >= cls.MOST:
+                cls._kept.clear()
+            cls._kept[key] = read()
+        return cls._kept[key]
+
+
 class Groups(Store):
     """Everyone holds every person without listing them; Administrators is made with the organization."""
 
@@ -134,9 +177,9 @@ class Groups(Store):
         return self.col.find_one({"org_id": org_id, "everyone": True})
 
     def of(self, person: dict[str, Any]) -> list[dict[str, Any]]:
-        """The person's groups, Everyone included."""
-        return list(self.col.find({"org_id": person["org_id"],
-                                   "$or": [{"_id": {"$in": list(person.get("groups") or [])}}, {"everyone": True}]}))
+        """The person's groups, Everyone included; kept by the access version their organization carried."""
+        return Access.kept("groups", person, lambda: list(self.col.find(
+            {"org_id": person["org_id"], "$or": [{"_id": {"$in": list(person.get("groups") or [])}}, {"everyone": True}]})))
 
     def in_org(self, org_id: str, ids: list[str] | None = None) -> list[dict[str, Any]]:
         query = {"org_id": org_id, **({"_id": {"$in": [str(i) for i in ids]}} if ids is not None else {})}

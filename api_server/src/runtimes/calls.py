@@ -30,10 +30,18 @@ class RuntimeCalls:
     def place(self, chat: dict[str, Any]) -> dict[str, Any] | None:
         """The runtime holding the chat, or one it is placed on now: its own organization's first, then the one that
         last held it, then the least loaded. None while no runtime may take it."""
+        read: dict[str, Any] = {}
+
+        def serves(row: dict[str, Any]) -> bool:
+            """The organization's settings read once, and only for a runtime that serves several."""
+            if "settings" not in read and not self.scope(row):
+                read["settings"] = self.settings(chat["org_id"])
+            return self.may_serve(row, chat["org_id"], read.get("settings"))
+
         holder = Runtimes().col.find_one({"_id": chat.get("holder")}) if chat.get("holder") else None
-        if Runtimes().is_live(holder) and self.may_serve(holder, chat["org_id"]):
+        if Runtimes().is_live(holder) and serves(holder):
             return holder
-        pool = [row for row in Runtimes().live() if not row.get("draining") and self.may_serve(row, chat["org_id"])]
+        pool = [row for row in Runtimes().live() if not row.get("draining") and serves(row)]
         pool = [row for row in pool if row.get("scope") == chat["org_id"]] or pool
         if not pool:
             return None
@@ -44,9 +52,11 @@ class RuntimeCalls:
         held = Chats().find(chat["_id"]) or {}
         return Runtimes().col.find_one({"_id": held.get("holder")})
 
-    async def send(self, chat: dict[str, Any], frame: dict[str, Any]) -> bool:
-        """A frame to the chat's runtime, the chat placed first if no runtime holds it."""
-        person = await asyncio.to_thread(Users().col.find_one, {"_id": chat["user_id"]}, {"stopped": 1})
+    async def send(self, chat: dict[str, Any], frame: dict[str, Any], person: dict[str, Any] | None = None) -> bool:
+        """A frame to the chat's runtime, the chat placed first if no runtime holds it. ``person``, the chat's, when
+        the call read it already."""
+        if person is None:
+            person = await asyncio.to_thread(Users().col.find_one, {"_id": chat["user_id"]}, {"stopped": 1})
         if frame.get("type") != "stop" and (person or {}).get("stopped"):
             return False
         for _ in range(3):
@@ -107,25 +117,37 @@ class RuntimeCalls:
         return answer
 
     async def forever(self) -> None:
-        """Runtimes gone: their chats go free, and a chat that was working is placed again. One server at a time."""
+        """The runtimes swept, by one server at a time."""
         while True:
             await asyncio.sleep(self.SWEEP_SECONDS)
             try:
                 if await asyncio.to_thread(Lease("runtimes", self.SWEEP_SECONDS).take):
-                    for runtime in await asyncio.to_thread(Runtimes().gone):
-                        for chat in await asyncio.to_thread(Chats().held_by, runtime["_id"]):
-                            await asyncio.to_thread(Chats().let_go, chat["_id"], runtime["_id"])
-                            if chat.get("working"):
-                                await self.send(chat, {"type": "resume"})
+                    await self.sweep()
             except Exception:
                 log.exception("The runtimes were not looked at")
 
+    async def sweep(self) -> None:
+        """Runtimes gone: their chats go free, and a chat that was working is placed again."""
+        gone = [runtime["_id"] for runtime in await asyncio.to_thread(Runtimes().gone)]
+        held = await asyncio.to_thread(Chats().held_by, gone)
+        await asyncio.to_thread(Chats().let_go_all, gone)
+        for chat in held:
+            if chat.get("working"):
+                await self.send({**chat, "holder": ""}, {"type": "resume"})
+
     @staticmethod
-    def may_serve(runtime: dict[str, Any], org_id: str) -> bool:
+    def may_serve(runtime: dict[str, Any], org_id: str, settings: dict[str, Any] | None = None) -> bool:
         """One that names an organization, in its row or its certificate, serves it alone; a shared one, every one
-        that doesn't keep to its own."""
-        scope = runtime.get("scope", (runtime.get("metadata") or {}).get("scope")) or ""
+        that doesn't keep to its own. ``settings``, the organization's, when they were read already."""
+        scope = RuntimeCalls.scope(runtime)
         if scope:
             return scope == org_id
-        org = Organizations().col.find_one({"_id": org_id}, {"settings.runtimes": 1}) or {}
-        return (org.get("settings") or {}).get("runtimes") != "own_only"
+        return (RuntimeCalls.settings(org_id) if settings is None else settings).get("runtimes") != "own_only"
+
+    @staticmethod
+    def scope(runtime: dict[str, Any]) -> str:
+        return runtime.get("scope", (runtime.get("metadata") or {}).get("scope")) or ""
+
+    @staticmethod
+    def settings(org_id: str) -> dict[str, Any]:
+        return (Organizations().col.find_one({"_id": org_id}, {"settings.runtimes": 1}) or {}).get("settings") or {}

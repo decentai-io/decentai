@@ -9,7 +9,7 @@
 
 # nsjail, built from Google's source at release 3.4's commit, not its tag, which could be moved: Debian doesn't
 # package it.
-FROM python:3.12-slim AS nsjail
+FROM python:3.12-slim@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b AS nsjail
 ARG NSJAIL_COMMIT=079d70dda4aa1edd9512cfd25ff1e47e316dc355
 RUN apt-get update \
     && apt-get install -y --no-install-recommends autoconf bison ca-certificates flex g++ gcc git \
@@ -21,7 +21,7 @@ RUN apt-get update \
 
 # The base every process may rely on: the system's libraries and Python 3.12. Beside it: tini and socat, which run in
 # every jail; setfacl, which lets a process's user into its home; newuidmap, which maps a jail's user.
-FROM python:3.12-slim
+FROM python:3.12-slim@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b
 
 # The platform's user (999) and the user every process is inside its jail (1000). The processes' users
 # (20000-29999) exist only as numbers: newuidmap may map the platform's user's jails to them, and it alone holds a
@@ -31,7 +31,7 @@ COPY sandbox/requirements.txt ./sandbox/requirements.txt
 RUN apt-get update \
     && apt-get install -y --no-install-recommends acl libcap2-bin libnl-route-3-200 libprotobuf32t64 socat tini \
         uidmap \
-    && pip install --no-cache-dir -r sandbox/requirements.txt \
+    && pip install --no-cache-dir --require-hashes -r sandbox/requirements.txt \
     && groupadd --system --gid 999 decentai \
     && useradd --system --uid 999 --gid decentai decentai \
     && useradd --uid 1000 --no-create-home --home-dir /home/run run \

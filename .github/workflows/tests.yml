@@ -29,7 +29,7 @@ jobs:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: runtime/requirements.txt
-      - run: pip install -r runtime/requirements.txt pytest pytest-timeout
+      - run: pip install -r runtime/requirements.txt && pip install pytest pytest-timeout
       # Through events: minds in a world of stand-in agents, and the link against a
       # stand-in API server and fleet, with a scripted model.
       - run: python -m pytest runtime/tests -q --timeout 60
@@ -65,7 +65,7 @@ jobs:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: api_server/requirements.txt
-      - run: pip install -r api_server/requirements.txt pytest
+      - run: pip install -r api_server/requirements.txt && pip install pytest
       - run: python -m pytest shared/tests -q
       # Its whole-deployment test is issuer/tests/compose.yml.
       - run: python -m pytest issuer/tests -q --ignore=issuer/tests/test_deployment.py

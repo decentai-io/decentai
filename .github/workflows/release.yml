@@ -88,7 +88,6 @@ jobs:
           cache-to: type=gha,scope=${{ matrix.image }},mode=max
           tags: |
             ${{ env.IMAGES }}/decentai-${{ matrix.image }}:${{ steps.version.outputs.number }}
-            ${{ env.IMAGES }}/decentai-${{ matrix.image }}:latest
           labels: |
             org.opencontainers.image.title=decentai-${{ matrix.image }}
             org.opencontainers.image.version=${{ steps.version.outputs.number }}

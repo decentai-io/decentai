@@ -34,6 +34,7 @@ from api_server.runtimes.store import Runtimes  # noqa: E402
 from api_server.storage.cipher import Cipher  # noqa: E402
 from api_server.storage.database import Database  # noqa: E402
 from api_server.storage.files import Storage  # noqa: E402
+from api_server.trail.trail import Trail  # noqa: E402
 from api_server.utils import Settings  # noqa: E402
 
 PASSWORD = "a-long-password-1"
@@ -85,7 +86,10 @@ class World:
         self.router = Catalog.router(Callers())
 
     def call(self, endpoint: str, data: dict[str, Any] | None = None, caller: Caller | None = None) -> tuple[dict, int]:
-        return asyncio.run(self.router.route({"endpoint": endpoint, "data": data or {}}, caller or self.anyone()))
+        """The call routed, and its trail line written, as a server writes it after the answer."""
+        answer = asyncio.run(self.router.route({"endpoint": endpoint, "data": data or {}}, caller or self.anyone()))
+        Trail().flush()
+        return answer
 
     def ok(self, endpoint: str, data: dict[str, Any] | None = None, caller: Caller | None = None) -> dict[str, Any]:
         answer, status = self.call(endpoint, data, caller)
@@ -157,6 +161,7 @@ class Runtime:
 @pytest.fixture(scope="session")
 def world() -> World:
     settings = Settings.read()
+    Callers.KEPT_SECONDS = 0  # each test sees a change to a runtime's standing at once; TestKept keeps it
     Cipher.load(settings.encryption_keys, settings.encryption_active)
     Database.connect(settings.database_uri, settings.database_name)
     Database.prepare()

@@ -23,6 +23,12 @@ Classes, with clear names. Less code: no abstraction for one caller, no feature 
 a one-line docstring of what it is for, naming the document it carries out. Comments say why, never what. `shared/`
 holds only what the API server and the runtime both use; what one uses lives in it.
 
+**Dependencies.** A service names what it needs in `requirements.in`; `requirements.txt` is made from it, every
+package pinned with its hashes, and its image installs it with `--require-hashes`. After changing a `.in`, in its
+folder: `pip-compile --generate-hashes --allow-unsafe --strip-extras --no-emit-index-url --output-file=requirements.txt
+requirements.in`, on Python 3.12. Base images are pinned by digest. Dependabot keeps the pins, the hashes, the digests
+and the workflows' actions current.
+
 ## Where things are
 
 | Part | Where to start |
@@ -41,7 +47,7 @@ repository root; in Git Bash, set `MSYS_NO_PATHCONV=1` first.
 | Suite | Runs |
 |---|---|
 | API server | `docker compose -f api_server/tests/compose.yml up -d --wait`, then `docker compose -f api_server/tests/compose.yml exec -T runner sh /src/api_server/tests/run.sh`, then `down -v`: MongoDB as a replica set of one |
-| runtime | `docker run --rm -v "$PWD:/src:ro" -w /src/runtime -e PYTHONDONTWRITEBYTECODE=1 python:3.12-slim sh -c 'pip install -q -r requirements.txt pytest pytest-timeout && python -m pytest -p no:cacheprovider -q --timeout=60 tests'`: a chat with the API server, the sandbox and the model faked (`runtime/tests/fakes.py`) |
+| runtime | `docker run --rm -v "$PWD:/src:ro" -w /src/runtime -e PYTHONDONTWRITEBYTECODE=1 python:3.12-slim sh -c 'pip install -q -r requirements.txt && pip install -q pytest pytest-timeout && python -m pytest -p no:cacheprovider -q --timeout=60 tests'`: a chat with the API server, the sandbox and the model faked (`runtime/tests/fakes.py`) |
 | communication, tools | the runtime's line, with `communication/tests` or `tools/tests` from `/src`; run apart, as they collide when collected together |
 | shared, issuer | against MongoDB: `shared/tests`, and `issuer/tests` (a whole deployment's trust in `issuer/tests/compose.yml`) |
 | sandbox | `docker compose -f sandbox/tests/compose.yml up -d --build`, then `exec -T callers sh -c 'pip install -q aiohttp msgpack cryptography pytest pyyaml && cd /src && python -m pytest -q sandbox/tests'`, then `down -v`: its real image, on a Linux kernel, running `documentation/examples` |

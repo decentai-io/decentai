@@ -2,10 +2,10 @@ schema: 3
 agent:
   id: probe
   name: Probe
-  version: "0.1.0"
+  version: "0.2.0"
   description: >
     Tests a sandbox from inside: says what it can see and reach, and does on request what a sandbox must hold or
-    end: using memory, starting children, writing files, writing what isn't a message.
+    end: using memory, starting children, writing files, writing what isn't a message, trying what a jail refuses.
   instructions: >
     A tool for testing a sandbox, not for a person's work. Call inspect to see what a process sees.
   tags: [diagnostics]
@@ -47,3 +47,7 @@ functions:
   - {id: connect, name: Connect, description: A connection asked of its way out., level: 0,
      inputs: {type: object, required: [host, port], properties: {host: {type: string}, port: {type: integer}}},
      outputs: {type: object}}
+  - {id: attack, name: Attack its jail, description: "What a hostile program tries, each with what happened.",
+     level: 0, inputs: {type: object, properties: {}}, outputs: {type: object}}
+  - {id: orphan, name: Leave a child, description: "A child started in a session of its own, left running.",
+     level: 0, inputs: {type: object, properties: {}}, outputs: {type: object}}

@@ -22,8 +22,9 @@ async def test_its_words_are_said_and_its_state_kept():
     await chat.told(message(1, "hello"))
     await settled(chat)
     assert said(api) == ["Hi there."]
-    assert [(data["event"], data["data"]) for data in api.of("AI:Event:append")] == [
-        ("working", {}), ("saying", {"text": "Hi there."}), ("idle", {})]
+    assert [(data["event"], data["data"]) for data in api.of("AI:Event:append")] == [("working", {}), ("idle", {})]
+    # The words as they were written pass through the chat, for the API servers that ask, and are never kept.
+    assert [(event["event"], event["data"]) for _, event in chat.passing.recent] == [("saying", {"text": "Hi there."})]
     assert api.of("AI:State:save")[-1]["state"]["taken"] == [1]
     request = chat._connector.requests[0]
     assert "## Probe (probe)" in request.system_stable and "Tidy: How to tidy." in request.system_rest

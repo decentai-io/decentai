@@ -139,11 +139,11 @@ class TestLists:
         older = world.ok("AI:Chat:list", {"before": listed[0]["updated_at"].isoformat()}, org.member)["chats"]
         assert [c["chat_id"] for c in older] == [newer["chat_id"]]
 
-    def test_words_written_pass_without_a_number_of_their_own(self, world, org, chat):
+    def test_words_being_written_and_screens_are_never_kept(self, world, org, chat):
         doc = Chats().find(chat["chat_id"])
-        seqs = [Events().add(doc, name, {})["seq"] for name in ("message", "saying", "screen", "message")]
-        assert seqs[1] == seqs[2] == seqs[0] and seqs[3] == seqs[0] + 1
-        assert [e["event"] for e in Events().after(chat["chat_id"], seqs[0] - 1)] == ["message", "message"]
+        for name in ("saying", "screen"):
+            with pytest.raises(ValueError, match="pass through the runtime"):
+                Events().add(doc, name, {})
 
 
 class TestChoicesAndStops:

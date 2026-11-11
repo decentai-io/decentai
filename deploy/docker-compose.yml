@@ -25,7 +25,7 @@ services:
   # A replica set of one: the API server follows the chats' events as the database changes, which needs one. Its one
   # member proves itself to itself with a key made at each start. The issuer's account is made with the database.
   mongo:
-    image: mongo:7
+    image: mongo:7@sha256:8bb4442761a63a8dda452744082cdac9644b429807eb977b42324a63cef59ca4
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true

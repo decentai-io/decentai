@@ -130,7 +130,8 @@ others:
   sent.
 - **Coming in,** the sandbox writes each file to `in/<id>/<name>` in the home, and lists those paths in `files`.
 - **Its standard error** is never parsed. Each line of it is sent as a message the sandbox makes:
-  `{"_id": "…", "body": {"type": "log", "data": {"line": "…"}}}`.
+  `{"_id": "…", "body": {"type": "log", "data": {"line": "…"}}}`. A process sends at most 20 lines a second on
+  average, 200 at once; past that, lines are dropped, and the next line sent begins with how many were.
 - **Ending:** the sandbox closes the program's standard input. The program has 5 seconds to exit, and is then
   ended.
 - **The sandbox ends a program** that writes a line that isn't such a message or is too long, or names in `files`
@@ -159,7 +160,7 @@ it, and a caller's are `Caller:*`, so anything that implements them can be a cal
 
 | Call | Carries | Answered |
 |---|---|---|
-| `Caller:Sandbox:state` | `sandbox`, its id; `address`; `machine`; `base`; `room`, as `{processes, processes_max, memory_used, memory_max}`; `programs`, the digests it holds; `processes`, the caller's, each `{process, memory, tasks}`; `stopping` | `{id, way_out}`: the caller's id, and its way out's port |
+| `Caller:Sandbox:state` | `sandbox`, its id; `address`; `machine`; `base`; `room`, as `{processes, processes_max, memory_used, memory_max}`; `programs`, the digests it holds; `processes`, the caller's, each `{process, memory, tasks, cpu}`, `cpu` the cores it used over the last second; `stopping` | `{id, way_out}`: the caller's id, and its way out's port |
 | `Caller:Process:message` | `process`; `seq`; `from`, `program` or `sandbox`; `message`, its `files` each `{path, id, size}` | once taken |
 | `Caller:Process:ended` | `process`; `code`, its exit code; `reason` | once taken |
 | `Caller:File:piece` | `file`, a program's digest or a file's id; `offset` | `{data, size}`, or refused |
@@ -247,7 +248,7 @@ The sandbox runs as one container, started with:
 |---|---|
 | `cap_drop: ALL`; `cap_add: CHOWN, KILL, SETUID, SETGID` | `CHOWN`: root's first step hands the container's cgroup to the sandbox's user. `KILL`: the init passes `SIGTERM` on. `SETUID`, `SETGID`: each process's user is mapped. The sandbox itself runs with none |
 | `security_opt: writable-cgroups=true` | a cgroup made for each process |
-| `security_opt: seccomp=sandbox/config/seccomp.json`, `systempaths=unconfined`; on hosts with AppArmor, `apparmor=decentai-sandbox` | nsjail making its namespaces and the jail's view. The profile is Docker's default, with what nsjail needs allowed and what the sandbox refuses taken out |
+| `security_opt: seccomp=sandbox/config/seccomp.json`, `systempaths=unconfined`; on hosts with AppArmor, `apparmor=decentai-sandbox` | nsjail making its namespaces and the jail's view. The seccomp profile is Docker's default, with what nsjail needs allowed and what the sandbox refuses taken out. The AppArmor profile allows the capabilities nsjail uses, by name, and no mount of a file system that reaches the host's kernel or another machine |
 | `tmpfs: /data/homes` | homes kept in memory, counted in each process's |
 | `init: true` | an init that reaps and passes signals on |
 | its identity folder, at `AI_SANDBOX_IDENTITY` | its certificate |

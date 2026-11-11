@@ -36,7 +36,7 @@ chat is lost.
 - **One thought at a time** in each brain: the chat's own, and each task's ([5](#5-tasks)).
 - **A thought** is shown the instructions, the brain's view ([6](#6-its-history-and-what-the-model-is-shown)) and
   its tools. Its words are said in the chat; its calls are made at once, together.
-- **Its words are sent as the model writes them,** a few times a second; the message they end in replaces them.
+- **Its words are sent as the model writes them,** twice a second; the message they end in replaces them.
 - **Pictures:** of the newest 8 files the person attached, those that are pictures (PNG, JPEG, GIF or WebP, at most
   5 MiB) are shown with their message. A model that refuses pictures is shown none from then on.
 - **Then it waits for its calls,** until every one has answered, or until something new arrives. Then a call still
@@ -135,7 +135,7 @@ after each thought and each answer ([api-server](api-server.md#7-chats)).
 ## 8. What the person sees
 
 - **Its words,** as the chat's messages, with the files agents made; while the model writes them, as `saying` events,
-  which are not kept.
+  which only pass through the runtime ([runtime](runtime.md#2-its-sides)).
 - **Its work,** as the chat's events: `working` and `idle`, and `work` for each call and task as it starts and ends,
   with its id, what it is, and how it ended.
 - **Cards:** its questions, the gate's approvals, and memories and skills it offers.

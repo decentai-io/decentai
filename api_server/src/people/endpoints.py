@@ -383,6 +383,7 @@ class GroupEndpoints(Controller):
         if group["everyone"] or group["name"] == Groups.ADMINISTRATORS:
             raise Refused("conflict", "Everyone and Administrators keep their names.")
         Groups().col.update_one({"_id": group["_id"]}, {"$set": {"name": Groups.clean_name(data.get("name"))}})
+        Organizations().access_changed(caller.org_id)
         return {"group": self._public({**group, "name": Groups.clean_name(data.get("name"))})}
 
     @endpoint("Give a group its policies")
@@ -413,6 +414,7 @@ class GroupEndpoints(Controller):
             Bounds().over(caller.person, member)
         Users().col.update_many({"groups": group["_id"]}, {"$pull": {"groups": group["_id"]}})
         Groups().col.delete_one({"_id": group["_id"]})
+        Organizations().access_changed(caller.org_id)
         return {}
 
     @staticmethod

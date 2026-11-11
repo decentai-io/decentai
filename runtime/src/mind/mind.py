@@ -38,7 +38,7 @@ class Mind:
     #: A state a little under the API server's 4 MiB, as it measures it.
     STATE_MOST, BUDGET, FILES_KNOWN, TAKEN_MOST = 4_000_000, 24, 200, 100
     #: The pictures a model is shown, and how often the words it writes are sent.
-    PICTURES, PICTURE_MOST, SAYING_SECONDS = ("image/png", "image/jpeg", "image/gif", "image/webp"), 5 * 1024 * 1024, 0.25
+    PICTURES, PICTURE_MOST, SAYING_SECONDS = ("image/png", "image/jpeg", "image/gif", "image/webp"), 5 * 1024 * 1024, 0.5
 
     def __init__(self, chat: Any, loaded: dict[str, Any]):
         self.chat = chat
@@ -128,7 +128,10 @@ class Mind:
         self.brains[""].heard(f"[{now:%a %d %b %Y %H:%M %Z}] {words}", files)
 
     async def look_at(self, files: list[str]) -> None:
-        """The pictures among these files, read once: a PNG, JPEG, GIF or WebP of at most 5 MiB."""
+        """The pictures among these files, read once: a PNG, JPEG, GIF or WebP of at most 5 MiB. Those no brain
+        shows any more are let go."""
+        shown = {file for brain in self.brains.values() for file in brain.files()}
+        self.pictures = {file: seen for file, seen in self.pictures.items() if file in shown}
         for file in [file for file in files if file not in self.pictures]:
             self.pictures[file] = None
             try:
@@ -141,7 +144,8 @@ class Mind:
                     piece = await self.chat.api.call("Files:Piece:read", {"chat_id": self.chat.id, "record_id": file,
                                                                           "offset": len(data)})
                     data += bytes(piece["data"])
-                self.pictures[file] = {"mime": piece["type"], "data": base64.b64encode(data).decode()}
+                self.pictures[file] = {"mime": piece["type"],
+                                       "data": (await asyncio.to_thread(base64.b64encode, data)).decode()}
             except Refused as refused:
                 log.warning(f"{self.chat.id}: file {file} was not seen: {refused.message}")
 
@@ -251,20 +255,25 @@ class Mind:
     async def _keep(self) -> None:
         self.keeping = False
         state = self.state()
-        while len(str(state)) > self.STATE_MOST and self.trimmed():
+        over = len(str(state)) - self.STATE_MOST
+        if over > 0:
+            while over > 0 and (freed := self.trimmed()):
+                over -= freed
             state = self.state()
         await self.chat.keep(state)
 
-    def trimmed(self) -> bool:
-        """The oldest chapter of a brain keeps only its summary; with none left, the oldest output is dropped."""
-        if any(brain.history.trim() for brain in self.brains.values()):
-            return True
+    def trimmed(self) -> int:
+        """The oldest chapter of a brain keeps only its summary; with none left, the oldest output is dropped. The
+        characters that freed; 0 when nothing is left to trim."""
+        for brain in self.brains.values():
+            if freed := brain.history.trim():
+                return freed
         for brain in self.brains.values():
             for work in brain.work.values():
                 if work["output"] and work["status"] != "running":
-                    work["output"] = ""
-                    return True
-        return False
+                    freed, work["output"] = len(str(work["output"])), ""
+                    return freed
+        return 0
 
     def send(self, job: Callable[[], Awaitable[Any]]) -> None:
         """Said, told and kept in order, each after the one before."""

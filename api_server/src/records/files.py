@@ -23,8 +23,7 @@ class Files:
         if not 1 <= len(name) <= 255 or "/" in name or "\\" in name:
             raise ValueError("A file's name is 1 to 255 characters, with no slash.")
         kind = FileTypes.of(name)
-        used = sum(r["file"]["size"] for r in Records().col.find({"created_by": caller.user_id, "kind": "file"},
-                                                                  {"file.size": 1}))
+        used = await asyncio.to_thread(Records().files_size, caller.user_id)
         most = min(settings.upload_max, settings.files_per_person - used)
         if most <= 0:
             raise Refused("too_large", "You keep as many files as you may: delete some first.")
@@ -36,15 +35,16 @@ class Files:
                 await asyncio.to_thread(writing.write, piece)
             if not FileTypes.agrees(kind, head):
                 raise ValueError(f"The file's bytes are not a {kind}, as its name says.")
-        record = Records().create(caller.person, "file", {}, {}, of=None,
-                                  file={"name": name, "type": kind, "size": writing.size, "key": key,
-                                        "digest": writing.digest})
+        record = await asyncio.to_thread(Records().create, caller.person, "file", {}, {}, of=None,
+                                         file={"name": name, "type": kind, "size": writing.size, "key": key,
+                                               "digest": writing.digest})
         if of:
             try:
-                record = Records().change(record, agents=FileEndpoints()._agents(caller, record, [of]), of=of)
+                record = await asyncio.to_thread(
+                    lambda: Records().change(record, agents=FileEndpoints()._agents(caller, record, [of]), of=of))
             except ValueError:
-                Records().col.delete_one({"_id": record["_id"]})
-                Storage.current.delete(key)
+                await asyncio.to_thread(Records().col.delete_one, {"_id": record["_id"]})
+                await asyncio.to_thread(Storage.current.delete, key)
                 raise
         return {"record": Records().public(record)}
 

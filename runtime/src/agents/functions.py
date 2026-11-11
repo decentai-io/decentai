@@ -93,8 +93,9 @@ class Functions:
             kind = FileTypes.of(file["path"])
             if kind not in self.PICTURES or not FileTypes.agrees(kind, data[:16]):
                 raise CallFailed("invalid", f"{file['path']} is not a PNG, JPEG, GIF or WebP picture by its bytes.")
-            pictures.append({"mime": kind, "data": base64.b64encode(data).decode()})
-        spoken[-1]["images"] = pictures
+            pictures.append((kind, data))
+        spoken[-1]["images"] = await asyncio.to_thread(
+            lambda: [{"mime": kind, "data": base64.b64encode(data).decode()} for kind, data in pictures])
         reply = await self.chat.think(Request(system_rest=system, messages=spoken,
                                               max_tokens=inputs.get("max_tokens")), process.agent_id)
         return {"text": reply.text, "stop": "length" if reply.stop == "length" else "end"}, []

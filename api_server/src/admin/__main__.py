@@ -19,7 +19,7 @@ from ..records.store import Records
 from ..runtimes.calls import RuntimeCalls
 from ..storage.cipher import Cipher
 from ..storage.database import Database
-from ..storage.files import Folder, S3, Storage
+from ..storage.files import Storage
 from ..trail.trail import Trail
 from ..utils import Settings
 
@@ -83,10 +83,9 @@ class Admin:
         return f"{count} values sealed again under {Cipher.active}."
 
     def storage(self, args: argparse.Namespace) -> str:
-        """Every file and program copied from one storage to the other; the settings name both."""
+        """Every file and program copied from one storage to another; the settings describe both."""
         settings = Settings.read()
-        source, target = (Folder(settings.storage_folder), S3(settings.s3)) if args.to == "s3" else \
-            (S3(settings.s3), Folder(settings.storage_folder))
+        source, target = Storage.of(args.source, settings), Storage.of(args.to, settings)
         keys = [r["file"]["key"] for r in Records().col.find({"file": {"$ne": None}}, {"file.key": 1})]
         keys += [f["key"] for a in Database.db["agents"].find() for f in a["programs"].values()]
         for key in keys:
@@ -133,7 +132,9 @@ def main() -> int:
     organizations.add_argument("--admin-email", default="")
     commands.add_parser("password", help="reset a person's password").add_argument("email")
     commands.add_parser("reencrypt", help="seal every value under the active key")
-    commands.add_parser("storage", help="copy files between local and S3 storage").add_argument("to", choices=("local", "s3"))
+    storage = commands.add_parser("storage", help="copy every file from one storage to another")
+    storage.add_argument("source", choices=Storage.KINDS)
+    storage.add_argument("to", choices=Storage.KINDS)
     intermediate = commands.add_parser("intermediate", help="the issuer's intermediate: request it, or install it")
     intermediate.add_argument("action", choices=("request", "install"))
     intermediate.add_argument("--file", default="")

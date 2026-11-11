@@ -17,7 +17,7 @@ Answer = tuple[dict[str, Any], int]
 
 
 class ChatDoor:
-    """``Runtime:Chat:send`` and ``close``: taken at once, handled in the background."""
+    """``Runtime:Chat:send`` and ``close``, taken at once and handled in the background; and ``passing``."""
 
     def __init__(self, chats: Any):
         self.chats = chats
@@ -32,6 +32,13 @@ class ChatDoor:
     async def close(self, data: dict[str, Any], peer: dict[str, Any]) -> Answer:
         await self.chats.close(str(data.get("chat") or ""))
         return {}, 200
+
+    async def passing(self, data: dict[str, Any], peer: dict[str, Any]) -> Answer:
+        """What passes in a chat this runtime holds, after the number the API server has (Passing.after)."""
+        chat = self.chats.held.get(str(data.get("chat") or ""))
+        if chat is None:
+            return {"error": "This runtime doesn't hold that chat."}, 404
+        return await chat.passing.after(data.get("after")), 200
 
 
 class Checking:

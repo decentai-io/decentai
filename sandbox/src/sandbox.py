@@ -131,7 +131,7 @@ class Sandbox:
                 "room": {"processes": len(self.processes), "processes_max": len(self.users),
                          "memory_used": self.watch.memory, "memory_max": self.watch.memory_limit},
                 "programs": sorted(self.programs.held),
-                "processes": [{"process": process.name, "memory": process.used[0], "tasks": process.used[1]}
+                "processes": [{"process": process.name, **dict(zip(("memory", "tasks", "cpu"), process.used))}
                               for process in self.processes.values() if process.caller is caller],
                 "stopping": self.stopping}
 

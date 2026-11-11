@@ -19,8 +19,8 @@ class Runtimes(Store):
     SILENT, GONE = 15, 60
     ADDRESS = re.compile(r"(?:[A-Za-z0-9.\-]{1,253}|\[[0-9A-Fa-f:.]+\]):([0-9]{1,5})")
 
-    def told(self, peer: dict[str, Any], report: dict[str, Any]) -> dict[str, Any]:
-        """A report taken; the runtime's row as it stands now."""
+    def told(self, peer: dict[str, Any], report: dict[str, Any]) -> dict[str, Any] | None:
+        """A report taken; the runtime's row as it was before it, None for a runtime new here."""
         address = str(report.get("address") or "")
         if not self.ADDRESS.fullmatch(address) or not 1 <= int(address.rpartition(":")[2]) <= 65535:
             raise ValueError("A runtime reports where it is reached, as host:port.")
@@ -29,15 +29,37 @@ class Runtimes(Store):
         return self.col.find_one_and_update(
             {"_id": peer["id"]},
             {"$set": {"scope": str(metadata.get("scope") or ""), "labels": list(metadata.get("labels") or [])[:20],
-                      "address": address, "chats": [str(c) for c in report.get("chats") or []][:10000],
+                      "address": address, "chats": self.chats(report),
                       "sandboxes": sandboxes, "seen_at": self.now()},
              "$setOnInsert": {"name": "", "note": "", "draining": False, "drained": [], "since": self.now()}},
-            upsert=True, return_document=ReturnDocument.AFTER)
+            upsert=True, return_document=ReturnDocument.BEFORE)
+
+    @staticmethod
+    def chats(report: dict[str, Any]) -> list[str]:
+        return [str(chat) for chat in report.get("chats") or []][:10000]
 
     def live(self) -> list[dict[str, Any]]:
         refused = Refusals().ids()
         return [row for row in self.col.find({"seen_at": {"$gt": self.now() - timedelta(seconds=self.SILENT)}})
                 if row["_id"] not in refused]
+
+    @classmethod
+    def agents(cls, org_id: str | None = None) -> dict[tuple[str, str], dict[str, float]]:
+        """What the live runtimes run for each organization and agent: processes, memory, and the processor's cores
+        in use. One organization's alone when it is named."""
+        found: dict[tuple[str, str], dict[str, float]] = {}
+        for row in cls().live():
+            if org_id is not None and row.get("scope") not in (org_id, ""):
+                continue
+            for sandbox in row.get("sandboxes") or []:
+                for process in sandbox.get("processes") or []:
+                    if isinstance(process, dict) and (org_id is None or process.get("org_id") == org_id):
+                        agent = found.setdefault((str(process.get("org_id")), str(process.get("agent"))),
+                                                 {"processes": 0, "memory": 0, "cpu": 0.0})
+                        agent["processes"] += 1
+                        agent["memory"] += int(process.get("memory") or 0)
+                        agent["cpu"] = round(agent["cpu"] + float(process.get("cpu") or 0), 2)
+        return found
 
     def gone(self) -> list[dict[str, Any]]:
         return list(self.col.find({"seen_at": {"$lte": self.now() - timedelta(seconds=self.GONE)}}))
