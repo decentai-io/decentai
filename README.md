@@ -28,7 +28,7 @@ kept. An agent may be written in any language: [the standard](documentation/agen
 | `communication/` | how the parts talk: nodes, identities, enrolling |
 | `speech/` | speech to text and text to speech from models on the machine, in a container of its own |
 | `shared/` | what the API server and the runtime share: the rules, the model catalog, the MCP client, cron, file types |
-| `tools/` | the root tool, for the deployment's offline root, and what writes the model catalog |
+| `tools/` | the root tool, for the deployment's offline root; what writes the model catalog; installing every published agent at once |
 | `deploy/` | the stack: Compose files, the settings, and setting it up on a computer |
 | `documentation/` | the design, part by part, and how to run it |
 | `paper/` | the white paper: the design as one argument |
