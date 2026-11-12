@@ -27,6 +27,11 @@ Open `http://localhost:4300` (or `npm start` there, on 4200), give it the API se
 code: you name your organization and yourself, and are its administrator. Then add a model connection, an agent
 source, and an agent.
 
+**Every published agent at once:** make an API key (Settings, API keys) and run `python tools/install_agents.py`.
+It saves the project's catalogs as sources, or reads them again, and installs each agent they offer that is not
+installed or has a newer version; run again, it installs only what changed. `--api` names another API server,
+`--source` (once for each) catalogs of your own.
+
 **A model on this computer** (Ollama, LM Studio, vLLM) is a connection of protocol `openai`, at
 `http://host.docker.internal:<port>/v1` from inside the stack. It must answer within 300 seconds and have a large
 context window: Ollama's default of 4096 tokens is too small for the assistant's instructions and tools.
