@@ -26,6 +26,12 @@ with their room and processes. The answer says what it should drain ([api-server
 calls any API server that takes the call, passing over one it can't reach or that answers 502, 503 or 504; they
 are one to it.
 
+**What it sees of a chat's work** it tells too, for the chat's person to inspect
+([api-server](api-server.md#7-chats)): each model call's usage, how long it took and what for (a thought, a fold, or
+an agent's `model`); each agent's process as it starts and ends (§4); what processes reached through the proxy (§7);
+and each of the person's skills the assistant reads and MCP tools it calls. All of it goes in the background: nothing
+in the chat waits for it, and what an API server doesn't take is a line in the log, never a failure.
+
 **An API server tells it,** for a chat: a person's message, a card's answer, a new contract, a stop, a screen's
 input, a schedule due, a resume, and a close. A chat's frames are taken one at a time, in the order they came; a
 card's answer goes at once to what waits on it. It asks it to check an agent, a model connection, or an MCP
@@ -72,9 +78,13 @@ One process for each agent of a chat that is active ([agents](agents.md#1-one-pr
   call in flight on it.
 - **Ended** after `AI_RUNTIME_AGENT_PROCESS_IDLE_MINUTES` with no call in flight, or by its sandbox, which says why.
   Its calls in flight fail with that reason.
+- **Told** to an API server as it starts, with its agent, version, sandbox and machine; and as it ends, with why:
+  `idle`, `replaced` (its release no longer the contract's), `stopped` (its chat let go), `failed` (it failed or did
+  not end when cancelled), or its sandbox's reason (`exited` with its code, `memory`), or `sandbox_gone`; and the
+  most memory and the processor's seconds its sandbox's reports showed.
 - **Notes** go on as the chat's events: progress, and screens; the person's screen input comes back as a note.
 - **Files** go into a call as the person's files, pulled by the sandbox from the runtime; files a program returns are
-  kept as the chat's files.
+  kept as the chat's person's files, marked with the chat and the agent.
 
 ## 5. The gate
 
@@ -130,6 +140,11 @@ the proxy takes, `502` the host could not be looked up or did not answer. Each c
 line in the runtime's log. A process has at most `AI_RUNTIME_AGENT_CONNECTIONS_MAX` open, and one with no bytes either
 way for 5 minutes is closed.
 
+What each process reaches is counted by host and port: the connections allowed (a UDP host once each time it is
+decided) and refused, the bytes out and in, and when first and last; never the bytes themselves. The counts go to an
+API server for the process's chat every 30 seconds while it runs, and as it ends; up to 500 hosts and ports a
+process between two, past which a new one is not counted.
+
 ## 8. The assistant's port
 
 The assistant is what thinks in a chat ([assistant](assistant.md)). It is made with the chat and what was kept of it,
@@ -141,7 +156,7 @@ reads the chat's contract, and takes only the chat's actions; it runs its own ta
 | a schedule due, its prompt or its function, with its trust | `call` an agent's function, and `mcp` a person's tool, through the gate at a run's trust |
 | a stop, or a stop of one call or task | `ask` the person a question, however long they take; `offer` a memory or a skill; `expire` a card |
 | a card answered after its work stopped waiting | `schedule`, list its `schedules`, `unschedule`; say how a run `ran` |
-| a new contract | `think` with the model; `save` its state; `store` an output whole and read its `output`; read a `file` |
+| a new contract | `think` with the model; `report` what it did, such as a skill read; `save` its state; `store` an output whole and read its `output`; read a `file` |
 
 It is told when a piece of its work waits on a card, and goes on again (`waiting`), asked whether it is `idle`, and
 `close`d before the chat is let go.

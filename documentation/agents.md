@@ -269,7 +269,9 @@ a way out only if its manifest declares a host or one of its functions calls `ne
 | `[]` | nothing |
 
 - **Hosts opened by `network.open`** close when the call ends.
-- **The hosts each call reached,** and how often, are kept with the call's record.
+- **The hosts each process reached** are kept with its chat, not with each call: for each host and port, the
+  connections allowed and refused and the bytes each way, never their content. The chat's person sees them when they
+  inspect it ([runtime](runtime.md#7-the-proxy); [api-server](api-server.md#7-chats)).
 
 | Variable | Is | Default |
 |---|---|---|

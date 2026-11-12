@@ -175,6 +175,10 @@ class TestOpenAI:
         assert reply.text == "Hello there" and len(asked) == 2
         assert sent[0]["reasoning_effort"] == "high" and "reasoning_effort" not in sent[1]
 
+    async def test_a_server_of_ones_own_is_reached_with_no_key(self, monkeypatch):
+        reply, _, asked, _ = await replay(OpenAI, self.stream(), "text/event-stream", monkeypatch, api_key="")
+        assert reply.text == "Hello there" and asked == ["/chat/completions"]
+
 
 class TestResponses:
     REASONING = {"type": "reasoning", "id": "rs_1", "summary": [{"type": "summary_text", "text": "Thinking."}],

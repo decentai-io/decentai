@@ -6,6 +6,7 @@ from __future__ import annotations
 import asyncio
 import collections
 import contextlib
+import functools
 import itertools
 import json
 import logging
@@ -33,8 +34,9 @@ class Chat:
 
     The assistant's port: it reads ``contract``, and takes the chat's actions: ``say``, ``event``, ``call``, ``mcp``,
     ``mcp_tools``, ``ask``, ``offer``, ``expire``, ``schedule``, ``schedules``, ``unschedule``, ``ran``, ``think``,
-    ``save``, ``store``, ``output`` and ``file``. It is told what happens with ``told(event)``, told when its work waits
-    on a card with ``waiting(work, card, before)``, asked ``idle()``, and ``close()``d before the chat is let go."""
+    ``report``, ``save``, ``store``, ``output`` and ``file``. It is told what happens with ``told(event)``, told when
+    its work waits on a card with ``waiting(work, card, before)``, asked ``idle()``, and ``close()``d before the chat
+    is let go."""
 
     #: What only passes (words as the model writes them, what a thread is doing, pictures of a screen): the last kept,
     #: how long an ask is held.
@@ -122,7 +124,7 @@ class Chat:
         for agent_id, process in list(self.processes.items()):
             if agent_id not in agents or process.name != self._named(agents[agent_id]):
                 del self.processes[agent_id]
-                self.later(process.end())
+                self.later(process.end("replaced"))
         if self._connector is not None:
             self.later(self._connector.close())
             self._connector = None
@@ -137,12 +139,23 @@ class Chat:
         for agent_id, process in list(self.processes.items()):
             if not process.busy and time.monotonic() - process.used_at > idle_seconds:
                 del self.processes[agent_id]
-                self.later(process.end())
+                self.later(process.end("idle"))
 
-    def forget(self, process: Process) -> None:
-        """A process that ended."""
+    def forget(self, process: Process, end: dict[str, Any], reached: list[dict[str, Any]]) -> None:
+        """A process that ended: what it reached since last told, and how it ended, reported. ``end`` is its
+        sandboxes' word (Sandboxes.on_ended); an end it was asked for says why it was asked."""
         if self.processes.get(process.agent["agent_id"]) is process:
             del self.processes[process.agent["agent_id"]]
+        self.reached(process, reached)
+        reason = (process.ending or "ended") if end["reason"] == "ended" else end["reason"]
+        self.report("AI:Process:ended", {"process": process.name, "reason": reason, "detail": process.gone,
+                                         "memory_peak": end["memory_peak"], "cpu_seconds": end["cpu_seconds"]})
+
+    def reached(self, process: Process, hosts: list[dict[str, Any]]) -> None:
+        """What a process reached through the proxy since last told, each host and port counted (Proxy.taken),
+        reported."""
+        if hosts:
+            self.report("AI:Network:record", {"agent": process.agent["agent_id"], "hosts": hosts})
 
     async def let_go(self) -> None:
         """Its assistant closed first, its state kept; the cards it waits on stay open for when it is held again; its
@@ -152,7 +165,7 @@ class Chat:
         self._loop.cancel()
         self.cards.give_up()
         for process in self.processes.values():
-            await process.end()
+            await process.end("stopped")
         self.processes.clear()
         if self._connector is not None:
             await self._connector.close()
@@ -208,6 +221,7 @@ class Chat:
                 "name": f"{server['name']} · {tool}", "inputs": self.shown(arguments), "why": why[:1000],
                 "work": work, "before": True, **({"card": card} if card else {})}
         await self.checked(level, item, self.trust if trust is None else trust)
+        self.report("AI:Use:mcp", {"server_id": server["id"], "server": server["name"], "tool": tool})
         async with McpClient(server["address"], server.get("headers") or {}) as client:
             return await client.call(tool, arguments)
 
@@ -246,10 +260,10 @@ class Chat:
         except ApiServers.Refused as refused:
             log.warning(f"{self.id}: a schedule's run was not told: {refused.message}")
 
-    async def think(self, request: Connector.Request, on_text: OnText | None = None,
-                    agent: str = "") -> Connector.Reply:
-        """One request to the chat's model connection, its words given to ``on_text`` as they come; what it used,
-        reported."""
+    async def think(self, request: Connector.Request, on_text: OnText | None = None, agent: str = "",
+                    purpose: str = "thought") -> Connector.Reply:
+        """One request to the chat's model connection, its words given to ``on_text`` as they come; what it used, how
+        long it took and what for (a thought, a fold, or an agent's ``model``), reported."""
         model = self.contract.get("model")
         if not model:
             raise Process.Failed("failed", "This chat has no model connection.")
@@ -259,10 +273,11 @@ class Chat:
                       "model": model.get("chosen") or (model.get("models") or [""])[0],
                       "reasoning_effort": self.contract["chat"]["settings"].get("effort")}
             self._connector = Factory.create(config, self.engine.settings.inside_hosts, self.id)
+        began = time.monotonic()
         reply = await self._connector.stream(request, on_text)
-        self.later(self.api.call("AI:Usage:record", {
-            "chat_id": self.id, "agent": agent, "provider": model["provider"], "model": reply.model,
-            **{name: getattr(reply.usage, name) for name in Usage.FIELDS}}))
+        self.report("AI:Usage:record", {"agent": agent, "provider": model["provider"], "model": reply.model,
+                                        "purpose": purpose, "latency_ms": round((time.monotonic() - began) * 1000),
+                                        **{name: getattr(reply.usage, name) for name in Usage.FIELDS}})
         return reply
 
     async def save(self, parts: dict[str, Any], whole: bool = False) -> None:
@@ -322,6 +337,16 @@ class Chat:
         task.add_done_callback(self._tasks.discard)
         return task
 
+    def report(self, endpoint: str, data: dict[str, Any]) -> None:
+        """What the chat did, told to an API server in the background: nothing waits for it, and one not taken is
+        logged."""
+        async def told() -> None:
+            try:
+                await self.api.call(endpoint, {"chat_id": self.id, **data})
+            except ApiServers.Refused as refused:
+                log.warning(f"{self.id}: {endpoint} was not taken: {refused.message}")
+        self.later(told())
+
     # -- within ---------------------------------------------------------------------------------------
 
     async def _process(self, agent_id: str) -> Process:
@@ -330,8 +355,8 @@ class Chat:
             if agent_id not in self.processes:
                 agent, settings, programs = self.agents[agent_id], self.engine.settings, self.programs
                 process = Process(self.engine.sandboxes, self._named(agent), agent, programs.serve, programs.noted,
-                                  programs.keep, file_most=self.engine.FILE_MOST, ready_seconds=settings.ready_seconds,
-                                  cancel_seconds=settings.cancel_seconds)
+                                  functools.partial(programs.keep, agent_id), file_most=self.engine.FILE_MOST,
+                                  ready_seconds=settings.ready_seconds, cancel_seconds=settings.cancel_seconds)
                 self.engine.processes[process.name] = (self, process)
                 try:
                     await process.start()
@@ -339,6 +364,9 @@ class Chat:
                     self.engine.processes.pop(process.name, None)
                     raise
                 self.processes[agent_id] = process
+                self.report("AI:Process:started", {"process": process.name, "agent": agent_id,
+                                                   "version": agent["version"],
+                                                   **self.engine.sandboxes.placed(process.name)})
             return self.processes[agent_id]
 
     def _named(self, agent: dict[str, Any]) -> str:

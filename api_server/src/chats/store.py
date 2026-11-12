@@ -1,15 +1,17 @@
-"""Chats, their state, messages, events, cards, remembered approvals, schedules and outputs (api-server.md §7)."""
+"""Chats, their state, messages, events, cards, remembered approvals, schedules and outputs; and what is seen of their
+work: processes, traffic, the skills and tools used, the records reached (api-server.md §7)."""
 
 from __future__ import annotations
 
 import hashlib
 import re
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any
 
-from pymongo import ReturnDocument
+from pymongo import ReturnDocument, UpdateOne
 
 from ..storage.database import Store
+from ..utils import Settings
 
 
 class Chats(Store):
@@ -278,3 +280,142 @@ class Outputs(Store):
 
     def read(self, chat_id: str, ref: str) -> dict[str, Any] | None:
         return self.col.find_one({"_id": f"{chat_id}:{ref}"})
+
+
+class Seen(Store):
+    """What is seen of a chat's work, for its person to inspect: kept as the trail and usage are, AI_API_KEPT_DAYS,
+    and gone by age alone (api-server.md §9)."""
+
+    EXPIRES = ([("expires_at", Store.ASC)], {"expireAfterSeconds": 0})
+
+    @staticmethod
+    def until() -> datetime:
+        return Store.expires(Settings.read().kept_days * 86400)
+
+    @staticmethod
+    def owned(chat: dict[str, Any]) -> dict[str, Any]:
+        """What a new document of a chat's is made with, besides its own fields."""
+        return {"_id": Store.new_id(), "org_id": chat["org_id"], "user_id": chat["user_id"]}
+
+
+class Processes(Seen):
+    """Its agents' processes, as its holder tells them: where each ran, when it started and ended, why, and the most
+    memory and the processor's seconds it was seen using. One still running when its runtime is gone ends with it."""
+
+    COLLECTION = "processes"
+    INDEXES = (([("chat_id", Store.ASC), ("_id", Store.DESC)], {}),
+               ([("runtime", Store.ASC), ("ended_at", Store.ASC)], {}), Seen.EXPIRES)
+    #: What a runtime tells of a process as it starts, and the most of each.
+    STARTED = {"process": 200, "agent": 40, "version": 40, "sandbox": 200, "machine": 40}
+
+    def started(self, chat: dict[str, Any], runtime: str, data: dict[str, Any]) -> None:
+        self.col.insert_one({**self.owned(chat), "chat_id": chat["_id"], "runtime": runtime,
+                             **{key: str(data.get(key) or "")[:most] for key, most in self.STARTED.items()},
+                             "started_at": self.now(), "ended_at": None, "reason": "", "detail": "",
+                             "memory_peak": None, "cpu_seconds": None, "expires_at": self.until()})
+
+    def ended(self, chat: dict[str, Any], data: dict[str, Any]) -> None:
+        """The last process of its name still running in the chat, ended."""
+        used = {key: int(data[key]) if type(data.get(key)) in (int, float) and data[key] >= 0 else None
+                for key in ("memory_peak", "cpu_seconds")}
+        self.col.find_one_and_update(
+            {"chat_id": chat["_id"], "process": str(data.get("process") or ""), "ended_at": None},
+            {"$set": {"ended_at": self.now(), "reason": str(data.get("reason") or "ended")[:40],
+                      "detail": str(data.get("detail") or "")[:300], **used}}, sort=[("_id", Store.DESC)])
+
+    def of(self, chat_id: str) -> list[dict[str, Any]]:
+        """A chat's, the newest first, at most 100."""
+        return list(self.col.find({"chat_id": chat_id}).sort("_id", Store.DESC).limit(100))
+
+    def gone(self, runtimes: list[str]) -> None:
+        """What these runtimes still ran, ended with them."""
+        self.col.update_many({"runtime": {"$in": runtimes}, "ended_at": None},
+                             {"$set": {"ended_at": self.now(), "reason": "runtime_gone"}})
+
+    @classmethod
+    def public(cls, row: dict[str, Any]) -> dict[str, Any]:
+        return {key: row[key] for key in (*cls.STARTED, "runtime", "started_at", "ended_at", "reason", "detail",
+                                          "memory_peak", "cpu_seconds")}
+
+
+class Traffic(Seen):
+    """What its agents' processes reached through their runtime's proxy, one document for each agent, host and port:
+    connections allowed and refused, bytes out and in, and when first and last; added up from what the holder tells,
+    in batches."""
+
+    COLLECTION = "traffic"
+    INDEXES = (([("chat_id", Store.ASC), ("agent", Store.ASC), ("host", Store.ASC), ("port", Store.ASC)],
+                {"unique": True}), Seen.EXPIRES)
+    COUNTS = ("connections", "refused", "bytes_out", "bytes_in")
+
+    def add(self, chat: dict[str, Any], agent: str, rows: list[dict[str, Any]]) -> None:
+        """Each row, ``{host, port, first_at, last_at}`` and the counts, added to what was kept of it."""
+        until = self.until()
+        self.col.bulk_write([UpdateOne(
+            {"chat_id": chat["_id"], "agent": agent, "host": row["host"], "port": row["port"]},
+            {"$inc": {name: row[name] for name in self.COUNTS}, "$min": {"first_at": row["first_at"]},
+             "$max": {"last_at": row["last_at"]}, "$set": {"expires_at": until}, "$setOnInsert": self.owned(chat)},
+            upsert=True) for row in rows], ordered=False)
+
+    def busiest(self, chat_id: str) -> list[dict[str, Any]]:
+        """A chat's, the most bytes first, at most 200."""
+        return list(self.col.aggregate([{"$match": {"chat_id": chat_id}},
+                                        {"$addFields": {"bytes": {"$add": ["$bytes_out", "$bytes_in"]}}},
+                                        {"$sort": {"bytes": -1, "connections": -1}}, {"$limit": 200}]))
+
+    @classmethod
+    def public(cls, row: dict[str, Any]) -> dict[str, Any]:
+        return {key: row[key] for key in ("agent", "host", "port", *cls.COUNTS, "first_at", "last_at")}
+
+
+class Uses(Seen):
+    """The person's skills its assistant read and MCP tools it called: one document for each skill, and for each
+    server's tool, counted."""
+
+    COLLECTION = "uses"
+    INDEXES = (([("chat_id", Store.ASC), ("what", Store.ASC), ("ref", Store.ASC), ("tool", Store.ASC)],
+                {"unique": True}), Seen.EXPIRES)
+
+    def count(self, chat: dict[str, Any], what: str, ref: str, name: str, tool: str = "") -> None:
+        """``what`` is skill or mcp; ``ref`` the skill's or the server's id; ``name`` the name its person gave it."""
+        self.col.update_one({"chat_id": chat["_id"], "what": what, "ref": ref, "tool": tool},
+                            {"$inc": {"times": 1}, "$set": {"name": name, "last_at": self.now(),
+                                                            "expires_at": self.until()},
+                             "$setOnInsert": self.owned(chat)}, upsert=True)
+
+    def of(self, chat_id: str, what: str) -> list[dict[str, Any]]:
+        """A chat's skills or tools, the last used first, at most 200."""
+        return list(self.col.find({"chat_id": chat_id, "what": what}).sort("last_at", Store.DESC).limit(200))
+
+
+class RecordUses(Seen):
+    """The records its agents reached, by agent, resource and record (a list reaches no one record: its ref is ''),
+    each operation counted. A label a person may read names the record, never a value."""
+
+    COLLECTION = "record_uses"
+    INDEXES = (([("chat_id", Store.ASC), ("agent", Store.ASC), ("resource", Store.ASC), ("ref", Store.ASC)],
+                {"unique": True}),
+               ([("chat_id", Store.ASC), ("last_at", Store.DESC)], {}), Seen.EXPIRES)
+    OPERATIONS = ("read", "list", "create", "update", "delete")
+
+    def count(self, chat: dict[str, Any], agent: str, resource: dict[str, Any], record: dict[str, Any] | None,
+              operation: str) -> None:
+        """``resource`` as its agent declares it, with its kind; ``record`` the one reached, or None. The label is a
+        file's name, the name its person gave the record, or the resource's label."""
+        named = ((record.get("file") or {}).get("name") or record.get("name")) if record else ""
+        label = named or resource.get("label") or resource["id"]
+        self.col.update_one({"chat_id": chat["_id"], "agent": agent, "resource": resource["id"],
+                             "ref": record["_id"] if record else ""},
+                            {"$inc": {f"operations.{operation}": 1},
+                             "$set": {"kind": resource["kind"], "label": label, "last_at": self.now(),
+                                      "expires_at": self.until()},
+                             "$setOnInsert": self.owned(chat)}, upsert=True)
+
+    def of(self, chat_id: str) -> list[dict[str, Any]]:
+        """A chat's, the last reached first, at most 200."""
+        return list(self.col.find({"chat_id": chat_id}).sort("last_at", Store.DESC).limit(200))
+
+    @classmethod
+    def public(cls, row: dict[str, Any]) -> dict[str, Any]:
+        return {**{key: row[key] for key in ("kind", "agent", "resource", "ref", "label", "last_at")},
+                "operations": {name: row["operations"].get(name, 0) for name in cls.OPERATIONS}}

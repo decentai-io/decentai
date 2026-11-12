@@ -24,10 +24,14 @@ class Proxy:
     ``await decide(source, protocol, host, port)`` is asked, ``protocol`` being "tcp" or "udp": a reason refuses,
     None allows, and an asyncio future allows until it is done, when what it allowed is closed. A name refused is never
     looked up. One allowed is looked up once, every address it answers with must be public, and only those addresses
-    are reached: never this machine, its network, or a cloud's metadata address."""
+    are reached: never this machine, its network, or a cloud's metadata address.
+
+    What each source reached is counted by host and port, for the caller to take (``taken``): never a byte's content."""
 
     #: The longest HTTP request head; how long one step may take; a connection quiet both ways IDLE seconds is closed.
     HEAD_MOST, SECONDS, IDLE = 16 * 1024, 20, 300
+    #: The hosts and ports counted for one source until it is taken; past them, a new one is not counted.
+    COUNTED_MOST = 500
     #: Headers of a plain http request that are the proxy's, not the host's.
     HOPS = (b"host", b"connection", b"keep-alive", b"proxy-connection", b"proxy-authorization")
     #: The runtime's one rule for what is a public address, and its lookup (utils.py); a test may stand in for them.
@@ -38,6 +42,13 @@ class Proxy:
         self.decide, self.most = decide, most
         #: Connections open now, by source.
         self.open: collections.Counter = collections.Counter()
+        #: What each source reached since it was last taken, by (host, port).
+        self.counted: dict[Any, dict[tuple[str, int], dict[str, Any]]] = {}
+
+    def taken(self, source: Any) -> list[dict[str, Any]]:
+        """What a source reached since this was last asked, then forgotten here: for each host and port, the
+        connections allowed and refused, the bytes out and in, and when first and last, in Unix seconds."""
+        return [{"host": host, "port": port, **row} for (host, port), row in self.counted.pop(source, {}).items()]
 
     async def serve(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter, source: Any) -> None:
         """One connection of a source: SOCKS5 when its first byte is 5, else an HTTP proxy's request. Served until
@@ -83,7 +94,7 @@ class Proxy:
             writer.write(b"HTTP/1.1 200 Connection established\r\n\r\n")
         else:
             up_writer.write(self.forwarded(head, method, path, version, host, port))
-        await self._carry(reader, writer, up_reader, up_writer, until)
+        await self._carry(reader, writer, up_reader, up_writer, until, (source, host, port))
 
     @staticmethod
     def aimed(method: str, target: str) -> tuple[str, int, str]:
@@ -140,7 +151,7 @@ class Proxy:
         except (PermissionError, ConnectionError) as error:
             return self._socks_answer(writer, 2 if isinstance(error, PermissionError) else 4)
         self._socks_answer(writer, 0)
-        await self._carry(reader, writer, up_reader, up_writer, until)
+        await self._carry(reader, writer, up_reader, up_writer, until, (source, host, port))
 
     async def _udp(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter, source: Any) -> None:
         """Datagrams between the client and any host, relayed while this connection stays open: each new host decided
@@ -173,6 +184,7 @@ class Proxy:
                         out[family] = self._datagrams("::" if family == socket.AF_INET6 else "0.0.0.0")
                         tasks.add(asyncio.ensure_future(inward(out[family])))
                     await loop.sock_sendto(out[family], data[3 + end:], (address, port))
+                    self._count(source, host, port, bytes_out=len(data) - 3 - end)
 
         async def inward(sock: socket.socket) -> None:
             while True:
@@ -180,6 +192,7 @@ class Proxy:
                 if sender[0] is not None and allowed(back.get(came[:2])):
                     seen[0] = time.monotonic()
                     await loop.sock_sendto(relay, b"\x00\x00\x00" + self.packed(*came[:2]) + data, sender[0])
+                    self._count(source, *back[came[:2]], bytes_in=len(data))
 
         tasks = {asyncio.ensure_future(outward())}
         self._socks_answer(writer, 0, relay.getsockname()[:2])
@@ -231,12 +244,26 @@ class Proxy:
 
     # -- what both share --------------------------------------------------------------------------------
 
+    def _count(self, source: Any, host: str, port: int, **counts: int) -> None:
+        """Counts added to what a source reached at host:port, now its last time."""
+        rows, now = self.counted.setdefault(source, {}), time.time()
+        row = rows.get((host, port))
+        if row is None:
+            if len(rows) >= self.COUNTED_MOST:
+                return
+            row = rows[(host, port)] = {"connections": 0, "refused": 0, "bytes_out": 0, "bytes_in": 0,
+                                        "first_at": now}
+        for name, value in counts.items():
+            row[name] += value
+        row["last_at"] = now
+
     async def _decided(self, source: Any, protocol: str, host: str, port: int) -> tuple[list[str], Any]:
         """The addresses host:port may be reached at, and the future it may be reached until (or None): decided by
         name first, then looked up, every address public. PermissionError when it may not be reached; ConnectionError
         when the name has no address."""
         def refused(reason: str) -> PermissionError:
             log.info(f"{source}: {protocol} {host}:{port} refused: {reason}")
+            self._count(source, host, port, refused=1)
             return PermissionError(reason)
 
         if self.open[source] > self.most:
@@ -251,6 +278,7 @@ class Proxy:
         if not all(map(self.public, found)):
             raise refused(f"{host} is not a public address.")
         log.info(f"{source}: {protocol} {host}:{port} allowed")
+        self._count(source, host, port, connections=1)
         return found, answer
 
     async def _connect(self, source: Any, host: str,
@@ -265,10 +293,13 @@ class Proxy:
         raise ConnectionError(f"{host}:{port} did not answer.")
 
     async def _carry(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter,
-                     up_reader: asyncio.StreamReader, up_writer: asyncio.StreamWriter, until: Any) -> None:
-        """Bytes both ways until either side ends, both are quiet IDLE seconds, or until is done."""
+                     up_reader: asyncio.StreamReader, up_writer: asyncio.StreamWriter, until: Any,
+                     aimed: tuple[Any, str, int]) -> None:
+        """Bytes both ways until either side ends, both are quiet IDLE seconds, or until is done; counted for
+        ``aimed``, the source, host and port."""
         seen = [time.monotonic()]
-        pipes = asyncio.gather(self._pipe(reader, up_writer, seen), self._pipe(up_reader, writer, seen),
+        pipes = asyncio.gather(self._pipe(reader, up_writer, seen, lambda size: self._count(*aimed, bytes_out=size)),
+                               self._pipe(up_reader, writer, seen, lambda size: self._count(*aimed, bytes_in=size)),
                                return_exceptions=True)
         if until is not None:
             await asyncio.wait({pipes, until}, return_when=asyncio.FIRST_COMPLETED)
@@ -277,8 +308,10 @@ class Proxy:
         await pipes
 
     @classmethod
-    async def _pipe(cls, source: asyncio.StreamReader, target: asyncio.StreamWriter, seen: list[float]) -> None:
-        """One way of a connection; ``seen`` is when bytes last went either way."""
+    async def _pipe(cls, source: asyncio.StreamReader, target: asyncio.StreamWriter, seen: list[float],
+                    count: Callable[[int], None]) -> None:
+        """One way of a connection, the size of each piece given to ``count``; ``seen``: when bytes last went either
+        way."""
         try:
             while True:
                 try:
@@ -291,6 +324,7 @@ class Proxy:
                     break
                 seen[0] = time.monotonic()
                 target.write(data)
+                count(len(data))
                 await target.drain()
         finally:
             target.close()

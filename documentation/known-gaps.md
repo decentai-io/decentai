@@ -98,7 +98,8 @@ which matter with scale, are for later.
   other failure answers the program with `failed`.
 - [x] **P2** Usage leaves out prompt-cache reads and writes (though "input" excludes them), reasoning tokens, purpose
   and duration, so cost is under-reported. `runtime/src/chats/chat.py`, `shared/llm/`. The old: `llms/meter.py`.
-  *Done:* Cache reads and writes and reasoning are reported, kept and priced, and the usage page counts them.
+  *Done:* Cache reads and writes and reasoning are reported, kept and priced, and the usage page counts them. And
+  (2026-11-12) each call's time, duration and purpose, shown when a chat is inspected.
 - [x] **P3** Each call reads the session, user, organization, groups and policies and writes a rate-limit counter, 5–6
   round trips with no cache; the old answered these from its `AccessCache`. `api_server/src/doors/callers.py`,
   `doors/limits.py`, `people/permissions.py`. *Done:* Who calls is one read: the session or key, the person and the organization (its settings and access version with it); what the person's groups and policies allow is kept on each server by that access version, raised by every change to access, so it holds from the next call; how often people call is counted in memory and added once a second; the trail is written after the answer, a batch a second; a runtime's standing in a chat is kept 2 s. A person's read is 3 round trips, from 8; a change, 3 from 9; writing in a chat, 9 from 18 (measured with pymongo's command listener).*

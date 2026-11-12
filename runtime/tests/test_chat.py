@@ -8,6 +8,7 @@ import json
 
 from fakes import calls, message, placed, said, settled, until, work
 from runtime.assistant.assistant import Assistant
+from runtime.controllers.api_servers import ApiServers
 
 
 def sent(engine):
@@ -167,6 +168,41 @@ async def test_what_a_program_reaches_declared_revealed_or_opened_for_its_call_a
     assert all(isinstance(reason, str) for reason in (before[1], before[3], before[4], after[2]))
     assert after[0] is None and isinstance(after[1], asyncio.Future) and after[1].done()  # closed with its call
     assert work(chat)[0]["records"] == [{"operation": "read", "resource": "mailbox", "ref": "s1"}]
+
+
+async def test_what_a_chat_does_is_reported_as_it_goes_with_nothing_waiting_for_it():
+    api, engine, chat = await placed([calls(("skill", {"name": "tone"}), ("probe__report", {})), "Hi back.", "Done."])
+    chat.contract["assistant"]["skills"] = [{"_id": "s1", "name": "Tone", "description": "How to write.",
+                                             "text": "Be brief."}]
+
+    async def thinks(program, inputs):
+        await program.ask("model", {"messages": [{"role": "user", "text": "Hi"}]})
+        return {}
+
+    engine.sandboxes.behave["report"] = thinks
+    chat.put(message(1, "Check it"))
+    await until(lambda: "Done." in said(api))
+    await settled(chat)
+    used = api.of("AI:Usage:record")
+    assert [(u["purpose"], u["agent"]) for u in used] == [("thought", ""), ("agent", "probe"), ("thought", "")]
+    assert all(isinstance(u["latency_ms"], int) and u["latency_ms"] >= 0 for u in used)
+    assert api.of("AI:Use:skill") == [{"chat_id": "chat1", "skill_id": "s1", "name": "Tone"}]
+    name = chat.processes["probe"].name
+    assert api.of("AI:Process:started") == [{"chat_id": "chat1", "process": name, "agent": "probe",
+                                             "version": "1.0.0", "sandbox": "sb1", "machine": "x86_64"}]
+    chat.sweep(0)
+    ended = await until(lambda: api.of("AI:Process:ended"))
+    assert ended == [{"chat_id": "chat1", "process": name, "reason": "idle", "detail": "ended", "memory_peak": 2048,
+                      "cpu_seconds": 0.5}]
+
+
+async def test_a_report_not_taken_is_logged_and_never_fails_the_chat(caplog):
+    api, engine, chat = await placed(["Hello."])
+    api.answers["AI:Usage:record"] = ApiServers.Refused("failed", "No API server took the call.")
+    chat.put(message(1, "Hi"))
+    await until(lambda: said(api) == ["Hello."])
+    await settled(chat)
+    assert "AI:Usage:record was not taken" in caplog.text
 
 
 def test_a_state_is_cut_into_parts_and_put_back_together():

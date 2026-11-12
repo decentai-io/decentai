@@ -10,7 +10,7 @@ from typing import Any
 from ..agents.manifest import Standard
 from ..agents.store import Agents
 from ..chats.endpoints import CardEndpoints
-from ..chats.store import Cards, Remembered, Schedules
+from ..chats.store import Cards, RecordUses, Remembered, Schedules
 from ..doors.calls import CHAT, Caller, Controller, Refused, endpoint
 from ..people.permissions import ALLOW, DENY, Rules
 from .oauth import Connections
@@ -96,13 +96,14 @@ class AgentRecordEndpoints(Controller):
 
     @endpoint("record.list", by=CHAT, changes=False)
     def list(self, data: dict[str, Any], caller: Caller) -> dict[str, Any]:
-        _, resource = Gate().check(caller, data, "list", 0)
+        agent, resource = Gate().check(caller, data, "list", 0)
         query = self._query(caller, data, resource["kind"])
         for name, value in (data.get("filters") or {}).items():
             if not isinstance(value, (str, int, float, bool)) or "$" in name or "." in name:
                 raise Refused("invalid", "A filter matches a keys field's text, number or true/false.")
             query[f"keys.{name}"] = value
         found = Records().page(query, data.get("after"), data.get("limit"))
+        RecordUses().count(caller.chat, agent["agent_id"], resource, None, "list")
         return {"records": [{"ref": r["_id"], **({"name": r["file"]["name"], "type": r["file"]["type"],
                                                  "size": r["file"]["size"]} if r.get("file") else {"fields": r["keys"]})}
                             for r in found],
@@ -111,10 +112,11 @@ class AgentRecordEndpoints(Controller):
     @endpoint("record.read", by=CHAT, changes=False)
     async def read(self, data: dict[str, Any], caller: Caller) -> dict[str, Any]:
         """A secret's values are level 2; a connected account's are a good access token, never its refresh token."""
-        resource = (await self._gate(caller, data, "read", 0))[1]
+        agent, resource = await self._gate(caller, data, "read", 0)
         if resource["kind"] == "secret":
             await self._gate(caller, data, "read", 2)
         record = await self._thread(self._record, caller, data, resource)
+        await self._thread(RecordUses().count, caller.chat, agent["agent_id"], resource, record, "read")
         if record.get("file"):
             return {"ref": record["_id"], **{k: record["file"][k] for k in ("name", "type", "size")}}
         values = await self._thread(Records().opened, record)
@@ -131,25 +133,31 @@ class AgentRecordEndpoints(Controller):
                                              "kind": "file", "of": None})
             if record is None:
                 raise Refused("not_found", "No file of this chat's person by that id.")
-            return {"ref": Records().change(record, of=of, agents=[of])["_id"]}
+            record = Records().change(record, of=of, agents=[of])
+            RecordUses().count(caller.chat, agent["agent_id"], resource, record, "create")
+            return {"ref": record["_id"]}
         keys, values, empty = Fields.split(resource, data.get("fields") or {}, whole=False)
         record = Records().create(caller.person, resource["kind"], keys, values, of)
+        RecordUses().count(caller.chat, agent["agent_id"], resource, record, "create")
         return {"ref": record["_id"], **self._asked(caller, data, record, resource, empty)}
 
     @endpoint("record.update", by=CHAT)
     def update(self, data: dict[str, Any], caller: Caller) -> dict[str, Any]:
-        _, resource = Gate().check(caller, data, "update", LEVEL["update"])
+        agent, resource = Gate().check(caller, data, "update", LEVEL["update"])
         record = self._record(caller, data, resource)
         given = data.get("fields") or {}
         keys, values, empty = Fields.split(resource, {k: v for k, v in given.items() if v is not None}, whole=False)
         empty = [name for name in empty if name in given]
         record = Records().change(record, keys={**record["keys"], **keys}, values={**Records().opened(record), **values})
+        RecordUses().count(caller.chat, agent["agent_id"], resource, record, "update")
         return {"ref": record["_id"], **self._asked(caller, data, record, resource, empty)}
 
     @endpoint("record.delete", by=CHAT)
     def delete(self, data: dict[str, Any], caller: Caller) -> dict[str, Any]:
-        _, resource = Gate().check(caller, data, "delete", LEVEL["delete"])
-        Records().col.delete_one({"_id": self._record(caller, data, resource)["_id"]})
+        agent, resource = Gate().check(caller, data, "delete", LEVEL["delete"])
+        record = self._record(caller, data, resource)
+        Records().col.delete_one({"_id": record["_id"]})
+        RecordUses().count(caller.chat, agent["agent_id"], resource, record, "delete")
         return {"deleted": True}
 
     @staticmethod

@@ -21,7 +21,9 @@ class Sandboxes:
     - ``read_program(digest, offset)`` and ``read_file(process, file, offset)``: ``{data, size}``, a piece of a program
       a sandbox pulls, or of a file offered to that process;
     - ``on_message(process, message)``: each message of a process, in order, the next held until it returns;
-    - ``on_ended(process, reason)``: a process ended, by its sandbox's word, or gone missing with its sandbox.
+    - ``on_ended(process, why, end)``: a process ended, by its sandbox's word, or gone missing with its sandbox: why,
+      in words, and ``end``, ``{reason, memory_peak, cpu_seconds}``: the sandbox's reason (``sandbox_gone`` for one
+      gone missing), and the most memory and the processor's seconds its reports showed (None when none came).
 
     The router gives it the caller's endpoints: ``Caller:Sandbox:state``, ``Caller:Process:message`` and ``ended``,
     and ``Caller:File:piece``."""
@@ -35,7 +37,7 @@ class Sandboxes:
                  read_program: Callable[[str, int], Awaitable[dict[str, Any]]],
                  read_file: Callable[[str, str, int], Awaitable[dict[str, Any]]],
                  on_message: Callable[[str, dict[str, Any]], Awaitable[None]],
-                 on_ended: Callable[[str, str], Awaitable[None]]):
+                 on_ended: Callable[[str, str, dict[str, Any]], Awaitable[None]]):
         self.node, self.caller_id, self.proxy_port = node, caller_id, proxy_port
         self.read_program, self.read_file = read_program, read_file
         self.on_message, self.on_ended = on_message, on_ended
@@ -44,7 +46,8 @@ class Sandboxes:
         #: Sandboxes to start nothing new on.
         self.drained: set[str] = set()
         #: Each process of ours: its sandbox, program, the files offered to it, the last message numbers sent and
-        #: heard, whether it started, and the reports in a row that missed it.
+        #: heard, whether it started, the reports in a row that missed it, and the most memory and the processor's
+        #: seconds its sandbox's reports showed.
         self.running: dict[str, dict[str, Any]] = {}
         #: Each file a process sent out: its sandbox, and when.
         self.sent_out: dict[str, tuple[str, float]] = {}
@@ -61,7 +64,7 @@ class Sandboxes:
         for sandbox in self.fitting(programs, base):
             running = self.running[process] = {"sandbox": sandbox["sandbox"], "program": programs[sandbox["machine"]],
                                                "files": set(), "sent": 0, "heard": 0, "started": False, "missed": 0,
-                                               "sending": asyncio.Lock()}
+                                               "memory_peak": None, "cpu_seconds": None, "sending": asyncio.Lock()}
             answer, status = await self._call(sandbox["sandbox"], "Sandbox:Process:start", {
                 "process": process, "program": running["program"], "network": network,
                 **({"memory": memory} if memory else {})}, self.START)
@@ -129,6 +132,11 @@ class Sandboxes:
         self.sent_out.pop(file, None)
         return bytes(body)
 
+    def placed(self, process: str) -> dict[str, str]:
+        """Where a process of ours runs: its sandbox and the sandbox's machine."""
+        sandbox = self.running.get(process, {}).get("sandbox", "")
+        return {"sandbox": sandbox, "machine": self.seen.get(sandbox, {}).get("machine") or ""}
+
     def usage(self) -> list[dict[str, Any]]:
         """Each sandbox heard lately: its machine, base and room, and each process of ours on it with what it uses."""
         now = time.monotonic()
@@ -145,25 +153,33 @@ class Sandboxes:
             now = time.monotonic()
             for process, running in list(self.running.items()):
                 if now - self.seen.get(running["sandbox"], {}).get("at", now) > self.GONE:
-                    await self._gone(process, "its sandbox stopped answering")
+                    await self._gone(process, "sandbox_gone", "its sandbox stopped answering")
             self.sent_out = {file: kept for file, kept in self.sent_out.items() if now - kept[1] < self.KEPT}
 
     # -- what sandboxes call ------------------------------------------------------------------------
 
     async def state(self, data: dict[str, Any], peer: dict[str, Any]) -> Answer:
-        """A sandbox's report: kept; processes it runs for us that we don't know, ended; ours it has missed twice in a
-        row, taken as ended (a sandbox that restarted runs none)."""
+        """A sandbox's report: kept; what ours use, their most memory kept and the processor's seconds added up since
+        its last; processes it runs for us that we don't know, ended; ours it has missed twice in a row, taken as ended
+        (a sandbox that restarted runs none)."""
         if data.get("sandbox") != peer["id"] or not isinstance(data.get("address"), str):
             return {"error": "A sandbox reports itself, by its own id."}, 400
-        self.seen[peer["id"]] = {**data, "at": time.monotonic()}
-        listed = {p.get("process") for p in data.get("processes") or [] if isinstance(p, dict)}
+        now = time.monotonic()
+        since = now - self.seen.get(peer["id"], {}).get("at", now)
+        self.seen[peer["id"]] = {**data, "at": now}
+        used = {p.get("process"): p for p in data.get("processes") or [] if isinstance(p, dict)}
+        for process, running in self.running.items():
+            if running["sandbox"] == peer["id"] and isinstance(used.get(process, {}).get("memory"), int):
+                running["memory_peak"] = max(running["memory_peak"] or 0, used[process]["memory"])
+                running["cpu_seconds"] = (running["cpu_seconds"] or 0) + float(used[process].get("cpu") or 0) * since
+        listed = set(used)
         for process in listed - set(self.running):
             self._later(self._call(peer["id"], "Sandbox:Process:end", {"process": process}))
         for process, running in list(self.running.items()):
             if running["sandbox"] == peer["id"] and running["started"]:
                 running["missed"] = 0 if process in listed else running["missed"] + 1
                 if running["missed"] >= 2:
-                    await self._gone(process, "its sandbox no longer runs it")
+                    await self._gone(process, "sandbox_gone", "its sandbox no longer runs it")
         return {"id": self.caller_id, "way_out": self.proxy_port}, 200  # "way_out" is the sandbox protocol's word
 
     async def message(self, data: dict[str, Any], peer: dict[str, Any]) -> Answer:
@@ -188,7 +204,7 @@ class Sandboxes:
     async def ended(self, data: dict[str, Any], peer: dict[str, Any]) -> Answer:
         process, reason, code = str(data.get("process") or ""), str(data.get("reason") or "ended"), data.get("code")
         if self.running.get(process, {}).get("sandbox") == peer["id"]:
-            await self._gone(process, f"{reason} ({code})" if reason == "exited" and code is not None else reason)
+            await self._gone(process, reason, f"{reason} ({code})" if reason == "exited" and code is not None else "")
         return {}, 200
 
     async def piece(self, data: dict[str, Any], peer: dict[str, Any]) -> Answer:
@@ -209,10 +225,13 @@ class Sandboxes:
 
     # -- within ---------------------------------------------------------------------------------------
 
-    async def _gone(self, process: str, reason: str) -> None:
-        if self.running.pop(process, None) is not None:
+    async def _gone(self, process: str, reason: str, why: str = "") -> None:
+        """Ended for ``reason``, told in words as ``why`` (the reason itself when none is given)."""
+        running = self.running.pop(process, None)
+        if running is not None:
             try:
-                await self.on_ended(process, reason)
+                await self.on_ended(process, why or reason, {"reason": reason, **{
+                    key: running[key] for key in ("memory_peak", "cpu_seconds")}})
             except Exception:
                 log.exception(f"{process}: its end was not handled")
 

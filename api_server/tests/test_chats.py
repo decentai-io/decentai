@@ -10,7 +10,10 @@ import pytest
 from conftest import JOURNAL, NOTES, World
 from api_server.chats.schedules import Firing
 from api_server.chats.store import Cards, Chats, Events, Messages, Schedules
+from api_server.records.store import Records
+from api_server.runtimes.calls import RuntimeCalls
 from api_server.storage.database import Database
+from api_server.trail.usage import Usage
 from api_server.utils import Settings
 
 
@@ -206,3 +209,115 @@ class TestWhatThePageIsTold:
         page = world.ok("AI:Output:see", {"chat_id": chat["chat_id"], "ref": ref, "offset": 60000}, org.member)
         assert (len(page["text"]), page["size"]) == (10000, 70000)
         world.refused("AI:Output:see", {"chat_id": chat["chat_id"], "ref": ref}, org.admin, 404)
+
+
+class TestInspect:
+    KEYS = {"chat", "usage", "processes", "network", "cards", "skills", "mcp", "files", "records", "schedules",
+            "memories"}
+
+    @staticmethod
+    def inspected(world, org, chat):
+        return world.ok("AI:Chat:inspect", {"chat_id": chat["chat_id"]}, org.member)
+
+    def test_a_chat_where_nothing_happened_is_answered_whole_with_empty_lists(self, world, org, chat):
+        seen = self.inspected(world, org, chat)
+        assert set(seen) == self.KEYS
+        assert set(seen["chat"]) == {"chat_id", "title", "created_at", "updated_at", "settings", "working", "runtime",
+                                     "last_runtime"}
+        assert (seen["chat"]["title"], seen["chat"]["runtime"], seen["chat"]["last_runtime"]) == ("Work", None, None)
+        assert seen["usage"] == {"totals": {"calls": 0, "input": 0, "output": 0, "cache_read": 0, "cache_write": 0,
+                                            "reasoning": 0, "latency_ms": 0},
+                                 "by_model": [], "by_agent": [], "calls": []}
+        assert all(seen[key] == [] for key in ("processes", "network", "cards", "skills", "mcp", "files", "records"))
+        assert seen["schedules"] == {"chat": [], "upcoming": []} and seen["memories"] == 0
+
+    def test_only_its_person_inspects_a_chat(self, world, org, chat):
+        world.refused("AI:Chat:inspect", {"chat_id": chat["chat_id"]}, org.admin, 404)
+        world.refused("AI:Chat:inspect", {"chat_id": chat["chat_id"]}, World.anyone(), 401)
+
+    def test_a_model_call_is_kept_with_when_how_long_and_what_for(self, world, org, runtime, chat):
+        runtime.holds(chat["chat_id"])
+        for agent, purpose, latency in (("", "thought", 1200), ("", "fold", 300), ("notes", None, 50)):
+            world.ok("AI:Usage:record", {"chat_id": chat["chat_id"], "agent": agent, "provider": "openai",
+                                         "model": "m", "input": 10, "output": 2, "latency_ms": latency,
+                                         **({"purpose": purpose} if purpose else {})}, runtime.caller)
+        world.refused("AI:Usage:record", {"chat_id": chat["chat_id"], "latency_ms": -1}, runtime.caller, 400)
+        row = Usage().col.find_one({"chat_id": chat["chat_id"], "agent": "notes"})
+        assert row["purpose"] == "agent" and row["latency_ms"] == 50 and row["at"] <= Usage.now()
+        seen = self.inspected(world, org, chat)
+        assert seen["chat"]["runtime"]["id"] == runtime.peer["id"]
+        usage = seen["usage"]
+        assert usage["totals"] == {"calls": 3, "input": 30, "output": 6, "cache_read": 0, "cache_write": 0,
+                                   "reasoning": 0, "latency_ms": 1550}
+        assert usage["by_model"] == [{"provider": "openai", "model": "m", "calls": 3, "input": 30, "output": 6,
+                                      "cache_read": 0, "cache_write": 0, "reasoning": 0, "latency_ms": 1550}]
+        assert sorted((a["agent"], a["calls"], a["latency_ms"]) for a in usage["by_agent"]) == [("", 2, 1500),
+                                                                                              ("notes", 1, 50)]
+        assert [(c["purpose"], c["latency_ms"]) for c in usage["calls"]] == [("agent", 50), ("fold", 300),
+                                                                            ("thought", 1200)]
+
+    def test_a_process_is_kept_from_its_start_to_its_end_or_its_runtimes(self, world, org, runtime, chat):
+        runtime.holds(chat["chat_id"])
+        started = {"chat_id": chat["chat_id"], "process": f"{chat['chat_id']}.r1", "agent": "notes",
+                   "version": "1.0.0", "sandbox": "sb1", "machine": "x86_64"}
+        world.ok("AI:Process:started", started, runtime.caller)
+        world.ok("AI:Process:ended", {"chat_id": chat["chat_id"], "process": started["process"], "reason": "idle",
+                                      "detail": "ended", "memory_peak": 52428800, "cpu_seconds": 1.6},
+                 runtime.caller)
+        world.ok("AI:Process:started", started, runtime.caller)
+        newer, older = self.inspected(world, org, chat)["processes"]
+        assert (older["runtime"], older["sandbox"], older["reason"], older["memory_peak"], older["cpu_seconds"]) == (
+            runtime.peer["id"], "sb1", "idle", 52428800, 1)
+        assert older["ended_at"] >= older["started_at"] and newer["ended_at"] is None
+        asyncio.run(RuntimeCalls().release([runtime.peer["id"]]))
+        newer = self.inspected(world, org, chat)["processes"][0]
+        assert newer["reason"] == "runtime_gone" and newer["ended_at"] is not None
+
+    def test_what_an_agent_reached_is_added_up_by_host_and_port(self, world, org, runtime, chat):
+        runtime.holds(chat["chat_id"])
+        row = {"host": "Graph.example.com", "port": 443, "connections": 2, "refused": 0, "bytes_out": 100,
+               "bytes_in": 5000, "first_at": 1_800_000_000.5, "last_at": 1_800_000_010}
+        world.ok("AI:Network:record", {"chat_id": chat["chat_id"], "agent": "notes", "hosts": [row]}, runtime.caller)
+        world.ok("AI:Network:record", {"chat_id": chat["chat_id"], "agent": "notes", "hosts": [
+            {**row, "connections": 1, "first_at": 1_800_000_020, "last_at": 1_800_000_030},
+            {"host": "evil.example.com", "port": 25, "refused": 3, "first_at": 1_800_000_001,
+             "last_at": 1_800_000_002}]}, runtime.caller)
+        world.refused("AI:Network:record", {"chat_id": chat["chat_id"], "agent": "notes",
+                                            "hosts": [{**row, "bytes_out": -1}]}, runtime.caller, 400)
+        busiest, refused = self.inspected(world, org, chat)["network"]
+        assert (busiest["host"], busiest["connections"], busiest["bytes_out"], busiest["bytes_in"]) == (
+            "graph.example.com", 3, 200, 10000)
+        assert (busiest["first_at"].timestamp(), busiest["last_at"].timestamp()) == (1_800_000_000.5, 1_800_000_030)
+        assert (refused["host"], refused["port"], refused["refused"], refused["connections"]) == (
+            "evil.example.com", 25, 3, 0)
+
+    def test_skills_tools_cards_files_and_schedules_are_the_chats_own(self, world, org, runtime, chat):
+        runtime.holds(chat["chat_id"])
+        for endpoint, data in (("AI:Use:skill", {"skill_id": "s1", "name": "Tone"}),
+                               ("AI:Use:skill", {"skill_id": "s1", "name": "Tone"}),
+                               ("AI:Use:mcp", {"server_id": "m1", "server": "Search", "tool": "find"})):
+            world.ok(endpoint, {"chat_id": chat["chat_id"], **data}, runtime.caller)
+        card = opened(world, runtime, chat)
+        world.ok("AI:Approval:Decide", {"card_id": card, "answer": {"text": "Yes"}}, org.member)
+        attached = Records().create(org.member.person, "file", {}, {}, file={
+            "name": "brief.pdf", "type": "application/pdf", "size": 3, "key": "k", "digest": "d"})
+        world.ok("AI:Chat:input", {"chat_id": chat["chat_id"], "text": "See this", "files": [attached["_id"]]},
+                 org.member)
+        made = world.ok("Files:Piece:write", {"chat_id": chat["chat_id"], "agent": "notes", "name": "report.txt",
+                                              "data": b"hello"}, runtime.caller)["record_id"]
+        other = world.ok("AI:Chat:create", {"title": "Elsewhere"}, org.member)["chat"]
+        for each in (chat, other):
+            world.ok("AI:Schedule:create", {"chat_id": each["chat_id"], "what": {"prompt": "Hi"},
+                                            "when": {"every": 3600}}, org.member)
+        world.ok("Settings:Memory:create", {"text": "Likes short answers."}, org.member)
+        seen = self.inspected(world, org, chat)
+        assert [(s["skill_id"], s["name"], s["times"]) for s in seen["skills"]] == [("s1", "Tone", 2)]
+        assert [(m["server"], m["tool"], m["calls"]) for m in seen["mcp"]] == [("Search", "find", 1)]
+        assert [(c["card_id"], c["status"], c["answer"]) for c in seen["cards"]] == [(card, "answered",
+                                                                                    {"text": "Yes"})]
+        assert seen["cards"][0]["answered_at"] is not None
+        assert [(f["record_id"], f["origin"], f["agent"], f["type"]) for f in seen["files"]] == [
+            (made, "produced", "notes", "text/plain"), (attached["_id"], "attached", "", "application/pdf")]
+        assert [s["chat_id"] for s in seen["schedules"]["chat"]] == [chat["chat_id"]]
+        assert sorted(s["chat_title"] for s in seen["schedules"]["upcoming"]) == ["Elsewhere", "Work"]
+        assert seen["memories"] == 1
