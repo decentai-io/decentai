@@ -1,7 +1,7 @@
 # The API server: what it imports and nothing else (documentation/api-server.md).
 
 # The people's door, and calling out
-fastapi~=0.136.1
+fastapi~=0.162.2
 uvicorn~=0.46.0
 websockets~=17.4.0
 httpx~=0.28
