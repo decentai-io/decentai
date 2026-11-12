@@ -10,10 +10,18 @@ updates:
     directories: [/api_server, /issuer, /runtime, /sandbox, /speech]
     schedule:
       interval: weekly
+    # The images stay on Python 3.12, the sandbox's base that agents' programs are built for: only its digest moves.
+    ignore:
+      - dependency-name: python
+        update-types: [version-update:semver-major, version-update:semver-minor]
   - package-ecosystem: docker-compose
     directory: /deploy
     schedule:
       interval: weekly
+    # MongoDB moves a major version by a planned upgrade, not a bump: only its digest moves.
+    ignore:
+      - dependency-name: mongo
+        update-types: [version-update:semver-major]
   - package-ecosystem: pip
     directories: [/api_server, /issuer, /runtime, /sandbox, /speech]
     schedule:
