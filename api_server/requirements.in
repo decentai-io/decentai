@@ -11,7 +11,7 @@ aiohttp~=3.12
 msgpack~=1.1
 
 # Keys, passwords
-cryptography~=47.0.0
+cryptography~=50.0.2
 bcrypt~=5.0
 
 # The database, and a chat's time zone where the image has no zoneinfo
