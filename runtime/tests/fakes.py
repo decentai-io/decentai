@@ -29,7 +29,7 @@ AGENT = {"agent_id": "probe", "version": "1.0.0", "programs": {"x86_64": {"diges
          "manifest": {"agent": {"id": "probe", "name": "Probe", "version": "1.0.0", "description": "Checks things.",
                                 "instructions": "Use it to check things."},
                       "network": {"hosts": ["example.com", {"from_secret": "mailbox.server"}]},
-                      "functions": [function("report", calls=("chat", "record.read:mailbox", "network.open")),
+                      "functions": [function("report", calls=("chat", "model", "record.read:mailbox", "network.open")),
                                     function("wipe", level=2, what={"type": "string"})]}}
 
 
@@ -141,7 +141,10 @@ class Sandboxes:
             self.running[data["call"]].cancel()
 
     async def end(self, name: str) -> None:
-        self._later(self.engine.on_ended(name, "ended by its runtime"))
+        self._later(self.engine.on_ended(name, "ended", {"reason": "ended", "memory_peak": 2048, "cpu_seconds": 0.5}))
+
+    def placed(self, name: str) -> dict[str, str]:
+        return {"sandbox": "sb1", "machine": "x86_64"}
 
     async def pull(self, file: str, most: int) -> bytes:
         return b"made"
@@ -180,11 +183,11 @@ class Engine:
         chat._connector = Scripted({"responses": self.script})
         return Assistant(chat, loaded)
 
-    async def on_ended(self, name: str, reason: str) -> None:
+    async def on_ended(self, name: str, why: str, end: dict[str, Any]) -> None:
         held = self.processes.pop(name, None)
         if held is not None:
-            await held[1].ended(reason)
-            held[0].forget(held[1])
+            await held[1].ended(why)
+            held[0].forget(held[1], end, [])
 
 
 async def placed(script: list, loaded: dict[str, Any] | None = None, **settings: Any) -> tuple[Api, Engine, Chat]:

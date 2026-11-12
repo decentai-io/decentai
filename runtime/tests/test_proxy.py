@@ -113,7 +113,8 @@ async def test_socks5_carries_a_tcp_connection():
 
 
 async def test_socks5_relays_udp_to_a_host_and_its_answers_back():
-    port, _ = await opened(Local(allowed))
+    proxy = Local(allowed)
+    port, _ = await opened(proxy)
     loop = asyncio.get_running_loop()
     far = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     far.bind(("127.0.0.1", 0))
@@ -135,7 +136,33 @@ async def test_socks5_relays_udp_to_a_host_and_its_answers_back():
     await loop.sock_sendto(far, b"pong", came)
     back, _ = await asyncio.wait_for(loop.sock_recvfrom(near, 1024), 5)
     assert back.endswith(b"pong") and back[:4] == b"\x00\x00\x00\x01"
+    (row,) = proxy.taken("p1")
+    assert (row["host"], row["connections"], row["bytes_out"], row["bytes_in"]) == ("example.com", 1, 4, 4)
     writer.close()
+
+
+async def test_what_a_source_reached_is_counted_by_host_and_port_until_taken():
+    async def decide(source, protocol, host, port):
+        return "Not declared." if host == "secret.example.com" else None
+
+    proxy = Local(decide)
+    port, host = await opened(proxy)
+    reader, writer = await asyncio.open_connection("127.0.0.1", port)
+    writer.write(f"CONNECT example.com:{host} HTTP/1.1\r\n\r\n".encode())
+    await reader.readuntil(b"\r\n\r\n")
+    writer.write(b"ping!")
+    assert await reader.readexactly(5) == b"ping!"
+    writer.close()
+    for _ in range(2):
+        refused_reader, refused = await asyncio.open_connection("127.0.0.1", port)
+        refused.write(b"CONNECT secret.example.com:443 HTTP/1.1\r\n\r\n")
+        await refused_reader.readline()
+        refused.close()
+    rows = {(row["host"], row["port"]): row for row in proxy.taken("p1")}
+    reached, secret = rows[("example.com", host)], rows[("secret.example.com", 443)]
+    assert (reached["connections"], reached["refused"], reached["bytes_out"], reached["bytes_in"]) == (1, 0, 5, 5)
+    assert (secret["connections"], secret["refused"], secret["bytes_out"]) == (0, 2, 0)
+    assert reached["first_at"] <= reached["last_at"] and proxy.taken("p1") == []
 
 
 async def test_a_connection_allowed_until_a_future_closes_when_it_is_done():

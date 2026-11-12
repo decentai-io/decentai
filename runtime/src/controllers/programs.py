@@ -18,8 +18,8 @@ from .process import Process
 
 
 class Programs:
-    """Given the chat it serves; its processes call back ``serve``, ``noted`` and ``keep``, and the proxy asks
-    ``reach``."""
+    """Given the chat it serves; its processes call back ``serve``, ``noted`` and ``keep`` (given their agent), and the
+    proxy asks ``reach``."""
 
     #: The level of each function a program may call (agents.md §6); a level above every trust, so always asked.
     LEVELS = {"record.list": 0, "record.read": 0, "record.create": 1, "record.update": 1, "record.delete": 2,
@@ -72,9 +72,11 @@ class Programs:
         elif "screen" in note and len(str(note["screen"])) <= 400_000:
             await self.chat.event("screen", {**shown, "screen": note["screen"]})
 
-    async def keep(self, name: str, data: bytes) -> str:
-        """A file a program returned, kept as the chat's person's own, its bytes sent as they are: its ref."""
-        made = await self.chat.api.call("Files:Piece:write", {"chat_id": self.chat.id, "name": name, "data": data})
+    async def keep(self, agent: str, name: str, data: bytes) -> str:
+        """A file one of the agent's programs returned, kept as the chat's person's own and marked as the chat's and the
+        agent's, its bytes sent as they are: its ref."""
+        made = await self.chat.api.call("Files:Piece:write", {"chat_id": self.chat.id, "agent": agent, "name": name,
+                                                              "data": data})
         return made["record_id"]
 
     def reach(self, process: Process, protocol: str, host: str, port: int) -> Any:
@@ -105,7 +107,7 @@ class Programs:
                  **({"schedule": call.origin[9:]} if call.origin.startswith("schedule:") else {})}
         if operation == "create" and files:
             data = await chat.engine.sandboxes.pull(files[0]["id"], chat.engine.FILE_MOST)
-            asked["file_id"] = await self.keep(posixpath.basename(files[0]["path"]), data)
+            asked["file_id"] = await self.keep(call.agent, posixpath.basename(files[0]["path"]), data)
         try:
             answer = await chat.api.call(f"Records:Record:{operation}", asked)
         except ApiServers.Refused as refused:
@@ -144,8 +146,8 @@ class Programs:
                 raise Process.Failed("invalid", f"{file['path']} is not a PNG, JPEG, GIF or WebP picture by its bytes.")
             pictures.append({"mime": kind, "data": (await asyncio.to_thread(base64.b64encode, data)).decode()})
         spoken[-1]["images"] = pictures
-        reply = await self.chat.think(Connector.Request(system_rest=system, messages=spoken,
-                                              max_tokens=inputs.get("max_tokens")), agent=call.agent)
+        request = Connector.Request(system_rest=system, messages=spoken, max_tokens=inputs.get("max_tokens"))
+        reply = await self.chat.think(request, agent=call.agent, purpose="agent")
         return {"text": reply.text, "stop": "length" if reply.stop == "length" else "end"}, []
 
     async def _chat(self, call: Any, inputs: dict[str, Any]) -> tuple[Any, list[dict[str, Any]]]:

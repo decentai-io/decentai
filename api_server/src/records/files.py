@@ -72,7 +72,8 @@ class PieceEndpoints(Controller):
 
     @endpoint("A runtime keeps a file a program returned, as the chat's person's own", by=CHAT)
     def write(self, data: dict[str, Any], caller: Caller) -> dict[str, Any]:
-        """The whole file in one call, at most what the runtimes' door takes."""
+        """The whole file in one call, at most what the runtimes' door takes; marked with the chat and the agent that
+        made it."""
         raw = data.get("data")
         raw = base64.b64decode(raw) if isinstance(raw, str) else raw
         if not isinstance(raw, bytes):
@@ -84,5 +85,6 @@ class PieceEndpoints(Controller):
             writing.write(raw)
         record = Records().create(caller.person, "file", {}, {}, of=None,
                                   file={"name": name, "type": kind, "size": writing.size, "key": key,
-                                        "digest": writing.digest})
+                                        "digest": writing.digest, "chat_id": caller.chat["_id"],
+                                        "agent": str(data.get("agent") or "")[:40]})
         return {"record_id": record["_id"], "size": writing.size}

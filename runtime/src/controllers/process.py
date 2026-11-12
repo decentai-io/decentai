@@ -56,8 +56,9 @@ class Process:
         self.serving: dict[str, asyncio.Task] = {}
         self.within: dict[str, str] = {}
         self.ready: asyncio.Future = asyncio.get_running_loop().create_future()
-        #: Why it ended, once it has; when it was last used.
-        self.gone, self.used_at = "", time.monotonic()
+        #: Why it ended, once it has; why its owner, or it, asked it to end (idle, replaced, stopped or failed), once
+        #: one did; when it was last used.
+        self.gone, self.ending, self.used_at = "", "", time.monotonic()
         #: Ids from a random start, so no two processes or placements of a chat give a message the same id.
         self._ids = itertools.count(secrets.randbelow(2 ** 40))
         self._tasks: set[asyncio.Task] = set()
@@ -90,7 +91,7 @@ class Process:
                                        self.agent.get("base", ""), network and bool(hosts or opens))
             await asyncio.wait_for(asyncio.shield(self.ready), self.ready_seconds)
         except (ConnectionError, TimeoutError, self.Failed) as failure:
-            await self.end()
+            await self.end("failed")
             why = str(failure) or f"it said no ready within {self.ready_seconds} seconds"
             raise self.Failed("failed", f"{self.agent['agent_id']} did not start: {why}") from None
 
@@ -149,7 +150,7 @@ class Process:
             await self._send(f"x{next(self._ids)}", "cancel", {"call": call_id})
         done, _ = await asyncio.wait({call.done}, timeout=self.cancel_seconds)
         if not done:
-            await self.end()
+            await self.end("failed")
             self._settle(call, "cancelled", "Cancelled.")
         self.calls.pop(call_id, None)
 
@@ -158,9 +159,10 @@ class Process:
         if call_id in self.calls:
             await self._send(f"s{next(self._ids)}", "note", {"call": call_id, "input": events})
 
-    async def end(self) -> None:
-        """Asked to end; ``ended`` follows."""
+    async def end(self, why: str = "stopped") -> None:
+        """Asked to end, the first ``why`` kept; ``ended`` follows."""
         if not self.gone:
+            self.ending = self.ending or why
             await self.sandboxes.end(self.name)
 
     # -- what the sandboxes say of it -----------------------------------------------------------------
@@ -188,7 +190,7 @@ class Process:
             why = f"The agent failed: {str(data.get('message') or 'it gave no reason')[:500]}"
             for each in self.calls.values():
                 self._settle(each, "failed", why)
-            await self.end()
+            await self.end("failed")
         elif kind == "call" and isinstance(message.get("_id"), str):
             self.within[message["_id"]] = str(data.get("within") or "")
             self.serving[message["_id"]] = self._later(self._served(message))

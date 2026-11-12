@@ -12,7 +12,7 @@ import aiohttp
 
 from communication.enrollment import Enrollment
 from communication.node import Node
-from ..chats.store import Chats
+from ..chats.store import Chats, Processes
 from ..people.store import Organizations, Users
 from ..storage.database import Lease
 from ..utils import Settings
@@ -133,9 +133,10 @@ class RuntimeCalls:
         await self.release([runtime["_id"] for runtime in await asyncio.to_thread(Runtimes().gone)])
 
     async def release(self, runtimes: list[str]) -> None:
-        """These runtimes' chats go free, and a chat that was working is placed again."""
+        """These runtimes' chats go free, and a chat that was working is placed again; what they still ran ended."""
         held = await asyncio.to_thread(Chats().held_by, runtimes)
         await asyncio.to_thread(Chats().let_go_all, runtimes)
+        await asyncio.to_thread(Processes().gone, runtimes)
         for chat in held:
             if chat.get("working"):
                 await self.send({**chat, "holder": ""}, {"type": "resume"})

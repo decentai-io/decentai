@@ -224,9 +224,13 @@ class Tools:
             entry = self.assistant.work.begin(self.thread, call, "skill", f"A skill offered · {skill['name']}",
                                               inputs=skill)
             return entry, self.assistant.work.offering("skill", {"skill": skill})
-        found = next((skill for skill in self.assistant.chat.contract["assistant"]["skills"]
+        chat = self.assistant.chat
+        found = next((skill for skill in chat.contract["assistant"]["skills"]
                       if skill["name"].lower() == inputs["name"].lower()), None)
-        return found["text"] if found else f"Not done: the person has no skill named {inputs['name']}."
+        if found is None:
+            return f"Not done: the person has no skill named {inputs['name']}."
+        chat.report("AI:Use:skill", {"skill_id": found["_id"], "name": found["name"]})
+        return found["text"]
 
     async def _open(self, call: dict[str, Any], inputs: dict[str, Any]) -> str:
         if inputs["agent"] not in self.assistant.chat.agents:

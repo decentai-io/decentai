@@ -39,8 +39,8 @@ def made(node):
     async def on_message(process, message):
         told["messages"].append((process, message["_id"]))
 
-    async def on_ended(process, reason):
-        told["ended"].append((process, reason))
+    async def on_ended(process, why, end):
+        told["ended"].append((process, why, end))
 
     sandboxes = Sandboxes(node, "rt1", 8005, read_program, read_file, on_message, on_ended)
     sandboxes.RETRY = 0.01
@@ -97,7 +97,25 @@ async def test_reports_end_strays_and_a_process_missing_twice_is_ended():
     await asyncio.sleep(0.05)
     assert ("sb1", "Sandbox:Process:end", {"process": "stray"}) in node.calls and told["ended"] == []
     await sandboxes.state(report("sb1"), {"id": "sb1"})
-    assert told["ended"] == [("p1", "its sandbox no longer runs it")] and "p1" not in sandboxes.running
+    assert told["ended"] == [("p1", "its sandbox no longer runs it", {"reason": "sandbox_gone", "memory_peak": None,
+                                                                      "cpu_seconds": None})]
+    assert "p1" not in sandboxes.running
+
+
+async def test_an_end_carries_its_reason_and_the_most_its_reports_showed_it_using():
+    node = Node()
+    sandboxes, told = made(node)
+    await sandboxes.state(report("sb1"), {"id": "sb1"})
+    await sandboxes.start("p1", {"x86_64": "sha256:a"})
+    assert sandboxes.placed("p1") == {"sandbox": "sb1", "machine": "x86_64"}
+    for memory in (300, 100):
+        await asyncio.sleep(0.1)
+        await sandboxes.state({**report("sb1"), "processes": [{"process": "p1", "memory": memory, "cpu": 2.0}]},
+                              {"id": "sb1"})
+    await sandboxes.ended({"process": "p1", "code": 1, "reason": "exited"}, {"id": "sb1"})
+    (process, why, end), = told["ended"]
+    assert (process, why, end["reason"], end["memory_peak"]) == ("p1", "exited (1)", "exited", 300)
+    assert 0.3 < end["cpu_seconds"] < 2  # two cores for the two reports' tenths of a second
 
 
 async def test_a_processs_messages_are_handed_on_once_in_order_and_a_strays_are_taken():

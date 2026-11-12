@@ -165,7 +165,8 @@ A model connection is an administrator's ([api-server](api-server.md#8-settings)
 - **Prompt caching** is asked where a provider takes it: Anthropic's, and Bedrock's for Claude and Nova; OpenAI's by
   a key on its own address. A model's kept reasoning goes back only to the model that wrote it.
 - **Usage** is recorded for each reply, its tokens in and out, read from the cache and written to it, and its
-  reasoning, by the chat, the agent and the model; its cost counts the cache's tokens at their prices.
+  reasoning, by the chat, the agent and the model, with when, how long it took and what for; its cost counts the
+  cache's tokens at their prices.
 
 ## 7. Speech
 

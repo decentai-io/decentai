@@ -30,8 +30,8 @@ class Engine:
     which makes a chat's mind. ``endpoints()`` gives a router what API servers and sandboxes call here; ``run()``
     serves until ``stop()``."""
 
-    #: How often idle processes and chats are let go; how long turns in flight have to go quiet when the runtime stops;
-    #: how long a sandbox has to name the process a connection to the proxy is for.
+    #: How often what processes reached is told and idle processes and chats are let go; how long turns in flight have
+    #: to go quiet when the runtime stops; how long a sandbox has to name the process a connection to the proxy is for.
     SWEEP_SECONDS, STOP_SECONDS, NAMED_SECONDS = 30, 8, 20
     #: The largest file a program may return: what an API server's door for runtimes takes in one call, less room for
     #: the call around it.
@@ -175,12 +175,12 @@ class Engine:
         if held is not None:
             await held[1].received(message)
 
-    async def on_ended(self, process: str, reason: str) -> None:
+    async def on_ended(self, process: str, why: str, end: dict[str, Any]) -> None:
         held = self.processes.pop(process, None)
         if held is not None:
-            await held[1].ended(reason)
+            await held[1].ended(why)
             if held[0] is not None:
-                held[0].forget(held[1])
+                held[0].forget(held[1], end, self.proxy.taken(process))
 
     async def decide(self, source: str, protocol: str, host: str, port: int) -> Any:
         """What a process may reach, as its chat says."""
@@ -207,10 +207,16 @@ class Engine:
         await self.proxy.serve(reader, writer, name)
 
     async def _sweep(self) -> None:
-        """For ever: processes idle past the setting ended; a chat with nothing in flight let go once it has no process
-        and has been quiet as long, or at once while draining."""
+        """For ever: what each process reached through the proxy told to its chat; processes idle past the setting
+        ended; a chat with nothing in flight let go once it has no process and has been quiet as long, or at once while
+        draining."""
         while True:
             await asyncio.sleep(self.SWEEP_SECONDS)
+            for source in list(self.proxy.counted):
+                chat, process = self.processes.get(source, (None, None))
+                reached = self.proxy.taken(source)
+                if chat is not None:
+                    chat.reached(process, reached)
             for chat_id, chat in list(self.chats.items()):
                 chat.sweep(self.settings.idle_seconds)
                 idle = not chat.processes and time.monotonic() - chat.used_at > self.settings.idle_seconds

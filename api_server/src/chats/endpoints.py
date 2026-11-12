@@ -17,6 +17,7 @@ from ..settings.notify import Notifier
 from ..storage.database import Lease
 from ..storage.files import Storage
 from .contract import Contract
+from .inspect import Inspection
 from .store import Cards, Chats, ChatStates, Events, Messages, Outputs, Remembered, Schedules
 
 
@@ -66,6 +67,12 @@ class ChatEndpoints(Controller):
         return {"chat": Chats.public(chat), "messages": [Messages.public(m) for m in reversed(messages)],
                 "cards": [Cards.public(c) for c in cards], "events": chat.get("events", 0),
                 "socket": f"/chats/{chat['_id']}"}
+
+    @endpoint("Inspect a chat: who holds it, what its model calls used, its agents' processes and what they reached, "
+              "its cards, files, the records its agents reached, the skills and tools used, and its schedules",
+              changes=False)
+    def inspect(self, data: dict[str, Any], caller: Caller) -> dict[str, Any]:
+        return Inspection().of(self.mine(data, caller), caller.person)
 
     @endpoint("See your chats", changes=False)
     def list(self, data: dict[str, Any], caller: Caller) -> dict[str, Any]:

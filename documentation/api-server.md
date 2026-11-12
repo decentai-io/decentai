@@ -236,8 +236,8 @@ What agents keep for people: secrets, data and files ([agents](agents.md#7-resou
 | `file` | for a file: its name, type and size, and where its bytes are kept |
 
 - **Every secret and data record is of a resource an installed agent declares.** A file is of one, or a person's
-  own: one they uploaded, attached to a chat, or an agent returned. A person's own file reaches an agent only by being
-  handed to a call.
+  own: one they uploaded, attached to a chat, or an agent returned, which is marked with the chat and the agent. A
+  person's own file reaches an agent only by being handed to a call.
 - **Values are encrypted,** each bound to its record's organization, kind and id: copied anywhere else, they don't
   decrypt.
 - **A record's fields are at most 512 KiB,** so it fits in one message to a program
@@ -381,6 +381,26 @@ administrator may stop everything of a person.
 **Across chats,** a person sees what waits for them: every open card of every chat, with each chat's title, to
 answer in one place; and their schedules.
 
+**Inspecting a chat.** Its person, and only they, as for opening it, sees everything kept of it in one answer
+(`AI:Chat:inspect`): names, refs and counts, never a secret's or a record's value.
+
+| Part | Is |
+|---|---|
+| the chat | its settings, whether it works, the runtime holding it and since when, or the one that held it last |
+| usage | its model calls (§9): totals, by model and by agent, and the last 200, each with when, how long it took and what for |
+| processes | its agents' last 100 processes, as its holder tells them: agent, version, runtime, sandbox and machine; when each started and ended, why, and the most memory and the processor's seconds its reports showed. One still running when its runtime is gone ends with it, `runtime_gone` |
+| network | what its agents' processes reached through their runtime's proxy, by agent, host and port: connections allowed and refused, bytes out and in, when first and last; the busiest first |
+| cards | its last 200, open, answered or expired, with their answers as kept |
+| skills, mcp | the person's skills its assistant read, and the MCP tools it called, each counted |
+| files | files its person attached, and files its agents' calls returned, each marked with the chat and the agent (§6) |
+| records | the records its agents listed, read, made, changed and deleted, by record, each operation counted; a record is named by its file's name, the name its person gave it, or its resource's label |
+| schedules | the chat's, and its person's next 20 runs across their chats |
+| memories | how many of its person's memories its prompts carry |
+
+What is seen of a chat's work is kept as usage is, and goes by age alone (§9). Its holder tells it in the background,
+batched, and never waits for it: what reached each host is told every 30 seconds while a process runs, and as it ends
+([runtime](runtime.md#4-agents-processes)).
+
 ## 8. Settings
 
 **The organization's** are one table, changed by its administrators, each change on the audit trail:
@@ -469,7 +489,7 @@ the issuer.
 | `AI_API_FILES_PER_PERSON_GIB` | the files one person keeps | `10` |
 | `AI_API_SCHEDULES_PER_PERSON` | the schedules one person keeps | `200` |
 | `AI_API_SCHEDULES_PER_ORG` | the schedules one organization keeps | `2000` |
-| `AI_API_KEPT_DAYS` | how long the audit trail and usage are kept | `400` |
+| `AI_API_KEPT_DAYS` | how long the audit trail, usage and what is seen of chats' work are kept | `400` |
 
 - For each person, at most 20 API keys, 25 webhooks, 10 outside addresses for notifications and 50 memories; for
   each chat, 50 schedules.
@@ -499,7 +519,9 @@ A call past a limit is answered `413` or `429` (§3).
   chat, by what was done, and by how it ended.
 
 **Usage and monitoring.** Runtimes report what each chat used: tokens in, out, read from the prompt cache and written
-to it, and how many of those out were reasoning, for each model connection and agent. A person sees their own usage.
+to it, and how many of those out were reasoning, for each model connection and agent; for each call, when, how long it
+took, and what for: one of the assistant's thoughts, folding its history, or an agent's `model`. A person sees their
+own usage, and each chat's when they inspect it (§7).
 An administrator sees the organization's: by person, agent, model and day, with its cost where the model's prices are
 known; and what its runtimes report, processes, memory, the processor's cores and events for each agent.
 
@@ -563,14 +585,14 @@ administrator makes that user once, with the admin tool.
 | people (§2, §4) | `organizations`, `users`, `groups`, `policies`, `sessions`, `api_keys`, `links`, `counters`, `deployment` |
 | agents (§5) | `sources`, `agents`, `releases`, `samples` |
 | records (§6) | `records` |
-| chats (§7) | `chats`, `chat_states`, `messages`, `events`, `cards`, `remembered`, `schedules` |
+| chats (§7) | `chats`, `chat_states`, `messages`, `events`, `cards`, `remembered`, `schedules`, `outputs`; what is seen of their work: `processes`, `traffic`, `uses`, `record_uses` |
 | settings (§8) | `models`, `oauth_apps`, `outbox`, `notify_to`, `webhooks`, `deliveries`, `memories`, `skills`, `mcp_servers` |
 | the trail (§9) | `trail`, `usage` |
 | runtimes (§10) | `runtimes`, `refusals` |
 
 - `deployment` is one document: the operator's organization, whether first run is done, and the data's version.
 - Indexes are declared in code and made at start; made again, they change nothing. What expires does so by index:
-  sessions, links, counters, screen frames, deliveries, the trail and usage.
+  sessions, links, counters, screen frames, deliveries, the trail, usage and what is seen of chats' work.
 - The database checks nothing: the code checks what it writes.
 - An upgrade's changes to the data are numbered steps. The first server to start runs them once and records the
   version in `deployment`; a server never starts on data newer than it knows.

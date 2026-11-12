@@ -17,12 +17,41 @@ from .trail import Trail
 #: What a model call used, as the runtime counts it: input leaves out the cache's reads and writes; output holds
 #: the reasoning.
 TOKENS = ("input", "output", "cache_read", "cache_write", "reasoning")
+#: What a model call was for: one of the assistant's thoughts, folding a history grown long, or an agent's ``model``.
+PURPOSES = ("thought", "fold", "agent")
 
 
 class Usage(Store):
+    """One document for each model call: what it used, when, how long it took, and what for."""
+
     COLLECTION = "usage"
     INDEXES = (([("org_id", Store.ASC), ("day", Store.ASC)], {}), ([("user_id", Store.ASC), ("day", Store.ASC)], {}),
+               ([("chat_id", Store.ASC), ("at", Store.DESC)], {}),
                ([("expires_at", Store.ASC)], {"expireAfterSeconds": 0}))
+    SUMMED = (*TOKENS, "latency_ms")
+
+    @staticmethod
+    def purpose(row: dict[str, Any]) -> str:
+        """What a call was for; one that doesn't say, an agent's when it names one, else a thought."""
+        return row["purpose"] if row.get("purpose") in PURPOSES else "agent" if row.get("agent") else "thought"
+
+    def of_chat(self, chat_id: str) -> dict[str, Any]:
+        """A chat's: its totals, by model and by agent, and its last 200 calls, newest first."""
+        def summed(by: tuple[str, ...]) -> list[dict[str, Any]]:
+            rows = self.col.aggregate([
+                {"$match": {"chat_id": chat_id}},
+                {"$group": {"_id": {key: f"${key}" for key in by}, "calls": {"$sum": 1},
+                            **{name: {"$sum": f"${name}"} for name in self.SUMMED}}}, {"$sort": {"calls": -1}}])
+            return [{**row["_id"], "calls": row["calls"], **{name: row[name] for name in self.SUMMED}} for row in rows]
+
+        calls = self.col.find({"chat_id": chat_id}).sort([("at", Store.DESC), ("_id", Store.DESC)]).limit(200)
+        return {"totals": (summed(()) or [{"calls": 0, **{name: 0 for name in self.SUMMED}}])[0],
+                "by_model": summed(("provider", "model")),
+                "by_agent": [{key: row[key] for key in ("agent", "calls", "input", "output", "latency_ms")}
+                             for row in summed(("agent",))],
+                "calls": [{"at": row.get("at"), "purpose": self.purpose(row),
+                           **{key: row.get(key, 0) for key in ("agent", "provider", "model", *self.SUMMED)}}
+                          for row in calls]}
 
     def totals(self, match: dict[str, Any], by: tuple[str, ...], days: int) -> list[dict[str, Any]]:
         since = (self.now() - timedelta(days=days)).date().isoformat()
@@ -44,15 +73,18 @@ class Usage(Store):
 class UsageEndpoints(Controller):
     NAME = "AI:Usage"
 
-    @endpoint("A runtime tells what a chat used", by=RECORD, changes=False)
+    @endpoint("A runtime tells what a chat's model call used, how long it took, and what for", by=RECORD,
+              changes=False)
     def record(self, data: dict[str, Any], caller: Caller) -> dict[str, Any]:
-        tokens = {key: int(data.get(key) or 0) for key in TOKENS}
-        if any(not 0 <= value <= 10 ** 8 for value in tokens.values()):
-            raise ValueError("Tokens are counted from 0.")
+        counts = {key: int(data.get(key) or 0) for key in Usage.SUMMED}
+        if any(not 0 <= value <= 10 ** 8 for value in counts.values()):
+            raise ValueError("Tokens and milliseconds are counted from 0.")
+        now, agent = Usage.now(), str(data.get("agent") or "")[:40]
         Usage().col.insert_one({"_id": Usage.new_id(), "org_id": caller.chat["org_id"], "user_id": caller.user_id,
-                                "chat_id": caller.chat["_id"], "agent": str(data.get("agent") or "")[:40],
+                                "chat_id": caller.chat["_id"], "agent": agent,
                                 "provider": str(data.get("provider") or "")[:40], "model": str(data.get("model") or "")[:200],
-                                "day": Usage.now().date().isoformat(), **tokens,
+                                "purpose": Usage.purpose({"purpose": data.get("purpose"), "agent": agent}),
+                                "at": now, "day": now.date().isoformat(), **counts,
                                 "expires_at": Usage.expires(Settings.read().kept_days * 86400)})
         return {}
 

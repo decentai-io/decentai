@@ -6,7 +6,7 @@ from __future__ import annotations
 import pytest
 
 from conftest import NOTES, JOURNAL, World
-from api_server.chats.store import Cards, Events
+from api_server.chats.store import Cards, Events, RecordUses
 from api_server.people.store import Groups, Policies
 from api_server.records.store import Records
 
@@ -174,6 +174,27 @@ class TestFormsAndPages:
         world.ok("AI:Approval:Decide", {"card_id": card["_id"], "answer": {"values": answer}}, org.member)
         assert Records().opened(Records().col.find_one({"_id": made["ref"]}))["site"] == {"user": answer["site"]["user"]}
         assert runtime.frames("answer")[-1]["answer"]["once"] == {"code": "123456"}
+
+    def test_what_an_agent_reached_is_counted_by_record_with_names_alone(self, world, org, runtime, chat):
+        given = {"of": {"agent": "notes", "resource": "notes"}, "name": "Plans",
+                 "fields": {"title": "May", "body": "a private body"}}
+        plans = world.ok("Data:Record:create", given, org.member)["record"]
+        agent(world, runtime, chat, "list", resource="notes")
+        for _ in range(2):
+            agent(world, runtime, chat, "read", resource="notes", ref=plans["record_id"])
+        agent(world, runtime, chat, "update", resource="notes", ref=plans["record_id"], fields={"body": "another"})
+        made, _ = agent(world, runtime, chat, "create", resource="notes", fields={"title": "June", "body": "words"})
+        agent(world, runtime, chat, "read", resource="notes", ref="nothing")  # refused: nothing is counted
+        rows = {row["ref"]: row for row in world.ok("AI:Chat:inspect", {"chat_id": chat["chat_id"]},
+                                                    org.member)["records"]}
+        none = {"read": 0, "list": 0, "create": 0, "update": 0, "delete": 0}
+        assert rows[plans["record_id"]]["operations"] == {**none, "read": 2, "update": 1}
+        assert (rows[plans["record_id"]]["label"], rows[plans["record_id"]]["kind"]) == ("Plans", "data")
+        assert rows[""]["operations"] == {**none, "list": 1} and rows[""]["label"] == "Notes"
+        assert rows[made["ref"]]["operations"] == {**none, "create": 1} and set(rows) == {plans["record_id"], "",
+                                                                                         made["ref"]}
+        kept = str(list(RecordUses().col.find({"chat_id": chat["chat_id"]}))) + str(rows)
+        assert not any(value in kept for value in ("a private body", "another", "May", "June", "words"))
 
     def test_an_agent_lists_its_records_a_page_at_a_time(self, world, org, runtime, chat):
         made = sorted(note(world, org.member, f"N{n}")["record_id"] for n in range(5))

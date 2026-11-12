@@ -67,7 +67,8 @@ class Records(Store):
     INDEXES = (([("org_id", Store.ASC), ("kind", Store.ASC), ("agents.agent", Store.ASC)], {}),
                ([("org_id", Store.ASC), ("owner.users", Store.ASC)], {}),
                ([("org_id", Store.ASC), ("owner.groups", Store.ASC)], {}), ([("handing.to", Store.ASC)], {}),
-               ([("created_by", Store.ASC), ("kind", Store.ASC)], {}))
+               ([("created_by", Store.ASC), ("kind", Store.ASC)], {}),
+               ([("file.chat_id", Store.ASC)], {"sparse": True}))
     MOST = 512 * 1024
 
     def files_size(self, user_id: str) -> int:

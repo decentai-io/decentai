@@ -189,7 +189,7 @@ class Thread:
         self.doing("folding")
         part = json.dumps(self.history.render(*span), ensure_ascii=False, default=str)
         reply = await self.assistant.chat.think(Connector.Request(
-            system_rest=FOLD, messages=[{"role": "user", "text": part}], max_tokens=4000))
+            system_rest=FOLD, messages=[{"role": "user", "text": part}], max_tokens=4000), purpose="fold")
         if not reply.text:
             raise RuntimeError("the conversation could not be folded: no summary came.")
         self.history.add("chapter", start=span[0], end=span[1], summary=reply.text)

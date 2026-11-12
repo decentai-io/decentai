@@ -6,6 +6,7 @@ from __future__ import annotations
 from ..agents.endpoints import AgentEndpoints, PackageEndpoints
 from ..chats.endpoints import (ActivityEndpoints, CardEndpoints, ChatEndpoints, EventEndpoints, MessageEndpoints,
                                OutputEndpoints, StateEndpoints, SwitchEndpoints)
+from ..chats.inspect import NetworkEndpoints, ProcessEndpoints, UseEndpoints
 from ..chats.schedules import ScheduleEndpoints
 from ..people.endpoints import (AuthEndpoints, GroupEndpoints, InvitationEndpoints, JoinEndpoints, KeyEndpoints,
                                 MeEndpoints, OrganizationEndpoints, PasswordEndpoints, PolicyEndpoints,
@@ -32,7 +33,7 @@ CONTROLLERS = (AuthEndpoints, MeEndpoints, PasswordEndpoints, JoinEndpoints, Pro
                OrganizationEndpoints, UserEndpoints, GroupEndpoints, PolicyEndpoints, InvitationEndpoints,
                AgentEndpoints, PackageEndpoints, SecretEndpoints, DataEndpoints, FileEndpoints, AgentRecordEndpoints,
                PieceEndpoints, OauthEndpoints, ChatEndpoints, MessageEndpoints, EventEndpoints, StateEndpoints,
-               OutputEndpoints,
+               OutputEndpoints, ProcessEndpoints, NetworkEndpoints, UseEndpoints,
                CardEndpoints, ActivityEndpoints, SwitchEndpoints, ScheduleEndpoints, OrgSettingsEndpoints,
                ModelEndpoints, OauthAppEndpoints, MemoryEndpoints, SkillEndpoints, McpEndpoints,
                NotificationEndpoints, OutboundEndpoints, WebhookEndpoints, SpeechEndpoints, AuditEndpoints,
