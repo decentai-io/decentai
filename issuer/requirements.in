@@ -1,5 +1,5 @@
 # The issuer: its node (communication/), and its database
 aiohttp~=3.12
 msgpack~=1.1
-cryptography~=47.0.0
+cryptography~=50.0.2
 pymongo~=4.16
