@@ -13,6 +13,10 @@ from .usage import Usage
 
 class OpenAI(Connector):
     NAME = "OpenAI"
+    #: A server of one's own (Ollama, vLLM) may ask for no key: the connection keeps none, and the client, which
+    #: wants one, is given NO_KEY, which such a server ignores. OpenAI itself answers it as a wrong key.
+    REQUIRED = ("model",)
+    NO_KEY = "none"
     #: Only OpenAI itself is sent ``prompt_cache_key``: a copy of the protocol may refuse what it doesn't know.
     OPENAI_HOST = "api.openai.com"
     STOPS = {"stop": "end", "tool_calls": "calls", "function_call": "calls", "length": "length",
@@ -28,7 +32,7 @@ class OpenAI(Connector):
         super().__init__(config)
 
     def _client(self) -> AsyncOpenAI:
-        return AsyncOpenAI(api_key=self.api_key, base_url=self.endpoint or None, timeout=self.limit,
+        return AsyncOpenAI(api_key=self.api_key or self.NO_KEY, base_url=self.endpoint or None, timeout=self.limit,
                            max_retries=self.RETRIES, http_client=self.http())
 
     @property
