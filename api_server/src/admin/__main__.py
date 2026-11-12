@@ -72,15 +72,22 @@ class Admin:
         return f"{args.email} signs in with {password} and chooses their own."
 
     def reencrypt(self, args: argparse.Namespace) -> str:
-        """Every value sealed under an older key, sealed again under the active one."""
-        count = 0
+        """Every value sealed under an older key, sealed again under the active one. One that won't open (its key is
+        gone, or it was moved from where it is bound) is left as it is, and counted."""
+        sealed = left = 0
         for store, field, bound in self._sealed():
             for doc in store.find({field: {"$regex": r"^[^.]+\."}}):
-                if Cipher.stale(doc[field]):
-                    store.update_one({"_id": doc["_id"]}, {"$set": {field: Cipher.seal(Cipher.open(doc[field], bound(doc)),
-                                                                                      bound(doc))}})
-                    count += 1
-        return f"{count} values sealed again under {Cipher.active}."
+                if not Cipher.stale(doc[field]):
+                    continue
+                try:
+                    values = Cipher.open(doc[field], bound(doc))
+                except ValueError:
+                    left += 1
+                    continue
+                store.update_one({"_id": doc["_id"]}, {"$set": {field: Cipher.seal(values, bound(doc))}})
+                sealed += 1
+        said = f"{sealed} values sealed again under {Cipher.active}."
+        return f"{said} Not opened, so left as they were: {left}." if left else said
 
     def storage(self, args: argparse.Namespace) -> str:
         """Every file and program copied from one storage to another; the settings describe both."""

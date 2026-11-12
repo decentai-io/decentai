@@ -118,12 +118,13 @@ not carried over: a deployment from then starts empty.
 | `database --admin-uri <uri>` | makes or updates the account `AI_API_DATABASE_URI` names (the `database` step runs it) |
 | `organizations list \| create --name --admin-email [--admin-name] \| disable --org-id \| enable --org-id` | organizations; a new one's administrator gets a password to replace |
 | `password <email>` | hands a person a password to replace, and ends their sessions |
-| `reencrypt` | seals every value under the active key |
+| `reencrypt` | seals every value under the active key; one that won't open (its key gone, or moved) is left as it is, and counted |
 | `storage <from> <to>` | copies every file and program from one storage to another: `local`, `s3` or `azure` |
 | `intermediate request \| install --file <pem>` | the issuer's next intermediate |
 
 **Rotating the encryption key:** add a key to `AI_API_ENCRYPTION_KEYS` (`version:base64 of 32 bytes`), name it in
-`AI_API_ENCRYPTION_ACTIVE`, restart, run `reencrypt`, then remove the old key.
+`AI_API_ENCRYPTION_ACTIVE`, restart, run `reencrypt`, then remove the old key. A value it left could not be opened
+with any key it has: removing the old key changes nothing for it.
 
 ## 5. More nodes
 

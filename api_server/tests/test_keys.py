@@ -1,5 +1,5 @@
 """Keys rotated: a value sealed under an older key opens still, and the admin tool seals each again under the active
-one, after which the older key may go (api-server.md §11)."""
+one, after which the older key may go; one that won't open it leaves, and counts (api-server.md §11)."""
 
 from __future__ import annotations
 
@@ -23,6 +23,8 @@ def test_a_value_sealed_under_an_older_key_opens_until_the_admin_tool_seals_it_u
     monkeypatch.setattr(Cipher, "keys", Cipher.keys)
     monkeypatch.setattr(Cipher, "active", Cipher.active)
     record = Records().create(person, "secret", {}, {"password": "hunter22"})
+    moved = Records().create(person, "secret", {}, {"password": "other"})
+    Records().col.update_one({"_id": moved["_id"]}, {"$set": {"values": record["values"]}})  # bound elsewhere now
     model = {"_id": Models.new_id(), "org_id": org.org_id}
     Models().col.insert_one({**model, "key": ModelEndpoints._sealed(model, "sk-1")})
     both = f"{os.environ['AI_API_ENCRYPTION_KEYS']},{NEW}"
@@ -32,7 +34,8 @@ def test_a_value_sealed_under_an_older_key_opens_until_the_admin_tool_seals_it_u
     done = subprocess.run([sys.executable, "-m", "api_server.admin", "reencrypt"], capture_output=True, text=True,
                           env={**os.environ, "AI_API_ENCRYPTION_KEYS": both, "AI_API_ENCRYPTION_ACTIVE": "02",
                                "AI_API_DATABASE_NAME": apart}, timeout=60)
-    assert done.stdout.strip() == "2 values sealed again under 02.", done.stderr
+    assert done.stdout.strip() == "2 values sealed again under 02. Not opened, so left as they were: 1.", done.stderr
+    assert Records().col.find_one({"_id": moved["_id"]})["values"] == record["values"]
     Cipher.load(NEW, "02")
     assert Records().opened(Records().col.find_one({"_id": record["_id"]})) == {"password": "hunter22"}
     assert Models().key(Models().col.find_one({"_id": model["_id"]})) == {"key": "sk-1"}
