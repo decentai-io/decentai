@@ -11,7 +11,7 @@ requests~=2.32
 # Its node (communication/): HTTPS with mutual TLS, its bodies, its keys
 aiohttp~=3.12
 msgpack~=1.1
-cryptography~=47.0.0
+cryptography~=50.0.2
 
 # Inputs and outputs held to their manifests, and the shared contracts
 jsonschema~=4.25
