@@ -2,7 +2,7 @@
 # with models that run here (speech/service.py).
 
 # Web server / ASGI
-fastapi~=0.136.1
+fastapi~=0.162.2
 # The same line of Starlette as the API server's: FastAPI allows newer,
 # whose test client warns without httpx2 and will soon refuse.
 starlette~=1.0.0
