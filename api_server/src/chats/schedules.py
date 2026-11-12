@@ -95,13 +95,21 @@ class ScheduleEndpoints(Controller):
                 raise Refused("conflict", f"{what.capitalize()} keeps at most {most} schedules.")
         time_zone = chat["settings"].get("time_zone") or "UTC"
         when = When.checked(data.get("when"), time_zone)
+        # the chat's trust; its person may set another, above it too, and the assistant never
+        trust = self._trust(data["trust"]) if by == "person" and "trust" in data else chat["settings"].get("trust", 1)
         row = {"_id": Schedules.new_id(), "org_id": chat["org_id"], "user_id": person["_id"], "chat_id": chat["_id"],
                "what": self._what(chat, person, data.get("what")), "when": when, "time_zone": time_zone,
-               "next_at": When.next(when, time_zone, time.time()), "paused": False, "by": by, "runs": [],
-               "claimed_until": EPOCH}
+               "next_at": When.next(when, time_zone, time.time()), "paused": False, "by": by, "trust": trust,
+               "runs": [], "claimed_until": EPOCH}
         Schedules().col.insert_one(row)
         Events().add(chat, "schedule_added", Schedules.public(row))
         return row
+
+    @staticmethod
+    def _trust(value: Any) -> int:
+        if type(value) is not int or value not in (0, 1, 2, 3):
+            raise ValueError("trust is 0, 1, 2 or 3.")
+        return value
 
     @endpoint("See your schedules, paused ones too; one chat's, where it is named", changes=False)
     def list(self, data: dict[str, Any], caller: Caller) -> dict[str, Any]:
@@ -119,9 +127,11 @@ class ScheduleEndpoints(Controller):
     def create(self, data: dict[str, Any], caller: Caller) -> dict[str, Any]:
         return {"schedule": Schedules.public(self.make(ChatEndpoints.mine(data, caller), caller.person, data, "person"))}
 
-    @endpoint("Pause, resume, run now, or change when a schedule runs")
+    @endpoint("Pause, resume, run now, or change when a schedule runs and the trust it runs at")
     def update(self, data: dict[str, Any], caller: Caller) -> dict[str, Any]:
         row, changes = self._mine(data, caller), {}
+        if "trust" in data:
+            changes["trust"] = self._trust(data["trust"])
         if "when" in data:
             changes["when"] = When.checked(data["when"], row["time_zone"])
             changes["next_at"] = When.next(changes["when"], row["time_zone"], time.time())
@@ -189,4 +199,6 @@ class Firing:
         chat = await asyncio.to_thread(Chats().find, row["chat_id"])
         if person is None or chat is None or person.get("stopped"):
             return
-        await RuntimeCalls().send(chat, {"type": "schedule", "schedule_id": row["_id"], "what": row["what"]})
+        trust = row.get("trust", chat["settings"].get("trust", 1))
+        await RuntimeCalls().send(chat, {"type": "schedule", "schedule_id": row["_id"], "what": row["what"],
+                                         "trust": trust})

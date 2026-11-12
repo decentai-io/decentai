@@ -18,7 +18,7 @@ class Rules:
     actions alone: ``agent:<agent>:<function>``, and ``agent:<agent>:<function>:<call>`` for what it calls."""
 
     #: What every person needs: their own chats, records and settings, the agents list, their keys.
-    MEMBER = ("account:*", "auth:*", "ai:chat:*", "ai:message:list", "ai:event:list", "ai:approval:*",
+    MEMBER = ("account:*", "auth:*", "ai:chat:*", "ai:message:list", "ai:event:list", "ai:output:see", "ai:approval:*",
               "ai:schedule:*", "ai:activity:list", "ai:switch:status", "ai:switch:stop", "ai:switch:resume",
               "ai:audit:list", "ai:usage:mine", "agents:agent:list", "agents:agent:get", "agents:agent:samples",
               "agents:agent:loadsamples", "agents:agent:removesamples", "secrets:*", "data:*", "files:*",

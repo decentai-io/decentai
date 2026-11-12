@@ -7,8 +7,8 @@ import json
 import struct
 from typing import Any, Iterator
 
-from .base import Call, HttpConnector, OnText, ProviderError, Reply, Request
-from .cache import Cache
+from .connector import Connector, OnText
+from .http_connector import HttpConnector
 from .usage import Usage
 
 
@@ -46,14 +46,14 @@ class Bedrock(HttpConnector):
         return any(family in model.lower() for family in cls.TOOL_CACHING_FAMILIES)
 
     @staticmethod
-    def is_cache_refusal(exc: Exception) -> bool:
+    def is_cache_refusal(error: Exception) -> bool:
         """Bedrock's words for a refused cache point: ``cachePoint``, "prompt caching", or an extraneous key."""
-        reason = str(exc).lower()
+        reason = str(error).lower()
         return "cach" in reason or "extraneous" in reason
 
-    def learned(self, exc: Exception) -> bool:
+    def learned(self, error: Exception) -> bool:
         """Caching saves money; it never costs a chat."""
-        if not self.cache_points or not self.is_cache_refusal(exc):
+        if not self.cache_points or not self.is_cache_refusal(error):
             return False
         self.cache_points = False
         return True
@@ -84,12 +84,12 @@ class Bedrock(HttpConnector):
     def mark(self, blocks: list) -> None:
         blocks.append(dict(self.CACHE_POINT))
 
-    def build(self, request: Request) -> dict[str, Any]:
-        said, turns = Cache.turns(request, strict=True)
+    def build(self, request: Connector.Request) -> dict[str, Any]:
+        said, turns = self.turns(request, strict=True)
         stable, rest = self.system(request, said)
         tools = [self.spec(tool) for tool in request.tools]
-        budget = Cache.MAX_BREAKPOINTS if self.cache_points else 0
-        messages = self.spoken(turns, budget, stable, tools if self.caches_tools(self.model) else [])
+        marks = self.MARKS if self.cache_points else 0
+        messages = self.spoken(request, turns, marks, stable, tools if self.caches_tools(self.model) else [])
         body: dict[str, Any] = {"messages": messages, "inferenceConfig": {
             "maxTokens": int(request.max_tokens or self.DEFAULT_MAX_TOKENS)}}
         if stable or rest:
@@ -129,7 +129,7 @@ class Bedrock(HttpConnector):
             payload = frame[12 + head:total - 4]
             yield cls._headers(frame[12:12 + head]), json.loads(payload) if payload else {}
 
-    async def send(self, body: dict[str, Any], on_text: OnText) -> Reply:
+    async def send(self, body: dict[str, Any], on_text: OnText) -> Connector.Reply:
         slots: dict[int, dict[str, Any]] = {}
         buffer = bytearray()
         stop, usage = "", Usage()
@@ -140,7 +140,7 @@ class Bedrock(HttpConnector):
                     if headers.get(":message-type") != "event":
                         kind = headers.get(":exception-type") or headers.get(":error-code")
                         reason = event.get("message") or headers.get(":error-message")
-                        raise ProviderError(f"{self.NAME} failed: {kind}: {reason}")
+                        raise self.Failed(f"{self.NAME} failed: {kind}: {reason}")
                     kind = headers.get(":event-type")
                     if kind in ("contentBlockStart", "contentBlockDelta"):
                         slot = slots.setdefault(event.get("contentBlockIndex", 0), {
@@ -166,16 +166,16 @@ class Bedrock(HttpConnector):
         slot["signature"] += reasoning.get("signature") or ""
         slot["redacted"] += reasoning.get("redactedContent") or ""
 
-    def _read(self, slots: dict[int, dict[str, Any]], said: str, usage: Usage) -> Reply:
+    def _read(self, slots: dict[int, dict[str, Any]], said: str, usage: Usage) -> Connector.Reply:
         words: list[str] = []
-        calls: list[Call] = []
+        calls: list[Connector.Call] = []
         kept: list[dict[str, Any]] = []
         texted = False
         for _, slot in sorted(slots.items()):
             at = bool(words) + len(calls)
             if slot["tool"]:
                 tool = slot["tool"]
-                calls.append(Call(tool["toolUseId"], tool["name"], self.arguments(slot["input"])))
+                calls.append(self.Call(tool["toolUseId"], tool["name"], self.arguments(slot["input"])))
             elif slot["redacted"]:
                 kept.append({"at": at, "block": {"reasoningContent": {"redactedContent": slot["redacted"]}}})
             elif slot["thought"] or slot["signature"]:

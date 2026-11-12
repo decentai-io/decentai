@@ -61,12 +61,21 @@ class TestChats:
         assert [a["agent_id"] for a in world.ok("AI:Chat:contract", {"chat_id": chat["chat_id"]},
                                                 runtime.caller)["agents"]] == ["notes"]
 
-    def test_a_chats_state_is_kept_as_given_up_to_its_limit(self, world, runtime, chat):
+    def test_a_chats_state_is_kept_in_parts_as_given_up_to_its_limit(self, world, runtime, chat):
         runtime.holds(chat["chat_id"])
-        world.ok("AI:State:save", {"chat_id": chat["chat_id"], "state": {"mind": [1, 2]}}, runtime.caller)
-        assert world.ok("AI:Chat:load", {"chat_id": chat["chat_id"]}, runtime.caller)["state"] == {"mind": [1, 2]}
-        world.refused("AI:State:save", {"chat_id": chat["chat_id"], "state": "x" * (5 * 1024 * 1024)},
+
+        def save(parts, whole=False):
+            world.ok("AI:State:save", {"chat_id": chat["chat_id"], "parts": parts, "whole": whole}, runtime.caller)
+            return world.ok("AI:Chat:load", {"chat_id": chat["chat_id"]}, runtime.caller)["state"]
+
+        assert save({"head": {"count": 1}, "work:0": [1, 2]}, whole=True) == {"parts": {"head": {"count": 1},
+                                                                                       "work:0": [1, 2]}}
+        assert save({"work:0": [1, 2, 3], "work:1": [4]}) == {"parts": {"head": {"count": 1}, "work:0": [1, 2, 3],
+                                                                         "work:1": [4]}}
+        assert save({"work:1": None}) == {"parts": {"head": {"count": 1}, "work:0": [1, 2, 3]}}
+        world.refused("AI:State:save", {"chat_id": chat["chat_id"], "parts": {"head": "x" * (5 * 1024 * 1024)}},
                       runtime.caller, 413)
+        world.refused("AI:State:save", {"chat_id": chat["chat_id"], "parts": {"a.b": 1}}, runtime.caller, 400)
 
 
 class TestCards:
@@ -80,8 +89,9 @@ class TestCards:
 
     def test_a_remembered_approval_is_listed_and_can_be_taken_back(self, world, org, runtime, chat):
         runtime.holds(chat["chat_id"])
-        card = opened(world, runtime, chat, kind="approval", function="keep")
+        card = opened(world, runtime, chat, kind="approval", items=[{"id": "c1", "agent": "notes", "function": "keep"}])
         world.ok("AI:Approval:Decide", {"card_id": card, "answer": {"allowed": True, "remember": True}}, org.member)
+        assert runtime.frames("answer")[-1]["answer"] == {"items": {"c1": True}}
         remembered = world.ok("AI:Approval:Remembered", {}, org.member)["remembered"]
         assert remembered[0]["agent"] == "notes" and remembered[0]["allowed"] is True
         world.ok("AI:Approval:Forget", {"id": remembered[0]["id"]}, org.member)
@@ -172,3 +182,27 @@ class TestChoicesAndStops:
         world.ok("AI:Chat:stop", {"chat_id": chat["chat_id"], "work": "c3"}, org.member)
         assert runtime.frames("stop")[-1] == {"type": "stop", "work": "c3"}
         assert not Events().col.find_one({"chat_id": chat["chat_id"], "event": "stopped"})
+
+
+class TestWhatThePageIsTold:
+    def test_the_assistants_message_keeps_the_model_that_wrote_it_and_the_run_that_posted_it(self, world, org,
+                                                                                               runtime, chat):
+        runtime.holds(chat["chat_id"])
+        run = {"thread": "r1", "origin": "schedule:s1", "title": "Daily report", "message": 0}
+        world.ok("AI:Message:create", {"chat_id": chat["chat_id"], "parts": [{"type": "text", "text": "Done."}],
+                                       "model": "claude-opus-5-5", "run": run}, runtime.caller)
+        said = world.ok("AI:Message:list", {"chat_id": chat["chat_id"]}, org.member)["messages"][-1]
+        assert (said["model"], said["run"]) == ("claude-opus-5-5", run)
+
+    def test_a_settings_change_is_kept_as_an_event_when_it_changes_something(self, world, org, chat):
+        for _ in range(2):
+            world.ok("AI:Chat:update", {"chat_id": chat["chat_id"], "settings": {"trust": 2}}, org.member)
+        events = world.ok("AI:Event:list", {"chat_id": chat["chat_id"]}, org.member)["events"]
+        assert [e["data"] for e in events if e["event"] == "settings_changed"] == [{"changes": {"trust": 2}}]
+
+    def test_a_person_reads_their_own_chats_work_output_a_page_at_a_time(self, world, org, runtime, chat):
+        runtime.holds(chat["chat_id"])
+        ref = world.ok("AI:Output:put", {"chat_id": chat["chat_id"], "text": "x" * 70000}, runtime.caller)["ref"]
+        page = world.ok("AI:Output:see", {"chat_id": chat["chat_id"], "ref": ref, "offset": 60000}, org.member)
+        assert (len(page["text"]), page["size"]) == (10000, 70000)
+        world.refused("AI:Output:see", {"chat_id": chat["chat_id"], "ref": ref}, org.admin, 404)

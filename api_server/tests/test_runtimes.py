@@ -51,6 +51,27 @@ class TestRuntimes:
         assert [frame["type"] for frame in live.frames("resume")] == ["resume"]
         assert Chats().find(chats[0])["holder"] == live.peer["id"] and Chats().find(chats[1])["holder"] == ""
 
+    def test_a_runtime_started_again_lets_its_chats_go_and_a_working_one_is_resumed(self, world, org, monkeypatch):
+        own = Runtime(monkeypatch, scope=org.org_id)
+        chats = [world.ok("AI:Chat:create", {}, org.member)["chat"]["chat_id"] for _ in range(2)]
+        for chat_id in chats:
+            own.holds(chat_id)
+        Chats().set(chats[0], working=True)
+        report(world, own, boot="b1", chats=chats)
+        report(world, own, boot="b1", chats=chats)
+        assert own.frames("resume") == []
+        report(world, own, boot="b2")
+        assert [frame["type"] for frame in own.frames("resume")] == ["resume"]
+        assert Chats().find(chats[0])["holder"] == own.peer["id"] and Chats().find(chats[1])["holder"] == ""
+
+    def test_a_full_runtime_is_passed_over_for_a_chat_it_does_not_hold(self, world, org, monkeypatch):
+        full = Runtime(monkeypatch, scope=org.org_id)
+        report(world, full, full=True)
+        other = Runtime(monkeypatch, scope=org.org_id)
+        chat = world.ok("AI:Chat:create", {}, org.member)["chat"]["chat_id"]
+        world.ok("AI:Chat:input", {"chat_id": chat, "text": "Hello"}, org.member)
+        assert Chats().find(chat)["holder"] == other.peer["id"]
+
     def test_an_organization_that_keeps_to_its_own_runtimes_waits_for_one(self, world, org, monkeypatch):
         Runtime(monkeypatch)
         world.ok("Settings:Organization:update", {"settings": {"runtimes": "own_only"}}, org.admin)

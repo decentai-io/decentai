@@ -187,8 +187,9 @@ The runtime offers a program these functions. A program calls them as it calls a
   empty puts the resource's declared form before the human, who fills it in. An account to connect asks them to
   connect it. The call goes on once they have. Only a declared resource can ask: no agent makes a form of its
   own.
-- **`chat` with `expects`** waits for the answer, and the function's clock stops meanwhile. With nobody there, as
-  when a schedule runs it, it answers `null` at once.
+- **`chat` with `expects`** waits for the answer, and the function's clock stops meanwhile. Whoever started the
+  call, a schedule or a webhook too, the human is asked and told. Unanswered within the runtime's ask hours (24 by
+  default), the call fails, and the card stays open.
 - **`network.open`** shows the human the code, its purpose and the hosts. A yes opens those hosts for that call.
 
 ## 7. Resources
@@ -431,8 +432,8 @@ Output: `{text, stop}`; `stop` is `end`, or `length` when `max_tokens` cut the r
 | `expects` | `nothing` (the default), `text`, `choice` or `file` |
 
 Output: `{answer}`: the words, the choice, or for a file its path in the home, named in `files`. `null` when the
-human declined, nobody answered in a day, or nobody is there. A call may make at most 5 `chat` calls that expect
-nothing.
+human declined. Unanswered within the runtime's ask hours, the call fails. A call may make at most 5 `chat` calls
+that expect nothing.
 
 `network.open`
 

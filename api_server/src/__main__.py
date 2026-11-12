@@ -72,7 +72,7 @@ class Main:
             await door.node.start(door) if identified else log.warning("No identity: no runtime can reach this server.")
             await Live().follow()
             loops = [asyncio.ensure_future(loop()) for loop in (Firing().forever, Sender().forever,
-                                                                RuntimeCalls().forever, CardEndpoints.overdue_forever,
+                                                                RuntimeCalls().forever, CardEndpoints.remind_forever,
                                                                 Limits.forever, Trail.forever)]
             try:
                 yield

@@ -17,7 +17,6 @@ class Usage:
     cache_read: int = 0
     cache_write: int = 0
     reasoning: int = 0
-    reported: bool = False
 
     FIELDS: ClassVar[tuple[str, ...]] = ("input", "output", "cache_read", "cache_write", "reasoning")
     #: Each protocol's words, each field the sum of its names. "prompt" is a count that includes "cached",
@@ -39,20 +38,12 @@ class Usage:
                     "cache_read": ("cacheReadInputTokens",), "cache_write": ("cacheWriteInputTokens",)},
     }
 
-    @property
-    def prompt(self) -> int:
-        return self.input + self.cache_read + self.cache_write
-
-    def to_dict(self) -> dict[str, Any]:
-        return {**{name: getattr(self, name) for name in self.FIELDS}, "reported": self.reported}
-
     def __add__(self, other: "Usage") -> "Usage":
-        return Usage(**{name: getattr(self, name) + getattr(other, name) for name in self.FIELDS},
-                     reported=self.reported or other.reported)
+        return Usage(**{name: getattr(self, name) + getattr(other, name) for name in self.FIELDS})
 
     @classmethod
     def read(cls, protocol: str, source: Any) -> "Usage":
-        """A provider's usage, an SDK object or a dict. Nothing said is not reported; never fails a call."""
+        """A provider's usage, an SDK object or a dict; nothing said is nothing used. Never fails a call."""
         if source is None:
             return cls()
         said = {field: sum(cls._count(cls._said(source, name)) for name in names)
@@ -62,7 +53,7 @@ class Usage:
             prompt = said.pop("prompt")
             cached = min(cached, prompt) if prompt else cached
             said.update(input=max(prompt - cached, 0), cache_read=cached)
-        return cls(**said, reported=True)
+        return cls(**said)
 
     @staticmethod
     def _said(source: Any, path: str) -> Any:

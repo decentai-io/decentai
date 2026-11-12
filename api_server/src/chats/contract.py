@@ -37,7 +37,8 @@ class Contract:
             "rules": statements,
             "remembered": [{k: r[k] for k in ("agent", "function", "record", "allowed")} for r in Remembered().of(person)],
             "model": {"provider": connection["provider"], "address": connection["address"],
-                      "models": connection["models"], "key": Models().key(connection)} if connection else None,
+                      "models": connection["models"], "chosen": self._chosen_model(chat, connection),
+                      "key": Models().key(connection)} if connection else None,
             "organization": {"guardrail": org["guardrail"], "blocked_hosts": org["blocked_hosts"]},
             "assistant": {
                 "memories": [m["text"] for m in Memories().col.find({"user_id": person["_id"]})],
@@ -47,6 +48,12 @@ class Contract:
                                  "tools": [t["name"] for t in m["tools"] if t["on"]],
                                  "levels": {t["name"]: t.get("level", 2) for t in m["tools"] if t["on"]}}
                                 for m in servers]}}
+
+    @staticmethod
+    def _chosen_model(chat: dict[str, Any], connection: dict[str, Any]) -> str:
+        """The model the chat's person picked, while the connection still offers it; else the connection's first."""
+        picked, models = chat["settings"].get("model_id") or "", connection["models"]
+        return picked if picked in models else (models[0] if models else "")
 
     @staticmethod
     def _chosen(chat: dict[str, Any], setting: str) -> dict[str, Any]:

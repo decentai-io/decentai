@@ -1,5 +1,6 @@
 # The runtime (documentation/runtime.md): it holds the active chats, their agents' processes on sandboxes, and the
-# way out. It keeps nothing on disk but its identity. Run it as user 999 with no right, read-only.
+# proxy those processes reach the network through (8005). It keeps nothing on disk but its identity. Run it as user
+# 999 with no right, read-only.
 #
 #   docker build -f runtime/Dockerfile .
 
@@ -11,7 +12,8 @@ RUN pip install --no-cache-dir --timeout 60 --retries 5 --require-hashes -r runt
     && groupadd --system --gid 999 decentai \
     && useradd --system --uid 999 --gid decentai decentai
 
-COPY shared ./shared
+COPY shared/__init__.py shared/cron.py shared/file_types.py shared/mcp.py shared/rules.py ./shared/
+COPY shared/llm ./shared/llm
 COPY communication/*.py ./communication/
 COPY runtime/src ./runtime
 

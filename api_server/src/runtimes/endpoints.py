@@ -18,16 +18,23 @@ class ReportEndpoints(Controller):
     RELEASE = timedelta(seconds=30)
 
     @endpoint("A runtime reports itself", by=RUNTIME, changes=False)
-    def state(self, data: dict[str, Any], caller: Caller) -> dict[str, Any]:
-        """Chats it no longer holds go free, once placed long enough to be in its report: looked for when the chats
-        it reports changed, and every RELEASE seconds. The answer says what it should drain."""
-        before, now = Runtimes().told(caller.runtime, data) or {}, Runtimes.now()
-        chats = Runtimes.chats(data)
-        if before.get("chats") != chats or before.get("released_at", now - self.RELEASE) <= now - self.RELEASE:
-            Chats().col.update_many({"holder": caller.runtime["id"], "_id": {"$nin": chats},
-                                     "held_at": {"$lt": now - timedelta(seconds=30)}}, {"$set": {"holder": ""}})
-            Runtimes().col.update_one({"_id": caller.runtime["id"]}, {"$set": {"released_at": now}})
+    async def state(self, data: dict[str, Any], caller: Caller) -> dict[str, Any]:
+        """A runtime started again (a new ``boot``) holds nothing: its chats go free, and those that were working are
+        placed again, as for a runtime gone. Else chats it no longer holds go free, once placed long enough to be in
+        its report: looked for when the chats it reports changed, and every RELEASE seconds. The answer says what it
+        should drain."""
+        before = await asyncio.to_thread(Runtimes().told, caller.runtime, data) or {}
+        if before.get("boot") and before["boot"] != str(data.get("boot") or "")[:64]:
+            await RuntimeCalls().release([caller.runtime["id"]])
+        await asyncio.to_thread(self._released, caller.runtime["id"], before, Runtimes.chats(data))
         return {"draining": before.get("draining", False), "drained": before.get("drained", [])}
+
+    def _released(self, runtime: str, before: dict[str, Any], chats: list[str]) -> None:
+        now = Runtimes.now()
+        if before.get("chats") != chats or before.get("released_at", now - self.RELEASE) <= now - self.RELEASE:
+            Chats().col.update_many({"holder": runtime, "_id": {"$nin": chats},
+                                     "held_at": {"$lt": now - timedelta(seconds=30)}}, {"$set": {"holder": ""}})
+            Runtimes().col.update_one({"_id": runtime}, {"$set": {"released_at": now}})
 
 
 class NodeEndpoints(Controller):

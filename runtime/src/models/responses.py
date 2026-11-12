@@ -6,8 +6,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from .base import Call, OnText, ProviderError, Reply, Request
-from .cache import Cache
+from .connector import Connector, OnText
 from .openai import OpenAI
 from .usage import Usage
 
@@ -51,25 +50,25 @@ class Responses(OpenAI):
         return [{"type": "function_call_output", "call_id": message["call_id"],
                  "output": message.get("text") or ""}]
 
-    def build(self, request: Request) -> dict[str, Any]:
-        said, turns = Cache.turns(request)
+    def build(self, request: Connector.Request) -> dict[str, Any]:
+        said, turns = self.turns(request)
         body: dict[str, Any] = {"model": self.model, "input": self.conversation(turns)}
-        instructions = Cache.joined(request.system_stable, request.system_rest, said)
+        instructions = self.joined(request.system_stable, request.system_rest, said)
         if instructions:
             body["instructions"] = instructions
         if request.max_tokens is not None:
             body["max_output_tokens"] = max(int(request.max_tokens), self.LEAST_MAX_TOKENS)
-        if self.reasoning_effort:
-            body["reasoning"] = {"effort": self.reasoning_effort}
+        if self.effort:
+            body["reasoning"] = {"effort": self.effort}
         if request.tools:
             body["tools"] = [self.spec(tool) for tool in request.tools]
         self._cache_key(body)
         return body
 
-    def learned(self, exc: Exception) -> bool:
-        return False
+    def learned(self, error: Exception) -> bool:
+        return self.refused_effort(error, "reasoning.effort")
 
-    async def send(self, body: dict[str, Any], on_text: OnText) -> Reply:
+    async def send(self, body: dict[str, Any], on_text: OnText) -> Connector.Reply:
         final = None
         async for event in await self.client.responses.create(**body, stream=True):
             if event.type == "response.output_text.delta":
@@ -78,25 +77,25 @@ class Responses(OpenAI):
                 final = event.response
             elif event.type == "response.failed":
                 error = event.response.error
-                raise ProviderError(f"{self.NAME} failed: {error.code}: {error.message}" if error
-                                    else f"{self.NAME} failed")
+                raise self.Failed(f"{self.NAME} failed: {error.code}: {error.message}" if error
+                                  else f"{self.NAME} failed")
             elif event.type == "error":
-                raise ProviderError(f"{self.NAME} failed: {event.code}: {event.message}")
+                raise self.Failed(f"{self.NAME} failed: {event.code}: {event.message}")
         if final is None:
-            raise ProviderError(f"{self.NAME} ended its answer without finishing it")
+            raise self.Failed(f"{self.NAME} ended its answer without finishing it")
         return self._read(final)
 
-    def _read(self, response: Any) -> Reply:
+    def _read(self, response: Any) -> Connector.Reply:
         """The text and calls apart. ``kept`` holds the items in order without what the text and calls
         already hold, and only when there is reasoning to keep in its place."""
         words: list[str] = []
-        calls: list[Call] = []
+        calls: list[Connector.Call] = []
         kept: list[dict[str, Any]] = []
         refused = False
         for item in (output.model_dump(exclude_none=True) for output in response.output):
             kind = item.get("type")
             if kind == "function_call":
-                calls.append(Call(item["call_id"], item["name"], self.arguments(item.get("arguments"))))
+                calls.append(self.Call(item["call_id"], item["name"], self.arguments(item.get("arguments"))))
                 kept.append({key: value for key, value in item.items() if key != "arguments"})
             elif kind == "message":
                 parts = item.get("content") or []

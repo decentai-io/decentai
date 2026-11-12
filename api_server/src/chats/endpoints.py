@@ -17,7 +17,7 @@ from ..settings.notify import Notifier
 from ..storage.database import Lease
 from ..storage.files import Storage
 from .contract import Contract
-from .store import Cards, Chats, ChatStates, Events, Messages, Remembered, Schedules
+from .store import Cards, Chats, ChatStates, Events, Messages, Outputs, Remembered, Schedules
 
 
 def thread(work: Any, *args: Any) -> Any:
@@ -82,9 +82,12 @@ class ChatEndpoints(Controller):
     async def update(self, data: dict[str, Any], caller: Caller) -> dict[str, Any]:
         chat = await thread(self.mine, data, caller)
         changes = {"settings": self._settings(data.get("settings"), chat["settings"])}
+        changed = {name: value for name, value in changes["settings"].items() if chat["settings"].get(name) != value}
         if "title" in data:
             changes["title"] = str(data["title"] or "")[:200]
         chat = await thread(lambda: Chats().set(chat["_id"], **changes))
+        if changed:  # the conversation shows what its person changed, and when
+            await thread(Events().add, chat, "settings_changed", {"changes": changed})
         await RuntimeCalls().send(chat, {"type": "contract"}) if chat.get("holder") else None
         return {"chat": Chats.public(chat)}
 
@@ -141,7 +144,7 @@ class ChatEndpoints(Controller):
     async def clear(self, data: dict[str, Any], caller: Caller) -> dict[str, Any]:
         chat = await thread(self.mine, data, caller)
         await RuntimeCalls().close(chat)
-        for store in (Messages(), Events(), Cards()):
+        for store in (Messages(), Events(), Cards(), Outputs()):
             await thread(store.col.delete_many, {"chat_id": chat["_id"]})
         await thread(ChatStates().col.delete_one, {"_id": chat["_id"]})
         return {}
@@ -160,7 +163,7 @@ class ChatEndpoints(Controller):
         for record in Records().col.find(attached):
             Storage.current.delete(record["file"]["key"])
         Records().col.delete_many(attached)
-        for store in (Messages(), Events(), Cards(), Schedules()):
+        for store in (Messages(), Events(), Cards(), Schedules(), Outputs()):
             store.col.delete_many({"chat_id": chat["_id"]})
         ChatStates().col.delete_one({"_id": chat["_id"]})
         Chats().col.delete_one({"_id": chat["_id"]})
@@ -174,7 +177,7 @@ class ChatEndpoints(Controller):
         messages = Messages().page({"chat_id": caller.chat["_id"]}, "", 50, newest=True)
         cards = Cards().col.find({"chat_id": caller.chat["_id"], "status": {"$in": ["open", "answered"]}})
         return {"messages": [Messages.public(m) for m in reversed(messages)], "cards": [Cards.public(c) for c in cards],
-                "state": (ChatStates().col.find_one({"_id": caller.chat["_id"]}) or {}).get("state")}
+                "state": ChatStates().of(caller.chat["_id"])}
 
 
 class MessageEndpoints(Controller):
@@ -189,7 +192,11 @@ class MessageEndpoints(Controller):
     @endpoint("A runtime writes what the assistant said", by=RECORD)
     def create(self, data: dict[str, Any], caller: Caller) -> dict[str, Any]:
         parts = data.get("parts") if isinstance(data.get("parts"), list) else []
-        message = Messages().add(caller.chat, "assistant", parts, [str(f) for f in data.get("files") or []][:20])
+        run = data.get("run") if isinstance(data.get("run"), dict) else {}
+        run = {"thread": str(run.get("thread") or "")[:40], "origin": str(run.get("origin") or "")[:80],
+               "title": str(run.get("title") or "")[:200], "message": int(run.get("message") or 0)} if run else None
+        message = Messages().add(caller.chat, "assistant", parts, [str(f) for f in data.get("files") or []][:20],
+                                 model=str(data.get("model") or "")[:200], run=run)
         event = Events().add(caller.chat, "message", Messages.public(message))
         text = " ".join(str(p.get("text") or "") for p in parts if isinstance(p, dict))
         Notifier().tell(caller.chat, "reply.ready", caller.chat["title"] or "Your chat", "Your chat has an answer", text)
@@ -218,11 +225,15 @@ class EventEndpoints(Controller):
 class StateEndpoints(Controller):
     NAME = "AI:State"
 
-    @endpoint("A runtime keeps a chat's state", by=RECORD, changes=False)
+    @endpoint("A runtime keeps a chat's state, in parts: those that changed, or all of them", by=RECORD,
+              changes=False)
     def save(self, data: dict[str, Any], caller: Caller) -> dict[str, Any]:
-        if len(str(data.get("state"))) > ChatStates.MOST:
+        parts, whole = data.get("parts"), data.get("whole") is True
+        if not isinstance(parts, dict) or not all(isinstance(name, str) and ChatStates.PART.fullmatch(name)
+                                                  for name in parts):
+            raise Refused("invalid", "A state is kept in parts, each named by letters, digits, _, - and :.")
+        if not ChatStates().keep(caller.chat["_id"], parts, whole):
             raise Refused("too_large", "A chat's state is at most 4 MiB.")
-        ChatStates().col.replace_one({"_id": caller.chat["_id"]}, {"state": data.get("state")}, upsert=True)
         return {}
 
 
@@ -250,11 +261,10 @@ class CardEndpoints(Controller):
         answer = answer if isinstance(answer, dict) else {}
         if len(str(answer)) > self.KEPT_ANSWER:
             raise Refused("too_large", "An answer is at most 20,000 characters.")
-        if card["kind"] in ("approval", "network"):
-            allowed = answer.get("allowed") is True
-            if card["kind"] == "approval" and answer.get("remember") is True:
-                Remembered().keep(card, allowed)
-            return {"allowed": allowed}, {}
+        if card["kind"] == "approval":
+            return self._approved(card, answer), {}
+        if card["kind"] == "network":
+            return {"allowed": answer.get("allowed") is True}, {}
         if card["kind"] == "form":
             return self._form(card, answer, caller)
         if card["kind"] == "skill" and answer.get("save") is True:
@@ -267,6 +277,20 @@ class CardEndpoints(Controller):
             Memories().col.insert_one({"_id": Memories.new_id(), "org_id": caller.org_id, "user_id": caller.user_id,
                                        "text": str(card["request"].get("text") or "")[:Memories.TEXT]})
         return answer, {}
+
+    @staticmethod
+    def _approved(card: dict[str, Any], answer: dict[str, Any]) -> dict[str, Any]:
+        """An approval's items, each allowed or not: ``items`` decides each by its id, ``allowed`` the rest at once.
+        ``remember``, true for all or a list of item ids, keeps those answers for their agent, function and record."""
+        items = {str(item.get("id")): item for item in card["request"].get("items") or [] if isinstance(item, dict)}
+        given = answer.get("items") if isinstance(answer.get("items"), dict) else {}
+        decided = {item_id: given[item_id] if isinstance(given.get(item_id), bool) else answer.get("allowed") is True
+                   for item_id in items}
+        remember = answer.get("remember")
+        kept = set(items) if remember is True else {str(r) for r in remember} if isinstance(remember, list) else set()
+        for item_id in kept & set(items):
+            Remembered().keep(card, items[item_id], decided[item_id])
+        return {"items": decided}
 
     @staticmethod
     def _form(card: dict[str, Any], answer: dict[str, Any], caller: Caller) -> tuple[dict, dict]:
@@ -314,17 +338,20 @@ class CardEndpoints(Controller):
                         str(request.get("text") or request.get("function") or request.get("label") or "")[:200])
 
     @staticmethod
-    async def overdue_forever() -> None:
-        """A question unanswered for a day is answered null; one server at a time."""
+    async def remind_forever() -> None:
+        """A card is never answered for its person: one still open after a while is told to them again, one server
+        at a time."""
         while True:
             await asyncio.sleep(60)
             if not await thread(Lease("cards", 55).take):
                 continue
-            for card in await thread(Cards().overdue):
+            for card in await thread(Cards().to_remind):
                 chat = await thread(Chats().find, card["chat_id"])
                 if chat:
-                    await RuntimeCalls().send(chat, {"type": "answer", "card": card["_id"], "call": card["call"],
-                                                     "kind": card["kind"], "answer": None})
+                    request = card["request"]
+                    await thread(Notifier().tell, chat, "approval.waiting",
+                                 f"{card['agent'] or 'Your assistant'} is still waiting for you",
+                                 str(request.get("why") or request.get("text") or "")[:200])
 
     @endpoint("A runtime ends the cards of a call, or one card", by=RECORD)
     def expire(self, data: dict[str, Any], caller: Caller) -> dict[str, Any]:
@@ -340,9 +367,41 @@ class ActivityEndpoints(Controller):
 
     @endpoint("See what waits for you across your chats", changes=False)
     def list(self, data: dict[str, Any], caller: Caller) -> dict[str, Any]:
-        cards = Cards().col.find({"user_id": caller.user_id, "status": "open"}).limit(100)
+        cards = list(Cards().col.find({"user_id": caller.user_id, "status": "open"}).sort("_id", 1).limit(200))
         schedules = Schedules().col.find({"user_id": caller.user_id, "paused": False}).sort("next_at", 1).limit(100)
-        return {"cards": [Cards.public(c) for c in cards], "schedules": [Schedules.public(s) for s in schedules]}
+        chats = Chats().col.find({"_id": {"$in": list({card["chat_id"] for card in cards})}}, {"title": 1})
+        return {"cards": [Cards.public(c) for c in cards], "schedules": [Schedules.public(s) for s in schedules],
+                "chats": {chat["_id"]: chat["title"] for chat in chats}}
+
+
+class OutputEndpoints(Controller):
+    NAME = "AI:Output"
+
+    @endpoint("A runtime keeps the output of a chat's work, whole", by=RECORD, changes=False)
+    def put(self, data: dict[str, Any], caller: Caller) -> dict[str, Any]:
+        text = data.get("text")
+        if not isinstance(text, str):
+            raise ValueError("text is the output, as text.")
+        if len(text) > Outputs.MOST:
+            raise Refused("too_large", f"An output is at most {Outputs.MOST} characters.")
+        return Outputs().put(caller.chat, text)
+
+    @endpoint("A runtime reads the output of a chat's work, a page at a time", by=CHAT, changes=False)
+    def read(self, data: dict[str, Any], caller: Caller) -> dict[str, Any]:
+        return self._page(caller.chat["_id"], data)
+
+    @endpoint("See the output of your chat's work, a page at a time", changes=False)
+    def see(self, data: dict[str, Any], caller: Caller) -> dict[str, Any]:
+        return self._page(ChatEndpoints.mine(data, caller)["_id"], data)
+
+    @staticmethod
+    def _page(chat_id: str, data: dict[str, Any]) -> dict[str, Any]:
+        found = Outputs().read(chat_id, str(data.get("ref") or ""))
+        if found is None:
+            raise Refused("not_found", "No such output in this chat.")
+        offset = max(0, int(data.get("offset") or 0))
+        limit = min(max(1, int(data.get("limit") or 50000)), 100000)
+        return {"text": found["text"][offset:offset + limit], "size": found["size"]}
 
 
 class SwitchEndpoints(Controller):

@@ -29,8 +29,8 @@ class Runtimes(Store):
         return self.col.find_one_and_update(
             {"_id": peer["id"]},
             {"$set": {"scope": str(metadata.get("scope") or ""), "labels": list(metadata.get("labels") or [])[:20],
-                      "address": address, "chats": self.chats(report),
-                      "sandboxes": sandboxes, "seen_at": self.now()},
+                      "address": address, "chats": self.chats(report), "full": report.get("full") is True,
+                      "boot": str(report.get("boot") or "")[:64], "sandboxes": sandboxes, "seen_at": self.now()},
              "$setOnInsert": {"name": "", "note": "", "draining": False, "drained": [], "since": self.now()}},
             upsert=True, return_document=ReturnDocument.BEFORE)
 

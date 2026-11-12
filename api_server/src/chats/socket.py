@@ -55,7 +55,8 @@ class Live:
                             asyncio.run_coroutine_threadsafe(self._kept(event), loop)
             except OperationFailure as failed:
                 log.warning(f"The events could not be followed from where they stopped: {failed}")
-                resume = None if failed.code == 286 else resume  # its history gone: from now
+                # its history gone (286), or the stream invalidated by a drop, so its place refused (260): from now
+                resume = None if failed.code in (260, 286) else resume
                 time.sleep(2)
             except Exception:
                 log.exception("The events stopped being followed; following again from where they stopped")

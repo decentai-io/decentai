@@ -153,9 +153,14 @@ A model connection is an administrator's ([api-server](api-server.md#8-settings)
 - **The providers and models** offered are the catalog in `shared/llm/providers.json` and `models.json`, written by
   `tools/generate_llm_catalog.py`. A provider has its protocol and an address, which may hold a blank to fill in;
   only `openai` and `anthropic` may leave the address out. Redirects are never followed. An address must be public,
-  unless its host is named in the runtime's `AI_RUNTIME_INSIDE_HOSTS`: a model served on your own network.
-- **A connection's own settings:** `timeout_seconds` (300, at most 600), `max_retries` (4, at most 10),
-  `reasoning_effort` (the chat's `effort`), and `tool_mode: text` for a model with no tools of its own.
+  unless its host is named in the runtime's `AI_RUNTIME_INSIDE_HOSTS`: a model served on your own network. It is
+  checked on every request, at the address the request then goes to, so a name can't answer one address to the
+  check and another to the connection. Behind a proxy named in the runtime's `HTTPS_PROXY` (and `NO_PROXY`), the name
+  is checked and the proxy connects.
+- **A connection** is a provider, its address, its key and the models people may pick from it, its first the one a
+  chat uses unless its person picks another; a model must call tools of its own. The chat's `effort` goes as the model's reasoning effort where the protocol has one (OpenAI's two and Anthropic's); a
+  model that refuses it is not sent it again. Gemini and Bedrock don't use it. A provider may stay silent 300 seconds,
+  and one busy or out of reach is asked again twice.
 - **Prompt caching** is asked where a provider takes it: Anthropic's, and Bedrock's for Claude and Nova; OpenAI's by
   a key on its own address. A model's kept reasoning goes back only to the model that wrote it.
 - **Usage** is recorded for each reply, its tokens in and out, read from the cache and written to it, and its

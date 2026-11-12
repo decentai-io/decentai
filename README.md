@@ -22,7 +22,7 @@ kept. An agent may be written in any language: [the standard](documentation/agen
 | Part | Is |
 |---|---|
 | `api_server/` | the platform's data and who may do what with it; people reach it through the web client or an API key |
-| `runtime/` | the active chats: their agents' processes on sandboxes, the gate, the way out, and the mind that thinks in each |
+| `runtime/` | the active chats: their agents' processes on sandboxes, the gate, the proxy, and the assistant that thinks in each |
 | `sandbox/` | runs agents' programs, each process in a jail of its own (nsjail) |
 | `issuer/` | certifies every other part; they call each other over HTTPS with mutual TLS on port 8004 |
 | `communication/` | how the parts talk: nodes, identities, enrolling |

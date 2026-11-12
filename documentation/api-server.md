@@ -289,7 +289,7 @@ deleting takes its messages, cards, schedules and files with it. Its settings ar
 |---|---|
 | `trust` | 0 to 3: the level up to which agents act without asking ([agents](agents.md#6-what-a-program-may-call)) |
 | `agents` | which of the agents its person may use this chat uses: all of them unless it names some; naming none, none |
-| `model`, `effort` | the model connection and effort its assistant uses |
+| `model`, `model_id`, `effort` | the model connection its assistant uses, which of the connection's models (its first unless one is picked), and the effort |
 | `time_zone` | for its schedules |
 | the assistant's own | its turn budget, skills and MCP servers (§8), chosen as its agents are |
 
@@ -304,20 +304,29 @@ deleting takes its messages, cards, schedules and files with it. Its settings ar
   then held by none.
 - **Its contract** is what a runtime is given for a chat: the chat's settings, its person and organization, the
   agents it uses with their manifests, the rules the person's policies make for those agents and the approvals they
-  remembered, and its model connection with its key. When any of it changes, the holder is given it again.
-- **Its state** is the assistant's: written by the holder alone, kept as given in a document of its own, up to 4 MiB,
-  and never read by the API server.
+  remembered, and its model connection with its key and the model it uses. When any of it changes, the holder is
+  given it again.
+- **Its state** is the assistant's: written by the holder alone, in named parts merged into a document of its own,
+  each save the parts that changed (or all of them), up to 4 MiB in all, and never read by the API server.
+- **Its outputs,** what each piece of the assistant's work answered, are kept whole, apart from its state, once by the
+  hash of their text, up to 2 MiB each: written by the holder, read back a page at a time, and gone when the chat is
+  cleared or deleted ([assistant](assistant.md#6-the-work-log)).
 
 **Messages.** What the person writes, with files they attach (their own, §6), is kept and sent to the holder. What
-the assistant says, the holder writes. Each is numbered in its chat, so a chat has one order.
+the assistant says, the holder writes, with the model that wrote it and, for a schedule's or webhook's run, the run
+that posted it. Each is numbered in its chat, so a chat has one order.
 
-**Events** are what happens in a chat as it happens: the assistant working or idle, progress notes, cards opened and
-closed, a schedule's runs. The holder writes them. Every API server follows the events kept, through one change
+**Events** are what happens in a chat as it happens: the assistant working or idle, each piece of its work as it
+begins, waits and ends (with why, what it was given, its output's first line and ref, the files it returned and the
+records it touched), progress notes, cards opened and closed, a schedule's runs, and the chat's settings changed by its
+person. The holder writes them, but for the settings, which the API server does. Every API server follows the events kept, through one change
 stream it resumes where it stopped, and sends those of the chats its browsers have open, so they reach the person
-whichever server their browser reached (§1). The last 200 are kept for a browser that comes back; each is numbered in
-its chat, so a gap in the numbers is always an event missed.
+whichever server their browser reached (§1). The last 500 are kept, read again when a browser opens the chat
+(`AI:Event:list`); each is numbered in its chat, so a gap in the numbers is always an event missed. A piece of work's
+whole output is read a page at a time by the chat's person (`AI:Output:see`) as by its holder.
 
-**What only passes,** the assistant's words as they are written and an agent's screen, never reaches the database:
+**What only passes,** the assistant's words as they are written, what each of its threads is doing (thinking,
+folding earlier messages, or its work), and an agent's screen, never reaches the database:
 for as long as a browser has a chat open on a server, that server asks the chat's runtime for them
 (`Runtime:Chat:passing`), each ask held until something passes. Each carries the number of the last event kept
 before it; one older than an event the browser took already came late, and is dropped.
@@ -326,31 +335,34 @@ before it; one older than an event the browser took already came late, and is dr
 
 | Kind | Asks |
 |---|---|
-| approval | to let an agent's call through: its level is above the chat's trust, or a policy says `ask` (§3). The person may remember the answer for that agent, function and record. Or to let one of their MCP tools be called: its level is above the chat's trust (§8); never remembered, since the tool's level is theirs to set |
+| approval | the calls one step of the assistant needs the person for, each an item: an agent's call above its run's trust, or one a policy says `ask` for (§3), or one of their MCP tools above its trust (§8). The person allows all, none, or each, and may remember the answers for each agent, function and record |
 | question | what `chat` expects: words, a choice or a file ([agents](agents.md#9-the-standard-field-by-field)) |
 | form | a secret's empty fields, a `form` field's questions, or an account to connect (§6) |
 | network | `network.open`'s code, purpose and hosts |
 | the assistant's own | to save a skill or a memory (§8) |
 
 - A runtime opens a card; only the chat's person answers it, and the answer goes to the holder.
-- A card expires when its call ends. A question unanswered for a day is answered `null`.
+- A card waits for its person however long it takes, whoever started the work: it ends answered, or expired when
+  its work is stopped. One still open is told to its person again every 12 hours.
 - What is typed into a form goes into the record, not the card. An answer not to be remembered goes to the agent
   once.
 - A remembered approval is the person's, listed where they can take it back.
-- When an agent's call reaches the API server, an approval lets it through only if it was for that call, agent,
-  function and operation, and only once.
+- When an agent's call reaches the API server, an approval's item answered yes lets it through only if it was for
+  that call, agent, function and operation, and only once.
 
 **Schedules** run a chat's work with nobody present: a function marked `schedulable`, or a prompt for the assistant.
 
 - When: a cron line in the chat's time zone, every so many seconds (at least 60), or once, at a time.
 - The person lists, makes, pauses, resumes, runs now and deletes them, paused ones too. The assistant lists, makes
   and deletes its chat's, through its runtime.
+- Each runs at its own trust: its chat's when it is made; its person may set another on the schedules page, above
+  the chat's too, and the assistant never. A record call its run makes is checked at that trust.
 - A function's schedule may name a `wake` field of its output: a run whose output has it set wakes the assistant,
   with nobody there.
 - When one is due, one API server claims it, places its chat if no runtime holds it, and asks the holder to run it.
   The last 20 runs' outcomes are kept.
-- A run that needs its person's approval waits on the card, and its person is told; it ends when they answer, or
-  when the card is a day old ([runtime](runtime.md)).
+- A run that needs its person waits on the card, however long they take, and its person is told
+  ([assistant](assistant.md#8-asking-the-person)).
 - At most 50 to a chat, and a cap for each person and each organization (§9).
 
 **Stopping.** A person stops a chat: its work is cancelled and its cards expire. Or they stop one call or task of
@@ -366,7 +378,8 @@ administrator may stop everything of a person.
 - The server sends the chat's events, from where the browser left off.
 - A socket it refuses is accepted, then closed with why: 4401 signed out, 4403 no chat of theirs.
 
-**Across chats,** a person sees what waits for them: cards and schedules, in every chat.
+**Across chats,** a person sees what waits for them: every open card of every chat, with each chat's title, to
+answer in one place; and their schedules.
 
 ## 8. Settings
 
@@ -383,8 +396,8 @@ administrator may stop everything of a person.
 | `speech` | what writes speech down and says replies aloud: the platform's speech service, a model connection, or none | none |
 | `model` | the default model connection | none |
 
-**Model connections** are an administrator's: a provider, its address, its key and the models it offers, shared with
-groups. The key is encrypted and never shown again; changing the address asks for it again. A runtime checks a
+**Model connections** are an administrator's: a provider, its address, its key and the models people may pick from it,
+the first the one a chat uses unless its person picks another, shared with groups. The key is encrypted and never shown again; changing the address asks for it again. A runtime checks a
 connection and lists its models, since runtimes are what call them, a saved one or one as given before it is saved. A chat uses the organization's default unless
 its person picks another they may use.
 
@@ -505,9 +518,11 @@ processes, their memory and the cores they use.
   to its own (§2).
 - The API server asks the issuer for all of it, and never holds a token's secret.
 
-**A runtime reports itself** every few seconds (§2): where it is reached, the chats it holds, and its sandboxes,
-with their room and what runs on them. Nobody fills the list in: a runtime is on it once it reports. Where it is
-reached is checked to be an address, and every call to it checks its certificate.
+**A runtime reports itself** every few seconds (§2): where it is reached, the chats it holds, whether it is full, the
+id of its start, and its sandboxes, with their room and what runs on them. Nobody fills the list in: a runtime is on it
+once it reports. Where it is reached is checked to be an address, and every call to it checks its certificate. No new
+chat is placed on a full one, nor on one that answered a chat 503, until it reports room. One whose start id changed
+started again and holds nothing: its chats go free, and those that were working are placed again, as for one gone.
 
 **An administrator sees** the runtimes that serve their organization, and the operator the shared ones too: what each
 reports, the organization's chats it holds, and how many of others'. Of what a shared runtime's sandboxes run, an

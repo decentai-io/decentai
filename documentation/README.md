@@ -10,7 +10,7 @@ chat's trust. The model proposes; the platform decides.
 | Part | Is | Its design |
 |---|---|---|
 | API server (`api_server/`) | the platform's data and who may do what with it: people, agents, records, chats, settings, the trail | [api-server](api-server.md) |
-| runtime (`runtime/`) | the active chats: their agents' processes, the gate, the way out, and the mind that thinks in each | [runtime](runtime.md), [mind](mind.md) |
+| runtime (`runtime/`) | the active chats: their agents' processes, the gate, the proxy, and the assistant that thinks in each | [runtime](runtime.md), [assistant](assistant.md) |
 | sandbox (`sandbox/`) | runs agents' programs, each process in a jail of its own | [sandbox](sandbox.md) |
 | issuer (`issuer/`) | certifies every other part | [communication](communication.md) |
 | speech (`speech/`) | speech to text and text to speech, from models on the machine | [operating](operating.md#7-speech) |
@@ -37,7 +37,7 @@ people ──https──► proxy ──► API server ◄──8004──► ru
 | [sandbox](sandbox.md) | what runs a program, holds it, and carries its connections out |
 | [api-server](api-server.md) | the platform's data and doors: calls, permissions, people, agents, records, chats, settings, runtimes |
 | [runtime](runtime.md) | holding a chat: agents' processes, the gate, what a program may call, the way out |
-| [mind](mind.md) | what thinks in a chat: thoughts, tools, tasks, history and state |
+| [assistant](assistant.md) | what thinks in a chat: threads, tools, tasks and runs, its work log, asking the person, history and state |
 | [communication](communication.md) | nodes, certificates, trust, enrolling, the issuer |
 | [operating](operating.md) | running a deployment: one computer, a server, backups, releases, the admin tool, more nodes |
 | [connected apps](connected-apps.md) | registering an organization's app with each OAuth provider |

@@ -7,8 +7,7 @@ from typing import Any
 
 from openai import AsyncOpenAI
 
-from .base import Call, Connector, OnText, Reply, Request
-from .cache import Cache, Turn
+from .connector import Connector, OnText
 from .usage import Usage
 
 
@@ -30,7 +29,7 @@ class OpenAI(Connector):
 
     def _client(self) -> AsyncOpenAI:
         return AsyncOpenAI(api_key=self.api_key, base_url=self.endpoint or None, timeout=self.limit,
-                           max_retries=self.max_retries, http_client=self.http())
+                           max_retries=self.RETRIES, http_client=self.http())
 
     @property
     def official(self) -> bool:
@@ -64,41 +63,43 @@ class OpenAI(Connector):
     def result(self, message: dict[str, Any]) -> list[dict[str, Any]]:
         return [{"role": "tool", "tool_call_id": message["call_id"], "content": message.get("text") or ""}]
 
-    def conversation(self, turns: list[Turn]) -> list[dict[str, Any]]:
+    def conversation(self, turns: list[tuple[str, list]]) -> list[dict[str, Any]]:
         """Turns as a flat list. A user's turn is its results, then one message of its words and every
         picture, a tool result's among them."""
         out: list[dict[str, Any]] = []
-        for turn in turns:
-            if turn.role == "assistant":
-                out += [said for item in turn.items for said in self.assistant(item)]
+        for side, items in turns:
+            if side == "assistant":
+                out += [said for item in items for said in self.assistant(item)]
                 continue
-            out += [said for item in turn.items if item.get("role") == "tool" for said in self.result(item)]
-            text = Cache.joined(*[item.get("text") for item in turn.items if item.get("role") != "tool"])
-            images = [self.image(image) for item in turn.items for image in item.get("images") or []]
+            out += [said for item in items if item.get("role") == "tool" for said in self.result(item)]
+            text = self.joined(*[item.get("text") for item in items if item.get("role") != "tool"])
+            images = [self.image(image) for item in items for image in item.get("images") or []]
             if images:
                 out.append({"role": "user", "content": [*([self.words(text)] if text else []), *images]})
             elif text:
                 out.append({"role": "user", "content": text})
         return out
 
-    def build(self, request: Request) -> dict[str, Any]:
-        said, turns = Cache.turns(request)
-        system = Cache.joined(request.system_stable, request.system_rest, said)
+    def build(self, request: Connector.Request) -> dict[str, Any]:
+        said, turns = self.turns(request)
+        system = self.joined(request.system_stable, request.system_rest, said)
         body: dict[str, Any] = {"model": self.model, "messages": [
             *([{"role": "system", "content": system}] if system else []), *self.conversation(turns)]}
         if request.max_tokens is not None:
             body[self.cap_name] = int(request.max_tokens)
         if self.asks_usage:
             body["stream_options"] = {"include_usage": True}
-        if self.reasoning_effort:
-            body["reasoning_effort"] = self.reasoning_effort
+        if self.effort:
+            body["reasoning_effort"] = self.effort
         if request.tools:
             body["tools"] = [self.spec(tool) for tool in request.tools]
         self._cache_key(body)
         return body
 
-    def learned(self, exc: Exception) -> bool:
-        text = str(exc)
+    def learned(self, error: Exception) -> bool:
+        text = str(error)
+        if self.refused_effort(error, "reasoning_effort"):
+            return True
         if self.asks_usage and "stream_options" in text:
             self.asks_usage = False
             return True
@@ -108,7 +109,7 @@ class OpenAI(Connector):
             return True
         return False
 
-    async def send(self, body: dict[str, Any], on_text: OnText) -> Reply:
+    async def send(self, body: dict[str, Any], on_text: OnText) -> Connector.Reply:
         words: list[str] = []
         found: list[dict[str, str]] = []
         slots: dict[int, dict[str, str]] = {}
@@ -133,6 +134,6 @@ class OpenAI(Connector):
                 if piece.function is not None:
                     slot["name"] += piece.function.name or ""
                     slot["arguments"] += piece.function.arguments or ""
-        calls = [Call(slot["id"] or self.made_id(), slot["name"], self.arguments(slot["arguments"]))
+        calls = [self.Call(slot["id"] or self.made_id(), slot["name"], self.arguments(slot["arguments"]))
                  for slot in found]
         return self.reply("".join(words), calls, [], "content_filter" if refused else stop, usage)

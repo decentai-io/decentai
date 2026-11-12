@@ -1,15 +1,19 @@
-"""The API server under test: a database of its own on a one-node replica set, storage in a temporary folder, a runtime
-and mail stood in for. Calls go through the router both doors use (documentation/api-server.md)."""
+"""The API server under test: a database of its own on a one-node replica set, storage in a temporary folder, a runtime,
+mail and outside addresses stood in for. Calls go through the router both doors use (documentation/api-server.md)."""
 
 from __future__ import annotations
 
 import asyncio
 import base64
 import itertools
+import json
 import os
 import tempfile
+import threading
 import uuid
-from typing import Any
+from contextlib import contextmanager
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from typing import Any, Iterator
 
 os.environ.update({
     "AI_API_URL": "https://api.test", "AI_API_APP_URL": "https://app.test",
@@ -156,6 +160,34 @@ class Runtime:
 
     def holds(self, chat_id: str) -> None:
         Chats().col.update_one({"_id": chat_id}, {"$set": {"holder": self.peer["id"]}})
+
+
+class Answering(BaseHTTPRequestHandler):
+    """Stands in for an address people gave, on loopback, which AI_API_INSIDE_HOSTS lets them reach."""
+
+    def answer(self, status: int, body: Any = b"", headers: dict[str, str] | None = None) -> None:
+        raw = body if isinstance(body, bytes) else json.dumps(body).encode()
+        self.send_response(status)
+        for name, value in {"Content-Type": "application/json", "Content-Length": str(len(raw)),
+                            **(headers or {})}.items():
+            self.send_header(name, value)
+        self.end_headers()
+        self.wfile.write(raw)
+
+    def log_message(self, *_: object) -> None:
+        pass
+
+
+@contextmanager
+def serving(handler: type[BaseHTTPRequestHandler]) -> Iterator[str]:
+    """``handler`` answering on loopback, at the address given."""
+    server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        yield f"http://127.0.0.1:{server.server_port}"
+    finally:
+        server.shutdown()
+        server.server_close()
 
 
 @pytest.fixture(scope="session")

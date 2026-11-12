@@ -1,11 +1,33 @@
-"""What every part uses and none owns: the runtime's settings, and the tasks it keeps (documentation/runtime.md §9)."""
+"""What every part uses and none owns: the runtime's settings, and what is a public address
+(documentation/runtime.md §9)."""
 
 from __future__ import annotations
 
 import asyncio
 import ipaddress
 import re
-from typing import Coroutine
+import socket
+
+NAT64 = ipaddress.ip_network("64:ff9b::/96")
+
+
+def public(address: str) -> bool:
+    """Of the public internet only, an IPv4 address inside an IPv6 one (mapped, 6to4, Teredo, NAT64) judged by what is
+    inside."""
+    ip = ipaddress.ip_address(address)
+    if ip.version == 6:
+        ip = ip.ipv4_mapped or ip.sixtofour or (ip.teredo[1] if ip.teredo else None) or (
+            ipaddress.ip_address(int(ip) & 0xFFFFFFFF) if ip in NAT64 else ip)
+    return ip.is_global and not ip.is_multicast
+
+
+async def lookup(host: str, port: int) -> list[str]:
+    """The addresses a name answers with, looked up once, in the order to try them; none when it can't be."""
+    try:
+        found = await asyncio.get_running_loop().getaddrinfo(host, port, type=socket.SOCK_STREAM)
+    except (OSError, UnicodeError):
+        return []
+    return list(dict.fromkeys(info[4][0] for info in found))
 
 
 class SettingsRefused(ValueError):
@@ -25,11 +47,13 @@ class Settings:
         if not self.api_servers:
             raise SettingsRefused("AI_RUNTIME_API_SERVERS: the API servers it serves, each as host:port.")
         self.identity = self._text("AI_RUNTIME_IDENTITY", "/run/decentai/runtime")
-        self.way_out_port = self._number("AI_RUNTIME_WAY_OUT_PORT", 8005, 1, 65535)
+        self.proxy_port = self._number("AI_RUNTIME_PROXY_PORT", 8005, 1, 65535)
         self.idle_seconds = self._number("AI_RUNTIME_AGENT_PROCESS_IDLE_MINUTES", 12, 1, 1440) * 60
         self.ready_seconds = self._number("AI_RUNTIME_AGENT_READY_SECONDS", 60, 1, 3600)
         self.cancel_seconds = self._number("AI_RUNTIME_AGENT_CANCEL_SECONDS", 5, 1, 3600)
+        self.ask_hours = self._number("AI_RUNTIME_ASK_HOURS", 24, 1, 720)
         self.connections_max = self._number("AI_RUNTIME_AGENT_CONNECTIONS_MAX", 128, 1, 100000)
+        self.chats_max = self._number("AI_RUNTIME_CHATS_MAX", 500, 1, 100000)
         #: Model hosts inside this network that may be reached anyway: names, or networks such as 10.0.0.0/8.
         self.inside_hosts = [host.lower() for host in self._text("AI_RUNTIME_INSIDE_HOSTS").replace(",", " ").split()]
         for network in [host for host in self.inside_hosts if "/" in host]:
@@ -56,18 +80,3 @@ class Settings:
             raise SettingsRefused(f"{name}: '{text}' is not a whole number from {low} to {high}.")
         return int(text)
 
-
-class Held(set):
-    """Background tasks, kept until each is done: a loop holds a task only weakly."""
-
-    def start(self, work: Coroutine) -> asyncio.Task:
-        task = asyncio.ensure_future(work)
-        self.add(task)
-        task.add_done_callback(self.discard)
-        return task
-
-    async def stop(self) -> None:
-        tasks = list(self)
-        for task in tasks:
-            task.cancel()
-        await asyncio.gather(*tasks, return_exceptions=True)

@@ -1,16 +1,18 @@
-"""The runtime's world in memory: an API server, one sandbox, and the agent's program in it."""
+"""The runtime's world in memory: an API server, the sandboxes with each process's program, an engine, and a chat
+placed on them with its assistant, its model answering from a script."""
 
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import itertools
 import json
 from typing import Any
 
-from runtime.chats.chats import Chats
-from runtime.mind.mind import Mind
+from runtime.assistant.assistant import Assistant
+from runtime.controllers.chat import Chat
 from runtime.models.scripted import Scripted
-from runtime.utils import Held, Settings
+from runtime.utils import Settings
 
 SETTINGS = Settings({"AI_RUNTIME_ADDRESS": "runtime:8004", "AI_RUNTIME_API_SERVERS": "api:8004",
                      "AI_RUNTIME_AGENT_READY_SECONDS": "2", "AI_RUNTIME_AGENT_CANCEL_SECONDS": "1"})
@@ -18,7 +20,8 @@ SETTINGS = Settings({"AI_RUNTIME_ADDRESS": "runtime:8004", "AI_RUNTIME_API_SERVE
 
 def function(id: str, level: int = 0, calls: tuple = (), timeout: int = 5, **inputs: Any) -> dict[str, Any]:
     return {"id": id, "name": id.title(), "description": f"The {id} function.", "level": level, "calls": list(calls),
-            "timeout_seconds": timeout, "inputs": {"type": "object", "properties": inputs, "additionalProperties": False},
+            "timeout_seconds": timeout,
+            "inputs": {"type": "object", "properties": inputs, "additionalProperties": False},
             "outputs": {"type": "object"}}
 
 
@@ -26,9 +29,8 @@ AGENT = {"agent_id": "probe", "version": "1.0.0", "programs": {"x86_64": {"diges
          "manifest": {"agent": {"id": "probe", "name": "Probe", "version": "1.0.0", "description": "Checks things.",
                                 "instructions": "Use it to check things."},
                       "network": {"hosts": ["example.com", {"from_secret": "mailbox.server"}]},
-                      "functions": [function("report", calls=("chat", "record.read:mailbox", "network.open"),
-                                             file={"type": "string"}),
-                                    function("slow", timeout=3), function("wipe", level=2)]}}
+                      "functions": [function("report", calls=("chat", "record.read:mailbox", "network.open")),
+                                    function("wipe", level=2, what={"type": "string"})]}}
 
 
 def contract(trust: int = 1, **settings: Any) -> dict[str, Any]:
@@ -37,21 +39,45 @@ def contract(trust: int = 1, **settings: Any) -> dict[str, Any]:
             "rules": [{"effect": "allow", "actions": ["agent:*"]}], "remembered": [],
             "model": {"provider": "fake", "address": "", "models": ["script"], "key": None},
             "organization": {"guardrail": "", "blocked_hosts": ["blocked.example.com"]},
-            "assistant": {"memories": [], "mcp_servers": [],
-                          "skills": [{"_id": "k1", "name": "Tidy", "description": "How to tidy.", "text": "Sort it."}]}}
+            "assistant": {"memories": [], "mcp_servers": [], "skills": []}}
 
 
 class Api:
-    """The API server: every call kept as it would cross the wire; answers by endpoint."""
+    """The API server: each call kept as it would cross the wire; answered by endpoint, with a value or a function of
+    its data. Outputs are kept by their hash, as the API server keeps them."""
 
     def __init__(self, contract: dict[str, Any], loaded: dict[str, Any] | None = None):
         self.calls: list[tuple[str, dict[str, Any]]] = []
+        self.outputs: dict[str, str] = {}
+        #: The assistant's state, as the API server keeps it: in parts.
+        self.parts: dict[str, Any] = {}
         cards = itertools.count(1)
         self.answers: dict[str, Any] = {
             "AI:Chat:contract": contract, "AI:Chat:load": loaded or {"messages": [], "cards": [], "state": None},
             "AI:Approval:open": lambda data: {"card_id": f"card{next(cards)}"},
-            "AI:Schedule:add": {"schedule_id": "s1"}, "Files:Piece:write": {"record_id": "f-made"},
-            "Files:Piece:read": {"data": "aGk=", "size": 2, "name": "notes.txt", "type": "text/plain"}}
+            "AI:Message:create": {"message_id": "m", "seq": 1, "event_seq": 1}, "AI:Event:append": {"seq": 1},
+            "AI:Output:put": self._put, "AI:Output:read": self._read, "AI:State:save": self._save,
+            "Files:Piece:write": {"record_id": "f-made"},
+            "Files:Piece:read": {"data": b"hi", "size": 2, "name": "notes.txt", "type": "text/plain"}}
+
+    def _put(self, data: dict[str, Any]) -> dict[str, Any]:
+        ref = hashlib.sha256(data["text"].encode()).hexdigest()
+        self.outputs[ref] = data["text"]
+        return {"ref": ref, "size": len(data["text"])}
+
+    def _save(self, data: dict[str, Any]) -> dict[str, Any]:
+        if data.get("whole"):
+            self.parts = {}
+        for name, part in data["parts"].items():
+            if part is None:
+                self.parts.pop(name, None)
+            else:
+                self.parts[name] = json.loads(json.dumps(part, default=str))
+        return {}
+
+    def _read(self, data: dict[str, Any]) -> dict[str, Any]:
+        text = self.outputs[data["ref"]]
+        return {"text": text[data["offset"]:data["offset"] + data["limit"]], "size": len(text)}
 
     async def call(self, endpoint: str, data: dict[str, Any]) -> dict[str, Any]:
         self.calls.append((endpoint, json.loads(json.dumps(data, default=str))))
@@ -64,82 +90,110 @@ class Api:
         return [data for name, data in self.calls if name == endpoint]
 
 
-async def plain(world: "Sandboxes", process: Any, call_id: str, inputs: dict[str, Any]) -> tuple[dict, list | None]:
-    return {"done": True, "inputs": inputs}, None
+async def plain(program: "Program", inputs: dict[str, Any]) -> dict[str, Any]:
+    return {"done": True, "inputs": inputs}
+
+
+class Program:
+    """The program of one call: what it may ask the runtime within it."""
+
+    def __init__(self, sandboxes: "Sandboxes", process: Any, call_id: str):
+        self.sandboxes, self.process, self.call_id = sandboxes, process, call_id
+
+    async def ask(self, function: str, inputs: dict[str, Any]) -> dict[str, Any]:
+        """The program's own call to the runtime, within this call: the answer's body."""
+        id = f"q{next(self.sandboxes.ids)}"
+        self.sandboxes.answers[id] = asyncio.get_running_loop().create_future()
+        await self.process.received({"_id": id, "body": {"type": "call", "data": {
+            "within": self.call_id, "function": function, "inputs": inputs}}})
+        return await self.sandboxes.answers[id]
 
 
 class Sandboxes:
-    """One x86_64 sandbox. Its program says ready, runs each call as ``behave`` says, and obeys a cancel."""
+    """The sandboxes, as a chat's processes speak through them. Each program says ready, runs each call as ``behave``
+    says, by function (``async (program, inputs)``, answering an output, or an output and its files), and obeys a
+    cancel."""
 
-    def __init__(self):
-        self.processes: dict[str, Any] = {}
-        self.offered: dict[tuple[str, str], str] = {}
-        self.drained: set[str] = set()
-        #: What the runtime sent programs; the functions ready names (None: the manifest's); calls running.
+    def __init__(self, engine: "Engine"):
+        self.engine, self.behave = engine, {}
         self.sent: list[dict[str, Any]] = []
         self.started: list[dict[str, Any]] = []
-        self.ready: list[str] | None = None
         self.running: dict[str, asyncio.Task] = {}
-        self.behave: dict[str, Any] = {}
         self.answers: dict[str, asyncio.Future] = {}
-        self.tasks, self.ids = Held(), itertools.count(1)
+        self.ids, self.tasks = itertools.count(1), set()
 
-    def choose(self, agent: dict[str, Any]) -> dict[str, Any]:
-        return {"sandbox": "sb1", "machine": "x86_64"}
+    async def start(self, name: str, programs: dict[str, str], base: str = "", network: bool = False) -> None:
+        self.started.append({"name": name, "network": network})
+        process = self.engine.processes[name][1]
+        self._later(process.received({"_id": "p0", "body": {"type": "ready", "data": {
+            "agent": process.agent["agent_id"], "version": process.agent["version"],
+            "functions": [f["id"] for f in process.manifest["functions"]]}}}))
 
-    async def pulled(self, sandbox: str, file_id: str, most: int) -> bytes:
+    async def send(self, name: str, message: dict[str, Any], files: list = ()) -> None:
+        self.sent.append(message)
+        process = self.engine.processes[name][1]
+        kind, data = message["body"]["type"], message["body"]["data"]
+        if kind == "call":
+            self.running[message["_id"]] = self._later(self._run(process, message["_id"], data))
+        elif kind in ("result", "error") and data.get("call") in self.answers:
+            self.answers.pop(data["call"]).set_result(message["body"])
+        elif kind == "cancel" and data["call"] in self.running:
+            self.running[data["call"]].cancel()
+
+    async def end(self, name: str) -> None:
+        self._later(self.engine.on_ended(name, "ended by its runtime"))
+
+    async def pull(self, file: str, most: int) -> bytes:
         return b"made"
 
-    async def call(self, sandbox: str, endpoint: str, data: dict[str, Any], seconds: float = 30) -> dict[str, Any]:
-        process = self.processes.get(data.get("process"))
-        if endpoint == "Sandbox:Process:start":
-            self.started.append(data)
-            functions = self.ready if self.ready is not None else [f["id"] for f in process.manifest["functions"]]
-            self.say(process, {"type": "ready", "data": {"agent": process.agent_id, "version": "1.0.0",
-                                                         "functions": functions}})
-        elif endpoint == "Sandbox:Process:send":
-            message = data["message"]
-            self.sent.append(message)
-            kind, said = message["body"]["type"], message["body"]["data"]
-            if kind == "call":
-                self.running[message["_id"]] = self.tasks.start(self.run(process, message))
-            elif kind in ("result", "error") and said.get("call") in self.answers:
-                self.answers[said["call"]].set_result(message)
-            elif kind == "cancel" and said["call"] in self.running:
-                self.running[said["call"]].cancel()
-        elif endpoint == "Sandbox:Process:end" and process is not None:
-            self.tasks.start(process.ended(0, "ended by its runtime"))
-        return {}
-
-    def say(self, process: Any, body: dict[str, Any], files: list | None = None) -> None:
-        message = {"_id": f"p{next(self.ids)}", "body": body, **({"files": files} if files else {})}
-        self.tasks.start(process.received("program", message, "sb1"))
-
-    async def run(self, process: Any, message: dict[str, Any]) -> None:
-        call_id, data = message["_id"], message["body"]["data"]
+    async def _run(self, process: Any, call_id: str, data: dict[str, Any]) -> None:
         try:
-            output, files = await self.behave.get(data["function"], plain)(self, process, call_id, data["inputs"])
+            result = await self.behave.get(data["function"], plain)(Program(self, process, call_id), data["inputs"])
+            output, files = result if isinstance(result, tuple) else (result, None)
             body = {"type": "result", "data": {"call": call_id, "output": output}}
         except asyncio.CancelledError:
-            body, files = {"type": "error", "data": {"call": call_id, "code": "cancelled", "message": "Cancelled."}}, None
+            files = None
+            body = {"type": "error", "data": {"call": call_id, "code": "cancelled", "message": "Cancelled."}}
         self.running.pop(call_id, None)
-        self.say(process, body, files)
+        await process.received({"_id": f"p{next(self.ids)}", "body": body, **({"files": files} if files else {})})
 
-    async def ask(self, process: Any, within: str, function: str, inputs: dict[str, Any]) -> dict[str, Any]:
-        """The program's own call to the runtime, within one of its calls: the answer's body."""
-        id = f"p{next(self.ids)}"
-        self.answers[id] = asyncio.get_running_loop().create_future()
-        self.tasks.start(process.received("program", {"_id": id, "body": {"type": "call", "data": {
-            "within": within, "function": function, "inputs": inputs}}}, "sb1"))
-        return (await self.answers[id])["body"]
+    def _later(self, work: Any) -> asyncio.Task:
+        task = asyncio.ensure_future(work)
+        self.tasks.add(task)
+        task.add_done_callback(self.tasks.discard)
+        return task
 
 
-async def held(script: list, loaded: dict[str, Any] | None = None, **settings: Any) -> tuple[Api, Sandboxes, Any]:
-    """A chat placed on a runtime with this mind, its model answering from the script."""
-    api, sandboxes = Api(contract(**settings), loaded), Sandboxes()
-    chat = await Chats(api, sandboxes, SETTINGS, Mind)._held("chat1")
-    chat._connector = Scripted({"responses": script})
-    return api, sandboxes, chat
+class Engine:
+    """What a chat needs of its engine: its API servers, sandboxes, settings and processes, and its assistant, made with
+    a model that answers from ``script``."""
+
+    FILE_MOST = 8 * 1024 * 1024
+
+    def __init__(self, api: Api, script: list):
+        self.api, self.settings, self.script = api, SETTINGS, script
+        self.sandboxes = Sandboxes(self)
+        self.chats: dict[str, Chat] = {}
+        self.processes: dict[str, tuple[Chat | None, Any]] = {}
+
+    def mind(self, chat: Chat, loaded: dict[str, Any]) -> Assistant:
+        chat._connector = Scripted({"responses": self.script})
+        return Assistant(chat, loaded)
+
+    async def on_ended(self, name: str, reason: str) -> None:
+        held = self.processes.pop(name, None)
+        if held is not None:
+            await held[1].ended(reason)
+            held[0].forget(held[1])
+
+
+async def placed(script: list, loaded: dict[str, Any] | None = None, **settings: Any) -> tuple[Api, Engine, Chat]:
+    """A chat placed on a runtime, its assistant made, its model answering from the script."""
+    api = Api(contract(**settings), loaded)
+    engine = Engine(api, script)
+    chat = engine.chats["chat1"] = Chat(engine, "chat1")
+    await until(lambda: chat.mind is not None)
+    return api, engine, chat
 
 
 async def until(found: Any, seconds: float = 5) -> Any:
@@ -150,25 +204,30 @@ async def until(found: Any, seconds: float = 5) -> Any:
     raise AssertionError("it never came")
 
 
-async def settled(chat: Any) -> None:
-    """Until the mind is quiet and all it sends is sent."""
+async def settled(chat: Chat) -> None:
+    """Until the inbox is empty, the assistant quiet, and all it sends is sent."""
     def quiet() -> bool:
-        return chat.mind.idle() and (chat.mind.sending is None or chat.mind.sending.done())
+        mind = chat.mind
+        return chat.inbox.empty() and mind.idle() and (mind.sending is None or mind.sending.done())
 
     await until(quiet)
     await asyncio.sleep(0.05)
     await until(quiet)
 
 
-def message(seq: int, text: str, files: tuple = (), actor: str = "person") -> dict[str, Any]:
-    return {"type": "message", "message": {"message_id": f"m{seq}", "seq": seq, "actor": actor, "files": list(files),
+def message(seq: int, text: str, actor: str = "person") -> dict[str, Any]:
+    return {"type": "message", "message": {"message_id": f"m{seq}", "seq": seq, "actor": actor, "files": [],
                                            "parts": [{"type": "text", "text": text}]}}
 
 
-def call(*named: tuple[str, dict]) -> dict[str, Any]:
-    """A model's reply that calls these tools, each (name, arguments)."""
-    return {"calls": [{"name": name, "arguments": arguments} for name, arguments in named]}
+def calls(*named: tuple[str, dict]) -> dict[str, Any]:
+    """A model's reply that calls these tools, each (name, arguments), with words before them."""
+    return {"text": "Doing it.", "calls": [{"name": name, "arguments": arguments} for name, arguments in named]}
 
 
 def said(api: Api) -> list[str]:
     return [data["parts"][0].get("text") for data in api.of("AI:Message:create")]
+
+
+def work(chat: Chat) -> list[dict[str, Any]]:
+    return list(chat.mind.work.entries.values())

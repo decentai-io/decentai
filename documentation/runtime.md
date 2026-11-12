@@ -3,11 +3,13 @@
 ## 1. What it is
 
 The runtime holds the chats that are active: for each, its agents' processes on sandboxes, the calls between them,
-and the mind that thinks in it ([mind](mind.md)). It keeps nothing of its own: what a chat is, says and decides is
+and the assistant that thinks in it ([assistant](assistant.md)). It keeps nothing of its own: what a chat is, says and decides is
 the API server's ([api-server](api-server.md)), and what runs is the sandbox's ([sandbox](sandbox.md)).
 
-Several runtimes may serve one deployment. Any may hold any chat an API server places on it; a restarted one holds
-none, and its chats are placed again.
+Several runtimes may serve one deployment. Any may hold any chat an API server places on it, up to
+`AI_RUNTIME_CHATS_MAX`; a full one says so in its report, and answers a new chat 503, so it is placed elsewhere. A
+restarted one holds none: its report carries a `boot` id new at each start, and the API server places its chats
+again, resuming those that were working.
 
 ## 2. Its sides
 
@@ -16,34 +18,40 @@ none, and its chats are placed again.
 | API servers | mutual TLS on 8004, both ways | certificates of kind `api` |
 | sandboxes, as their caller | mutual TLS on 8004, both ways | certificates of kind `sandbox` |
 | programs | the sandbox's messages ([sandbox](sandbox.md#5-the-program-protocol)) | the process they run in |
-| the way out | TLS on 8005, from sandboxes | the sandbox's certificate, then the process's name |
+| the proxy | TLS on 8005, from sandboxes | the sandbox's certificate, then the process's name |
 | models | each connection's own address | the key in the chat's contract |
 
 **To API servers** it reports itself every few seconds: where it is reached, the chats it holds, and its sandboxes
 with their room and processes. The answer says what it should drain ([api-server](api-server.md#10-runtimes)). It
-calls any API server that answers; they are one to it.
+calls any API server that takes the call, passing over one it can't reach or that answers 502, 503 or 504; they
+are one to it.
 
-**An API server tells it,** for a chat: a person's message, a card's answer, a new contract, a stop, a clear, a
-screen's input, a schedule due, a resume, and a close. It asks it to check an agent, a model connection, or an MCP
+**An API server tells it,** for a chat: a person's message, a card's answer, a new contract, a stop, a screen's
+input, a schedule due, a resume, and a close. A chat's frames are taken one at a time, in the order they came; a
+card's answer goes at once to what waits on it. It asks it to check an agent, a model connection, or an MCP
 server's tools.
 
-**What only passes** in a chat, the assistant's words as the model writes them and pictures of an agent's screen, the
-runtime keeps in memory, the last 50, and never sends: an API server with the chat open in a browser asks for them,
+**What only passes** in a chat, the assistant's words as the model writes them, what its threads are doing, and
+pictures of an agent's screen, the
+runtime keeps in memory, the last 50, a screen replacing the one before it of the same call, and never sends: an API server with the chat open in a browser asks for them,
 `Runtime:Chat:passing` with the count it has, and the runtime holds the ask up to 20 seconds until something passes.
 Each carries the number of the last event the chat kept ([api-server](api-server.md#7-chats)).
 
 **Sandboxes** report themselves to it ([sandbox](sandbox.md#6-the-caller-protocol)); a sandbox is used while it
-reports. The runtime answers with its id and its way out's port.
+reports. The runtime answers with its id and its proxy's port.
 
 ## 3. Holding a chat
 
 - **Placed:** on the first thing told of a chat, the runtime reads its contract and its last messages, cards and
   state, and holds it. Cards still open belong to calls a runtime lost, and expire.
-- **Its contract** is read again when the API server says it changed. Agents the chat no longer uses have their
-  processes ended.
-- **Stopped:** every call in flight is cancelled; or, stopped by its id, one of the mind's calls or tasks alone. **Cleared:** its processes end and the mind starts afresh.
-- **Let go:** when the chat has had no call in flight and no process for `AI_RUNTIME_AGENT_PROCESS_IDLE_MINUTES`, or
-  when it is closed, or when the runtime stops. The next report no longer names it.
+- **Its contract** is read again when the API server says it changed. A process whose release the contract no longer
+  has is ended: its agent is no longer used, or was updated. The next call to an updated agent starts its new release.
+- **Stopped:** every call in flight is cancelled, a program's own calls within them too; or, stopped by its id, one of
+  the assistant's calls or tasks alone. A chat is cleared by being closed: the API server then forgets its state.
+- **Let go:** when the chat has had nothing in flight and no process for `AI_RUNTIME_AGENT_PROCESS_IDLE_MINUTES`; at
+  once once it is quiet while the API servers ask the runtime to drain; when it is closed; or when the runtime stops,
+  which first gives turns in flight 8 seconds to go quiet. Cards it still waits on are given up and expire, never read
+  as refused. The next report no longer names it.
 - **A restart** loses the calls in flight: they end as failed. What the chat said and decided is the API server's.
 
 ## 4. Agents' processes
@@ -51,7 +59,10 @@ reports. The runtime answers with its id and its way out's port.
 One process for each agent of a chat that is active ([agents](agents.md#1-one-process-per-chat-that-is-active)).
 
 - **Started** at the chat's first call to the agent, on a sandbox that reports itself, of a machine the agent has a
-  program for, of its base, with room, and not drained. Its name is the chat's and the agent's.
+  program for, of its base, with room, and not drained.
+- **Its name** is the chat's id and its release: `<chat id>.<release>`, the release being the sha256 of the agent's
+  manifest, base and program digests. A process is named by what it runs, never by the agent's id, which is only the
+  name its developer chose: two agents of one id are two releases, and so is an update.
 - **Its program** is pulled by the sandbox from the runtime, which takes it from an API server, a piece at a time.
 - **Ready:** its first message is `ready`, naming the manifest's agent, version and functions, within
   `AI_RUNTIME_AGENT_READY_SECONDS`. Anything else ends it.
@@ -73,16 +84,20 @@ Every call an agent's program makes, and every call to an agent's function, pass
 1. **Declared:** the function names it in `calls`.
 2. **The rules** of the chat's contract, evaluated as the API server evaluates them
    ([api-server](api-server.md#3-calls-answers-and-permissions)): a deny refuses; an ask asks.
-3. **The level** against the chat's trust: above it, the chat's person is asked, unless they remembered an answer.
+3. **The level** against the run's trust: the chat's, or a schedule's own for its runs
+   ([assistant](assistant.md#2-what-it-is-told-and-where-it-goes)). Above it, the chat's person is asked, unless
+   they remembered an answer, or gave one for this call before it had to run again.
 
 A call to one of the person's MCP tools passes the same gate by its level alone: 2 unless the person changed it
-([api-server](api-server.md#8-settings)); above the chat's trust, the person is asked.
+([api-server](api-server.md#8-settings)); above the run's trust, the person is asked.
 
-Asking is a card for the chat's person ([api-server](api-server.md#7-chats)); the call waits for the answer. A card
-given up on, as when its call is stopped, expires. With nobody there, as when a schedule runs it, an approval still
-waits on its card, and the call's clock stops meanwhile; calls that wait for the same answer, as a schedule's every
-run does, wait on one card. A question, and opening the network, are not asked with nobody there.
-The API server checks again every call that reaches it.
+**Asking** is a card for the chat's person ([api-server](api-server.md#7-chats)), whoever started the work, nobody
+watching included: nothing is refused because nobody is there. The calls one step of the assistant makes are asked in
+one approval card, an item each, merged where they ask the same; the person allows all, none, or each. The call's
+clock stops while it waits. The assistant's own calls wait however long the person takes, kept in its work log, so a
+restart or a let-go loses nothing; what a program asks within its call waits up to `AI_RUNTIME_ASK_HOURS`, and then
+the call fails and its card stays open for the work to run again. A card is given up on only when its work is
+stopped. The API server checks again every call that reaches it, at the same trust.
 
 ## 6. What a program may call
 
@@ -96,31 +111,40 @@ The API server checks again every call that reaches it.
 A call's answer is a `result` or an `error` with its code: `refused`, `not_found`, `invalid`, `cancelled`, `failed`
 ([agents](agents.md#9-the-standard-field-by-field)).
 
-## 7. The way out
+## 7. The proxy
 
-A sandbox opens TLS to port `AI_RUNTIME_WAY_OUT_PORT` with its certificate; the first line names the process
+A sandbox opens TLS to port `AI_RUNTIME_PROXY_PORT` with its certificate; the first line names the process
 ([agents](agents.md#8-the-way-out)). Each connection is then decided:
 
-- the host is one the agent's manifest declares, one `network.open` opened for a call in flight, or one written in a
-  `from_secret` field of a secret the agent has read; and not one the organization's policy blocks;
-- the name is looked up once, and only a public address is reached, at the address checked;
-- a tunnel (`CONNECT`) or a plain `http://` request, passed through unread. A host is checked by its name: on an
-  address several sites share, such as a CDN's, the bytes may reach another of them.
+- the host is one the agent's manifest declares, or one written in a `from_secret` field of a secret the agent has
+  read, or one `network.open` opened for a call in flight, and then the connection ends with that call; never one the
+  organization's policy blocks. Names are compared without case or a final dot;
+- the name is looked up once, and only a public address is reached: every address it answers with is checked, and
+  each is tried in turn;
+- a tunnel (`CONNECT`), passed through unread; or a plain `http://` request, sent with the host checked as its `Host`
+  and with `Connection: close`, so a next request comes on a connection of its own and is decided too. A host is
+  checked by its name: on an address several sites share, such as a CDN's, a tunnel's bytes may reach another of them.
 
-A refusal is answered at once with its reason. Each connection, reached or refused, is a line in the runtime's log. A
-process has at most `AI_RUNTIME_AGENT_CONNECTIONS_MAX` open, and one with no bytes either way for 5 minutes is closed.
+A request that is not carried is answered at once, its reason in the status line: `403` refused, `400` not a request
+the proxy takes, `502` the host could not be looked up or did not answer. Each connection, reached or refused, is a
+line in the runtime's log. A process has at most `AI_RUNTIME_AGENT_CONNECTIONS_MAX` open, and one with no bytes either
+way for 5 minutes is closed.
 
-## 8. The mind's port
+## 8. The assistant's port
 
-The mind is what thinks in a chat ([mind](mind.md)). The runtime gives it events and carries out its actions.
+The assistant is what thinks in a chat ([assistant](assistant.md)). It is made with the chat and what was kept of it,
+reads the chat's contract, and takes only the chat's actions; it runs its own tasks.
 
-| The mind is told | The mind may |
+| The assistant is told (`told`) | The assistant may |
 |---|---|
-| the person's message, a webhook's | say something in the chat, with files agents made |
-| a schedule's prompt | call an agent's function through the gate, and cancel it |
-| a stop | ask the person a question; offer them a memory or a skill |
-| a clear | schedule its chat's work |
-| a new contract | call the model, and the person's MCP tools through the gate; keep its state |
+| the person's message, a webhook's | `say` something in the chat, with files agents made; send an `event` |
+| a schedule due, its prompt or its function, with its trust | `call` an agent's function, and `mcp` a person's tool, through the gate at a run's trust |
+| a stop, or a stop of one call or task | `ask` the person a question, however long they take; `offer` a memory or a skill; `expire` a card |
+| a card answered after its work stopped waiting | `schedule`, list its `schedules`, `unschedule`; say how a run `ran` |
+| a new contract | `think` with the model; `save` its state; `store` an output whole and read its `output`; read a `file` |
+
+It is told when a piece of its work waits on a card, and goes on again (`waiting`), asked whether it is `idle`, and
+`close`d before the chat is let go.
 
 ## 9. Its container
 
@@ -129,12 +153,14 @@ The mind is what thinks in a chat ([mind](mind.md)). The runtime gives it events
 | `AI_RUNTIME_ADDRESS` | where API servers and sandboxes reach it, as `host:port` | none |
 | `AI_RUNTIME_API_SERVERS` | the API servers it serves, each `host:port` | none |
 | `AI_RUNTIME_IDENTITY` | its identity folder | `/run/decentai/runtime` |
-| `AI_RUNTIME_WAY_OUT_PORT` | the way out | `8005` |
+| `AI_RUNTIME_PROXY_PORT` | the proxy | `8005` |
 | `AI_RUNTIME_AGENT_PROCESS_IDLE_MINUTES` | how long a process may go without a call | `12` |
 | `AI_RUNTIME_AGENT_READY_SECONDS` | how long a new process has to say `ready` | `60` |
 | `AI_RUNTIME_AGENT_CANCEL_SECONDS` | how long a cancelled call has to end | `5` |
+| `AI_RUNTIME_ASK_HOURS` | how long what a program asks within its call waits for the person, before the call fails and its card stays open | `24` |
 | `AI_RUNTIME_AGENT_CONNECTIONS_MAX` | connections one process may have open | `128` |
-| `AI_RUNTIME_INSIDE_HOSTS` | model hosts inside this network a model connection may reach, by name or as a network such as `10.0.0.0/8`; any other must be a public address | none |
+| `AI_RUNTIME_CHATS_MAX` | chats it holds at once; past it, a new chat is placed elsewhere | `500` |
+| `AI_RUNTIME_INSIDE_HOSTS` | model hosts inside this network a model connection may reach, by name or as a network such as `10.0.0.0/8`; any other must be a public address, checked on every request | none |
 | `AI_RUNTIME_LOG_LEVEL` | how much it writes to its log | `INFO` |
 
 It runs as user 999 with no right, read-only, and keeps nothing on disk but its identity.

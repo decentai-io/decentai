@@ -1,13 +1,15 @@
-"""Google's generateContent: a key in a header, the model in the address, and tools in a schema dialect
-narrower than JSON Schema."""
+"""Google's generateContent: a key in a header, or on Vertex AI a service account's token; the model in the address;
+tools in a schema dialect narrower than JSON Schema."""
 
 from __future__ import annotations
 
+import asyncio
 import json
 from typing import Any
 
-from .base import Call, HttpConnector, OnText, ProviderError, Reply, Request
-from .cache import Cache
+from shared.llm.vertex import VertexAccount
+from .connector import Connector, OnText
+from .http_connector import HttpConnector
 from .usage import Usage
 
 
@@ -24,7 +26,16 @@ class Gemini(HttpConnector):
              "BLOCKLIST": "refusal", "PROHIBITED_CONTENT": "refusal", "SPII": "refusal",
              "IMAGE_SAFETY": "refusal"}
 
+    def __init__(self, config: dict[str, Any]):
+        super().__init__(config)
+        #: On Vertex AI: the service account that signs each request, and whose project and region are the address.
+        self.account = VertexAccount(self.api_key, self.endpoint) if self.vertex else None
+        if self.account is not None:
+            self.endpoint = f"{self.account.base}/publishers/google"
+
     async def _auth(self) -> dict[str, str]:
+        if self.account is not None:
+            return {"Authorization": f"Bearer {await asyncio.to_thread(self.account.token)}"}
         return {"x-goog-api-key": self.api_key}
 
     def image(self, image: dict[str, str]) -> dict[str, Any]:
@@ -89,14 +100,14 @@ class Gemini(HttpConnector):
         said = {"name": message["name"], "response": answer, **self._real(message["call_id"])}
         return [{"functionResponse": said}, *[self.image(image) for image in message.get("images") or []]]
 
-    def build(self, request: Request) -> dict[str, Any]:
-        said, turns = Cache.turns(request, strict=True)
-        contents = self.spoken(turns, 0)
+    def build(self, request: Connector.Request) -> dict[str, Any]:
+        said, turns = self.turns(request, strict=True)
+        contents = self.spoken(request, turns, 0)
         for turn in contents:
             # A turn's function responses go first, a picture or a note after them.
             turn["parts"].sort(key=lambda part: "functionResponse" not in part)
         body: dict[str, Any] = {"contents": contents}
-        system = Cache.joined(request.system_stable, request.system_rest, said)
+        system = self.joined(request.system_stable, request.system_rest, said)
         if system:
             body["systemInstruction"] = {"parts": [self.words(system)]}
         if request.max_tokens is not None:
@@ -105,9 +116,9 @@ class Gemini(HttpConnector):
             body["tools"] = [{"functionDeclarations": [self.spec(tool) for tool in request.tools]}]
         return body
 
-    async def send(self, body: dict[str, Any], on_text: OnText) -> Reply:
+    async def send(self, body: dict[str, Any], on_text: OnText) -> Connector.Reply:
         words: list[str] = []
-        calls: list[Call] = []
+        calls: list[Connector.Call] = []
         kept: list[dict[str, str]] = []
         stop, metadata = "", None
         async with self.opened("streamGenerateContent?alt=sse", body) as response:
@@ -116,7 +127,7 @@ class Gemini(HttpConnector):
                     continue
                 chunk = json.loads(line[5:])
                 if "error" in chunk:
-                    raise ProviderError(f"{self.NAME} failed: {chunk['error'].get('message')}")
+                    raise self.Failed(f"{self.NAME} failed: {chunk['error'].get('message')}")
                 metadata = chunk.get("usageMetadata") or metadata
                 if (chunk.get("promptFeedback") or {}).get("blockReason"):
                     stop = "SAFETY"
@@ -129,7 +140,7 @@ class Gemini(HttpConnector):
                     signature = part.get("thoughtSignature")
                     if isinstance(part.get("functionCall"), dict):
                         call = part["functionCall"]
-                        calls.append(Call(call.get("id") or self.made_id(), str(call.get("name") or ""),
+                        calls.append(self.Call(call.get("id") or self.made_id(), str(call.get("name") or ""),
                                           self.arguments(call.get("args"))))
                         if signature:
                             kept.append({"call": calls[-1].id, "signature": signature})

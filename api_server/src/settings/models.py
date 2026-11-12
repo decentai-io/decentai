@@ -73,6 +73,10 @@ class ModelEndpoints(Controller):
 
     @endpoint("See the providers and the models each offers", changes=False)
     def providers(self, data: dict[str, Any], caller: Caller) -> dict[str, Any]:
+        """Every provider; with ``provider``, the chat models the catalog knows it to offer, newest first."""
+        if data.get("provider"):
+            return {"models": [{"id": model["id"], "name": model["name"]}
+                               for model in LlmProviders.models(data["provider"], "chat")]}
         return {"providers": LlmProviders.all()}
 
     @endpoint("Ask a runtime to check a connection and list its models: one saved, or as given before saving",

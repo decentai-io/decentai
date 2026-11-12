@@ -13,7 +13,6 @@ aiohttp~=3.12
 msgpack~=1.1
 cryptography~=50.0.2
 
-# Inputs and outputs held to their manifests, and the shared contracts
+# Inputs and outputs held to their manifests, and the assistant's tools held to theirs
 jsonschema~=4.25
-pydantic~=2.12
 

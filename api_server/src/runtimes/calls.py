@@ -41,7 +41,7 @@ class RuntimeCalls:
         holder = Runtimes().col.find_one({"_id": chat.get("holder")}) if chat.get("holder") else None
         if Runtimes().is_live(holder) and serves(holder):
             return holder
-        pool = [row for row in Runtimes().live() if not row.get("draining") and serves(row)]
+        pool = [row for row in Runtimes().live() if not row.get("draining") and not row.get("full") and serves(row)]
         pool = [row for row in pool if row.get("scope") == chat["org_id"]] or pool
         if not pool:
             return None
@@ -66,6 +66,8 @@ class RuntimeCalls:
             answer, status = await self.call(runtime, "Runtime:Chat:send", {"chat": chat["_id"], "frame": frame})
             if status == 200:
                 return True
+            if status == 503:  # full: passed over until its next report says otherwise
+                await asyncio.to_thread(Runtimes().col.update_one, {"_id": runtime["_id"]}, {"$set": {"full": True}})
             await asyncio.to_thread(Chats().let_go, chat["_id"], runtime["_id"])
             chat = await asyncio.to_thread(Chats().find, chat["_id"]) or chat
         return False
@@ -128,9 +130,12 @@ class RuntimeCalls:
 
     async def sweep(self) -> None:
         """Runtimes gone: their chats go free, and a chat that was working is placed again."""
-        gone = [runtime["_id"] for runtime in await asyncio.to_thread(Runtimes().gone)]
-        held = await asyncio.to_thread(Chats().held_by, gone)
-        await asyncio.to_thread(Chats().let_go_all, gone)
+        await self.release([runtime["_id"] for runtime in await asyncio.to_thread(Runtimes().gone)])
+
+    async def release(self, runtimes: list[str]) -> None:
+        """These runtimes' chats go free, and a chat that was working is placed again."""
+        held = await asyncio.to_thread(Chats().held_by, runtimes)
+        await asyncio.to_thread(Chats().let_go_all, runtimes)
         for chat in held:
             if chat.get("working"):
                 await self.send({**chat, "holder": ""}, {"type": "resume"})

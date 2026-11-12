@@ -1,7 +1,9 @@
-"""Chats, their state, messages, events, cards, remembered approvals and schedules (api-server.md §7)."""
+"""Chats, their state, messages, events, cards, remembered approvals, schedules and outputs (api-server.md §7)."""
 
 from __future__ import annotations
 
+import hashlib
+import re
 from datetime import timedelta
 from typing import Any
 
@@ -17,8 +19,10 @@ class Chats(Store):
     INDEXES = (([("user_id", Store.ASC), ("_id", Store.DESC)], {}), ([("user_id", Store.ASC), ("updated_at", Store.DESC)], {}),
                ([("holder", Store.ASC)], {}))
     #: ``agents``, ``skills`` and ``mcp_servers``: null for all the person may use, a list for those, empty for none.
-    SETTINGS = {"trust": 1, "agents": None, "model": "", "effort": "", "time_zone": "UTC", "turn_budget": 0,
-                "skills": None, "mcp_servers": None}
+    #: ``model`` is a model connection ('' for the organization's default), ``model_id`` one of its models ('' for the
+    #: connection's first).
+    SETTINGS = {"trust": 1, "agents": None, "model": "", "model_id": "", "effort": "", "time_zone": "UTC",
+                "turn_budget": 0, "skills": None, "mcp_servers": None}
 
     def create(self, person: dict[str, Any], title: str = "", settings: dict[str, Any] | None = None,
                webhook: str = "") -> dict[str, Any]:
@@ -78,10 +82,37 @@ class Chats(Store):
 
 
 class ChatStates(Store):
-    """The assistant's state: written by the holder alone, kept as given, never read here."""
+    """The assistant's state: written by the holder alone, in parts, kept as given, never read here. A save sends the
+    parts that changed, None for one gone, or all of them (``whole``); the parts together are at most MOST."""
 
     COLLECTION = "chat_states"
     MOST = 4 * 1024 * 1024
+    PART = re.compile(r"[A-Za-z0-9_:-]{1,120}")
+
+    def keep(self, chat_id: str, parts: dict[str, Any], whole: bool) -> bool:
+        """Kept; False, and nothing changed, when the parts would be more than MOST."""
+        held = {} if whole else (self.col.find_one({"_id": chat_id}, {"sizes": 1}) or {}).get("sizes") or {}
+        sizes = {**held, **{name: len(str(part)) for name, part in parts.items() if part is not None}}
+        gone = [name for name, part in parts.items() if part is None]
+        for name in gone:
+            sizes.pop(name, None)
+        if sum(sizes.values()) > self.MOST:
+            return False
+        kept = {name: part for name, part in parts.items() if part is not None}
+        if whole:
+            self.col.replace_one({"_id": chat_id}, {"parts": kept, "sizes": sizes}, upsert=True)
+            return True
+        changes: dict[str, Any] = {"$set": {**{f"parts.{name}": part for name, part in kept.items()},
+                                            **{f"sizes.{name}": sizes[name] for name in kept}}}
+        if gone:
+            changes["$unset"] = {key: "" for name in gone for key in (f"parts.{name}", f"sizes.{name}")}
+        self.col.update_one({"_id": chat_id}, changes, upsert=True)
+        return True
+
+    def of(self, chat_id: str) -> dict[str, Any] | None:
+        """The state as its holder reads it back: its parts, or as a state saved whole before it had parts was."""
+        found = self.col.find_one({"_id": chat_id}) or {}
+        return {"parts": found["parts"]} if "parts" in found else found.get("state")
 
 
 class Messages(Store):
@@ -92,12 +123,14 @@ class Messages(Store):
     MOST = 512 * 1024
 
     def add(self, chat: dict[str, Any], actor: str, parts: list[Any], files: list[str] | None = None,
-            client_id: str = "") -> dict[str, Any]:
+            client_id: str = "", model: str = "", run: dict[str, Any] | None = None) -> dict[str, Any]:
+        """``model`` wrote it; ``run`` is the schedule's or webhook's run that posted it."""
         if len(str(parts)) > self.MOST:
             raise ValueError("A message is at most 512 KiB.")
         doc = {"_id": self.new_id(), "chat_id": chat["_id"], "org_id": chat["org_id"], "user_id": chat["user_id"],
                "seq": Chats().next(chat["_id"], "seq"), "actor": actor, "parts": parts, "files": files or [],
-               "client_id": client_id[:64], "at": self.now()}
+               "client_id": client_id[:64], "at": self.now(), **({"model": model} if model else {}),
+               **({"run": run} if run else {})}
         self.col.insert_one(doc)
         text = " ".join(str(p.get("text") or "") for p in parts if isinstance(p, dict)).strip()
         if text:
@@ -107,7 +140,8 @@ class Messages(Store):
     @staticmethod
     def public(doc: dict[str, Any]) -> dict[str, Any]:
         return {"message_id": doc["_id"], "seq": doc["seq"], "actor": doc["actor"], "parts": doc["parts"],
-                "files": doc["files"], "client_id": doc.get("client_id", ""), "at": doc["at"]}
+                "files": doc["files"], "client_id": doc.get("client_id", ""), "at": doc["at"],
+                **{key: doc[key] for key in ("model", "run") if doc.get(key)}}
 
 
 class Events(Store):
@@ -116,8 +150,8 @@ class Events(Store):
 
     COLLECTION = "events"
     INDEXES = (([("chat_id", Store.ASC), ("seq", Store.ASC)], {}),)
-    KEPT, MOST = 200, 512 * 1024
-    PASSING = ("screen", "saying")
+    KEPT, MOST = 500, 512 * 1024
+    PASSING = ("screen", "saying", "doing")
 
     def add(self, chat: dict[str, Any], event: str, data: dict[str, Any]) -> dict[str, Any]:
         if len(str(data)) > self.MOST:
@@ -141,17 +175,19 @@ class Events(Store):
 
 
 class Cards(Store):
-    """Questions put to a chat's person, and only them."""
+    """Questions put to a chat's person, and only them. A card waits for its person however long it takes: it ends
+    answered, or expired when its work is stopped. One open long is told again every REMIND seconds."""
 
     COLLECTION = "cards"
     INDEXES = (([("user_id", Store.ASC), ("status", Store.ASC)], {}), ([("chat_id", Store.ASC)], {}))
     KINDS = ("approval", "question", "form", "network", "skill", "memory")
-    DAY = 86400
+    REMIND = 12 * 3600
 
     def open(self, chat: dict[str, Any], kind: str, call: str, agent: str, request: dict[str, Any]) -> dict[str, Any]:
+        now = self.now()
         doc = {"_id": self.new_id(), "chat_id": chat["_id"], "org_id": chat["org_id"], "user_id": chat["user_id"],
                "kind": kind, "call": call, "agent": agent, "request": request, "status": "open", "answer": None,
-               "at": self.now(), "until": self.expires(self.DAY)}
+               "at": now, "told_at": now}
         self.col.insert_one(doc)
         return doc
 
@@ -166,13 +202,19 @@ class Cards(Store):
         self.col.update_many({"_id": {"$in": [c["_id"] for c in found]}}, {"$set": {"status": "expired"}})
         return found
 
-    def overdue(self) -> list[dict[str, Any]]:
-        return self.expire({"until": {"$lte": self.now()}})
+    def to_remind(self) -> list[dict[str, Any]]:
+        """Open cards their person was last told of REMIND seconds ago or more, marked told now."""
+        now = self.now()
+        found = list(self.col.find({"status": "open", "kind": {"$in": ["approval", "question", "form", "network"]},
+                                    "told_at": {"$lte": now - timedelta(seconds=self.REMIND)}}).limit(500))
+        self.col.update_many({"_id": {"$in": [c["_id"] for c in found]}}, {"$set": {"told_at": now}})
+        return found
 
     @staticmethod
     def public(card: dict[str, Any]) -> dict[str, Any]:
         return {"card_id": card["_id"], "chat_id": card["chat_id"], "kind": card["kind"], "call": card["call"],
-                "agent": card["agent"], "request": card["request"], "status": card["status"], "at": card["at"]}
+                "agent": card["agent"], "request": card["request"], "status": card["status"], "at": card["at"],
+                "answer": card.get("answer")}
 
 
 class Remembered(Store):
@@ -182,10 +224,10 @@ class Remembered(Store):
     INDEXES = (([("user_id", Store.ASC), ("agent", Store.ASC), ("function", Store.ASC), ("record", Store.ASC)],
                 {"unique": True}),)
 
-    def keep(self, card: dict[str, Any], allowed: bool) -> None:
-        request = card["request"]
-        key = {"user_id": card["user_id"], "agent": card["agent"], "function": str(request.get("function") or ""),
-               "record": str(request.get("record") or "")}
+    def keep(self, card: dict[str, Any], item: dict[str, Any], allowed: bool) -> None:
+        """One item of an approval card, remembered for its agent, function and record."""
+        key = {"user_id": card["user_id"], "agent": str(item.get("agent") or "")[:80],
+               "function": str(item.get("function") or "")[:80], "record": str(item.get("record") or "")[:80]}
         self.col.update_one(key, {"$set": {"org_id": card["org_id"], "allowed": allowed, "at": self.now()},
                                   "$setOnInsert": {"_id": self.new_id()}}, upsert=True)
 
@@ -214,4 +256,25 @@ class Schedules(Store):
     @staticmethod
     def public(row: dict[str, Any]) -> dict[str, Any]:
         return {"schedule_id": row["_id"], "chat_id": row["chat_id"], "what": row["what"], "when": row["when"],
-                "next_at": row["next_at"], "paused": row["paused"], "by": row["by"], "runs": row.get("runs", [])}
+                "next_at": row["next_at"], "paused": row["paused"], "by": row["by"], "trust": row.get("trust"),
+                "runs": row.get("runs", [])}
+
+
+class Outputs(Store):
+    """The output of each piece of a chat's work, whole, once by the hash of its text: the chat's state names it by
+    that hash. It goes when the chat is cleared or deleted."""
+
+    COLLECTION = "outputs"
+    INDEXES = (([("chat_id", Store.ASC)], {}),)
+    MOST = 2 * 1024 * 1024
+
+    def put(self, chat: dict[str, Any], text: str) -> dict[str, Any]:
+        ref = hashlib.sha256(text.encode()).hexdigest()
+        self.col.update_one({"_id": f"{chat['_id']}:{ref}"},
+                            {"$setOnInsert": {"chat_id": chat["_id"], "org_id": chat["org_id"],
+                                              "user_id": chat["user_id"], "ref": ref, "size": len(text), "text": text,
+                                              "at": self.now()}}, upsert=True)
+        return {"ref": ref, "size": len(text)}
+
+    def read(self, chat_id: str, ref: str) -> dict[str, Any] | None:
+        return self.col.find_one({"_id": f"{chat_id}:{ref}"})

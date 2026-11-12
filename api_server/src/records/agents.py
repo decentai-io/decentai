@@ -10,7 +10,7 @@ from typing import Any
 from ..agents.manifest import Standard
 from ..agents.store import Agents
 from ..chats.endpoints import CardEndpoints
-from ..chats.store import Cards, Remembered
+from ..chats.store import Cards, Remembered, Schedules
 from ..doors.calls import CHAT, Caller, Controller, Refused, endpoint
 from ..people.permissions import ALLOW, DENY, Rules
 from .oauth import Connections
@@ -20,7 +20,8 @@ LEVEL = {"list": 0, "read": 0, "create": 1, "update": 1, "delete": 2}
 
 
 class Gate:
-    """Declared in the function's ``calls``, then the person's rules, then the level against the chat's trust. An
+    """Declared in the function's ``calls``, then the person's rules, then the level against the run's trust: the
+    chat's, or, for a call a schedule's run makes, that schedule's, which its person may set above the chat's. An
     ``ask``, or a level above trust, passes once its person approved this call, or remembered they would."""
 
     def check(self, caller: Caller, data: dict[str, Any], operation: str, level: int) -> tuple[dict, dict]:
@@ -38,7 +39,7 @@ class Gate:
         effect = Rules().evaluate(Rules().statements(person), f"agent:{agent_id}:{function_id}:{call}")
         if effect == DENY:
             raise Refused("refused", "The organization's policy doesn't allow this.")
-        asks = effect != ALLOW or level > int(chat["settings"].get("trust", 1))
+        asks = effect != ALLOW or level > self._trust(chat, data)
         if asks and not self._approved(caller, data, call):
             raise Refused("refused", "This needs its person's approval first.", approval=True)
         found = Standard.resource(agent["manifest"], resource_id)
@@ -47,14 +48,28 @@ class Gate:
         return agent, found[1] | {"kind": KIND_OF[found[0]]}
 
     @staticmethod
+    def _trust(chat: dict[str, Any], data: dict[str, Any]) -> int:
+        """The chat's trust; for a schedule's run, that schedule's, where the chat has it."""
+        trust = int(chat["settings"].get("trust", 1))
+        if data.get("schedule"):
+            row = Schedules().col.find_one({"_id": str(data["schedule"]), "chat_id": chat["_id"]}, {"trust": 1})
+            trust = int(row["trust"]) if row and row.get("trust") is not None else trust
+        return trust
+
+    @staticmethod
     def _approved(caller: Caller, data: dict[str, Any], call: str) -> bool:
-        """A yes on a card for this very call, agent, function and operation, spent by this check; or a remembered
-        yes."""
-        if Cards().col.find_one_and_update({
-                "chat_id": caller.chat["_id"], "kind": "approval", "call": str(data.get("call") or ""),
-                "agent": str(data.get("agent")), "request.function": str(data.get("function")), "request.call": call,
-                "status": "answered", "answer.allowed": True, "spent": {"$ne": True}}, {"$set": {"spent": True}}):
-            return True
+        """A yes on a card's item for this very call (its id begins with the call's), agent, function and operation,
+        spent by this check; or a remembered yes."""
+        wanted = {"agent": str(data.get("agent")), "function": str(data.get("function")), "call": call}
+        cards = Cards().col.find({"chat_id": caller.chat["_id"], "kind": "approval", "status": "answered",
+                                  "spent": {"$ne": True}, "request.items": {"$elemMatch": wanted}})
+        for card in cards:
+            decided = (card.get("answer") or {}).get("items") or {}
+            if any(all(item.get(k) == v for k, v in wanted.items()) and decided.get(item.get("id")) is True
+                   and str(item.get("id")).startswith(f"{data.get('call')}.") for item in card["request"]["items"]):
+                if Cards().col.update_one({"_id": card["_id"], "spent": {"$ne": True}},
+                                          {"$set": {"spent": True}}).modified_count:
+                    return True
         return Remembered().col.count_documents({"user_id": caller.user_id, "agent": str(data.get("agent")),
                                                  "function": str(data.get("function")), "allowed": True,
                                                  "record": {"$in": ["", str(data.get("ref") or "")]}}, limit=1) == 1
