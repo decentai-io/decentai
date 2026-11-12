@@ -6,7 +6,7 @@ fastapi~=0.136.1
 # The same line of Starlette as the API server's: FastAPI allows newer,
 # whose test client warns without httpx2 and will soon refuse.
 starlette~=1.0.0
-uvicorn~=0.46.0
+uvicorn~=0.54.0
 pydantic~=2.12
 # Not imported anywhere: FastAPI needs it to read an uploaded recording.
 python-multipart>=0.0.22
