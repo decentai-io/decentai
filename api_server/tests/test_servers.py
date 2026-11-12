@@ -31,11 +31,19 @@ class Browser:
         self.frames.put_nowait(frame)
 
 
-def several_servers(loop) -> None:
-    """``loop`` run by four servers at once, for a second."""
+def several_servers(loop, until=None, most: float = 15) -> None:
+    """``loop`` run by four servers at once: for a second, or, given ``until``, until it holds and half a second more
+    (for a second server that would do the same again), never past ``most`` seconds. A busy machine is slower; a
+    test waiting on a fixed second would fail on it for nothing."""
     async def all_of_them() -> None:
         servers = [asyncio.ensure_future(loop()) for _ in range(4)]
-        await asyncio.sleep(1)
+        if until is None:
+            await asyncio.sleep(1)
+        else:
+            ends = asyncio.get_running_loop().time() + most
+            while not until() and asyncio.get_running_loop().time() < ends:
+                await asyncio.sleep(0.05)
+            await asyncio.sleep(0.5)
         for server in servers:
             server.cancel()
     asyncio.run(all_of_them())
@@ -71,7 +79,7 @@ def test_each_notification_is_sent_once_by_several_servers(world, org, mail):
     chat = Chats().create(org.member.person, "Plans")
     for n in range(20):
         Notifier().tell(chat, "reply.ready", f"Plans {n}", "Your chat has an answer")
-    several_servers(Sender().forever)
+    several_servers(Sender().forever, until=lambda: len(mail) >= 20)
     assert sorted(sent["subject"] for sent in mail) == sorted(f"Plans {n}" for n in range(20))
 
 
